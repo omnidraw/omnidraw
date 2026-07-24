@@ -14,6 +14,7 @@ import {
   DEFAULT_TEXT_VERTICAL_ALIGN,
 } from "./CONSTANTS";
 import { fnCreateTextElement } from "./fn.create-text-element";
+import { fnTextEditorTeardownOutcome } from "./fn.teardown-policy";
 
 const DEFAULT_TEXT_COLOR_TOKEN = "@base/900";
 
@@ -80,6 +81,10 @@ type TPendingTextCreation = {
   resolved: boolean;
 };
 
+type TEditorCallbackGate = {
+  phase: "active" | "closed" | "resolving";
+};
+
 function isUnchangedCreation(
   current: TElement | undefined,
   creation: TPendingTextCreation,
@@ -104,15 +109,19 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
       const tool = ctx.services.require("tool");
       const document = scene.container.ownerDocument;
       const cleanups: Array<() => void> = [];
+      const pendingCreations = new Set<TPendingTextCreation>();
+      let destroying = false;
       let editor: {
         activeSessionId: string;
         targetId: string;
+        initialText: string;
         textarea: HTMLTextAreaElement;
         session: TCanvasProductTextSession;
         creation: TPendingTextCreation | null;
+        callbackGate: TEditorCallbackGate;
       } | null = null;
 
-      const closeEditor = (mode: "commit" | "cancel" | "destroy") => {
+      const closeEditor = (mode: "commit" | "cancel" | "close") => {
         const active = editor;
         if (active === null) {
           return;
@@ -120,6 +129,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         editor = null;
         sharedSession.editingId = null;
         activeSession.complete(active.activeSessionId);
+        active.callbackGate.phase = "resolving";
         try {
           if (mode === "commit") {
             active.session.commit();
@@ -127,6 +137,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
             active.session.cancel();
           }
         } finally {
+          active.callbackGate.phase = "closed";
           active.session.destroy();
           active.textarea.remove();
         }
@@ -142,6 +153,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           return;
         }
         creation.resolved = true;
+        pendingCreations.delete(creation);
         history.discard(creation.historyEntry);
         if (mode === "cancel") {
           if (isUnchangedCreation(
@@ -184,14 +196,30 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         editor = null;
         sharedSession.editingId = null;
         activeSession.complete(active.activeSessionId);
+        active.callbackGate.phase = "closed";
         active.session.destroy();
         active.textarea.remove();
+      };
+
+      const resolveEditorForTeardown = () => {
+        const active = editor;
+        if (active === null) {
+          return;
+        }
+        closeEditor(fnTextEditorTeardownOutcome({
+          creation: active.creation !== null,
+          initialText: active.initialText,
+          currentText: active.textarea.value,
+        }));
       };
 
       const openEditor = (
         targetId: string,
         creation: TPendingTextCreation | null = null,
       ) => {
+        if (destroying) {
+          return false;
+        }
         const persisted = crdt.doc().elements[targetId];
         const initialText = persisted === undefined ? null : textOf(persisted);
         if (persisted === undefined || initialText === null) {
@@ -213,6 +241,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         document.body.append(textarea);
 
         try {
+          const callbackGate: TEditorCallbackGate = { phase: "active" };
           const productSession = scene.product.interactions.createTextSession({
             target: { kind: "element", id: targetId },
             role: persisted.data.type === "text" ? "render" : "inline-text",
@@ -220,6 +249,9 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
             commitOnBlur: true,
             selectOnFocus: true,
             onCommit: (text) => {
+              if (callbackGate.phase === "closed") {
+                return;
+              }
               const current = crdt.doc().elements[targetId];
               if (current === undefined) {
                 if (creation !== null) {
@@ -290,6 +322,9 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
               finishEditor(targetId);
             },
             onCancel: () => {
+              if (callbackGate.phase === "closed") {
+                return;
+              }
               if (creation !== null) {
                 resolveCreation(creation, "cancel");
                 selection.clear();
@@ -301,9 +336,11 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           editor = {
             activeSessionId,
             targetId,
+            initialText,
             textarea,
             session: productSession,
             creation,
+            callbackGate,
           };
           activeSession.register({
             id: activeSessionId,
@@ -436,6 +473,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
                 historyEntry,
                 resolved: false,
               };
+              pendingCreations.add(creation);
               selection.select({ kind: "element", id: created.id });
               tool.setActiveTool("select");
               openAfterProjection(created.id, creation);
@@ -469,7 +507,14 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
       }));
 
       ctx.hooks.destroy.tap(() => {
-        closeEditor("destroy");
+        if (destroying) {
+          return;
+        }
+        destroying = true;
+        resolveEditorForTeardown();
+        for (const creation of [...pendingCreations]) {
+          resolveCreation(creation, "cancel");
+        }
         for (const cleanup of cleanups.splice(0).reverse()) {
           cleanup();
         }

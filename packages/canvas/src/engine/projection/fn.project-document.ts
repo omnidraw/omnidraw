@@ -22,6 +22,8 @@ import { fnFreezeCanvasProjectionValue } from "./fn.freeze";
 import { fnCanvasDocumentProjectionSignature } from "./fn.document-signature";
 import { fnCanvasEngineGroupId } from "./fn.ids";
 import { fnCreateProjectionIndex } from "./fn.index";
+import { fnCreatePersistentRecord } from "./fn.persistent-record";
+import { fnCreatePersistentSequence } from "./fn.persistent-sequence";
 import { fnProjectCanvasPlaceholder } from "./fn.placeholder";
 import { fnProjectCanvasGroup } from "./fn.project-group";
 import { fnCanvasSceneBaseNodes } from "./fn.scene";
@@ -302,6 +304,38 @@ export function fnProjectCanvasDocument(
     groupSignatures,
   });
 
+  const baseIndex = fnCreateProjectionIndex({
+    elements: elementProjections,
+    groups: groupProjections,
+    activeProjectionSignature: signature,
+    lastAppliedRevision: args.revision,
+  });
+  const index = {
+    ...baseIndex,
+    elementNodeIds: fnCreatePersistentRecord(baseIndex.elementNodeIds),
+    groupNodeIds: fnCreatePersistentRecord(baseIndex.groupNodeIds),
+    nodeTargets: fnCreatePersistentRecord(baseIndex.nodeTargets),
+    elementResourceIds: fnCreatePersistentRecord(
+      baseIndex.elementResourceIds,
+    ),
+    elementPortalIds: fnCreatePersistentRecord(baseIndex.elementPortalIds),
+    elementSignatures: fnCreatePersistentRecord(elementSignatures),
+    groupSignatures: fnCreatePersistentRecord(groupSignatures),
+    nodePositions: fnCreatePersistentRecord(
+      Object.fromEntries(snapshot.nodes.map((node, index) => {
+        return [node.id, index];
+      })),
+    ),
+    nodePositionEpochs: fnCreatePersistentRecord<number>({}),
+    nodePositionEdits: fnCreatePersistentSequence([]),
+  };
+  Object.defineProperty(index, "nodeSequence", {
+    configurable: false,
+    enumerable: false,
+    value: fnCreatePersistentSequence(snapshot.nodes),
+    writable: false,
+  });
+
   return fnFreezeCanvasProjectionValue({
     value: {
       snapshot,
@@ -309,17 +343,7 @@ export function fnProjectCanvasDocument(
       portals,
       diagnostics,
       signature,
-      index: {
-        ...fnCreateProjectionIndex({
-          elements: elementProjections,
-          groups: groupProjections,
-          activeProjectionSignature: signature,
-          lastAppliedRevision: args.revision,
-        }),
-        nodePositions: Object.fromEntries(snapshot.nodes.map((node, index) => {
-          return [node.id, index];
-        })),
-      },
+      index,
     },
   });
 }

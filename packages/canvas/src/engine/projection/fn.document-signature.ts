@@ -82,6 +82,9 @@ export function fnUpdateCanvasDocumentProjectionSignature(args: {
   previousElementSignatures: Readonly<Record<string, string>>;
   nextElementSignatures: Readonly<Record<string, string>>;
   changedElementIds: readonly string[];
+  previousGroupSignatures?: Readonly<Record<string, string>>;
+  nextGroupSignatures?: Readonly<Record<string, string>>;
+  changedGroupIds?: readonly string[];
 }) {
   const previous = fnParseDocumentSignature(args.previousSignature);
   let words: TWords = {
@@ -103,6 +106,26 @@ export function fnUpdateCanvasDocumentProjectionSignature(args: {
     if (after !== undefined) {
       words = fnToggleComponent(words, fnComponentWords({
         kind: "element",
+        id,
+        signature: after,
+      }));
+      count += 1;
+    }
+  }
+  for (const id of args.changedGroupIds ?? []) {
+    const before = args.previousGroupSignatures?.[id];
+    const after = args.nextGroupSignatures?.[id];
+    if (before !== undefined) {
+      words = fnToggleComponent(words, fnComponentWords({
+        kind: "group",
+        id,
+        signature: before,
+      }));
+      count -= 1;
+    }
+    if (after !== undefined) {
+      words = fnToggleComponent(words, fnComponentWords({
+        kind: "group",
         id,
         signature: after,
       }));

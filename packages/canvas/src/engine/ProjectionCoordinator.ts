@@ -6,6 +6,7 @@ import type {
   TCanvasProjectionDiff,
   TCanvasProjectionIndex,
   TCanvasProjectionTheme,
+  TCanvasProjectionWork,
 } from "./typed";
 import type { ProjectionRegistry } from "./projection/ProjectionRegistry";
 import { fnDiffCanvasProjections } from "./projection/fn.diff";
@@ -14,6 +15,10 @@ import {
   type TCanvasIncrementalElementChanges,
 } from "./projection/fn.incremental-document";
 import { fnProjectCanvasDocument } from "./projection/fn.project-document";
+import {
+  fnCreatePersistentStringSet,
+  fnPatchPersistentStringSet,
+} from "./projection/fn.persistent-record";
 import { CanvasPortalOwnershipError } from "./portals/PortalOwnership";
 import { CanvasPortalContentMountError } from "./projection-runtime/PortalContentBridge";
 import { CanvasResourceOwnershipError } from "./resources/ResourceOwnership";
@@ -99,6 +104,7 @@ export type TCanvasProjectionCoordinatorResult =
       revision: number;
       origin: TCanvasProjectionOrigin;
       mode: TCanvasProjectionApplyMode["kind"];
+      work: TCanvasProjectionWork;
     }
   | {
       status: "failed";
@@ -202,6 +208,24 @@ function projectionOwnershipFallback(
   return null;
 }
 
+function groupUpdateViolatesIncrementalInvariant(
+  document: TCanvasDoc,
+  groupIds: readonly string[],
+): boolean {
+  for (const groupId of groupIds) {
+    const visited = new Set<string>();
+    let currentId: string | null = groupId;
+    while (currentId !== null) {
+      if (visited.has(currentId)) {
+        return true;
+      }
+      visited.add(currentId);
+      currentId = document.groups[currentId]?.parentGroupId ?? null;
+    }
+  }
+  return false;
+}
+
 function cloneDocument(document: TCanvasDoc): TCanvasDoc {
   return JSON.parse(JSON.stringify(document)) as TCanvasDoc;
 }
@@ -239,6 +263,9 @@ export class ProjectionCoordinator {
   #generation = 0;
   #highestAcceptedRevision: number | null = null;
   #lastGoodProjection: TCanvasDocumentProjection | null = null;
+  #publishedElementIds: ReadonlySet<string> = fnCreatePersistentStringSet([]);
+  #publishedGroupIds: ReadonlySet<string> = fnCreatePersistentStringSet([]);
+  #publishedIdsInitialized = false;
 
   constructor(args: TProjectionCoordinatorArgs) {
     this.#registry = args.registry;
@@ -415,22 +442,35 @@ export class ProjectionCoordinator {
       string,
       Omit<TProjectionOwnershipFallback, "elementId">
     > = {};
-    const maximumAttempts = Object.keys(item.document.elements).length + 1;
+    const recoveryElementIds = new Set<string>();
+    const maximumAttempts = 2;
+    let recoveryPasses = 0;
     for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
       let ownershipStage: ICanvasEngineOwnershipStage | null = null;
-      const hasGroupChanges = item.changes !== null && (
-        item.changes.groups.added.length > 0
-        || item.changes.groups.updated.length > 0
-        || item.changes.groups.deleted.length > 0
-      );
+      const hasGroupInvariantFailure = item.changes !== null
+        && groupUpdateViolatesIncrementalInvariant(
+          item.document,
+          [
+            ...item.changes.groups.added,
+            ...item.changes.groups.updated,
+          ],
+        );
       const incremental = previous !== null
         && !item.fullReload
         && item.changes !== null
-        && !hasGroupChanges
+        && !hasGroupInvariantFailure
         ? fnProjectCanvasDocumentIncremental({
             previous,
             document: item.document,
-            changes: item.changes.elements,
+            changes: {
+              added: item.changes.elements.added,
+              updated: [
+                ...item.changes.elements.updated,
+                ...recoveryElementIds,
+              ],
+              deleted: item.changes.elements.deleted,
+            },
+            groupChanges: item.changes.groups,
             registry: this.#registry,
             theme: this.#theme,
             dependencies: this.#dependencies,
@@ -447,6 +487,18 @@ export class ProjectionCoordinator {
         gridVisible: this.#gridVisible,
         forcedPlaceholders,
       });
+      const work: TCanvasProjectionWork = incremental?.work ?? {
+        collectionCopies: 1,
+        collectionScans: 1,
+        projectedRoots:
+          Object.keys(item.document.elements).length
+          + Object.keys(item.document.groups).length,
+        projectedNodes: next.snapshot.nodes.length,
+        copiedNodeSlots: 0,
+        recoveryPasses,
+        invariantFallbacks: hasGroupInvariantFailure ? 1 : 0,
+      };
+      work.recoveryPasses = recoveryPasses;
       const diff = previous === null
         ? null
         : incremental?.diff
@@ -468,12 +520,14 @@ export class ProjectionCoordinator {
           return disposedResult(item);
         }
         this.#publishSuccess(item, next);
-        return {
+        const result = {
           status: "noop",
           revision: item.revision,
           origin: item.origin,
           mode: "diff",
-        };
+          work,
+        } as const;
+        return result;
       }
 
       try {
@@ -507,18 +561,21 @@ export class ProjectionCoordinator {
         }
 
         this.#publishSuccess(item, next);
-        return {
+        const result = {
           status: "applied",
           revision: item.revision,
           origin: item.origin,
           mode: mode.kind,
-        };
+          work,
+        } as const;
+        return result;
       } catch (error) {
         await ownershipStage?.rollback().catch(() => undefined);
         const fallback = projectionOwnershipFallback(error, next);
         if (
           fallback === null
           || forcedPlaceholders[fallback.elementId] !== undefined
+          || attempt + 1 >= maximumAttempts
         ) {
           return {
             status: "failed",
@@ -531,6 +588,8 @@ export class ProjectionCoordinator {
           code: fallback.code,
           message: fallback.message,
         };
+        recoveryElementIds.add(fallback.elementId);
+        recoveryPasses += 1;
       }
     }
     return {
@@ -552,10 +611,30 @@ export class ProjectionCoordinator {
     projection: TCanvasDocumentProjection,
   ): void {
     this.#lastGoodProjection = projection;
+    if (!this.#publishedIdsInitialized || item.changes === null) {
+      this.#publishedElementIds = fnCreatePersistentStringSet(
+        Object.keys(item.document.elements),
+      );
+      this.#publishedGroupIds = fnCreatePersistentStringSet(
+        Object.keys(item.document.groups),
+      );
+      this.#publishedIdsInitialized = true;
+    } else {
+      this.#publishedElementIds = fnPatchPersistentStringSet({
+        previous: this.#publishedElementIds,
+        added: item.changes.elements.added,
+        deleted: item.changes.elements.deleted,
+      });
+      this.#publishedGroupIds = fnPatchPersistentStringSet({
+        previous: this.#publishedGroupIds,
+        added: item.changes.groups.added,
+        deleted: item.changes.groups.deleted,
+      });
+    }
     this.#onPruneSelectionAndFocus?.({
       revision: item.revision,
-      elementIds: new Set(Object.keys(item.document.elements)),
-      groupIds: new Set(Object.values(item.document.groups).map((group) => group.id)),
+      elementIds: this.#publishedElementIds,
+      groupIds: this.#publishedGroupIds,
     });
   }
 }

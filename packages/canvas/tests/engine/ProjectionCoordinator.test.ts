@@ -1,3 +1,4 @@
+import { assertValidSceneSnapshot } from "@vibecanvas/canvas-engine/testing";
 import type {
   TCanvasDoc,
   TElement,
@@ -250,7 +251,7 @@ describe("ProjectionCoordinator", () => {
 
     const result = await subject.hydrateInitial(document([rect("one")]), 4);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: "applied",
       revision: 4,
       origin: "initial",
@@ -279,7 +280,7 @@ describe("ProjectionCoordinator", () => {
         origin,
       });
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         status: "applied",
         revision: 2,
         origin,
@@ -342,6 +343,152 @@ describe("ProjectionCoordinator", () => {
     expect(result.status).toBe("applied");
     expect(projectedElementIds).toEqual(["two"]);
     expect(runtime.sceneArgs[1]?.mode.kind).toBe("diff");
+  });
+
+  it("bounds ordinary element and structural group updates with deterministic work counters", async () => {
+    const runtime = new TestRuntime();
+    const subject = coordinator(runtime);
+    await subject.hydrateInitial(
+      document(
+        [rect("one", "child"), rect("unrelated")],
+        [group("left"), group("right"), group("child", "left")],
+      ),
+      1,
+    );
+
+    const elementResult = await subject.enqueue({
+      document: document(
+        [{ ...rect("one", "child"), x: 33, updatedAt: 2 }, rect("unrelated")],
+        [group("left"), group("right"), group("child", "left")],
+      ),
+      revision: 2,
+      origin: "local",
+      changes: {
+        elements: { added: [], updated: ["one"], deleted: [] },
+        groups: { added: [], updated: [], deleted: [] },
+      },
+    });
+    const groupResult = await subject.enqueue({
+      document: document(
+        [{ ...rect("one", "child"), x: 33, updatedAt: 2 }, rect("unrelated")],
+        [group("left"), group("right"), group("child", "right")],
+      ),
+      revision: 3,
+      origin: "remote",
+      changes: {
+        elements: { added: [], updated: [], deleted: [] },
+        groups: { added: [], updated: ["child"], deleted: [] },
+      },
+    });
+    const groupAddResult = await subject.enqueue({
+      document: document(
+        [
+          { ...rect("one", "grandchild"), x: 33, updatedAt: 3 },
+          rect("unrelated"),
+        ],
+        [
+          group("left"),
+          group("right"),
+          group("child", "right"),
+          group("grandchild", "child"),
+        ],
+      ),
+      revision: 4,
+      origin: "local",
+      changes: {
+        elements: { added: [], updated: ["one"], deleted: [] },
+        groups: { added: ["grandchild"], updated: [], deleted: [] },
+      },
+    });
+    const groupDeleteResult = await subject.enqueue({
+      document: document(
+        [{ ...rect("one", "child"), x: 33, updatedAt: 4 }, rect("unrelated")],
+        [group("left"), group("right"), group("child", "right")],
+      ),
+      revision: 5,
+      origin: "remote",
+      changes: {
+        elements: { added: [], updated: ["one"], deleted: [] },
+        groups: { added: [], updated: [], deleted: ["grandchild"] },
+      },
+    });
+
+    expect(elementResult).toMatchObject({
+      status: "applied",
+      work: {
+        collectionCopies: 0,
+        collectionScans: 0,
+        projectedRoots: 1,
+        projectedNodes: 2,
+        recoveryPasses: 0,
+        invariantFallbacks: 0,
+      },
+    });
+    expect(groupResult).toMatchObject({
+      status: "applied",
+      work: {
+        collectionCopies: 0,
+        collectionScans: 0,
+        projectedRoots: 1,
+        projectedNodes: 1,
+        recoveryPasses: 0,
+        invariantFallbacks: 0,
+      },
+    });
+    expect(groupAddResult).toMatchObject({
+      status: "applied",
+      work: {
+        collectionCopies: 0,
+        collectionScans: 0,
+        projectedRoots: 2,
+        projectedNodes: 3,
+        recoveryPasses: 0,
+        invariantFallbacks: 0,
+      },
+    });
+    expect(groupDeleteResult).toMatchObject({
+      status: "applied",
+      work: {
+        collectionCopies: 0,
+        collectionScans: 0,
+        projectedRoots: 1,
+        projectedNodes: 2,
+        recoveryPasses: 0,
+        invariantFallbacks: 0,
+      },
+    });
+    expect(runtime.sceneArgs[2]?.mode).toMatchObject({
+      kind: "diff",
+      diff: {
+        groups: { added: [], updated: ["child"], removed: [] },
+      },
+    });
+    expect(runtime.sceneArgs[3]?.mode).toMatchObject({
+      kind: "diff",
+      diff: {
+        groups: { added: ["grandchild"], updated: [], removed: [] },
+      },
+    });
+    expect(() => assertValidSceneSnapshot(
+      runtime.sceneArgs[3]!.next.snapshot,
+    )).not.toThrow();
+    expect(runtime.sceneArgs[4]?.mode).toMatchObject({
+      kind: "diff",
+      diff: {
+        groups: { added: [], updated: [], removed: ["grandchild"] },
+      },
+    });
+    const published = subject.lastGoodProjection!;
+    const firstNode = published.snapshot.nodes[0];
+    expect(Array.isArray(published.snapshot.nodes)).toBe(true);
+    expect(() => assertValidSceneSnapshot(published.snapshot)).not.toThrow();
+    expect(JSON.parse(JSON.stringify(published))).toEqual(published);
+    expect(Reflect.set(
+      published.snapshot.nodes,
+      "0",
+      published.snapshot.nodes[1],
+    )).toBe(false);
+    expect(published.snapshot.nodes[0]).toBe(firstNode);
   });
 
   it("applies incremental add, update, delete, and reparent diffs without scene replacement", async () => {
@@ -485,6 +632,9 @@ describe("ProjectionCoordinator", () => {
       const result = await subject.hydrateInitial(document([element]), 1);
 
       expect(result.status).toBe("applied");
+      if (result.status === "applied") {
+        expect(result.work.recoveryPasses).toBe(1);
+      }
       expect(runtime.ownershipArgs).toHaveLength(2);
       expect(subject.lastGoodProjection?.diagnostics).toEqual([
         expect.objectContaining({

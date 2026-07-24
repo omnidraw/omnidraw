@@ -415,8 +415,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/projection/fn.incremental-document.ts](packages/canvas/src/engine/projection/fn.incremental-document.ts) |  |
 | [packages/canvas/src/engine/projection/fn.index.ts](packages/canvas/src/engine/projection/fn.index.ts) |  |
 | [packages/canvas/src/engine/projection/fn.json.ts](packages/canvas/src/engine/projection/fn.json.ts) |  |
+| [packages/canvas/src/engine/projection/fn.node-position.ts](packages/canvas/src/engine/projection/fn.node-position.ts) |  |
 | [packages/canvas/src/engine/projection/fn.nodes.ts](packages/canvas/src/engine/projection/fn.nodes.ts) |  |
 | [packages/canvas/src/engine/projection/fn.path.ts](packages/canvas/src/engine/projection/fn.path.ts) |  |
+| [packages/canvas/src/engine/projection/fn.persistent-record.ts](packages/canvas/src/engine/projection/fn.persistent-record.ts) |  |
+| [packages/canvas/src/engine/projection/fn.persistent-sequence.ts](packages/canvas/src/engine/projection/fn.persistent-sequence.ts) |  |
 | [packages/canvas/src/engine/projection/fn.placeholder.ts](packages/canvas/src/engine/projection/fn.placeholder.ts) |  |
 | [packages/canvas/src/engine/projection/fn.project-document.ts](packages/canvas/src/engine/projection/fn.project-document.ts) |  |
 | [packages/canvas/src/engine/projection/fn.project-group.ts](packages/canvas/src/engine/projection/fn.project-group.ts) |  |
@@ -488,6 +491,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/text/CONSTANTS.ts](packages/canvas/src/plugins/text/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/text/fn.compute-text-height.ts](packages/canvas/src/plugins/text/fn.compute-text-height.ts) |  |
 | [packages/canvas/src/plugins/text/fn.create-text-element.ts](packages/canvas/src/plugins/text/fn.create-text-element.ts) |  |
+| [packages/canvas/src/plugins/text/fn.teardown-policy.ts](packages/canvas/src/plugins/text/fn.teardown-policy.ts) |  |
 | [packages/canvas/src/plugins/text/Text.plugin.ts](packages/canvas/src/plugins/text/Text.plugin.ts) |  |
 | [packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts](packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts) |  |
 | [packages/canvas/src/plugins/toolbar/tx.select-tool.ts](packages/canvas/src/plugins/toolbar/tx.select-tool.ts) |  |

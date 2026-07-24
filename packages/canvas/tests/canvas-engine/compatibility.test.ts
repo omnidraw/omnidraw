@@ -747,7 +747,7 @@ describe("canvas-engine public compatibility contract", () => {
     });
 
     try {
-      expect(await coordinator.hydrateInitial(source, 7)).toEqual({
+      expect(await coordinator.hydrateInitial(source, 7)).toMatchObject({
         status: "applied",
         revision: 7,
         origin: "initial",

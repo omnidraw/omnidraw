@@ -1,54 +1,15 @@
-import type {
-  TSceneNode,
-  TSerializedSceneCommand,
-} from "@vibecanvas/canvas-engine";
+import type { TSerializedSceneCommand } from "@vibecanvas/canvas-engine";
 import type {
   TCanvasDocumentProjection,
   TCanvasProjectionDiff,
 } from "../typed";
+import { fnResolveCanvasProjectionNodePosition } from "../projection/fn.node-position";
 
 type TArgs = {
   previous: TCanvasDocumentProjection;
   next: TCanvasDocumentProjection;
   diff: TCanvasProjectionDiff;
 };
-
-function nodeDepth(
-  node: TSceneNode,
-  nodesById: ReadonlyMap<string, TSceneNode>,
-): number {
-  let depth = 0;
-  let parentId = node.parentId;
-  const visited = new Set<string>([node.id]);
-  while (parentId !== null && !visited.has(parentId)) {
-    visited.add(parentId);
-    const parent = nodesById.get(parentId);
-    if (parent === undefined) {
-      break;
-    }
-    depth += 1;
-    parentId = parent.parentId;
-  }
-  return depth;
-}
-
-function compareByDepthAndSnapshotOrder(args: {
-  left: TSceneNode;
-  right: TSceneNode;
-  nodesById: ReadonlyMap<string, TSceneNode>;
-  snapshotOrder: ReadonlyMap<string, number>;
-  deepestFirst: boolean;
-}): number {
-  const leftDepth = nodeDepth(args.left, args.nodesById);
-  const rightDepth = nodeDepth(args.right, args.nodesById);
-  const depthOrder = args.deepestFirst
-    ? rightDepth - leftDepth
-    : leftDepth - rightDepth;
-  return depthOrder
-    || (args.snapshotOrder.get(args.left.id) ?? 0)
-      - (args.snapshotOrder.get(args.right.id) ?? 0)
-    || args.left.id.localeCompare(args.right.id);
-}
 
 /**
  * Produces one deterministic retained-scene command batch. Removed descendants
@@ -57,52 +18,50 @@ function compareByDepthAndSnapshotOrder(args: {
 export function fnCanvasProjectionCommands(
   args: TArgs,
 ): TSerializedSceneCommand[] {
-  const previousNodes = new Map(
-    args.previous.snapshot.nodes.map((node) => [node.id, node]),
+  const previousFallbackOrder = new Map(
+    args.diff.nodes.removed.map((nodeId, index) => [nodeId, index]),
   );
-  const previousOrder = new Map(
-    args.previous.snapshot.nodes.map((node, index) => [node.id, index]),
-  );
-  const nextNodes = new Map(
-    args.next.snapshot.nodes.map((node) => [node.id, node]),
-  );
-  const nextOrder = new Map(
-    args.next.snapshot.nodes.map((node, index) => [node.id, index]),
-  );
-
-  const removals = args.diff.nodes.removed
-    .map((nodeId) => previousNodes.get(nodeId))
-    .filter((node): node is TSceneNode => node !== undefined)
+  const removals = [...new Set(args.diff.nodes.removed)]
     .sort((left, right) => {
-      return compareByDepthAndSnapshotOrder({
-        left,
-        right,
-        nodesById: previousNodes,
-        snapshotOrder: previousOrder,
-        deepestFirst: true,
+      const leftPosition = fnResolveCanvasProjectionNodePosition({
+        index: args.previous.index,
+        nodeId: left,
       });
+      const rightPosition = fnResolveCanvasProjectionNodePosition({
+        index: args.previous.index,
+        nodeId: right,
+      });
+      if (leftPosition !== undefined && rightPosition !== undefined) {
+        return rightPosition - leftPosition || left.localeCompare(right);
+      }
+      return (previousFallbackOrder.get(left) ?? 0)
+        - (previousFallbackOrder.get(right) ?? 0)
+        || left.localeCompare(right);
     })
-    .map<TSerializedSceneCommand>((node) => ({
+    .map<TSerializedSceneCommand>((nodeId) => ({
       type: "remove",
-      nodeId: node.id,
+      nodeId,
       descendants: "remove",
     }));
 
-  const upsertIds = new Set([
-    ...args.diff.nodes.added.map((node) => node.id),
-    ...args.diff.nodes.updated.map((node) => node.id),
-  ]);
-  const upserts = [...upsertIds]
-    .map((nodeId) => nextNodes.get(nodeId))
-    .filter((node): node is TSceneNode => node !== undefined)
+  const upsertById = new Map([
+    ...args.diff.nodes.added,
+    ...args.diff.nodes.updated,
+  ].map((node) => [node.id, node]));
+  const nextFallbackOrder = new Map(
+    [...upsertById].map(([nodeId], index) => [nodeId, index]),
+  );
+  const upserts = [...upsertById.values()]
     .sort((left, right) => {
-      return compareByDepthAndSnapshotOrder({
-        left,
-        right,
-        nodesById: nextNodes,
-        snapshotOrder: nextOrder,
-        deepestFirst: false,
-      });
+      const leftPosition = fnResolveCanvasProjectionNodePosition({
+        index: args.next.index,
+        nodeId: left.id,
+      }) ?? nextFallbackOrder.get(left.id) ?? 0;
+      const rightPosition = fnResolveCanvasProjectionNodePosition({
+        index: args.next.index,
+        nodeId: right.id,
+      }) ?? nextFallbackOrder.get(right.id) ?? 0;
+      return leftPosition - rightPosition || left.id.localeCompare(right.id);
     })
     .map<TSerializedSceneCommand>((node) => ({
       type: "upsert",

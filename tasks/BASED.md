@@ -166,9 +166,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
 - [x]: [B54](b/B54.md) - widget publish: retain the draft but show it only after edits
 - [ ]: [B55](b/B55.md) - image undo: hard delete removes the only restorable media record
-- [~]: [B56](b/B56.md) - canvas input: synthesize click and double-click from valid pointer sequences
-- [~]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
-- [~]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
+- [x]: [B56](b/B56.md) - canvas input: synthesize click and double-click from valid pointer sequences
+- [x]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
+- [x]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -408,7 +408,7 @@ the leaf task's `## Plan` instead of living as detached references.
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
 - [/]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
-- [ ]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
+- [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.

@@ -17,8 +17,20 @@ import type {
 
 const DOUBLE_CLICK_DELAY_MS = 350;
 const DOUBLE_CLICK_DISTANCE_PX = 6;
+const CLICK_MAX_DURATION_MS = 750;
+const CLICK_MAX_MOVEMENT_PX = 6;
 
 type TLastClick = {
+  targetKey: string;
+  pointerType: TCanvasInputPointerEvent["pointerType"];
+  timeStamp: number;
+  viewport: { x: number; y: number };
+};
+
+type TClickCandidate = {
+  pointerId: number;
+  pointerType: TCanvasInputPointerEvent["pointerType"];
+  button: number;
   targetKey: string;
   timeStamp: number;
   viewport: { x: number; y: number };
@@ -70,6 +82,8 @@ function isDoubleClick(
   if (
     previous === null
     || previous.targetKey !== current.targetKey
+    || previous.pointerType !== current.pointerType
+    || current.timeStamp < previous.timeStamp
     || current.timeStamp - previous.timeStamp > DOUBLE_CLICK_DELAY_MS
   ) {
     return false;
@@ -78,6 +92,49 @@ function isDoubleClick(
     current.viewport.x - previous.viewport.x,
     current.viewport.y - previous.viewport.y,
   ) <= DOUBLE_CLICK_DISTANCE_PX;
+}
+
+function pointerDistance(
+  start: Readonly<{ x: number; y: number }>,
+  end: Readonly<{ x: number; y: number }>,
+): number {
+  return Math.hypot(end.x - start.x, end.y - start.y);
+}
+
+function clickCandidate(
+  event: TCanvasInputPointerEvent,
+): TClickCandidate | null {
+  if (event.button !== 0 || event.hit === null) {
+    return null;
+  }
+  return {
+    pointerId: event.pointerId,
+    pointerType: event.pointerType,
+    button: event.button,
+    targetKey: fnCanvasTargetKey(event.hit.target),
+    timeStamp: event.timeStamp,
+    viewport: { ...event.viewport },
+  };
+}
+
+function completesClick(
+  candidate: TClickCandidate | undefined,
+  event: TCanvasInputPointerEvent,
+): boolean {
+  if (
+    candidate === undefined
+    || event.hit === null
+    || event.pointerId !== candidate.pointerId
+    || event.pointerType !== candidate.pointerType
+    || event.button !== candidate.button
+    || event.timeStamp < candidate.timeStamp
+    || event.timeStamp - candidate.timeStamp > CLICK_MAX_DURATION_MS
+    || fnCanvasTargetKey(event.hit.target) !== candidate.targetKey
+  ) {
+    return false;
+  }
+  return pointerDistance(candidate.viewport, event.viewport)
+    <= CLICK_MAX_MOVEMENT_PX;
 }
 
 /**
@@ -95,6 +152,7 @@ export function createEventListenerPlugin(): IPlugin<
       const container = scene.container;
       let unsubscribeInput: (() => void) | null = null;
       let lastClick: TLastClick | null = null;
+      const clickCandidates = new Map<number, TClickCandidate>();
       let previousTabIndex: string | null = null;
       let previousOutline = "";
 
@@ -144,6 +202,13 @@ export function createEventListenerPlugin(): IPlugin<
         const elementEvent = toElementEvent(pointerEvent);
         switch (event.type) {
           case "pointer-down": {
+            const candidate = clickCandidate(pointerEvent);
+            if (candidate === null) {
+              clickCandidates.delete(pointerEvent.pointerId);
+              lastClick = null;
+            } else {
+              clickCandidates.set(pointerEvent.pointerId, candidate);
+            }
             ctx.hooks.pointerDown.call(pointerEvent);
             const handled = elementEvent === null
               ? undefined
@@ -157,13 +222,19 @@ export function createEventListenerPlugin(): IPlugin<
           }
           case "pointer-up": {
             ctx.hooks.pointerUp.call(pointerEvent);
-            if (elementEvent === null || event.button !== 0) {
+            const candidate = clickCandidates.get(pointerEvent.pointerId);
+            clickCandidates.delete(pointerEvent.pointerId);
+            if (
+              elementEvent === null
+              || !completesClick(candidate, pointerEvent)
+            ) {
               lastClick = null;
               return;
             }
             ctx.hooks.elementPointerClick.call(elementEvent);
             const currentClick: TLastClick = {
               targetKey: fnCanvasTargetKey(elementEvent.hit.target),
+              pointerType: event.pointerType,
               timeStamp: event.timeStamp,
               viewport: { ...event.viewport },
             };
@@ -175,9 +246,19 @@ export function createEventListenerPlugin(): IPlugin<
             }
             return;
           }
-          case "pointer-move":
+          case "pointer-move": {
+            const candidate = clickCandidates.get(pointerEvent.pointerId);
+            if (
+              candidate !== undefined
+              && pointerDistance(candidate.viewport, pointerEvent.viewport)
+                > CLICK_MAX_MOVEMENT_PX
+            ) {
+              clickCandidates.delete(pointerEvent.pointerId);
+              lastClick = null;
+            }
             ctx.hooks.pointerMove.call(pointerEvent);
             return;
+          }
           case "pointer-enter":
             ctx.hooks.pointerOver.call(pointerEvent);
             return;
@@ -185,6 +266,7 @@ export function createEventListenerPlugin(): IPlugin<
             ctx.hooks.pointerOut.call(pointerEvent);
             return;
           case "pointer-cancel":
+            clickCandidates.delete(pointerEvent.pointerId);
             lastClick = null;
             ctx.hooks.pointerCancel.call(pointerEvent);
             return;
@@ -206,6 +288,7 @@ export function createEventListenerPlugin(): IPlugin<
       ctx.hooks.destroy.tap(() => {
         unsubscribeInput?.();
         unsubscribeInput = null;
+        clickCandidates.clear();
         lastClick = null;
         scene.input.blur();
         container.removeEventListener("keydown", onKeyDown);

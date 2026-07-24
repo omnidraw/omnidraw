@@ -338,6 +338,12 @@ Historical behavior and screen states are recorded in
 | 2026-07-24 | focused widget portal transition tests | PASS — 2 files / 8 tests |
 | 2026-07-24 | ui-ai-chat TypeScript + functional-core lint + diff check after review fix | PASS |
 | 2026-07-24 | `bun run --cwd packages/ui-ai-chat test` after review fix | PASS — 38 files / 262 tests |
+| 2026-07-24 | D3 isolated 5k/50k/100k one-element distributions | PASS — 40 samples/size; zero collection copies/scans; p99 0.650/0.288/1.660 ms |
+| 2026-07-24 | `bun run --cwd packages/canvas test:perf` after D3 | PASS — 1 file / 11 scenarios; clean exit in 28.43 s |
+| 2026-07-24 | B56–B58 + D3 combined canvas suite | PASS — 73 files / 359 tests |
+| 2026-07-24 | B56–B58 + D3 canvas TypeScript and functional-core lint | PASS |
+| 2026-07-24 | B58 final `bun run test:widget-host` | PASS — all 11 suites, including 10,000 widgets |
+| 2026-07-24 | `bun run generate:files` after B57/D3 new files | PASS — `FILES.md` regenerated |
 
 ## Deviations and decisions
 
@@ -397,3 +403,62 @@ progress until every strict Definition of Done gate passes.
   update the live resize-boundary policy without remounting widget DOM.
 - Added regression coverage for contained → fullscreen → contained edge-event
   routing on the same portal surface.
+
+### 2026-07-24 — B56 click synthesis
+
+- Replaced pointer-up-only click emission with per-pointer candidates requiring
+  a matching primary down/up, semantic target, pointer type, duration, and
+  movement threshold.
+- Invalidated candidates on excessive movement and pointer cancellation;
+  double-click now derives only from two independently valid clicks.
+- Added mouse, touch, pen, drag, cancellation, pointer/target mismatch, and
+  late-release coverage. The focused suite passes 3 tests and canvas
+  TypeScript passes.
+
+### 2026-07-24 — B57 text teardown
+
+- Defined deterministic teardown outcomes for new-empty, new-meaningful,
+  existing-modified, and existing-unchanged text sessions.
+- Runtime teardown now resolves the active editor and pending provisional
+  creation while CRDT/history services are live, then closes the product
+  session and DOM.
+- Added terminal callback gates and idempotent teardown coverage so late
+  editor callbacks cannot write across the runtime boundary.
+- The focused text suites pass 11 tests; canvas TypeScript and functional-core
+  lint pass.
+
+### 2026-07-24 — B58 asynchronous portal updates
+
+- Added a per-mount serialized refresh lane to `CanvasPortalService`; bursts
+  coalesce to the latest element/content state while one renderer mutation is
+  in flight.
+- Stale update failures no longer publish fallback/error state, renderer
+  replacement waits for current work, and disposal clears the host again after
+  an in-flight renderer settles.
+- Added deterministic delayed mount/update, rejection, replacement, and
+  disposal tests. The focused portal suite passes 5 tests and canvas
+  TypeScript passes.
+
+### 2026-07-24 — D3 bounded projection at scale
+
+- Replaced full node-array copying for ordinary updates with an immutable
+  persistent sequence and replaced element-signature spreading with a
+  persistent read-only record. Explicit enumeration and JSON serialization
+  preserve the published projection shape.
+- Removed previous/next snapshot scans from command generation; removal and
+  upsert order now comes from changed diffs plus the projection position
+  index.
+- Added deterministic work evidence for collection copies/scans, projected
+  roots/nodes, bounded copied leaf slots, ownership recovery passes, and
+  invariant fallbacks.
+- A one-element update at 5k/50k/100k projects one root/two nodes, copies 128
+  bounded leaf slots, and performs zero document-sized copies or scans.
+- Forty-sample projector distributions completed at:
+  5k p50/p95/p99 0.088/0.432/0.650 ms;
+  50k 0.086/0.129/0.288 ms;
+  100k 0.284/1.625/1.660 ms.
+- Structural group creation, deletion, descendant reparenting, and group
+  reparenting splice/project only affected roots and nodes. Ownership recovery
+  is capped at one bounded retry and carries the failed owner into that retry.
+- The complete performance suite exits cleanly in 28.43 seconds with no
+  teardown timeout.

@@ -135,3 +135,29 @@ The legacy pre-cutover baseline is preserved in
 It includes empty/100/1k/5k hydration, remote update, camera, marquee, and CRDT
 batch measurements. New results must be reported beside—not silently replace—
 that baseline because the harness and ownership model changed.
+
+## 2026-07-24 bounded incremental projection evidence
+
+The D3 structural lane uses 40 warm in-process samples and the production
+projector contracts. These are Vitest/jsdom application-projector timings, not
+browser frame timings:
+
+| Total elements | p50 | p95 | p99 | Deterministic work per update |
+|---:|---:|---:|---:|---|
+| 5,000 | 0.088 ms | 0.432 ms | 0.650 ms | 0 collection copies/scans; 1 root; 2 nodes; 128 bounded leaf slots |
+| 50,000 | 0.086 ms | 0.129 ms | 0.288 ms | 0 collection copies/scans; 1 root; 2 nodes; 128 bounded leaf slots |
+| 100,000 | 0.284 ms | 1.625 ms | 1.660 ms | 0 collection copies/scans; 1 root; 2 nodes; 128 bounded leaf slots |
+
+The published projection retains immutable JSON serialization while ordinary
+updates path-copy a persistent record/tree leaf instead of copying the node or
+signature collection. Command construction sorts only changed nodes through
+the projection index. Group creation, deletion, descendant reparenting, and
+group reparenting splice only the affected persistent subtree; ownership
+recovery is capped at one incremental retry.
+
+Reproduce the scale lane with:
+
+```sh
+bun run --cwd packages/canvas test:perf -- -t \
+  'isolated one-element product projection'
+```

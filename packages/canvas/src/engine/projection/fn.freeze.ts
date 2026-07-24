@@ -1,3 +1,6 @@
+import { fnIsPersistentRecord } from "./fn.persistent-record";
+import { fnIsPersistentSequence } from "./fn.persistent-sequence";
+
 type TArgs<TValue> = {
   value: TValue;
 };
@@ -7,6 +10,9 @@ function freezeValue<TValue>(
   visited: WeakSet<object>,
 ): TValue {
   if (typeof value !== "object" || value === null || visited.has(value)) {
+    return value;
+  }
+  if (fnIsPersistentRecord(value) || fnIsPersistentSequence(value)) {
     return value;
   }
 

@@ -10,6 +10,16 @@ import type { TCrdtChangeSummary } from "../../../src/services/crdt/CrdtService"
 import { ensureDom } from "../../test-setup";
 import { createCanvasDoc, createElement } from "../crdt/helpers";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
+}
+
 function widgetDocument(): TCanvasDoc {
   const widget = createElement("widget", {
     data: {
@@ -157,7 +167,7 @@ describe("CanvasPortalService", () => {
     test.host.remove();
   });
 
-  it("disposes a stale async renderer mount instead of adopting it", async () => {
+  it("serializes async mounts and disposes a superseded handle", async () => {
     const test = fixture();
     const resolutions: Array<
       (handle: TCanvasPortalRenderHandle) => void
@@ -177,19 +187,153 @@ describe("CanvasPortalService", () => {
       kind: "weather",
       payload: { city: "Cairo" },
     });
-    await vi.waitFor(() => expect(resolutions).toHaveLength(2));
-
-    const newestDispose = vi.fn();
-    resolutions[1]?.({ dispose: newestDispose });
     await Promise.resolve();
+    expect(resolutions).toHaveLength(1);
+
     const staleDispose = vi.fn();
     resolutions[0]?.({ dispose: staleDispose });
+    await vi.waitFor(() => expect(resolutions).toHaveLength(2));
+    const newestDispose = vi.fn();
+    resolutions[1]?.({ dispose: newestDispose });
     const release = await mountPromise;
 
     expect(staleDispose).toHaveBeenCalledOnce();
     expect(newestDispose).not.toHaveBeenCalled();
     release();
     await vi.waitFor(() => expect(newestDispose).toHaveBeenCalledOnce());
+    test.host.remove();
+  });
+
+  it("coalesces delayed updates to the newest authoritative state", async () => {
+    const test = fixture();
+    const updates: TCanvasProjectedPortalContent[] = [];
+    const gates: Array<ReturnType<typeof deferred<void>>> = [];
+    const errors = vi.fn();
+    test.service.hooks.error.tap(errors);
+    test.service.registerRenderer({
+      id: "weather",
+      matches: () => true,
+      mount: ({ host }) => {
+        const root = host.ownerDocument.createElement("div");
+        root.dataset.hostedWidgetRoot = "true";
+        host.replaceChildren(root);
+        return {
+          dispose: vi.fn(),
+          update: (state) => {
+            updates.push(state.content);
+            const gate = deferred<void>();
+            gates.push(gate);
+            return gate.promise;
+          },
+        };
+      },
+    });
+    const release = await test.mount();
+
+    test.emitContent({
+      type: "ui-widget",
+      kind: "weather",
+      payload: { city: "Cairo" },
+    });
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    test.emitContent({
+      type: "ui-widget",
+      kind: "weather",
+      payload: { city: "Paris" },
+    });
+    test.emitContent({
+      type: "ui-widget",
+      kind: "weather",
+      payload: { city: "Rome" },
+    });
+    await Promise.resolve();
+    expect(updates).toHaveLength(1);
+
+    gates[0]?.reject(new Error("stale Cairo update"));
+    await vi.waitFor(() => expect(updates).toHaveLength(2));
+    expect(updates[1]).toMatchObject({ payload: { city: "Rome" } });
+    expect(errors).not.toHaveBeenCalled();
+    expect(test.host.querySelector("[data-canvas-portal-fallback]")).toBeNull();
+
+    gates[1]?.resolve();
+    await Promise.resolve();
+    release();
+    test.host.remove();
+  });
+
+  it("defers renderer replacement and final disposal behind in-flight work", async () => {
+    const test = fixture();
+    const updateGate = deferred<void>();
+    const oldDispose = vi.fn();
+    const newDispose = vi.fn();
+    const oldUpdate = vi.fn(() => updateGate.promise);
+    test.service.registerRenderer({
+      id: "old",
+      priority: 1,
+      matches: () => true,
+      mount: ({ host }) => {
+        host.textContent = "old";
+        return { dispose: oldDispose, update: oldUpdate };
+      },
+    });
+    const release = await test.mount();
+    test.emitContent({
+      type: "ui-widget",
+      kind: "weather",
+      payload: { city: "Cairo" },
+    });
+    await vi.waitFor(() => expect(oldUpdate).toHaveBeenCalledOnce());
+
+    test.service.registerRenderer({
+      id: "new",
+      priority: 2,
+      matches: () => true,
+      mount: ({ host }) => {
+        host.textContent = "new";
+        return { dispose: newDispose };
+      },
+    });
+    expect(oldDispose).not.toHaveBeenCalled();
+    expect(test.host.textContent).toBe("old");
+
+    updateGate.resolve();
+    await vi.waitFor(() => expect(test.host.textContent).toBe("new"));
+    expect(oldDispose).toHaveBeenCalledOnce();
+
+    release();
+    expect(test.host.childElementCount).toBe(0);
+    await vi.waitFor(() => expect(newDispose).toHaveBeenCalledOnce());
+    test.host.remove();
+  });
+
+  it("clears a disposed mount again after its in-flight update settles", async () => {
+    const test = fixture();
+    const gate = deferred<void>();
+    const dispose = vi.fn();
+    test.service.registerRenderer({
+      id: "weather",
+      matches: () => true,
+      mount: ({ host }) => ({
+        dispose,
+        update: async () => {
+          await gate.promise;
+          host.textContent = "late stale content";
+        },
+      }),
+    });
+    const release = await test.mount();
+    test.emitContent({
+      type: "ui-widget",
+      kind: "weather",
+      payload: { city: "Cairo" },
+    });
+    await Promise.resolve();
+
+    release();
+    expect(test.host.childElementCount).toBe(0);
+    gate.resolve();
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    expect(test.host.childElementCount).toBe(0);
     test.host.remove();
   });
 });

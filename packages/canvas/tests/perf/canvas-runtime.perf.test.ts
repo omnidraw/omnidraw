@@ -35,6 +35,7 @@ const CAMERA_UPDATE_COUNT = 120;
 const MARQUEE_NODE_COUNT = 2_000;
 const CRDT_PATCH_COUNT = 1_000;
 const INCREMENTAL_PROJECTION_SAMPLE_COUNT = 40;
+const INCREMENTAL_PROJECTION_SCENE_SIZES = [5_000, 50_000, 100_000] as const;
 
 let activeHarness: TNewCanvasHarness | null = null;
 
@@ -269,10 +270,12 @@ describe("perf: canvas-engine product runtime", () => {
     expect(result.revisionAfter).toBe(beforeRevision + 1);
   });
 
-  test("measures isolated one-element product projection at a 5k scene", () => {
+  test.each(INCREMENTAL_PROJECTION_SCENE_SIZES)(
+    "measures isolated one-element product projection at a %i scene",
+    (elementCount) => {
     const registry = createBuiltInProjectionRegistry();
     const theme = fxReadCanvasProjectionTheme(new ThemeService(), {});
-    let document = createPerfDoc(5_000);
+    const document = createPerfDoc(elementCount);
     let projection = fnProjectCanvasDocument({
       document,
       registry,
@@ -281,6 +284,7 @@ describe("perf: canvas-engine product runtime", () => {
       revision: 1,
     });
     const samples: number[] = [];
+    const workSamples: unknown[] = [];
     for (
       let sample = 0;
       sample < INCREMENTAL_PROJECTION_SAMPLE_COUNT;
@@ -288,16 +292,10 @@ describe("perf: canvas-engine product runtime", () => {
     ) {
       const id = `perf-element-${sample * 5 + 1}`;
       const previousElement = document.elements[id]!;
-      document = {
-        ...document,
-        elements: {
-          ...document.elements,
-          [id]: {
-            ...previousElement,
-            x: previousElement.x + 1,
-            updatedAt: previousElement.updatedAt + 1,
-          },
-        },
+      document.elements[id] = {
+        ...previousElement,
+        x: previousElement.x + 1,
+        updatedAt: previousElement.updatedAt + 1,
       };
       const measurement = time(() => {
         return fnProjectCanvasDocumentIncremental({
@@ -315,6 +313,7 @@ describe("perf: canvas-engine product runtime", () => {
         });
       });
       samples.push(measurement.elapsedMs);
+      workSamples.push(measurement.result.work);
       projection = measurement.result.projection;
     }
     samples.sort((left, right) => left - right);
@@ -323,21 +322,32 @@ describe("perf: canvas-engine product runtime", () => {
     const p99Ms = percentile(samples, 0.99);
     const result: TPerfResult = {
       scenario: "isolated-one-element-product-projection",
-      elementCount: 5_000,
+      elementCount,
       sampleCount: samples.length,
       p50Ms,
       p95Ms,
       p99Ms,
+      work: workSamples[0],
       elapsedMs: samples.reduce((total, value) => total + value, 0),
     };
     appendResult(result);
     console.info(`[canvas-runtime-perf] ${JSON.stringify(result)}`);
 
     expect(samples).toHaveLength(INCREMENTAL_PROJECTION_SAMPLE_COUNT);
+    expect(new Set(workSamples.map((work) => JSON.stringify(work))).size).toBe(1);
+    expect(workSamples[0]).toMatchObject({
+      collectionCopies: 0,
+      collectionScans: 0,
+      projectedRoots: 1,
+      recoveryPasses: 0,
+      invariantFallbacks: 0,
+    });
     expect(projection.index.lastAppliedRevision).toBe(
       INCREMENTAL_PROJECTION_SAMPLE_COUNT + 1,
     );
-  });
+    },
+    120_000,
+  );
 
   test("measures coalesced camera updates with engine frame metrics", async () => {
     activeHarness = await createNewCanvasHarness({

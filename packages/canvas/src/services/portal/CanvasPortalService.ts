@@ -57,6 +57,9 @@ type TActivePortalMount = {
   rendererId: string | null;
   renderHandle: TCanvasPortalRenderHandle | null;
   generation: number;
+  refreshRequested: boolean;
+  refreshPromise: Promise<void> | null;
+  disposePromise: Promise<void> | null;
   disposed: boolean;
 };
 
@@ -134,30 +137,33 @@ implements IService<TCanvasPortalServiceHooks> {
       rendererId: null,
       renderHandle: null,
       generation: 0,
+      refreshRequested: false,
+      refreshPromise: null,
+      disposePromise: null,
       disposed: false,
     };
     this.#mounts.add(mount);
 
     const removeContentListener = args.onContentUpdate((content) => {
       mount.content = cloneContent(content);
-      void this.#refresh(mount);
+      this.#scheduleRefresh(mount);
     });
     const removeDocumentListener = this.crdt.hooks.change.tap((summary) => {
       if (
         summary.fullReload
         || summary.elements.changes[mount.elementId] !== undefined
       ) {
-        void this.#refresh(mount);
+        this.#scheduleRefresh(mount);
       }
     });
 
     try {
-      await this.#refresh(mount);
+      await this.#requestRefresh(mount);
     } catch (error) {
       removeDocumentListener();
       removeContentListener();
       this.#mounts.delete(mount);
-      mount.disposed = true;
+      await this.#disposeMount(mount);
       throw error;
     }
 
@@ -167,21 +173,63 @@ implements IService<TCanvasPortalServiceHooks> {
         return;
       }
       mounted = false;
-      mount.disposed = true;
-      mount.generation += 1;
       removeDocumentListener();
       removeContentListener();
       this.#mounts.delete(mount);
-      void this.#disposeHandle(mount);
-      mount.host.replaceChildren();
+      void this.#disposeMount(mount);
     };
   }
 
-  async #refresh(mount: TActivePortalMount): Promise<void> {
+  #scheduleRefresh(mount: TActivePortalMount): void {
+    void this.#requestRefresh(mount).catch((error: unknown) => {
+      if (!mount.disposed) {
+        this.hooks.error.call(error, mount.portalId);
+      }
+    });
+  }
+
+  #requestRefresh(mount: TActivePortalMount): Promise<void> {
     if (mount.disposed) {
+      return Promise.resolve();
+    }
+    mount.generation += 1;
+    mount.refreshRequested = true;
+    if (mount.refreshPromise !== null) {
+      return mount.refreshPromise;
+    }
+    const refreshPromise = Promise.resolve().then(() => {
+      return this.#drainRefreshLane(mount);
+    });
+    mount.refreshPromise = refreshPromise;
+    void refreshPromise.then(
+      () => {
+        if (mount.refreshPromise === refreshPromise) {
+          mount.refreshPromise = null;
+        }
+      },
+      () => {
+        if (mount.refreshPromise === refreshPromise) {
+          mount.refreshPromise = null;
+        }
+      },
+    );
+    return refreshPromise;
+  }
+
+  async #drainRefreshLane(mount: TActivePortalMount): Promise<void> {
+    while (!mount.disposed && mount.refreshRequested) {
+      mount.refreshRequested = false;
+      await this.#refresh(mount, mount.generation);
+    }
+  }
+
+  async #refresh(
+    mount: TActivePortalMount,
+    generation: number,
+  ): Promise<void> {
+    if (mount.disposed || mount.generation !== generation) {
       return;
     }
-    const generation = ++mount.generation;
     const element = this.crdt.doc()?.elements[mount.elementId];
     if (element === undefined) {
       await this.#showFallback(
@@ -205,6 +253,9 @@ implements IService<TCanvasPortalServiceHooks> {
       try {
         await mount.renderHandle.update(state);
       } catch (error) {
+        if (mount.disposed || mount.generation !== generation) {
+          return;
+        }
         this.hooks.error.call(error, mount.portalId);
         await this.#showFallback(
           mount,
@@ -244,6 +295,9 @@ implements IService<TCanvasPortalServiceHooks> {
       mount.rendererId = renderer.id;
       mount.renderHandle = handle;
     } catch (error) {
+      if (mount.disposed || mount.generation !== generation) {
+        return;
+      }
       this.hooks.error.call(error, mount.portalId);
       await this.#showFallback(
         mount,
@@ -318,9 +372,28 @@ implements IService<TCanvasPortalServiceHooks> {
     }
   }
 
+  #disposeMount(mount: TActivePortalMount): Promise<void> {
+    if (mount.disposePromise !== null) {
+      return mount.disposePromise;
+    }
+    mount.disposed = true;
+    mount.generation += 1;
+    mount.refreshRequested = false;
+    mount.host.replaceChildren();
+    const inFlight = mount.refreshPromise;
+    mount.disposePromise = (async () => {
+      if (inFlight !== null) {
+        await inFlight.catch(() => undefined);
+      }
+      await this.#disposeHandle(mount);
+      mount.host.replaceChildren();
+    })();
+    return mount.disposePromise;
+  }
+
   #refreshAll(): void {
     for (const mount of this.#mounts) {
-      void this.#refresh(mount);
+      this.#scheduleRefresh(mount);
     }
   }
 }

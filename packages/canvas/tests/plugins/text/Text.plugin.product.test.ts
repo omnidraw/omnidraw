@@ -191,6 +191,12 @@ function harness(initialElements: TCanvasDoc["elements"] = {}) {
       return textarea;
     },
     activeTextSession: () => textSessionOptions,
+    teardown() {
+      hooks.destroy.call();
+    },
+    stop() {
+      crdt.stop();
+    },
     destroy() {
       hooks.destroy.call();
       crdt.stop();
@@ -288,6 +294,62 @@ describe("Text plugin product editing", () => {
     });
 
     runtime.destroy();
+  });
+
+  it("cancels a newly created empty text during repeated teardown", () => {
+    const runtime = harness();
+    const createdId = runtime.createTextAt();
+    const lateSession = runtime.activeTextSession();
+
+    runtime.teardown();
+    runtime.teardown();
+
+    expect(runtime.crdt.doc().elements[createdId]).toBeUndefined();
+    expect(runtime.history.getUndoStackSize()).toBe(0);
+    expect(runtime.sharedSession.editingId).toBeNull();
+    expect(document.querySelector("textarea")).toBeNull();
+
+    lateSession?.onCommit?.("late write");
+    expect(runtime.crdt.doc().elements[createdId]).toBeUndefined();
+    runtime.stop();
+  });
+
+  it("commits meaningful new text during teardown", () => {
+    const runtime = harness();
+    const createdId = runtime.createTextAt();
+    runtime.textarea().value = "saved during teardown";
+
+    runtime.teardown();
+
+    expect(runtime.crdt.doc().elements[createdId]?.data).toMatchObject({
+      type: "text",
+      text: "saved during teardown",
+    });
+    expect(runtime.history.getUndoStackSize()).toBe(1);
+    expect(document.querySelector("textarea")).toBeNull();
+    runtime.stop();
+  });
+
+  it("commits modified existing text but does not mutate unchanged text", () => {
+    const modified = textElement("modified", "before");
+    const unchanged = textElement("unchanged", "same");
+    const modifiedRuntime = harness({ [modified.id]: modified });
+    modifiedRuntime.openExisting(modified.id);
+    modifiedRuntime.textarea().value = "after";
+    modifiedRuntime.teardown();
+
+    expect(modifiedRuntime.crdt.doc().elements[modified.id]?.data)
+      .toMatchObject({ type: "text", text: "after" });
+    expect(modifiedRuntime.history.getUndoStackSize()).toBe(1);
+    modifiedRuntime.stop();
+
+    const unchangedRuntime = harness({ [unchanged.id]: unchanged });
+    unchangedRuntime.openExisting(unchanged.id);
+    unchangedRuntime.teardown();
+
+    expect(unchangedRuntime.crdt.doc().elements[unchanged.id]).toEqual(unchanged);
+    expect(unchangedRuntime.history.getUndoStackSize()).toBe(0);
+    unchangedRuntime.stop();
   });
 
   it("registers text-basis dependencies and cancels a conflicting remote edit", () => {

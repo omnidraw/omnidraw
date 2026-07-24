@@ -96,8 +96,29 @@ export type TCanvasProjectionIndex = {
   elementSignatures: Readonly<Record<string, string>>;
   groupSignatures: Readonly<Record<string, string>>;
   nodePositions?: Readonly<Record<string, number>>;
+  nodePositionEpochs?: Readonly<Record<string, number>>;
+  nodePositionEdits?: readonly Readonly<{
+    position: number;
+    delta: number;
+  }>[];
+  /**
+   * Non-enumerable persistent node sequence used by incremental projection.
+   * The published snapshot remains JSON-compatible; this index is an
+   * implementation detail and is intentionally omitted from serialization.
+   */
+  nodeSequence?: readonly TSceneNode[];
   activeProjectionSignature: string;
   lastAppliedRevision: number | null;
+};
+
+export type TCanvasProjectionWork = {
+  collectionCopies: number;
+  collectionScans: number;
+  projectedRoots: number;
+  projectedNodes: number;
+  copiedNodeSlots: number;
+  recoveryPasses: number;
+  invariantFallbacks: number;
 };
 
 export type TCanvasDocumentProjection = {
