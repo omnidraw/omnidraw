@@ -407,7 +407,7 @@ the leaf task's `## Plan` instead of living as detached references.
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
-- [/]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
+- [-]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
 - [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
 - [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
 ## Pragmatic Code Style
