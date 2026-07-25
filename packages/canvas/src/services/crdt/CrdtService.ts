@@ -4,6 +4,7 @@ import type { TCanvasDoc, TElement, TGroup } from "@vibecanvas/service-automerge
 import { SyncHook } from "@vibecanvas/tapable";
 import { fxCreateCrdtBuilder, type TCrdtBuilder, type TCrdtRecordedOp } from "./fxBuilder";
 import { txApplyCrdtOps } from "./tx.apply-ops";
+import { txMigrateWidgetWindow } from "./tx.migrate-widget-window";
 
 export type TCrdtServiceArgs = {
   docHandle: DocHandle<TCanvasDoc>;
@@ -264,6 +265,12 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
       return;
     }
 
+    txMigrateWidgetWindow({
+      read: () => this.docHandle.doc(),
+      change: (callback) => {
+        this.docHandle.change((document) => callback(document));
+      },
+    }, {});
     this.#docSnapshot = snapshotDoc(this.docHandle.doc());
     this.docHandle.on("change", this.#onDocChange as (payload: DocHandleChangePayload<unknown>) => void);
     this.docHandle.on("delete", this.#onDocDelete as (payload: DocHandleDeletePayload<unknown>) => void);

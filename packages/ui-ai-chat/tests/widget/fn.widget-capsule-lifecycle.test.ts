@@ -19,7 +19,7 @@ describe("fnWidgetCapsuleCanvasLifecycle", () => {
       viewport: VISIBLE_VIEWPORT,
       focused: true,
       collapsed: false,
-      fullscreen: false,
+      canvasMaximized: false,
     })).toEqual({
       viewport: {
         width: 320,
@@ -33,16 +33,16 @@ describe("fnWidgetCapsuleCanvasLifecycle", () => {
       focused: true,
       frozen: false,
       collapsed: false,
-      fullscreen: false,
+      canvasMaximized: false,
     });
   });
 
-  it("hard-freezes only collapsed widgets and prioritizes fullscreen", () => {
+  it("hard-freezes only collapsed widgets and prioritizes canvas maximize", () => {
     expect(fnWidgetCapsuleCanvasLifecycle({
       viewport: VISIBLE_VIEWPORT,
       focused: true,
       collapsed: true,
-      fullscreen: false,
+      canvasMaximized: false,
     })).toMatchObject({
       viewport: {
         visibility: "hidden",
@@ -64,7 +64,7 @@ describe("fnWidgetCapsuleCanvasLifecycle", () => {
       },
       focused: false,
       collapsed: false,
-      fullscreen: false,
+      canvasMaximized: false,
     })).toMatchObject({
       viewport: {
         visibility: "hidden",
@@ -79,14 +79,14 @@ describe("fnWidgetCapsuleCanvasLifecycle", () => {
       viewport: VISIBLE_VIEWPORT,
       focused: false,
       collapsed: false,
-      fullscreen: true,
+      canvasMaximized: true,
     })).toMatchObject({
       viewport: {
         visibility: "visible",
         priority: 100,
       },
       frozen: false,
-      fullscreen: true,
+      canvasMaximized: true,
     });
   });
 });

@@ -5,6 +5,7 @@ import type {
   ISceneStore,
   ITextService,
   ITransformController,
+  TTransformPolicy,
 } from "@omnidraw/cangine";
 import type { CanvasTransientTargetRegistry } from "../input/CanvasTransientTargetRegistry";
 import type { CanvasTransientService } from "../transients/CanvasTransientService";
@@ -20,6 +21,9 @@ export type TCanvasProductRuntimeEnginePorts = TCanvasProductRuntimeData & {
   scene: ISceneStore;
   text: ITextService;
   transforms: ITransformController;
+  resolveStandardTransformPolicy(
+    nodeIds: readonly string[],
+  ): TTransformPolicy;
   transients: CanvasTransientService;
   transientTargets: CanvasTransientTargetRegistry;
   onDiagnostic?(diagnostic: TCanvasProductRuntimeDiagnostic): void;

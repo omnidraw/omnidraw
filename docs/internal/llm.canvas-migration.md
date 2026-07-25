@@ -8,11 +8,13 @@ Contract date: 2026-07-24
 
 Engine repository: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
-Engine commit audited: `bb911a1f9ad812314ebd4eee31d553bb85bfaea5`
+Engine commit audited: `07fef171dc110a8ae1aa54820ee1a13b5c2f29a1`
 
-Filesystem artifact: `artifacts/omnidraw-cangine-0.1.2.tgz`
+Package source:
+`/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz`
+(absolute local artifact path)
 
-Artifact SHA-256: `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`
+Artifact SHA-256: `65c2155bb02cb78b0ea812d660c54b49835421e97dbe5eb665821259d3b48b1c`
 
 ## 1. Decision and current status
 
@@ -899,14 +901,18 @@ projection/preview transaction.
 
 ### 12.8 Context menu and style menu
 
-Both services remain product UI.
+Context-menu product policy remains application-owned, while Cangine's shared
+menu and context-menu controllers own presentation, keyboard navigation,
+focus restoration, collision, dismissal, and teardown. The style menu remains
+product UI.
 
 - providers receive semantic targets and persisted elements/groups;
 - anchor placement uses engine world/client conversion or hit part bounds;
 - style menu definitions come from product element definitions;
 - style mutations write current tokenized `TElement.style`;
 - opening/closing menus does not alter engine scene data;
-- Solid overlay lifecycle remains unchanged.
+- context actions execute CRDT-backed product commands rather than mutating
+  the projected engine scene.
 
 ### 12.9 Recorder and visual debug
 
@@ -941,16 +947,17 @@ Map current fields:
 | `w`, `h` | frame size |
 | title/label | frame title |
 | expanded | frame `collapsed` inverse |
-| contained/fullscreen | application window policy plus frame/portal placement |
-| traffic-light/menu actions | stable `control:<id>` hit parts |
-| active widget body | `SelectionService.focusedId` plus frame active/portal interactive state |
+| canvas maximize | local `WidgetInteractionController` presentation; never durable |
+| traffic-light/menu actions | typed `WidgetInteractionController` activations |
+| active widget body | controller content mode synchronized to semantic focus |
 | body content | application-owned portal DOM |
-| resize | frame resize hit part → product patch |
-| drag header | title-bar hit → standard move transform |
+| resize | Cangine frame acquisition and proposal → product patch |
+| drag header | Cangine title-bar handling → product transform |
 | clone/delete | existing widget product/backend policy |
-| theme | projected frame style |
+| title-bar theme | bounded `titleBarColor`; all fixed chrome styling is Cangine-owned |
 
-The widget DOM stays application-owned. The engine controls:
+The widget content DOM stays application-owned. Cangine's atomic frame shell
+controls:
 
 - portal transform;
 - clipping;
@@ -958,6 +965,11 @@ The widget DOM stays application-owned. The engine controls:
 - offscreen suspension;
 - input gating;
 - portal host lifecycle.
+
+The projected fixed frame contains only supported size, title,
+`titleBarColor`, bounded `headerItems`, portal, collapsed, resizable, and
+constraint fields. Deprecated caller-owned chrome, controls, subtitle, active
+outline, and style fields are not projected.
 
 ### 13.2 Focus and input policy
 
@@ -967,8 +979,8 @@ Preserve the current distinction:
 - content interaction clears ordinary canvas selection and focuses the widget;
 - keyboard events originating inside `[data-hosted-widget-root="true"]` do not
   trigger canvas shortcuts;
-- fullscreen widget DOM remains interactive;
-- leaving fullscreen restores the contained world placement;
+- canvas-maximized widget DOM remains interactive;
+- restoring from canvas maximize reveals the unchanged durable world placement;
 - portal cleanup cannot leak mounted widget roots or callbacks.
 
 Use engine hit parts instead of child Konva IDs and listeners.
@@ -981,7 +993,7 @@ callback contract.
 Replace the Konva ghost with one transient owner:
 
 - `world-overlay`;
-- portal-free `widget-frame`;
+- ordinary portal-free supported transient nodes;
 - published blue, draft purple, preview green;
 - dashed frame while positioning;
 - solid/stronger frame and “Adding…”/“Building Preview…” label while awaiting
@@ -1372,8 +1384,8 @@ Exit:
 Work inside canvas:
 
 - replace widget-host node factories with projector/portal descriptions;
-- route frame hit parts to existing actions;
-- migrate focus, drag, resize, minimize, restore, contained, fullscreen;
+- route typed frame activations to existing product actions;
+- migrate focus, drag, resize, minimize, restore, and local canvas maximize;
 - migrate placement ghost;
 - finalize renderer-neutral extension contract.
 
@@ -1535,7 +1547,7 @@ Run in Chromium, Firefox, and WebKit where supported:
 - text editing/IME;
 - image decode/failure;
 - widget portal focus and keyboard;
-- fullscreen and restore;
+- canvas maximize and restore;
 - context loss/restore;
 - resize observer;
 - destruction/remount.
@@ -1675,9 +1687,9 @@ Reproduce:
 
 - populated hosted widget;
 - selected widget frame;
-- window action menu;
+- fixed-frame header and shared menu actions;
 - minimize/restore;
-- contained/fullscreen/return;
+- contained/canvas-maximized/return;
 - focus and keyboard interaction inside widget;
 - frame drag and resize;
 - group/nested transform;

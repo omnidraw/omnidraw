@@ -54,13 +54,10 @@ describe("widget drop placement core", () => {
       title: "Weather · Draft",
       pointerEvents: "none",
       transform: { position: { x: 20, y: 30 } },
-      style: { border: { dash: [4, 2.5] } },
     });
     expect(committing.nodes[0]).toMatchObject({
       kind: "widget-frame",
       title: "Building Weather Preview…",
-      active: true,
-      style: { activeOutline: { width: 1.5 } },
     });
     expect(committing.nodes[0]).not.toHaveProperty("portal");
   });

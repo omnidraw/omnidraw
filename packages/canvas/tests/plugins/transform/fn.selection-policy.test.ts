@@ -4,10 +4,16 @@ import { fnMergeProductSelectionTransformPolicy } from "../../../src/plugins/tra
 describe("mixed product transform policy", () => {
   it("uses only common handles and the safest mixed-selection constraints", () => {
     expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate", "resize-e", "resize-w"],
+        aspectRatioMode: "shift-lock",
+        allowFlip: true,
+        allowRotate: true,
+      },
       policies: [
         {
           handles: ["move", "rotate", "resize-e", "resize-w"],
-          keepAspectRatio: false,
+          aspectRatioMode: "free",
           allowFlip: true,
           allowRotate: true,
           minSize: { width: 10, height: 10 },
@@ -15,7 +21,7 @@ describe("mixed product transform policy", () => {
         },
         {
           handles: ["move", "rotate", "resize-e"],
-          keepAspectRatio: true,
+          aspectRatioMode: "locked",
           allowFlip: false,
           allowRotate: true,
           minSize: { width: 80, height: 60 },
@@ -23,28 +29,34 @@ describe("mixed product transform policy", () => {
         },
       ],
       includeSizeConstraints: false,
-      forceAspectRatio: false,
+      forceLockedAspectRatio: false,
     })).toEqual({
       handles: ["move", "rotate", "resize-e"],
-      keepAspectRatio: true,
+      aspectRatioMode: "locked",
       allowFlip: false,
       allowRotate: true,
-      snapRotationDegrees: 15,
+      snapRotationRadians: 15 * Math.PI / 180,
     });
   });
 
   it("disables unsafe actions when any selected product vetoes them", () => {
     expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate"],
+        aspectRatioMode: "shift-lock",
+        allowFlip: false,
+        allowRotate: true,
+      },
       policies: [
         { handles: ["move", "rotate"], allowRotate: true },
         { handles: [], allowRotate: false },
       ],
       includeSizeConstraints: false,
-      forceAspectRatio: true,
+      forceLockedAspectRatio: true,
     })).toMatchObject({
       handles: [],
       allowRotate: false,
-      keepAspectRatio: true,
+      aspectRatioMode: "locked",
     });
   });
 });

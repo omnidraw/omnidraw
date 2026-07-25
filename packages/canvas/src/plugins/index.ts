@@ -3,7 +3,6 @@ export * from "./confirm-dialog/ConfirmDialog.plugin";
 export * from "./context-menu/ContextMenu.plugin";
 export * from "./event-listener/EventListener.plugin";
 export * from "./grid/Grid.plugin";
-export * from "./history-control/HistoryControl.plugin";
 export * from "./image/Image.plugin";
 export * from "./pen/Pen.plugin";
 export * from "./recorder/Recorder.plugin";

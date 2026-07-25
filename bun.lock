@@ -178,7 +178,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.2.tgz",
+        "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz",
         "jsdom": "^29.1.1",
         "solid-devtools": "^0.34.3",
         "typescript": "catalog:",
@@ -924,7 +924,7 @@
 
     "@nothing-but/utils": ["@nothing-but/utils@0.17.0", "", {}, "sha512-TuCHcHLOqDL0SnaAxACfuRHBNRgNJcNn9X0GiH5H3YSDBVquCr3qEIG3FOQAuMyZCbu9w8nk2CHhOsn7IvhIwQ=="],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.2.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-nD4FqUN0dm0s76+WZoKGBKReNog40RPyM0A3SOfp58oQorNHswoZNDmZV5x0Mgoc62EZ6RKjucGh7WX/z+j8aQ=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-rscYDrAzWNKd0mNNr4Y6qRmrY+IqZu0b4ngfavEOo4wQrulNkFSV+iqeiDIFBNJNDXhDgG/ZOhvym6B8pw1+yg=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

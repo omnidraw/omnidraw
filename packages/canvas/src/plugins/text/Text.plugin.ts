@@ -412,15 +412,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           },
         }),
         getTransformPolicy: () => ({
-          handles: [
-            "move",
-            "rotate",
-            "resize-ne",
-            "resize-se",
-            "resize-sw",
-            "resize-nw",
-          ],
-          keepAspectRatio: true,
+          aspectRatioMode: "free",
         }),
       }));
 

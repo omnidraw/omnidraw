@@ -49,10 +49,6 @@ export function fnWidgetDropGhostProjection(args: {
   state: "positioning" | "committing";
 }): TCanvasProductTransientProjection {
   const published = args.request.reference.source === "published";
-  const color = published
-    ? { r: 0.145, g: 0.388, b: 0.922, a: 1 }
-    : { r: 0.486, g: 0.227, b: 0.929, a: 1 };
-  const scale = 1 / Math.max(Number.EPSILON, args.zoom);
   const committing = args.state === "committing";
   return {
     band: "world-overlay",
@@ -73,34 +69,7 @@ export function fnWidgetDropGhostProjection(args: {
       },
       opacity: committing ? 0.94 : 0.82,
       pointerEvents: "none",
-      active: committing,
       resizable: false,
-      style: {
-        background: { ...color, a: committing ? 0.14 : 0.08 },
-        border: {
-          color,
-          width: 2 * scale,
-          ...(committing ? {} : { dash: [8 * scale, 5 * scale] }),
-        },
-        titleBarBackground: { ...color, a: committing ? 0.2 : 0.12 },
-        titleColor: color,
-        cornerRadius: 10 * scale,
-        titleBarHeight: 34 * scale,
-        padding: {
-          top: 8 * scale,
-          right: 8 * scale,
-          bottom: 8 * scale,
-          left: 8 * scale,
-        },
-        ...(committing
-          ? {
-              activeOutline: {
-                color,
-                width: 3 * scale,
-              },
-            }
-          : {}),
-      },
     }],
   };
 }

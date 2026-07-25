@@ -267,7 +267,6 @@ describe('managed widget joined production flow', () => {
           revisionId: published.revision.id,
           instanceId: uuid(994),
           expanded: true,
-          window: 'contained',
           h: 320,
           w: 360,
         },

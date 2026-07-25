@@ -25,7 +25,7 @@ export type TElementTransformHandle =
 
 export type TElementTransformPolicy = {
   handles?: readonly TElementTransformHandle[];
-  keepAspectRatio?: boolean;
+  aspectRatioMode?: "free" | "locked" | "shift-lock" | "shift-invert";
   allowFlip?: boolean;
   allowRotate?: boolean;
   minSize?: { width: number; height: number };
@@ -33,18 +33,38 @@ export type TElementTransformPolicy = {
   snapRotationDegrees?: number;
 };
 
-export type TElementWidgetChromeAction = {
-  id: string;
-  label: string;
-  kind?: "menu" | "minimize" | "maximize" | "restore" | "close" | "custom";
-  disabled?: boolean;
-  visible?: boolean;
-};
-
-export type TElementWidgetChrome = {
+export type TElementWidgetFrame = {
   title?: string;
-  active?: boolean;
-  actions?: readonly TElementWidgetChromeAction[];
+  headerItems?: readonly (
+    | Readonly<{
+        type: "button";
+        id: string;
+        label: string;
+        content: Readonly<
+          | { type: "text"; text: string }
+          | { type: "icon"; resourceId: string }
+        >;
+        disabled?: boolean;
+      }>
+    | Readonly<{
+        type: "dropdown";
+        id: string;
+        label: string;
+        content: Readonly<
+          | { type: "text"; text: string }
+          | { type: "icon"; resourceId: string }
+        >;
+        disabled?: boolean;
+        items: readonly Readonly<{
+          id: string;
+          text: string;
+          disabled?: boolean;
+          destructive?: boolean;
+          shortcut?: string;
+          separatorBefore?: boolean;
+        }>[];
+      }>
+  )[];
 };
 
 export type TElementCloneDataArgs = {
@@ -101,9 +121,9 @@ export type TElementElementDefinition = {
     element: TElement;
     selection: readonly TElement[];
   }): TElementTransformPolicy | void;
-  getWidgetChrome?(args: {
+  getWidgetFrame?(args: {
     element: TElement;
-  }): TElementWidgetChrome | void;
+  }): TElementWidgetFrame | void;
   prepareCloneData?(
     args: TElementCloneDataArgs,
   ): TElement["data"] | null | void;

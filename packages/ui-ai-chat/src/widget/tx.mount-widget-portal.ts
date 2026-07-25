@@ -19,9 +19,6 @@ type TArgs = Readonly<{
   error: TWidgetError | null;
   titleBar?: TWidgetTitleBarPortal;
   onContentPointerDown?(): void;
-  resizeBoundary?: {
-    enabled: boolean;
-  };
   capsuleLifecycle?: TWidgetRenderArgs["capsuleLifecycle"];
 }>;
 
@@ -44,41 +41,15 @@ const HOSTED_EVENT_TYPES = [
   "keyup",
 ] as const;
 
-const RESIZE_EVENT_BAND_PX = 8;
-
-function isCanvasResizeBoundary(
-  root: HTMLElement,
-  event: Event,
-  resizeBoundary: Readonly<{ enabled: boolean }>,
-): boolean {
-  if (
-    !resizeBoundary.enabled
-    || !event.type.startsWith("pointer")
-  ) {
-    return false;
-  }
-  const pointer = event as PointerEvent;
-  const bounds = root.getBoundingClientRect();
-  if (bounds.width <= 0 || bounds.height <= 0) {
-    return false;
-  }
-  return pointer.clientX <= bounds.left + RESIZE_EVENT_BAND_PX
-    || pointer.clientX >= bounds.right - RESIZE_EVENT_BAND_PX
-    || pointer.clientY >= bounds.bottom - RESIZE_EVENT_BAND_PX;
-}
-
 function isolateHostedContent(
   root: HTMLElement,
   onContentPointerDown?: () => void,
-  resizeBoundary: Readonly<{ enabled: boolean }> = { enabled: false },
 ): () => void {
   const stopPropagation = (event: Event) => {
-    if (!isCanvasResizeBoundary(root, event, resizeBoundary)) {
-      if (event.type === "pointerdown") {
-        onContentPointerDown?.();
-      }
-      event.stopPropagation();
+    if (event.type === "pointerdown") {
+      onContentPointerDown?.();
     }
+    event.stopPropagation();
   };
   root.dataset.hostedWidgetRoot = "true";
   for (const type of HOSTED_EVENT_TYPES) {
@@ -122,16 +93,9 @@ export function txMountWidgetPortal(
   content.style.width = "100%";
   content.style.height = "100%";
   content.style.overflow = "auto";
-  const resizeBoundary = args.resizeBoundary ?? {
-    enabled: args.element.data.type === "ui-widget"
-        || args.element.data.type === "widget-instance"
-      ? args.element.data.window !== "fullscreen"
-      : false,
-  };
   const releaseContentIsolation = isolateHostedContent(
     content,
     args.onContentPointerDown,
-    resizeBoundary,
   );
   surface.appendChild(content);
 

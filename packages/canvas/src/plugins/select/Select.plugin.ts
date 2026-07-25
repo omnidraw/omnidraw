@@ -4,10 +4,7 @@ import {
   fnCanvasTargetsEqual,
   fnUniqueCanvasTargets,
 } from "../../semantic/fn.target";
-import type {
-  TCanvasSemanticHitPart,
-  TCanvasTarget,
-} from "../../semantic/typed";
+import type { TCanvasTarget } from "../../semantic/typed";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type {
   IRuntimeConfig,
@@ -25,17 +22,6 @@ import { txDeleteSelection } from "./tx.delete-selection";
 type TMarqueeState = {
   baseSelection: readonly TCanvasTarget[];
 };
-
-function isWidgetFrameControl(part: TCanvasSemanticHitPart): boolean {
-  if (
-    part === "widget-minimize"
-    || part === "widget-restore"
-    || part === "widget-fullscreen"
-  ) {
-    return true;
-  }
-  return typeof part === "object" && part.value.startsWith("control:");
-}
 
 function selectionDepth(
   selection: readonly TCanvasTarget[],
@@ -128,6 +114,7 @@ export function createSelectPlugin(): IPlugin<
           return [{
             id: "delete-selection",
             label: "Delete",
+            destructive: true,
             priority: 300,
             onSelect: () => {
               selection.setSelection(activeSelection);
@@ -150,12 +137,6 @@ export function createSelectPlugin(): IPlugin<
           selection.mode !== CanvasMode.SELECT
           || event.button !== 0
         ) {
-          return false;
-        }
-        // Widget chrome is an action surface, not a selection/transform
-        // gesture. Leaving it unhandled here preserves the matching
-        // pointer-up click for the widget policy owner.
-        if (isWidgetFrameControl(event.hit.part)) {
           return false;
         }
         if (selection.isSelectionHandlingSuppressed()) {

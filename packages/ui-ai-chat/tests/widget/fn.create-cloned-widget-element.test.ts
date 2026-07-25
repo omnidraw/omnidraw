@@ -23,7 +23,6 @@ function createAiChatElement(): TElement {
       w: 420,
       h: 640,
       expanded: true,
-      window: "contained",
       payload: {
         sessionId: "source-session",
         model: { provider: 'openai', modelId: 'gpt-test' },

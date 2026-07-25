@@ -34,7 +34,7 @@ describe("canvas-engine import boundary", () => {
   });
 
   test("does not deep-import unpublished engine internals", () => {
-    const deepImportPattern = /@omnidraw\/cangine\/(?!types(?:["'])|geometry(?:["'])|testing(?:["'])|backend(?:["'])|package\.json(?:["']))/;
+    const deepImportPattern = /@omnidraw\/cangine\/(?!types(?:["'])|geometry(?:["'])|testing(?:["'])|backend(?:["'])|editor(?:["'])|package\.json(?:["']))/;
     const violations = sourceFiles(ENGINE_ROOT)
       .flatMap((file) => {
         const source = readFileSync(file, "utf8");
@@ -45,5 +45,13 @@ describe("canvas-engine import boundary", () => {
       .sort();
 
     expect(violations).toEqual([]);
+  });
+
+  test("imports the optional editor only through its public engine boundary", () => {
+    const editorImport = `${ENGINE_PACKAGE}/editor`;
+    const imports = sourceFiles(SOURCE_ROOT)
+      .filter((file) => readFileSync(file, "utf8").includes(editorImport));
+    expect(imports.length).toBeGreaterThan(0);
+    expect(imports.filter((file) => !file.startsWith(ENGINE_ROOT))).toEqual([]);
   });
 });

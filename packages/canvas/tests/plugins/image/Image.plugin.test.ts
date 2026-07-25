@@ -152,7 +152,7 @@ describe("Image plugin insertion lifecycle", () => {
 
       expect(paste.defaultPrevented).toBe(true);
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 1,
+        transientOwnerCount: 2,
         transientNodeCount: 1,
       });
       expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
@@ -160,7 +160,7 @@ describe("Image plugin insertion lifecycle", () => {
       decode.resolve();
       await Promise.resolve();
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 1,
+        transientOwnerCount: 2,
         transientNodeCount: 1,
       });
 
@@ -180,7 +180,7 @@ describe("Image plugin insertion lifecycle", () => {
         },
       });
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 0,
+        transientOwnerCount: 1,
         transientNodeCount: 0,
       });
       expect(revokeObjectUrl).toHaveBeenCalledWith("blob:image-preview");
@@ -216,7 +216,7 @@ describe("Image plugin insertion lifecycle", () => {
 
       expect(escape.defaultPrevented).toBe(true);
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 0,
+        transientOwnerCount: 1,
         transientNodeCount: 0,
       });
 
@@ -260,7 +260,7 @@ describe("Image plugin insertion lifecycle", () => {
         );
       });
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 0,
+        transientOwnerCount: 1,
         transientNodeCount: 0,
       });
 
@@ -320,7 +320,7 @@ describe("Image plugin insertion lifecycle", () => {
       );
       expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 0,
+        transientOwnerCount: 1,
         transientNodeCount: 0,
       });
     } finally {
@@ -380,7 +380,7 @@ describe("Image plugin insertion lifecycle", () => {
       );
       expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 0,
+        transientOwnerCount: 1,
         transientNodeCount: 0,
       });
     } finally {
@@ -403,7 +403,7 @@ describe("Image plugin insertion lifecycle", () => {
     try {
       dispatchImagePaste();
       expect(harness.metrics()).toMatchObject({
-        transientOwnerCount: 1,
+        transientOwnerCount: 2,
         transientNodeCount: 1,
       });
 

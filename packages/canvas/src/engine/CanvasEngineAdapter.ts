@@ -17,6 +17,23 @@ import {
   type TSerializedSceneCommand,
   type TSize2,
 } from "@omnidraw/cangine";
+import {
+  createCanvasContextMenuController,
+  createCanvasEditor,
+  createCanvasMenuController,
+  createWidgetInteractionController,
+  resolveStandardTransformPolicy,
+} from "@omnidraw/cangine/editor";
+import type {
+  ICanvasContextMenuController,
+  ICanvasEditor,
+  ICanvasMenuController,
+  IWidgetInteractionController,
+  TCanvasContextMenuControllerOptions,
+  TCanvasEditorConfig,
+  TCanvasMenuControllerOptions,
+  TWidgetInteractionControllerOptions,
+} from "@omnidraw/cangine/editor";
 import { fnCanvasEngineCapabilityIssues } from "./fn.assert-capabilities";
 import { fnCanvasEngineInitialScene } from "./fn.initial-scene";
 import {
@@ -296,6 +313,42 @@ export class CanvasEngineAdapter {
     return this.#requireEngine().resources.createRegistrationOwner(ownerId);
   }
 
+  createEditor(
+    config: Omit<TCanvasEditorConfig, "engine">,
+  ): ICanvasEditor {
+    return createCanvasEditor({
+      ...config,
+      engine: this.#requireEngine(),
+    });
+  }
+
+  createMenuController(
+    options: Omit<TCanvasMenuControllerOptions, "engine">,
+  ): ICanvasMenuController {
+    return createCanvasMenuController({
+      ...options,
+      engine: this.#requireEngine(),
+    });
+  }
+
+  createWidgetInteractionController(
+    options: Omit<TWidgetInteractionControllerOptions, "engine">,
+  ): IWidgetInteractionController {
+    return createWidgetInteractionController({
+      ...options,
+      engine: this.#requireEngine(),
+    });
+  }
+
+  createContextMenuController(
+    options: Omit<TCanvasContextMenuControllerOptions, "engine">,
+  ): ICanvasContextMenuController {
+    return createCanvasContextMenuController({
+      ...options,
+      engine: this.#requireEngine(),
+    });
+  }
+
   createProductRuntime(
     args: TCanvasProductRuntimeData & {
       transientTargets: CanvasTransientTargetRegistry;
@@ -311,6 +364,9 @@ export class CanvasEngineAdapter {
       scene: engine.scene,
       text: engine.text,
       transforms: engine.transforms,
+      resolveStandardTransformPolicy: (nodeIds) => {
+        return resolveStandardTransformPolicy(engine, nodeIds);
+      },
       transients: this.transients,
     });
   }

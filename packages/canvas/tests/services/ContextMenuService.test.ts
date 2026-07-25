@@ -36,20 +36,16 @@ describe("ContextMenuService", () => {
     }]);
     service.registerProvider("test", provider);
 
-    service.openAt({
-      x: 12,
-      y: 24,
-      context: {
-        scope: "selection",
-        target: selection[0],
-        targetElement: document.elements.element,
-        targetGroup: null,
-        selection,
-        activeSelection: selection,
-        resolvedSelection,
-        resolvedActiveSelection: resolvedSelection,
-        connectionId: null,
-      },
+    const actions = service.getActions({
+      scope: "selection",
+      target: selection[0],
+      targetElement: document.elements.element,
+      targetGroup: null,
+      selection,
+      activeSelection: selection,
+      resolvedSelection,
+      resolvedActiveSelection: resolvedSelection,
+      connectionId: null,
     });
 
     expect(provider).toHaveBeenCalledWith(expect.objectContaining({
@@ -58,13 +54,11 @@ describe("ContextMenuService", () => {
       selection,
       resolvedSelection,
     }));
-    expect(service.actions.map((action) => action.id)).toEqual(["inspect"]);
+    expect(actions.map((action) => action.id)).toEqual(["inspect"]);
   });
 
   test("sorts visible actions and unregisters providers idempotently", () => {
     const service = new ContextMenuService();
-    const providersChange = vi.fn();
-    service.hooks.providersChange.tap(providersChange);
     const unregister = service.registerProvider("test", () => [
       { id: "z", label: "Zulu", priority: 10, onSelect: () => undefined },
       { id: "a", label: "Alpha", priority: 10, onSelect: () => undefined },
@@ -91,23 +85,18 @@ describe("ContextMenuService", () => {
       .toEqual(["a", "z"]);
     unregister();
     unregister();
-    expect(providersChange).toHaveBeenCalledTimes(2);
+    expect(service.getActions(emptyContext)).toEqual([]);
   });
 
-  test("uses a disabled fallback and closes without touching product state", () => {
+  test("delegates close to the active Cangine presenter", () => {
     const service = new ContextMenuService();
-    const stateChange = vi.fn();
-    service.hooks.stateChange.tap(stateChange);
+    const close = vi.fn();
+    const release = service.setPresenter({ close });
 
-    service.openWithActionsAt({ x: 1, y: 2, actions: [] });
-    expect(service.actions).toEqual([
-      expect.objectContaining({ id: "no-actions", disabled: true }),
-    ]);
     service.close();
+    release();
     service.close();
 
-    expect(service.open).toBe(false);
-    expect(service.actions).toEqual([]);
-    expect(stateChange).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledOnce();
   });
 });

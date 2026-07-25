@@ -88,13 +88,11 @@ describe("product subtree clone planning", () => {
         type: "widget-instance",
         w: 100,
         h: 80,
-        widgetId: "widget-type",
+        definitionId: "11111111-1111-4111-8111-111111111111",
+        revisionId: "22222222-2222-4222-8222-222222222222",
         instanceId: "instance-old",
         stateDocumentId: "state-old",
-        window: {
-          minimized: false,
-          fullscreen: false,
-        },
+        expanded: true,
       },
     } as TElement;
     const document = {

@@ -34,7 +34,6 @@ function widget(
       w: 320,
       h: 200,
       expanded: true,
-      window: "contained",
     },
     style: {},
   };
@@ -79,7 +78,7 @@ function activeLifecycle(): TWidgetCapsuleCanvasLifecycleState {
     focused: true,
     frozen: false,
     collapsed: false,
-    fullscreen: false,
+    canvasMaximized: false,
   };
 }
 

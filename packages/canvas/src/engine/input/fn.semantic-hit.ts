@@ -121,9 +121,6 @@ function mappedPart(value: string): TCanvasSemanticHitPart {
     || value === "connector-segment"
     || value === "resize-handle"
     || value === "rotate-handle"
-    || value === "widget-minimize"
-    || value === "widget-restore"
-    || value === "widget-fullscreen"
     || value === "widget-content"
   ) {
     return value;
@@ -157,15 +154,6 @@ function mappedPart(value: string): TCanvasSemanticHitPart {
   }
   if (value === "content" || value === "widget-content") {
     return "widget-content";
-  }
-  if (value === "control:minimize") {
-    return "widget-minimize";
-  }
-  if (value === "control:restore") {
-    return "widget-restore";
-  }
-  if (value === "control:fullscreen") {
-    return "widget-fullscreen";
   }
   return {
     kind: "custom",

@@ -237,15 +237,9 @@ export function fnProjectCanvasDocument(
         },
       });
     }
-    const fullscreenWidget = (
-      element.data.type === "ui-widget"
-      || element.data.type === "widget-instance"
-    ) && element.data.window === "fullscreen";
-    const parentNodeId = fullscreenWidget
-      ? CANVAS_ENGINE_LAYER_IDS.overlay
-      : parentGroupId !== null && groupIds.has(parentGroupId)
-        ? fnCanvasEngineGroupId({ id: parentGroupId })
-        : CANVAS_ENGINE_LAYER_IDS.content;
+    const parentNodeId = parentGroupId !== null && groupIds.has(parentGroupId)
+      ? fnCanvasEngineGroupId({ id: parentGroupId })
+      : CANVAS_ENGINE_LAYER_IDS.content;
     elementProjections.push(fnProjectCanvasElement({
       element,
       parentNodeId,

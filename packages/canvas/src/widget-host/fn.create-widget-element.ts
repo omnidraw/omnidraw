@@ -45,7 +45,6 @@ export function fnCreateWidgetElement(args: TFnCreateWidgetElementArgs): TElemen
         : { stateDocumentId: args.stateDocumentId }),
       ...(args.uiProps === undefined ? {} : { uiProps: args.uiProps }),
       expanded: true,
-      window: "contained",
       h: args.height,
       w: args.width,
     };
@@ -54,7 +53,6 @@ export function fnCreateWidgetElement(args: TFnCreateWidgetElementArgs): TElemen
       type: "ui-widget",
       expanded: true,
       kind: args.kind,
-      window: "contained",
       h: args.height,
       w: args.width,
       payload: args.payload ?? {},

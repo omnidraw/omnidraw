@@ -121,7 +121,6 @@ function widget(id: string, version: number): TElement {
       w: 320,
       h: 240,
       expanded: true,
-      window: "contained",
       payload: { version },
     },
   };

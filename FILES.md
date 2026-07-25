@@ -21,6 +21,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -175,6 +176,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -339,8 +348,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
-| [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
-| [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
 | [packages/canvas/src/components/CanvasHelp/help.data.ts](packages/canvas/src/components/CanvasHelp/help.data.ts) |  |
 | [packages/canvas/src/components/CanvasHelp/index.css](packages/canvas/src/components/CanvasHelp/index.css) |  |
 | [packages/canvas/src/components/CanvasHelp/index.tsx](packages/canvas/src/components/CanvasHelp/index.tsx) |  |
@@ -385,6 +392,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/camera/typed.ts](packages/canvas/src/engine/camera/typed.ts) |  |
 | [packages/canvas/src/engine/CanvasEngineAdapter.ts](packages/canvas/src/engine/CanvasEngineAdapter.ts) |  |
 | [packages/canvas/src/engine/CONSTANTS.ts](packages/canvas/src/engine/CONSTANTS.ts) |  |
+| [packages/canvas/src/engine/editor/CanvasEditorBridge.ts](packages/canvas/src/engine/editor/CanvasEditorBridge.ts) |  |
+| [packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts](packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts) |  |
 | [packages/canvas/src/engine/fn.assert-capabilities.ts](packages/canvas/src/engine/fn.assert-capabilities.ts) |  |
 | [packages/canvas/src/engine/fn.initial-scene.ts](packages/canvas/src/engine/fn.initial-scene.ts) |  |
 | [packages/canvas/src/engine/input/CanvasInputAdapter.ts](packages/canvas/src/engine/input/CanvasInputAdapter.ts) |  |
@@ -441,7 +450,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/projection/projectors/fn.shape1d.ts](packages/canvas/src/engine/projection/projectors/fn.shape1d.ts) |  |
 | [packages/canvas/src/engine/projection/projectors/fn.shape2d.ts](packages/canvas/src/engine/projection/projectors/fn.shape2d.ts) |  |
 | [packages/canvas/src/engine/projection/projectors/fn.text.ts](packages/canvas/src/engine/projection/projectors/fn.text.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.widget-chrome.ts](packages/canvas/src/engine/projection/projectors/fn.widget-chrome.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts](packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts) |  |
 | [packages/canvas/src/engine/projection/projectors/fn.widget.ts](packages/canvas/src/engine/projection/projectors/fn.widget.ts) |  |
 | [packages/canvas/src/engine/projection/typed.ts](packages/canvas/src/engine/projection/typed.ts) |  |
 | [packages/canvas/src/engine/ProjectionCoordinator.ts](packages/canvas/src/engine/ProjectionCoordinator.ts) |  |
@@ -459,7 +468,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
 | [packages/canvas/src/plugins/grid/Grid.plugin.ts](packages/canvas/src/plugins/grid/Grid.plugin.ts) |  |
-| [packages/canvas/src/plugins/history-control/HistoryControl.plugin.ts](packages/canvas/src/plugins/history-control/HistoryControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/image/fn.create-image-element.ts](packages/canvas/src/plugins/image/fn.create-image-element.ts) |  |
 | [packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts](packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts) |  |
 | [packages/canvas/src/plugins/image/Image.plugin.ts](packages/canvas/src/plugins/image/Image.plugin.ts) |  |
@@ -522,6 +530,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/crdt/CrdtService.ts](packages/canvas/src/services/crdt/CrdtService.ts) |  |
 | [packages/canvas/src/services/crdt/fxBuilder.ts](packages/canvas/src/services/crdt/fxBuilder.ts) |  |
 | [packages/canvas/src/services/crdt/tx.apply-ops.ts](packages/canvas/src/services/crdt/tx.apply-ops.ts) |  |
+| [packages/canvas/src/services/crdt/tx.migrate-widget-window.ts](packages/canvas/src/services/crdt/tx.migrate-widget-window.ts) |  |
 | [packages/canvas/src/services/element/ElementService.ts](packages/canvas/src/services/element/ElementService.ts) |  |
 | [packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts](packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts) |  |
 | [packages/canvas/src/services/element/types.ts](packages/canvas/src/services/element/types.ts) |  |

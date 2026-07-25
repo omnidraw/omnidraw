@@ -71,7 +71,6 @@ describe("durable product transform proposal", () => {
         w: 480,
         h: 320,
         expanded: true,
-        window: "contained",
       },
     } satisfies TElement;
 

@@ -55,22 +55,6 @@ export type TCanvasProductStroke = {
   dash?: readonly number[];
 };
 
-export type TCanvasProductWidgetFrameStyle = {
-  background: TCanvasProductColor;
-  border?: TCanvasProductStroke;
-  titleBarBackground: TCanvasProductColor;
-  titleColor: TCanvasProductColor;
-  cornerRadius: number;
-  titleBarHeight: number;
-  padding: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
-  activeOutline?: TCanvasProductStroke;
-};
-
 export type TCanvasProductTransformHandle =
   | "move"
   | "rotate"
@@ -85,13 +69,27 @@ export type TCanvasProductTransformHandle =
 
 export type TCanvasProductTransformPolicy = {
   handles: readonly TCanvasProductTransformHandle[];
-  keepAspectRatio?: boolean;
+  aspectRatioMode?: "free" | "locked" | "shift-lock" | "shift-invert";
   allowFlip?: boolean;
   allowRotate?: boolean;
   minSize?: TCanvasProductSize;
   maxSize?: TCanvasProductSize;
   snapRotationRadians?: number;
 };
+
+export type TCanvasProductTransformHoverState = Readonly<{
+  pointerId: number;
+  pointerType: string;
+  handle: TCanvasProductTransformHandle;
+  cursor:
+    | "grab"
+    | "grabbing"
+    | "move"
+    | "ns-resize"
+    | "nesw-resize"
+    | "ew-resize"
+    | "nwse-resize";
+}>;
 
 export type TCanvasProductSelectionAppearance = {
   outline: TCanvasProductStroke;
@@ -382,10 +380,7 @@ export type TCanvasProductTransientNode =
       kind: "widget-frame";
       size: TCanvasProductSize;
       title: string;
-      subtitle?: string;
-      style: TCanvasProductWidgetFrameStyle;
       collapsed?: boolean;
-      active?: boolean;
       resizable?: boolean;
     });
 

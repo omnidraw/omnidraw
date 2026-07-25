@@ -119,13 +119,6 @@ function fnElementParentNodeId(
   element: TElement,
   groups: TCanvasDoc["groups"],
 ) {
-  const fullscreenWidget = (
-    element.data.type === "ui-widget"
-    || element.data.type === "widget-instance"
-  ) && element.data.window === "fullscreen";
-  if (fullscreenWidget) {
-    return CANVAS_ENGINE_LAYER_IDS.overlay;
-  }
   return element.parentGroupId !== null
     && groups[element.parentGroupId] !== undefined
     ? fnCanvasEngineGroupId({ id: element.parentGroupId })

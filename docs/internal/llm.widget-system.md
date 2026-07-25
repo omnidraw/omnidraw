@@ -46,7 +46,8 @@ flowchart LR
   K --> C["Exact signed Capsule bytes"]
   C --> P["Preview mount or immutable publication"]
   P --> I["Pinned canvas widget instance"]
-  I --> H["Shared Capsule host partition"]
+  I --> G["Cangine fixed frame and atomic portal shell"]
+  G --> H["Shared Capsule host partition"]
   H --> V["Instance-bound capabilities and channels"]
   V --> R["Functions, Automerge state, props, theme, output"]
 ```
@@ -56,14 +57,15 @@ flowchart LR
 | Owner | Responsibility |
 | --- | --- |
 | `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, profiles, budgets, capabilities, channels, lifecycle, and diagnostics |
+| `@omnidraw/cangine` | Fixed widget chrome, traffic lights, header hit regions, frame/content interaction mode, local canvas-maximized presentation, transform affordances, normalized pointer cancellation, atomic DOM portal-shell presentation, and shared menu presentation |
 | `packages/capsule-vibecanvas` | Vibecanvas build policy, target and budget mapping, dependency closure, signing composition, schemas, capability descriptors, host imports, and error mapping |
 | `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
 | `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
 | `apps/cli` | Production service composition, Capsule OCI build authority, persistent signing keys, host configuration, artifact storage, and server-function tooling |
 | `packages/sdk` | The supported widget authoring API over `@omnidraw/capsule/guest` |
 | `packages/api` | Tenant-authorized runtime configuration and artifact delivery |
-| `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, provider creation, preview, runtime ownership, and population scheduling |
-| `packages/canvas` | Portal ownership and viewport, visibility, priority, focus, collapse, fullscreen, resize, and removal signals |
+| `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, Capsule content mounting, provider creation, preview, runtime ownership, product widget actions, and population scheduling |
+| `packages/canvas` | Automerge-to-Cangine projection, semantic selection, product tools and commands, CRDT history, durable collapse, portal-content reconciliation, and lifecycle signals |
 | Server services | Durable function execution, resource access, Automerge persistence, tenancy, database records, and events |
 
 Capsule has no Vibecanvas dependency. Vibecanvas imports Capsule only through
@@ -315,8 +317,9 @@ A committed canvas widget stores:
 - `definitionId`;
 - `revisionId`;
 - `instanceId`;
+- durable world geometry and ordering;
+- one durable collapse bit, `expanded`; and
 - host-owned UI props;
-- canvas presentation state.
 
 The database projection creates a tenant-scoped `widget_instances` record bound
 to the canvas and element. Collaborative widgets receive a separate Automerge
@@ -324,6 +327,35 @@ document bound to that widget instance.
 
 Definition revisions do not share mutable instance state. Deleting a browser
 runtime does not delete the instance's durable Automerge document.
+
+### 9.1 Canvas frame and editor ownership
+
+The authoritative flow remains one-way:
+
+```text
+Automerge canvas document -> Vibecanvas projection -> Cangine scene
+```
+
+Cangine's optional `/editor` entrypoint supplies the replaceable editor kernel,
+fixed widget-frame controller, context-menu controller, shared menu, standard
+transform-policy resolver, and transform hover state. Vibecanvas does not use
+Cangine's linear history or standard scene-mutating tools. Undo, redo, deletion,
+collapse, resize, and every other durable product effect return through
+Vibecanvas commands and Automerge.
+
+A projected widget frame contains only fixed-frame data: size, title,
+title-bar color, bounded declarative header items, portal ID, collapsed state,
+resizability, and optional constraints. Cangine owns the fixed 36-unit title
+bar, traffic lights, chrome painting, minimum chrome bounds, title-bar drag,
+resize acquisition, frame/content focus mode, and menu presentation. Product
+callbacks, permissions, confirmations, deletion, definition management, and
+backend effects never enter scene data.
+
+Canvas maximize is local Cangine presentation state. It is not persisted,
+collaborated, recorded in product history, or treated as browser fullscreen.
+Legacy persisted widget `window` values are deterministically migrated:
+minimized becomes `expanded: false`; contained and fullscreen become contained
+with `expanded: true`. New writes have no `window` field.
 
 ## 10. Runtime-load authority
 
@@ -374,12 +406,21 @@ destroyed. A host catalog generation change invalidates live handles and
 
 Each mount owns:
 
-- one canvas-provided DOM container;
+- one application content container inside Cangine's engine-owned portal shell;
 - one exact signed artifact;
 - one `CapsuleHandle`;
 - instance-bound function and collaborative-state providers;
 - props, theme, output, lifecycle, and optional ephemeral-store channels;
 - idempotent terminal cleanup.
+
+With the DOM portal profile, the widget frame is one atomic shell: fixed chrome
+and application content share one transform, clipping context, opacity,
+visibility, and scene z-index. The WebGL2 pass does not paint a second retained
+copy of the chrome. Cangine alone writes portal placement, transform, clip,
+visibility, z-index, and input gating. Vibecanvas's portal bridge owns content
+identity, serialized asynchronous updates, generation rejection, viewport
+publication, Capsule mounting, and cleanup; widget content does not emulate
+frame-edge resize hit regions.
 
 The host output channel accepts only bounded notification events. The UI layer
 rate-limits them to five events per ten seconds per mount.
@@ -466,8 +507,11 @@ Canvas owns product geometry and admission priority. Capsule owns enforcement
 inside every admitted handle.
 
 The portal forwards width, height, scale, visibility, distance, occlusion,
-priority, focus, collapse, fullscreen, and removal. Runtime identity changes
-destroy the previous handle before mounting the new revision.
+priority, focus, collapse, local `canvasMaximized` presentation, and removal.
+Runtime identity changes destroy the previous handle before mounting the new
+revision. Canvas maximize may raise local population priority, but never changes
+durable geometry. Browser fullscreen is a separate, application-owned feature
+and is not currently part of widget-frame state.
 
 Current population limits are:
 
@@ -599,6 +643,10 @@ Authoring and publication:
 Browser:
 
 - [`packages/api/src/widget/api.runtime-load-widget.ts`](../../packages/api/src/widget/api.runtime-load-widget.ts)
+- [`packages/canvas/src/engine/editor/CanvasEditorBridge.ts`](../../packages/canvas/src/engine/editor/CanvasEditorBridge.ts)
+- [`packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts`](../../packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts)
+- [`packages/canvas/src/engine/projection/projectors/fn.widget.ts`](../../packages/canvas/src/engine/projection/projectors/fn.widget.ts)
+- [`packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts`](../../packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts`](../../packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts`](../../packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts`](../../packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts)
@@ -652,3 +700,6 @@ When changing the widget system:
    together.
 10. Add focused negative tests for stale identity, digest mismatch, wrong key,
     wrong target, capability mismatch, overflow, cancellation, and teardown.
+11. Keep fixed chrome, portal-shell presentation, menus, pointer reconciliation,
+    and transform affordances in Cangine; keep durable product authority in
+    Automerge and untrusted content execution in Capsule.

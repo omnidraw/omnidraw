@@ -175,7 +175,6 @@ export function createAiPlugin(portal: {
           titleBarActions: [{
             id: "settings",
             label: "Settings",
-            kind: "menu",
           }],
           renderDom: ({ root, element, titleBar }) => {
             if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");

@@ -7,6 +7,7 @@ import type {
   ElementService,
   HistoryService,
   RenderOrderService,
+  SceneService,
   SelectionService,
   TTool,
   TToolPointerEvent,
@@ -27,6 +28,7 @@ export interface IWidgetManagerServiceProps {
   contextMenuService: ContextMenuService;
   historyService?: HistoryService;
   selectionService: SelectionService;
+  sceneService: SceneService;
   elementService: ElementService;
   toolService: ToolService;
   portalService: CanvasPortalService;
@@ -81,7 +83,7 @@ export type TWidgetCapsuleCanvasLifecycleState = Readonly<{
   focused: boolean;
   frozen: boolean;
   collapsed: boolean;
-  fullscreen: boolean;
+  canvasMaximized: boolean;
 }>;
 
 export type TWidgetCapsuleCanvasLifecycleSource = Readonly<{
@@ -94,7 +96,6 @@ export type TWidgetCapsuleCanvasLifecycleSource = Readonly<{
 export type TWidgetTitleBarAction = {
   id: string;
   label: string;
-  kind?: "menu" | "minimize" | "maximize" | "restore" | "close" | "custom";
 };
 
 export type TWidgetTitleBarActionState = {

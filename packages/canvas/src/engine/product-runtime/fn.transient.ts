@@ -156,26 +156,7 @@ function transientNode(
     kind: "widget-frame",
     size: { ...node.size },
     title: node.title,
-    ...(node.subtitle === undefined ? {} : { subtitle: node.subtitle }),
-    style: {
-      background: solid(node.style.background),
-      ...(node.style.border === undefined
-        ? {}
-        : { border: stroke(node.style.border) }),
-      titleBarBackground: solid(node.style.titleBarBackground),
-      titleColor: {
-        space: "srgb",
-        ...node.style.titleColor,
-      },
-      cornerRadius: node.style.cornerRadius,
-      titleBarHeight: node.style.titleBarHeight,
-      padding: { ...node.style.padding },
-      ...(node.style.activeOutline === undefined
-        ? {}
-        : { activeOutline: stroke(node.style.activeOutline) }),
-    },
     ...(node.collapsed === undefined ? {} : { collapsed: node.collapsed }),
-    ...(node.active === undefined ? {} : { active: node.active }),
     ...(node.resizable === undefined ? {} : { resizable: node.resizable }),
   };
 }

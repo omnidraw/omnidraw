@@ -97,6 +97,7 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         contextMenuService: context.services.contextMenu,
         historyService: context.services.history,
         selectionService: context.services.selection,
+        sceneService: context.services.scene,
         elementService: context.services.element,
         toolService: context.services.tool,
         portalService: context.services.portal,

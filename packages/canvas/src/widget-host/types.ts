@@ -1,7 +1,6 @@
 import type {
   TUiWidgetData,
   TWidgetInstanceData,
-  TWidgetWindow,
 } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
 export type TWidgetHostData = TUiWidgetData | TWidgetInstanceData;
@@ -12,7 +11,6 @@ export type TNormalizedWidgetHostData = {
   w: number;
   h: number;
   expanded: boolean;
-  window: TWidgetWindow;
   definitionId: string | null;
   revisionId: string | null;
   instanceId: string | null;
@@ -21,5 +19,5 @@ export type TNormalizedWidgetHostData = {
 
 export type TWidgetHostFramePatch = Partial<Pick<
   TWidgetHostData,
-  "w" | "h" | "expanded" | "window"
+  "w" | "h" | "expanded"
 >>;

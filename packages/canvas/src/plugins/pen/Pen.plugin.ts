@@ -53,17 +53,6 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           },
           strokeWidthOptions: [...PEN_STROKE_WIDTHS],
         }),
-        getTransformPolicy: () => ({
-          handles: [
-            "move",
-            "rotate",
-            "resize-ne",
-            "resize-se",
-            "resize-sw",
-            "resize-nw",
-          ],
-          keepAspectRatio: true,
-        }),
       }));
 
       cleanups.push(tool.registerTool({

@@ -123,10 +123,8 @@ export const CANVAS_PROJECTION_GRID = {
 } as const;
 
 export const CANVAS_PROJECTION_WIDGET = {
-  minWidth: 100,
+  minWidth: 116,
   minHeight: 76,
-  titleBarHeight: 28,
-  cornerRadius: 10,
 } as const;
 
 export const CANVAS_PROJECTION_PLACEHOLDER = {

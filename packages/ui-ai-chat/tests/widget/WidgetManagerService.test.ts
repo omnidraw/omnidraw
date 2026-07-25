@@ -26,7 +26,6 @@ function element(): TElement {
       w: 320,
       h: 200,
       expanded: true,
-      window: "contained",
       payload: {},
     },
     style: {},
@@ -56,14 +55,67 @@ function widgetInstance(): TElement {
       w: 320,
       h: 200,
       expanded: true,
-      window: "contained",
     },
+  };
+}
+
+function editorHarness() {
+  let activationListener: ((activation: never) => void) | null = null;
+  let presentationListener: (() => void) | null = null;
+  let contentFocusHandler: ((elementId: string) => void) | null = null;
+  const modes = new Map<string, "inactive" | "frame" | "content" | "maximized">();
+  const focusWidgetContent = vi.fn((elementId: string) => {
+    modes.set(elementId, "content");
+    contentFocusHandler?.(elementId);
+    presentationListener?.();
+    return true;
+  });
+  return {
+    sceneService: {
+      editor: {
+        subscribeWidgetActivation(listener: (activation: never) => void) {
+          activationListener = listener;
+          return () => {
+            if (activationListener === listener) {
+              activationListener = null;
+            }
+          };
+        },
+        subscribeWidgetPresentation(listener: () => void) {
+          presentationListener = listener;
+          return () => {
+            if (presentationListener === listener) {
+              presentationListener = null;
+            }
+          };
+        },
+        widgetMode(elementId: string) {
+          return modes.get(elementId) ?? "inactive";
+        },
+        focusWidgetContent,
+      },
+    },
+    activate(activation: unknown) {
+      activationListener?.(activation as never);
+    },
+    setMode(
+      elementId: string,
+      mode: "inactive" | "frame" | "content" | "maximized",
+    ) {
+      modes.set(elementId, mode);
+      presentationListener?.();
+    },
+    setContentFocusHandler(handler: (elementId: string) => void) {
+      contentFocusHandler = handler;
+    },
+    focusWidgetContent,
   };
 }
 
 describe("WidgetManagerService portal lifecycle", () => {
   test("routes widget clone identity, payload, and cloneability through product policies", () => {
     const definitions: TElementElementDefinition[] = [];
+    const editor = editorHarness();
     const service = new WidgetManagerService({
       browser: {
         document,
@@ -86,6 +138,7 @@ describe("WidgetManagerService portal lifecycle", () => {
         focusedId: null,
         hooks: { change: new SyncHook<[]>() },
       },
+      sceneService: editor.sceneService,
       toolService: {},
       product: vi.fn(),
     } as never);
@@ -141,7 +194,6 @@ describe("WidgetManagerService portal lifecycle", () => {
         instanceId: "source-instance",
         stateDocumentId: "source-state",
         expanded: true,
-        window: "contained",
       },
     } as TElement;
     const generic = definitions.find((definition) => {
@@ -184,6 +236,7 @@ describe("WidgetManagerService portal lifecycle", () => {
       };
     } | null = null;
     const selectionChange = new SyncHook<[]>();
+    const editor = editorHarness();
     const service = new WidgetManagerService({
       browser: {
         document,
@@ -207,6 +260,7 @@ describe("WidgetManagerService portal lifecycle", () => {
         focusedId: "widget-1",
         hooks: { change: selectionChange },
       },
+      sceneService: editor.sceneService,
       toolService: {},
       product: vi.fn(),
     } as never);
@@ -238,30 +292,19 @@ describe("WidgetManagerService portal lifecycle", () => {
     const contentRoot = host.querySelector<HTMLElement>(
       "[data-widget-content-root]",
     );
-    vi.spyOn(contentRoot!, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 300,
-      bottom: 200,
-      width: 300,
-      height: 200,
-      toJSON: () => ({}),
-    });
     contentRoot?.dispatchEvent(new MouseEvent("pointerdown", {
       bubbles: true,
       clientX: 299,
       clientY: 100,
     }));
-    expect(leakedPointer).toHaveBeenCalledOnce();
+    expect(leakedPointer).not.toHaveBeenCalled();
 
+    editor.setMode(initial.id, "maximized");
     mount.update({
       element: {
         ...initial,
         x: 80,
         y: 90,
-        data: { ...initial.data, window: "fullscreen" },
       } as TElement,
       content,
       viewport: viewport(),
@@ -272,15 +315,16 @@ describe("WidgetManagerService portal lifecycle", () => {
       clientX: 299,
       clientY: 100,
     }));
-    expect(leakedPointer).toHaveBeenCalledOnce();
+    expect(leakedPointer).not.toHaveBeenCalled();
 
+    editor.setMode(initial.id, "frame");
     mount.update({ element: initial, content, viewport: viewport() });
     contentRoot?.dispatchEvent(new MouseEvent("pointerdown", {
       bubbles: true,
       clientX: 299,
       clientY: 100,
     }));
-    expect(leakedPointer).toHaveBeenCalledTimes(2);
+    expect(leakedPointer).not.toHaveBeenCalled();
 
     mount.update({
       element: initial,
@@ -303,6 +347,7 @@ describe("WidgetManagerService portal lifecycle", () => {
     const selectionChange = new SyncHook<[]>();
     const invalidateProjection = vi.fn();
     const action = vi.fn();
+    const editor = editorHarness();
     let selected: Array<{ kind: "element"; id: string }> = [{
       kind: "element",
       id: current.id,
@@ -315,14 +360,6 @@ describe("WidgetManagerService portal lifecycle", () => {
         content: { type: "ui-widget"; kind: string };
       }): { dispose(): void };
     } | null = null;
-    let pointerDown: ((event: {
-      button: number;
-      client: { x: number; y: number };
-      hit: {
-        target: { kind: "element"; id: string };
-        part: { kind: "custom"; value: string };
-      };
-    }) => boolean) | null = null;
     const selectionService = {
       get focusedId() {
         return focused?.id ?? null;
@@ -345,6 +382,11 @@ describe("WidgetManagerService portal lifecycle", () => {
         return true;
       },
     };
+    editor.setContentFocusHandler((elementId) => {
+      selected = [];
+      focused = { kind: "element", id: elementId };
+      selectionChange.call();
+    });
     const service = new WidgetManagerService({
       browser: { document },
       crdtService: {
@@ -368,6 +410,7 @@ describe("WidgetManagerService portal lifecycle", () => {
       },
       renderOrderService: {},
       selectionService,
+      sceneService: editor.sceneService,
       toolService: {},
       product: vi.fn(),
     } as never);
@@ -377,7 +420,6 @@ describe("WidgetManagerService portal lifecycle", () => {
       titleBarActions: [{
         id: "settings",
         label: "Settings",
-        kind: "menu",
       }],
       renderDom: ({ root, titleBar }) => {
         root.textContent = "interactive";
@@ -388,18 +430,9 @@ describe("WidgetManagerService portal lifecycle", () => {
         });
       },
     });
-    service.start({
-      hooks: {
-        elementPointerDown: {
-          tap(listener: typeof pointerDown) {
-            pointerDown = listener;
-            return vi.fn();
-          },
-        },
-      },
-    } as never);
-    if (renderer === null || pointerDown === null) {
-      throw new Error("Expected widget renderer and semantic input listener.");
+    service.start({ hooks: {} } as never);
+    if (renderer === null) {
+      throw new Error("Expected widget renderer.");
     }
 
     const host = document.createElement("div");
@@ -412,19 +445,18 @@ describe("WidgetManagerService portal lifecycle", () => {
     const policy = definitions.find((definition) => {
       return definition.id === "__widget-product-policy";
     });
-    if (policy?.getWidgetChrome === undefined) {
-      throw new Error("Expected widget chrome policy.");
+    if (policy?.getWidgetFrame === undefined) {
+      throw new Error("Expected widget frame policy.");
     }
-    const projectChrome = () => policy.getWidgetChrome?.({
+    const projectFrame = () => policy.getWidgetFrame?.({
       element: current,
     });
-    expect(projectChrome()).toMatchObject({
+    expect(projectFrame()).toMatchObject({
       title: "Draft dashboard",
-      active: false,
-      actions: expect.arrayContaining([
+      headerItems: expect.arrayContaining([
         expect.objectContaining({
+          type: "button",
           id: "settings",
-          kind: "menu",
           label: "Back to dashboard",
         }),
       ]),
@@ -435,20 +467,16 @@ describe("WidgetManagerService portal lifecycle", () => {
       "[data-widget-content-root]",
     );
     content?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(editor.focusWidgetContent).toHaveBeenCalledWith(current.id);
     expect(selected).toEqual([]);
     expect(focused).toEqual({ kind: "element", id: current.id });
     expect(content?.dataset.widgetContentFocused).toBe("true");
-    expect(projectChrome()).toMatchObject({ active: true });
 
-    const handled = pointerDown({
-      button: 0,
-      client: { x: 20, y: 20 },
-      hit: {
-        target: { kind: "element", id: current.id },
-        part: { kind: "custom", value: "control:settings" },
-      },
+    editor.activate({
+      type: "header-button",
+      elementId: current.id,
+      itemId: "settings",
     });
-    expect(handled).toBe(true);
     expect(action).toHaveBeenCalledOnce();
     expect(selected).toEqual([{ kind: "element", id: current.id }]);
     expect(focused).toBeNull();
@@ -465,17 +493,9 @@ describe("WidgetManagerService portal lifecycle", () => {
       data: {
         ...element().data,
         expanded: false,
-        window: "minimized" as const,
       },
     } as TElement;
-    let pointerDown: ((event: {
-      button: number;
-      client: { x: number; y: number };
-      hit: {
-        target: { kind: "element"; id: string };
-        part: { kind: "custom"; value: string };
-      };
-    }) => boolean) | null = null;
+    const editor = editorHarness();
     const patchElement = vi.fn((
       _id: string,
       _field: string,
@@ -510,50 +530,34 @@ describe("WidgetManagerService portal lifecycle", () => {
         setSelection: vi.fn(),
         setFocusedTarget: vi.fn(),
       },
+      sceneService: editor.sceneService,
       toolService: {},
       product: vi.fn(),
     } as never);
-    service.start({
-      hooks: {
-        elementPointerDown: {
-          tap(listener: typeof pointerDown) {
-            pointerDown = listener;
-            return vi.fn();
-          },
-        },
-      },
-    } as never);
-    if (pointerDown === null) {
-      throw new Error("Expected widget pointer listener.");
-    }
+    service.start({ hooks: {} } as never);
 
-    const handled = pointerDown({
-      button: 0,
-      client: { x: 0, y: 0 },
-      hit: {
-        target: { kind: "element", id: current.id },
-        part: { kind: "custom", value: "control:minimize" },
-      },
+    editor.activate({
+      type: "minimize",
+      elementId: current.id,
     });
 
-    expect(handled).toBe(true);
     expect(current.data).toMatchObject({
       expanded: true,
-      window: "contained",
     });
     service.stop();
   });
 
-  test("bridges portal focus, collapse, and fullscreen into the Capsule owner", async () => {
+  test("bridges portal focus, collapse, and canvas maximize into the Capsule owner", async () => {
     let current = widgetInstance();
     let focusedId: string | null = null;
     const selectionChange = new SyncHook<[]>();
     const documentChange = new SyncHook<[]>();
+    const editor = editorHarness();
     let renderer: TCanvasPortalRenderer | null = null;
     const runtimeOwner = {
       setProps: vi.fn(),
       setViewport: vi.fn(),
-      focus: vi.fn(),
+      setFocused: vi.fn(),
       freeze: vi.fn(async () => undefined),
       resume: vi.fn(async () => undefined),
       diagnostics: vi.fn(() => null),
@@ -586,6 +590,7 @@ describe("WidgetManagerService portal lifecycle", () => {
         selection: [],
         hooks: { change: selectionChange },
       },
+      sceneService: editor.sceneService,
       toolService: {},
       product: vi.fn(),
       neutralHost: {
@@ -631,7 +636,10 @@ describe("WidgetManagerService portal lifecycle", () => {
 
     focusedId = current.id;
     selectionChange.call();
-    expect(runtimeOwner.focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(runtimeOwner.setFocused).toHaveBeenCalledWith(
+      true,
+      { preventScroll: true },
+    );
     expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
       expect.objectContaining({ priority: 90 }),
     );
@@ -641,9 +649,9 @@ describe("WidgetManagerService portal lifecycle", () => {
       data: {
         ...current.data,
         expanded: false,
-        window: "minimized",
       },
     } as TElement;
+    editor.setMode(current.id, "maximized");
     await mounted.update?.({
       element: current,
       content: {
@@ -680,7 +688,6 @@ describe("WidgetManagerService portal lifecycle", () => {
       data: {
         ...current.data,
         expanded: true,
-        window: "fullscreen",
       },
     } as TElement;
     await mounted.update?.({
@@ -700,7 +707,7 @@ describe("WidgetManagerService portal lifecycle", () => {
       viewport: viewport(),
     });
     expect(runtimeOwner.resume).toHaveBeenLastCalledWith(
-      "canvas-widget-fullscreen",
+      "canvas-widget-maximized",
     );
     expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
       expect.objectContaining({

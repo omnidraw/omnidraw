@@ -9,6 +9,7 @@ import { SyncHook } from "@vibecanvas/tapable";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TCanvasProjectionCoordinatorResult } from "../../../src/engine/ProjectionCoordinator";
 import { ElementService } from "../../../src/services/element/ElementService";
+import { HistoryService } from "../../../src/services/history/HistoryService";
 import { SceneService } from "../../../src/services/scene/SceneService";
 import { SelectionService } from "../../../src/services/selection/SelectionService";
 import type { TCrdtChangeSummary } from "../../../src/services/crdt/CrdtService";
@@ -108,6 +109,7 @@ describe("SceneService", () => {
       crdt: crdt as never,
       theme,
       selection,
+      history: new HistoryService(),
       element,
       portal: portal as never,
       createEngine: async (config) => {
@@ -180,6 +182,18 @@ describe("SceneService", () => {
     });
     expect(cancelForRemoteChange).not.toHaveBeenCalled();
     expect(scene.projectionIndex?.elementNodeIds.rect).toBeDefined();
+
+    selection.select({ kind: "element", id: "rect" });
+    expect(scene.editor.editor.state.selectedNodeIds).toEqual([
+      scene.projectionIndex?.elementNodeIds.rect?.find((nodeId) => {
+        return nodeId.endsWith(":render");
+      }),
+    ]);
+    expect(scene.editor.editor.state.focusedNodeId).toBe(
+      scene.projectionIndex?.elementNodeIds.rect?.find((nodeId) => {
+        return nodeId.endsWith(":render");
+      }),
+    );
 
     await expect(scene.setGridVisible(false)).resolves.toBe(true);
     expect(projectionEvents.at(-1)).toMatchObject({

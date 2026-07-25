@@ -387,7 +387,6 @@ function sampleDocument(): TCanvasDoc {
           w: 320,
           h: 240,
           expanded: true,
-          window: "contained",
         },
       },
       "ui-widget": {
@@ -403,7 +402,6 @@ function sampleDocument(): TCanvasDoc {
           w: 280,
           h: 180,
           expanded: true,
-          window: "contained",
           payload: { source: "compatibility" },
           uiProps: { compact: false },
         },
@@ -640,15 +638,6 @@ describe("canvas-engine public compatibility contract", () => {
       },
       size: { width: 260, height: 180 },
       title: "Widget",
-      controls: [{ id: "close", kind: "close", label: "Close" }],
-      style: {
-        background: WHITE,
-        titleBarBackground: BLACK,
-        titleColor: { space: "srgb", r: 1, g: 1, b: 1, a: 1 },
-        cornerRadius: 8,
-        titleBarHeight: 32,
-        padding: { top: 4, right: 4, bottom: 4, left: 4 },
-      },
       resizable: true,
     };
     const connector: TSceneNode = {
@@ -673,7 +662,7 @@ describe("canvas-engine public compatibility contract", () => {
     expect(route.path.commands.length).toBeGreaterThan(1);
     expect(engine!.input.hitTestWorld({ x: 320, y: 55 })[0]).toMatchObject({
       nodeId: "widget",
-      part: "title-bar",
+      part: "traffic-light:close",
     });
     const exported = await engine!.svg.export({
       nodeIds: ["rect", "widget", "connector"],
@@ -937,14 +926,6 @@ describe("canvas-engine public compatibility contract", () => {
         },
         size: { width: 280, height: 180 },
         title: "Creating widget…",
-        style: {
-          background: WHITE,
-          titleBarBackground: BLACK,
-          titleColor: { space: "srgb", r: 1, g: 1, b: 1, a: 1 },
-          cornerRadius: 8,
-          titleBarHeight: 32,
-          padding: { top: 4, right: 4, bottom: 4, left: 4 },
-        },
       }],
     });
 

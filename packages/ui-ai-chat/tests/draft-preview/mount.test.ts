@@ -179,7 +179,6 @@ describe("stateless Draft Preview", () => {
         w: 480,
         h: 320,
         expanded: true,
-        window: "contained",
         payload: { draftId: DRAFT_ID, draftName: "Weather", originChatElementId: "chat-1" },
       },
     } as never)

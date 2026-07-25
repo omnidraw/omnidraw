@@ -21,7 +21,6 @@ function element(): TElement {
       w: 320,
       h: 200,
       expanded: true,
-      window: "contained",
       payload: {},
     },
     style: {},
@@ -96,7 +95,7 @@ describe("txMountWidgetPortal", () => {
     expect(host.childElementCount).toBe(0);
   });
 
-  test("lets frame-edge pointer events reach engine resize handling", () => {
+  test("isolates all product-content pointer events from engine chrome", () => {
     const host = document.createElement("div");
     const leakedPointer = vi.fn();
     const focusContent = vi.fn();
@@ -108,19 +107,7 @@ describe("txMountWidgetPortal", () => {
       onContentPointerDown: focusContent,
       config: {
         id: "example",
-        renderDom: ({ root }) => {
-          vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
-            x: 10,
-            y: 20,
-            left: 10,
-            top: 20,
-            right: 310,
-            bottom: 180,
-            width: 300,
-            height: 160,
-            toJSON: () => ({}),
-          });
-        },
+        renderDom: () => undefined,
       },
     });
 
@@ -130,59 +117,15 @@ describe("txMountWidgetPortal", () => {
       clientX: 306,
       clientY: 100,
     }));
-    expect(leakedPointer).toHaveBeenCalledOnce();
-    expect(focusContent).not.toHaveBeenCalled();
+    expect(leakedPointer).not.toHaveBeenCalled();
+    expect(focusContent).toHaveBeenCalledOnce();
 
     content?.dispatchEvent(new MouseEvent("pointerdown", {
       bubbles: true,
       clientX: 100,
       clientY: 100,
     }));
-    expect(focusContent).toHaveBeenCalledOnce();
-  });
-
-  test("keeps fullscreen edge events inside widget content", () => {
-    const host = document.createElement("div");
-    const leakedPointer = vi.fn();
-    const focusContent = vi.fn();
-    host.addEventListener("pointerdown", leakedPointer);
-    const fullscreen = {
-      ...element(),
-      data: {
-        ...element().data,
-        window: "fullscreen" as const,
-      },
-    } as TElement;
-    txMountWidgetPortal({ document }, {
-      host,
-      element: fullscreen,
-      error: null,
-      onContentPointerDown: focusContent,
-      config: {
-        id: "example",
-        renderDom: ({ root }) => {
-          vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
-            x: 0,
-            y: 0,
-            left: 0,
-            top: 0,
-            right: 300,
-            bottom: 200,
-            width: 300,
-            height: 200,
-            toJSON: () => ({}),
-          });
-        },
-      },
-    });
-
-    host.querySelector<HTMLElement>("[data-widget-content-root]")
-      ?.dispatchEvent(new MouseEvent("pointerdown", {
-        bubbles: true,
-        clientX: 299,
-        clientY: 199,
-      }));
-    expect(focusContent).toHaveBeenCalledOnce();
+    expect(focusContent).toHaveBeenCalledTimes(2);
     expect(leakedPointer).not.toHaveBeenCalled();
   });
 

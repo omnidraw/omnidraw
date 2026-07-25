@@ -189,7 +189,6 @@ function widgetData(overrides: Record<string, unknown> = {}): Record<string, unk
     w: 640,
     h: 480,
     expanded: true,
-    window: 'contained',
     ...overrides,
   };
 }

@@ -100,7 +100,6 @@ function neutralWidgetElement(index: number): TElement {
       w: 240,
       h: 180,
       expanded: true,
-      window: 'contained',
     },
     style: {},
   };

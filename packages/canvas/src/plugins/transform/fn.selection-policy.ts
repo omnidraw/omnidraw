@@ -1,38 +1,45 @@
 import type { TElementTransformPolicy } from "../../services/element/types";
+import type { TCanvasProductTransformPolicy } from "../../engine/product-runtime/typed";
 
 type TArgs = {
+  baseline: TCanvasProductTransformPolicy;
   policies: readonly TElementTransformPolicy[];
   includeSizeConstraints: boolean;
-  forceAspectRatio?: boolean;
+  forceLockedAspectRatio?: boolean;
 };
 
-const DEFAULT_HANDLES = [
-  "move",
-  "rotate",
-  "resize-n",
-  "resize-ne",
-  "resize-e",
-  "resize-se",
-  "resize-s",
-  "resize-sw",
-  "resize-w",
-  "resize-nw",
-] as const;
+function aspectRatioMode(
+  args: TArgs,
+): NonNullable<TCanvasProductTransformPolicy["aspectRatioMode"]> {
+  if (args.forceLockedAspectRatio === true) {
+    return "locked";
+  }
+  const modes = [
+    args.baseline.aspectRatioMode ?? "free",
+    ...args.policies.flatMap((policy) => {
+      return policy.aspectRatioMode === undefined
+        ? []
+        : [policy.aspectRatioMode];
+    }),
+  ];
+  if (modes.includes("locked")) {
+    return "locked";
+  }
+  if (modes.includes("shift-invert")) {
+    return "shift-invert";
+  }
+  if (modes.includes("shift-lock")) {
+    return "shift-lock";
+  }
+  return "free";
+}
 
 export function fnMergeProductSelectionTransformPolicy(
   args: TArgs,
-): TElementTransformPolicy {
-  if (args.policies.length === 0) {
-    return {
-      handles: DEFAULT_HANDLES,
-      keepAspectRatio: args.forceAspectRatio ?? false,
-      allowFlip: false,
-      allowRotate: true,
-    };
-  }
-  const handles = DEFAULT_HANDLES.filter((handle) => {
+): TCanvasProductTransformPolicy {
+  const handles = args.baseline.handles.filter((handle) => {
     return args.policies.every((policy) => {
-      return (policy.handles ?? DEFAULT_HANDLES).includes(handle);
+      return policy.handles?.includes(handle) ?? true;
     });
   });
   const snapRotationDegrees = args.policies[0]?.snapRotationDegrees;
@@ -45,27 +52,48 @@ export function fnMergeProductSelectionTransformPolicy(
   const singlePolicy = args.includeSizeConstraints
     ? args.policies[0]
     : undefined;
+  const baselineMin = args.baseline.minSize;
+  const productMin = singlePolicy?.minSize;
+  const minSize = baselineMin === undefined && productMin === undefined
+    ? undefined
+    : {
+        width: Math.max(baselineMin?.width ?? 0, productMin?.width ?? 0),
+        height: Math.max(baselineMin?.height ?? 0, productMin?.height ?? 0),
+      };
+  const baselineMax = args.baseline.maxSize;
+  const productMax = singlePolicy?.maxSize;
+  const maxSize = baselineMax === undefined && productMax === undefined
+    ? undefined
+    : {
+        width: Math.min(
+          baselineMax?.width ?? Number.POSITIVE_INFINITY,
+          productMax?.width ?? Number.POSITIVE_INFINITY,
+        ),
+        height: Math.min(
+          baselineMax?.height ?? Number.POSITIVE_INFINITY,
+          productMax?.height ?? Number.POSITIVE_INFINITY,
+        ),
+      };
 
   return {
     handles,
-    keepAspectRatio: args.forceAspectRatio === true
-      || args.policies.some((policy) => {
-        return policy.keepAspectRatio === true;
-      }),
-    allowFlip: args.policies.every((policy) => {
+    aspectRatioMode: aspectRatioMode(args),
+    allowFlip: args.baseline.allowFlip === true
+      && args.policies.every((policy) => {
       return policy.allowFlip === true;
     }),
-    allowRotate: args.policies.every((policy) => {
+    allowRotate: args.baseline.allowRotate !== false
+      && args.policies.every((policy) => {
       return policy.allowRotate !== false;
     }),
-    ...(singlePolicy?.minSize === undefined
+    ...(minSize === undefined
       ? {}
-      : { minSize: singlePolicy.minSize }),
-    ...(singlePolicy?.maxSize === undefined
+      : { minSize }),
+    ...(maxSize === undefined
       ? {}
-      : { maxSize: singlePolicy.maxSize }),
+      : { maxSize }),
     ...(sharedSnap === undefined
       ? {}
-      : { snapRotationDegrees: sharedSnap }),
+      : { snapRotationRadians: sharedSnap * Math.PI / 180 }),
   };
 }

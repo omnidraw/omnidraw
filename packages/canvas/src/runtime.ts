@@ -3,7 +3,6 @@ import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
     createCameraControlPlugin, createConfirmDialogPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
-    createHistoryControlPlugin,
     createImagePlugin,
     createPenPlugin,
     createRecorderPlugin,
@@ -97,12 +96,14 @@ function createServices(
   const element = new ElementService();
   const sessionService = new SessionService();
   const selection = new SelectionService();
+  const history = new HistoryService();
   const portal = new CanvasPortalService(crdt);
   const sceneArgs: TSceneServiceArgs = {
     container: config.container,
     crdt,
     theme: config.themeService,
     selection,
+    history,
     element,
     portal,
     ...(config.notification === undefined
@@ -114,7 +115,6 @@ function createServices(
   const camera = new CameraService({ scene });
   const confirmDialog = new ConfirmDialogService();
   const contextMenu = new ContextMenuService();
-  const history = new HistoryService();
   const tool = new ToolService();
   const widgetPlacement = new WidgetDropPlacementService({ camera, scene });
   const logging = new LoggingService();
@@ -197,7 +197,6 @@ export function buildRuntime(
     createToolbarPlugin(),
     createSelectionStyleMenuPlugin(),
     createContextMenuPlugin(),
-    createHistoryControlPlugin(),
     createSelectPlugin(),
     createTransformPlugin(),
     createShape1dPlugin(),

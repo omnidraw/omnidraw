@@ -44,5 +44,4 @@ export type {
   TCanvasProductTransientOwner,
   TCanvasProductTransientOwnerOptions,
   TCanvasProductTransientProjection,
-  TCanvasProductWidgetFrameStyle,
 } from "./typed";

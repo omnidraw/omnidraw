@@ -4,10 +4,6 @@ import type {
   TCanvasInputEvent,
   TCanvasInputPointerEvent,
 } from "../../engine/input/typed";
-import {
-  fnCanvasTargetsEqual,
-} from "../../semantic/fn.target";
-import type { TCanvasSemanticHitPart } from "../../semantic/typed";
 import type {
   IRuntimeConfig,
   IRuntimeHooks,
@@ -41,17 +37,6 @@ function toElementEvent(
         ...event,
         hit: event.hit,
       };
-}
-
-function isWidgetFrameControl(part: TCanvasSemanticHitPart): boolean {
-  if (
-    part === "widget-minimize"
-    || part === "widget-restore"
-    || part === "widget-fullscreen"
-  ) {
-    return true;
-  }
-  return typeof part === "object" && part.value.startsWith("control:");
 }
 
 /**
@@ -100,21 +85,7 @@ export function createEventListenerPlugin(): IPlugin<
           return;
         }
 
-        const directWidgetHit = event.hit === null
-          ? null
-          : scene.input.hitTestViewport({
-              point: event.viewport,
-              options: {
-                kinds: ["widget-frame"],
-                mode: "topmost",
-              },
-            }).find((hit) => {
-              return fnCanvasTargetsEqual(hit.target, event.hit?.target ?? null)
-                && isWidgetFrameControl(hit.part);
-            }) ?? null;
-        const pointerEvent: TCanvasInputPointerEvent = directWidgetHit === null
-          ? event
-          : { ...event, hit: directWidgetHit };
+        const pointerEvent: TCanvasInputPointerEvent = event;
         const elementEvent = toElementEvent(pointerEvent);
         switch (event.type) {
           case "pointer-down": {
@@ -153,17 +124,6 @@ export function createEventListenerPlugin(): IPlugin<
         if (event.hit === null) {
           return;
         }
-        const directWidgetHit = scene.input.hitTestViewport({
-          point: event.viewport,
-          options: {
-            kinds: ["widget-frame"],
-            mode: "topmost",
-          },
-        }).find((hit) => {
-          return fnCanvasTargetsEqual(hit.target, event.hit?.target ?? null)
-            && isWidgetFrameControl(hit.part);
-        }) ?? null;
-        const hit = directWidgetHit ?? event.hit;
         const elementEvent: TElementPointerEvent = {
           ...event,
           type: "pointer-up",
@@ -172,7 +132,7 @@ export function createEventListenerPlugin(): IPlugin<
           tilt: { x: 0, y: 0 },
           deltaViewport: { x: 0, y: 0 },
           deltaWorld: { x: 0, y: 0 },
-          hit,
+          hit: event.hit,
         };
         if (event.type === "double-click") {
           ctx.hooks.elementPointerDoubleClick.call(elementEvent);

@@ -95,7 +95,9 @@ export function txMountCommittedWidgetRuntime(portal: TPortal, args: TArgs): () 
       const transition = state.collapsed
         ? owner.freeze('canvas-widget-collapsed')
         : owner.resume(
-            state.fullscreen ? 'canvas-widget-fullscreen' : 'canvas-widget-visible',
+            state.canvasMaximized
+              ? 'canvas-widget-maximized'
+              : 'canvas-widget-visible',
           );
       void transition.catch(() => undefined);
     } catch {

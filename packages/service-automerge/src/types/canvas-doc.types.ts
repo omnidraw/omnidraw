@@ -22,7 +22,6 @@ import type {
   zUiWidgetData,
   zWidgetUiProps,
   zWidgetInstanceData,
-  zWidgetWindow,
 } from './canvas-doc.zod';
 
 export type TPoint2D = z.infer<typeof zPoint2D>;
@@ -42,7 +41,6 @@ export type TImageData = z.infer<typeof zImageData>;
 export type TUiWidgetData = z.infer<typeof zUiWidgetData>;
 export type TWidgetUiProps = z.infer<typeof zWidgetUiProps>;
 export type TWidgetInstanceData = z.infer<typeof zWidgetInstanceData>;
-export type TWidgetWindow = z.infer<typeof zWidgetWindow>;
 
 
 export type TElementData = z.infer<typeof zElementData>;

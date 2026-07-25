@@ -1,11 +1,7 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type {
-  TCanvasProductTransformEvent,
-  TCanvasProductTransformPolicy,
-} from "../../engine/product-runtime/typed";
+import type { TCanvasProductTransformEvent } from "../../engine/product-runtime/typed";
 import { fnCanvasActiveSessionDependencies } from "../../services/active-session/fn.dependencies";
 import { fnCollectDescendantElementIds } from "../../services/group/fn.product-groups";
-import type { TElementTransformPolicy } from "../../services/element/types";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import {
   fnPlanProductSubtreeClone,
@@ -33,6 +29,7 @@ const APPEARANCE = {
   },
   handleSize: 8,
   rotateHandleOffset: 24,
+  outlinePadding: 6,
 };
 
 const TRANSFORM_ELEMENT_DEPENDENCY_FIELDS = [
@@ -50,36 +47,6 @@ const TRANSFORM_GROUP_DEPENDENCY_FIELDS = [
   "parentGroupId",
   "locked",
 ] as const;
-
-function productPolicy(
-  policy: TElementTransformPolicy | undefined,
-): TCanvasProductTransformPolicy {
-  return {
-    handles: policy?.handles ?? [
-      "move",
-      "rotate",
-      "resize-n",
-      "resize-ne",
-      "resize-e",
-      "resize-se",
-      "resize-s",
-      "resize-sw",
-      "resize-w",
-      "resize-nw",
-    ],
-    keepAspectRatio: policy?.keepAspectRatio ?? false,
-    allowFlip: policy?.allowFlip ?? false,
-    allowRotate: policy?.allowRotate ?? true,
-    ...(policy?.minSize === undefined ? {} : { minSize: policy.minSize }),
-    ...(policy?.maxSize === undefined ? {} : { maxSize: policy.maxSize }),
-    ...(policy?.snapRotationDegrees === undefined
-      ? {}
-      : {
-          snapRotationRadians:
-            policy.snapRotationDegrees * Math.PI / 180,
-        }),
-  };
-}
 
 export function createTransformPlugin():
 IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
@@ -159,6 +126,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           return [element.id, element];
         })).values()];
         const policy = fnMergeProductSelectionTransformPolicy({
+          baseline: scene.product.transforms.resolveStandardPolicy(targets),
           policies: uniqueElements.map((element) => {
             return elementService.getTransformPolicy({
               element,
@@ -169,7 +137,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
             && targets[0]?.kind === "element",
           // Aggregate non-uniform scaling can introduce affine skew, which is
           // intentionally absent from the persisted canvas element contract.
-          forceAspectRatio: targets.length > 1
+          forceLockedAspectRatio: targets.length > 1
             || targets.some((target) => {
               return target.kind === "group";
             }),
@@ -185,7 +153,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           targets,
           ...(focused === undefined ? {} : { focused }),
           appearance: APPEARANCE,
-          policy: productPolicy(policy),
+          policy,
         });
       };
 

@@ -30,6 +30,7 @@ import type {
   TCanvasProductSelection,
   TCanvasProductSelectionAppearance,
   TCanvasProductTransformEvent,
+  TCanvasProductTransformHoverState,
   TCanvasProductTransformPolicy,
   TCanvasProductTransformProposal,
 } from "./typed";
@@ -39,6 +40,7 @@ type TTransformPorts = Pick<
   | "getProjectionIndex"
   | "geometry"
   | "onDiagnostic"
+  | "resolveStandardTransformPolicy"
   | "scene"
   | "transforms"
   | "transients"
@@ -93,9 +95,9 @@ function enginePolicy(
 ): TTransformPolicy {
   return {
     handles: [...policy.handles],
-    ...(policy.keepAspectRatio === undefined
+    ...(policy.aspectRatioMode === undefined
       ? {}
-      : { keepAspectRatio: policy.keepAspectRatio }),
+      : { aspectRatioMode: policy.aspectRatioMode }),
     ...(policy.allowFlip === undefined
       ? {}
       : { allowFlip: policy.allowFlip }),
@@ -241,6 +243,55 @@ export class CanvasProductTransformService {
     };
   }
 
+  subscribeHover(
+    listener: (state: TCanvasProductTransformHoverState | null) => void,
+  ): () => void {
+    this.#assertActive();
+    return this.#ports.transforms.subscribeHover((state) => {
+      listener(state === null ? null : { ...state });
+    });
+  }
+
+  resolveStandardPolicy(
+    targets: readonly TCanvasProductSelection["targets"][number][],
+  ): TCanvasProductTransformPolicy {
+    this.#assertActive();
+    const index = this.#ports.getProjectionIndex();
+    if (index === null) {
+      return {
+        handles: [],
+        allowRotate: false,
+        aspectRatioMode: "free",
+      };
+    }
+    const nodeIds = targets.flatMap((target) => {
+      const nodeId = this.#selectionNodeId(target, index);
+      return nodeId === null ? [] : [nodeId];
+    });
+    const policy = this.#ports.resolveStandardTransformPolicy(nodeIds);
+    return {
+      handles: [...policy.handles],
+      ...(policy.aspectRatioMode === undefined
+        ? {}
+        : { aspectRatioMode: policy.aspectRatioMode }),
+      ...(policy.allowFlip === undefined
+        ? {}
+        : { allowFlip: policy.allowFlip }),
+      ...(policy.allowRotate === undefined
+        ? {}
+        : { allowRotate: policy.allowRotate }),
+      ...(policy.minSize === undefined
+        ? {}
+        : { minSize: { ...policy.minSize } }),
+      ...(policy.maxSize === undefined
+        ? {}
+        : { maxSize: { ...policy.maxSize } }),
+      ...(policy.snapRotationRadians === undefined
+        ? {}
+        : { snapRotationRadians: policy.snapRotationRadians }),
+    };
+  }
+
   setClonePlanProvider(
     provider: TCanvasProductClonePlanProvider,
   ): () => void {
@@ -299,9 +350,9 @@ export class CanvasProductTransformService {
       ...(policy.handles === undefined
         ? {}
         : { handles: [...policy.handles] }),
-      ...(policy.keepAspectRatio === undefined
+      ...(policy.aspectRatioMode === undefined
         ? {}
-        : { keepAspectRatio: policy.keepAspectRatio }),
+        : { aspectRatioMode: policy.aspectRatioMode }),
       ...(policy.allowFlip === undefined
         ? {}
         : { allowFlip: policy.allowFlip }),

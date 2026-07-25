@@ -233,7 +233,6 @@ describe("WidgetDropPlacementService", () => {
       nodes: [{
         kind: "widget-frame",
         title: "Building Weather Preview…",
-        active: true,
       }],
     });
     expect(destroyGhost).not.toHaveBeenCalled();

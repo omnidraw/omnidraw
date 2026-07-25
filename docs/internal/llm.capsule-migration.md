@@ -183,7 +183,8 @@ Ownership is:
 | `packages/widget-contract` | Vibecanvas manifest, revision, artifact metadata, build/publication interfaces, contract digest |
 | `packages/sdk` | Framework-neutral guest API over `@omnidraw/capsule/guest` |
 | `packages/ui-ai-chat` | Runtime loading, browser integration, preview, instance ownership, user-facing state |
-| `packages/canvas` | Portal, size, scale, distance, visibility, occlusion, focus, fullscreen, collapse, removal |
+| `@omnidraw/cangine` | Fixed widget frame, local canvas-maximized presentation, and atomic portal-shell presentation |
+| `packages/canvas` | Portal content, size, scale, distance, visibility, occlusion, focus, durable collapse, local canvas-maximized, removal |
 | `packages/service-agent` | Source capture, validation, preview/publish orchestration, authoring prompts |
 | `packages/api` | Tenant-authorized runtime artifact delivery and function transport |
 | Server services | Functions, Automerge collaboration, resources, tenant authorization |
@@ -780,7 +781,7 @@ The DOM portal must forward:
 - occlusion;
 - focus;
 - collapse;
-- fullscreen;
+- local canvas-maximized presentation;
 - removal.
 
 Suggested mapping:
@@ -792,7 +793,7 @@ Suggested mapping:
 | Near offscreen | hidden/offscreen viewport, then freeze by policy |
 | Far offscreen | destroy or park when eligible |
 | Collapsed | hidden viewport and freeze |
-| Fullscreen | visible viewport, updated size, highest local priority |
+| Canvas-maximized | visible viewport, updated size, highest local priority |
 | Selected/focused | `focus()` plus higher priority |
 | Definition/revision changed | destroy old handle, then mount exact new artifact |
 | Element removed | destroy handle and all bindings |
@@ -1208,7 +1209,7 @@ Goal: make Capsule lifecycle follow real canvas behavior.
 Actions:
 
 - forward viewport size, scale, visibility, distance, priority, and occlusion;
-- connect focus, collapse, fullscreen, and removal;
+- connect focus, collapse, local canvas-maximized presentation, and removal;
 - remove the duplicate active-render scheduler;
 - keep only bounded transport/loading admission;
 - implement freeze/resume;
@@ -1229,7 +1230,7 @@ Browser scenarios:
 
 - pan widget offscreen and back;
 - collapse and restore;
-- enter and exit fullscreen;
+- maximize and restore inside the canvas;
 - focus and keyboard input;
 - resize and zoom;
 - delete during load;
@@ -1338,7 +1339,7 @@ End-to-end scenarios:
 9. Runtime loads the pinned revision and exact artifact.
 10. Props and theme update.
 11. Guest output reaches the allowed host action.
-12. Offscreen/collapse/fullscreen/focus transitions behave correctly.
+12. Offscreen/collapse/canvas-maximized/focus transitions behave correctly.
 13. Destroy leaves terminal-zero instance counters.
 14. Wrong signatures, contracts, grants, schemas, and identities fail closed.
 

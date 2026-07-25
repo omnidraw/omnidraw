@@ -8,7 +8,7 @@ type TArgs = Readonly<{
   viewport: TCanvasPortalRenderState["viewport"];
   focused: boolean;
   collapsed: boolean;
-  fullscreen: boolean;
+  canvasMaximized: boolean;
 }>;
 
 function fnClamp(value: number, minimum: number, maximum: number): number {
@@ -22,7 +22,7 @@ function fnPriority(args: TArgs, visible: boolean): number {
   if (args.collapsed) {
     return -100;
   }
-  if (args.fullscreen) {
+  if (args.canvasMaximized) {
     return 100;
   }
   if (args.focused) {
@@ -53,6 +53,6 @@ export function fnWidgetCapsuleCanvasLifecycle(
     focused: visible && args.focused,
     frozen: args.collapsed,
     collapsed: args.collapsed,
-    fullscreen: args.fullscreen,
+    canvasMaximized: args.canvasMaximized,
   });
 }

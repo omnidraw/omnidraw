@@ -81,7 +81,6 @@ function createWidgetElement(): TElement {
       w: 320,
       h: 200,
       expanded: true,
-      window: "contained",
       payload: {},
     },
   };
@@ -171,7 +170,7 @@ describe("ElementService", () => {
       matchesElement: (element) => element.data.type === "text",
       getTransformPolicy: () => ({
         handles: ["move", "resize-e", "resize-w"],
-        keepAspectRatio: true,
+        aspectRatioMode: "locked",
         minSize: { width: 40, height: 20 },
       }),
     });
@@ -180,7 +179,7 @@ describe("ElementService", () => {
       priority: 20,
       matchesElement: (element) => element.data.type === "text",
       getTransformPolicy: () => ({
-        keepAspectRatio: false,
+        aspectRatioMode: "free",
         allowRotate: false,
       }),
     });
@@ -190,7 +189,7 @@ describe("ElementService", () => {
       selection: [text],
     })).toEqual({
       handles: ["move", "resize-e", "resize-w"],
-      keepAspectRatio: false,
+      aspectRatioMode: "free",
       allowFlip: false,
       allowRotate: false,
       minSize: { width: 40, height: 20 },
@@ -219,27 +218,27 @@ describe("ElementService", () => {
     })).toEqual(["projector-high", "projector-low"]);
   });
 
-  test("adapts renderer-neutral widget chrome into the engine projection", () => {
+  test("adapts bounded product headers into the fixed widget frame", () => {
     const service = new ElementService();
     const widget = createWidgetElement();
     service.registerElement({
       id: "widget-host",
       priority: 20,
       matchesElement: (element) => element.data.type === "ui-widget",
-      getWidgetChrome: () => ({
+      getWidgetFrame: () => ({
         title: "Live dashboard",
-        active: true,
-        actions: [{
+        headerItems: [{
+          type: "button",
           id: "settings",
           label: "Settings",
-          kind: "menu",
+          content: { type: "text", text: "Settings" },
           disabled: true,
         }],
       }),
     });
 
     const projector = service.projectionExtensions().definitions.find(
-      (definition) => definition.id === "widget-chrome:widget-host",
+      (definition) => definition.id === "widget-frame:widget-host",
     );
     expect(projector).toBeDefined();
     const projected = projector!.project({
@@ -251,16 +250,19 @@ describe("ElementService", () => {
     expect(projected.nodes.find((node) => node.kind === "widget-frame"))
       .toMatchObject({
         title: "Live dashboard",
-        active: true,
-        controls: expect.arrayContaining([
+        headerItems: expect.arrayContaining([
           expect.objectContaining({
+            type: "button",
             id: "settings",
-            kind: "menu",
             label: "Settings",
             disabled: true,
           }),
         ]),
       });
+    expect(projected.nodes.find((node) => node.kind === "widget-frame"))
+      .not.toHaveProperty("active");
+    expect(projected.nodes.find((node) => node.kind === "widget-frame"))
+      .not.toHaveProperty("controls");
   });
 
   test("composes clone-data policies without allowing extensions to replace product IDs", () => {

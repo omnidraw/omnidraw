@@ -31,7 +31,6 @@ function widgetDocument(): TCanvasDoc {
       w: 320,
       h: 240,
       expanded: true,
-      window: "contained",
       payload: { city: "Berlin" },
     },
   });

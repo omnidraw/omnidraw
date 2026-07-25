@@ -29,7 +29,6 @@ describe("neutral widget host", () => {
       w: 400,
       h: 240,
       expanded: false,
-      window: "minimized",
     });
     const revision = fnNormalizeWidgetHostData(createNeutralElement().data);
 
@@ -37,7 +36,6 @@ describe("neutral widget host", () => {
       source: "browser-only",
       hostKey: "filesystem",
       expanded: false,
-      window: "minimized",
     });
     expect(revision).toEqual({
       source: "revision",
@@ -49,7 +47,6 @@ describe("neutral widget host", () => {
       w: 480,
       h: 320,
       expanded: true,
-      window: "contained",
     });
   });
 
@@ -71,7 +68,6 @@ describe("neutral widget host", () => {
       w: 480,
       h: 320,
       expanded: true,
-      window: "contained",
     });
     expect(clone.parentGroupId).toBeNull();
     expect(clone.createdAt).toBe(200);

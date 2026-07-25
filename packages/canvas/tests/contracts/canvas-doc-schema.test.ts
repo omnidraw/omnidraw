@@ -10,7 +10,6 @@ import {
   zGroup,
   zImageData,
   zLineData,
-  zWidgetWindow,
 } from "@vibecanvas/service-automerge/types/canvas-doc.zod";
 import type {
   TCanvasDoc,
@@ -165,7 +164,6 @@ const ELEMENT_DATA = {
     w: 480,
     h: 320,
     expanded: true,
-    window: "fullscreen",
     payload: { count: 2, labels: ["one", "two"] },
     uiProps: { accent: "blue" },
   },
@@ -179,7 +177,6 @@ const ELEMENT_DATA = {
     w: 640,
     h: 400,
     expanded: false,
-    window: "minimized",
   },
 } satisfies Record<string, TElementData>;
 
@@ -235,7 +232,6 @@ describe("TCanvasDoc migration baseline", () => {
         lineTypes: literalOptions(zLineData.shape.lineType),
         arrowStartCaps: literalOptions(zArrowData.shape.startCap),
         arrowEndCaps: literalOptions(zArrowData.shape.endCap),
-        widgetWindows: zWidgetWindow.options,
         strokeStyles: literalOptions(zElementStyle.shape.strokeStyle.unwrap()),
         textAlign: literalOptions(zElementStyle.shape.textAlign.unwrap()),
         verticalAlign: literalOptions(
@@ -340,7 +336,6 @@ describe("TCanvasDoc migration baseline", () => {
             "w:required:non-null",
             "h:required:non-null",
             "expanded:required:non-null",
-            "window:required:non-null",
             "payload:optional:non-null",
             "uiProps:optional:non-null",
           ],
@@ -354,7 +349,6 @@ describe("TCanvasDoc migration baseline", () => {
             "w:required:non-null",
             "h:required:non-null",
             "expanded:required:non-null",
-            "window:required:non-null",
           ],
         },
         "drawingStyle": [
@@ -438,11 +432,6 @@ describe("TCanvasDoc migration baseline", () => {
             "top",
             "middle",
             "bottom",
-          ],
-          "widgetWindows": [
-            "contained",
-            "minimized",
-            "fullscreen",
           ],
         },
         "group": [
@@ -667,7 +656,6 @@ describe("TCanvasDoc migration baseline", () => {
             "accent": "blue",
           },
           "w": 480,
-          "window": "fullscreen",
         },
         "widgetInstance": {
           "definitionId": "11111111-1111-4111-8111-111111111111",
@@ -682,7 +670,6 @@ describe("TCanvasDoc migration baseline", () => {
             "compact": true,
           },
           "w": 640,
-          "window": "minimized",
         },
       }
     `);

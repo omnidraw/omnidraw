@@ -248,7 +248,6 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
         w: args.width,
         h: args.height,
         expanded: true,
-        window: "contained",
         payload: args.payload,
       },
       style: {},

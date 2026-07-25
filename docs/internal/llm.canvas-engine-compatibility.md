@@ -6,11 +6,13 @@ Vibecanvas branch: `codex/canvas-engine-migration`
 
 Inspected engine: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
-Engine commit audited: `bb911a1f9ad812314ebd4eee31d553bb85bfaea5`
+Engine commit audited: `07fef171dc110a8ae1aa54820ee1a13b5c2f29a1`
 
-Filesystem artifact: `artifacts/omnidraw-cangine-0.1.2.tgz`
+Package source:
+`/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz`
+(absolute local artifact path)
 
-Artifact SHA-256: `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`
+Artifact SHA-256: `65c2155bb02cb78b0ea812d660c54b49835421e97dbe5eb665821259d3b48b1c`
 
 Report date: 2026-07-24
 
@@ -37,10 +39,10 @@ It contains 36 requirements:
 
 | Status | Count | Meaning |
 |---|---:|---|
-| Compatible | 20 | canvas-engine directly supplies the mechanism |
+| Compatible | 21 | canvas-engine directly supplies the mechanism |
 | Canvas adapter | 12 | Deliberately application-owned policy, now implemented above the engine |
 | Engine gap | 0 | No missing public engine mechanism blocks parity |
-| Release gap | 1 | The absolute local artifact dependency is not portable |
+| Release gap | 0 | The immutable artifact is pinned by absolute path and audited |
 | Validation gap | 3 | Real widget matrix, real two-client conflicts, and full product performance qualification remain |
 
 “Adapter” identifies ownership; it does not mean the adapter is still
@@ -94,8 +96,9 @@ specified product matrix passes.
 
 - Widget frames and DOM portals use renderer-neutral definitions and
   application-owned content.
-- Stable engine hit parts route minimize, restore, fullscreen, title actions,
-  and resize policy.
+- Cangine fixed widget frames and `WidgetInteractionController` own traffic
+  lights, title/header actions, frame/content modes, local canvas maximize,
+  drag, and resize acquisition.
 - Widget content focus is distinct from frame selection.
 - Widget creation, clone policy, placement ghost, portal ownership, and
   asynchronous durable handoff no longer expose renderer objects.
@@ -120,9 +123,10 @@ also contains no Konva match.
 ### Engine and package contract
 
 - The exact tarball hashes to
-  `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`.
-- Public-package contract tests cover the root, `/backend`, `/geometry`, and
-  `/testing` exports without deep imports.
+  `65c2155bb02cb78b0ea812d660c54b49835421e97dbe5eb665821259d3b48b1c`.
+- Public-package contract tests cover the root, `/backend`, `/geometry`,
+  `/testing`, and optional `/editor` exports without deep imports. The editor
+  entrypoint also passes a browser-global-free Node import smoke.
 - The obsolete Vitest `ssr.noExternal` workaround was removed.
 - Engine lifecycle, stable layers, scene transactions, camera conversions,
   picking, transforms, transients, resources, portals, context recovery,
@@ -147,7 +151,7 @@ A Chromium development smoke exercised:
 - grid/theme, wheel zoom, and hand pan;
 - text commit on blur;
 - AI/widget portal mounting and portal event isolation;
-- widget drag, resize, minimize, and fullscreen.
+- widget drag, resize, minimize, and local canvas maximize.
 
 This is partial exploratory evidence. It is not the required automated/human
 Chromium + Firefox + WebKit matrix at DPR 1 and 2 with mouse, touch, and pen
@@ -213,21 +217,22 @@ preview, and bounded history.
 
 - Final package, frontend, widget-host, monorepo, build, binary-smoke,
   repository-index, and generated-artifact Konva gates pass locally.
-- Resolve the absolute artifact dependency for portable CI/release use.
+- Keep the absolute engine artifact, dependency, hash, and audited commit
+  synchronized on every Cangine upgrade.
 
-## Artifact provenance caveat
+## Artifact provenance
 
-The dependency is deliberately pinned to:
+The dependency uses the absolute local engine artifact:
 
 ```json
 "@omnidraw/cangine":
-  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.2.tgz"
+  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz"
 ```
 
-The bytes match the engine-produced artifact manifest and packed-consumer
-report. Before portable CI/release handoff, vendor the exact verified artifact
-or publish it through the approved release mechanism; the absolute local
-dependency remains intentionally non-portable.
+Package identity, engine commit, artifact hash, exported subpaths, installed
+shape, and the dependency path are enforced by the canvas artifact audit. This
+setup expects the Cangine repository to exist at the documented sibling
+workspace path.
 
 ## Architecture verdict
 

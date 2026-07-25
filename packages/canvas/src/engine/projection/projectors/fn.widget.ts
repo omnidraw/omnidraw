@@ -3,13 +3,8 @@ import type {
   TCanvasJsonValue,
   TCanvasProjectedPortalContent,
 } from "../../typed";
-import {
-  CANVAS_PROJECTION_WIDGET,
-} from "../CONSTANTS";
-import {
-  fnCanvasSolidPaint,
-  fnResolveCanvasProjectionColor,
-} from "../fn.color";
+import { CANVAS_PROJECTION_WIDGET } from "../CONSTANTS";
+import { fnResolveCanvasProjectionColor } from "../fn.color";
 import {
   fnCanvasEngineElementChildId,
   fnCanvasEnginePortalId,
@@ -18,7 +13,6 @@ import { fnCloneCanvasJsonValue } from "../fn.json";
 import {
   fnCanvasElementChildBase,
   fnCanvasElementRootNode,
-  fnCanvasIdentityTransform2D,
 } from "../fn.nodes";
 import { fnResolveCanvasElementStyle } from "../fn.style";
 import type {
@@ -64,18 +58,11 @@ export function fnProjectWidgetElement(
   }
 
   const style = fnResolveCanvasElementStyle(args);
-  const fullscreen = data.window === "fullscreen";
-  const projectedRoot = fnCanvasElementRootNode({
+  const root = fnCanvasElementRootNode({
     element: args.element,
     parentNodeId: args.parentNodeId,
     opacity: style.opacity,
   });
-  const root = fullscreen
-    ? {
-        ...projectedRoot,
-        transform: fnCanvasIdentityTransform2D(),
-      }
-    : projectedRoot;
   const frameNodeId = fnCanvasEngineElementChildId({
     id: args.element.id,
     child: "render",
@@ -85,27 +72,11 @@ export function fnProjectWidgetElement(
   const titleBarColor = isUiWidget
     ? args.theme.colors.accent
     : args.theme.colors.muted;
-  const titleColor = isUiWidget
-    ? args.theme.colors.accentForeground
-    : args.theme.colors.mutedForeground;
-  const collapsed = !fullscreen
-    && (data.expanded === false || data.window === "minimized");
-  const viewportSize = args.dependencies.getViewportSize?.();
-  const size = fullscreen
-    ? {
-        width: Math.max(
-          CANVAS_PROJECTION_WIDGET.minWidth,
-          viewportSize?.width ?? data.w,
-        ),
-        height: Math.max(
-          CANVAS_PROJECTION_WIDGET.minHeight,
-          viewportSize?.height ?? data.h,
-        ),
-      }
-    : {
-        width: Math.max(CANVAS_PROJECTION_WIDGET.minWidth, data.w),
-        height: Math.max(CANVAS_PROJECTION_WIDGET.minHeight, data.h),
-      };
+  const collapsed = data.expanded === false;
+  const size = {
+    width: Math.max(CANVAS_PROJECTION_WIDGET.minWidth, data.w),
+    height: Math.max(CANVAS_PROJECTION_WIDGET.minHeight, data.h),
+  };
   const render: TWidgetFrameNode = {
     ...fnCanvasElementChildBase({
       elementId: args.element.id,
@@ -116,78 +87,23 @@ export function fnProjectWidgetElement(
     title: isUiWidget
       ? data.kind
       : `Widget ${data.definitionId.slice(0, 8)}`,
-    controls: [
-      { id: "close", kind: "close", label: "Close", side: "left" },
-      collapsed
-        ? { id: "minimize", kind: "restore", label: "Restore", side: "left" }
-        : { id: "minimize", kind: "minimize", label: "Minimize", side: "left" },
-      fullscreen
-        ? {
-            id: "maximize",
-            kind: "restore",
-            label: "Exit fullscreen",
-            side: "left",
-          }
-        : { id: "maximize", kind: "maximize", label: "Maximize", side: "left" },
-      { id: "menu", kind: "menu", label: "Menu", side: "right" },
-    ],
-    style: {
-      background: fnCanvasSolidPaint({
-        color: fnResolveCanvasProjectionColor({
-          theme: args.theme,
-          value: args.theme.colors.card,
-        }),
-      }),
-      border: {
-        paint: fnCanvasSolidPaint({
-          color: fnResolveCanvasProjectionColor({
-            theme: args.theme,
-            value: args.theme.colors.border,
-          }),
-        }),
-        width: 1,
-      },
-      titleBarBackground: fnCanvasSolidPaint({
-        color: fnResolveCanvasProjectionColor({
-          theme: args.theme,
-          value: titleBarColor,
-        }),
-      }),
-      titleColor: fnResolveCanvasProjectionColor({
-        theme: args.theme,
-        value: titleColor,
-      }),
-      cornerRadius: CANVAS_PROJECTION_WIDGET.cornerRadius,
-      titleBarHeight: CANVAS_PROJECTION_WIDGET.titleBarHeight,
-      padding: { top: 0, right: 0, bottom: 0, left: 0 },
-      activeOutline: {
-        paint: fnCanvasSolidPaint({
-          color: fnResolveCanvasProjectionColor({
-            theme: args.theme,
-            value: args.theme.colors.canvasSelectionStroke ?? args.theme.colors.ring,
-          }),
-        }),
-        width: 2,
-      },
-    },
+    titleBarColor: fnResolveCanvasProjectionColor({
+      theme: args.theme,
+      value: titleBarColor,
+    }),
     portal: {
       portalId,
-      scaleMode: fullscreen ? "screen-fixed" : "world",
+      scaleMode: "world",
       interactive: true,
       suspendWhenOffscreen: true,
     },
     collapsed,
-    resizable: !fullscreen,
-    minSize: {
-      width: CANVAS_PROJECTION_WIDGET.minWidth,
-      height: CANVAS_PROJECTION_WIDGET.minHeight,
-    },
+    resizable: true,
     metadata: {
       "vibecanvas:target-kind": "element",
       "vibecanvas:element-id": args.element.id,
       "vibecanvas:derived": true,
       "vibecanvas:widget-type": data.type,
-      "vibecanvas:widget-window": data.window,
     },
   };
 
@@ -197,7 +113,7 @@ export function fnProjectWidgetElement(
       portalId,
       nodeId: frameNodeId,
       elementId: args.element.id,
-      scaleMode: fullscreen ? "screen-fixed" : "world",
+      scaleMode: "world",
       interactive: true,
       suspendWhenOffscreen: true,
       content: portalContent(args),

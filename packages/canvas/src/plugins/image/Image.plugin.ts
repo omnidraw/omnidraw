@@ -392,15 +392,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           values: { opacity: 1 },
         }),
         getTransformPolicy: () => ({
-          handles: [
-            "move",
-            "rotate",
-            "resize-ne",
-            "resize-se",
-            "resize-sw",
-            "resize-nw",
-          ],
-          keepAspectRatio: true,
+          aspectRatioMode: "shift-invert",
         }),
         onDelete: (deleted) => {
           if (deleted.data.type === "image" && deleted.data.url !== null) {

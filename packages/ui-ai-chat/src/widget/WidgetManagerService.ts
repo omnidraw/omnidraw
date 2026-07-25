@@ -9,7 +9,6 @@ import type { TWidgetError } from "@vibecanvas/service-db/model";
 import type {
   IRuntimeConfig,
   IRuntimeHooks,
-  TElementPointerEvent,
 } from "@vibecanvas/canvas";
 import { SyncHook } from "@vibecanvas/tapable";
 import type {
@@ -21,9 +20,6 @@ import type {
 import {
   WIDGET_HOST_MIN_HEIGHT,
   WIDGET_HOST_MIN_WIDTH,
-  WIDGET_WINDOW_CONTAINED,
-  WIDGET_WINDOW_FULLSCREEN,
-  WIDGET_WINDOW_MINIMIZED,
 } from "./CONSTANTS";
 import { fnCreateWidgetElement } from "./fn.create-widget-element";
 import {
@@ -51,9 +47,6 @@ type TActiveMount = {
   contentSignature: string;
   host: HTMLDivElement;
   actionHandlers: Map<string, () => void>;
-  resizeBoundary: {
-    enabled: boolean;
-  };
   capsuleLifecycle: TWidgetCapsuleCanvasLifecycleSource;
   capsuleLifecycleState: TWidgetCapsuleCanvasLifecycleState;
   capsuleLifecycleSignature: string;
@@ -63,13 +56,6 @@ type TActiveMount = {
   cleanup: () => void;
   syncInteraction(): void;
 };
-
-function exposesWidgetResizeBoundary(element: TElement): boolean {
-  return (
-    element.data.type === "ui-widget"
-    || element.data.type === "widget-instance"
-  ) && element.data.window !== "fullscreen";
-}
 
 export class WidgetManagerService
 implements
@@ -110,33 +96,48 @@ implements
         id: "__widget-product-policy",
         priority: 10_000,
         matchesElement: fnIsWidgetElement,
-        getWidgetChrome: ({ element }) => {
+        getWidgetFrame: ({ element }) => {
           const config = this.#configFor(element);
           const actionStates = this.#titleActionStates.get(element.id);
           return {
             title: this.#titleFor(element, config),
-            active: this.#isContentFocused(element.id),
-            actions: element.data.type === "ui-widget"
+            headerItems: element.data.type === "ui-widget"
               ? (config?.titleBarActions ?? []).map((action) => {
                   const state = actionStates?.get(action.id);
+                  const label = state?.label ?? action.label;
                   return {
-                    ...action,
-                    label: state?.label ?? action.label,
+                    type: "button" as const,
+                    id: action.id,
+                    label,
+                    content: {
+                      type: "text" as const,
+                      text: label,
+                    },
                     ...(state?.disabled === undefined
                       ? {}
                       : { disabled: state.disabled }),
                   };
                 })
-              : [],
+              : this.#props.neutralHost?.deleteDefinition === undefined
+              ? []
+              : [{
+                  type: "dropdown" as const,
+                  id: "widget-actions",
+                  label: "Widget actions",
+                  content: {
+                    type: "text" as const,
+                    text: "•••",
+                  },
+                  items: [{
+                    id: "delete-definition",
+                    text: "Delete widget",
+                  }],
+                }],
           };
         },
-        getTransformPolicy: ({ element }) => ({
-          ...(fnIsWidgetElement(element)
-              && element.data.window === WIDGET_WINDOW_FULLSCREEN
-            ? { handles: [], allowRotate: false }
-            : {}),
+        getTransformPolicy: () => ({
           allowFlip: false,
-          keepAspectRatio: false,
+          aspectRatioMode: "shift-lock",
           minSize: {
             width: WIDGET_HOST_MIN_WIDTH,
             height: WIDGET_HOST_MIN_HEIGHT,
@@ -163,14 +164,18 @@ implements
         },
         mount: (args) => this.#mount(args),
       }),
-      ctx.hooks.elementPointerDown.tap((event) => {
-        return this.#handleSemanticWidgetClick(event);
+      this.#props.sceneService.editor.subscribeWidgetActivation((activation) => {
+        this.#handleWidgetActivation(activation);
+      }),
+      this.#props.sceneService.editor.subscribeWidgetPresentation(() => {
+        for (const mount of this.#activeMounts) {
+          mount.syncInteraction();
+        }
       }),
       this.#props.selectionService.hooks.change.tap(() => {
         for (const mount of this.#activeMounts) {
           mount.syncInteraction();
         }
-        this.#props.elementService.invalidateProjection();
       }),
     );
   }
@@ -196,14 +201,11 @@ implements
       collapsed: (
         args.element.data.type === "ui-widget"
         || args.element.data.type === "widget-instance"
-      ) && (
-        args.element.data.expanded === false
-        || args.element.data.window === WIDGET_WINDOW_MINIMIZED
+      ) && args.element.data.expanded === false,
+      canvasMaximized: (
+        this.#props.sceneService.editor.widgetMode(args.element.id)
+        === "maximized"
       ),
-      fullscreen: (
-        args.element.data.type === "ui-widget"
-        || args.element.data.type === "widget-instance"
-      ) && args.element.data.window === WIDGET_WINDOW_FULLSCREEN,
     });
     const mount: TActiveMount = {
       elementId: args.element.id,
@@ -215,9 +217,6 @@ implements
       contentSignature: JSON.stringify(args.content),
       host: args.host,
       actionHandlers: new Map(),
-      resizeBoundary: {
-        enabled: exposesWidgetResizeBoundary(args.element),
-      },
       capsuleLifecycleState: initialLifecycle,
       capsuleLifecycleSignature: JSON.stringify(initialLifecycle),
       capsuleLifecycleListeners: new Set(),
@@ -238,16 +237,12 @@ implements
       cleanup: () => undefined,
       syncInteraction: () => {
         const active = this.#isContentFocused(mount.elementId);
-        mount.resizeBoundary.enabled = exposesWidgetResizeBoundary(
-          mount.state.element,
-        );
         for (
           const root
           of mount.host.querySelectorAll<HTMLElement>(
             '[data-hosted-widget-root="true"]',
           )
         ) {
-          root.style.pointerEvents = "auto";
           root.dataset.widgetContentFocused = String(active);
         }
         const element = mount.state.element;
@@ -257,14 +252,11 @@ implements
           collapsed: (
             element.data.type === "ui-widget"
             || element.data.type === "widget-instance"
-          ) && (
-            element.data.expanded === false
-            || element.data.window === WIDGET_WINDOW_MINIMIZED
+          ) && element.data.expanded === false,
+          canvasMaximized: (
+            this.#props.sceneService.editor.widgetMode(mount.elementId)
+            === "maximized"
           ),
-          fullscreen: (
-            element.data.type === "ui-widget"
-            || element.data.type === "widget-instance"
-          ) && element.data.window === WIDGET_WINDOW_FULLSCREEN,
         });
         const nextSignature = JSON.stringify(nextLifecycle);
         if (nextSignature !== mount.capsuleLifecycleSignature) {
@@ -331,7 +323,6 @@ implements
           config,
           mount.actionHandlers,
         ),
-        resizeBoundary: mount.resizeBoundary,
         capsuleLifecycle: mount.capsuleLifecycle,
         onContentPointerDown: () => {
           this.#focusWidgetContent(mount.elementId);
@@ -444,12 +435,7 @@ implements
     if (element === undefined || !fnIsWidgetElement(element)) {
       return false;
     }
-    const target = { kind: "element", id: elementId } as const;
-    const selectionChanged = this.#props.selectionService.setSelection([]);
-    const focusChanged = this.#props.selectionService.setFocusedTarget(target, {
-      allowUnselected: true,
-    });
-    return selectionChanged || focusChanged;
+    return this.#props.sceneService.editor.focusWidgetContent(elementId);
   }
 
   #invokeTitleAction(element: TElement, actionId: string): boolean {
@@ -579,13 +565,9 @@ implements
         return element.data.type === "ui-widget"
           && element.data.kind === config.id;
       },
-      getTransformPolicy: ({ element }) => ({
-        ...(fnIsWidgetElement(element)
-            && element.data.window === WIDGET_WINDOW_FULLSCREEN
-          ? { handles: [], allowRotate: false }
-          : {}),
+      getTransformPolicy: () => ({
         allowFlip: false,
-        keepAspectRatio: false,
+        aspectRatioMode: "shift-lock",
         minSize: {
           width: WIDGET_HOST_MIN_WIDTH,
           height: WIDGET_HOST_MIN_HEIGHT,
@@ -771,10 +753,7 @@ implements
 
   #patchWidgetFrame(
     elementId: string,
-    patch: Readonly<{
-      expanded?: boolean;
-      window?: "contained" | "fullscreen" | "minimized";
-    }>,
+    patch: Readonly<{ expanded?: boolean }>,
   ): boolean {
     const element = this.#props.crdtService.doc().elements[elementId];
     if (element === undefined || !fnIsWidgetElement(element)) {
@@ -851,144 +830,46 @@ implements
     return true;
   }
 
-  #openWidgetMenu(elementId: string, anchor: { x: number; y: number }): void {
-    const element = this.#props.crdtService.doc().elements[elementId];
+  #handleWidgetActivation(
+    activation: Parameters<
+      IWidgetManagerServiceProps["sceneService"]["editor"]["subscribeWidgetActivation"]
+    >[0] extends (activation: infer TActivation) => void ? TActivation : never,
+  ): boolean {
+    const element = this.#props.crdtService.doc().elements[activation.elementId];
     if (element === undefined || !fnIsWidgetElement(element)) {
-      return;
-    }
-    const target = { kind: "element", id: elementId } as const;
-    this.#props.selectionService.setSelection([target]);
-    this.#props.selectionService.setFocusedTarget(null);
-    const definitionId = element.data.type === "widget-instance"
-      ? element.data.definitionId
-      : null;
-    const deleteActions = definitionId !== null
-      && this.#props.neutralHost?.deleteDefinition !== undefined
-      ? [{
-          id: "widget-delete-definition",
-          label: "Delete widget",
-          priority: 40,
-          onSelect: () => {
-            void this.deleteWidgetInstanceDefinition(definitionId);
-          },
-        }]
-      : [];
-    this.#props.contextMenuService.openWithActionsAt({
-      x: anchor.x,
-      y: anchor.y,
-      actions: [
-        {
-          id: "widget-toggle-expanded",
-          label: element.data.expanded === false
-              || element.data.window === WIDGET_WINDOW_MINIMIZED
-            ? "Restore"
-            : "Minimize",
-          priority: 10,
-          onSelect: () => {
-            this.#props.contextMenuService.close();
-            const restore = element.data.expanded === false
-              || element.data.window === WIDGET_WINDOW_MINIMIZED;
-            this.#patchWidgetFrame(elementId, {
-              expanded: restore,
-              window: restore
-                ? WIDGET_WINDOW_CONTAINED
-                : WIDGET_WINDOW_MINIMIZED,
-            });
-          },
-        },
-        {
-          id: "widget-toggle-fullscreen",
-          label: element.data.window === WIDGET_WINDOW_FULLSCREEN
-            ? "Exit fullscreen"
-            : "Fullscreen",
-          priority: 20,
-          onSelect: () => {
-            this.#props.contextMenuService.close();
-            this.#patchWidgetFrame(elementId, {
-              expanded: true,
-              window: element.data.window === WIDGET_WINDOW_FULLSCREEN
-                ? WIDGET_WINDOW_CONTAINED
-                : WIDGET_WINDOW_FULLSCREEN,
-            });
-          },
-        },
-        {
-          id: "widget-delete-instance",
-          label: "Delete instance",
-          priority: 30,
-          onSelect: () => {
-            this.#removeWidget(elementId);
-          },
-        },
-        ...deleteActions,
-      ],
-    });
-  }
-
-  #handleSemanticWidgetClick(event: TElementPointerEvent): boolean {
-    if (event.button !== 0) {
-      return false;
-    }
-    const hit = event.hit;
-    if (hit.target.kind !== "element") {
-      return false;
-    }
-    const element = this.#props.crdtService.doc().elements[hit.target.id];
-    if (element === undefined || !fnIsWidgetElement(element)) {
-      return false;
-    }
-    const customPart = typeof hit.part === "object" ? hit.part.value : null;
-    const isFrameControl = hit.part === "widget-minimize"
-      || hit.part === "widget-restore"
-      || hit.part === "widget-fullscreen"
-      || customPart?.startsWith("control:") === true;
-    if (!isFrameControl) {
       return false;
     }
     const target = { kind: "element", id: element.id } as const;
     this.#props.selectionService.setSelection([target]);
     this.#props.selectionService.setFocusedTarget(null);
-    if (
-      hit.part === "widget-minimize"
-      || hit.part === "widget-restore"
-      || customPart === "control:minimize"
-      || customPart === "control:restore"
-    ) {
-      const restore = hit.part === "widget-restore"
-        || customPart === "control:restore"
-        || element.data.expanded === false
-        || element.data.window === WIDGET_WINDOW_MINIMIZED;
+    if (activation.type === "minimize") {
       return this.#patchWidgetFrame(element.id, {
-        expanded: restore,
-        window: restore
-          ? WIDGET_WINDOW_CONTAINED
-          : WIDGET_WINDOW_MINIMIZED,
+        expanded: element.data.expanded === false,
       });
     }
-    if (
-      hit.part === "widget-fullscreen"
-      || customPart === "control:maximize"
-      || customPart === "control:fullscreen"
-    ) {
-      return this.#patchWidgetFrame(element.id, {
-        expanded: true,
-        window: element.data.window === WIDGET_WINDOW_FULLSCREEN
-          ? WIDGET_WINDOW_CONTAINED
-          : WIDGET_WINDOW_FULLSCREEN,
-      });
-    }
-    if (customPart === "control:close") {
-      return this.#removeWidget(element.id);
-    }
-    if (customPart === "control:menu") {
-      this.#openWidgetMenu(element.id, event.client);
+    if (activation.type === "maximize") {
+      for (const mount of this.#activeMounts) {
+        if (mount.elementId === element.id) {
+          mount.syncInteraction();
+        }
+      }
       return true;
     }
-    const actionId = customPart?.startsWith("control:")
-      ? customPart.slice("control:".length)
-      : null;
-    return actionId === null
-      ? false
-      : this.#invokeTitleAction(element, actionId);
+    if (activation.type === "close") {
+      return this.#removeWidget(element.id);
+    }
+    if (activation.type === "header-button") {
+      return this.#invokeTitleAction(element, activation.itemId);
+    }
+    if (
+      activation.type === "dropdown-item"
+      && activation.itemId === "widget-actions"
+      && activation.dropdownItemId === "delete-definition"
+      && element.data.type === "widget-instance"
+    ) {
+      void this.deleteWidgetInstanceDefinition(element.data.definitionId);
+      return true;
+    }
+    return false;
   }
 }

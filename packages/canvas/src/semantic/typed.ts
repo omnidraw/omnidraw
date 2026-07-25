@@ -34,9 +34,6 @@ export type TCanvasSemanticHitPart =
   | "connector-segment"
   | "resize-handle"
   | "rotate-handle"
-  | "widget-minimize"
-  | "widget-restore"
-  | "widget-fullscreen"
   | "widget-content"
   | {
       kind: "custom";

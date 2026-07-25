@@ -241,15 +241,12 @@ export const zImageData = z.object({
   }),
 });
 
-export const zWidgetWindow = z.enum(['contained', 'minimized', 'fullscreen']);
-
 export const zUiWidgetData = z.object({
   type: z.literal('ui-widget'),
   kind: z.string(),
   w: z.number(),
   h: z.number(),
   expanded: z.boolean(),
-  window: zWidgetWindow,
   payload: z.record(z.string(), zJsonValue).optional(),
   uiProps: zWidgetUiProps.optional(),
 }).strict();
@@ -264,7 +261,6 @@ export const zWidgetInstanceData = z.object({
   w: z.number(),
   h: z.number(),
   expanded: z.boolean(),
-  window: zWidgetWindow,
 }).strict();
 
 export const zElementData = z.union([

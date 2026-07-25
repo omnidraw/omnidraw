@@ -9,7 +9,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | Area | Routes | Representative states |
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
-| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings, draft Preview, direct widget placement |
+| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, draft Preview, direct widget placement |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, runs, logs, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
@@ -38,10 +38,10 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with fill, stroke, text, size, and alignment controls](assets/11-canvas-selection-style.webp) |
 | **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected shape.** Transformer handles and the contextual style panel for a rectangle. |
 
-| Widget actions | Widget fullscreen |
+| Widget actions | Widget canvas maximize |
 | --- | --- |
-| ![Canvas widget window actions menu](assets/12-canvas-widget-actions.webp) | ![AI Chat widget in fullscreen with traffic-light host chrome](assets/13-canvas-widget-fullscreen.webp) |
-| **Window menu.** Minimize, fullscreen, delete instance, and delete widget actions. | **Fullscreen.** The hosted widget expands to the available workspace while preserving the same traffic lights, title actions, and window menu as its contained frame. |
+| ![Canvas widget fixed-frame actions](assets/12-canvas-widget-actions.webp) | ![AI Chat widget canvas-maximized with fixed traffic-light chrome](assets/13-canvas-widget-fullscreen.webp) |
+| **Fixed frame.** Cangine traffic lights provide close, minimize, and local canvas maximize; the shared header menu exposes bounded product actions. | **Canvas maximize.** The hosted widget locally fills the canvas while preserving its durable world geometry; restore returns to the unchanged contained frame. |
 
 | AI chat | AI settings |
 | --- | --- |

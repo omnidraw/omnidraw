@@ -20,7 +20,6 @@ const widgetInstanceData = {
   w: 480,
   h: 320,
   expanded: true,
-  window: "contained" as const,
 };
 
 describe("widget-instance canvas data", () => {

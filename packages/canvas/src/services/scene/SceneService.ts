@@ -19,6 +19,7 @@ import {
 import type { CameraEngineBridge } from "../../engine/camera/CameraEngineBridge";
 import type { CanvasInputAdapter } from "../../engine/input/CanvasInputAdapter";
 import { CanvasTransientTargetRegistry } from "../../engine/input/CanvasTransientTargetRegistry";
+import { CanvasEditorBridge } from "../../engine/editor/CanvasEditorBridge";
 import {
   createBuiltInProjectionRegistry,
   registerProjectionDefinition,
@@ -32,6 +33,7 @@ import type {
 import type { CanvasProductRuntime } from "../../engine/product-runtime/CanvasProductRuntime";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { ElementService } from "../element/ElementService";
+import type { HistoryService } from "../history/HistoryService";
 import type { CanvasPortalService } from "../portal/CanvasPortalService";
 import { CrdtProjectionService } from "../projection/CrdtProjectionService";
 import type { SelectionService } from "../selection/SelectionService";
@@ -47,6 +49,7 @@ export type TSceneServiceArgs = {
   crdt: CrdtService;
   theme: ThemeService;
   selection: SelectionService;
+  history: HistoryService;
   element: ElementService;
   portal: CanvasPortalService;
   notification?: {
@@ -97,6 +100,7 @@ implements
 
   #state: TSceneServiceState = "idle";
   #camera: CameraEngineBridge | null = null;
+  #editor: CanvasEditorBridge | null = null;
   #input: CanvasInputAdapter | null = null;
   #product: CanvasProductRuntime | null = null;
   #coordinator: ProjectionCoordinator | null = null;
@@ -145,6 +149,13 @@ implements
       throw new Error("Canvas scene input is not ready.");
     }
     return this.#input;
+  }
+
+  get editor(): CanvasEditorBridge {
+    if (this.#editor === null) {
+      throw new Error("Canvas editor is not ready.");
+    }
+    return this.#editor;
   }
 
   get product(): CanvasProductRuntime {
@@ -196,7 +207,7 @@ implements
       this.#args.crdt.revision,
       "view",
     );
-    this.hooks.projection.call(result);
+    this.#publishProjectionResult(result);
     return result.status === "applied" || result.status === "noop";
   }
 
@@ -312,7 +323,7 @@ implements
         coordinator,
       });
       projectionService.hooks.result.tap((result) => {
-        this.hooks.projection.call(result);
+        this.#publishProjectionResult(result);
         if (result.status === "applied" || result.status === "noop") {
           this.#publishProjectionDiagnostics();
         }
@@ -330,6 +341,51 @@ implements
       });
       this.#projectionService = projectionService;
       await projectionService.start();
+
+      const editor = new CanvasEditorBridge({
+        adapter: this.#adapter,
+        host: this.container,
+        history: {
+          canUndo: () => this.#args.history.canUndo(),
+          canRedo: () => this.#args.history.canRedo(),
+          retainedWeight: () => {
+            return this.#args.history.getUndoStackSize()
+              + this.#args.history.getRedoStackSize();
+          },
+          subscribe: (listener) => {
+            return this.#args.history.hooks.change.tap(listener);
+          },
+          undo: () => this.#args.history.undo(),
+          redo: () => this.#args.history.redo(),
+          clear: () => this.#args.history.clear(),
+        },
+        selection: {
+          snapshot: () => this.#args.selection.snapshot,
+          subscribe: (listener) => {
+            return this.#args.selection.hooks.change.tap(() => listener());
+          },
+          setSelection: (selection) => {
+            this.#args.selection.setSelection(selection);
+          },
+          setFocusedTarget: (target, options) => {
+            this.#args.selection.setFocusedTarget(target, options);
+          },
+        },
+        getDocument: () => this.#args.crdt.doc(),
+        getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
+        onError: (error) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "adapter",
+            code: "EDITOR_CALLBACK_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: true,
+          });
+        },
+      });
+      editor.attach();
+      this.#editor = editor;
 
       const input = this.#adapter.createInputAdapter({
         getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
@@ -389,7 +445,7 @@ implements
           this.#args.crdt.revision,
           "theme",
         ).then((result) => {
-          this.hooks.projection.call(result);
+          this.#publishProjectionResult(result);
         });
       });
       this.#removeElementDefinitionsListener = this.#args.element.hooks.elementsChange.tap(() => {
@@ -403,7 +459,7 @@ implements
           this.#args.crdt.revision,
           "extension",
         ).then((result) => {
-          this.hooks.projection.call(result);
+          this.#publishProjectionResult(result);
         });
       });
 
@@ -445,10 +501,12 @@ implements
     this.#removeElementDefinitionsListener = null;
     this.#removeAdapterListener?.();
     this.#removeAdapterListener = null;
-    this.#input?.destroy();
-    this.#input = null;
     await attempt(() => this.#product?.destroy());
     this.#product = null;
+    await attempt(() => this.#input?.destroy());
+    this.#input = null;
+    await attempt(() => this.#editor?.destroy());
+    this.#editor = null;
     this.#transientTargets.destroy();
     await attempt(() => this.#projectionService?.stop());
     this.#projectionService = null;
@@ -498,7 +556,7 @@ implements
         this.#args.crdt.revision,
         "view",
       ).then((result) => {
-        this.hooks.projection.call(result);
+        this.#publishProjectionResult(result);
       });
     }
   }
@@ -512,6 +570,13 @@ implements
       registry = registerProjectionDefinition(registry, definition);
     }
     return registry;
+  }
+
+  #publishProjectionResult(result: TCanvasProjectionCoordinatorResult): void {
+    this.hooks.projection.call(result);
+    if (result.status === "applied" || result.status === "noop") {
+      this.#editor?.syncSelection();
+    }
   }
 
   #publishProjectionDiagnostics(): void {

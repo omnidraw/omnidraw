@@ -39,7 +39,11 @@ function fnNormalizeShortcut(shortcut: string) {
   return shortcut.trim().toLowerCase();
 }
 
-function txSyncCursor(render: SceneService, selection: SelectionService) {
+function txSyncCursor(
+  render: SceneService,
+  selection: SelectionService,
+  transformCursor: string | null,
+) {
   switch (selection.mode) {
     case CanvasMode.HAND:
       render.container.style.cursor = "grab";
@@ -52,7 +56,7 @@ function txSyncCursor(render: SceneService, selection: SelectionService) {
       return;
     case CanvasMode.SELECT:
     default:
-      render.container.style.cursor = "default";
+      render.container.style.cursor = transformCursor ?? "default";
       return;
   }
 }
@@ -126,6 +130,8 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
       const widgetPlacement = ctx.services.require("widgetPlacement");
+      let transformCursor: string | null = null;
+      let unsubscribeTransformHover: (() => void) | null = null;
 
       tool.registerTool({
         id: "sidebar",
@@ -165,12 +171,18 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
             txSelectTool({ toolService: tool }, { toolId });
           },
         });
-        txSyncCursor(scene, selection);
+        unsubscribeTransformHover = scene.product.transforms.subscribeHover(
+          (hover) => {
+            transformCursor = hover?.cursor ?? null;
+            txSyncCursor(scene, selection, transformCursor);
+          },
+        );
+        txSyncCursor(scene, selection, transformCursor);
       });
 
       tool.hooks.activeToolChange.tap((toolId) => {
         selection.setMode(getModeFromTool(tool.getTool(toolId)));
-        txSyncCursor(scene, selection);
+        txSyncCursor(scene, selection, transformCursor);
         ctx.hooks.toolSelect.call(toolId);
       });
 
@@ -223,6 +235,10 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
         tool.unregisterTool("sidebar");
         tool.unregisterTool("hand");
         tool.unregisterTool("select");
+        unsubscribeTransformHover?.();
+        unsubscribeTransformHover = null;
+        transformCursor = null;
+        scene.container.style.cursor = "";
         toolbarMount?.dispose();
         toolbarMount = null;
       });

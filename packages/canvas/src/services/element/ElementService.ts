@@ -6,7 +6,7 @@ import {
   createProjectionRegistry,
   type ProjectionRegistry,
 } from "../../engine/projection/ProjectionRegistry";
-import { fnProjectWidgetElementWithChrome } from "../../engine/projection/projectors/fn.widget-chrome";
+import { fnProjectWidgetElementWithFrame } from "../../engine/projection/projectors/fn.widget-frame";
 import type { TCrdtBuilder } from "../crdt/fxBuilder";
 import { fnMergeSelectionStyleMenuConfigs } from "./fn-merge-selection-style-menu-configs";
 import type {
@@ -137,7 +137,6 @@ export class ElementService implements IService<TElementServiceHooks> {
           "resize-w",
           "resize-nw",
         ],
-        keepAspectRatio: false,
         allowFlip: false,
         allowRotate: true,
       },
@@ -176,13 +175,13 @@ export class ElementService implements IService<TElementServiceHooks> {
         const projections = definition.projection === undefined
           ? []
           : [definition.projection];
-        if (definition.getWidgetChrome === undefined) {
+        if (definition.getWidgetFrame === undefined) {
           return projections;
         }
         return [
           ...projections,
           {
-            id: `widget-chrome:${definition.id}`,
+            id: `widget-frame:${definition.id}`,
             priority: 1_000 + (definition.priority ?? 0),
             matchesElement: (element: TElement) => {
               return (
@@ -191,9 +190,9 @@ export class ElementService implements IService<TElementServiceHooks> {
               ) && definition.matchesElement(element);
             },
             project: (projection) => {
-              return fnProjectWidgetElementWithChrome({
+              return fnProjectWidgetElementWithFrame({
                 projection,
-                chrome: definition.getWidgetChrome?.({
+                frame: definition.getWidgetFrame?.({
                   element: projection.element,
                 }) ?? {},
               });

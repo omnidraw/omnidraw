@@ -79,7 +79,6 @@ function element(
       w: 320,
       h: 240,
       expanded: true,
-      window: 'contained',
     },
   };
 }

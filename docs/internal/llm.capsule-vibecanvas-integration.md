@@ -35,7 +35,8 @@ implementations.
 | `packages/service-agent` | Immutable source capture, validation, scaffolding, preview/publish orchestration, and authoring guidance |
 | `apps/cli` | Persistent signing keys, OCI compiler composition, artifact storage, runtime host configuration, and tenant services |
 | `packages/ui-ai-chat` | Shared browser-host coordination, capability composition, runtime loading, and population scheduling |
-| `packages/canvas` | Portal ownership plus viewport, visibility, priority, focus, fullscreen, collapse, and removal inputs |
+| `@omnidraw/cangine` | Fixed widget frame, local canvas-maximized presentation, and atomic portal-shell transform, clip, z-index, visibility, and input gating |
+| `packages/canvas` | Automerge projection plus viewport, visibility, priority, focus, durable collapse, local canvas-maximized, and removal inputs |
 | Server services | Tenant authorization, short functions, Automerge collaboration, resources, persistence, and usage |
 
 ## Build and publication flow
@@ -69,7 +70,8 @@ their signing purpose and selected descriptor differ.
    constructed.
 4. Bind function and collaboration providers to trusted tenant, definition,
    revision, and widget-instance context.
-5. Mount one Capsule handle into the canvas-owned portal.
+5. Mount one Capsule handle into the application content slot inside Cangine's
+   atomic widget portal shell.
 6. Forward props, theme, viewport, focus, and lifecycle updates.
 7. On removal or terminal failure, cancel streams and pending calls, destroy
    the handle idempotently, release registrations, and remove the portal.

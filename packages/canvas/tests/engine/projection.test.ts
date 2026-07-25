@@ -224,7 +224,6 @@ function representativeDocument(): TCanvasDoc {
         w: 320,
         h: 240,
         expanded: true,
-        window: "contained",
         payload: {
           expression: "2 + 2",
           nested: { values: [1, true, null] },
@@ -241,7 +240,6 @@ function representativeDocument(): TCanvasDoc {
         w: 360,
         h: 260,
         expanded: false,
-        window: "minimized",
       }),
     },
   };
@@ -377,8 +375,7 @@ describe("full canvas document projection", () => {
     expect(expandedWidget?.kind).toBe("widget-frame");
     if (expandedWidget?.kind === "widget-frame") {
       expect(expandedWidget.collapsed).toBe(false);
-      expect(expandedWidget.controls?.map((control) => control.id))
-        .toContain("minimize");
+      expect(expandedWidget).not.toHaveProperty("controls");
     }
     const collapsedWidget = projection.snapshot.nodes.find((node) => {
       return node.id === fnCanvasEngineElementChildId({
@@ -389,9 +386,7 @@ describe("full canvas document projection", () => {
     expect(collapsedWidget?.kind).toBe("widget-frame");
     if (collapsedWidget?.kind === "widget-frame") {
       expect(collapsedWidget.collapsed).toBe(true);
-      expect(collapsedWidget.controls).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: "minimize", kind: "restore" }),
-      ]));
+      expect(collapsedWidget).not.toHaveProperty("controls");
     }
 
     const serialized = JSON.stringify(projection);
@@ -412,7 +407,7 @@ describe("full canvas document projection", () => {
     expect(project(reordered).snapshot).toEqual(project(document).snapshot);
   });
 
-  it("projects fullscreen widgets into the screen overlay without mutating placement", () => {
+  it("keeps widget placement durable while maximize remains local presentation", () => {
     const document = representativeDocument();
     const widget = document.elements.uiWidget!;
     if (widget.data.type !== "ui-widget") {
@@ -421,7 +416,6 @@ describe("full canvas document projection", () => {
     widget.data = {
       ...widget.data,
       expanded: true,
-      window: "fullscreen",
     };
     document.elements = { uiWidget: widget };
     const before = JSON.stringify(document);
@@ -444,24 +438,19 @@ describe("full canvas document projection", () => {
       });
     });
 
-    expect(root?.parentId).toBe(CANVAS_ENGINE_LAYER_IDS.overlay);
+    expect(root?.parentId).toBe(fnCanvasEngineGroupId({
+      id: widget.parentGroupId!,
+    }));
     expect(root?.transform).toMatchObject({
-      position: { x: 0, y: 0 },
-      rotation: 0,
-      scale: { x: 1, y: 1 },
+      position: { x: widget.x, y: widget.y },
+      rotation: widget.rotation * Math.PI / 180,
     });
     expect(frame?.kind).toBe("widget-frame");
     if (frame?.kind === "widget-frame") {
-      expect(frame.size).toEqual({ width: 1024, height: 768 });
-      expect(frame.resizable).toBe(false);
-      expect(frame.portal?.scaleMode).toBe("screen-fixed");
-      expect(frame.controls).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          id: "maximize",
-          kind: "restore",
-          label: "Exit fullscreen",
-        }),
-      ]));
+      expect(frame.size).toEqual({ width: widget.data.w, height: widget.data.h });
+      expect(frame.resizable).toBe(true);
+      expect(frame.portal?.scaleMode).toBe("world");
+      expect(frame).not.toHaveProperty("controls");
     }
     expect(JSON.stringify(document)).toBe(before);
     expect(() => assertValidSceneSnapshot(projection.snapshot)).not.toThrow();
