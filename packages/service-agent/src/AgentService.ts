@@ -1,4 +1,4 @@
-import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
+import { createAgentSessionFromServices, createAgentSessionServices, ModelRuntime, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
@@ -62,9 +62,9 @@ import type {
 } from './widget-management/types';
 
 interface IPublicMethods {
-  logout(providerId: string): void;
-  setApiKey(providerId: string, key: string): void;
-  removeApiKey(providerId: string): void;
+  logout(providerId: string): Promise<void>;
+  setApiKey(providerId: string, key: string): Promise<void>;
+  removeApiKey(providerId: string): Promise<void>;
 }
 
 export interface IAgentServiceConfig {
@@ -169,8 +169,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   name = 'agent-service'
   #config: IAgentServiceConfig;
   #piAgentDir: string;
-  authStorage: AuthStorage;
-  modelRegistry: ModelRegistry;
+  modelRuntime!: ModelRuntime;
   settingsManager: SettingsManager;
   sessionMap: Record<TWidgetId, Record<TVibecanvasChatId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
@@ -242,14 +241,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         })
       },
     })
-    this.authStorage = AuthStorage.create(join(this.#piAgentDir, 'auth.json'))
-    this.modelRegistry = ModelRegistry.create(this.authStorage, join(this.#piAgentDir, 'models.json'))
     this.settingsManager = SettingsManager.create(this.#piAgentDir, this.#piAgentDir, { projectTrusted: true })
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
     void ctx
     this.#isStopping = false
+    this.modelRuntime = await ModelRuntime.create({
+      authPath: join(this.#piAgentDir, 'auth.json'),
+      modelsPath: join(this.#piAgentDir, 'models.json'),
+    })
     await this.#workspace.init()
     console.log('start', this.name)
   }
@@ -363,7 +364,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const session = sessionEntry.session
 
     if (promptSelection?.model) {
-      const model = this.modelRegistry.find(promptSelection.model.provider, promptSelection.model.modelId)
+      const model = this.modelRuntime.getModel(promptSelection.model.provider, promptSelection.model.modelId)
       if (!model) {
         throw new Error(`Model not found: ${promptSelection.model.provider}/${promptSelection.model.modelId}`)
       }
@@ -791,29 +792,33 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const session: TLoginSession = { controller, status: { status: 'pending' } }
     this.#loginMap[loginId] = session
 
-    void this.authStorage.login(providerId, {
-      onAuth(info) { void info },
-      onDeviceCode(info) {
-        session.status = {
-          status: 'device-code',
-          userCode: info.userCode,
-          verificationUri: info.verificationUri,
-          intervalSeconds: info.intervalSeconds,
-          expiresInSeconds: info.expiresInSeconds,
-        }
-      },
-      async onPrompt(prompt) { void prompt; return '' },
-      async onSelect(prompt) {
+    void this.modelRuntime.login(providerId, 'oauth', {
+      signal: controller.signal,
+      async prompt(prompt) {
+        if (prompt.type !== 'select') return ''
         return prompt.options.find((option) => option.id === 'device_code')?.id
+          ?? prompt.options[0]?.id
+          ?? ''
       },
-      onProgress(message) {
+      notify(event) {
+        if (event.type === 'device_code') {
+          session.status = {
+            status: 'device-code',
+            userCode: event.userCode,
+            verificationUri: event.verificationUri,
+            intervalSeconds: event.intervalSeconds,
+            expiresInSeconds: event.expiresInSeconds,
+          }
+          return
+        }
+        if (event.type === 'auth_url') return
+        const message = event.message
         if (session.status.status === 'device-code') {
           session.status = { ...session.status, message }
           return
         }
         session.status = { status: 'progress', message }
       },
-      signal: controller.signal,
     }).then(() => {
       session.status = { status: 'success' }
     }).catch((error) => {
@@ -839,19 +844,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  logout(providerId: string): void {
-    this.authStorage.logout(providerId)
+  async logout(providerId: string): Promise<void> {
+    await this.modelRuntime.logout(providerId)
   }
 
-  setApiKey(providerId: string, key: string): void {
-    this.authStorage.set(providerId, {
-      type: 'api_key',
-      key,
+  async setApiKey(providerId: string, key: string): Promise<void> {
+    await this.modelRuntime.login(providerId, 'api_key', {
+      async prompt() { return key },
+      notify() {},
     })
   }
 
-  removeApiKey(providerId: string): void {
-    this.authStorage.remove(providerId)
+  async removeApiKey(providerId: string): Promise<void> {
+    await this.modelRuntime.logout(providerId)
   }
 
   async settings() {
@@ -861,9 +866,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultThinkingLevel: TThinkingLevel | undefined = configuredThinkingLevel === 'max'
       ? 'xhigh'
       : configuredThinkingLevel
-    const providersWithCredentials = this.authStorage.list()
-    const providers = Array.from(new Set(this.modelRegistry.getAll().map(m => m.provider)))
-    const models = this.modelRegistry.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
+    const providersWithCredentials = (await this.modelRuntime.listCredentials()).map(credential => credential.providerId)
+    const providers = Array.from(new Set(this.modelRuntime.getModels().map(m => m.provider)))
+    const models = this.modelRuntime.getAvailableSnapshot().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
 
     return {
       defaultModel,
@@ -1139,8 +1144,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const services = await createAgentSessionServices({
       cwd,
       agentDir: this.#piAgentDir,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime: this.modelRuntime,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
         systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT,

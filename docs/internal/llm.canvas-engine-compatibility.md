@@ -6,13 +6,13 @@ Vibecanvas branch: `codex/canvas-engine-migration`
 
 Inspected engine: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
-Engine commit audited: `07fef171dc110a8ae1aa54820ee1a13b5c2f29a1`
+Engine commit audited: `3b91fcb8133c5f4dd627d03c469e511d30c57acc`
 
 Package source:
-`/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz`
+`/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.1.tgz`
 (absolute local artifact path)
 
-Artifact SHA-256: `65c2155bb02cb78b0ea812d660c54b49835421e97dbe5eb665821259d3b48b1c`
+Artifact SHA-256: `1186629c238c53e731a4aab92873e3d9b25016902a96d325780e42bf277acc86`
 
 Report date: 2026-07-24
 
@@ -226,7 +226,7 @@ The dependency uses the absolute local engine artifact:
 
 ```json
 "@omnidraw/cangine":
-  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.0.tgz"
+  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.1.tgz"
 ```
 
 Package identity, engine commit, artifact hash, exported subpaths, installed

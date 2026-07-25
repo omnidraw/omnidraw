@@ -127,14 +127,14 @@ export type TAgentApiCapability = {
   ): Promise<TAgentOutputs['widgets']['resolvePlacement']>;
 
   login(providerId: TAgentInputs['auth']['login']['providerId']): TAgentOutputs['auth']['login']['loginId'];
-  logout(providerId: TAgentInputs['auth']['logout']['providerId']): void;
+  logout(providerId: TAgentInputs['auth']['logout']['providerId']): Promise<void>;
   getLoginStatus(loginId: TAgentInputs['auth']['status']['loginId']): TAgentOutputs['auth']['status'];
   abortLogin(loginId: TAgentInputs['auth']['abort']['loginId']): void;
   setApiKey(
     providerId: TAgentInputs['auth']['apiKey']['set']['providerId'],
     key: TAgentInputs['auth']['apiKey']['set']['key'],
-  ): void;
-  removeApiKey(providerId: TAgentInputs['auth']['apiKey']['remove']['providerId']): void;
+  ): Promise<void>;
+  removeApiKey(providerId: TAgentInputs['auth']['apiKey']['remove']['providerId']): Promise<void>;
 };
 
 export type TAgentEventCapability = {
