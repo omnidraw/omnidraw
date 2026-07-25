@@ -169,6 +169,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B56](b/B56.md) - canvas input: synthesize click and double-click from valid pointer sequences
 - [x]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
 - [x]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
+- [!]: [B59](b/B59.md) - `AuthStorage` export removed from `@earendil-works/pi-coding-agent` 0.80.10
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
