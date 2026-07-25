@@ -5,8 +5,9 @@ export type TManagedCanvasRuntime = {
 
 export type TCanvasRuntimeLifecyclePortal<TSource> = {
   createRuntime(source: TSource): TManagedCanvasRuntime;
-  onBootStart?(): void;
-  onBootError?(error: unknown): void;
+  onBootStart?(source: TSource): void;
+  onBootSuccess?(source: TSource): void;
+  onBootError?(error: unknown, source: TSource): void;
   onShutdownError?(error: unknown): void;
 };
 
@@ -45,21 +46,23 @@ export class CanvasRuntimeLifecycle<TSource> {
         return;
       }
 
-      const runtime = this.portal.createRuntime(source);
-      this.#activeRuntime = runtime;
-      this.portal.onBootStart?.();
-
+      let runtime: TManagedCanvasRuntime | null = null;
       try {
+        runtime = this.portal.createRuntime(source);
+        this.#activeRuntime = runtime;
+        this.portal.onBootStart?.(source);
         await runtime.boot();
       } catch (error) {
         if (
-          this.#activeRuntime === runtime
+          (runtime === null || this.#activeRuntime === runtime)
           && generation === this.#generation
           && !this.#disposed
         ) {
-          this.portal.onBootError?.(error);
+          this.portal.onBootError?.(error, source);
         }
-        await this.#shutdownRuntime(runtime);
+        if (runtime !== null) {
+          await this.#shutdownRuntime(runtime);
+        }
         return;
       }
 
@@ -69,7 +72,9 @@ export class CanvasRuntimeLifecycle<TSource> {
         || this.#activeRuntime !== runtime
       ) {
         await this.#shutdownRuntime(runtime);
+        return;
       }
+      this.portal.onBootSuccess?.(source);
     };
 
     this.#queue = this.#queue.then(run, run);

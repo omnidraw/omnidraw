@@ -97,9 +97,37 @@ describe("CanvasRuntimeLifecycle", () => {
 
     await lifecycle.replace("failed");
 
-    expect(onBootError).toHaveBeenCalledWith(failure);
+    expect(onBootError).toHaveBeenCalledWith(failure, "failed");
     expect(failed.shutdown).toHaveBeenCalledTimes(1);
     expect(lifecycle.activeRuntime).toBeNull();
+  });
+
+  test("reports a synchronous runtime-construction failure", async () => {
+    const failure = new Error("runtime composition unavailable");
+    const onBootError = vi.fn();
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: () => {
+        throw failure;
+      },
+      onBootError,
+    });
+
+    await lifecycle.replace("failed");
+
+    expect(onBootError).toHaveBeenCalledWith(failure, "failed");
+    expect(lifecycle.activeRuntime).toBeNull();
+  });
+
+  test("reports successful boot only after the runtime is current", async () => {
+    const onBootSuccess = vi.fn();
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: (source) => runtime(source),
+      onBootSuccess,
+    });
+
+    await lifecycle.replace("ready");
+
+    expect(onBootSuccess).toHaveBeenCalledWith("ready");
   });
 
   test("dispose is idempotent and rejects future runtime starts", async () => {
