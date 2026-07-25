@@ -1566,7 +1566,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     return {
       fileMustExist,
       defaultQueryTimeout: this.#queryTimeoutMs,
-      experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid'],
+      experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid', 'multiprocess_wal'],
     };
   }
 

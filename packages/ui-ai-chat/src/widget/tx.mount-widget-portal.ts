@@ -34,9 +34,6 @@ const HOSTED_EVENT_TYPES = [
   "pointerup",
   "pointercancel",
   "wheel",
-  "click",
-  "dblclick",
-  "contextmenu",
   "keydown",
   "keyup",
 ] as const;

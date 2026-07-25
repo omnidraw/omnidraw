@@ -30,16 +30,17 @@ function element(): TElement {
 describe("txMountWidgetPortal", () => {
   test("mounts only product content while using engine-owned title actions", () => {
     const host = document.createElement("div");
+    document.body.appendChild(host);
     host.style.position = "absolute";
     host.style.width = "320px";
     host.style.height = "172px";
     host.style.overflow = "hidden";
     const leakedPointer = vi.fn();
     const leakedKey = vi.fn();
-    const leakedContextMenu = vi.fn();
+    const delegatedClick = vi.fn();
     host.addEventListener("pointerdown", leakedPointer);
     host.addEventListener("keydown", leakedKey);
-    host.addEventListener("contextmenu", leakedContextMenu);
+    document.addEventListener("click", delegatedClick);
     const cleanup = vi.fn();
     const action = vi.fn();
     const handlers = new Map<string, () => void>();
@@ -83,14 +84,16 @@ describe("txMountWidgetPortal", () => {
       bubbles: true,
       key: "Enter",
     }));
-    content?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    content?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(leakedPointer).not.toHaveBeenCalled();
     expect(leakedKey).not.toHaveBeenCalled();
-    expect(leakedContextMenu).not.toHaveBeenCalled();
+    expect(delegatedClick).toHaveBeenCalledOnce();
     handlers.get("refresh")?.();
     expect(action).toHaveBeenCalledOnce();
 
     dispose();
+    document.removeEventListener("click", delegatedClick);
+    host.remove();
     expect(cleanup).toHaveBeenCalledOnce();
     expect(host.childElementCount).toBe(0);
   });

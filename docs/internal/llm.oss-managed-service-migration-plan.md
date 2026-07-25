@@ -785,7 +785,9 @@ M3 is reached when all surfaces reject foreign scope without existence leakage, 
 - One authoritative Resource Store owns each file.
 - Serialize writes per resource initially.
 - Permit concurrent reads according to provider safety.
-- Do not enable multiprocess access or share live files over NFS/network filesystems.
+- Enable `multiprocess_wal` for compatible external processes on the same local
+  filesystem. Do not share live files over NFS or other unsupported network
+  filesystems.
 - If a function executor is remote, it uses authenticated logical RPC through the gateway.
 - MVCC remains off until a measured resource-specific experiment proves the need and retry behavior.
 

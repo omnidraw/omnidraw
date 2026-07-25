@@ -123,7 +123,7 @@ describe('local DbResource WAL recovery', () => {
     expect(checkpoint.observerRows).toEqual([
       { id: '1', label: 'committed' },
     ]);
-    expect(checkpoint.dbResourceExperimental).not.toContain('multiprocess_wal');
+    expect(checkpoint.dbResourceExperimental).toContain('multiprocess_wal');
 
     writer.kill(9);
     const exitCode = await writer.exited;

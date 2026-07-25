@@ -74,8 +74,9 @@ key.
 - A child process commits WAL frames, begins a second uncommitted transaction,
   and is killed with `SIGKILL`. A fresh local DB provider reconciles with an
   integrity check, preserves the committed row, and discards the uncommitted
-  row. The provider uses WAL plus `synchronous=FULL` and never enables
-  `multiprocess_wal`.
+  row. The provider uses WAL plus `synchronous=FULL` and enables Turso's
+  experimental `multiprocess_wal` coordinator for compatible external
+  processes on the same local filesystem.
 - DB draft/apply/backup restore, encrypted secret conversion checkpoints,
   wrong-key refusal, failed-provision cleanup, interrupted delete completion,
   and transitional catalog reconciliation are permanent tests.

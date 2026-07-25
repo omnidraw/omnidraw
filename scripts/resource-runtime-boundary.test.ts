@@ -66,9 +66,6 @@ describe('M4 resource runtime boundaries', () => {
       if (file.includes(`${sep}api${sep}src${sep}resource${sep}`) && /@vibecanvas\/service-db/.test(source)) {
         violations.push(`${name}: neutral resource API imports a database implementation`);
       }
-      if (file.includes(`${sep}resource-runtime${sep}src${sep}local${sep}`) && /multiprocess_wal/.test(source)) {
-        violations.push(`${name}: local resource provider enables multiprocess WAL`);
-      }
     }
 
     expect(violations).toEqual([]);
