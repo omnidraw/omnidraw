@@ -162,10 +162,11 @@ describe("SelectionStyleMenu product mount", () => {
     expect(setRememberedStyle).toHaveBeenCalledWith("rect", {
       fillColor: "#112233",
     });
-    expect(container.querySelector("#selection-style-menu")).not.toBeNull();
+    expect(document.body.querySelector("#selection-style-menu")).not.toBeNull();
+    expect(container.querySelector("#selection-style-menu")).toBeNull();
 
     mount.dispose();
-    expect(container.querySelector("#selection-style-menu")).toBeNull();
+    expect(document.body.querySelector("#selection-style-menu")).toBeNull();
     container.remove();
   });
 

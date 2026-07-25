@@ -211,15 +211,16 @@ export function txMountSelectionStyleMenu(
   args: TArgsMountSelectionStyleMenu,
 ) {
   void args;
-  const mountElement = portal.scene.container.ownerDocument.createElement("div");
+  const ownerDocument = portal.scene.container.ownerDocument;
+  const mountElement = ownerDocument.createElement("div");
   mountElement.id = "selection-style-menu";
   Object.assign(mountElement.style, {
-    position: "absolute",
+    position: "fixed",
     inset: "0",
     pointerEvents: "none",
     zIndex: "50",
   });
-  portal.scene.container.appendChild(mountElement);
+  ownerDocument.body.appendChild(mountElement);
   const [version, setVersion] = portal.createSignal(0);
   const sync = () => setVersion((value) => value + 1);
   let pendingOpacityCommit: TPendingOpacityCommit | null = null;

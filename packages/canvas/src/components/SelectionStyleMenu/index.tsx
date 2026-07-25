@@ -80,7 +80,7 @@ export function SelectionStyleMenu(props: {
     <Show when={shouldShow()}>
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           left: "0.75rem",
           top: "0.75rem",
           "z-index": 40,
