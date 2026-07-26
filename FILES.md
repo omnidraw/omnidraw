@@ -394,6 +394,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/CONSTANTS.ts](packages/canvas/src/engine/CONSTANTS.ts) |  |
 | [packages/canvas/src/engine/editor/CanvasEditorBridge.ts](packages/canvas/src/engine/editor/CanvasEditorBridge.ts) |  |
 | [packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts](packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts) |  |
+| [packages/canvas/src/engine/editor/fn.path-commit.ts](packages/canvas/src/engine/editor/fn.path-commit.ts) |  |
 | [packages/canvas/src/engine/fn.assert-capabilities.ts](packages/canvas/src/engine/fn.assert-capabilities.ts) |  |
 | [packages/canvas/src/engine/fn.initial-scene.ts](packages/canvas/src/engine/fn.initial-scene.ts) |  |
 | [packages/canvas/src/engine/input/CanvasInputAdapter.ts](packages/canvas/src/engine/input/CanvasInputAdapter.ts) |  |
@@ -493,7 +494,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/shape1d/CONSTANTS.ts](packages/canvas/src/plugins/shape1d/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/shape1d/fn.binding.ts](packages/canvas/src/plugins/shape1d/fn.binding.ts) |  |
 | [packages/canvas/src/plugins/shape1d/fn.draft.ts](packages/canvas/src/plugins/shape1d/fn.draft.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fn.point-edit.ts](packages/canvas/src/plugins/shape1d/fn.point-edit.ts) |  |
 | [packages/canvas/src/plugins/shape1d/fn.selection-style.ts](packages/canvas/src/plugins/shape1d/fn.selection-style.ts) |  |
 | [packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts](packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts) |  |
 | [packages/canvas/src/plugins/shape2d/CONSTANTS.ts](packages/canvas/src/plugins/shape2d/CONSTANTS.ts) |  |

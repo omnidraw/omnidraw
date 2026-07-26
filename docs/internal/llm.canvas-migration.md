@@ -698,15 +698,12 @@ affordances are synchronized from IDs and definition transform policies.
 
 ### 10.6 Line point editing
 
-Use two transient owners:
-
-- a world-overlay owner for the line/path preview;
-- a hit-tested screen-overlay owner for constant-size vertex and midpoint
-  handles.
-
-Handle IDs encode semantic point/segment meaning. The canvas owns insertion,
-movement, binding, snapping, commit, and history policy. The engine supplies
-projection, picking, capture, and geometry.
+Mount `PathInteractionController` before the editor. It owns constant-size
+anchors, midpoint insertion, path-only resize/rotation, edit mode, capture,
+and ephemeral previews. Canvas maps its tagged scene commits into authoritative
+CRDT points/bindings and history, then reprojects. Single connectors suppress
+the generic product box overlay; mixed selections containing connectors remain
+move/rotate only.
 
 ### 10.7 Clone dragging
 
@@ -1161,7 +1158,7 @@ Implementation requirements:
 | `plugins/select` | Engine marquee + semantic IDs |
 | `plugins/transform` | Engine selection overlay/proposals; delete transformer/proxy implementation |
 | `plugins/shape2d` | Pure projector + creation/product command |
-| `plugins/shape1d` | Pure projector + connector/point-edit sessions |
+| `plugins/shape1d` | Pure connector projector + product creation session |
 | `plugins/pen` | Pure outline projector + stroke session |
 | `plugins/text` | Text projector + engine-aligned DOM editing session |
 | `plugins/image` | Resource projector; preserve API effects |
@@ -1350,7 +1347,7 @@ Work:
 - migrate multi-selection;
 - migrate group/ungroup/group move;
 - migrate order operations;
-- migrate line point edit transients;
+- mount path interaction controller and map commits to CRDT;
 - migrate alt-drag clone transients and side effects;
 - implement active-gesture remote conflict policy.
 

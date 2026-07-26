@@ -173,7 +173,7 @@ describe("CanvasActiveSessionService", () => {
     });
   });
 
-  it("cancels text and line sessions when their data changes", () => {
+  it("cancels text sessions when their data changes", () => {
     const service = new CanvasActiveSessionService();
     const textSession = session({
       dependencies: { elements: { text: ["data"] } },
@@ -191,23 +191,6 @@ describe("CanvasActiveSessionService", () => {
     });
     expect(service.handleChange(summary({
       elements: updated("text", textBefore, textAfter, ["data"]),
-    }))).toMatchObject({ action: "cancel" });
-
-    const lineSession = session({
-      dependencies: { elements: { line: ["data", "bindings"] } },
-    });
-    service.register({
-      ...lineSession.value,
-      kind: "line-point-edit",
-    });
-    const lineBefore = createElement("line");
-    const lineAfter = createElement("line", { bindings: [{
-      targetId: "target",
-      anchor: { x: 0.5, y: 0.5 },
-    }] });
-    expect(service.handleChange(summary({
-      revision: 2,
-      elements: updated("line", lineBefore, lineAfter, ["bindings"]),
     }))).toMatchObject({ action: "cancel" });
   });
 

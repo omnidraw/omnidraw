@@ -1,10 +1,13 @@
 import type {
+  TConnectorNode,
   TInputEvent,
+  TSceneChangeSet,
 } from "@omnidraw/cangine";
 import type {
   ICanvasEditor,
   ICanvasContextMenuController,
   ICanvasMenuController,
+  IPathInteractionController,
   IWidgetInteractionController,
   TWidgetActivation,
   TWidgetInteractionState,
@@ -21,6 +24,10 @@ import {
   CanvasEditorHistoryAdapter,
   type TCanvasEditorHistoryPort,
 } from "./CanvasEditorHistoryAdapter";
+import {
+  fnCanvasPathReconciliationNode,
+  type TCanvasPathCommitSource,
+} from "./fn.path-commit";
 
 export type TCanvasEditorSelectionSnapshot = Readonly<{
   selection: readonly TCanvasTarget[];
@@ -36,7 +43,15 @@ export type TCanvasEditorSelectionPort = {
     target: TCanvasTarget | null,
     options?: Readonly<{ allowUnselected?: boolean }>,
   ): void;
+  pathInteractionsEnabled?(): boolean;
 };
+
+export type TCanvasPathCommit = Readonly<{
+  target: Extract<TCanvasTarget, { kind: "element" }>;
+  node: Readonly<TConnectorNode>;
+  source: TCanvasPathCommitSource;
+  activeAnchorId: string | null;
+}>;
 
 export type TCanvasWidgetActivation =
   | Readonly<{
@@ -94,17 +109,25 @@ export type TCanvasEditorBridgeArgs = {
   getDocument(): TCanvasDoc;
   getProjectionIndex(): TCanvasProjectionIndex | null;
   resolveNavigationIntent(event: TInputEvent): boolean;
+  onPathCommit?(commit: TCanvasPathCommit): void;
   onError?(error: unknown): void;
 };
 
-const HISTORY_SHORTCUT_TOOL_ID = "vibecanvas.history-shortcuts";
+const SELECT_TOOL_ID = "select";
 const CONTEXT_MENU_COMMAND_ID = "vibecanvas.context-menu.activate";
+const PATH_COMMIT_SOURCES = new Set<TCanvasPathCommitSource>([
+  "cangine-editor:path-geometry",
+  "cangine-editor:path-segment-mode",
+  "cangine-editor:path-transform",
+]);
+const PATH_TRANSFORM_RECONCILE_SOURCE =
+  "vibecanvas:path-transform-reconcile";
 
 function historyShortcutTool(
   onError: ((error: unknown) => void) | undefined,
 ): TEditorTool {
   return {
-    id: HISTORY_SHORTCUT_TOOL_ID,
+    id: SELECT_TOOL_ID,
     handleInput: (event, context) => {
       if (event.type !== "key-down" || event.composing) {
         return undefined;
@@ -156,12 +179,16 @@ function createExternalOverlayEditor(
 export class CanvasEditorBridge {
   readonly editor: ICanvasEditor;
   readonly menu: ICanvasMenuController;
+  readonly paths: IPathInteractionController;
   readonly widgets: IWidgetInteractionController;
   readonly contextMenu: ICanvasContextMenuController;
+  readonly #adapter: CanvasEngineAdapter;
   readonly #history: CanvasEditorHistoryAdapter;
   readonly #selection: TCanvasEditorSelectionPort;
   readonly #getDocument: () => TCanvasDoc;
   readonly #getProjectionIndex: () => TCanvasProjectionIndex | null;
+  readonly #onPathCommit: ((commit: TCanvasPathCommit) => void) | undefined;
+  readonly #onError: ((error: unknown) => void) | undefined;
   readonly #activationListeners = new Set<
     (activation: TCanvasWidgetActivation) => void
   >();
@@ -177,9 +204,12 @@ export class CanvasEditorBridge {
   #destroyed = false;
 
   constructor(args: TCanvasEditorBridgeArgs) {
+    this.#adapter = args.adapter;
     this.#selection = args.selection;
     this.#getDocument = args.getDocument;
     this.#getProjectionIndex = args.getProjectionIndex;
+    this.#onPathCommit = args.onPathCommit;
+    this.#onError = args.onError;
     this.#history = new CanvasEditorHistoryAdapter(args.history);
     this.editor = args.adapter.createEditor({
       selectionOverlay: false,
@@ -200,7 +230,7 @@ export class CanvasEditorBridge {
           await this.#contextMenuActions.get(token)?.activate();
         },
       }],
-      initialToolId: HISTORY_SHORTCUT_TOOL_ID,
+      initialToolId: SELECT_TOOL_ID,
       history: {
         kind: "custom",
         adapter: this.#history,
@@ -279,6 +309,13 @@ export class CanvasEditorBridge {
         ? {}
         : { onCallbackError: args.onError }),
     });
+    this.paths = args.adapter.createPathInteractionController({
+      editor: this.editor,
+      ownerId: "vibecanvas:path-interaction",
+      ...(args.onError === undefined
+        ? {}
+        : { onCallbackError: args.onError }),
+    });
   }
 
   attach(): void {
@@ -288,11 +325,14 @@ export class CanvasEditorBridge {
     }
     this.widgets.attach();
     this.contextMenu.attach();
+    this.paths.attach();
     this.editor.attach();
     this.#cleanups = [
       this.#selection.subscribe(() => this.syncSelection()),
       this.widgets.subscribe((state) => this.#syncProductFromWidgets(state)),
+      this.paths.subscribe(() => this.#notifyPresentationListeners()),
       this.editor.subscribe(() => this.#selection.refresh()),
+      this.#adapter.subscribeScene((change) => this.#onSceneChange(change)),
     ];
     this.#attached = true;
     this.syncSelection();
@@ -303,6 +343,11 @@ export class CanvasEditorBridge {
       return;
     }
     const product = this.#selection.snapshot();
+    this.editor.setActiveTool(
+      this.#selection.pathInteractionsEnabled?.() === false
+        ? null
+        : SELECT_TOOL_ID,
+    );
     const contentNodeId = this.widgets.state.contentNodeId;
     if (
       contentNodeId !== null
@@ -383,6 +428,7 @@ export class CanvasEditorBridge {
     for (const cleanup of this.#cleanups.splice(0).reverse()) {
       cleanup();
     }
+    this.paths.destroy();
     this.contextMenu.destroy();
     this.widgets.destroy();
     this.menu.destroy();
@@ -393,6 +439,61 @@ export class CanvasEditorBridge {
     this.#contextMenuProvider = null;
     this.#contextMenuActions.clear();
     this.#attached = false;
+  }
+
+  #onSceneChange(
+    change: Pick<TSceneChangeSet, "source" | "updated">,
+  ): void {
+    if (
+      this.#onPathCommit === undefined
+      || !PATH_COMMIT_SOURCES.has(change.source as TCanvasPathCommitSource)
+    ) {
+      return;
+    }
+    const source = change.source as TCanvasPathCommitSource;
+    for (const nodeId of change.updated) {
+      const target = this.#targetForNode(nodeId);
+      const node = this.#adapter.sceneNode(nodeId);
+      if (target?.kind !== "element" || node?.kind !== "connector") {
+        continue;
+      }
+      try {
+        const reconciliationNode = fnCanvasPathReconciliationNode({
+          node,
+          source,
+        });
+        if (reconciliationNode !== null) {
+          void this.#adapter.applyCommands({
+            source: PATH_TRANSFORM_RECONCILE_SOURCE,
+            render: "none",
+            commands: [{
+              type: "upsert",
+              node: reconciliationNode,
+            }],
+          }).then((result) => {
+            if (!result.ok) {
+              this.#onError?.(result.error);
+            }
+          }).catch((error) => {
+            this.#onError?.(error);
+          });
+        }
+        this.#onPathCommit({
+          target,
+          node,
+          source,
+          activeAnchorId: this.paths.state.activeAnchorId,
+        });
+      } catch (error) {
+        this.#onError?.(error);
+      }
+    }
+  }
+
+  #notifyPresentationListeners(): void {
+    for (const listener of [...this.#presentationListeners]) {
+      listener();
+    }
   }
 
   #syncProductFromWidgets(state: TWidgetInteractionState): void {
@@ -417,9 +518,7 @@ export class CanvasEditorBridge {
     } finally {
       this.#syncing = false;
     }
-    for (const listener of [...this.#presentationListeners]) {
-      listener();
-    }
+    this.#notifyPresentationListeners();
   }
 
   #onActivation(activation: TWidgetActivation): void {

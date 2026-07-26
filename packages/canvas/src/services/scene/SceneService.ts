@@ -4,6 +4,7 @@ import type {
   IStoppableService,
 } from "@vibecanvas/runtime";
 import type { ThemeService } from "@vibecanvas/service-theme";
+import type { TBinding } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { SyncHook } from "@vibecanvas/tapable";
 import { getStroke } from "perfect-freehand";
 import {
@@ -19,7 +20,11 @@ import {
 import type { CameraEngineBridge } from "../../engine/camera/CameraEngineBridge";
 import type { CanvasInputAdapter } from "../../engine/input/CanvasInputAdapter";
 import { CanvasTransientTargetRegistry } from "../../engine/input/CanvasTransientTargetRegistry";
-import { CanvasEditorBridge } from "../../engine/editor/CanvasEditorBridge";
+import {
+  CanvasEditorBridge,
+  type TCanvasPathCommit,
+} from "../../engine/editor/CanvasEditorBridge";
+import { fnCanvasElementFromPathCommit } from "../../engine/editor/fn.path-commit";
 import {
   createBuiltInProjectionRegistry,
   registerProjectionDefinition,
@@ -30,6 +35,7 @@ import { CanvasProjectionRuntimePort } from "../../engine/projection-runtime/Pro
 import type {
   TCanvasProjectionIndex,
 } from "../../engine/typed";
+import type { TCanvasTarget } from "../../semantic/typed";
 import type { CanvasProductRuntime } from "../../engine/product-runtime/CanvasProductRuntime";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { ElementService } from "../element/ElementService";
@@ -38,6 +44,7 @@ import type { CanvasPortalService } from "../portal/CanvasPortalService";
 import { CrdtProjectionService } from "../projection/CrdtProjectionService";
 import type { SelectionService } from "../selection/SelectionService";
 import { CanvasMode } from "../selection/CONSTANTS";
+import { fnShape1dBinding } from "../../plugins/shape1d/fn.binding";
 import { fnCanvasProjectionDiagnosticGeneration } from "./fn.projection-diagnostics";
 
 export type TCanvasResizeObserver = {
@@ -380,9 +387,54 @@ implements
           setFocusedTarget: (target, options) => {
             this.#args.selection.setFocusedTarget(target, options);
           },
+          pathInteractionsEnabled: () => {
+            return this.#args.selection.mode === CanvasMode.SELECT;
+          },
         },
         getDocument: () => this.#args.crdt.doc(),
         getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
+        onPathCommit: ({ target, node, source, activeAnchorId }) => {
+          const current = this.#args.crdt.doc().elements[target.id];
+          if (current === undefined) {
+            return;
+          }
+          const endpoint = this.#pathEndpointPatch({
+            target,
+            node,
+            activeAnchorId,
+          });
+          const next = fnCanvasElementFromPathCommit({
+            element: current,
+            node,
+            source,
+            updatedAt: Date.now(),
+            ...(endpoint?.endpoint === "start"
+              ? {
+                  startPoint: endpoint.point,
+                  startBinding: endpoint.binding,
+                }
+              : {}),
+            ...(endpoint?.endpoint === "end"
+              ? {
+                  endPoint: endpoint.point,
+                  endBinding: endpoint.binding,
+                }
+              : {}),
+          });
+          if (next === null) {
+            return;
+          }
+          const result = this.#args.crdt.build()
+            .patchElement(next.id, next)
+            .commit();
+          this.#args.history.record({
+            label: source === "cangine-editor:path-transform"
+              ? "Transform connector"
+              : "Edit connector points",
+            undo: () => this.#args.crdt.applyOps({ ops: result.undoOps }),
+            redo: () => this.#args.crdt.applyOps({ ops: result.redoOps }),
+          });
+        },
         resolveNavigationIntent: (event) => {
           return event.type === "pointer-down"
             && (
@@ -550,6 +602,75 @@ implements
     return new ResizeObserver(() => {
       this.#resizeToContainer();
     });
+  }
+
+  #pathEndpointPatch(args: {
+    target: Extract<TCanvasTarget, { kind: "element" }>;
+    node: TCanvasPathCommit["node"];
+    activeAnchorId: string | null;
+  }): {
+    endpoint: "start" | "end";
+    point: readonly [number, number];
+    binding: TBinding | null;
+  } | null {
+    const endpoint = args.activeAnchorId === "endpoint:from"
+      ? "start"
+      : args.activeAnchorId === "endpoint:to"
+      ? "end"
+      : null;
+    const value = endpoint === "start" ? args.node.from : args.node.to;
+    if (
+      endpoint === null
+      || value.type !== "point"
+      || this.#product === null
+      || this.#input === null
+    ) {
+      return null;
+    }
+    const rawPoint = [value.point.x, value.point.y] as const;
+    const world = this.#product.geometry.localToWorld(
+      { target: args.target, role: "render" },
+      value.point,
+    );
+    if (world === null) {
+      return { endpoint, point: rawPoint, binding: null };
+    }
+    const viewport = this.#product.geometry.worldToViewport(world);
+    const candidate = this.#input.hitTestViewport({
+      point: viewport,
+      options: { mode: "all", tolerance: 6 },
+    }).find((hit) => {
+      return hit.target.kind === "element"
+        && hit.target.id !== args.target.id
+        && this.#args.crdt.doc().elements[hit.target.id]?.locked === false;
+    })?.target;
+    if (candidate?.kind !== "element") {
+      return { endpoint, point: rawPoint, binding: null };
+    }
+    const bounds = this.#product.geometry.worldBounds({ target: candidate });
+    const nearest = this.#product.geometry.nearestPoint(
+      { target: candidate },
+      world,
+    )?.point;
+    if (bounds === null || nearest === undefined) {
+      return { endpoint, point: rawPoint, binding: null };
+    }
+    const local = this.#product.geometry.worldToLocal(
+      { target: args.target, role: "render" },
+      nearest,
+    );
+    if (local === null) {
+      return { endpoint, point: rawPoint, binding: null };
+    }
+    return {
+      endpoint,
+      point: [local.x, local.y],
+      binding: fnShape1dBinding({
+        targetId: candidate.id,
+        worldPoint: nearest,
+        worldBounds: bounds,
+      }),
+    };
   }
 
   #resizeToContainer(): void {

@@ -80,11 +80,12 @@ specified product matrix passes.
 - Alt-drag allocates product clone IDs before preview, uses
   `engine.transients.cloneFromScene()` for the durable render subtree, applies
   registered image/widget clone policy, and hands the same IDs to projection.
-- Line/arrow creation and point editing persist product binding payloads and use
-  active-session dependencies.
-- Active transforms and point edits declare element/group field dependencies;
-  unrelated remote changes continue, while conflicting remote changes cancel
-  the affected session before authoritative projection advances.
+- Line/arrow creation remains product-owned. Cangine's path controller owns
+  point editing and path-specific transforms; tagged commits are mapped into
+  product points/bindings and CRDT history before authoritative reprojection.
+- Active product transforms declare element/group field dependencies. Path
+  gestures cancel when authoritative remote reprojection touches their
+  connector dependencies.
 - Generic selection deletion routes elements through `ElementService`, so
   image/widget `onDelete` and `onRestore` lifecycle policy also runs on
   delete/undo/redo.
@@ -198,7 +199,7 @@ resize, destroy, and remount. Reproduce and accept the current states in
 Focused unit tests prove field-aware dependency classification and cancel-first
 behavior. They do not replace two actual Automerge clients. Run every
 collaboration scenario in the migration contract, including unrelated and
-conflicting changes during transform/text/point-edit, remote deletion,
+conflicting changes during transform/text/path editing, remote deletion,
 concurrent grouping/order, clone-effect failure, late join, and reconnect
 bursts. Verify convergence, equivalent projection, selection cleanup, no stale
 preview, and bounded history.

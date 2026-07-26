@@ -1,14 +1,11 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type {
   TBinding,
-  TElement,
 } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import ArrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import Minus from "lucide-static/icons/minus.svg?raw";
 import { DEFAULT_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
-import type { TCanvasProductTransientOwner } from "../../engine/product-runtime/typed";
 import type { TCanvasTarget } from "../../semantic/typed";
-import { fnCanvasActiveSessionDependencies } from "../../services/active-session/fn.dependencies";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import {
   DEFAULT_OPACITY,
@@ -18,31 +15,6 @@ import {
 } from "./CONSTANTS";
 import { fnShape1dBinding } from "./fn.binding";
 import { fnCreateDraftElement } from "./fn.draft";
-import {
-  fnBeginShape1dPointEdit,
-  fnCanCommitShape1dPointEdit,
-  fnMoveShape1dPoint,
-  fnShape1dEditHandles,
-  fnShape1dElementWithPoints,
-  type TShape1dEditHandle,
-} from "./fn.point-edit";
-
-const POINT_EDIT_ELEMENT_DEPENDENCY_FIELDS = [
-  "x",
-  "y",
-  "rotation",
-  "scaleX",
-  "scaleY",
-  "parentGroupId",
-  "data",
-  "bindings",
-  "locked",
-] as const;
-
-const POINT_EDIT_GROUP_DEPENDENCY_FIELDS = [
-  "parentGroupId",
-  "locked",
-] as const;
 
 function nextZIndex(services: Pick<IRuntimeServices, "crdt">) {
   const document = services.crdt.doc();
@@ -61,7 +33,6 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "shape1d",
     apply(ctx) {
-      const activeSession = ctx.services.require("activeSession");
       const crdt = ctx.services.require("crdt");
       const element = ctx.services.require("element");
       const history = ctx.services.require("history");
@@ -70,19 +41,6 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
       const theme = ctx.services.require("theme");
       const tool = ctx.services.require("tool");
       const cleanups: Array<() => void> = [];
-      let pointEdit: {
-        activeSessionId: string;
-        element: TElement;
-        handles: TCanvasProductTransientOwner;
-        preview: TCanvasProductTransientOwner;
-        drag: {
-          pointerId: number;
-          pointIndex: number;
-          points: [number, number][];
-          startBinding: TBinding | null;
-          endBinding: TBinding | null;
-        } | null;
-      } | null = null;
 
       const bindableTarget = (
         target: TCanvasTarget | undefined,
@@ -125,141 +83,6 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         };
       };
 
-      const exitPointEdit = () => {
-        const active = pointEdit;
-        if (active === null) {
-          return;
-        }
-        pointEdit = null;
-        activeSession.complete(active.activeSessionId);
-        active.handles.destroy();
-        active.preview.destroy();
-      };
-      const handleFromHit = (
-        handles: readonly TShape1dEditHandle[],
-        handleId: string | undefined,
-      ) => {
-        if (handleId === undefined) {
-          return null;
-        }
-        return handles.find((handle) => handleId.includes(handle.id)) ?? null;
-      };
-      const showPointEdit = (
-        active: NonNullable<typeof pointEdit>,
-        points: readonly (readonly [number, number])[],
-      ) => {
-        const target = { kind: "element" as const, id: active.element.id };
-        const handles = fnShape1dEditHandles(points).flatMap((handle) => {
-          const world = scene.product.geometry.localToWorld(
-            { target },
-            { x: handle.point[0], y: handle.point[1] },
-          );
-          if (world === null) {
-            return [];
-          }
-          const viewport = scene.product.geometry.worldToViewport(world);
-          return [{
-            id: handle.id,
-            parentId: null,
-            orderKey: handle.insert ? "0" : "1",
-            kind: "ellipse" as const,
-            size: {
-              width: handle.insert ? 8 : 12,
-              height: handle.insert ? 8 : 12,
-            },
-            transform: {
-              position: {
-                x: viewport.x - (handle.insert ? 4 : 6),
-                y: viewport.y - (handle.insert ? 4 : 6),
-              },
-            },
-            fill: handle.insert
-              ? { r: 0.39, g: 0.4, b: 0.95, a: 0.55 }
-              : { r: 1, g: 1, b: 1, a: 1 },
-            stroke: {
-              color: { r: 0.31, g: 0.27, b: 0.9, a: 1 },
-              width: 1.5,
-            },
-          }];
-        });
-        active.handles.replace({
-          band: "screen-overlay",
-          hitTest: "enabled",
-          nodes: handles,
-        });
-      };
-      const showPointPreview = (
-        active: NonNullable<typeof pointEdit>,
-        points: readonly (readonly [number, number])[],
-      ) => {
-        const target = { kind: "element" as const, id: active.element.id };
-        const world = points.flatMap((point) => {
-          const value = scene.product.geometry.localToWorld(
-            { target },
-            { x: point[0], y: point[1] },
-          );
-          return value === null ? [] : [value];
-        });
-        active.preview.replace({
-          band: "world-overlay",
-          hitTest: "none",
-          nodes: world.length === 0 ? [] : [{
-            id: "path",
-            parentId: null,
-            orderKey: "0",
-            kind: "path",
-            path: world.map((point, index) => ({
-              type: index === 0 ? "M" as const : "L" as const,
-              to: point,
-            })),
-            stroke: {
-              color: { r: 0.31, g: 0.27, b: 0.9, a: 0.9 },
-              width: 2,
-            },
-            pointerEvents: "none",
-          }],
-        });
-        showPointEdit(active, points);
-      };
-      const enterPointEdit = (candidate: TElement) => {
-        if (
-          candidate.data.type !== "line"
-          && candidate.data.type !== "arrow"
-        ) {
-          return false;
-        }
-        exitPointEdit();
-        const ownerId = `shape1d-edit:${candidate.id}`;
-        const activeSessionId = `shape1d-point-edit:${candidate.id}`;
-        const target = { kind: "element" as const, id: candidate.id };
-        pointEdit = {
-          activeSessionId,
-          element: structuredClone(candidate),
-          handles: scene.product.transients.createOwner({
-            ownerId: `${ownerId}:handles`,
-            target,
-          }),
-          preview: scene.product.transients.createOwner({
-            ownerId: `${ownerId}:preview`,
-          }),
-          drag: null,
-        };
-        activeSession.register({
-          id: activeSessionId,
-          kind: "line-point-edit",
-          startedAtRevision: crdt.revision,
-          dependencies: fnCanvasActiveSessionDependencies({
-            document: crdt.doc(),
-            targets: [target],
-            elementFields: POINT_EDIT_ELEMENT_DEPENDENCY_FIELDS,
-            groupFields: POINT_EDIT_GROUP_DEPENDENCY_FIELDS,
-          }),
-          cancel: exitPointEdit,
-        });
-        showPointEdit(pointEdit, candidate.data.points);
-        return true;
-      };
-
       cleanups.push(element.registerElement({
         id: "shape1d",
         matchesElement: (candidate) => {
@@ -284,10 +107,6 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
             endCap: "arrow",
           },
           strokeWidthOptions: [...DEFAULT_STROKE_WIDTHS],
-        }),
-        getTransformPolicy: () => ({
-          handles: ["move", "rotate", "resize-ne", "resize-sw"],
-          allowFlip: true,
         }),
       }));
 
@@ -380,149 +199,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         }));
       }
 
-      cleanups.push(ctx.hooks.elementPointerDoubleClick.tap((event) => {
-        if (event.hit.target.kind !== "element") {
-          return false;
-        }
-        const candidate = crdt.doc().elements[event.hit.target.id];
-        return candidate !== undefined && enterPointEdit(candidate);
-      }));
-      cleanups.push(ctx.hooks.pointerDown.tap((event) => {
-        const active = pointEdit;
-        if (
-          active === null
-          || event.hit?.transient?.ownerId !== active.handles.id
-          || (active.element.data.type !== "line"
-            && active.element.data.type !== "arrow")
-        ) {
-          return;
-        }
-        const handles = fnShape1dEditHandles(active.element.data.points);
-        const handle = handleFromHit(handles, event.hit.transient.handleId);
-        if (handle === null) {
-          return;
-        }
-        const begin = fnBeginShape1dPointEdit({
-          points: active.element.data.points,
-          handle,
-        });
-        active.drag = {
-          pointerId: event.pointerId,
-          pointIndex: begin.pointIndex,
-          points: begin.points,
-          startBinding: active.element.data.startBinding,
-          endBinding: active.element.data.endBinding,
-        };
-        showPointPreview(active, begin.points);
-      }));
-      cleanups.push(ctx.hooks.pointerMove.tap((event) => {
-        const active = pointEdit;
-        if (
-          active?.drag === null
-          || active === null
-          || active.drag.pointerId !== event.pointerId
-        ) {
-          return;
-        }
-        const isStart = active.drag.pointIndex === 0;
-        const isEnd = active.drag.pointIndex === active.drag.points.length - 1;
-        const candidate = isStart || isEnd
-          ? bindableTarget(
-              scene.input.hitTestWorld({ point: event.world })[0]?.target,
-              active.element.id,
-            )
-          : null;
-        const endpoint = isStart || isEnd
-          ? boundEndpoint(candidate, event.world)
-          : { point: event.world, binding: null };
-        const local = scene.product.geometry.worldToLocal(
-          { target: { kind: "element", id: active.element.id } },
-          endpoint.point,
-        );
-        if (local === null) {
-          return;
-        }
-        active.drag.points = fnMoveShape1dPoint({
-          points: active.drag.points,
-          pointIndex: active.drag.pointIndex,
-          point: local,
-        });
-        if (isStart) {
-          active.drag.startBinding = endpoint.binding;
-        }
-        if (isEnd) {
-          active.drag.endBinding = endpoint.binding;
-        }
-        showPointPreview(active, active.drag.points);
-      }));
-      cleanups.push(ctx.hooks.pointerUp.tap((event) => {
-        const active = pointEdit;
-        if (
-          active?.drag === null
-          || active === null
-          || active.drag.pointerId !== event.pointerId
-        ) {
-          return;
-        }
-        const current = crdt.doc().elements[active.element.id];
-        if (!fnCanCommitShape1dPointEdit(active.element, current)) {
-          exitPointEdit();
-          return;
-        }
-        const next = fnShape1dElementWithPoints({
-          element: current,
-          points: active.drag.points,
-          startBinding: active.drag.startBinding,
-          endBinding: active.drag.endBinding,
-          updatedAt: Date.now(),
-        });
-        if (next === null) {
-          exitPointEdit();
-          return;
-        }
-        const result = crdt.build().patchElement(next.id, next).commit();
-        history.record({
-          label: "Edit connector points",
-          undo: () => crdt.applyOps({ ops: result.undoOps }),
-          redo: () => crdt.applyOps({ ops: result.redoOps }),
-        });
-        active.element = structuredClone(next);
-        active.drag = null;
-        active.preview.clear();
-        showPointEdit(active, next.data.type === "line"
-          || next.data.type === "arrow" ? next.data.points : []);
-      }));
-      cleanups.push(ctx.hooks.pointerCancel.tap(() => {
-        if (pointEdit !== null) {
-          pointEdit.drag = null;
-          pointEdit.preview.clear();
-          if (
-            pointEdit.element.data.type === "line"
-            || pointEdit.element.data.type === "arrow"
-          ) {
-            showPointEdit(pointEdit, pointEdit.element.data.points);
-          }
-        }
-      }));
-      cleanups.push(ctx.hooks.keydown.tap((event) => {
-        if (event.key === "Escape") {
-          exitPointEdit();
-        }
-      }));
-      cleanups.push(selection.hooks.change.tap((snapshot) => {
-        if (
-          pointEdit !== null
-          && !snapshot.selection.some((target) => {
-            return target.kind === "element"
-              && target.id === pointEdit?.element.id;
-          })
-        ) {
-          exitPointEdit();
-        }
-      }));
-
       ctx.hooks.destroy.tap(() => {
-        exitPointEdit();
         for (const cleanup of cleanups.splice(0).reverse()) {
           cleanup();
         }

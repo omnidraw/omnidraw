@@ -27,6 +27,8 @@ import type {
   TCanvasSemanticRectQuery,
 } from "./typed";
 
+const PATH_SELECTION_TOLERANCE_VIEWPORT = 6;
+
 function mergeDisposition(
   current: TInputDisposition,
   next: TInputDisposition,
@@ -240,7 +242,7 @@ export class CanvasInputAdapter {
     if (event.type === "wheel") {
       return fnNormalizeCanvasWheelEvent({
         event,
-        hit: this.#resolveHit(event.hit, event.viewport),
+        hit: this.#resolveEventHit(event.hit, event.viewport),
       });
     }
     if (
@@ -253,7 +255,7 @@ export class CanvasInputAdapter {
     ) {
       return fnNormalizeCanvasPointerEvent({
         event,
-        hit: this.#resolveHit(event.hit, event.viewport),
+        hit: this.#resolveEventHit(event.hit, event.viewport),
       });
     }
     return null;
@@ -271,6 +273,25 @@ export class CanvasInputAdapter {
           policy: this.#config.policy,
           resolveTransientTarget: this.#config.resolveTransientTarget,
         });
+  }
+
+  #resolveEventHit(hit: THitResult | null, viewport: TVec2) {
+    const direct = this.#resolveHit(hit, viewport);
+    if (direct !== null || this.#config.getProjectionIndex() === null) {
+      return direct;
+    }
+    const nearby = this.#config.input.hitTestViewport(viewport, {
+      mode: "all",
+      tolerance: PATH_SELECTION_TOLERANCE_VIEWPORT,
+      kinds: ["path", "connector"],
+    });
+    for (const candidate of nearby) {
+      const resolved = this.#resolveHit(candidate, viewport);
+      if (resolved !== null) {
+        return resolved;
+      }
+    }
+    return null;
   }
 
   #onEngineInput(event: TInputEvent): TInputDisposition | void {
@@ -304,7 +325,7 @@ export class CanvasInputAdapter {
   #onEngineClick(event: TClickInputEvent): void {
     const normalized = fnNormalizeCanvasClickEvent({
       event,
-      hit: this.#resolveHit(event.hit, event.viewport),
+      hit: this.#resolveEventHit(event.hit, event.viewport),
     });
     for (const listener of [...this.#clickListeners]) {
       if (!this.#clickListeners.has(listener)) {

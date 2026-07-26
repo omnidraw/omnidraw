@@ -951,8 +951,8 @@ describe("canvas-engine public compatibility contract", () => {
           matrix.filter((row) => row.status === status).length,
         ]),
     )).toEqual({
-      compatible: 21,
-      adapter: 12,
+      compatible: 22,
+      adapter: 11,
       "engine-gap": 1,
       "release-gap": 0,
       "validation-gap": 3,

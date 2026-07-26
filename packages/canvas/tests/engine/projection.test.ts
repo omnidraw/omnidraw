@@ -167,7 +167,7 @@ function representativeDocument(): TCanvasDoc {
         points: [[0, 0], [120, 30]],
         startBinding: null,
         endBinding: null,
-        startCap: "dot",
+        startCap: "none",
         endCap: "arrow",
       }),
       pen: element(
@@ -354,8 +354,17 @@ describe("full canvas document projection", () => {
       return node.id === fnCanvasEngineElementChildId({ id: "line", child: "render" });
     });
     expect(line?.kind).toBe("connector");
-    if (line?.kind === "connector" && line.routing.type === "manual") {
-      expect(line.routing.path.commands.map((command) => command.type)).toEqual(["M", "C", "C"]);
+    if (line?.kind === "connector") {
+      expect(line.routing.type).toBe("bezier");
+      expect(line.waypoints).toEqual([{ x: 50, y: 25 }]);
+    }
+    const arrow = projection.snapshot.nodes.find((node) => {
+      return node.id === fnCanvasEngineElementChildId({ id: "arrow", child: "render" });
+    });
+    expect(arrow?.kind).toBe("connector");
+    if (arrow?.kind === "connector") {
+      expect(arrow).not.toHaveProperty("startMarker");
+      expect(arrow.endMarker?.shape).toBe("arrow");
     }
 
     const pen = projection.snapshot.nodes.find((node) => {

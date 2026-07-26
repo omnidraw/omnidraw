@@ -13,7 +13,6 @@ import {
   fnCanvasElementChildBase,
   fnCanvasElementRootNode,
 } from "../fn.nodes";
-import { fnCatmullRomPath } from "../fn.path";
 import { fnResolveCanvasElementStyle } from "../fn.style";
 import type {
   TCanvasElementProjectionDraft,
@@ -72,20 +71,22 @@ export function fnProjectShape1dElement(
       type: "point",
       point: { x: last[0], y: last[1] },
     },
-    routing: {
-      type: "manual",
-      path: {
-        commands: fnCatmullRomPath({
-          points,
-          curved: data.lineType === "curved",
-        }),
-      },
-    },
+    routing: data.lineType === "curved"
+      ? { type: "bezier" }
+      : { type: "straight" },
+    waypoints: points.slice(1, -1).map((point) => ({
+      x: point[0],
+      y: point[1],
+    })),
     stroke,
     ...(data.type === "arrow"
       ? {
-          startMarker: marker(data.startCap),
-          endMarker: marker(data.endCap),
+          ...(data.startCap === "none"
+            ? {}
+            : { startMarker: marker(data.startCap) }),
+          ...(data.endCap === "none"
+            ? {}
+            : { endMarker: marker(data.endCap) }),
         }
       : {}),
     metadata: {

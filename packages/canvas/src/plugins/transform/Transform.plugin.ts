@@ -2,6 +2,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TCanvasProductTransformEvent } from "../../engine/product-runtime/typed";
 import { fnCanvasActiveSessionDependencies } from "../../services/active-session/fn.dependencies";
 import { fnCollectDescendantElementIds } from "../../services/group/fn.product-groups";
+import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import {
   fnPlanProductSubtreeClone,
@@ -96,7 +97,11 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
 
       const syncSelection = () => {
         const snapshot = selection.snapshot;
-        if (snapshot.selection.length === 0) {
+        if (
+          snapshot.selection.length === 0
+          || snapshot.mode !== CanvasMode.SELECT
+          || scene.editor.paths.state.mode !== "idle"
+        ) {
           scene.product.transforms.setSelection(null);
           return;
         }
@@ -420,6 +425,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         cleanups.push(selection.hooks.change.tap(syncSelection));
         cleanups.push(scene.hooks.projection.tap(syncSelection));
         cleanups.push(elementService.hooks.elementsChange.tap(syncSelection));
+        cleanups.push(scene.editor.paths.subscribe(syncSelection));
         cleanups.push(scene.product.transforms.subscribe(onTransform));
         syncSelection();
       }));

@@ -59,4 +59,36 @@ describe("mixed product transform policy", () => {
       aspectRatioMode: "locked",
     });
   });
+
+  it("does not reintroduce resize when the engine limits a path selection", () => {
+    expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate"],
+        aspectRatioMode: "free",
+        allowFlip: false,
+        allowRotate: true,
+      },
+      policies: [{
+        handles: [
+          "move",
+          "rotate",
+          "resize-n",
+          "resize-ne",
+          "resize-e",
+          "resize-se",
+          "resize-s",
+          "resize-sw",
+          "resize-w",
+          "resize-nw",
+        ],
+        allowFlip: true,
+        allowRotate: true,
+      }],
+      includeSizeConstraints: false,
+    })).toMatchObject({
+      handles: ["move", "rotate"],
+      allowFlip: false,
+      allowRotate: true,
+    });
+  });
 });

@@ -7,7 +7,6 @@ import type { TCrdtChangeSummary } from "../crdt/CrdtService";
 export type TCanvasActiveSessionKind =
   | "transform"
   | "text-edit"
-  | "line-point-edit"
   | "clone-drag"
   | "widget-drop";
 

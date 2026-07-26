@@ -278,6 +278,35 @@ describe("CanvasInputAdapter", () => {
     ]);
   });
 
+  it("uses a six-pixel path acquisition band when the direct hit misses", () => {
+    const harness = inputHarness();
+    harness.setViewportHits([hit("line")]);
+    const adapter = new CanvasInputAdapter({
+      input: harness.input,
+      getProjectionIndex: () => index("line"),
+      getDocument: () => document("line"),
+      worldToViewport: (point) => point,
+    });
+    const received = vi.fn();
+    adapter.subscribe(received);
+
+    harness.emit({ ...pointerEvent("line"), hit: null });
+
+    expect(harness.input.hitTestViewport).toHaveBeenCalledWith(
+      { x: 10, y: 11 },
+      {
+        mode: "all",
+        tolerance: 6,
+        kinds: ["path", "connector"],
+      },
+    );
+    expect(received).toHaveBeenCalledWith(expect.objectContaining({
+      hit: expect.objectContaining({
+        target: { kind: "element", id: "line" },
+      }),
+    }));
+  });
+
   it("aggregates disposition and preserves capture/release intent", () => {
     const harness = inputHarness();
     const adapter = new CanvasInputAdapter({

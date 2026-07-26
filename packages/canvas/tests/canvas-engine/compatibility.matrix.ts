@@ -182,10 +182,10 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
   {
     id: "point-editing",
     area: "interaction",
-    requirement: "Application-defined line vertex and midpoint insertion handles",
-    status: "adapter",
-    owner: "canvas",
-    evidence: "Production line point editing uses hit-tested screen transients, product bindings, active-session dependencies, and CRDT/history commits.",
+    requirement: "Line/arrow vertex editing, midpoint insertion, and path-specific transforms",
+    status: "compatible",
+    owner: "joint",
+    evidence: "Cangine PathInteractionController owns path anchors, edit mode, previews, and gestures; canvas maps tagged commits into authoritative CRDT points, bindings, transforms, and history.",
   },
   {
     id: "transient-projection",
@@ -249,7 +249,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Deterministic remote updates while local preview/edit gestures are active",
     status: "validation-gap",
     owner: "canvas",
-    evidence: "Dependency-aware cancel/rebase policy and focused tests cover transform and point-edit conflicts; the required real two-client Automerge/browser matrix has not run.",
+    evidence: "Dependency-aware cancel/rebase policy covers product transforms while path-controller gestures cancel on authoritative reprojection; the required real two-client Automerge/browser matrix has not run.",
   },
   {
     id: "history",

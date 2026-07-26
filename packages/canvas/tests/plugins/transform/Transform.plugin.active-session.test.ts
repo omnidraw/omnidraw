@@ -6,6 +6,7 @@ import type {
   TCrdtChangeSummary,
   TCrdtEntityChangeSet,
 } from "../../../src/services/crdt/CrdtService";
+import { CanvasMode } from "../../../src/services/selection/CONSTANTS";
 import { SelectionService } from "../../../src/services/selection/SelectionService";
 import { describe, expect, it, vi } from "vitest";
 import { ensureDom } from "../../test-setup";
@@ -132,6 +133,7 @@ describe("Transform plugin active-session policy", () => {
       | ((event: TCanvasProductTransformEvent) => void)
       | null = null;
     const cancelForRemoteChange = vi.fn();
+    const setTransformSelection = vi.fn();
     const services = new Map<string, unknown>([
       ["activeSession", activeSession],
       ["crdt", {
@@ -140,17 +142,28 @@ describe("Transform plugin active-session policy", () => {
       }],
       ["element", {
         hooks: { elementsChange },
-        getTransformPolicy: vi.fn(),
+        getTransformPolicy: vi.fn(() => ({})),
       }],
       ["history", {}],
       ["scene", {
         container: document.createElement("div"),
+        editor: {
+          paths: {
+            state: { mode: "idle" },
+            subscribe: vi.fn(() => vi.fn()),
+          },
+        },
         hooks: { projection },
         product: {
           transforms: {
             cancelForRemoteChange,
+            resolveStandardPolicy: vi.fn(() => ({
+              handles: ["move"],
+              allowRotate: true,
+              aspectRatioMode: "free",
+            })),
             setClonePlanProvider: vi.fn(() => vi.fn()),
-            setSelection: vi.fn(),
+            setSelection: setTransformSelection,
             subscribe: vi.fn((listener) => {
               transformListener = listener;
               return vi.fn();
@@ -172,6 +185,16 @@ describe("Transform plugin active-session policy", () => {
     if (transformListener === null) {
       throw new Error("Transform listener was not registered.");
     }
+
+    selection.select({ kind: "element", id: "target" });
+    expect(setTransformSelection).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targets: [{ kind: "element", id: "target" }],
+      }),
+    );
+    selection.setMode(CanvasMode.DRAW_CREATE);
+    expect(setTransformSelection).toHaveBeenLastCalledWith(null);
+    selection.setMode(CanvasMode.SELECT);
 
     transformListener(transformBegin());
     expect(activeSession.active?.dependencies).toEqual({

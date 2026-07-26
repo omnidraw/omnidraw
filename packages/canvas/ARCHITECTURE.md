@@ -85,8 +85,8 @@ Plugins remain product-policy shells:
   patches and product history.
 - `CanvasActiveSessionService` cancels dependent local gestures before a
   conflicting remote revision projects.
-- Group, order, point-edit, and clone operations work from `TCanvasDoc`, never
-  from rendered-scene inspection.
+- Group, order, and clone operations work from `TCanvasDoc`. Cangine path
+  gestures hand tagged connector changes back to CRDT before projection.
 
 Engine pointer capture, picking, marquee, coordinate conversion, transform
 proposals, and text-edit geometry are exposed only through canvas-owned

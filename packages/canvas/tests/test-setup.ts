@@ -4,22 +4,68 @@ import { JSDOM } from "jsdom";
 import { vi } from "vitest";
 
 export function ensureDom(): void {
-  if (typeof document !== "undefined" && typeof window !== "undefined") {
-    return;
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    vi.stubGlobal?.("window", dom.window);
+    vi.stubGlobal?.("document", dom.window.document);
+    vi.stubGlobal?.("navigator", dom.window.navigator);
+    vi.stubGlobal?.("HTMLElement", dom.window.HTMLElement);
+    vi.stubGlobal?.("HTMLInputElement", dom.window.HTMLInputElement);
+    vi.stubGlobal?.("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+    vi.stubGlobal?.("MouseEvent", dom.window.MouseEvent);
+    vi.stubGlobal?.("KeyboardEvent", dom.window.KeyboardEvent);
+    vi.stubGlobal?.("Event", dom.window.Event);
+    vi.stubGlobal?.("Range", dom.window.Range);
+    vi.stubGlobal?.("DOMRect", dom.window.DOMRect);
   }
-
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
-  vi.stubGlobal?.("window", dom.window);
-  vi.stubGlobal?.("document", dom.window.document);
-  vi.stubGlobal?.("navigator", dom.window.navigator);
-  vi.stubGlobal?.("HTMLElement", dom.window.HTMLElement);
-  vi.stubGlobal?.("HTMLInputElement", dom.window.HTMLInputElement);
-  vi.stubGlobal?.("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
-  vi.stubGlobal?.("MouseEvent", dom.window.MouseEvent);
-  vi.stubGlobal?.("KeyboardEvent", dom.window.KeyboardEvent);
-  vi.stubGlobal?.("Event", dom.window.Event);
-  vi.stubGlobal?.("Range", dom.window.Range);
-  vi.stubGlobal?.("DOMRect", dom.window.DOMRect);
+  const CanvasElement = document.createElement("canvas")
+    .constructor as typeof HTMLCanvasElement;
+  Object.defineProperty(CanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: (kind: string) => kind === "2d"
+      ? {
+          direction: "ltr",
+          font: "",
+          beginPath() {},
+          bezierCurveTo() {},
+          clearRect() {},
+          clip() {},
+          closePath() {},
+          createLinearGradient: () => ({ addColorStop() {} }),
+          createPattern: () => null,
+          createRadialGradient: () => ({ addColorStop() {} }),
+          drawImage() {},
+          fill() {},
+          fillRect() {},
+          fillText() {},
+          getImageData: () => ({ data: new Uint8ClampedArray() }),
+          lineTo() {},
+          save() {},
+          restore() {},
+          moveTo() {},
+          putImageData() {},
+          quadraticCurveTo() {},
+          rect() {},
+          scale() {},
+          setLineDash() {},
+          setTransform() {},
+          stroke() {},
+          strokeText() {},
+          translate() {},
+          measureText(text: string) {
+            return {
+              width: text.length * 8,
+              actualBoundingBoxAscent: 10,
+              actualBoundingBoxDescent: 3,
+            };
+          },
+        }
+      : null,
+  });
+  Object.defineProperty(CanvasElement.prototype, "toDataURL", {
+    configurable: true,
+    value: () => "data:image/png;base64,AA==",
+  });
 }
 
 export function ensureResizeObserver(): void {
@@ -66,6 +112,7 @@ function createEmptyDomRectList(): DOMRectList {
 }
 
 export function ensureRangeGeometryMocks(): void {
+  ensureDom();
   if (typeof Range === "undefined") {
     return;
   }

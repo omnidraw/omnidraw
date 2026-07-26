@@ -21,6 +21,7 @@ import {
   createCanvasContextMenuController,
   createCanvasEditor,
   createCanvasMenuController,
+  createPathInteractionController,
   createWidgetInteractionController,
   fitIntrinsicImageSize,
   resolveStandardTransformPolicy,
@@ -29,10 +30,12 @@ import type {
   ICanvasContextMenuController,
   ICanvasEditor,
   ICanvasMenuController,
+  IPathInteractionController,
   IWidgetInteractionController,
   TCanvasContextMenuControllerOptions,
   TCanvasEditorConfig,
   TCanvasMenuControllerOptions,
+  TPathInteractionControllerOptions,
   TWidgetInteractionControllerOptions,
 } from "@omnidraw/cangine/editor";
 import { fnCanvasEngineCapabilityIssues } from "./fn.assert-capabilities";
@@ -364,6 +367,27 @@ export class CanvasEngineAdapter {
       ...options,
       engine: this.#requireEngine(),
     });
+  }
+
+  createPathInteractionController(
+    options: Omit<TPathInteractionControllerOptions, "engine">,
+  ): IPathInteractionController {
+    return createPathInteractionController({
+      ...options,
+      engine: this.#requireEngine(),
+    });
+  }
+
+  subscribeScene(
+    listener: Parameters<IInfiniteCanvasEngine["scene"]["subscribe"]>[0],
+  ): () => void {
+    return this.#requireEngine().scene.subscribe(listener);
+  }
+
+  sceneNode(
+    nodeId: Parameters<IInfiniteCanvasEngine["scene"]["get"]>[0],
+  ): ReturnType<IInfiniteCanvasEngine["scene"]["get"]> {
+    return this.#requireEngine().scene.get(nodeId);
   }
 
   createProductRuntime(

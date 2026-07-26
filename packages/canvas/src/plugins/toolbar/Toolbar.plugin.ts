@@ -42,6 +42,7 @@ function fnNormalizeShortcut(shortcut: string) {
 function txSyncCursor(
   render: SceneService,
   selection: SelectionService,
+  pathCursor: string | null,
   transformCursor: string | null,
 ) {
   switch (selection.mode) {
@@ -56,7 +57,7 @@ function txSyncCursor(
       return;
     case CanvasMode.SELECT:
     default:
-      render.container.style.cursor = transformCursor ?? "default";
+      render.container.style.cursor = pathCursor ?? transformCursor ?? "default";
       return;
   }
 }
@@ -130,7 +131,9 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
       const widgetPlacement = ctx.services.require("widgetPlacement");
+      let pathCursor: string | null = null;
       let transformCursor: string | null = null;
+      let unsubscribePathState: (() => void) | null = null;
       let unsubscribeTransformHover: (() => void) | null = null;
 
       tool.registerTool({
@@ -174,15 +177,20 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
         unsubscribeTransformHover = scene.product.transforms.subscribeHover(
           (hover) => {
             transformCursor = hover?.cursor ?? null;
-            txSyncCursor(scene, selection, transformCursor);
+            txSyncCursor(scene, selection, pathCursor, transformCursor);
           },
         );
-        txSyncCursor(scene, selection, transformCursor);
+        unsubscribePathState = scene.editor.paths.subscribe((state) => {
+          pathCursor = state.cursor;
+          txSyncCursor(scene, selection, pathCursor, transformCursor);
+        });
+        pathCursor = scene.editor.paths.state.cursor;
+        txSyncCursor(scene, selection, pathCursor, transformCursor);
       });
 
       tool.hooks.activeToolChange.tap((toolId) => {
         selection.setMode(getModeFromTool(tool.getTool(toolId)));
-        txSyncCursor(scene, selection, transformCursor);
+        txSyncCursor(scene, selection, pathCursor, transformCursor);
         ctx.hooks.toolSelect.call(toolId);
       });
 
@@ -237,6 +245,9 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
         tool.unregisterTool("select");
         unsubscribeTransformHover?.();
         unsubscribeTransformHover = null;
+        unsubscribePathState?.();
+        unsubscribePathState = null;
+        pathCursor = null;
         transformCursor = null;
         scene.container.style.cursor = "";
         toolbarMount?.dispose();

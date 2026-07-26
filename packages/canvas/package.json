@@ -14,7 +14,7 @@
     "./*": "./src/*"
   },
   "devDependencies": {
-    "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.2.tgz",
+    "@omnidraw/cangine": "file:./vendor/omnidraw-cangine-0.2.2.tgz",
     "jsdom": "^29.1.1",
     "solid-devtools": "^0.34.3",
     "typescript": "catalog:",
