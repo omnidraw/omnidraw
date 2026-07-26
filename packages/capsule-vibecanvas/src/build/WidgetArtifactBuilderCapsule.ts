@@ -65,6 +65,7 @@ import {
   fnVibecanvasCapsuleBuildPolicy,
   fnVibecanvasCapsuleBuildTarget,
 } from './fn.policy';
+import { fnWidgetBuildError } from './fn.build-error';
 import {
   fxCreateVibecanvasBuildDependencies,
   type TVibecanvasReactPackageRoots,
@@ -96,15 +97,9 @@ function sha256(value: Uint8Array | string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function error(kind: 'source' | 'server' | 'ui', cause?: unknown): Error {
-  return Object.assign(new Error(`Widget ${kind} build failed.`, { cause }), {
-    code: 'WIDGET_BUILD_FAILED',
-  });
-}
-
 function assertSnapshotEntry(snapshot: TWidgetSourceSnapshot, entry: string): void {
   if (!snapshot.files.some((file) => file.path === entry)) {
-    throw error('source');
+    throw fnWidgetBuildError('source');
   }
 }
 
@@ -127,14 +122,14 @@ function serverGraph(args: Readonly<{
     visited.add(path);
     if (!JAVASCRIPT_SOURCE_PATTERN.test(path)) continue;
     const file = files.get(path);
-    if (file === undefined) throw error('server');
+    if (file === undefined) throw fnWidgetBuildError('server');
     const source = Buffer.from(file.bytes).toString('utf8');
-    if (fnWidgetBuildSourceHasForbiddenImportSyntax(source)) throw error('server');
+    if (fnWidgetBuildSourceHasForbiddenImportSyntax(source)) throw fnWidgetBuildError('server');
     let imports;
     try {
       imports = transpiler.scanImports(source);
     } catch (cause) {
-      throw error('server', cause);
+      throw fnWidgetBuildError('server', cause);
     }
     for (const imported of imports) {
       const resolved = fnResolveWidgetBuildImport({
@@ -148,7 +143,7 @@ function serverGraph(args: Readonly<{
           kind: 'server',
           specifier: resolved.specifier,
           allowedPackageImports: args.allowedImports,
-        })) throw error('server');
+        })) throw fnWidgetBuildError('server');
         continue;
       }
       pending.push(resolved.path);
@@ -171,17 +166,17 @@ function serverFunctionModules(
       continue;
     }
     const file = files.get(path);
-    if (file === undefined) throw error('server');
+    if (file === undefined) throw fnWidgetBuildError('server');
     const source = Buffer.from(file.bytes).toString('utf8');
-    if (fnWidgetBuildSourceHasRuntimeReExport(source)) throw error('server');
+    if (fnWidgetBuildSourceHasRuntimeReExport(source)) throw fnWidgetBuildError('server');
     let exports;
     try {
       exports = [...transpiler.scan(source).exports].sort();
     } catch (cause) {
-      throw error('server', cause);
+      throw fnWidgetBuildError('server', cause);
     }
     for (const name of exports) {
-      if (!EXPORT_NAME_PATTERN.test(name) || names.has(name)) throw error('server');
+      if (!EXPORT_NAME_PATTERN.test(name) || names.has(name)) throw fnWidgetBuildError('server');
       names.add(name);
     }
     if (exports.length > 0) modules.push(Object.freeze({ path, exportNames: exports }));
@@ -264,7 +259,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       );
     }
     const validation = fnValidateWidgetServerFunctionDescriptors(manifest, functionDescriptors);
-    if (!validation.valid) throw error('server');
+    if (!validation.valid) throw fnWidgetBuildError('server');
 
     const functionDescriptorsDigestSha256 = sha256(
       fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors),
@@ -359,7 +354,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
         policy: fnVibecanvasCapsuleBuildPolicy(),
       });
     } catch (cause) {
-      throw error('ui', cause);
+      throw fnWidgetBuildError('ui', cause);
     }
     const signed = await txSignVibecanvasCapsuleArtifact({
       loadKeys: this.config.loadSigningKeys,
@@ -507,13 +502,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
             builder.onResolve({ filter: /.*/ }, (args) => {
               if (args.importer.length === 0) return undefined;
               if (args.path.startsWith('.') || args.path.startsWith('/')) return undefined;
-              if (!this.#allowedServerImports.includes(args.path)) throw error('server');
+              if (!this.#allowedServerImports.includes(args.path)) throw fnWidgetBuildError('server');
               return { path: this.#resolveTrustedPackageImport(args.path) };
             });
           },
         }],
       });
-      if (!result.success) throw error('server');
+      if (!result.success) throw fnWidgetBuildError('server');
       const outputs = [];
       for (const [index, output] of [...result.outputs].sort((left, right) => (
         basename(left.path).localeCompare(basename(right.path))
@@ -522,7 +517,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
         const loader = serverOutputLoader(output.loader);
         const source = loader === 'js' ? Buffer.from(bytes).toString('utf8') : '';
         if (source !== '' && fnWidgetBuildSourceHasForbiddenImportSyntax(source)) {
-          throw error('server');
+          throw fnWidgetBuildError('server');
         }
         outputs.push(Object.freeze({
           path: `output-${index}.${loader === 'file' ? 'bin' : loader}`,
@@ -551,7 +546,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       if (cause instanceof Error && 'code' in cause && cause.code === 'WIDGET_BUILD_FAILED') {
         throw cause;
       }
-      throw error('server', cause);
+      throw fnWidgetBuildError('server', cause);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

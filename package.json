@@ -62,9 +62,10 @@
     "lint:functional-core": "eslint \"**/src/**/{fn,fx,tx}.*.ts\"",
     "lint:functional-core:agent": "bun run .codex/hooks/functional-core-eslint.ts",
     "generate:files": "bun run scripts/generate-files-md.ts",
+    "predev": "bun run --filter '@vibecanvas/sdk' build",
     "dev": "bun run scripts/dev.ts",
     "client:dev": "cd apps/frontend && bun run dev",
-    "server:dev": "cd apps/cli && bun run --watch src/main.ts serve",
+    "server:dev": "bun run --filter '@vibecanvas/sdk' build && cd apps/cli && bun run --watch src/main.ts serve",
     "server:prod": "cd apps/cli && NODE_ENV=production bun run src/main.ts serve --port 7496"
   },
   "keywords": [],

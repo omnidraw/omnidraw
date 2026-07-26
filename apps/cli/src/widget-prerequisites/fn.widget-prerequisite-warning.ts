@@ -24,7 +24,7 @@ export function fnWidgetPrerequisiteWarning(
     .map(unavailableLabel)
     .join(', ');
   const title = 'Widget tooling prerequisites unavailable';
-  const description = `Unavailable: ${unavailableSummary}. Capsule widget creation, build, and validation require the pinned Docker or Podman OCI engine. Configure VIBECANVAS_CAPSULE_OCI_ENGINE, VIBECANVAS_CAPSULE_OCI_ENGINE_PATH, and VIBECANVAS_CAPSULE_OCI_ENGINE_SHA256, ensure the engine is available, and restart Vibecanvas.`;
+  const description = `Unavailable: ${unavailableSummary}. Capsule widget creation, build, and validation require the pinned Docker or Podman OCI engine. Configure VIBECANVAS_CAPSULE_OCI_ENGINE, VIBECANVAS_CAPSULE_OCI_ENGINE_PATH, and VIBECANVAS_CAPSULE_OCI_ENGINE_SHA256, ensure the engine daemon is running and the pinned image is loaded, and restart Vibecanvas.`;
 
   return {
     cliMessage: `Warning: ${title}. ${description}`,

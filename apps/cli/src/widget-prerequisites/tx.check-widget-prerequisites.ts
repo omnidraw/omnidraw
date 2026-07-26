@@ -4,6 +4,7 @@ import {
   fnWidgetCapsuleOciEngineSelection,
   type TWidgetCapsuleOciEnvironment,
 } from '../services/widget-capsule-oci/fn.engine-selection';
+import { WIDGET_CAPSULE_OCI_IMAGE_ID } from '../services/widget-capsule-oci/CONSTANTS';
 import { fxProbeWidgetOciEngine } from './fx.probe-widget-oci-engine';
 import type { TWidgetPrerequisiteWarning } from './fn.widget-prerequisite-warning';
 import { fnWidgetPrerequisiteWarning } from './fn.widget-prerequisite-warning';
@@ -76,6 +77,8 @@ export async function txCheckWidgetPrerequisites(portal: TPortal, args: TArgs): 
     }
     const probes = [await fxProbeWidgetOciEngine(portal, {
       ...selection,
+      imageId: args.environment.VIBECANVAS_CAPSULE_OCI_IMAGE_ID
+        ?? WIDGET_CAPSULE_OCI_IMAGE_ID,
       timeoutMs,
     })];
     const warning = fnWidgetPrerequisiteWarning(probes);

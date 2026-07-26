@@ -1,3 +1,5 @@
+import { TOOL_ERROR_DETAILS_MARKER } from './CONSTANTS';
+
 const MODEL_TEXT_MAX_LENGTH = 128_000;
 const MODEL_STRING_MAX_LENGTH = 32_000;
 const MODEL_ARRAY_MAX_LENGTH = 500;
@@ -98,7 +100,20 @@ export function fnToolError<TModelData = never, TDetails = TModelData>(
       type: 'text' as const,
       text: `Tool error.\n\nModel data:\n${JSON.stringify(fnBoundToolModelData(modelData).data, null, 2)}`,
     }],
-    details: options.details ?? {},
+    details: {
+      ...(typeof options.details === 'object' && options.details !== null
+        ? options.details
+        : {}),
+      [TOOL_ERROR_DETAILS_MARKER]: true,
+    },
     isError: true,
   };
+}
+
+export function fnIsStructuredToolErrorDetails(
+  details: unknown,
+): boolean {
+  return typeof details === 'object'
+    && details !== null
+    && TOOL_ERROR_DETAILS_MARKER in details;
 }

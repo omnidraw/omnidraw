@@ -150,26 +150,22 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     this.#delegate(tenant, (service) => service.readArtifact(tenant, request))
   );
 
-  captureSource(
-    tenant: TTenantContext,
-    sourceRoot: string,
+  captureSource: WidgetService['captureSource'] = (
+    tenant,
+    sourceRoot,
     args: TWidgetSourceCaptureArgs = {},
-  ) {
-    return this.#delegate(
-      tenant,
-      (service) => service.captureSource(tenant, sourceRoot, args),
-    );
-  }
+  ) => this.#delegate(
+    tenant,
+    (service) => service.captureSource(tenant, sourceRoot, args),
+  );
 
-  validateBuild(
-    tenant: TTenantContext,
-    request: TWidgetBuildValidationRequest,
-  ): Promise<TWidgetBuildValidationResult> {
-    return this.#delegate(
-      tenant,
-      (service) => service.validateBuild(tenant, request),
-    );
-  }
+  validateBuild: TWidgetAuthoringCapability['validateBuild'] = (
+    tenant,
+    request,
+  ): Promise<TWidgetBuildValidationResult> => this.#delegate(
+    tenant,
+    (service) => service.validateBuild(tenant, request),
+  );
 
   collect(
     tenant: TTenantContext,

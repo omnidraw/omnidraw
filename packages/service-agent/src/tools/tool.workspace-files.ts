@@ -57,26 +57,37 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('edit')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      const name = mountedWidgetName(params.path);
+      let sourceChanged = false;
       try {
-        if (JSON.stringify(params.edits).length > 2_000_000) throw new Error('Edit batch exceeds the total request-size limit.');
-        await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
-          const result = fnApplyExactEdits(source, params.edits);
-          if (!result.ok) throw new Error(result.message);
-          return { content: result.content, value: undefined };
-        });
-        const name = mountedWidgetName(params.path);
-        if (name) await args.onDraftChanged?.({ name, type: 'changed' });
-        const modelData = {
-          path: params.path,
-          replacements: params.edits.length,
+        const execute = async () => {
+          if (JSON.stringify(params.edits).length > 2_000_000) throw new Error('Edit batch exceeds the total request-size limit.');
+          await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
+            const result = fnApplyExactEdits(source, params.edits);
+            if (!result.ok) throw new Error(result.message);
+            return { content: result.content, value: undefined };
+          });
+          sourceChanged = true;
+          if (name) await args.onDraftChanged?.({ name, type: 'changed' });
+          const modelData = {
+            path: params.path,
+            replacements: params.edits.length,
+          };
+          return fnToolSuccess({
+            summary: `Successfully replaced ${params.edits.length} block(s) in ${params.path}.`,
+            modelData,
+            details: modelData,
+          });
         };
-        return fnToolSuccess({
-          summary: `Successfully replaced ${params.edits.length} block(s) in ${params.path}.`,
-          modelData,
-          details: modelData,
-        });
+        return name
+          ? await args.workspace.withDraftAuthoringOperation(name, execute)
+          : await execute();
       } catch (error) {
-        return fnToolError({ code: 'EDIT_FAILED', message: error instanceof Error ? error.message : String(error) });
+        return fnToolError({
+          code: 'EDIT_FAILED',
+          message: error instanceof Error ? error.message : String(error),
+          ...(sourceChanged ? { modelData: { path: params.path, sourceChanged: true } } : {}),
+        });
       }
     },
   }) as TToolDefinition;
@@ -91,18 +102,29 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('patch')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      const name = mountedWidgetName(params.path);
+      let sourceChanged = false;
       try {
-        await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
-          const result = fnApplyUnifiedPatch(source, params.patch);
-          if (!result.ok) throw new Error(result.message);
-          return { content: result.content, value: undefined };
-        }, { allowMissing: true });
-        const name = mountedWidgetName(params.path);
-        if (name) await args.onDraftChanged?.({ name, type: 'changed' });
-        const modelData = { path: params.path };
-        return fnToolSuccess({ summary: `Applied patch to ${params.path}.`, modelData, details: modelData });
+        const execute = async () => {
+          await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
+            const result = fnApplyUnifiedPatch(source, params.patch);
+            if (!result.ok) throw new Error(result.message);
+            return { content: result.content, value: undefined };
+          }, { allowMissing: true });
+          sourceChanged = true;
+          if (name) await args.onDraftChanged?.({ name, type: 'changed' });
+          const modelData = { path: params.path };
+          return fnToolSuccess({ summary: `Applied patch to ${params.path}.`, modelData, details: modelData });
+        };
+        return name
+          ? await args.workspace.withDraftAuthoringOperation(name, execute)
+          : await execute();
       } catch (error) {
-        return fnToolError({ code: 'PATCH_FAILED', message: error instanceof Error ? error.message : String(error) });
+        return fnToolError({
+          code: 'PATCH_FAILED',
+          message: error instanceof Error ? error.message : String(error),
+          ...(sourceChanged ? { modelData: { path: params.path, sourceChanged: true } } : {}),
+        });
       }
     },
   }) as TToolDefinition;

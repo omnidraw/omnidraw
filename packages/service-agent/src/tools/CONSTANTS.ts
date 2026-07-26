@@ -6,6 +6,7 @@ export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetEditSessi
 export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetResourceSelection';
 export const WIDGET_DRAFT_RESOURCE_BINDING_SELECTION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetDraftResourceBindingSelection';
 export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetDbChangeProposal';
+export const TOOL_ERROR_DETAILS_MARKER = Symbol('vibecanvas.toolError');
 
 export const Z_VIBECANVAS_JSON = ZWidgetManifestV3;
 

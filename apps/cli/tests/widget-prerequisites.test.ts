@@ -6,6 +6,7 @@ import type {
 } from '../src/widget-prerequisites/interface';
 import {
   WIDGET_CAPSULE_DARWIN_DOCKER_SHA256,
+  WIDGET_CAPSULE_OCI_IMAGE_ID,
 } from '../src/services/widget-capsule-oci/CONSTANTS';
 import { txCheckWidgetPrerequisites } from '../src/widget-prerequisites/tx.check-widget-prerequisites';
 
@@ -16,6 +17,7 @@ type TOutcome =
 function createHarness(
   outcome: TOutcome,
   fileSha256: `sha256:${string}` = ENGINE_SHA256,
+  imageStatus: 'available' | 'unusable' = 'available',
 ) {
   const calls: string[] = [];
   const digestCalls: string[] = [];
@@ -23,6 +25,14 @@ function createHarness(
   const notifications: TNotificationEvent[] = [];
   const execFile: TExecFile = (file, args, _options, callback) => {
     calls.push(`${file} ${args.join(' ')}`);
+    if (args[0] === 'image') {
+      if (imageStatus === 'available') {
+        callback(null, `${WIDGET_CAPSULE_OCI_IMAGE_ID}\n`, '');
+        return;
+      }
+      callback(Object.assign(new Error('daemon unavailable'), { code: 1 }), '', 'daemon unavailable');
+      return;
+    }
     if (outcome.status === 'available') {
       callback(null, `${outcome.version}\n`, '');
       return;
@@ -112,7 +122,10 @@ describe('widget startup prerequisites', () => {
       }],
       warning: null,
     });
-    expect(harness.calls).toEqual([`${enginePath} --version`]);
+    expect(harness.calls).toEqual([
+      `${enginePath} --version`,
+      `${enginePath} image inspect --format={{.Id}} ${WIDGET_CAPSULE_OCI_IMAGE_ID}`,
+    ]);
     expect(harness.digestCalls).toEqual([enginePath]);
     expect(harness.warnings).toEqual([]);
     expect(harness.notifications).toEqual([]);
@@ -141,6 +154,7 @@ describe('widget startup prerequisites', () => {
     }]);
     expect(harness.calls).toEqual([
       '/Applications/Docker.app/Contents/Resources/bin/docker --version',
+      `/Applications/Docker.app/Contents/Resources/bin/docker image inspect --format={{.Id}} ${WIDGET_CAPSULE_OCI_IMAGE_ID}`,
     ]);
     expect(harness.digestCalls).toEqual([
       '/Applications/Docker.app/Contents/Resources/bin/docker',
@@ -173,6 +187,34 @@ describe('widget startup prerequisites', () => {
       title: 'Widget tooling prerequisites unavailable',
       description: result.warning?.notification.description,
     }]);
+  });
+
+  test('warns when the client exists but the daemon or pinned image is unavailable', async () => {
+    const enginePath = '/opt/capsule/bin/docker';
+    const harness = createHarness(
+      { status: 'available', version: 'Docker version 27.5.1' },
+      ENGINE_SHA256,
+      'unusable',
+    );
+
+    const result = await txCheckWidgetPrerequisites(
+      harness.portal,
+      serveArgs(configuredEnvironment('docker', enginePath)),
+    );
+
+    expect(result.probes).toEqual([{
+      subject: 'engine',
+      engine: 'docker',
+      enginePath,
+      status: 'unusable',
+    }]);
+    expect(result.warning?.notification.description).toContain(
+      'ensure the engine daemon is running and the pinned image is loaded',
+    );
+    expect(harness.calls).toEqual([
+      `${enginePath} --version`,
+      `${enginePath} image inspect --format={{.Id}} ${WIDGET_CAPSULE_OCI_IMAGE_ID}`,
+    ]);
   });
 
   test.each([

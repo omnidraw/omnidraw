@@ -251,7 +251,13 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           </div>
           <div class={styles.headerActions}>
             <Show when={current().source === 'published'}><Button class={styles.button} disabled={saving()} onClick={editAsDraft}>Edit as draft</Button></Show>
-            <Show when={current().source === 'draft'}><Button class={`${styles.button} ${styles.primary}`} disabled={!current().variant.draftId || saving() || publicationState().loading || publicationState().open || publicationState().publishing} aria-busy={publicationState().publishing} onClick={() => setPublishOpen(true)}>{publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
+            <Show when={current().source === 'draft'}><Button
+              class={`${styles.button} ${styles.primary}`}
+              disabled={!current().variant.draftId || saving() || publicationState().loading || publicationState().open || publicationState().publishing}
+              aria-busy={publicationState().publishing}
+              title={!current().variant.draftId ? 'Validate this widget again from its owning AI chat before publishing.' : undefined}
+              onClick={() => setPublishOpen(true)}
+            >{!current().variant.draftId ? 'Needs validation' : publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>

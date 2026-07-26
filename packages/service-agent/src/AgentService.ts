@@ -25,6 +25,7 @@ import { createToolRegistry } from './tools/ToolRegistry';
 import type { TAgentResourceService } from './tools/resource-service';
 import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
+import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import type { TWidgetDbChangeProposalRecord, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
@@ -1157,6 +1158,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
               for (const captured of redacted.captured) sensitiveToolArgs.set(captured.toolCallId, captured.args)
               return redacted.captured.length > 0 ? { message: redacted.message } : undefined
             })
+            pi.on('tool_result', (event) => (
+              !event.isError && fnIsStructuredToolErrorDetails(event.details)
+                ? { isError: true }
+                : undefined
+            ))
             pi.on('tool_execution_end', (event) => {
               sensitiveToolArgs.delete(event.toolCallId)
             })

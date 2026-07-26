@@ -89,6 +89,7 @@ export class WidgetWorkspace {
   readonly #createId: () => string;
   readonly #copyDirectory: typeof cp;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
+  readonly #authoringQueues = new Map<string, Promise<unknown>>();
 
   constructor(config: TWidgetWorkspaceConfig) {
     this.agentRoot = join(config.dataPath, 'pi', 'agent');
@@ -508,6 +509,20 @@ export class WidgetWorkspace {
 
   async writeMountedFileAtomic(chatId: string, lexicalPath: string, content: string): Promise<void> {
     await this.updateMountedFileAtomic(chatId, lexicalPath, () => ({ content, value: undefined }), { allowMissing: true });
+  }
+
+  /**
+   * Serializes one complete source mutation and its durable authoring callback.
+   * The separate lane allows the callback to take the lower-level file lock
+   * while preventing another chat from changing the same draft in between.
+   */
+  async withDraftAuthoringOperation<T>(
+    requestedName: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const name = this.#normalizeName(requestedName);
+    const key = await this.#canonicalWriteLaneKey(join(this.draftRoot, name));
+    return this.#withQueue(this.#authoringQueues, key, operation);
   }
 
   async updateMountedFileAtomic<T>(
@@ -1127,6 +1142,25 @@ export class WidgetWorkspace {
       for (const { root, tail } of reservations) {
         if (this.#writeQueues.get(root) === tail) this.#writeQueues.delete(root);
       }
+    }
+  }
+
+  async #withQueue<T>(
+    queues: Map<string, Promise<unknown>>,
+    key: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = queues.get(key) ?? Promise.resolve();
+    let settle: (() => void) | undefined;
+    const gate = new Promise<void>((resolveGate) => { settle = resolveGate; });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    queues.set(key, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      settle?.();
+      if (queues.get(key) === tail) queues.delete(key);
     }
   }
 

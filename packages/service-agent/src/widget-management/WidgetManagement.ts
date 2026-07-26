@@ -314,8 +314,8 @@ export class WidgetManagement {
       relation,
       published: null,
       draft: draft?.summary ?? null,
-      preview: previewState && draft?.summary.placement
-        ? previewState.status === 'ready'
+      preview: previewState
+        ? previewState.status === 'ready' && draft?.summary.placement
           ? {
               status: 'ready',
               revision: previewState.revision,
@@ -324,7 +324,14 @@ export class WidgetManagement {
                 bounds: draft.summary.placement.bounds,
               },
             }
-          : { status: previewState.status, revision: previewState.revision, message: previewState.message, placement: null }
+          : {
+              status: previewState.status === 'ready' ? 'not-ready' : previewState.status,
+              revision: previewState.revision,
+              message: previewState.status === 'ready'
+                ? 'The validated Preview placement descriptor is unavailable.'
+                : previewState.message,
+              placement: null,
+            }
         : null,
       problem,
     };
@@ -366,7 +373,16 @@ export class WidgetManagement {
       return {
         summary,
         manifest: safeManifest,
-        problem: after.problem ?? manifestResult.problem,
+        problem: after.problem
+          ?? manifestResult.problem
+          ?? (
+            source === 'draft' && !draft
+              ? fnWidgetProblem(
+                'DRAFT_IDENTITY_UNAVAILABLE',
+                'Validate this widget again from its owning AI chat before publishing or placing it.',
+              )
+              : null
+          ),
       };
     }
     const draft = source === 'draft' ? await this.#drafts.getByName(name) : null;

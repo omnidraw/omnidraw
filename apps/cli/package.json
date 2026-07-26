@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@automerge/automerge-repo": "catalog:",
+    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@tursodatabase/database": "catalog:",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
     "@vibecanvas/api": "workspace:*",
     "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/function-runtime": "workspace:*",
@@ -29,6 +32,10 @@
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*",
+    "csstype": "3.2.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "scheduler": "0.27.0",
     "zod": "catalog:"
   }
 }

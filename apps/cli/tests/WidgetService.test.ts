@@ -19,7 +19,10 @@ import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
-import { WidgetServicePool } from '../src/services/WidgetServicePool';
+import {
+  createWidgetAuthoringCapability,
+  WidgetServicePool,
+} from '../src/services/WidgetServicePool';
 import { WidgetCapsuleSigningKeyStore } from '../src/services/WidgetCapsuleSigningKeyStore';
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
 import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
@@ -208,7 +211,9 @@ describe('production widget service', () => {
     });
 
     expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual(['Widget ui build failed.']);
+    expect(result.diagnostics).toEqual([
+      'Widget ui build failed: TRANSFORM_FAILED at src/ui.ts.',
+    ]);
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -236,7 +241,9 @@ describe('production widget service', () => {
     });
 
     expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual(['Widget ui build failed.']);
+    expect(result.diagnostics).toEqual([
+      'Widget ui build failed: TYPE_CHECK_FAILED at ui/main.ts.',
+    ]);
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -544,15 +551,17 @@ describe('production widget service', () => {
     const sourceRoot = join(root, 'react-capsule-source');
     await writeSource(sourceRoot, {
       'ui/main.tsx': [
-        'import { getWidgetProps } from "@vibecanvas/sdk/widget";',
+        'import { getWidgetProps, getWidgetTheme } from "@vibecanvas/sdk/widget";',
         'import { useState } from "react";',
         'import { createRoot } from "react-dom/client";',
+        'import "./styles.css";',
         '',
         'function Counter() {',
         '  const props = getWidgetProps<{ label: string }>();',
+        '  const theme = getWidgetTheme();',
         '  const [count, setCount] = useState(0);',
         '  return (',
-        '    <button type="button" onClick={() => setCount(count + 1)}>',
+        '    <button style={{ color: theme.tokens.foreground }} type="button" onClick={() => setCount(count + 1)}>',
         '      {props.label}: {count}',
         '    </button>',
         '  );',
@@ -561,6 +570,7 @@ describe('production widget service', () => {
         'createRoot(document.body).render(<Counter />);',
         '',
       ].join('\n'),
+      'ui/styles.css': 'button { color: red; }',
     });
     const snapshot = await service.captureSource(TENANT, sourceRoot, {
       id: uuid(844),
@@ -570,7 +580,7 @@ describe('production widget service', () => {
       schemaVersion: 3,
       name: 'React Capsule widget',
       slug: 'react-capsule-widget',
-      ui: capsuleUi('ui/main.tsx'),
+      ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
     };
 
     await expect(service.validateBuild(TENANT, {
@@ -615,6 +625,150 @@ describe('production widget service', () => {
     expect(published.revision.uiArtifact.digestSha256).not.toBe(
       preview.uiArtifact.digestSha256,
     );
+  }, 20_000);
+
+  test('validates and previews the generated React theme-channel widget through Capsule', async () => {
+    const sourceRoot = join(root, 'react-theme-widget-source');
+    await writeSource(sourceRoot, {
+      'ui/main.tsx': [
+        'import { getWidgetTheme, subscribeWidgetTheme } from "@vibecanvas/sdk/widget";',
+        'import { useEffect, useState } from "react";',
+        'import { createRoot } from "react-dom/client";',
+        'import "./styles.css";',
+        '',
+        'function HelloWorld() {',
+        '  const [theme, setTheme] = useState(getWidgetTheme);',
+        '  useEffect(() => subscribeWidgetTheme(setTheme), []);',
+        '',
+        '  return (',
+        '    <main',
+        '      className="hello-world-widget"',
+        '      style={{',
+        '        backgroundColor: theme.tokens.background,',
+        '        color: theme.tokens.foreground,',
+        '      }}',
+        '    >',
+        '      <section',
+        '        className="hello-world-widget__card"',
+        '        aria-labelledby="hello-title"',
+        '        style={{',
+        '          backgroundColor: theme.tokens.surface,',
+        '          color: theme.tokens.surfaceForeground,',
+        '          borderColor: theme.tokens.border,',
+        '        }}',
+        '      >',
+        '        <h1 id="hello-title">Hello, world!</h1>',
+        '        <p style={{ color: theme.tokens.mutedForeground }}>',
+        '          This example widget is rendered with React.',
+        '        </p>',
+        '      </section>',
+        '    </main>',
+        '  );',
+        '}',
+        '',
+        'const container = document.createElement("div");',
+        'document.body.append(container);',
+        'createRoot(container).render(<HelloWorld />);',
+        '',
+      ].join('\n'),
+      'ui/main.ts': '\n',
+      'ui/styles.css': [
+        '.hello-world-widget {',
+        '  box-sizing: border-box;',
+        '  display: grid;',
+        '  width: 100%;',
+        '  height: 100%;',
+        '  place-items: center;',
+        '  padding: 20px;',
+        '  overflow: auto;',
+        '  font: 14px/1.5 system-ui, sans-serif;',
+        '}',
+        '',
+        '.hello-world-widget * { box-sizing: border-box; }',
+        '',
+        '.hello-world-widget__card {',
+        '  display: grid;',
+        '  justify-items: center;',
+        '  gap: 14px;',
+        '  max-width: 28rem;',
+        '  padding: 24px;',
+        '  text-align: center;',
+        '  border: 1px solid;',
+        '  border-radius: 14px;',
+        '}',
+        '',
+        '.hello-world-widget h1,',
+        '.hello-world-widget p { margin: 0; }',
+        '',
+      ].join('\n'),
+      'vibecanvas.json': `${JSON.stringify({
+        schemaVersion: 3,
+        name: 'Hello World',
+        slug: 'hello-world',
+        description: 'A simple React hello world widget.',
+        ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
+      }, null, 2)}\n`,
+      'package.json': `${JSON.stringify({
+        name: 'hello-world',
+        version: '1.0.0',
+        private: true,
+        type: 'module',
+        dependencies: {
+          '@vibecanvas/sdk': 'file:/trusted/widget-sdk',
+          react: '19.2.7',
+          'react-dom': '19.2.7',
+          zod: '4.4.3',
+        },
+        devDependencies: {
+          '@types/react': '19.2.17',
+          '@types/react-dom': '19.2.3',
+          typescript: '5.9.3',
+        },
+      }, null, 2)}\n`,
+      'tsconfig.json': `${JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'ESNext',
+          moduleResolution: 'Bundler',
+          strict: true,
+          skipLibCheck: true,
+          noEmit: true,
+          jsx: 'react-jsx',
+          lib: ['ES2022', 'DOM'],
+        },
+        include: ['ui/**/*.ts', 'ui/**/*.tsx', 'server/**/*.ts', 'shared/**/*.ts'],
+      }, null, 2)}\n`,
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(850),
+      createdAtMs: 40,
+    });
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
+      name: 'Hello World',
+      slug: 'hello-world',
+      description: 'A simple React hello world widget.',
+      ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
+    };
+
+    await expect(service.validateBuild(TENANT, {
+      snapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+
+    const preview = await service.buildPreview(TENANT, {
+      draftId: uuid(851),
+      definitionId: uuid(852),
+      draftRevisionSha256: snapshot.digestSha256,
+      snapshot,
+      manifest,
+      builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+    });
+    expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
+    expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
+      'vibecanvas-preview-v1',
+    ]);
   }, 20_000);
 
   test('fails closed for capability issuance and reads after stored revision contract tampering', async () => {
@@ -979,6 +1133,58 @@ describe('production widget service', () => {
       await widgetOwner.stop();
       await compositionDatabase.stop();
     }
+  });
+});
+
+describe('WidgetServicePool authoring capability', () => {
+  test('preserves the pool receiver for capture and validation delegation', async () => {
+    const calls: string[] = [];
+    const snapshot = {
+      marker: 'captured-source',
+    } as unknown as Awaited<ReturnType<WidgetService['captureSource']>>;
+    const validation = { valid: true, diagnostics: [] } as const;
+    const pool = new WidgetServicePool({
+      create: async () => ({
+        start: async () => undefined,
+        stop: async () => undefined,
+        captureSource: async (
+          tenant: TTenantContext,
+          sourceRoot: string,
+          args: Parameters<WidgetService['captureSource']>[2],
+        ) => {
+          calls.push(`capture:${tenant.requestId}:${sourceRoot}:${args.id}`);
+          return snapshot;
+        },
+        validateBuild: async (
+          tenant: TTenantContext,
+          request: Parameters<WidgetService['validateBuild']>[1],
+        ) => {
+          calls.push(`validate:${tenant.requestId}:${request.snapshot === snapshot}`);
+          return validation;
+        },
+      } as unknown as WidgetService),
+    });
+    pool.start({ hooks: {}, config: {} });
+    const authoring = createWidgetAuthoringCapability(pool);
+
+    await expect(authoring.captureSource(TENANT, '/widget/source', {
+      id: uuid(898),
+    })).resolves.toBe(snapshot);
+    await expect(authoring.validateBuild(TENANT, {
+      snapshot,
+      manifest: {
+        schemaVersion: 3,
+        name: 'Bound capability',
+        slug: 'bound-capability',
+        ui: capsuleUi('ui/main.ts'),
+      },
+    })).resolves.toBe(validation);
+    expect(calls).toEqual([
+      `capture:${TENANT.requestId}:/widget/source:${uuid(898)}`,
+      `validate:${TENANT.requestId}:true`,
+    ]);
+
+    await pool.stop();
   });
 });
 

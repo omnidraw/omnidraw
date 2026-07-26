@@ -1,21 +1,48 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
 import { createWidgetAuthoringHarness } from './widget-authoring.fixture';
+import { createTestTenantEvents, TEST_TENANT } from './tenant.fixture';
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
-async function harness() {
+async function harness(eventPublisher?: ITenantEventPublisherService) {
   const root = await mkdtemp(join(tmpdir(), 'vc-agent-stateless-preview-'));
   roots.push(root);
-  return { root, ...await createWidgetAuthoringHarness(root) };
+  return { root, ...await createWidgetAuthoringHarness(root, eventPublisher) };
 }
 
 describe('WidgetDraftController stateless Preview', () => {
+  test('persists a created draft before publishing its sidebar refresh event', async () => {
+    const events = createTestTenantEvents();
+    const iterator = events.subscribeAgentEvents()[Symbol.asyncIterator]();
+    const nextEvent = iterator.next();
+    const { createDraft, store } = await harness(events);
+
+    const draft = await createDraft('Sidebar Clock');
+
+    expect(await store.getDraft(TEST_TENANT, draft.draftId)).toMatchObject({
+      id: draft.draftId,
+      name: draft.name,
+      sourceDigestSha256: draft.revision,
+    });
+    await expect(nextEvent).resolves.toEqual({
+      done: false,
+      value: {
+        kind: 'widget-draft',
+        type: 'created',
+        draftId: draft.draftId,
+        revision: draft.revision,
+      },
+    });
+    await iterator.return?.();
+  });
+
   test('returns verified UI bytes with no durable Preview identity', async () => {
     const { controller, createDraft } = await harness();
     const draft = await createDraft('Browser Clock');
@@ -53,6 +80,76 @@ describe('WidgetDraftController stateless Preview', () => {
 });
 
 describe('WidgetManagement manifest-v3 metadata', () => {
+  test('exposes draft placement only after the exact revision passes trusted validation', async () => {
+    const { workspace, controller, createDraft } = await harness();
+    const draft = await createDraft('Validated Clock');
+    const management = new WidgetManagement({ workspace, drafts: controller });
+
+    const before = await management.detail(draft.name, 'draft');
+    expect(before?.variant.validation?.status).toBe('unknown');
+    expect(before?.variant.placement).toBeNull();
+
+    await controller.validate(draft.draftId, draft.revision);
+
+    const after = await management.detail(draft.name, 'draft');
+    expect(after?.variant.validation).toMatchObject({
+      status: 'valid',
+      validatedRevision: draft.revision,
+    });
+    expect(after?.variant.placement?.reference).toEqual({
+      source: 'draft',
+      name: draft.name,
+      revision: draft.revision,
+    });
+    expect((await management.catalog([])).widgets[0]?.preview).toMatchObject({
+      status: 'ready',
+      revision: draft.revision,
+      placement: {
+        reference: {
+          source: 'draft',
+          name: draft.name,
+          revision: draft.revision,
+        },
+      },
+    });
+  });
+
+  test('marks a filesystem-only orphan as needing validation and removes placement', async () => {
+    const { workspace, controller } = await harness();
+    await workspace.createDraft('orphan-chat', { name: 'Orphan Clock' }, async ({ cwd, name }) => {
+      await mkdir(join(cwd, 'ui'), { recursive: true });
+      await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("main"));\n', 'utf8');
+      await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+        schemaVersion: 3,
+        name,
+        slug: 'orphan-clock',
+        ui: {
+          runtime: 'capsule',
+          entry: 'ui/main.ts',
+          target: {
+            runtimeAbi: 'quickjs-release-sync-v1',
+            domProfile: 'dom-core-v2',
+            featureProfiles: [],
+          },
+        },
+      }, null, 2)}\n`, 'utf8');
+      return ['vibecanvas.json', 'ui/main.ts'];
+    });
+    const management = new WidgetManagement({ workspace, drafts: controller });
+
+    const detail = await management.detail('Orphan Clock', 'draft');
+
+    expect(detail?.variant).toMatchObject({
+      draftId: null,
+      placement: null,
+      validation: null,
+    });
+    expect(detail?.problem).toEqual({
+      code: 'DRAFT_IDENTITY_UNAVAILABLE',
+      message: 'Validate this widget again from its owning AI chat before publishing or placing it.',
+    });
+  });
+
   test('persists supported manifest metadata', async () => {
     const { workspace, controller, createDraft } = await harness();
     const draft = await createDraft('Editable Clock');

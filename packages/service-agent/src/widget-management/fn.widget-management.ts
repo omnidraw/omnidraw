@@ -67,7 +67,14 @@ export function fnWidgetVariantSummary(args: {
       behaviorType: 'mode',
     },
     validation: args.validation,
-    placement: args.manifest ? {
+    placement: args.manifest && (
+      args.source === 'published'
+      || (
+        args.draftId !== null
+        && args.validation?.status === 'valid'
+        && args.validation.validatedRevision === args.revision
+      )
+    ) ? {
       reference: {
         source: args.source,
         name: args.fallbackName,

@@ -13,6 +13,7 @@ type TPortal = {
 };
 
 type TArgs = TWidgetCapsuleOciEngineSelection & {
+  imageId: string;
   timeoutMs: number;
 };
 
@@ -52,13 +53,34 @@ export function fxProbeWidgetOciEngine(
             finish(unavailable('unusable'));
             return;
           }
-          finish({
-            subject: 'engine',
-            engine: args.engine,
-            enginePath: args.enginePath,
-            status: 'available',
-            version,
-          });
+          try {
+            portal.execFile(args.enginePath, [
+              'image',
+              'inspect',
+              '--format={{.Id}}',
+              args.imageId,
+            ], {
+              timeout: args.timeoutMs,
+              windowsHide: true,
+            }, (imageError, imageStdout) => {
+              const imageId = typeof imageStdout === 'string'
+                ? imageStdout.trim()
+                : String(imageStdout ?? '').trim();
+              if (imageError || imageId !== args.imageId) {
+                finish(unavailable('unusable'));
+                return;
+              }
+              finish({
+                subject: 'engine',
+                engine: args.engine,
+                enginePath: args.enginePath,
+                status: 'available',
+                version,
+              });
+            });
+          } catch {
+            finish(unavailable('unusable'));
+          }
         });
       } catch {
         finish(unavailable('unusable'));

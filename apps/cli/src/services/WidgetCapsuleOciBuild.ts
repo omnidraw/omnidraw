@@ -8,6 +8,7 @@ import {
   fnWidgetCapsuleOciEngineSelection,
   type TWidgetCapsuleOciEnvironment,
 } from './widget-capsule-oci/fn.engine-selection';
+import { WIDGET_CAPSULE_OCI_IMAGE_ID } from './widget-capsule-oci/CONSTANTS';
 
 type TEnvironment = TWidgetCapsuleOciEnvironment;
 
@@ -18,8 +19,7 @@ type TConfig = Readonly<{
   run?: typeof runCapsuleOciBuild;
 }>;
 
-export const WIDGET_CAPSULE_OCI_IMAGE_ID =
-  'sha256:83ff7d9b53672ef765853d72f8b0f6065fbcfdf9707bb0dde9a0029b689daac3';
+export { WIDGET_CAPSULE_OCI_IMAGE_ID };
 
 const CAPSULE_OCI_LIMITS: CapsuleOciSandboxLimits = Object.freeze({
   maxInputBytes: 32 * 1024 * 1024,

@@ -172,6 +172,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B59](b/B59.md) - `AuthStorage` export removed from `@earendil-works/pi-coding-agent` 0.80.10
 - [/]: [B60](b/B60.md) - canvas: finish Cangine interaction and image integration
 - [x]: [B61](b/B61.md) - widget projection: never publish a partial persisted canvas snapshot
+- [x]: [B62](b/B62.md) - AI widget authoring: restore durable validation and sidebar refresh
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -285,6 +286,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
 - [~]: [S112](s/S112.md) - canvas: adopt cangine ownership, clone, click, and terminal lifecycle APIs
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
+- [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S23] Use global costs for dev and prod ports
 - [x]: [S24] rename @vibecanvas/service-db -> @vibecanvas/service.db and co
 - [x]: [S25](s/S25.md) - db: remove filetrees table/schema; canvas-doc fully owns filetree state

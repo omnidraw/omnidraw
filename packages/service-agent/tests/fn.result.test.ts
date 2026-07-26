@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { fnBoundToolModelData, fnToolError, fnToolSuccess } from '../src/tools/fn.result';
+import {
+  fnBoundToolModelData,
+  fnIsStructuredToolErrorDetails,
+  fnToolError,
+  fnToolSuccess,
+} from '../src/tools/fn.result';
 
 describe('tool result helpers', () => {
   test('renders explicit safe model data without serializing details', () => {
@@ -25,6 +30,10 @@ describe('tool result helpers', () => {
     expect(result.content[0]?.text).toContain('"code": "RESOURCE_NOT_FOUND"');
     expect(result.content[0]?.text).toContain('"message": "Resource was not found."');
     expect(result.content[0]?.text).toContain('"resourceName": "Missing"');
+    expect(fnIsStructuredToolErrorDetails(result.details)).toBe(true);
+    expect(fnIsStructuredToolErrorDetails(fnToolSuccess({
+      summary: 'Tool error.\n\nModel data:\nThis is successful file content.',
+    }).details)).toBe(false);
   });
 
   test('bounds strings, arrays, and whole rendered payloads deterministically', () => {

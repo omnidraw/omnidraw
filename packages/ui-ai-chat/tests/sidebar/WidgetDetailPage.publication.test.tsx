@@ -48,6 +48,76 @@ afterEach(() => {
 })
 
 describe("WidgetDetailPage publication", () => {
+  test("shows a stable recovery action instead of checking forever when draft identity is missing", async () => {
+    const orphanDetail: TWidgetDetail = {
+      ...detail,
+      problem: {
+        code: "DRAFT_IDENTITY_UNAVAILABLE",
+        message: "Validate this widget again from its owning AI chat before publishing or placing it.",
+      },
+      variant: {
+        ...variant,
+        draftId: null,
+        validation: null,
+      },
+    }
+    const orphanCatalog: TWidgetCatalog = {
+      ...catalog,
+      widgets: [{
+        ...catalog.widgets[0]!,
+        draft: orphanDetail.variant,
+        problem: orphanDetail.problem,
+      }],
+    }
+    const controller = {
+      apiService: {
+        api: {
+          agent: {
+            events: vi.fn(async () => [undefined, { async *[Symbol.asyncIterator]() {} }]),
+            widgets: {
+              catalog: vi.fn(async () => [undefined, orphanCatalog] as const),
+              detail: vi.fn(async () => [undefined, orphanDetail] as const),
+            },
+          },
+        },
+      },
+      invalidation: createCatalogInvalidation(),
+      browser: {
+        setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
+        clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
+      },
+      application: {
+        pathname: () => "/widgets/draft/Blobby",
+        navigate: vi.fn(),
+        notifySuccess: vi.fn(),
+        notifyError: vi.fn(),
+        toggleSidebar: vi.fn(),
+      },
+    } as never
+    const host = document.createElement("div")
+    document.body.appendChild(host)
+    dispose = render(() => (
+      <WidgetCatalogProvider controller={controller}>
+        <WidgetDetailPage
+          source="draft"
+          name="Blobby"
+          controller={controller}
+          query={{ tab: () => "overview", path: () => undefined, set: vi.fn() } as never}
+        />
+      </WidgetCatalogProvider>
+    ), host)
+
+    const recovery = await vi.waitFor(() => {
+      const button = [...host.querySelectorAll<HTMLButtonElement>("button")]
+        .find((candidate) => candidate.textContent === "Needs validation")
+      expect(button).toBeDefined()
+      return button!
+    })
+    expect(recovery.disabled).toBe(true)
+    expect(recovery.title).toBe("Validate this widget again from its owning AI chat before publishing.")
+    expect(host.textContent).not.toContain("Checking…")
+  })
+
   test("refreshes the catalog and replaces the consumed draft route with published detail", async () => {
     const navigate = vi.fn()
     const refreshCatalog = vi.fn(async () => [undefined, catalog] as const)

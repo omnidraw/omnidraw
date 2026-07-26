@@ -181,6 +181,38 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
     });
     if (error) throw error;
     const draftId = detail?.variant.draftId;
+    const validation = detail?.variant.validation;
+    if (
+      detail
+      && detail.name === reference.name
+      && detail.source === "draft"
+      && detail.variant.source === "draft"
+      && detail.variant.revision === reference.revision
+      && draftId === null
+    ) {
+      throw new Error("Validate this widget again from its owning AI chat before placing it.");
+    }
+    if (
+      detail
+      && detail.name === reference.name
+      && detail.source === "draft"
+      && detail.variant.source === "draft"
+      && detail.variant.revision === reference.revision
+      && validation?.status === "invalid"
+      && validation.validatedRevision === reference.revision
+    ) {
+      throw new Error("This widget cannot be placed because its current UI build is invalid.");
+    }
+    if (
+      detail
+      && detail.name === reference.name
+      && detail.source === "draft"
+      && detail.variant.source === "draft"
+      && detail.variant.revision === reference.revision
+      && validation?.status !== "valid"
+    ) {
+      throw new Error("Validate this widget successfully before placing it.");
+    }
     if (
       !detail
       || detail.name !== reference.name

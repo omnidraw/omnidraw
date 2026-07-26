@@ -23,11 +23,22 @@ function serviceFixture() {
   const detail = vi.fn(async () => [undefined, {
     name: "Weather",
     source: "draft" as const,
-    variant: { source: "draft" as const, draftId: DRAFT_ID, revision: DRAFT_REVISION },
+    variant: {
+      source: "draft" as const,
+      draftId: DRAFT_ID,
+      revision: DRAFT_REVISION,
+      validation: {
+        status: "valid" as const,
+        errors: [],
+        warnings: [],
+        validatedRevision: DRAFT_REVISION,
+      },
+    },
   }] as const)
   const placeWidgetInstance = vi.fn()
   const placePreview = vi.fn(async () => undefined)
   const resolveWorldBounds = vi.fn(() => ({ x: 40, y: 50, width: 420, height: 300 }))
+  const showError = vi.fn()
   const service = new WidgetPlacementService({
     api: { api: { agent: { widgets: { detail, resolvePlacement } } } } as never,
     browser: {} as never,
@@ -36,7 +47,8 @@ function serviceFixture() {
     previewFrames: { place: placePreview } as never,
     widgetManager: { placeWidgetInstance } as never,
   })
-  return { service, detail, resolvePlacement, placeWidgetInstance, placePreview }
+  service.start({ config: { notification: { showError } } } as never)
+  return { service, detail, resolvePlacement, placeWidgetInstance, placePreview, showError }
 }
 
 describe("WidgetPlacementService", () => {
@@ -87,5 +99,69 @@ describe("WidgetPlacementService", () => {
       reference,
       expectedDraftId: DRAFT_ID,
     })
+  })
+
+  test("explains that a filesystem-only orphan must be validated instead of resolving placement", async () => {
+    const fixture = serviceFixture()
+    fixture.detail.mockResolvedValueOnce([undefined, {
+      name: "Weather",
+      source: "draft",
+      variant: { source: "draft", draftId: null, revision: DRAFT_REVISION },
+    }] as never)
+    const reference = { source: "draft" as const, name: "Weather", revision: DRAFT_REVISION }
+
+    await fixture.service.createDropRequest({
+      reference,
+      bounds: { width: 420, height: 300 },
+      label: "Weather",
+    }).onCommit({
+      reference,
+      bounds: { width: 420, height: 300 },
+      clientPoint: { x: 10, y: 20 },
+    })
+
+    expect(fixture.resolvePlacement).not.toHaveBeenCalled()
+    expect(fixture.placePreview).not.toHaveBeenCalled()
+    expect(fixture.showError).toHaveBeenCalledWith(
+      "Widget placement failed",
+      "Validate this widget again from its owning AI chat before placing it.",
+    )
+  })
+
+  test("does not resolve placement for a revision whose trusted UI build is invalid", async () => {
+    const fixture = serviceFixture()
+    fixture.detail.mockResolvedValueOnce([undefined, {
+      name: "Weather",
+      source: "draft",
+      variant: {
+        source: "draft",
+        draftId: DRAFT_ID,
+        revision: DRAFT_REVISION,
+        validation: {
+          status: "invalid",
+          errors: ["Widget ui build failed."],
+          warnings: [],
+          validatedRevision: DRAFT_REVISION,
+        },
+      },
+    }] as never)
+    const reference = { source: "draft" as const, name: "Weather", revision: DRAFT_REVISION }
+
+    await fixture.service.createDropRequest({
+      reference,
+      bounds: { width: 420, height: 300 },
+      label: "Weather",
+    }).onCommit({
+      reference,
+      bounds: { width: 420, height: 300 },
+      clientPoint: { x: 10, y: 20 },
+    })
+
+    expect(fixture.resolvePlacement).not.toHaveBeenCalled()
+    expect(fixture.placePreview).not.toHaveBeenCalled()
+    expect(fixture.showError).toHaveBeenCalledWith(
+      "Widget placement failed",
+      "This widget cannot be placed because its current UI build is invalid.",
+    )
   })
 })

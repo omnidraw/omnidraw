@@ -62,6 +62,9 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('React is the supported component-library path');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`react` and `react-dom` to exactly `19.2.7`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Other UI libraries are unsupported');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Capsule does not admit CSS custom-property references');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('subscribeWidgetTheme()');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('background: var(--card)');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read `vibecanvas.json`, `ui/main.ts`, and `ui/styles.css`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`, inspect every diagnostic, and fix all errors');
