@@ -22,6 +22,7 @@ import {
   createCanvasEditor,
   createCanvasMenuController,
   createWidgetInteractionController,
+  fitIntrinsicImageSize,
   resolveStandardTransformPolicy,
 } from "@omnidraw/cangine/editor";
 import type {
@@ -311,6 +312,22 @@ export class CanvasEngineAdapter {
 
   createResourceRegistrationOwner(ownerId: string): IResourceRegistrationOwner {
     return this.#requireEngine().resources.createRegistrationOwner(ownerId);
+  }
+
+  fitIntrinsicImageSize(
+    intrinsic: TSize2,
+    viewport: TSize2,
+    zoom: number,
+    rotation: number,
+    maxViewportFraction?: number,
+  ): TSize2 {
+    return fitIntrinsicImageSize(
+      intrinsic,
+      viewport,
+      zoom,
+      rotation,
+      maxViewportFraction,
+    );
   }
 
   createEditor(

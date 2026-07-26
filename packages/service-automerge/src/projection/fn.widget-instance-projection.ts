@@ -50,7 +50,17 @@ export function fnWidgetInstanceProjectionSnapshot(
 
   const instanceIds = new Set<string>();
   const records: TWidgetInstanceProjectionRecord[] = [];
-  for (const [elementKey, element] of Object.entries(source.elements)) {
+  const elements = source.elements as unknown;
+  if (
+    typeof elements !== 'object'
+    || elements === null
+    || Array.isArray(elements)
+  ) {
+    throw new TypeError('Widget instance projection requires a complete elements record.');
+  }
+  for (const [elementKey, element] of Object.entries(
+    elements as TWidgetInstanceProjectionSource['elements'],
+  )) {
     if (element.data.type !== 'widget-instance') continue;
     const elementId = requiredElementId(element.id);
     if (elementKey !== elementId) {

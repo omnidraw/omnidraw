@@ -564,6 +564,7 @@ export class CanvasProductTransformService {
           ownerId,
           event.proposals,
           this.#durableCloneNodeIds(clone, index),
+          this.#altCloneOwners.has(ownerId) ? ownerId : undefined,
         ),
       );
       this.#altCloneOwners.add(ownerId);
@@ -686,6 +687,7 @@ export class CanvasProductTransformService {
     ownerId: string,
     proposals: readonly TNodeTransformProposal[],
     durableNodeIds?: ReadonlyMap<string, string>,
+    replaceOwnerId?: string,
   ) {
     const transforms = proposals.map((proposal) => {
       const previousLocal = composeTransform2D(proposal.previousTransform);
@@ -724,6 +726,7 @@ export class CanvasProductTransformService {
       hitTest: "none",
       portals: "omit",
       ...(transform === undefined ? {} : { transform }),
+      ...(replaceOwnerId === undefined ? {} : { replaceOwnerId }),
     });
     return fnCanvasTransformHandoffProjection({
       clone,

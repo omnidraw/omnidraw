@@ -63,10 +63,12 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         priority: 80,
         behavior: { type: "mode", mode: "draw-create" },
         createSession: (event) => {
+          const sessionId = `create-pen-${event.pointerId}`;
           scene.product.interactions.beginStroke(event, {
             minDistanceViewport: 0.5,
             maxSamples: 10_000,
             onCommit: (stroke) => {
+              tool.completeSession(sessionId);
               const data = fnCreatePenDataFromStrokePoints({
                 points: stroke.samples.map((sample) => ({
                   x: sample.world.x,
@@ -111,9 +113,12 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
               });
               selection.select({ kind: "element", id: created.id });
             },
+            onCancel: () => {
+              tool.completeSession(sessionId);
+            },
           });
           return {
-            id: `create-pen-${event.pointerId}`,
+            id: sessionId,
             cancel: () => scene.product.interactions.cancel(),
           };
         },

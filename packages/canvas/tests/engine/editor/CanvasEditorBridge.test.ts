@@ -4,12 +4,18 @@ import { CanvasEditorBridge } from "../../../src/engine/editor/CanvasEditorBridg
 
 function createHarness() {
   let contextMenuItems: ((context: unknown) => readonly unknown[]) | null = null;
+  let editorListener: (() => void) | null = null;
   const enterContentMode = vi.fn(() => true);
+  const refresh = vi.fn();
   const adapter = {
     createEditor: vi.fn(() => ({
       attach: vi.fn(),
       destroy: vi.fn(),
       setSelection: vi.fn(),
+      subscribe: vi.fn((listener: () => void) => {
+        editorListener = listener;
+        return vi.fn();
+      }),
     })),
     createMenuController: vi.fn(() => ({
       close: vi.fn(),
@@ -56,6 +62,7 @@ function createHarness() {
         focused: selectedTarget,
       }),
       subscribe: () => vi.fn(),
+      refresh,
       setSelection: vi.fn(),
       setFocusedTarget: vi.fn(),
     },
@@ -75,6 +82,7 @@ function createHarness() {
         "element:widget-1:render": selectedTarget,
       },
     }),
+    resolveNavigationIntent: () => false,
   });
   if (contextMenuItems === null) {
     throw new Error("Expected context menu item resolver.");
@@ -84,6 +92,10 @@ function createHarness() {
     contextMenuItems,
     selectedTarget,
     enterContentMode,
+    publishEditorState() {
+      editorListener?.();
+    },
+    refresh,
   };
 }
 
@@ -120,5 +132,14 @@ describe("CanvasEditorBridge", () => {
     expect(harness.bridge.focusWidgetContent("widget-1")).toBe(true);
     expect(harness.enterContentMode)
       .toHaveBeenCalledWith("element:widget-1:render");
+  });
+
+  it("refreshes the external transform overlay after editor selection writes", () => {
+    const harness = createHarness();
+    harness.bridge.attach();
+
+    harness.publishEditorState();
+
+    expect(harness.refresh).toHaveBeenCalledOnce();
   });
 });

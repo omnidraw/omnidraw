@@ -160,6 +160,16 @@ export class ToolService implements IService<TToolServiceHooks> {
     this.hooks.sessionChange.call(session);
   }
 
+  completeSession(id: string): boolean {
+    const session = this.#activeSession;
+    if (session === null || session.id !== id) {
+      return false;
+    }
+    this.#activeSession = null;
+    this.hooks.sessionChange.call(null);
+    return true;
+  }
+
   async cancelActiveSession(reason: TToolSessionCancelReason): Promise<void> {
     const session = this.#activeSession;
     if (session === null) {

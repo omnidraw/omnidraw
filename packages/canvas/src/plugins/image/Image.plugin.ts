@@ -8,7 +8,6 @@ import type {
 import { fnCanvasEngineTransientOwnerId } from "../../engine/projection/fn.ids";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { fnCreateImageElement } from "./fn.create-image-element";
-import { fnFitImageToViewport } from "./fn.fit-image-to-viewport";
 
 type TPendingImageInsert = {
   id: string;
@@ -301,13 +300,17 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           return;
         }
 
-        const fitted = fnFitImageToViewport({
-          viewportWidth: viewportSize.width,
-          viewportHeight: viewportSize.height,
-          imageWidth: dimensions.width,
-          imageHeight: dimensions.height,
-        });
+        let fitted: { width: number; height: number };
         try {
+          fitted = scene.fitIntrinsicImageSize(
+            dimensions,
+            {
+              width: viewportSize.width * camera.zoom,
+              height: viewportSize.height * camera.zoom,
+            },
+            camera.zoom,
+            0,
+          );
           pending.preview.replace(pendingImageProjection({
             center,
             width: fitted.width,

@@ -1,4 +1,7 @@
 import type {
+  TInputEvent,
+} from "@omnidraw/cangine";
+import type {
   ICanvasEditor,
   ICanvasContextMenuController,
   ICanvasMenuController,
@@ -27,6 +30,7 @@ export type TCanvasEditorSelectionSnapshot = Readonly<{
 export type TCanvasEditorSelectionPort = {
   snapshot(): TCanvasEditorSelectionSnapshot;
   subscribe(listener: () => void): () => void;
+  refresh(): void;
   setSelection(selection: readonly TCanvasTarget[]): void;
   setFocusedTarget(
     target: TCanvasTarget | null,
@@ -89,6 +93,7 @@ export type TCanvasEditorBridgeArgs = {
   selection: TCanvasEditorSelectionPort;
   getDocument(): TCanvasDoc;
   getProjectionIndex(): TCanvasProjectionIndex | null;
+  resolveNavigationIntent(event: TInputEvent): boolean;
   onError?(error: unknown): void;
 };
 
@@ -126,6 +131,21 @@ function historyShortcutTool(
       };
     },
   };
+}
+
+function createExternalOverlayEditor(
+  editor: ICanvasEditor,
+  refreshSelection: () => void,
+): ICanvasEditor {
+  return new Proxy(editor, {
+    get(target, property) {
+      if (property === "refreshSelectionOverlay") {
+        return refreshSelection;
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 /**
@@ -196,10 +216,16 @@ export class CanvasEditorBridge {
         ? {}
         : { onCallbackError: args.onError }),
     });
+    const widgetEditor = createExternalOverlayEditor(
+      this.editor,
+      () => this.#selection.refresh(),
+    );
     this.widgets = args.adapter.createWidgetInteractionController({
-      editor: this.editor,
+      editor: widgetEditor,
       menu: this.menu,
       focusRoot: args.host,
+      focusClusterRoot: args.host,
+      resolveNavigationIntent: args.resolveNavigationIntent,
       onActivation: (activation) => this.#onActivation(activation),
       ...(args.onError === undefined
         ? {}
@@ -266,6 +292,7 @@ export class CanvasEditorBridge {
     this.#cleanups = [
       this.#selection.subscribe(() => this.syncSelection()),
       this.widgets.subscribe((state) => this.#syncProductFromWidgets(state)),
+      this.editor.subscribe(() => this.#selection.refresh()),
     ];
     this.#attached = true;
     this.syncSelection();

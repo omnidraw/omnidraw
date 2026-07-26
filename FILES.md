@@ -469,7 +469,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
 | [packages/canvas/src/plugins/grid/Grid.plugin.ts](packages/canvas/src/plugins/grid/Grid.plugin.ts) |  |
 | [packages/canvas/src/plugins/image/fn.create-image-element.ts](packages/canvas/src/plugins/image/fn.create-image-element.ts) |  |
-| [packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts](packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts) |  |
 | [packages/canvas/src/plugins/image/Image.plugin.ts](packages/canvas/src/plugins/image/Image.plugin.ts) |  |
 | [packages/canvas/src/plugins/index.ts](packages/canvas/src/plugins/index.ts) |  |
 | [packages/canvas/src/plugins/pen/CONSTANTS.ts](packages/canvas/src/plugins/pen/CONSTANTS.ts) |  |
@@ -568,6 +567,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts](packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts) |  |
 | [packages/canvas/src/widget-host/types.ts](packages/canvas/src/widget-host/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
+| [packages/canvas/vendor/omnidraw-cangine-0.2.1.tgz](packages/canvas/vendor/omnidraw-cangine-0.2.1.tgz) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
 
 ## packages/capsule-vibecanvas

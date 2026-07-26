@@ -142,6 +142,7 @@ function harness(renderKind: "rect" | "widget-frame" = "rect") {
       sourceNodeIds: readonly string[];
       mapId(sourceNodeId: string): string;
       transform?: readonly number[];
+      replaceOwnerId?: string;
     }) => {
       const included = nodes.filter((node) => {
         return options.sourceNodeIds.includes(node.id)
@@ -342,6 +343,18 @@ describe("CanvasProductTransformService", () => {
             }),
           }),
         ]),
+      }),
+    );
+    expect(transients.cloneFromScene).toHaveBeenNthCalledWith(
+      1,
+      expect.not.objectContaining({
+        replaceOwnerId: expect.anything(),
+      }),
+    );
+    expect(transients.cloneFromScene).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        replaceOwnerId: "vc:transient:alt-clone:gesture-1",
       }),
     );
     expect(prepare).toHaveBeenCalledTimes(1);

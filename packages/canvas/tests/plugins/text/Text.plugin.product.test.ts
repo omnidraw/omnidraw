@@ -137,6 +137,7 @@ function harness(initialElements: TCanvasDoc["elements"] = {}) {
       getRememberedStyle: vi.fn(() => ({})),
     }],
     ["tool", {
+      completeSession: vi.fn(),
       registerTool: vi.fn((tool) => {
         registeredTool = tool;
         return vi.fn();

@@ -285,6 +285,32 @@ describe("canvas engine ownership boundaries", () => {
       transientNodeCount: 1,
     });
 
+    expect(() => adapter.transients.cloneFromScene({
+      sourceNodeIds: ["vc:source:one"],
+      mapId: () => "vc:clone:one",
+      transform: [1, 0, 0, 0, 1, 0, 120, 60, 1],
+      hitTest: "none",
+      portals: "omit",
+    })).toThrow(/collides/);
+    const updatedClone = adapter.transients.cloneFromScene({
+      sourceNodeIds: ["vc:source:one"],
+      mapId: () => "vc:clone:one",
+      transform: [1, 0, 0, 0, 1, 0, 120, 60, 1],
+      hitTest: "none",
+      portals: "omit",
+      replaceOwnerId: "vc:transient:clone:session",
+    });
+    adapter.transients.sync(
+      "vc:transient:clone:session",
+      updatedClone.projection,
+    );
+    expect(updatedClone.projection.nodes[0]).toMatchObject({
+      id: "vc:clone:one",
+      transform: {
+        position: { x: 130, y: 80 },
+      },
+    });
+
     expect(() => adapter.transients.sync("vc:transient:clone:session", {
       band: "world-overlay",
       nodes: [{

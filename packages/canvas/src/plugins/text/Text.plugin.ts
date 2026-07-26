@@ -424,9 +424,11 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
         priority: 50,
         behavior: { type: "mode", mode: "click-create" },
         createSession: (event) => {
+          const sessionId = `create-text-${event.pointerId}`;
           scene.product.interactions.beginCreation(event, {
             thresholdViewport: 2,
             onCommit: (commit) => {
+              tool.completeSession(sessionId);
               const now = Date.now();
               const remembered = theme.getRememberedStyle("text");
               const created: TElement = fnCreateTextElement({
@@ -470,9 +472,12 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
               tool.setActiveTool("select");
               openAfterProjection(created.id, creation);
             },
+            onCancel: () => {
+              tool.completeSession(sessionId);
+            },
           });
           return {
-            id: `create-text-${event.pointerId}`,
+            id: sessionId,
             cancel: () => scene.product.interactions.cancel(),
           };
         },

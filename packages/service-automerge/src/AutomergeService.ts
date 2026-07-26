@@ -18,7 +18,10 @@ import {
   DEFAULT_AUTOMERGE_MAX_ACTIVE_DOCUMENTS,
 } from './CONSTANTS';
 import { TursoStorageAdapter } from './adapters/turso.adapter';
-import type { TAutomergeStorageDocumentContent } from './adapters/turso.adapter';
+import type {
+  TAutomergeStorageDocumentContent,
+  TAutomergeStorageDocumentReplica,
+} from './adapters/turso.adapter';
 import {
   BunWSServerAdapter,
   type TAutomergeManagedDocumentAdmission,
@@ -105,6 +108,7 @@ export class AutomergeService implements IAutomergeService {
   private readonly evictionsByTenant = new Map<string, number>();
   private readonly denialsByTenant = new Map<string, number>();
   private readonly persistedProjectionDocuments = new Map<DocumentId, Automerge.Doc<TCanvasDoc>>();
+  private readonly persistedProjectionVersions = new Map<DocumentId, number>();
   private projectionReplicationFailure: unknown = null;
   private lifecycleTail: Promise<void> = Promise.resolve();
   private lifecycleSweepInterval: ReturnType<typeof setInterval> | null = null;
@@ -494,6 +498,7 @@ export class AutomergeService implements IAutomergeService {
     this.documentRecords.clear();
     for (const document of this.persistedProjectionDocuments.values()) Automerge.free(document);
     this.persistedProjectionDocuments.clear();
+    this.persistedProjectionVersions.clear();
     this.repoInstance = null;
     this.storageAdapter = null;
     stopFailure ??= this.projectionReplicationFailure ?? undefined;
@@ -1003,12 +1008,18 @@ export class AutomergeService implements IAutomergeService {
         handle.documentId,
         Automerge.clone(after as Automerge.Doc<TCanvasDoc>),
       );
+      this.persistedProjectionVersions.set(
+        handle.documentId,
+        identity.contentVersion,
+      );
     } catch (error) {
       this.recordProjectionReplicationFailure(error);
     }
   }
 
-  private handleDocumentContentVersion(version: TAutomergeStorageDocumentContent): void {
+  private async handleDocumentContentVersion(
+    version: TAutomergeStorageDocumentContent,
+  ): Promise<void> {
     if (version.canvasId === null) return;
     const record = this.documentRecords.get(
       fnAutomergeDocumentScopeKey(version.orgId, version.automergeUrl),
@@ -1016,21 +1027,117 @@ export class AutomergeService implements IAutomergeService {
     if (record === undefined) return;
     const documentId = fnAutomergeDocumentKeyFromUrl(version.automergeUrl) as DocumentId;
     const existing = this.persistedProjectionDocuments.get(documentId);
-    const previous = existing ?? Automerge.init<TCanvasDoc>();
+    const existingVersion = this.persistedProjectionVersions.get(documentId);
+    if (
+      existing === undefined
+      || existingVersion === undefined
+      || version.contentVersion !== existingVersion + 1
+    ) {
+      if (
+        existing !== undefined
+        && existingVersion !== undefined
+        && version.contentVersion <= existingVersion
+      ) return;
+      await this.recoverPersistedProjection(record, version, documentId);
+      return;
+    }
+    let persistedDocument: Automerge.Doc<TCanvasDoc>;
+    let elements: TCanvasDoc['elements'];
     try {
-      const persistedDocument = Automerge.loadIncremental(previous, version.contentBytes);
-      this.persistedProjectionDocuments.set(documentId, persistedDocument);
-      this.onDocumentSnapshot(Object.freeze({
-        tenantContext: record.tenantContext,
+      persistedDocument = Automerge.loadIncremental(existing, version.contentBytes);
+      elements = this.requirePersistedProjectionElements(persistedDocument);
+    } catch (error) {
+      await this.recoverPersistedProjection(record, version, documentId);
+      return;
+    }
+    this.persistedProjectionDocuments.set(documentId, persistedDocument);
+    this.persistedProjectionVersions.set(documentId, version.contentVersion);
+    try {
+      this.publishPersistedProjection(record, {
         automergeUrl: version.automergeUrl,
         canvasId: version.canvasId,
         sourceSequence: version.contentVersion,
-        elements: persistedDocument.elements,
-      }));
+        elements,
+      });
     } catch (error) {
-      if (existing === undefined) Automerge.free(previous);
       this.recordProjectionReplicationFailure(error);
     }
+  }
+
+  private async recoverPersistedProjection(
+    record: TDocumentRecord,
+    version: TAutomergeStorageDocumentContent,
+    documentId: DocumentId,
+  ): Promise<void> {
+    let replica: TAutomergeStorageDocumentReplica<TCanvasDoc> | null = null;
+    let adopted = false;
+    try {
+      replica = await this.storage.loadAdmittedDocumentReplica<TCanvasDoc>(
+        record.tenantContext,
+        version.automergeUrl,
+      );
+      if (
+        replica === null
+        || replica.canvasId === null
+        || replica.canvasId !== version.canvasId
+        || replica.contentVersion < version.contentVersion
+      ) {
+        throw new Error(
+          `Persisted canvas projection baseline is unavailable at source sequence ${version.contentVersion}.`,
+        );
+      }
+      const elements = this.requirePersistedProjectionElements(replica.document);
+      const previous = this.persistedProjectionDocuments.get(documentId);
+      this.persistedProjectionDocuments.set(documentId, replica.document);
+      this.persistedProjectionVersions.set(documentId, replica.contentVersion);
+      adopted = true;
+      if (previous !== undefined && previous !== replica.document) {
+        Automerge.free(previous);
+      }
+      this.publishPersistedProjection(record, {
+        automergeUrl: replica.automergeUrl,
+        canvasId: replica.canvasId,
+        sourceSequence: replica.contentVersion,
+        elements,
+      });
+    } catch (error) {
+      this.recordProjectionReplicationFailure(error);
+    } finally {
+      if (replica !== null && !adopted) {
+        Automerge.free(replica.document);
+      }
+    }
+  }
+
+  private requirePersistedProjectionElements(
+    document: Automerge.Doc<TCanvasDoc>,
+  ): TCanvasDoc['elements'] {
+    const elements = (document as { elements?: unknown }).elements;
+    if (
+      typeof elements !== 'object'
+      || elements === null
+      || Array.isArray(elements)
+    ) {
+      throw new TypeError(
+        'Persisted canvas projection requires a complete elements record.',
+      );
+    }
+    return elements as TCanvasDoc['elements'];
+  }
+
+  private publishPersistedProjection(
+    record: TDocumentRecord,
+    snapshot: Readonly<{
+      automergeUrl: string;
+      canvasId: string;
+      sourceSequence: number;
+      elements: TCanvasDoc['elements'];
+    }>,
+  ): void {
+    this.onDocumentSnapshot(Object.freeze({
+      tenantContext: record.tenantContext,
+      ...snapshot,
+    }));
   }
 
   private emitPersistedProjection(record: TDocumentRecord, handle: DocHandle<TCanvasDoc>): void {
@@ -1040,15 +1147,19 @@ export class AutomergeService implements IAutomergeService {
     );
     if (identity?.canvasId === null || identity === undefined) return;
     const persistedDocument = this.persistedProjectionDocuments.get(handle.documentId);
-    if (persistedDocument === undefined) return;
+    const sourceSequence = this.persistedProjectionVersions.get(handle.documentId);
+    if (
+      persistedDocument === undefined
+      || sourceSequence === undefined
+      || sourceSequence !== identity.contentVersion
+    ) return;
     try {
-      this.onDocumentSnapshot(Object.freeze({
-        tenantContext: record.tenantContext,
+      this.publishPersistedProjection(record, {
         automergeUrl: identity.automergeUrl,
         canvasId: identity.canvasId,
-        sourceSequence: identity.contentVersion,
-        elements: persistedDocument.elements,
-      }));
+        sourceSequence,
+        elements: this.requirePersistedProjectionElements(persistedDocument),
+      });
     } catch (error) {
       this.recordProjectionReplicationFailure(error);
     }
@@ -1204,6 +1315,7 @@ export class AutomergeService implements IAutomergeService {
     if (document === undefined) return;
     Automerge.free(document);
     this.persistedProjectionDocuments.delete(documentId);
+    this.persistedProjectionVersions.delete(documentId);
   }
 
   private scheduleLifecycleSweep(): void {

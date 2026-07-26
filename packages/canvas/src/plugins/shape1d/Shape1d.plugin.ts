@@ -307,6 +307,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
           ...definition,
           behavior: { type: "mode", mode: "draw-create" },
           createSession: (event) => {
+            const sessionId = `create-${definition.id}-${event.pointerId}`;
             const source = bindableTarget(event.hit?.target);
             scene.product.interactions.beginConnector(event, {
               ...(source === null ? {} : { source }),
@@ -321,6 +322,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
                 },
               },
               onCommit: (commit) => {
+                tool.completeSession(sessionId);
                 if (commit.belowThreshold) {
                   return;
                 }
@@ -366,9 +368,12 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
                 });
                 selection.select({ kind: "element", id: created.id });
               },
+              onCancel: () => {
+                tool.completeSession(sessionId);
+              },
             });
             return {
-              id: `create-${definition.id}-${event.pointerId}`,
+              id: sessionId,
               cancel: () => scene.product.interactions.cancel(),
             };
           },

@@ -67,6 +67,15 @@ function harness() {
   let marqueeOptions: TCanvasProductMarqueeOptions | null = null;
   const beginMarquee = vi.fn((_event, options) => {
     marqueeOptions = options;
+    options.onBegin?.({
+      kind: "marquee",
+      phase: "begin",
+      start: pointerDown(),
+      current: pointerDown(),
+      worldBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      viewportBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      distanceViewport: 0,
+    });
   });
   const cancel = vi.fn();
   const queryWorldRect = vi.fn(() => []);
@@ -172,6 +181,19 @@ describe("Select plugin engine marquee", () => {
     runtime.selection.setMode(CanvasMode.HAND);
 
     expect(runtime.cancel).toHaveBeenCalledOnce();
+    expect(runtime.selection.selection).toEqual([
+      { kind: "element", id: "existing" },
+    ]);
+  });
+
+  it("preserves selection when Cangine rejects marquee for a transform handle", () => {
+    const runtime = harness();
+    runtime.beginMarquee.mockImplementationOnce(() => undefined);
+    runtime.selection.setSelection([{ kind: "element", id: "existing" }]);
+
+    runtime.pointerDown.call(pointerDown());
+
+    expect(runtime.beginMarquee).toHaveBeenCalledOnce();
     expect(runtime.selection.selection).toEqual([
       { kind: "element", id: "existing" },
     ]);

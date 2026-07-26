@@ -37,6 +37,7 @@ import type { HistoryService } from "../history/HistoryService";
 import type { CanvasPortalService } from "../portal/CanvasPortalService";
 import { CrdtProjectionService } from "../projection/CrdtProjectionService";
 import type { SelectionService } from "../selection/SelectionService";
+import { CanvasMode } from "../selection/CONSTANTS";
 import { fnCanvasProjectionDiagnosticGeneration } from "./fn.projection-diagnostics";
 
 export type TCanvasResizeObserver = {
@@ -186,6 +187,12 @@ implements
       includePortals: true,
       awaitResources: true,
     });
+  }
+
+  fitIntrinsicImageSize(
+    ...args: Parameters<CanvasEngineAdapter["fitIntrinsicImageSize"]>
+  ) {
+    return this.#adapter.fitIntrinsicImageSize(...args);
   }
 
   get gridVisible(): boolean {
@@ -364,6 +371,9 @@ implements
           subscribe: (listener) => {
             return this.#args.selection.hooks.change.tap(() => listener());
           },
+          refresh: () => {
+            this.#args.selection.refresh();
+          },
           setSelection: (selection) => {
             this.#args.selection.setSelection(selection);
           },
@@ -373,6 +383,16 @@ implements
         },
         getDocument: () => this.#args.crdt.doc(),
         getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
+        resolveNavigationIntent: (event) => {
+          return event.type === "pointer-down"
+            && (
+              event.button === 1
+              || (
+                event.button === 0
+                && this.#args.selection.mode === CanvasMode.HAND
+              )
+            );
+        },
         onError: (error) => {
           this.hooks.diagnostic.call({
             sequence: -1,

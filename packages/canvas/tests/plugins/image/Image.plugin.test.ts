@@ -175,8 +175,8 @@ describe("Image plugin insertion lifecycle", () => {
         data: {
           type: "image",
           url: ONE_PIXEL_PNG,
-          w: 300,
-          h: 150,
+          w: 480,
+          h: 240,
         },
       });
       expect(harness.metrics()).toMatchObject({
@@ -268,6 +268,54 @@ describe("Image plugin insertion lifecycle", () => {
       await vi.waitFor(() => {
         expect(deleteImage).toHaveBeenCalledWith({
           url: "https://cdn.test/orphan.png",
+        });
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("image sizing failure removes the preview and cleans up a late upload", async () => {
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const notification = {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    };
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+      notification,
+    });
+    const decode = installDecodeController();
+    vi.spyOn(harness.scene, "fitIntrinsicImageSize").mockImplementation(() => {
+      throw new RangeError("clipboard viewport width must be positive");
+    });
+    try {
+      dispatchImagePaste();
+      decode.resolve();
+
+      await vi.waitFor(() => {
+        expect(notification.showError).toHaveBeenCalledWith(
+          "Failed to insert image",
+          "clipboard viewport width must be positive",
+        );
+      });
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 1,
+        transientNodeCount: 0,
+      });
+
+      upload.resolve({ url: "https://cdn.test/sizing-failure.png" });
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/sizing-failure.png",
         });
       });
       expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);

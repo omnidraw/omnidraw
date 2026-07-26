@@ -45,6 +45,16 @@ function source(instanceValues: readonly number[], sourceSequence = 1): TWidgetI
 }
 
 describe('WidgetInstanceMetadataProjector', () => {
+  test('rejects a partial canvas with an explicit elements boundary error', () => {
+    expect(() => fnWidgetInstanceProjectionSnapshot({
+      canvasId: CANVAS_ID,
+      sourceSequence: 12,
+      elements: undefined as never,
+    }, 100, isValidAutomergeUrl)).toThrow(
+      'Widget instance projection requires a complete elements record.',
+    );
+  });
+
   test('normalizes exact pinned identities and rejects ambiguous canvas identity', () => {
     const snapshot = fnWidgetInstanceProjectionSnapshot({
       canvasId: CANVAS_ID,

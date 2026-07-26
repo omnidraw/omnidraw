@@ -221,11 +221,13 @@ export function createSelectPlugin(): IPlugin<
             ? selection.snapshot.selection
             : [],
         };
-        marquee = active;
-        if (!event.modifiers.shift) {
-          selection.clear();
-        }
         scene.product.interactions.beginMarquee(event, {
+          onBegin: () => {
+            marquee = active;
+            if (!event.modifiers.shift) {
+              selection.clear();
+            }
+          },
           onUpdate: (draft) => {
             if (
               marquee !== active

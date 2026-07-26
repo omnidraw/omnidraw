@@ -218,6 +218,10 @@ export class SelectionService implements IService<TSelectionServiceHooks> {
     return true;
   }
 
+  refresh(): void {
+    this.#emit();
+  }
+
   #setPrunedState(
     selection: readonly TCanvasTarget[],
     focused: TCanvasTarget | null,

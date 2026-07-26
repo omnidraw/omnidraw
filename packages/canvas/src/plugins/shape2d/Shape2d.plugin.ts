@@ -157,6 +157,7 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
                 };
               },
               onCommit: (commit) => {
+                tool.completeSession(sessionId);
                 const remembered = theme.getRememberedStyle(definition.id);
                 const width = commit.belowThreshold
                   ? 100
@@ -195,6 +196,9 @@ IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
                   created,
                   `Create ${definition.label.toLowerCase()}`,
                 );
+              },
+              onCancel: () => {
+                tool.completeSession(sessionId);
               },
             });
             return {

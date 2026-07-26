@@ -40,6 +40,7 @@ import {
   CANVAS_ENGINE_LAYER_IDS,
   CANVAS_ENGINE_SCENE_SCHEMA_VERSION,
 } from "../../src/engine/CONSTANTS";
+import { CanvasEditorBridge } from "../../src/engine/editor/CanvasEditorBridge";
 import { ProjectionCoordinator } from "../../src/engine/ProjectionCoordinator";
 import type { TCanvasProjectionTheme } from "../../src/engine/typed";
 import {
@@ -673,6 +674,93 @@ describe("canvas-engine public compatibility contract", () => {
     expect(exported.svg).toContain("{\"id\":\"rect\",\"kind\":\"rect\"}");
   });
 
+  it("preserves an externally owned transform selection when entering widget frame mode", () => {
+    const target = { kind: "element", id: "widget-1" } as const;
+    const widgetNodeId = "element:widget-1:render";
+    const widget: TSceneNode = {
+      id: widgetNodeId,
+      parentId: "content",
+      orderKey: "A",
+      kind: "widget-frame",
+      transform: {
+        ...IDENTITY_TRANSFORM_2D,
+        position: { x: 100, y: 100 },
+      },
+      size: { width: 260, height: 180 },
+      title: "Widget",
+      resizable: true,
+    };
+    engine!.scene.replace({
+      schemaVersion: "1.0.0",
+      rootLayerIds: ["content"],
+      nodes: [layer(), widget],
+    });
+
+    let selected = [target];
+    const selectionListeners = new Set<() => void>();
+    const syncExternalOverlay = () => {
+      engine!.transforms.setSelection(
+        selected.length === 0 ? null : selection([widgetNodeId]),
+      );
+    };
+    const bridge = new CanvasEditorBridge({
+      adapter: adapter!,
+      host: container,
+      history: {
+        canUndo: () => false,
+        canRedo: () => false,
+        retainedWeight: () => 0,
+        subscribe: () => () => {},
+        undo: () => false,
+        redo: () => false,
+        clear: () => {},
+      },
+      selection: {
+        snapshot: () => ({ selection: selected, focused: null }),
+        subscribe(listener) {
+          selectionListeners.add(listener);
+          return () => selectionListeners.delete(listener);
+        },
+        refresh: syncExternalOverlay,
+        setSelection(next) {
+          selected = [...next] as typeof selected;
+          syncExternalOverlay();
+          for (const listener of [...selectionListeners]) listener();
+        },
+        setFocusedTarget: () => {},
+      },
+      getDocument: () => ({
+        id: "widget-selection-regression",
+        name: "Widget selection regression",
+        groups: {},
+        elements: {
+          "widget-1": {
+            data: { type: "ui-widget" },
+          },
+        },
+      }) as TCanvasDoc,
+      getProjectionIndex: () => ({
+        elementNodeIds: { "widget-1": [widgetNodeId] },
+        groupNodeIds: {},
+        nodeTargets: { [widgetNodeId]: target },
+      }),
+      resolveNavigationIntent: () => false,
+    });
+
+    try {
+      bridge.attach();
+      syncExternalOverlay();
+      expect(engine!.transforms.selection).not.toBeNull();
+
+      bridge.widgets.enterFrameMode(widgetNodeId);
+
+      expect(bridge.editor.state.selectedNodeIds).toEqual([widgetNodeId]);
+      expect(engine!.transforms.selection).not.toBeNull();
+    } finally {
+      bridge.destroy();
+    }
+  });
+
   it("mounts application-owned widget DOM through the portal manager", async () => {
     let cleanupCount = 0;
     engine!.portals.register({
@@ -855,7 +943,7 @@ describe("canvas-engine public compatibility contract", () => {
     ]));
     expect(matrix
       .filter((row) => row.status === "engine-gap")
-      .map((row) => row.id)).toEqual([]);
+      .map((row) => row.id)).toEqual(["image-import-host-commit"]);
     expect(Object.fromEntries(
       ["compatible", "adapter", "engine-gap", "release-gap", "validation-gap"]
         .map((status) => [
@@ -863,10 +951,10 @@ describe("canvas-engine public compatibility contract", () => {
           matrix.filter((row) => row.status === status).length,
         ]),
     )).toEqual({
-      compatible: 20,
+      compatible: 21,
       adapter: 12,
-      "engine-gap": 0,
-      "release-gap": 1,
+      "engine-gap": 1,
+      "release-gap": 0,
       "validation-gap": 3,
     });
   });

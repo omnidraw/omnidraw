@@ -31,9 +31,9 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     id: "package-release",
     area: "distribution",
     requirement: "Build Vibecanvas in CI/release without a developer-machine absolute path",
-    status: "release-gap",
+    status: "compatible",
     owner: "release",
-    evidence: "The packed ESM passes native Node and default Vitest; the explicitly audited absolute artifact filepath remains machine-specific.",
+    evidence: "The exact audited 0.2.1 artifact is vendored behind a repository-relative filepath dependency.",
   },
   {
     id: "lifecycle",
@@ -106,6 +106,14 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     status: "compatible",
     owner: "joint",
     evidence: "Engine resources cover rendering while ElementService and image ports retain upload, clone, lifecycle-aware delete, and restore policy.",
+  },
+  {
+    id: "image-import-host-commit",
+    area: "editor",
+    requirement: "Use Cangine clipboard/drop preparation while delegating durable upload and CRDT commit to the application",
+    status: "engine-gap",
+    owner: "canvas-engine",
+    evidence: "The public image controllers commit directly to engine.scene and expose no host commit adapter.",
   },
   {
     id: "grid",

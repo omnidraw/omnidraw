@@ -48,6 +48,10 @@ export type TAutomergeStorageDocumentContent = TAutomergeStorageDocumentVersion 
   contentKind: 'snapshot' | 'incremental';
 }>;
 
+export type TAutomergeStorageDocumentReplica<T> = TAutomergeStorageDocumentVersion & Readonly<{
+  document: Automerge.Doc<T>;
+}>;
+
 export type TAutomergeStorageAdapterOptions = Readonly<{
   separator?: string;
   maxPendingWrites?: number;
@@ -58,7 +62,9 @@ export type TAutomergeStorageAdapterOptions = Readonly<{
   widgetStateMutationReservationTtlMs?: number;
   maxWidgetStateMutationReservationsPerDocument?: number;
   nowMs?: () => number;
-  onDocumentContentVersion?: (version: TAutomergeStorageDocumentContent) => void;
+  onDocumentContentVersion?: (
+    version: TAutomergeStorageDocumentContent,
+  ) => void | Promise<void>;
 }>;
 
 type TData = { chunk_bytes: Uint8Array };
@@ -129,6 +135,7 @@ type TTursoStatement = Awaited<ReturnType<Database['prepare']>>;
 type TPreparedStatements = {
   findDocument: TTursoStatement;
   findDocumentOwnerCount: TTursoStatement;
+  findDocumentContentVersion: TTursoStatement;
   listDocumentChunks: TTursoStatement;
   load: TTursoStatement;
   findSequence: TTursoStatement;
@@ -153,7 +160,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
   private readonly maxWidgetStateMutationReservationsPerDocument: number;
   private readonly nowMs: () => number;
   private readonly onDocumentContentVersion:
-    | ((version: TAutomergeStorageDocumentContent) => void)
+    | ((version: TAutomergeStorageDocumentContent) => void | Promise<void>)
     | undefined;
   private readonly admittedDocuments = new Map<string, TDocumentAdmission>();
   private readonly claimedDocuments = new Map<string, TDocumentClaim>();
@@ -540,6 +547,68 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     )?.hasPersistedContent === true;
   }
 
+  async loadAdmittedDocumentReplica<T>(
+    tenantContext: TTenantContext,
+    automergeUrl: string,
+  ): Promise<TAutomergeStorageDocumentReplica<T> | null> {
+    const admission = this.admittedDocuments.get(
+      fnAutomergeDocumentScopeKey(tenantContext.orgId, automergeUrl),
+    );
+    if (admission === undefined || !admission.hasPersistedContent) {
+      return null;
+    }
+    const statements = await this.setup();
+    const loadReplica = this.db.transaction(async () => {
+      const version = await statements.findDocumentContentVersion.get(
+        admission.orgId,
+        admission.documentId,
+        admission.automergeUrl,
+      ) as TContentVersionData | undefined;
+      if (version === undefined) return null;
+      const chunks = await statements.listDocumentChunks.all(
+        admission.orgId,
+        admission.documentId,
+      ) as TDocumentChunkData[];
+      return { version, chunks };
+    });
+    const loaded = await loadReplica();
+    if (loaded === null) return null;
+    const contentVersion = Number(loaded.version.content_version);
+    if (!Number.isSafeInteger(contentVersion) || contentVersion < 0) {
+      throw new Error('Automerge document content version is invalid.');
+    }
+    const contentChunks = this.orderDocumentContentChunks(
+      loaded.chunks,
+      admission.documentKey,
+    );
+    if (contentChunks.length === 0) {
+      return null;
+    }
+    let document = Automerge.init<T>();
+    try {
+      for (const chunk of contentChunks) {
+        document = Automerge.loadIncremental(document, chunk.chunk_bytes);
+      }
+      const current = this.admittedDocuments.get(admission.scopeKey);
+      if (current === undefined || current.documentId !== admission.documentId) {
+        Automerge.free(document);
+        return null;
+      }
+      const versionedAdmission = Object.freeze({
+        ...current,
+        contentVersion,
+      });
+      this.admittedDocuments.set(admission.scopeKey, versionedAdmission);
+      return Object.freeze({
+        ...this.toDocumentVersion(versionedAdmission),
+        document,
+      });
+    } catch (error) {
+      Automerge.free(document);
+      throw error;
+    }
+  }
+
   getTenantMetrics(tenantContext: TTenantContext): TAutomergeStorageTenantMetrics {
     let pendingWrites = 0;
     let pendingBytes = 0;
@@ -736,6 +805,11 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
       FROM collaboration_documents
       WHERE automerge_url = ?
     `);
+    const findDocumentContentVersion = await this.db.prepare(`
+      SELECT content_version
+      FROM collaboration_documents
+      WHERE org_id = ? AND id = ? AND automerge_url = ?
+    `);
     const listDocumentChunks = await this.db.prepare(`
       SELECT chunk_key, chunk_bytes, sequence
       FROM collaboration_chunks
@@ -792,6 +866,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     return {
       findDocument,
       findDocumentOwnerCount,
+      findDocumentContentVersion,
       listDocumentChunks,
       load,
       findSequence,
@@ -956,7 +1031,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     } catch {
       return null;
     }
-    const contentChunks = this.orderWidgetStateContentChunks(chunks, admission.documentKey);
+    const contentChunks = this.orderDocumentContentChunks(chunks, admission.documentKey);
     if (
       (admission.contentVersion === 0 && contentChunks.length > 0)
       || (admission.contentVersion > 0 && contentChunks.length === 0)
@@ -984,7 +1059,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     if (admission.access.kind !== 'widget-state') {
       throw new Error('Widget collaborative state access is unavailable.');
     }
-    const contentChunks = this.orderWidgetStateContentChunks(
+    const contentChunks = this.orderDocumentContentChunks(
       chunks,
       admission.documentKey,
     );
@@ -1003,7 +1078,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     }
   }
 
-  private orderWidgetStateContentChunks(
+  private orderDocumentContentChunks(
     chunks: readonly TDocumentChunkData[],
     documentKey: string,
   ): TDocumentChunkData[] {
@@ -1447,7 +1522,7 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
     if (currentAdmission?.documentId === admission.documentId) {
       this.admittedDocuments.set(admission.scopeKey, committedAdmission);
     }
-    this.onDocumentContentVersion?.(Object.freeze({
+    await this.onDocumentContentVersion?.(Object.freeze({
       ...this.toDocumentVersion(committedAdmission),
       contentBytes: binary.slice(),
       contentKind,

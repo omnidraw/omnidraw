@@ -522,6 +522,127 @@ describe('AutomergeService', () => {
     expect(persisted.at(-1)?.sourceSequence).toBeGreaterThan(persisted[0]!.sourceSequence);
   });
 
+  test('reconstructs persisted projection when an incremental save arrives without its baseline', async () => {
+    const turso = await createMemoryTurso();
+    tursoDatabases.push(turso);
+    const snapshots: Array<{
+      sourceSequence: number;
+      elementIds: string[];
+    }> = [];
+    const service = new AutomergeService(turso, {
+      ...createNoopAutomergeCallbacks(),
+      onDocumentSnapshot(event) {
+        snapshots.push({
+          sourceSequence: event.sourceSequence,
+          elementIds: Object.keys(event.elements).sort(),
+        });
+      },
+    });
+    service.start();
+    services.push(service);
+    const handle = await service.createDocument<TCanvasDoc>(TENANT_A, {
+      id: 'missing-projection-baseline-canvas',
+      name: 'missing projection baseline',
+      elements: { first: createTestElement('first') },
+      groups: {},
+    });
+    await registerDocument({
+      database: turso,
+      service,
+      tenantContext: TENANT_A,
+      id: 'missing-projection-baseline-document',
+      automergeUrl: handle.url,
+    });
+    await waitFor({
+      message: 'Timed out waiting for the initial persisted projection',
+      predicate: () => snapshots.some(({ elementIds }) => elementIds.includes('first')),
+    });
+
+    const projectionInternals = service as unknown as {
+      releasePersistedProjectionDocument(documentId: string): void;
+    };
+    projectionInternals.releasePersistedProjectionDocument(
+      parseAutomergeUrl(handle.url).documentId,
+    );
+    handle.change((doc) => {
+      doc.elements.second = createTestElement('second');
+    });
+
+    await waitFor({
+      message: 'Timed out waiting for the reconstructed persisted projection',
+      predicate: () => snapshots.some(({ elementIds }) => (
+        elementIds.length === 2
+        && elementIds[0] === 'first'
+        && elementIds[1] === 'second'
+      )),
+    });
+    expect(snapshots.at(-1)?.elementIds).toEqual(['first', 'second']);
+  });
+
+  test('frees a recovered replica rejected before projection ownership transfer', async () => {
+    const turso = await createMemoryTurso();
+    tursoDatabases.push(turso);
+    const service = new AutomergeService(turso, createNoopAutomergeCallbacks());
+    service.start();
+    const automergeUrl = generateAutomergeUrl();
+    const replicaDocument = Automerge.from<TCanvasDoc>({
+      id: 'rejected-recovery',
+      name: 'rejected recovery',
+      elements: {},
+      groups: {},
+    });
+    const storage = (service as unknown as {
+      storageAdapter: {
+        loadAdmittedDocumentReplica<T>(): Promise<{
+          orgId: string;
+          documentId: string;
+          canvasId: string;
+          automergeUrl: string;
+          contentVersion: number;
+          document: Automerge.Doc<T>;
+        }>;
+      };
+    }).storageAdapter;
+    storage.loadAdmittedDocumentReplica = async <T>() => ({
+      orgId: TENANT_A.orgId,
+      documentId: 'rejected-recovery-document',
+      canvasId: 'different-canvas',
+      automergeUrl,
+      contentVersion: 1,
+      document: replicaDocument as Automerge.Doc<T>,
+    });
+
+    try {
+      await (service as unknown as {
+        recoverPersistedProjection(
+          record: unknown,
+          version: unknown,
+          documentId: string,
+        ): Promise<void>;
+      }).recoverPersistedProjection({
+        tenantContext: TENANT_A,
+      }, {
+        orgId: TENANT_A.orgId,
+        documentId: 'rejected-recovery-document',
+        canvasId: 'expected-canvas',
+        automergeUrl,
+        contentVersion: 1,
+        contentBytes: new Uint8Array(),
+        contentKind: 'incremental',
+      }, parseAutomergeUrl(automergeUrl).documentId);
+
+      expect(() => Automerge.getHeads(replicaDocument))
+        .toThrow('null pointer passed to rust');
+    } finally {
+      try {
+        Automerge.free(replicaDocument);
+      } catch {
+        // The regression path owns and frees the rejected replica.
+      }
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   test('seeds a migrated version-zero projection before applying its first incremental save', async () => {
     const turso = await createMemoryTurso();
     tursoDatabases.push(turso);
