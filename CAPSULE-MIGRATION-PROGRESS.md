@@ -3,9 +3,9 @@
 Current milestone: 10 - Final end-to-end acceptance
 Current status: Complete; all Capsule migration gates pass
 Baseline Vibecanvas commit: 908217de449e6e200fb93b17be8d05e97922d7dd
-Capsule package name: @omnidraw/capsule@0.9.0
-Capsule source revision: 7a3df22c5fdd841c9baad84ea24088ca17d773e7
-Capsule package/pack digest: sha256:968e80857f2d40a38bcc424970ec656db1327be5555ee6424e3e1409d49ccabc
+Capsule package name: @omnidraw/capsule@0.9.2
+Capsule source revision: 3d875629d1a7de36fa57a31ecda15ec65168875e
+Capsule package/pack digest: sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753
 Capsule runtime build digest: sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146
 Capsule OCI image ID: sha256:83ff7d9b53672ef765853d72f8b0f6065fbcfdf9707bb0dde9a0029b689daac3
 

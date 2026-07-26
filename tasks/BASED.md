@@ -8,7 +8,7 @@ small and motivated team. The goal is to minimize management
 and maximize throughput. The idea behind `BASED` is that programming is 90% context loading and 10% actual solving and coding. Therefore we should batch work for context loading and minimize context switching.
 `BASED` skips the traditional agile ceremonies and focuses on the codebase and a glorified todo list.
 The todo list is the heart of the project. No tickets, no boards, no sprints, no backlog.
-Just a list of things to do. The list is grouped into 5 and ordered by number.
+Just a list of things to do. The list is grouped into 5 and ordered by number (Low to High).
 Every dev opens a branch and picks a set of items they want to work on. They open a file based on
 their branch and copy the items and explain what they are doing. Once merged the items are checked or removed from the list the branch is kept.
 
@@ -283,10 +283,6 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S20](s/S20.md) - cli server: restore compiled-mode port fallback when preferred port is busy
 - [x]: [S21] remove apps/server and packages/functional-core and shell
 - [x]: [S22] fix build and ci tests to use new apps/cli
-- [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
-- [~]: [S112](s/S112.md) - canvas: adopt cangine ownership, clone, click, and terminal lifecycle APIs
-- [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
-- [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S23] Use global costs for dev and prod ports
 - [x]: [S24] rename @vibecanvas/service-db -> @vibecanvas/service.db and co
 - [x]: [S25](s/S25.md) - db: remove filetrees table/schema; canvas-doc fully owns filetree state
@@ -377,6 +373,11 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
 - [x]: [S109] - remove uuid check in db sql files.
 - [x]: [S110] - use Turso types and domains where they improve schema constraints
+- [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
+- [~]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
+- [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
+- [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
+- [ ]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

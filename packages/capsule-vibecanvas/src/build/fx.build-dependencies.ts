@@ -92,7 +92,7 @@ export async function fxCreateVibecanvasBuildDependencies(
     Object.freeze({
       metadata: Object.freeze({
         name: '@omnidraw/capsule',
-        version: '0.9.1',
+        version: '0.9.2',
         exports: Object.freeze({
           './guest': Object.freeze({
             runtime: 'guest.js',
@@ -126,7 +126,7 @@ export async function fxCreateVibecanvasBuildDependencies(
             }),
           }),
         }),
-        dependencies: Object.freeze({ '@omnidraw/capsule': '0.9.1' }),
+        dependencies: Object.freeze({ '@omnidraw/capsule': '0.9.2' }),
       }),
       files: Object.freeze([
         file('runtime/function-client.js', functionClientBytes),

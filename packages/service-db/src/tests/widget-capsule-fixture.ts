@@ -35,7 +35,7 @@ export const WIDGET_CAPSULE_RUNTIME_JSON = JSON.stringify({
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY_JSON = JSON.stringify({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.1',
+  packageVersion: '0.9.2',
   packageDigest: `sha256:${hash('a')}`,
   buildApiVersion: 'capsule-build-v1',
   runtimeBuildDigest: `sha256:${hash('b')}`,

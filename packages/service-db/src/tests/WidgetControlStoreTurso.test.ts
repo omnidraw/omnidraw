@@ -58,7 +58,7 @@ const CAPSULE_BUDGETS = Object.freeze({
 });
 const CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.1',
+  packageVersion: '0.9.2',
   packageDigest: `sha256:${'a'.repeat(64)}` as const,
   buildApiVersion: 'capsule-build-v1',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}` as const,

@@ -35,7 +35,7 @@ function digest(bytes: Uint8Array): string {
 
 export const TEST_CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.1',
+  packageVersion: '0.9.2',
   packageDigest: `sha256:${'a'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}`,

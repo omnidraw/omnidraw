@@ -16,7 +16,7 @@ export const VIBECANVAS_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1'
 
 /**
  * Exact declaration closure behind the public `@omnidraw/capsule/guest`
- * export in the pinned Capsule 0.9.1 distribution.
+ * export in the pinned Capsule 0.9.2 distribution.
  */
 export const VIBECANVAS_CAPSULE_GUEST_PUBLIC_TYPE_FILES = Object.freeze([
   'types/guest.d.ts',
@@ -34,7 +34,7 @@ export const VIBECANVAS_CAPSULE_GUEST_PUBLIC_TYPE_FILES = Object.freeze([
 ]);
 
 /**
- * Capsule 0.9.1's reviewed React JSX projection. These exact versions,
+ * Capsule 0.9.2's reviewed React JSX projection. These exact versions,
  * exports, dependency edges, and file subsets are independently digest-pinned
  * by Capsule's public builder before the trusted React transform is admitted.
  */

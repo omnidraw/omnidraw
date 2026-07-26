@@ -172,7 +172,7 @@ describe('Capsule authored-widget dependency and profile construction', () => {
       'react-dom': '19.2.7',
     });
     expect(dependencies.lockEntries.map(({ name, version }) => `${name}@${version}`)).toEqual([
-      '@omnidraw/capsule@0.9.1',
+      '@omnidraw/capsule@0.9.2',
       '@types/react@19.2.17',
       '@types/react-dom@19.2.3',
       '@vibecanvas/sdk@0.1.0',

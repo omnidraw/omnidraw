@@ -46,9 +46,9 @@ const tempRoot = join(import.meta.dir, '..', '.tmp');
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.1',
+  packageVersion: '0.9.2',
   packageDigest:
-    'sha256:373b7dd1293b280d193683f4455d7420d62d8cb188ae32524da860199a52b727' as const,
+    'sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753' as const,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest:
     'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,

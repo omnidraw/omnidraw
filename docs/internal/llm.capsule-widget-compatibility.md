@@ -20,9 +20,9 @@ Capsule implements every browser or npm API.
   keys, exact target policy, and instance-bound grants.
 - Browser code imports only supported public `@omnidraw/capsule` entries
   through `@vibecanvas/capsule-vibecanvas`.
-- The recorded Capsule consumer package is `@omnidraw/capsule@0.9.1`, source
-  revision `7a3df22c5fdd841c9baad84ea24088ca17d773e7`, with package digest
-  `sha256:373b7dd1293b280d193683f4455d7420d62d8cb188ae32524da860199a52b727`.
+- The recorded Capsule consumer package is `@omnidraw/capsule@0.9.2`, source
+  revision `3d875629d1a7de36fa57a31ecda15ec65168875e`, with package digest
+  `sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753`.
 
 ## Verified guest surfaces
 
