@@ -2,8 +2,7 @@
 
 This guide is the consumer manual for `@omnidraw/capsule`. It covers the supported package entrypoints, building or obtaining a guest artifact, creating a browser host, mounting and controlling an instance, granting authority, testing, and production hardening.
 
-This guide summarizes the public exports and security contract from the Capsule
-source repository so it remains useful without broken cross-repository links.
+For the exact exported names, see [`public-api.md`](./public-api.md). For the normative security contract, see [`CAPSULE.md`](./CAPSULE.md).
 
 ## Install
 
@@ -25,7 +24,7 @@ Use only these imports:
 | --- | --- | --- |
 | `@omnidraw/capsule` | Browser host | Create hosts, mount artifacts, control handles, cache artifacts |
 | `@omnidraw/capsule/build` | Bun/Node tooling | Build a deterministic artifact from a closed source snapshot |
-| `@omnidraw/capsule/build-runner` | Bun/Node on POSIX | Ingest hostile source trees and launch the reference OCI builder |
+| `@omnidraw/capsule/build-runner` | Bun/Node on POSIX | Build accepted frozen npm projects natively; ingest hostile trees and launch the optional reference OCI boundary |
 | `@omnidraw/capsule/guest` | Capsule guest source | Call capabilities and use guest channels inside the VM |
 | `@omnidraw/capsule/protocol` | Browser or tooling | Protocol constants and serializable contract types |
 | `@omnidraw/capsule/schema` | Browser or tooling | Canonical application-schema resources and public schema types |
@@ -260,9 +259,108 @@ const built = await buildCapsuleGuest(request);
 console.log(built.artifactHash, built.diagnostics);
 ```
 
-The builder never discovers ambient `node_modules`, package manifests, compiler configuration, or host globals. For React, Vue, locked packages, CSS, PNG, sanitized SVG, WOFF, PCM16 WAVE, or silent VP8 WebM resources, provide the exact serialized dependency metadata/content and select the required trusted framework and feature profiles. The checked-in fixtures and build tests are the canonical advanced examples.
+The builder never discovers ambient `node_modules`, package manifests, compiler configuration, or host globals. For React, Vue, locked packages, CSS, PNG, sanitized SVG, WOFF, PCM16 WAVE, or silent VP8 WebM resources, provide the exact serialized dependency metadata/content and select the required trusted syntax and feature profiles. Capsule pins its trusted compiler/transforms, not ordinary guest-library versions. The checked-in fixtures and build tests are the canonical advanced examples.
 
-Never feed an attacker-controlled filesystem tree directly to the compiler. Use `ingestCapsuleSourceTree()` with explicit POSIX helper authority, or the networkless OCI path, before constructing a build request.
+## Build an accepted frozen npm project
+
+An ordinary project can supply `package.json`, `package-lock.json`, `src/`, and
+assets without constructing Capsule dependency locks, export tables, or package
+content records:
+
+```ts
+import {
+  buildCapsuleNpmProjectFx,
+  type CapsuleHostNpmAuthority,
+  type CapsuleHostNpmBuildLimits,
+  type CapsuleHostNpmBuildPolicy,
+  type CapsuleNpmProjectBuildRequest,
+} from '@omnidraw/capsule/build-runner';
+
+const authority: CapsuleHostNpmAuthority = {
+  format: 'capsule-host-npm-authority-v1',
+  nodePath: '/opt/build-tools/node',
+  nodeSha256: exactNodeDigest,
+  npmPath: '/opt/build-tools/npm-cli.js',
+  npmSha256: exactNpmCliDigest,
+  environment: {},
+  environmentAuthorityId: 'release-env-2026-07',
+  registries: [{
+    id: 'tenant-registry',
+    url: 'https://registry.example.test/',
+    token: privateRegistryToken,
+    redirects: 'same-origin',
+  }],
+  registryAuthorityId: 'tenant-registry-policy-v3',
+  temporaryRoot: '/var/lib/capsule/tmp',
+  cacheRoot: '/var/lib/capsule/npm-cache',
+  cachePartitionId: 'tenant-opaque-id',
+};
+
+const hostPolicy: CapsuleHostNpmBuildPolicy = {
+  format: 'capsule-host-npm-policy-v1',
+  mode: 'frozen-ci',
+  lifecycleScripts: 'deny',
+  packageSources: 'configured-registries-only',
+  nodeVersion: '24.5.0',
+  npmVersion: '11.5.1',
+  lockfileVersion: 3,
+  buildPolicy: compilerPolicy,
+};
+
+const request: CapsuleNpmProjectBuildRequest = {
+  source: acceptedProjectSnapshot,
+  entry: 'src/main.tsx',
+  target,
+  capabilityRequests: [],
+  parkability: { parkable: false },
+  requestedBudgets: artifactBudgets,
+};
+
+const limits: CapsuleHostNpmBuildLimits = nativeBuildLimits;
+const built = await buildCapsuleNpmProjectFx(
+  authority,
+  request,
+  hostPolicy,
+  limits,
+  { signal: cancellation.signal },
+);
+```
+
+The paths, hashes, environment, registry credentials, cache partition, install
+mode, script policy, and compiler ceilings above are trusted server authority,
+not project fields. The operation verifies the exact tools, uses `npm ci` and
+the committed lockfile, denies lifecycle scripts, seals npm configuration and
+ambient environment, normalizes installed duplicates/peers/optionals into
+dependency-lock format 3, independently verifies the artifact, and removes its
+private project on every terminal path. Credentials, raw npm output, and host
+paths are not returned or hashed into public output.
+
+The project manifest and frozen lock choose React, Vue, and every other ordinary
+guest dependency. Capsule resolves the installed exports generically, retains
+declarations for build-time semantics, and bundles only the reachable runtime
+JavaScript/resources into the immutable artifact. Mounting never consults
+`node_modules` or a registry. CommonJS packages that publish conventional
+`process.env.NODE_ENV` entry shims are closed under Capsule's fixed production
+transform without granting an ambient `process` object. Abort and wall-clock
+limits also terminate the compiler worker.
+
+This workflow requires Node/npm but no Docker, Podman, OCI image, or container
+daemon. It is appropriate only when the operator accepts the project and
+dependency-processing risk. Private directories, limits, process groups, and
+`--ignore-scripts` are not a hostile-input sandbox. Hostile projects still
+require an operator-provided OS isolation boundary such as a container, VM,
+sandbox service, restricted job runner, or reviewed equivalent; the OCI runner
+below remains one optional reference.
+
+Preview and release never fall back to `npm install` and never rewrite or return
+a newly selected lock. Capsule intentionally exposes no draft lock-generation
+API in this release.
+
+Never feed an attacker-controlled filesystem tree directly to the compiler or
+trusted native npm lane without external OS isolation. Use
+`ingestCapsuleSourceTree()` with explicit POSIX helper authority and an
+appropriate isolation provider, or the reference networkless OCI path, before
+constructing the serialized compiler request.
 
 ## Lazy browser loading
 
@@ -529,11 +627,16 @@ The guest receives the bounded facade selected by its signed profile. Native con
 
 `@omnidraw/capsule/build-runner` is for trusted server/CLI code on supported POSIX platforms:
 
+- `buildCapsuleNpmProjectFx(authority, request, hostPolicy, limits, options?)` runs the accepted-project frozen host-native workflow above with guest-selected library versions and a terminable compiler phase;
+- `createCapsuleNpmProcessPortal()` supplies the default exact-path process-group portal;
 - `ingestCapsuleSourceTree(root, limits, authority)` performs race-resistant, no-follow source ingestion through the reviewed helper;
 - `runCapsuleOciBuild(authority, request, limits)` launches the pinned networkless OCI worker;
 - `CAPSULE_POSIX_INGEST_HELPER_SOURCE` points to the helper source included in the package.
 
-Both APIs require explicit trusted authority: exact executable/helper identity, paths, hashes, resource ceilings, environment, and platform. They do not discover or trust ambient tools.
+All operations require explicit trusted authority: exact executable/helper
+identity, paths, hashes, resource ceilings, environment, and platform. They do
+not discover or trust ambient tools. The native npm operation and the OCI
+operation are separate lanes; neither changes the other's threat model.
 
 ## Errors and diagnostics
 
@@ -541,6 +644,7 @@ Expected boundary failures use normalized error classes and stable codes:
 
 - `CapsuleHostError` for host/mount failures;
 - `CapsuleBuildError` for build input, transform, and limit failures;
+- `CapsuleNpmProjectBuildError` for native npm authority, install, normalization, cancellation, and cleanup failures;
 - `CapsuleBuildRunnerError` for ingestion or OCI boundary failures;
 - `CapsuleGuestBridgeError` inside guest code.
 
