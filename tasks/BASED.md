@@ -261,6 +261,10 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
 - [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
 - [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
+- [ ]: [A89](a/A89.md) - canvas document: add the versioned Cangine-node contract
+- [ ]: [A90](a/A90.md) - canvas: productionize the Automerge/Cangine bridge and history
+- [ ]: [A91](a/A91.md) - canvas: build copy-on-write v1-to-v2 migration and version gates
+- [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and product tools over to Cangine nodes
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -377,7 +381,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [~]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
 - [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
-- [ ]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
+- [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
+- [ ]: [S116](s/S116.md) - canvas: delete the parallel element/group projection architecture
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -414,6 +419,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E36](e/E36.md) - managed multi-tenant architecture and scale-to-zero widget functions
 - [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
 - [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
+- [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
