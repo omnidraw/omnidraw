@@ -567,7 +567,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts](packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts) |  |
 | [packages/canvas/src/widget-host/types.ts](packages/canvas/src/widget-host/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
-| [packages/canvas/vendor/omnidraw-cangine-0.2.1.tgz](packages/canvas/vendor/omnidraw-cangine-0.2.1.tgz) |  |
+| [packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz](packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
 
 ## packages/capsule-vibecanvas

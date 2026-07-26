@@ -185,7 +185,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@omnidraw/cangine": "file:./vendor/omnidraw-cangine-0.2.1.tgz",
+        "@omnidraw/cangine": "file:./vendor/omnidraw-cangine-0.2.2.tgz",
         "jsdom": "^29.1.1",
         "solid-devtools": "^0.34.3",
         "typescript": "catalog:",
@@ -935,7 +935,7 @@
 
     "@nothing-but/utils": ["@nothing-but/utils@0.17.0", "", {}, "sha512-TuCHcHLOqDL0SnaAxACfuRHBNRgNJcNn9X0GiH5H3YSDBVquCr3qEIG3FOQAuMyZCbu9w8nk2CHhOsn7IvhIwQ=="],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@./vendor/omnidraw-cangine-0.2.1.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-iF7X0LdRRMQiHHERMUn4G0NGdEu++2JxuAUeNrRmzbPgHDTFBEhlb1deKXIpTgwezFB0x0OfWHD96x0QG+Z92A=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@./vendor/omnidraw-cangine-0.2.2.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-4U+oXnfiAPmOK0BnO3QzFTMSvhmJO+ycjC+0Y4heI12+mkQAMC5rgQMnVsQ9LOzmN3JqNDNmXTVI9wReHZJpqw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
