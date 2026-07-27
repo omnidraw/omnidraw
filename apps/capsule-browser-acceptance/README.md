@@ -23,7 +23,9 @@ The page publishes its machine-readable result at
 
 - plain DOM with live SDK props, theme, and bounded notification output;
 - exact SVG and Canvas2D feature profiles;
-- the pinned React TSX projection;
+- the pinned React TSX projection with native Shadow CSS, inherited host custom
+  properties, modern math/layout/query/animation syntax, dynamic inline style
+  parity, and a separately granted root-relative CSS image request;
 - a release-signed published guest with an exact generated server-function
   capability and collaborative get/change/subscribe behavior;
 - active, throttled, frozen, and resumed lifecycle states;

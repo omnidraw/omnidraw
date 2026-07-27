@@ -48,6 +48,20 @@ remote ESM endpoint, vendored minified runtime, or runtime package loader.
   2D, WebGL, WebGPU, media, clipboard, dialogs, user files, and buffered fetch
   require explicit supported profiles and may still be reduced or denied by
   host policy.
+- `shadow-browser-css-v1` enables ordinary modern CSS inside Capsule's owned
+  closed ShadowRoot: native selector specificity, custom properties and
+  `var()` fallbacks, math functions, gradients, modern typography and layout,
+  transitions, animations, media/container queries, and `@supports`.
+- `css-network-images-v1` is separate browser-network authority. It permits
+  reviewed CSS image sinks to use literal HTTPS or root-relative URLs only
+  when the artifact declares it and the host grants it. External response
+  bytes are runtime dependencies and are not covered by the signed artifact
+  hash. Prefer bundled distribution assets when reproducibility matters.
+- Do not use `var()` in image-bearing properties or put `url(...)` in custom
+  properties; Capsule rejects substitution paths even under the network-image
+  profile. Runtime stylesheet `@import`, `:host`, `:host-context`, `::slotted`,
+  `::part`, `@property`, view transitions, `paint()`, and nesting remain
+  outside this profile.
 - Keep transient interaction state local. Use semantic elements, labels,
   keyboard access, and visible focus.
 - Import static CSS from UI source so Vite emits it into `dist/`. There is no
@@ -64,3 +78,6 @@ remote ESM endpoint, vendored minified runtime, or runtime package loader.
 - Do not access host files, internal APIs, ambient credentials, or direct
   network/resource authority. A requested profile is compatibility, not a
   grant.
+- Run `vc_widget_validate` after CSS changes and repair the exact Capsule
+  diagnostic, including its code, path, line, column, construct, active CSS
+  profile, and required profile when provided.

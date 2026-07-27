@@ -66,6 +66,9 @@ their signing purpose and selected descriptor differ.
    capabilities, grants, descriptor catalogs, and provider bindings. Function
    descriptors are canonicalized and re-hashed before any provider is
    constructed.
+   Native CSS and CSS network images require their exact signed
+   `shadow-browser-css-v1` and `css-network-images-v1` declarations, host
+   allowlist entries, and per-mount feature grants.
 4. Bind function and collaboration providers to trusted tenant, definition,
    revision, and widget-instance context.
 5. Mount one Capsule handle into the application content slot inside Cangine's
@@ -99,6 +102,9 @@ active, throttled, frozen, resumed, and destroyed transitions.
 - Server-function source follows its separately scoped trusted server build;
   server/private files are withheld from the UI compiler and generated browser
   proxies are inserted in their place.
+- Native CSS remains confined by Capsule's closed ShadowRoot. CSS network
+  images are separate ambient browser authority; their external response bytes
+  are not part of the signed artifact or Capsule byte ledgers.
 - Browser teardown is terminal and idempotent; no live guest, stream,
   registration, portal, or pending operation may remain.
 

@@ -108,6 +108,8 @@ describe('Capsule error mappings', () => {
     });
     expect(fnMapCapsuleBuildError('BUILD_LIMIT_EXCEEDED').category).toBe('budget');
     expect(fnMapCapsuleBuildError('UNSUPPORTED_TARGET').category).toBe('target');
+    expect(fnMapCapsuleBuildError('CSS_PROFILE_REQUIRED').category).toBe('build');
+    expect(fnMapCapsuleBuildError('CSS_POLICY_DENIED').category).toBe('build');
   });
 
   test('maps host boundary codes into stable product categories', () => {

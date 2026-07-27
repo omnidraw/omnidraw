@@ -17,9 +17,12 @@ import {
   type CapsuleArtifactSigningKey,
 } from '@vibecanvas/capsule-vibecanvas/build';
 import {
+  CAPSULE_ARTIFACT_RESOURCES_PROFILE,
   CAPSULE_CANVAS_2D_PROFILE,
+  CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
   CAPSULE_DOM_CORE_V2_PROFILE,
   CAPSULE_RUNTIME_ABI,
+  CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
   CAPSULE_SVG_DOM_PROFILE,
   VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
   VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
@@ -56,12 +59,12 @@ const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widg
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.3',
+  packageVersion: '0.9.4',
   packageDigest:
-    'sha256:bad823e4a7ea2d621ec7e11c815074dbac94a495750dfbb43e9a57501b4698ea' as const,
+    'sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189' as const,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest:
-    'sha256:884aae4fbeb09da89790be72cad57b58765a780685510750bb66f3e6608b81dc' as const,
+    'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,
 });
 const tenant = Object.freeze({
   orgId: 'capsule-browser-acceptance',
@@ -160,24 +163,104 @@ emitWidgetOutput({
 });
 `.trim(),
   react: `
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+import './react.css';
 
 function App() {
+  const [count, setCount] = useState(0);
+  const card = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
+    if (card.current === null) throw new Error('React counter did not commit');
+    card.current.style.font = 'inherit';
+    card.current.style.setProperty('--dynamic-gap', '7px');
+    card.current.style.paddingInline = 'var(--dynamic-gap)';
+    const inheritedColor = getComputedStyle(card.current).color.replaceAll(' ', '');
     emitWidgetOutput({
       type: 'notification',
       tone: 'success',
-      message: 'react-ready',
+      message: 'react-css-ready:' + inheritedColor,
     });
   }, []);
-  return <main data-runtime="react-19.2.7">Pinned React TSX</main>;
+  return (
+    <main ref={card} className="react-counter" data-runtime="react-19.2.7">
+      <output className="react-counter__value">{count}</output>
+      <button type="button" onClick={() => setCount((value) => value + 1)}>
+        Increment
+      </button>
+      <span className="react-counter__network-image" aria-hidden="true" />
+    </main>
+  );
 }
 
 const root = document.createElement('div');
 document.body.append(root);
 createRoot(root).render(<App />);
+`.trim(),
+  reactCss: `
+:root {
+  --counter-surface: rgb(245 247 250);
+}
+
+.react-counter {
+  container-type: inline-size;
+  box-sizing: border-box;
+  display: grid;
+  inline-size: clamp(12rem, 60vi, 42rem);
+  min-block-size: max(10rem, 30vb);
+  padding-block: calc(0.75rem + 1vi);
+  color: var(--vibecanvas-inherited-accent, rgb(1 2 3));
+  background-color: var(--counter-surface);
+  background-image: linear-gradient(135deg, transparent, rgb(255 255 255 / 0.8));
+  font: 16px/1.4 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 120ms ease;
+  animation: counter-enter 1ms ease-out;
+}
+
+.react-counter *,
+.react-counter *::before,
+.react-counter *::after {
+  box-sizing: border-box;
+}
+
+.react-counter button {
+  font: inherit;
+}
+
+.react-counter__network-image {
+  display: block;
+  inline-size: 24px;
+  block-size: 24px;
+  background-image: url("/capsule-network-image.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+@media (min-width: 20rem) {
+  .react-counter {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+@container (min-width: 12rem) {
+  .react-counter__value {
+    font-size: min(10vi, 2rem);
+  }
+}
+
+@supports (display: grid) {
+  .react-counter {
+    gap: 0.75rem;
+  }
+}
+
+@keyframes counter-enter {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
 `.trim(),
   published: `
 import { double } from '../server/double.server';
@@ -559,7 +642,15 @@ const artifacts = Object.freeze({
     name: 'Browser React acceptance',
     slug: 'browser-react-acceptance',
     entry: 'src/react.tsx',
-    files: [{ path: 'src/react.tsx', source: sources.react }],
+    files: [
+      { path: 'src/react.tsx', source: sources.react },
+      { path: 'src/react.css', source: sources.reactCss },
+    ],
+    featureProfiles: [
+      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+    ],
   }),
   published: await build({
     name: 'Published authority acceptance',
@@ -613,7 +704,10 @@ const fixture = Object.freeze({
       domProfile: CAPSULE_DOM_CORE_V2_PROFILE,
     }),
     allowedFeatureProfiles: Object.freeze([
+      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
       CAPSULE_CANVAS_2D_PROFILE,
+      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
       CAPSULE_SVG_DOM_PROFILE,
     ].sort()),
     budgetCeiling: VIBECANVAS_CAPSULE_BUDGET_CEILINGS,

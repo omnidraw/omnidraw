@@ -8,10 +8,10 @@ export const FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS = 90 * 24 * 60 * 60 * 1_000;
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.3',
-  packageDigest: 'sha256:bad823e4a7ea2d621ec7e11c815074dbac94a495750dfbb43e9a57501b4698ea',
+  packageVersion: '0.9.4',
+  packageDigest: 'sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189',
   buildApiVersion: '0.1.0',
-  runtimeBuildDigest: 'sha256:884aae4fbeb09da89790be72cad57b58765a780685510750bb66f3e6608b81dc',
+  runtimeBuildDigest: 'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146',
 }) satisfies TWidgetCapsuleBuildIdentity;
 
 export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1';

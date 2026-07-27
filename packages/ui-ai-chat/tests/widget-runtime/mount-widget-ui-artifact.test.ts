@@ -69,6 +69,14 @@ const TARGET_WITH_SVG = Object.freeze({
   ...TARGET,
   featureProfiles: Object.freeze(['svg-dom-v1']),
 });
+const TARGET_WITH_CSS_NETWORK_IMAGES = Object.freeze({
+  ...TARGET,
+  featureProfiles: Object.freeze([
+    'artifact-resources-v1',
+    'css-network-images-v1',
+    'shadow-browser-css-v1',
+  ]),
+});
 const BUDGETS = Object.freeze({
   cpuMs: 100,
   memoryBytes: 32 * 1_024 * 1_024,
@@ -863,6 +871,44 @@ describe('Capsule widget mount boundary', () => {
     expect(factory.create).toHaveBeenCalledTimes(2);
     expect(factory.created.map(({ options }) => options.runtimePolicy.target))
       .toEqual([TARGET, TARGET_WITH_SVG]);
+    await coordinator.destroy();
+  });
+
+  test('passes exact native CSS and network-image grants to a matching host partition', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog(
+      'catalog-a',
+      [
+        { kind: 'server-functions', descriptor: functionDescriptor },
+        { kind: 'collaborative-state', descriptor: stateDescriptor },
+      ],
+      TARGET_WITH_CSS_NETWORK_IMAGES.featureProfiles,
+    );
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+
+    await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact('published', undefined, TARGET_WITH_CSS_NETWORK_IMAGES),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    expect(factory.created).toHaveLength(1);
+    expect(factory.created[0]!.options.runtimePolicy.target)
+      .toEqual(TARGET_WITH_CSS_NETWORK_IMAGES);
+    expect(factory.created[0]!.mount).toHaveBeenCalledWith(expect.objectContaining({
+      featureGrants: TARGET_WITH_CSS_NETWORK_IMAGES.featureProfiles,
+    }));
     await coordinator.destroy();
   });
 

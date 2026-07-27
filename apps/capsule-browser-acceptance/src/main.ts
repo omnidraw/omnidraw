@@ -173,6 +173,9 @@ function surface(name: string): HTMLDivElement {
   const root = document.createElement('div');
   root.className = 'surface';
   root.dataset.surface = name;
+  if (name === 'react') {
+    root.style.setProperty('--vibecanvas-inherited-accent', '#123456');
+  }
   surfaces.append(root);
   return root;
 }
@@ -616,8 +619,13 @@ await check('generated artifacts bind exact requested profiles', () => {
     'Plain DOM artifact received ambient feature authority.',
   );
   assert(
-    reactArtifact.runtimeDescriptor.target.featureProfiles.length === 0,
-    'React artifact received ambient feature authority.',
+    JSON.stringify(reactArtifact.runtimeDescriptor.target.featureProfiles)
+      === JSON.stringify([
+        'artifact-resources-v1',
+        'css-network-images-v1',
+        'shadow-browser-css-v1',
+      ]),
+    'React artifact lacks its exact CSS profiles.',
   );
   assert(
     publishedArtifact.runtimeDescriptor.target.featureProfiles.length === 0,
@@ -670,10 +678,10 @@ await check('Canvas2D guest mounts only with the explicit Canvas profile', async
   await waitForOutput('canvas-ready');
 });
 
-await check('pinned React TSX mounts and commits through React 19.2.7', async () => {
+await check('React mounts with native modern CSS and inherited host variables', async () => {
   const handle = await mount(positive.port, 'react', reactArtifact);
   handles.set('react', handle);
-  await waitForOutput('react-ready');
+  await waitForOutput('react-css-ready:rgb(18,52,86)');
 });
 
 await check('release-signed published guest receives exact function and collaboration authority', async () => {

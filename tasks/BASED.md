@@ -265,7 +265,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [A90](a/A90.md) - canvas: implement the authoritative CanvasService
 - [ ]: [A91](a/A91.md) - widget state: replace Automerge with a centralized JSONB service
 - [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and runtime over to CanvasService
-- [ ]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
+- [x]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -384,6 +384,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
 - [ ]: [S116](s/S116.md) - canvas: delete Automerge and the parallel element/group architecture
+- [ ]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

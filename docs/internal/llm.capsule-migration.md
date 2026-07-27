@@ -4,7 +4,7 @@ Status: implementation plan
 Scope: replace the Arrow browser widget sandbox with Capsule  
 Capsule source: `/Users/omarezzat/Workspace/vibecanvas/capsule`  
 Capsule guide: `docs/library-guide.md` in that repository  
-Capsule package: `@omnidraw/capsule@0.9.3`
+Capsule package: `@omnidraw/capsule@0.9.4`
 
 ## 1. Purpose
 
