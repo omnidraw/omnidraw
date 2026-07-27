@@ -28,6 +28,7 @@
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-theme": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
+    "lucide-solid": "catalog:",
     "solid-js": "catalog:"
   }
 }

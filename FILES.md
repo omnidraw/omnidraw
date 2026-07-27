@@ -369,7 +369,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasRuntimeLifecycle.ts](packages/canvas/src/components/CanvasRuntimeLifecycle.ts) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/index.tsx](packages/canvas/src/components/SelectionStyleMenu/index.tsx) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/styles.css](packages/canvas/src/components/SelectionStyleMenu/styles.css) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts) |  |
 | [packages/canvas/src/components/fn.canvas-runtime-activation.ts](packages/canvas/src/components/fn.canvas-runtime-activation.ts) |  |
+| [packages/canvas/src/components/fn.canvas-grid.ts](packages/canvas/src/components/fn.canvas-grid.ts) |  |
 | [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
 | [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |

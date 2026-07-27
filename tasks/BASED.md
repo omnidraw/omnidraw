@@ -261,11 +261,12 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
 - [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
 - [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
-- [x]: [A89](a/A89.md) - shared contracts and canvas_items JSONB schema
-- [x]: [A90](a/A90.md) - authoritative server CanvasService
-- [x]: [A91](a/A91.md) - centralized widget state replacement
-- [x]: [A92](a/A92.md) - coordinated API/CLI/browser cutover and DB reset
+- [/]: [A89](a/A89.md) - shared contracts and canvas_items JSONB schema
+- [/]: [A90](a/A90.md) - authoritative server CanvasService
+- [/]: [A91](a/A91.md) - centralized widget state without product regression
+- [/]: [A92](a/A92.md) - coordinated cutover with product parity
 - [/]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
+- [/]: [A94](a/A94.md) - restore canvas, widget, and AI product parity
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -383,7 +384,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
 - [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
-- [x]: [S116](s/S116.md) - immediately delete Automerge and legacy architecture
+- [/]: [S116](s/S116.md) - delete only retired persistence/projection architecture
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

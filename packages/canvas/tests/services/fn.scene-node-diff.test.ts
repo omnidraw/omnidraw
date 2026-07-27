@@ -6,6 +6,7 @@ import {
 import {
   fnApplySceneNodePatches,
   fnAuthoredCanvasNode,
+  fnDiffSceneNodeStructure,
   fnDiffSceneNodes,
   fnRuntimeCanvasNode,
 } from '../../src/services/fn.scene-node-diff';
@@ -113,6 +114,31 @@ describe('scene node diff', () => {
     expect(runtime.parentId).toBe(CANVAS_SYNTHETIC_CONTENT_LAYER_ID);
     expect(fnAuthoredCanvasNode(runtime)).toEqual(authored);
     expect(authored.parentId).toBeNull();
+  });
+
+  test('keeps hierarchy and order changes out of JSON patches', () => {
+    const before = rect();
+    const after: TRectNode = {
+      ...before,
+      parentId: 'group-a',
+      orderKey: 'Z',
+    };
+
+    expect(fnDiffSceneNodes(before, after)).toEqual({
+      patches: [],
+      preconditions: [],
+    });
+    expect(fnDiffSceneNodeStructure(before, after)).toEqual({
+      parentChanged: true,
+      orderChanged: true,
+    });
+  });
+
+  test('rejects mismatched node identities before command planning', () => {
+    expect(() => fnDiffSceneNodes(rect(), {
+      ...rect(),
+      id: 'rect-b',
+    })).toThrow('different IDs');
   });
 
   test('materializes widget portals only at the runtime boundary', () => {

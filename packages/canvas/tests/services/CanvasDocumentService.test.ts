@@ -97,6 +97,7 @@ describe('CanvasDocumentService', () => {
     const unsubscribeRecorder = vi.fn();
     const replace = vi.fn();
     const apply = vi.fn();
+    let currentNode: TRectNode | null = after;
     const engine = {
       recorder: {
         subscribe(listener: (entry: never) => void) {
@@ -107,7 +108,15 @@ describe('CanvasDocumentService', () => {
       scene: {
         replace,
         apply,
-        get: (id: string) => id === after.id ? runtimeNode(after) : null,
+        get: (id: string) => (
+          id === after.id && currentNode !== null
+            ? (
+                currentNode.parentId === null
+                  ? runtimeNode(currentNode)
+                  : currentNode
+              )
+            : null
+        ),
       },
     } as unknown as IInfiniteCanvasEngine;
     const errors: unknown[] = [];
@@ -182,6 +191,71 @@ describe('CanvasDocumentService', () => {
     );
     expect(service.revision).toBe(1);
     expect(errors).toEqual([]);
+
+    currentNode = {
+      ...after,
+      parentId: 'group-a',
+      orderKey: 'Z',
+    };
+    recorderListener!({
+      meta: {},
+      change: {
+        source: 'editor',
+        added: [],
+        updated: [],
+        removed: [],
+        reparented: [before.id],
+        reordered: [before.id],
+      },
+      before: {
+        [before.id]: runtimeNode(after),
+      },
+    } as never);
+
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+    expect(execute.mock.calls[1]?.[0]).toMatchObject({
+      operations: [{
+        type: 'reparent',
+        itemId: before.id,
+        parentId: 'group-a',
+        orderKey: 'Z',
+      }],
+      preconditions: [{
+        type: 'item-revision',
+        itemId: before.id,
+        itemRevision: 2,
+      }],
+    });
+
+    const beforeDelete = currentNode;
+    currentNode = null;
+    recorderListener!({
+      meta: {},
+      change: {
+        source: 'editor',
+        added: [],
+        updated: [],
+        removed: [before.id],
+        reparented: [],
+        reordered: [],
+      },
+      before: {
+        [before.id]: beforeDelete,
+      },
+    } as never);
+
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
+    expect(execute.mock.calls[2]?.[0]).toMatchObject({
+      operations: [{
+        type: 'delete',
+        itemId: before.id,
+      }],
+      preconditions: [{
+        type: 'item-revision',
+        itemId: before.id,
+        itemRevision: 2,
+      }],
+    });
 
     await service.dispose();
     expect(unsubscribeRecorder).toHaveBeenCalledTimes(1);

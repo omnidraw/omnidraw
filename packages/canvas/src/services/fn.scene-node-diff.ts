@@ -11,6 +11,11 @@ type TCanvasNodeDiff = Readonly<{
   preconditions: readonly TCanvasPrecondition[];
 }>;
 
+type TCanvasNodeStructureDiff = Readonly<{
+  parentChanged: boolean;
+  orderChanged: boolean;
+}>;
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -93,12 +98,47 @@ export function fnDiffSceneNodes(
   before: TSceneNode,
   after: TSceneNode,
 ): TCanvasNodeDiff {
+  if (before.id !== after.id) {
+    throw new TypeError('Scene nodes with different IDs cannot be diffed.');
+  }
   const patches: TCanvasItemPatch[] = [];
   const preconditions: TCanvasPrecondition[] = [];
-  collectDiff(before.id, before, after, [], patches, preconditions);
+  const keys = [...new Set([
+    ...Object.keys(before),
+    ...Object.keys(after),
+  ])]
+    .filter((key) => (
+      key !== 'id'
+      && key !== 'parentId'
+      && key !== 'orderKey'
+    ))
+    .sort();
+  for (const key of keys) {
+    collectDiff(
+      before.id,
+      before[key as keyof TSceneNode],
+      after[key as keyof TSceneNode],
+      [key],
+      patches,
+      preconditions,
+    );
+  }
   return Object.freeze({
     patches: Object.freeze(patches),
     preconditions: Object.freeze(preconditions),
+  });
+}
+
+export function fnDiffSceneNodeStructure(
+  before: TSceneNode,
+  after: TSceneNode,
+): TCanvasNodeStructureDiff {
+  if (before.id !== after.id) {
+    throw new TypeError('Scene nodes with different IDs cannot be compared.');
+  }
+  return Object.freeze({
+    parentChanged: before.parentId !== after.parentId,
+    orderChanged: before.orderKey !== after.orderKey,
   });
 }
 
@@ -159,4 +199,4 @@ export function fnAuthoredCanvasNode(node: TSceneNode): TSceneNode {
   return persistedNode as TSceneNode;
 }
 
-export type { TCanvasNodeDiff };
+export type { TCanvasNodeDiff, TCanvasNodeStructureDiff };

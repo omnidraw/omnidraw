@@ -1,8 +1,8 @@
+import type { TSceneNode } from '@omnidraw/cangine';
 import type { IStandardCanvasEditor } from '@omnidraw/cangine/editor';
 import type { TCanvas } from '@vibecanvas/service-db/model';
 import type { ThemeService } from '@vibecanvas/service-theme';
 import {
-  For,
   Match,
   Show,
   Switch,
@@ -24,7 +24,19 @@ import type {
   TCanvasImagePort,
   TCanvasToolbarGroupsPort,
 } from '../types';
+import { FloatingCanvasToolbar } from './FloatingCanvasToolbar';
+import {
+  SelectionStyleMenu,
+} from './SelectionStyleMenu';
+import {
+  fnSelectionStyleState,
+  type TSelectionStylePatch,
+} from './SelectionStyleMenu/fn.selection-style';
+import {
+  txApplySelectionStyle,
+} from './SelectionStyleMenu/tx.selection-style';
 import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
+import { fnCanvasGridStyle } from './fn.canvas-grid';
 import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
 
 export type TBackendCanvas = TCanvas;
@@ -53,26 +65,50 @@ type TCanvasSource = Readonly<{
   canvasId: string;
 }>;
 
-const TOOLS = [
-  ['select', 'Select'],
-  ['hand', 'Hand'],
-  ['rect', 'Rectangle'],
-  ['ellipse', 'Ellipse'],
-  ['pen', 'Pen'],
-  ['text', 'Text'],
-  ['connector', 'Connector'],
-  ['arrow', 'Arrow'],
-] as const;
+const TOOL_SHORTCUTS = Object.freeze({
+  '1': 'select',
+  '2': 'rect',
+  '3': 'ellipse',
+  '4': 'text',
+  '5': 'connector',
+  '6': 'arrow',
+  '7': 'pen',
+  '8': 'eraser',
+  a: 'arrow',
+  e: 'eraser',
+  h: 'hand',
+  l: 'connector',
+  o: 'ellipse',
+  p: 'pen',
+  r: 'rect',
+  t: 'text',
+  w: 'widget',
+} as const);
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable
+    || target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+  );
+}
 
 export function Canvas(props: CanvasPageProps) {
   let containerRef!: HTMLDivElement;
   let activeRuntime: TCanvasRuntime | null = null;
   let unsubscribeEditor: (() => void) | null = null;
+  let unsubscribeCamera: (() => void) | null = null;
+  let unsubscribeScene: (() => void) | null = null;
   const [containerReady, setContainerReady] = createSignal(false);
   const [booting, setBooting] = createSignal(true);
   const [bootError, setBootError] = createSignal<string | null>(null);
   const [editor, setEditor] = createSignal<IStandardCanvasEditor | null>(null);
   const [editorRevision, setEditorRevision] = createSignal(0);
+  const [cameraRevision, setCameraRevision] = createSignal(0);
+  const [sceneRevision, setSceneRevision] = createSignal(0);
+  const [gridVisible, setGridVisible] = createSignal(true);
 
   const source = (): TCanvasSource => ({
     key: `${fnBrowserTenantScopeKey(props.tenant)}:${props.canvas.id}`,
@@ -98,6 +134,10 @@ export function Canvas(props: CanvasPageProps) {
     onBootStart: () => {
       unsubscribeEditor?.();
       unsubscribeEditor = null;
+      unsubscribeCamera?.();
+      unsubscribeCamera = null;
+      unsubscribeScene?.();
+      unsubscribeScene = null;
       setEditor(null);
       setBooting(true);
       setBootError(null);
@@ -109,6 +149,16 @@ export function Canvas(props: CanvasPageProps) {
       unsubscribeEditor = nextEditor?.subscribe((state) => {
         setEditorRevision(state.revision);
       }) ?? null;
+      const nextCamera = activeRuntime?.engine()?.camera;
+      const nextScene = activeRuntime?.engine()?.scene;
+      unsubscribeCamera = nextCamera?.subscribe(() => {
+        setCameraRevision((revision) => revision + 1);
+      }) ?? null;
+      unsubscribeScene = nextScene?.subscribe(() => {
+        setSceneRevision((revision) => revision + 1);
+      }) ?? null;
+      setCameraRevision((revision) => revision + 1);
+      setSceneRevision((revision) => revision + 1);
       setBooting(false);
     },
     onBootError: (error) => {
@@ -138,28 +188,96 @@ export function Canvas(props: CanvasPageProps) {
     return activation.key;
   }, null);
 
-  onMount(() => setContainerReady(true));
+  const handleKeyboardShortcut = (event: KeyboardEvent) => {
+    if (event.repeat) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && key === 'b') {
+      event.preventDefault();
+      props.store.onToggleSidebar();
+      return;
+    }
+    if (
+      event.ctrlKey
+      || event.metaKey
+      || event.altKey
+      || isTypingTarget(event.target)
+    ) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      editor()?.setActiveTool('select');
+      return;
+    }
+    if (key === 'g') {
+      event.preventDefault();
+      setGridVisible((visible) => !visible);
+      return;
+    }
+    const toolId = TOOL_SHORTCUTS[key as keyof typeof TOOL_SHORTCUTS];
+    if (toolId === undefined) return;
+    event.preventDefault();
+    editor()?.setActiveTool(toolId);
+  };
+
+  onMount(() => {
+    setContainerReady(true);
+    document.addEventListener('keydown', handleKeyboardShortcut, true);
+  });
   onCleanup(() => {
+    document.removeEventListener('keydown', handleKeyboardShortcut, true);
     unsubscribeEditor?.();
     unsubscribeEditor = null;
+    unsubscribeCamera?.();
+    unsubscribeCamera = null;
+    unsubscribeScene?.();
+    unsubscribeScene = null;
     activeRuntime = null;
     void lifecycle.dispose();
   });
 
-  const execute = (commandId: string) => {
-    const current = editor();
-    if (!current) return;
-    void current.executeCommand(commandId).catch((error) => {
-      props.notification.showError(
-        'Canvas action failed',
-        error instanceof Error ? error.message : String(error),
-      );
-    });
-  };
-
   const state = () => {
     editorRevision();
     return editor()?.state;
+  };
+
+  const gridStyle = () => {
+    cameraRevision();
+    const camera = activeRuntime?.engine()?.camera;
+    if (!camera) {
+      return fnCanvasGridStyle({
+        origin: { x: 0, y: 0 },
+        visible: false,
+        zoom: 1,
+      });
+    }
+    return fnCanvasGridStyle({
+      origin: camera.worldToViewport({ x: 0, y: 0 }),
+      visible: gridVisible(),
+      zoom: camera.state.zoom,
+    });
+  };
+
+  const selectedNodes = (): readonly Readonly<TSceneNode>[] => {
+    editorRevision();
+    sceneRevision();
+    const scene = activeRuntime?.engine()?.scene;
+    if (!scene) return [];
+    return (state()?.selectedNodeIds ?? [])
+      .map((nodeId) => scene.get(nodeId))
+      .filter((node): node is Readonly<TSceneNode> => node !== null);
+  };
+
+  const applySelectionStyle = (patch: TSelectionStylePatch) => {
+    const currentEditor = editor();
+    const engine = activeRuntime?.engine();
+    if (!currentEditor || !engine) return;
+    txApplySelectionStyle(
+      { engine },
+      {
+        nodeIds: currentEditor.state.selectedNodeIds,
+        patch,
+      },
+    );
+    currentEditor.refreshSelectionOverlay();
   };
 
   return (
@@ -170,53 +288,39 @@ export function Canvas(props: CanvasPageProps) {
       overflow: 'hidden',
       background: 'var(--vc-canvas-background, rgba(168, 162, 158, 0.10))',
     }}>
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: '0',
+          'pointer-events': 'none',
+          'background-image': gridStyle().backgroundImage,
+          'background-position': gridStyle().backgroundPosition,
+          'background-size': gridStyle().backgroundSize,
+          display: gridStyle().display,
+        }}
+      />
       <div ref={containerRef} style={{ position: 'absolute', inset: '0' }} />
-      <div style={{
-        position: 'absolute',
-        top: '12px',
-        left: '12px',
-        display: 'flex',
-        gap: '4px',
-        padding: '6px',
-        'border-radius': '8px',
-        border: '1px solid var(--border)',
-        background: 'var(--popover)',
-        'box-shadow': '0 8px 24px rgba(0,0,0,.12)',
-      }}>
-        <button type="button" title="Toggle sidebar" onClick={props.store.onToggleSidebar}>☰</button>
-        <For each={TOOLS}>
-          {([id, label]) => (
-            <button
-              type="button"
-              title={label}
-              aria-pressed={state()?.activeToolId === id}
-              onClick={() => editor()?.setActiveTool(id)}
-            >
-              {label}
-            </button>
-          )}
-        </For>
-        <button
-          type="button"
-          disabled={!state()?.canUndo}
-          onClick={() => editor()?.history?.undo()}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          disabled={!state()?.canRedo}
-          onClick={() => editor()?.history?.redo()}
-        >
-          Redo
-        </button>
-        <Show when={(state()?.selectedNodeIds.length ?? 0) > 0}>
-          <button type="button" onClick={() => execute('editor.selection.group')}>Group</button>
-          <button type="button" onClick={() => execute('editor.selection.ungroup')}>Ungroup</button>
-          <button type="button" onClick={() => execute('editor.selection.duplicate')}>Clone</button>
-          <button type="button" onClick={() => execute('editor.selection.delete')}>Delete</button>
-        </Show>
-      </div>
+      <FloatingCanvasToolbar
+        activeToolId={state()?.activeToolId ?? null}
+        canRedo={state()?.canRedo ?? false}
+        canUndo={state()?.canUndo ?? false}
+        gridVisible={gridVisible()}
+        sidebarVisible={props.store.sidebarVisible()}
+        onSelectTool={(toolId) => editor()?.setActiveTool(toolId)}
+        onToggleGrid={() => setGridVisible((visible) => !visible)}
+        onToggleSidebar={props.store.onToggleSidebar}
+        onUndo={() => editor()?.history?.undo()}
+        onRedo={() => editor()?.history?.redo()}
+      />
+      <Show when={(state()?.selectedNodeIds.length ?? 0) > 0}>
+        <SelectionStyleMenu
+          state={fnSelectionStyleState(selectedNodes())}
+          palette={props.themeService.getThemeColorPickerPalette()}
+          strokeWidths={props.themeService.getStrokeWidthOptions()}
+          onApply={applySelectionStyle}
+        />
+      </Show>
       <Switch>
         <Match when={booting()}>
           <div style={{ position: 'absolute', inset: '0', display: 'grid', 'place-items': 'center' }}>

@@ -19,6 +19,7 @@ import {
 import {
   fnApplySceneNodePatches,
   fnAuthoredCanvasNode,
+  fnDiffSceneNodeStructure,
   fnDiffSceneNodes,
   fnRuntimeCanvasNode,
 } from './fn.scene-node-diff';
@@ -55,18 +56,6 @@ type TCommandPlan = Readonly<{
   operations: readonly TCanvasOperation[];
   preconditions: readonly TCanvasPrecondition[];
 }>;
-
-function topLevelValuePreconditions(
-  itemId: string,
-  node: TSceneNode,
-): TCanvasPrecondition[] {
-  return Object.entries(node).map(([key, value]) => ({
-    type: 'path-value' as const,
-    itemId,
-    path: [key],
-    value: value as never,
-  }));
-}
 
 class CanvasDocumentHistory implements IEditorHistory {
   readonly #capacity: number;
@@ -305,10 +294,27 @@ export class CanvasDocumentService {
       }
       if (previous !== null && next === null) {
         operations.push({ type: 'delete', itemId: id });
-        preconditions.push(...topLevelValuePreconditions(id, previous));
         continue;
       }
       if (previous === null || next === null) continue;
+      if (previous.id !== id || next.id !== id) {
+        throw new TypeError(`Canvas journal entry '${id}' contains a mismatched node ID.`);
+      }
+      const structure = fnDiffSceneNodeStructure(previous, next);
+      if (structure.parentChanged) {
+        operations.push({
+          type: 'reparent',
+          itemId: id,
+          parentId: next.parentId,
+          ...(structure.orderChanged ? { orderKey: next.orderKey } : {}),
+        });
+      } else if (structure.orderChanged) {
+        operations.push({
+          type: 'reorder',
+          itemId: id,
+          orderKey: next.orderKey,
+        });
+      }
       const diff = fnDiffSceneNodes(previous, next);
       if (diff.patches.length === 0) continue;
       operations.push({ type: 'patch', itemId: id, patches: diff.patches });
@@ -353,12 +359,40 @@ export class CanvasDocumentService {
     if (plan.operations.length === 0) return;
     const operation = async () => {
       if (this.#disposed) return;
+      const preconditions = [...plan.preconditions];
+      const revisionGuarded = new Set(
+        preconditions
+          .filter((entry) => entry.type === 'item-revision')
+          .map((entry) => entry.itemId),
+      );
+      for (const entry of plan.operations) {
+        if (
+          entry.type !== 'delete'
+          && entry.type !== 'replace'
+          && entry.type !== 'reparent'
+          && entry.type !== 'reorder'
+        ) continue;
+        const itemId = entry.type === 'replace' ? entry.item.id : entry.itemId;
+        if (revisionGuarded.has(itemId)) continue;
+        const item = this.#items.get(itemId);
+        if (!item) {
+          throw new Error(
+            `Canvas item '${itemId}' is missing an authoritative revision guard.`,
+          );
+        }
+        preconditions.push({
+          type: 'item-revision',
+          itemId,
+          itemRevision: item.itemRevision,
+        });
+        revisionGuarded.add(itemId);
+      }
       const command: TCanvasCommand = {
         commandId: this.#createCommandId(),
         canvasId: this.#canvasId,
         baseRevision: this.#revision,
         operations: plan.operations,
-        preconditions: plan.preconditions,
+        preconditions,
       };
       try {
         const event = await this.#transport.execute(command);
