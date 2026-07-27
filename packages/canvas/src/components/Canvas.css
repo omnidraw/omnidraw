@@ -1,0 +1,9 @@
+.vc-canvas-host--space-held .vc-canvas-engine-host,
+.vc-canvas-host--space-held .vc-canvas-engine-host * {
+  cursor: grab !important;
+}
+
+.vc-canvas-host--space-dragging .vc-canvas-engine-host,
+.vc-canvas-host--space-dragging .vc-canvas-engine-host * {
+  cursor: grabbing !important;
+}

@@ -21,16 +21,16 @@ import type {
 import './styles.css';
 
 const TOOLS: readonly TCanvasToolDefinition[] = Object.freeze([
-  { id: 'hand', label: 'Hand', shortcut: 'H', Icon: Hand },
-  { id: 'widget', label: 'AI / Widget', shortcut: 'W', Icon: Bot },
-  { id: 'select', label: 'Select', shortcut: '1', Icon: MousePointer2 },
-  { id: 'rect', label: 'Rectangle', shortcut: '2', Icon: Square },
-  { id: 'ellipse', label: 'Ellipse', shortcut: '3', Icon: Circle },
-  { id: 'text', label: 'Text', shortcut: '4', Icon: Type },
-  { id: 'connector', label: 'Line', shortcut: '5', Icon: Minus },
-  { id: 'arrow', label: 'Arrow', shortcut: '6', Icon: ArrowRight },
-  { id: 'pen', label: 'Pen', shortcut: '7', Icon: Pencil },
-  { id: 'eraser', label: 'Eraser', shortcut: '8', Icon: Eraser },
+  { id: 'hand', label: 'Hand', shortcuts: ['H'], Icon: Hand },
+  { id: 'widget', label: 'AI / Widget', shortcuts: ['C'], Icon: Bot },
+  { id: 'select', label: 'Select', shortcuts: ['1', 'Esc'], Icon: MousePointer2 },
+  { id: 'rect', label: 'Rectangle', shortcuts: ['2', 'R'], Icon: Square },
+  { id: 'ellipse', label: 'Ellipse', shortcuts: ['3', 'O'], Icon: Circle },
+  { id: 'text', label: 'Text', shortcuts: ['4', 'T'], Icon: Type },
+  { id: 'connector', label: 'Line', shortcuts: ['5', 'L'], Icon: Minus },
+  { id: 'arrow', label: 'Arrow', shortcuts: ['6', 'A'], Icon: ArrowRight },
+  { id: 'pen', label: 'Pen', shortcuts: ['7', 'P'], Icon: Pencil },
+  { id: 'eraser', label: 'Eraser', shortcuts: ['8', 'E'], Icon: Eraser },
 ]);
 
 type TFloatingCanvasToolbarProps = Readonly<{
@@ -92,7 +92,9 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
               onClick={props.onToggleGrid}
             >
               <span class="vc-toolbar-button__icon"><Grid2x2 size={15} /></span>
-              <span class="vc-toolbar-button__shortcut">G</span>
+              <span class="vc-toolbar-button__shortcuts">
+                <span>G</span>
+              </span>
             </button>
             <div class="vc-canvas-toolbar-divider" />
             <button

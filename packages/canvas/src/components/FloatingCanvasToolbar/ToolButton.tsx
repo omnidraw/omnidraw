@@ -1,11 +1,11 @@
-import type { Component } from 'solid-js';
+import { For, type Component } from 'solid-js';
 import type { TCanvasToolId } from './toolbar.types';
 
 type TToolButtonProps = Readonly<{
   active: boolean;
   Icon: Component<Readonly<{ size?: number }>>;
   label: string;
-  shortcut?: string;
+  shortcuts?: readonly string[];
   toolId: TCanvasToolId;
   onSelect(toolId: TCanvasToolId): void;
 }>;
@@ -24,9 +24,11 @@ export function ToolButton(props: TToolButtonProps) {
       <span class="vc-toolbar-button__icon">
         <props.Icon size={15} />
       </span>
-      {props.shortcut ? (
-        <span class="vc-toolbar-button__shortcut">{props.shortcut}</span>
-      ) : null}
+      <span class="vc-toolbar-button__shortcuts">
+        <For each={props.shortcuts}>
+          {(shortcut) => <span>{shortcut}</span>}
+        </For>
+      </span>
     </button>
   );
 }

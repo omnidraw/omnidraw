@@ -21,6 +21,7 @@ export type TCanvasRuntime = Readonly<{
   editor(): IStandardCanvasEditor | null;
   engine(): IInfiniteCanvasEngine | null;
   document(): CanvasDocumentService | null;
+  widgetContentFocused(): boolean;
 }>;
 
 export function buildRuntime(
@@ -132,5 +133,9 @@ export function buildRuntime(
     editor: () => editorSession?.editor ?? null,
     engine: () => engine,
     document: () => documentService,
+    widgetContentFocused: () => {
+      const contentNodeId = editorSession?.widgets.state.contentNodeId;
+      return contentNodeId !== null && contentNodeId !== undefined;
+    },
   });
 }

@@ -15,6 +15,6 @@ export type TCanvasToolId =
 export type TCanvasToolDefinition = Readonly<{
   id: TCanvasToolId;
   label: string;
-  shortcut?: string;
+  shortcuts?: readonly string[];
   Icon: Component<Readonly<{ size?: number }>>;
 }>;

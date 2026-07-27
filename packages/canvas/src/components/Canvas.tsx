@@ -37,7 +37,12 @@ import {
 } from './SelectionStyleMenu/tx.selection-style';
 import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
 import { fnCanvasGridStyle } from './fn.canvas-grid';
+import {
+  fnCanBeginSpacePan,
+  fnSpacePanScreenDelta,
+} from './fn.space-pan';
 import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
+import './Canvas.css';
 
 export type TBackendCanvas = TCanvas;
 
@@ -82,10 +87,10 @@ const TOOL_SHORTCUTS = Object.freeze({
   p: 'pen',
   r: 'rect',
   t: 'text',
-  w: 'widget',
+  c: 'widget',
 } as const);
 
-function isTypingTarget(target: EventTarget | null): boolean {
+function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
     target.isContentEditable
@@ -95,12 +100,23 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+function isNativeSpaceControl(target: EventTarget | null): boolean {
+  return (
+    isTextEntryTarget(target)
+    || target instanceof HTMLButtonElement
+    || target instanceof HTMLAnchorElement
+  );
+}
+
 export function Canvas(props: CanvasPageProps) {
+  let canvasRootRef!: HTMLDivElement;
   let containerRef!: HTMLDivElement;
   let activeRuntime: TCanvasRuntime | null = null;
   let unsubscribeEditor: (() => void) | null = null;
   let unsubscribeCamera: (() => void) | null = null;
   let unsubscribeScene: (() => void) | null = null;
+  let spacePointerId: number | null = null;
+  let spacePointerPosition: Readonly<{ x: number; y: number }> | null = null;
   const [containerReady, setContainerReady] = createSignal(false);
   const [booting, setBooting] = createSignal(true);
   const [bootError, setBootError] = createSignal<string | null>(null);
@@ -109,6 +125,8 @@ export function Canvas(props: CanvasPageProps) {
   const [cameraRevision, setCameraRevision] = createSignal(0);
   const [sceneRevision, setSceneRevision] = createSignal(0);
   const [gridVisible, setGridVisible] = createSignal(true);
+  const [spaceHeld, setSpaceHeld] = createSignal(false);
+  const [spaceDragging, setSpaceDragging] = createSignal(false);
 
   const source = (): TCanvasSource => ({
     key: `${fnBrowserTenantScopeKey(props.tenant)}:${props.canvas.id}`,
@@ -190,17 +208,25 @@ export function Canvas(props: CanvasPageProps) {
 
   const handleKeyboardShortcut = (event: KeyboardEvent) => {
     if (event.repeat) return;
+    if (
+      activeRuntime?.widgetContentFocused() === true
+      || isTextEntryTarget(event.target)
+    ) return;
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && key === 'b') {
       event.preventDefault();
       props.store.onToggleSidebar();
       return;
     }
+    if (event.code === 'Space' && !isNativeSpaceControl(event.target)) {
+      event.preventDefault();
+      setSpaceHeld(true);
+      return;
+    }
     if (
       event.ctrlKey
       || event.metaKey
       || event.altKey
-      || isTypingTarget(event.target)
     ) return;
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -218,12 +244,100 @@ export function Canvas(props: CanvasPageProps) {
     editor()?.setActiveTool(toolId);
   };
 
+  const finishSpacePan = (pointerId?: number) => {
+    if (
+      pointerId !== undefined
+      && spacePointerId !== null
+      && pointerId !== spacePointerId
+    ) return;
+    if (
+      spacePointerId !== null
+      && canvasRootRef.hasPointerCapture(spacePointerId)
+    ) {
+      canvasRootRef.releasePointerCapture(spacePointerId);
+    }
+    spacePointerId = null;
+    spacePointerPosition = null;
+    setSpaceDragging(false);
+  };
+
+  const handleKeyboardRelease = (event: KeyboardEvent) => {
+    if (event.code !== 'Space') return;
+    setSpaceHeld(false);
+    finishSpacePan();
+  };
+
+  const handleWindowBlur = () => {
+    setSpaceHeld(false);
+    finishSpacePan();
+  };
+
+  const beginSpacePan = (event: PointerEvent) => {
+    const target = event.target;
+    if (!fnCanBeginSpacePan({
+      insideCanvasSurface: target instanceof Node && containerRef.contains(target),
+      primaryButton: event.button === 0,
+      spaceHeld: spaceHeld(),
+      widgetContentFocused: activeRuntime?.widgetContentFocused() === true,
+    })) return;
+    event.preventDefault();
+    event.stopPropagation();
+    spacePointerId = event.pointerId;
+    spacePointerPosition = { x: event.clientX, y: event.clientY };
+    canvasRootRef.setPointerCapture(event.pointerId);
+    setSpaceDragging(true);
+  };
+
+  const moveSpacePan = (event: PointerEvent) => {
+    if (
+      spacePointerId !== event.pointerId
+      || spacePointerPosition === null
+    ) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next = { x: event.clientX, y: event.clientY };
+    activeRuntime?.engine()?.camera.panByScreen(fnSpacePanScreenDelta({
+      current: next,
+      previous: spacePointerPosition,
+    }));
+    spacePointerPosition = next;
+  };
+
+  const endSpacePan = (event: PointerEvent) => {
+    if (spacePointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishSpacePan(event.pointerId);
+  };
+
+  const handleLostSpaceCapture = (event: PointerEvent) => {
+    if (spacePointerId !== event.pointerId) return;
+    spacePointerId = null;
+    spacePointerPosition = null;
+    setSpaceDragging(false);
+  };
+
   onMount(() => {
     setContainerReady(true);
     document.addEventListener('keydown', handleKeyboardShortcut, true);
+    document.addEventListener('keyup', handleKeyboardRelease, true);
+    window.addEventListener('blur', handleWindowBlur);
+    canvasRootRef.addEventListener('pointerdown', beginSpacePan, true);
+    canvasRootRef.addEventListener('pointermove', moveSpacePan, true);
+    canvasRootRef.addEventListener('pointerup', endSpacePan, true);
+    canvasRootRef.addEventListener('pointercancel', endSpacePan, true);
+    canvasRootRef.addEventListener('lostpointercapture', handleLostSpaceCapture);
   });
   onCleanup(() => {
     document.removeEventListener('keydown', handleKeyboardShortcut, true);
+    document.removeEventListener('keyup', handleKeyboardRelease, true);
+    window.removeEventListener('blur', handleWindowBlur);
+    canvasRootRef.removeEventListener('pointerdown', beginSpacePan, true);
+    canvasRootRef.removeEventListener('pointermove', moveSpacePan, true);
+    canvasRootRef.removeEventListener('pointerup', endSpacePan, true);
+    canvasRootRef.removeEventListener('pointercancel', endSpacePan, true);
+    canvasRootRef.removeEventListener('lostpointercapture', handleLostSpaceCapture);
+    finishSpacePan();
     unsubscribeEditor?.();
     unsubscribeEditor = null;
     unsubscribeCamera?.();
@@ -281,13 +395,21 @@ export function Canvas(props: CanvasPageProps) {
   };
 
   return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      height: '100%',
-      overflow: 'hidden',
-      background: 'var(--vc-canvas-background, rgba(168, 162, 158, 0.10))',
-    }}>
+    <div
+      ref={canvasRootRef}
+      class="vc-canvas-host"
+      classList={{
+        'vc-canvas-host--space-held': spaceHeld(),
+        'vc-canvas-host--space-dragging': spaceDragging(),
+      }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        background: 'var(--vc-canvas-background, rgba(168, 162, 158, 0.10))',
+      }}
+    >
       <div
         aria-hidden="true"
         style={{
@@ -300,7 +422,11 @@ export function Canvas(props: CanvasPageProps) {
           display: gridStyle().display,
         }}
       />
-      <div ref={containerRef} style={{ position: 'absolute', inset: '0' }} />
+      <div
+        ref={containerRef}
+        class="vc-canvas-engine-host"
+        style={{ position: 'absolute', inset: '0' }}
+      />
       <FloatingCanvasToolbar
         activeToolId={state()?.activeToolId ?? null}
         canRedo={state()?.canRedo ?? false}

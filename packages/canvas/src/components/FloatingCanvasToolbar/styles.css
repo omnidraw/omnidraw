@@ -80,15 +80,24 @@
   justify-content: center;
 }
 
-.vc-toolbar-button__shortcut {
+.vc-toolbar-button__shortcuts {
   position: absolute;
   right: 2px;
   bottom: 1px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
   color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
   font-family: var(--font-mono);
   font-size: 7px;
   font-weight: 500;
   line-height: 1;
+}
+
+.vc-toolbar-button__shortcuts span:first-child:not(:last-child) {
+  margin-right: auto;
 }
 
 .vc-canvas-toolbar-divider {
