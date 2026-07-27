@@ -69,7 +69,14 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Package lifecycle hooks and the build script execute with the build-server');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('retain the generated direct');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`@omnidraw/capsule` dependency');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Capsule does not admit CSS custom-property references');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('shadow-browser-css-v1');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('css-network-images-v1');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('custom properties and `var()`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not covered by the signed artifact');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('exact Capsule');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain(
+      'Capsule does not admit CSS custom-property references',
+    );
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('subscribeWidgetTheme()');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('background: var(--card)');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read `vibecanvas.json`, `package.json`, `vite.config.mjs`');

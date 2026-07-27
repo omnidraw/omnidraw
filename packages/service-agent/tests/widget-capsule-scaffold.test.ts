@@ -33,7 +33,11 @@ describe('Capsule widget authoring scaffold', () => {
         target: {
           runtimeAbi: 'quickjs-release-sync-v1',
           domProfile: 'dom-core-v2',
-          featureProfiles: ['artifact-resources-v1'],
+          featureProfiles: [
+            'artifact-resources-v1',
+            'css-network-images-v1',
+            'shadow-browser-css-v1',
+          ],
         },
       },
     });

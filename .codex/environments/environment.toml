@@ -30,6 +30,7 @@ fi
 
 mkdir -p "$CODEX_WORKTREE_PATH/.vibecanvas"
 rsync -a \
+  --exclude='/organizations/*/resources/.vibecanvas-resource-owner' \
   "$CODEX_SOURCE_TREE_PATH/.vibecanvas/" \
   "$CODEX_WORKTREE_PATH/.vibecanvas/"
 

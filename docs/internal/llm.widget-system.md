@@ -126,7 +126,11 @@ rejected.
     "target": {
       "runtimeAbi": "quickjs-release-sync-v1",
       "domProfile": "dom-core-v2",
-      "featureProfiles": ["artifact-resources-v1"]
+      "featureProfiles": [
+        "artifact-resources-v1",
+        "css-network-images-v1",
+        "shadow-browser-css-v1"
+      ]
     },
     "state": {
       "collaborative": false,
@@ -151,6 +155,20 @@ The manifest expresses requested product behavior, not host authority.
 - The optional `server` section identifies a separate server entry and ABI.
 - Resource requirements declare slots, kinds, and effect ceilings, never
   concrete resource IDs.
+
+New widget scaffolds opt into Capsule's native Shadow DOM CSS profile and its
+separate CSS network-image profile. Older manifests without those declarations
+retain the conservative CSS contract and are never widened. Native CSS keeps
+ordinary selector specificity within Capsule's closed ShadowRoot, supports
+resource-free custom properties and modern layout/query/animation syntax, and
+maps only the virtual `html`, `body`, and `:root` aliases.
+
+The network-image profile admits reviewed CSS image sinks with signed literal
+HTTPS or root-relative URL text only when the artifact declares the profile
+and the mount grants it. Browser response bytes, caching, credentials,
+redirects, tracking, CSP behavior, and decoded allocations are runtime
+dependencies outside the artifact hash. URL-bearing custom properties and
+`var()` in image sinks remain denied.
 
 The complete budget contract covers CPU, VM memory, DOM nodes, handles,
 message bytes, stream bytes, assets, network, GPU memory, and lifecycle bytes.

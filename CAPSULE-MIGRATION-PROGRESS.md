@@ -1,8 +1,11 @@
 # Capsule migration progress
 
-Current Capsule package: `@omnidraw/capsule@0.9.3`
+Current Capsule package: `@omnidraw/capsule@0.9.4`
 
-Source revision: `e302a6cbd00fd7932417c9b377597878db0afe25`
+Source revision: `fd2e4eddf1f4d07b2e9e9e473f7c95cb5496f64d`
+
+Package digest:
+`sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189`
 
 Vibecanvas now uses Capsule's production external-distribution API:
 
@@ -17,6 +20,9 @@ Vibecanvas now uses Capsule's production external-distribution API:
    canonical artifact, and Vibecanvas signs it for Preview or release.
 5. Browser verification, QuickJS execution, DOM membrane policy, capabilities,
    lifecycle, population limits, and teardown remain unchanged.
+6. New widget manifests request Capsule's native Shadow CSS profile and its
+   separate CSS network-image authority; older manifests retain conservative
+   CSS behavior.
 
 The former Docker/Podman OCI builder, image and engine identities, startup
 probe, runner export, acceptance command, and fixed guest dependency projection

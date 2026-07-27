@@ -25,6 +25,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
+| [apps/capsule-browser-acceptance/public/capsule-network-image.svg](apps/capsule-browser-acceptance/public/capsule-network-image.svg) |  |
 | [apps/capsule-browser-acceptance/README.md](apps/capsule-browser-acceptance/README.md) |  |
 | [apps/capsule-browser-acceptance/scripts/generate.ts](apps/capsule-browser-acceptance/scripts/generate.ts) |  |
 | [apps/capsule-browser-acceptance/src/main.ts](apps/capsule-browser-acceptance/src/main.ts) |  |

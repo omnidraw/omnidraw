@@ -23,7 +23,7 @@ const REQUIRED_OUTPUTS = Object.freeze([
   'theme:light',
   'svg-ready',
   'canvas-ready',
-  'react-ready',
+  'react-css-ready:rgb(18,52,86)',
   'lifecycle:active:1',
   'collab-stream:0',
   'collab-stream:1',
@@ -33,8 +33,15 @@ const REQUIRED_OUTPUTS = Object.freeze([
 
 test('fresh signed Capsule guests pass the production browser boundary', async ({ page }) => {
   const pageErrors: string[] = [];
+  const networkImageRequests: string[] = [];
   page.on('pageerror', (error) => {
     pageErrors.push(`${error.name}: ${error.message}`);
+  });
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/capsule-network-image.svg') {
+      networkImageRequests.push(url.pathname);
+    }
   });
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -82,6 +89,7 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
   expect(new Set(published?.results.map((result) => result.name).filter(Boolean)).size, detail)
     .toBe(published?.results.length);
   expect(published?.outputs, detail).toEqual(expect.arrayContaining([...REQUIRED_OUTPUTS]));
+  expect(networkImageRequests, detail).toContain('/capsule-network-image.svg');
   await expect(page.locator('#summary')).toHaveText(
     `PASSED: ${String(published?.passed)} passed, 0 failed`,
   );

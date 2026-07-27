@@ -9,6 +9,8 @@ import {
 } from '@omnidraw/capsule/build';
 import {
   CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+  CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+  CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
   type CapsuleBuildInput,
 } from '@omnidraw/capsule/protocol';
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
@@ -38,7 +40,7 @@ const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.3',
+  packageVersion: '0.9.4',
   packageDigest: `sha256:${'b'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,
@@ -332,6 +334,143 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'CAPSULE_EXTERNAL_DISTRIBUTION_INGESTED',
     }));
+  });
+
+  test('adopts native Shadow CSS and separately signed browser image URLs', async () => {
+    const sourceSnapshot = snapshot([
+      { path: 'ui/main.ts', value: 'import "./styles.css";' },
+      {
+        path: 'ui/styles.css',
+        value: '.placeholder { color: red; }',
+      },
+    ]);
+    const modernCss = [
+      ':root { --accent: #123456; }',
+      '.counter {',
+      '  container-type: inline-size;',
+      '  display: grid;',
+      '  inline-size: clamp(12rem, 60vi, 42rem);',
+      '  padding-inline: max(1rem, 2vi);',
+      '  color: var(--accent, CanvasText);',
+      '  background: linear-gradient(Canvas, CanvasText);',
+      '  background-image: url("https://images.example.test/counter.png");',
+      '  font-variant-numeric: tabular-nums;',
+      '  transition: opacity 120ms ease;',
+      '}',
+      '.counter button { font: inherit; }',
+      '@media (min-width: 20rem) { .counter { display: flex; } }',
+      '@container (min-width: 12rem) { .counter { gap: min(2vi, 1rem); } }',
+      '@supports (display: grid) { .counter { display: grid; } }',
+      '@keyframes pulse { from { opacity: .5 } to { opacity: 1 } }',
+    ].join('\n');
+    const distribution = (
+      css: string,
+    ): TWidgetArtifactBuilderCapsuleConfig['distributionBuild'] => async (value) => ({
+        kind: 'external-distribution',
+        snapshot: {
+          files: [
+            {
+              path: 'main.js',
+              bytes: encoder.encode('document.body.className = "counter";'),
+            },
+            {
+              path: 'assets/main.css',
+              bytes: encoder.encode(css),
+            },
+          ],
+        },
+        entry: 'main.js',
+        cssRoots: ['assets/main.css'],
+        producer: {
+          name: 'test',
+          version: '1',
+          digest: `sha256:${'1'.repeat(64)}`,
+        },
+        sourceRevision: value.sourceRevision,
+        dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+        buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+      });
+    const distributionBuild = distribution(modernCss);
+    const artifactBuilder = builder({
+      tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
+      distributionBuild,
+      capsuleBuild: buildCapsuleGuest,
+    });
+    const nativeManifest = manifest({
+      entry: 'ui/main.ts',
+      featureProfiles: [
+        CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+        CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+        CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+      ],
+    });
+
+    const result = await artifactBuilder.build(
+      TENANT,
+      request(sourceSnapshot, nativeManifest),
+    );
+
+    expect(result.uiArtifact.runtimeDescriptor.target.featureProfiles).toEqual([
+      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+    ]);
+
+    const conservativeManifest = manifest({
+      entry: 'ui/main.ts',
+      featureProfiles: [CAPSULE_ARTIFACT_RESOURCES_PROFILE],
+    });
+    await expect(artifactBuilder.build(
+      TENANT,
+      request(sourceSnapshot, conservativeManifest),
+    )).rejects.toMatchObject({
+      code: 'WIDGET_BUILD_FAILED',
+      diagnostic: {
+        code: 'CSS_PROFILE_REQUIRED',
+        path: 'app/assets/main.css',
+        requiredProfile: CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+      },
+    });
+
+    const localOnlyManifest = manifest({
+      entry: 'ui/main.ts',
+      featureProfiles: [
+        CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+        CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+      ],
+    });
+    await expect(artifactBuilder.build(
+      TENANT,
+      request(sourceSnapshot, localOnlyManifest),
+    )).rejects.toMatchObject({
+      code: 'WIDGET_BUILD_FAILED',
+      diagnostic: {
+        code: 'CSS_PROFILE_REQUIRED',
+        path: 'app/assets/main.css',
+        requiredProfile: CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+      },
+    });
+
+    const substitutionBuilder = builder({
+      tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
+      distributionBuild: distribution([
+        ':root { --network-image: url("https://images.example.test/counter.png"); }',
+        '.counter { background-image: var(--network-image); }',
+      ].join('\n')),
+      capsuleBuild: buildCapsuleGuest,
+    });
+    await expect(substitutionBuilder.build(
+      TENANT,
+      request(sourceSnapshot, nativeManifest),
+    )).rejects.toMatchObject({
+      code: 'WIDGET_BUILD_FAILED',
+      diagnostic: {
+        code: 'CSS_POLICY_DENIED',
+        path: 'app/assets/main.css',
+        construct: '--network-image: url()',
+        activeCssProfile: CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
+      },
+    });
   });
 
   test('replaces server-function modules with proxies and withholds all other server source', async () => {

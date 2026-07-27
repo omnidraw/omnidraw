@@ -1,10 +1,10 @@
 # Widget style guide
 
-Capsule does not admit CSS custom-property references such as
-`var(--foreground)`. Read the bounded semantic theme from
-`@vibecanvas/sdk/widget`, apply color tokens through inline style properties,
-and subscribe to theme changes. Keep layout, spacing, typography, and other
-static presentation in `ui/styles.css`.
+Capsule's native Shadow CSS profile supports custom properties and `var()`
+fallbacks for resource-free values. Host custom properties may inherit through
+the closed ShadowRoot, but `getWidgetTheme()` and `subscribeWidgetTheme()`
+remain the stable semantic theme contract. Keep layout, spacing, typography,
+and other static presentation in `ui/styles.css`.
 
 ## Use the theme channel
 
@@ -55,15 +55,23 @@ the host theme changes.
 ## Widget CSS rules
 
 - Write static CSS in `ui/styles.css`.
-- Do not use CSS custom properties, `var(...)`, `:host-context`, or host theme
-  selectors; the trusted Capsule CSS transform rejects or isolates them.
+- Use custom properties and `var(...)` fallbacks for typed, resource-free
+  values such as colors and spacing. Do not use `var()` in image-bearing
+  properties or put `url(...)` in a custom property.
+- Modern math functions, gradients, logical layout, Grid/Flexbox, typography,
+  transitions, animations, media/container queries, and `@supports` are
+  available under `shadow-browser-css-v1`.
+- Do not use `:host`, `:host-context`, `::slotted`, `::part`, `@property`,
+  document-level view transitions, `paint()`, nesting, or runtime `@import`.
 - Scope selectors with a root class, for example `.todo-widget`.
 - Use `box-sizing: border-box` on the root and descendants.
 - Use `width: 100%` and `height: 100%` for canvas-sized widgets.
 - Use `overflow: auto` for content that can grow.
 - Keep the browser's native visible focus outline. Do not reset it unless the
   replacement has itself passed trusted Capsule validation.
-- Avoid external fonts and assets unless the user explicitly asks.
+- Prefer bundled assets. Literal HTTPS and root-relative CSS image URLs require
+  `css-network-images-v1`; their runtime response bytes are not part of the
+  signed artifact.
 - Avoid large fixed pixel widths or heights.
 
 Example:

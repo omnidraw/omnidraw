@@ -15,7 +15,11 @@ and must use schema version 3:
     "target": {
       "runtimeAbi": "quickjs-release-sync-v1",
       "domProfile": "dom-core-v2",
-      "featureProfiles": ["artifact-resources-v1"]
+      "featureProfiles": [
+        "artifact-resources-v1",
+        "css-network-images-v1",
+        "shadow-browser-css-v1"
+      ]
     }
   }
 }
@@ -28,6 +32,10 @@ and must use schema version 3:
 - `ui.target` requests the runtime and browser compatibility profiles needed by
   the source. Keep feature profiles minimal and sorted. The host may reduce or
   reject a request; it never becomes authority by appearing in the manifest.
+- New scaffolds select native Shadow DOM CSS and its separate CSS network-image
+  profile. Keep both only when the widget needs ordinary modern CSS plus
+  literal HTTPS or root-relative image URLs; removing the network-image profile
+  restores default-deny browser image networking.
 - `ui.budgets` may request non-negative Capsule ceilings for `cpuMs`,
   `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
   `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use

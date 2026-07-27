@@ -6,21 +6,78 @@ function diagnosticField(value: unknown): string | null {
   return bounded || null;
 }
 
+function diagnosticPositiveInteger(value: unknown): number | null {
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
+}
+
+function boundedDiagnostic(
+  diagnostic: Readonly<Record<string, unknown>> | null,
+): Readonly<Record<string, string | number>> | null {
+  if (diagnostic === null) return null;
+  const result: Record<string, string | number> = {};
+  for (const name of [
+    'code',
+    'path',
+    'specifier',
+    'construct',
+    'reason',
+    'activeCssProfile',
+    'requiredProfile',
+  ] as const) {
+    const value = diagnosticField(diagnostic[name]);
+    if (value !== null) result[name] = value;
+  }
+  for (const name of ['line', 'column'] as const) {
+    const value = diagnosticPositiveInteger(diagnostic[name]);
+    if (value !== null) result[name] = value;
+  }
+  return Object.freeze(result);
+}
+
+function diagnosticLocation(
+  diagnostic: Readonly<Record<string, string | number>> | null,
+): string {
+  const path = diagnosticField(diagnostic?.path);
+  if (path === null) return '';
+  const line = diagnosticPositiveInteger(diagnostic?.line);
+  const column = diagnosticPositiveInteger(diagnostic?.column);
+  return ` at ${path}${line === null ? '' : `:${String(line)}${
+    column === null ? '' : `:${String(column)}`
+  }`}`;
+}
+
+function diagnosticMetadata(
+  diagnostic: Readonly<Record<string, string | number>> | null,
+): string {
+  const fields = [
+    ['specifier', diagnosticField(diagnostic?.specifier)],
+    ['construct', diagnosticField(diagnostic?.construct)],
+    ['activeCssProfile', diagnosticField(diagnostic?.activeCssProfile)],
+    ['requiredProfile', diagnosticField(diagnostic?.requiredProfile)],
+    ['reason', diagnosticField(diagnostic?.reason)],
+  ] as const;
+  const values: string[] = [];
+  for (const [name, value] of fields) {
+    if (value !== null) values.push(`${name}=${JSON.stringify(value)}`);
+  }
+  return values.length === 0 ? '' : ` [${values.join(', ')}]`;
+}
+
 export function fnWidgetBuildError(kind: TWidgetBuildKind, cause?: unknown): Error {
   const causeRecord = cause && typeof cause === 'object'
     ? cause as Readonly<Record<string, unknown>>
     : null;
-  const diagnostic = causeRecord?.diagnostic && typeof causeRecord.diagnostic === 'object'
+  const rawDiagnostic = causeRecord?.diagnostic && typeof causeRecord.diagnostic === 'object'
     ? causeRecord.diagnostic as Readonly<Record<string, unknown>>
     : null;
+  const diagnostic = boundedDiagnostic(rawDiagnostic);
   const code = diagnosticField(diagnostic?.code)
     ?? diagnosticField(causeRecord?.code);
-  const path = diagnosticField(diagnostic?.path);
-  const specifier = diagnosticField(diagnostic?.specifier);
-  const location = path ? ` at ${path}` : '';
-  const importTarget = specifier ? ` (${specifier})` : '';
-  const detail = code ? `: ${code}${location}${importTarget}` : '';
+  const detail = code
+    ? `: ${code}${diagnosticLocation(diagnostic)}${diagnosticMetadata(diagnostic)}`
+    : '';
   return Object.assign(new Error(`Widget ${kind} build failed${detail}.`, { cause }), {
     code: 'WIDGET_BUILD_FAILED',
+    ...(diagnostic === null ? {} : { diagnostic: Object.freeze({ ...diagnostic }) }),
   });
 }

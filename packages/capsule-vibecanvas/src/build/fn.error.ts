@@ -14,6 +14,8 @@ function categoryForBuildCode(
     case 'UNSUPPORTED_TARGET':
       return 'target';
     case 'BUILD_INPUT_INVALID':
+    case 'CSS_POLICY_DENIED':
+    case 'CSS_PROFILE_REQUIRED':
     case 'DEPENDENCY_CONTENT_UNREFERENCED':
     case 'MODULE_AMBIGUOUS':
     case 'MODULE_NOT_FOUND':
