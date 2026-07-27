@@ -11,9 +11,10 @@ import {
   ResourceWriteCapabilityAuthority,
 } from '@vibecanvas/function-runtime/local';
 import {
-  VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
   type TVibecanvasCapsuleBuild,
+  type TVibecanvasDistributionBuild,
 } from '@vibecanvas/capsule-vibecanvas/builder';
+import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
@@ -45,10 +46,7 @@ import {
   WIDGET_CAPSULE_BUILD_POLICY_ID,
 } from './services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from './services/WidgetCapsuleSigningKeyStore';
-import {
-  createWidgetCapsuleOciBuild,
-  resolveWidgetCapsuleOciImageId,
-} from './services/WidgetCapsuleOciBuild';
+import { createWidgetNpmDistributionBuild } from './services/WidgetNpmDistributionBuild';
 import {
   WidgetCapsuleHostConfigurationService,
 } from './services/WidgetCapsuleHostConfigurationService';
@@ -84,11 +82,7 @@ const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
   requestId: 'function-runtime-placement-bootstrap',
 });
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@omnidraw/capsule/guest',
   '@vibecanvas/sdk/server',
-  '@vibecanvas/sdk/function-client',
-  '@vibecanvas/sdk/widget',
-  ...VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
   'zod',
 ]);
 
@@ -127,6 +121,7 @@ declare module '@vibecanvas/runtime' {
 
 type TSetupServicesOptions = Readonly<{
   capsuleBuild?: TVibecanvasCapsuleBuild;
+  distributionBuild?: TVibecanvasDistributionBuild;
   createFunctionSandboxDriver?: (args: Readonly<{
     compiledExecutable: boolean;
     tempRoot: string;
@@ -152,9 +147,8 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     cacheDir: config.home.cacheRoot,
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
-  const widgetCapsuleOciImageId = resolveWidgetCapsuleOciImageId();
   const widgetBuilderIdentity = fnWidgetCapsuleBuilderIdentity({
-    imageId: widgetCapsuleOciImageId,
+    npmVersion: process.versions.npm ?? 'external',
     serverBunVersion: Bun.version,
   });
   const widgetCapsuleSigningKeys = new WidgetCapsuleSigningKeyStore(
@@ -190,7 +184,8 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         builderIdentity: widgetBuilderIdentity,
         capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
         buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
-        capsuleBuild: options.capsuleBuild ?? createWidgetCapsuleOciBuild({
+        capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
+        distributionBuild: options.distributionBuild ?? createWidgetNpmDistributionBuild({
           scratchDirectory: buildTempRoot,
         }),
         loadCapsuleSigningKeys: (purpose) => (

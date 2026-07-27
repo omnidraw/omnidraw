@@ -18,10 +18,10 @@ import type { ICliConfig } from '../src/config';
 import { createCliHooks } from '../src/hooks';
 import { setupServices } from '../src/setup-services';
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
-import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
 import {
   CAPSULE_PUBLICATION_IDENTITY,
   capsuleUi,
+  testWidgetDistributionBuild,
 } from './widget-capsule.fixture';
 
 const roots: string[] = [];
@@ -147,6 +147,7 @@ describe('managed widget joined production flow', () => {
     let functionSandboxDriver: ObservedBunChildSandboxDriver | null = null;
     const { services, dbService } = setupServices(config, {
       capsuleBuild: buildCapsuleGuest,
+      distributionBuild: testWidgetDistributionBuild,
       createFunctionSandboxDriver: (driverConfig) => {
         const driver = new ObservedBunChildSandboxDriver(driverConfig);
         functionSandboxDriver = driver;
@@ -217,7 +218,7 @@ describe('managed widget joined production flow', () => {
           allowWrite: true,
         }],
         builderIdentity: fnWidgetCapsuleBuilderIdentity({
-          imageId: resolveWidgetCapsuleOciImageId(),
+          npmVersion: 'external',
           serverBunVersion: Bun.version,
         }),
         ...CAPSULE_PUBLICATION_IDENTITY,

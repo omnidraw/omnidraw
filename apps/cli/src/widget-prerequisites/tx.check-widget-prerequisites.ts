@@ -1,29 +1,20 @@
 import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
 import type { ICliConfig } from '../config';
-import {
-  fnWidgetCapsuleOciEngineSelection,
-  type TWidgetCapsuleOciEnvironment,
-} from '../services/widget-capsule-oci/fn.engine-selection';
-import { WIDGET_CAPSULE_OCI_IMAGE_ID } from '../services/widget-capsule-oci/CONSTANTS';
-import { fxProbeWidgetOciEngine } from './fx.probe-widget-oci-engine';
+import { fxProbeWidgetNpm } from './fx.probe-widget-npm';
 import type { TWidgetPrerequisiteWarning } from './fn.widget-prerequisite-warning';
 import { fnWidgetPrerequisiteWarning } from './fn.widget-prerequisite-warning';
 import type {
   TExecFile,
-  TReadFileSha256,
   TWidgetPrerequisiteProbe,
 } from './interface';
 
 type TPortal = {
   execFile: TExecFile;
-  readFileSha256: TReadFileSha256;
   warn: (message: string) => void;
   publishNotification: (event: TNotificationEvent) => void;
 };
 
 type TArgs = Pick<ICliConfig, 'command' | 'helpRequested' | 'versionRequested'> & {
-  environment: TWidgetCapsuleOciEnvironment;
-  platform: NodeJS.Platform;
   timeoutMs?: number;
 };
 
@@ -41,7 +32,7 @@ function publishWarning(
   try {
     portal.warn(warning.cliMessage);
   } catch {
-    // Startup warnings are best-effort and must never prevent the server from loading.
+    // Startup warnings are best-effort and must never prevent server loading.
   }
   try {
     portal.publishNotification(warning.notification);
@@ -50,36 +41,16 @@ function publishWarning(
   }
 }
 
-export async function txCheckWidgetPrerequisites(portal: TPortal, args: TArgs): Promise<TWidgetPrerequisiteCheck> {
+export async function txCheckWidgetPrerequisites(
+  portal: TPortal,
+  args: TArgs,
+): Promise<TWidgetPrerequisiteCheck> {
   if (args.command !== 'serve' || args.helpRequested || args.versionRequested) {
     return { checked: false, probes: [], warning: null };
   }
-
   try {
-    const timeoutMs = args.timeoutMs ?? 3_000;
-    let selection;
-    try {
-      selection = fnWidgetCapsuleOciEngineSelection({
-        environment: args.environment,
-        platform: args.platform,
-      });
-    } catch (error) {
-      const probes: TWidgetPrerequisiteProbe[] = [{
-        subject: 'configuration',
-        status: 'unusable',
-        reason: error instanceof Error
-          ? error.message
-          : 'Capsule OCI engine configuration is unusable.',
-      }];
-      const warning = fnWidgetPrerequisiteWarning(probes);
-      publishWarning(portal, warning);
-      return { checked: true, probes, warning };
-    }
-    const probes = [await fxProbeWidgetOciEngine(portal, {
-      ...selection,
-      imageId: args.environment.VIBECANVAS_CAPSULE_OCI_IMAGE_ID
-        ?? WIDGET_CAPSULE_OCI_IMAGE_ID,
-      timeoutMs,
+    const probes = [await fxProbeWidgetNpm(portal, {
+      timeoutMs: args.timeoutMs ?? 3_000,
     })];
     const warning = fnWidgetPrerequisiteWarning(probes);
     publishWarning(portal, warning);

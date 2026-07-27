@@ -4,7 +4,7 @@ Status: implementation plan
 Scope: replace the Arrow browser widget sandbox with Capsule  
 Capsule source: `/Users/omarezzat/Workspace/vibecanvas/capsule`  
 Capsule guide: `docs/library-guide.md` in that repository  
-Capsule package: `@omnidraw/capsule@0.9.2`
+Capsule package: `@omnidraw/capsule@0.9.3`
 
 ## 1. Purpose
 
@@ -200,7 +200,7 @@ Use the current public package entries only:
 
 - `@omnidraw/capsule`;
 - `@omnidraw/capsule/build`;
-- `@omnidraw/capsule/build-runner` if the OCI boundary is adopted;
+- `@omnidraw/capsule/build` for external-distribution admission;
 - `@omnidraw/capsule/guest`;
 - `@omnidraw/capsule/protocol`;
 - `@omnidraw/capsule/schema`;
@@ -237,7 +237,7 @@ or signing tools:
 @vibecanvas/capsule-vibecanvas/testkit
 ```
 
-The browser entry must not export `/build`, `/build-runner`, or `/sign`
+The browser entry must not export `/build` or `/sign`
 implementations.
 
 Follow the functional-core rules:

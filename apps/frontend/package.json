@@ -9,6 +9,7 @@
     "test": "bun test src && vitest --run"
   },
   "devDependencies": {
+    "rollup": "^4.59.0",
     "typescript": "catalog:",
     "vite": "^8.1.4",
     "vite-plugin-top-level-await": "^1.6.0",

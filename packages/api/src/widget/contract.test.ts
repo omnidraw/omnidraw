@@ -171,7 +171,7 @@ const revision: TWidgetRevisionDescriptor = Object.freeze({
   serverRuntimeAbi: 'vibecanvas:1',
   capsuleBuildIdentity: {
     packageName: '@omnidraw/capsule' as const,
-    packageVersion: '0.9.2',
+    packageVersion: '0.9.3',
     packageDigest: `sha256:${'f'.repeat(64)}` as const,
     buildApiVersion: 'capsule-build-v1',
     runtimeBuildDigest: `sha256:${'1'.repeat(64)}` as const,

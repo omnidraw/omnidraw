@@ -10,21 +10,15 @@ function categoryForBuildCode(
   switch (code) {
     case 'BUILD_LIMIT_EXCEEDED':
       return 'budget';
-    case 'INTEGRITY_MISMATCH':
-      return 'artifact';
     case 'UNSUPPORTED_LANGUAGE':
     case 'UNSUPPORTED_TARGET':
       return 'target';
     case 'BUILD_INPUT_INVALID':
-    case 'DEPENDENCY_CONTENT_MISSING':
     case 'DEPENDENCY_CONTENT_UNREFERENCED':
-    case 'DEPENDENCY_LOCK_INVALID':
     case 'MODULE_AMBIGUOUS':
     case 'MODULE_NOT_FOUND':
-    case 'PACKAGE_CONFLICT':
     case 'PATH_INVALID':
     case 'TRANSFORM_FAILED':
-    case 'TYPE_CHECK_FAILED':
     case 'UNSUPPORTED_RUNTIME_IMPORT':
     case 'UNSUPPORTED_SYNTAX':
       return 'build';

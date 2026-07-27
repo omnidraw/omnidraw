@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import type {
   CapsuleBuildOutput,
   CapsuleSnapshotFile,
@@ -55,9 +55,6 @@ import {
 import {
   VIBECANVAS_CAPSULE_ALLOWED_SERVER_IMPORTS,
   VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
-  VIBECANVAS_CAPSULE_GUEST_PUBLIC_TYPE_FILES,
-  VIBECANVAS_CAPSULE_REACT_JSX_PLUGIN,
-  VIBECANVAS_CAPSULE_REACT_PACKAGE_PROJECTIONS,
   VIBECANVAS_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 import {
@@ -66,11 +63,10 @@ import {
   fnVibecanvasCapsuleBuildTarget,
 } from './fn.policy';
 import { fnWidgetBuildError } from './fn.build-error';
-import {
-  fxCreateVibecanvasBuildDependencies,
-  type TVibecanvasReactPackageRoots,
-} from './fx.build-dependencies';
-import type { TVibecanvasCapsuleBuild } from './interface';
+import type {
+  TVibecanvasCapsuleBuild,
+  TVibecanvasDistributionBuild,
+} from './interface';
 import { txSignVibecanvasCapsuleArtifact } from './tx.sign-capsule-artifact';
 
 const GENERATED_SERVER_ENTRY = '__vibecanvas_server_entry__.ts';
@@ -89,6 +85,7 @@ export type TWidgetArtifactBuilderCapsuleConfig = Readonly<{
     purpose: 'preview' | 'release',
   ): Promise<readonly CapsuleArtifactSigningKey[]>;
   capsuleBuild: TVibecanvasCapsuleBuild;
+  distributionBuild: TVibecanvasDistributionBuild;
   capsuleSign?: typeof signCapsuleArtifactBytes;
   bunBuild?: typeof Bun.build;
 }>;
@@ -196,6 +193,7 @@ function serverOutputLoader(loader: string): string {
 export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
   readonly #snapshotService: WidgetSourceSnapshot;
   readonly #capsuleBuild: TVibecanvasCapsuleBuild;
+  readonly #distributionBuild: TVibecanvasDistributionBuild;
   readonly #capsuleSign: typeof signCapsuleArtifactBytes;
   readonly #bunBuild: typeof Bun.build;
   readonly #resolveTrustedPackageImport: (specifier: string) => string;
@@ -206,6 +204,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
   constructor(readonly config: TWidgetArtifactBuilderCapsuleConfig) {
     this.#snapshotService = config.snapshotService ?? new WidgetSourceSnapshot();
     this.#capsuleBuild = config.capsuleBuild;
+    this.#distributionBuild = config.distributionBuild;
     this.#capsuleSign = config.capsuleSign ?? signCapsuleArtifactBytes;
     this.#bunBuild = config.bunBuild ?? Bun.build;
     this.#resolveTrustedPackageImport = config.resolveTrustedPackageImport
@@ -287,16 +286,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       target: manifest.ui.target,
       entry: manifest.ui.entry,
     });
-    const dependencies = await this.#buildDependencies(
-      capsuleTarget.frameworkPlugins?.includes(
-        VIBECANVAS_CAPSULE_REACT_JSX_PLUGIN,
-      ) === true,
-    );
     const functionModulePaths = new Set(functionModules.map(({ path }) => path));
-    // This is a namespace separation only: do not inspect or resolve browser
-    // source here. Capsule receives the complete non-server source candidate
-    // set and owns syntax, type, module, CSS, and asset closure in the injected
-    // (production OCI) build port.
+    // This namespace separation happens before application-owned npm/build
+    // execution. Capsule receives only the resulting external distribution.
     const uiFiles: CapsuleSnapshotFile[] = request.snapshot.files
       .filter((file) => !functionModulePaths.has(file.path))
       .filter((file) => !fnWidgetBuildPathIsServerOnly(
@@ -330,22 +322,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
     );
     let built: CapsuleBuildOutput;
     try {
+      const input = await this.#distributionBuild({
+        sourceRevision: request.snapshot.digestSha256,
+        entry: manifest.ui.entry,
+        files: Object.freeze(uiFiles),
+      });
       built = await this.#capsuleBuild({
-        input: {
-          kind: 'source',
-          snapshot: {
-            revision: request.snapshot.digestSha256,
-            files: Object.freeze(uiFiles),
-          },
-          entry: manifest.ui.entry,
-          dependencyLock: {
-            formatVersion: 2,
-            rootDependencies: dependencies.rootDependencies,
-            entries: dependencies.lockEntries,
-          },
-          dependencyContent: { entries: dependencies.contentEntries },
-        },
-        providedPackages: dependencies.providedPackages,
+        input,
         target: capsuleTarget,
         capabilityRequests,
         guestChannels: channels.declaration,
@@ -423,50 +406,6 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       }),
       serverArtifact,
       diagnostics: Object.freeze(built.diagnostics.map((item) => Object.freeze({ ...item }))),
-    });
-  }
-
-  async #buildDependencies(useReact: boolean) {
-    const {
-      calculateCapsuleDependencyContentDigest,
-      calculateCapsuleDependencyMetadataDigest,
-    } = await import('@omnidraw/capsule/build');
-    const sdkWidgetPath = this.#resolveTrustedPackageImport('@vibecanvas/sdk/widget');
-    const sdkDist = dirname(sdkWidgetPath);
-    const capsuleGuestPath = this.#resolveTrustedPackageImport(
-      '@omnidraw/capsule/guest',
-    );
-    const capsuleDist = dirname(capsuleGuestPath);
-    const reactPackageRoots = useReact
-      ? Object.freeze(Object.fromEntries(
-          VIBECANVAS_CAPSULE_REACT_PACKAGE_PROJECTIONS.map(({ name }) => [
-            name,
-            dirname(this.#resolveTrustedPackageImport(`${name}/package.json`)),
-          ]),
-        )) as TVibecanvasReactPackageRoots
-      : undefined;
-    return await fxCreateVibecanvasBuildDependencies({
-      readFile: async (path) => new Uint8Array(await readFile(path)),
-      joinPath: join,
-      calculateDependencyMetadata: calculateCapsuleDependencyMetadataDigest,
-      calculateDependencyContent: calculateCapsuleDependencyContentDigest,
-    }, {
-      sdkWidgetPath,
-      sdkFunctionClientPath: this.#resolveTrustedPackageImport(
-        '@vibecanvas/sdk/function-client',
-      ),
-      sdkTypeFiles: [
-        'collaborative-state-client.d.ts',
-        'function-client.d.ts',
-        'shared.d.ts',
-        'widget-channels.d.ts',
-        'widget.d.ts',
-      ].map((path) => Object.freeze({ path, sourcePath: join(sdkDist, path) })),
-      capsuleGuestPath,
-      capsuleGuestTypeFiles: VIBECANVAS_CAPSULE_GUEST_PUBLIC_TYPE_FILES.map((path) => (
-        Object.freeze({ path, sourcePath: join(capsuleDist, path) })
-      )),
-      reactPackageRoots,
     });
   }
 

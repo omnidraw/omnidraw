@@ -39,7 +39,7 @@ Publishing commits immutable source, UI, and optional server artifacts together 
 
 ## Build prerequisite
 
-Widget UI source is compiled inside Vibecanvas's pinned, network-disabled Capsule OCI builder. The server host must have the configured Docker or Podman engine available; on macOS, Docker Desktop is the default. Vibecanvas warns at startup when the selected engine cannot be used. Node.js and npm are not widget build prerequisites.
+Widget UI projects own their npm dependencies, package-lock-v3 file, and build script. Vibecanvas runs frozen `npm ci` and the guest-controlled `npm run build`, then Capsule validates the resulting `dist/` before it can be signed or loaded. Node.js/npm are server prerequisites; Docker and Podman are not. Build scripts run with the Vibecanvas server account's host authority, so operators should treat that account and its credentials accordingly.
 
 ## Supported UI authoring
 

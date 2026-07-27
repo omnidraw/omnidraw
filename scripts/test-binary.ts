@@ -576,29 +576,24 @@ async function assertNativeEncryptionSupport(nativeAddonPath: string): Promise<v
   }
 }
 
-async function createWidgetOciEngineFixtures(tempRoot: string): Promise<{
-  availableEnginePath: string
-  availableEngineSha256: `sha256:${string}`
-  missingEnginePath: string
+async function createWidgetNpmFixtures(tempRoot: string): Promise<{
+  availablePath: string
+  missingPath: string
 }> {
-  const availablePath = path.join(tempRoot, "widget-oci-engine-available")
-  const missingPath = path.join(tempRoot, "widget-oci-engine-missing")
+  const availablePath = path.join(tempRoot, "widget-npm-available")
+  const missingPath = path.join(tempRoot, "widget-npm-missing")
   await Promise.all([mkdir(availablePath, { recursive: true }), mkdir(missingPath, { recursive: true })])
 
-  const availableEnginePath = path.join(availablePath, "docker")
-  const missingEnginePath = path.join(missingPath, "docker")
-  await Bun.write(availableEnginePath, "#!/bin/sh\nprintf 'Docker version 27.5.1\\n'\n")
-  await chmod(availableEnginePath, 0o755)
-  const availableEngineSha256 =
-    `sha256:${createHash("sha256").update(await readFile(availableEnginePath)).digest("hex")}` as `sha256:${string}`
+  const npmPath = path.join(availablePath, "npm")
+  await Bun.write(npmPath, "#!/bin/sh\nprintf '11.0.0\\n'\n")
+  await chmod(npmPath, 0o755)
 
-  return { availableEnginePath, availableEngineSha256, missingEnginePath }
+  return { availablePath, missingPath }
 }
 
 async function assertWidgetPrerequisiteBinaryScenario(args: {
   binaryPath: string
-  enginePath: string
-  engineSha256: `sha256:${string}`
+  executablePath: string
   homePath: string
   port: number
   warningExpected: boolean
@@ -610,10 +605,8 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
     stderr: "pipe",
     env: {
       ...process.env,
+      PATH: args.executablePath,
       VIBECANVAS_HOME: args.homePath,
-      VIBECANVAS_CAPSULE_OCI_ENGINE: "docker",
-      VIBECANVAS_CAPSULE_OCI_ENGINE_PATH: args.enginePath,
-      VIBECANVAS_CAPSULE_OCI_ENGINE_SHA256: args.engineSha256,
     },
   })
   const stdoutPromise = new Response(proc.stdout).text()
@@ -643,8 +636,8 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
   if (args.warningExpected) {
     for (const expected of [
       warningText,
-      "Docker OCI engine (missing)",
-      "VIBECANVAS_CAPSULE_OCI_ENGINE_PATH",
+      "npm (missing)",
+      "Install npm",
     ]) {
       if (!stderr.includes(expected)) {
         throw new Error(`Widget prerequisite binary stderr did not include ${JSON.stringify(expected)}: ${stderr || "<empty>"}`)
@@ -905,7 +898,7 @@ async function main() {
   const compiledHome = path.join(tempRoot, "compiled-home")
   const explicitHome = path.join(tempRoot, "explicit-home")
   const ignoredEnvHome = path.join(tempRoot, "ignored-env-home")
-  const widgetOciEngines = await createWidgetOciEngineFixtures(tempRoot)
+  const widgetNpm = await createWidgetNpmFixtures(tempRoot)
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
@@ -923,25 +916,23 @@ async function main() {
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    enginePath: widgetOciEngines.availableEnginePath,
-    engineSha256: widgetOciEngines.availableEngineSha256,
-    homePath: path.join(tempRoot, "widget-oci-engine-available-home"),
+    executablePath: widgetNpm.availablePath,
+    homePath: path.join(tempRoot, "widget-npm-available-home"),
     port: args.port,
     warningExpected: false,
     timeoutMs: args.startupTimeoutMs,
   })
-  console.log("[test-binary] PASS compiled widget prerequisite check with configured Capsule OCI engine")
+  console.log("[test-binary] PASS compiled widget prerequisite check with npm")
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    enginePath: widgetOciEngines.missingEnginePath,
-    engineSha256: `sha256:${"1".repeat(64)}`,
-    homePath: path.join(tempRoot, "widget-oci-engine-missing-home"),
+    executablePath: widgetNpm.missingPath,
+    homePath: path.join(tempRoot, "widget-npm-missing-home"),
     port: args.port + 1,
     warningExpected: true,
     timeoutMs: args.startupTimeoutMs,
   })
-  console.log("[test-binary] PASS compiled widget prerequisite warning with missing Capsule OCI engine")
+  console.log("[test-binary] PASS compiled widget prerequisite warning with missing npm")
 
   if (args.widgetPrerequisitesOnly) {
     return

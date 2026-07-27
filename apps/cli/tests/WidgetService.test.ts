@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   buildCapsuleGuest,
-  VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
 } from '@vibecanvas/capsule-vibecanvas/build';
 import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
@@ -25,10 +24,10 @@ import {
 } from '../src/services/WidgetServicePool';
 import { WidgetCapsuleSigningKeyStore } from '../src/services/WidgetCapsuleSigningKeyStore';
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
-import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
 import {
   CAPSULE_PUBLICATION_IDENTITY,
   capsuleUi,
+  testWidgetDistributionBuild,
 } from './widget-capsule.fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -57,11 +56,7 @@ const OTHER_ACCOUNT_TENANT = fnFreezeTenantContext({
 
 const BUILDER_IDENTITY = 'vibecanvas-widget-test/bun';
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@omnidraw/capsule/guest',
   '@vibecanvas/sdk/server',
-  '@vibecanvas/sdk/function-client',
-  '@vibecanvas/sdk/widget',
-  ...VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
   'zod',
 ]);
 
@@ -176,6 +171,7 @@ describe('production widget service', () => {
       builderIdentity: BUILDER_IDENTITY,
       ...CAPSULE_PUBLICATION_IDENTITY,
       capsuleBuild: buildCapsuleGuest,
+      distributionBuild: testWidgetDistributionBuild,
       loadCapsuleSigningKeys: (purpose) => (
         new WidgetCapsuleSigningKeyStore(join(root, 'keys')).loadSigningKeys(purpose)
       ),
@@ -221,7 +217,7 @@ describe('production widget service', () => {
     expect(await filesBelow(artifactsRoot)).toEqual([]);
   });
 
-  test('rejects semantic TypeScript errors through the Capsule build port without durable writes', async () => {
+  test('lets the guest build script decide whether semantic TypeScript checks are required', async () => {
     const sourceRoot = join(root, 'semantic-error-validation');
     await writeSource(sourceRoot, {
       'ui/main.ts': 'const value: string = 42;\nexport default value;\n',
@@ -240,10 +236,7 @@ describe('production widget service', () => {
       },
     });
 
-    expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual([
-      'Widget ui build failed: TYPE_CHECK_FAILED at ui/main.ts.',
-    ]);
+    expect(result).toEqual({ valid: true, diagnostics: [] });
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -1034,6 +1027,7 @@ describe('production widget service', () => {
     };
     const { services } = setupServices(config, {
       capsuleBuild: buildCapsuleGuest,
+      distributionBuild: testWidgetDistributionBuild,
     });
     const widgetOwner = services.require('widgetOwner');
     const widgetCapability = services.require('widget');
@@ -1095,7 +1089,7 @@ describe('production widget service', () => {
         },
         bindings: [],
         builderIdentity: fnWidgetCapsuleBuilderIdentity({
-          imageId: resolveWidgetCapsuleOciImageId(),
+          npmVersion: 'external',
           serverBunVersion: Bun.version,
         }),
         ...CAPSULE_PUBLICATION_IDENTITY,

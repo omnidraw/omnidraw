@@ -712,31 +712,40 @@ export class WidgetDraftController {
           if (!beforeCapture) {
             throw controllerError('AGENT_DRAFT_RENAME_FAILED', 'Renamed widget source was not found.');
           }
-          const snapshot = await this.#config.widgets.captureSource(
-            this.#config.tenant,
-            beforeCapture.draftPath,
-            { id: this.#config.createId(), createdAtMs: this.#now() },
-          );
-          const afterCapture = await this.#config.workspace.getDraft(nextName);
-          if (!afterCapture || afterCapture.revision !== beforeCapture.revision) {
-            throw controllerError(
-              'WIDGET_DRAFT_REVISION_CHANGED',
-              'Widget draft changed while its rename was being committed.',
+          const copied = await this.#config.workspace
+            .createTransientDraftSnapshotAtCoordinatedCommit(
+              beforeCapture.name,
+              beforeCapture.revision,
             );
+          try {
+            const snapshot = await this.#config.widgets.captureSource(
+              this.#config.tenant,
+              copied.rootPath,
+              { id: this.#config.createId(), createdAtMs: this.#now() },
+            );
+            const afterCapture = await this.#config.workspace.getDraft(nextName);
+            if (!afterCapture || afterCapture.revision !== beforeCapture.revision) {
+              throw controllerError(
+                'WIDGET_DRAFT_REVISION_CHANGED',
+                'Widget draft changed while its rename was being committed.',
+              );
+            }
+            const renamed = await this.#config.authoringStore.renameDraft(this.#config.tenant, {
+              draftId: draft.id,
+              expectedName: name,
+              nextName,
+              nextSourceRelativePath: this.#sourceRelativePath(afterCapture),
+              expectedSourceDigestSha256: draft.sourceDigestSha256,
+              nextSourceDigestSha256: snapshot.digestSha256,
+              nowMs: this.#now(),
+            });
+            if (renamed.status !== 'updated') {
+              throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before rename was recorded.');
+            }
+            this.#validationByDraft.delete(draft.id);
+          } finally {
+            await copied.dispose().catch(() => undefined);
           }
-          const renamed = await this.#config.authoringStore.renameDraft(this.#config.tenant, {
-            draftId: draft.id,
-            expectedName: name,
-            nextName,
-            nextSourceRelativePath: this.#sourceRelativePath(afterCapture),
-            expectedSourceDigestSha256: draft.sourceDigestSha256,
-            nextSourceDigestSha256: snapshot.digestSha256,
-            nowMs: this.#now(),
-          });
-          if (renamed.status !== 'updated') {
-            throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before rename was recorded.');
-          }
-          this.#validationByDraft.delete(draft.id);
         }
         coordinated = true;
       };

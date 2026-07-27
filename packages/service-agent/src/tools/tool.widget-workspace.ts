@@ -1,10 +1,11 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
 import { execFile } from 'node:child_process';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { Type } from 'typebox';
 import { Check } from 'typebox/value';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
+import { SDK_CAPSULE_DEPENDENCY } from '../workspace/CONSTANTS';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
 import { fnBuildWidgetCreateManifest } from './fn.widget-create';
@@ -16,6 +17,7 @@ import {
 } from './fn.widget-list';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txWriteWidgetScaffold } from './tx.scaffold';
+import { txTryNpmInstall, type TNpmInstall } from './tx.npm-install';
 import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 
 type TCreateWidgetWorkspaceToolsArgs = {
@@ -24,6 +26,7 @@ type TCreateWidgetWorkspaceToolsArgs = {
   authorize: (toolName: 'vc_widget_list' | 'vc_widget_create' | 'vc_widget_validate') => Promise<boolean>;
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
+  npmInstall?: TNpmInstall;
 };
 
 const WIDGET_CREATE_PARAMETERS = Type.Object({
@@ -95,7 +98,19 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
               cwd,
               manifest,
               sdkDependency: `file:${args.workspace.sdkPackagePath}`,
+              capsuleDependency: SDK_CAPSULE_DEPENDENCY,
             });
+            const installed = await (args.npmInstall
+              ? args.npmInstall(cwd)
+              : txTryNpmInstall({ access, execFile, join }, { cwd }));
+            if (installed.status !== 'success') {
+              throw new Error(
+                installed.status === 'error'
+                  ? `Generated widget dependency installation failed: ${installed.message}`
+                  : `Generated widget dependency installation was skipped: ${installed.reason}`,
+              );
+            }
+            files.push('package-lock.json');
             const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, { cwd });
             if (!validation.ok) {
               throw new Error(`Generated widget scaffold is invalid: ${validation.errors.join('; ')}`);

@@ -1,6 +1,7 @@
 import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import {
   WIDGET_TYPESCRIPT_VERSION,
+  WIDGET_VITE_VERSION,
   WIDGET_ZOD_VERSION,
 } from '../core/CONSTANTS';
 
@@ -14,22 +15,69 @@ type TArgs = {
   cwd: string;
   manifest: TWidgetManifestV3;
   sdkDependency: string;
+  capsuleDependency: string;
 };
 
-function packageJson(manifest: TWidgetManifestV3, sdkDependency: string): string {
+function packageJson(
+  manifest: TWidgetManifestV3,
+  sdkDependency: string,
+  capsuleDependency: string,
+): string {
   return `${JSON.stringify({
     name: manifest.slug,
     version: '1.0.0',
     private: true,
     type: 'module',
+    scripts: {
+      build: 'vite build --config vite.config.mjs',
+    },
     dependencies: {
+      // TESTING ONLY: the linked SDK cannot resolve its temporary local Capsule
+      // package unless the widget root installs the same dependency directly.
+      '@omnidraw/capsule': capsuleDependency,
       '@vibecanvas/sdk': sdkDependency,
       zod: WIDGET_ZOD_VERSION,
     },
     devDependencies: {
       typescript: WIDGET_TYPESCRIPT_VERSION,
+      vite: WIDGET_VITE_VERSION,
     },
   }, null, 2)}\n`;
+}
+
+function viteConfig(): string {
+  return [
+    'import { readFileSync } from "node:fs";',
+    'import { defineConfig } from "vite";',
+    '',
+    'const manifest = JSON.parse(readFileSync(new URL("./vibecanvas.json", import.meta.url), "utf8"));',
+    '',
+    'export default defineConfig({',
+    '  // TESTING ONLY: keep the linked SDK under this project so its temporary',
+    '  // direct local Capsule dependency resolves from this node_modules tree.',
+    '  resolve: { preserveSymlinks: true },',
+    '  build: {',
+    '    target: "es2022",',
+    '    outDir: "dist",',
+    '    emptyOutDir: true,',
+    '    sourcemap: false,',
+    '    minify: false,',
+    '    cssCodeSplit: false,',
+    '    assetsInlineLimit: 0,',
+    '    rollupOptions: {',
+    '      input: manifest.ui.entry,',
+    '      external: ["capsule:bridge"],',
+    '      output: {',
+    '        format: "es",',
+    '        entryFileNames: "main.js",',
+    '        chunkFileNames: "chunks/[name]-[hash].mjs",',
+    '        assetFileNames: "assets/[name]-[hash][extname]",',
+    '      },',
+    '    },',
+    '  },',
+    '});',
+    '',
+  ].join('\n');
 }
 
 function tsconfigJson(): string {
@@ -52,6 +100,7 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
   const changedFiles = [
     'vibecanvas.json',
     'package.json',
+    'vite.config.mjs',
     'tsconfig.json',
     'ui/main.ts',
     'ui/styles.css',
@@ -66,9 +115,10 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
     `${JSON.stringify(args.manifest, null, 2)}\n`,
     'utf8',
   );
+  await portal.writeFile(portal.join(args.cwd, 'vite.config.mjs'), viteConfig(), 'utf8');
   await portal.writeFile(
     portal.join(args.cwd, 'package.json'),
-    packageJson(args.manifest, args.sdkDependency),
+    packageJson(args.manifest, args.sdkDependency, args.capsuleDependency),
     'utf8',
   );
   await portal.writeFile(portal.join(args.cwd, 'tsconfig.json'), tsconfigJson(), 'utf8');

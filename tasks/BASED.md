@@ -265,6 +265,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [A90](a/A90.md) - canvas: productionize the Automerge/Cangine bridge and history
 - [ ]: [A91](a/A91.md) - canvas: build copy-on-write v1-to-v2 migration and version gates
 - [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and product tools over to Cangine nodes
+- [/]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

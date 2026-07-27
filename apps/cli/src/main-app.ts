@@ -1,7 +1,5 @@
 import { createRuntime } from '@vibecanvas/runtime';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { buildCliConfig } from './build-config';
 import type { ICliConfig } from './config';
 import { fnBuildHomePreflightError } from './fn.home-preflight-error';
@@ -80,15 +78,10 @@ export async function runCliMain() {
         execFile: (file, args, options, callback) => {
           execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
         },
-        readFileSha256: async (path) => (
-          `sha256:${createHash('sha256').update(await readFile(path)).digest('hex')}`
-        ),
         warn: (message) => console.warn(message),
         publishNotification: (event) => eventPublisher.publishNotification(tenant, event),
     }, {
       ...config,
-      environment: process.env,
-      platform: process.platform,
     }));
   }
 

@@ -98,11 +98,11 @@ describe('Capsule target and budget mappings', () => {
 
 describe('Capsule error mappings', () => {
   test('maps build errors without forwarding diagnostics', () => {
-    expect(fnMapCapsuleBuildError('TYPE_CHECK_FAILED')).toEqual({
+    expect(fnMapCapsuleBuildError('UNSUPPORTED_SYNTAX')).toEqual({
       format: 'vibecanvas.capsule-error.v1',
       phase: 'build',
       category: 'build',
-      capsuleCode: 'TYPE_CHECK_FAILED',
+      capsuleCode: 'UNSUPPORTED_SYNTAX',
       fatal: true,
       message: 'The widget UI build failed.',
     });

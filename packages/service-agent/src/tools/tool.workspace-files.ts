@@ -1,12 +1,25 @@
 import { createReadToolDefinition, defineTool } from '@earendil-works/pi-coding-agent';
 import { constants } from 'node:fs';
-import { relative, sep } from 'node:path';
+import { execFile } from 'node:child_process';
+import {
+  access,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { dirname, join, relative, sep } from 'node:path';
 import { Type } from 'typebox';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { fnApplyExactEdits } from './fn.apply-exact-edits';
 import { fnApplyUnifiedPatch } from './fn.apply-unified-patch';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
+import {
+  txRestoreNpmPackageLock,
+  txTryNpmInstall,
+  type TNpmPackageLockState,
+} from './tx.npm-install';
 
 type TCreateWorkspaceFileToolsArgs = {
   workspace: WidgetWorkspace;
@@ -23,6 +36,85 @@ function mountedWidgetName(path: string): string | undefined {
 
 function lexicalPath(cwd: string, absolutePath: string): string {
   return relative(cwd, absolutePath).split(sep).join('/');
+}
+
+async function installManifestChange(
+  args: Pick<TCreateWorkspaceFileToolsArgs, 'chatId' | 'workspace'>,
+  name: string,
+): Promise<void> {
+  const mount = await args.workspace.findMountedWidget(args.chatId, name);
+  const result = await txTryNpmInstall({ access, execFile, join }, {
+    cwd: mount.targetPath,
+  });
+  if (result.status !== 'success') {
+    throw new Error(result.status === 'error'
+      ? `Dependency installation failed: ${result.message}`
+      : `Dependency installation was skipped: ${result.reason}`);
+  }
+}
+
+async function capturePackageLockState(
+  args: Pick<TCreateWorkspaceFileToolsArgs, 'chatId' | 'workspace'>,
+  name: string,
+): Promise<TNpmPackageLockState> {
+  const mount = await args.workspace.findMountedWidget(args.chatId, name);
+  const path = join(mount.targetPath, 'package-lock.json');
+  try {
+    return { path, bytes: new Uint8Array(await readFile(path)) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { path, bytes: null };
+    }
+    throw error;
+  }
+}
+
+async function rollbackManifestChange(
+  args: Pick<TCreateWorkspaceFileToolsArgs, 'chatId' | 'workspace'>,
+  rollback: Readonly<{
+    name: string;
+    manifestPath: string;
+    previousSource: string;
+    packageLock: TNpmPackageLockState;
+  }>,
+): Promise<void> {
+  await args.workspace.updateMountedFileAtomic(
+    args.chatId,
+    rollback.manifestPath,
+    () => ({ content: rollback.previousSource, value: undefined }),
+  );
+  let recoveryError: unknown;
+  try {
+    await installManifestChange(args, rollback.name);
+  } catch (error) {
+    recoveryError = error;
+  }
+  let dependencyCleanupError: unknown;
+  if (recoveryError !== undefined) {
+    try {
+      await rm(join(dirname(rollback.packageLock.path), 'node_modules'), {
+        recursive: true,
+        force: true,
+      });
+    } catch (error) {
+      dependencyCleanupError = error;
+    }
+  }
+  let lockfileRollbackError: unknown;
+  try {
+    await txRestoreNpmPackageLock({ writeFile, rename, rm }, {
+      state: rollback.packageLock,
+    });
+  } catch (error) {
+    lockfileRollbackError = error;
+  }
+  if (dependencyCleanupError !== undefined || lockfileRollbackError !== undefined) {
+    throw new AggregateError(
+      [dependencyCleanupError, lockfileRollbackError]
+        .filter((value) => value !== undefined),
+      'The previous package manifest was restored, but its dependency-state rollback failed.',
+    );
+  }
 }
 
 function wrapAuthorized(tool: TToolDefinition, authorize: () => Promise<boolean>): TToolDefinition {
@@ -62,12 +154,38 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
       try {
         const execute = async () => {
           if (JSON.stringify(params.edits).length > 2_000_000) throw new Error('Edit batch exceeds the total request-size limit.');
+          const packageLock = name && params.path === `widgets/${name}/package.json`
+            ? await capturePackageLockState(args, name)
+            : undefined;
+          let previousSource = '';
           await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
+            previousSource = source;
             const result = fnApplyExactEdits(source, params.edits);
             if (!result.ok) throw new Error(result.message);
             return { content: result.content, value: undefined };
           });
           sourceChanged = true;
+          if (name && params.path === `widgets/${name}/package.json`) {
+            try {
+              await installManifestChange(args, name);
+            } catch (error) {
+              try {
+                await rollbackManifestChange(args, {
+                  name,
+                  manifestPath: params.path,
+                  previousSource,
+                  packageLock: packageLock!,
+                });
+                sourceChanged = false;
+              } catch (rollbackError) {
+                throw new AggregateError(
+                  [error, rollbackError],
+                  'Dependency installation failed and rollback did not complete.',
+                );
+              }
+              throw error;
+            }
+          }
           if (name) await args.onDraftChanged?.({ name, type: 'changed' });
           const modelData = {
             path: params.path,
@@ -106,12 +224,38 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
       let sourceChanged = false;
       try {
         const execute = async () => {
+          const packageLock = name && params.path === `widgets/${name}/package.json`
+            ? await capturePackageLockState(args, name)
+            : undefined;
+          let previousSource = '';
           await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
+            previousSource = source;
             const result = fnApplyUnifiedPatch(source, params.patch);
             if (!result.ok) throw new Error(result.message);
             return { content: result.content, value: undefined };
           }, { allowMissing: true });
           sourceChanged = true;
+          if (name && params.path === `widgets/${name}/package.json`) {
+            try {
+              await installManifestChange(args, name);
+            } catch (error) {
+              try {
+                await rollbackManifestChange(args, {
+                  name,
+                  manifestPath: params.path,
+                  previousSource,
+                  packageLock: packageLock!,
+                });
+                sourceChanged = false;
+              } catch (rollbackError) {
+                throw new AggregateError(
+                  [error, rollbackError],
+                  'Dependency installation failed and rollback did not complete.',
+                );
+              }
+              throw error;
+            }
+          }
           if (name) await args.onDraftChanged?.({ name, type: 'changed' });
           const modelData = { path: params.path };
           return fnToolSuccess({ summary: `Applied patch to ${params.path}.`, modelData, details: modelData });

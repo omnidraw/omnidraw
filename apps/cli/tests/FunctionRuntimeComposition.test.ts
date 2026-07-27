@@ -16,10 +16,10 @@ import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
-import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
 import {
   CAPSULE_PUBLICATION_IDENTITY,
   capsuleUi,
+  testWidgetDistributionBuild,
 } from './widget-capsule.fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -107,6 +107,7 @@ describe('production short-lived function composition', () => {
     });
     const { services, dbService } = setupServices(config, {
       capsuleBuild: buildCapsuleGuest,
+      distributionBuild: testWidgetDistributionBuild,
     });
     const context = { config: {}, hooks: {} };
     const widgetOwner = services.require('widgetOwner');
@@ -157,7 +158,7 @@ describe('production short-lived function composition', () => {
         manifest,
         bindings: [],
         builderIdentity: fnWidgetCapsuleBuilderIdentity({
-          imageId: resolveWidgetCapsuleOciImageId(),
+          npmVersion: 'external',
           serverBunVersion: Bun.version,
         }),
         ...CAPSULE_PUBLICATION_IDENTITY,

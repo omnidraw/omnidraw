@@ -14,8 +14,8 @@ widget source
   -> @omnidraw/capsule/guest
   -> canonical Capsule artifact
 
-Vibecanvas adapter builder/build-runner entries
-  -> public Capsule build/build-runner/sign entries
+Vibecanvas adapter build entry
+  -> public Capsule build/protocol/sign entries
 Vibecanvas browser adapter -> public Capsule host/protocol/schema entries
 Capsule -> no Vibecanvas dependency
 ```
@@ -33,7 +33,7 @@ implementations.
 | `packages/widget-contract` | Strict manifest v3, artifact/revision metadata, builder identity, and runtime descriptors |
 | `packages/sdk` | Framework-neutral props, theme, output, local-store, function, and collaboration guest APIs |
 | `packages/service-agent` | Immutable source capture, validation, scaffolding, preview/publish orchestration, and authoring guidance |
-| `apps/cli` | Persistent signing keys, OCI compiler composition, artifact storage, runtime host configuration, and tenant services |
+| `apps/cli` | Host npm distribution builds, persistent signing keys, artifact storage, runtime host configuration, and tenant services |
 | `packages/ui-ai-chat` | Shared browser-host coordination, capability composition, runtime loading, and population scheduling |
 | `@omnidraw/cangine` | Fixed widget frame, local canvas-maximized presentation, and atomic portal-shell transform, clip, z-index, visibility, and input gating |
 | `packages/canvas` | Automerge projection plus viewport, visibility, priority, focus, durable collapse, local canvas-maximized, and removal inputs |
@@ -43,14 +43,12 @@ implementations.
 
 1. Capture and validate one immutable widget source snapshot and strict v3
    manifest.
-2. Materialize the exact public Capsule guest package, Vibecanvas SDK runtime
-   and declaration closure, generated function client, and pinned dependency
-   graph.
-3. Send the complete non-server source closure to the pinned, networkless
-   Capsule OCI runner, where hostile UI JavaScript, TypeScript, CSS imports,
-   asset references, and dependency graphs are parsed and compiled. There is
-   no trusted-process parser or in-process production fallback.
-4. Independently validate returned canonical artifact bytes and hash.
+2. Materialize the exact project and run frozen `npm ci`, then the
+   guest-controlled `npm run build`, using its package-lock-v3 dependency graph.
+3. Capture only bounded regular files from `dist/` and send their exact bytes,
+   roots, and provenance through Capsule's public external-distribution API.
+4. Capsule closes and validates the ES2022 module/resource graph and returns
+   canonical artifact bytes and hash.
 5. Sign preview bytes with the preview key or publication bytes with the
    release key.
 6. Store immutable content-addressed bytes and exact descriptor metadata.
@@ -95,9 +93,9 @@ active, throttled, frozen, resumed, and destroyed transitions.
   Automerge internals, engine credentials, or selectable authority IDs.
 - Schemas are exact and bounded. Collaborative JSON is limited to depth 4, 64
   collection entries, and 4 KiB strings, with no `any`, bytes, or `undefined`.
-- Production UI compilation crosses the pinned Capsule OCI boundary with
-  network disabled, a read-only root, no new privileges, and explicit resource
-  limits.
+- Dependency lifecycle and build scripts run with the server account's host
+  authority. This accepted build-server risk is separate from Capsule's
+  artifact validation and runtime isolation.
 - Server-function source follows its separately scoped trusted server build;
   server/private files are withheld from the UI compiler and generated browser
   proxies are inserted in their place.

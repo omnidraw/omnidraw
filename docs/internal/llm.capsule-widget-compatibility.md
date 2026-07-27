@@ -20,9 +20,8 @@ Capsule implements every browser or npm API.
   keys, exact target policy, and instance-bound grants.
 - Browser code imports only supported public `@omnidraw/capsule` entries
   through `@vibecanvas/capsule-vibecanvas`.
-- The recorded Capsule consumer package is `@omnidraw/capsule@0.9.2`, source
-  revision `3d875629d1a7de36fa57a31ecda15ec65168875e`, with package digest
-  `sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753`.
+- The recorded Capsule consumer package is `@omnidraw/capsule@0.9.3`, source
+  revision `e302a6cbd00fd7932417c9b377597878db0afe25`.
 
 ## Verified guest surfaces
 
@@ -65,26 +64,14 @@ including at most 16 active, 8 throttled, 8 heavy, and 2 GPU handles. Offscreen
 owners freeze after 2 seconds and distant owners are destroyed after 30
 seconds; 10,000 owners therefore do not imply 10,000 live guests.
 
-## Hostile source build boundary
+## Host source build boundary
 
-Untrusted browser UI source is parsed, typechecked, graph-resolved, and
-compiled only through the public Capsule OCI build runner. The trusted process
-does not parse UI JavaScript, TypeScript, CSS imports, or asset references.
-Server-function source retains the separate trusted server build required by
-the migration contract. The production UI compiler port uses:
-
-- network-disabled Linux container execution;
-- read-only root filesystem and no new privileges;
-- zero added capabilities;
-- 32 MiB input and 16 MiB output ceilings;
-- 2 GiB memory, 2 CPUs, 120 CPU seconds, and 180 seconds wall time;
-- 64 processes, 256 open files, 16 MiB per file, and 128 MiB temporary space;
-- a pinned engine binary identity and exact image ID
-  `sha256:83ff7d9b53672ef765853d72f8b0f6065fbcfdf9707bb0dde9a0029b689daac3`;
-- a scratch engine home rather than ambient credential/config files.
-
-The build is deterministic. Vibecanvas independently verifies returned
-artifact bytes and hash before signing or storing them.
+Vibecanvas runs frozen `npm ci` and the guest-controlled `npm run build` as the
+server account, captures a bounded regular-file `dist/`, and gives only those
+bytes to Capsule's external-distribution validator. Package lifecycle and build
+scripts therefore have the server account's host authority; this risk is
+accepted and is not covered by Capsule's runtime isolation. Server-function
+source retains its separate trusted server build.
 
 ## Permanent evidence
 
@@ -92,11 +79,10 @@ artifact bytes and hash before signing or storing them.
   build. Its 22 checks cover plain DOM, SVG, Canvas 2D, React, signed release
   mounting, functions, collaboration, lifecycle, authority negatives, and
   terminal-zero teardown.
-- `bun run test:capsule-oci-build` runs the production Vibecanvas compiler port
-  twice, checks deterministic bytes, and proves a hostile `node:fs` import is
-  denied. Adapter boundary tests also prove hostile UI bytes reach only the
-  injected Capsule compiler and that CSS imports and URL assets close inside
-  that boundary.
+- `bun test apps/cli/tests/WidgetNpmDistributionBuild.test.ts` covers frozen
+  install/build orchestration, provenance, bounded distribution capture, and
+  cleanup. Adapter boundary tests exercise Capsule external-distribution
+  admission and resource closure.
 - `bun run test:widget-artifacts`, `bun run test:widget-host`, and
   `bun run test:m10:load` cover artifact recovery, host integration, population
   ceilings, and cleanup.
