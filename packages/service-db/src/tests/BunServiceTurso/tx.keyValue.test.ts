@@ -14,8 +14,7 @@ const txKeyValueAdd = bindTenantOperation(txKeyValueAddRaw);
 const txKeyValueRemove = bindTenantOperation(txKeyValueRemoveRaw);
 
 async function inMemoryDb() {
-  // @ts-expect-error custom_types not typed yet
-  return connect(":memory:", { experimental: ["custom_types", "triggers", "index_method"] });
+  return connect(":memory:", { experimental: ["custom_types", "triggers", "index_method", "generated_columns"] as never });
 }
 
 async function expectSqlConstraintFailure(action: () => Promise<unknown>) {

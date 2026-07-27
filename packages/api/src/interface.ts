@@ -7,7 +7,7 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 
 export type TCanvasDatabaseCapability = {
   canvas: {
-    create(tenant: TTenantContext, args: Omit<TCanvas, 'created_at'>): Promise<TCanvas>;
+    create(tenant: TTenantContext, args: Pick<TCanvas, 'id' | 'name'>): Promise<TCanvas>;
     deleteById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas[]>;
     findById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas | null>;
     findByName(tenant: TTenantContext, args: { name: string }): Promise<TCanvas | null>;

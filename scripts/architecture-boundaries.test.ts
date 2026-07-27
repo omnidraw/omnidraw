@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { readdir, readFile } from 'node:fs/promises'
 import { extname, join, relative, resolve, sep } from 'node:path'
-import {
-  type ICollaborationService,
-  type IService,
-  type IServiceRegistry,
-} from '../packages/runtime/src'
-import type { IAutomergeService } from '../packages/service-automerge/src/IAutomergeService'
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
@@ -59,18 +53,74 @@ const FORBIDDEN_MANAGED_PACKAGE_FAMILIES = Object.freeze([
   /^(?:durable[-_.])?workflow(?:$|[-_.])/i,
 ])
 
-declare module '../packages/runtime/src/interface' {
-  interface IServiceMap {
-    localCollaboration: ICollaborationService & IService
+type TRemovedStackPattern = Readonly<{
+  label: string
+  expression: RegExp
+}>
+
+function removedStackPattern(
+  label: string,
+  parts: readonly string[],
+  options?: Readonly<{ word?: boolean; insensitive?: boolean }>,
+): TRemovedStackPattern {
+  const token = parts.join('')
+  return {
+    label,
+    expression: new RegExp(
+      options?.word ? `\\b${token}\\b` : token,
+      options?.insensitive ? 'i' : undefined,
+    ),
   }
 }
 
-function registerLocalCollaboration(
-  services: IServiceRegistry,
-  collaboration: IAutomergeService,
-): void {
-  services.provide('localCollaboration', 10, collaboration)
-}
+const REMOVED_STACK_PATTERNS = Object.freeze([
+  removedStackPattern('legacy-library-name', ['auto', 'merge'], { insensitive: true }),
+  removedStackPattern('legacy-dependency-scope', ['@auto', 'merge/'], { insensitive: true }),
+  removedStackPattern('legacy-service-package', ['service-', 'auto', 'merge'], { insensitive: true }),
+  removedStackPattern('legacy-server-service', ['Auto', 'merge', 'Service'], { word: true }),
+  removedStackPattern('legacy-document-handle', ['Doc', 'Handle'], { word: true }),
+  removedStackPattern('legacy-client-service', ['Crdt', 'Service'], { word: true }),
+  removedStackPattern('legacy-websocket-route', ['/auto', 'merge'], { insensitive: true }),
+  removedStackPattern('legacy-url-column', ['auto', 'merge', '_url'], { word: true, insensitive: true }),
+  removedStackPattern('legacy-document-table', ['collaboration_', 'documents'], { word: true, insensitive: true }),
+  removedStackPattern('legacy-chunk-table', ['collaboration_', 'chunks'], { word: true, insensitive: true }),
+  removedStackPattern('legacy-document-type', ['TCanvas', 'Doc'], { word: true }),
+  removedStackPattern('legacy-element-type', ['T', 'Element'], { word: true }),
+  removedStackPattern('legacy-group-type', ['T', 'Group'], { word: true }),
+  removedStackPattern('legacy-document-projection', ['TCanvasDocument', 'Projection'], { word: true }),
+  removedStackPattern('legacy-element-projector', ['TCanvasElement', 'Projector'], { word: true }),
+  removedStackPattern('legacy-projection-coordinator', ['Projection', 'Coordinator'], { word: true }),
+  removedStackPattern('legacy-client-projection', ['CrdtProjection', 'Service'], { word: true }),
+  removedStackPattern('legacy-widget-projector', ['WidgetInstanceMetadata', 'Projector'], { word: true }),
+  removedStackPattern('legacy-widget-projection-store', ['WidgetInstanceMetadata', 'StoreTurso'], { word: true }),
+  removedStackPattern('legacy-widget-projection-helper', ['fn.widget-instance-', 'metadata-projection'], {
+    insensitive: true,
+  }),
+  removedStackPattern('legacy-projection-heads', ['widget_instance_', 'projection_heads'], {
+    word: true,
+    insensitive: true,
+  }),
+  removedStackPattern('legacy-widget-state-document-column', ['state_', 'document_id'], {
+    word: true,
+    insensitive: true,
+  }),
+  removedStackPattern('legacy-projection-signature-column', ['projection_', 'signature'], {
+    word: true,
+    insensitive: true,
+  }),
+  removedStackPattern('legacy-document-signature', ['fnCanvasDocumentProjection', 'Signature'], { word: true }),
+  removedStackPattern('legacy-document-diff', ['fnDiffCanvas', 'Projections'], { word: true }),
+  removedStackPattern('legacy-projector-directory', ['/projection/', 'projectors/'], { insensitive: true }),
+  removedStackPattern('legacy-document-types-module', ['canvas-doc.', 'types'], { insensitive: true }),
+  removedStackPattern('legacy-document-schema-module', ['canvas-doc.', 'zod'], { insensitive: true }),
+  removedStackPattern('legacy-project-document-module', ['fn.project-', 'document'], { insensitive: true }),
+  removedStackPattern('legacy-incremental-document-module', ['fn.incremental-', 'document'], { insensitive: true }),
+  removedStackPattern('legacy-document-signature-module', ['fn.document-', 'signature'], { insensitive: true }),
+  removedStackPattern('legacy-compatibility-fixture', ['canvas-engine/', 'compatibility'], { insensitive: true }),
+  removedStackPattern('legacy-engine-adapter', ['CanvasEngine', 'Adapter'], { word: true }),
+  removedStackPattern('legacy-editor-bridge', ['CanvasEditor', 'Bridge'], { word: true }),
+  removedStackPattern('legacy-projection-port', ['ProjectionRuntime', 'Port'], { word: true }),
+] satisfies readonly TRemovedStackPattern[])
 
 async function listFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -132,6 +182,21 @@ function publicPackageName(specifier: string): string | null {
 
 async function sourceFiles(directory: string): Promise<string[]> {
   return (await listFiles(directory)).filter((path) => SOURCE_EXTENSIONS.has(extname(path)))
+}
+
+async function removedStackScanFiles(): Promise<string[]> {
+  const nested = (await Promise.all(
+    ['apps', 'packages', 'scripts'].map((directory) => listFiles(join(ROOT, directory))),
+  )).flat()
+  return [
+    join(ROOT, 'package.json'),
+    join(ROOT, 'bun.lock'),
+    ...nested.filter((path) => (
+      SOURCE_EXTENSIONS.has(extname(path))
+      || extname(path) === '.sql'
+      || extname(path) === '.json'
+    )),
+  ].sort()
 }
 
 async function packageManifests(): Promise<Array<{
@@ -306,8 +371,18 @@ describe('managed composition architecture boundaries', () => {
     expect(statefulSchemaViolations).toEqual([])
   })
 
-  test('structurally exposes local collaboration through a public seam', () => {
-    expect(registerLocalCollaboration).toBeInstanceOf(Function)
+  test('keeps the removed canvas stack absent from source, schema, manifests, and lockfile', async () => {
+    const violations: string[] = []
+    for (const file of await removedStackScanFiles()) {
+      const path = relative(ROOT, file)
+      const searchable = `${path}\n${await readFile(file, 'utf8')}`
+      for (const pattern of REMOVED_STACK_PATTERNS) {
+        if (pattern.expression.test(searchable)) {
+          violations.push(`${path}: ${pattern.label}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
   })
 
   test('keeps release dependencies exact while Bun links the same versions for local development', async () => {

@@ -20,7 +20,6 @@ import {
   DEFAULT_OSS_ORGANIZATION_ID,
   FUNCTION_RUNTIME_MIGRATION_NAME,
   INITIAL_MIGRATION_NAME,
-  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
 } from "../packages/service-db/src/CONSTANTS"
 import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
@@ -84,7 +83,6 @@ const EXPECTED_MIGRATION_NAMES = Object.freeze([
   INITIAL_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   FUNCTION_RUNTIME_MIGRATION_NAME,
-  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
   AGENT_AUTHORING_MIGRATION_NAME,
 ])
 
@@ -214,7 +212,7 @@ function extractAssetUrls(html: string): string[] {
     const candidate = match[1]
     if (!candidate.startsWith("/")) continue
     if (candidate.startsWith("//")) continue
-    if (candidate.startsWith("/api") || candidate.startsWith("/automerge")) continue
+    if (candidate.startsWith("/api")) continue
     urls.add(candidate)
   }
 
@@ -399,8 +397,13 @@ async function assertManagedSchema(
   verifyForeignKeys = false,
 ): Promise<TManagedDatabaseSnapshot> {
   const database = new Database(databasePath, {
-    // @ts-expect-error multiprocess_wal is ahead of the public experimental feature union.
-    experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
+    experimental: [
+      "custom_types",
+      "triggers",
+      "index_method",
+      "generated_columns",
+      "multiprocess_wal",
+    ] as never,
   })
   try {
     await database.connect()
@@ -801,11 +804,6 @@ async function runBinaryScenario(
 
     await assertApiWebSocket(baseUrl, args.requestTimeoutMs)
     console.log(`[test-binary] PASS ${scenario.name} ws /api`)
-
-    const automergeWs = await assertWsOpen(`ws://127.0.0.1:${scenario.port}/automerge`, args.requestTimeoutMs)
-    await Bun.sleep(250)
-    automergeWs.close(1000, "test done")
-    console.log(`[test-binary] PASS ${scenario.name} ws /automerge`)
 
     if (scenario.expectedDbPath) {
       await assertPathExists(scenario.expectedDbPath, `${scenario.name} db path`)

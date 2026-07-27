@@ -44,7 +44,7 @@ const digest = (character: string) => character.repeat(64);
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-constraints-"));
   const db = await connect(path.join(root, "main.db"), {
-    experimental: ["custom_types"] as never,
+    experimental: ["custom_types", "generated_columns"] as never,
   });
   temporaryRoots.push(root);
   databases.push(db);
@@ -439,14 +439,6 @@ describe("managed schema constraints", () => {
       WIDGET_CAPSULE_CHANNEL_DIGEST,
       WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
       WIDGET_CAPSULE_BUILD_POLICY_ID,
-    ));
-    await expectRejected(run(
-      db,
-      "INSERT INTO collaboration_documents (org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, 'automerge:both', 'p', 1, 1)",
-      ORG_A,
-      "00000000-0000-4000-8000-00000000003a",
-      CANVAS_A,
-      INSTANCE_A,
     ));
     expect(await (await db.prepare("SELECT count(*) AS count FROM artifact_references WHERE digest_sha256 = ?")).get(digest("a")))
       .toEqual({ count: 2 });

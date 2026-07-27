@@ -20,7 +20,7 @@ const databases: Database[] = [];
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-schema-"));
   const db = await connect(path.join(root, "main.db"), {
-    experimental: ["custom_types"] as never,
+    experimental: ["custom_types", "generated_columns"] as never,
   });
   temporaryRoots.push(root);
   databases.push(db);
@@ -87,8 +87,7 @@ describe("000-initial.sql", () => {
       "000-initial.sql",
       "001-widget-revision-sequence.sql",
       "002-function-runtime.sql",
-      "003-widget-instance-projection.sql",
-      "004-agent-authoring.sql",
+      "003-agent-authoring.sql",
     ];
     for (const migrationName of migrationNames) {
       const sql = await Bun.file(new URL(`../migrations/${migrationName}`, import.meta.url)).text();
@@ -107,7 +106,7 @@ describe("000-initial.sql", () => {
   test("matches the complete checked-in table, column, key, FK, and index manifest", async () => {
     const db = await openBaseline();
     expect(Object.keys(EXPECTED_SCHEMA).toSorted()).toEqual([...EXPECTED_APPLICATION_TABLES].toSorted());
-    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(34);
+    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(33);
 
     const tableList = (await (await db.prepare("PRAGMA table_list")).all()) as Array<{
       name: string;
@@ -130,7 +129,8 @@ describe("000-initial.sql", () => {
 
     for (const table of EXPECTED_APPLICATION_TABLES) {
       const expected: TExpectedTable = EXPECTED_SCHEMA[table];
-      const columns = (await (await db.prepare(`PRAGMA table_info(${identifier(table)})`)).all()) as Array<{
+      const columns = (await (await db.prepare(`PRAGMA table_xinfo(${identifier(table)})`)).all()) as Array<{
+        hidden: number;
         name: string;
         type: string;
         notnull: number;
@@ -141,11 +141,17 @@ describe("000-initial.sql", () => {
         type: fnDatabaseColumnBaseType(value.type),
         notNull: value.notnull === 1,
         primaryKey: value.pk > 0,
+        generated: value.hidden === 2
+          ? "virtual"
+          : value.hidden === 3
+            ? "stored"
+            : "none",
       }))).toEqual(expected.columns.map((value) => ({
         name: value.name,
         type: value.type,
         notNull: value.notNull,
         primaryKey: value.primaryKeyPosition > 0,
+        generated: value.generated,
       })));
       expect(columns.every((value) => value.type !== "ANY")).toBe(true);
 

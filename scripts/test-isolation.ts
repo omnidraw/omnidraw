@@ -38,13 +38,13 @@ const suites: readonly TIsolationSuite[] = [
     ],
   },
   {
-    name: 'canvas collaboration admission, persistence, replay, and handle bounds',
+    name: 'canvas authority, persistence, replay, and widget-state isolation',
     command: [
       'bun',
       'test',
-      'packages/service-automerge/tests/AutomergeService.test.ts',
-      'packages/service-automerge/tests/turso.adapter.test.ts',
-      'packages/service-automerge/tests/websocket.adapter.test.ts',
+      'packages/service-canvas/tests/CanvasService.test.ts',
+      'packages/service-widget-state/src/WidgetStateService.test.ts',
+      'packages/service-db/src/tests/CanvasItemStoreTurso.test.ts',
       '--timeout=30000',
     ],
   },
@@ -73,7 +73,7 @@ const suites: readonly TIsolationSuite[] = [
       'test',
       '--',
       'tests/browser-tenant-scope.test.ts',
-      'tests/browser-automerge-session.test.ts',
+      'tests/services/CanvasDocumentService.test.ts',
     ],
   },
   {
@@ -94,7 +94,6 @@ async function runSuite(suite: TIsolationSuite): Promise<void> {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
-      VIBECANVAS_SILENT_AUTOMERGE_LOGS: '1',
       VIBECANVAS_SILENT_DB_MIGRATIONS: '1',
     },
     stdin: 'inherit',

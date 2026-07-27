@@ -70,24 +70,23 @@ describe('tenant-qualified DB repositories', () => {
     await tenantA.canvas.create({
       id: sharedCanvasId,
       name: 'Shared canvas',
-      automerge_url: 'automerge:tenant-a-shared',
     });
     await tenantB.canvas.create({
       id: sharedCanvasId,
       name: 'Shared canvas',
-      automerge_url: 'automerge:tenant-b-shared',
     });
     await tenantA.canvas.create({
       id: foreignCanvasId,
       name: 'Tenant A only',
-      automerge_url: 'automerge:tenant-a-only',
     });
 
     await expect(tenantA.canvas.findById({ id: sharedCanvasId })).resolves.toMatchObject({
-      automerge_url: 'automerge:tenant-a-shared',
+      id: sharedCanvasId,
+      revision: 0,
     });
     await expect(tenantB.canvas.findById({ id: sharedCanvasId })).resolves.toMatchObject({
-      automerge_url: 'automerge:tenant-b-shared',
+      id: sharedCanvasId,
+      revision: 0,
     });
     await expect(tenantB.canvas.findById({ id: foreignCanvasId })).resolves.toBeNull();
     await expect(tenantB.canvas.findById({ id: UNKNOWN_ID })).resolves.toBeNull();

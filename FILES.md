@@ -39,8 +39,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -53,11 +55,27 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/auth/CONSTANTS.ts](apps/cli/src/plugins/auth/CONSTANTS.ts) |  |
 | [apps/cli/src/plugins/auth/fn.oss-tenant-context.ts](apps/cli/src/plugins/auth/fn.oss-tenant-context.ts) |  |
 | [apps/cli/src/plugins/auth/types.ts](apps/cli/src/plugins/auth/types.ts) |  |
-| [apps/cli/src/plugins/automerge/AutomergePlugin.ts](apps/cli/src/plugins/automerge/AutomergePlugin.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/canvas-argv.ts](apps/cli/src/plugins/cli/cmds/canvas-argv.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.add.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.add.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.canvas-shared.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas-shared.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.delete.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.delete.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.group.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.group.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.list.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.list.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.move.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.move.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.patch.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.patch.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.query.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.query.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.reorder.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.reorder.canvas.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.ungroup.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.ungroup.canvas.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts](apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/CONSTANTS.ts](apps/cli/src/plugins/cli/cmds/CONSTANTS.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts](apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/fn.download-progress.ts](apps/cli/src/plugins/cli/cmds/fn.download-progress.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/interface.ts](apps/cli/src/plugins/cli/cmds/interface.ts) |  |
+| [apps/cli/src/plugins/cli/core/CanvasRpcConnection.ts](apps/cli/src/plugins/cli/core/CanvasRpcConnection.ts) |  |
+| [apps/cli/src/plugins/cli/core/fn.canvas-websocket-url.ts](apps/cli/src/plugins/cli/core/fn.canvas-websocket-url.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.print-command-result.ts](apps/cli/src/plugins/cli/core/fn.print-command-result.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.resolve-policy.ts](apps/cli/src/plugins/cli/core/fn.resolve-policy.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
@@ -135,8 +153,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
 | [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
-| [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | The frontend and canvas renderer intentionally share one browser Repo lifecycle. |
 | [apps/frontend/src/services/canvas-bootstrap.ts](apps/frontend/src/services/canvas-bootstrap.ts) |  |
+| [apps/frontend/src/services/canvas-document-transport.ts](apps/frontend/src/services/canvas-document-transport.ts) |  |
 | [apps/frontend/src/services/fn.widget-capsule-theme.ts](apps/frontend/src/services/fn.widget-capsule-theme.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
@@ -173,6 +191,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -183,6 +209,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -242,9 +270,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/agent/index.ts](packages/api/src/agent/index.ts) |  |
 | [packages/api/src/agent/orpc.ts](packages/api/src/agent/orpc.ts) |  |
 | [packages/api/src/agent/types.ts](packages/api/src/agent/types.ts) |  |
+| [packages/api/src/canvas/api.canvas-events.ts](packages/api/src/canvas/api.canvas-events.ts) |  |
 | [packages/api/src/canvas/api.create-canvas.ts](packages/api/src/canvas/api.create-canvas.ts) |  |
+| [packages/api/src/canvas/api.execute-canvas-command.ts](packages/api/src/canvas/api.execute-canvas-command.ts) |  |
+| [packages/api/src/canvas/api.get-canvas-snapshot.ts](packages/api/src/canvas/api.get-canvas-snapshot.ts) |  |
 | [packages/api/src/canvas/api.get-canvas.ts](packages/api/src/canvas/api.get-canvas.ts) |  |
 | [packages/api/src/canvas/api.list-canvas.ts](packages/api/src/canvas/api.list-canvas.ts) |  |
+| [packages/api/src/canvas/api.query-canvas-items.ts](packages/api/src/canvas/api.query-canvas-items.ts) |  |
 | [packages/api/src/canvas/api.remove-canvas.ts](packages/api/src/canvas/api.remove-canvas.ts) |  |
 | [packages/api/src/canvas/api.update-canvas.ts](packages/api/src/canvas/api.update-canvas.ts) |  |
 | [packages/api/src/canvas/contract.ts](packages/api/src/canvas/contract.ts) |  |
@@ -315,13 +347,28 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/tool/types.ts](packages/api/src/tool/types.ts) |  |
 | [packages/api/src/widget/api.runtime-config.ts](packages/api/src/widget/api.runtime-config.ts) |  |
 | [packages/api/src/widget/api.runtime-load-widget.ts](packages/api/src/widget/api.runtime-load-widget.ts) |  |
+| [packages/api/src/widget/api.runtime-widget-state-change.ts](packages/api/src/widget/api.runtime-widget-state-change.ts) |  |
+| [packages/api/src/widget/api.runtime-widget-state-events.ts](packages/api/src/widget/api.runtime-widget-state-events.ts) |  |
+| [packages/api/src/widget/api.runtime-widget-state-get.ts](packages/api/src/widget/api.runtime-widget-state-get.ts) |  |
 | [packages/api/src/widget/CONSTANTS.ts](packages/api/src/widget/CONSTANTS.ts) |  |
 | [packages/api/src/widget/contract.ts](packages/api/src/widget/contract.ts) |  |
 | [packages/api/src/widget/handlers.ts](packages/api/src/widget/handlers.ts) |  |
 | [packages/api/src/widget/index.ts](packages/api/src/widget/index.ts) |  |
 | [packages/api/src/widget/orpc.ts](packages/api/src/widget/orpc.ts) |  |
 | [packages/api/src/widget/types.ts](packages/api/src/widget/types.ts) |  |
+| [packages/api/src/widget/widget-state-identity.ts](packages/api/src/widget/widget-state-identity.ts) |  |
 | [packages/api/tsconfig.json](packages/api/tsconfig.json) |  |
+
+## packages/canvas-contract
+
+| path | jsdocs |
+|---|---|
+| [packages/canvas-contract/package.json](packages/canvas-contract/package.json) |  |
+| [packages/canvas-contract/src/CONSTANTS.ts](packages/canvas-contract/src/CONSTANTS.ts) |  |
+| [packages/canvas-contract/src/index.ts](packages/canvas-contract/src/index.ts) |  |
+| [packages/canvas-contract/src/types.ts](packages/canvas-contract/src/types.ts) |  |
+| [packages/canvas-contract/src/validation.ts](packages/canvas-contract/src/validation.ts) |  |
+| [packages/canvas-contract/tsconfig.json](packages/canvas-contract/tsconfig.json) |  |
 
 ## packages/canvas
 
@@ -332,229 +379,30 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/ARCHITECTURE.md](packages/canvas/ARCHITECTURE.md) |  |
 | [packages/canvas/package.json](packages/canvas/package.json) |  |
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
-| [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Tenant-scoped browser Automerge client. A placement or organization switch tears down the previous Repo before any document from the next scope loads. |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
+| [packages/canvas/src/components/Canvas.css](packages/canvas/src/components/Canvas.css) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
-| [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
-| [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
-| [packages/canvas/src/components/CanvasHelp/help.data.ts](packages/canvas/src/components/CanvasHelp/help.data.ts) |  |
-| [packages/canvas/src/components/CanvasHelp/index.css](packages/canvas/src/components/CanvasHelp/index.css) |  |
-| [packages/canvas/src/components/CanvasHelp/index.tsx](packages/canvas/src/components/CanvasHelp/index.tsx) |  |
-| [packages/canvas/src/components/CanvasRecorder/index.css](packages/canvas/src/components/CanvasRecorder/index.css) |  |
-| [packages/canvas/src/components/CanvasRecorder/index.tsx](packages/canvas/src/components/CanvasRecorder/index.tsx) |  |
 | [packages/canvas/src/components/CanvasRuntimeLifecycle.ts](packages/canvas/src/components/CanvasRuntimeLifecycle.ts) |  |
-| [packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts](packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts) |  |
-| [packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts](packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts) |  |
-| [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) | FloatingDrawingToolbar Component Excalidraw-style floating toolbar at top center of canvas Presentational floating toolbar for a single canvas |
-| [packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx](packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
-| [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) | Toolbar Types Type definitions for the floating drawing toolbar |
-| [packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx) |  |
-| [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) | ToolButton Component Individual tool button in the floating toolbar |
-| [packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/FontSizePicker.tsx](packages/canvas/src/components/SelectionStyleMenu/FontSizePicker.tsx) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) |  |
+| [packages/canvas/src/components/fn.canvas-grid.ts](packages/canvas/src/components/fn.canvas-grid.ts) |  |
+| [packages/canvas/src/components/fn.canvas-runtime-activation.ts](packages/canvas/src/components/fn.canvas-runtime-activation.ts) |  |
+| [packages/canvas/src/components/fn.space-pan.ts](packages/canvas/src/components/fn.space-pan.ts) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/index.tsx](packages/canvas/src/components/SelectionStyleMenu/index.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx](packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx](packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/types.ts](packages/canvas/src/components/SelectionStyleMenu/types.ts) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/styles.css](packages/canvas/src/components/SelectionStyleMenu/styles.css) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts) |  |
 | [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
-| [packages/canvas/src/core/CONSTANTS.ts](packages/canvas/src/core/CONSTANTS.ts) |  |
-| [packages/canvas/src/core/fn.create-ordered-z-index.ts](packages/canvas/src/core/fn.create-ordered-z-index.ts) |  |
-| [packages/canvas/src/core/fn.image-utils.ts](packages/canvas/src/core/fn.image-utils.ts) |  |
-| [packages/canvas/src/core/fn.pretext.ts](packages/canvas/src/core/fn.pretext.ts) |  |
-| [packages/canvas/src/core/fn.resolve-selection-style-text-elements.ts](packages/canvas/src/core/fn.resolve-selection-style-text-elements.ts) |  |
-| [packages/canvas/src/core/fn.selection-style-menu.ts](packages/canvas/src/core/fn.selection-style-menu.ts) |  |
-| [packages/canvas/src/core/fn.shape2d.ts](packages/canvas/src/core/fn.shape2d.ts) |  |
-| [packages/canvas/src/core/fn.sort-by-priority.ts](packages/canvas/src/core/fn.sort-by-priority.ts) |  |
-| [packages/canvas/src/core/fn.text-style.ts](packages/canvas/src/core/fn.text-style.ts) |  |
-| [packages/canvas/src/core/fn.world-position.ts](packages/canvas/src/core/fn.world-position.ts) |  |
-| [packages/canvas/src/core/fx.pretext.ts](packages/canvas/src/core/fx.pretext.ts) |  |
-| [packages/canvas/src/core/fx.selection-style-element-patch.ts](packages/canvas/src/core/fx.selection-style-element-patch.ts) |  |
-| [packages/canvas/src/engine/camera/CameraEngineBridge.ts](packages/canvas/src/engine/camera/CameraEngineBridge.ts) |  |
-| [packages/canvas/src/engine/camera/CONSTANTS.ts](packages/canvas/src/engine/camera/CONSTANTS.ts) |  |
-| [packages/canvas/src/engine/camera/fn.camera-state.ts](packages/canvas/src/engine/camera/fn.camera-state.ts) |  |
-| [packages/canvas/src/engine/camera/typed.ts](packages/canvas/src/engine/camera/typed.ts) |  |
-| [packages/canvas/src/engine/CanvasEngineAdapter.ts](packages/canvas/src/engine/CanvasEngineAdapter.ts) |  |
-| [packages/canvas/src/engine/CONSTANTS.ts](packages/canvas/src/engine/CONSTANTS.ts) |  |
-| [packages/canvas/src/engine/editor/CanvasEditorBridge.ts](packages/canvas/src/engine/editor/CanvasEditorBridge.ts) |  |
-| [packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts](packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts) |  |
-| [packages/canvas/src/engine/editor/fn.path-commit.ts](packages/canvas/src/engine/editor/fn.path-commit.ts) |  |
-| [packages/canvas/src/engine/fn.assert-capabilities.ts](packages/canvas/src/engine/fn.assert-capabilities.ts) |  |
-| [packages/canvas/src/engine/fn.initial-scene.ts](packages/canvas/src/engine/fn.initial-scene.ts) |  |
-| [packages/canvas/src/engine/input/CanvasInputAdapter.ts](packages/canvas/src/engine/input/CanvasInputAdapter.ts) |  |
-| [packages/canvas/src/engine/input/CanvasTransientTargetRegistry.ts](packages/canvas/src/engine/input/CanvasTransientTargetRegistry.ts) |  |
-| [packages/canvas/src/engine/input/fn.normalize-event.ts](packages/canvas/src/engine/input/fn.normalize-event.ts) |  |
-| [packages/canvas/src/engine/input/fn.semantic-hit.ts](packages/canvas/src/engine/input/fn.semantic-hit.ts) |  |
-| [packages/canvas/src/engine/input/index.ts](packages/canvas/src/engine/input/index.ts) |  |
-| [packages/canvas/src/engine/input/typed.ts](packages/canvas/src/engine/input/typed.ts) |  |
-| [packages/canvas/src/engine/interface.ts](packages/canvas/src/engine/interface.ts) |  |
-| [packages/canvas/src/engine/portals/PortalOwnership.ts](packages/canvas/src/engine/portals/PortalOwnership.ts) |  |
-| [packages/canvas/src/engine/product-runtime/CanvasProductGeometryService.ts](packages/canvas/src/engine/product-runtime/CanvasProductGeometryService.ts) |  |
-| [packages/canvas/src/engine/product-runtime/CanvasProductInteractionService.ts](packages/canvas/src/engine/product-runtime/CanvasProductInteractionService.ts) |  |
-| [packages/canvas/src/engine/product-runtime/CanvasProductRuntime.ts](packages/canvas/src/engine/product-runtime/CanvasProductRuntime.ts) |  |
-| [packages/canvas/src/engine/product-runtime/CanvasProductTransformService.ts](packages/canvas/src/engine/product-runtime/CanvasProductTransformService.ts) |  |
-| [packages/canvas/src/engine/product-runtime/CanvasProductTransientService.ts](packages/canvas/src/engine/product-runtime/CanvasProductTransientService.ts) |  |
-| [packages/canvas/src/engine/product-runtime/fn.convert.ts](packages/canvas/src/engine/product-runtime/fn.convert.ts) |  |
-| [packages/canvas/src/engine/product-runtime/fn.targets.ts](packages/canvas/src/engine/product-runtime/fn.targets.ts) |  |
-| [packages/canvas/src/engine/product-runtime/fn.transient.ts](packages/canvas/src/engine/product-runtime/fn.transient.ts) |  |
-| [packages/canvas/src/engine/product-runtime/index.ts](packages/canvas/src/engine/product-runtime/index.ts) |  |
-| [packages/canvas/src/engine/product-runtime/interface.ts](packages/canvas/src/engine/product-runtime/interface.ts) |  |
-| [packages/canvas/src/engine/product-runtime/typed.ts](packages/canvas/src/engine/product-runtime/typed.ts) |  |
-| [packages/canvas/src/engine/projection-runtime/fn.commands.ts](packages/canvas/src/engine/projection-runtime/fn.commands.ts) |  |
-| [packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts](packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts) |  |
-| [packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts](packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts) |  |
-| [packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts](packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts) |  |
-| [packages/canvas/src/engine/projection/CONSTANTS.ts](packages/canvas/src/engine/projection/CONSTANTS.ts) |  |
-| [packages/canvas/src/engine/projection/fn.color.ts](packages/canvas/src/engine/projection/fn.color.ts) |  |
-| [packages/canvas/src/engine/projection/fn.diff.ts](packages/canvas/src/engine/projection/fn.diff.ts) |  |
-| [packages/canvas/src/engine/projection/fn.document-signature.ts](packages/canvas/src/engine/projection/fn.document-signature.ts) |  |
-| [packages/canvas/src/engine/projection/fn.freeze.ts](packages/canvas/src/engine/projection/fn.freeze.ts) |  |
-| [packages/canvas/src/engine/projection/fn.ids.ts](packages/canvas/src/engine/projection/fn.ids.ts) |  |
-| [packages/canvas/src/engine/projection/fn.incremental-document.ts](packages/canvas/src/engine/projection/fn.incremental-document.ts) |  |
-| [packages/canvas/src/engine/projection/fn.index.ts](packages/canvas/src/engine/projection/fn.index.ts) |  |
-| [packages/canvas/src/engine/projection/fn.json.ts](packages/canvas/src/engine/projection/fn.json.ts) |  |
-| [packages/canvas/src/engine/projection/fn.node-position.ts](packages/canvas/src/engine/projection/fn.node-position.ts) |  |
-| [packages/canvas/src/engine/projection/fn.nodes.ts](packages/canvas/src/engine/projection/fn.nodes.ts) |  |
-| [packages/canvas/src/engine/projection/fn.path.ts](packages/canvas/src/engine/projection/fn.path.ts) |  |
-| [packages/canvas/src/engine/projection/fn.persistent-record.ts](packages/canvas/src/engine/projection/fn.persistent-record.ts) |  |
-| [packages/canvas/src/engine/projection/fn.persistent-sequence.ts](packages/canvas/src/engine/projection/fn.persistent-sequence.ts) |  |
-| [packages/canvas/src/engine/projection/fn.placeholder.ts](packages/canvas/src/engine/projection/fn.placeholder.ts) |  |
-| [packages/canvas/src/engine/projection/fn.project-document.ts](packages/canvas/src/engine/projection/fn.project-document.ts) |  |
-| [packages/canvas/src/engine/projection/fn.project-group.ts](packages/canvas/src/engine/projection/fn.project-group.ts) |  |
-| [packages/canvas/src/engine/projection/fn.scene.ts](packages/canvas/src/engine/projection/fn.scene.ts) |  |
-| [packages/canvas/src/engine/projection/fn.signature.ts](packages/canvas/src/engine/projection/fn.signature.ts) |  |
-| [packages/canvas/src/engine/projection/fn.style.ts](packages/canvas/src/engine/projection/fn.style.ts) |  |
-| [packages/canvas/src/engine/projection/fn.topological-groups.ts](packages/canvas/src/engine/projection/fn.topological-groups.ts) |  |
-| [packages/canvas/src/engine/projection/fn.units.ts](packages/canvas/src/engine/projection/fn.units.ts) |  |
-| [packages/canvas/src/engine/projection/fn.validate-projection.ts](packages/canvas/src/engine/projection/fn.validate-projection.ts) |  |
-| [packages/canvas/src/engine/projection/fx.theme.ts](packages/canvas/src/engine/projection/fx.theme.ts) |  |
-| [packages/canvas/src/engine/projection/ProjectionIndex.ts](packages/canvas/src/engine/projection/ProjectionIndex.ts) |  |
-| [packages/canvas/src/engine/projection/ProjectionRegistry.ts](packages/canvas/src/engine/projection/ProjectionRegistry.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.image.ts](packages/canvas/src/engine/projection/projectors/fn.image.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.pen.ts](packages/canvas/src/engine/projection/projectors/fn.pen.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.shape1d.ts](packages/canvas/src/engine/projection/projectors/fn.shape1d.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.shape2d.ts](packages/canvas/src/engine/projection/projectors/fn.shape2d.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.text.ts](packages/canvas/src/engine/projection/projectors/fn.text.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts](packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts) |  |
-| [packages/canvas/src/engine/projection/projectors/fn.widget.ts](packages/canvas/src/engine/projection/projectors/fn.widget.ts) |  |
-| [packages/canvas/src/engine/projection/typed.ts](packages/canvas/src/engine/projection/typed.ts) |  |
-| [packages/canvas/src/engine/ProjectionCoordinator.ts](packages/canvas/src/engine/ProjectionCoordinator.ts) |  |
-| [packages/canvas/src/engine/transients/CanvasTransientService.ts](packages/canvas/src/engine/transients/CanvasTransientService.ts) |  |
-| [packages/canvas/src/engine/typed.ts](packages/canvas/src/engine/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
 | [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
-| [packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts](packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts) |  |
-| [packages/canvas/src/plugins/camera-control/CONSTANTS.ts](packages/canvas/src/plugins/camera-control/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/camera-control/fn.normalize-camera-state.ts](packages/canvas/src/plugins/camera-control/fn.normalize-camera-state.ts) |  |
-| [packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts](packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts) |  |
-| [packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts](packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts) |  |
-| [packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts](packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts) |  |
-| [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
-| [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
-| [packages/canvas/src/plugins/grid/Grid.plugin.ts](packages/canvas/src/plugins/grid/Grid.plugin.ts) |  |
-| [packages/canvas/src/plugins/image/fn.create-image-element.ts](packages/canvas/src/plugins/image/fn.create-image-element.ts) |  |
-| [packages/canvas/src/plugins/image/Image.plugin.ts](packages/canvas/src/plugins/image/Image.plugin.ts) |  |
-| [packages/canvas/src/plugins/index.ts](packages/canvas/src/plugins/index.ts) |  |
-| [packages/canvas/src/plugins/pen/CONSTANTS.ts](packages/canvas/src/plugins/pen/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/pen/fn.draft-element.ts](packages/canvas/src/plugins/pen/fn.draft-element.ts) |  |
-| [packages/canvas/src/plugins/pen/fn.math.ts](packages/canvas/src/plugins/pen/fn.math.ts) |  |
-| [packages/canvas/src/plugins/pen/fn.style.ts](packages/canvas/src/plugins/pen/fn.style.ts) |  |
-| [packages/canvas/src/plugins/pen/Pen.plugin.ts](packages/canvas/src/plugins/pen/Pen.plugin.ts) |  |
-| [packages/canvas/src/plugins/recorder/CONSTANTS.ts](packages/canvas/src/plugins/recorder/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/recorder/fn.recording.ts](packages/canvas/src/plugins/recorder/fn.recording.ts) |  |
-| [packages/canvas/src/plugins/recorder/Recorder.plugin.ts](packages/canvas/src/plugins/recorder/Recorder.plugin.ts) |  |
-| [packages/canvas/src/plugins/recorder/tx.file.ts](packages/canvas/src/plugins/recorder/tx.file.ts) |  |
-| [packages/canvas/src/plugins/recorder/tx.mount.ts](packages/canvas/src/plugins/recorder/tx.mount.ts) |  |
-| [packages/canvas/src/plugins/scene-hydrator/SceneHydrator.plugin.ts](packages/canvas/src/plugins/scene-hydrator/SceneHydrator.plugin.ts) |  |
-| [packages/canvas/src/plugins/select/fn.delete-targets.ts](packages/canvas/src/plugins/select/fn.delete-targets.ts) |  |
-| [packages/canvas/src/plugins/select/fn.get-selection-path.ts](packages/canvas/src/plugins/select/fn.get-selection-path.ts) |  |
-| [packages/canvas/src/plugins/select/Select.plugin.ts](packages/canvas/src/plugins/select/Select.plugin.ts) |  |
-| [packages/canvas/src/plugins/select/tx.delete-selection.ts](packages/canvas/src/plugins/select/tx.delete-selection.ts) |  |
-| [packages/canvas/src/plugins/selection-style-menu/CONSTANTS.ts](packages/canvas/src/plugins/selection-style-menu/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/selection-style-menu/fn.remembered-style.ts](packages/canvas/src/plugins/selection-style-menu/fn.remembered-style.ts) |  |
-| [packages/canvas/src/plugins/selection-style-menu/SelectionStyleMenu.plugin.ts](packages/canvas/src/plugins/selection-style-menu/SelectionStyleMenu.plugin.ts) |  |
-| [packages/canvas/src/plugins/selection-style-menu/tx.mount-selection-style-menu.ts](packages/canvas/src/plugins/selection-style-menu/tx.mount-selection-style-menu.ts) |  |
-| [packages/canvas/src/plugins/shape1d/CONSTANTS.ts](packages/canvas/src/plugins/shape1d/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fn.binding.ts](packages/canvas/src/plugins/shape1d/fn.binding.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fn.draft.ts](packages/canvas/src/plugins/shape1d/fn.draft.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fn.selection-style.ts](packages/canvas/src/plugins/shape1d/fn.selection-style.ts) |  |
-| [packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts](packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts) |  |
-| [packages/canvas/src/plugins/shape2d/CONSTANTS.ts](packages/canvas/src/plugins/shape2d/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/shape2d/Shape2d.plugin.ts](packages/canvas/src/plugins/shape2d/Shape2d.plugin.ts) |  |
-| [packages/canvas/src/plugins/text/CONSTANTS.ts](packages/canvas/src/plugins/text/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/text/fn.compute-text-height.ts](packages/canvas/src/plugins/text/fn.compute-text-height.ts) |  |
-| [packages/canvas/src/plugins/text/fn.create-text-element.ts](packages/canvas/src/plugins/text/fn.create-text-element.ts) |  |
-| [packages/canvas/src/plugins/text/fn.teardown-policy.ts](packages/canvas/src/plugins/text/fn.teardown-policy.ts) |  |
-| [packages/canvas/src/plugins/text/Text.plugin.ts](packages/canvas/src/plugins/text/Text.plugin.ts) |  |
-| [packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts](packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts) |  |
-| [packages/canvas/src/plugins/toolbar/tx.select-tool.ts](packages/canvas/src/plugins/toolbar/tx.select-tool.ts) |  |
-| [packages/canvas/src/plugins/transform/fn.clone-plan.ts](packages/canvas/src/plugins/transform/fn.clone-plan.ts) |  |
-| [packages/canvas/src/plugins/transform/fn.group-transform.ts](packages/canvas/src/plugins/transform/fn.group-transform.ts) |  |
-| [packages/canvas/src/plugins/transform/fn.persist-proposal.ts](packages/canvas/src/plugins/transform/fn.persist-proposal.ts) |  |
-| [packages/canvas/src/plugins/transform/fn.selection-policy.ts](packages/canvas/src/plugins/transform/fn.selection-policy.ts) |  |
-| [packages/canvas/src/plugins/transform/Transform.plugin.ts](packages/canvas/src/plugins/transform/Transform.plugin.ts) |  |
-| [packages/canvas/src/plugins/transform/tx.clone-image-assets.ts](packages/canvas/src/plugins/transform/tx.clone-image-assets.ts) |  |
-| [packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts](packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
-| [packages/canvas/src/semantic/fn.modifiers.ts](packages/canvas/src/semantic/fn.modifiers.ts) |  |
-| [packages/canvas/src/semantic/fn.target.ts](packages/canvas/src/semantic/fn.target.ts) |  |
-| [packages/canvas/src/semantic/fn.transform-proposal.ts](packages/canvas/src/semantic/fn.transform-proposal.ts) |  |
-| [packages/canvas/src/semantic/index.ts](packages/canvas/src/semantic/index.ts) |  |
-| [packages/canvas/src/semantic/typed.ts](packages/canvas/src/semantic/typed.ts) |  |
-| [packages/canvas/src/services/active-session/CanvasActiveSessionService.ts](packages/canvas/src/services/active-session/CanvasActiveSessionService.ts) |  |
-| [packages/canvas/src/services/active-session/fn.classify-change.ts](packages/canvas/src/services/active-session/fn.classify-change.ts) |  |
-| [packages/canvas/src/services/active-session/fn.dependencies.ts](packages/canvas/src/services/active-session/fn.dependencies.ts) |  |
-| [packages/canvas/src/services/active-session/typed.ts](packages/canvas/src/services/active-session/typed.ts) |  |
-| [packages/canvas/src/services/camera/CameraService.ts](packages/canvas/src/services/camera/CameraService.ts) |  |
-| [packages/canvas/src/services/clone/CloneService.ts](packages/canvas/src/services/clone/CloneService.ts) |  |
-| [packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts](packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts) |  |
-| [packages/canvas/src/services/context-menu/ContextMenuService.ts](packages/canvas/src/services/context-menu/ContextMenuService.ts) |  |
-| [packages/canvas/src/services/crdt/CrdtService.ts](packages/canvas/src/services/crdt/CrdtService.ts) |  |
-| [packages/canvas/src/services/crdt/fxBuilder.ts](packages/canvas/src/services/crdt/fxBuilder.ts) |  |
-| [packages/canvas/src/services/crdt/tx.apply-ops.ts](packages/canvas/src/services/crdt/tx.apply-ops.ts) |  |
-| [packages/canvas/src/services/crdt/tx.migrate-widget-window.ts](packages/canvas/src/services/crdt/tx.migrate-widget-window.ts) |  |
-| [packages/canvas/src/services/element/ElementService.ts](packages/canvas/src/services/element/ElementService.ts) |  |
-| [packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts](packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts) |  |
-| [packages/canvas/src/services/element/types.ts](packages/canvas/src/services/element/types.ts) |  |
-| [packages/canvas/src/services/group/fn.product-groups.ts](packages/canvas/src/services/group/fn.product-groups.ts) |  |
-| [packages/canvas/src/services/group/GroupService.ts](packages/canvas/src/services/group/GroupService.ts) |  |
-| [packages/canvas/src/services/group/tx.group-selection.ts](packages/canvas/src/services/group/tx.group-selection.ts) |  |
-| [packages/canvas/src/services/group/tx.move-groups.ts](packages/canvas/src/services/group/tx.move-groups.ts) |  |
-| [packages/canvas/src/services/group/tx.ungroup-selection.ts](packages/canvas/src/services/group/tx.ungroup-selection.ts) |  |
-| [packages/canvas/src/services/group/types.ts](packages/canvas/src/services/group/types.ts) |  |
-| [packages/canvas/src/services/history/HistoryService.ts](packages/canvas/src/services/history/HistoryService.ts) |  |
+| [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
+| [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
-| [packages/canvas/src/services/logging/LoggingService.ts](packages/canvas/src/services/logging/LoggingService.ts) |  |
-| [packages/canvas/src/services/portal/CanvasPortalService.ts](packages/canvas/src/services/portal/CanvasPortalService.ts) |  |
-| [packages/canvas/src/services/projection/CrdtProjectionService.ts](packages/canvas/src/services/projection/CrdtProjectionService.ts) |  |
-| [packages/canvas/src/services/render-order/fn.product-order.ts](packages/canvas/src/services/render-order/fn.product-order.ts) |  |
-| [packages/canvas/src/services/render-order/RenderOrderService.ts](packages/canvas/src/services/render-order/RenderOrderService.ts) |  |
-| [packages/canvas/src/services/render-order/typed.ts](packages/canvas/src/services/render-order/typed.ts) |  |
-| [packages/canvas/src/services/scene/fn.projection-diagnostics.ts](packages/canvas/src/services/scene/fn.projection-diagnostics.ts) |  |
-| [packages/canvas/src/services/scene/SceneService.ts](packages/canvas/src/services/scene/SceneService.ts) |  |
-| [packages/canvas/src/services/selection/CanvasSelectionService.ts](packages/canvas/src/services/selection/CanvasSelectionService.ts) | Compatibility export while callers move to the production SelectionService name. Both names refer to the same renderer-neutral implementation. |
-| [packages/canvas/src/services/selection/CONSTANTS.ts](packages/canvas/src/services/selection/CONSTANTS.ts) |  |
-| [packages/canvas/src/services/selection/fn.resolve-selection.ts](packages/canvas/src/services/selection/fn.resolve-selection.ts) |  |
-| [packages/canvas/src/services/selection/fn.semantic-selection.ts](packages/canvas/src/services/selection/fn.semantic-selection.ts) |  |
-| [packages/canvas/src/services/selection/SelectionService.ts](packages/canvas/src/services/selection/SelectionService.ts) |  |
-| [packages/canvas/src/services/session/SessionService.ts](packages/canvas/src/services/session/SessionService.ts) |  |
-| [packages/canvas/src/services/tool/ToolService.ts](packages/canvas/src/services/tool/ToolService.ts) |  |
-| [packages/canvas/src/services/tool/types.ts](packages/canvas/src/services/tool/types.ts) |  |
-| [packages/canvas/src/services/widget-placement/fn.widget-placement.ts](packages/canvas/src/services/widget-placement/fn.widget-placement.ts) |  |
-| [packages/canvas/src/services/widget-placement/types.ts](packages/canvas/src/services/widget-placement/types.ts) |  |
-| [packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts](packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
-| [packages/canvas/src/widget-host/CONSTANTS.ts](packages/canvas/src/widget-host/CONSTANTS.ts) |  |
-| [packages/canvas/src/widget-host/fn.create-cloned-widget-element.ts](packages/canvas/src/widget-host/fn.create-cloned-widget-element.ts) |  |
-| [packages/canvas/src/widget-host/fn.create-widget-element.ts](packages/canvas/src/widget-host/fn.create-widget-element.ts) |  |
-| [packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts](packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts) |  |
-| [packages/canvas/src/widget-host/types.ts](packages/canvas/src/widget-host/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
 | [packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz](packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
@@ -666,7 +514,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/runtime/AGENTS.md](packages/runtime/AGENTS.md) |  |
 | [packages/runtime/package.json](packages/runtime/package.json) |  |
-| [packages/runtime/src/composition.ts](packages/runtime/src/composition.ts) |  |
 | [packages/runtime/src/create-runtime.ts](packages/runtime/src/create-runtime.ts) |  |
 | [packages/runtime/src/index.ts](packages/runtime/src/index.ts) |  |
 | [packages/runtime/src/interface.ts](packages/runtime/src/interface.ts) |  |
@@ -773,27 +620,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/workspace/WidgetWorkspace.ts](packages/service-agent/src/workspace/WidgetWorkspace.ts) |  |
 | [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
 
-## packages/service-automerge
+## packages/service-canvas
 
 | path | jsdocs |
 |---|---|
-| [packages/service-automerge/package.json](packages/service-automerge/package.json) |  |
-| [packages/service-automerge/src/adapters/turso.adapter.ts](packages/service-automerge/src/adapters/turso.adapter.ts) |  |
-| [packages/service-automerge/src/adapters/websocket.adapter.ts](packages/service-automerge/src/adapters/websocket.adapter.ts) |  |
-| [packages/service-automerge/src/AutomergeService.ts](packages/service-automerge/src/AutomergeService.ts) |  |
-| [packages/service-automerge/src/CONSTANTS.ts](packages/service-automerge/src/CONSTANTS.ts) |  |
-| [packages/service-automerge/src/core/fn.automerge-document.ts](packages/service-automerge/src/core/fn.automerge-document.ts) |  |
-| [packages/service-automerge/src/core/fn.widget-collaborative-state.ts](packages/service-automerge/src/core/fn.widget-collaborative-state.ts) |  |
-| [packages/service-automerge/src/IAutomergeService.ts](packages/service-automerge/src/IAutomergeService.ts) |  |
-| [packages/service-automerge/src/projection/fn.widget-instance-projection.ts](packages/service-automerge/src/projection/fn.widget-instance-projection.ts) |  |
-| [packages/service-automerge/src/projection/index.ts](packages/service-automerge/src/projection/index.ts) |  |
-| [packages/service-automerge/src/projection/interface.ts](packages/service-automerge/src/projection/interface.ts) |  |
-| [packages/service-automerge/src/projection/WidgetInstanceMetadataProjector.ts](packages/service-automerge/src/projection/WidgetInstanceMetadataProjector.ts) |  |
-| [packages/service-automerge/src/types/automerge-service.types.ts](packages/service-automerge/src/types/automerge-service.types.ts) |  |
-| [packages/service-automerge/src/types/canvas-doc.types.ts](packages/service-automerge/src/types/canvas-doc.types.ts) |  |
-| [packages/service-automerge/src/types/canvas-doc.zod.ts](packages/service-automerge/src/types/canvas-doc.zod.ts) |  |
-| [packages/service-automerge/src/types/widget-state.types.ts](packages/service-automerge/src/types/widget-state.types.ts) |  |
-| [packages/service-automerge/tsconfig.json](packages/service-automerge/tsconfig.json) |  |
+| [packages/service-canvas/package.json](packages/service-canvas/package.json) |  |
+| [packages/service-canvas/src/CanvasService.ts](packages/service-canvas/src/CanvasService.ts) |  |
+| [packages/service-canvas/src/fn.command.ts](packages/service-canvas/src/fn.command.ts) |  |
+| [packages/service-canvas/src/ICanvasService.ts](packages/service-canvas/src/ICanvasService.ts) |  |
+| [packages/service-canvas/src/index.ts](packages/service-canvas/src/index.ts) |  |
+| [packages/service-canvas/tsconfig.json](packages/service-canvas/tsconfig.json) |  |
 
 ## packages/service-db
 
@@ -804,7 +640,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/_embedded-migrations.ts](packages/service-db/src/_embedded-migrations.ts) |  |
 | [packages/service-db/src/AgentAuthoringStoreTurso.ts](packages/service-db/src/AgentAuthoringStoreTurso.ts) |  |
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
-| [packages/service-db/src/CollaborationDocumentAuthorizationStoreTurso.ts](packages/service-db/src/CollaborationDocumentAuthorizationStoreTurso.ts) |  |
+| [packages/service-db/src/CanvasItemStoreTurso.ts](packages/service-db/src/CanvasItemStoreTurso.ts) |  |
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
 | [packages/service-db/src/core/fn.resource-name.ts](packages/service-db/src/core/fn.resource-name.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
@@ -836,7 +672,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/fn.widget-instance-metadata-projection.ts](packages/service-db/src/fn.widget-instance-metadata-projection.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso.ts](packages/service-db/src/FunctionControlStoreTurso.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts) |  |
@@ -845,8 +681,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
 | [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
 | [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
-| [packages/service-db/src/migrations/003-widget-instance-projection.sql](packages/service-db/src/migrations/003-widget-instance-projection.sql) |  |
-| [packages/service-db/src/migrations/004-agent-authoring.sql](packages/service-db/src/migrations/004-agent-authoring.sql) |  |
+| [packages/service-db/src/migrations/003-agent-authoring.sql](packages/service-db/src/migrations/003-agent-authoring.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
@@ -856,7 +691,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
 | [packages/service-db/src/WidgetControlStoreTurso.ts](packages/service-db/src/WidgetControlStoreTurso.ts) |  |
 | [packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts](packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts) |  |
-| [packages/service-db/src/WidgetInstanceMetadataStoreTurso.ts](packages/service-db/src/WidgetInstanceMetadataStoreTurso.ts) |  |
+| [packages/service-db/src/WidgetInstanceStateStoreTurso.ts](packages/service-db/src/WidgetInstanceStateStoreTurso.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher
@@ -898,6 +733,22 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-theme/src/ThemeService.ts](packages/service-theme/src/ThemeService.ts) |  |
 | [packages/service-theme/src/types.ts](packages/service-theme/src/types.ts) |  |
 | [packages/service-theme/tsconfig.json](packages/service-theme/tsconfig.json) |  |
+
+## packages/service-widget-state
+
+| path | jsdocs |
+|---|---|
+| [packages/service-widget-state/package.json](packages/service-widget-state/package.json) |  |
+| [packages/service-widget-state/src/CONSTANTS.ts](packages/service-widget-state/src/CONSTANTS.ts) |  |
+| [packages/service-widget-state/src/fn.widget-state-json.ts](packages/service-widget-state/src/fn.widget-state-json.ts) |  |
+| [packages/service-widget-state/src/fn.widget-state-values.ts](packages/service-widget-state/src/fn.widget-state-values.ts) |  |
+| [packages/service-widget-state/src/index.ts](packages/service-widget-state/src/index.ts) |  |
+| [packages/service-widget-state/src/IWidgetStateService.ts](packages/service-widget-state/src/IWidgetStateService.ts) |  |
+| [packages/service-widget-state/src/types.ts](packages/service-widget-state/src/types.ts) |  |
+| [packages/service-widget-state/src/WidgetStateMutationRateLimiter.ts](packages/service-widget-state/src/WidgetStateMutationRateLimiter.ts) |  |
+| [packages/service-widget-state/src/WidgetStateService.ts](packages/service-widget-state/src/WidgetStateService.ts) |  |
+| [packages/service-widget-state/src/WidgetStateVersionStream.ts](packages/service-widget-state/src/WidgetStateVersionStream.ts) |  |
+| [packages/service-widget-state/tsconfig.json](packages/service-widget-state/tsconfig.json) |  |
 
 ## packages/shared-functions
 
@@ -950,10 +801,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/ui-ai-chat/package.json](packages/ui-ai-chat/package.json) |  |
 | [packages/ui-ai-chat/README.md](packages/ui-ai-chat/README.md) |  |
-| [packages/ui-ai-chat/src/canvas-extension/Ai.plugin.ts](packages/ui-ai-chat/src/canvas-extension/Ai.plugin.ts) |  |
-| [packages/ui-ai-chat/src/canvas-extension/DraftPreview.plugin.ts](packages/ui-ai-chat/src/canvas-extension/DraftPreview.plugin.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
-| [packages/ui-ai-chat/src/canvas-extension/Widget.plugin.ts](packages/ui-ai-chat/src/canvas-extension/Widget.plugin.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx](packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx](packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx) |  |
@@ -976,13 +825,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/chat/index.tsx](packages/ui-ai-chat/src/chat/index.tsx) |  |
 | [packages/ui-ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts](packages/ui-ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts) |  |
 | [packages/ui-ai-chat/src/chat/mention-catalog/index.ts](packages/ui-ai-chat/src/chat/mention-catalog/index.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/CONSTANTS.ts](packages/ui-ai-chat/src/draft-preview/CONSTANTS.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/create-ephemeral-collaborative-state-bridge.ts](packages/ui-ai-chat/src/draft-preview/create-ephemeral-collaborative-state-bridge.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts](packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/fn.element-id.ts](packages/ui-ai-chat/src/draft-preview/fn.element-id.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/mount.ts](packages/ui-ai-chat/src/draft-preview/mount.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/typed.ts](packages/ui-ai-chat/src/draft-preview/typed.ts) |  |
-| [packages/ui-ai-chat/src/draft-preview/widget.css](packages/ui-ai-chat/src/draft-preview/widget.css) |  |
 | [packages/ui-ai-chat/src/index.ts](packages/ui-ai-chat/src/index.ts) |  |
 | [packages/ui-ai-chat/src/ports.ts](packages/ui-ai-chat/src/ports.ts) |  |
 | [packages/ui-ai-chat/src/publication/fn.publication-contract.ts](packages/ui-ai-chat/src/publication/fn.publication-contract.ts) |  |
@@ -1015,7 +857,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx](packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx) |  |
 | [packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts](packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts) |  |
 | [packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts) |  |
-| [packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts](packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts](packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts) |  |
@@ -1033,22 +874,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts) |  |
-| [packages/ui-ai-chat/src/widget/CONSTANTS.ts](packages/ui-ai-chat/src/widget/CONSTANTS.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.create-cloned-widget-element.ts](packages/ui-ai-chat/src/widget/fn.create-cloned-widget-element.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.create-widget-element.ts](packages/ui-ai-chat/src/widget/fn.create-widget-element.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts](packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts](packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts](packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts](packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.widget-frame.ts](packages/ui-ai-chat/src/widget/fn.widget-frame.ts) |  |
-| [packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts](packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts) |  |
-| [packages/ui-ai-chat/src/widget/icons/CONSTANTS.ts](packages/ui-ai-chat/src/widget/icons/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/widget/index.ts](packages/ui-ai-chat/src/widget/index.ts) |  |
 | [packages/ui-ai-chat/src/widget/interface.ts](packages/ui-ai-chat/src/widget/interface.ts) |  |
-| [packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts](packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts) |  |
-| [packages/ui-ai-chat/src/widget/tx.mount-widget-portal.ts](packages/ui-ai-chat/src/widget/tx.mount-widget-portal.ts) |  |
-| [packages/ui-ai-chat/src/widget/tx.render-widget-error.ts](packages/ui-ai-chat/src/widget/tx.render-widget-error.ts) |  |
-| [packages/ui-ai-chat/src/widget/WidgetManagerService.ts](packages/ui-ai-chat/src/widget/WidgetManagerService.ts) |  |
 | [packages/ui-ai-chat/tsconfig.json](packages/ui-ai-chat/tsconfig.json) |  |
 | [packages/ui-ai-chat/vitest.config.ts](packages/ui-ai-chat/vitest.config.ts) |  |
 
@@ -1107,13 +934,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
-| [scripts/patch-automerge-repo-throttle.mjs](scripts/patch-automerge-repo-throttle.mjs) | Applies narrowly-scoped Automerge Repo runtime safety patches. |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
-| [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for renderer, widget hosting, and collaboration behavior. |
+| [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for the authoritative canvas and widget-state runtime. |
 | [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
 | [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
 | [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Durable M6 gate for typed, bounded, scale-to-zero server functions. |
@@ -1123,6 +949,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the single-owner resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
-| [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable M7 gate for the neutral renderer host and UI scale. |
+| [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable gate for canvas widget identity, state, and Capsule hosting. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

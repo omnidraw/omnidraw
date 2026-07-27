@@ -3,7 +3,6 @@ import type { TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-s
 export type TPortalSwitchBrowserTenant = {
   activateClientState(scope: TBrowserTenantScope): void;
   bootstrap(scope: TBrowserTenantScope): Promise<void>;
-  clearAutomerge(): Promise<void>;
   connect(scope: TBrowserTenantScope): void;
   disconnect(): Promise<void>;
 };
@@ -17,7 +16,6 @@ export async function txSwitchBrowserTenant(
   args: TArgsSwitchBrowserTenant,
 ): Promise<void> {
   await portal.disconnect();
-  await portal.clearAutomerge();
   portal.activateClientState(args.scope);
   portal.connect(args.scope);
   await portal.bootstrap(args.scope);

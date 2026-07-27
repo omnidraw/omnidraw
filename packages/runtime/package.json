@@ -9,8 +9,5 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@vibecanvas/tenant-core": "0.1.0"
   }
 }

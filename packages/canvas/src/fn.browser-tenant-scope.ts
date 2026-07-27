@@ -19,18 +19,12 @@ export function fnBrowserTenantScopeKey(scope: TBrowserTenantScope): string {
 }
 
 export function fnBrowserTenantStorageKeys(scope: TBrowserTenantScope): Readonly<{
-  automergeDatabase: string;
-  automergeStore: string;
   cameraViewports: string;
-  documents: string;
   frontendStore: string;
 }> {
   const scopeKey = fnBrowserTenantScopeKey(scope);
   return Object.freeze({
-    automergeDatabase: `vibecanvas-automerge:${scopeKey}`,
-    automergeStore: 'documents',
     cameraViewports: `vibecanvas:camera:viewports:${scopeKey}`,
-    documents: `vibecanvas:automerge:documents:${scopeKey}`,
     frontendStore: `vibecanvas:frontend:${scopeKey}`,
   });
 }

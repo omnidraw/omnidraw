@@ -699,15 +699,6 @@ export class WidgetControlStoreTurso implements
     const cutoff = Math.min(nowMs,
       this.#timestamp(request.inactiveBeforeMs, 'inactive revision cutoff'));
     return this.#runImmediate(tenant, async () => {
-      // An offline Automerge document can still contain a revision placement
-      // that has not reached the asynchronous widget_instances projection.
-      // Until placements have a durable reservation/ack protocol, the only
-      // state that proves no later canvas sync can reveal such a reference is
-      // an organization with no durable canvases at all.
-      const durableCanvas = await (await this.database.prepare(`
-        SELECT 1 FROM canvases WHERE org_id = ? LIMIT 1
-      `)).get(tenant.orgId);
-      if (durableCanvas) return { prunedRevisionIds: [] };
       const rows = await (await this.database.prepare(`
         SELECT revision.id
         FROM widget_definition_revisions AS revision

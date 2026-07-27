@@ -1,1 +1,0 @@
-export const OPACITY_COMMIT_DEBOUNCE_MS = 120;

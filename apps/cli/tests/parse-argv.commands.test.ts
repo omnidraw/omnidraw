@@ -24,12 +24,13 @@ describe('parseCliArgv command resolution', () => {
 
   test('resolves known commands', () => {
     expect(parseCliArgv(['bun', 'run', 'serve'])).toMatchObject({ command: 'serve', subcommand: undefined });
+    expect(parseCliArgv(['bun', 'run', 'canvas'])).toMatchObject({ command: 'canvas', subcommand: undefined });
+    expect(parseCliArgv(['bun', 'run', 'canvas', 'query'])).toMatchObject({ command: 'canvas', subcommand: 'query' });
     expect(parseCliArgv(['bun', 'run', 'upgrade'])).toMatchObject({ command: 'upgrade', subcommand: undefined });
     expect(parseCliArgv(['bun', 'run', 'uninstall'])).toMatchObject({ command: 'uninstall', subcommand: undefined });
   });
 
-  test('treats removed canvas commands as unknown', () => {
-    expect(parseCliArgv(['bun', 'run', 'canvas'])).toMatchObject({ command: 'unknown', subcommand: 'canvas' });
+  test('keeps removed top-level canvas aliases unknown', () => {
     expect(parseCliArgv(['bun', 'run', 'query'])).toMatchObject({ command: 'unknown', subcommand: 'query' });
     expect(parseCliArgv(['bun', 'run', 'list'])).toMatchObject({ command: 'unknown', subcommand: 'list' });
   });

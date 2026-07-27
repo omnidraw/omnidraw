@@ -9,7 +9,7 @@ type TPortal = {
   db: Database
 }
 
-type TArgsCreate = Pick<TCanvas, "automerge_url" | "id" | "name"> & {
+type TArgsCreate = Pick<TCanvas, "id" | "name"> & {
   tenant: TTenantContext
 }
 
@@ -34,33 +34,23 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
           org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
         )
         VALUES (?, ?, ?, 'restricted', ?, ${nowSql}, ${nowSql})
-        RETURNING id, name, created_at_ms
+        RETURNING id, name, revision, created_at_ms
       `)
       const created = await createCanvasStmt.get(
         args.tenant.orgId,
         args.id,
         args.name,
         args.tenant.accountId,
-      ) as { id: string; name: string; created_at_ms: unknown } | null | undefined
+      ) as {
+        id: string;
+        name: string;
+        revision: unknown;
+        created_at_ms: unknown;
+      } | null | undefined
 
       if (!created) {
         throw new Error("Failed to create canvas")
       }
-
-      const createDocumentStmt = await portal.db.prepare(`
-        INSERT INTO collaboration_documents (
-          org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
-          created_at_ms, updated_at_ms
-        )
-        VALUES (?, ?, ?, NULL, ?, ?, ${nowSql}, ${nowSql})
-      `)
-      await createDocumentStmt.run(
-        args.tenant.orgId,
-        created.id,
-        created.id,
-        args.automerge_url,
-        args.tenant.orgId,
-      )
 
       const createMemberStmt = await portal.db.prepare(`
         INSERT INTO canvas_members (
@@ -72,7 +62,7 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
       return {
         id: created.id,
         name: created.name,
-        automerge_url: args.automerge_url,
+        revision: Number(created.revision),
         created_at: fnTimestampFromMs(created.created_at_ms),
       }
     },

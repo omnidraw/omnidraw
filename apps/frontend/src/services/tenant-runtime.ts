@@ -1,4 +1,3 @@
-import { cleanup } from './automerge';
 import { orpcWebsocketService } from './orpc-websocket';
 import { txSwitchBrowserTenant } from './tx.switch-browser-tenant';
 import { createSerializedTenantSwitcher } from './tenant-switch-coordinator';
@@ -10,7 +9,6 @@ const switchFrontendTenant = createSerializedTenantSwitcher({
   switchTenant: (scope: TBrowserTenantScope) => txSwitchBrowserTenant({
     activateClientState: activateFrontendTenantState,
     bootstrap: bootstrapFrontendCanvases,
-    clearAutomerge: cleanup,
     connect: (nextScope) => orpcWebsocketService.connect(nextScope),
     disconnect: () => orpcWebsocketService.disconnect(),
   }, { scope }),

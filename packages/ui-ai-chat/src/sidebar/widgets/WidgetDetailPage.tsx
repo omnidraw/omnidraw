@@ -320,10 +320,10 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           <Tabs.Content class={styles.content} value="collaborative-state"><div class={styles.contentInner}>
             <section class={styles.panel}>
               <h3>Instance-scoped collaborative state</h3>
-              <p class={styles.messageIntro}>Each placed widget instance owns an Automerge state document scoped to its organization, canvas, and instance. Definition revisions do not share mutable state.</p>
+              <p class={styles.messageIntro}>Each placed widget instance owns centralized versioned JSON state scoped to its organization, canvas, and exact instance identity. Definition revisions do not share mutable state.</p>
               <dl class={styles.definitionList}>
                 <dt>Definition revision</dt><dd><code>{current().variant.revision}</code></dd>
-                <dt>Lifecycle</dt><dd>Created when an instance is placed; synchronized by the collaboration service.</dd>
+                <dt>Lifecycle</dt><dd>Created lazily and changed through compare-and-swap updates from the widget state service.</dd>
                 <dt>Manifest entry</dt><dd><code>{v2Manifest()?.ui.entry ?? 'Unavailable'}</code></dd>
               </dl>
             </section>

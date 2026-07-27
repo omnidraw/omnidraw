@@ -1,4 +1,3 @@
-import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
@@ -15,20 +14,27 @@ import {
   type TVibecanvasDistributionBuild,
 } from '@vibecanvas/capsule-vibecanvas/builder';
 import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
-import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
+import {
+  CanvasService,
+  CanvasServiceError,
+  type ICanvasService,
+} from '@vibecanvas/service-canvas';
 import {
   planImplicitResourceSelections,
   planSelectedResourceBindings,
 } from '@vibecanvas/service-agent/tools/resource-bindings';
-import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
+import { CanvasItemStoreTurso } from '@vibecanvas/service-db/CanvasItemStoreTurso';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { FunctionControlStoreTurso } from '@vibecanvas/service-db/FunctionControlStoreTurso';
 import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
-import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
+import { WidgetInstanceStateStoreTurso } from '@vibecanvas/service-db/WidgetInstanceStateStoreTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import {
+  WidgetStateService,
+  type IWidgetStateService,
+} from '@vibecanvas/service-widget-state';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'path';
 import { fnScopedKey } from '@vibecanvas/tenant-core';
@@ -99,8 +105,8 @@ function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
 }
 
 export interface IRuntimeServices {
-  automerge: IAutomergeService;
-  widgetInstanceProjection: WidgetInstanceMetadataProjector;
+  canvas: ICanvasService;
+  widgetState: IWidgetStateService;
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
   resourceOwner: ResourceServicePool;
@@ -371,46 +377,35 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     },
   });
 
-  const widgetInstanceProjection = new WidgetInstanceMetadataProjector({
-    store: new WidgetInstanceMetadataStoreTurso(dbService.db, {
-      isCanonicalStateDocumentId: (candidate) => (
-        isValidAutomergeUrl(candidate) && !candidate.includes('#')
-      ),
-    }),
-    nowMs: () => Date.now(),
-  });
-  services.provide('widgetInstanceProjection', 49, widgetInstanceProjection);
-
-  const automergeService = new AutomergeService(dbService.db, {
-    // Exact OSS document access is resolved once by the storage authority so
-    // WebSocket admission and durable validation cannot drift.
-    authorizeDocument: () => true,
-    onElementCreate: () => undefined,
-    onElementDelete: () => undefined,
-    onDocumentSnapshot(event) {
-      const result = widgetInstanceProjection.enqueue(event.tenantContext, {
-        canvasId: event.canvasId,
-        sourceSequence: event.sourceSequence,
-        elements: event.elements,
+  const canvasService = new CanvasService({
+    store: new CanvasItemStoreTurso(dbService.db),
+    clock: { nowMs: () => Date.now() },
+    authorize: async (tenant, access) => {
+      const canvas = await dbService.canvas.findById(tenant, { id: access.canvasId });
+      if (canvas === null) {
+        throw new CanvasServiceError(
+          'FORBIDDEN',
+          `The tenant is not a member of canvas '${access.canvasId}'.`,
+        );
+      }
+      if (access.access === 'read') return;
+      const members = await dbService.canvas.listMembers(tenant, {
+        canvasId: access.canvasId,
       });
-      if (result.status === 'rejected') {
-        throw new Error(`Widget instance projection rejected durable canvas state: ${result.reason}`);
-      }
-      if (result.status === 'quarantined') {
-        eventPublisher.publishNotification(event.tenantContext, {
-          type: 'error',
-          title: 'Widget metadata projection quarantined',
-          description: `${result.canvasId}@${result.sourceSequence ?? 'invalid'}: ${result.reason}`,
-        });
+      const membership = members.find((member) => member.account_id === tenant.accountId);
+      if (membership?.role !== 'owner' && membership?.role !== 'editor') {
+        throw new CanvasServiceError(
+          'FORBIDDEN',
+          `The tenant cannot edit canvas '${access.canvasId}'.`,
+        );
       }
     },
-    async onDocumentRelease(event) {
-      if (event.canvasId === null) return;
-      await widgetInstanceProjection.release(event.tenantContext, event.canvasId);
-    },
-  },
+  });
+  const widgetStateService = new WidgetStateService(
+    new WidgetInstanceStateStoreTurso(dbService.db),
   );
-  services.provide('automerge', 50, automergeService);
+  services.provide('canvas', 49, canvasService);
+  services.provide('widgetState', 50, widgetStateService);
   services.provide('widgetOwner', 55, widgetService);
   services.provide('widget', 56, widgetCapability);
   services.provide(
@@ -428,12 +423,13 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
 
   return {
     services,
-    automergeService,
+    canvasService,
     dbService,
     eventPublisher,
     resourceService,
     functionService,
     widgetService,
+    widgetStateService,
   };
 }
 

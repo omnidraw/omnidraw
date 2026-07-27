@@ -1,4 +1,12 @@
-import { oc } from '@orpc/contract';
+import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import type {
+  TCanvasCommand,
+  TCanvasEvent,
+  TCanvasItemPage,
+  TCanvasItemQuery,
+  TCanvasItemsChangedEvent,
+  TCanvasSnapshot,
+} from '@vibecanvas/canvas-contract';
 import { ZCanvas } from '@vibecanvas/service-db/model';
 import { z } from 'zod';
 
@@ -32,6 +40,26 @@ const canvasContract = oc.router({
   remove: oc
     .input(z.object({ params: z.object({ id: z.string() }) }))
     .output(ZCanvas),
+
+  snapshot: oc
+    .input(z.object({ canvasId: z.string().min(1) }))
+    .output(orpcType<TCanvasSnapshot>()),
+
+  query: oc
+    .input(orpcType<TCanvasItemQuery>())
+    .output(orpcType<TCanvasItemPage>()),
+
+  execute: oc
+    .input(orpcType<TCanvasCommand>())
+    .output(orpcType<TCanvasItemsChangedEvent>()),
+
+  events: oc
+    .input(z.object({
+      canvasId: z.string().min(1),
+      afterRevision: z.number().int().nonnegative(),
+    }))
+    .route({ method: 'GET' })
+    .output(eventIterator(orpcType<TCanvasEvent>())),
 });
 
 export { canvasContract };

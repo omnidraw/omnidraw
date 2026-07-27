@@ -1,4 +1,6 @@
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { TWidgetFrameNode } from '@omnidraw/cangine';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract/CONSTANTS';
+import type { TCanvasWidgetExtensionV1 } from '@vibecanvas/canvas-contract/types';
 import type {
   TWidgetRuntimeIdentity,
   TWidgetRuntimeLoadRequest,
@@ -35,29 +37,51 @@ export function fnWidgetRuntimeIdentityMatches(
 
 export function fnWidgetRuntimeLocalTarget(args: Readonly<{
   canvasId: string;
-  element: TElement;
+  element: Readonly<TWidgetFrameNode>;
 }>): TWidgetRuntimeLocalTarget {
-  if (args.element.data.type !== 'widget-instance') {
-    throw new TypeError('The neutral widget runtime requires widget-instance element data.');
+  const extension = fnWidgetRuntimeWidgetExtension(args.element);
+  if (extension?.type !== 'widget-instance') {
+    throw new TypeError('The widget runtime requires a widget-instance node extension.');
   }
   return {
     canvasId: args.canvasId,
     elementId: args.element.id,
-    widgetInstanceId: args.element.data.instanceId,
-    definitionId: args.element.data.definitionId,
-    revisionId: args.element.data.revisionId,
-    stateDocumentId: args.element.data.stateDocumentId ?? null,
+    widgetInstanceId: extension.instanceId,
+    definitionId: extension.definitionId,
+    revisionId: extension.revisionId,
   };
 }
 
 export function fnWidgetRuntimeLocalTargetMatchesElement(
   target: TWidgetRuntimeLocalTarget,
-  element: TElement | undefined,
+  element: Readonly<TWidgetFrameNode> | undefined,
 ): boolean {
+  const extension = element === undefined
+    ? null
+    : fnWidgetRuntimeWidgetExtension(element);
   return element?.id === target.elementId
-    && element.data.type === 'widget-instance'
-    && element.data.instanceId === target.widgetInstanceId
-    && element.data.definitionId === target.definitionId
-    && element.data.revisionId === target.revisionId
-    && (element.data.stateDocumentId ?? null) === target.stateDocumentId;
+    && extension?.type === 'widget-instance'
+    && extension.instanceId === target.widgetInstanceId
+    && extension.definitionId === target.definitionId
+    && extension.revisionId === target.revisionId;
+}
+
+export function fnWidgetRuntimeWidgetExtension(
+  element: Readonly<TWidgetFrameNode>,
+): TCanvasWidgetExtensionV1 | null {
+  const value = element.extensions?.[CANVAS_WIDGET_EXTENSION_KEY];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  if (value.schemaVersion !== 1) return null;
+  if (value.type === 'ui-widget' && typeof value.kind === 'string') {
+    return value as TCanvasWidgetExtensionV1;
+  }
+  if (
+    value.type === 'widget-instance'
+    && typeof value.instanceId === 'string'
+    && typeof value.definitionId === 'string'
+    && typeof value.revisionId === 'string'
+  ) {
+    return value as TCanvasWidgetExtensionV1;
+  }
+  return null;
 }

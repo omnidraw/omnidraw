@@ -27,8 +27,6 @@ describe('browser tenant storage isolation', () => {
 
     for (const variant of variants) {
       const keysB = fnBrowserTenantStorageKeys(variant);
-      expect(keysB.documents).not.toBe(keysA.documents);
-      expect(keysB.automergeDatabase).not.toBe(keysA.automergeDatabase);
       expect(keysB.cameraViewports).not.toBe(keysA.cameraViewports);
       expect(keysB.frontendStore).not.toBe(keysA.frontendStore);
     }

@@ -1,0 +1,401 @@
+import type {
+  TJsonValue,
+  TLayerNode,
+  TSceneNode,
+  TSceneSnapshot,
+} from "@omnidraw/cangine";
+import { validateSceneSnapshot } from "@omnidraw/cangine/testing";
+import {
+  CANVAS_AUTHORING_EXTENSION_KEY,
+  CANVAS_SCENE_SCHEMA_VERSION,
+  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+  CANVAS_WIDGET_EXTENSION_KEY,
+} from "./CONSTANTS";
+import type {
+  TCanvasAuthoringExtensionV1,
+  TCanvasContractIssue,
+  TCanvasContractValidation,
+  TCanvasWidgetExtensionV1,
+} from "./types";
+
+const RUNTIME_ONLY_NODE_KINDS = new Set<TSceneNode["kind"]>([
+  "background",
+  "html-portal",
+  "layer",
+]);
+
+const WIDGET_UI_KEYS = new Set([
+  "schemaVersion",
+  "type",
+  "kind",
+  "payload",
+  "uiProps",
+]);
+const WIDGET_INSTANCE_KEYS = new Set([
+  "schemaVersion",
+  "type",
+  "instanceId",
+  "definitionId",
+  "revisionId",
+  "uiProps",
+]);
+const AUTHORING_KEYS = new Set([
+  "schemaVersion",
+  "locked",
+  "penSource",
+]);
+const PEN_SOURCE_KEYS = new Set([
+  "points",
+  "pressures",
+  "simulatePressure",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function issue(
+  code: string,
+  path: string,
+  message: string,
+  itemId?: string,
+): TCanvasContractIssue {
+  return itemId === undefined
+    ? { code, path, message }
+    : { code, path, message, itemId };
+}
+
+function validateWidgetExtension(
+  node: TSceneNode,
+  value: TJsonValue,
+  path: string,
+): TCanvasContractIssue[] {
+  if (!isRecord(value)) {
+    return [issue(
+      "INVALID_WIDGET_EXTENSION",
+      path,
+      "The Vibecanvas widget extension must be an object.",
+      node.id,
+    )];
+  }
+  if (node.kind !== "widget-frame") {
+    return [issue(
+      "WIDGET_EXTENSION_NODE_KIND",
+      path,
+      "The Vibecanvas widget extension is allowed only on widget-frame nodes.",
+      node.id,
+    )];
+  }
+  if (value.schemaVersion !== 1) {
+    return [issue(
+      "WIDGET_EXTENSION_VERSION",
+      `${path}/schemaVersion`,
+      "The Vibecanvas widget extension schemaVersion must be 1.",
+      node.id,
+    )];
+  }
+  if (value.type === "ui-widget") {
+    const issues: TCanvasContractIssue[] = [];
+    if (!hasOnlyKeys(value, WIDGET_UI_KEYS)) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_FIELDS",
+        path,
+        "The ui-widget extension contains unsupported fields.",
+        node.id,
+      ));
+    }
+    if (!isNonEmptyString(value.kind)) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_KIND",
+        `${path}/kind`,
+        "The ui-widget kind must be a non-empty string.",
+        node.id,
+      ));
+    }
+    return issues;
+  }
+  if (value.type === "widget-instance") {
+    const issues: TCanvasContractIssue[] = [];
+    if (!hasOnlyKeys(value, WIDGET_INSTANCE_KEYS)) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_FIELDS",
+        path,
+        "The widget-instance extension contains unsupported fields.",
+        node.id,
+      ));
+    }
+    for (const field of ["instanceId", "definitionId", "revisionId"] as const) {
+      if (!isNonEmptyString(value[field])) {
+        issues.push(issue(
+          "WIDGET_EXTENSION_IDENTITY",
+          `${path}/${field}`,
+          `${field} must be a non-empty string.`,
+          node.id,
+        ));
+      }
+    }
+    return issues;
+  }
+  return [issue(
+    "WIDGET_EXTENSION_TYPE",
+    `${path}/type`,
+    "The Vibecanvas widget extension has an unsupported type.",
+    node.id,
+  )];
+}
+
+function validateAuthoringExtension(
+  node: TSceneNode,
+  value: TJsonValue,
+  path: string,
+): TCanvasContractIssue[] {
+  if (!isRecord(value)) {
+    return [issue(
+      "INVALID_AUTHORING_EXTENSION",
+      path,
+      "The Vibecanvas authoring extension must be an object.",
+      node.id,
+    )];
+  }
+  const issues: TCanvasContractIssue[] = [];
+  if (!hasOnlyKeys(value, AUTHORING_KEYS)) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_FIELDS",
+      path,
+      "The Vibecanvas authoring extension contains unsupported fields.",
+      node.id,
+    ));
+  }
+  if (value.schemaVersion !== 1) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_VERSION",
+      `${path}/schemaVersion`,
+      "The Vibecanvas authoring extension schemaVersion must be 1.",
+      node.id,
+    ));
+  }
+  if (value.locked !== undefined && typeof value.locked !== "boolean") {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_LOCKED",
+      `${path}/locked`,
+      "locked must be a boolean.",
+      node.id,
+    ));
+  }
+  if (value.penSource === undefined) return issues;
+  if (!isRecord(value.penSource) || !hasOnlyKeys(value.penSource, PEN_SOURCE_KEYS)) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_PEN_SOURCE",
+      `${path}/penSource`,
+      "penSource must contain only points, pressures, and simulatePressure.",
+      node.id,
+    ));
+    return issues;
+  }
+  const points = value.penSource.points;
+  const pressures = value.penSource.pressures;
+  if (
+    !Array.isArray(points)
+    || !points.every((point) => (
+      isRecord(point)
+      && Number.isFinite(point.x)
+      && Number.isFinite(point.y)
+    ))
+  ) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_PEN_POINTS",
+      `${path}/penSource/points`,
+      "penSource points must be finite two-dimensional points.",
+      node.id,
+    ));
+  }
+  if (
+    !Array.isArray(pressures)
+    || !pressures.every((pressure) => Number.isFinite(pressure))
+  ) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_PEN_PRESSURES",
+      `${path}/penSource/pressures`,
+      "penSource pressures must be finite numbers.",
+      node.id,
+    ));
+  }
+  if (
+    Array.isArray(points)
+    && Array.isArray(pressures)
+    && points.length !== pressures.length
+  ) {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_PEN_LENGTH",
+      `${path}/penSource`,
+      "penSource points and pressures must have equal lengths.",
+      node.id,
+    ));
+  }
+  if (typeof value.penSource.simulatePressure !== "boolean") {
+    issues.push(issue(
+      "AUTHORING_EXTENSION_SIMULATE_PRESSURE",
+      `${path}/penSource/simulatePressure`,
+      "simulatePressure must be a boolean.",
+      node.id,
+    ));
+  }
+  return issues;
+}
+
+export function fnValidateCanvasItemExtensions(
+  node: TSceneNode,
+): TCanvasContractValidation {
+  const issues: TCanvasContractIssue[] = [];
+  const widget = node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY];
+  if (widget !== undefined) {
+    issues.push(...validateWidgetExtension(
+      node,
+      widget,
+      `/extensions/${CANVAS_WIDGET_EXTENSION_KEY}`,
+    ));
+  }
+  const authoring = node.extensions?.[CANVAS_AUTHORING_EXTENSION_KEY];
+  if (authoring !== undefined) {
+    issues.push(...validateAuthoringExtension(
+      node,
+      authoring,
+      `/extensions/${CANVAS_AUTHORING_EXTENSION_KEY}`,
+    ));
+  }
+  return { valid: issues.length === 0, issues };
+}
+
+export function fnMaterializeCanvasValidationSnapshot(
+  items: readonly TSceneNode[],
+): TSceneSnapshot {
+  const contentLayer: TLayerNode = {
+    id: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+    parentId: null,
+    orderKey: "0",
+    kind: "layer",
+    role: "content",
+    coordinateSpace: "world",
+    transform: {
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      scale: { x: 1, y: 1 },
+      skew: { x: 0, y: 0 },
+      origin: { x: 0, y: 0 },
+    },
+  };
+  return {
+    schemaVersion: CANVAS_SCENE_SCHEMA_VERSION,
+    rootLayerIds: [CANVAS_SYNTHETIC_CONTENT_LAYER_ID],
+    nodes: [
+      contentLayer,
+      ...items.map((item) => (
+        item.parentId === null
+          ? { ...item, parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID }
+          : item
+      )),
+    ],
+  };
+}
+
+export function fnValidateCanvasItems(
+  items: readonly TSceneNode[],
+): TCanvasContractValidation {
+  const issues: TCanvasContractIssue[] = [];
+  for (const [index, item] of items.entries()) {
+    if (item.id === CANVAS_SYNTHETIC_CONTENT_LAYER_ID) {
+      issues.push(issue(
+        "RESERVED_ITEM_ID",
+        `/items/${index}/id`,
+        "The item ID is reserved for the runtime content layer.",
+        item.id,
+      ));
+    }
+    if (RUNTIME_ONLY_NODE_KINDS.has(item.kind)) {
+      issues.push(issue(
+        "RUNTIME_ONLY_NODE_KIND",
+        `/items/${index}/kind`,
+        `Node kind '${item.kind}' is runtime-owned and cannot be persisted.`,
+        item.id,
+      ));
+    }
+    if (item.kind === "widget-frame" && item.portal !== undefined) {
+      issues.push(issue(
+        "RUNTIME_ONLY_WIDGET_PORTAL",
+        `/items/${index}/portal`,
+        "Widget portal placement is runtime-owned and cannot be persisted.",
+        item.id,
+      ));
+    }
+    const extensionValidation = fnValidateCanvasItemExtensions(item);
+    issues.push(...extensionValidation.issues.map((extensionIssue) => ({
+      ...extensionIssue,
+      path: `/items/${index}${extensionIssue.path}`,
+    })));
+  }
+  if (issues.length > 0) return { valid: false, issues };
+
+  const sceneValidation = validateSceneSnapshot(
+    fnMaterializeCanvasValidationSnapshot(items),
+  );
+  const sceneIssues = sceneValidation.errors.map((sceneIssue) => issue(
+    sceneIssue.code,
+    sceneIssue.path,
+    sceneIssue.message,
+    sceneIssue.nodeId,
+  ));
+  return {
+    valid: sceneIssues.length === 0,
+    issues: sceneIssues,
+  };
+}
+
+export function fnAssertValidCanvasItems(
+  items: readonly TSceneNode[],
+): asserts items is readonly TSceneNode[] {
+  const validation = fnValidateCanvasItems(items);
+  if (validation.valid) return;
+  const summary = validation.issues
+    .map((entry) => `${entry.code} at ${entry.path}: ${entry.message}`)
+    .join("\n");
+  throw new TypeError(`Invalid authored canvas items:\n${summary}`);
+}
+
+export function fnReadCanvasWidgetExtension(
+  node: TSceneNode,
+): TCanvasWidgetExtensionV1 | null {
+  const value = node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY];
+  if (value === undefined) return null;
+  const validation = validateWidgetExtension(
+    node,
+    value,
+    `/extensions/${CANVAS_WIDGET_EXTENSION_KEY}`,
+  );
+  if (validation.length > 0) return null;
+  return value as TCanvasWidgetExtensionV1;
+}
+
+export function fnReadCanvasAuthoringExtension(
+  node: TSceneNode,
+): TCanvasAuthoringExtensionV1 | null {
+  const value = node.extensions?.[CANVAS_AUTHORING_EXTENSION_KEY];
+  if (value === undefined) return null;
+  const validation = validateAuthoringExtension(
+    node,
+    value,
+    `/extensions/${CANVAS_AUTHORING_EXTENSION_KEY}`,
+  );
+  if (validation.length > 0) return null;
+  return value as unknown as TCanvasAuthoringExtensionV1;
+}

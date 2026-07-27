@@ -1,277 +1,133 @@
-import type { TThemeColorPickerPalette } from "@vibecanvas/service-theme";
-import { Show, createMemo, createSignal, type JSX } from "solid-js";
-import { CapPicker } from "./CapPicker";
-import { ColorPalettePanel, ColorPicker } from "./ColorPicker";
-import { FontFamilyPicker } from "./FontFamilyPicker";
-import { FontSizePicker } from "./FontSizePicker";
-import { LineTypePicker } from "./LineTypePicker";
-import { OpacitySlider } from "./OpacitySlider";
-import { StrokeWidthPicker } from "./StrokeWidthPicker";
-import { TextAlignPicker } from "./TextAlignPicker";
-import { VerticalAlignPicker } from "./VerticalAlignPicker";
-import { DEFAULT_STROKE_WIDTHS, type TCapStyle, type TFontFamily, type TLineType, type TStrokeWidthOption } from "./types";
+import type {
+  TThemeColorPickerPalette,
+  TThemeStrokeWidthOption,
+} from '@vibecanvas/service-theme';
+import { For, Show } from 'solid-js';
+import type {
+  TSelectionStylePatch,
+  TSelectionStyleState,
+} from './fn.selection-style';
+import './styles.css';
 
-export type TSelectionStyleMenuSections = {
-  showFillPicker: boolean;
-  showStrokeColorPicker: boolean;
-  showStrokeWidthPicker: boolean;
-  showTextPickers: boolean;
-  showOpacityPicker: boolean;
-  showLineTypePicker: boolean;
-  showStartCapPicker: boolean;
-  showEndCapPicker: boolean;
-};
+type TSelectionStyleMenuProps = Readonly<{
+  palette: TThemeColorPickerPalette;
+  state: TSelectionStyleState;
+  strokeWidths: readonly TThemeStrokeWidthOption[];
+  onApply(patch: TSelectionStylePatch): void;
+}>;
 
-export type TSelectionStyleMenuValues = {
-  fillColor?: string;
-  strokeColor?: string;
-  strokeWidth?: string;
-  opacity?: number;
-  fontFamily?: TFontFamily;
-  fontSize?: string;
-  textAlign?: "left" | "center" | "right";
-  verticalAlign?: "top" | "middle" | "bottom";
-  lineType?: TLineType;
-  startCap?: TCapStyle;
-  endCap?: TCapStyle;
-};
-
-const sectionStyle: JSX.CSSProperties = {
-  display: "flex",
-  "flex-direction": "column",
-  gap: "0.25rem",
-};
-
-const labelStyle: JSX.CSSProperties = {
-  "font-size": "10px",
-  color: "var(--muted-foreground)",
-  "font-family": "var(--font-mono)",
-};
-
-export function SelectionStyleMenu(props: {
-  visible: () => boolean;
-  sections: () => TSelectionStyleMenuSections;
-  values: () => TSelectionStyleMenuValues;
-  strokeWidthOptions?: () => TStrokeWidthOption[];
-  colorPalette: () => TThemeColorPickerPalette;
-  onFillChange: (color: string) => void;
-  onStrokeChange: (color: string) => void;
-  onStrokeWidthChange: (width: string) => void;
-  onOpacityChange: (opacity: number) => void;
-  onFontFamilyChange: (fontFamily: TFontFamily) => void;
-  onFontSizeChange?: (fontSize: string) => void;
-  onTextAlignChange?: (textAlign: "left" | "center" | "right") => void;
-  onVerticalAlignChange?: (verticalAlign: "top" | "middle" | "bottom") => void;
-  onLineTypeChange: (lineType: TLineType) => void;
-  onStartCapChange: (capStyle: TCapStyle) => void;
-  onEndCapChange: (capStyle: TCapStyle) => void;
-  rootRef?: (element: HTMLDivElement) => void;
-  onEscape?: () => void;
-  onInteraction?: () => void;
-}) {
-  const shouldShow = createMemo(() => props.visible());
-  const resolvedStrokeWidthOptions = createMemo(() => {
-    const options = props.strokeWidthOptions?.() ?? [];
-    return options.length > 0 ? options : [...DEFAULT_STROKE_WIDTHS];
-  });
-  const [expandedColorPanel, setExpandedColorPanel] = createSignal<"fill" | "stroke" | null>(null);
-
+function ColorButton(props: Readonly<{
+  color: string;
+  label: string;
+  selected: boolean;
+  onSelect(): void;
+}>) {
   return (
-    <Show when={shouldShow()}>
-      <div
-        style={{
-          position: "fixed",
-          left: "0.75rem",
-          top: "0.75rem",
-          "z-index": 40,
-          "pointer-events": "none",
-        }}
-      >
-        <div
-          ref={props.rootRef}
-          tabIndex={0}
-          style={{ display: "flex", gap: "0.5rem", "align-items": "flex-start", outline: "none" }}
-          on:pointerdown={(event) => {
-            event.stopPropagation();
-            props.onInteraction?.();
-          }}
-          on:pointermove={(event) => event.stopPropagation()}
-          on:pointerup={(event) => event.stopPropagation()}
-          on:pointercancel={(event) => event.stopPropagation()}
-          on:wheel={(event) => event.stopPropagation()}
-          on:keydown={(event) => {
-            event.stopPropagation();
-            if (event.key !== "Escape") {
-              return;
-            }
+    <button
+      type="button"
+      class="vc-style-color"
+      classList={{ 'vc-style-color--selected': props.selected }}
+      aria-label={props.label}
+      aria-pressed={props.selected}
+      title={props.label}
+      style={{ '--vc-style-color': props.color }}
+      onClick={props.onSelect}
+    />
+  );
+}
 
-            event.preventDefault();
-            props.onEscape?.();
-          }}
-          on:keyup={(event) => event.stopPropagation()}
-        >
-          <div
-            style={{
-              width: "18.5rem",
-              height: "24rem",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              "box-shadow": "0 6px 18px rgba(0, 0, 0, 0.12)",
-              "pointer-events": "auto",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                padding: "0.75rem",
-                display: "flex",
-                "flex-direction": "column",
-                gap: "0.75rem",
-                overflow: "auto",
-              }}
-            >
-            <Show when={props.sections().showFillPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>FILL</span>
-                <ColorPicker
-                  value={props.values().fillColor}
-                  onChange={props.onFillChange}
-                  showTransparent
-                  mode="fill"
-                  palette={props.colorPalette()}
-                  expanded={expandedColorPanel() === "fill"}
-                  onExpandedChange={(expanded) => setExpandedColorPanel(expanded ? "fill" : null)}
+export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
+  return (
+    <aside
+      class="vc-selection-style-menu"
+      aria-label="Selection styles"
+      on:pointerdown={(event) => event.stopPropagation()}
+      on:pointermove={(event) => event.stopPropagation()}
+      on:pointerup={(event) => event.stopPropagation()}
+      on:pointercancel={(event) => event.stopPropagation()}
+      on:wheel={(event) => event.stopPropagation()}
+      on:keydown={(event) => event.stopPropagation()}
+      on:keyup={(event) => event.stopPropagation()}
+    >
+      <Show when={props.state.showFill}>
+        <section class="vc-selection-style-section">
+          <span>FILL</span>
+          <div class="vc-selection-style-colors">
+            <For each={props.palette.fillQuick}>
+              {(swatch) => (
+                <ColorButton
+                  color={swatch.color}
+                  label={`Fill ${swatch.label}`}
+                  selected={props.state.fillColor === swatch.color}
+                  onSelect={() => props.onApply({ fillColor: swatch.color })}
                 />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStrokeColorPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>COLOR</span>
-                <ColorPicker
-                  value={props.values().strokeColor}
-                  onChange={props.onStrokeChange}
-                  mode="stroke"
-                  palette={props.colorPalette()}
-                  expanded={expandedColorPanel() === "stroke"}
-                  onExpandedChange={(expanded) => setExpandedColorPanel(expanded ? "stroke" : null)}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStrokeWidthPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>WIDTH</span>
-                <StrokeWidthPicker
-                  options={resolvedStrokeWidthOptions()}
-                  value={props.values().strokeWidth}
-                  onChange={props.onStrokeWidthChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showTextPickers}>
-              <div style={{ display: "flex", "flex-direction": "column", gap: "0.75rem" }}>
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>FONT</span>
-                  <FontFamilyPicker
-                    value={props.values().fontFamily}
-                    onChange={props.onFontFamilyChange}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>SIZE</span>
-                  <FontSizePicker
-                    value={props.values().fontSize}
-                    onChange={(fontSize) => props.onFontSizeChange?.(fontSize)}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>ALIGN</span>
-                  <TextAlignPicker
-                    value={props.values().textAlign}
-                    onChange={(textAlign) => props.onTextAlignChange?.(textAlign)}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>VERTICAL</span>
-                  <VerticalAlignPicker
-                    value={props.values().verticalAlign}
-                    onChange={(verticalAlign) => props.onVerticalAlignChange?.(verticalAlign)}
-                  />
-                </div>
-              </div>
-            </Show>
-
-            <Show when={props.sections().showLineTypePicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>CURVE</span>
-                <LineTypePicker
-                  value={props.values().lineType}
-                  onChange={props.onLineTypeChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStartCapPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>START</span>
-                <CapPicker
-                  label="START"
-                  value={props.values().startCap}
-                  onChange={props.onStartCapChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showEndCapPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>END</span>
-                <CapPicker
-                  label="END"
-                  value={props.values().endCap}
-                  onChange={props.onEndCapChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showOpacityPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>OPACITY</span>
-                <OpacitySlider
-                  value={props.values().opacity}
-                  onChange={props.onOpacityChange}
-                />
-              </div>
-            </Show>
-            </div>
+              )}
+            </For>
           </div>
+        </section>
+      </Show>
 
-          <Show when={expandedColorPanel() === "fill" && props.sections().showFillPicker}>
-            <div style={{ "pointer-events": "auto" }}>
-              <ColorPalettePanel
-                value={props.values().fillColor}
-                onChange={props.onFillChange}
-                palette={props.colorPalette()}
-              />
-            </div>
-          </Show>
+      <Show when={props.state.showStroke}>
+        <section class="vc-selection-style-section">
+          <span>COLOR</span>
+          <div class="vc-selection-style-colors">
+            <For each={props.palette.strokeQuick}>
+              {(swatch) => (
+                <ColorButton
+                  color={swatch.color}
+                  label={`Stroke ${swatch.label}`}
+                  selected={props.state.strokeColor === swatch.color}
+                  onSelect={() => props.onApply({ strokeColor: swatch.color })}
+                />
+              )}
+            </For>
+          </div>
+        </section>
+      </Show>
 
-          <Show when={expandedColorPanel() === "stroke" && props.sections().showStrokeColorPicker}>
-            <div style={{ "pointer-events": "auto" }}>
-              <ColorPalettePanel
-                value={props.values().strokeColor}
-                onChange={props.onStrokeChange}
-                palette={props.colorPalette()}
-              />
-            </div>
-          </Show>
-        </div>
-      </div>
-    </Show>
+      <Show when={props.state.showStrokeWidth}>
+        <section class="vc-selection-style-section">
+          <span>WIDTH</span>
+          <div class="vc-selection-style-widths">
+            <For each={props.strokeWidths}>
+              {(option) => (
+                <button
+                  type="button"
+                  classList={{
+                    'vc-selection-style-choice': true,
+                    'vc-selection-style-choice--selected':
+                      props.state.strokeWidth === option.value,
+                  }}
+                  aria-pressed={props.state.strokeWidth === option.value}
+                  onClick={() => props.onApply({ strokeWidth: option.value })}
+                >
+                  {option.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </section>
+      </Show>
+
+      <Show when={props.state.showOpacity}>
+        <section class="vc-selection-style-section">
+          <label for="vc-selection-opacity">
+            <span>OPACITY</span>
+            <output>{Math.round(props.state.opacity * 100)}%</output>
+          </label>
+          <input
+            id="vc-selection-opacity"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={props.state.opacity}
+            onInput={(event) => props.onApply({
+              opacity: event.currentTarget.valueAsNumber,
+            })}
+          />
+        </section>
+      </Show>
+    </aside>
   );
 }

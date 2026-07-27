@@ -1,4 +1,10 @@
-import { oc } from '@orpc/contract';
+import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import type {
+  TWidgetStateChangeResult,
+  TWidgetStateGetResult,
+  TWidgetStateJson,
+  TWidgetStateSubscriptionEvent,
+} from '@vibecanvas/service-widget-state';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetCapsuleBudgets,
@@ -141,6 +147,7 @@ export const ZWidgetRuntimeIdentity = z.object({
 }).strict();
 
 export const ZWidgetRuntimeLoadInput = ZWidgetRuntimeIdentity;
+export const ZWidgetStateJson = z.custom<TWidgetStateJson>();
 
 export const ZWidgetBrowserManifest = ZWidgetManifestV3.transform((manifest) => {
   const { server: _server, ...browserManifest } = manifest;
@@ -172,6 +179,23 @@ const widgetContract = oc.router({
   runtime: oc.router({
     config: oc.output(ZWidgetCapsuleHostConfiguration),
     load: oc.input(ZWidgetRuntimeLoadInput).output(ZWidgetRuntimeLoadOutput),
+    state: oc.router({
+      get: oc
+        .input(ZWidgetRuntimeIdentity)
+        .output(orpcType<TWidgetStateGetResult>()),
+      change: oc
+        .input(ZWidgetRuntimeIdentity.extend({
+          expectedVersion: z.number().int().positive(),
+          state: ZWidgetStateJson,
+        }))
+        .output(orpcType<TWidgetStateChangeResult>()),
+      events: oc
+        .input(ZWidgetRuntimeIdentity.extend({
+          afterVersion: z.number().int().nonnegative().optional(),
+        }))
+        .route({ method: 'GET' })
+        .output(eventIterator(orpcType<TWidgetStateSubscriptionEvent>())),
+    }),
   }),
 });
 

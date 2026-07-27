@@ -14,8 +14,7 @@ describe('resource encryption keys', () => {
   let db!: Database;
 
   beforeEach(async () => {
-    // @ts-expect-error custom_types is not typed yet
-    db = await connect(':memory:', { experimental: ['custom_types', 'triggers', 'index_method'] });
+    db = await connect(':memory:', { experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'] as never });
     await txRunMigrations({ db, Bun, TextDecoder }, {
       applicationVersion: 'test', appliedAtMs: 1,
       expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,

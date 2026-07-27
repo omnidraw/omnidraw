@@ -9,15 +9,15 @@ Vibecanvas widgets are generated app surfaces that run on the infinite canvas. A
 Each published widget revision can contain:
 
 - **UI**: the visible interface mounted from an immutable browser artifact.
-- **Collaborative state**: an Automerge document owned by each placed widget instance.
+- **Collaborative state**: versioned JSON state owned by each placed widget instance.
 - **Server functions**: optional, short-lived backend calls with validated inputs and outputs.
 - **Resources**: explicit database, key-value, or secret-store slots bound to the published revision.
 
 ## Collaborative state
 
-Each placed widget instance has its own state document. Two instances of the same revision do not share mutable state unless the widget deliberately coordinates through an external resource.
+Each placed widget instance has its own centrally managed JSON state. Two instances of the same revision do not share mutable state unless the widget deliberately coordinates through an external resource.
 
-The UI reads and changes state through the Vibecanvas SDK. The host synchronizes those changes and keeps the canvas element pinned to its immutable definition and revision identity.
+The UI reads and changes state through the Vibecanvas SDK. The host applies compare-and-swap updates and keeps the canvas item pinned to its immutable definition and revision identity.
 
 ## Server functions
 

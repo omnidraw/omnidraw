@@ -1,6 +1,8 @@
 # `@vibecanvas/ui-ai-chat`
 
-This package owns the AI Chat surface, AI canvas widget adapters, published-widget discovery, workspace Sidebar, widget catalog/detail UI, and ToolIconPicker. Runtime-neutral widget element mechanics live in `@vibecanvas/canvas/widget-host/*`.
+This package owns the AI Chat surface, direct Cangine canvas widget adapters,
+published-widget discovery, workspace Sidebar, widget catalog/detail UI, and
+ToolIconPicker.
 
 Canvas remains the drawing runtime. Integration is one-way: the frontend creates `createAiChatCanvasExtension(...)` and passes it to `Canvas`; `@vibecanvas/canvas` does not import this package.
 
@@ -15,7 +17,10 @@ Production adapters live in `apps/frontend/src/ai-chat-adapters.ts`. Package sou
 
 ## Lifecycle
 
-The canvas extension registers the widget manager service and AI/published-widget plugins before scene hydration. Runtime shutdown stops reconnect timers, removes widget DOM portals and Solid roots, unregisters tools, and releases extension cleanup in reverse install order.
+The canvas extension creates AI and published-widget Cangine nodes and mounts
+their DOM portals. Runtime shutdown stops reconnect timers, removes widget DOM
+portals and Solid roots, unregisters tools, and releases extension cleanup in
+reverse install order.
 
 ## Tests
 

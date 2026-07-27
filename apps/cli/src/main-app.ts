@@ -6,7 +6,6 @@ import { fnBuildHomePreflightError } from './fn.home-preflight-error';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
 import { createAuthPlugin, OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from './plugins/auth/AuthPlugin';
-import { createAutomergePlugin } from './plugins/automerge/AutomergePlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
 import { createOrpcPlugin } from './plugins/orpc/OrpcPlugin';
@@ -90,7 +89,6 @@ export async function runCliMain() {
       createAuthPlugin(),
       createCliPlugin(),
       createOrpcPlugin(),
-      createAutomergePlugin(),
       createServerPlugin(),
     ],
     services,

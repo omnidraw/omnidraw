@@ -1,56 +1,73 @@
 import {
   fnNormalizeWidgetCollaborativeJson,
-  fnReadWidgetCollaborativeStateDocument,
+  fnNormalizeWidgetCollaborativeStateTransportSnapshot,
   fnWidgetCollaborativeStateIdentitiesMatch,
 } from './fn.collaborative-state-json';
 import type {
   TWidgetCollaborativeJsonValue,
-  TWidgetCollaborativeStateDocumentPort,
   TWidgetCollaborativeStateIdentity,
   TWidgetCollaborativeStatePort,
   TWidgetCollaborativeStateSession,
   TWidgetCollaborativeStateSnapshot,
+  TWidgetCollaborativeStateTransportPort,
+  TWidgetCollaborativeStateTransportSnapshot,
 } from './interface';
 
 const MAX_PENDING_STATE_WAITS = 32;
-const MUTATION_RATE_LIMIT = 20;
-const MUTATION_RATE_WINDOW_MS = 1_000;
 const WAIT_ID_PATTERN = /^[A-Za-z0-9._~-]{1,170}$/;
 
 type TCreateWidgetCollaborativeStatePortArgs = Readonly<{
-  openDocument(args: Readonly<{
+  openTransport(args: Readonly<{
     identity: TWidgetCollaborativeStateIdentity;
     signal: AbortSignal;
-  }>): Promise<TWidgetCollaborativeStateDocumentPort>;
+  }>): TWidgetCollaborativeStateTransportPort;
   isIdentityCurrent(identity: TWidgetCollaborativeStateIdentity): boolean;
-  nowMs(): number;
 }>;
 
 type TPendingWait = Readonly<{
+  afterVersion: number;
   resolve(snapshot: TWidgetCollaborativeStateSnapshot): void;
   reject(error: Error): void;
 }>;
+
+export class WidgetCollaborativeStateConflictError extends Error {
+  readonly snapshot: TWidgetCollaborativeStateSnapshot;
+
+  constructor(snapshot: TWidgetCollaborativeStateSnapshot) {
+    super('Widget collaborative state changed before this mutation was committed.');
+    this.name = 'WidgetCollaborativeStateConflictError';
+    this.snapshot = snapshot;
+  }
+}
 
 function cancelledError(): Error {
   return new Error('Widget collaborative state session is disposed.');
 }
 
-function createSession(
-  documentPort: TWidgetCollaborativeStateDocumentPort,
+function canonicalState(
+  snapshot: TWidgetCollaborativeStateTransportSnapshot,
+): string {
+  return JSON.stringify(snapshot.state);
+}
+
+async function createSession(
+  transport: TWidgetCollaborativeStateTransportPort,
   identity: TWidgetCollaborativeStateIdentity,
+  signal: AbortSignal,
   isCurrent: () => boolean,
-  nowMs: () => number,
-): TWidgetCollaborativeStateSession {
+): Promise<TWidgetCollaborativeStateSession> {
   let disposed = false;
   let failure: Error | null = null;
-  let version = 1;
-  let current = fnReadWidgetCollaborativeStateDocument(documentPort.read(), identity);
-  let canonical = JSON.stringify(current);
+  let current = fnNormalizeWidgetCollaborativeStateTransportSnapshot(
+    await transport.get({ identity, signal }),
+    identity,
+  );
+  let canonical = canonicalState(current);
   const pending = new Map<string, TPendingWait>();
-  const mutationTimes: number[] = [];
-  let lastNowMs = -1;
+  let eventIterator: AsyncIterator<TWidgetCollaborativeStateTransportSnapshot> | null = null;
+  let mutationOperation: Promise<void> = Promise.resolve();
 
-  const assertActive = () => {
+  const assertActive = (): void => {
     if (disposed) throw cancelledError();
     if (failure) throw failure;
     if (!isCurrent()) {
@@ -59,18 +76,21 @@ function createSession(
   };
 
   const snapshot = (): TWidgetCollaborativeStateSnapshot => Object.freeze({
-    version,
-    value: fnNormalizeWidgetCollaborativeJson(current),
+    version: current.version,
+    value: fnNormalizeWidgetCollaborativeJson(current.state),
   });
 
-  const settlePending = () => {
+  const settlePending = (): void => {
     if (pending.size === 0) return;
     const next = snapshot();
-    for (const waiter of pending.values()) waiter.resolve(next);
-    pending.clear();
+    for (const [waitId, waiter] of pending) {
+      if (next.version <= waiter.afterVersion) continue;
+      pending.delete(waitId);
+      waiter.resolve(next);
+    }
   };
 
-  const fail = (error: unknown) => {
+  const fail = (error: unknown): void => {
     if (failure || disposed) return;
     failure = error instanceof Error
       ? error
@@ -79,60 +99,100 @@ function createSession(
     pending.clear();
   };
 
-  const refresh = () => {
+  const accept = (
+    candidate: TWidgetCollaborativeStateTransportSnapshot,
+  ): void => {
+    const next = fnNormalizeWidgetCollaborativeStateTransportSnapshot(
+      candidate,
+      identity,
+    );
+    const nextCanonical = canonicalState(next);
+    if (next.version < current.version) return;
+    if (next.version === current.version) {
+      if (nextCanonical !== canonical) {
+        throw new Error('Widget collaborative state changed without advancing its durable version.');
+      }
+      return;
+    }
+    current = next;
+    canonical = nextCanonical;
+    settlePending();
+  };
+
+  assertActive();
+  const events = await transport.events({
+    identity,
+    afterVersion: current.version,
+    signal,
+  });
+  assertActive();
+  eventIterator = events[Symbol.asyncIterator]();
+
+  const consumeEvents = async (): Promise<void> => {
     try {
-      assertActive();
-      const next = fnReadWidgetCollaborativeStateDocument(documentPort.read(), identity);
-      const nextCanonical = JSON.stringify(next);
-      if (nextCanonical === canonical) return;
-      current = next;
-      canonical = nextCanonical;
-      version += 1;
-      settlePending();
+      while (!disposed) {
+        const result = await eventIterator!.next();
+        if (result.done) {
+          if (!disposed) {
+            throw new Error('Widget collaborative state event stream ended.');
+          }
+          return;
+        }
+        assertActive();
+        accept(result.value);
+      }
     } catch (error) {
       fail(error);
     }
   };
+  void consumeEvents();
 
-  const unsubscribe = documentPort.subscribe(refresh);
-
-  const admitMutation = () => {
-    const now = nowMs();
-    if (!Number.isSafeInteger(now) || now < 0 || now < lastNowMs) {
-      throw new Error('Widget collaborative state clock is invalid.');
-    }
-    lastNowMs = now;
-    while (
-      mutationTimes.length > 0
-      && mutationTimes[0]! <= now - MUTATION_RATE_WINDOW_MS
-    ) mutationTimes.shift();
-    if (mutationTimes.length >= MUTATION_RATE_LIMIT) {
-      throw new Error('Widget collaborative state mutation rate limit exceeded.');
-    }
-    mutationTimes.push(now);
-  };
-
-  return Object.freeze({
+  const session = Object.freeze({
     identity: Object.freeze({ ...identity }),
-    async get() {
+    async get(): Promise<TWidgetCollaborativeStateSnapshot> {
       assertActive();
-      refresh();
+      accept(await transport.get({ identity, signal }));
       assertActive();
       return snapshot();
     },
-    async change(value: TWidgetCollaborativeJsonValue) {
+    async change(
+      value: TWidgetCollaborativeJsonValue,
+    ): Promise<TWidgetCollaborativeStateSnapshot> {
       assertActive();
-      admitMutation();
-      const next = fnNormalizeWidgetCollaborativeJson(value);
-      documentPort.change((mutableDocument) => {
-        fnReadWidgetCollaborativeStateDocument(mutableDocument, identity);
-        mutableDocument.state = fnNormalizeWidgetCollaborativeJson(next);
+      const state = fnNormalizeWidgetCollaborativeJson(value);
+      const operation = mutationOperation.then(async () => {
+        assertActive();
+        const expectedVersion = current.version;
+        const result = await transport.change({
+          identity,
+          expectedVersion,
+          state,
+          signal,
+        });
+        assertActive();
+        if (
+          result.status === 'changed'
+          && result.snapshot.version !== expectedVersion + 1
+        ) {
+          throw new Error('Widget collaborative state transport returned an invalid changed version.');
+        }
+        accept(result.snapshot);
+        const next = snapshot();
+        if (result.status === 'conflict') {
+          throw new WidgetCollaborativeStateConflictError(next);
+        }
+        return next;
       });
-      refresh();
-      assertActive();
-      return snapshot();
+      mutationOperation = operation.then(
+        () => undefined,
+        () => undefined,
+      );
+      return await operation;
     },
-    async next(afterVersion: number, waitId: string) {
+    async next(
+      afterVersion: number,
+      waitId: string,
+    ): Promise<TWidgetCollaborativeStateSnapshot> {
       assertActive();
       if (!Number.isSafeInteger(afterVersion) || afterVersion < 0) {
         throw new TypeError('Widget collaborative state version is invalid.');
@@ -140,9 +200,7 @@ function createSession(
       if (!WAIT_ID_PATTERN.test(waitId)) {
         throw new TypeError('Widget collaborative state wait id is invalid.');
       }
-      refresh();
-      assertActive();
-      if (version > afterVersion) return snapshot();
+      if (current.version > afterVersion) return snapshot();
       if (pending.size >= MAX_PENDING_STATE_WAITS) {
         throw new Error('Widget collaborative state wait limit exceeded.');
       }
@@ -150,26 +208,29 @@ function createSession(
         throw new Error('Widget collaborative state wait id is already pending.');
       }
       return await new Promise<TWidgetCollaborativeStateSnapshot>((resolve, reject) => {
-        pending.set(waitId, { resolve, reject });
+        pending.set(waitId, { afterVersion, resolve, reject });
       });
     },
-    cancel(waitId: string) {
+    cancel(waitId: string): void {
       if (!WAIT_ID_PATTERN.test(waitId)) return;
       const waiter = pending.get(waitId);
       if (!waiter) return;
       pending.delete(waitId);
       waiter.reject(new Error('Widget collaborative state wait was cancelled.'));
     },
-    dispose() {
+    dispose(): void {
       if (disposed) return;
       disposed = true;
-      unsubscribe();
-      documentPort.dispose?.();
+      const iterator = eventIterator;
+      eventIterator = null;
+      void iterator?.return?.().catch(() => undefined);
+      transport.dispose?.();
       const error = cancelledError();
       for (const waiter of pending.values()) waiter.reject(error);
       pending.clear();
     },
-  });
+  }) satisfies TWidgetCollaborativeStateSession;
+  return session;
 }
 
 export function createWidgetCollaborativeStatePort(
@@ -177,25 +238,38 @@ export function createWidgetCollaborativeStatePort(
 ): TWidgetCollaborativeStatePort {
   return Object.freeze({
     async open(openArgs) {
-      const isExactCurrent = () => openArgs.isCurrent()
+      const isExactCurrent = () => !openArgs.signal.aborted
+        && openArgs.isCurrent()
         && args.isIdentityCurrent(openArgs.identity);
       if (openArgs.signal.aborted || !isExactCurrent()) {
         throw new Error('Widget collaborative state authority is no longer current.');
       }
-      const documentPort = await args.openDocument(openArgs);
+      const transport = args.openTransport(openArgs);
       if (openArgs.signal.aborted || !isExactCurrent()) {
-        documentPort.dispose?.();
+        transport.dispose?.();
         throw new Error('Widget collaborative state authority is no longer current.');
       }
       try {
-        const session = createSession(documentPort, openArgs.identity, () => isExactCurrent(), args.nowMs);
-        if (!fnWidgetCollaborativeStateIdentitiesMatch(session.identity, openArgs.identity)) {
+        const session = await createSession(
+          transport,
+          openArgs.identity,
+          openArgs.signal,
+          isExactCurrent,
+        );
+        if (openArgs.signal.aborted || !isExactCurrent()) {
+          session.dispose();
+          throw new Error('Widget collaborative state authority is no longer current.');
+        }
+        if (!fnWidgetCollaborativeStateIdentitiesMatch(
+          session.identity,
+          openArgs.identity,
+        )) {
           session.dispose();
           throw new Error('Widget collaborative state identity mismatch.');
         }
         return session;
       } catch (error) {
-        documentPort.dispose?.();
+        transport.dispose?.();
         throw error;
       }
     },

@@ -11,7 +11,7 @@ import {
 const canvas = (id: string): TBackendCanvas => ({
   id,
   name: `Canvas ${id}`,
-  automerge_url: `automerge:${id}`,
+  revision: 0,
   created_at: "2026-01-01 00:00:00",
 });
 

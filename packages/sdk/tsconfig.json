@@ -12,7 +12,6 @@
       "@vibecanvas/sdk/server": ["./src/server.ts"],
       "@vibecanvas/sdk/function-client": ["./src/function-client.ts"],
       "@vibecanvas/canvas/*": ["../canvas/src/*"],
-      "@vibecanvas/service-automerge/*": ["../service-automerge/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

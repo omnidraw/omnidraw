@@ -105,7 +105,7 @@ const tenant = fnFreezeTenantContext({
 const fakeContext = {
   tenant,
   agent: fakeAgentCapability,
-  automerge: fakeCapability<TApiContext['automerge']>(),
+  canvas: fakeCapability<TApiContext['canvas']>(),
   db: {
     canvas: fakeCapability<TApiContext['db']['canvas']>(),
     file: fakeCapability<TApiContext['db']['file']>(),
@@ -127,6 +127,7 @@ const fakeContext = {
   humanResourceSecret: fakeHumanResourceSecretCapability,
   resource: fakeResourceCapability,
   widget: fakeCapability<TApiContext['widget']>(),
+  widgetState: fakeCapability<TApiContext['widgetState']>(),
   widgetCapsuleHostConfiguration:
     fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),
   widgetRuntimeLoadAdmission: {

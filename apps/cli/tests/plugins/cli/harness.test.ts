@@ -38,13 +38,14 @@ describe('CLI test harness', () => {
     expect(result.stdout).toContain('Usage:');
     expect(result.stdout).toContain('Commands:');
     expect(result.stdout).toContain('serve     Start the vibecanvas runtime');
+    expect(result.stdout).toContain('canvas    Query and mutate a running canvas server');
     expect(result.stdout).toContain('upgrade   Check for and install updates');
     expect(result.stdout).toContain('uninstall Remove the installed binary');
     expect(result.stdout).toContain('--data-dir <path>');
     expect(result.stdout).toContain('VIBECANVAS_HOME');
     expect(result.stdout).not.toContain('--db');
     expect(result.stdout).not.toContain('Canvas subcommands:');
-    expect(result.stdout).not.toContain('vibecanvas canvas');
+    expect(result.stdout).toContain('vibecanvas canvas list --json');
     expect(existsSync(context.homeDir)).toBe(false);
   }, 15_000);
 

@@ -7,11 +7,11 @@ const apiRemoveCanvas = baseCanvasOs.remove.handler(async ({ context, input }) =
     throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });
   }
 
-  await context.automerge.deleteDocument(context.tenant, canvas.automerge_url)
   const result = await context.db.canvas.deleteById(context.tenant, input.params);
   if (result.length === 0) {
     throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });
   }
+  await context.canvas.release(context.tenant, { canvasId: canvas.id });
   return result[0];
 });
 

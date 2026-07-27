@@ -103,6 +103,7 @@ CREATE TABLE canvases (
   created_by_account_id TEXT NOT NULL,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
   PRIMARY KEY (org_id, id),
   UNIQUE (org_id, name),
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
@@ -122,6 +123,117 @@ CREATE TABLE canvas_members (
   FOREIGN KEY (org_id, canvas_id) REFERENCES canvases (org_id, id) ON DELETE CASCADE,
   FOREIGN KEY (org_id, account_id)
     REFERENCES organization_memberships (org_id, account_id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE canvas_items (
+  org_id TEXT NOT NULL,
+  canvas_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (length(id) > 0),
+  item_json BLOB NOT NULL,
+  item_revision INTEGER NOT NULL DEFAULT 0 CHECK (item_revision >= 0),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  kind TEXT GENERATED ALWAYS AS (
+    json_extract(item_json, '$.kind')
+  ) VIRTUAL NOT NULL,
+  parent_id TEXT GENERATED ALWAYS AS (
+    json_extract(item_json, '$.parentId')
+  ) VIRTUAL,
+  order_key TEXT GENERATED ALWAYS AS (
+    json_extract(item_json, '$.orderKey')
+  ) VIRTUAL NOT NULL,
+  widget_instance_id TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".type'
+      ) = 'widget-instance'
+      THEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".instanceId'
+      )
+      ELSE NULL
+    END
+  ) VIRTUAL,
+  definition_id TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".type'
+      ) = 'widget-instance'
+      THEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".definitionId'
+      )
+      ELSE NULL
+    END
+  ) VIRTUAL,
+  revision_id TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".type'
+      ) = 'widget-instance'
+      THEN json_extract(
+        item_json,
+        '$.extensions."vibecanvas:widget".revisionId'
+      )
+      ELSE NULL
+    END
+  ) VIRTUAL,
+  PRIMARY KEY (org_id, canvas_id, id),
+  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
+  FOREIGN KEY (org_id, canvas_id)
+    REFERENCES canvases (org_id, id) ON DELETE CASCADE,
+  CHECK (typeof(item_json) = 'blob'),
+  CHECK (json_valid(json(item_json))),
+  CHECK (json_type(item_json, '$') = 'object'),
+  CHECK (
+    json_type(item_json, '$.id') IS 'text'
+    AND json_extract(item_json, '$.id') = id
+  ),
+  CHECK (
+    json_type(item_json, '$.kind') IS 'text'
+    AND length(trim(kind)) > 0
+  ),
+  CHECK (
+    json_type(item_json, '$.parentId') IS NOT NULL
+    AND json_type(item_json, '$.parentId') IN ('null', 'text')
+    AND (
+      json_type(item_json, '$.parentId') = 'null'
+      OR length(parent_id) > 0
+    )
+  ),
+  CHECK (
+    json_type(item_json, '$.orderKey') IS 'text'
+    AND length(order_key) > 0
+  ),
+  CHECK (
+    json_extract(
+      item_json,
+      '$.extensions."vibecanvas:widget".type'
+    ) IS NOT 'widget-instance'
+    OR (
+      widget_instance_id IS NOT NULL
+      AND definition_id IS NOT NULL
+      AND revision_id IS NOT NULL
+      AND json_type(
+        item_json,
+        '$.extensions."vibecanvas:widget".instanceId'
+      ) = 'text'
+      AND json_type(
+        item_json,
+        '$.extensions."vibecanvas:widget".definitionId'
+      ) = 'text'
+      AND json_type(
+        item_json,
+        '$.extensions."vibecanvas:widget".revisionId'
+      ) = 'text'
+      AND length(trim(widget_instance_id)) > 0
+      AND length(trim(definition_id)) > 0
+      AND length(trim(revision_id)) > 0
+    )
+  )
 ) STRICT;
 
 CREATE TABLE artifact_references (
@@ -273,38 +385,19 @@ CREATE TABLE widget_instances (
     REFERENCES widget_definition_revisions (org_id, definition_id, id) ON DELETE RESTRICT
 ) STRICT;
 
-CREATE TABLE collaboration_documents (
+CREATE TABLE widget_instance_states (
   org_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  canvas_id TEXT,
-  widget_instance_id TEXT,
-  automerge_url TEXT NOT NULL CHECK (length(trim(automerge_url)) BETWEEN 1 AND 500),
-  partition_key TEXT NOT NULL CHECK (length(trim(partition_key)) BETWEEN 1 AND 200),
+  widget_instance_id TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  state_json BLOB NOT NULL,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
-  content_version INTEGER NOT NULL DEFAULT 0 CHECK (content_version >= 0),
-  PRIMARY KEY (org_id, id),
-  UNIQUE (org_id, automerge_url),
-  UNIQUE (org_id, canvas_id),
-  UNIQUE (org_id, widget_instance_id),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, canvas_id) REFERENCES canvases (org_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, widget_instance_id) REFERENCES widget_instances (org_id, id) ON DELETE CASCADE,
-  CHECK ((canvas_id IS NOT NULL) <> (widget_instance_id IS NOT NULL))
-) STRICT;
-
-CREATE TABLE collaboration_chunks (
-  org_id TEXT NOT NULL,
-  document_id TEXT NOT NULL,
-  chunk_key TEXT NOT NULL CHECK (length(trim(chunk_key)) BETWEEN 1 AND 300),
-  sequence INTEGER NOT NULL CHECK (sequence >= 0),
-  chunk_bytes BLOB NOT NULL CHECK (length(chunk_bytes) > 0),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  PRIMARY KEY (org_id, document_id, chunk_key),
-  UNIQUE (org_id, document_id, sequence),
+  PRIMARY KEY (org_id, widget_instance_id),
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, document_id)
-    REFERENCES collaboration_documents (org_id, id) ON DELETE CASCADE
+  FOREIGN KEY (org_id, widget_instance_id)
+    REFERENCES widget_instances (org_id, id) ON DELETE CASCADE,
+  CHECK (typeof(state_json) = 'blob'),
+  CHECK (json_valid(json(state_json)))
 ) STRICT;
 
 CREATE TABLE resource_catalog (
@@ -930,18 +1023,6 @@ CREATE TABLE function_definitions (
   CHECK ((retry_mode = 'none' AND max_attempts = 1) OR retry_mode = 'idempotent')
 ) STRICT;
 
-CREATE TABLE widget_instance_projection_heads (
-  org_id TEXT NOT NULL,
-  canvas_id TEXT NOT NULL,
-  source_sequence INTEGER NOT NULL CHECK (source_sequence >= 0),
-  snapshot_digest_sha256 sha256_hex NOT NULL,
-  projected_at_ms INTEGER NOT NULL CHECK (projected_at_ms >= 0),
-  PRIMARY KEY (org_id, canvas_id),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, canvas_id)
-    REFERENCES canvases (org_id, id) ON DELETE CASCADE
-) STRICT;
-
 CREATE TABLE widget_revision_sources (
   org_id TEXT NOT NULL,
   definition_id TEXT NOT NULL,
@@ -972,6 +1053,20 @@ CREATE INDEX canvases_creator_idx ON canvases (org_id, created_by_account_id);
 
 CREATE INDEX canvas_members_account_idx ON canvas_members (org_id, account_id, canvas_id);
 
+CREATE INDEX canvas_items_kind_idx
+  ON canvas_items (org_id, canvas_id, kind, id);
+
+CREATE INDEX canvas_items_parent_order_idx
+  ON canvas_items (org_id, canvas_id, parent_id, order_key, id);
+
+CREATE UNIQUE INDEX canvas_items_widget_instance_idx
+  ON canvas_items (org_id, widget_instance_id)
+  WHERE widget_instance_id IS NOT NULL;
+
+CREATE INDEX canvas_items_widget_definition_revision_idx
+  ON canvas_items (org_id, definition_id, revision_id, widget_instance_id, id)
+  WHERE widget_instance_id IS NOT NULL;
+
 CREATE INDEX artifact_references_retention_idx
   ON artifact_references (org_id, retention_state, retain_until_ms);
 
@@ -992,9 +1087,6 @@ CREATE INDEX widget_definition_revisions_capsule_artifact_idx
 
 CREATE INDEX widget_instances_definition_idx
   ON widget_instances (org_id, definition_id, revision_id);
-
-CREATE INDEX collaboration_documents_partition_idx
-  ON collaboration_documents (org_id, partition_key, id);
 
 CREATE INDEX resource_catalog_status_idx ON resource_catalog (org_id, status, created_at_ms);
 

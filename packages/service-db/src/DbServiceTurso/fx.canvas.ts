@@ -32,7 +32,7 @@ type TArgsListMembers = {
 type TCanvasStorageRow = {
   id: string
   name: string
-  automerge_url: string
+  revision: unknown
   created_at_ms: unknown
 }
 
@@ -48,7 +48,7 @@ function fnParseCanvasRow(row: TCanvasStorageRow): TCanvas {
   return {
     id: row.id,
     name: row.name,
-    automerge_url: row.automerge_url,
+    revision: Number(row.revision),
     created_at: fnTimestampFromMs(row.created_at_ms),
   }
 }
@@ -65,16 +65,12 @@ function fnParseCanvasMemberRow(row: TCanvasMemberStorageRow): TCanvasMember {
 
 export async function fxCanvasListAll(portal: TPortal, args: TArgsAccountScoped): Promise<TCanvas[]> {
   const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-      canvases.created_at_ms
+    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
     FROM canvases
     INNER JOIN canvas_members
       ON canvas_members.org_id = canvases.org_id
       AND canvas_members.canvas_id = canvases.id
       AND canvas_members.account_id = ?
-    INNER JOIN collaboration_documents
-      ON collaboration_documents.org_id = canvases.org_id
-      AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ?
   `)
   const rows = await stmt.all(args.tenant.accountId, args.tenant.orgId) as TCanvasStorageRow[]
@@ -83,16 +79,12 @@ export async function fxCanvasListAll(portal: TPortal, args: TArgsAccountScoped)
 
 export async function fxCanvasFindByName(portal: TPortal, args: TArgsFindByName): Promise<TCanvas | null> {
   const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-      canvases.created_at_ms
+    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
     FROM canvases
     INNER JOIN canvas_members
       ON canvas_members.org_id = canvases.org_id
       AND canvas_members.canvas_id = canvases.id
       AND canvas_members.account_id = ?
-    INNER JOIN collaboration_documents
-      ON collaboration_documents.org_id = canvases.org_id
-      AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ? AND canvases.name = ?
   `)
   const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.name) as TCanvasStorageRow | undefined
@@ -101,16 +93,12 @@ export async function fxCanvasFindByName(portal: TPortal, args: TArgsFindByName)
 
 export async function fxCanvasFindById(portal: TPortal, args: TArgsFindById): Promise<TCanvas | null> {
   const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-      canvases.created_at_ms
+    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
     FROM canvases
     INNER JOIN canvas_members
       ON canvas_members.org_id = canvases.org_id
       AND canvas_members.canvas_id = canvases.id
       AND canvas_members.account_id = ?
-    INNER JOIN collaboration_documents
-      ON collaboration_documents.org_id = canvases.org_id
-      AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ? AND canvases.id = ?
   `)
   const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.id) as TCanvasStorageRow | undefined

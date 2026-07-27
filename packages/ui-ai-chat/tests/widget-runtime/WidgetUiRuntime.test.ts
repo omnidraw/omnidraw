@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { describe, expect, test, vi } from 'vitest';
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { TWidgetFrameNode } from '@omnidraw/cangine';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract';
 import { WidgetUiArtifactCache } from '../../src/widget-runtime/WidgetUiArtifactCache';
 import { WidgetUiRuntime } from '../../src/widget-runtime/WidgetUiRuntime';
 import type {
@@ -54,31 +55,31 @@ function digest(bytes: Uint8Array): string {
 
 function element(
   candidate: TWidgetRuntimeIdentity = identity,
-  stateDocumentId?: string,
   uiProps?: Record<string, unknown>,
-): TElement {
+): TWidgetFrameNode {
   return {
     id: candidate.elementId,
-    x: 0,
-    y: 0,
-    rotation: 0,
-    zIndex: '',
-    parentGroupId: null,
-    bindings: [],
-    locked: false,
-    createdAt: 1,
-    updatedAt: 1,
-    style: {},
-    data: {
-      type: 'widget-instance',
-      definitionId: candidate.definitionId,
-      revisionId: candidate.revisionId,
-      instanceId: candidate.widgetInstanceId,
-      ...(stateDocumentId === undefined ? {} : { stateDocumentId }),
-      ...(uiProps === undefined ? {} : { uiProps }),
-      w: 320,
-      h: 240,
-      expanded: true,
+    kind: 'widget-frame',
+    parentId: null,
+    orderKey: 'a0',
+    transform: {
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      scale: { x: 1, y: 1 },
+      skew: { x: 0, y: 0 },
+      origin: { x: 0, y: 0 },
+    },
+    size: { width: 320, height: 240 },
+    portal: { portalId: `portal:${candidate.elementId}` },
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        type: 'widget-instance',
+        definitionId: candidate.definitionId,
+        revisionId: candidate.revisionId,
+        instanceId: candidate.widgetInstanceId,
+        ...(uiProps === undefined ? {} : { uiProps }),
+      },
     },
   };
 }
@@ -145,6 +146,7 @@ function fixture(args: Readonly<{
   cache?: WidgetUiArtifactCache;
   clock?: ReturnType<typeof manualClock>;
   collaborativeState?: TWidgetCollaborativeStatePort;
+  collaborativeStateEnabled?: boolean;
   featureProfiles?: readonly string[];
   organizationId?: () => string;
   tenantAuthorityKey?: () => string;
@@ -175,6 +177,14 @@ function fixture(args: Readonly<{
         runtime: 'capsule' as const,
         entry: 'ui/main.ts',
         target,
+        ...(args.collaborativeStateEnabled === true
+          ? {
+              state: {
+                collaborative: true,
+                localStore: 'none' as const,
+              },
+            }
+          : {}),
       },
     },
     artifact: {
@@ -247,22 +257,21 @@ function fixture(args: Readonly<{
 
 async function renderReady(
   runtime: WidgetUiRuntime,
-  stateDocumentId?: string,
   uiProps?: Record<string, unknown>,
 ) {
   const root = document.createElement('div');
   const cleanup = runtime.render({
     root,
     canvasId: identity.canvasId,
-    element: element(identity, stateDocumentId, uiProps),
+    element: element(identity, uiProps),
   });
   await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('ready'));
   return { cleanup, root };
 }
 
-function collaborativeSession(stateDocumentId: string): TWidgetCollaborativeStateSession {
+function collaborativeSession(): TWidgetCollaborativeStateSession {
   return {
-    identity: { ...identity, stateDocumentId },
+    identity,
     get: vi.fn(async () => ({ version: 1, value: null })),
     change: vi.fn(),
     next: vi.fn(),
@@ -276,7 +285,6 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     const current = fixture();
     const rendered = await renderReady(
       current.runtime,
-      undefined,
       { count: 1, label: 'initial' },
     );
 
@@ -759,17 +767,18 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     });
   });
 
-  test('opens collaborative state only for the exact captured document identity', async () => {
-    const state = collaborativeSession('state-a');
+  test('opens collaborative state only for the exact manifest-enabled instance identity', async () => {
+    const state = collaborativeSession();
     const open = vi.fn(async () => state);
     const current = fixture({
       collaborativeState: {
         open,
       },
+      collaborativeStateEnabled: true,
     });
-    const rendered = await renderReady(current.runtime, 'state-a');
+    const rendered = await renderReady(current.runtime);
     expect(open).toHaveBeenCalledWith(expect.objectContaining({
-      identity: { ...identity, stateDocumentId: 'state-a' },
+      identity,
       signal: expect.any(AbortSignal),
     }));
     expect(open.mock.calls[0]![0].isCurrent()).toBe(true);

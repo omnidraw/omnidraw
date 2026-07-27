@@ -9,11 +9,6 @@
     "scripts/fixtures/external-composition"
   ],
   "catalog": {
-    "@automerge/automerge": "3.2.6",
-    "@automerge/automerge-repo": "2.5.6",
-    "@automerge/automerge-repo-network-broadcastchannel": "2.5.6",
-    "@automerge/automerge-repo-network-websocket": "2.5.6",
-    "@automerge/automerge-repo-storage-indexeddb": "2.5.6",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",
@@ -27,9 +22,8 @@
     "@tursodatabase/database": "0.6.1"
   },
   "scripts": {
-    "postinstall": "node scripts/patch-automerge-repo-throttle.mjs",
     "pretest": "bun run --filter '@vibecanvas/sdk' build",
-    "test": "bun run --sequential --filter '@vibecanvas/cli' --filter '@vibecanvas/web' --filter '@vibecanvas/frontend' --filter '@vibecanvas/ui-ai-chat' --filter '@vibecanvas/api' --filter '@vibecanvas/canvas' --filter '@vibecanvas/capsule-vibecanvas' --filter '@vibecanvas/function-runtime' --filter '@vibecanvas/resource-runtime' --filter '@vibecanvas/runtime' --filter '@vibecanvas/sdk' --filter '@vibecanvas/service-agent' --filter '@vibecanvas/service-automerge' --filter '@vibecanvas/service-db' --filter '@vibecanvas/service-event-publisher' --filter '@vibecanvas/service-kv' --filter '@vibecanvas/service-theme' --filter '@vibecanvas/shared-functions' --filter '@vibecanvas/tapable' --filter '@vibecanvas/tenant-core' --filter '@vibecanvas/widget-contract' test && bun run test:external-composition && bun run test:architecture",
+    "test": "bun run --sequential --filter '@vibecanvas/cli' --filter '@vibecanvas/web' --filter '@vibecanvas/frontend' --filter '@vibecanvas/ui-ai-chat' --filter '@vibecanvas/api' --filter '@vibecanvas/canvas' --filter '@vibecanvas/canvas-contract' --filter '@vibecanvas/capsule-vibecanvas' --filter '@vibecanvas/function-runtime' --filter '@vibecanvas/resource-runtime' --filter '@vibecanvas/runtime' --filter '@vibecanvas/sdk' --filter '@vibecanvas/service-agent' --filter '@vibecanvas/service-canvas' --filter '@vibecanvas/service-db' --filter '@vibecanvas/service-event-publisher' --filter '@vibecanvas/service-kv' --filter '@vibecanvas/service-theme' --filter '@vibecanvas/service-widget-state' --filter '@vibecanvas/shared-functions' --filter '@vibecanvas/tapable' --filter '@vibecanvas/tenant-core' --filter '@vibecanvas/widget-contract' test && bun run test:external-composition && bun run test:architecture",
     "test:canvas-regression": "bun run scripts/test-canvas-regression.ts",
     "test:isolation": "bun run scripts/test-isolation.ts",
     "test:resource-runtime": "bun run scripts/test-resource-runtime.ts",
@@ -39,7 +33,6 @@
     "test:capsule-browser": "bun run --cwd apps/capsule-browser-acceptance test",
     "test:external-composition": "bunx tsc -p scripts/fixtures/external-composition/tsconfig.json --noEmit && bun test scripts/fixtures/external-composition/external-composition.test.ts",
     "test:architecture": "bunx tsc -p scripts/tsconfig.architecture.json --noEmit && bun test scripts/architecture-boundaries.test.ts scripts/external-composition-api-integration.test.ts",
-    "test:managed-v3-joined": "bun test apps/cli/tests/ManagedV3JoinedFlow.test.ts",
     "test:packed-public-composition": "bun run scripts/test-packed-public-composition.ts",
     "test:m10:load": "bun run scripts/test-m10-load.ts",
     "test:final-acceptance": "bun run scripts/test-final-acceptance.ts",
@@ -70,7 +63,6 @@
   "keywords": [],
   "license": "MIT",
   "devDependencies": {
-    "@automerge/automerge": "catalog:",
     "@typescript-eslint/parser": "^8.63.0",
     "bun-types": "^1.3.14",
     "eslint": "^10.7.0"

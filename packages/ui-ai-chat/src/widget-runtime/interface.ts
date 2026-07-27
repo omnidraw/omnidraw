@@ -4,12 +4,12 @@ import type {
   CapsuleViewport,
   CreateCapsuleHostOptions,
 } from '@vibecanvas/capsule-vibecanvas/host';
+import type { TWidgetFrameNode } from '@omnidraw/cangine';
 import type {
   CapsuleCapabilityDescriptor,
   CapsuleSchemaResource,
 } from '@vibecanvas/capsule-vibecanvas/capabilities';
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapsuleHostConfiguration,
@@ -44,33 +44,52 @@ export type TWidgetArtifactRuntimeIdentity =
 
 export type TWidgetRuntimeLoadRequest = Omit<TWidgetRuntimeIdentity, 'orgId'>;
 
-export type TWidgetRuntimeLocalTarget = TWidgetRuntimeLoadRequest & Readonly<{
-  stateDocumentId: string | null;
-}>;
+export type TWidgetRuntimeLocalTarget = TWidgetRuntimeLoadRequest;
 
 export type TWidgetCollaborativeJsonValue =
   | string
   | number
   | boolean
   | null
-  | TWidgetCollaborativeJsonValue[]
-  | { [key: string]: TWidgetCollaborativeJsonValue };
+  | readonly TWidgetCollaborativeJsonValue[]
+  | Readonly<{ [key: string]: TWidgetCollaborativeJsonValue }>;
 
-export type TWidgetCollaborativeStateIdentity = TWidgetRuntimeIdentity & Readonly<{
-  stateDocumentId: string;
-}>;
+export type TWidgetCollaborativeStateIdentity = TWidgetRuntimeIdentity;
 
-export type TWidgetCollaborativeStateDocument = Readonly<{
-  schemaVersion: 1;
+export type TWidgetCollaborativeStateTransportSnapshot = Readonly<{
   identity: TWidgetCollaborativeStateIdentity;
   state: TWidgetCollaborativeJsonValue;
+  version: number;
 }>;
 
-export type TMutableWidgetCollaborativeStateDocument = {
-  schemaVersion: 1;
-  identity: TWidgetCollaborativeStateIdentity;
-  state: TWidgetCollaborativeJsonValue;
-};
+export type TWidgetCollaborativeStateTransportChangeResult =
+  | Readonly<{
+    status: 'changed';
+    snapshot: TWidgetCollaborativeStateTransportSnapshot;
+  }>
+  | Readonly<{
+    status: 'conflict';
+    snapshot: TWidgetCollaborativeStateTransportSnapshot;
+  }>;
+
+export type TWidgetCollaborativeStateTransportPort = Readonly<{
+  get(args: Readonly<{
+    identity: TWidgetCollaborativeStateIdentity;
+    signal: AbortSignal;
+  }>): Promise<TWidgetCollaborativeStateTransportSnapshot>;
+  change(args: Readonly<{
+    identity: TWidgetCollaborativeStateIdentity;
+    expectedVersion: number;
+    state: TWidgetCollaborativeJsonValue;
+    signal: AbortSignal;
+  }>): Promise<TWidgetCollaborativeStateTransportChangeResult>;
+  events(args: Readonly<{
+    identity: TWidgetCollaborativeStateIdentity;
+    afterVersion: number;
+    signal: AbortSignal;
+  }>): Promise<AsyncIterable<TWidgetCollaborativeStateTransportSnapshot>>;
+  dispose?(): void;
+}>;
 
 export type TWidgetCollaborativeStateSnapshot = Readonly<{
   version: number;
@@ -97,13 +116,6 @@ export type TWidgetCollaborativeStatePort = Readonly<{
     signal: AbortSignal;
     isCurrent(): boolean;
   }>): Promise<TWidgetCollaborativeStateSession>;
-}>;
-
-export type TWidgetCollaborativeStateDocumentPort = Readonly<{
-  read(): unknown;
-  change(mutator: (document: TMutableWidgetCollaborativeStateDocument) => void): void;
-  subscribe(listener: () => void): () => void;
-  dispose?(): void;
 }>;
 
 export type TWidgetRuntimeTransportPort = Readonly<{
@@ -213,7 +225,7 @@ export type TWidgetUiArtifactMountPort = Readonly<{
 
 export type TWidgetUiRuntimeRenderArgs = Readonly<{
   canvasId: string;
-  element: TElement;
+  element: Readonly<TWidgetFrameNode>;
   root: HTMLDivElement;
 }>;
 

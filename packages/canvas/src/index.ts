@@ -2,5 +2,5 @@ import "./base.css";
 
 export * from "./components/Canvas";
 export * from "./extension";
-export * from "./semantic";
+export * from "./services";
 export * from "./types";

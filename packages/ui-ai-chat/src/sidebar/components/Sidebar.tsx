@@ -101,7 +101,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
       const [err, data] = await props.controller.apiService.api.canvas.remove({ params: { id: canvas.id } });
       if (err) application.notifyError(err.message);
       if (data) {
-        application.evictCanvasDocument(data.automerge_url);
+        application.evictCanvas(data.id);
         application.canvasDeleted(data);
         if (isActive) application.navigate("/");
       }
