@@ -101,12 +101,12 @@ Also remove any PATH line you added for `~/.vibecanvas/bin` in your shell profil
 
 ## Database
 
-- Default installed/compiled Turso DB path: `~/.local/share/vibecanvas/vibecanvas.turso`
-- Respects `XDG_DATA_HOME` on Linux/macOS-style XDG setups, so effective path is `"$XDG_DATA_HOME"/vibecanvas/vibecanvas.turso` when set
-- `VIBECANVAS_CONFIG=/some/dir` changes DB path to `/some/dir/vibecanvas.turso`
-- `VIBECANVAS_DB=/some/file.turso` sets an explicit Turso file path
-- Dev monorepo default DB path: `./local-volume/data/vibecanvas.turso`
-- Schema source: `packages/service-db/src/schema.ts`
+- Vibecanvas keeps one home at `~/.vibecanvas`; its primary Turso database is `~/.vibecanvas/main.db`.
+- `--data-dir <path>` selects another home and takes precedence over `VIBECANVAS_HOME`.
+- Relative overrides resolve once against the process working directory; `~` is not expanded in overrides.
+- Legacy `VIBECANVAS_CONFIG`, `VIBECANVAS_DB`, and `XDG_*` variables no longer select application storage.
+- Actor-era and unknown non-empty homes or databases are refused without mutation. Select a fresh home and archive old data manually.
+- The strict baseline schema is `packages/service-db/src/migrations/000-initial.sql`.
 
 ## Debugging the live app
 

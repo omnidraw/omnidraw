@@ -18,10 +18,22 @@ ESLint is the source of truth. Use normal ESLint disable comments with a reason 
 import { legacyRuntime } from "../legacy";
 ```
 
+## worktree branch hook
+
+`worktree-branch-session-start.ts` runs only for a new session startup. When the
+session is in a linked Git worktree with a detached HEAD, it adds this developer
+context before Codex starts work:
+
+> create a new branch name codex/\<planNo\> or codex/\<task description\>
+
+Codex-managed worktrees start with a detached HEAD. Existing branch-backed
+worktrees and the repository's main checkout do not receive the instruction.
+
 ## Smoke tests
 
 ```bash
 bun run .codex/hooks/functional-core-session-start.ts
+bun run .codex/hooks/worktree-branch-session-start.ts
 bun run lint:functional-core
 bun run lint:functional-core:agent
 ```

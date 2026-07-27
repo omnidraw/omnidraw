@@ -5,12 +5,30 @@ apps/web -> github pages, marketing website
 apps/server -> bun server
 apps/vibecanvas -> installable binary for npm package
 
-packages/canvas -> canvas core logic, konvajs, automerge
-packages/core-contract -> orpc api design, websocket first
-packages/functional-core -> shared logic, types, utils
-packages/imperative-shell -> stateful services, db, crdt, pty, fs
+packages/api -> consolidated oRPC contracts and handlers by domain
+packages/canvas -> canvas editor core, Konva rendering, Automerge collaboration, and widgets
+packages/function-runtime -> public short-lived function contracts and service interfaces
+packages/orpc-client -> typed browser WebSocket client aggregating the oRPC APIs
+packages/resource-runtime -> public resource capability, provider, and gateway contracts
+packages/runtime -> plugin lifecycle, service registry, and runtime orchestration
+packages/sdk -> publishable widget and actor authoring SDK
+packages/service-actor -> actor runtime, supervision, manifests, and resource bindings
+packages/service-agent -> Pi agent sessions, approvals, widget generation, and publishing
+packages/service-automerge -> Automerge document persistence and WebSocket synchronization
+packages/service-db -> Turso-backed application data, models, and migrations
+packages/service-event-publisher -> runtime event publication to API subscription streams
+packages/service-kv -> persistent key-value service backed by the database service
+packages/service-theme -> built-in themes and runtime theme synchronization
+packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
+packages/tapable -> synchronous and asynchronous lifecycle hook primitives
+packages/tenant-core -> public tenant context, placement, and scoped-key contracts
+packages/ui-actor-legacy -> SolidJS legacy actor state-machine visualization
+packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
+packages/widget-contract -> public widget manifest, artifact, and revision contracts
 
 We use @tasks/BASED.md to manage our work.
+When you are tasks to generate new task plans. Think if a mockup img is useful.
+When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
 
 Notes:
 - Root `package.json` has a `postinstall` hook for `scripts/patch-automerge-repo-throttle.mjs`.
@@ -111,3 +129,9 @@ Do not guess. Use these rules.
 
 ## IMPORTANT
 All files are indexed in `@FILES.md`. Read if you need overview.
+
+## Refs (Only read when needed)
+UI overview: docs/internal/screens/SCREENS.md
+
+docs/internal/llm.migrate-turso.md
+docs/internal/llm.widget-system.md

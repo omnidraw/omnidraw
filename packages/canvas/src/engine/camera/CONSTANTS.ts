@@ -1,0 +1,3 @@
+export const CANVAS_CAMERA_MIN_ZOOM = 0.1;
+export const CANVAS_CAMERA_MAX_ZOOM = 6;
+export const CANVAS_CAMERA_DEFAULT_ROTATION_DEGREES = 0;

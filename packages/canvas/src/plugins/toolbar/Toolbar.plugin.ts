@@ -39,20 +39,25 @@ function fnNormalizeShortcut(shortcut: string) {
   return shortcut.trim().toLowerCase();
 }
 
-function txSyncCursor(render: SceneService, selection: SelectionService) {
+function txSyncCursor(
+  render: SceneService,
+  selection: SelectionService,
+  pathCursor: string | null,
+  transformCursor: string | null,
+) {
   switch (selection.mode) {
     case CanvasMode.HAND:
-      render.stage.container().style.cursor = "grab";
+      render.container.style.cursor = "grab";
       return;
     case CanvasMode.DRAW_CREATE:
-      render.stage.container().style.cursor = "crosshair";
+      render.container.style.cursor = "crosshair";
       return;
     case CanvasMode.CLICK_CREATE:
-      render.stage.container().style.cursor = "pointer";
+      render.container.style.cursor = "pointer";
       return;
     case CanvasMode.SELECT:
     default:
-      render.stage.container().style.cursor = "default";
+      render.container.style.cursor = pathCursor ?? transformCursor ?? "default";
       return;
   }
 }
@@ -82,20 +87,22 @@ function fnGetShortcutToolId(toolService: ToolService, event: KeyboardEvent) {
 }
 
 function mountToolbar(args: {
-  apiService: IRuntimeConfig["apiService"];
+  toolbarGroups: IRuntimeConfig["toolbarGroups"];
   scene: SceneService;
   tool: ToolService;
+  widgetPlacement: IRuntimeServices["widgetPlacement"];
   onToolSelect: (toolId: string) => void;
 }) {
-  const mountElement = document.createElement("div");
+  const mountElement = args.scene.container.ownerDocument.createElement("div");
   mountElement.id = "toolbar";
-  args.scene.stage.container().appendChild(mountElement);
+  args.scene.container.appendChild(mountElement);
 
   const disposeRender = render(() => {
     return createComponent(RuntimeToolbar, {
       tool: args.tool,
-      apiService: args.apiService,
-      viewportElement: args.scene.stage.container(),
+      toolbarGroups: args.toolbarGroups,
+      widgetPlacement: args.widgetPlacement,
+      viewportElement: args.scene.container,
       onToolSelect: args.onToolSelect,
     });
   }, mountElement);
@@ -123,6 +130,11 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
       const tool = ctx.services.require("tool");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
+      const widgetPlacement = ctx.services.require("widgetPlacement");
+      let pathCursor: string | null = null;
+      let transformCursor: string | null = null;
+      let unsubscribePathState: (() => void) | null = null;
+      let unsubscribeTransformHover: (() => void) | null = null;
 
       tool.registerTool({
         id: "sidebar",
@@ -154,19 +166,31 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
 
       ctx.hooks.init.tap(() => {
         toolbarMount = mountToolbar({
-          apiService: ctx.config.apiService,
+          toolbarGroups: ctx.config.toolbarGroups,
           scene,
           tool,
+          widgetPlacement,
           onToolSelect: (toolId) => {
             txSelectTool({ toolService: tool }, { toolId });
           },
         });
-        txSyncCursor(scene, selection);
+        unsubscribeTransformHover = scene.product.transforms.subscribeHover(
+          (hover) => {
+            transformCursor = hover?.cursor ?? null;
+            txSyncCursor(scene, selection, pathCursor, transformCursor);
+          },
+        );
+        unsubscribePathState = scene.editor.paths.subscribe((state) => {
+          pathCursor = state.cursor;
+          txSyncCursor(scene, selection, pathCursor, transformCursor);
+        });
+        pathCursor = scene.editor.paths.state.cursor;
+        txSyncCursor(scene, selection, pathCursor, transformCursor);
       });
 
       tool.hooks.activeToolChange.tap((toolId) => {
         selection.setMode(getModeFromTool(tool.getTool(toolId)));
-        txSyncCursor(scene, selection);
+        txSyncCursor(scene, selection, pathCursor, transformCursor);
         ctx.hooks.toolSelect.call(toolId);
       });
 
@@ -219,6 +243,13 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
         tool.unregisterTool("sidebar");
         tool.unregisterTool("hand");
         tool.unregisterTool("select");
+        unsubscribeTransformHover?.();
+        unsubscribeTransformHover = null;
+        unsubscribePathState?.();
+        unsubscribePathState = null;
+        pathCursor = null;
+        transformCursor = null;
+        scene.container.style.cursor = "";
         toolbarMount?.dispose();
         toolbarMount = null;
       });

@@ -1,8 +1,8 @@
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { ICliConfig } from '../../config';
 import { checkForUpgrade } from '../cli/cmds/cmd.upgrade';
 
-function checkForUpdateOnBoot(config: ICliConfig, eventPublisher: IEventPublisherService): void {
+function checkForUpdateOnBoot(config: ICliConfig, eventPublisher: ITenantEventPublisherService): void {
   checkForUpgrade({ config, checkOnly: true })
     .then((result) => {
       if (result.status === 'update-available') {

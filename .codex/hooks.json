@@ -2,6 +2,17 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"$(git rev-parse --show-toplevel)/.codex/hooks/worktree-branch-session-start.ts\"",
+            "timeout": 30,
+            "statusMessage": "Checking worktree branch guidance"
+          }
+        ]
+      },
+      {
         "matcher": "startup|resume|clear|compact",
         "hooks": [
           {

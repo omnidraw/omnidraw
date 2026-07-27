@@ -1,5 +1,4 @@
 import type { TCameraViewport } from "../../services/camera/CameraService";
-import { CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY } from "./CONSTANTS";
 
 export type TPortalWriteCameraState = {
   storage: Pick<Storage, "getItem" | "setItem"> | null;
@@ -7,6 +6,7 @@ export type TPortalWriteCameraState = {
 
 export type TArgsWriteCameraState = {
   canvasId: string;
+  storageKey: string;
   viewport: TCameraViewport;
 };
 
@@ -18,14 +18,14 @@ export function txWriteCameraStateToLocalStorage(portal: TPortalWriteCameraState
   }
 
   try {
-    const rawValue = portal.storage.getItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY);
+    const rawValue = portal.storage.getItem(args.storageKey);
     const storedViewports = rawValue ? JSON.parse(rawValue) : {};
     const nextStoredViewports = (
       storedViewports && typeof storedViewports === "object" ? storedViewports : {}
     ) as TStoredCameraViewportMap;
 
     nextStoredViewports[args.canvasId] = args.viewport;
-    portal.storage.setItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, JSON.stringify(nextStoredViewports));
+    portal.storage.setItem(args.storageKey, JSON.stringify(nextStoredViewports));
   } catch {
     return;
   }

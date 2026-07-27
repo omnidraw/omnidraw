@@ -1,117 +1,74 @@
-import type { IService, IStartableService } from "@vibecanvas/runtime";
-import { IServiceContext } from "@vibecanvas/runtime/interface.js";
-import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import Konva from "konva";
-import { isCanvasGroupNode } from "../../core/GUARDS";
+import type {
+  IService,
+  IStartableService,
+} from "@vibecanvas/runtime";
+import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
+import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { fnCanvasTargetKey } from "../../semantic/fn.target";
+import type { TCanvasTarget } from "../../semantic/typed";
 import { fnCreateOrderedZIndex } from "../../core/fn.create-ordered-z-index";
-import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
-import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
-import type { IRuntimeConfig, IRuntimeHooks, TRenderOrderSnapshot } from "../../types";
-import { ContextMenuService } from "../context-menu/ContextMenuService";
+import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import type { ContextMenuService } from "../context-menu/ContextMenuService";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { HistoryService } from "../history/HistoryService";
-import type { SceneService } from "../scene/SceneService";
-
-export type TOrderedNode = Konva.Group | Konva.Shape;
-export type TParentContainer = Konva.Layer | Konva.Group;
-export type TRenderOrderInsertPosition = "front" | "back" | { beforeId?: string; afterId?: string };
-export type TRenderOrderBundleResolver = (node: TOrderedNode) => TOrderedNode[] | null;
+import {
+  fnGetOrderedProductChildren,
+  fnGetProductTargetParentId,
+  fnInsertProductTargets,
+  fnTargetsShareProductParent,
+} from "./fn.product-order";
+import type {
+  TProductRenderOrderBundleResolver,
+  TProductRenderOrderInsertPosition,
+  TProductRenderOrderSnapshot,
+} from "./typed";
 
 export type TRenderOrderServiceArgs = {
   crdt: CrdtService;
   history: HistoryService;
-  scene: SceneService;
   contextMenu: ContextMenuService;
-  syncDomOrder?: () => void;
 };
 
-function isOrderedNode(node: Konva.Node): node is TOrderedNode {
-  return node instanceof Konva.Node
-}
+type TOrderedUnit = {
+  targets: TCanvasTarget[];
+  selected: boolean;
+};
 
-function isParentContainer(node: Konva.Node | null | undefined): node is TParentContainer {
-  return node instanceof Konva.Layer || node instanceof Konva.Group;
-}
-
-function getImmediateOrderedChildren(parent: TParentContainer) {
-  return parent.getChildren().filter(isOrderedNode) as TOrderedNode[];
-}
-
-function sortNodesForBundle(nodes: TOrderedNode[], parent: TParentContainer) {
-  const children = getImmediateOrderedChildren(parent);
-  const order = new Map(children.map((node, index) => [node.id(), index]));
-  return [...nodes].sort((left, right) => (order.get(left.id()) ?? 0) - (order.get(right.id()) ?? 0));
-}
-
-function hasSameParent(selection: Parameters<RenderOrderService["bringSelectionToFront"]>[0]) {
-  return selection.length <= 1 || selection.every((node) => node.getParent() === selection[0]?.getParent());
-}
-
-function insertNodes(
-  stationary: TOrderedNode[],
-  moving: TOrderedNode[],
-  position: TRenderOrderInsertPosition,
-) {
-  if (position === "back") {
-    return [...moving, ...stationary];
-  }
-
-  if (position === "front") {
-    return [...stationary, ...moving];
-  }
-
-  if (position.afterId) {
-    const anchorIndex = stationary.findIndex((node) => node.id() === position.afterId);
-    if (anchorIndex >= 0) {
-      return [
-        ...stationary.slice(0, anchorIndex + 1),
-        ...moving,
-        ...stationary.slice(anchorIndex + 1),
-      ];
-    }
-  }
-
-  if (position.beforeId) {
-    const anchorIndex = stationary.findIndex((node) => node.id() === position.beforeId);
-    if (anchorIndex >= 0) {
-      return [
-        ...stationary.slice(0, anchorIndex),
-        ...moving,
-        ...stationary.slice(anchorIndex),
-      ];
-    }
-  }
-
-  return [...stationary, ...moving];
-}
-
-export class RenderOrderService implements IService<Record<string, never>>, IStartableService {
+/**
+ * Owns durable product ordering. Engine order is projection output only.
+ */
+export class RenderOrderService
+implements IService<Record<string, never>>, IStartableService {
   readonly name = "renderOrder";
   readonly hooks = {};
-
   readonly crdt: CrdtService;
   readonly history: HistoryService;
-  readonly scene: SceneService;
   readonly contextMenu: ContextMenuService;
-  readonly syncDomOrder?: () => void;
-  #bundleResolvers = new Map<string, TRenderOrderBundleResolver>();
+  readonly #bundleResolvers = new Map<
+    string,
+    TProductRenderOrderBundleResolver
+  >();
 
   constructor(args: TRenderOrderServiceArgs) {
     this.crdt = args.crdt;
     this.history = args.history;
-    this.scene = args.scene;
     this.contextMenu = args.contextMenu;
-    this.syncDomOrder = args.syncDomOrder;
   }
 
-  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
-
-    this.contextMenu.registerProvider("render-order", ({ scope, activeSelection }) => {
+  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void {
+    this.contextMenu.registerProvider("render-order", ({
+      scope,
+      activeSelection,
+    }) => {
+      const document = this.crdt.doc();
+      const disabled = activeSelection.length === 0
+        || !fnTargetsShareProductParent({
+          document,
+          targets: activeSelection,
+        });
       if (scope === "canvas") {
         return [];
       }
-
-      const disabled = activeSelection.length === 0 || !hasSameParent(activeSelection);
       return [
         {
           id: "render-order-bring-to-front",
@@ -151,332 +108,290 @@ export class RenderOrderService implements IService<Record<string, never>>, ISta
         },
       ];
     });
-
     ctx.hooks.destroy.tap(() => {
       this.contextMenu.unregisterProvider("render-order");
       this.clearBundleResolvers();
     });
   }
 
-  registerBundleResolver(id: string, resolver: TRenderOrderBundleResolver) {
+  registerBundleResolver(
+    id: string,
+    resolver: TProductRenderOrderBundleResolver,
+  ): () => void {
     this.#bundleResolvers.set(id, resolver);
+    return () => this.unregisterBundleResolver(id);
   }
 
-  unregisterBundleResolver(id: string) {
+  unregisterBundleResolver(id: string): void {
     this.#bundleResolvers.delete(id);
   }
 
-  clearBundleResolvers() {
+  clearBundleResolvers(): void {
     this.#bundleResolvers.clear();
   }
 
-  getNodeZIndex(node: TOrderedNode) {
-    return fnGetNodeZIndex({ node });
-  }
-
-  setNodeZIndex(node: TOrderedNode, zIndex: string) {
-    txSetNodeZIndex({}, { node, zIndex });
-  }
-
-  getOrderBundle(node: TOrderedNode) {
+  getOrderBundle(
+    target: TCanvasTarget,
+    document: TCanvasDoc = this.crdt.doc(),
+  ): TCanvasTarget[] {
     for (const resolver of this.#bundleResolvers.values()) {
-      const bundle = resolver(node);
-      if (bundle && bundle.length > 0) {
-        return bundle;
+      const bundle = resolver(target, document);
+      if (bundle !== null && bundle.length > 0) {
+        return [...bundle];
       }
     }
-
-    const parent = node.getParent();
-    if (!isParentContainer(parent)) {
-      return [node];
-    }
-
-    return sortNodesForBundle([node], parent);
+    return [{ ...target }];
   }
 
-  getOrderedSiblings(parent: TParentContainer) {
-    const children = getImmediateOrderedChildren(parent);
-    return [...children].sort((left, right) => {
-      const zCompare = fnGetNodeZIndex({ node: left }).localeCompare(fnGetNodeZIndex({ node: right }));
-      if (zCompare !== 0) {
-        return zCompare;
-      }
-
-      return left.id().localeCompare(right.id());
-    });
+  getOrderedSiblings(
+    parentGroupId: string | null,
+    document: TCanvasDoc = this.crdt.doc(),
+  ) {
+    return fnGetOrderedProductChildren({ document, parentGroupId });
   }
 
-  sortChildren(parent: TParentContainer) {
-    const sorted = this.getOrderedSiblings(parent);
-    sorted.forEach((node, index) => {
-      node.zIndex(index);
-    });
-    this.syncDomOrder?.();
-  }
-
-  assignOrderOnInsert(args: {
-    parent: TParentContainer;
-    nodes: TOrderedNode[];
-    position?: TRenderOrderInsertPosition;
-  }) {
-    const orderedNodes = sortNodesForBundle(args.nodes.filter((node) => node.getParent() === args.parent), args.parent);
-    if (orderedNodes.length === 0) {
-      return [];
-    }
-
-    const children = getImmediateOrderedChildren(args.parent);
-    const movingIds = new Set(orderedNodes.map((node) => node.id()));
-    const stationary = children.filter((child) => !movingIds.has(child.id()));
-    const nextChildren = insertNodes(stationary, orderedNodes, args.position ?? "front");
-    return this.applyOrderedChildren(args.parent, nextChildren, true);
-  }
-
-  moveSelectionUp(nodes: TOrderedNode[]) {
-    this.moveByOneStep(nodes, "forward");
-  }
-
-  moveSelectionDown(nodes: TOrderedNode[]) {
-    this.moveByOneStep(nodes, "backward");
-  }
-
-  bringSelectionToFront(nodes: TOrderedNode[]) {
-    this.moveToExtreme(nodes, "front");
-  }
-
-  sendSelectionToBack(nodes: TOrderedNode[]) {
-    this.moveToExtreme(nodes, "back");
-  }
-
-  snapshotParentOrder(parent: TParentContainer): TRenderOrderSnapshot {
+  snapshotParentOrder(
+    parentGroupId: string | null,
+    document: TCanvasDoc = this.crdt.doc(),
+  ): TProductRenderOrderSnapshot {
     return {
-      parentId: parent.id() || "__layer__",
-      items: getImmediateOrderedChildren(parent).map((node) => ({
-        id: node.id(),
-        zIndex: fnGetNodeZIndex({ node }),
-        kind: isCanvasGroupNode(node) ? 'group' : 'element',
+      parentGroupId,
+      items: this.getOrderedSiblings(parentGroupId, document).map((item) => ({
+        target: { ...item.target },
+        zIndex: item.zIndex,
       })),
     };
   }
 
-  restoreParentOrder(snapshot: TRenderOrderSnapshot) {
-    const parent = this.findParentBySnapshot(snapshot);
-    if (!parent) {
-      return;
-    }
-
-    snapshot.items.forEach((item) => {
-      const node = this.findImmediateChildById(parent, item.id);
-      if (!node) {
-        return;
-      }
-
-      txSetNodeZIndex({}, { node, zIndex: item.zIndex });
+  restoreParentOrder(snapshot: TProductRenderOrderSnapshot): boolean {
+    const document = this.crdt.doc();
+    const validItems = snapshot.items.filter((item) => {
+      return fnGetProductTargetParentId({
+        document,
+        target: item.target,
+      }) === snapshot.parentGroupId;
     });
-
-    this.sortChildren(parent);
+    if (validItems.length === 0) {
+      return false;
+    }
+    const builder = this.crdt.build();
+    for (const item of validItems) {
+      if (item.target.kind === "element") {
+        builder.patchElement(item.target.id, "zIndex", item.zIndex);
+      } else {
+        builder.patchGroup(item.target.id, "zIndex", item.zIndex);
+      }
+    }
+    builder.commit();
+    return true;
   }
 
-  private moveByOneStep(roots: TOrderedNode[], direction: "forward" | "backward") {
-    const resolved = this.resolveOrderedUnits(roots);
-    if (!resolved) {
-      return;
+  assignOrderOnInsert(args: {
+    parentGroupId: string | null;
+    targets: readonly TCanvasTarget[];
+    position?: TProductRenderOrderInsertPosition;
+  }) {
+    const document = this.crdt.doc();
+    const moving = args.targets.filter((target) => {
+      return fnGetProductTargetParentId({ document, target })
+        === args.parentGroupId;
+    });
+    if (moving.length === 0) {
+      return [];
     }
+    const ordered = this.getOrderedSiblings(
+      args.parentGroupId,
+      document,
+    ).map((item) => item.target);
+    const movingKeys = new Set(moving.map(fnCanvasTargetKey));
+    const stationary = ordered.filter((target) => {
+      return !movingKeys.has(fnCanvasTargetKey(target));
+    });
+    const next = fnInsertProductTargets({
+      stationary,
+      moving,
+      position: args.position ?? "front",
+    });
+    return this.#applyTargetOrder(args.parentGroupId, next, false, true);
+  }
 
+  moveSelectionUp(targets: readonly TCanvasTarget[]): boolean {
+    return this.#moveByOneStep(targets, "forward");
+  }
+
+  moveSelectionDown(targets: readonly TCanvasTarget[]): boolean {
+    return this.#moveByOneStep(targets, "backward");
+  }
+
+  bringSelectionToFront(targets: readonly TCanvasTarget[]): boolean {
+    return this.#moveToExtreme(targets, "front");
+  }
+
+  sendSelectionToBack(targets: readonly TCanvasTarget[]): boolean {
+    return this.#moveToExtreme(targets, "back");
+  }
+
+  #moveByOneStep(
+    roots: readonly TCanvasTarget[],
+    direction: "forward" | "backward",
+  ): boolean {
+    const resolved = this.#resolveOrderedUnits(roots);
+    if (resolved === null) {
+      return false;
+    }
     const units = [...resolved.units];
     if (direction === "forward") {
       for (let index = units.length - 2; index >= 0; index -= 1) {
-        if (!units[index].selected && units[index + 1].selected) {
-          [units[index], units[index + 1]] = [units[index + 1], units[index]];
+        if (!units[index]!.selected && units[index + 1]!.selected) {
+          [units[index], units[index + 1]] = [
+            units[index + 1]!,
+            units[index]!,
+          ];
         }
       }
     } else {
       for (let index = 1; index < units.length; index += 1) {
-        if (units[index].selected && !units[index - 1].selected) {
-          [units[index], units[index - 1]] = [units[index - 1], units[index]];
+        if (units[index]!.selected && !units[index - 1]!.selected) {
+          [units[index], units[index - 1]] = [
+            units[index - 1]!,
+            units[index]!,
+          ];
         }
       }
     }
-
-    this.applyUnitOrder(resolved.parent, units);
+    return this.#applyTargetOrder(
+      resolved.parentGroupId,
+      units.flatMap((unit) => unit.targets),
+      true,
+    ).length > 0;
   }
 
-  private moveToExtreme(roots: TOrderedNode[], position: "front" | "back") {
-    const resolved = this.resolveOrderedUnits(roots);
-    if (!resolved) {
-      return;
+  #moveToExtreme(
+    roots: readonly TCanvasTarget[],
+    position: "front" | "back",
+  ): boolean {
+    const resolved = this.#resolveOrderedUnits(roots);
+    if (resolved === null) {
+      return false;
     }
-
     const selected = resolved.units.filter((unit) => unit.selected);
     const unselected = resolved.units.filter((unit) => !unit.selected);
-    const next = position === "front"
+    const units = position === "front"
       ? [...unselected, ...selected]
       : [...selected, ...unselected];
-
-    this.applyUnitOrder(resolved.parent, next);
+    return this.#applyTargetOrder(
+      resolved.parentGroupId,
+      units.flatMap((unit) => unit.targets),
+      true,
+    ).length > 0;
   }
 
-  private resolveOrderedUnits(roots: TOrderedNode[]) {
-    const uniqueRoots = roots.filter((node, index) => roots.findIndex((candidate) => candidate.id() === node.id()) === index);
-    if (uniqueRoots.length === 0) {
-      return null;
-    }
-
-    const parent = uniqueRoots[0]?.getParent();
-    if (!isParentContainer(parent)) {
-      return null;
-    }
-
-    if (!uniqueRoots.every((node) => node.getParent() === parent)) {
-      return null;
-    }
-
-    const selectedIds = new Set<string>();
-    uniqueRoots.forEach((root) => {
-      const bundle = this.getOrderBundle(root);
-      bundle.forEach((node) => {
-        selectedIds.add(node.id());
-      });
+  #resolveOrderedUnits(roots: readonly TCanvasTarget[]): {
+    parentGroupId: string | null;
+    units: TOrderedUnit[];
+  } | null {
+    const document = this.crdt.doc();
+    const uniqueRoots = roots.filter((target, index) => {
+      const key = fnCanvasTargetKey(target);
+      return roots.findIndex((candidate) => {
+        return fnCanvasTargetKey(candidate) === key;
+      }) === index;
     });
-
-    const orderedChildren = getImmediateOrderedChildren(parent);
-    const units: Array<{ nodes: TOrderedNode[]; selected: boolean }> = [];
-    const consumedIds = new Set<string>();
-
-    orderedChildren.forEach((child) => {
-      if (consumedIds.has(child.id())) {
-        return;
+    if (
+      uniqueRoots.length === 0
+      || !fnTargetsShareProductParent({
+        document,
+        targets: uniqueRoots,
+      })
+    ) {
+      return null;
+    }
+    const parentGroupId = fnGetProductTargetParentId({
+      document,
+      target: uniqueRoots[0]!,
+    });
+    if (parentGroupId === undefined) {
+      return null;
+    }
+    const selectedKeys = new Set<string>();
+    for (const root of uniqueRoots) {
+      for (const target of this.getOrderBundle(root, document)) {
+        selectedKeys.add(fnCanvasTargetKey(target));
       }
+    }
 
-      const bundle = this.getOrderBundle(child);
-      const nodes = sortNodesForBundle(bundle.filter((node) => node.getParent() === parent), parent);
-      nodes.forEach((node) => {
-        consumedIds.add(node.id());
+    const children = this.getOrderedSiblings(
+      parentGroupId,
+      document,
+    ).map((item) => item.target);
+    const childKeys = new Set(children.map(fnCanvasTargetKey));
+    const consumed = new Set<string>();
+    const units: TOrderedUnit[] = [];
+    for (const child of children) {
+      const childKey = fnCanvasTargetKey(child);
+      if (consumed.has(childKey)) {
+        continue;
+      }
+      const bundle = this.getOrderBundle(child, document).filter((target) => {
+        return childKeys.has(fnCanvasTargetKey(target))
+          && fnGetProductTargetParentId({ document, target }) === parentGroupId;
       });
+      const targets = bundle.length > 0 ? bundle : [child];
+      for (const target of targets) {
+        consumed.add(fnCanvasTargetKey(target));
+      }
       units.push({
-        nodes,
-        selected: nodes.some((node) => selectedIds.has(node.id())),
+        targets,
+        selected: targets.some((target) => {
+          return selectedKeys.has(fnCanvasTargetKey(target));
+        }),
       });
-    });
-
-    return { parent, units };
-  }
-
-  private applyUnitOrder(parent: TParentContainer, units: Array<{ nodes: TOrderedNode[] }>) {
-    const orderedChildren = units.flatMap((unit) => unit.nodes);
-    const before = this.snapshotParentOrder(parent);
-    const patches = this.applyOrderedChildren(parent, orderedChildren, true);
-    const after = this.snapshotParentOrder(parent);
-    if (patches.length === 0) {
-      return;
     }
-
-    this.history.record({
-      label: "render-order",
-      undo: () => {
-        this.applySnapshot(parent, before);
-      },
-      redo: () => {
-        this.applySnapshot(parent, after);
-      },
-    });
+    return { parentGroupId, units };
   }
 
-  private applySnapshot(parent: TParentContainer, snapshot: TRenderOrderSnapshot) {
-    snapshot.items.forEach((item) => {
-      const node = this.findImmediateChildById(parent, item.id);
-      if (!node) {
-        return;
-      }
-
-      txSetNodeZIndex({}, { node, zIndex: item.zIndex });
-    });
-
-    const orderedChildren = [...snapshot.items]
-      .map((item) => this.findImmediateChildById(parent, item.id))
-      .filter((node): node is TOrderedNode => Boolean(node));
-    this.applyOrderedChildren(parent, orderedChildren, true);
-  }
-
-  private applyOrderedChildren(parent: TParentContainer, orderedChildren: TOrderedNode[], persist: boolean) {
-    let persistedIndex = 0;
-    orderedChildren.forEach((node, index) => {
-      node.zIndex(index);
-      if (node.id() === "") {
-        return;
-      }
-
-      txSetNodeZIndex({}, { node, zIndex: fnCreateOrderedZIndex(persistedIndex) });
-      persistedIndex += 1;
-    });
-
-    if (!persist) {
+  #applyTargetOrder(
+    parentGroupId: string | null,
+    orderedTargets: readonly TCanvasTarget[],
+    recordHistory: boolean,
+    force = false,
+  ): Array<{ target: TCanvasTarget; zIndex: string }> {
+    const before = this.snapshotParentOrder(parentGroupId);
+    const beforeKeys = before.items.map((item) => fnCanvasTargetKey(item.target));
+    const nextKeys = orderedTargets.map(fnCanvasTargetKey);
+    if (
+      !force
+      &&
+      beforeKeys.length === nextKeys.length
+      && beforeKeys.every((key, index) => key === nextKeys[index])
+    ) {
       return [];
     }
 
-    const elementPatches: TElement[] = [];
-    const groupPatches: TGroup[] = [];
-    persistedIndex = 0;
-
-    orderedChildren.forEach((node) => {
-      if (node.id() === "") {
-        return;
+    const patches = orderedTargets.map((target, index) => ({
+      target: { ...target },
+      zIndex: fnCreateOrderedZIndex(index),
+    }));
+    const builder = this.crdt.build();
+    for (const patch of patches) {
+      if (patch.target.kind === "element") {
+        builder.patchElement(patch.target.id, "zIndex", patch.zIndex);
+      } else {
+        builder.patchGroup(patch.target.id, "zIndex", patch.zIndex);
       }
-
-      const zIndex = fnCreateOrderedZIndex(persistedIndex);
-      persistedIndex += 1;
-
-      if (isCanvasGroupNode(node)) {
-        // Some flows insert runtime nodes before their first CRDT create commit.
-        // Persist zIndex only after the group exists in the doc, otherwise
-        // builder path patches would throw on a missing entity.
-        if (this.crdt.doc().groups[node.id()] !== undefined) {
-          groupPatches.push({
-            id: node.id(),
-            zIndex,
-          } as TGroup);
-        }
-        return;
-      }
-
-      // Some flows insert runtime nodes before their first CRDT create commit.
-      // Persist zIndex only after the element exists in the doc, otherwise
-      // builder path patches would throw on a missing entity.
-      if (this.crdt.doc().elements[node.id()] !== undefined) {
-        elementPatches.push({
-          id: node.id(),
-          zIndex,
-        } as TElement);
-      }
-    });
-
-    if (elementPatches.length > 0 || groupPatches.length > 0) {
-      const builder = this.crdt.build();
-
-      elementPatches.forEach((element) => {
-        builder.patchElement(element.id, "zIndex", element.zIndex);
-      });
-
-      groupPatches.forEach((group) => {
-        builder.patchGroup(group.id, "zIndex", group.zIndex);
-      });
-
-      builder.commit();
     }
-
-    this.syncDomOrder?.();
-    return [...elementPatches, ...groupPatches];
-  }
-
-  private findImmediateChildById(parent: TParentContainer, id: string) {
-    return getImmediateOrderedChildren(parent).find((node) => node.id() === id) ?? null;
-  }
-
-  private findParentBySnapshot(snapshot: TRenderOrderSnapshot) {
-    if (snapshot.parentId === "__layer__") {
-      return this.scene.staticForegroundLayer;
+    const commit = builder.commit();
+    if (recordHistory) {
+      this.history.record({
+        label: "render-order",
+        undo: () => {
+          this.crdt.applyOps({ ops: commit.undoOps });
+        },
+        redo: () => {
+          this.crdt.applyOps({ ops: commit.redoOps });
+        },
+      });
     }
-
-    const parent = this.scene.staticForegroundLayer.findOne(`#${snapshot.parentId}`);
-    return isParentContainer(parent) ? parent : null;
+    return patches;
   }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "@vibecanvas-fixtures/private-managed-composition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vibecanvas/function-runtime": "0.1.0",
+    "@vibecanvas/resource-runtime": "0.1.0",
+    "@vibecanvas/runtime": "0.1.0",
+    "@vibecanvas/tenant-core": "0.1.0",
+    "@vibecanvas/widget-contract": "0.1.0"
+  }
+}

@@ -1,5 +1,9 @@
-import type { TFunctionName, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { fnWidgetDraftFilesFromManifest } from '../core/fn.widget-draft-files';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import {
+  WIDGET_TYPESCRIPT_VERSION,
+  WIDGET_VITE_VERSION,
+  WIDGET_ZOD_VERSION,
+} from '../core/CONSTANTS';
 
 type TPortal = {
   mkdir: (path: string, options: { recursive: true }) => Promise<string | undefined>;
@@ -9,112 +13,168 @@ type TPortal = {
 
 type TArgs = {
   cwd: string;
-  manifest: TVibecanvasJson;
+  manifest: TWidgetManifestV3;
+  sdkDependency: string;
+  capsuleDependency: string;
 };
 
-function toExportName(functionName: string) {
-  const [prefix = 'fn', rest = 'generated'] = functionName.split('.', 2);
-  const words = rest.split(/[^a-zA-Z0-9]+/).filter(Boolean);
-  const pascal = words.map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`).join('') || 'Generated';
-  return `${prefix}${pascal}`;
-}
-
-function functionStub(functionName: TFunctionName) {
-  const exportName = toExportName(functionName);
-  const prefix = functionName.split('.', 1)[0];
-  const shouldContinue = prefix === 'fn' || prefix === 'fx';
-
-  return [
-    `type TPortal = {`,
-    `  next?: () => Promise<unknown>;`,
-    `  setData?: (data: unknown) => Promise<unknown>;`,
-    `  emitMessage?: (message: { type: string; payload: unknown }) => Promise<unknown>;`,
-    `};`,
-    ``,
-    `type TArgs = {`,
-    `  data: unknown;`,
-    `  msg: unknown;`,
-    `};`,
-    ``,
-    `export async function ${exportName}(portal: TPortal, args: TArgs) {`,
-    `  void args;`,
-    shouldContinue ? `  return portal.next?.();` : `  throw new Error("${functionName} is not implemented yet");`,
-    `}`,
-    ``,
-  ].join('\n');
-}
-
-function functionsRegistry(manifest: TVibecanvasJson) {
-  const functionNames = fnWidgetDraftFilesFromManifest(manifest);
-  const imports = functionNames.map((functionName) => `import { ${toExportName(functionName)} } from "./${functionName}";`);
-  const groups = {
-    fn: functionNames.filter((name) => name.startsWith('fn.')),
-    fx: functionNames.filter((name) => name.startsWith('fx.')),
-    tx: functionNames.filter((name) => name.startsWith('tx.')),
-  };
-
-  const groupLines = (names: string[]) => names.map((name) => `    "${name}": ${toExportName(name)},`).join('\n');
-
-  return [
-    ...imports,
-    imports.length > 0 ? '' : '',
-    'export default {',
-    '  fn: {',
-    groupLines(groups.fn),
-    '  },',
-    '  fx: {',
-    groupLines(groups.fx),
-    '  },',
-    '  tx: {',
-    groupLines(groups.tx),
-    '  },',
-    '};',
-    '',
-  ].join('\n');
-}
-
-function packageJson(manifest: TVibecanvasJson) {
+function packageJson(
+  manifest: TWidgetManifestV3,
+  sdkDependency: string,
+  capsuleDependency: string,
+): string {
   return `${JSON.stringify({
     name: manifest.slug,
     version: '1.0.0',
     private: true,
     type: 'module',
+    scripts: {
+      build: 'vite build --config vite.config.mjs',
+    },
     dependencies: {
-      '@arrow-js/core': '^1.0.6',
-      '@vibecanvas/sdk': '^0.1.0',
+      // TESTING ONLY: the linked SDK cannot resolve its temporary local Capsule
+      // package unless the widget root installs the same dependency directly.
+      '@omnidraw/capsule': capsuleDependency,
+      '@vibecanvas/sdk': sdkDependency,
+      zod: WIDGET_ZOD_VERSION,
     },
     devDependencies: {
-      typescript: '^5.9.3',
+      typescript: WIDGET_TYPESCRIPT_VERSION,
+      vite: WIDGET_VITE_VERSION,
     },
   }, null, 2)}\n`;
 }
 
-export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs) {
-  const changedFiles = ['vibecanvas.json', 'package.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css'];
-  await portal.mkdir(portal.join(args.cwd, 'actor'), { recursive: true });
-  await portal.mkdir(portal.join(args.cwd, 'widget'), { recursive: true });
-  await portal.writeFile(portal.join(args.cwd, 'vibecanvas.json'), `${JSON.stringify(args.manifest, null, 2)}\n`, 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'package.json'), packageJson(args.manifest), 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'actor', 'functions.ts'), functionsRegistry(args.manifest), 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'actor', 'types.ts'), `export type TActorData = ${JSON.stringify(args.manifest.actor.initialData, null, 2)};\n`, 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'widget', 'main.ts'), [
-    'import { html } from "@arrow-js/core";',
-    'import { actor } from "@vibecanvas/sdk/widget";',
+function viteConfig(): string {
+  return [
+    'import { readFileSync } from "node:fs";',
+    'import { defineConfig } from "vite";',
     '',
-    'export default html`<section class="vibecanvas-widget">',
-    `  <h1>${args.manifest.widget.tool.label}</h1>`,
-    '  <p>Actor state: ${() => actor.state.value}</p>',
-    '  <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>',
-    '</section>`;',
+    'const manifest = JSON.parse(readFileSync(new URL("./vibecanvas.json", import.meta.url), "utf8"));',
+    '',
+    'export default defineConfig({',
+    '  // TESTING ONLY: keep the linked SDK under this project so its temporary',
+    '  // direct local Capsule dependency resolves from this node_modules tree.',
+    '  resolve: { preserveSymlinks: true },',
+    '  build: {',
+    '    target: "es2022",',
+    '    outDir: "dist",',
+    '    emptyOutDir: true,',
+    '    sourcemap: false,',
+    '    minify: false,',
+    '    cssCodeSplit: false,',
+    '    assetsInlineLimit: 0,',
+    '    rollupOptions: {',
+    '      input: manifest.ui.entry,',
+    '      external: ["capsule:bridge"],',
+    '      output: {',
+    '        format: "es",',
+    '        entryFileNames: "main.js",',
+    '        chunkFileNames: "chunks/[name]-[hash].mjs",',
+    '        assetFileNames: "assets/[name]-[hash][extname]",',
+    '      },',
+    '    },',
+    '  },',
+    '});',
+    '',
+  ].join('\n');
+}
+
+function tsconfigJson(): string {
+  return `${JSON.stringify({
+    compilerOptions: {
+      target: 'ES2022',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      strict: true,
+      skipLibCheck: true,
+      noEmit: true,
+      jsx: 'react-jsx',
+      lib: ['ES2022', 'DOM'],
+    },
+    include: ['ui/**/*.ts', 'ui/**/*.tsx', 'server/**/*.ts', 'shared/**/*.ts'],
+  }, null, 2)}\n`;
+}
+
+export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promise<string[]> {
+  const changedFiles = [
+    'vibecanvas.json',
+    'package.json',
+    'vite.config.mjs',
+    'tsconfig.json',
+    'ui/main.ts',
+    'ui/styles.css',
+  ];
+  await portal.mkdir(portal.join(args.cwd, 'ui'), { recursive: true });
+  // Keep the optional server root available without granting the model a
+  // general mkdir or shell capability. UI-only snapshots remain server-free
+  // because an empty directory contributes no source artifact files.
+  await portal.mkdir(portal.join(args.cwd, 'server'), { recursive: true });
+  await portal.writeFile(
+    portal.join(args.cwd, 'vibecanvas.json'),
+    `${JSON.stringify(args.manifest, null, 2)}\n`,
+    'utf8',
+  );
+  await portal.writeFile(portal.join(args.cwd, 'vite.config.mjs'), viteConfig(), 'utf8');
+  await portal.writeFile(
+    portal.join(args.cwd, 'package.json'),
+    packageJson(args.manifest, args.sdkDependency, args.capsuleDependency),
+    'utf8',
+  );
+  await portal.writeFile(portal.join(args.cwd, 'tsconfig.json'), tsconfigJson(), 'utf8');
+  await portal.writeFile(portal.join(args.cwd, 'ui', 'main.ts'), [
+    'import "./styles.css";',
+    '',
+    'const root = document.createElement("section");',
+    'root.className = "vibecanvas-widget";',
+    '',
+    'const message = document.createElement("p");',
+    'message.textContent = "Widget under construction";',
+    '',
+    'const output = document.createElement("output");',
+    'let count = 0;',
+    'const render = () => {',
+    '  output.textContent = `Local count: ${count}`;',
+    '};',
+    '',
+    'const button = document.createElement("button");',
+    'button.type = "button";',
+    'button.textContent = "Increment";',
+    'button.addEventListener("click", () => {',
+    '  count += 1;',
+    '  render();',
+    '});',
+    '',
+    'root.append(message, output, button);',
+    'document.body.append(root);',
+    'render();',
     '',
   ].join('\n'), 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'widget', 'main.css'), '.vibecanvas-widget { font: 14px system-ui; padding: 12px; }\n', 'utf8');
-
-  for (const functionName of fnWidgetDraftFilesFromManifest(args.manifest)) {
-    const relPath = `actor/${functionName}.ts`;
-    await portal.writeFile(portal.join(args.cwd, relPath), functionStub(functionName), 'utf8');
-    changedFiles.push(relPath);
-  }
+  await portal.writeFile(portal.join(args.cwd, 'ui', 'styles.css'), [
+    '.vibecanvas-widget {',
+    '  box-sizing: border-box;',
+    '  display: grid;',
+    '  min-height: 100%;',
+    '  place-items: center;',
+    '  gap: 12px;',
+    '  padding: 20px;',
+    '  background: #ffffff;',
+    '  color: #1f2937;',
+    '  font: 14px/1.5 system-ui, sans-serif;',
+    '}',
+    '',
+    '.vibecanvas-widget p,',
+    '.vibecanvas-widget output { margin: 0; }',
+    '',
+    '.vibecanvas-widget button {',
+    '  padding: 6px 12px;',
+    '  border: 1px solid;',
+    '  border-radius: 6px;',
+    '  background: transparent;',
+    '  cursor: pointer;',
+    '}',
+    '',
+  ].join('\n'), 'utf8');
 
   return changedFiles;
 }

@@ -1,173 +1,173 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import Konva from "konva";
-import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TElementPointerEvent, TMouseEvent, TPointerEvent, TWheelEvent } from "../../types";
+import type {
+  TCanvasInputClickEvent,
+  TCanvasInputEvent,
+  TCanvasInputPointerEvent,
+} from "../../engine/input/typed";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  IRuntimeServices,
+  TElementPointerEvent,
+} from "../../types";
 
-function isInsideHostedWidget(target: EventTarget | null) {
-  return target instanceof HTMLElement && target.closest('[data-hosted-widget-root="true"]') !== null;
-}
-
-function isTransformerNode(target: unknown) {
-  if (!(target instanceof Konva.Node)) {
+function isEditableOrHostedTarget(
+  document: Document,
+  target: EventTarget | null,
+): boolean {
+  const HTMLElementConstructor = document.defaultView?.HTMLElement;
+  if (
+    HTMLElementConstructor === undefined
+    || !(target instanceof HTMLElementConstructor)
+  ) {
     return false;
   }
-
-  let current: Konva.Node | null = target;
-  while (current) {
-    if (current instanceof Konva.Transformer) {
-      return true;
-    }
-
-    current = current.getParent();
-  }
-
-  return false;
+  return target.matches("input, textarea, select")
+    || target.isContentEditable
+    || target.closest('[contenteditable="true"]') !== null
+    || target.closest('[data-hosted-widget-root="true"]') !== null;
 }
 
-function isInteractionOverlayNode(target: unknown) {
-  if (!(target instanceof Konva.Node)) {
-    return false;
-  }
-
-  let current: Konva.Node | null = target;
-  while (current) {
-    if (current.getAttr("vcInteractionOverlay") === true) {
-      return true;
-    }
-
-    current = current.getParent();
-  }
-
-  return false;
-}
-
-function getElementPointerEvent(event: TPointerEvent) {
-  const target = event.target;
-  if (!(target instanceof Konva.Group || target instanceof Konva.Shape)) {
-    return null;
-  }
-
-  if (isTransformerNode(target) || isInteractionOverlayNode(target)) {
-    return null;
-  }
-
-  return event as TElementPointerEvent;
+function toElementEvent(
+  event: TCanvasInputPointerEvent,
+): TElementPointerEvent | null {
+  return event.hit === null
+    ? null
+    : {
+        ...event,
+        hit: event.hit,
+      };
 }
 
 /**
- * Bridges stage and DOM input into runtime hooks.
- * Keeps raw input wiring out of feature plugins.
+ * Bridges normalized engine input into the legacy runtime hook shell.
  */
-export function createEventListenerPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
+export function createEventListenerPlugin(): IPlugin<
+  IRuntimeServices,
+  IRuntimeHooks,
+  IRuntimeConfig
+> {
   return {
     name: "event-listener",
     apply(ctx) {
-      ctx.hooks.init.tap(() => {
-        const scene = ctx.services.require("scene");
-        const stage = scene.stage;
-        const container = stage.container();
+      const scene = ctx.services.require("scene");
+      const container = scene.container;
+      let unsubscribeInput: (() => void) | null = null;
+      let unsubscribeClicks: (() => void) | null = null;
+      let previousTabIndex: string | null = null;
+      let previousOutline = "";
 
-        const onPointerDown = (event: TPointerEvent) => {
-          ctx.hooks.pointerDown.call(event);
-        };
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (isEditableOrHostedTarget(container.ownerDocument, event.target)) {
+          return;
+        }
+        ctx.hooks.keydown.call(event);
+      };
+      const onKeyUp = (event: KeyboardEvent) => {
+        if (isEditableOrHostedTarget(container.ownerDocument, event.target)) {
+          return;
+        }
+        ctx.hooks.keyup.call(event);
+      };
 
-        const onPointerUp = (event: TPointerEvent) => {
-          ctx.hooks.pointerUp.call(event);
-        };
-
-        const onPointerMove = (event: TMouseEvent) => {
-          ctx.hooks.pointerMove.call(event);
-        };
-
-        const onPointerOut = (event: TPointerEvent) => {
-          ctx.hooks.pointerOut.call(event);
-        };
-
-        const onPointerOver = (event: TPointerEvent) => {
-          ctx.hooks.pointerOver.call(event);
-        };
-
-        const onPointerCancel = (event: TPointerEvent) => {
-          ctx.hooks.pointerCancel.call(event);
-        };
-
-        const onPointerWheel = (event: TWheelEvent) => {
+      const onInput = (event: TCanvasInputEvent) => {
+        if (event.type === "wheel") {
           ctx.hooks.pointerWheel.call(event);
-        };
+          return {
+            handled: true,
+            preventDefault: true,
+          };
+        }
+        if (event.type === "key-down" || event.type === "key-up") {
+          return;
+        }
+        if (!("pointerId" in event)) {
+          return;
+        }
 
-        const onElementPointerClick = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
+        const pointerEvent: TCanvasInputPointerEvent = event;
+        const elementEvent = toElementEvent(pointerEvent);
+        switch (event.type) {
+          case "pointer-down": {
+            ctx.hooks.pointerDown.call(pointerEvent);
+            const handled = elementEvent === null
+              ? undefined
+              : ctx.hooks.elementPointerDown.call(elementEvent);
+            return handled === true
+              ? {
+                  handled: true,
+                  stopPropagation: true,
+                }
+              : undefined;
+          }
+          case "pointer-up": {
+            ctx.hooks.pointerUp.call(pointerEvent);
             return;
           }
+          case "pointer-move": {
+            ctx.hooks.pointerMove.call(pointerEvent);
+            return;
+          }
+          case "pointer-enter":
+            ctx.hooks.pointerOver.call(pointerEvent);
+            return;
+          case "pointer-leave":
+            ctx.hooks.pointerOut.call(pointerEvent);
+            return;
+          case "pointer-cancel":
+            ctx.hooks.pointerCancel.call(pointerEvent);
+            return;
+        }
+      };
 
+      const onClick = (event: TCanvasInputClickEvent) => {
+        if (event.hit === null) {
+          return;
+        }
+        const elementEvent: TElementPointerEvent = {
+          ...event,
+          type: "pointer-up",
+          buttons: 0,
+          pressure: 0,
+          tilt: { x: 0, y: 0 },
+          deltaViewport: { x: 0, y: 0 },
+          deltaWorld: { x: 0, y: 0 },
+          hit: event.hit,
+        };
+        if (event.type === "double-click") {
+          ctx.hooks.elementPointerDoubleClick.call(elementEvent);
+        } else {
           ctx.hooks.elementPointerClick.call(elementEvent);
-        };
+        }
+      };
 
-        const onElementPointerDown = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
-            return;
-          }
-
-          const didHandle = ctx.hooks.elementPointerDown.call(elementEvent);
-          if (didHandle) {
-            event.cancelBubble = true;
-          }
-        };
-
-        const onElementPointerDoubleClick = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
-            return;
-          }
-
-          const didHandle = ctx.hooks.elementPointerDoubleClick.call(elementEvent);
-          if (didHandle) {
-            event.cancelBubble = true;
-          }
-        };
-
-        const onKeyDown = (event: KeyboardEvent) => {
-          if (isInsideHostedWidget(event.target)) return;
-          ctx.hooks.keydown.call(event);
-        };
-
-        const onKeyUp = (event: KeyboardEvent) => {
-          if (isInsideHostedWidget(event.target)) return;
-          ctx.hooks.keyup.call(event);
-        };
-
-        stage.on("pointerdown", onPointerDown);
-        stage.on("pointerup", onPointerUp);
-        stage.on("pointermove", onPointerMove);
-        stage.on("pointerout", onPointerOut);
-        stage.on("pointerover", onPointerOver);
-        stage.on("pointercancel", onPointerCancel);
-        stage.on("wheel", onPointerWheel);
-        stage.on("pointerclick", onElementPointerClick);
-        stage.on("pointerdown", onElementPointerDown);
-        stage.on("pointerdblclick", onElementPointerDoubleClick);
-
+      ctx.hooks.init.tap(() => {
+        previousTabIndex = container.getAttribute("tabindex");
+        previousOutline = container.style.outline;
+        container.tabIndex = 0;
+        container.style.outline = "none";
         container.addEventListener("keydown", onKeyDown);
         container.addEventListener("keyup", onKeyUp);
-        container.tabIndex = 1;
+        unsubscribeInput = scene.input.subscribe(onInput);
+        unsubscribeClicks = scene.input.subscribeClicks(onClick);
+        scene.input.focus();
         container.focus();
-        container.style.outline = "none";
+      });
 
-        ctx.hooks.destroy.tap(() => {
-          stage.off("pointerdown", onPointerDown);
-          stage.off("pointerup", onPointerUp);
-          stage.off("pointermove", onPointerMove);
-          stage.off("pointerout", onPointerOut);
-          stage.off("pointerover", onPointerOver);
-          stage.off("pointercancel", onPointerCancel);
-          stage.off("wheel", onPointerWheel);
-          stage.off("pointerclick", onElementPointerClick);
-          stage.off("pointerdown", onElementPointerDown);
-          stage.off("pointerdblclick", onElementPointerDoubleClick);
-          container.removeEventListener("keydown", onKeyDown);
-          container.removeEventListener("keyup", onKeyUp);
-        });
+      ctx.hooks.destroy.tap(() => {
+        unsubscribeInput?.();
+        unsubscribeInput = null;
+        unsubscribeClicks?.();
+        unsubscribeClicks = null;
+        scene.input.blur();
+        container.removeEventListener("keydown", onKeyDown);
+        container.removeEventListener("keyup", onKeyUp);
+        if (previousTabIndex === null) {
+          container.removeAttribute("tabindex");
+        } else {
+          container.setAttribute("tabindex", previousTabIndex);
+        }
+        container.style.outline = previousOutline;
       });
     },
   };

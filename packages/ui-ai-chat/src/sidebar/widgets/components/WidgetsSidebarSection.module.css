@@ -1,0 +1,37 @@
+.section { margin-top: .375rem; padding-top: .375rem; border-top: 1px solid var(--border); }
+.header { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .625rem; color: var(--muted-foreground); }
+.sectionToggle, .menuTrigger, .groupDisclosure, .groupMenuTrigger { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
+.sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
+.menuTrigger, .groupMenuTrigger { width: 1.75rem; height: 1.75rem; }
+.sectionToggle:hover, .menuTrigger:hover, .groupDisclosure:hover, .groupMenuTrigger:hover { background: var(--accent); color: var(--foreground); }
+.sectionToggle:focus-visible, .menuTrigger:focus-visible, .groupMenuTrigger:focus-visible, .widgetRowMain:focus-visible, .addButton:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.groupDisclosure:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
+.chevron, .groupChevron { transition: transform 150ms ease; }
+.sectionToggle[aria-expanded="true"] .chevron, .groupDisclosure[aria-expanded="true"] .groupChevron { transform: rotate(90deg); }
+.body { display: flex; flex-direction: column; padding-left: .375rem; }
+.groupRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; min-height: 1.875rem; padding-left: .25rem; color: var(--foreground); }
+.groupRow:hover { background: var(--accent); }
+.groupDisclosure { display: grid; grid-template-columns: 1.5rem 1rem minmax(0, 1fr); justify-content: stretch; gap: .25rem; min-width: 0; padding: 0; text-align: left; }
+.groupChevron { align-self: center; justify-self: center; }
+.groupName, .widgetName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; font-weight: 700; }
+.groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
+.widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+.widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1.5rem; color: inherit; text-align: left; }
+.addButton { display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.addButton:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+.addButton:disabled { cursor: not-allowed; opacity: .35; }
+.widgetRow:hover { background: var(--accent); }
+.selected, .selected:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--background)); color: var(--foreground); }
+.draftRow { color: var(--warning); }
+.draftAddButton, .draftRow .icon, .draftBadge { color: var(--warning); }
+.draftAddButton:hover { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--muted-foreground); }
+.icon > span, .icon :global(svg) { display: block; width: 1rem; height: 1rem; }
+.draftBadge { display: inline-flex; align-items: center; gap: .2rem; font-size: .5625rem; font-weight: 800; text-transform: uppercase; }
+.warning { color: var(--warning); }
+.state, .error, .empty { margin: 0; padding: .35rem .75rem; color: var(--muted-foreground); font-size: .7rem; }
+.error { overflow: hidden; color: var(--destructive); text-overflow: ellipsis; white-space: nowrap; }
+.empty { padding-left: 1.5rem; font-style: italic; }
+.menu { z-index: 60; min-width: 10rem; padding: .25rem; border: 1px solid var(--border); background: var(--popover); color: var(--popover-foreground); box-shadow: 0 8px 20px rgb(0 0 0 / .16); }
+.menuItem { padding: .45rem .6rem; outline: none; font-size: .75rem; }
+.menuItem[data-highlighted] { background: var(--accent); }

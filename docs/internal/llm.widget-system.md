@@ -1,515 +1,750 @@
-# Vibecanvas Widget + Actor System
-
-This document summarizes the current widget system and the architecture implied by the local `sdk-test` fixture. It is written as context for designing the public SDK exposed to guest widget authors.
-
-## Goal
-
-Vibecanvas allows generative widgets to appear as live UI on the infinite canvas. A widget has two guest-authored halves:
-
-- **Widget UI**: browser-side Arrow code mounted inside an `@arrow-js/sandbox` sandbox.
-- **Actor backend**: Bun-side functions executed in a child process and driven by messages/state-machine transitions.
-
-The SDK should make this split feel intentional: UI authors should work with canvas/widget concepts, while actor authors should work with typed messages, durable state, and controlled effects. The current implementation exposes lower-level pieces, so the next SDK layer should hide transport, IPC, schema validation, and storage details.
-
-## Important files
-
-### Runtime services
-
-- `packages/service-actor/src/ActorService.ts`
-  - Public service facade for actor definitions, widget source loading, actor instance lifecycle, and actor input delivery.
-  - Wraps `ActorSupervisor`.
-  - `sendMessage(instanceId, msgName, msgPayload)` delegates to the in-memory actor and returns the accepted message id.
-
-- `packages/service-actor/src/ActorSupervisor.ts`
-  - Loads widget manifests from `<configPath>/widgets/*/vibecanvas.json`.
-  - Syncs actor definitions into DB.
-  - Boots DB-backed actor instances into memory.
-  - Creates/removes actor instances when canvas widget elements are created/deleted.
-  - Publishes actor event envelopes to `IEventPublisherService`.
-  - Routes only `kind === "actor"` output messages across actor connections.
-
-- `packages/service-actor/src/Actor.ts`
-  - In-memory runtime for one actor instance.
-  - Owns current actor state/data and serializes inbox processing.
-  - `inbox(msgName, msgPayload)` validates and enqueues immediately, returning a generated message id.
-  - `start()` boots the child process and emits system lifecycle/state events.
-  - Emits discriminated actor events with `kind: "system" | "actor"`.
-  - Validates input and output message payloads with AJV schemas from `vibecanvas.json`.
-  - Spawns `icp-client.ts` as a Bun child process to run guest code.
-
-- `packages/service-actor/src/icp-client.ts`
-  - Child-process bridge that loads guest `actor/functions.ts`.
-  - Receives transition runs from parent.
-  - Builds the portal passed to guest functions: `next`, `setData`, `emitMessage`.
-  - Supports transition pipelines such as `fn.check`, `fx.read`, `tx.write` via `portal.next()`.
-
-### AI widget wizard
-
-- `packages/service-agent/src/AgentService.ts`
-  - Owns Pi sessions for the AI wizard.
-  - `connectWizzard(widgetId, sessionId)` creates/resumes the Pi session for a widget draft cwd under `<dataPath>/pi/agent/widget-cwd/*`.
-  - Returns chat history plus the latest actor candidate custom entry when one exists.
-  - Loads phase-specific tools from `packages/service-agent/src/tools/fn.phase-tools.ts`.
-
-- `packages/service-agent/src/tools/tool.set-actor-candidate.ts`
-  - Phase 1 custom Pi tool.
-  - Accepts a full actor candidate, validates it, and appends it to the Pi session with `sessionManager.appendCustomEntry`.
-  - Uses a hand-authored TypeBox tool parameter schema so the model sees actor state and transition-function constraints.
-
-- `packages/service-agent/src/tools/tool.approve-actor-candidate.ts`
-  - Phase 1 custom Pi tool.
-  - Approves the latest actor candidate revision, writes scaffold files into the draft cwd, appends an approval custom entry, and emits a widget update event when wired.
-  - Scaffold includes `vibecanvas.json`, `package.json`, `actor/functions.ts`, actor function stubs, `actor/types.ts`, `widget/main.ts`, and `widget/main.css`.
-  - After writing `package.json`, tries `npm install`; install failure is reported in tool details and does not by itself undo approval.
-
-- `packages/service-agent/src/tools/tool.validate-widget-files.ts`
-  - Phase 2 custom Pi tool.
-  - Validates the generated draft files against the approved manifest and actor registry expectations.
-
-- `packages/service-agent/src/tools/tool.publish-widget.ts`
-  - Phase 2 custom Pi tool.
-  - Copies the draft widget folder to `<configPath>/widgets/<slug>` and reloads actor definitions through `ActorService.reload()` when available.
-
-- `packages/service-agent/src/core/fx.session-candidate.ts` and `packages/service-agent/src/core/tx.session-candidate.ts`
-  - Read/write latest actor candidate and approval records from Pi session custom entries.
-  - Candidate records are not written to separate files.
-
-### Manifest and schemas
-
-- `packages/service-actor/src/core/types.ts`
-  - Current TypeScript contract for `TVibecanvasJson`, actor state, messages, transition functions, and JSON Schema.
-  - Also defines SDK actor types currently re-exported by `@vibecanvas/sdk`.
-
-- `packages/service-actor/src/core/vibecanvasjson.zod.ts`
-  - Runtime validation of `vibecanvas.json`.
-
-- `packages/service-db/src/model.ts`
-  - Zod model for persisted DB rows.
-  - Actor rows include definitions, instances, connections, status, state, and JSON context.
-
-### Canvas/front-end integration
-
-- `packages/api-actors/src/contract.ts`
-  - ORPC contract for listing/getting actor definitions, actor snapshots, actor event streaming, and actor input sending.
-  - `definitions.get` returns the merged manifest/DB definition plus widget source files.
-  - `events` streams `TActorEvent` envelopes.
-  - `instances.sendMessage` accepts `{ instanceId, name, payload }` and returns `{ messageId }`.
-
-- `packages/api-actors/src/api.def-get.ts`
-  - Reads the manifest from `ActorService` and widget source from disk.
-
-- `packages/canvas/src/plugins/widget/Widget.plugin.ts`
-  - On canvas init, fetches actor definitions and widget source.
-  - Registers each actor-backed widget with `WidgetManagerService`.
-
-- `packages/canvas/src/services/widget/fx.draw-host.ts`
-  - Creates a canvas element with `data.type === "widget"` and `actorDefinitionName`.
-
-- `packages/canvas/src/services/widget/attach-dom-portal.ts`
-  - Attaches an absolutely positioned DOM portal over the Konva widget body.
-  - Mounts the Arrow sandbox if the widget config contains sandbox source.
-  - Passes a fresh actor-instance-id reader and actor-event subscription capability into the sandbox host bridge.
-
-- `packages/canvas/src/services/widget/mount-arrow-sandbox.ts`
-  - Wraps `@arrow-js/sandbox`.
-  - Injects base CSS.
-  - Rewrites `@vibecanvas/sdk/widget` imports to `/__vibecanvas_sdk_bootstrap.js`.
-  - Injects the built widget SDK module at `/__vibecanvas_sdk.js`.
-  - Implements the private `host-bridge:vibecanvas-widget` module used by the SDK bootstrap.
-  - Fetches initial actor snapshots through the actor API.
-  - Sends widget input messages through `api.actors.instances.sendMessage`.
-  - Converts relevant actor events into sandbox snapshot updates.
-
-### UI action → backend actor trace
-
-Read these files in order when debugging a widget button click such as `actor.sendMessage(name, payload)`:
-
-1. `local-volume/config/widgets/sdk-test/widget/main.ts`
-   - Guest Arrow UI calls `actor.sendMessage(...)` from `@vibecanvas/sdk/widget`.
-2. `packages/sdk/src/widget.ts`
-   - Public widget SDK singleton; forwards `actor.sendMessage(...)` to the injected private implementation set by `__setSendMessage`.
-3. `packages/canvas/src/services/widget/mount-arrow-sandbox.ts`
-   - Injects SDK/bootstrap modules into `@arrow-js/sandbox`.
-   - Implements `host-bridge:vibecanvas-widget`.
-   - `sendActorMessage({ name, payload })` waits for the widget actor instance id and calls `api.actors.instances.sendMessage(...)`.
-   - `getActorSnapshot()` waits for actor id and fetches `api.actors.instances.snapshot(...)`.
-   - `nextActorEvent({ cursor })` delivers event-driven snapshot updates into the sandbox.
-4. `packages/canvas/src/services/widget/attach-dom-portal.ts`
-   - Mounts the sandbox for a Konva widget host.
-   - Supplies `getActorInstanceId()` from fresh Konva node attrs, avoiding stale initial canvas element data.
-   - Supplies `subscribeActorInstanceEvents(...)` from `WidgetManagerService`.
-5. `packages/canvas/src/services/widget/WidgetManagerService.ts`
-   - Registers widget tools/elements.
-   - Opens one service-level `api.actors.events({})` stream.
-   - Routes incoming actor events by `event.actorId` to mounted sandbox subscribers.
-6. `packages/api-actors/src/contract.ts`
-   - Defines `instances.sendMessage`, `instances.snapshot`, and streamed `TActorEvent` envelopes.
-7. `packages/api-actors/src/api.instance-send-message.ts`
-   - ORPC handler for `instances.sendMessage`; calls `context.actor.sendMessage(...)` and returns `{ messageId }`.
-8. `packages/service-actor/src/ActorService.ts`
-   - Service facade; delegates `sendMessage(instanceId, msgName, msgPayload)` to the supervisor actor map.
-9. `packages/service-actor/src/ActorSupervisor.ts`
-   - Owns in-memory actor instances.
-   - Publishes all actor events to `IEventPublisherService`.
-   - Routes only `kind: "actor"` output events across actor connections.
-10. `packages/service-actor/src/Actor.ts`
-    - Validates input, enqueues immediately, returns message id.
-    - Serializes queue processing.
-    - Emits system events (`ack`, `state.changed`, `data.changed`, `status.changed`, `error`) and actor output events.
-11. `packages/service-actor/src/icp-client.ts`
-    - Child-process runner for guest actor functions.
-    - Implements guest portals: `next`, `setData`, `emitMessage`.
-12. `local-volume/config/widgets/sdk-test/actor/functions.ts` and sibling actor files
-    - Guest actor transition implementation.
-
-For actor creation before UI send, also read:
-
-- `packages/canvas/src/services/widget/fx.draw-host.ts`
-  - Creates widget canvas elements with `data.actorDefinitionName`.
-- `packages/imperative-shell` / Automerge actor-create integration files as needed
-  - Canvas element creation triggers `ActorService.createInstance(...)`.
-- `packages/service-actor/src/ActorSupervisor.ts`
-  - `createInstance(...)` inserts DB row, creates `Actor`, listens before `start()`, and returns the actor id used as `data.actorInstanceId`.
-
-### Guest fixture
-
-- `local-volume/config/widgets/sdk-test/vibecanvas.json`
-  - Defines the Todo Actor System manifest.
-  - Declares initial actor data, JSON schemas for data/input/output messages, state transitions, actor function path, and widget tool metadata.
-
-- `local-volume/config/widgets/sdk-test/widget/main.ts`
-  - Arrow UI widget.
-  - Imports `actor` from `@vibecanvas/sdk/widget`.
-  - Renders reactive actor state/context and sends typed todo input messages through `actor.sendMessage(...)`.
-
-- `local-volume/config/widgets/sdk-test/actor/functions.ts`
-  - Guest actor function registry.
-  - Exports `{ fn, fx, tx }` maps keyed by manifest transition names.
-
-- `local-volume/config/widgets/sdk-test/actor/*.ts`
-  - Example actor logic split into pure reducers (`fn.*`), read helpers (`fx.*`), and writes (`tx.*`).
-
-## Current lifecycle
-
-### 1. Service startup
-
-1. CLI starts `DbServiceTurso`, `AutomergeService`, and `ActorService` during `serve`.
-2. `ActorService.start()` calls `ActorSupervisor.init()`.
-3. Supervisor scans `<configPath>/widgets/*/vibecanvas.json`.
-4. Each manifest is parsed and validated by `ZVibecanvasJson`.
-5. Definitions are synced into `actor_definitions`.
-6. Existing `actor_instances` are loaded from DB and booted into in-memory `Actor` objects.
-7. Existing `actor_connections` are loaded into `connectionMap`.
-
-### 2. Widget registration in the canvas client
-
-1. The canvas `Widget.plugin` calls `api.actors.definitions.list()`.
-2. For each definition, it calls `api.actors.definitions.get({ name })`.
-3. The API returns:
-   - DB definition fields.
-   - Manifest fields.
-   - Widget source files from `widget.relWidgetDir`.
-4. The plugin builds an Arrow sandbox source map like `{ "main.ts": string, "main.css": string }`.
-5. The widget is registered with:
-   - `id = actor.def.name`
-   - `dataType = "widget"`
-   - manifest `tool` metadata
-   - `actor.actorDefinitionName`
-   - sandbox Arrow source
-
-### 3. Widget creation on the canvas
-
-1. User selects the registered tool and creates a widget host.
-2. `fx.draw-host.ts` creates an Automerge canvas element:
-   - `data.type = "widget"`
-   - `data.kind = widget id`
-   - `data.actorDefinitionName = actor definition name`
-3. `AutomergeService.onElementCreate` sees the widget element.
-4. It calls `ActorService.createInstance(defName, canvasId, elementId)`.
-5. Supervisor inserts an `actor_instances` row and creates an in-memory `Actor`.
-6. The canvas element is patched with `data.actorInstanceId = actor.getId()`.
-
-### 4. Widget rendering
-
-1. The Konva widget host gets a DOM portal over its body.
-2. If the widget config has `sandbox`, `mountArrowSandbox()` mounts an `@arrow-js/sandbox` template into that portal.
-3. The sandbox runs the guest Arrow `main.ts` in QuickJS/WASM.
-4. The host page owns the real DOM rendered by Arrow sandbox, not guest code directly.
-5. The sandbox bridge waits for `data.actorInstanceId` with a short exponential backoff because widget DOM can mount before actor creation has patched the canvas element.
-6. Once an actor id is known, the bridge fetches `api.actors.instances.snapshot({ instanceId })` and subscribes to routed actor events for that actor instance.
-
-### 5. Actor message processing
-
-1. Parent calls `actor.inbox(msgName, msgPayload)`.
-2. `Actor` generates a message id.
-3. `Actor` validates the message name against `actor.inputMsgSchema`, validates the payload against `actor.inputMsgSchema[msgName]`, and finds the transition for current state at `actor.states[currentState].on[msgName]`.
-4. Invalid input messages are dropped instead of changing actor state. A dropped input emits only an implicit actor output event named `DROP_MESSAGE` with drop details, then returns the generated message id.
-5. Valid input messages are enqueued, queue processing is triggered, and the message id is returned immediately.
-6. Startup activation, inbox messages, timeout messages, and state activity ticks are processed one at a time by one serialized queue.
-7. The transition function list is sent over IPC to the child process:
-   - `func`
-   - `payload`
-   - current `data`
-8. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
-9. Guest functions receive `(portal, args)`.
-10. Guest code may call:
-   - `portal.next()` to continue a function pipeline.
-   - `portal.setData(nextData)` to update actor data in the parent.
-   - `portal.emitMessage({ type, payload })` to emit actor output.
-11. `portal.setData(...)` emits a system `data.changed` event.
-12. New transitions use one `targetState`. Legacy `allowedTargetStates` manifests are normalized at load time without breaking their current behavior.
-13. Parent validates emitted outputs against `actor.outputMsgSchema`.
-14. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
-15. State-changing messages run source `onExit`, transition functions, target `onEnter`, then start target timeout/activity scheduling before emitting `ack`.
-16. Final startup, input, activity, recovery, and implicit-error outcomes emit revisioned snapshot events for ordered persistence and widget updates.
-
-## Current data model
-
-### Manifest-level definition
-
-`vibecanvas.json` is the source of truth for guest code structure:
-
-- `slug`, `name`, `version`, `description`
-- `actor.initialState`
-- `actor.initialData`
-- `actor.dataSchema`
-- `actor.states[state].on[msgName].func`
-- `actor.states[state].on[msgName].targetState`
-- `actor.states[state].onEnter`, `onExit`, and `onError`
-- `actor.states[state].activity` for one fixed-delay, non-overlapping state activity
-- `actor.inputMsgSchema`
-- `actor.outputMsgSchema`
-- `actor.relFunctionPath`
-- `widget.relWidgetDir`
-- `widget.tool`
-
-### AI wizard draft data
-
-The AI wizard has a pre-publish draft layer before a widget becomes a real actor definition:
-
-- Actor candidates are stored as Pi session custom entries, not as standalone candidate files.
-- The latest candidate custom entry is returned by `agent.wizzard.connect` as `actorCandidate`.
-- Successful approval appends a separate approval custom entry.
-- Phase selection is derived from the session history:
-  - no approval entry: phase 1 tools only (`vc_set_actor_candidate`, `vc_approve_actor_candidate`)
-  - approval entry exists: phase 2 tools plus built-in `read`, `edit`, and `grep`
-- Approval writes draft files into the wizard cwd. The draft is not installed for runtime until `vc_publish_widget` copies it to `<configPath>/widgets/<slug>` and reloads actor definitions.
-- Approval scaffold writes a `package.json` and attempts `npm install` if `package.json` exists.
-
-### DB-backed runtime rows
-
-The active model in `packages/service-db/src/model.ts` contains:
-
-- `actor_definitions`
-  - `name`, `slug`, `url`, `description`, `manifest_path`, timestamps.
-- `actor_instances`
-  - `id`, `canvas_id`, `element_id`, `actor_definition_name`, `status`, `machine_state`, `machine_context`.
-- `actor_connections`
-  - Source/target actor instance ids, `enabled`, optional message whitelist, style.
-
-### Canvas document element
-
-Actor-backed widgets are canvas elements with:
-
-- `data.type = "widget"`
-- `data.kind`
-- `data.w`, `data.h`, window/expanded state
-- `data.actorDefinitionName`
-- optional `data.actorInstanceId`
-- optional `data.uiProps`
-
-## Arrow UI model
-
-Guest UI uses `@arrow-js/core` primitives:
-
-- `reactive()` for local state.
-- `html` tagged templates for UI.
-- `component()` when reusable component instances are needed.
-
-`@arrow-js/sandbox` is a good fit because generated UI code runs in QuickJS/WASM and communicates with the host only through serialized bridge calls. The host can expose safe APIs through sandbox host bridges rather than leaking the browser window or internal services.
-
-The current Todo widget imports `actor` from `@vibecanvas/sdk/widget`. The bridge waits for the owning `actorInstanceId`, fetches the initial actor snapshot, sends widget messages to the backend actor API, and receives live snapshot updates from actor event envelopes.
-
-## Current SDK surface
-
-The SDK is now split by runtime. There is intentionally no bare `@vibecanvas/sdk` public entrypoint. Guest code must import a runtime-specific subpath:
-
-- `@vibecanvas/sdk/widget` for browser/Arrow sandbox widget code.
-- `@vibecanvas/sdk/actor` for Bun-side actor function code.
-
-Current package source files:
-
-- `packages/sdk/src/widget.ts`
-  - Small author-facing widget API.
-  - Exposes the singleton `actor` and `TWidgetActor`.
-  - The actor object only exposes reactive `state`, reactive `context`, and `sendMessage()`.
-  - It also exposes internal setters used by the injected sandbox bootstrap: `__setActorSnapshot` and `__setSendMessage`.
-- `packages/sdk/src/widget-bridge.ts`
-  - Non-guest bridge helper for tests/future host integrations.
-  - Exposes `connectWidgetBridge` and `IWidgetHostPortal`.
-  - Models `getActorSnapshot`, `sendActorMessage`, optional `subscribeActor`, and optional long-poll `nextActorEvent`.
-- `packages/sdk/src/actor.ts`
-  - Actor-side types and helpers.
-  - Exposes `defineActorFunctions`, `defineFn`, `defineFx`, `defineTx`.
-  - Exposes short actor portal types: `TFnPortal`, `TFxPortal`, `TTxPortal`.
-
-Current status:
-
-- Actor authors can import types from `@vibecanvas/sdk/actor`.
-- Widget authors have a small intended API from `@vibecanvas/sdk/widget`.
-- The sandbox host injects the built `@vibecanvas/sdk/widget` source and a bootstrap module.
-- Initial actor snapshots are fetched through `api.actors.instances.snapshot({ instanceId })` after the bridge discovers the widget's `actorInstanceId`.
-- UI-to-actor send is wired through `api.actors.instances.sendMessage({ instanceId, name, payload })` and returns a backend message id.
-- Host-to-sandbox actor updates are event-driven: `WidgetManagerService` listens to all actor events, routes matching `actorId` events to the mounted sandbox, and `mount-arrow-sandbox.ts` converts state/data/error system events into SDK snapshots.
-
-## Remaining architectural gaps
-
-The main bridge path now exists: widget UI can send input to its owning backend actor, and state/data/error changes flow back into the sandbox as snapshots. Remaining gaps:
-
-- Actor output messages route to other actors; the public widget SDK does not yet expose output-message subscriptions.
-- Actor event streaming is global at the API level and filtered in `WidgetManagerService`; per-instance stream APIs may be useful later.
-- Widget SDK types are still manually authored in fixtures rather than generated from `vibecanvas.json` schemas.
-
-## Recommended SDK shape
-
-The public SDK should be split by runtime.
-
-### `@vibecanvas/sdk/widget`
-
-For Arrow sandbox code. The widget entrypoint should stay intentionally small. Widget authors should see only what they need to render and talk to their own actor.
-
-Current intended primitives:
-
-```ts
-import { html } from '@arrow-js/core'
-import { actor } from '@vibecanvas/sdk/widget'
-
-export default html`
-  <header>
-    <span>${() => actor.state.value}</span>
-  </header>
-
-  <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>
-
-  <button @click="${() => actor.sendMessage('addTodo', { title: 'New' })}">
-    Add
-  </button>
-`
+# Vibecanvas widget system
+
+**Status:** Current Capsule-based architecture
+
+**Audience:** Engineers working on widget authoring, builds, preview, publication,
+placement, browser execution, collaborative state, functions, or resources.
+
+This document describes the widget system after the Capsule-only cutover.
+Code and tests are authoritative. The detailed Capsule integration and
+compatibility constraints live in:
+
+- [`llm.capsule-vibecanvas-integration.md`](./llm.capsule-vibecanvas-integration.md)
+- [`llm.capsule-widget-compatibility.md`](./llm.capsule-widget-compatibility.md)
+- [`llm.capsule-migration.md`](./llm.capsule-migration.md)
+
+## 1. System model
+
+A widget moves through four distinct ownership domains:
+
+1. **Draft source** is mutable authoring data.
+2. **Build output** is a deterministic result derived from one immutable source
+   snapshot and one trusted build policy.
+3. **Published revision** is immutable metadata plus content-addressed source,
+   UI, and optional server artifacts.
+4. **Widget instance** is a canvas placement pinned to one definition revision,
+   with its own runtime identity and optional collaborative state document.
+
+These domains are not interchangeable. In particular:
+
+- a draft is not a publication;
+- a publication never reads mutable draft files;
+- a definition's active revision affects new placement and catalog reads, not
+  already placed instances;
+- a widget instance never chooses its tenant, definition, revision, resources,
+  state document, signing key, or provider authority.
+
+```mermaid
+flowchart LR
+  A["AI chat and widget tools"] --> D["Mutable draft"]
+  D --> S["Immutable source snapshot"]
+  S --> B["Trusted Vibecanvas build orchestration"]
+  B --> N["Host npm ci + guest npm run build"]
+  N --> O["Capsule external dist validation"]
+  B --> F["Separate server-function build"]
+  O --> U["Canonical unsigned Capsule artifact"]
+  U --> K["Preview or release signing"]
+  K --> C["Exact signed Capsule bytes"]
+  C --> P["Preview mount or immutable publication"]
+  P --> I["Pinned canvas widget instance"]
+  I --> G["Cangine fixed frame and atomic portal shell"]
+  G --> H["Shared Capsule host partition"]
+  H --> V["Instance-bound capabilities and channels"]
+  V --> R["Functions, Automerge state, props, theme, output"]
 ```
 
-Current minimum capabilities:
+## 2. Ownership by package
 
-- `actor.state.value`
-  - Arrow-reactive actor machine state, e.g. `ready`, `busy.saving`, `error.validation`.
-- `actor.context.value`
-  - Arrow-reactive actor context/data from the owning actor instance.
-- `actor.sendMessage(name, payload)`
-  - Sends an input message to this widget's own actor instance.
+| Owner | Responsibility |
+| --- | --- |
+| `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, profiles, budgets, capabilities, channels, lifecycle, and diagnostics |
+| `@omnidraw/cangine` | Fixed widget chrome, traffic lights, header hit regions, frame/content interaction mode, local canvas-maximized presentation, transform affordances, normalized pointer cancellation, atomic DOM portal-shell presentation, and shared menu presentation |
+| `packages/capsule-vibecanvas` | Vibecanvas build policy, target and budget mapping, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
+| `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
+| `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
+| `apps/cli` | Production service composition, application-owned npm distribution builds, persistent signing keys, host configuration, artifact storage, and server-function tooling |
+| `packages/sdk` | The supported widget authoring API over `@omnidraw/capsule/guest` |
+| `packages/api` | Tenant-authorized runtime configuration and artifact delivery |
+| `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, Capsule content mounting, provider creation, preview, runtime ownership, product widget actions, and population scheduling |
+| `packages/canvas` | Automerge-to-Cangine projection, semantic selection, product tools and commands, CRDT history, durable collapse, portal-content reconciliation, and lifecycle signals |
+| Server services | Durable function execution, resource access, Automerge persistence, tenancy, database records, and events |
 
-Deliberately not in the small widget file yet:
+Capsule has no Vibecanvas dependency. Vibecanvas imports Capsule only through
+its public package entries.
 
-- Canvas element/window APIs.
-- Output subscriptions.
-- UI props.
-- Raw actor ids/definition ids.
-- ORPC, Automerge, IPC, DB, Bun, or browser-global escape hatches.
+## 3. Drafts and authoring workspaces
 
-Those can be added later when there is a clear use case, but should not make `widget.ts` hard to read. Integration details belong in `widget-bridge.ts`.
-
-Current bridge direction:
-
-- `mount-arrow-sandbox.ts` rewrites guest imports from `@vibecanvas/sdk/widget` to `/__vibecanvas_sdk_bootstrap.js`.
-- The bootstrap module imports the real injected SDK module at `/__vibecanvas_sdk.js` and private host functions from `host-bridge:vibecanvas-widget`.
-- The bootstrap calls `getActorSnapshot()` once and applies it through `__setActorSnapshot`.
-- The bootstrap starts a `nextActorEvent({ cursor })` loop for future serialized snapshot updates.
-- Guest code never imports `host-bridge:*`; only the SDK/bootstrap does.
-- Keep all messages JSON-serializable.
-- Hide ORPC and canvas services from guest code.
-- Generate or provide types from `vibecanvas.json` so `sendMessage()` is typed.
-
-### `@vibecanvas/sdk/actor`
-
-For Bun-side actor guest code. It should preserve the function split but make the API clearer.
-
-Current exports:
-
-- `defineActorFunctions({ fn, fx, tx })`
-- `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
-- `TActorFn`, `TActorFx`, `TActorTx` function types.
-- `TFnPortal`, `TFxPortal`, `TTxPortal` portal types.
-
-Potential later exports:
-
-- `emit(type, payload)` helper to enforce output shape.
-- `setData(nextData)` / `patchData(patch)` helpers.
-- Type utilities generated from manifest schemas.
-
-Actor author model:
-
-- `fn.*` functions: deterministic pure logic, no side effects.
-- `fx.*` functions: impure reads through injected portal capabilities.
-- `tx.*` functions: writes through injected portal capabilities.
-- Pipelines use `await portal.next()` only when composition is desired.
-- Production actor function files must exist on disk at `actor.relFunctionPath` when loaded by the runtime, including compiled Vibecanvas binaries.
-- External actor `.ts` or `.js` modules should be self-contained or ship any runtime dependencies beside the widget, for example in the widget folder's `node_modules`. Type-only imports are erased and do not need runtime packages.
-
-### Manifest/type generation
-
-For guest authors, schemas should drive TypeScript types. The SDK can provide a generated module per widget such as:
-
-```ts
-import type { ActorInput, ActorOutput, ActorData } from '@vibecanvas/sdk/generated'
-```
-
-This should be generated from:
-
-- `actor.dataSchema`
-- `actor.inputMsgSchema`
-- `actor.outputMsgSchema`
-
-The generated API lets widget code call:
-
-```ts
-actor.sendMessage('addTodo', { title: '...' })
-```
-
-and actor code emit:
-
-```ts
-await portal.emit('todosChanged', payload)
-```
-
-without hand-written stringly typed maps.
-
-## Recommended interaction contract
-
-The clean conceptual contract is:
+Authoring data lives below `<dataPath>/pi/agent`:
 
 ```text
-Widget UI --send(input message)--> Owning Actor Instance
-Actor Instance --state/context snapshot--> Widget UI
-Actor Instance --output message--> Actor Connections --> Target Actor Instance
+chats/<date>/<chat-id>/
+  chat.json
+  history/
+  workspace/widgets/<name> -> shared draft
+
+widgets/drafts/<name>/
+  vibecanvas.json
+  package.json
+  tsconfig.json
+  ui/
+  server/                 # optional
+  shared/                 # optional
+
+draft-state/              # atomic publication materialization markers
+sdk/                      # host-materialized @vibecanvas/sdk package
 ```
 
-Important boundaries:
+One shared draft directory is the mutable source authority. Chat workspaces
+contain controlled mounts to that directory. File tools must operate through a
+mounted `widgets/<name>/...` path. The workspace rejects path traversal,
+escaping symlinks, direct shared-root access, case collisions, and conflicting
+mount targets. Writes are serialized by the real draft root.
 
-- Widget UI talks only to its owning actor unless the SDK explicitly exposes other capabilities.
-- Actor-to-actor communication remains manifest/connection driven.
-- All payloads are JSON and schema-validated at host boundaries.
-- Guest code never receives raw DB, Automerge, child process, Bun, browser window, or service objects.
+Draft metadata is durable in the authoring store and uses compare-and-set
+revision checks. Validation results are tied to the exact captured source
+digest. Any source change invalidates the previous validation result.
 
-## Suggested next implementation steps
+`vc_widget_create` creates a manifest-v3, plain-DOM scaffold. Widget source
+imports `@vibecanvas/sdk/widget`; it does not import Capsule directly. The
+authoring prompt permits only UI stacks that the trusted build has explicitly
+pinned and projected. Plain DOM is the default and React is the currently
+supported component-library path.
 
-1. Expose actor output-message subscriptions to widget SDK only if a clear UI use case appears.
-2. Consider replacing the global actor event stream with an instance-scoped API, or keep global streaming with client-side routing if that remains simpler.
-3. Keep injecting the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` and keep host bridge details hidden behind the bootstrap module.
-4. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
-5. Generate TypeScript types from `vibecanvas.json` schemas for guest projects.
+## 4. Manifest v3
 
-## Design principle
+`schemaVersion: 3` is the only widget manifest format. Unknown fields are
+rejected.
 
-The SDK should expose intent, not infrastructure:
+```json
+{
+  "schemaVersion": 3,
+  "name": "Counter",
+  "slug": "counter",
+  "ui": {
+    "runtime": "capsule",
+    "entry": "ui/main.ts",
+    "target": {
+      "runtimeAbi": "quickjs-release-sync-v1",
+      "domProfile": "dom-core-v2",
+      "featureProfiles": ["artifact-resources-v1"]
+    },
+    "state": {
+      "collaborative": false,
+      "localStore": "ephemeral"
+    },
+    "parkability": {
+      "enabled": false
+    }
+  }
+}
+```
 
-- Widget authors should think: “render UI, send commands, react to actor state.”
-- Actor authors should think: “validate input, transform data, emit events.”
-- Vibecanvas internals should own: sandboxing, IPC, schema validation, persistence, canvas sync, actor routing, and security boundaries.
+The manifest expresses requested product behavior, not host authority.
+
+- Target and profile names are normalized and checked against deployment
+  policy.
+- Budget fields are optional requests. The adapter applies defaults and
+  ceilings; zero is a valid explicit denial.
+- Collaborative state is opt-in.
+- Local store is `none` or `ephemeral`.
+- Parking is disabled in the current release.
+- The optional `server` section identifies a separate server entry and ABI.
+- Resource requirements declare slots, kinds, and effect ceilings, never
+  concrete resource IDs.
+
+The complete budget contract covers CPU, VM memory, DOM nodes, handles,
+message bytes, stream bytes, assets, network, GPU memory, and lifecycle bytes.
+
+## 5. Immutable source capture and validation
+
+Every validation, preview, and publication begins by capturing one coherent,
+content-addressed `TWidgetSourceSnapshot`.
+
+The snapshot contains:
+
+- a source snapshot ID;
+- a SHA-256 digest;
+- normalized relative file paths;
+- exact file bytes;
+- a creation timestamp.
+
+Request-time snapshots are materialized in hidden temporary siblings and
+removed before the operation returns. Build inputs never continue reading the
+mutable draft directory after capture.
+
+Validation checks the strict manifest, source shape, allowed imports, server
+function declarations, and build compatibility. It does not publish or create
+runtime authority.
+
+## 6. Build pipeline
+
+`WidgetArtifactBuilderCapsule` orchestrates two deliberately separate builds.
+
+### Accepted host-build risk for the `dist/` pipeline
+
+The production build boundary is:
+
+```text
+guest package.json + lockfile + source
+  -> Vibecanvas-owned npm install and npm run build
+  -> immutable dist/
+  -> Capsule validation and artifact construction
+  -> preview or release signing
+```
+
+Vibecanvas explicitly accepts that dependency installation and
+guest-controlled build scripts execute with the build-server account's host
+authority. This is not an OS sandbox or a hostile-code isolation boundary.
+Package lifecycle hooks, `npm run build`, transitive build tooling, compiler
+plugins, and code reached by those tools may execute arbitrary native-process
+behavior. They may:
+
+- read any file or environment value available to the build-server account;
+- write, replace, or delete data writable by that account;
+- make network requests permitted to the account;
+- start child or detached processes;
+- consume CPU, memory, disk, file descriptors, or process capacity;
+- retain data in shared caches or temporary locations; and
+- exploit defects in npm, the selected toolchain, parsers, plugins, or native
+  dependencies.
+
+Capsule receives and validates `dist/` only after this host execution has
+finished. Capsule's artifact validation, QuickJS runtime, DOM membrane,
+capability policy, signing, and browser verification protect the application
+when the resulting artifact is loaded; they do not protect the build server,
+undo build-time side effects, or retroactively confine commands that produced
+`dist/`.
+
+This risk is an intentional product decision. Docker, Podman, a VM, or another
+OS isolation provider is not a prerequisite for the normal widget build path.
+Deployments may still use an isolated worker or dedicated build account as
+defense in depth. Private temporary directories, sealed environment values,
+least-privilege credentials, bounded output, deadlines, cancellation, process
+cleanup, and cache partitioning remain desirable operational controls, but none
+of them is represented as containment of deliberately hostile build code.
+
+Vibecanvas must retain end-to-end provenance across this boundary. One build
+identity must bind the exact source snapshot, `package.json`, lockfile, npm and
+Node identities, build command and policy, relevant platform identity,
+dependency and toolchain inputs, complete `dist/` bytes, Capsule version and
+validation policy, and final artifact bytes. Preview and publication must use
+the same immutable inputs and must never regenerate the lockfile or rebuild from
+mutable draft state after the source revision is selected.
+
+### 6.1 Browser UI build
+
+The immutable source project contains:
+
+- the complete non-server source candidate set;
+- the exact entry path;
+- package-lock format 3;
+- guest-selected npm dependencies and build tooling;
+- generated browser proxies for declared server functions;
+- the normalized target, profiles, budgets, channels, and capability requests;
+- the pinned builder identity, Capsule package identity, and build policy.
+
+Vibecanvas materializes that exact project in a private temporary directory,
+runs frozen `npm ci`, then the guest-owned `npm run build`. It captures only a
+bounded regular-file `dist/` tree, rejects symlinks and special files, and
+passes the exact bytes plus lock/build/producer provenance to Capsule's
+`external-distribution` API. Capsule admits only its closed ES2022 module and
+resource graph and returns the canonical artifact bytes and hash. Docker,
+Podman, an OCI image, and the removed Capsule build runner are not involved.
+
+### 6.2 Server-function build
+
+Server source is withheld from the Capsule UI build. It is built separately as
+a Bun server artifact with an allowlisted import graph.
+
+Direct named exports become canonical function descriptors containing:
+
+- export name and host-only module path;
+- `fn`, `fx`, or `tx` effect;
+- exact input and output schemas;
+- resource-slot access;
+- timeout, memory, output, and log limits;
+- retry policy.
+
+Browser projections remove module paths. Generated UI modules call the
+instance-bound Capsule function capability instead of importing server code.
+
+### 6.3 Signing and identity
+
+The builder produces deterministic unsigned Capsule bytes. Trusted tooling then
+signs the exact bytes with a persistent Ed25519 key:
+
+- preview builds use the preview key;
+- publications use the release key.
+
+Private keys are stored server-side in a mode-0600 file under a mode-0700
+directory. Only raw public verification keys enter browser configuration.
+
+Two artifact identities are retained:
+
+- `digestSha256` is the digest of the exact stored signed bytes;
+- `capsuleArtifactHash` is Capsule's validated canonical artifact identity.
+
+The widget contract digest binds the canonical manifest, signed UI digest,
+Capsule hash, target, effective budgets, capability and channel digests,
+signature key IDs, optional server identity, function descriptors, source
+digest, builder identity, Capsule build identity, and build policy.
+
+## 7. Draft Preview
+
+Preview is stateless and non-durable:
+
+1. Capture the current draft snapshot.
+2. Check the requested draft revision against the snapshot digest.
+3. Build through the production Capsule build interface.
+4. Sign with the preview key.
+5. Return bounded base64 bytes, exact digest, runtime descriptor, browser-safe
+   function descriptors, contract digest, and safe diagnostics.
+6. Decode and verify the exact bytes in the browser.
+7. Mount through the same Capsule host adapter used by publications.
+
+A persisted Preview canvas frame stores only its draft identity and display
+metadata. Refresh and reset rebuild the current draft; there is no persisted
+preview artifact, preview process, or close endpoint.
+
+Preview receives:
+
+- an ephemeral collaborative-state bridge;
+- a function provider that always returns
+  `PREVIEW_FUNCTIONS_UNAVAILABLE`;
+- preview signing authority;
+- the normal props, theme, output, schema, target, budget, and cleanup path.
+
+Server functions and resources become usable only after publication.
+
+## 8. Publication and immutable revisions
+
+Publish is an explicit user action and requires the expected draft revision.
+
+Before durable mutation, publication:
+
+1. parses and canonicalizes manifest v3;
+2. validates selected resource bindings against manifest ceilings;
+3. builds and signs all artifacts;
+4. validates function descriptors and the complete build integrity contract;
+5. encodes an immutable source artifact.
+
+Inside one mutation fence it stores:
+
+- the exact source artifact;
+- the exact signed Capsule UI artifact;
+- the optional server artifact;
+- revision metadata and runtime descriptor;
+- function descriptors and all contract digests;
+- Capsule and builder identities;
+- revision resource bindings;
+- the definition's compare-and-set active revision pointer.
+
+Blob writes that lose a publication race are orphaned only under the artifact
+retention grace policy and are later reclaimed by reconciliation and garbage
+collection.
+
+Published catalog and file reads resolve the active revision and verify its
+immutable source artifact. There is no published source directory.
+
+Existing canvas instances stay pinned to their exact revision when a newer
+revision becomes active. Edit-as-draft reconstructs source only from the
+selected revision's verified source artifact and records that publication as
+the draft seed. It never falls back to an arbitrary mutable folder.
+
+## 9. Placement and instance identity
+
+A committed canvas widget stores:
+
+- `definitionId`;
+- `revisionId`;
+- `instanceId`;
+- durable world geometry and ordering;
+- one durable collapse bit, `expanded`; and
+- host-owned UI props;
+
+The database projection creates a tenant-scoped `widget_instances` record bound
+to the canvas and element. Collaborative widgets receive a separate Automerge
+document bound to that widget instance.
+
+Definition revisions do not share mutable instance state. Deleting a browser
+runtime does not delete the instance's durable Automerge document.
+
+### 9.1 Canvas frame and editor ownership
+
+The authoritative flow remains one-way:
+
+```text
+Automerge canvas document -> Vibecanvas projection -> Cangine scene
+```
+
+Cangine's optional `/editor` entrypoint supplies the replaceable editor kernel,
+fixed widget-frame controller, context-menu controller, shared menu, standard
+transform-policy resolver, and transform hover state. Vibecanvas does not use
+Cangine's linear history or standard scene-mutating tools. Undo, redo, deletion,
+collapse, resize, and every other durable product effect return through
+Vibecanvas commands and Automerge.
+
+A projected widget frame contains only fixed-frame data: size, title,
+title-bar color, bounded declarative header items, portal ID, collapsed state,
+resizability, and optional constraints. Cangine owns the fixed 36-unit title
+bar, traffic lights, chrome painting, minimum chrome bounds, title-bar drag,
+resize acquisition, frame/content focus mode, and menu presentation. Product
+callbacks, permissions, confirmations, deletion, definition management, and
+backend effects never enter scene data.
+
+Canvas maximize is local Cangine presentation state. It is not persisted,
+collaborated, recorded in product history, or treated as browser fullscreen.
+Legacy persisted widget `window` values are deterministically migrated:
+minimized becomes `expanded: false`; contained and fullscreen become contained
+with `expanded: true`. New writes have no `window` field.
+
+## 10. Runtime-load authority
+
+The browser calls `widget.runtime.load` with the full pinned identity:
+canvas, element, widget instance, definition, and revision.
+
+The server:
+
+1. verifies tenant and canvas authority;
+2. opens the canvas Automerge document;
+3. verifies the exact element and widget identity;
+4. loads the exact revision and artifact binding;
+5. issues a short-lived browser UI artifact-read capability;
+6. reads and hashes the signed bytes;
+7. re-reads the revision and canvas element to fence concurrent replacement;
+8. validates and projects browser-safe function descriptors;
+9. returns only the browser manifest, exact bytes, runtime descriptor, and
+   browser-safe function contract.
+
+The response never includes private keys, server module paths, resource IDs,
+provider objects, or a guest-selectable state document.
+
+`widget.runtime.config` returns the browser-safe deployment catalog: generation,
+target base, allowed profiles, budget defaults and ceilings, preview/release key
+IDs, and public verification keys.
+
+## 11. Browser mount and host coordination
+
+The browser first verifies base64 size, signed-byte digest, Capsule hash, and
+the strict runtime descriptor.
+
+It then independently derives the expected channel schemas and capability
+descriptors from trusted code. Signed capability requests, browser function
+descriptors, schemas, grants, and concrete provider bindings must all agree
+before mount.
+
+`CapsuleWidgetHostCoordinator` owns a generation-scoped pool of shared Capsule
+hosts. A literal host is partitioned by exact:
+
+- execution target;
+- signing authority;
+- schema and capability policy.
+
+Capsule host policy is immutable, so incompatible widgets never widen an
+existing host. Idle partitions are retired after their final handle is
+destroyed. A host catalog generation change invalidates live handles and
+`WidgetUiRuntime` remounts eligible owners against the new catalog.
+
+Each mount owns:
+
+- one application content container inside Cangine's engine-owned portal shell;
+- one exact signed artifact;
+- one `CapsuleHandle`;
+- instance-bound function and collaborative-state providers;
+- props, theme, output, lifecycle, and optional ephemeral-store channels;
+- idempotent terminal cleanup.
+
+With the DOM portal profile, the widget frame is one atomic shell: fixed chrome
+and application content share one transform, clipping context, opacity,
+visibility, and scene z-index. The WebGL2 pass does not paint a second retained
+copy of the chrome. Cangine alone writes portal placement, transform, clip,
+visibility, z-index, and input gating. Vibecanvas's portal bridge owns content
+identity, serialized asynchronous updates, generation rejection, viewport
+publication, Capsule mounting, and cleanup; widget content does not emulate
+frame-edge resize hit regions.
+
+The host output channel accepts only bounded notification events. The UI layer
+rate-limits them to five events per ten seconds per mount.
+
+## 12. Guest SDK
+
+Widget source uses `@vibecanvas/sdk/widget`.
+
+Supported APIs include:
+
+- `getWidgetProps` and `subscribeWidgetProps`;
+- `getWidgetTheme` and `subscribeWidgetTheme`;
+- `subscribeWidgetLifecycle`;
+- `emitWidgetOutput`;
+- ephemeral local-state get, set, delete, and key listing;
+- collaborative-state get, change, and subscribe;
+- generated typed server-function clients.
+
+The SDK wraps `@omnidraw/capsule/guest`. Widget authors do not import the guest
+ABI directly and do not construct capability selectors, hashes, signing key
+IDs, or instance identities.
+
+Current compatibility includes plain DOM, explicit SVG and Canvas 2D profiles,
+the pinned React projection, and explicitly budgeted WebGL/WebGPU profiles.
+Runtime package installation, remote ESM imports, Node built-ins, ambient host
+objects, and arbitrary browser APIs are unsupported.
+
+## 13. Capabilities, channels, and durable services
+
+### Server functions
+
+One signed Capsule capability is derived from the canonical browser function
+descriptors. Each exported function is one allowed operation. The provider
+captures trusted tenant, definition, revision, widget instance, deadline, and
+idempotency context.
+
+Calls are short-lived and bounded. The browser bridge checks current instance
+identity, allows at most eight in-flight calls per mounted widget, polls within
+the descriptor deadline, and cancels pending work on teardown.
+
+### Collaborative state
+
+Collaborative state is an instance-bound Capsule capability with `get`,
+`change`, and `subscribe`.
+
+The host captures the Automerge document identity. Values are normalized,
+bounded JSON; mutation rate and pending waits are limited. Subscription streams
+are demand-driven, versioned, cancellable, and fail on overflow rather than
+silently dropping durable changes.
+
+Freeze stops guest delivery but does not destroy backend state. Destroy cancels
+streams and releases the document session without deleting the document.
+
+### Props, theme, output, and local store
+
+Props and theme are host-to-guest channels. Output is a guest-to-host channel.
+All use exact registered schemas.
+
+Local store is guest-local and ephemeral. It is not a replacement for
+collaborative or server persistence. Snapshot hooks exist in the SDK, but
+parking remains disabled until the product defines and verifies a durable
+snapshot contract.
+
+### Resources
+
+UI code has no direct resource capability. Server-function access is the
+intersection of:
+
+```text
+manifest requirement ∩ revision binding ∩ function effect ceiling
+```
+
+- `fn` receives no resource portal;
+- `fx` may read declared slots;
+- `tx` may read and write declared slots.
+
+Concrete resources are selected by the user/host during publication and bound
+to the immutable revision. Secrets never enter guest code, model-facing lists,
+transcripts, generic reads, or function logs.
+
+## 14. Canvas lifecycle and population
+
+Canvas owns product geometry and admission priority. Capsule owns enforcement
+inside every admitted handle.
+
+The portal forwards width, height, scale, visibility, distance, occlusion,
+priority, focus, collapse, local `canvasMaximized` presentation, and removal.
+Runtime identity changes destroy the previous handle before mounting the new
+revision. Canvas maximize may raise local population priority, but never changes
+durable geometry. Browser fullscreen is a separate, application-owned feature
+and is not currently part of widget-frame state.
+
+Current population limits are:
+
+| Limit | Value |
+| --- | ---: |
+| Owner records | 10,000 |
+| Concurrent artifact loads | 8 |
+| Queued loads | 512 |
+| Reprioritization candidates | 512 |
+| Total live handles | 24 |
+| Active handles | 16 |
+| Throttled handles | 8 |
+| Frozen handles | 16 |
+| Heavy handles | 8 |
+| GPU handles | 2 |
+| Offscreen freeze grace | 2 seconds |
+| Far-offscreen destroy delay | 30 seconds |
+| Retention radius | 2,048 CSS pixels |
+
+Owners beyond live capacity remain inert. Visible, higher-priority,
+less-occluded, and nearer widgets are preferred. Known heavy/GPU candidates
+that cannot pass their ceilings do not starve later eligible candidates.
+
+Focus is current state, not a sticky one-shot request: a widget that loses focus
+while inert will not be refocused after remount. Collapse is a hard freeze.
+Removal, revision replacement, tenant change, and terminal failures destroy
+handles and providers idempotently.
+
+Parking is not implemented. Far-offscreen widgets are destroyed and rebuilt
+from immutable artifacts when eligible again.
+
+## 15. Persistence model
+
+The main durable records are:
+
+- `widget_definitions`: catalog identity and active revision pointer;
+- `widget_definition_revisions`: immutable manifest, artifact references,
+  runtime descriptor, build identities, and digests;
+- `widget_revision_sources`: immutable source provenance;
+- `artifact_references`: content-addressed artifact ownership and retention;
+- `widget_instances`: canvas element to definition/revision/instance binding;
+- `collaboration_documents` and chunks: canvas and widget-instance Automerge
+  state;
+- function definitions, invocations, logs, leases, and idempotency records;
+- revision resource bindings and resource catalog/provider records;
+- authoring chats and draft descriptors.
+
+Database constraints enforce manifest contract version 3, Capsule runtime
+descriptor shape, Capsule artifact hash shape, build identity shape, artifact
+kinds, tenant ownership, and revision/instance foreign keys.
+
+## 16. Public API surfaces
+
+Authoring and management:
+
+- `agent.widgetDraft.list`, `get`, `validate`;
+- `agent.widgetPreview.build`;
+- `agent.widgetPublish.publish`;
+- `agent.widgets.catalog`, `detail`, `files`, `file`;
+- `agent.widgets.ensureDraft`, patch operations, deletion, and placement
+  resolution.
+
+Browser runtime:
+
+- `widget.runtime.config`;
+- `widget.runtime.load`.
+
+Functions and resources retain their typed oRPC contracts for invocation,
+status, cancellation, logs, resource catalogs, bindings, data, schema changes,
+backup, and restore.
+
+There is no preview get/close/invoke process API, resident guest-process API,
+Arrow runtime endpoint, or browser source-compilation endpoint.
+
+## 17. Security invariants
+
+- Untrusted UI code executes in Capsule's QuickJS VM, not the host JavaScript
+  realm.
+- The host-backed DOM membrane exposes only the selected compatibility
+  profiles.
+- The `dist/` pipeline intentionally has no build-time OS isolation:
+  npm dependency processing and guest-controlled build scripts execute with
+  the build-server account's host authority. This accepted risk does not weaken
+  Capsule's runtime isolation claim, but Capsule does not protect the server
+  during the preceding build.
+- Exact signed bytes are verified before execution.
+- Preview and release use distinct persistent signing keys.
+- Private signing keys never leave trusted server storage.
+- The browser recomputes function descriptor identity before provider creation.
+- Capability providers capture authority; guest inputs cannot select it.
+- Artifact reads require tenant-scoped, purpose-scoped, expiring capabilities.
+- Runtime load rechecks mutable canvas and revision authority after artifact
+  access.
+- Browser configuration can narrow policy but cannot widen a signed artifact.
+- Cleanup cancels calls and streams, releases providers and host registrations,
+  destroys the handle, and removes the portal.
+- No Arrow package, patch, manifest-v2 parser, custom UI envelope, dual-runtime
+  switch, or source-build fallback remains.
+
+## 18. Failure and recovery rules
+
+- A stale draft revision fails validation, preview, or publish explicitly.
+- A publication compare-and-set conflict does not activate either partial
+  metadata or stale bindings.
+- Missing, corrupt, wrong-tenant, or identity-mismatched artifacts fail closed.
+- Runtime transport failures may retry only while the canvas target and tenant
+  authority remain current.
+- A Capsule fatal error makes the current handle terminal.
+- Catalog rotation destroys affected hosts and remounts eligible owners using
+  the new generation.
+- Provider cleanup errors cannot prevent terminal handle destruction.
+- Application shutdown destroys preview runtimes, committed owners, host
+  partitions, streams, and pending operations.
+
+## 19. Important implementation files
+
+Contracts and build:
+
+- [`packages/widget-contract/src/manifest-schema.ts`](../../packages/widget-contract/src/manifest-schema.ts)
+- [`packages/widget-contract/src/runtime-descriptor-schema.ts`](../../packages/widget-contract/src/runtime-descriptor-schema.ts)
+- [`packages/widget-contract/src/types.ts`](../../packages/widget-contract/src/types.ts)
+- [`packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts`](../../packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts)
+- [`apps/cli/src/services/WidgetNpmDistributionBuild.ts`](../../apps/cli/src/services/WidgetNpmDistributionBuild.ts)
+- [`apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts`](../../apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts)
+
+Authoring and publication:
+
+- [`packages/service-agent/src/workspace/WidgetWorkspace.ts`](../../packages/service-agent/src/workspace/WidgetWorkspace.ts)
+- [`packages/service-agent/src/widget-drafts/WidgetDraftController.ts`](../../packages/service-agent/src/widget-drafts/WidgetDraftController.ts)
+- [`packages/widget-contract/src/local/WidgetPreviewService.ts`](../../packages/widget-contract/src/local/WidgetPreviewService.ts)
+- [`packages/widget-contract/src/local/WidgetPublicationService.ts`](../../packages/widget-contract/src/local/WidgetPublicationService.ts)
+
+Browser:
+
+- [`packages/api/src/widget/api.runtime-load-widget.ts`](../../packages/api/src/widget/api.runtime-load-widget.ts)
+- [`packages/canvas/src/engine/editor/CanvasEditorBridge.ts`](../../packages/canvas/src/engine/editor/CanvasEditorBridge.ts)
+- [`packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts`](../../packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts)
+- [`packages/canvas/src/engine/projection/projectors/fn.widget.ts`](../../packages/canvas/src/engine/projection/projectors/fn.widget.ts)
+- [`packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts`](../../packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts)
+- [`packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts`](../../packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts)
+- [`packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts`](../../packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts)
+- [`packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts`](../../packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts)
+- [`packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts`](../../packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts)
+- [`packages/ui-ai-chat/src/draft-preview/mount.ts`](../../packages/ui-ai-chat/src/draft-preview/mount.ts)
+- [`packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts`](../../packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts)
+
+Guest, state, and persistence:
+
+- [`packages/sdk/src/widget.ts`](../../packages/sdk/src/widget.ts)
+- [`packages/sdk/src/widget-channels.ts`](../../packages/sdk/src/widget-channels.ts)
+- [`packages/sdk/src/collaborative-state-client.ts`](../../packages/sdk/src/collaborative-state-client.ts)
+- [`packages/service-db/src/WidgetControlStoreTurso.ts`](../../packages/service-db/src/WidgetControlStoreTurso.ts)
+- [`packages/service-db/src/migrations/000-initial.sql`](../../packages/service-db/src/migrations/000-initial.sql)
+
+## 20. Verification
+
+The principal permanent gates are:
+
+```sh
+bun run test:capsule-browser
+bun test apps/cli/tests/WidgetNpmDistributionBuild.test.ts
+bun run test:widget-artifacts
+bun run test:widget-host
+bun run test:m10:load
+bun run test:packed-public-composition
+bun run lint:functional-core
+```
+
+`apps/capsule-browser-acceptance` builds fresh signed artifacts and mounts them
+through the production browser coordinator in headless Chromium. It covers
+plain DOM, SVG, Canvas 2D, React, functions, collaboration, lifecycle,
+authority rejection, and terminal zero-retention cleanup.
+
+## 21. Change checklist
+
+When changing the widget system:
+
+1. Identify the authority being changed: draft, snapshot, artifact, revision,
+   instance, capability provider, function invocation, or resource binding.
+2. Keep mutable source out of published and runtime reads.
+3. Preserve exact-byte, Capsule-hash, descriptor, and contract-digest checks.
+4. Keep application-owned npm distribution builds and server-function builds
+   separate; send only captured `dist/` bytes to Capsule.
+5. Keep preview on the signed Capsule mount path without durable function or
+   resource authority.
+6. Keep guest authority derived from trusted mount context.
+7. Preserve current-target fencing across asynchronous reads and retries.
+8. Treat every handle, provider, stream, and portal cleanup as idempotent.
+9. Update strict schemas, database constraints, API contracts, and fixtures
+   together.
+10. Add focused negative tests for stale identity, digest mismatch, wrong key,
+    wrong target, capability mismatch, overflow, cancellation, and teardown.
+11. Keep fixed chrome, portal-shell presentation, menus, pointer reconciliation,
+    and transform affordances in Cangine; keep durable product authority in
+    Automerge and untrusted content execution in Capsule.

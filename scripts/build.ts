@@ -24,6 +24,7 @@ import { Glob } from "bun"
 import { createHash } from "crypto"
 import { inferReleaseChannelFromVersion, readWrapperVersion, type TReleaseChannel } from "./release-channel"
 import { tmpdir } from "os"
+import { createRequire } from "module"
 
 // ============================================================
 // Configuration
@@ -36,12 +37,13 @@ const frontendDir = path.join(rootDir, "apps/frontend")
 const sdkDir = path.join(rootDir, "packages/sdk")
 const wrapperDir = path.join(rootDir, "apps/vibecanvas")
 const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
-const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/DbServiceTurso/migration-files")
+const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/migrations")
 const forbiddenBinaryMarkers = [
   "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
 ] as const
 const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
 const darwinEntitlementsPath = path.join(__dirname, "vibecanvas.entitlements.plist")
+const require = createRequire(import.meta.url)
 
 // Platform targets
 const targets = [
@@ -83,8 +85,12 @@ const tursoNativeAddons = {
     packageName: "@tursodatabase/database-linux-x64-gnu",
     fileName: "turso.linux-x64-gnu.node",
   },
+  "win32-x64": {
+    packageName: "@tursodatabase/database-win32-x64-msvc",
+    fileName: "turso.win32-x64-msvc.node",
+  },
 } as const satisfies Record<string, TNativeAddonConfig>
-const tursoNativeAddonVersion = "0.6.0"
+const tursoNativeAddonVersion = "0.6.1"
 
 // ============================================================
 // Helper Functions
@@ -179,6 +185,69 @@ async function copyTursoNativeAddon(target: Target, distDir: string): Promise<st
   }
 
   return outputPath
+}
+
+async function assertTursoNativeEncryptionSupport(nativeAddonPath: string): Promise<void> {
+  const nativeAddon = Buffer.from(await Bun.file(nativeAddonPath).arrayBuffer()).toString("latin1")
+  if (!nativeAddon.includes("EncryptionCipher") || !nativeAddon.includes("Aegis256")) {
+    throw new Error(`Turso native addon does not expose AEGIS-256 encryption support: ${nativeAddonPath}`)
+  }
+}
+
+function assertHostTursoNativeEncryptionExport(target: string, nativeAddonPath: string): void {
+  if (target !== `${process.platform}-${process.arch}`) return
+  const nativeBinding = require(nativeAddonPath) as {
+    EncryptionCipher?: { Aegis256?: unknown };
+  }
+  if (nativeBinding.EncryptionCipher?.Aegis256 === undefined) {
+    throw new Error(`Host Turso native addon does not export EncryptionCipher.Aegis256: ${nativeAddonPath}`)
+  }
+}
+
+async function assertAllTursoNativeAddonsSupportEncryption(): Promise<void> {
+  for (const [target, addon] of Object.entries(tursoNativeAddons)) {
+    let sourcePath = resolveTursoNativeAddonSource(addon)
+    let cleanupPath: string | null = null
+    if (!sourcePath) {
+      const fetched = await fetchTursoNativeAddonSource(addon)
+      sourcePath = fetched.sourcePath
+      cleanupPath = fetched.cleanupPath
+    }
+    try {
+      await assertTursoNativeEncryptionSupport(sourcePath)
+      assertHostTursoNativeEncryptionExport(target, sourcePath)
+      console.log(`Verified Turso AEGIS-256 native support for ${target}`)
+    } finally {
+      const loadedWindowsHostAddon = process.platform === "win32" && target === `${process.platform}-${process.arch}`
+      if (cleanupPath && !loadedWindowsHostAddon) rmSync(cleanupPath, { recursive: true, force: true })
+    }
+  }
+}
+
+async function assertHostTursoNativeAddonSupportsEncryption(): Promise<void> {
+  const target = `${process.platform}-${process.arch}`
+  const expectedTarget = process.env.VIBECANVAS_EXPECTED_NATIVE_TARGET
+  if (expectedTarget && target !== expectedTarget) {
+    throw new Error(`Native encryption verification expected ${expectedTarget} but is running on ${target}`)
+  }
+  const addon = tursoNativeAddons[target as keyof typeof tursoNativeAddons]
+  if (!addon) throw new Error(`No pinned Turso native addon is configured for host ${target}`)
+  let sourcePath = resolveTursoNativeAddonSource(addon)
+  let cleanupPath: string | null = null
+  if (!sourcePath) {
+    const fetched = await fetchTursoNativeAddonSource(addon)
+    sourcePath = fetched.sourcePath
+    cleanupPath = fetched.cleanupPath
+  }
+  try {
+    await assertTursoNativeEncryptionSupport(sourcePath)
+    assertHostTursoNativeEncryptionExport(target, sourcePath)
+    console.log(`Dynamically verified Turso EncryptionCipher.Aegis256 for ${target}`)
+  } finally {
+    // Windows keeps a loaded native module locked until process exit. CI runners
+    // discard their temporary workspace after this one-purpose verification.
+    if (cleanupPath && process.platform !== "win32") rmSync(cleanupPath, { recursive: true, force: true })
+  }
 }
 
 function parseChannelArg(argv: string[], fallback: TReleaseChannel): TReleaseChannel {
@@ -343,7 +412,7 @@ async function collectMigrationFiles(): Promise<string[]> {
   for await (const file of migrationGlob.scan(serviceDbMigrationsDir)) {
     const filePath = path.join(serviceDbMigrationsDir, file)
     const stat = await Bun.file(filePath).stat()
-    if (stat.isFile()) {
+    if (stat.isFile() && file.endsWith('.sql')) {
       migrationFiles.push(file)
     }
   }
@@ -354,7 +423,7 @@ async function collectMigrationFiles(): Promise<string[]> {
 
 async function generateEmbeddedMigrations(migrationFiles: string[]): Promise<void> {
   const imports = migrationFiles
-    .map((f, i) => `import migration${i} from './DbServiceTurso/migration-files/${f}' with { type: "file" };`)
+    .map((f, i) => `import migration${i} from './migrations/${f}' with { type: "file" };`)
     .join("\n");
 
   const embeddedMigrationsCode = `// Auto-generated file - do not edit
@@ -373,7 +442,7 @@ export function getEmbeddedMigrationPath(relativePath: string): string | null {
 }
 `
 
-  await Bun.write(path.join(rootDir, "packages/service-db/src/embedded-migrations.ts"), embeddedMigrationsCode)
+  await Bun.write(path.join(rootDir, "packages/service-db/src/_embedded-migrations.ts"), embeddedMigrationsCode)
   console.log(`   Generated embedded-migrations.ts (${migrationFiles.length} files)`)
 }
 
@@ -382,6 +451,15 @@ export function getEmbeddedMigrationPath(relativePath: string): string | null {
 // ============================================================
 
 async function main() {
+  if (process.argv.includes("--verify-native-encryption-host-only")) {
+    await assertHostTursoNativeAddonSupportsEncryption()
+    return
+  }
+  if (process.argv.includes("--verify-native-encryption-only")) {
+    await assertAllTursoNativeAddonsSupportEncryption()
+    return
+  }
+
   const automergeResolvedEntrypoint = Bun.resolveSync("@automerge/automerge", path.join(frontendDir, "package.json"))
   const automergeBase64Entrypoint = path.join(path.dirname(automergeResolvedEntrypoint), "fullfat_base64.js")
   if (!existsSync(automergeBase64Entrypoint)) {
@@ -411,6 +489,9 @@ async function main() {
   process.env.VIBECANVAS_CHANNEL = channel
 
   // Filter targets
+  const hostDefaultTargets = process.platform === "darwin"
+    ? targets
+    : targets.filter((target) => target.os === process.platform)
   const filteredTargets = platformArg
     ? targets.filter((target) => target.os === platformArg)
     : singleFlag
@@ -420,7 +501,7 @@ async function main() {
         t.arch === process.arch &&
         !("avx2" in t && !t.avx2)
     )
-    : targets
+    : hostDefaultTargets
 
   if (filteredTargets.length === 0) {
     console.error(`No matching target for ${process.platform}-${process.arch}`)
@@ -457,6 +538,7 @@ async function main() {
   console.log("\n[4/4] Compiling executables...")
 
   const manifestTargets: Record<string, ReleaseManifestTarget> = {}
+  const failedTargets: string[] = []
   for (const target of filteredTargets) {
     const name = buildPackageName(target)
     console.log(`   Building ${name}...`)
@@ -497,12 +579,14 @@ async function main() {
 
       if (!result.success) {
         console.error(`   ✗ ${name}:`, result.logs)
+        failedTargets.push(name)
         continue
       }
 
       await assertPortableBinary(outputPath)
       if (target.os === "darwin") await signAndVerifyDarwinBinary(outputPath)
       const nativeAddonPath = await copyTursoNativeAddon(target, distDir)
+      await assertTursoNativeEncryptionSupport(nativeAddonPath)
 
       // Create platform package.json
       await Bun.write(
@@ -547,7 +631,12 @@ async function main() {
       console.log(`   ✓ ${name} (${path.relative(distDir, nativeAddonPath)})`)
     } catch (error) {
       console.error(`   ✗ ${name}:`, error)
+      failedTargets.push(name)
     }
+  }
+
+  if (failedTargets.length > 0) {
+    throw new Error(`Failed to build release target${failedTargets.length === 1 ? "" : "s"}: ${failedTargets.join(", ")}`)
   }
 
   await Bun.write(

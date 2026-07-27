@@ -1,25 +1,57 @@
-import type { Group } from "konva/lib/Group";
-import type { Node } from "konva/lib/Node";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import { isCanvasNode } from "../../core/GUARDS";
-import type { SceneService } from "../../services/scene/SceneService";
+import type { TCanvasSemanticHit, TCanvasTarget } from "../../semantic/typed";
+import {
+  fnCanvasTargetKey,
+  fnCanvasTargetsEqual,
+  fnUniqueCanvasTargets,
+} from "../../semantic/fn.target";
 
-export type TArgsGetSelectionPath = {
-  scene: SceneService;
-  node: Group | Shape<ShapeConfig>;
+type TArgsGetSelectionPath = {
+  hit: TCanvasSemanticHit;
 };
 
-export function fnGetSelectionPath(args: TArgsGetSelectionPath) {
-  const path: Array<Group | Shape<ShapeConfig>> = [];
-  let current: Node | null = args.node;
+type TArgsSelectionPathPrefix = {
+  selection: readonly TCanvasTarget[];
+  path: readonly TCanvasTarget[];
+};
 
-  while (current && current !== args.scene.staticForegroundLayer) {
-    if (isCanvasNode(current)) {
-      path.push(current as Group | Shape<ShapeConfig>);
-    }
+type TArgsGetMarqueeTargets = {
+  hits: readonly TCanvasSemanticHit[];
+};
 
-    current = current.getParent();
-  }
+export function fnGetSelectionPath(
+  args: TArgsGetSelectionPath,
+): TCanvasTarget[] {
+  return fnUniqueCanvasTargets([
+    ...args.hit.groupAncestry.map((id) => ({
+      kind: "group" as const,
+      id,
+    })),
+    args.hit.target,
+  ]);
+}
 
-  return path.reverse();
+export function fnIsSelectionPathPrefix(
+  args: TArgsSelectionPathPrefix,
+): boolean {
+  return args.selection.length <= args.path.length
+    && args.selection.every((target, index) => {
+      return fnCanvasTargetsEqual(target, args.path[index] ?? null);
+    });
+}
+
+export function fnGetMarqueeTargets(
+  args: TArgsGetMarqueeTargets,
+): TCanvasTarget[] {
+  const targets = fnUniqueCanvasTargets(args.hits.map((hit) => {
+    const topGroupId = hit.groupAncestry[0];
+    return topGroupId === undefined
+      ? hit.target
+      : {
+          kind: "group" as const,
+          id: topGroupId,
+        };
+  }));
+  return targets.sort((left, right) => {
+    return fnCanvasTargetKey(left).localeCompare(fnCanvasTargetKey(right));
+  });
 }

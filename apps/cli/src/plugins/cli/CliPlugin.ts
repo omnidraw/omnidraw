@@ -19,7 +19,7 @@ Commands:
 
 Options:
   --port <number>      Port for server/runtime (default: 3000 dev, 7496 compiled)
-  --db <path>          Explicit SQLite file path override
+  --data-dir <path>    Vibecanvas home (default: ~/.vibecanvas; env: VIBECANVAS_HOME)
   --upgrade <version>  Upgrade to a specific version
   --yes               Skip uninstall confirmation
   --dry-run           Preview uninstall removals without deleting
@@ -29,7 +29,7 @@ Options:
 Examples:
   vibecanvas
   vibecanvas serve --port 3001
-  vibecanvas serve --db ./tmp/dev.sqlite
+  vibecanvas serve --data-dir ./tmp/vibecanvas-home
   vibecanvas upgrade
   vibecanvas upgrade --check
   vibecanvas uninstall --dry-run

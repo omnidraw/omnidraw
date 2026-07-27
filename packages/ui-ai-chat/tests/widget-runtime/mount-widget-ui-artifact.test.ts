@@ -1,0 +1,955 @@
+import { describe, expect, test, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import type {
+  CapsuleCapabilityBinding,
+  CapsuleCapabilityDescriptor,
+  CapsuleKernelHostStreamSink,
+  CapsuleSchemaResource,
+} from '@vibecanvas/capsule-vibecanvas/capabilities';
+import type {
+  CapsuleHandle,
+  CapsuleHost,
+  CreateCapsuleHostOptions,
+} from '@vibecanvas/capsule-vibecanvas/host';
+import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
+import { createVibecanvasGuestChannelContract } from '@vibecanvas/capsule-vibecanvas/capabilities';
+import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
+import { createWidgetUiArtifactMountPort } from '../../src/widget-runtime/mount-widget-ui-artifact';
+import type {
+  TWidgetCapsuleMountCatalog,
+  TWidgetCollaborativeStateBridge,
+  TWidgetFunctionHostBridge,
+  TVerifiedWidgetUiArtifact,
+} from '../../src/widget-runtime/interface';
+import {
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  type TWidgetBrowserFunctionDescriptor,
+  type TWidgetCapsuleTheme,
+} from '@vibecanvas/widget-contract';
+
+const functionMetadata = [{
+  schemaVersion: 1 as const,
+  exportName: 'count',
+  effect: 'fn' as const,
+  inputSchema: {},
+  outputSchema: {},
+  resources: [],
+  limits: {
+    timeoutMs: 1_000,
+    memoryTier: 'small' as const,
+    outputByteLimit: 1_024,
+    logByteLimit: 1_024,
+  },
+  retry: {
+    mode: 'none' as const,
+    maxAttempts: 1,
+    initialBackoffMs: 0,
+    maxBackoffMs: 0,
+  },
+}];
+
+function browserFunctionDigest(
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+): string {
+  return createHash('sha256')
+    .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
+    .digest('hex');
+}
+
+const FUNCTION_DESCRIPTOR_DIGEST = browserFunctionDigest(functionMetadata);
+const HASH_A = `sha256:${FUNCTION_DESCRIPTOR_DIGEST}` as const;
+const HASH_B = `sha256:${'b'.repeat(64)}` as const;
+const SCHEMA_HASH = `sha256:${'c'.repeat(64)}` as const;
+const TARGET = Object.freeze({
+  runtimeAbi: 'quickjs-release-sync-v1',
+  domProfile: 'dom-core-v2',
+  featureProfiles: Object.freeze([]),
+});
+const TARGET_WITH_SVG = Object.freeze({
+  ...TARGET,
+  featureProfiles: Object.freeze(['svg-dom-v1']),
+});
+const BUDGETS = Object.freeze({
+  cpuMs: 100,
+  memoryBytes: 32 * 1_024 * 1_024,
+  domNodes: 2_000,
+  handles: 4_000,
+  messageBytes: 64 * 1_024,
+  streamBytes: 64 * 1_024,
+  assetBytes: 0,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 256 * 1_024,
+});
+const THEME = Object.freeze({
+  format: 'vibecanvas.widget-theme.v1' as const,
+  appearance: 'dark' as const,
+  tokens: Object.freeze({
+    background: '#000',
+    foreground: '#fff',
+    surface: '#111',
+    surfaceForeground: '#fff',
+    muted: '#222',
+    mutedForeground: '#aaa',
+    primary: '#fc0',
+    primaryForeground: '#000',
+    accent: '#333',
+    accentForeground: '#fff',
+    destructive: '#f00',
+    success: '#0f0',
+    border: '#444',
+  }),
+});
+
+const schema = {
+  reference: { format: 'capsule-schema-v1', hash: SCHEMA_HASH },
+  copyCanonicalBytes: () => new Uint8Array(),
+} as CapsuleSchemaResource;
+
+function descriptor(
+  id: string,
+  contractHash: typeof HASH_A | typeof HASH_B,
+  operations: readonly Readonly<{ name: string; kind: 'call' | 'stream' }>[],
+): CapsuleCapabilityDescriptor {
+  return {
+    id,
+    version: '1.0.0',
+    contractHash,
+    operations: operations.map((operation) => ({
+      ...operation,
+      inputSchema: schema.reference,
+      ...(operation.kind === 'stream'
+        ? { eventSchema: schema.reference }
+        : { outputSchema: schema.reference }),
+    })),
+  };
+}
+
+const functionDescriptor = descriptor(
+  `vibecanvas.widget.functions.h${FUNCTION_DESCRIPTOR_DIGEST}`,
+  HASH_A,
+  [{ name: 'count', kind: 'call' }],
+);
+const alternateFunctionDescriptor = descriptor(
+  `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+  HASH_B,
+  [{ name: 'count', kind: 'call' }],
+);
+const stateDescriptor = descriptor(
+  'vibecanvas.widget.collaborative_state',
+  HASH_B,
+  [
+    { name: 'change', kind: 'call' },
+    { name: 'get', kind: 'call' },
+    { name: 'subscribe', kind: 'stream' },
+  ],
+);
+
+function catalog(
+  generation = 'catalog-a',
+  capabilities = [
+    { kind: 'server-functions' as const, descriptor: functionDescriptor },
+    { kind: 'collaborative-state' as const, descriptor: stateDescriptor },
+  ],
+  allowedFeatureProfiles: readonly string[] = [],
+): TWidgetCapsuleMountCatalog {
+  return {
+    generation,
+    targetBase: {
+      runtimeAbi: TARGET.runtimeAbi,
+      domProfile: TARGET.domProfile,
+    },
+    allowedFeatureProfiles,
+    budgetCeiling: BUDGETS,
+    budgetDefaults: BUDGETS,
+    schemas: [schema],
+    capabilities,
+    trustedSigningKeys: new Map([
+      ['preview-key', {} as CryptoKey],
+      ['release-key', {} as CryptoKey],
+    ]),
+    previewSigningKeyId: 'preview-key',
+    releaseSigningKeyId: 'release-key',
+  };
+}
+
+function runtimeDescriptor(
+  mode: 'preview' | 'published',
+  requests = [{
+    id: functionDescriptor.id,
+    versionRange: '1.0.0',
+    contractHash: HASH_A,
+    required: true,
+    operations: ['count'],
+  }],
+  target = TARGET,
+  channels: TVerifiedWidgetUiArtifact['runtimeDescriptor']['channels'] = null,
+) {
+  return {
+    format: 'vibecanvas.capsule-runtime.v1' as const,
+    capsuleArtifactHash: HASH_A,
+    target,
+    budgets: BUDGETS,
+    capabilityRequests: requests,
+    channels,
+    parkability: { parkable: false as const },
+    signatureKeyIds: [mode === 'preview' ? 'preview-key' : 'release-key'],
+  };
+}
+
+function artifact(
+  mode: 'preview' | 'published' = 'published',
+  requests?: Parameters<typeof runtimeDescriptor>[1],
+  target?: Parameters<typeof runtimeDescriptor>[2],
+  channels?: Parameters<typeof runtimeDescriptor>[3],
+): TVerifiedWidgetUiArtifact {
+  return {
+    digestSha256: 'd'.repeat(64),
+    bytes: new Uint8Array([1, 2, 3]),
+    capsuleArtifactHash: HASH_A,
+    runtimeDescriptor: runtimeDescriptor(mode, requests, target, channels),
+    retainedByteSize: 3,
+  };
+}
+
+function rawHandle(artifactHash = HASH_A) {
+  const destroy = vi.fn(async () => undefined);
+  const setProps = vi.fn();
+  const setTheme = vi.fn();
+  const handle = {
+    ready: vi.fn(async () => undefined),
+    setSchedulingMode: vi.fn(async () => undefined),
+    freeze: vi.fn(async () => undefined),
+    snapshot: vi.fn(),
+    park: vi.fn(),
+    resume: vi.fn(async () => undefined),
+    focus: vi.fn(),
+    setProps,
+    setTheme,
+    setViewport: vi.fn(),
+    destroy,
+    onLifecycle: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onOutput: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onError: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    diagnostics: vi.fn(() => ({ artifactHash })),
+  } as unknown as CapsuleHandle;
+  return { destroy, handle, setProps, setTheme };
+}
+
+function fakeHostFactory(mountedArtifactHash = HASH_A) {
+  const created: Array<{
+    options: CreateCapsuleHostOptions;
+    host: CapsuleHost;
+    mount: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+    raw: ReturnType<typeof rawHandle>;
+  }> = [];
+  const create = vi.fn(async (options: CreateCapsuleHostOptions) => {
+    const raw = rawHandle(mountedArtifactHash);
+    const mount = vi.fn(async () => raw.handle);
+    const destroy = vi.fn(async () => undefined);
+    const host = {
+      registerSchema: vi.fn(),
+      registerCapabilityDescriptor: vi.fn((value) => ({
+        descriptor: value,
+        unregister: () => true,
+      })),
+      mount,
+      destroy,
+      diagnostics: () => ({ destroyed: false, mounts: 1 }),
+    } as unknown as CapsuleHost;
+    created.push({ options, host, mount, destroy, raw });
+    return host;
+  });
+  return { create, created };
+}
+
+async function settleWithin<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+): Promise<Readonly<
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: unknown }
+  | { status: 'timeout' }
+>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation.then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason: unknown) => ({ status: 'rejected' as const, reason }),
+      ),
+      new Promise<Readonly<{ status: 'timeout' }>>((resolve) => {
+        timeout = setTimeout(() => resolve({ status: 'timeout' }), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+describe('Capsule widget mount boundary', () => {
+  test('derives artifact capability schemas and policy through the public adapter', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(
+      new Uint8Array(32).buffer,
+    );
+    const factory = fakeHostFactory();
+    const baseCatalog = catalog('catalog-a', []);
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: async () => baseCatalog,
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+
+    try {
+      const handle = await mount.mount({
+        mode: 'published',
+        root: document.createElement('div'),
+        identity: functionBridge.identity,
+        artifact: artifact(),
+        functionDescriptors: functionMetadata,
+        browserFunctionDescriptorsDigestSha256: browserFunctionDigest(functionMetadata),
+        functionBridge,
+        collaborativeStateBridge: null,
+        onFatal: vi.fn(),
+      });
+
+      expect(factory.created).toHaveLength(1);
+      expect(factory.created[0]!.options.schemas.length).toBeGreaterThan(0);
+      expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([
+        expect.objectContaining({
+          id: functionDescriptor.id,
+          contractHash: HASH_A,
+          operations: ['count'],
+        }),
+      ]);
+      await handle.destroy();
+      expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    } finally {
+      digest.mockRestore();
+    }
+  });
+
+  test('rejects browser descriptor field mutations before provider creation', async () => {
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const expectedDigestSha256 = browserFunctionDigest(functionMetadata);
+    const baseline = functionMetadata[0]!;
+    const mutations: readonly TWidgetBrowserFunctionDescriptor[] = [
+      { ...baseline, effect: 'tx' },
+      { ...baseline, inputSchema: { type: 'string' } },
+      {
+        ...baseline,
+        limits: { ...baseline.limits, timeoutMs: 2_000 },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const functionBridge: TWidgetFunctionHostBridge = {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
+        },
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      };
+      await expect(mount.mount({
+        mode: 'published',
+        root: document.createElement('div'),
+        identity: functionBridge.identity,
+        artifact: artifact(),
+        functionDescriptors: [mutation],
+        browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
+        functionBridge,
+        collaborativeStateBridge: null,
+        onFatal: vi.fn(),
+      })).rejects.toThrow('failed integrity verification');
+      expect(functionBridge.dispose).toHaveBeenCalledOnce();
+    }
+
+    const signedMismatchBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    await expect(mount.mount({
+      mode: 'published',
+      root: document.createElement('div'),
+      identity: signedMismatchBridge.identity,
+      artifact: artifact('published', [{
+        id: `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['count'],
+      }]),
+      functionDescriptors: functionMetadata,
+      browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
+      functionBridge: signedMismatchBridge,
+      collaborativeStateBridge: null,
+      onFatal: vi.fn(),
+    })).rejects.toThrow('does not match the signed capability request');
+    expect(signedMismatchBridge.dispose).toHaveBeenCalledOnce();
+
+    expect(factory.create).not.toHaveBeenCalled();
+  });
+
+  test('delivers fixed props/theme/output channels and releases listeners at destroy', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockImplementation(
+      async (_algorithm, value) => {
+        const bytes = ArrayBuffer.isView(value)
+          ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+          : new Uint8Array(value);
+        return Uint8Array.from(
+          createHash('sha256').update(bytes).digest(),
+        ).buffer;
+      },
+    );
+    try {
+      const channelContract = await createVibecanvasGuestChannelContract({
+        localStore: 'ephemeral',
+      });
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const themeListeners = new Set<(value: TWidgetCapsuleTheme) => void>();
+    const releaseTheme = vi.fn();
+    const notification = vi.fn();
+    let now = 1_000;
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => now,
+      theme: {
+        read: () => THEME,
+        subscribe(listener) {
+          themeListeners.add(listener);
+          return () => {
+            themeListeners.delete(listener);
+            releaseTheme();
+          };
+        },
+      },
+      output: { notification },
+    });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const handle = await mount.mount({
+      mode: 'published',
+      root: document.createElement('div'),
+      identity: functionBridge.identity,
+      artifact: artifact(
+        'published',
+        [],
+        TARGET,
+        channelContract.declaration,
+      ),
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge,
+      collaborativeStateBridge: null,
+      props: { count: 1 },
+      onFatal: vi.fn(),
+    });
+    const hostMount = factory.created[0]!.mount.mock.calls[0]![0];
+    expect(hostMount.guestChannels).toMatchObject({
+      props: {
+        schema: channelContract.declaration.props,
+        initial: { count: 1 },
+      },
+      theme: {
+        schema: channelContract.declaration.theme,
+        initial: THEME,
+      },
+      output: {
+        schema: channelContract.declaration.output,
+      },
+      store: {
+        schema: channelContract.declaration.store?.schema,
+        maxEntries: 64,
+      },
+    });
+
+    handle.setProps({ count: 2 });
+    expect(factory.created[0]!.raw.setProps).toHaveBeenCalledWith({ count: 2 });
+    const nextTheme = {
+      ...THEME,
+      appearance: 'light' as const,
+    };
+    for (const listener of themeListeners) listener(nextTheme);
+    expect(factory.created[0]!.raw.setTheme).toHaveBeenCalledWith(nextTheme);
+
+    const onOutput = hostMount.guestChannels?.output?.onOutput;
+    if (onOutput === undefined) throw new Error('Expected output channel callback.');
+    expect(() => onOutput({
+      type: 'open-url',
+      tone: 'info',
+      message: 'https://example.invalid',
+    })).toThrow('does not match');
+    for (let index = 0; index < 8; index += 1) {
+      onOutput({
+        type: 'notification',
+        tone: 'success',
+        message: `Saved ${index}`,
+      });
+    }
+    expect(notification).toHaveBeenCalledTimes(5);
+    now += 10_000;
+    onOutput({
+      type: 'notification',
+      tone: 'info',
+      message: 'New window',
+    });
+    expect(notification).toHaveBeenCalledTimes(6);
+
+      await handle.destroy('test-complete');
+      expect(releaseTheme).toHaveBeenCalledOnce();
+      expect(themeListeners.size).toBe(0);
+      const themeCalls = factory.created[0]!.raw.setTheme.mock.calls.length;
+      for (const listener of themeListeners) listener(THEME);
+      expect(factory.created[0]!.raw.setTheme).toHaveBeenCalledTimes(themeCalls);
+      onOutput({
+        type: 'notification',
+        tone: 'error',
+        message: 'Too late',
+      });
+      expect(notification).toHaveBeenCalledTimes(6);
+    } finally {
+      digest.mockRestore();
+    }
+  });
+
+  test('binds server calls to the exact catalog operation', async () => {
+    const invoke = vi.fn(async () => ({ count: 2 }));
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke,
+      dispose: vi.fn(),
+    };
+    const bindings = createWidgetCapsuleCapabilityBindings({
+      catalog: catalog(),
+      requests: runtimeDescriptor('published').capabilityRequests,
+      functionDescriptors: functionMetadata,
+      functionBridge,
+      collaborativeStateBridge: null,
+      createStreamId: () => 'stream-a',
+    });
+
+    await expect(bindings[0]!.invoke(
+      { signal: new AbortController().signal } as never,
+      'count',
+      { value: 1 },
+    )).resolves.toEqual({ count: 2 });
+    expect(invoke).toHaveBeenCalledWith({
+      functionName: 'count',
+      input: { value: 1 },
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  test('streams one atomic current snapshot and cancels the pending wait', async () => {
+    let rejectWait: ((error: Error) => void) | undefined;
+    const cancel = vi.fn((waitId: string) => rejectWait?.(new Error(`cancelled:${waitId}`)));
+    const state: TWidgetCollaborativeStateBridge = {
+      get: vi.fn(async () => ({ version: 3, value: { count: 3 } })),
+      change: vi.fn(),
+      next: vi.fn(async (_version, _waitId) => await new Promise((_, reject) => {
+        rejectWait = reject;
+      })),
+      cancel,
+      dispose: vi.fn(),
+    };
+    const bindings = createWidgetCapsuleCapabilityBindings({
+      catalog: catalog(),
+      requests: [{
+        id: stateDescriptor.id,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['change', 'get', 'subscribe'],
+      }],
+      functionDescriptors: [],
+      functionBridge: {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
+        },
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      },
+      collaborativeStateBridge: state,
+      createStreamId: () => 'wait-a',
+    });
+    const stream = await bindings[0]!.openStream!(
+      {} as never,
+      'subscribe',
+      null,
+    );
+    const event = vi.fn(async () => 'accepted' as const);
+    const sink: CapsuleKernelHostStreamSink = {
+      event,
+      error: vi.fn(),
+      close: vi.fn(),
+    };
+    await stream.start(sink);
+    await stream.request({ events: 2, bytes: 1_024 });
+    await vi.waitFor(() => expect(event).toHaveBeenCalledOnce());
+    expect(event).toHaveBeenCalledWith({ version: 3, value: { count: 3 } });
+    await stream.cancel({ code: 'guest-cancel' });
+    expect(cancel).toHaveBeenCalledWith('wait-a');
+    await Promise.resolve();
+    expect(sink.error).not.toHaveBeenCalled();
+  });
+
+  test('creates one immutable-policy host and fails closed for unknown contracts', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const binding = {
+      descriptor: functionDescriptor,
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies CapsuleCapabilityBinding;
+
+    const mounted = await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [binding],
+      onFatal: vi.fn(),
+    });
+    expect(factory.create).toHaveBeenCalledOnce();
+    expect(
+      factory.created[0]!.options.runtimePolicy.artifactVerification?.signaturePolicy,
+    ).toMatchObject({
+      minimumValidSignatures: 1,
+      requiredKeyIds: ['release-key'],
+      rejectUntrustedSignatures: true,
+    });
+    expect([
+      ...factory.created[0]!.options.runtimePolicy.artifactVerification!
+        .signaturePolicy.trustedKeys.keys(),
+    ]).toEqual(['release-key']);
+    expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([{
+      effect: 'allow',
+      id: functionDescriptor.id,
+      versionRange: '1.0.0',
+      contractHash: HASH_A,
+      operations: ['count'],
+    }, {
+      effect: 'allow',
+      id: stateDescriptor.id,
+      versionRange: '1.0.0',
+      contractHash: HASH_B,
+      operations: ['change', 'get', 'subscribe'],
+    }]);
+
+    await expect(coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact('published', [{
+        id: 'vibecanvas.widget.unknown',
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['read'],
+      }]),
+      container: document.createElement('div'),
+      capabilityBindings: [],
+      onFatal: vi.fn(),
+    })).rejects.toThrow('not in the host catalog');
+    await mounted.destroy();
+    await coordinator.destroy();
+  });
+
+  test('rejects a mounted artifact-hash mismatch without nesting coordinator serialization', async () => {
+    const factory = fakeHostFactory(HASH_B);
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const binding = {
+      descriptor: functionDescriptor,
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies CapsuleCapabilityBinding;
+
+    const settled = await settleWithin(coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [binding],
+      onFatal: vi.fn(),
+    }), 100);
+
+    expect(settled.status).toBe('rejected');
+    if (settled.status === 'rejected') {
+      expect(settled.reason).toEqual(new Error(
+        'Mounted Capsule artifact hash does not match runtime metadata.',
+      ));
+    }
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledOnce();
+    expect(factory.created[0]!.raw.destroy)
+      .toHaveBeenCalledWith('artifact-hash-mismatch');
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(binding.dispose).toHaveBeenCalledOnce();
+    expect(coordinator.diagnostics()).toMatchObject({
+      handles: 0,
+      hosts: [],
+    });
+    await expect(settleWithin(coordinator.destroy(), 100)).resolves.toMatchObject({
+      status: 'fulfilled',
+    });
+    expect(coordinator.diagnostics()).toMatchObject({
+      destroyed: true,
+      handles: 0,
+      hosts: [],
+    });
+  });
+
+  test('catalog generation replacement destroys logical handles before the host', async () => {
+    const factory = fakeHostFactory();
+    let currentCatalog = catalog('catalog-a');
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const onFatal = vi.fn();
+    const mounted = await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal,
+    });
+
+    currentCatalog = catalog('catalog-b');
+    await coordinator.replaceCatalog();
+    expect(factory.created).toHaveLength(1);
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledWith(
+      'catalog-generation-changed',
+    );
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'WIDGET_CAPSULE_CATALOG_INVALIDATED',
+      reason: 'catalog-generation-changed',
+    }));
+    await expect(mounted.destroy()).resolves.toBeUndefined();
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledOnce();
+    await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+    expect(factory.created).toHaveLength(2);
+    await coordinator.destroy();
+  });
+
+  test('shares hosts by exact target and never widens one host across profiles', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog(
+      'catalog-a',
+      [
+        { kind: 'server-functions', descriptor: functionDescriptor },
+        { kind: 'collaborative-state', descriptor: stateDescriptor },
+      ],
+      ['svg-dom-v1'],
+    );
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const mount = (target = TARGET) => coordinator.mount({
+      mode: 'published' as const,
+      catalog: currentCatalog,
+      artifact: artifact('published', undefined, target),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    await mount();
+    await mount();
+    await mount(TARGET_WITH_SVG);
+    expect(factory.create).toHaveBeenCalledTimes(2);
+    expect(factory.created.map(({ options }) => options.runtimePolicy.target))
+      .toEqual([TARGET, TARGET_WITH_SVG]);
+    await coordinator.destroy();
+  });
+
+  test('partitions the shared pool by cryptographically required signing authority', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const mount = (mode: 'preview' | 'published') => coordinator.mount({
+      mode,
+      catalog: currentCatalog,
+      artifact: artifact(mode),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    await mount('preview');
+    await mount('preview');
+    await mount('published');
+    expect(factory.create).toHaveBeenCalledTimes(2);
+    expect(factory.created.map(({ options }) => (
+      options.runtimePolicy.artifactVerification?.signaturePolicy.requiredKeyIds
+    ))).toEqual([['preview-key'], ['release-key']]);
+    await coordinator.destroy();
+  });
+
+  test('keeps live mounts stable while partitioning immutable capability policies', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog('catalog-a', []);
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const firstCatalog = catalog('catalog-a', [{
+      kind: 'server-functions',
+      descriptor: functionDescriptor,
+    }]);
+    const secondCatalog = catalog('catalog-a', [{
+      kind: 'server-functions',
+      descriptor: alternateFunctionDescriptor,
+    }]);
+    const first = await coordinator.mount({
+      mode: 'published',
+      catalog: firstCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+    const second = await coordinator.mount({
+      mode: 'published',
+      catalog: secondCatalog,
+      artifact: artifact('published', [{
+        id: alternateFunctionDescriptor.id,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['count'],
+      }]),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: alternateFunctionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    expect(factory.created).toHaveLength(2);
+    expect(factory.created[0]!.destroy).not.toHaveBeenCalled();
+    await first.destroy();
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(factory.created[1]!.destroy).not.toHaveBeenCalled();
+    await second.destroy();
+    expect(factory.created[1]!.destroy).toHaveBeenCalledOnce();
+  });
+});

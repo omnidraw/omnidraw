@@ -93,45 +93,106 @@ export function createRuntime<THooks extends object, TConfig extends object>({
 }: TRuntimeOptions<THooks, TConfig>): IRuntime<THooks> {
   const sorted = topoSort(plugins);
   const ctx: IPluginContext<IServiceMap, THooks, TConfig> = { hooks, services, config };
+  const startedRegistrations: IServiceRegistration[] = [];
+  let pluginsApplied = false;
+  let bootCallbackEntered = false;
+  let shutdownCallbackCompleted = false;
+  let state: 'idle' | 'booting' | 'running' | 'stopping' | 'stopped' | 'failed' = 'idle';
+
+  const stopStartedServices = async (): Promise<unknown[]> => {
+    const failures: unknown[] = [];
+    for (let index = startedRegistrations.length - 1; index >= 0; index -= 1) {
+      const registration = startedRegistrations[index]!;
+      const stop = 'stop' in registration.service
+        ? registration.service.stop
+        : undefined;
+      try {
+        if (typeof stop === 'function') {
+          await (stop as () => void | Promise<void>).call(registration.service);
+        }
+        startedRegistrations.splice(index, 1);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    return failures;
+  };
+
+  const runShutdownCallback = async (): Promise<unknown | null> => {
+    if (!bootCallbackEntered || shutdownCallbackCompleted || !shutdown) return null;
+    try {
+      await shutdown(ctx);
+      shutdownCallbackCompleted = true;
+      return null;
+    } catch (error) {
+      return error;
+    }
+  };
 
   return {
     async boot() {
-      const registrations = this.services
-        .getRegistrations()
-        .sort((a, b) => a.startOrder - b.startOrder || a.name.localeCompare(b.name));
-
-      for (const { service } of registrations) {
-        if (service && 'start' in service) {
-          await (service.start as (ctx: IServiceContext<THooks, TConfig>) => Promise<void>)({ config, hooks });
-        }
+      if (state !== 'idle') {
+        throw new Error(`Runtime cannot boot from state '${state}'.`);
       }
-      for (const plugin of sorted) await plugin.apply(ctx);
-      await boot?.(ctx);
-    },
-    async shutdown() {
-      const registrations = this.services
-        .getRegistrations()
-        .sort((a, b) => b.startOrder - a.startOrder || a.name.localeCompare(b.name));
-
-      let shutdownError: unknown;
-
+      state = 'booting';
       try {
-        await shutdown?.(ctx);
-      } catch (error) {
-        shutdownError = error;
-      }
+        for (const plugin of sorted) await plugin.apply(ctx);
+        pluginsApplied = true;
 
-      try {
-        for (const { service } of registrations) {
-          if (service && 'stop' in service) {
-            await (service.stop as () => Promise<void>)();
+        const registrations = services
+          .getRegistrations()
+          .sort((a, b) => a.startOrder - b.startOrder || a.name.localeCompare(b.name));
+
+        for (const registration of registrations) {
+          const { service } = registration;
+          startedRegistrations.push(registration);
+          const start = service && 'start' in service ? service.start : undefined;
+          if (typeof start === 'function') {
+            await (start as (ctx: IServiceContext<THooks, TConfig>) => void | Promise<void>)
+              .call(service, { config, hooks });
           }
         }
-      } catch (error) {
-        throw shutdownError ?? error;
-      }
 
-      if (shutdownError) throw shutdownError;
+        bootCallbackEntered = true;
+        await boot?.(ctx);
+        state = 'running';
+      } catch (error) {
+        const failures: unknown[] = [error];
+        const shutdownFailure = await runShutdownCallback();
+        if (shutdownFailure !== null) failures.push(shutdownFailure);
+        failures.push(...await stopStartedServices());
+        state = 'failed';
+        if (failures.length === 1) throw error;
+        throw new AggregateError(failures, 'Runtime boot and cleanup failed.');
+      }
+    },
+    async shutdown() {
+      if (state === 'stopped') return;
+      if (state === 'idle') {
+        state = 'stopped';
+        return;
+      }
+      if (state === 'booting' || state === 'stopping') {
+        throw new Error(`Runtime cannot shutdown from state '${state}'.`);
+      }
+      state = 'stopping';
+
+      const failures: unknown[] = [];
+      if (pluginsApplied) {
+        const shutdownFailure = await runShutdownCallback();
+        if (shutdownFailure !== null) failures.push(shutdownFailure);
+      }
+      failures.push(...await stopStartedServices());
+
+      if (failures.length > 0) {
+        state = 'failed';
+        throw failures[0];
+      }
+      if (startedRegistrations.length > 0 || !shutdownCallbackCompleted && bootCallbackEntered && shutdown) {
+        state = 'failed';
+        throw new Error('Runtime shutdown did not release every started lifecycle.');
+      }
+      state = 'stopped';
     },
     services,
     hooks,

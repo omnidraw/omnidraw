@@ -14,8 +14,6 @@ export type TTool =
   | "pen"
   | "text"
   | "image"
-  | "filesystem"
-  | "terminal"
   | "browser";
 
 export interface IToolDefinition {
@@ -45,10 +43,6 @@ export const TOOL_SHORTCUTS: Record<string, TTool> = {
   "l": "line",
   "p": "pen",
   "t": "text",
-  // S61: Filesystem widget shortcut disabled while the widget surface is removed.
-  // "f": "filesystem",
-  // S60: Terminal widget shortcut disabled while the widget surface is removed.
-  // "j": "terminal",
   "w": "browser",
   "Escape": "select",
 } as const;
@@ -65,9 +59,5 @@ export const TOOLS: IToolDefinition[] = [
   { tool: "pen", shortcut: "7", letterShortcut: "p" },
   { tool: "text", shortcut: "8", letterShortcut: "t" },
   { tool: "image", shortcut: "9" },
-  // S61: Filesystem widget toolbar entry disabled while the widget surface is removed.
-  // { tool: "filesystem", letterShortcut: "f" },
-  // S60: Terminal widget toolbar entry disabled while the widget surface is removed.
-  // { tool: "terminal", letterShortcut: "j" },
   { tool: "browser", letterShortcut: "w" },
 ];

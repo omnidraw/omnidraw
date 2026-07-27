@@ -1,6 +1,7 @@
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { TFileFormat } from '@vibecanvas/service-db/model';
 import type { ICliConfig } from '../../config';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 
 type TEmbeddedAssetsModule = {
   getEmbeddedAsset(pathname: string): string | null;
@@ -85,11 +86,11 @@ function fileMetaFromPathname(pathname: string): { id: string; format: TFileForm
   return { id: match[1], format };
 }
 
-async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Response> {
+async function createFileResponse(req: Request, db: DbServiceTurso, tenant: TTenantContext): Promise<Response> {
   const fileMeta = fileMetaFromPathname(new URL(req.url).pathname);
   if (!fileMeta) return new Response('Not Found', { status: 404 });
 
-  const record = await db.file.getById({ id: fileMeta.id });
+  const record = await db.file.getById(tenant, { id: fileMeta.id });
   if (!record) return new Response('Not Found', { status: 404 });
 
   const etag = `"${record.id}:${record.hash}"`;
@@ -98,7 +99,7 @@ async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Res
       status: 304,
       headers: {
         ETag: etag,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'private, no-store',
       },
     });
   }
@@ -110,13 +111,19 @@ async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Res
   return new Response(data, {
     headers: {
       'Content-Type': record.mime_type,
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': 'private, no-store',
       ETag: etag,
     },
   });
 }
 
-async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compiled' | 'version'>, db: DbServiceTurso, importMetaDir: string): Promise<Response> {
+async function handleHttpRequest(
+  req: Request,
+  config: Pick<ICliConfig, 'compiled' | 'version'>,
+  db: DbServiceTurso,
+  tenant: TTenantContext,
+  importMetaDir: string,
+): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === 'GET' && url.pathname === '/health') {
@@ -129,7 +136,7 @@ async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compile
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
-    return await createFileResponse(req, db);
+    return await createFileResponse(req, db, tenant);
   }
 
   const assets = await createHttpAssetResolver(importMetaDir);

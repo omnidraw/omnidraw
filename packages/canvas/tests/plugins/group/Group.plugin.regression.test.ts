@@ -1,7 +1,9 @@
-import Konva from "konva";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { describe, expect, test } from "vitest";
-import { createNewCanvasHarness, flushCanvasEffects } from "../../new-test-setup";
+import {
+  createMockDocHandle,
+  createNewCanvasHarness,
+} from "../../new-test-setup";
 
 function createRectElement(id: string, x: number, y: number): TElement {
   return {
@@ -29,32 +31,23 @@ function createRectElement(id: string, x: number, y: number): TElement {
   };
 }
 
-function addRectNode(
-  harness: Awaited<ReturnType<typeof createNewCanvasHarness>>,
-  element: TElement,
-) {
-  const elementService = harness.runtime.services.require("element");
-  const node = elementService.createNodeFromElement(element);
-
-  if (!(node instanceof Konva.Rect)) {
-    throw new Error("Expected Konva.Rect node");
-  }
-
-  harness.staticForegroundLayer.add(node);
-  harness.staticForegroundLayer.batchDraw();
-  return node;
-}
-
 describe("group plugin regressions", () => {
-  test("grouping two rects should create a persisted group and select it", async () => {
-    const harness = await createNewCanvasHarness();
+  test("grouping two rects persists hierarchy and selects its semantic group", async () => {
+    const rectA = createRectElement("rect-a", 40, 60);
+    const rectB = createRectElement("rect-b", 240, 60);
+    const docHandle = createMockDocHandle({
+      elements: {
+        [rectA.id]: rectA,
+        [rectB.id]: rectB,
+      },
+    });
+    const harness = await createNewCanvasHarness({ docHandle });
     const selection = harness.runtime.services.require("selection");
-
-    const rectA = addRectNode(harness, createRectElement("rect-a", 40, 60));
-    const rectB = addRectNode(harness, createRectElement("rect-b", 240, 60));
-
-    selection.setSelection([rectA, rectB]);
-    selection.setFocusedNode(rectB);
+    selection.setSelection([
+      { kind: "element", id: rectA.id },
+      { kind: "element", id: rectB.id },
+    ]);
+    selection.setFocusedTarget({ kind: "element", id: rectB.id });
 
     harness.runtime.hooks.keydown.call(new KeyboardEvent("keydown", {
       key: "g",
@@ -62,15 +55,23 @@ describe("group plugin regressions", () => {
       bubbles: true,
       cancelable: true,
     }));
-    await flushCanvasEffects();
+    await harness.flush();
 
-    const groups = Object.values(harness.docHandle.doc().groups);
-
+    const document = harness.docHandle.doc();
+    const groups = Object.values(document.groups);
     expect(groups).toHaveLength(1);
-    expect(selection.selection).toHaveLength(1);
-    expect(selection.selection[0]).toBeInstanceOf(Konva.Group);
-    expect(rectA.getParent()).toBe(selection.selection[0]);
-    expect(rectB.getParent()).toBe(selection.selection[0]);
+    const group = groups[0]!;
+    expect(document.elements[rectA.id]?.parentGroupId).toBe(group.id);
+    expect(document.elements[rectB.id]?.parentGroupId).toBe(group.id);
+    expect(selection.selection).toEqual([{
+      kind: "group",
+      id: group.id,
+    }]);
+    expect(selection.focused).toEqual({
+      kind: "group",
+      id: group.id,
+    });
+    expect(harness.scene.projectionIndex?.groupNodeIds[group.id]).toBeDefined();
 
     await harness.destroy();
   });

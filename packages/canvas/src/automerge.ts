@@ -1,179 +1,277 @@
 /**
- * Automerge Client Service
- *
- * Provides CRDT sync capabilities for the SPA via WebSocket connection to the server.
- * Uses IndexedDB for local persistence.
+ * Tenant-scoped browser Automerge client. A placement or organization switch
+ * tears down the previous Repo before any document from the next scope loads.
  */
-import { Repo, type AutomergeUrl, type DocHandle, type PeerId } from "@automerge/automerge-repo"
-import { BrowserWebSocketClientAdapter } from "@automerge/automerge-repo-network-websocket"
-import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb"
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types"
+import { Repo, type AutomergeUrl, type DocHandle, type PeerId } from '@automerge/automerge-repo';
+import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
+import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
+import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import {
+  fnBrowserTenantScopeKey,
+  fnBrowserTenantScopesMatch,
+  fnBrowserTenantStorageKeys,
+  type TBrowserTenantScope,
+} from './fn.browser-tenant-scope';
 
-// LocalStorage key for persisting document URLs
-const DOCS_STORAGE_KEY = "vibecanvas-automerge-docs"
+type TBrowserAutomergeSession = {
+  readonly documentLeases: Map<DocHandle<any>, number>;
+  readonly documentReleaseTails: Map<string, Promise<void>>;
+  readonly handles: Map<string, DocHandle<TCanvasDoc>>;
+  readonly repo: Repo;
+  readonly scope: TBrowserTenantScope;
+  readonly trackedHandles: Set<DocHandle<any>>;
+  readonly wsAdapter: BrowserWebSocketClientAdapter;
+};
 
-// Singleton repo instance
-let repo: Repo | null = null
+let activeSession: TBrowserAutomergeSession | null = null;
+let activationTail: Promise<void> = Promise.resolve();
 
-// Track handles by document ID
-const handles = new Map<string, DocHandle<TCanvasDoc>>()
-
-/**
- * Get WebSocket URL based on current environment.
- */
-function getWebSocketUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-  const host = window.location.host
-  return `${protocol}//${host}/automerge`
+function getWebSocketUrl(scope: TBrowserTenantScope): string {
+  const origin = new URL(scope.deploymentOrigin);
+  origin.protocol = origin.protocol === 'https:' ? 'wss:' : 'ws:';
+  origin.pathname = '/automerge';
+  origin.search = '';
+  origin.hash = '';
+  return origin.toString();
 }
 
-/**
- * Initialize the Automerge repository (singleton).
- * Called once on app startup.
- */
-export function getOrCreateRepo(): Repo {
-  if (repo) return repo
-
-  const wsUrl = getWebSocketUrl()
-
-  const wsAdapter = new BrowserWebSocketClientAdapter(wsUrl)
-
-  repo = new Repo({
-    storage: new IndexedDBStorageAdapter(),
-    network: [wsAdapter],
-    peerId: `client-${Date.now()}` as PeerId,
-  })
-
-  return repo
-}
-
-/**
- * Get persisted document URLs from localStorage.
- */
-function getPersistedDocUrls(): Array<{ id: string; url: AutomergeUrl }> {
+function getPersistedDocUrls(scope: TBrowserTenantScope): Array<{ id: string; url: AutomergeUrl }> {
   try {
-    const stored = localStorage.getItem(DOCS_STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
-    }
-  } catch (e) {
-    console.error("[Automerge] Failed to load persisted docs:", e)
+    const stored = localStorage.getItem(fnBrowserTenantStorageKeys(scope).documents);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('[Automerge] Failed to load persisted docs:', error);
+    return [];
   }
-  return []
 }
 
-/**
- * Save document URLs to localStorage.
- */
-function persistDocUrls(docs: Array<{ id: string; url: AutomergeUrl }>): void {
+function persistDocUrls(scope: TBrowserTenantScope, docs: Array<{ id: string; url: AutomergeUrl }>): void {
   try {
-    localStorage.setItem(DOCS_STORAGE_KEY, JSON.stringify(docs))
-  } catch (e) {
-    console.error("[Automerge] Failed to persist docs:", e)
+    localStorage.setItem(fnBrowserTenantStorageKeys(scope).documents, JSON.stringify(docs));
+  } catch (error) {
+    console.error('[Automerge] Failed to persist docs:', error);
   }
 }
 
-/**
- * Add a document URL to persisted storage.
- */
-function addPersistedDoc(id: string, url: AutomergeUrl): void {
-  const docs = getPersistedDocUrls()
-  if (!docs.find((d) => d.id === id)) {
-    docs.push({ id, url })
-    persistDocUrls(docs)
+function removePersistedDoc(scope: TBrowserTenantScope, id: string): void {
+  persistDocUrls(scope, getPersistedDocUrls(scope).filter((doc) => doc.id !== id));
+}
+
+async function shutdownActiveRepo(): Promise<void> {
+  const session = activeSession;
+  activeSession = null;
+  if (!session) return;
+  await Promise.allSettled(session.documentReleaseTails.values());
+  for (const handle of session.trackedHandles) handle.removeAllListeners();
+  session.handles.clear();
+  session.documentLeases.clear();
+  session.documentReleaseTails.clear();
+  session.trackedHandles.clear();
+  session.wsAdapter.disconnect();
+  await session.repo.shutdown();
+}
+
+async function activateScope(scope: TBrowserTenantScope): Promise<void> {
+  const nextScope = Object.freeze({ ...scope });
+  activationTail = activationTail.catch(() => undefined).then(async () => {
+    if (activeSession && fnBrowserTenantScopesMatch(activeSession.scope, nextScope)) return;
+    await shutdownActiveRepo();
+
+    const keys = fnBrowserTenantStorageKeys(nextScope);
+    const wsAdapter = new BrowserWebSocketClientAdapter(getWebSocketUrl(nextScope));
+    const repo = new Repo({
+      storage: new IndexedDBStorageAdapter(keys.automergeDatabase, keys.automergeStore),
+      network: [wsAdapter],
+      peerId: `client-${fnBrowserTenantScopeKey(nextScope)}-${crypto.randomUUID()}` as PeerId,
+    });
+    activeSession = {
+      documentLeases: new Map(),
+      documentReleaseTails: new Map(),
+      handles: new Map(),
+      repo,
+      scope: nextScope,
+      trackedHandles: new Set(),
+      wsAdapter,
+    };
+  });
+  await activationTail;
+}
+
+async function getOrCreateSession(scope: TBrowserTenantScope): Promise<TBrowserAutomergeSession> {
+  await activateScope(scope);
+  const session = activeSession;
+  if (!session || !fnBrowserTenantScopesMatch(session.scope, scope)) {
+    throw new Error('Automerge Repo activation failed.');
   }
+  return session;
 }
 
-/**
- * Remove a document URL from persisted storage.
- */
-function removePersistedDoc(id: string): void {
-  const docs = getPersistedDocUrls().filter((d) => d.id !== id)
-  persistDocUrls(docs)
+function assertCurrentSession(session: TBrowserAutomergeSession): void {
+  if (activeSession !== session) throw new Error('Automerge tenant scope changed.');
 }
 
-/**
- * Load all persisted documents from storage.
- * Returns handles for all previously created documents.
- */
-export async function loadPersistedDocuments(): Promise<Array<{ handle: DocHandle<TCanvasDoc>; url: AutomergeUrl; doc: TCanvasDoc }>> {
-  const currentRepo = getOrCreateRepo()
-  const persistedDocs = getPersistedDocUrls()
-  const results: Array<{ handle: DocHandle<TCanvasDoc>; url: AutomergeUrl; doc: TCanvasDoc }> = []
+export async function getOrCreateRepo(scope: TBrowserTenantScope): Promise<Repo> {
+  return (await getOrCreateSession(scope)).repo;
+}
 
-  for (const { id, url } of persistedDocs) {
+export async function loadPersistedDocuments(scope: TBrowserTenantScope): Promise<Array<{
+  handle: DocHandle<TCanvasDoc>;
+  url: AutomergeUrl;
+  doc: TCanvasDoc;
+}>> {
+  const session = await getOrCreateSession(scope);
+  const results: Array<{ handle: DocHandle<TCanvasDoc>; url: AutomergeUrl; doc: TCanvasDoc }> = [];
+
+  for (const { id, url } of getPersistedDocUrls(scope)) {
+    let handle: DocHandle<TCanvasDoc> | null = null;
     try {
-      const handle = await Promise.resolve(currentRepo.find<TCanvasDoc>(url))
-      await handle.whenReady()
-
-      const doc = handle.docSync()
-      if (doc && doc.id) {
-        handles.set(id, handle)
-        results.push({ handle, url, doc: { ...doc } })
-      } else {
-        // Document doesn't exist or is empty, remove from persisted
-        removePersistedDoc(id)
+      handle = await Promise.resolve(session.repo.find<TCanvasDoc>(url));
+      session.trackedHandles.add(handle);
+      await handle.whenReady();
+      assertCurrentSession(session);
+      const doc = handle.docSync();
+      if (!doc?.id) {
+        removePersistedDoc(scope, id);
+        continue;
       }
-    } catch (e) {
-      console.error("[Automerge] Failed to load document:", url, e)
-      removePersistedDoc(id)
+      session.handles.set(id, handle);
+      results.push({ handle, url, doc: { ...doc } });
+    } catch (error) {
+      handle?.removeAllListeners();
+      if (handle) session.trackedHandles.delete(handle);
+      if (activeSession !== session) throw error;
+      console.error('[Automerge] Failed to load document:', url, error);
+      removePersistedDoc(scope, id);
     }
   }
 
-  return results
+  return results;
 }
 
-
-/**
- * Find an existing document by its Automerge URL.
- * Waits for the document to be ready before returning.
- */
-export async function findDocument(url: AutomergeUrl): Promise<DocHandle<TCanvasDoc>> {
-  const currentRepo = getOrCreateRepo()
-  const handle = await Promise.resolve(currentRepo.find<TCanvasDoc>(url))
-  await handle.whenReady()
-  return handle
-}
-
-/**
- * Get a cached handle by document ID.
- */
-export function getHandle(docId: string): DocHandle<TCanvasDoc> | undefined {
-  return handles.get(docId)
-}
-
-/**
- * Get all cached handles.
- */
-export function getAllHandles(): Map<string, DocHandle<TCanvasDoc>> {
-  return handles
+export async function findDocument(
+  scope: TBrowserTenantScope,
+  url: AutomergeUrl,
+): Promise<DocHandle<TCanvasDoc>> {
+  const session = await getOrCreateSession(scope);
+  const handle = await Promise.resolve(session.repo.find<TCanvasDoc>(url));
+  session.trackedHandles.add(handle);
+  try {
+    await handle.whenReady();
+    assertCurrentSession(session);
+    const docId = handle.docSync()?.id;
+    if (docId) session.handles.set(docId, handle);
+  } catch (error) {
+    handle.removeAllListeners();
+    session.trackedHandles.delete(handle);
+    throw error;
+  }
+  return handle;
 }
 
 /**
- * Update a document's name.
+ * Opens a non-canvas document through the tenant-scoped shared Repo without
+ * adding it to the canvas-id handle cache. Callers own only their listeners;
+ * the tenant session owns the handle and connection lifecycle.
  */
-export function updateDocumentName(handle: DocHandle<TCanvasDoc>, name: string): void {
-  handle.change((d) => {
-    d.name = name
-  })
-}
-
-/**
- * Delete a document from local cache and persisted storage.
- */
-export function removeFromCache(docId: string): void {
-  const handle = handles.get(docId)
-  if (handle) {
-    handle.removeAllListeners()
-    handles.delete(docId)
-    removePersistedDoc(docId)
+export async function openAutomergeDocument<TDocument>(
+  scope: TBrowserTenantScope,
+  url: AutomergeUrl,
+  signal?: AbortSignal,
+): Promise<DocHandle<TDocument>> {
+  const session = await getOrCreateSession(scope);
+  let handle = await session.repo.find<TDocument>(url, { signal });
+  const pendingRelease = session.documentReleaseTails.get(handle.documentId);
+  if (pendingRelease) {
+    await pendingRelease;
+    assertCurrentSession(session);
+    handle = await session.repo.find<TDocument>(url, { signal });
+  }
+  session.documentLeases.set(handle, (session.documentLeases.get(handle) ?? 0) + 1);
+  session.trackedHandles.add(handle);
+  try {
+    // Repo.find may return a handle already used by another widget. This helper
+    // installs no listeners, so a failed/aborted second open must not mutate the
+    // shared handle. A lease keeps the shared handle cached until its last user
+    // releases it.
+    await handle.whenReady(undefined, { signal });
+    assertCurrentSession(session);
+    return handle;
+  } catch (error) {
+    await releaseAutomergeDocument(scope, handle);
+    throw error;
   }
 }
 
-/**
- * Cleanup all handles.
- */
-export function cleanup(): void {
-  handles.forEach((handle) => handle.removeAllListeners())
-  handles.clear()
+/** Releases one non-canvas document lease and evicts the last unused handle. */
+export async function releaseAutomergeDocument<TDocument>(
+  scope: TBrowserTenantScope,
+  handle: DocHandle<TDocument>,
+): Promise<void> {
+  const session = activeSession;
+  if (!session || !fnBrowserTenantScopesMatch(session.scope, scope)) return;
+
+  const leaseCount = session.documentLeases.get(handle) ?? 0;
+  if (leaseCount <= 0) return;
+  if (leaseCount > 1) {
+    session.documentLeases.set(handle, leaseCount - 1);
+    return;
+  }
+
+  session.documentLeases.delete(handle);
+  const documentId = handle.documentId;
+  const previousTail = session.documentReleaseTails.get(documentId) ?? Promise.resolve();
+  const releaseTail = previousTail.catch(() => undefined).then(async () => {
+    if (
+      activeSession !== session
+      || (session.documentLeases.get(handle) ?? 0) > 0
+    ) return;
+    session.trackedHandles.delete(handle);
+    await session.repo.removeFromCache(documentId);
+  });
+  session.documentReleaseTails.set(documentId, releaseTail);
+  try {
+    await releaseTail;
+  } finally {
+    if (session.documentReleaseTails.get(documentId) === releaseTail) {
+      session.documentReleaseTails.delete(documentId);
+    }
+  }
+}
+
+export function getHandle(scope: TBrowserTenantScope, docId: string): DocHandle<TCanvasDoc> | undefined {
+  return activeSession && fnBrowserTenantScopesMatch(activeSession.scope, scope)
+    ? activeSession.handles.get(docId)
+    : undefined;
+}
+
+export function getAllHandles(scope: TBrowserTenantScope): ReadonlyMap<string, DocHandle<TCanvasDoc>> {
+  return activeSession && fnBrowserTenantScopesMatch(activeSession.scope, scope)
+    ? new Map(activeSession.handles)
+    : new Map();
+}
+
+export function updateDocumentName(handle: DocHandle<TCanvasDoc>, name: string): void {
+  handle.change((document) => {
+    document.name = name;
+  });
+}
+
+export function removeFromCache(scope: TBrowserTenantScope, docId: string): void {
+  const session = activeSession;
+  if (!session || !fnBrowserTenantScopesMatch(session.scope, scope)) return;
+  const handle = session.handles.get(docId);
+  if (!handle) return;
+  handle.removeAllListeners();
+  session.handles.delete(docId);
+  session.trackedHandles.delete(handle);
+  removePersistedDoc(scope, docId);
+}
+
+export async function switchAutomergeTenant(scope: TBrowserTenantScope): Promise<void> {
+  await activateScope(scope);
+}
+
+export async function cleanup(): Promise<void> {
+  activationTail = activationTail.catch(() => undefined).then(shutdownActiveRepo);
+  await activationTail;
 }

@@ -22,7 +22,7 @@ type TCliParsedArgv = {
   command: TCliCommand;
   subcommand?: string;
   port?: number;
-  dbPath?: string;
+  dataDir?: string;
   helpRequested: boolean;
   versionRequested: boolean;
   upgradeTarget?: string;
@@ -47,19 +47,26 @@ function parsePort(value: string | undefined): number | undefined {
   return port;
 }
 
-function validateOptionValue(flag: string, value: string | undefined): string | undefined {
+function validateOptionValue(flag: string, value: string | undefined, missingValueCode: string): string | undefined {
   if (value === undefined) return undefined;
   if (value.trim().length === 0) {
     throw new CliArgvError('CLI_FLAG_EMPTY_VALUE', `${flag} requires a non-empty value.`);
   }
   if (value.startsWith('-')) {
-    throw new CliArgvError('DB_FLAG_MISSING_VALUE', `${flag} requires a path value. Received option token '${value}' instead.`);
+    throw new CliArgvError(missingValueCode, `${flag} requires a path value. Received option token '${value}' instead.`);
   }
   return value;
 }
 
 function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
   const argv = [...rawArgv];
+  const removedDbFlag = argv.find((value) => value === '--db' || value.startsWith('--db='));
+  if (removedDbFlag !== undefined) {
+    throw new CliArgvError('CLI_FLAG_REMOVED', '--db is no longer supported. Use --data-dir to select the Vibecanvas home.');
+  }
+  if (argv.at(-1) === '--data-dir') {
+    throw new CliArgvError('DATA_DIR_FLAG_MISSING_VALUE', '--data-dir requires a path value.');
+  }
   const { values, positionals } = parseArgs({
     args: argv,
     strict: false,
@@ -68,7 +75,7 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
       version: { type: 'boolean', short: 'v', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       port: { type: 'string' },
-      db: { type: 'string' },
+      'data-dir': { type: 'string' },
       upgrade: { type: 'string' },
       json: { type: 'boolean', default: false },
     },
@@ -83,7 +90,11 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
     command,
     subcommand: command === 'unknown' ? commandToken : undefined,
     port: parsePort(typeof values.port === 'string' ? values.port : /^\d+$/.test(commandToken ?? '') ? commandToken : undefined),
-    dbPath: validateOptionValue('--db', typeof values.db === 'string' ? values.db : undefined),
+    dataDir: validateOptionValue(
+      '--data-dir',
+      typeof values['data-dir'] === 'string' ? values['data-dir'] : undefined,
+      'DATA_DIR_FLAG_MISSING_VALUE',
+    ),
     helpRequested: values.help === true,
     versionRequested: values.version === true,
     upgradeTarget: typeof values.upgrade === 'string' ? values.upgrade : undefined,

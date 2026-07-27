@@ -55,4 +55,33 @@ describe('txRemoveUninstallTargets', () => {
     expect(result.removed).toEqual([installRoot]);
     expect(existsSync(installRoot)).toBe(false);
   });
+
+  test('continues removing safe targets after one target fails', async () => {
+    const root = await createTempRoot();
+    const failingDir = join(root, 'failing', 'vibecanvas');
+    const removableDir = join(root, 'removable', 'vibecanvas');
+    mkdirSync(failingDir, { recursive: true });
+    mkdirSync(removableDir, { recursive: true });
+    writeFileSync(join(failingDir, 'data.db'), 'keep');
+    writeFileSync(join(removableDir, 'cache.txt'), 'remove');
+    const attempted: string[] = [];
+    const failingPortal = {
+      ...portal,
+      rmSync(path: string, options: Parameters<typeof rmSync>[1]) {
+        attempted.push(path);
+        if (path === failingDir) throw new Error('injected removal failure');
+        rmSync(path, options);
+      },
+    };
+
+    const result = txRemoveUninstallTargets(failingPortal, {
+      paths: [failingDir, removableDir],
+    });
+
+    expect(result.failed).toEqual([{ path: failingDir, message: 'injected removal failure' }]);
+    expect(result.removed).toEqual([removableDir]);
+    expect(attempted).toEqual([failingDir, removableDir]);
+    expect(existsSync(join(failingDir, 'data.db'))).toBe(true);
+    expect(existsSync(removableDir)).toBe(false);
+  });
 });

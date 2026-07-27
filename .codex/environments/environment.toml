@@ -7,11 +7,31 @@ script = '''
 # - CODEX_SOURE_TREE_PATH
 # - CODEX_WORKTREE_PATH
 
-mkdir -p "$CODEX_WORKTREE_PATH/local-volume"
+CAPSULE_SOURCE_PATH="$(dirname "$CODEX_SOURCE_TREE_PATH")/capsule"
+CAPSULE_WORKTREE_PATH="$(dirname "$CODEX_WORKTREE_PATH")/capsule"
+
+if [ ! -d "$CAPSULE_SOURCE_PATH" ]; then
+  echo "Missing Capsule checkout: $CAPSULE_SOURCE_PATH" >&2
+  exit 1
+fi
+
+if [ -L "$CAPSULE_WORKTREE_PATH" ]; then
+  CAPSULE_LINK_TARGET="$(readlink "$CAPSULE_WORKTREE_PATH")"
+  if [ "$CAPSULE_LINK_TARGET" != "$CAPSULE_SOURCE_PATH" ]; then
+    echo "Unexpected Capsule worktree link: $CAPSULE_WORKTREE_PATH -> $CAPSULE_LINK_TARGET" >&2
+    exit 1
+  fi
+elif [ -e "$CAPSULE_WORKTREE_PATH" ]; then
+  echo "Refusing to replace existing Capsule worktree path: $CAPSULE_WORKTREE_PATH" >&2
+  exit 1
+else
+  ln -s "$CAPSULE_SOURCE_PATH" "$CAPSULE_WORKTREE_PATH"
+fi
+
+mkdir -p "$CODEX_WORKTREE_PATH/.vibecanvas"
 rsync -a \
-  --exclude 'data/machine.json' \
-  "$CODEX_SOURCE_TREE_PATH/local-volume/" \
-  "$CODEX_WORKTREE_PATH/local-volume/"
+  "$CODEX_SOURCE_TREE_PATH/.vibecanvas/" \
+  "$CODEX_WORKTREE_PATH/.vibecanvas/"
 
 cd "$CODEX_WORKTREE_PATH"
 bun install

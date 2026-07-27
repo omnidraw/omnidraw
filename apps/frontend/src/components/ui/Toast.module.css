@@ -31,6 +31,11 @@
   border-color: var(--success);
 }
 
+.warning {
+  background: color-mix(in srgb, var(--warning) 10%, var(--card));
+  border-color: var(--warning);
+}
+
 .contentRow {
   display: flex;
   align-items: flex-start;
@@ -57,6 +62,10 @@
 
 .titleError {
   color: var(--destructive);
+}
+
+.titleWarning {
+  color: var(--warning);
 }
 
 .description {
@@ -109,6 +118,10 @@
 
 .progressSuccess {
   background: var(--success);
+}
+
+.progressWarning {
+  background: var(--warning);
 }
 
 @keyframes toast-enter {

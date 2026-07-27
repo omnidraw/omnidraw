@@ -80,7 +80,7 @@ export function SelectionStyleMenu(props: {
     <Show when={shouldShow()}>
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           left: "0.75rem",
           top: "0.75rem",
           "z-index": 40,
@@ -91,16 +91,24 @@ export function SelectionStyleMenu(props: {
           ref={props.rootRef}
           tabIndex={0}
           style={{ display: "flex", gap: "0.5rem", "align-items": "flex-start", outline: "none" }}
-          onPointerDown={() => props.onInteraction?.()}
-          onKeyDown={(event) => {
+          on:pointerdown={(event) => {
+            event.stopPropagation();
+            props.onInteraction?.();
+          }}
+          on:pointermove={(event) => event.stopPropagation()}
+          on:pointerup={(event) => event.stopPropagation()}
+          on:pointercancel={(event) => event.stopPropagation()}
+          on:wheel={(event) => event.stopPropagation()}
+          on:keydown={(event) => {
+            event.stopPropagation();
             if (event.key !== "Escape") {
               return;
             }
 
             event.preventDefault();
-            event.stopPropagation();
             props.onEscape?.();
           }}
+          on:keyup={(event) => event.stopPropagation()}
         >
           <div
             style={{

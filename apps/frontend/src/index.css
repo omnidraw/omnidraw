@@ -36,11 +36,6 @@
   --vc-canvas-debug-text: rgba(71, 85, 105, 0.8);
   --vc-canvas-text: #000000;
   --vc-canvas-text-editor-outline: #3b82f6;
-  --vc-terminal-background: #111214;
-  --vc-terminal-foreground: #e5e7eb;
-  --vc-terminal-cursor: #f59e0b;
-  --vc-terminal-selection-background: #374151;
-  --vc-terminal-error-foreground: #fecaca;
 }
 
 .dark {

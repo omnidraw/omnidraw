@@ -14,7 +14,7 @@ Current dependencies and responsibilities:
 - Uses `@earendil-works/pi-coding-agent` for auth, models, settings, sessions, and custom tools.
 - Stores Pi data under `join(config.dataPath, 'pi')`.
 - Owns login sessions, abort controllers, model registry, settings manager, and widget/session managers.
-- Owns AI widget wizard tool orchestration and phase-specific tool loading.
+- Owns independent chat transcripts, one shared widget-draft workspace, and the fixed AI Chat tool registry.
 - May publish service events through `eventPublisherService` when agent runtime events are implemented.
 
 ## Known consumers
@@ -22,35 +22,35 @@ Current dependencies and responsibilities:
 This package is not called directly by frontend code. The flow is:
 
 1. Frontend UI calls the typed ORPC client.
-2. `packages/api-agent` validates and exposes the API contract.
+2. `packages/api/src/agent` validates and exposes the API contract.
 3. API handlers call `AgentService` methods through `context.agent`.
 4. `AgentService` performs Pi/service-layer work and returns contract-shaped data.
 
 Important files to inspect before changing public service behavior:
-- `packages/api-agent/src/contract.ts`
-- `packages/api-agent/src/types.ts`
-- `packages/api-agent/src/api.setting.get.ts`
-- `packages/api-agent/src/api.auth.login.ts`
-- `packages/api-agent/src/api.auth.status.ts`
-- `packages/api-agent/src/api.auth.abort.ts`
-- `packages/canvas/src/components/AiWizzard/index.tsx`
-- `packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx`
+- `packages/api/src/agent/contract.ts`
+- `packages/api/src/agent/types.ts`
+- `packages/api/src/agent/api.setting.get.ts`
+- `packages/api/src/agent/api.auth.login.ts`
+- `packages/api/src/agent/api.auth.status.ts`
+- `packages/api/src/agent/api.auth.abort.ts`
+- `packages/ui-ai-chat/src/chat/components/index.tsx`
+- `packages/ui-ai-chat/src/chat/components/tabs/SettingsTab.tsx`
 
 Frontend entrypoint currently using this stack:
-- `packages/canvas/src/components/AiWizzard/index.tsx`
+- `packages/ui-ai-chat/src/chat/components/index.tsx`
   - fetches `apiService.api.agent.settings.get({})`
   - treats `providersWithCredentials.length > 0` as authenticated
   - uses the settings response to choose default tab and render settings state
 
 ## API contract discipline
 
-Keep `AgentService` return values aligned with `packages/api-agent/src/contract.ts`.
+Keep `AgentService` return values aligned with `packages/api/src/agent/contract.ts`.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
-- `wizzard.connect` returns `{ vcJson, actorCandidate, messageHistory }` for the requested widget/session.
-- `actorCandidate` is `null` on first connect and otherwise the latest actor candidate custom entry saved in the Pi session.
-- `wizzard.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
+- `chat.connect` returns `{ vcJson, messageHistory, editSession }` for the requested widget/session.
+- Current widget authority comes only from the shared draft folder. Canonical published snapshots and historical candidate entries are never current chat authority.
+- `chat.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
 - `auth.status` returns a discriminated login status.
@@ -60,45 +60,46 @@ Current contract shape includes:
 - `events` streams Pi agent session events published by `AgentService` through `IEventPublisherService`.
 
 When changing service public methods:
-- update `api-agent` handlers and contract together
-- consider frontend expectations in `AiWizzard`
+- update `packages/api/src/agent` handlers and contract together
+- consider frontend expectations in `AiChat`
 - prefer additive changes when possible
 - never return secrets or raw credentials to the API/frontend
 - preserve discriminated union fields exactly; frontend and ORPC validation depend on them
 
-## AI widget wizard tools
+## AI chat widget tools
 
-Custom wizard tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
+Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Current custom tools:
-- `vc_set_actor_candidate`
-  - Phase 1 only.
-  - Accepts a full actor candidate and validates before saving.
-  - Saves candidates with `sessionManager.appendCustomEntry`; do not write candidate files to cwd.
-  - Uses a hand-authored TypeBox parameter schema in `src/tools/CONSTANTS.ts`; do not use `z.toJSONSchema` for this tool schema because model-facing constraints must be explicit.
-- `vc_approve_actor_candidate`
-  - Phase 1 only.
-  - Reads the latest candidate from Pi session custom entries.
-  - Writes scaffold files into the draft cwd, including `vibecanvas.json`, `package.json`, actor stubs, and widget files.
-  - Attempts `npm install` when `package.json` exists; install failure should be returned in tool details and should not silently drop approval state.
-  - Appends a `vibecanvas.actorCandidateApproved` custom entry when approval succeeds.
-- `vc_validate_widget_files`
-  - Phase 2 only.
-  - Validates generated draft files and actor registry shape.
-- `vc_publish_widget`
-  - Phase 2 only.
-  - Copies draft files to `<configPath>/widgets/<slug>` and reloads actor definitions when `actorService` is available.
+Every conversation receives exactly these 16 tools for its complete lifecycle:
 
-Phase selection:
-- `src/tools/fn.phase-tools.ts` chooses phase from Pi session history.
-- No approval custom entry means phase 1 tools.
-- Latest approval custom entry means phase 2 tools plus built-in `read`, `edit`, and `grep`.
-- Phase 1 must not expose filesystem or bash tools.
-- Phase 2 must not expose bash by default.
+- Widgets/files: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
+- General: `web_fetch`, `bash`
 
-Shared candidate session helpers:
-- `src/core/fx.session-candidate.ts`
-- `src/core/tx.session-candidate.ts`
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there.
+
+Chat filesystem ownership:
+
+- `chats/<UTC-date>/<sessionId>/` owns `chat.json`, Pi `history/`, and one `workspace/` for a dated Vibecanvas chat ID.
+- `chats/legacy/<sessionId>/` provides the same layout for existing safe IDs whose creation date is not encoded.
+- Canvas/API field `sessionId` is the stable Vibecanvas chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
+- `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
+- `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
+- Request-time draft snapshots are temporary siblings under `widgets/drafts/` and are removed before the operation returns; there is no durable Preview root.
+- `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
+- Generic file access must enter through a validated `widgets/<name>` mount. Direct access to the shared draft root is rejected.
+- `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
+
+Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
+
+Publishing remains a user-controlled API operation in `AgentService`. Publish captures the selected draft and atomically commits immutable source, UI, and optional server artifacts with the active revision metadata and resource bindings. Published catalog, detail, files, placement, and edit-as-draft reads come only from that durable revision and its verified source artifact. Every chat remains mounted to the editable draft, and published slugs are immutable after first publication.
+
+Draft Preview is a stateless UI-only build of the current draft snapshot. It returns verified UI bytes directly, keeps collaborative state in the browser, and deliberately rejects server-function and resource calls until Publish. Preview frames persist only draft identity and require no backend cleanup.
+
+Shared current session-record helpers:
+
+- `src/core/fx.session-records.ts`
+- `src/core/tx.session-records.ts`
 
 ## Service-layer boundaries
 
@@ -113,7 +114,7 @@ Do:
 Do not:
 - import frontend or SolidJS code
 - encode UI labels, tab choices, CSS, or component state here
-- bypass `api-agent` for frontend-facing behavior
+- bypass the consolidated API agent domain for frontend-facing behavior
 - leak Pi SDK object instances through API return values
 - expose API keys, tokens, auth files, or raw Pi auth records
 
@@ -146,9 +147,6 @@ Useful commands from this package:
 - `bun run typecheck`
 - `bun test tests --timeout=20000`
 
-Known current caveat:
-- `bun run typecheck` may fail because of existing cross-package `service-db` SQL module/global typing issues. Still run it when touching public contracts and report whether failures are unrelated.
-
 Also run/check API/frontend callers when public behavior changes:
-- `packages/api-agent` typecheck/tests if available
-- canvas/frontend typecheck if changing shapes consumed by `AiWizzard`
+- `packages/api` typecheck/tests
+- canvas/frontend typecheck if changing shapes consumed by `AiChat`

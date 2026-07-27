@@ -5,11 +5,7 @@ type TUninstallPathKind =
   | 'install-dir'
   | 'native-dir'
   | 'migrations-dir'
-  | 'data-dir'
-  | 'config-dir'
-  | 'state-dir'
-  | 'cache-dir'
-  | 'database-file';
+  | 'home-dir';
 
 type TUninstallRemoveTarget = {
   kind: TUninstallPathKind;
@@ -39,13 +35,7 @@ type TArgs = {
   homedir: string;
   env: Record<string, string | undefined>;
   execPath: string;
-  dbPath: string;
-  xdgPaths: {
-    configDirPath: string;
-    dataDirPath: string;
-    cacheDirPath: string;
-    stateDirPath: string;
-  };
+  vibecanvasHomeDir: string;
 };
 
 function fnNormalizePath(portal: TPortal, path: string): string {
@@ -94,39 +84,14 @@ function fnBuildUninstallPlan(portal: TPortal, args: TArgs): TUninstallPlan {
     });
   }
 
-  const xdgTargets: Array<{ kind: TUninstallPathKind; path: string }> = [
-    { kind: 'data-dir', path: args.xdgPaths.dataDirPath },
-    { kind: 'config-dir', path: args.xdgPaths.configDirPath },
-    { kind: 'state-dir', path: args.xdgPaths.stateDirPath },
-    { kind: 'cache-dir', path: args.xdgPaths.cacheDirPath },
-  ];
-
-  for (const target of xdgTargets) {
-    const path = fnNormalizePath(portal, target.path);
-    if (!fnIsVibecanvasOwnedDir(path)) {
-      fnPushUniqueSkip(skippedTargets, {
-        kind: target.kind,
-        path,
-        reason: 'path does not look Vibecanvas-owned',
-      });
-      continue;
-    }
-
-    fnPushUniqueTarget(removeTargets, { kind: target.kind, path, missingOk: true });
-  }
-
-  const dbPath = fnNormalizePath(portal, args.dbPath);
-  const removableDataDirs = removeTargets
-    .filter((target) => target.kind === 'data-dir')
-    .map((target) => target.path);
-
-  if (removableDataDirs.some((dir) => fnIsWithin(dir, dbPath))) {
-    fnPushUniqueTarget(removeTargets, { kind: 'database-file', path: dbPath, missingOk: true });
+  const vibecanvasHomeDir = fnNormalizePath(portal, args.vibecanvasHomeDir);
+  if (fnIsVibecanvasOwnedDir(vibecanvasHomeDir)) {
+    fnPushUniqueTarget(removeTargets, { kind: 'home-dir', path: vibecanvasHomeDir, missingOk: true });
   } else {
     fnPushUniqueSkip(skippedTargets, {
-      kind: 'database-file',
-      path: dbPath,
-      reason: 'database is outside removable Vibecanvas data directories',
+      kind: 'home-dir',
+      path: vibecanvasHomeDir,
+      reason: 'path does not look Vibecanvas-owned',
     });
   }
 

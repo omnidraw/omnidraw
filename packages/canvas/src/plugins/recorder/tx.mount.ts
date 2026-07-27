@@ -3,7 +3,7 @@ import type { SceneService } from "../../services/scene/SceneService";
 
 export type TPortalTxMountRecorderPanel = {
   document: Document;
-  SceneService: SceneService;
+  scene: SceneService;
   renderUi: (...args: any[]) => () => void;
   createComponentUi: (...args: any[]) => unknown;
   CanvasRecorder: (props: {
@@ -44,7 +44,7 @@ export type TArgsTxMountRecorderPanel = {
 export function txMountRecorderPanel(portal: TPortalTxMountRecorderPanel, args: TArgsTxMountRecorderPanel) {
   const mountElement = portal.document.createElement("div");
   mountElement.id = "recorder-panel";
-  portal.SceneService.stage.container().appendChild(mountElement);
+  portal.scene.container.appendChild(mountElement);
 
   const disposeRender = portal.renderUi(
     () =>

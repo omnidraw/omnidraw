@@ -2,8 +2,8 @@ import { createComponent } from "solid-js";
 import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeToolbar } from "../../../src/components/FloatingCanvasToolbar/RuntimeToolbar";
-import { TOOL_GROUPS_CHANGED_EVENT } from "../../../src/components/FloatingCanvasToolbar/CONSTANTS";
 import type { TTool } from "../../../src/services/tool/types";
+import type { TWidgetDropRequest } from "../../../src/services/widget-placement/types";
 
 type TListener<TArgs extends unknown[]> = (...args: TArgs) => unknown;
 
@@ -92,16 +92,35 @@ afterEach(() => {
 });
 
 describe("RuntimeToolbar", () => {
+  it("marks draft tools with a distinct toolbar tone", () => {
+    const service = createToolService([tool("weather-draft", { label: "Weather · Draft", tone: "draft" })]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      onToolSelect: () => {},
+    }), viewport!);
+
+    expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='Weather · Draft']")?.classList.contains("vc-toolbar-button--draft")).toBe(true);
+  });
+
   it("loads persisted group definitions and renders their stored icon", async () => {
     const service = createToolService([
       tool("one", { group: "health" }),
       tool("two", { group: "health" }),
     ]);
     let icon = "🩺";
-    const list = vi.fn().mockImplementation(async () => [null, [{ name: "health", json: { svgIcon: icon } }]]);
+    const listeners = new Set<() => void>();
+    const list = vi.fn().mockImplementation(async () => [{ name: "health", json: { svgIcon: icon } }]);
+    const toolbarGroups = {
+      list,
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
     dispose = render(() => createComponent(RuntimeToolbar, {
       tool: service as never,
-      apiService: { api: { tool: { groups: { list } } } } as never,
+      toolbarGroups,
       viewportElement: viewport!,
       onToolSelect: () => {},
     }), viewport!);
@@ -112,11 +131,46 @@ describe("RuntimeToolbar", () => {
     expect(list).toHaveBeenCalledOnce();
 
     icon = "♥";
-    window.dispatchEvent(new Event(TOOL_GROUPS_CHANGED_EVENT));
+    listeners.forEach((listener) => listener());
     await vi.waitFor(() => {
       expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("♥");
     });
     expect(list).toHaveBeenCalledTimes(2);
+
+    dispose();
+    dispose = undefined;
+    expect(listeners.size).toBe(0);
+  });
+
+  it("keeps the last group definitions when a refresh fails", async () => {
+    const service = createToolService([
+      tool("one", { group: "health" }),
+      tool("two", { group: "health" }),
+    ]);
+    const listeners = new Set<() => void>();
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ name: "health", json: { svgIcon: "🩺" } }])
+      .mockRejectedValueOnce(new Error("temporary catalog failure"));
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      toolbarGroups: {
+        list,
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+      viewportElement: viewport!,
+      onToolSelect: () => {},
+    }), viewport!);
+
+    await vi.waitFor(() => {
+      expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("🩺");
+    });
+
+    listeners.forEach((listener) => listener());
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("🩺");
   });
 
   it("shows a tool label popover after hover and closes it on pointer leave", async () => {
@@ -155,6 +209,50 @@ describe("RuntimeToolbar", () => {
     expect(document.querySelector(".vc-toolbar-label-popover")?.textContent).toBe("Hand tool");
   });
 
+  it("starts widget placement without consuming clicks and exposes the keyboard Add action", async () => {
+    vi.useFakeTimers();
+    const request = {
+      reference: { source: "published" as const, name: "Weather", revision: "revision-1" },
+      bounds: { width: 360, height: 320 },
+      label: "Weather",
+      onCommit: vi.fn(),
+    };
+    let activeRequest: TWidgetDropRequest | undefined;
+    const beginPointerSession = vi.fn((nextRequest: TWidgetDropRequest) => {
+      activeRequest = nextRequest;
+      return true;
+    });
+    const addAtViewportCenter = vi.fn();
+    const onToolSelect = vi.fn();
+    const service = createToolService([tool("weather", { label: "Weather", widgetPlacement: request })]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      widgetPlacement: { beginPointerSession, addAtViewportCenter } as never,
+      onToolSelect,
+    }), viewport!);
+
+    const button = viewport?.querySelector<HTMLButtonElement>("button[aria-label='Weather']");
+    button?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    expect(beginPointerSession).toHaveBeenCalledOnce();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledOnce();
+
+    activeRequest?.onDragStart?.();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledOnce();
+    activeRequest?.onDragEnd?.();
+    await vi.runAllTimersAsync();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledTimes(2);
+
+    button?.focus();
+    const add = document.querySelector<HTMLButtonElement>(".vc-toolbar-label-popover__action");
+    expect(add?.textContent).toBe("Add to canvas");
+    add?.click();
+    expect(addAtViewportCenter).toHaveBeenCalledWith(request);
+  });
+
   it("opens grouped tools on focus, selects a member, and closes the flyout", () => {
     const service = createToolService([
       tool("select"),
@@ -182,6 +280,43 @@ describe("RuntimeToolbar", () => {
     expect(onToolSelect).toHaveBeenCalledWith("video");
     expect(groupButton?.getAttribute("aria-expanded")).toBe("false");
     expect(viewport?.querySelector("[role='menu'][aria-label='media']")).toBeNull();
+  });
+
+  it("keeps a grouped widget flyout mounted for its active drag", () => {
+    const placement = {
+      reference: { source: "draft" as const, name: "Weather", revision: "revision-2" },
+      bounds: { width: 360, height: 320 },
+      label: "Weather Draft",
+      onCommit: vi.fn(),
+    };
+    let activeRequest: TWidgetDropRequest | undefined;
+    const service = createToolService([
+      tool("weather-draft", { group: "widgets", widgetPlacement: placement }),
+      tool("weather-published", { group: "widgets" }),
+    ]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      widgetPlacement: {
+        beginPointerSession(nextRequest: TWidgetDropRequest) {
+          activeRequest = nextRequest;
+          return true;
+        },
+        addAtViewportCenter: vi.fn(),
+      } as never,
+      onToolSelect: vi.fn(),
+      groupDefinitions: { widgets: { icon: "W", label: "widgets" } },
+    }), viewport!);
+
+    const groupButton = viewport?.querySelector<HTMLButtonElement>("button[aria-label='widgets']");
+    groupButton?.focus();
+    const member = viewport?.querySelector<HTMLButtonElement>("button[aria-label='WEATHER-DRAFT']");
+    member?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    activeRequest?.onDragStart?.();
+    expect(viewport?.querySelector("[role='menu'][aria-label='widgets']")).not.toBeNull();
+
+    activeRequest?.onDragEnd?.();
+    expect(viewport?.querySelector("[role='menu'][aria-label='widgets']")).toBeNull();
   });
 
   it("dismisses an open group with Escape", () => {

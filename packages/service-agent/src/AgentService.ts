@@ -1,40 +1,111 @@
-import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
-import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
-import type { TActorData, TActorState, TJsonSchema, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZActorData, ZJsonSchema, ZVibecanvasJson, ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { createAgentSessionFromServices, createAgentSessionServices, ModelRuntime, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import { mkdirSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
-import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
-import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
-import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
-import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
-import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
-import { fnValidateCandidate } from './tools/fn.candidate';
-import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
-import type { TActorCandidate, TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import {
+  ZWidgetBrowserFunctionDescriptors,
+  ZWidgetManifestV3,
+  type TWidgetCapsuleBuildIdentity,
+  type TWidgetManifestV3,
+  type TWidgetRevisionDescriptor,
+  type TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
+import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
+import { fnWidgetMentionContext, type TWidgetMentionContextItem } from './core/fn.widget-mention-context';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord } from './core/fx.session-records';
+import { txNormalizeSessionCwd } from './core/tx.session-cwd';
+import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
+import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
+import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
+import type { TApprovalDecision, TApprovalView, TToolAuthorizationContext, TToolAuthorizer } from './approval/types';
+import { createToolRegistry } from './tools/ToolRegistry';
+import type { TAgentResourceService } from './tools/resource-service';
+import type { TAgentBashCapability } from './tools/tool.bash';
+import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
+import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
+import type { TWidgetDbChangeProposalRecord, TWidgetResourceSelection } from './tools/types';
+import { WidgetWorkspace } from './workspace/WidgetWorkspace';
+import type { TWidgetMount } from './workspace/types';
+import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
+import type {
+  IAgentAuthoringStore,
+  TAgentAuthoringDraftDescriptor,
+  TWidgetAuthoringCapability,
+  TWidgetAuthoringResourceSelection,
+  TWidgetResourceBindingResolver,
+} from './widget-drafts/types';
+import { WidgetManagement } from './widget-management/WidgetManagement';
+import {
+  fnMergePublishedWidgetPlacementCatalog,
+  fnParsePublishedWidgetPlacementReference,
+  fnPublishedWidgetRelation,
+  fnPublishedWidgetVariant,
+  fnValidatePublishedWidgetPlacementTargets,
+} from './widget-management/fn.published-widget-placement';
+import {
+  fnPublishedWidgetFile,
+  fnPublishedWidgetFiles,
+} from './widget-management/fn.published-source';
+import type {
+  TPublishedWidgetPlacementIdentity,
+  TPublishedWidgetPlacementTarget,
+  TWidgetDeleteResult,
+  TWidgetDetail,
+  TWidgetFileEntry,
+  TWidgetFilePreview,
+  TWidgetCatalogGroup,
+  TWidgetDraftMetadataPatch,
+  TWidgetDraftToolPatch,
+  TWidgetSource,
+} from './widget-management/types';
 
 interface IPublicMethods {
-  logout(providerId: string): void;
-  setApiKey(providerId: string, key: string): void;
-  removeApiKey(providerId: string): void;
+  logout(providerId: string): Promise<void>;
+  setApiKey(providerId: string, key: string): Promise<void>;
+  removeApiKey(providerId: string): Promise<void>;
 }
 
-interface IActorServiceConfig {
+export interface IAgentServiceConfig {
   cachePath: string;
   dataPath: string;
   configPath: string;
-  eventPublisherService: IEventPublisherService,
-  actorService?: TActorServiceReloader;
+  eventPublisherService: ITenantEventPublisherService,
+  /** Required by the manifest-v3 Capsule authoring surface. */
+  tenant?: TTenantContext;
+  authoringStore?: IAgentAuthoringStore;
+  widgetAuthoringCapability?: TWidgetAuthoringCapability;
+  resolveWidgetResourceBindings?: TWidgetResourceBindingResolver;
+  createId?: () => string;
+  nowMs?: () => number;
+  widgetBuilderIdentity?: string;
+  widgetCapsuleBuildIdentity?: TWidgetCapsuleBuildIdentity;
+  widgetBuildPolicyId?: string;
+  resourceService?: TAgentResourceService;
+  bashCapability?: TAgentBashCapability;
+  listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
+  resolvePublishedWidgetPlacement?: (
+    target: TPublishedWidgetPlacementIdentity,
+  ) => Promise<TPublishedWidgetPlacementTarget | null>;
+  authorizeToolCall?: TToolAuthorizer;
+  approvalTimeoutMs?: number;
 }
 
 type TWidgetId = string;
-type TSessionId = string;
+type TPublishedWidgetSelection =
+  | Readonly<{ matched: false }>
+  | Readonly<{
+      matched: true;
+      target: TPublishedWidgetPlacementTarget;
+      revision: TWidgetRevisionDescriptor | null;
+    }>;
+// Persisted/API `sessionId` is the Vibecanvas chat identity. Pi owns a separate
+// session ID inside each JSONL transcript header and filename.
+type TVibecanvasChatId = string;
 type TLoginId = string;
+type TChatConnectMode = 'reuse' | 'replace';
 type TPromptModel = {
   provider: string;
   modelId: string;
@@ -52,9 +123,12 @@ type TPromptInputImage = {
 type TPromptSelection = {
   images?: TPromptInputImage[];
   model?: TPromptModel;
+  resourceIds?: string[];
+  widgetRefs?: Array<{ name: string; source: TWidgetSource }>;
   thinkingLevel?: TThinkingLevel;
 };
 type TThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+const WIDGET_MENTION_CONTEXT_CUSTOM_TYPE = 'vibecanvas.widgetMentions';
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -68,96 +142,22 @@ type TLoginSession = {
 };
 
 type TAgentConnectResult = {
-  vcJson: TVibecanvasJson | null;
-  actorCandidate: TActorCandidateRecord | null;
+  vcJson: TWidgetManifestV3 | null;
   messageHistory: AgentSession['messages'];
-  editSession: TWidgetEditSessionRecord | null;
 };
 type TAgentCancelResult = {
   canceled: boolean;
   running: boolean;
 };
-type TWizzardSessionEntry = {
+type TChatSessionEntry = {
   unsub: () => void;
   session: AgentSession;
   sessionManager: SessionManager;
+  authorizationContext?: TToolAuthorizationContext;
 };
-
-type TDraftActorKey = `${TWidgetId}:${TSessionId}`;
-
-type TAgentDraftActorSnapshot = {
-  state: TActorState;
-  context: TActorData;
-};
-
-type TDraftActorEntry = {
-  actor: Actor;
-  rootDir: string;
-  manifest: TVibecanvasJson;
-  unlisten: () => void;
-};
-
-type TDraftActorNotReadyReason =
-  | 'manifest-missing'
-  | 'manifest-invalid'
-  | 'actor-functions-missing'
-  | 'session-missing'
-  | 'actor-not-running';
-
-type TAgentDraftActorReadyResult = {
-  ready: true;
-  actorId: string;
-  snapshot: TAgentDraftActorSnapshot;
-};
-
-type TAgentDraftActorNotReadyResult = {
-  ready: false;
-  reason: TDraftActorNotReadyReason;
-  message: string;
-};
-
-type TAgentDraftActorResult = TAgentDraftActorReadyResult | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftActorSendResult =
-  | { ready: true; messageId: string; snapshot: TAgentDraftActorSnapshot }
-  | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftActorStopResult = {
-  stopped: boolean;
-};
-
-type TAgentPreviewSourceResult =
-  | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
-  | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftManifestReadResult =
-  | { ready: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
-  | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
-
-type TAgentDraftManifestPatch = {
-  name?: string;
-  description?: string;
-  initialData?: unknown;
-  dataSchema?: unknown;
-  tool?: {
-    label?: string;
-    icon?: TVibecanvasToolIcon | null;
-    group?: string | null;
-    priority?: number | null;
-  };
-};
-
-type TAgentDraftManifestPatchResult =
-  | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
-  | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
-
-type TAgentWizzardPublishResult =
-  | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
-  | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
-
-type TAgentWizzardStartWidgetEditResult =
-  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
-  | { ok: false; message: string };
+type TChatConnectGenerationResult =
+  | { status: 'connected'; result: TAgentConnectResult }
+  | { status: 'superseded' };
 
 const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
 const PROMPT_IMAGE_MAX_COUNT = 5
@@ -168,148 +168,194 @@ const PROMPT_IMAGE_BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
-  #config: IActorServiceConfig;
+  #config: IAgentServiceConfig;
   #piAgentDir: string;
-  authStorage: AuthStorage;
-  modelRegistry: ModelRegistry;
+  modelRuntime!: ModelRuntime;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, TWizzardSessionEntry>> = {}
+  sessionMap: Record<TWidgetId, Record<TVibecanvasChatId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
-  #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
+  #dbChangeProposalResolutions = new Set<string>();
+  #workspace: WidgetWorkspace;
+  #widgetDrafts: WidgetDraftController;
+  #widgetManagement: WidgetManagement;
+  #approvals: ApprovalCoordinator;
+  #chatWidgetIds = new Map<TVibecanvasChatId, TWidgetId>();
+  #chatConnectionGenerations = new Map<TVibecanvasChatId, number>();
+  #chatConnectionLanes = new Map<TVibecanvasChatId, Promise<void>>();
+  #chatReplacementGenerations = new Map<TVibecanvasChatId, number>();
+  #isStopping = false;
 
-  constructor(config: IActorServiceConfig) {
+  constructor(config: IAgentServiceConfig) {
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
-    this.authStorage = AuthStorage.create(join(this.#piAgentDir, 'auth.json'))
-    this.modelRegistry = ModelRegistry.create(this.authStorage, join(this.#piAgentDir, 'models.json'))
+    this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath })
+    this.#widgetDrafts = config.tenant
+      && config.authoringStore
+      && config.widgetAuthoringCapability
+      && config.resolveWidgetResourceBindings
+      && config.createId
+      && config.nowMs
+      && config.widgetBuilderIdentity
+      && config.widgetCapsuleBuildIdentity
+      && config.widgetBuildPolicyId
+      ? new WidgetDraftController({
+          tenant: config.tenant,
+          workspace: this.#workspace,
+          eventPublisher: config.eventPublisherService,
+          authoringStore: config.authoringStore,
+          widgets: config.widgetAuthoringCapability,
+          resolveResourceBindings: async (tenant, request) => (
+            config.resolveWidgetResourceBindings!(tenant, {
+              ...request,
+              selectedResources: await this.#draftResourceSelections(
+                config.authoringStore!,
+                tenant,
+                request.draft,
+              ),
+            })
+          ),
+          createId: config.createId,
+          nowMs: config.nowMs,
+          builderIdentity: config.widgetBuilderIdentity,
+          capsuleBuildIdentity: config.widgetCapsuleBuildIdentity,
+          buildPolicyId: config.widgetBuildPolicyId,
+        })
+      : this.#unavailableWidgetDrafts()
+    this.#widgetManagement = new WidgetManagement({
+      workspace: this.#workspace,
+      drafts: this.#widgetDrafts,
+    })
+    this.#approvals = new ApprovalCoordinator({
+      timeoutMs: config.approvalTimeoutMs,
+      authorize: config.authorizeToolCall,
+      onChanged: (event) => {
+        const widgetId = this.#chatWidgetIds.get(event.approval.chatId)
+        if (!widgetId) return
+        this.#config.eventPublisherService.publishAgentEvent({
+          kind: 'approval',
+          widgetId,
+          sessionId: event.approval.chatId,
+          type: event.type,
+          approval: event.approval,
+          decision: event.decision,
+          reason: event.reason,
+        })
+      },
+    })
     this.settingsManager = SettingsManager.create(this.#piAgentDir, this.#piAgentDir, { projectTrusted: true })
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
     void ctx
+    this.#isStopping = false
+    this.modelRuntime = await ModelRuntime.create({
+      authPath: join(this.#piAgentDir, 'auth.json'),
+      modelsPath: join(this.#piAgentDir, 'models.json'),
+    })
+    await this.#workspace.init()
     console.log('start', this.name)
   }
 
   async stop(): Promise<void> {
+    this.#isStopping = true
+    const failures: unknown[] = []
+    for (const sessionId of this.#chatConnectionGenerations.keys()) {
+      this.#chatConnectionGenerations.set(sessionId, (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1)
+    }
+    const connectionResults = await Promise.allSettled(this.#chatConnectionLanes.values())
+    failures.push(...connectionResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason))
+    const chatDisposals: Promise<void>[] = []
     for (const [id, sessions] of Object.entries(this.sessionMap)) {
       for (const sessionId of Object.keys(sessions)) {
-        this.#disposeWizzardSession(id, sessionId)
+        chatDisposals.push(this.#disposeChatSession(id, sessionId))
       }
     }
-    this.#disposeAllDraftActors()
+    const disposalResults = await Promise.allSettled(chatDisposals)
+    failures.push(...disposalResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason))
+    this.#chatWidgetIds.clear()
+    this.#chatConnectionGenerations.clear()
+    this.#chatConnectionLanes.clear()
+    this.#chatReplacementGenerations.clear()
+    try {
+      this.#approvals.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      await this.#widgetDrafts.close()
+    } catch (error) {
+      failures.push(error)
+    }
     console.log('stop', this.name)
+    if (failures.length > 0) throw new AggregateError(failures, 'Agent service shutdown failed.')
   }
 
-  async connectWizzard(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
-    this.#disposeAgentSession(id, sessionId)
+  async connectChat(
+    id: TWidgetId,
+    sessionId: string,
+    authorization: TToolAuthorizationContext = {},
+    mode: TChatConnectMode = 'reuse',
+  ): Promise<TAgentConnectResult> {
+    const existingEntry = this.#chatSessionEntry(sessionId)
+    if (existingEntry) this.#assertChatAuthorizationOwner(existingEntry, authorization)
+    const generation = this.#nextChatConnectionGeneration(sessionId)
+    if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
+    const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, authorization, generation))
+    if (outcome.status === 'connected') return outcome.result
 
-    const cwd = this.#getWizardCwd(id, sessionId)
-    mkdirSync(cwd, { recursive: true })
-    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
-    const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
-    const entry = sessionManager.getEntry('vibejsonpath')
-    let vcJson: TVibecanvasJson | null = null;
-    if (entry?.type === 'custom' && entry?.customType === 'vibejsonpath' && typeof entry.data === 'string') {
-      try {
-        vcJson = await Bun.file(entry.data).json()
-      } catch { }
+    await this.#waitForChatConnectionLaneIdle(sessionId)
+    if (this.#isStopping) throw this.#chatConnectionError('CHAT_SERVICE_STOPPING', 'Agent service is stopping.')
+    if (this.#chatReplacementGenerations.has(sessionId)) {
+      throw this.#chatConnectionError('CHAT_REPLACEMENT_INCOMPLETE', 'The chat runtime replacement did not complete.')
     }
-
-    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
-    const actorCandidate = fxLatestActorCandidateRecord({ sessionManager })
-    if (!this.sessionMap[id]) {
-      this.sessionMap[id] = {}
+    const committedEntry = this.#chatWidgetIds.get(sessionId) === id
+      ? this.sessionMap[id]?.[sessionId]
+      : undefined
+    if (!committedEntry) {
+      throw this.#chatConnectionError('CHAT_CONNECTION_SUPERSEDED', 'The chat connection was superseded by another owner.')
     }
-
-    this.sessionMap[id][sessionId] = sessionEntry
-
-    return {
-      vcJson,
-      actorCandidate,
-      messageHistory: sessionEntry.session.messages,
-      editSession: fxLatestWidgetEditSessionRecord({ sessionManager }),
-    }
+    this.#assertChatAuthorizationOwner(committedEntry, authorization)
+    return this.#chatConnectResult(id, sessionId, committedEntry)
   }
 
-  newWizzardSession(id: TWidgetId, sessionId: string): void {
-    this.#disposeWizzardSession(id, sessionId)
-  }
-
-  async startWidgetEditWizzard(id: TWidgetId, sessionId: string, definitionName: string): Promise<TAgentWizzardStartWidgetEditResult> {
-    const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
-    if (!sourceManifest) {
-      return { ok: false, message: `Published widget definition not found: ${definitionName}` }
-    }
-
-    const sourceManifestPath = this.#resolveConfigPath(sourceManifest.manifest_path)
-    const sourceDir = dirname(sourceManifestPath)
-    const draftDir = this.#getWizardCwd(id, sessionId)
-    const sourceStat = await stat(sourceDir).catch(() => null)
-    if (!sourceStat?.isDirectory()) {
-      return { ok: false, message: `Published widget folder does not exist: ${sourceDir}` }
-    }
-
-    this.#disposeWizzardSession(id, sessionId)
-    await rm(draftDir, { recursive: true, force: true })
-    await mkdir(draftDir, { recursive: true })
-    await cp(sourceDir, draftDir, {
-      recursive: true,
-      filter: (source) => this.#shouldCopyPublishedWidgetFile(sourceDir, source),
+  async newChatSession(id: TWidgetId, sessionId: string): Promise<void> {
+    const generation = this.#nextChatConnectionGeneration(sessionId)
+    await this.#runChatConnectionLane(sessionId, async () => {
+      if (generation !== this.#chatConnectionGenerations.get(sessionId)) return
+      const currentWidgetId = this.#chatWidgetIds.get(sessionId)
+      if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
+      await this.#disposeChatSession(id, sessionId)
+      this.#chatReplacementGenerations.delete(sessionId)
     })
-
-    const nextVersion = fnBumpWidgetVersion(sourceManifest.version)
-    const draftManifest: TVibecanvasJson = {
-      ...sourceManifest,
-      version: nextVersion,
-    }
-    const draftManifestPath = join(draftDir, 'vibecanvas.json')
-    await writeFile(draftManifestPath, `${JSON.stringify(draftManifest, null, 2)}\n`, 'utf8')
-
-    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
-    const sessionManager = SessionManager.continueRecent(draftDir, sessionDir)
-    const draftFiles = await this.#listDraftFiles(draftDir)
-    const editStartedAt = new Date().toISOString()
-    this.#ensureImplementationPhaseForDraftManifest(sessionManager, draftManifest, draftManifestPath, draftFiles, editStartedAt)
-    const editSession = txAppendWidgetEditSessionRecord({ sessionManager }, {
-      mode: 'edit-published-widget',
-      sourceDefinitionName: definitionName,
-      sourceSlug: sourceManifest.slug,
-      sourceName: sourceManifest.name,
-      sourceManifestPath: sourceManifest.manifest_path,
-      previousVersion: sourceManifest.version,
-      nextVersion,
-      startedAt: editStartedAt,
-    })
-    sessionManager.appendCustomMessageEntry(
-      'vibecanvas.widgetLoaded',
-      `[Widget ${draftManifest.name} loaded]`,
-      true,
-      {
-        definitionName,
-        slug: draftManifest.slug,
-        previousVersion: sourceManifest.version,
-        nextVersion,
-      },
-    )
-    this.#flushSessionManager(sessionManager)
-
-    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
-    if (!this.sessionMap[id]) {
-      this.sessionMap[id] = {}
-    }
-    this.sessionMap[id][sessionId] = sessionEntry
-
-    return {
-      ok: true,
-      vcJson: draftManifest,
-      phase: 'implementation',
-      editSession,
-      messageHistory: sessionEntry.session.messages,
-    }
   }
 
-  async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
-    await this.#refreshWizzardSessionToolsIfNeeded(id, sessionId)
+  async promptChat(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+    const connectedEntry = this.sessionMap[id]?.[sessionId]
+    if (!connectedEntry) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+    const selectedWidgets = promptSelection?.widgetRefs
+      ? await this.#resolveChatWidgetSelections(promptSelection.widgetRefs)
+      : []
+    if (promptSelection?.resourceIds !== undefined) {
+      const resources = await this.#resolveChatResourceSelections(promptSelection?.resourceIds ?? [])
+      txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+        resources,
+        selectedAt: new Date().toISOString(),
+      })
+      if (resources.length > 0) {
+        const current = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {})
+        txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+          resources: fnMergeDraftResourceSelections({ current: current?.resources ?? [], mentioned: resources }),
+          selectedAt: new Date().toISOString(),
+          source: 'mention',
+        })
+      }
+    }
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
@@ -319,7 +365,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const session = sessionEntry.session
 
     if (promptSelection?.model) {
-      const model = this.modelRegistry.find(promptSelection.model.provider, promptSelection.model.modelId)
+      const model = this.modelRuntime.getModel(promptSelection.model.provider, promptSelection.model.modelId)
       if (!model) {
         throw new Error(`Model not found: ${promptSelection.model.provider}/${promptSelection.model.modelId}`)
       }
@@ -334,309 +380,410 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     const images = this.#normalizePromptImages(promptSelection?.images)
+    const widgetContext = fnWidgetMentionContext({ widgets: selectedWidgets })
+    if (widgetContext) {
+      await session.sendCustomMessage({
+        customType: WIDGET_MENTION_CONTEXT_CUSTOM_TYPE,
+        content: widgetContext,
+        display: false,
+        details: { widgets: selectedWidgets },
+      }, { deliverAs: 'nextTurn' })
+    }
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
   }
 
-  async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
+  clearDraftResourceBindingsChat(id: TWidgetId, sessionId: string): { cleared: true } {
+    const connectedEntry = this.sessionMap[id]?.[sessionId]
+    if (!connectedEntry) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+    txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+      resources: [],
+      selectedAt: new Date().toISOString(),
+      source: 'explicit-clear',
+    })
+    return { cleared: true }
+  }
+
+  async approveChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
+    const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
+    try {
+      const sessionEntry = this.sessionMap[id]?.[sessionId]
+      if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+      const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+      if (!proposal) throw new Error('Database change proposal was not found.')
+      if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+
+      const resourceService = this.#config.resourceService
+      if (!resourceService?.createDbDraft || !resourceService.executeDbDraftSql || !resourceService.discardDbDraft || !resourceService.previewDbApply || !resourceService.confirmDbApply) {
+        throw new Error('Coordinated database changes are unavailable in this host.')
+      }
+
+      const details = await resourceService.createDbDraft(proposal.resourceId, `AI Chat: ${proposal.reason}`)
+      const draftId = details.draft.id
+      let preview: { warnings: readonly string[] }
+      let apply: Awaited<ReturnType<NonNullable<TAgentResourceService['confirmDbApply']>>>
+      try {
+        await resourceService.executeDbDraftSql(draftId, proposal.sql)
+        preview = await resourceService.previewDbApply(draftId)
+        apply = await resourceService.confirmDbApply(draftId)
+      } catch (error) {
+        await resourceService.discardDbDraft(draftId).catch(() => undefined)
+        throw error
+      }
+      const approved = {
+        ...proposal,
+        status: 'approved' as const,
+        resolvedAt: new Date().toISOString(),
+        draftId,
+        applyId: apply.id,
+        warnings: [...preview.warnings],
+      }
+      txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, approved)
+      return approved
+    } finally {
+      releaseResolution()
+    }
+  }
+
+  rejectChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): TWidgetDbChangeProposalRecord {
+    const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
+    try {
+      const sessionEntry = this.sessionMap[id]?.[sessionId]
+      if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+      const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+      if (!proposal) throw new Error('Database change proposal was not found.')
+      if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+
+      const rejected = {
+        ...proposal,
+        status: 'rejected' as const,
+        resolvedAt: new Date().toISOString(),
+      }
+      txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, rejected)
+      return rejected
+    } finally {
+      releaseResolution()
+    }
+  }
+
+  async cancelChat(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
     const session = this.sessionMap[id]?.[sessionId]?.session
     if (!session || !session.isStreaming) {
       return { canceled: false, running: false }
     }
 
+    this.#approvals.cancelChat(sessionId, 'Chat prompt was canceled before approval.')
     await session.abort()
 
     return { canceled: true, running: session.isStreaming }
   }
 
-  inspectDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
-    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
-    if (!entry) {
-      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
-    }
-
-    return {
-      ready: true,
-      actorId: entry.actor.getId(),
-      snapshot: this.#draftActorSnapshot(entry.actor),
-    }
+  listChatApprovals(id: TWidgetId, sessionId: TVibecanvasChatId): TApprovalView[] {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.list(sessionId)
   }
 
-  async startDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return this.#draftActorNotReady(id, sessionId, 'session-missing')
-    }
-
-    const rootDir = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) return manifestResult
-
-    const actorFunctionPath = join(rootDir, manifestResult.manifest.actor.relFunctionPath)
-    if (!await Bun.file(actorFunctionPath).exists()) {
-      return {
-        ready: false,
-        reason: 'actor-functions-missing',
-        message: `Draft actor functions file does not exist: ${manifestResult.manifest.actor.relFunctionPath}`,
-      }
-    }
-
-    this.#disposeDraftActor(id, sessionId)
-
-    const actor = new Actor({
-      id: `draft:${id}:${sessionId}`,
-      vsJson: manifestResult.manifest,
-      rootDir,
-    })
-
-    const unlisten = actor.listen((event) => {
-      this.#publishDraftActorEvent(id, sessionId, actor, event)
-    })
-
-    actor.start()
-
-    this.#draftActorMap.set(this.#draftActorKey(id, sessionId), {
-      actor,
-      rootDir,
-      manifest: manifestResult.manifest,
-      unlisten,
-    })
-
-    return {
-      ready: true,
-      actorId: actor.getId(),
-      snapshot: this.#draftActorSnapshot(actor),
-    }
+  getChatApproval(id: TWidgetId, sessionId: TVibecanvasChatId, approvalId: string): TApprovalView | null {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.get(sessionId, approvalId)
   }
 
-  async reloadDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    return this.startDraftActorWizzard(id, sessionId)
+  resolveChatApproval(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+    approvalId: string,
+    decision: TApprovalDecision,
+    authorization: TToolAuthorizationContext = {},
+  ): Promise<{ resolved: true; decision: TApprovalDecision }> {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.resolve(sessionId, approvalId, decision, authorization)
   }
 
-  async resetDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    return this.startDraftActorWizzard(id, sessionId)
+  listWidgetDrafts() {
+    return this.#widgetDrafts.list()
   }
 
-  stopDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorStopResult {
-    const key = this.#draftActorKey(id, sessionId)
-    const stopped = this.#draftActorMap.has(key)
-
-    this.#disposeDraftActor(id, sessionId)
-
-    return { stopped }
+  getWidgetDraft(draftId: string) {
+    return this.#widgetDrafts.get(draftId)
   }
 
-  sendDraftActorWizzard(id: TWidgetId, sessionId: string, name: string, payload: unknown): TAgentDraftActorSendResult {
-    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
-    if (!entry) {
-      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
-    }
-
-    const messageId = entry.actor.inbox(name, payload)
-
-    return {
-      ready: true,
-      messageId,
-      snapshot: this.#draftActorSnapshot(entry.actor),
-    }
+  validateWidgetDraft(draftId: string, expectedRevision?: string) {
+    return this.#widgetDrafts.validate(draftId, expectedRevision)
   }
 
-  async previewSourceWizzard(id: TWidgetId, sessionId: string): Promise<TAgentPreviewSourceResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return this.#draftActorNotReady(id, sessionId, 'session-missing')
-    }
-
-    const rootDir = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) return manifestResult
-
-    return {
-      ready: true,
-      manifest: manifestResult.manifest,
-      sources: await this.#readWidgetSourceMap(rootDir, manifestResult.manifest.widget.relWidgetDir),
-    }
+  buildWidgetPreview(draftId: string) {
+    return this.#widgetDrafts.buildPreview(draftId)
   }
 
-  async readDraftManifestWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftManifestReadResult> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return {
-        ready: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
+  publishWidgetDraft(draftId: string, expectedRevision: string) {
+    return this.#widgetDrafts.publish(draftId, expectedRevision)
+  }
 
-    const rootDir = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (manifestResult.ready) {
-      return {
-        ready: true,
-        source: 'file',
-        manifest: manifestResult.manifest,
-      }
-    }
-
-    if (manifestResult.reason === 'manifest-missing') {
-      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
-      if (actorCandidate) {
-        return {
-          ready: true,
-          source: 'actor-candidate',
-          manifest: actorCandidate.manifest,
+  async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
+    const [unfilteredDraftCatalog, targets] = await Promise.all([
+      this.#widgetManagement.catalog(groups),
+      this.#config.listPublishedWidgetPlacements?.() ?? Promise.resolve([]),
+    ])
+    const visibleDraftWidgets = (await Promise.all(unfilteredDraftCatalog.widgets.map(async (entry) => (
+      await this.#workspace.isDraftMaterializationPending(entry.name) ? null : entry
+    )))).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    const draftCatalog = visibleDraftWidgets.length === unfilteredDraftCatalog.widgets.length
+      ? unfilteredDraftCatalog
+      : {
+          ...unfilteredDraftCatalog,
+          generation: `${unfilteredDraftCatalog.generation}:pending-materializations-hidden`,
+          widgets: visibleDraftWidgets,
         }
-      }
-    }
+    const validated = fnValidatePublishedWidgetPlacementTargets(targets)
+    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
+    const draftPublicationStates = this.#config.tenant && this.#config.authoringStore
+      ? (await this.#config.authoringStore.listDrafts(this.#config.tenant)).map((draft) => ({
+          draftId: draft.id,
+          definitionId: draft.definitionId,
+          name: draft.name,
+          status: draft.status,
+          publishedRevisionId: draft.publishedRevisionId,
+        }))
+      : []
+    return fnMergePublishedWidgetPlacementCatalog({
+      draftCatalog,
+      targets: validated.targets,
+      draftPublicationStates,
+    })
+  }
 
+  async getWidgetDetail(name: string, source: TWidgetSource): Promise<TWidgetDetail | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.detail(name, source)
+    }
+    const selected = await this.#publishedWidget(name)
+    if (!selected.matched) return null
+    if (!selected.revision) return null
+    const draft = await this.#workspace.isDraftMaterializationPending(name)
+      ? null
+      : await this.#widgetManagement.detail(name, 'draft')
+    const draftPublicationStates = await this.#draftPublicationStates(name)
     return {
-      ready: false,
-      reason: manifestResult.reason === 'session-missing' ? 'session-missing' : manifestResult.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-      message: manifestResult.message,
+      name,
+      source: 'published',
+      relation: fnPublishedWidgetRelation({
+        target: selected.target,
+        draft: draft?.variant ?? null,
+        draftPublicationStates,
+      }),
+      variant: fnPublishedWidgetVariant({
+        target: selected.target,
+        updatedAt: new Date(selected.revision.createdAtMs).toISOString(),
+      }),
+      sibling: draft?.variant ?? null,
+      manifest: selected.revision.manifest,
+      functions: ZWidgetBrowserFunctionDescriptors.parse(
+        selected.revision.functionDescriptors.map(({ modulePath: _modulePath, ...descriptor }) => descriptor),
+      ),
+      problem: null,
     }
   }
 
-  async patchDraftManifestWizzard(id: TWidgetId, sessionId: string, patch: TAgentDraftManifestPatch): Promise<TAgentDraftManifestPatchResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return {
-        ok: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
+  async listWidgetFiles(
+    name: string,
+    source: TWidgetSource,
+  ): Promise<TWidgetFileEntry[] | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.files(name, source)
+    }
+    const selected = await this.#publishedWidget(name)
+    if (!selected.matched) return null
+    if (!selected.revision) return null
+    return fnPublishedWidgetFiles({
+      snapshot: await this.#publishedSource(selected.target, selected.revision),
+    })
+  }
+
+  async readWidgetFile(
+    name: string,
+    source: TWidgetSource,
+    path: string,
+  ): Promise<TWidgetFilePreview | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.file(name, source, path)
+    }
+    const selected = await this.#publishedWidget(name)
+    if (!selected.matched) return null
+    if (!selected.revision) return null
+    return fnPublishedWidgetFile({
+      snapshot: await this.#publishedSource(selected.target, selected.revision),
+      path,
+      decodeUtf8: (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+    })
+  }
+
+  async ensureWidgetDraft(name: string, expectedPublishedFingerprint?: string) {
+    const selected = await this.#publishedWidget(name)
+    if (!selected.matched) {
+      return this.#widgetManagement.ensureDraft(name, expectedPublishedFingerprint)
+    }
+    if (
+      !selected.revision
+      || (
+        expectedPublishedFingerprint !== undefined
+        && expectedPublishedFingerprint !== selected.target.contractDigestSha256
+      )
+    ) {
+      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
     }
 
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return {
-        ok: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
+    const snapshot = await this.#publishedSource(selected.target, selected.revision)
+    // Source reads are immutable, but active publication is mutable. Recheck
+    // the exact placement immediately before materialization so this operation
+    // has one explicit active-revision linearization point.
+    const current = await this.#publishedWidget(name)
+    if (
+      !current.matched
+      || !current.revision
+      || current.target.definitionId !== selected.target.definitionId
+      || current.target.revisionId !== selected.target.revisionId
+      || current.target.contractDigestSha256 !== selected.target.contractDigestSha256
+    ) {
+      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
     }
+    await this.#widgetDrafts.materializePublishedDraft({
+      name,
+      definitionId: selected.target.definitionId,
+      publishedRevisionId: selected.target.revisionId,
+      snapshot,
+    })
+    const materialized = await this.#widgetManagement.detail(name, 'draft')
+    if (!materialized) {
+      throw new Error('OPERATION_UNAVAILABLE: Materialized widget draft could not be read.')
+    }
+    return materialized.variant
+  }
 
-    const currentManifest = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
-    if (!currentManifest.ready && currentManifest.reason === 'manifest-missing') {
-      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
+  patchWidgetDraftTool(name: string, expectedRevision: string, patch: TWidgetDraftToolPatch) {
+    return this.#widgetManagement.patchDraftTool(name, expectedRevision, patch)
+  }
 
-      if (!actorCandidate) {
+  patchWidgetDraftMetadata(name: string, expectedRevision: string, patch: TWidgetDraftMetadataPatch) {
+    return this.#widgetManagement.patchDraftMetadata(name, expectedRevision, patch)
+  }
+
+  async deleteWidget(name: string, source: TWidgetSource): Promise<TWidgetDeleteResult | null> {
+    if (source === 'draft') return this.#widgetManagement.delete(name, source)
+    const selected = await this.#publishedWidget(name)
+    if (!selected.matched) return null
+    if (!selected.revision) return null
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets || !this.#config.nowMs) {
+      throw new Error('OPERATION_UNAVAILABLE: Published widget deletion is unavailable in this host.')
+    }
+    const archived = await widgets.archive(tenant, {
+      definitionId: selected.target.definitionId,
+      expectedActiveRevisionId: selected.target.revisionId,
+      nowMs: this.#config.nowMs(),
+    })
+    if (archived.status !== 'archived') {
+      throw new Error('STALE_REVISION: Published widget changed before it could be deleted.')
+    }
+    let deletedDraft = false
+    const issues: TWidgetDeleteResult['issues'] = []
+    const durableDraft = this.#config.authoringStore
+      ? await this.#config.authoringStore.getDraftByName(tenant, name)
+      : null
+    if (
+      durableDraft
+      && durableDraft.definitionId === selected.target.definitionId
+      && durableDraft.status !== 'discarded'
+    ) {
+      const result = await this.#widgetManagement.delete(name, 'draft')
+      deletedDraft = result?.deletedDraft ?? false
+      issues.push(...(result?.issues ?? []))
+    }
+    return {
+      name,
+      source,
+      deletedDefinition: true,
+      deletedPublished: true,
+      deletedDraft,
+      deletedInstances: false,
+      issues,
+    }
+  }
+
+  async resolveWidgetPlacement(
+    reference: import('@vibecanvas/widget-contract').TWidgetPlacementRef,
+    expectedDraftId?: string,
+  ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
+    const placementIdentity = fnParsePublishedWidgetPlacementReference(reference)
+    if (placementIdentity) {
+      const target = this.#config.resolvePublishedWidgetPlacement
+        ? await this.#config.resolvePublishedWidgetPlacement(placementIdentity)
+        : null
+      if (
+        !target
+        || target.definitionId !== placementIdentity.definitionId
+        || target.revisionId !== placementIdentity.revisionId
+      ) {
         return {
           ok: false,
-          reason: 'manifest-missing',
-          message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
+          code: 'NOT_FOUND',
+          message: 'Published widget placement is no longer active.',
         }
       }
-
-      const editResult = this.#applyDraftManifestPatch(actorCandidate.manifest, patch)
-      if (!editResult.ok) return editResult
-
-      const candidate = this.#createActorCandidateFromManifest(actorCandidate.candidate, editResult.manifest)
-      const validationResult = fnValidateCandidate(candidate)
-
-      if (!validationResult.candidate || !validationResult.manifest || !validationResult.validation.ok) {
-        return {
-          ok: false,
-          reason: 'manifest-invalid',
-          message: validationResult.validation.errors.join('; ') || 'Actor candidate is invalid.',
-          issues: validationResult.validation.errors,
-        }
-      }
-
-      const record = txAppendActorCandidateRecord({ sessionManager: sessionEntry.sessionManager }, {
-        candidate: validationResult.candidate,
-        manifest: validationResult.manifest,
-        validation: validationResult.validation,
-        updatedAt: new Date().toISOString(),
-      })
-
       return {
         ok: true,
-        source: 'actor-candidate',
-        manifest: record.manifest,
+        descriptor: {
+          reference,
+          bounds: target.bounds,
+          kind: 'published',
+          draftId: null,
+          definitionId: target.definitionId,
+          revisionId: target.revisionId,
+          definitionName: null,
+          definitionSlug: target.slug,
+        },
       }
     }
-    if (!currentManifest.ready) {
+    const resolved = await this.#widgetManagement.resolvePlacementReference(reference)
+    if (!resolved.ok) return resolved
+    if (resolved.descriptor.kind !== 'preview') {
       return {
         ok: false,
-        reason: currentManifest.reason === 'session-missing' ? 'session-missing' : currentManifest.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-        message: currentManifest.message,
+        code: 'NOT_FOUND',
+        message: 'Widget Preview placement is unavailable.',
       }
     }
-
-    const editResult = this.#applyDraftManifestPatch(currentManifest.manifest, patch)
-    if (!editResult.ok) return editResult
-
-    const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
-    await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
-
+    if (!expectedDraftId) {
+      return {
+        ok: false,
+        code: 'UNSUPPORTED_BEHAVIOR',
+        message: 'Preview placement requires an exact durable draft owner.',
+      }
+    }
+    const durableDraft = await this.#widgetDrafts.getByName(reference.name)
+    if (!durableDraft) {
+      return { ok: false, code: 'NOT_FOUND', message: `Widget draft '${reference.name}' is unavailable.` }
+    }
+    if (durableDraft.draftId !== expectedDraftId) {
+      return {
+        ok: false,
+        code: 'STALE_REVISION',
+        message: `Widget draft '${reference.name}' changed ownership before placement.`,
+        currentRevision: durableDraft.revision,
+      }
+    }
     return {
-      ...editResult,
-      source: 'file',
-    }
-  }
-
-  async publishWizzard(id: TWidgetId, sessionId: string): Promise<TAgentWizzardPublishResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return {
-        published: false,
-        manifest: null,
-        destination: null,
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
-
-    const rootDir = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) {
-      return {
-        published: false,
-        manifest: null,
-        destination: null,
-        message: manifestResult.message,
-      }
-    }
-
-    const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: this.sessionMap[id][sessionId].sessionManager })
-    const shouldReloadEditedInstances = editSession !== null
-      && editSession.sourceName === manifestResult.manifest.name
-      && editSession.sourceSlug === manifestResult.manifest.slug
-    const result = await txPublishWidgetDraft({ readdir, readFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
-      cwd: rootDir,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      actorService: shouldReloadEditedInstances ? undefined : this.#config.actorService,
-    })
-
-    if (!result.published) {
-      return {
-        published: false,
-        manifest: result.manifest,
-        destination: null,
-        message: result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
-        errors: result.validation.errors,
-        warnings: result.validation.warnings,
-      }
-    }
-
-    this.#disposeDraftActor(id, sessionId)
-    await this.#config.actorService?.reload()
-    if (shouldReloadEditedInstances) {
-      await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
-    }
-    if (!result.destination) {
-      return {
-        published: false,
-        manifest: result.manifest,
-        destination: null,
-        message: 'Widget publish completed without a destination path.',
-      }
-    }
-
-    this.#publishToolEvent(id, sessionId, { type: 'widgetupdate', cwd: result.destination, files: result.files })
-
-    return {
-      published: true,
-      manifest: result.manifest,
-      destination: result.destination,
-      files: result.files,
+      ok: true,
+      descriptor: { ...resolved.descriptor, draftId: durableDraft.draftId },
     }
   }
 
@@ -646,29 +793,33 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const session: TLoginSession = { controller, status: { status: 'pending' } }
     this.#loginMap[loginId] = session
 
-    void this.authStorage.login(providerId, {
-      onAuth(info) { void info },
-      onDeviceCode(info) {
-        session.status = {
-          status: 'device-code',
-          userCode: info.userCode,
-          verificationUri: info.verificationUri,
-          intervalSeconds: info.intervalSeconds,
-          expiresInSeconds: info.expiresInSeconds,
-        }
-      },
-      async onPrompt(prompt) { void prompt; return '' },
-      async onSelect(prompt) {
+    void this.modelRuntime.login(providerId, 'oauth', {
+      signal: controller.signal,
+      async prompt(prompt) {
+        if (prompt.type !== 'select') return ''
         return prompt.options.find((option) => option.id === 'device_code')?.id
+          ?? prompt.options[0]?.id
+          ?? ''
       },
-      onProgress(message) {
+      notify(event) {
+        if (event.type === 'device_code') {
+          session.status = {
+            status: 'device-code',
+            userCode: event.userCode,
+            verificationUri: event.verificationUri,
+            intervalSeconds: event.intervalSeconds,
+            expiresInSeconds: event.expiresInSeconds,
+          }
+          return
+        }
+        if (event.type === 'auth_url') return
+        const message = event.message
         if (session.status.status === 'device-code') {
           session.status = { ...session.status, message }
           return
         }
         session.status = { status: 'progress', message }
       },
-      signal: controller.signal,
     }).then(() => {
       session.status = { status: 'success' }
     }).catch((error) => {
@@ -694,19 +845,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  logout(providerId: string): void {
-    this.authStorage.logout(providerId)
+  async logout(providerId: string): Promise<void> {
+    await this.modelRuntime.logout(providerId)
   }
 
-  setApiKey(providerId: string, key: string): void {
-    this.authStorage.set(providerId, {
-      type: 'api_key',
-      key,
+  async setApiKey(providerId: string, key: string): Promise<void> {
+    await this.modelRuntime.login(providerId, 'api_key', {
+      async prompt() { return key },
+      notify() {},
     })
   }
 
-  removeApiKey(providerId: string): void {
-    this.authStorage.remove(providerId)
+  async removeApiKey(providerId: string): Promise<void> {
+    await this.modelRuntime.logout(providerId)
   }
 
   async settings() {
@@ -716,9 +867,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultThinkingLevel: TThinkingLevel | undefined = configuredThinkingLevel === 'max'
       ? 'xhigh'
       : configuredThinkingLevel
-    const providersWithCredentials = this.authStorage.list()
-    const providers = Array.from(new Set(this.modelRegistry.getAll().map(m => m.provider)))
-    const models = this.modelRegistry.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
+    const providersWithCredentials = (await this.modelRuntime.listCredentials()).map(credential => credential.providerId)
+    const providers = Array.from(new Set(this.modelRuntime.getModels().map(m => m.provider)))
+    const models = this.modelRuntime.getAvailableSnapshot().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
 
     return {
       defaultModel,
@@ -730,227 +881,293 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #applyDraftManifestPatch(manifest: TVibecanvasJson, patch: TAgentDraftManifestPatch): TAgentDraftManifestPatchResult {
-    const issues: string[] = []
-    let initialData = manifest.actor.initialData
-    let dataSchema = manifest.actor.dataSchema
-    let tool = manifest.widget.tool
+  #nextChatConnectionGeneration(sessionId: TVibecanvasChatId): number {
+    const generation = (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1
+    this.#chatConnectionGenerations.set(sessionId, generation)
+    return generation
+  }
 
-    if ('initialData' in patch) {
-      const parsed = ZActorData.safeParse(patch.initialData)
-      if (!parsed.success) {
-        issues.push(...parsed.error.issues.map((issue) => `actor.initialData.${issue.path.join('.')}: ${issue.message}`))
-      } else {
-        initialData = parsed.data
-      }
+  async #runChatConnectionLane<TResult>(sessionId: TVibecanvasChatId, operation: () => Promise<TResult>): Promise<TResult> {
+    const previous = this.#chatConnectionLanes.get(sessionId) ?? Promise.resolve()
+    let release = () => {}
+    const gate = new Promise<void>((resolveGate) => { release = resolveGate })
+    const tail = previous.catch(() => undefined).then(() => gate)
+    this.#chatConnectionLanes.set(sessionId, tail)
+
+    await previous.catch(() => undefined)
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (this.#chatConnectionLanes.get(sessionId) === tail) this.#chatConnectionLanes.delete(sessionId)
+    }
+  }
+
+  async #waitForChatConnectionLaneIdle(sessionId: TVibecanvasChatId): Promise<void> {
+    while (true) {
+      const tail = this.#chatConnectionLanes.get(sessionId)
+      if (!tail) return
+      await tail.catch(() => undefined)
+    }
+  }
+
+  async #connectChatGeneration(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+    authorization: TToolAuthorizationContext,
+    generation: number,
+  ): Promise<TChatConnectGenerationResult> {
+    if (this.#isStopping) throw new Error('Agent service is stopping.')
+    if (generation !== this.#chatConnectionGenerations.get(sessionId)) return { status: 'superseded' }
+
+    const connectedEntry = this.#chatWidgetIds.get(sessionId) === id
+      ? this.sessionMap[id]?.[sessionId]
+      : undefined
+    const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
+    if (connectedEntry && replacementGeneration === undefined) {
+      this.#assertChatAuthorizationOwner(connectedEntry, authorization)
+      this.#updateChatAuthorizationContext(connectedEntry, authorization)
+      return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
     }
 
-    if ('dataSchema' in patch) {
-      const parsed = ZJsonSchema.safeParse(patch.dataSchema)
-      if (!parsed.success) {
-        issues.push(...parsed.error.issues.map((issue) => `actor.dataSchema.${issue.path.join('.')}: ${issue.message}`))
-      } else {
-        dataSchema = parsed.data as TJsonSchema
-      }
+    const cwd = await this.#workspace.ensureChat(sessionId)
+    const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
+    await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
+    const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
+
+    if (this.#isStopping) {
+      this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      throw new Error('Agent service is stopping.')
+    }
+    if (generation !== this.#chatConnectionGenerations.get(sessionId)) {
+      this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      return { status: 'superseded' }
     }
 
-    if ('tool' in patch && patch.tool) {
-      if (typeof patch.tool.label === 'string') {
-        tool = {
-          ...tool,
-          label: patch.tool.label,
-        }
-      }
-
-      if ('icon' in patch.tool) {
-        if (patch.tool.icon === null) {
-          tool = {
-            ...tool,
-            icon: undefined,
-          }
-        } else {
-          const parsedIcon = ZVibecanvasToolIcon.safeParse(patch.tool.icon)
-          if (!parsedIcon.success) {
-            issues.push(...parsedIcon.error.issues.map((issue) => {
-              const path = ['widget', 'tool', 'icon', ...issue.path].join('.')
-              return `${path}: ${issue.message}`
-            }))
-          } else {
-            tool = {
-              ...tool,
-              icon: parsedIcon.data,
-            }
-          }
-        }
-      }
-
-      if ('group' in patch.tool) {
-        if (patch.tool.group === null) {
-          tool = {
-            ...tool,
-            group: undefined,
-          }
-        } else if (typeof patch.tool.group !== 'string') {
-          issues.push('widget.tool.group: expected a string')
-        } else {
-          tool = {
-            ...tool,
-            group: patch.tool.group,
-          }
-        }
-      }
-
-      if ('priority' in patch.tool) {
-        if (patch.tool.priority === null) {
-          tool = {
-            ...tool,
-            priority: undefined,
-          }
-        } else if (typeof patch.tool.priority !== 'number' || Number.isNaN(patch.tool.priority)) {
-          issues.push('widget.tool.priority: expected a number')
-        } else {
-          tool = {
-            ...tool,
-            priority: patch.tool.priority,
-          }
-        }
-      }
-
-      if (patch.tool.label === undefined
-        && !('icon' in patch.tool)
-        && !('group' in patch.tool)
-        && !('priority' in patch.tool)
-      ) {
-        issues.push('widget.tool: no editable field supplied')
-      }
+    await this.#installChatSessionEntry(id, sessionId, sessionEntry, replacementGeneration !== undefined
+      ? 'Chat runtime was intentionally replaced.'
+      : 'Chat ownership changed before approval.')
+    if (replacementGeneration !== undefined && replacementGeneration <= generation) {
+      this.#chatReplacementGenerations.delete(sessionId)
     }
+    return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, sessionEntry) }
+  }
 
-    if (issues.length > 0) {
-      return {
-        ok: false,
-        reason: 'edit-invalid',
-        message: issues.join('; '),
-        issues,
-      }
-    }
-
-    const nextManifest = {
-      ...manifest,
-      name: patch.name ?? manifest.name,
-      description: patch.description ?? manifest.description,
-      actor: {
-        ...manifest.actor,
-        initialData,
-        dataSchema,
-      },
-      widget: {
-        ...manifest.widget,
-        tool,
-      },
-    }
-
-    const parsedManifest = ZVibecanvasJson.safeParse(nextManifest)
-    if (!parsedManifest.success) {
-      const manifestIssues = parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      return {
-        ok: false,
-        reason: 'manifest-invalid',
-        message: manifestIssues.join('; '),
-        issues: manifestIssues,
-      }
-    }
-
+  async #chatConnectResult(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry): Promise<TAgentConnectResult> {
+    const activeMount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    const vcJson = activeMount ? await this.#readMountedManifest(activeMount).catch(() => null) : null
     return {
-      ok: true,
-      source: 'file',
-      manifest: parsedManifest.data as TVibecanvasJson,
+      vcJson,
+      messageHistory: sessionEntry.session.messages,
     }
   }
 
-  #createActorCandidateFromManifest(previousCandidate: TActorCandidate, manifest: TVibecanvasJson): TActorCandidate {
-    return {
-      ...previousCandidate,
-      slug: manifest.slug,
-      name: manifest.name,
-      description: manifest.description,
-      actor: {
-        ...previousCandidate.actor,
-        ...manifest.actor,
-      },
-      widget: {
-        ...previousCandidate.widget,
-        tool: manifest.widget.tool,
-      },
+  async #publishedWidget(name: string): Promise<TPublishedWidgetSelection> {
+    if (!this.#config.listPublishedWidgetPlacements) return { matched: false }
+    const targets = await this.#config.listPublishedWidgetPlacements()
+    const validated = fnValidatePublishedWidgetPlacementTargets(targets)
+    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
+    const target = validated.targets.find((candidate) => candidate.name === name)
+    if (!target) return { matched: false }
+    const resolved = this.#config.resolvePublishedWidgetPlacement
+      ? await this.#config.resolvePublishedWidgetPlacement({
+          definitionId: target.definitionId,
+          revisionId: target.revisionId,
+        })
+      : target
+    if (!resolved) return { matched: true, target, revision: null }
+    const resolvedValidation = fnValidatePublishedWidgetPlacementTargets([resolved])
+    if (
+      !resolvedValidation.ok
+      || resolved.definitionId !== target.definitionId
+      || resolved.revisionId !== target.revisionId
+      || resolved.name !== target.name
+      || resolved.slug !== target.slug
+      || resolved.description !== target.description
+      || resolved.contractDigestSha256 !== target.contractDigestSha256
+      || resolved.updatedAtMs !== target.updatedAtMs
+      || resolved.bounds.width !== target.bounds.width
+      || resolved.bounds.height !== target.bounds.height
+    ) return { matched: true, target, revision: null }
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets) {
+      throw new Error('OPERATION_UNAVAILABLE: Published widget inspection is unavailable in this host.')
+    }
+    const revision = await widgets.getActiveRevision(tenant, target.definitionId)
+    if (
+      !revision
+      || revision.orgId !== tenant.orgId
+      || revision.id !== target.revisionId
+      || revision.definitionId !== target.definitionId
+      || revision.manifest.name !== target.name
+      || revision.manifest.slug !== target.slug
+      || (revision.manifest.description ?? null) !== target.description
+      || revision.contractDigestSha256 !== target.contractDigestSha256
+      || revision.createdAtMs !== target.updatedAtMs
+    ) return { matched: true, target, revision: null }
+    return { matched: true, target, revision }
+  }
+
+  async #publishedSource(
+    target: TPublishedWidgetPlacementTarget,
+    revision: TWidgetRevisionDescriptor,
+  ): Promise<TWidgetSourceSnapshot> {
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets) {
+      throw new Error('OPERATION_UNAVAILABLE: Published widget source inspection is unavailable in this host.')
+    }
+    const [source, snapshot] = await Promise.all([
+      widgets.getRevisionSource(tenant, revision.id),
+      widgets.readRevisionSourceSnapshot(tenant, {
+        definitionId: target.definitionId,
+        revisionId: revision.id,
+      }),
+    ])
+    if (
+      !source
+      || !snapshot
+      || source.orgId !== tenant.orgId
+      || source.definitionId !== target.definitionId
+      || source.revisionId !== revision.id
+      || snapshot.id !== source.sourceSnapshotId
+      || snapshot.digestSha256 !== source.sourceDigestSha256
+    ) {
+      throw new Error('OPERATION_UNAVAILABLE: Published widget source is unavailable.')
+    }
+    return snapshot
+  }
+
+  async #draftPublicationStates(name: string) {
+    const tenant = this.#config.tenant
+    const store = this.#config.authoringStore
+    if (!tenant || !store) return []
+    const draft = await store.getDraftByName(tenant, name)
+    return draft && draft.status !== 'discarded'
+      ? [{
+          draftId: draft.id,
+          definitionId: draft.definitionId,
+          name: draft.name,
+          status: draft.status,
+          publishedRevisionId: draft.publishedRevisionId,
+        }]
+      : []
+  }
+
+  #chatSessionEntry(sessionId: TVibecanvasChatId): TChatSessionEntry | undefined {
+    const widgetId = this.#chatWidgetIds.get(sessionId)
+    return widgetId ? this.sessionMap[widgetId]?.[sessionId] : undefined
+  }
+
+  async #draftResourceSelections(
+    authoringStore: IAgentAuthoringStore,
+    tenant: TTenantContext,
+    draft: TAgentAuthoringDraftDescriptor,
+  ): Promise<readonly TWidgetAuthoringResourceSelection[] | undefined> {
+    const chat = await authoringStore.getChat(tenant, draft.chatId)
+    if (!chat) {
+      throw Object.assign(new Error('Durable widget draft chat was not found.'), {
+        code: 'AGENT_CHAT_NOT_FOUND',
+      })
+    }
+    const connected = this.#chatSessionEntry(chat.externalSessionKey)
+    const sessionManager = connected?.sessionManager ?? SessionManager.continueRecent(
+      this.#workspace.getChatRoot(chat.externalSessionKey),
+      this.#workspace.getChatHistoryRoot(chat.externalSessionKey),
+    )
+    const record = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
+    return record?.resources
+  }
+
+  #assertChatAuthorizationOwner(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
+    const connectedAccountId = sessionEntry.authorizationContext?.accountId
+    if (connectedAccountId === authorization.accountId) return
+    if (connectedAccountId === undefined && authorization.accountId === undefined) return
+    throw this.#chatConnectionError('CHAT_AUTHORIZATION_CHANGED', 'This chat belongs to a different authorization context.')
+  }
+
+  #updateChatAuthorizationContext(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
+    if (!sessionEntry.authorizationContext) {
+      sessionEntry.authorizationContext = { ...authorization }
+      return
+    }
+    sessionEntry.authorizationContext.accountId = authorization.accountId
+    sessionEntry.authorizationContext.requestId = authorization.requestId
+  }
+
+  #chatConnectionError(code: string, message: string): Error & { code: string } {
+    return Object.assign(new Error(message), { code })
+  }
+
+  async #installChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry, approvalReason: string): Promise<void> {
+    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
+    const previousEntry = previousWidgetId ? this.sessionMap[previousWidgetId]?.[sessionId] : undefined
+
+    if (previousEntry) this.#approvals.cancelChat(sessionId, approvalReason)
+    if (!this.sessionMap[id]) this.sessionMap[id] = {}
+    this.sessionMap[id][sessionId] = sessionEntry
+    this.#chatWidgetIds.set(sessionId, id)
+
+    if (previousWidgetId && previousEntry) {
+      this.#releaseChatSessionEntry(previousWidgetId, sessionId, previousEntry)
     }
   }
 
-  #draftActorKey(id: TWidgetId, sessionId: TSessionId): TDraftActorKey {
-    return `${id}:${sessionId}`;
-  }
-
-  #getWizardCwd(id: TWidgetId, sessionId: TSessionId): string {
-    return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
-  }
-
-  #resolveConfigPath(path: string): string {
-    return isAbsolute(path) ? path : join(this.#config.configPath, path)
-  }
-
-  #shouldCopyPublishedWidgetFile(sourceDir: string, source: string): boolean {
-    const relative = relativePath(sourceDir, source)
-    if (relative.length === 0) return true
-
-    const parts = relative.split(/[\\/]/)
-    return !parts.some((part) => part === 'node_modules' || part === '.git' || part === '.vibecanvas-wizard')
-  }
-
-  async #listDraftFiles(rootDir: string): Promise<string[]> {
-    const files: string[] = []
-    await this.#listDraftFilesRecursive(rootDir, rootDir, files)
-    return files
-  }
-
-  async #listDraftFilesRecursive(rootDir: string, dir: string, files: string[]): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const absPath = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await this.#listDraftFilesRecursive(rootDir, absPath, files)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      files.push(relativePath(rootDir, absPath))
-    }
-  }
-
-  async #createWizzardSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TWizzardSessionEntry> {
-    const cwd = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(cwd)
-    if (manifestResult.ready) {
-      this.#ensureImplementationPhaseForDraftManifest(
-        sessionManager,
-        manifestResult.manifest,
-        join(cwd, 'vibecanvas.json'),
-        await this.#listDraftFiles(cwd),
-        new Date().toISOString(),
-      )
-    }
-    const phaseTools = fnCreateWidgetWizardPhaseTools({
+  async #createChatSessionEntry(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+    sessionManager: SessionManager,
+    previousSession?: AgentSession,
+    authorization: TToolAuthorizationContext = {},
+  ): Promise<TChatSessionEntry> {
+    const cwd = await this.#workspace.ensureChat(sessionId)
+    const sensitiveToolArgs = new Map<string, unknown>()
+    const authorizationContext = { ...authorization }
+    const registry = createToolRegistry({
+      chatId: sessionId,
       cwd,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      sessionManager,
-      actorService: this.#config.actorService,
-      onEvent: (event) => this.#publishToolEvent(id, sessionId, event),
+      authorization: authorizationContext,
+      authorize: this.#config.authorizeToolCall,
+      workspace: this.#workspace,
+      approvals: this.#approvals,
+      resourceService: this.#config.resourceService,
+      bashCapability: this.#config.bashCapability,
+      onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
+      onDraftChanged: (change) => this.#widgetDrafts.handleToolChange(change),
+      takeSensitiveToolArgs: (toolCallId) => {
+        const stored = sensitiveToolArgs.get(toolCallId)
+        sensitiveToolArgs.delete(toolCallId)
+        return stored
+      },
     })
     const services = await createAgentSessionServices({
       cwd,
       agentDir: this.#piAgentDir,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime: this.modelRuntime,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
+        systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT,
+        noExtensions: true,
+        extensionFactories: [{
+          name: 'vibecanvas-secret-redaction',
+          factory: (pi) => {
+            pi.on('message_end', (event) => {
+              const redacted = fnRedactSecretResourceWriteMessage(event.message)
+              for (const captured of redacted.captured) sensitiveToolArgs.set(captured.toolCallId, captured.args)
+              return redacted.captured.length > 0 ? { message: redacted.message } : undefined
+            })
+            pi.on('tool_result', (event) => (
+              !event.isError && fnIsStructuredToolErrorDetails(event.details)
+                ? { isError: true }
+                : undefined
+            ))
+            pi.on('tool_execution_end', (event) => {
+              sensitiveToolArgs.delete(event.toolCallId)
+            })
+          },
+        }],
       }
     });
     const { session } = await createAgentSessionFromServices({
@@ -958,8 +1175,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       sessionManager,
       model: previousSession?.model,
       thinkingLevel: previousSession?.thinkingLevel,
-      tools: this.#wizzardToolNames(phaseTools),
-      customTools: phaseTools.customTools,
+      tools: registry.toolNames,
+      customTools: registry.customTools,
     })
     const unsub = session.subscribe((event) => {
       this.#config.eventPublisherService.publishAgentEvent({
@@ -969,19 +1186,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       })
     })
 
-    return { session, sessionManager, unsub }
-  }
-
-  #ensureImplementationPhaseForDraftManifest(sessionManager: SessionManager, manifest: TVibecanvasJson, manifestPath: string, files: string[], timestamp: string): void {
-    if (!fxLatestActorCandidateApprovalRecord({ sessionManager })) {
-      txAppendActorCandidateApprovalRecord({ sessionManager }, {
-        candidateRevision: 0,
-        manifest,
-        files,
-        approvedAt: timestamp,
-      })
-    }
-    txAppendDraftManifestPathRecord({ sessionManager }, { manifestPath })
+    return { session, sessionManager, unsub, authorizationContext }
   }
 
   #flushSessionManager(sessionManager: SessionManager): void {
@@ -989,52 +1194,76 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     writableSessionManager._rewriteFile?.()
   }
 
-  #wizzardToolNames(phaseTools: ReturnType<typeof fnCreateWidgetWizardPhaseTools>): string[] {
-    return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
-  }
-
-  #publishToolEvent(id: TWidgetId, sessionId: TSessionId, event: TToolEvent): void {
-    if (event.type !== 'widgetupdate') return
-
-    this.#config.eventPublisherService.publishAgentEvent({
-      kind: 'widgetupdate',
-      widgetId: id,
-      sessionId,
-      cwd: event.cwd,
-      files: event.files,
+  #recordActiveMount(sessionManager: SessionManager, mount: TWidgetMount): void {
+    sessionManager.appendCustomEntry('vibecanvas.activeWidgetMount', {
+      name: mount.name,
+      selectedAt: new Date().toISOString(),
     })
+    this.#flushSessionManager(sessionManager)
   }
 
-  #sameToolSet(left: readonly string[], right: readonly string[]): boolean {
-    if (left.length !== right.length) return false
-
-    const leftSet = new Set(left)
-    return right.every((tool) => leftSet.has(tool))
-  }
-
-  async #refreshWizzardSessionToolsIfNeeded(id: TWidgetId, sessionId: TSessionId): Promise<void> {
+  async #resolveActiveMount(id: TWidgetId, sessionId: TVibecanvasChatId): Promise<TWidgetMount> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry || sessionEntry.session.isStreaming) return
-    if (typeof sessionEntry.session.getActiveToolNames !== 'function') return
+    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    const record = [...sessionEntry.sessionManager.getEntries()].reverse().find((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'vibecanvas.activeWidgetMount'
+      && entry.data
+      && typeof entry.data === 'object'
+      && typeof (entry.data as { name?: unknown }).name === 'string'
+    ))
+    const name = record?.type === 'custom' ? (record.data as { name: string }).name : undefined
+    return this.#workspace.findMountedWidget(sessionId, name)
+  }
 
-    const cwd = this.#getWizardCwd(id, sessionId)
-    const phaseTools = fnCreateWidgetWizardPhaseTools({
-      cwd,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      sessionManager: sessionEntry.sessionManager,
-      actorService: this.#config.actorService,
-    })
-    const desiredTools = this.#wizzardToolNames(phaseTools)
-    const activeTools = sessionEntry.session.getActiveToolNames()
+  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV3> {
+    return ZWidgetManifestV3.parse(
+      JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')),
+    )
+  }
 
-    if (this.#sameToolSet(activeTools, desiredTools)) return
+  #assertChatScope(id: TWidgetId, sessionId: TVibecanvasChatId): void {
+    if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+  }
 
-    const previousSession = sessionEntry.session
-    const nextEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionEntry.sessionManager, previousSession)
+  async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
+    if (resourceIds.length > 16) throw new Error('A prompt can select at most 16 resources.')
+    const ids = [...new Set(resourceIds)]
+    if (!this.#config.resourceService?.getResource) throw new Error('Resource selection is unavailable in this host.')
 
-    sessionEntry.unsub()
-    previousSession.dispose()
-    this.sessionMap[id][sessionId] = nextEntry
+    const selected: TWidgetResourceSelection[] = []
+    for (const resourceId of ids) {
+      const resource = await this.#config.resourceService.getResource(resourceId)
+      if (!resource) throw new Error(`Selected resource was not found: ${resourceId}`)
+      selected.push({
+        id: resource.id,
+        kind: resource.kind,
+        name: resource.name,
+        status: resource.status,
+      })
+    }
+    return selected
+  }
+
+  async #resolveChatWidgetSelections(
+    refs: readonly { name: string; source: TWidgetSource }[],
+  ): Promise<TWidgetMentionContextItem[]> {
+    if (refs.length > 16) throw new Error('A prompt can select at most 16 widgets.')
+    const unique = [...new Map(refs.map((ref) => [`${ref.source}\u0000${ref.name}`, ref])).values()]
+    const selected: TWidgetMentionContextItem[] = []
+    for (const ref of unique) {
+      const detail = await this.getWidgetDetail(ref.name, ref.source)
+      if (!detail) throw new Error(`Selected ${ref.source} widget was not found: ${ref.name}`)
+      selected.push({
+        name: detail.name,
+        source: detail.source,
+        displayName: detail.variant.displayName,
+        revision: detail.variant.revision,
+      })
+    }
+    return selected
   }
 
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
@@ -1063,155 +1292,75 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
   }
 
-  #disposeWizzardSession(id: TWidgetId, sessionId: TSessionId): void {
-    this.#disposeDraftActor(id, sessionId)
+  async #disposeChatSession(id: TWidgetId, sessionId: TVibecanvasChatId): Promise<void> {
     this.#disposeAgentSession(id, sessionId)
   }
 
-  #disposeAgentSession(id: TWidgetId, sessionId: TSessionId): void {
+  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): () => void {
+    const key = JSON.stringify([id, sessionId, proposalId])
+    if (this.#dbChangeProposalResolutions.has(key)) {
+      throw new Error('Database change proposal is already being resolved.')
+    }
+    this.#dbChangeProposalResolutions.add(key)
+    return () => { this.#dbChangeProposalResolutions.delete(key) }
+  }
+
+  #disposeAgentSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) return
+    this.#approvals.cancelChat(sessionId)
+    if (!sessionEntry) {
+      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+      return
+    }
+    this.#releaseChatSessionEntry(id, sessionId, sessionEntry)
+  }
 
+  #releaseChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry): void {
     sessionEntry.unsub()
-    delete this.sessionMap[id][sessionId]
+    sessionEntry.session.dispose()
 
-    if (Object.keys(this.sessionMap[id]).length === 0) {
+    if (this.sessionMap[id]?.[sessionId] === sessionEntry) {
+      delete this.sessionMap[id][sessionId]
+      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+    }
+
+    if (this.sessionMap[id] && Object.keys(this.sessionMap[id]).length === 0) {
       delete this.sessionMap[id]
     }
   }
 
-  #disposeDraftActor(id: TWidgetId, sessionId: TSessionId): void {
-    const key = this.#draftActorKey(id, sessionId);
-    const entry = this.#draftActorMap.get(key);
-    if (!entry) return;
-
-    entry.unlisten();
-    entry.actor.close();
-    this.#draftActorMap.delete(key);
-
-    this.#publishDraftActorEvent(id, sessionId, entry.actor, {
-      kind: 'lifecycle',
-      type: 'stopped',
-      actorId: entry.actor.getId(),
-    })
+  #releaseUnpublishedChatSessionEntry(sessionEntry: TChatSessionEntry): void {
+    sessionEntry.unsub()
+    sessionEntry.session.dispose()
   }
 
-  #disposeAllDraftActors(): void {
-    for (const key of Array.from(this.#draftActorMap.keys())) {
-      const [id, sessionId] = key.split(':', 2)
-      this.#disposeDraftActor(id, sessionId)
+  #unavailableWidgetDrafts(): WidgetDraftController {
+    const unavailable = () => {
+      throw Object.assign(new Error('Widget authoring is unavailable in this host.'), {
+        code: 'WIDGET_AUTHORING_UNAVAILABLE',
+      })
     }
-  }
-
-  #draftActorSnapshot(actor: Actor): TAgentDraftActorSnapshot {
     return {
-      state: actor.getState(),
-      context: actor.getData(),
-    }
-  }
-
-  async #readDraftActorManifest(rootDir: string): Promise<
-    | { ready: true; manifest: TVibecanvasJson }
-    | TAgentDraftActorNotReadyResult
-  > {
-    const manifestPath = join(rootDir, 'vibecanvas.json')
-
-    if (!await Bun.file(manifestPath).exists()) {
-      return {
-        ready: false,
-        reason: 'manifest-missing',
-        message: 'Draft vibecanvas.json does not exist yet.',
-      }
-    }
-
-    try {
-      const parsedJson = await Bun.file(manifestPath).json()
-      const parsedManifest = ZVibecanvasJson.safeParse(parsedJson)
-      if (!parsedManifest.success) {
-        return {
-          ready: false,
-          reason: 'manifest-invalid',
-          message: parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
-        }
-      }
-
-      return {
-        ready: true,
-        manifest: parsedManifest.data as TVibecanvasJson,
-      }
-    } catch (error) {
-      return {
-        ready: false,
-        reason: 'manifest-invalid',
-        message: error instanceof Error ? error.message : String(error),
-      }
-    }
-  }
-
-  async #readWidgetSourceMap(rootDir: string, relWidgetDir: string): Promise<Record<string, string>> {
-    const root = resolve(rootDir)
-    const widgetDir = resolve(root, relWidgetDir)
-    if (widgetDir !== root && !widgetDir.startsWith(`${root}/`)) return {}
-    const widgetDirStat = await stat(widgetDir).catch(() => null)
-    if (!widgetDirStat?.isDirectory()) return {}
-
-    const sources: Record<string, string> = {}
-    await this.#readSourceMapRecursive(widgetDir, widgetDir, sources)
-    return sources
-  }
-
-  async #readSourceMapRecursive(rootDir: string, dir: string, sources: Record<string, string>): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const absPath = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await this.#readSourceMapRecursive(rootDir, absPath, sources)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      sources[relativePath(rootDir, absPath)] = await Bun.file(absPath).text()
-    }
-  }
-
-  #draftActorNotReady(id: TWidgetId, sessionId: TSessionId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
-    const label = `widget '${id}' and session '${sessionId}'`
-    const messageMap: Record<TDraftActorNotReadyReason, string> = {
-      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
-      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
-      'actor-functions-missing': `Draft actor functions file does not exist for ${label}`,
-      'session-missing': `No connected agent session for ${label}`,
-      'actor-not-running': `No draft actor is running for ${label}`,
-    }
-
-    return {
-      ready: false,
-      reason,
-      message: messageMap[reason],
-    }
-  }
-
-  #draftManifestMessage(id: TWidgetId, sessionId: TSessionId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
-    const label = `widget '${id}' and session '${sessionId}'`
-    const messageMap: Record<typeof reason, string> = {
-      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
-      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
-      'session-missing': `No connected agent session for ${label}`,
-    }
-
-    return messageMap[reason]
-  }
-
-  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
-    const publishEvent: TAgentDraftActorEvent = {
-      kind: 'draft-actor',
-      widgetId: id,
-      sessionId,
-      event,
-      snapshot: this.#draftActorSnapshot(actor),
-    }
-
-    this.#config.eventPublisherService.publishAgentEvent(publishEvent)
+      close: async () => undefined,
+      handleToolChange: async () => undefined,
+      list: async () => [],
+      get: async () => null,
+      getByName: async () => null,
+      getWorkspaceRevision: async () => unavailable(),
+      validate: async () => null,
+      getPreviewCatalogState: async () => null,
+      buildPreview: async () => unavailable(),
+      publish: async () => unavailable(),
+      forget: async () => undefined,
+      withDraftDeletion: async (_name: string, operation: (cleanup: () => Promise<void>) => Promise<unknown>) => (
+        operation(async () => undefined)
+      ),
+      withDraftRename: async (
+        _name: string,
+        _nextName: string,
+        operation: (cleanup: () => Promise<void>) => Promise<unknown>,
+      ) => operation(async () => undefined),
+    } as unknown as WidgetDraftController
   }
 
 }

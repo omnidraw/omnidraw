@@ -1,0 +1,68 @@
+---
+title: Widgets and Functions
+description: Learn how widgets combine collaborative state with bounded server functions.
+order: 2
+---
+
+Vibecanvas widgets are generated app surfaces that run on the infinite canvas. A widget can be a chart, form, board, gallery, table, timer, or control panel.
+
+Each published widget revision can contain:
+
+- **UI**: the visible interface mounted from an immutable browser artifact.
+- **Collaborative state**: an Automerge document owned by each placed widget instance.
+- **Server functions**: optional, short-lived backend calls with validated inputs and outputs.
+- **Resources**: explicit database, key-value, or secret-store slots bound to the published revision.
+
+## Collaborative state
+
+Each placed widget instance has its own state document. Two instances of the same revision do not share mutable state unless the widget deliberately coordinates through an external resource.
+
+The UI reads and changes state through the Vibecanvas SDK. The host synchronizes those changes and keeps the canvas element pinned to its immutable definition and revision identity.
+
+## Server functions
+
+Server functions run only when invoked. They are bounded by time, memory, output, and log limits, and their input and output schemas are validated at the host boundary.
+
+Use function effects deliberately:
+
+- `fn` performs pure computation and cannot access resources.
+- `fx` reads declared resource slots.
+- `tx` may read and write declared resource slots.
+
+Functions are not background workers. Do not use them for timers, sleeps, long-lived loops, HTTP servers, or durable continuations.
+
+## Draft Preview
+
+Draft Preview builds and renders the current UI source without publishing it. Preview state is ephemeral, and server functions and resources are unavailable until Publish. Refreshing a Preview builds the current draft again.
+
+Publishing commits immutable source, UI, and optional server artifacts together with the revision metadata and resource bindings. Canvas instances remain pinned to the revision that was placed.
+
+## Build prerequisite
+
+Widget UI projects own their npm dependencies, package-lock-v3 file, and build script. Vibecanvas runs frozen `npm ci` and the guest-controlled `npm run build`, then Capsule validates the resulting `dist/` before it can be signed or loaded. Node.js/npm are server prerequisites; Docker and Podman are not. Build scripts run with the Vibecanvas server account's host authority, so operators should treat that account and its credentials accordingly.
+
+## Supported UI authoring
+
+Plain DOM is the default. React is the supported component-library path: use a `.tsx` entry, import from `react` and `react-dom/client`, and pin `react`/`react-dom` to `19.2.7`, `@types/react` to `19.2.17`, and `@types/react-dom` to `19.2.3`. The trusted build selects Capsule's reviewed JSX transform and verifies the exact closed package projection; widgets do not choose build plugins. Other UI libraries, remote ESM/CDN imports, dynamic imports, and runtime package loaders are unsupported.
+
+Request only the compatibility profiles the UI actually uses: `artifact-resources-v1` for static CSS/assets, `svg-dom-v1` for SVG, `canvas-2d-v1` for Canvas 2D, `canvas-webgl-v1` for WebGL, and `canvas-webgpu-v1` for WebGPU. GPU widgets must also request an explicit non-zero `gpuBytes` budget. A profile request describes compatibility—it does not grant host, network, file, or resource authority.
+
+## Widget UI limits
+
+Widget UI code runs from a signed, immutable artifact inside the Capsule browser sandbox. It does not receive direct access to the host page, canvas engine, database, credentials, or Bun process objects. DOM access and communication with collaborative state, server functions, and widget channels are limited to the Capsule profiles and capabilities declared by the published revision.
+
+The practical rule is:
+
+- Put visible interaction in the widget UI.
+- Put persistent instance state in collaborative state.
+- Put bounded backend work in server functions.
+- Access infrastructure only through declared resource slots.
+- Let Vibecanvas own placement, artifact verification, authorization, and runtime isolation.
+
+## Using secret stores
+
+Secret values are masked by default in the resource workspace. A local operator may deliberately reveal one stored value; it is cleared when hidden, when the view changes, and after inactivity.
+
+AI resource tools can create and rotate secrets with approval, but they cannot reveal plaintext. Published `fx` or `tx` functions can read a bound secret slot only when the revision declares and receives the required permission.
+
+Secret-store database pages and write-ahead logs are encrypted at rest with independent keys stored in the main control database. Protect complete backups because they may contain both encrypted resource data and the corresponding keys.

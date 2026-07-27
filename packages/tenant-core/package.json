@@ -1,0 +1,15 @@
+{
+  "name": "@vibecanvas/tenant-core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fn.scoped-key": "./src/core/fn.scoped-key.ts",
+    "./fn.tenant-context": "./src/core/fn.tenant-context.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -160,13 +160,9 @@ async function main(): Promise<void> {
     const hangingFixture = await buildHangingFixture(path.join(packageB, "native"), path.join(testRoot, "release-hanging"))
 
     const homeDir = path.join(testRoot, "home")
-    const xdgRoot = path.join(testRoot, "xdg")
     const childEnv = {
       HOME: homeDir,
-      XDG_DATA_HOME: path.join(xdgRoot, "data"),
-      XDG_CONFIG_HOME: path.join(xdgRoot, "config"),
-      XDG_STATE_HOME: path.join(xdgRoot, "state"),
-      XDG_CACHE_HOME: path.join(xdgRoot, "cache"),
+      VIBECANVAS_HOME: path.join(testRoot, "vibecanvas-home"),
     }
 
     console.log("[local-upgrade] Scenario 1/3: validated A -> B replacement")

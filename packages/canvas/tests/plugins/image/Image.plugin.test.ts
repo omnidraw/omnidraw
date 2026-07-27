@@ -1,275 +1,470 @@
-import Konva from "konva";
-import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
-import { describe, expect, test, vi } from "vitest";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { ELEMENT_DATA_ATTR } from "../../../src/core/CONSTANTS";
-import { createImagePlugin } from "../../../src/plugins/image/Image.plugin";
-import { CrdtService } from "../../../src/services/crdt/CrdtService";
-import { ElementService } from "../../../src/services/element/ElementService";
-import { SceneService } from "../../../src/services/scene/SceneService";
-import { createMockDocHandle, createNewCanvasHarness, flushCanvasEffects } from "../../new-test-setup";
-import { createTestContainer, ensureDom, ensureRangeGeometryMocks, ensureResizeObserver } from "../../test-setup";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { createNewCanvasHarness } from "../../new-test-setup";
+import { ensureDom } from "../../test-setup";
 
-function createImageElement(overrides?: Partial<TElement>): TElement {
-  return {
-    id: "image-1",
-    x: 120,
-    y: 80,
-    rotation: 0,
-    bindings: [],
-    createdAt: 1,
-    updatedAt: 2,
-    locked: false,
-    parentGroupId: null,
-    zIndex: "z0001",
-    style: { opacity: 0.7 },
-    data: {
-      type: "image",
-      url: "https://cdn.test/image.png",
-      base64: null,
-      w: 320,
-      h: 180,
-      crop: {
-        x: 0,
-        y: 0,
-        width: 320,
-        height: 180,
-        naturalWidth: 640,
-        naturalHeight: 360,
-      },
-    },
-    ...overrides,
-  } as TElement;
-}
+const ONE_PIXEL_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
-function createImageTestHooks() {
-  return {
-    init: new SyncHook(),
-    initAsync: new AsyncParallelHook(),
-    destroy: new SyncHook(),
-    pointerDown: new SyncHook(),
-    pointerUp: new SyncHook(),
-    pointerOut: new SyncHook(),
-    pointerOver: new SyncHook(),
-    pointerMove: new SyncHook(),
-    pointerWheel: new SyncHook(),
-    pointerCancel: new SyncHook(),
-    keydown: new SyncHook(),
-    keyup: new SyncHook(),
-    gridVisible: new SyncHook(),
-    toolSelect: new SyncHook(),
-    elementPointerClick: new SyncExitHook(),
-    elementPointerDown: new SyncExitHook(),
-    elementPointerDoubleClick: new SyncExitHook(),
-  };
-}
-
-function createImagePluginUnitHarness(args?: {
-  uploadImage?: ReturnType<typeof vi.fn>;
-}) {
-  ensureDom();
-  ensureResizeObserver();
-  ensureRangeGeometryMocks();
-
-  const container = createTestContainer() as HTMLDivElement;
-  const scene = new SceneService({ container });
-  scene.start();
-
-  const hooks = createImageTestHooks();
-  const crdt = new CrdtService({ docHandle: createMockDocHandle() });
-  const element = new ElementService();
-  const servicesByName = new Map<string, unknown>([
-    ["contextMenu", { registerProvider: vi.fn(), unregisterProvider: vi.fn() }],
-    ["crdt", crdt],
-    ["element", element],
-    ["group", {}],
-    ["history", { record: vi.fn() }],
-    ["scene", scene],
-    ["renderOrder", {
-      assignOrderOnInsert: vi.fn(),
-      setNodeZIndex: vi.fn(),
-      sortChildren: vi.fn(),
-    }],
-    ["selection", {
-      mode: "select",
-      selection: [],
-      setSelection: vi.fn(),
-      setFocusedNode: vi.fn(),
-      clear: vi.fn(),
-    }],
-    ["session", { editingId: null }],
-    ["tool", { registerTool: vi.fn(), unregisterTool: vi.fn() }],
-  ]);
-
-  const uploadImage = args?.uploadImage ?? vi.fn(async () => [null, { url: "https://cdn.test/uploaded.png" }] as const);
-  const plugin = createImagePlugin();
-  void plugin.apply({
-    hooks,
-    services: {
-      get: (name: string) => servicesByName.get(name),
-      require: (name: string) => {
-        const service = servicesByName.get(name);
-        if (!service) throw new Error(`Missing service ${name}`);
-        return service;
-      },
-      getStore: () => servicesByName,
-      getRegistrations: () => [],
-      provide: () => undefined,
-    },
-    config: {
-      apiService: {
-        api: {
-          file: {
-            put: uploadImage,
-            clone: vi.fn(),
-          },
-        },
-      },
-      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
-    },
-  } as never);
-
-  return {
-    hooks,
-    scene,
-    element,
-    uploadImage,
-    destroy: () => {
-      hooks.destroy.call();
-      scene.stop();
-      container.remove();
-    },
-  };
-}
-
-async function waitForMicrotasks(count = 12) {
-  for (let index = 0; index < count; index += 1) {
-    await Promise.resolve();
-  }
-}
-
-async function waitForAsyncImageInsert() {
-  await waitForMicrotasks();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await waitForMicrotasks();
-}
-
-describe("Image plugin", () => {
-  test("registers the image tool and hydrates persisted image elements", async () => {
-    const imageElement = createImageElement();
-    const harness = await createNewCanvasHarness({
-      docHandle: createMockDocHandle({
-        elements: {
-          [imageElement.id]: imageElement,
-        },
-      }),
-      image: {
-        uploadImage: async () => ({ url: "https://cdn.test/uploaded.png" }),
-        cloneImage: async ({ url }) => ({ url: `${url}?clone=1` }),
-        deleteImage: async () => ({ ok: true }),
-      },
-    });
-
-    const tool = harness.runtime.services.require("tool");
-    const element = harness.runtime.services.require("element");
-
-    expect(tool.getTool("image")?.id).toBe("image");
-    expect(element.getSelectionStyleMenuConfigById({ id: "image" })).toBeNull();
-
-    await flushCanvasEffects();
-
-    const node = harness.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-      return candidate instanceof Konva.Image && candidate.id() === imageElement.id;
-    });
-
-    expect(node).toBeInstanceOf(Konva.Image);
-    expect(element.toElement(node as Konva.Image)?.data.type).toBe("image");
-
-    await harness.destroy();
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
+  return { promise, reject, resolve };
+}
 
-  test("created image nodes include element metadata required by delete", () => {
-    const harness = createImagePluginUnitHarness();
-    try {
-      const imageElement = createImageElement();
-      const node = harness.element.createNodeFromElement(imageElement);
-      const builder = {} as { deleteElement: ReturnType<typeof vi.fn> };
-      builder.deleteElement = vi.fn(() => builder);
+type TDecodeController = {
+  resolve(width?: number, height?: number): void;
+  reject(): void;
+  restore(): void;
+};
 
-      expect(node).toBeInstanceOf(Konva.Image);
-      expect((node as Konva.Image).getAttr(ELEMENT_DATA_ATTR)).toMatchObject({ type: "image" });
-      expect(() => harness.element.removeElement(node, builder as never)).not.toThrow();
-      expect(builder.deleteElement).toHaveBeenCalledWith(imageElement.id, expect.any(Object));
-    } finally {
-      harness.destroy();
-    }
-  });
-
-  test("paste from document inserts an image even when the stage container is not focused", async () => {
-    const originalFileReader = globalThis.FileReader;
-    const originalWindowFileReader = window.FileReader;
-    const originalWindowImage = window.Image;
-    const uploadImage = vi.fn(async () => [null, { url: "https://cdn.test/pasted.png" }] as const);
-
-    class MockFileReader {
-      result: string | ArrayBuffer | null = null;
-      error: Error | null = null;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      readAsDataURL() {
-        this.result = "data:image/png;base64,ZmFrZQ==";
-        queueMicrotask(() => this.onload?.());
-      }
-
-      readAsArrayBuffer() {
-        this.result = new Uint8Array([1, 2, 3]).buffer;
-        queueMicrotask(() => this.onload?.());
-      }
-    }
-
-    class MockImage {
-      constructor() {
-        const canvas = document.createElement("canvas");
-        canvas.width = 100;
-        canvas.height = 50;
-        Object.defineProperty(canvas, "src", {
-          configurable: true,
-          set() {
-            queueMicrotask(() => canvas.onload?.(new Event("load")));
-          },
-        });
-        return canvas;
-      }
-    }
-
-    vi.stubGlobal("FileReader", MockFileReader);
-    Object.defineProperty(window, "FileReader", { configurable: true, value: MockFileReader });
-    Object.defineProperty(window, "Image", { configurable: true, value: MockImage });
-
-    const harness = createImagePluginUnitHarness({ uploadImage });
-    try {
-      harness.hooks.init.call();
-
-      const pasteEvent = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
-      Object.defineProperty(pasteEvent, "clipboardData", {
+function installDecodeController(): TDecodeController {
+  const createElement = document.createElement.bind(document);
+  let pendingImage: HTMLImageElement | null = null;
+  const spy = vi.spyOn(document, "createElement").mockImplementation(((
+    tagName: string,
+    options?: ElementCreationOptions,
+  ) => {
+    const element = createElement(tagName, options);
+    if (tagName.toLowerCase() === "img") {
+      pendingImage = element as HTMLImageElement;
+      Object.defineProperty(pendingImage, "src", {
         configurable: true,
-        value: {
-          files: [new File(["fake"], "pasted.png", { type: "image/png" })],
-          items: [],
-        },
+        set: () => undefined,
+      });
+    }
+    return element;
+  }) as typeof document.createElement);
+
+  const takeImage = () => {
+    if (pendingImage === null) {
+      throw new Error("Image decode has not started.");
+    }
+    return pendingImage;
+  };
+
+  return {
+    resolve(width = 1200, height = 600) {
+      const image = takeImage();
+      image.width = width;
+      image.height = height;
+      image.onload?.call(image, new Event("load"));
+    },
+    reject() {
+      const image = takeImage();
+      image.onerror?.call(image, new Event("error"));
+    },
+    restore: () => spy.mockRestore(),
+  };
+}
+
+function imageFile(): File {
+  return {
+    type: "image/png",
+    arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+  } as File;
+}
+
+function dispatchImagePaste(file = imageFile()): ClipboardEvent {
+  const event = new Event("paste", {
+    bubbles: true,
+    cancelable: true,
+  }) as ClipboardEvent;
+  Object.defineProperty(event, "clipboardData", {
+    configurable: true,
+    value: { files: [file] },
+  });
+  document.dispatchEvent(event);
+  return event;
+}
+
+describe("Image plugin insertion lifecycle", () => {
+  let originalCreateObjectUrl: PropertyDescriptor | undefined;
+  let originalRevokeObjectUrl: PropertyDescriptor | undefined;
+  let createObjectUrl: ReturnType<typeof vi.fn>;
+  let revokeObjectUrl: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    ensureDom();
+    originalCreateObjectUrl = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL",
+    );
+    originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL",
+    );
+    createObjectUrl = vi.fn(() => "blob:image-preview");
+    revokeObjectUrl = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+  });
+
+  afterEach(() => {
+    if (originalCreateObjectUrl === undefined) {
+      Reflect.deleteProperty(window.URL, "createObjectURL");
+    } else {
+      Object.defineProperty(
+        window.URL,
+        "createObjectURL",
+        originalCreateObjectUrl,
+      );
+    }
+    if (originalRevokeObjectUrl === undefined) {
+      Reflect.deleteProperty(window.URL, "revokeObjectURL");
+    } else {
+      Object.defineProperty(
+        window.URL,
+        "revokeObjectURL",
+        originalRevokeObjectUrl,
+      );
+    }
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  test("shows an engine transient immediately and retains it until the durable image projects", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({
+      width: 1,
+      height: 1,
+      close: vi.fn(),
+    } as unknown as ImageBitmap)));
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+    });
+    const decode = installDecodeController();
+    try {
+      const paste = dispatchImagePaste();
+
+      expect(paste.defaultPrevented).toBe(true);
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 3,
+        transientNodeCount: 1,
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+
+      decode.resolve();
+      await Promise.resolve();
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 3,
+        transientNodeCount: 1,
       });
 
-      document.dispatchEvent(pasteEvent);
-      await waitForAsyncImageInsert();
+      upload.resolve({ url: ONE_PIXEL_PNG });
+      await vi.waitFor(() => {
+        expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(1);
+      });
+      await harness.flush();
 
-      expect(uploadImage).toHaveBeenCalledOnce();
-      expect(harness.scene.staticForegroundLayer.getChildren((node) => node instanceof Konva.Image)).toHaveLength(1);
+      const inserted = Object.values(harness.docHandle.doc().elements)[0];
+      expect(inserted).toMatchObject({
+        data: {
+          type: "image",
+          url: ONE_PIXEL_PNG,
+          w: 480,
+          h: 240,
+        },
+      });
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:image-preview");
+      expect(deleteImage).not.toHaveBeenCalled();
     } finally {
-      harness.destroy();
-      vi.stubGlobal("FileReader", originalFileReader);
-      Object.defineProperty(window, "FileReader", { configurable: true, value: originalWindowFileReader });
-      Object.defineProperty(window, "Image", { configurable: true, value: originalWindowImage });
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("Escape cancels a pending insert and deletes a late upload", async () => {
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+    });
+    const decode = installDecodeController();
+    try {
+      dispatchImagePaste();
+      decode.resolve();
+      await Promise.resolve();
+
+      const escape = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(escape);
+
+      expect(escape.defaultPrevented).toBe(true);
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+
+      upload.resolve({ url: "https://cdn.test/cancelled.png" });
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/cancelled.png",
+        });
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("decode failure removes the preview and cleans up a successful upload", async () => {
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const notification = {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    };
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+      notification,
+    });
+    const decode = installDecodeController();
+    try {
+      dispatchImagePaste();
+      decode.reject();
+      await vi.waitFor(() => {
+        expect(notification.showError).toHaveBeenCalledWith(
+          "Failed to insert image",
+          "Failed to decode image",
+        );
+      });
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+
+      upload.resolve({ url: "https://cdn.test/orphan.png" });
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/orphan.png",
+        });
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("image sizing failure removes the preview and cleans up a late upload", async () => {
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const notification = {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    };
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+      notification,
+    });
+    const decode = installDecodeController();
+    vi.spyOn(harness.scene, "fitIntrinsicImageSize").mockImplementation(() => {
+      throw new RangeError("clipboard viewport width must be positive");
+    });
+    try {
+      dispatchImagePaste();
+      decode.resolve();
+
+      await vi.waitFor(() => {
+        expect(notification.showError).toHaveBeenCalledWith(
+          "Failed to insert image",
+          "clipboard viewport width must be positive",
+        );
+      });
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+
+      upload.resolve({ url: "https://cdn.test/sizing-failure.png" });
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/sizing-failure.png",
+        });
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("commit failure removes the preview and cleans up the upload", async () => {
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const notification = {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    };
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(async () => ({
+          url: "https://cdn.test/uncommitted.png",
+        })),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+      notification,
+    });
+    const decode = installDecodeController();
+    const crdt = harness.runtime.services.require("crdt");
+    vi.spyOn(crdt, "build").mockImplementation(() => {
+      const builder = {
+        patchElement: () => builder,
+        commit: () => {
+          throw new Error("commit rejected");
+        },
+      };
+      return builder as never;
+    });
+    try {
+      dispatchImagePaste();
+      decode.resolve();
+
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/uncommitted.png",
+        });
+      });
+      expect(notification.showError).toHaveBeenCalledWith(
+        "Failed to insert image",
+        "commit rejected",
+      );
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("pending projection failure cleans up an upload before durable commit", async () => {
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const notification = {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    };
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(async () => ({
+          url: "https://cdn.test/unprojected.png",
+        })),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+      notification,
+    });
+    const decode = installDecodeController();
+    const transients = harness.scene.product.transients;
+    const createOwner = transients.createOwner.bind(transients);
+    vi.spyOn(transients, "createOwner").mockImplementation((options) => {
+      const owner = createOwner(options);
+      let replacementCount = 0;
+      return {
+        id: owner.id,
+        clear: () => owner.clear(),
+        destroy: () => owner.destroy(),
+        replace: (projection) => {
+          replacementCount += 1;
+          if (replacementCount > 1) {
+            throw new Error("preview projection rejected");
+          }
+          owner.replace(projection);
+        },
+      };
+    });
+    try {
+      dispatchImagePaste();
+      decode.resolve();
+
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/unprojected.png",
+        });
+      });
+      expect(notification.showError).toHaveBeenCalledWith(
+        "Failed to insert image",
+        "preview projection rejected",
+      );
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 2,
+        transientNodeCount: 0,
+      });
+    } finally {
+      decode.restore();
+      await harness.destroy();
+    }
+  });
+
+  test("teardown cancels the session and prevents a late durable commit", async () => {
+    const upload = deferred<{ url: string }>();
+    const deleteImage = vi.fn(async () => ({ ok: true as const }));
+    const harness = await createNewCanvasHarness({
+      image: {
+        uploadImage: vi.fn(() => upload.promise),
+        cloneImage: vi.fn(async ({ url }) => ({ url })),
+        deleteImage,
+      },
+    });
+    const decode = installDecodeController();
+    try {
+      dispatchImagePaste();
+      expect(harness.metrics()).toMatchObject({
+        transientOwnerCount: 3,
+        transientNodeCount: 1,
+      });
+
+      await harness.destroy();
+      upload.resolve({ url: "https://cdn.test/late-after-destroy.png" });
+      await vi.waitFor(() => {
+        expect(deleteImage).toHaveBeenCalledWith({
+          url: "https://cdn.test/late-after-destroy.png",
+        });
+      });
+      expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
+    } finally {
+      decode.restore();
     }
   });
 });

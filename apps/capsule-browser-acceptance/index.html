@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-capsule-acceptance="booting">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibecanvas Capsule browser acceptance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: #09090b;
+        color: #fafafa;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 78rem;
+        padding: 2rem;
+      }
+      h1 { font: 700 1.5rem/1.2 system-ui, sans-serif; }
+      #summary { color: #a1a1aa; }
+      ol { display: grid; gap: .55rem; padding-left: 1.75rem; }
+      li { border-left: .25rem solid #71717a; padding: .55rem .75rem; }
+      li[data-pass="true"] { border-color: #22c55e; }
+      li[data-pass="false"] { border-color: #ef4444; }
+      .surfaces {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+        gap: .75rem;
+      }
+      .surface {
+        box-sizing: border-box;
+        min-height: 8rem;
+        border: 1px solid #27272a;
+        border-radius: .5rem;
+        overflow: hidden;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        border-radius: .5rem;
+        background: #18181b;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vibecanvas Capsule browser acceptance</h1>
+    <p id="summary">Running real signed Capsule guests…</p>
+    <ol id="results"></ol>
+    <div id="surfaces" class="surfaces" aria-label="Capsule mount surfaces"></div>
+    <pre id="diagnostics"></pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

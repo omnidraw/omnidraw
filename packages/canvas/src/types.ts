@@ -1,26 +1,47 @@
 import type { DocHandle } from "@automerge/automerge-repo";
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
-import type Konva from "konva";
-import type { Group } from "konva/lib/Group";
-import type { KonvaEventObject } from "konva/lib/Node";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetManagerService } from "./services";
+import type { CameraService, CanvasActiveSessionService, CanvasPortalService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetDropPlacementService } from "./services";
+import type { TBrowserTenantScope } from "./fn.browser-tenant-scope";
+import type {
+  TCanvasInputPointerEvent,
+  TCanvasInputWheelEvent,
+} from "./engine/input/typed";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
 export type TCloneImage = (body: { url: string }) => Promise<{ url: string }>;
 
+export type TCanvasImagePort = {
+  uploadImage(body: { data: Uint8Array; mime_type: TImageUploadFormat }): Promise<{ url: string }>;
+  cloneImage(body: { url: string }): Promise<{ url: string }>;
+  deleteImage(body: { url: string }): Promise<{ ok: true }>;
+};
+
+export type TCanvasToolbarGroup = {
+  name: string;
+  json?: {
+    svgIcon?: string | null;
+    lucidIcon?: string | null;
+  } | null;
+};
+
+export type TCanvasToolbarGroupsPort = {
+  list(): Promise<readonly TCanvasToolbarGroup[]>;
+  subscribe(listener: () => void): () => void;
+};
+
 export interface IRuntimeConfig {
   canvasId: string;
+  tenant: TBrowserTenantScope;
   container: HTMLDivElement;
   docHandle: DocHandle<TCanvasDoc>;
   onToggleSidebar: () => void;
   env: Pick<ImportMetaEnv, "DEV">;
   themeService: ThemeService;
-  apiService: TOrpcSafeClient;
+  image: TCanvasImagePort;
+  toolbarGroups?: TCanvasToolbarGroupsPort;
   notification?: {
     showSuccess(title: string, description?: string): void;
     showError(title: string, description?: string): void;
@@ -38,23 +59,26 @@ export type TRenderOrderSnapshot = {
   }>;
 };
 
-export type TPointerEvent = Konva.KonvaEventObject<PointerEvent>;
-export type TMouseEvent = Konva.KonvaEventObject<MouseEvent>;
-export type TWheelEvent = Konva.KonvaEventObject<WheelEvent>;
+export type TPointerEvent = TCanvasInputPointerEvent;
+export type TMouseEvent = TCanvasInputPointerEvent;
+export type TWheelEvent = TCanvasInputWheelEvent;
+export type TElementPointerEvent = TCanvasInputPointerEvent & {
+  hit: NonNullable<TCanvasInputPointerEvent["hit"]>;
+};
 
-export type TElementPointerEvent = KonvaEventObject<PointerEvent, Shape<ShapeConfig> | Group>;
-
-export type TWidgetRegistryEvent = {
-  kind: string;
+export type TElementDefinitionInvalidatedEvent = {
+  elementIds: readonly string[];
 };
 
 export interface IRuntimeServices {
+  activeSession: CanvasActiveSessionService;
   camera: CameraService;
   confirmDialog: ConfirmDialogService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
   history: HistoryService;
   logging: LoggingService;
+  portal: CanvasPortalService;
   scene: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;
@@ -62,8 +86,8 @@ export interface IRuntimeServices {
   tool: ToolService;
   element: ElementService;
   session: SessionService;
-  widgetManager: WidgetManagerService;
   group: GroupService;
+  widgetPlacement: WidgetDropPlacementService;
 }
 
 export interface IRuntimeHooks {
@@ -90,7 +114,7 @@ export interface IRuntimeHooks {
   keyup: SyncHook<[KeyboardEvent]>;
   gridVisible: SyncHook<[boolean]>;
   toolSelect: SyncHook<[string]>;
-  widgetRegister: SyncHook<[TWidgetRegistryEvent]>;
+  elementDefinitionInvalidated: SyncHook<[TElementDefinitionInvalidatedEvent]>;
   elementPointerClick: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDown: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDoubleClick: SyncExitHook<[TElementPointerEvent]>;

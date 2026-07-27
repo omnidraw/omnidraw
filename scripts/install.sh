@@ -155,8 +155,7 @@ validate_candidate() {
     local output_file="$tmp_dir/candidate-version.txt"
     local error_file="$tmp_dir/candidate-error.txt"
     VIBECANVAS_DISABLE_AUTOUPDATE=1 \
-      XDG_DATA_HOME="$tmp_dir/xdg/data" XDG_CONFIG_HOME="$tmp_dir/xdg/config" \
-      XDG_STATE_HOME="$tmp_dir/xdg/state" XDG_CACHE_HOME="$tmp_dir/xdg/cache" \
+      VIBECANVAS_HOME="$tmp_dir/vibecanvas-home" \
       "$candidate" --version >"$output_file" 2>"$error_file" &
     local candidate_pid=$!
     local elapsed=0

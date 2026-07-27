@@ -1,0 +1,94 @@
+import { describe, expect, it } from "vitest";
+import { fnMergeProductSelectionTransformPolicy } from "../../../src/plugins/transform/fn.selection-policy";
+
+describe("mixed product transform policy", () => {
+  it("uses only common handles and the safest mixed-selection constraints", () => {
+    expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate", "resize-e", "resize-w"],
+        aspectRatioMode: "shift-lock",
+        allowFlip: true,
+        allowRotate: true,
+      },
+      policies: [
+        {
+          handles: ["move", "rotate", "resize-e", "resize-w"],
+          aspectRatioMode: "free",
+          allowFlip: true,
+          allowRotate: true,
+          minSize: { width: 10, height: 10 },
+          snapRotationDegrees: 15,
+        },
+        {
+          handles: ["move", "rotate", "resize-e"],
+          aspectRatioMode: "locked",
+          allowFlip: false,
+          allowRotate: true,
+          minSize: { width: 80, height: 60 },
+          snapRotationDegrees: 15,
+        },
+      ],
+      includeSizeConstraints: false,
+      forceLockedAspectRatio: false,
+    })).toEqual({
+      handles: ["move", "rotate", "resize-e"],
+      aspectRatioMode: "locked",
+      allowFlip: false,
+      allowRotate: true,
+      snapRotationRadians: 15 * Math.PI / 180,
+    });
+  });
+
+  it("disables unsafe actions when any selected product vetoes them", () => {
+    expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate"],
+        aspectRatioMode: "shift-lock",
+        allowFlip: false,
+        allowRotate: true,
+      },
+      policies: [
+        { handles: ["move", "rotate"], allowRotate: true },
+        { handles: [], allowRotate: false },
+      ],
+      includeSizeConstraints: false,
+      forceLockedAspectRatio: true,
+    })).toMatchObject({
+      handles: [],
+      allowRotate: false,
+      aspectRatioMode: "locked",
+    });
+  });
+
+  it("does not reintroduce resize when the engine limits a path selection", () => {
+    expect(fnMergeProductSelectionTransformPolicy({
+      baseline: {
+        handles: ["move", "rotate"],
+        aspectRatioMode: "free",
+        allowFlip: false,
+        allowRotate: true,
+      },
+      policies: [{
+        handles: [
+          "move",
+          "rotate",
+          "resize-n",
+          "resize-ne",
+          "resize-e",
+          "resize-se",
+          "resize-s",
+          "resize-sw",
+          "resize-w",
+          "resize-nw",
+        ],
+        allowFlip: true,
+        allowRotate: true,
+      }],
+      includeSizeConstraints: false,
+    })).toMatchObject({
+      handles: ["move", "rotate"],
+      allowFlip: false,
+      allowRotate: true,
+    });
+  });
+});

@@ -76,9 +76,9 @@ function fnNormalizeCommandError(error: unknown): TCliErrorPayload {
     message: typeof payload.message === 'string' ? payload.message : 'Command failed.',
   };
 
-  if (!normalized.hint && normalized.code === 'DB_FLAG_MISSING_VALUE') {
-    normalized.hint = 'Pass one SQLite file path right after --db.';
-    normalized.next = 'Try: vibecanvas serve --db ./tmp/vibecanvas.turso';
+  if (!normalized.hint && normalized.code === 'DATA_DIR_FLAG_MISSING_VALUE') {
+    normalized.hint = 'Pass one Vibecanvas home path right after --data-dir.';
+    normalized.next = 'Try: vibecanvas serve --data-dir ./tmp/vibecanvas-home';
   }
 
   return normalized;

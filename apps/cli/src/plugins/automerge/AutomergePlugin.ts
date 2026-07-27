@@ -1,6 +1,7 @@
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { WebSocketWithIsAlive } from '@vibecanvas/service-automerge/adapters/websocket.adapter';
 import type { IPlugin } from '@vibecanvas/runtime';
+import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 
@@ -8,11 +9,13 @@ type TAutomergeWebSocketData = {
   path: string;
   query: string;
   requestId: string;
+  tenant: TTenantContext;
 };
 
-type TBunAutomergeSocket = WebSocket & {
+type TBunAutomergeSocket = Omit<WebSocket, 'send'> & {
   data?: TAutomergeWebSocketData;
   ping(): void;
+  send(data: ArrayBuffer): number;
   terminate(): void;
 };
 
@@ -25,7 +28,13 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
       }
 
       const instance = ctx.services.require('automerge');
-      const automergeConnections = new Map<unknown, WebSocketWithIsAlive>();
+      const automergeConnections = new Map<string, WebSocketWithIsAlive>();
+
+      const connectionKey = (socket: TBunAutomergeSocket): string | null => {
+        const data = socket.data;
+        if (!data) return null;
+        return fnScopedKey('automerge-websocket', [data.tenant.orgId, data.tenant.accountId, data.requestId]);
+      };
 
       ctx.hooks.wsUpgrade.tap((req) => {
         const url = new URL(req.url);
@@ -49,15 +58,20 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
             socket.close();
           },
           send(data: ArrayBuffer) {
-            socket.send(data);
+            return socket.send(data);
           },
           terminate() {
             socket.terminate();
           },
         };
 
-        automergeConnections.set(ws, wrapper);
-        instance.wsAdapter.open(wrapper);
+        const key = connectionKey(socket);
+        if (!key) {
+          socket.close(1008, 'Missing tenant context');
+          return;
+        }
+        automergeConnections.set(key, wrapper);
+        instance.openConnection(socket.data!.tenant, wrapper);
       });
 
       ctx.hooks.wsMessage.tap((ws, message) => {
@@ -78,12 +92,14 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
           bufferMessage = message as Buffer;
         }
 
-        const wrapper = automergeConnections.get(ws);
+        const key = connectionKey(socket);
+        const wrapper = key ? automergeConnections.get(key) : undefined;
         if (!wrapper) return;
         wrapper.data.isAlive = true;
 
         try {
-          instance.wsAdapter.message(wrapper, bufferMessage);
+          void instance.receiveConnectionMessage(socket.data!.tenant, wrapper, bufferMessage)
+            .catch((error) => console.error('[WS:automerge] adapter.message() error:', error));
         } catch (err) {
           console.error('[WS:automerge] adapter.message() error:', err);
         }
@@ -94,10 +110,11 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
         if (socket.data?.path !== '/automerge') return;
         if (!instance) return;
 
-        const wrapper = automergeConnections.get(ws);
+        const key = connectionKey(socket);
+        const wrapper = key ? automergeConnections.get(key) : undefined;
         if (!wrapper) return;
-        instance.wsAdapter.close(wrapper, 1000, '');
-        automergeConnections.delete(ws);
+        instance.closeConnection(socket.data!.tenant, wrapper, 1000, '');
+        automergeConnections.delete(key!);
       });
 
       ctx.hooks.wsPong.tap((ws, data) => {
@@ -105,9 +122,10 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
         if (socket.data?.path !== '/automerge') return;
         if (!instance) return;
 
-        const wrapper = automergeConnections.get(ws);
+        const key = connectionKey(socket);
+        const wrapper = key ? automergeConnections.get(key) : undefined;
         if (!wrapper) return;
-        instance.wsAdapter.pong(wrapper, data);
+        instance.pongConnection(socket.data!.tenant, wrapper, data);
       });
 
       ctx.hooks.shutdown.tapPromise(async () => {

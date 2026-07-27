@@ -1,24 +1,33 @@
-import type Konva from "konva";
-import type { SyncHook } from "@vibecanvas/tapable";
-import type { KonvaEventObject, Node, NodeConfig } from "konva/lib/Node";
+import type {
+  TCanvasInputPointerEvent,
+} from "../../engine/input/typed";
+import type { TWidgetDropRequest } from "../widget-placement/types";
 
-/**
- * Runtime mode for a registered editor tool.
- * Used to map tool choice into broad editor behavior.
- */
 export type TToolMode = "select" | "hand" | "draw-create" | "click-create";
-
-/**
- * Keyboard shortcut description for a tool.
- * Examples: `5`, `r`, `ctrl+b`.
- */
 export type TToolShortcut = string;
 export type TToolIcon = string;
-export type TToolPointerEvent = KonvaEventObject<PointerEvent, Node<NodeConfig>>;
+export type TToolPointerEvent = TCanvasInputPointerEvent;
+
 export type TToolCanvasPoint = {
   x: number;
   y: number;
   pressure: number;
+};
+
+export type TToolSessionCancelReason =
+  | "escape"
+  | "pointer-cancel"
+  | "replaced"
+  | "tool-change"
+  | "unregister"
+  | "destroy"
+  | "commit-failed";
+
+export type TToolSession = {
+  id: string;
+  update?(event: TToolPointerEvent): void;
+  commit?(event: TToolPointerEvent): void | Promise<void>;
+  cancel(reason: TToolSessionCancelReason): void | Promise<void>;
 };
 
 export type TToolDrawCreateStartDraftArgs = {
@@ -35,27 +44,26 @@ export type TToolDrawCreateUpdateDraftArgs = {
   now: number;
 };
 
-export type TToolDrawCreateBehavior = {
-  startDraft: (args: TToolDrawCreateStartDraftArgs) => Konva.Node | null;
-  updateDraft: (previewNode: Konva.Node, args: TToolDrawCreateUpdateDraftArgs) => unknown;
-};
+export type TToolSessionFactory = (
+  event: TToolPointerEvent,
+) => TToolSession | null;
 
-/**
- * Tool metadata registered by feature plugins.
- * Toolbar should render from this registry instead of hardcoded tool lists.
- */
 export type TTool = {
   id: string;
   label: string;
+  tone?: "draft";
   icon?: TToolIcon;
   shortcuts?: TToolShortcut[];
-  group?: string; // planned for dropdown
+  group?: string;
   priority?: number;
   active?: boolean;
   onSelect?: () => void;
+  onActivate?(): void;
+  onDeactivate?(): void;
   behavior:
     | { type: "mode"; mode: TToolMode }
     | { type: "action" }
     | { type: "modal" };
-  drawCreate?: TToolDrawCreateBehavior;
+  createSession?: TToolSessionFactory;
+  widgetPlacement?: TWidgetDropRequest;
 };

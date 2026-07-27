@@ -84,8 +84,7 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
     homedir: homedir(),
     env: process.env,
     execPath: process.execPath,
-    dbPath: args.config.dbPath,
-    xdgPaths: args.config.xdgPaths,
+    vibecanvasHomeDir: args.config.home.homeDir,
   });
 
   printPlan(plan, dryRun);
@@ -95,7 +94,7 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
   }
 
   if (!values.yes) {
-    console.log('[Uninstall] This deletes local Vibecanvas config, data, state, and cache.');
+    console.log('[Uninstall] This deletes the local Vibecanvas home and installation files.');
     const confirmed = await confirmUninstall();
     if (!confirmed) {
       console.error('[Uninstall] Cancelled. Pass --yes to run non-interactively.');

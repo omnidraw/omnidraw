@@ -1,80 +1,71 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import Konva from "konva";
-import { createComponent, createMemo, createSignal } from "solid-js";
-import { render as renderSolid } from "solid-js/web";
+import {
+  createComponent,
+  createMemo,
+  createSignal,
+} from "solid-js";
+import { render } from "solid-js/web";
 import { SelectionStyleMenu } from "../../components/SelectionStyleMenu";
-import { txApplySelectionStyleChange, txApplySelectionStyleChangeRuntime, txCommitSelectionStyleChange, txCreateSelectionStyleChangePlan } from "../../core/tx.apply-selection-style-change";
-import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
-import { fxMountSelectionStyleMenu } from "./fx.mount-selection-style-menu";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  IRuntimeServices,
+} from "../../types";
+import { txMountSelectionStyleMenu } from "./tx.mount-selection-style-menu";
 
-type TSelectionStyleMenuTimer = number | ReturnType<typeof globalThis.setTimeout>;
-
-export function createSelectionStyleMenuPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
-  let menuMount: ReturnType<typeof fxMountSelectionStyleMenu> | null = null;
-
+export function createSelectionStyleMenuPlugin(): IPlugin<
+  IRuntimeServices,
+  IRuntimeHooks,
+  IRuntimeConfig
+> {
   return {
     name: "selection-style-menu",
     apply(ctx) {
-      const element = ctx.services.require("element");
-      const tool = ctx.services.require("tool");
-      const session = ctx.services.require("session");
       const crdt = ctx.services.require("crdt");
+      const element = ctx.services.require("element");
       const history = ctx.services.require("history");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
+      const session = ctx.services.require("session");
       const theme = ctx.services.require("theme");
+      const tool = ctx.services.require("tool");
+      let mount: ReturnType<typeof txMountSelectionStyleMenu> | null = null;
 
       ctx.hooks.init.tap(() => {
-        const setSelectionStyleMenuTimeout = (handler: () => void, timeout?: number): TSelectionStyleMenuTimer => {
-          const view = scene.container.ownerDocument.defaultView;
-          if (view) {
-            return view.setTimeout(handler, timeout);
-          }
-
-          return globalThis.setTimeout(handler, timeout);
-        };
-
-        const clearSelectionStyleMenuTimeout = (timer: TSelectionStyleMenuTimer | null) => {
-          if (timer === null) {
-            return;
-          }
-
-          const view = scene.container.ownerDocument.defaultView;
-          if (view && typeof timer === "number") {
-            view.clearTimeout(timer);
-            return;
-          }
-
-          globalThis.clearTimeout(timer);
-        };
-
-        menuMount = fxMountSelectionStyleMenu({
-          Konva,
-          SelectionStyleMenu,
-          createComponent,
-          createMemo,
-          createSignal,
-          renderSolid,
-          txApplySelectionStyleChange,
-          txApplySelectionStyleChangeRuntime,
-          txCommitSelectionStyleChange,
-          txCreateSelectionStyleChangePlan,
-          setTimeout: setSelectionStyleMenuTimeout,
-          clearTimeout: clearSelectionStyleMenuTimeout,
-          element,
-          crdt,
-          history,
-          scene,
-          selection,
-          theme,
-          session,
-          tool
-        }, {});
+        const view = scene.container.ownerDocument.defaultView;
+        mount = txMountSelectionStyleMenu(
+          {
+            SelectionStyleMenu,
+            createComponent,
+            createMemo,
+            createSignal,
+            render,
+            now: () => Date.now(),
+            setTimeout: (handler, timeout) => {
+              if (view === null) {
+                handler();
+                return -1;
+              }
+              return view.setTimeout(handler, timeout);
+            },
+            clearTimeout: (timer) => {
+              view?.clearTimeout(timer);
+            },
+            crdt,
+            element,
+            history,
+            scene,
+            selection,
+            session,
+            theme,
+            tool,
+          },
+          {},
+        );
       });
-
       ctx.hooks.destroy.tap(() => {
-        menuMount?.dispose();
-        menuMount = null;
+        mount?.dispose();
+        mount = null;
       });
     },
   };

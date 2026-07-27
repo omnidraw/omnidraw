@@ -1,318 +1,169 @@
-import Konva from "konva";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { beforeEach, describe, expect, test } from "vitest";
-import { CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from "../../../src/plugins/camera-control/CONSTANTS";
-import { CanvasMode } from "../../../src/services/selection/CONSTANTS";
-import { createMockDocHandle, createNewCanvasHarness, flushCanvasEffects } from "../../new-test-setup";
+import { SyncHook } from "@vibecanvas/tapable";
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "../../../src/CONSTANTS";
+import { createCameraControlPlugin } from "../../../src/plugins/camera-control/CameraControl.plugin";
+import {
+  MAX_CAMERA_ZOOM,
+  MIN_CAMERA_ZOOM,
+} from "../../../src/plugins/camera-control/CONSTANTS";
+import { fnNormalizeCameraState } from "../../../src/plugins/camera-control/fn.normalize-camera-state";
+import { ensureDom } from "../../test-setup";
 
-function createRectElement(id = "shape-1"): TElement {
+class TestHook<TArgs extends unknown[]> {
+  readonly listeners: Array<(...args: TArgs) => unknown> = [];
+  tap(listener: (...args: TArgs) => unknown) {
+    this.listeners.push(listener);
+    return () => {
+      const index = this.listeners.indexOf(listener);
+      if (index >= 0) this.listeners.splice(index, 1);
+      return true;
+    };
+  }
+  call(...args: TArgs) {
+    for (const listener of [...this.listeners]) listener(...args);
+  }
+}
+
+function pointerEvent(overrides: Record<string, unknown> = {}) {
   return {
-    id,
-    x: 100,
-    y: 100,
-    rotation: 0,
-    zIndex: "z00000001",
-    parentGroupId: null,
-    bindings: [],
-    locked: false,
-    createdAt: 1,
-    updatedAt: 1,
-    style: {
-      backgroundColor: "#ffffff",
-      strokeColor: "#111111",
-      strokeWidth: "@stroke-width/thin",
-      opacity: 1,
+    type: "pointer-move",
+    pointerId: 1,
+    button: 0,
+    buttons: 1,
+    pointerType: "mouse",
+    client: { x: 0, y: 0 },
+    viewport: { x: 0, y: 0 },
+    world: { x: 0, y: 0 },
+    pressure: 0,
+    tilt: { x: 0, y: 0 },
+    deltaViewport: { x: 12, y: -8 },
+    deltaWorld: { x: 12, y: -8 },
+    hit: null,
+    timeStamp: 1,
+    modifiers: {
+      alt: false,
+      control: false,
+      meta: false,
+      shift: false,
     },
-    data: {
-      type: "rect",
-      w: 40,
-      h: 40,
-    },
+    ...overrides,
   };
 }
 
-function getRectNode(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>, id: string) {
-  const node = harness.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-    return candidate instanceof Konva.Rect && candidate.id() === id;
-  });
-
-  if (!(node instanceof Konva.Rect)) {
-    throw new Error(`Expected rect node '${id}'`);
-  }
-
-  return node;
-}
-
-async function createHandHarness(args?: { canvasId?: string }) {
-  const element = createRectElement();
-  const harness = await createNewCanvasHarness({
-    canvasId: args?.canvasId,
-    docHandle: createMockDocHandle({
-      elements: {
-        [element.id]: structuredClone(element),
-      },
-    }),
-  });
-  const tool = harness.runtime.services.require("tool");
-  const selection = harness.runtime.services.require("selection");
-  const camera = harness.runtime.services.require("camera");
-  const shape = getRectNode(harness, element.id);
-
-  const handLayer = harness.stage.container()?.querySelector("#hand-layer")
-  expect(handLayer).toBeTruthy();
-
-  return {
-    ...harness,
-    tool,
-    selection,
-    camera,
-    handLayer: handLayer!,
-    shape,
-  };
-}
-
-function dispatchPointerEvent(target: EventTarget, type: string, init: PointerEventInit) {
-  const event = new PointerEvent(type, { bubbles: true, cancelable: true, ...init });
-  target.dispatchEvent(event);
-  return event;
-}
-
-function readStoredViewports() {
-  const storedValue = localStorage.getItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY);
-  if (storedValue === null) {
-    return {};
-  }
-
-  return JSON.parse(storedValue) as Record<string, { x: number; y: number; zoom: number }>;
-}
-
-function readStoredViewport(canvasId: string) {
-  return readStoredViewports()[canvasId] ?? null;
-}
-
-function setStagePointer(stage: Konva.Stage, point: { x: number; y: number }) {
-  stage.setPointersPositions(new MouseEvent("mousemove", {
-    clientX: point.x,
-    clientY: point.y,
-  }));
-}
-
-describe("new CameraControl plugin", () => {
+describe("CameraControl plugin", () => {
   beforeEach(() => {
-    localStorage.clear();
+    ensureDom();
   });
 
-  test("hand drag pans camera and resets drag state on release", async () => {
-    const { destroy, tool, selection, camera, handLayer } = await createHandHarness();
-
-    tool.setActiveTool("hand");
-    await flushCanvasEffects();
-
-    expect(selection.mode).toBe(CanvasMode.HAND);
-    expect(handLayer.style.display).toBe("block");
-    expect(handLayer.style.pointerEvents).toBe("auto");
-    expect(handLayer.style.cursor).toBe("grab");
-
-    dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 1, clientX: 320, clientY: 220 });
-    expect(handLayer.style.cursor).toBe("grabbing");
-
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 1, clientX: 360, clientY: 250 });
-
-    expect(camera.x).toBe(40);
-    expect(camera.y).toBe(30);
-
-    dispatchPointerEvent(handLayer, "pointerup", { pointerId: 1, clientX: 360, clientY: 250 });
-    expect(handLayer.style.cursor).toBe("grab");
-
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 1, clientX: 410, clientY: 290 });
-    expect(camera.x).toBe(40);
-    expect(camera.y).toBe(30);
-
-    await destroy();
-  });
-
-  test("hand layer blocks selection and shape drag interactions", async () => {
-    const { destroy, tool, selection, camera, handLayer, shape } = await createHandHarness();
-
-    tool.setActiveTool("hand");
-    await flushCanvasEffects();
-
-    const beforeShapePosition = { x: shape.x(), y: shape.y() };
-    dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 2, clientX: 500, clientY: 260 });
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 2, clientX: 530, clientY: 280 });
-    dispatchPointerEvent(handLayer, "pointerup", { pointerId: 2, clientX: 530, clientY: 280 });
-
-    expect(selection.selection).toHaveLength(0);
-    expect({ x: shape.x(), y: shape.y() }).toEqual(beforeShapePosition);
-    expect(camera.x).toBe(30);
-    expect(camera.y).toBe(20);
-
-    await destroy();
-  });
-
-  test("leaving hand mode mid-drag clears internal drag state", async () => {
-    const { destroy, tool, selection, camera, handLayer } = await createHandHarness();
-
-    tool.setActiveTool("hand");
-    await flushCanvasEffects();
-
-    dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 3, clientX: 200, clientY: 180 });
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 3, clientX: 230, clientY: 210 });
-
-    expect(selection.mode).toBe(CanvasMode.HAND);
-    expect(camera.x).toBe(30);
-    expect(camera.y).toBe(30);
-    expect(handLayer.style.cursor).toBe("grabbing");
-
-    tool.setActiveTool("select");
-    await flushCanvasEffects();
-
-    expect(selection.mode).toBe(CanvasMode.SELECT);
-    expect(handLayer.style.display).toBe("none");
-    expect(handLayer.style.pointerEvents).toBe("none");
-    expect(handLayer.style.cursor).toBe("default");
-
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 3, clientX: 280, clientY: 260 });
-    expect(camera.x).toBe(30);
-    expect(camera.y).toBe(30);
-
-    await destroy();
-  });
-
-  test("restores a saved viewport for the same canvas id on boot", async () => {
-    const canvasId = "camera-restore";
-    localStorage.setItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, JSON.stringify({
-      [canvasId]: {
-        x: 120,
-        y: -40,
-        zoom: 2.5,
+  it("uses normalized pointer and wheel input without a renderer overlay", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const capturePointer = vi.fn();
+    const releasePointer = vi.fn();
+    const pan = vi.fn();
+    const zoomAtScreenPoint = vi.fn();
+    const hooks = {
+      init: new TestHook<[]>(),
+      destroy: new TestHook<[]>(),
+      toolSelect: new TestHook<[string]>(),
+      pointerDown: new TestHook<[ReturnType<typeof pointerEvent>]>(),
+      pointerMove: new TestHook<[ReturnType<typeof pointerEvent>]>(),
+      pointerUp: new TestHook<[ReturnType<typeof pointerEvent>]>(),
+      pointerCancel: new TestHook<[ReturnType<typeof pointerEvent>]>(),
+      pointerWheel: new TestHook<[ReturnType<typeof pointerEvent>]>(),
+    };
+    const camera = {
+      x: 0,
+      y: 0,
+      zoom: 2,
+      pan,
+      zoomAtScreenPoint,
+      setViewport: vi.fn(),
+      hooks: { change: new SyncHook<[]>() },
+    };
+    const services = new Map<string, unknown>([
+      ["camera", camera],
+      ["scene", {
+        container,
+        input: { capturePointer, releasePointer },
+      }],
+      ["tool", { activeToolId: "hand" }],
+    ]);
+    createCameraControlPlugin().apply({
+      hooks,
+      services: {
+        require: (name: string) => services.get(name),
       },
-    }));
-
-    const harness = await createNewCanvasHarness({ canvasId });
-    const camera = harness.runtime.services.require("camera");
-
-    expect(camera.x).toBe(120);
-    expect(camera.y).toBe(-40);
-    expect(camera.zoom).toBe(2.5);
-
-    await harness.destroy();
-  });
-
-  test("keeps stored viewport state isolated per canvas id", async () => {
-    localStorage.setItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, JSON.stringify({
-      "canvas-a": {
-        x: 75,
-        y: 25,
-        zoom: 1.75,
+      config: {
+        canvasId: "camera-test",
+        tenant: LOCAL_BROWSER_TENANT_SCOPE,
       },
-    }));
-
-    const canvasBHarness = await createNewCanvasHarness({ canvasId: "canvas-b" });
-    const canvasBCamera = canvasBHarness.runtime.services.require("camera");
-
-    expect(canvasBCamera.x).toBe(0);
-    expect(canvasBCamera.y).toBe(0);
-    expect(canvasBCamera.zoom).toBe(1);
-
-    await canvasBHarness.destroy();
-
-    const canvasAHarness = await createNewCanvasHarness({ canvasId: "canvas-a" });
-    const canvasACamera = canvasAHarness.runtime.services.require("camera");
-
-    expect(canvasACamera.x).toBe(75);
-    expect(canvasACamera.y).toBe(25);
-    expect(canvasACamera.zoom).toBe(1.75);
-
-    await canvasAHarness.destroy();
-  });
-
-  test("falls back safely for malformed or invalid stored viewport state", async () => {
-    const scenarios = [
-      {
-        canvasId: "camera-missing-fields",
-        rawValue: JSON.stringify({ x: 10, y: 20 }),
-        expected: { x: 0, y: 0, zoom: 1 },
-      },
-      {
-        canvasId: "camera-non-finite",
-        rawValue: "{\"x\":1e309,\"y\":20,\"zoom\":1}",
-        expected: { x: 0, y: 0, zoom: 1 },
-      },
-      {
-        canvasId: "camera-clamped-zoom",
-        rawValue: JSON.stringify({ x: 10, y: 20, zoom: 999 }),
-        expected: { x: 10, y: 20, zoom: MAX_CAMERA_ZOOM },
-      },
-      {
-        canvasId: "camera-clamped-min-zoom",
-        rawValue: JSON.stringify({ x: 10, y: 20, zoom: 0.001 }),
-        expected: { x: 10, y: 20, zoom: MIN_CAMERA_ZOOM },
-      },
-    ];
-
-    for (const scenario of scenarios) {
-      localStorage.setItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, JSON.stringify({
-        [scenario.canvasId]: JSON.parse(scenario.rawValue),
-      }));
-
-      const harness = await createNewCanvasHarness({ canvasId: scenario.canvasId });
-      const camera = harness.runtime.services.require("camera");
-
-      expect({ x: camera.x, y: camera.y, zoom: camera.zoom }).toEqual(scenario.expected);
-
-      await harness.destroy();
-    }
-
-    localStorage.setItem(CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, "{\"camera-invalid-json\":");
-    const malformedHarness = await createNewCanvasHarness({ canvasId: "camera-invalid-json" });
-    const malformedCamera = malformedHarness.runtime.services.require("camera");
-
-    expect({ x: malformedCamera.x, y: malformedCamera.y, zoom: malformedCamera.zoom }).toEqual({ x: 0, y: 0, zoom: 1 });
-
-    await malformedHarness.destroy();
-  });
-
-  test("clamps live canvas zoom to the 0.1 through 6.0 range", async () => {
-    const harness = await createNewCanvasHarness();
-    const camera = harness.runtime.services.require("camera");
-
-    camera.setViewport({ x: 0, y: 0, zoom: 0.001 });
-    expect(camera.zoom).toBe(MIN_CAMERA_ZOOM);
-    expect(harness.staticForegroundLayer.scaleX()).toBe(MIN_CAMERA_ZOOM);
-
-    camera.setViewport({ x: 0, y: 0, zoom: 100 });
-    expect(camera.zoom).toBe(MAX_CAMERA_ZOOM);
-    expect(harness.staticForegroundLayer.scaleX()).toBe(MAX_CAMERA_ZOOM);
-
-    await harness.destroy();
-  });
-
-  test("persists viewport changes after hand pan and ctrl-wheel zoom", async () => {
-    const canvasId = "camera-persist";
-    const { destroy, tool, camera, handLayer, runtime, stage } = await createHandHarness({ canvasId });
-
-    tool.setActiveTool("hand");
-    await flushCanvasEffects();
-
-    dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 10, clientX: 320, clientY: 220 });
-    dispatchPointerEvent(handLayer, "pointermove", { pointerId: 10, clientX: 360, clientY: 250 });
-    dispatchPointerEvent(handLayer, "pointerup", { pointerId: 10, clientX: 360, clientY: 250 });
-
-    expect(readStoredViewport(canvasId)).toEqual({ x: 40, y: 30, zoom: 1 });
-
-    setStagePointer(stage, { x: 400, y: 300 });
-    runtime.hooks.pointerWheel.call({
-      evt: new WheelEvent("wheel", { ctrlKey: true, deltaY: -120, cancelable: true }),
     } as never);
 
-    const storedViewport = readStoredViewport(canvasId);
-    expect(storedViewport).not.toBeNull();
-    expect(storedViewport?.x).toBeCloseTo(camera.x, 6);
-    expect(storedViewport?.y).toBeCloseTo(camera.y, 6);
-    expect(storedViewport?.zoom).toBeCloseTo(camera.zoom, 6);
-    expect(storedViewport?.zoom).toBeGreaterThan(1);
+    hooks.init.call();
+    hooks.pointerDown.call(pointerEvent({ type: "pointer-down" }));
+    hooks.pointerMove.call(pointerEvent());
+    hooks.pointerUp.call(pointerEvent({ type: "pointer-up" }));
 
-    await destroy();
+    expect(capturePointer).toHaveBeenCalledWith(
+      1,
+      "camera-control:hand",
+    );
+    expect(pan).toHaveBeenCalledWith(-12, 8);
+    expect(releasePointer).toHaveBeenCalledWith(
+      1,
+      "camera-control:hand",
+    );
+
+    hooks.pointerWheel.call(pointerEvent({
+      type: "wheel",
+      delta: { x: 4, y: 10 },
+      modifiers: {
+        alt: false,
+        control: false,
+        meta: false,
+        shift: false,
+      },
+    }));
+    expect(pan).toHaveBeenLastCalledWith(4, 10);
+    hooks.pointerWheel.call(pointerEvent({
+      type: "wheel",
+      viewport: { x: 40, y: 50 },
+      delta: { x: 0, y: -10 },
+      modifiers: {
+        alt: false,
+        control: true,
+        meta: false,
+        shift: false,
+      },
+    }));
+    expect(zoomAtScreenPoint).toHaveBeenCalledWith(
+      2 * 1.03,
+      { x: 40, y: 50 },
+    );
+    expect(container.querySelector("#hand-layer")).toBeNull();
+
+    hooks.destroy.call();
+    container.remove();
+  });
+
+  it("normalizes malformed persisted values and clamps zoom", () => {
+    expect(fnNormalizeCameraState({ value: null })).toEqual({
+      x: 0,
+      y: 0,
+      zoom: 1,
+    });
+    expect(fnNormalizeCameraState({
+      value: { x: 10, y: -20, zoom: 100 },
+    })).toEqual({ x: 10, y: -20, zoom: MAX_CAMERA_ZOOM });
+    expect(fnNormalizeCameraState({
+      value: { x: 10, y: -20, zoom: 0.001 },
+    })).toEqual({ x: 10, y: -20, zoom: MIN_CAMERA_ZOOM });
   });
 });

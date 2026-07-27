@@ -1,211 +1,216 @@
 import type { IService } from "@vibecanvas/runtime";
 import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
 import { SyncHook } from "@vibecanvas/tapable";
-import type Konva from "konva";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
-import type { CrdtService, ElementService, SceneService, SelectionService } from "..";
-import { fxGetCanvasPoint } from "./fx.get-canvas-point";
-import type { TTool, TToolCanvasPoint, TToolPointerEvent } from "./types";
+import type {
+  TTool,
+  TToolPointerEvent,
+  TToolSession,
+  TToolSessionCancelReason,
+} from "./types";
 export * from "./types";
 
 export interface TToolServiceHooks {
   toolsChange: SyncHook<[]>;
   activeToolChange: SyncHook<[string]>;
+  sessionChange: SyncHook<[TToolSession | null]>;
+  error: SyncHook<[unknown]>;
 }
 
+/**
+ * Product tool/session registry. Preview ownership belongs to the session's
+ * engine interaction or transient owner; this service never stores a renderer
+ * node and never writes CRDT on its own.
+ */
 export class ToolService implements IService<TToolServiceHooks> {
-  readonly name = "ToolService";
+  readonly name = "tool";
   readonly hooks: TToolServiceHooks = {
-    toolsChange: new SyncHook<[]>,
-    activeToolChange: new SyncHook<[string]>,
+    toolsChange: new SyncHook(),
+    activeToolChange: new SyncHook(),
+    sessionChange: new SyncHook(),
+    error: new SyncHook(),
   };
-  #activeToolId = "select";
+
   readonly #tools = new Map<string, TTool>();
-  readonly #toolHookCleanupMap = new Map<string, (() => unknown)[]>();
-  readonly #runtimeHooks!: IRuntimeHooks;
-  #previewOrigin: TToolCanvasPoint | null = null;
+  #activeToolId = "select";
+  #activeSession: TToolSession | null = null;
+  #runtimeHooks: IRuntimeHooks | null = null;
+  #cleanups: Array<() => unknown> = [];
 
-  constructor(
-    private sceneService: SceneService,
-    private elementService: ElementService,
-    private crdt: CrdtService,
-    private selection: SelectionService,
-  ) { }
+  get activeToolId(): string {
+    return this.#activeToolId;
+  }
 
-  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
-    // @ts-expect-error this is safe, start runs before any use
+  get activeSession(): TToolSession | null {
+    return this.#activeSession;
+  }
+
+  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void {
+    if (this.#runtimeHooks !== null) {
+      return;
+    }
     this.#runtimeHooks = ctx.hooks;
+    this.#cleanups = [
+      ctx.hooks.pointerDown.tap((event) => {
+        this.#beginFromActiveTool(event);
+      }),
+      ctx.hooks.pointerMove.tap((event) => {
+        this.#activeSession?.update?.(event);
+      }),
+      ctx.hooks.pointerUp.tap((event) => {
+        void this.#commitSession(event);
+      }),
+      ctx.hooks.pointerCancel.tap(() => {
+        void this.cancelActiveSession("pointer-cancel");
+      }),
+      ctx.hooks.keydown.tap((event) => {
+        if (event.key !== "Escape") {
+          return;
+        }
+        void this.cancelActiveSession("escape");
+        if (this.#tools.has("select")) {
+          this.setActiveTool("select");
+        }
+      }),
+      ctx.hooks.destroy.tap(() => {
+        void this.cancelActiveSession("destroy");
+      }),
+    ];
   }
 
-  get activeToolId() {
-    return this.#activeToolId
+  stop(): void {
+    for (const cleanup of this.#cleanups.splice(0)) {
+      cleanup();
+    }
+    this.#runtimeHooks = null;
+    void this.cancelActiveSession("destroy");
   }
 
-  registerTool(tool: TTool) {
+  registerTool(tool: TTool): () => void {
+    if (tool.id.trim().length === 0) {
+      throw new TypeError("Tool ID must be non-empty.");
+    }
     if (this.#tools.has(tool.id)) {
       this.unregisterTool(tool.id);
     }
-
     this.#tools.set(tool.id, tool);
-    const cleanupHooks: (() => unknown)[] = [];
-
-    // setup create-draw
-    if (tool.behavior.type === "mode" && tool.behavior.mode === "draw-create" && tool.drawCreate) {
-      cleanupHooks.push(this.#runtimeHooks.pointerDown.tap((event) => {
-        if (this.#activeToolId !== tool.id) {
-          return;
-        }
-
-        const point = fxGetCanvasPoint({ scene: this.sceneService }, { event });
-        if (!point) {
-          return;
-        }
-
-        const preview = tool.drawCreate?.startDraft({ event, point });
-        this.#previewOrigin = point;
-        if (preview) {
-          this.sceneService.setPreviewNode(preview);
-        }
-      }));
-
-      cleanupHooks.push(this.#runtimeHooks.pointerMove.tap((event) => {
-        if (this.#activeToolId !== tool.id) {
-          return;
-        }
-
-        if (!this.sceneService.previewNode || !this.#previewOrigin) {
-          return;
-        }
-
-        const point = fxGetCanvasPoint({ scene: this.sceneService }, { event: event as TToolPointerEvent });
-        if (!point) {
-          return;
-        }
-
-        tool.drawCreate?.updateDraft(this.sceneService.previewNode, {
-          draft: this.sceneService.previewNode,
-          event: event as TToolPointerEvent,
-          point,
-          origin: this.#previewOrigin,
-          shiftKey: event.evt.shiftKey,
-          now: Date.now(),
-        });
-      }));
-
-      cleanupHooks.push(this.#runtimeHooks.pointerUp.tap(() => {
-        if (this.#activeToolId !== tool.id) {
-          return;
-        }
-
-        if (!this.sceneService.previewNode) {
-          return;
-        }
-
-        this.commitPreview();
-      }));
-
-      cleanupHooks.push(this.hooks.activeToolChange.tap((activeToolId) => {
-        if (activeToolId === tool.id) {
-          return;
-        }
-
-        if (!this.sceneService.previewNode) {
-          return;
-        }
-
-        this.sceneService.clearPreviewState();
-      }));
-    }
-
-    this.#toolHookCleanupMap.set(tool.id, cleanupHooks);
     this.hooks.toolsChange.call();
+    let registered = true;
+    return () => {
+      if (!registered) {
+        return;
+      }
+      registered = false;
+      this.unregisterTool(tool.id);
+    };
   }
 
-  /**
-   * Removes a tool from the editor registry.
-   */
-  unregisterTool(id: string) {
-    const didDelete = this.#tools.delete(id);
-    this.#toolHookCleanupMap.get(id)?.forEach((cleanup) => cleanup());
-    this.#toolHookCleanupMap.delete(id);
-    if (!didDelete) {
+  unregisterTool(id: string): void {
+    const tool = this.#tools.get(id);
+    if (tool === undefined) {
       return;
     }
-
     if (this.#activeToolId === id) {
-      this.#activeToolId = "select";
+      void this.cancelActiveSession("unregister");
+      tool.onDeactivate?.();
+      this.#activeToolId = this.#tools.has("select") && id !== "select"
+        ? "select"
+        : "";
       this.hooks.activeToolChange.call(this.#activeToolId);
     }
-
+    this.#tools.delete(id);
     this.hooks.toolsChange.call();
   }
 
-  /**
-   * Returns one registered tool by id.
-   */
-  getTool(id: string) {
+  getTool(id: string): TTool | undefined {
     return this.#tools.get(id);
   }
 
-  /**
-   * Returns registered tools in stable toolbar order.
-   * Priority is expected in the range 0..10000.
-   */
-  getTools() {
+  getTools(): TTool[] {
     return [...this.#tools.values()].sort((left, right) => {
-      const leftPriority = left.priority ?? 10000;
-      const rightPriority = right.priority ?? 10000;
-      if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
-      }
-
-      return left.label.localeCompare(right.label);
+      const priority = (left.priority ?? 10_000) - (right.priority ?? 10_000);
+      return priority || left.label.localeCompare(right.label);
     });
   }
 
-  /**
-   * Sets the current active tool if it exists.
-   */
-  setActiveTool(id: string) {
-    if (!this.#tools.has(id)) {
-      return;
+  setActiveTool(id: string): boolean {
+    const next = this.#tools.get(id);
+    if (next === undefined || id === this.#activeToolId) {
+      return false;
     }
-
-    if (this.#activeToolId === id) {
-      return;
-    }
-
+    const previous = this.#tools.get(this.#activeToolId);
+    void this.cancelActiveSession("tool-change");
+    previous?.onDeactivate?.();
     this.#activeToolId = id;
+    next.onActivate?.();
+    next.onSelect?.();
     this.hooks.activeToolChange.call(id);
+    return true;
   }
 
-  private commitPreview() {
-    if (!this.sceneService.previewNode) {
+  beginSession(session: TToolSession): void {
+    if (session.id.trim().length === 0) {
+      throw new TypeError("Tool session ID must be non-empty.");
+    }
+    if (this.#activeSession === session) {
       return;
     }
+    void this.cancelActiveSession("replaced");
+    this.#activeSession = session;
+    this.hooks.sessionChange.call(session);
+  }
 
-    const previewNode = this.sceneService.previewNode;
-    previewNode.id(crypto.randomUUID())
-    const element = this.elementService.toElement(previewNode);
-    if (!element) {
-      this.sceneService.clearPreviewState();
+  completeSession(id: string): boolean {
+    const session = this.#activeSession;
+    if (session === null || session.id !== id) {
+      return false;
+    }
+    this.#activeSession = null;
+    this.hooks.sessionChange.call(null);
+    return true;
+  }
+
+  async cancelActiveSession(reason: TToolSessionCancelReason): Promise<void> {
+    const session = this.#activeSession;
+    if (session === null) {
       return;
     }
+    this.#activeSession = null;
+    this.hooks.sessionChange.call(null);
+    try {
+      await session.cancel(reason);
+    } catch (error) {
+      this.hooks.error.call(error);
+    }
+  }
 
-    const newNode = this.elementService.createNodeFromElement(element);
-    if (!newNode) {
-      this.sceneService.clearPreviewState();
+  #beginFromActiveTool(event: TToolPointerEvent): void {
+    if (this.#activeSession !== null) {
       return;
     }
+    const tool = this.#tools.get(this.#activeToolId);
+    const session = tool?.createSession?.(event) ?? null;
+    if (session !== null) {
+      this.beginSession(session);
+    }
+  }
 
-    this.sceneService.staticForegroundLayer.add(newNode as Konva.Group | Konva.Shape);
-    const builder = this.crdt.build();
-    builder.patchElement(element.id, element);
-    builder.commit();
-    this.selection.setSelection([newNode]);
-    this.selection.setFocusedNode(newNode);
-    this.sceneService.clearPreviewState();
-    this.setActiveTool("select");
-    this.sceneService.staticForegroundLayer.batchDraw();
+  async #commitSession(event: TToolPointerEvent): Promise<void> {
+    const session = this.#activeSession;
+    if (session === null) {
+      return;
+    }
+    this.#activeSession = null;
+    this.hooks.sessionChange.call(null);
+    try {
+      await session.commit?.(event);
+    } catch (error) {
+      this.hooks.error.call(error);
+      try {
+        await session.cancel("commit-failed");
+      } catch (cancelError) {
+        this.hooks.error.call(cancelError);
+      }
+    }
   }
 }

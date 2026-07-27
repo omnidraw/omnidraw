@@ -2,7 +2,7 @@ import type { TCanvasDoc, TElement, TElementStyle, TGroup, TRectData } from '@vi
 import * as schema from '@vibecanvas/service-db/schema';
 import { expect } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,9 +35,7 @@ export type TSeededCanvas = {
 
 export type TCliTestContext = {
   tempRoot: string;
-  dataDir: string;
-  cacheDir: string;
-  configDir: string;
+  homeDir: string;
   dbPath: string;
   cleanup: () => Promise<void>;
   listCanvases: () => Promise<TCanvasRow[]>;
@@ -45,7 +43,6 @@ export type TCliTestContext = {
   readCanvasDoc: (automergeUrl: string) => Promise<TCanvasDoc>;
   runProcess: (args: { cmd: string[]; cwd?: string; env?: NodeJS.ProcessEnv; stdinText?: string }) => Promise<TProcessResult>;
   runVibecanvasCli: (args: readonly string[]) => Promise<TProcessResult>;
-  runCanvasCli: (args: readonly string[]) => Promise<TProcessResult>;
 };
 
 function sanitizeEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
@@ -58,16 +55,8 @@ function encodePayload(payload: unknown): string {
 
 export async function createCliTestContext(): Promise<TCliTestContext> {
   const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-cli-'));
-  const dataDir = join(tempRoot, 'data');
-  const cacheDir = join(tempRoot, 'cache');
-  const configDir = join(tempRoot, 'config');
-  const dbPath = join(dataDir, 'vibecanvas.turso');
-
-  await Promise.all([
-    mkdir(dataDir, { recursive: true }),
-    mkdir(cacheDir, { recursive: true }),
-    mkdir(configDir, { recursive: true }),
-  ]);
+  const homeDir = join(tempRoot, 'vibecanvas');
+  const dbPath = join(homeDir, 'main.db');
 
   let cleanedUp = false;
 
@@ -110,24 +99,17 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
     });
   };
 
-  const runVibecanvasCli = (args: readonly string[]) => runProcess({ cmd: ['bun', 'run', 'apps/cli/src/main.ts', ...args], cwd: REPO_ROOT, env: { ...process.env, VIBECANVAS_CONFIG: configDir } });
-
-  const runCanvasCli = (args: readonly string[]) => {
-    if (args.includes('--db')) throw new Error('runCanvasCli() appends --db automatically; tests must not pass it twice.');
-    return runVibecanvasCli(['canvas', ...args, '--db', dbPath]);
-  };
+  const runVibecanvasCli = (args: readonly string[]) => runProcess({ cmd: ['bun', 'run', 'apps/cli/src/main.ts', ...args], cwd: REPO_ROOT, env: { ...process.env, VIBECANVAS_HOME: homeDir } });
 
   const runHarnessWorker = async <TResult>(command: string, payload: unknown): Promise<TResult> => {
-    const result = await runProcess({ cmd: ['bun', 'run', 'apps/cli/tests/plugins/cli/harness.worker.ts', command, encodePayload(payload)], cwd: REPO_ROOT, env: { ...process.env, VIBECANVAS_CONFIG: configDir } });
+    const result = await runProcess({ cmd: ['bun', 'run', 'apps/cli/tests/plugins/cli/harness.worker.ts', command, encodePayload(payload)], cwd: REPO_ROOT, env: { ...process.env, VIBECANVAS_HOME: homeDir } });
     if (result.exitCode !== 0) throw new Error(`Harness worker failed for ${command}: ${result.stderr || result.stdout}`);
     return result.stdout.trim() ? JSON.parse(result.stdout) as TResult : (undefined as TResult);
   };
 
   return {
     tempRoot,
-    dataDir,
-    cacheDir,
-    configDir,
+    homeDir,
     dbPath,
     cleanup,
     listCanvases: () => runHarnessWorker<TCanvasRow[]>('list-canvases', { dbPath }),
@@ -135,7 +117,6 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
     readCanvasDoc: (automergeUrl: string) => runHarnessWorker<TCanvasDoc>('read-canvas-doc', { dbPath, automergeUrl }),
     runProcess,
     runVibecanvasCli,
-    runCanvasCli,
   };
 }
 

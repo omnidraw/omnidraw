@@ -3,15 +3,14 @@
 ## Introduction
 
 Building software is explorative, creative and sometimes dull and repetitive.
-This document outline the how build software in a highly technical,
+This document outline the how to build software in a highly technical,
 small and motivated team. The goal is to minimize management
-and maximize throughput. The idea behind Based is that programming is 90% context loading and 10% actual solving and coding. Therefore we should batch work for context loading and minimize context switching.
-Based skips the traditional agile ceremonies and focuses on the codebase and a glorified todo list.
+and maximize throughput. The idea behind `BASED` is that programming is 90% context loading and 10% actual solving and coding. Therefore we should batch work for context loading and minimize context switching.
+`BASED` skips the traditional agile ceremonies and focuses on the codebase and a glorified todo list.
 The todo list is the heart of the project. No tickets, no boards, no sprints, no backlog.
-Just a list of things to do. The list is grouped into 5 and ordered by importance within each group.
+Just a list of things to do. The list is grouped into 5 and ordered by number (Low to High).
 Every dev opens a branch and picks a set of items they want to work on. They open a file based on
-their branch and copy the items and explain what they are doing. Once merged the items are removed
-from the list the branch file is kept.
+their branch and copy the items and explain what they are doing. Once merged the items are checked or removed from the list the branch is kept.
 
 Every change in the codebase can be grouped into one of the following categories:
 
@@ -19,7 +18,7 @@ B ugs: Something is not working as expected.
 A dditions: New features or improvements.
 S ubtractions: Removing or simplifing parts of the codebase.
 E xplorations: Researching new technologies or ideas.
-D eployable: Important changes that are ready to be deployed.
+D ebt: Internal engineering work such as CI, scripts, test automation, developer tooling, maintenance, refactoring, and technical debt.
 
 The status are tagged:
 - [ ]: open
@@ -34,14 +33,14 @@ Remember to keep the codebase small. Small is clean, small is fast. Delete often
 
 ## Structure
 
-Based now lives at the repository root in `tasks/`.
+`BASED.md` now lives at the repository root in `tasks/`.
 
 - `tasks/BASED.md`: overview, active index, and conventions.
 - `tasks/b/`: bug files.
 - `tasks/a/`: addition files.
 - `tasks/s/`: subtraction files.
 - `tasks/e/`: exploration files.
-- `tasks/d/`: deployable files.
+- `tasks/d/`: debt task files.
 
 Each line in the overview stays short and links to one dedicated file.
 Each dedicated file stores the task context, TODOs, notes, and logs.
@@ -54,12 +53,13 @@ Overview entries use this format:
 `- [x]: [B1](b/B1.md) - text: edit jumping`
 
 Humans usually don't create leaf files. But agents do.
+Agents may create leaf files for every category, including D debt tasks.
 
 Leaf files use this format:
 
 ```md
 # B1 - text: edit jumping
-[Overview](../../BASED.md)
+[Overview](../../`BASED`.md)
 
 <Short summary - This is read by humans. Keep it short>
 
@@ -87,7 +87,29 @@ Use the overview for scanning.
 Use the leaf files for execution history and local context.
 Never put detailed plan in this file
 Never put leaf notes, lane breakdowns, execution history, or detailed task plans in this file.
-Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
+Editing `tasks/`BASED`.md` alone does not require a `FILES.md` bookkeeping update.
+
+## Inline Plan Visuals
+
+Task markdown renders images and Mermaid diagrams inline, so visuals belong in
+the leaf task's `## Plan` instead of living as detached references.
+
+- Every supplied, external, or generated image used by a task must be copied
+  next to that task's markdown file and embedded inside its `## Plan` with
+  normal Markdown image syntax.
+- Name the first image with the exact task id: `A100.md` -> `A100.png`. Name
+  additional images `A100-2.png`, `A100-3.png`, and so on. Other task types use
+  the same rule, for example `B12.png` or `E5-2.png`. Do not hotlink an external
+  asset when a local task-owned copy can be stored.
+- Use an inline fenced `mermaid` diagram in `## Plan` for flows, ownership,
+  state transitions, service relationships, or multi-step interactions.
+- Substantial Addition and Exploration plans should normally include at least
+  one useful inline image or Mermaid diagram. Simple one-step tasks may omit a
+  visual when it would add no information.
+- Visuals supplement the written plan and acceptance criteria; when they
+  disagree, the written task contract is authoritative.
+- When images where added from the user and they are still relevant (e.g. Bugreport) keep the images in the plan files you create / edit
+- All images just be compressed in size. Use cli tools
 
 ## B ugs
 - [x]: [B1](b/B1.md) - text: edit jumping
@@ -132,6 +154,25 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B41](b/B41.md) - binary: Turso `UPDATE ... RETURNING` crashes on actor instance with medium HTML state
 - [x]: [B42](b/B42.md) - release: macOS binary freezes after unsafe automatic upgrade
 - [x]: [B43](b/B43.md) - widgets: optimize Arrow sandbox dependency chain under TypeScript 7
+- [x]: [B44](b/B44.md) - ai wizard: preview loses mentioned resource after continuation prompt
+- [x]: [B45](b/B45.md) - image paste: pending local preview can persist without media upload
+- [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
+- [x]: [B47](b/B47.md) - image delete: remove media_files row
+- [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
+- [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
+- [x]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
+- [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
+- [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
+- [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
+- [x]: [B54](b/B54.md) - widget publish: retain the draft but show it only after edits
+- [ ]: [B55](b/B55.md) - image undo: hard delete removes the only restorable media record
+- [x]: [B56](b/B56.md) - canvas input: synthesize click and double-click from valid pointer sequences
+- [x]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
+- [x]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
+- [x]: [B59](b/B59.md) - `AuthStorage` export removed from `@earendil-works/pi-coding-agent` 0.80.10
+- [/]: [B60](b/B60.md) - canvas: finish Cangine interaction and image integration
+- [x]: [B61](b/B61.md) - widget projection: never publish a partial persisted canvas snapshot
+- [x]: [B62](b/B62.md) - AI widget authoring: restore durable validation and sidebar refresh
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -175,13 +216,13 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
 - [x]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
 - [ ]: [A43](a/A43.md) - db: add authz for public DB methods
-- [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
+- [-]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
-- [~]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
+- [x]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 - [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 - [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
 - [x]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
-- [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
+- [x]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
 - [x]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
 - [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
 - [x]: [A53](a/A53.md) - ai wizard: draft Actor runtime API setup
@@ -200,11 +241,31 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A66](a/A66.md) - toolbar: group widget tools into hover flyouts
 - [x]: [A67](a/A67.md) - actor runtime: state lifecycle hooks and single state activity
 - [x]: [A68](a/A68.md) - widgets: isolate loading failures and render in-frame error states
-- [ ]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
-- [ ]: [A70](a/A70.md) - actor resources: implement KvResource
-- [ ]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
-- [ ]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
+- [x]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
+- [x]: [A70](a/A70.md) - actor resources: implement KvResource
+- [x]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
+- [x]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
 - [x]: [A73](a/A73.md) - startup: create an empty canvas when none exists
+- [x]: [A74](a/A74.md) - actor resources: replace versioned DbResource migrations with coordinated drafts and applies
+- [x]: [A75](a/A75.md) - DB Resource UI
+- [x]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
+- [x]: [A77](a/A77.md) - AI chat: surface assistant and widget-level errors
+- [x]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
+- [ ]: [A79](a/A79.md) - onboarding: welcome canvas with inline tutorial
+- [x]: [A80](a/A80.md) - codex: prompt for a branch in fresh worktrees
+- [x]: [A81](a/A81.md) - docs: comprehensive UI screen atlas
+- [x]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
+- [x]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
+- [ ]: [A84](a/A84.md) - AI chat: slash commands for chat actions
+- [/]: [A85](a/A85.md) - canvas-engine real widget-host qualification
+- [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
+- [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
+- [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
+- [ ]: [A89](a/A89.md) - canvas document: add the versioned Cangine-node contract
+- [ ]: [A90](a/A90.md) - canvas: productionize the Automerge/Cangine bridge and history
+- [ ]: [A91](a/A91.md) - canvas: build copy-on-write v1-to-v2 migration and version gates
+- [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and product tools over to Cangine nodes
+- [/]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -258,18 +319,18 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 - [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
-- [~]: [S52] - remove drizzle use turso + raw sqlite
+- [x]: [S52] - remove drizzle use turso + raw sqlite
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 - [x]: [S54](s/S54.md) - simplify widget system
 - [x]: [S55](s/S55.md) - store images as blob not base64
-- [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
-- [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
+- [x]: [S56](s/S56.md) - superseded by S104 filesystem stack removal
+- [x]: [S57] - superseded by S104 filesystem stack removal
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
 - [x]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
 - [x]: [S60](s/S60.md) - remove terminal widget (comment out only)
 - [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
-- [ ]: [S62](s/S62.md) - reimplement terminal widget API path
-- [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
+- [x]: [S62](s/S62.md) - superseded by S103 PTY stack removal
+- [x]: [S63](s/S63.md) - superseded by S104 filesystem stack removal
 - [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
 - [x]: [S65](s/S65.md) - widget tool icon metadata object and validation
 - [x]: [S66](s/S66.md) - ai wizard: cap chat input height
@@ -288,14 +349,48 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S79](s/S79.md) - migrate DOM tests to jsdom 29
 - [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
 - [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
-- [ ]: [S82](s/S82.md) - keep AI wizard Tool tab synchronized with sidebar tool changes
+- [-]: [S82](s/S82.md) - replace the session-bound AI wizard with a shared multi-resource agent
+- [x]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
+- [x]: [S84](s/S84.md) - simplify canvas AI frontend to chat, user preview, and user publish
+- [x]: [S85](s/S85.md) - agent tools: name-addressed resources, visible results, and Pi Bash
+- [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
+- [x]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
+- [ ]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
+- [x]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
+- [x]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
+- [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
+- [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
+- [x]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
+- [?]: [S94](s/S94.md) - widget detail: context-mounted edit chat
+- [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
+- [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
+- [x]: [S97](s/S97.md) - compress task reference images
+- [x]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
+- [x]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
+- [x]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
+- [x]: [S101](s/S101.md) - relax home directory validation
+- [x]: [S102](s/S102.md) - dev server uses local .vibecanvas
+- [x]: [S103](s/S103.md) - remove PTY service, API, canvas terminal, and SQL metadata
+- [x]: [S104](s/S104.md) - remove filesystem service, API, canvas plugin, and SQL table
+- [x]: [S105](s/S105.md) - remove scoped_events table and related code
+- [x]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
+- [x]: [S107](s/S107.md) - widgets: remove the actor system completely
+- [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
+- [x]: [S109] - remove uuid check in db sql files.
+- [x]: [S110] - use Turso types and domains where they improve schema constraints
+- [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
+- [~]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
+- [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
+- [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
+- [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
+- [ ]: [S116](s/S116.md) - canvas: delete the parallel element/group projection architecture
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
 - [x]: [E5](e/E5.md) - how to implement state machine system?
 - [-]: [E6](e/E6.md) - should we include a task management
 - [x]: [E8](e/E8.md) - canvas CLI: query/edit surface exploration
-- [ ]: [E9] - tmux for persistant pty sessions
+- [x]: [E9] - superseded by S103 PTY stack removal
 - [ ]: [E10] - headless chrome to stream to canvas
 - [ ]: [E11] - https://github.com/cr0hn/dockerscan
 - [ ]: [E12] - https://github.com/superradcompany/microsandbox
@@ -307,25 +402,31 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [?]: [E18] - replace iframe with bun.webview??
 - [-]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
 - [x]: [E20](e/E20.md) - improvement crdt updates
-- [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
+- [-]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
 - [x]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
-- [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
-- [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
+- [x]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
+- [?]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 - [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
 - [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
+- [x]: [E30](e/E30.md) - actor resources: evaluate independent files for KV and secret stores
+- [ ]: [E31](e/E31.md) - Turso schema to TypeScript type generation
+- [x]: [E32](e/E32.md) - Capsule migration: compiled, actor-native widget sandbox
+- [ ]: [E33](e/E33.md) - widget drafts: clarify when edits take effect
+- [ ]: [E34](e/E34.md) - Capsule-only Vibecanvas manifest v1 and artifact boundary
+- [ ]: [E35] - Markdown Notes support
+- [x]: [E36](e/E36.md) - managed multi-tenant architecture and scale-to-zero widget functions
+- [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
+- [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
+- [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
 
-## D eployable
-- [x]: [D1] - Generative UI with AI assits
-- [ ]: [D2] - Widget Resource Support
-- [ ]: [D3] - Actor system is attachable
-- [ ]: [D4] - AI Canvas Element
-- [ ]: [D5] - Widget filsystem resource
-- [ ]: [D6] - Gateway support
-- [ ]: [D7] - Auth support
-
+## D ebt
+- [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
+- [-]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
+- [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
+- [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.

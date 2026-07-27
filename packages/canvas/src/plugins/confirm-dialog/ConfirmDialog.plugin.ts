@@ -11,7 +11,7 @@ function mountConfirmDialog(args: {
 }) {
   const mountElement = args.scene.container.ownerDocument.createElement("div");
   mountElement.id = "confirm-dialog";
-  args.scene.stage.container().appendChild(mountElement);
+  args.scene.container.appendChild(mountElement);
 
   const [version, setVersion] = createSignal(0);
   const syncVersion = () => {

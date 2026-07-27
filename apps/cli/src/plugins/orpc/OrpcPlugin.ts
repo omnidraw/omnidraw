@@ -1,10 +1,13 @@
 import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
 import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
+import type { TAgentApiCapability } from '@vibecanvas/api/agent/types';
+import type { TApiContext } from '@vibecanvas/api/context';
 import type { IPlugin } from '@vibecanvas/runtime';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
-import { OSS_FAKE_SESSION } from '../auth/AuthPlugin';
+import { createLazyTenantServiceCapability } from '../../services/LazyTenantServiceCapability';
 import { baseOs } from './orpc.base';
 import { router } from './router';
 
@@ -12,7 +15,42 @@ type TOrpcWebSocketData = {
   path: string;
   query: string;
   requestId: string;
+  tenant: TTenantContext;
 };
+
+type TOrpcTenantContextServices = Pick<IRuntimeServices,
+  | 'agent'
+  | 'automerge'
+  | 'db'
+  | 'eventPublisher'
+  | 'functionInvocation'
+  | 'humanResourceSecret'
+  | 'resource'
+  | 'widget'
+  | 'widgetCapsuleHostConfiguration'
+  | 'widgetRuntimeLoadAdmission'
+>;
+
+function createOrpcTenantContext(
+  tenant: TTenantContext,
+  services: TOrpcTenantContextServices,
+): TApiContext {
+  return {
+    tenant,
+    automerge: services.automerge,
+    db: services.db,
+    eventPublisher: services.eventPublisher,
+    functionInvocation: services.functionInvocation,
+    humanResourceSecret: services.humanResourceSecret,
+    resource: services.resource,
+    widget: services.widget,
+    widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
+    widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
+    agent: createLazyTenantServiceCapability<TAgentApiCapability>(
+      () => services.agent.forTenant(tenant),
+    ),
+  };
+}
 
 function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
@@ -25,9 +63,14 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const automerge = ctx.services.require('automerge');
       const db = ctx.services.require('db');
       const eventPublisher = ctx.services.require('eventPublisher');
-      const filesystem = ctx.services.require('filesystem');
-      const pty = ctx.services.require('pty');
-      const actor = ctx.services.require('actor');
+      const functionInvocation = ctx.services.require('functionInvocation');
+      const humanResourceSecret = ctx.services.require('humanResourceSecret');
+      const resource = ctx.services.require('resource');
+      const widget = ctx.services.require('widget');
+      const widgetCapsuleHostConfiguration = ctx.services.require(
+        'widgetCapsuleHostConfiguration',
+      );
+      const widgetRuntimeLoadAdmission = ctx.services.require('widgetRuntimeLoadAdmission');
       const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
@@ -46,18 +89,20 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         const socket = ws as WebSocket & { data?: TOrpcWebSocketData };
         if (socket.data?.path !== '/api') return;
 
+        const tenant = socket.data.tenant;
         void handler.message(ws as never, message, {
-          context: {
-            accountId: OSS_FAKE_SESSION.accountId,
+          context: createOrpcTenantContext(tenant, {
             automerge,
             db,
             eventPublisher,
-            filesystem,
-            pty,
-            actor,
+            functionInvocation,
+            humanResourceSecret,
+            resource,
+            widget,
+            widgetCapsuleHostConfiguration,
+            widgetRuntimeLoadAdmission,
             agent,
-            requestId: socket.data.requestId,
-          },
+          }),
         }).catch((error) => {
           console.error(error);
         });
@@ -73,5 +118,5 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   };
 }
 
-export { createOrpcPlugin };
-export type { TOrpcWebSocketData };
+export { createOrpcPlugin, createOrpcTenantContext };
+export type { TOrpcTenantContextServices, TOrpcWebSocketData };

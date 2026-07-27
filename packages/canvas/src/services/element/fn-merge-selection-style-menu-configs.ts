@@ -1,8 +1,12 @@
-import { TStrokeWidthOption } from "../../components/SelectionStyleMenu/types";
-import { TElementSelectionStyleConfig, TElementSelectionStyleSections, TElementSelectionStyleValues } from "./types";
+import type { TStrokeWidthOption } from "../../components/SelectionStyleMenu/types";
+import type {
+  TElementSelectionStyleConfig,
+  TElementSelectionStyleSections,
+  TElementSelectionStyleValues,
+} from "./types";
 
 export function fnMergeSelectionStyleMenuConfigs(
-  configs: Array<TElementSelectionStyleConfig | null | undefined>,
+  configs: Array<TElementSelectionStyleConfig | null | undefined | void>,
 ) {
   let didResolveConfig = false;
   let sections: Partial<TElementSelectionStyleSections> | undefined;

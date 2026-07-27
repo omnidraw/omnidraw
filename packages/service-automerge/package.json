@@ -3,16 +3,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./*": "./src/*.ts"
+    "./*": "./src/*.ts",
+    "./projection": "./src/projection/index.ts",
+    "./projection/*": "./src/projection/*.ts"
   },
   "scripts": {
     "test": "bun test"
   },
   "dependencies": {
+    "@automerge/automerge": "catalog:",
     "@automerge/automerge-repo": "catalog:",
     "@automerge/automerge-repo-network-websocket": "catalog:",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
     "@tursodatabase/database": "catalog:",
     "zod": "catalog:"
   }

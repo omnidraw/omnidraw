@@ -8,6 +8,7 @@ import type {
   zDrawingStyle,
   zElement,
   zElementData,
+  zElementId,
   zElementStyle,
   zEllipseData,
   zGroup,
@@ -19,10 +20,12 @@ import type {
   zRectData,
   zTextData,
   zUiWidgetData,
-  zWidgetData,
+  zWidgetUiProps,
+  zWidgetInstanceData,
 } from './canvas-doc.zod';
 
 export type TPoint2D = z.infer<typeof zPoint2D>;
+export type TElementId = z.infer<typeof zElementId>;
 export type TJsonValue = z.infer<typeof zJsonValue>;
 export type TBinding = z.infer<typeof zBinding>;
 export type TBaseElement = z.infer<typeof zBaseElement>;
@@ -35,8 +38,9 @@ export type TArrowData = z.infer<typeof zArrowData>;
 export type TPenData = z.infer<typeof zPenData>;
 export type TTextData = z.infer<typeof zTextData>;
 export type TImageData = z.infer<typeof zImageData>;
-export type TWidgetData = z.infer<typeof zWidgetData>;
 export type TUiWidgetData = z.infer<typeof zUiWidgetData>;
+export type TWidgetUiProps = z.infer<typeof zWidgetUiProps>;
+export type TWidgetInstanceData = z.infer<typeof zWidgetInstanceData>;
 
 
 export type TElementData = z.infer<typeof zElementData>;

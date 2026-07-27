@@ -1,63 +1,66 @@
-import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
+/**
+ * @file Event publication capability consumed by services and transport adapters.
+ */
+
 import type { IService } from '@vibecanvas/runtime';
-import type { ZDbEventSchema } from '@vibecanvas/api-db/contract';
-import type { ZNotificationEvent } from '@vibecanvas/api-notification/contract';
-import type { ZActorEvent } from '@vibecanvas/api-actors/contract';
-import type { z } from 'zod';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type {
+  TAgentEvent,
+  TDbEvent,
+  TNotificationEvent,
+} from './events';
 
-export type TDbEvent = z.infer<typeof ZDbEventSchema>;
-export type TNotificationEvent = z.infer<typeof ZNotificationEvent>;
-export type TFilesystemEvent = {
-  eventType: 'rename' | 'change';
-  fileName: string;
-};
-export type TActorEvent = z.infer<typeof ZActorEvent>
-export type TAgentDraftActorSnapshot = {
-  state: string;
-  context: unknown;
-};
-export type TAgentChatEvent = {
-  widgetId: string;
-  sessionId: string;
-  event: AgentSessionEvent;
-};
-export type TAgentDraftActorRuntimeEvent =
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'ack'; readonly messageId: string; readonly inputName: string }
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'state.changed'; readonly from: string; readonly to: string; readonly messageId?: string }
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'status.changed'; readonly from: string | null; readonly to: string }
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'data.changed'; readonly data: unknown; readonly messageId?: string }
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'snapshot'; readonly revision: number; readonly state: string; readonly data: unknown; readonly cause: 'startup' | 'input' | 'activity' | 'error'; readonly jobId?: string }
-  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'error'; readonly code: string; readonly message: string; readonly details?: unknown; readonly messageId?: string }
-  | { readonly kind: 'actor'; readonly actorId: string; readonly name: string; readonly payload: unknown; readonly messageId?: string };
-export type TAgentDraftActorEvent = {
-  kind: 'draft-actor';
-  widgetId: string;
-  sessionId: string;
-  event: TAgentDraftActorRuntimeEvent | { kind: 'lifecycle'; type: 'stopped'; actorId: string };
-  snapshot?: TAgentDraftActorSnapshot;
-};
-export type TAgentWidgetUpdateEvent = {
-  kind: 'widgetupdate';
-  widgetId: string;
-  sessionId: string;
-  cwd: string;
-  files: string[];
-};
-export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent | TAgentWidgetUpdateEvent;
+export type {
+  TAgentApprovalEvent,
+  TAgentChatEvent,
+  TAgentEvent,
+  TAgentWidgetCatalogEvent,
+  TAgentWidgetDraftEvent,
+  TAgentWidgetPreviewEvent,
+  TAgentWidgetPublishedEvent,
+  TAgentWidgetUpdateEvent,
+  TDbEvent,
+  TEventJson,
+  TNotificationEvent,
+} from './events';
+
 export interface IEventPublisherService extends IService {
-  publishDbEvent(canvasId: string, event: TDbEvent): void;
-  subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
+  forTenant(tenant: TTenantContext): ITenantEventPublisherService;
 
-  publishActorEvent(event: TActorEvent): void;
-  subscribeActorEvents(): AsyncIterable<TActorEvent>;
+  publishDbEvent(tenant: TTenantContext, canvasId: string, event: TDbEvent): number;
+  subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
+  subscribeDbEventRecords(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
+  getDbEventCursor(tenant: TTenantContext): number;
 
-  publishAgentEvent(event: TAgentEvent): void;
-  subscribeAgentEvents(): AsyncIterable<TAgentEvent>;
+  publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number;
+  subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
+  getAgentEventCursor(tenant: TTenantContext): number;
 
-  publishFilesystemEvent(path: string, event: TFilesystemEvent): void;
-  subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent>;
+  publishNotification(tenant: TTenantContext, event: TNotificationEvent): number;
+  subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
+  subscribeNotificationRecords(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
+  getNotificationEventCursor(tenant: TTenantContext): number;
+  getLatestNotification(tenant: TTenantContext): TNotificationEvent | null;
+}
 
-  publishNotification(event: TNotificationEvent): void;
-  subscribeNotifications(): AsyncIterable<TNotificationEvent>;
+export type TEventSubscriptionOptions = Readonly<{ afterSequence?: number }>;
+
+export type TSequencedEvent<TEvent> = Readonly<{
+  event: TEvent;
+  sequence: number;
+}>;
+
+export interface ITenantEventPublisherService {
+  publishDbEvent(canvasId: string, event: TDbEvent): number;
+  subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
+  subscribeDbEventRecords(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
+  getDbEventCursor(): number;
+  publishAgentEvent(event: TAgentEvent): number;
+  subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
+  getAgentEventCursor(): number;
+  publishNotification(event: TNotificationEvent): number;
+  subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
+  subscribeNotificationRecords(options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
+  getNotificationEventCursor(): number;
   getLatestNotification(): TNotificationEvent | null;
 }

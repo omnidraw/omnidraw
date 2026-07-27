@@ -1,0 +1,23 @@
+{
+  "name": "@vibecanvas/capsule-vibecanvas",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./contract": "./src/contract/index.ts",
+    "./build": "./src/build/index.ts",
+    "./builder": "./src/builder/index.ts",
+    "./host": "./src/host/index.ts",
+    "./capabilities": "./src/capabilities/index.ts",
+    "./testkit": "./src/testkit/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
+    "@vibecanvas/tenant-core": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*"
+  }
+}

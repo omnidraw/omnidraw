@@ -16,6 +16,21 @@ JSDoc convention for autoparsing:
 
 The generator reads the first top-of-file JSDoc block, preferring `@file` or `@summary` text.
 
+## apps/capsule-browser-acceptance
+
+| path | jsdocs |
+|---|---|
+| [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
+| [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
+| [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
+| [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
+| [apps/capsule-browser-acceptance/README.md](apps/capsule-browser-acceptance/README.md) |  |
+| [apps/capsule-browser-acceptance/scripts/generate.ts](apps/capsule-browser-acceptance/scripts/generate.ts) |  |
+| [apps/capsule-browser-acceptance/src/main.ts](apps/capsule-browser-acceptance/src/main.ts) |  |
+| [apps/capsule-browser-acceptance/tsconfig.json](apps/capsule-browser-acceptance/tsconfig.json) |  |
+| [apps/capsule-browser-acceptance/vite.config.ts](apps/capsule-browser-acceptance/vite.config.ts) |  |
+
 ## apps/cli
 
 | path | jsdocs |
@@ -23,18 +38,20 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
+| [apps/cli/src/fn.home-preflight-error.ts](apps/cli/src/fn.home-preflight-error.ts) |  |
 | [apps/cli/src/hooks.ts](apps/cli/src/hooks.ts) |  |
 | [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
+| [apps/cli/src/plugins/auth/CONSTANTS.ts](apps/cli/src/plugins/auth/CONSTANTS.ts) |  |
+| [apps/cli/src/plugins/auth/fn.oss-tenant-context.ts](apps/cli/src/plugins/auth/fn.oss-tenant-context.ts) |  |
+| [apps/cli/src/plugins/auth/types.ts](apps/cli/src/plugins/auth/types.ts) |  |
 | [apps/cli/src/plugins/automerge/AutomergePlugin.ts](apps/cli/src/plugins/automerge/AutomergePlugin.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
@@ -45,16 +62,38 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts](apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts) |  |
 | [apps/cli/src/plugins/cli/core/tx.uninstall.ts](apps/cli/src/plugins/cli/core/tx.uninstall.ts) |  |
-| [apps/cli/src/plugins/filesystem/FilesystemPlugin.ts](apps/cli/src/plugins/filesystem/FilesystemPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/router.ts](apps/cli/src/plugins/orpc/router.ts) |  |
-| [apps/cli/src/plugins/pty/PtyPlugin.ts](apps/cli/src/plugins/pty/PtyPlugin.ts) |  |
 | [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
+| [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
+| [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
+| [apps/cli/src/services/fn.widget-runtime-load-admission.ts](apps/cli/src/services/fn.widget-runtime-load-admission.ts) |  |
+| [apps/cli/src/services/FunctionResourceGatewayFactory.ts](apps/cli/src/services/FunctionResourceGatewayFactory.ts) |  |
+| [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
+| [apps/cli/src/services/FunctionServicePool.ts](apps/cli/src/services/FunctionServicePool.ts) |  |
+| [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
+| [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
+| [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
+| [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
+| [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
+| [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
+| [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
+| [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
+| [apps/cli/src/services/WidgetFunctionArtifactReader.ts](apps/cli/src/services/WidgetFunctionArtifactReader.ts) |  |
+| [apps/cli/src/services/WidgetNpmDistributionBuild.ts](apps/cli/src/services/WidgetNpmDistributionBuild.ts) |  |
+| [apps/cli/src/services/WidgetRuntimeLoadAdmission.ts](apps/cli/src/services/WidgetRuntimeLoadAdmission.ts) |  |
+| [apps/cli/src/services/WidgetService.ts](apps/cli/src/services/WidgetService.ts) |  |
+| [apps/cli/src/services/WidgetServicePool.ts](apps/cli/src/services/WidgetServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
+| [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
+| [apps/cli/src/widget-prerequisites/fx.probe-widget-npm.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-npm.ts) |  |
+| [apps/cli/src/widget-prerequisites/interface.ts](apps/cli/src/widget-prerequisites/interface.ts) |  |
+| [apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts](apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts) |  |
 | [apps/cli/tsconfig.json](apps/cli/tsconfig.json) |  |
 
 ## apps/frontend
@@ -65,34 +104,52 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/package.json](apps/frontend/package.json) |  |
 | [apps/frontend/public/favicon.png](apps/frontend/public/favicon.png) |  |
 | [apps/frontend/public/logo.png](apps/frontend/public/logo.png) |  |
+| [apps/frontend/src/ai-chat-adapters.ts](apps/frontend/src/ai-chat-adapters.ts) |  |
 | [apps/frontend/src/App.module.css](apps/frontend/src/App.module.css) |  |
 | [apps/frontend/src/App.tsx](apps/frontend/src/App.tsx) |  |
-| [apps/frontend/src/components/path-picker-dialog.module.css](apps/frontend/src/components/path-picker-dialog.module.css) |  |
-| [apps/frontend/src/components/path-picker-dialog.tsx](apps/frontend/src/components/path-picker-dialog.tsx) |  |
 | [apps/frontend/src/components/ui/scroll-area.module.css](apps/frontend/src/components/ui/scroll-area.module.css) |  |
 | [apps/frontend/src/components/ui/scroll-area.tsx](apps/frontend/src/components/ui/scroll-area.tsx) |  |
 | [apps/frontend/src/components/ui/Toast.module.css](apps/frontend/src/components/ui/Toast.module.css) |  |
 | [apps/frontend/src/components/ui/Toast.tsx](apps/frontend/src/components/ui/Toast.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/CreateCanvasDialog.tsx](apps/frontend/src/feature/sidebar/components/CreateCanvasDialog.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/DeleteCanvasDialog.tsx](apps/frontend/src/feature/sidebar/components/DeleteCanvasDialog.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/index.ts](apps/frontend/src/feature/sidebar/components/index.ts) |  |
-| [apps/frontend/src/feature/sidebar/components/RenameDialog.tsx](apps/frontend/src/feature/sidebar/components/RenameDialog.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/Sidebar.module.css](apps/frontend/src/feature/sidebar/components/Sidebar.module.css) |  |
-| [apps/frontend/src/feature/sidebar/components/Sidebar.tsx](apps/frontend/src/feature/sidebar/components/Sidebar.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/SidebarDialog.module.css](apps/frontend/src/feature/sidebar/components/SidebarDialog.module.css) |  |
-| [apps/frontend/src/feature/sidebar/components/SidebarItem.module.css](apps/frontend/src/feature/sidebar/components/SidebarItem.module.css) |  |
-| [apps/frontend/src/feature/sidebar/components/SidebarItem.tsx](apps/frontend/src/feature/sidebar/components/SidebarItem.tsx) |  |
-| [apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx](apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx) |  |
-| [apps/frontend/src/feature/sidebar/index.ts](apps/frontend/src/feature/sidebar/index.ts) |  |
+| [apps/frontend/src/feature/db-resource/components/ConfirmActionDialog.tsx](apps/frontend/src/feature/db-resource/components/ConfirmActionDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/CoordinatedOperationDialog.tsx](apps/frontend/src/feature/db-resource/components/CoordinatedOperationDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/LiveSqlApprovalDialog.tsx](apps/frontend/src/feature/db-resource/components/LiveSqlApprovalDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/ObjectInspector.tsx](apps/frontend/src/feature/db-resource/components/ObjectInspector.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/RowEditorDialog.tsx](apps/frontend/src/feature/db-resource/components/RowEditorDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/StructureChangeDialog.tsx](apps/frontend/src/feature/db-resource/components/StructureChangeDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/DbResourcePage.module.css](apps/frontend/src/feature/db-resource/DbResourcePage.module.css) |  |
+| [apps/frontend/src/feature/db-resource/DbResourcePage.tsx](apps/frontend/src/feature/db-resource/DbResourcePage.tsx) |  |
+| [apps/frontend/src/feature/db-resource/fn.db-resource.ts](apps/frontend/src/feature/db-resource/fn.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/fx.db-resource.ts](apps/frontend/src/feature/db-resource/fx.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/tx.db-resource.ts](apps/frontend/src/feature/db-resource/tx.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/types.ts](apps/frontend/src/feature/db-resource/types.ts) |  |
+| [apps/frontend/src/feature/resource/fn.secret-reveal.ts](apps/frontend/src/feature/resource/fn.secret-reveal.ts) |  |
+| [apps/frontend/src/feature/resource/GenericResourcePage.tsx](apps/frontend/src/feature/resource/GenericResourcePage.tsx) |  |
 | [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
 | [apps/frontend/src/index.tsx](apps/frontend/src/index.tsx) |  |
 | [apps/frontend/src/pages/canvas.tsx](apps/frontend/src/pages/canvas.tsx) |  |
+| [apps/frontend/src/pages/fn.resource-route.ts](apps/frontend/src/pages/fn.resource-route.ts) |  |
+| [apps/frontend/src/pages/resource.module.css](apps/frontend/src/pages/resource.module.css) |  |
+| [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
-| [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | Automerge Client Service |
+| [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
+| [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | The frontend and canvas renderer intentionally share one browser Repo lifecycle. |
+| [apps/frontend/src/services/canvas-bootstrap.ts](apps/frontend/src/services/canvas-bootstrap.ts) |  |
+| [apps/frontend/src/services/fn.widget-capsule-theme.ts](apps/frontend/src/services/fn.widget-capsule-theme.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
+| [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
+| [apps/frontend/src/services/tenant-runtime.ts](apps/frontend/src/services/tenant-runtime.ts) |  |
+| [apps/frontend/src/services/tenant-switch-coordinator.ts](apps/frontend/src/services/tenant-switch-coordinator.ts) |  |
+| [apps/frontend/src/services/tenant.ts](apps/frontend/src/services/tenant.ts) |  |
+| [apps/frontend/src/services/tenant.vitest.ts](apps/frontend/src/services/tenant.vitest.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
+| [apps/frontend/src/services/tx.route-notification-toast.ts](apps/frontend/src/services/tx.route-notification-toast.ts) |  |
+| [apps/frontend/src/services/tx.route-widget-capsule-output.ts](apps/frontend/src/services/tx.route-widget-capsule-output.ts) |  |
+| [apps/frontend/src/services/tx.switch-browser-tenant.ts](apps/frontend/src/services/tx.switch-browser-tenant.ts) |  |
+| [apps/frontend/src/services/widget-collaborative-state.ts](apps/frontend/src/services/widget-collaborative-state.ts) |  |
+| [apps/frontend/src/services/widget-collaborative-state.vitest.ts](apps/frontend/src/services/widget-collaborative-state.vitest.ts) |  |
 | [apps/frontend/src/startup-canvas.ts](apps/frontend/src/startup-canvas.ts) |  |
 | [apps/frontend/src/store.ts](apps/frontend/src/store.ts) |  |
 | [apps/frontend/src/styles/route-state.module.css](apps/frontend/src/styles/route-state.module.css) |  |
@@ -100,6 +157,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/utils/path-display.ts](apps/frontend/src/utils/path-display.ts) |  |
 | [apps/frontend/tsconfig.json](apps/frontend/tsconfig.json) |  |
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
+| [apps/frontend/vitest.config.ts](apps/frontend/vitest.config.ts) |  |
 
 ## apps/vibecanvas
 
@@ -114,13 +172,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -131,8 +182,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -140,7 +189,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/content/docs/faq.mdx](apps/web/src/content/docs/faq.mdx) |  |
 | [apps/web/src/content/docs/getting-started.mdx](apps/web/src/content/docs/getting-started.mdx) |  |
 | [apps/web/src/content/docs/installation.mdx](apps/web/src/content/docs/installation.mdx) |  |
-| [apps/web/src/content/docs/widgets-and-actors.mdx](apps/web/src/content/docs/widgets-and-actors.mdx) |  |
+| [apps/web/src/content/docs/widgets-and-functions.mdx](apps/web/src/content/docs/widgets-and-functions.mdx) |  |
 | [apps/web/src/env.d.ts](apps/web/src/env.d.ts) |  |
 | [apps/web/src/layouts/BaseLayout.astro](apps/web/src/layouts/BaseLayout.astro) |  |
 | [apps/web/src/layouts/DocsLayout.astro](apps/web/src/layouts/DocsLayout.astro) |  |
@@ -152,200 +201,126 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
 | [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
 
-## packages/actor-ui
+## packages/api
 
 | path | jsdocs |
 |---|---|
-| [packages/actor-ui/demo/actors.ts](packages/actor-ui/demo/actors.ts) |  |
-| [packages/actor-ui/demo/main.tsx](packages/actor-ui/demo/main.tsx) |  |
-| [packages/actor-ui/demo/styles.css](packages/actor-ui/demo/styles.css) |  |
-| [packages/actor-ui/index.html](packages/actor-ui/index.html) |  |
-| [packages/actor-ui/package.json](packages/actor-ui/package.json) |  |
-| [packages/actor-ui/playwright.config.ts](packages/actor-ui/playwright.config.ts) |  |
-| [packages/actor-ui/src/ActorStateMachineView.tsx](packages/actor-ui/src/ActorStateMachineView.tsx) |  |
-| [packages/actor-ui/src/env.d.ts](packages/actor-ui/src/env.d.ts) |  |
-| [packages/actor-ui/src/fn.edge.ts](packages/actor-ui/src/fn.edge.ts) |  |
-| [packages/actor-ui/src/fn.elbow.ts](packages/actor-ui/src/fn.elbow.ts) |  |
-| [packages/actor-ui/src/fn.labels.ts](packages/actor-ui/src/fn.labels.ts) |  |
-| [packages/actor-ui/src/fn.layout.ts](packages/actor-ui/src/fn.layout.ts) |  |
-| [packages/actor-ui/src/index.ts](packages/actor-ui/src/index.ts) |  |
-| [packages/actor-ui/src/styles.css](packages/actor-ui/src/styles.css) |  |
-| [packages/actor-ui/tsconfig.json](packages/actor-ui/tsconfig.json) |  |
-| [packages/actor-ui/vite.config.ts](packages/actor-ui/vite.config.ts) |  |
-| [packages/actor-ui/vitest.config.ts](packages/actor-ui/vitest.config.ts) |  |
-
-## packages/api-actors
-
-| path | jsdocs |
-|---|---|
-| [packages/api-actors/package.json](packages/api-actors/package.json) |  |
-| [packages/api-actors/src/api.actor-snapshot.ts](packages/api-actors/src/api.actor-snapshot.ts) |  |
-| [packages/api-actors/src/api.def-delete.ts](packages/api-actors/src/api.def-delete.ts) |  |
-| [packages/api-actors/src/api.def-get.ts](packages/api-actors/src/api.def-get.ts) |  |
-| [packages/api-actors/src/api.def-list.ts](packages/api-actors/src/api.def-list.ts) |  |
-| [packages/api-actors/src/api.events.ts](packages/api-actors/src/api.events.ts) |  |
-| [packages/api-actors/src/api.instance-send-message.ts](packages/api-actors/src/api.instance-send-message.ts) |  |
-| [packages/api-actors/src/CONSTANTS.ts](packages/api-actors/src/CONSTANTS.ts) |  |
-| [packages/api-actors/src/contract.ts](packages/api-actors/src/contract.ts) |  |
-| [packages/api-actors/src/handlers.ts](packages/api-actors/src/handlers.ts) |  |
-| [packages/api-actors/src/orpc.ts](packages/api-actors/src/orpc.ts) |  |
-| [packages/api-actors/src/types.ts](packages/api-actors/src/types.ts) |  |
-| [packages/api-actors/tsconfig.json](packages/api-actors/tsconfig.json) |  |
-
-## packages/api-agent
-
-| path | jsdocs |
-|---|---|
-| [packages/api-agent/package.json](packages/api-agent/package.json) |  |
-| [packages/api-agent/src/api.auth.abort.ts](packages/api-agent/src/api.auth.abort.ts) |  |
-| [packages/api-agent/src/api.auth.apiKey.remove.ts](packages/api-agent/src/api.auth.apiKey.remove.ts) |  |
-| [packages/api-agent/src/api.auth.apiKey.set.ts](packages/api-agent/src/api.auth.apiKey.set.ts) |  |
-| [packages/api-agent/src/api.auth.login.ts](packages/api-agent/src/api.auth.login.ts) |  |
-| [packages/api-agent/src/api.auth.logout.ts](packages/api-agent/src/api.auth.logout.ts) |  |
-| [packages/api-agent/src/api.auth.status.ts](packages/api-agent/src/api.auth.status.ts) |  |
-| [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
-| [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
-| [packages/api-agent/src/api.wizzard.cancel.ts](packages/api-agent/src/api.wizzard.cancel.ts) |  |
-| [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.inspect.ts](packages/api-agent/src/api.wizzard.draftActor.inspect.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.reload.ts](packages/api-agent/src/api.wizzard.draftActor.reload.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.reset.ts](packages/api-agent/src/api.wizzard.draftActor.reset.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.send.ts](packages/api-agent/src/api.wizzard.draftActor.send.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.start.ts](packages/api-agent/src/api.wizzard.draftActor.start.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftActor.stop.ts](packages/api-agent/src/api.wizzard.draftActor.stop.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftManifest.patch.ts](packages/api-agent/src/api.wizzard.draftManifest.patch.ts) |  |
-| [packages/api-agent/src/api.wizzard.draftManifest.read.ts](packages/api-agent/src/api.wizzard.draftManifest.read.ts) |  |
-| [packages/api-agent/src/api.wizzard.newSession.ts](packages/api-agent/src/api.wizzard.newSession.ts) |  |
-| [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
-| [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
-| [packages/api-agent/src/api.wizzard.publish.ts](packages/api-agent/src/api.wizzard.publish.ts) |  |
-| [packages/api-agent/src/api.wizzard.startWidgetEdit.ts](packages/api-agent/src/api.wizzard.startWidgetEdit.ts) |  |
-| [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
-| [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
-| [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
-| [packages/api-agent/src/orpc.ts](packages/api-agent/src/orpc.ts) |  |
-| [packages/api-agent/src/types.ts](packages/api-agent/src/types.ts) |  |
-| [packages/api-agent/tsconfig.json](packages/api-agent/tsconfig.json) |  |
-
-## packages/api-canvas
-
-| path | jsdocs |
-|---|---|
-| [packages/api-canvas/package.json](packages/api-canvas/package.json) |  |
-| [packages/api-canvas/src/api.create-canvas.ts](packages/api-canvas/src/api.create-canvas.ts) |  |
-| [packages/api-canvas/src/api.get-canvas.ts](packages/api-canvas/src/api.get-canvas.ts) |  |
-| [packages/api-canvas/src/api.list-canvas.ts](packages/api-canvas/src/api.list-canvas.ts) |  |
-| [packages/api-canvas/src/api.remove-canvas.ts](packages/api-canvas/src/api.remove-canvas.ts) |  |
-| [packages/api-canvas/src/api.update-canvas.ts](packages/api-canvas/src/api.update-canvas.ts) |  |
-| [packages/api-canvas/src/contract.ts](packages/api-canvas/src/contract.ts) |  |
-| [packages/api-canvas/src/handlers.ts](packages/api-canvas/src/handlers.ts) |  |
-| [packages/api-canvas/src/orpc.ts](packages/api-canvas/src/orpc.ts) |  |
-| [packages/api-canvas/src/types.ts](packages/api-canvas/src/types.ts) |  |
-| [packages/api-canvas/tsconfig.json](packages/api-canvas/tsconfig.json) |  |
-
-## packages/api-db
-
-| path | jsdocs |
-|---|---|
-| [packages/api-db/package.json](packages/api-db/package.json) |  |
-| [packages/api-db/src/api.db-events.ts](packages/api-db/src/api.db-events.ts) |  |
-| [packages/api-db/src/contract.ts](packages/api-db/src/contract.ts) |  |
-| [packages/api-db/src/handlers.ts](packages/api-db/src/handlers.ts) |  |
-| [packages/api-db/src/orpc.ts](packages/api-db/src/orpc.ts) |  |
-| [packages/api-db/src/types.ts](packages/api-db/src/types.ts) |  |
-| [packages/api-db/tsconfig.json](packages/api-db/tsconfig.json) |  |
-
-## packages/api-file
-
-| path | jsdocs |
-|---|---|
-| [packages/api-file/package.json](packages/api-file/package.json) |  |
-| [packages/api-file/src/api.clone-file.ts](packages/api-file/src/api.clone-file.ts) |  |
-| [packages/api-file/src/api.put-file.ts](packages/api-file/src/api.put-file.ts) |  |
-| [packages/api-file/src/api.remove-file.ts](packages/api-file/src/api.remove-file.ts) |  |
-| [packages/api-file/src/contract.ts](packages/api-file/src/contract.ts) |  |
-| [packages/api-file/src/core/fn.file-storage.ts](packages/api-file/src/core/fn.file-storage.ts) |  |
-| [packages/api-file/src/core/fx.file-tree.ts](packages/api-file/src/core/fx.file-tree.ts) |  |
-| [packages/api-file/src/handlers.ts](packages/api-file/src/handlers.ts) |  |
-| [packages/api-file/src/orpc.ts](packages/api-file/src/orpc.ts) |  |
-| [packages/api-file/src/types.ts](packages/api-file/src/types.ts) |  |
-| [packages/api-file/tsconfig.json](packages/api-file/tsconfig.json) |  |
-
-## packages/api-filesystem
-
-| path | jsdocs |
-|---|---|
-| [packages/api-filesystem/package.json](packages/api-filesystem/package.json) |  |
-| [packages/api-filesystem/src/api.files-filesystem.ts](packages/api-filesystem/src/api.files-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.home-filesystem.ts](packages/api-filesystem/src/api.home-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.inspect-filesystem.ts](packages/api-filesystem/src/api.inspect-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.keepalive-watch-filesystem.ts](packages/api-filesystem/src/api.keepalive-watch-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.list-filesystem.ts](packages/api-filesystem/src/api.list-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.list-registered-filesystems.ts](packages/api-filesystem/src/api.list-registered-filesystems.ts) |  |
-| [packages/api-filesystem/src/api.move-filesystem.ts](packages/api-filesystem/src/api.move-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.read-filesystem.ts](packages/api-filesystem/src/api.read-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.unwatch-filesystem.ts](packages/api-filesystem/src/api.unwatch-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.watch-filesystem.ts](packages/api-filesystem/src/api.watch-filesystem.ts) |  |
-| [packages/api-filesystem/src/api.write-filesystem.ts](packages/api-filesystem/src/api.write-filesystem.ts) |  |
-| [packages/api-filesystem/src/contract.ts](packages/api-filesystem/src/contract.ts) |  |
-| [packages/api-filesystem/src/core/fn.create-filesystem-error.ts](packages/api-filesystem/src/core/fn.create-filesystem-error.ts) |  |
-| [packages/api-filesystem/src/core/fn.detect-file-kind.ts](packages/api-filesystem/src/core/fn.detect-file-kind.ts) |  |
-| [packages/api-filesystem/src/core/fn.detect-mime.ts](packages/api-filesystem/src/core/fn.detect-mime.ts) |  |
-| [packages/api-filesystem/src/core/fn.to-api-filesystem-error.ts](packages/api-filesystem/src/core/fn.to-api-filesystem-error.ts) |  |
-| [packages/api-filesystem/src/core/fx.resolve-filesystem-id.ts](packages/api-filesystem/src/core/fx.resolve-filesystem-id.ts) |  |
-| [packages/api-filesystem/src/handlers.ts](packages/api-filesystem/src/handlers.ts) |  |
-| [packages/api-filesystem/src/orpc.ts](packages/api-filesystem/src/orpc.ts) |  |
-| [packages/api-filesystem/src/types.ts](packages/api-filesystem/src/types.ts) |  |
-| [packages/api-filesystem/tsconfig.json](packages/api-filesystem/tsconfig.json) |  |
-
-## packages/api-notification
-
-| path | jsdocs |
-|---|---|
-| [packages/api-notification/package.json](packages/api-notification/package.json) |  |
-| [packages/api-notification/src/api.notification-events.ts](packages/api-notification/src/api.notification-events.ts) |  |
-| [packages/api-notification/src/contract.ts](packages/api-notification/src/contract.ts) |  |
-| [packages/api-notification/src/handlers.ts](packages/api-notification/src/handlers.ts) |  |
-| [packages/api-notification/src/orpc.ts](packages/api-notification/src/orpc.ts) |  |
-| [packages/api-notification/src/types.ts](packages/api-notification/src/types.ts) |  |
-| [packages/api-notification/tsconfig.json](packages/api-notification/tsconfig.json) |  |
-
-## packages/api-pty
-
-| path | jsdocs |
-|---|---|
-| [packages/api-pty/package.json](packages/api-pty/package.json) |  |
-| [packages/api-pty/src/api.create-pty.ts](packages/api-pty/src/api.create-pty.ts) |  |
-| [packages/api-pty/src/api.get-pty.ts](packages/api-pty/src/api.get-pty.ts) |  |
-| [packages/api-pty/src/api.list-pty.ts](packages/api-pty/src/api.list-pty.ts) |  |
-| [packages/api-pty/src/api.remove-pty.ts](packages/api-pty/src/api.remove-pty.ts) |  |
-| [packages/api-pty/src/api.update-pty.ts](packages/api-pty/src/api.update-pty.ts) |  |
-| [packages/api-pty/src/api.upload-image.ts](packages/api-pty/src/api.upload-image.ts) |  |
-| [packages/api-pty/src/contract.ts](packages/api-pty/src/contract.ts) |  |
-| [packages/api-pty/src/core/fn.extension-from-pty-image-format.ts](packages/api-pty/src/core/fn.extension-from-pty-image-format.ts) |  |
-| [packages/api-pty/src/core/fx.resolve-filesystem-id.ts](packages/api-pty/src/core/fx.resolve-filesystem-id.ts) |  |
-| [packages/api-pty/src/handlers.ts](packages/api-pty/src/handlers.ts) |  |
-| [packages/api-pty/src/orpc.ts](packages/api-pty/src/orpc.ts) |  |
-| [packages/api-pty/src/types.ts](packages/api-pty/src/types.ts) |  |
-| [packages/api-pty/tsconfig.json](packages/api-pty/tsconfig.json) |  |
-
-## packages/api-tool
-
-| path | jsdocs |
-|---|---|
-| [packages/api-tool/package.json](packages/api-tool/package.json) |  |
-| [packages/api-tool/src/api.create-tool-group.ts](packages/api-tool/src/api.create-tool-group.ts) |  |
-| [packages/api-tool/src/api.get-tool-group.ts](packages/api-tool/src/api.get-tool-group.ts) |  |
-| [packages/api-tool/src/api.list-tool-groups.ts](packages/api-tool/src/api.list-tool-groups.ts) |  |
-| [packages/api-tool/src/api.remove-tool-group.ts](packages/api-tool/src/api.remove-tool-group.ts) |  |
-| [packages/api-tool/src/api.update-tool-group.ts](packages/api-tool/src/api.update-tool-group.ts) |  |
-| [packages/api-tool/src/CONSTANTS.ts](packages/api-tool/src/CONSTANTS.ts) |  |
-| [packages/api-tool/src/contract.ts](packages/api-tool/src/contract.ts) |  |
-| [packages/api-tool/src/fn.to-tool-group.ts](packages/api-tool/src/fn.to-tool-group.ts) |  |
-| [packages/api-tool/src/handlers.ts](packages/api-tool/src/handlers.ts) |  |
-| [packages/api-tool/src/orpc.ts](packages/api-tool/src/orpc.ts) |  |
-| [packages/api-tool/src/types.ts](packages/api-tool/src/types.ts) |  |
-| [packages/api-tool/tsconfig.json](packages/api-tool/tsconfig.json) |  |
+| [packages/api/package.json](packages/api/package.json) |  |
+| [packages/api/src/agent/api.approval.get.ts](packages/api/src/agent/api.approval.get.ts) |  |
+| [packages/api/src/agent/api.approval.list.ts](packages/api/src/agent/api.approval.list.ts) |  |
+| [packages/api/src/agent/api.approval.resolve.ts](packages/api/src/agent/api.approval.resolve.ts) |  |
+| [packages/api/src/agent/api.auth.abort.ts](packages/api/src/agent/api.auth.abort.ts) |  |
+| [packages/api/src/agent/api.auth.apiKey.remove.ts](packages/api/src/agent/api.auth.apiKey.remove.ts) |  |
+| [packages/api/src/agent/api.auth.apiKey.set.ts](packages/api/src/agent/api.auth.apiKey.set.ts) |  |
+| [packages/api/src/agent/api.auth.login.ts](packages/api/src/agent/api.auth.login.ts) |  |
+| [packages/api/src/agent/api.auth.logout.ts](packages/api/src/agent/api.auth.logout.ts) |  |
+| [packages/api/src/agent/api.auth.status.ts](packages/api/src/agent/api.auth.status.ts) |  |
+| [packages/api/src/agent/api.chat.approval.get.ts](packages/api/src/agent/api.chat.approval.get.ts) |  |
+| [packages/api/src/agent/api.chat.approval.list.ts](packages/api/src/agent/api.chat.approval.list.ts) |  |
+| [packages/api/src/agent/api.chat.approval.resolve.ts](packages/api/src/agent/api.chat.approval.resolve.ts) |  |
+| [packages/api/src/agent/api.chat.cancel.ts](packages/api/src/agent/api.chat.cancel.ts) |  |
+| [packages/api/src/agent/api.chat.connect.ts](packages/api/src/agent/api.chat.connect.ts) |  |
+| [packages/api/src/agent/api.chat.dbChange.approve.ts](packages/api/src/agent/api.chat.dbChange.approve.ts) |  |
+| [packages/api/src/agent/api.chat.dbChange.reject.ts](packages/api/src/agent/api.chat.dbChange.reject.ts) |  |
+| [packages/api/src/agent/api.chat.newSession.ts](packages/api/src/agent/api.chat.newSession.ts) |  |
+| [packages/api/src/agent/api.chat.prompt.ts](packages/api/src/agent/api.chat.prompt.ts) |  |
+| [packages/api/src/agent/api.chat.resourceBindings.clear.ts](packages/api/src/agent/api.chat.resourceBindings.clear.ts) |  |
+| [packages/api/src/agent/api.events.ts](packages/api/src/agent/api.events.ts) |  |
+| [packages/api/src/agent/api.setting.get.ts](packages/api/src/agent/api.setting.get.ts) |  |
+| [packages/api/src/agent/api.widgetDraft.get.ts](packages/api/src/agent/api.widgetDraft.get.ts) |  |
+| [packages/api/src/agent/api.widgetDraft.list.ts](packages/api/src/agent/api.widgetDraft.list.ts) |  |
+| [packages/api/src/agent/api.widgetDraft.validate.ts](packages/api/src/agent/api.widgetDraft.validate.ts) |  |
+| [packages/api/src/agent/api.widgetPreview.build.ts](packages/api/src/agent/api.widgetPreview.build.ts) |  |
+| [packages/api/src/agent/api.widgetPublish.publish.ts](packages/api/src/agent/api.widgetPublish.publish.ts) |  |
+| [packages/api/src/agent/api.widgets.ts](packages/api/src/agent/api.widgets.ts) |  |
+| [packages/api/src/agent/authoring-schema.ts](packages/api/src/agent/authoring-schema.ts) |  |
+| [packages/api/src/agent/CONSTANTS.ts](packages/api/src/agent/CONSTANTS.ts) |  |
+| [packages/api/src/agent/contract.ts](packages/api/src/agent/contract.ts) |  |
+| [packages/api/src/agent/fn.widget-groups.ts](packages/api/src/agent/fn.widget-groups.ts) |  |
+| [packages/api/src/agent/handlers.ts](packages/api/src/agent/handlers.ts) |  |
+| [packages/api/src/agent/index.ts](packages/api/src/agent/index.ts) |  |
+| [packages/api/src/agent/orpc.ts](packages/api/src/agent/orpc.ts) |  |
+| [packages/api/src/agent/types.ts](packages/api/src/agent/types.ts) |  |
+| [packages/api/src/canvas/api.create-canvas.ts](packages/api/src/canvas/api.create-canvas.ts) |  |
+| [packages/api/src/canvas/api.get-canvas.ts](packages/api/src/canvas/api.get-canvas.ts) |  |
+| [packages/api/src/canvas/api.list-canvas.ts](packages/api/src/canvas/api.list-canvas.ts) |  |
+| [packages/api/src/canvas/api.remove-canvas.ts](packages/api/src/canvas/api.remove-canvas.ts) |  |
+| [packages/api/src/canvas/api.update-canvas.ts](packages/api/src/canvas/api.update-canvas.ts) |  |
+| [packages/api/src/canvas/contract.ts](packages/api/src/canvas/contract.ts) |  |
+| [packages/api/src/canvas/handlers.ts](packages/api/src/canvas/handlers.ts) |  |
+| [packages/api/src/canvas/index.ts](packages/api/src/canvas/index.ts) |  |
+| [packages/api/src/canvas/orpc.ts](packages/api/src/canvas/orpc.ts) |  |
+| [packages/api/src/canvas/types.ts](packages/api/src/canvas/types.ts) |  |
+| [packages/api/src/collaboration/index.ts](packages/api/src/collaboration/index.ts) |  |
+| [packages/api/src/context.ts](packages/api/src/context.ts) |  |
+| [packages/api/src/contract.ts](packages/api/src/contract.ts) |  |
+| [packages/api/src/db/api.db-events.ts](packages/api/src/db/api.db-events.ts) |  |
+| [packages/api/src/db/contract.ts](packages/api/src/db/contract.ts) |  |
+| [packages/api/src/db/fx.db-events.ts](packages/api/src/db/fx.db-events.ts) |  |
+| [packages/api/src/db/handlers.ts](packages/api/src/db/handlers.ts) |  |
+| [packages/api/src/db/index.ts](packages/api/src/db/index.ts) |  |
+| [packages/api/src/db/orpc.ts](packages/api/src/db/orpc.ts) |  |
+| [packages/api/src/db/types.ts](packages/api/src/db/types.ts) |  |
+| [packages/api/src/file/api.clone-file.ts](packages/api/src/file/api.clone-file.ts) |  |
+| [packages/api/src/file/api.put-file.ts](packages/api/src/file/api.put-file.ts) |  |
+| [packages/api/src/file/api.remove-file.ts](packages/api/src/file/api.remove-file.ts) |  |
+| [packages/api/src/file/contract.ts](packages/api/src/file/contract.ts) |  |
+| [packages/api/src/file/core/fn.file-storage.ts](packages/api/src/file/core/fn.file-storage.ts) |  |
+| [packages/api/src/file/core/fx.file-tree.ts](packages/api/src/file/core/fx.file-tree.ts) |  |
+| [packages/api/src/file/handlers.ts](packages/api/src/file/handlers.ts) |  |
+| [packages/api/src/file/index.ts](packages/api/src/file/index.ts) |  |
+| [packages/api/src/file/orpc.ts](packages/api/src/file/orpc.ts) |  |
+| [packages/api/src/file/types.ts](packages/api/src/file/types.ts) |  |
+| [packages/api/src/function/api.cancel-function.ts](packages/api/src/function/api.cancel-function.ts) |  |
+| [packages/api/src/function/api.function-error.ts](packages/api/src/function/api.function-error.ts) |  |
+| [packages/api/src/function/api.get-function.ts](packages/api/src/function/api.get-function.ts) |  |
+| [packages/api/src/function/api.invoke-function.ts](packages/api/src/function/api.invoke-function.ts) |  |
+| [packages/api/src/function/contract.ts](packages/api/src/function/contract.ts) |  |
+| [packages/api/src/function/handlers.ts](packages/api/src/function/handlers.ts) |  |
+| [packages/api/src/function/index.ts](packages/api/src/function/index.ts) |  |
+| [packages/api/src/function/orpc.ts](packages/api/src/function/orpc.ts) |  |
+| [packages/api/src/function/types.ts](packages/api/src/function/types.ts) |  |
+| [packages/api/src/handlers.ts](packages/api/src/handlers.ts) |  |
+| [packages/api/src/index.ts](packages/api/src/index.ts) |  |
+| [packages/api/src/interface.ts](packages/api/src/interface.ts) |  |
+| [packages/api/src/media/index.ts](packages/api/src/media/index.ts) |  |
+| [packages/api/src/notification/api.notification-events.ts](packages/api/src/notification/api.notification-events.ts) |  |
+| [packages/api/src/notification/contract.ts](packages/api/src/notification/contract.ts) |  |
+| [packages/api/src/notification/fx.notification-events.ts](packages/api/src/notification/fx.notification-events.ts) |  |
+| [packages/api/src/notification/handlers.ts](packages/api/src/notification/handlers.ts) |  |
+| [packages/api/src/notification/index.ts](packages/api/src/notification/index.ts) |  |
+| [packages/api/src/notification/orpc.ts](packages/api/src/notification/orpc.ts) |  |
+| [packages/api/src/notification/types.ts](packages/api/src/notification/types.ts) |  |
+| [packages/api/src/resource/api.db-resources.ts](packages/api/src/resource/api.db-resources.ts) |  |
+| [packages/api/src/resource/api.resource-error.ts](packages/api/src/resource/api.resource-error.ts) |  |
+| [packages/api/src/resource/api.resources.ts](packages/api/src/resource/api.resources.ts) |  |
+| [packages/api/src/resource/contract.ts](packages/api/src/resource/contract.ts) |  |
+| [packages/api/src/resource/handlers.ts](packages/api/src/resource/handlers.ts) |  |
+| [packages/api/src/resource/index.ts](packages/api/src/resource/index.ts) |  |
+| [packages/api/src/resource/orpc.ts](packages/api/src/resource/orpc.ts) |  |
+| [packages/api/src/resource/types.ts](packages/api/src/resource/types.ts) |  |
+| [packages/api/src/router.ts](packages/api/src/router.ts) |  |
+| [packages/api/src/tool/api.create-tool-group.ts](packages/api/src/tool/api.create-tool-group.ts) |  |
+| [packages/api/src/tool/api.get-tool-group.ts](packages/api/src/tool/api.get-tool-group.ts) |  |
+| [packages/api/src/tool/api.list-tool-groups.ts](packages/api/src/tool/api.list-tool-groups.ts) |  |
+| [packages/api/src/tool/api.remove-tool-group.ts](packages/api/src/tool/api.remove-tool-group.ts) |  |
+| [packages/api/src/tool/api.update-tool-group.ts](packages/api/src/tool/api.update-tool-group.ts) |  |
+| [packages/api/src/tool/CONSTANTS.ts](packages/api/src/tool/CONSTANTS.ts) |  |
+| [packages/api/src/tool/contract.ts](packages/api/src/tool/contract.ts) |  |
+| [packages/api/src/tool/fn.to-tool-group.ts](packages/api/src/tool/fn.to-tool-group.ts) |  |
+| [packages/api/src/tool/handlers.ts](packages/api/src/tool/handlers.ts) |  |
+| [packages/api/src/tool/index.ts](packages/api/src/tool/index.ts) |  |
+| [packages/api/src/tool/orpc.ts](packages/api/src/tool/orpc.ts) |  |
+| [packages/api/src/tool/types.ts](packages/api/src/tool/types.ts) |  |
+| [packages/api/src/widget/api.runtime-config.ts](packages/api/src/widget/api.runtime-config.ts) |  |
+| [packages/api/src/widget/api.runtime-load-widget.ts](packages/api/src/widget/api.runtime-load-widget.ts) |  |
+| [packages/api/src/widget/CONSTANTS.ts](packages/api/src/widget/CONSTANTS.ts) |  |
+| [packages/api/src/widget/contract.ts](packages/api/src/widget/contract.ts) |  |
+| [packages/api/src/widget/handlers.ts](packages/api/src/widget/handlers.ts) |  |
+| [packages/api/src/widget/index.ts](packages/api/src/widget/index.ts) |  |
+| [packages/api/src/widget/orpc.ts](packages/api/src/widget/orpc.ts) |  |
+| [packages/api/src/widget/types.ts](packages/api/src/widget/types.ts) |  |
+| [packages/api/tsconfig.json](packages/api/tsconfig.json) |  |
 
 ## packages/canvas
 
@@ -356,34 +331,17 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/ARCHITECTURE.md](packages/canvas/ARCHITECTURE.md) |  |
 | [packages/canvas/package.json](packages/canvas/package.json) |  |
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
-| [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
+| [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Tenant-scoped browser Automerge client. A placement or organization switch tears down the previous Repo before any document from the next scope loads. |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
-| [packages/canvas/src/components/AiWizzard/AsyncStateView.tsx](packages/canvas/src/components/AiWizzard/AsyncStateView.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
-| [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
-| [packages/canvas/src/components/AiWizzard/index.css](packages/canvas/src/components/AiWizzard/index.css) |  |
-| [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx](packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
-| [packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
-| [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
-| [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
 | [packages/canvas/src/components/CanvasHelp/help.data.ts](packages/canvas/src/components/CanvasHelp/help.data.ts) |  |
 | [packages/canvas/src/components/CanvasHelp/index.css](packages/canvas/src/components/CanvasHelp/index.css) |  |
 | [packages/canvas/src/components/CanvasHelp/index.tsx](packages/canvas/src/components/CanvasHelp/index.tsx) |  |
 | [packages/canvas/src/components/CanvasRecorder/index.css](packages/canvas/src/components/CanvasRecorder/index.css) |  |
 | [packages/canvas/src/components/CanvasRecorder/index.tsx](packages/canvas/src/components/CanvasRecorder/index.tsx) |  |
+| [packages/canvas/src/components/CanvasRuntimeLifecycle.ts](packages/canvas/src/components/CanvasRuntimeLifecycle.ts) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts](packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts](packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) | FloatingDrawingToolbar Component Excalidraw-style floating toolbar at top center of canvas Presentational floating toolbar for a single canvas |
@@ -403,13 +361,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/types.ts](packages/canvas/src/components/SelectionStyleMenu/types.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx) |  |
-| [packages/canvas/src/components/ToolIconPicker/styles.css](packages/canvas/src/components/ToolIconPicker/styles.css) |  |
-| [packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx](packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx) |  |
+| [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
 | [packages/canvas/src/core/CONSTANTS.ts](packages/canvas/src/core/CONSTANTS.ts) |  |
-| [packages/canvas/src/core/fn.canvas-node-semantics.ts](packages/canvas/src/core/fn.canvas-node-semantics.ts) |  |
 | [packages/canvas/src/core/fn.create-ordered-z-index.ts](packages/canvas/src/core/fn.create-ordered-z-index.ts) |  |
-| [packages/canvas/src/core/fn.filter-selection.ts](packages/canvas/src/core/fn.filter-selection.ts) |  |
-| [packages/canvas/src/core/fn.get-node-z-index.ts](packages/canvas/src/core/fn.get-node-z-index.ts) |  |
 | [packages/canvas/src/core/fn.image-utils.ts](packages/canvas/src/core/fn.image-utils.ts) |  |
 | [packages/canvas/src/core/fn.pretext.ts](packages/canvas/src/core/fn.pretext.ts) |  |
 | [packages/canvas/src/core/fn.resolve-selection-style-text-elements.ts](packages/canvas/src/core/fn.resolve-selection-style-text-elements.ts) |  |
@@ -418,124 +372,144 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/core/fn.sort-by-priority.ts](packages/canvas/src/core/fn.sort-by-priority.ts) |  |
 | [packages/canvas/src/core/fn.text-style.ts](packages/canvas/src/core/fn.text-style.ts) |  |
 | [packages/canvas/src/core/fn.world-position.ts](packages/canvas/src/core/fn.world-position.ts) |  |
-| [packages/canvas/src/core/fx.node-space.ts](packages/canvas/src/core/fx.node-space.ts) |  |
 | [packages/canvas/src/core/fx.pretext.ts](packages/canvas/src/core/fx.pretext.ts) |  |
-| [packages/canvas/src/core/fx.resolve-selection-style-elements.ts](packages/canvas/src/core/fx.resolve-selection-style-elements.ts) |  |
 | [packages/canvas/src/core/fx.selection-style-element-patch.ts](packages/canvas/src/core/fx.selection-style-element-patch.ts) |  |
-| [packages/canvas/src/core/GUARDS.ts](packages/canvas/src/core/GUARDS.ts) |  |
-| [packages/canvas/src/core/tx.apply-selection-style-change.ts](packages/canvas/src/core/tx.apply-selection-style-change.ts) |  |
-| [packages/canvas/src/core/tx.finalize-owned-transform.ts](packages/canvas/src/core/tx.finalize-owned-transform.ts) |  |
-| [packages/canvas/src/core/tx.set-node-z-index.ts](packages/canvas/src/core/tx.set-node-z-index.ts) |  |
-| [packages/canvas/src/core/types.ts](packages/canvas/src/core/types.ts) |  |
+| [packages/canvas/src/engine/camera/CameraEngineBridge.ts](packages/canvas/src/engine/camera/CameraEngineBridge.ts) |  |
+| [packages/canvas/src/engine/camera/CONSTANTS.ts](packages/canvas/src/engine/camera/CONSTANTS.ts) |  |
+| [packages/canvas/src/engine/camera/fn.camera-state.ts](packages/canvas/src/engine/camera/fn.camera-state.ts) |  |
+| [packages/canvas/src/engine/camera/typed.ts](packages/canvas/src/engine/camera/typed.ts) |  |
+| [packages/canvas/src/engine/CanvasEngineAdapter.ts](packages/canvas/src/engine/CanvasEngineAdapter.ts) |  |
+| [packages/canvas/src/engine/CONSTANTS.ts](packages/canvas/src/engine/CONSTANTS.ts) |  |
+| [packages/canvas/src/engine/editor/CanvasEditorBridge.ts](packages/canvas/src/engine/editor/CanvasEditorBridge.ts) |  |
+| [packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts](packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts) |  |
+| [packages/canvas/src/engine/editor/fn.path-commit.ts](packages/canvas/src/engine/editor/fn.path-commit.ts) |  |
+| [packages/canvas/src/engine/fn.assert-capabilities.ts](packages/canvas/src/engine/fn.assert-capabilities.ts) |  |
+| [packages/canvas/src/engine/fn.initial-scene.ts](packages/canvas/src/engine/fn.initial-scene.ts) |  |
+| [packages/canvas/src/engine/input/CanvasInputAdapter.ts](packages/canvas/src/engine/input/CanvasInputAdapter.ts) |  |
+| [packages/canvas/src/engine/input/CanvasTransientTargetRegistry.ts](packages/canvas/src/engine/input/CanvasTransientTargetRegistry.ts) |  |
+| [packages/canvas/src/engine/input/fn.normalize-event.ts](packages/canvas/src/engine/input/fn.normalize-event.ts) |  |
+| [packages/canvas/src/engine/input/fn.semantic-hit.ts](packages/canvas/src/engine/input/fn.semantic-hit.ts) |  |
+| [packages/canvas/src/engine/input/index.ts](packages/canvas/src/engine/input/index.ts) |  |
+| [packages/canvas/src/engine/input/typed.ts](packages/canvas/src/engine/input/typed.ts) |  |
+| [packages/canvas/src/engine/interface.ts](packages/canvas/src/engine/interface.ts) |  |
+| [packages/canvas/src/engine/portals/PortalOwnership.ts](packages/canvas/src/engine/portals/PortalOwnership.ts) |  |
+| [packages/canvas/src/engine/product-runtime/CanvasProductGeometryService.ts](packages/canvas/src/engine/product-runtime/CanvasProductGeometryService.ts) |  |
+| [packages/canvas/src/engine/product-runtime/CanvasProductInteractionService.ts](packages/canvas/src/engine/product-runtime/CanvasProductInteractionService.ts) |  |
+| [packages/canvas/src/engine/product-runtime/CanvasProductRuntime.ts](packages/canvas/src/engine/product-runtime/CanvasProductRuntime.ts) |  |
+| [packages/canvas/src/engine/product-runtime/CanvasProductTransformService.ts](packages/canvas/src/engine/product-runtime/CanvasProductTransformService.ts) |  |
+| [packages/canvas/src/engine/product-runtime/CanvasProductTransientService.ts](packages/canvas/src/engine/product-runtime/CanvasProductTransientService.ts) |  |
+| [packages/canvas/src/engine/product-runtime/fn.convert.ts](packages/canvas/src/engine/product-runtime/fn.convert.ts) |  |
+| [packages/canvas/src/engine/product-runtime/fn.targets.ts](packages/canvas/src/engine/product-runtime/fn.targets.ts) |  |
+| [packages/canvas/src/engine/product-runtime/fn.transient.ts](packages/canvas/src/engine/product-runtime/fn.transient.ts) |  |
+| [packages/canvas/src/engine/product-runtime/index.ts](packages/canvas/src/engine/product-runtime/index.ts) |  |
+| [packages/canvas/src/engine/product-runtime/interface.ts](packages/canvas/src/engine/product-runtime/interface.ts) |  |
+| [packages/canvas/src/engine/product-runtime/typed.ts](packages/canvas/src/engine/product-runtime/typed.ts) |  |
+| [packages/canvas/src/engine/projection-runtime/fn.commands.ts](packages/canvas/src/engine/projection-runtime/fn.commands.ts) |  |
+| [packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts](packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts) |  |
+| [packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts](packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts) |  |
+| [packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts](packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts) |  |
+| [packages/canvas/src/engine/projection/CONSTANTS.ts](packages/canvas/src/engine/projection/CONSTANTS.ts) |  |
+| [packages/canvas/src/engine/projection/fn.color.ts](packages/canvas/src/engine/projection/fn.color.ts) |  |
+| [packages/canvas/src/engine/projection/fn.diff.ts](packages/canvas/src/engine/projection/fn.diff.ts) |  |
+| [packages/canvas/src/engine/projection/fn.document-signature.ts](packages/canvas/src/engine/projection/fn.document-signature.ts) |  |
+| [packages/canvas/src/engine/projection/fn.freeze.ts](packages/canvas/src/engine/projection/fn.freeze.ts) |  |
+| [packages/canvas/src/engine/projection/fn.ids.ts](packages/canvas/src/engine/projection/fn.ids.ts) |  |
+| [packages/canvas/src/engine/projection/fn.incremental-document.ts](packages/canvas/src/engine/projection/fn.incremental-document.ts) |  |
+| [packages/canvas/src/engine/projection/fn.index.ts](packages/canvas/src/engine/projection/fn.index.ts) |  |
+| [packages/canvas/src/engine/projection/fn.json.ts](packages/canvas/src/engine/projection/fn.json.ts) |  |
+| [packages/canvas/src/engine/projection/fn.node-position.ts](packages/canvas/src/engine/projection/fn.node-position.ts) |  |
+| [packages/canvas/src/engine/projection/fn.nodes.ts](packages/canvas/src/engine/projection/fn.nodes.ts) |  |
+| [packages/canvas/src/engine/projection/fn.path.ts](packages/canvas/src/engine/projection/fn.path.ts) |  |
+| [packages/canvas/src/engine/projection/fn.persistent-record.ts](packages/canvas/src/engine/projection/fn.persistent-record.ts) |  |
+| [packages/canvas/src/engine/projection/fn.persistent-sequence.ts](packages/canvas/src/engine/projection/fn.persistent-sequence.ts) |  |
+| [packages/canvas/src/engine/projection/fn.placeholder.ts](packages/canvas/src/engine/projection/fn.placeholder.ts) |  |
+| [packages/canvas/src/engine/projection/fn.project-document.ts](packages/canvas/src/engine/projection/fn.project-document.ts) |  |
+| [packages/canvas/src/engine/projection/fn.project-group.ts](packages/canvas/src/engine/projection/fn.project-group.ts) |  |
+| [packages/canvas/src/engine/projection/fn.scene.ts](packages/canvas/src/engine/projection/fn.scene.ts) |  |
+| [packages/canvas/src/engine/projection/fn.signature.ts](packages/canvas/src/engine/projection/fn.signature.ts) |  |
+| [packages/canvas/src/engine/projection/fn.style.ts](packages/canvas/src/engine/projection/fn.style.ts) |  |
+| [packages/canvas/src/engine/projection/fn.topological-groups.ts](packages/canvas/src/engine/projection/fn.topological-groups.ts) |  |
+| [packages/canvas/src/engine/projection/fn.units.ts](packages/canvas/src/engine/projection/fn.units.ts) |  |
+| [packages/canvas/src/engine/projection/fn.validate-projection.ts](packages/canvas/src/engine/projection/fn.validate-projection.ts) |  |
+| [packages/canvas/src/engine/projection/fx.theme.ts](packages/canvas/src/engine/projection/fx.theme.ts) |  |
+| [packages/canvas/src/engine/projection/ProjectionIndex.ts](packages/canvas/src/engine/projection/ProjectionIndex.ts) |  |
+| [packages/canvas/src/engine/projection/ProjectionRegistry.ts](packages/canvas/src/engine/projection/ProjectionRegistry.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.image.ts](packages/canvas/src/engine/projection/projectors/fn.image.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.pen.ts](packages/canvas/src/engine/projection/projectors/fn.pen.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.shape1d.ts](packages/canvas/src/engine/projection/projectors/fn.shape1d.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.shape2d.ts](packages/canvas/src/engine/projection/projectors/fn.shape2d.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.text.ts](packages/canvas/src/engine/projection/projectors/fn.text.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts](packages/canvas/src/engine/projection/projectors/fn.widget-frame.ts) |  |
+| [packages/canvas/src/engine/projection/projectors/fn.widget.ts](packages/canvas/src/engine/projection/projectors/fn.widget.ts) |  |
+| [packages/canvas/src/engine/projection/typed.ts](packages/canvas/src/engine/projection/typed.ts) |  |
+| [packages/canvas/src/engine/ProjectionCoordinator.ts](packages/canvas/src/engine/ProjectionCoordinator.ts) |  |
+| [packages/canvas/src/engine/transients/CanvasTransientService.ts](packages/canvas/src/engine/transients/CanvasTransientService.ts) |  |
+| [packages/canvas/src/engine/typed.ts](packages/canvas/src/engine/typed.ts) |  |
+| [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
+| [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
-| [packages/canvas/src/plugins/ai/Ai.plugin.ts](packages/canvas/src/plugins/ai/Ai.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts](packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CONSTANTS.ts](packages/canvas/src/plugins/camera-control/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts](packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts) |  |
-| [packages/canvas/src/plugins/camera-control/fn.get-pointer-delta.ts](packages/canvas/src/plugins/camera-control/fn.get-pointer-delta.ts) |  |
 | [packages/canvas/src/plugins/camera-control/fn.normalize-camera-state.ts](packages/canvas/src/plugins/camera-control/fn.normalize-camera-state.ts) |  |
 | [packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts](packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts) |  |
-| [packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts](packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts) |  |
 | [packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts](packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts) |  |
 | [packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts](packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts) |  |
 | [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
-| [packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts](packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts) |  |
-| [packages/canvas/src/plugins/filesystem/getLanguageExtension.ts](packages/canvas/src/plugins/filesystem/getLanguageExtension.ts) |  |
-| [packages/canvas/src/plugins/filesystem/typed.ts](packages/canvas/src/plugins/filesystem/typed.ts) |  |
-| [packages/canvas/src/plugins/filesystem/widget.css](packages/canvas/src/plugins/filesystem/widget.css) |  |
-| [packages/canvas/src/plugins/filesystem/widget.ts](packages/canvas/src/plugins/filesystem/widget.ts) |  |
-| [packages/canvas/src/plugins/grid/fn.math.ts](packages/canvas/src/plugins/grid/fn.math.ts) |  |
 | [packages/canvas/src/plugins/grid/Grid.plugin.ts](packages/canvas/src/plugins/grid/Grid.plugin.ts) |  |
-| [packages/canvas/src/plugins/grid/tx.draw.ts](packages/canvas/src/plugins/grid/tx.draw.ts) |  |
-| [packages/canvas/src/plugins/history-control/HistoryControl.plugin.ts](packages/canvas/src/plugins/history-control/HistoryControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/image/fn.create-image-element.ts](packages/canvas/src/plugins/image/fn.create-image-element.ts) |  |
-| [packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts](packages/canvas/src/plugins/image/fn.fit-image-to-viewport.ts) |  |
-| [packages/canvas/src/plugins/image/fn.to-image-element.ts](packages/canvas/src/plugins/image/fn.to-image-element.ts) |  |
 | [packages/canvas/src/plugins/image/Image.plugin.ts](packages/canvas/src/plugins/image/Image.plugin.ts) |  |
-| [packages/canvas/src/plugins/image/tx.clone-backend-file-for-element.ts](packages/canvas/src/plugins/image/tx.clone-backend-file-for-element.ts) |  |
-| [packages/canvas/src/plugins/image/tx.create-image-clone-drag.ts](packages/canvas/src/plugins/image/tx.create-image-clone-drag.ts) |  |
-| [packages/canvas/src/plugins/image/tx.insert-image.ts](packages/canvas/src/plugins/image/tx.insert-image.ts) |  |
-| [packages/canvas/src/plugins/image/tx.setup-image-listeners.ts](packages/canvas/src/plugins/image/tx.setup-image-listeners.ts) |  |
-| [packages/canvas/src/plugins/image/tx.update-image-node-from-element.ts](packages/canvas/src/plugins/image/tx.update-image-node-from-element.ts) |  |
 | [packages/canvas/src/plugins/index.ts](packages/canvas/src/plugins/index.ts) |  |
 | [packages/canvas/src/plugins/pen/CONSTANTS.ts](packages/canvas/src/plugins/pen/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/pen/fn.draft-element.ts](packages/canvas/src/plugins/pen/fn.draft-element.ts) |  |
 | [packages/canvas/src/plugins/pen/fn.math.ts](packages/canvas/src/plugins/pen/fn.math.ts) |  |
 | [packages/canvas/src/plugins/pen/fn.style.ts](packages/canvas/src/plugins/pen/fn.style.ts) |  |
-| [packages/canvas/src/plugins/pen/fx.create-node.ts](packages/canvas/src/plugins/pen/fx.create-node.ts) |  |
-| [packages/canvas/src/plugins/pen/fx.path.ts](packages/canvas/src/plugins/pen/fx.path.ts) |  |
-| [packages/canvas/src/plugins/pen/fx.start-draft.ts](packages/canvas/src/plugins/pen/fx.start-draft.ts) |  |
 | [packages/canvas/src/plugins/pen/Pen.plugin.ts](packages/canvas/src/plugins/pen/Pen.plugin.ts) |  |
-| [packages/canvas/src/plugins/pen/tx.clone.ts](packages/canvas/src/plugins/pen/tx.clone.ts) |  |
-| [packages/canvas/src/plugins/pen/tx.path.ts](packages/canvas/src/plugins/pen/tx.path.ts) |  |
-| [packages/canvas/src/plugins/pen/tx.update-draft.ts](packages/canvas/src/plugins/pen/tx.update-draft.ts) |  |
 | [packages/canvas/src/plugins/recorder/CONSTANTS.ts](packages/canvas/src/plugins/recorder/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/recorder/fn.recording.ts](packages/canvas/src/plugins/recorder/fn.recording.ts) |  |
 | [packages/canvas/src/plugins/recorder/Recorder.plugin.ts](packages/canvas/src/plugins/recorder/Recorder.plugin.ts) |  |
 | [packages/canvas/src/plugins/recorder/tx.file.ts](packages/canvas/src/plugins/recorder/tx.file.ts) |  |
 | [packages/canvas/src/plugins/recorder/tx.mount.ts](packages/canvas/src/plugins/recorder/tx.mount.ts) |  |
 | [packages/canvas/src/plugins/scene-hydrator/SceneHydrator.plugin.ts](packages/canvas/src/plugins/scene-hydrator/SceneHydrator.plugin.ts) |  |
+| [packages/canvas/src/plugins/select/fn.delete-targets.ts](packages/canvas/src/plugins/select/fn.delete-targets.ts) |  |
 | [packages/canvas/src/plugins/select/fn.get-selection-path.ts](packages/canvas/src/plugins/select/fn.get-selection-path.ts) |  |
 | [packages/canvas/src/plugins/select/Select.plugin.ts](packages/canvas/src/plugins/select/Select.plugin.ts) |  |
 | [packages/canvas/src/plugins/select/tx.delete-selection.ts](packages/canvas/src/plugins/select/tx.delete-selection.ts) |  |
-| [packages/canvas/src/plugins/select/tx.handle-element-pointer-double-click.ts](packages/canvas/src/plugins/select/tx.handle-element-pointer-double-click.ts) |  |
-| [packages/canvas/src/plugins/select/tx.handle-element-pointer-down.ts](packages/canvas/src/plugins/select/tx.handle-element-pointer-down.ts) |  |
-| [packages/canvas/src/plugins/select/tx.handle-stage-pointer-move.ts](packages/canvas/src/plugins/select/tx.handle-stage-pointer-move.ts) |  |
-| [packages/canvas/src/plugins/select/types.ts](packages/canvas/src/plugins/select/types.ts) |  |
-| [packages/canvas/src/plugins/selection-style-menu/fx.mount-selection-style-menu.ts](packages/canvas/src/plugins/selection-style-menu/fx.mount-selection-style-menu.ts) |  |
+| [packages/canvas/src/plugins/selection-style-menu/CONSTANTS.ts](packages/canvas/src/plugins/selection-style-menu/CONSTANTS.ts) |  |
+| [packages/canvas/src/plugins/selection-style-menu/fn.remembered-style.ts](packages/canvas/src/plugins/selection-style-menu/fn.remembered-style.ts) |  |
 | [packages/canvas/src/plugins/selection-style-menu/SelectionStyleMenu.plugin.ts](packages/canvas/src/plugins/selection-style-menu/SelectionStyleMenu.plugin.ts) |  |
+| [packages/canvas/src/plugins/selection-style-menu/tx.mount-selection-style-menu.ts](packages/canvas/src/plugins/selection-style-menu/tx.mount-selection-style-menu.ts) |  |
 | [packages/canvas/src/plugins/shape1d/CONSTANTS.ts](packages/canvas/src/plugins/shape1d/CONSTANTS.ts) |  |
+| [packages/canvas/src/plugins/shape1d/fn.binding.ts](packages/canvas/src/plugins/shape1d/fn.binding.ts) |  |
 | [packages/canvas/src/plugins/shape1d/fn.draft.ts](packages/canvas/src/plugins/shape1d/fn.draft.ts) |  |
 | [packages/canvas/src/plugins/shape1d/fn.selection-style.ts](packages/canvas/src/plugins/shape1d/fn.selection-style.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fx.geometry.ts](packages/canvas/src/plugins/shape1d/fx.geometry.ts) |  |
-| [packages/canvas/src/plugins/shape1d/fx.node.ts](packages/canvas/src/plugins/shape1d/fx.node.ts) |  |
 | [packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts](packages/canvas/src/plugins/shape1d/Shape1d.plugin.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.draft.ts](packages/canvas/src/plugins/shape1d/tx.draft.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.edit-mode.ts](packages/canvas/src/plugins/shape1d/tx.edit-mode.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.element.ts](packages/canvas/src/plugins/shape1d/tx.element.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.history.ts](packages/canvas/src/plugins/shape1d/tx.history.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.register-shape1d-element.ts](packages/canvas/src/plugins/shape1d/tx.register-shape1d-element.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.register-shape1d-tool.ts](packages/canvas/src/plugins/shape1d/tx.register-shape1d-tool.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.render.ts](packages/canvas/src/plugins/shape1d/tx.render.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.runtime.ts](packages/canvas/src/plugins/shape1d/tx.runtime.ts) |  |
-| [packages/canvas/src/plugins/shape1d/tx.shape-move.ts](packages/canvas/src/plugins/shape1d/tx.shape-move.ts) |  |
-| [packages/canvas/src/plugins/shape1d/typed.ts](packages/canvas/src/plugins/shape1d/typed.ts) |  |
 | [packages/canvas/src/plugins/shape2d/CONSTANTS.ts](packages/canvas/src/plugins/shape2d/CONSTANTS.ts) |  |
-| [packages/canvas/src/plugins/shape2d/fn.node.ts](packages/canvas/src/plugins/shape2d/fn.node.ts) |  |
-| [packages/canvas/src/plugins/shape2d/fn.text-host-bounds.ts](packages/canvas/src/plugins/shape2d/fn.text-host-bounds.ts) |  |
-| [packages/canvas/src/plugins/shape2d/fx.attached-text.ts](packages/canvas/src/plugins/shape2d/fx.attached-text.ts) |  |
-| [packages/canvas/src/plugins/shape2d/fx.create-node.ts](packages/canvas/src/plugins/shape2d/fx.create-node.ts) |  |
-| [packages/canvas/src/plugins/shape2d/fx.to-element.ts](packages/canvas/src/plugins/shape2d/fx.to-element.ts) |  |
 | [packages/canvas/src/plugins/shape2d/Shape2d.plugin.ts](packages/canvas/src/plugins/shape2d/Shape2d.plugin.ts) |  |
-| [packages/canvas/src/plugins/shape2d/tx.create-clone-drag.ts](packages/canvas/src/plugins/shape2d/tx.create-clone-drag.ts) |  |
-| [packages/canvas/src/plugins/shape2d/tx.setup-node.ts](packages/canvas/src/plugins/shape2d/tx.setup-node.ts) |  |
-| [packages/canvas/src/plugins/shape2d/tx.update-node-from-element.ts](packages/canvas/src/plugins/shape2d/tx.update-node-from-element.ts) |  |
-| [packages/canvas/src/plugins/terminal/Terminal.plugin.ts](packages/canvas/src/plugins/terminal/Terminal.plugin.ts) |  |
-| [packages/canvas/src/plugins/terminal/typed.ts](packages/canvas/src/plugins/terminal/typed.ts) |  |
-| [packages/canvas/src/plugins/terminal/widget.css](packages/canvas/src/plugins/terminal/widget.css) |  |
-| [packages/canvas/src/plugins/terminal/widget.ts](packages/canvas/src/plugins/terminal/widget.ts) |  |
 | [packages/canvas/src/plugins/text/CONSTANTS.ts](packages/canvas/src/plugins/text/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/text/fn.compute-text-height.ts](packages/canvas/src/plugins/text/fn.compute-text-height.ts) |  |
 | [packages/canvas/src/plugins/text/fn.create-text-element.ts](packages/canvas/src/plugins/text/fn.create-text-element.ts) |  |
-| [packages/canvas/src/plugins/text/fx.compute-text-width.ts](packages/canvas/src/plugins/text/fx.compute-text-width.ts) |  |
-| [packages/canvas/src/plugins/text/fx.to-text-element.ts](packages/canvas/src/plugins/text/fx.to-text-element.ts) |  |
+| [packages/canvas/src/plugins/text/fn.teardown-policy.ts](packages/canvas/src/plugins/text/fn.teardown-policy.ts) |  |
 | [packages/canvas/src/plugins/text/Text.plugin.ts](packages/canvas/src/plugins/text/Text.plugin.ts) |  |
-| [packages/canvas/src/plugins/text/tx.create-text-clone-drag.ts](packages/canvas/src/plugins/text/tx.create-text-clone-drag.ts) |  |
-| [packages/canvas/src/plugins/text/tx.enter-edit-mode.ts](packages/canvas/src/plugins/text/tx.enter-edit-mode.ts) |  |
-| [packages/canvas/src/plugins/text/tx.setup-text-node.ts](packages/canvas/src/plugins/text/tx.setup-text-node.ts) |  |
-| [packages/canvas/src/plugins/text/tx.update-text-node-from-element.ts](packages/canvas/src/plugins/text/tx.update-text-node-from-element.ts) |  |
 | [packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts](packages/canvas/src/plugins/toolbar/Toolbar.plugin.ts) |  |
 | [packages/canvas/src/plugins/toolbar/tx.select-tool.ts](packages/canvas/src/plugins/toolbar/tx.select-tool.ts) |  |
-| [packages/canvas/src/plugins/transform/fx.proxy-bounds.ts](packages/canvas/src/plugins/transform/fx.proxy-bounds.ts) |  |
-| [packages/canvas/src/plugins/transform/fx.proxy-drag-target.ts](packages/canvas/src/plugins/transform/fx.proxy-drag-target.ts) |  |
-| [packages/canvas/src/plugins/transform/fx.selection-transform-options.ts](packages/canvas/src/plugins/transform/fx.selection-transform-options.ts) |  |
+| [packages/canvas/src/plugins/transform/fn.clone-plan.ts](packages/canvas/src/plugins/transform/fn.clone-plan.ts) |  |
+| [packages/canvas/src/plugins/transform/fn.group-transform.ts](packages/canvas/src/plugins/transform/fn.group-transform.ts) |  |
+| [packages/canvas/src/plugins/transform/fn.persist-proposal.ts](packages/canvas/src/plugins/transform/fn.persist-proposal.ts) |  |
+| [packages/canvas/src/plugins/transform/fn.selection-policy.ts](packages/canvas/src/plugins/transform/fn.selection-policy.ts) |  |
 | [packages/canvas/src/plugins/transform/Transform.plugin.ts](packages/canvas/src/plugins/transform/Transform.plugin.ts) |  |
-| [packages/canvas/src/plugins/transform/tx.dispatch-selection-transform-hooks.ts](packages/canvas/src/plugins/transform/tx.dispatch-selection-transform-hooks.ts) |  |
-| [packages/canvas/src/plugins/transform/tx.sync-transformer.ts](packages/canvas/src/plugins/transform/tx.sync-transformer.ts) |  |
+| [packages/canvas/src/plugins/transform/tx.clone-image-assets.ts](packages/canvas/src/plugins/transform/tx.clone-image-assets.ts) |  |
 | [packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts](packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts) |  |
-| [packages/canvas/src/plugins/widget/Widget.plugin.ts](packages/canvas/src/plugins/widget/Widget.plugin.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
+| [packages/canvas/src/semantic/fn.modifiers.ts](packages/canvas/src/semantic/fn.modifiers.ts) |  |
+| [packages/canvas/src/semantic/fn.target.ts](packages/canvas/src/semantic/fn.target.ts) |  |
+| [packages/canvas/src/semantic/fn.transform-proposal.ts](packages/canvas/src/semantic/fn.transform-proposal.ts) |  |
+| [packages/canvas/src/semantic/index.ts](packages/canvas/src/semantic/index.ts) |  |
+| [packages/canvas/src/semantic/typed.ts](packages/canvas/src/semantic/typed.ts) |  |
+| [packages/canvas/src/services/active-session/CanvasActiveSessionService.ts](packages/canvas/src/services/active-session/CanvasActiveSessionService.ts) |  |
+| [packages/canvas/src/services/active-session/fn.classify-change.ts](packages/canvas/src/services/active-session/fn.classify-change.ts) |  |
+| [packages/canvas/src/services/active-session/fn.dependencies.ts](packages/canvas/src/services/active-session/fn.dependencies.ts) |  |
+| [packages/canvas/src/services/active-session/typed.ts](packages/canvas/src/services/active-session/typed.ts) |  |
 | [packages/canvas/src/services/camera/CameraService.ts](packages/canvas/src/services/camera/CameraService.ts) |  |
 | [packages/canvas/src/services/clone/CloneService.ts](packages/canvas/src/services/clone/CloneService.ts) |  |
 | [packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts](packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts) |  |
@@ -543,56 +517,109 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/crdt/CrdtService.ts](packages/canvas/src/services/crdt/CrdtService.ts) |  |
 | [packages/canvas/src/services/crdt/fxBuilder.ts](packages/canvas/src/services/crdt/fxBuilder.ts) |  |
 | [packages/canvas/src/services/crdt/tx.apply-ops.ts](packages/canvas/src/services/crdt/tx.apply-ops.ts) |  |
+| [packages/canvas/src/services/crdt/tx.migrate-widget-window.ts](packages/canvas/src/services/crdt/tx.migrate-widget-window.ts) |  |
 | [packages/canvas/src/services/element/ElementService.ts](packages/canvas/src/services/element/ElementService.ts) |  |
 | [packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts](packages/canvas/src/services/element/fn-merge-selection-style-menu-configs.ts) |  |
 | [packages/canvas/src/services/element/types.ts](packages/canvas/src/services/element/types.ts) |  |
-| [packages/canvas/src/services/group/fn.get-selection-bounds.ts](packages/canvas/src/services/group/fn.get-selection-bounds.ts) |  |
-| [packages/canvas/src/services/group/fn.scene-node.ts](packages/canvas/src/services/group/fn.scene-node.ts) |  |
-| [packages/canvas/src/services/group/fn.serialize-subtree-elements.ts](packages/canvas/src/services/group/fn.serialize-subtree-elements.ts) |  |
-| [packages/canvas/src/services/group/fn.to-group-patch.ts](packages/canvas/src/services/group/fn.to-group-patch.ts) |  |
-| [packages/canvas/src/services/group/fx.create-group-boundary.ts](packages/canvas/src/services/group/fx.create-group-boundary.ts) |  |
+| [packages/canvas/src/services/group/fn.product-groups.ts](packages/canvas/src/services/group/fn.product-groups.ts) |  |
 | [packages/canvas/src/services/group/GroupService.ts](packages/canvas/src/services/group/GroupService.ts) |  |
-| [packages/canvas/src/services/group/tx.create-group-clone-drag.ts](packages/canvas/src/services/group/tx.create-group-clone-drag.ts) |  |
 | [packages/canvas/src/services/group/tx.group-selection.ts](packages/canvas/src/services/group/tx.group-selection.ts) |  |
-| [packages/canvas/src/services/group/tx.setup-group-node.ts](packages/canvas/src/services/group/tx.setup-group-node.ts) |  |
-| [packages/canvas/src/services/group/tx.sync-draggability.ts](packages/canvas/src/services/group/tx.sync-draggability.ts) |  |
-| [packages/canvas/src/services/group/tx.sync-group-boundaries.ts](packages/canvas/src/services/group/tx.sync-group-boundaries.ts) |  |
+| [packages/canvas/src/services/group/tx.move-groups.ts](packages/canvas/src/services/group/tx.move-groups.ts) |  |
 | [packages/canvas/src/services/group/tx.ungroup-selection.ts](packages/canvas/src/services/group/tx.ungroup-selection.ts) |  |
 | [packages/canvas/src/services/group/types.ts](packages/canvas/src/services/group/types.ts) |  |
 | [packages/canvas/src/services/history/HistoryService.ts](packages/canvas/src/services/history/HistoryService.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
 | [packages/canvas/src/services/logging/LoggingService.ts](packages/canvas/src/services/logging/LoggingService.ts) |  |
+| [packages/canvas/src/services/portal/CanvasPortalService.ts](packages/canvas/src/services/portal/CanvasPortalService.ts) |  |
+| [packages/canvas/src/services/projection/CrdtProjectionService.ts](packages/canvas/src/services/projection/CrdtProjectionService.ts) |  |
+| [packages/canvas/src/services/render-order/fn.product-order.ts](packages/canvas/src/services/render-order/fn.product-order.ts) |  |
 | [packages/canvas/src/services/render-order/RenderOrderService.ts](packages/canvas/src/services/render-order/RenderOrderService.ts) |  |
+| [packages/canvas/src/services/render-order/typed.ts](packages/canvas/src/services/render-order/typed.ts) |  |
+| [packages/canvas/src/services/scene/fn.projection-diagnostics.ts](packages/canvas/src/services/scene/fn.projection-diagnostics.ts) |  |
 | [packages/canvas/src/services/scene/SceneService.ts](packages/canvas/src/services/scene/SceneService.ts) |  |
+| [packages/canvas/src/services/selection/CanvasSelectionService.ts](packages/canvas/src/services/selection/CanvasSelectionService.ts) | Compatibility export while callers move to the production SelectionService name. Both names refer to the same renderer-neutral implementation. |
 | [packages/canvas/src/services/selection/CONSTANTS.ts](packages/canvas/src/services/selection/CONSTANTS.ts) |  |
+| [packages/canvas/src/services/selection/fn.resolve-selection.ts](packages/canvas/src/services/selection/fn.resolve-selection.ts) |  |
+| [packages/canvas/src/services/selection/fn.semantic-selection.ts](packages/canvas/src/services/selection/fn.semantic-selection.ts) |  |
 | [packages/canvas/src/services/selection/SelectionService.ts](packages/canvas/src/services/selection/SelectionService.ts) |  |
 | [packages/canvas/src/services/session/SessionService.ts](packages/canvas/src/services/session/SessionService.ts) |  |
-| [packages/canvas/src/services/tool/fx.get-canvas-point.ts](packages/canvas/src/services/tool/fx.get-canvas-point.ts) |  |
 | [packages/canvas/src/services/tool/ToolService.ts](packages/canvas/src/services/tool/ToolService.ts) |  |
 | [packages/canvas/src/services/tool/types.ts](packages/canvas/src/services/tool/types.ts) |  |
-| [packages/canvas/src/services/widget/attach-dom-portal.ts](packages/canvas/src/services/widget/attach-dom-portal.ts) |  |
-| [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
-| [packages/canvas/src/services/widget/fn.actor-event-snapshot.ts](packages/canvas/src/services/widget/fn.actor-event-snapshot.ts) |  |
-| [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
-| [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
-| [packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts](packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts) |  |
-| [packages/canvas/src/services/widget/fn.to-widget-element.ts](packages/canvas/src/services/widget/fn.to-widget-element.ts) |  |
-| [packages/canvas/src/services/widget/fx.attach-widget-listener.ts](packages/canvas/src/services/widget/fx.attach-widget-listener.ts) |  |
-| [packages/canvas/src/services/widget/fx.draw-host.ts](packages/canvas/src/services/widget/fx.draw-host.ts) |  |
-| [packages/canvas/src/services/widget/fx.register-tool.ts](packages/canvas/src/services/widget/fx.register-tool.ts) |  |
-| [packages/canvas/src/services/widget/interface.ts](packages/canvas/src/services/widget/interface.ts) |  |
-| [packages/canvas/src/services/widget/mount-arrow-sandbox.ts](packages/canvas/src/services/widget/mount-arrow-sandbox.ts) |  |
-| [packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts](packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts) |  |
-| [packages/canvas/src/services/widget/tx.render-widget-error.ts](packages/canvas/src/services/widget/tx.render-widget-error.ts) |  |
-| [packages/canvas/src/services/widget/tx.render-widget-loading.ts](packages/canvas/src/services/widget/tx.render-widget-loading.ts) |  |
-| [packages/canvas/src/services/widget/tx.resize-widget-host.ts](packages/canvas/src/services/widget/tx.resize-widget-host.ts) |  |
-| [packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts](packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts) |  |
-| [packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts](packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts) |  |
-| [packages/canvas/src/services/widget/types.ts](packages/canvas/src/services/widget/types.ts) |  |
-| [packages/canvas/src/services/widget/WidgetManagerService.ts](packages/canvas/src/services/widget/WidgetManagerService.ts) |  |
+| [packages/canvas/src/services/widget-placement/fn.widget-placement.ts](packages/canvas/src/services/widget-placement/fn.widget-placement.ts) |  |
+| [packages/canvas/src/services/widget-placement/types.ts](packages/canvas/src/services/widget-placement/types.ts) |  |
+| [packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts](packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
+| [packages/canvas/src/widget-host/CONSTANTS.ts](packages/canvas/src/widget-host/CONSTANTS.ts) |  |
+| [packages/canvas/src/widget-host/fn.create-cloned-widget-element.ts](packages/canvas/src/widget-host/fn.create-cloned-widget-element.ts) |  |
+| [packages/canvas/src/widget-host/fn.create-widget-element.ts](packages/canvas/src/widget-host/fn.create-widget-element.ts) |  |
+| [packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts](packages/canvas/src/widget-host/fn.normalize-widget-host-data.ts) |  |
+| [packages/canvas/src/widget-host/types.ts](packages/canvas/src/widget-host/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
+| [packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz](packages/canvas/vendor/omnidraw-cangine-0.2.2.tgz) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
+
+## packages/capsule-vibecanvas
+
+| path | jsdocs |
+|---|---|
+| [packages/capsule-vibecanvas/package.json](packages/capsule-vibecanvas/package.json) |  |
+| [packages/capsule-vibecanvas/src/build/CONSTANTS.ts](packages/capsule-vibecanvas/src/build/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.build-error.ts](packages/capsule-vibecanvas/src/build/fn.build-error.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.error.ts](packages/capsule-vibecanvas/src/build/fn.error.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.policy.ts](packages/capsule-vibecanvas/src/build/fn.policy.ts) |  |
+| [packages/capsule-vibecanvas/src/build/index.ts](packages/capsule-vibecanvas/src/build/index.ts) |  |
+| [packages/capsule-vibecanvas/src/build/interface.ts](packages/capsule-vibecanvas/src/build/interface.ts) |  |
+| [packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts](packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts) |  |
+| [packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts](packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts) |  |
+| [packages/capsule-vibecanvas/src/builder/index.ts](packages/capsule-vibecanvas/src/builder/index.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts](packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts](packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.capability.ts](packages/capsule-vibecanvas/src/capabilities/fn.capability.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/index.ts](packages/capsule-vibecanvas/src/capabilities/index.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/types.ts](packages/capsule-vibecanvas/src/capabilities/types.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/CONSTANTS.ts](packages/capsule-vibecanvas/src/contract/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.budgets.ts](packages/capsule-vibecanvas/src/contract/fn.budgets.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.target.ts](packages/capsule-vibecanvas/src/contract/fn.target.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/index.ts](packages/capsule-vibecanvas/src/contract/index.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/types.ts](packages/capsule-vibecanvas/src/contract/types.ts) |  |
+| [packages/capsule-vibecanvas/src/host/fn.error.ts](packages/capsule-vibecanvas/src/host/fn.error.ts) |  |
+| [packages/capsule-vibecanvas/src/host/index.ts](packages/capsule-vibecanvas/src/host/index.ts) |  |
+| [packages/capsule-vibecanvas/src/testkit/index.ts](packages/capsule-vibecanvas/src/testkit/index.ts) |  |
+| [packages/capsule-vibecanvas/tsconfig.json](packages/capsule-vibecanvas/tsconfig.json) |  |
+
+## packages/function-runtime
+
+| path | jsdocs |
+|---|---|
+| [packages/function-runtime/package.json](packages/function-runtime/package.json) |  |
+| [packages/function-runtime/src/CONSTANTS.ts](packages/function-runtime/src/CONSTANTS.ts) | Host-owned retry bound for failures proven to precede guest module evaluation. |
+| [packages/function-runtime/src/core/fn.invocation-state.ts](packages/function-runtime/src/core/fn.invocation-state.ts) | Defines deterministic invocation and attempt state-machine transitions. |
+| [packages/function-runtime/src/core/fn.retry.ts](packages/function-runtime/src/core/fn.retry.ts) | Applies the platform-owned retry policy to a completed attempt. |
+| [packages/function-runtime/src/index.ts](packages/function-runtime/src/index.ts) | Public short-lived function runtime contract surface. |
+| [packages/function-runtime/src/interface.ts](packages/function-runtime/src/interface.ts) | Public registry, persistence, scheduling, sandbox, and usage SPIs. |
+| [packages/function-runtime/src/local/BunChildFunctionDescriptorExtractor.ts](packages/function-runtime/src/local/BunChildFunctionDescriptorExtractor.ts) | Bounded child-only server descriptor extraction adapter. |
+| [packages/function-runtime/src/local/BunChildLifecycle.ts](packages/function-runtime/src/local/BunChildLifecycle.ts) | Shared fail-closed Bun child cage and teardown helpers. |
+| [packages/function-runtime/src/local/BunChildSandboxDriver.ts](packages/function-runtime/src/local/BunChildSandboxDriver.ts) | Zero-warm Bun child SandboxDriver for local development and tests. Wall time, CPU, and RSS are host-accounted. Disk/network remain unsupported zeroes in this replaceable adapter; guest-reported metrics are never trusted. |
+| [packages/function-runtime/src/local/fn.artifact-admission.ts](packages/function-runtime/src/local/fn.artifact-admission.ts) | Pure defense-in-depth admission checks for unsupported continuations. |
+| [packages/function-runtime/src/local/fn.artifact-envelope.ts](packages/function-runtime/src/local/fn.artifact-envelope.ts) | Pure validation of the immutable server-artifact envelope. |
+| [packages/function-runtime/src/local/fn.canonical-json.ts](packages/function-runtime/src/local/fn.canonical-json.ts) | Pure canonical JSON encoding for hashes and idempotency fingerprints. |
+| [packages/function-runtime/src/local/fn.resource-call-policy.ts](packages/function-runtime/src/local/fn.resource-call-policy.ts) | Pure per-function resource ceiling enforcement. |
+| [packages/function-runtime/src/local/fn.sandbox-command.ts](packages/function-runtime/src/local/fn.sandbox-command.ts) | Pure Bun child-worker command construction. |
+| [packages/function-runtime/src/local/function-worker.ts](packages/function-runtime/src/local/function-worker.ts) | Single-invocation Bun child. Guest modules run in a blank node:vm context with imports and generated code disabled. This is defense in depth for the OSS development/test adapter, not a hostile-code production boundary. |
+| [packages/function-runtime/src/local/FunctionExecutor.ts](packages/function-runtime/src/local/FunctionExecutor.ts) | One-attempt local executor orchestration around durable leases. |
+| [packages/function-runtime/src/local/index.ts](packages/function-runtime/src/local/index.ts) | Usable OSS local short-lived function runtime adapters. |
+| [packages/function-runtime/src/local/interface.ts](packages/function-runtime/src/local/interface.ts) | Local function executor adapter seams. |
+| [packages/function-runtime/src/local/InvocationResourceGateway.ts](packages/function-runtime/src/local/InvocationResourceGateway.ts) | Invocation-scoped logical Resource Gateway facade. |
+| [packages/function-runtime/src/local/JsonSchemaFunctionValidator.ts](packages/function-runtime/src/local/JsonSchemaFunctionValidator.ts) | Bounded trusted host-side JSON Schema validator. |
+| [packages/function-runtime/src/local/LocalFunctionDispatcher.ts](packages/function-runtime/src/local/LocalFunctionDispatcher.ts) | Local invocation admission and bounded pull-dispatch orchestration. |
+| [packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts](packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts) | HMAC capability bridge between the function lease store and Resource Store. |
+| [packages/function-runtime/src/local/worker-types.ts](packages/function-runtime/src/local/worker-types.ts) | Private serializable protocol between the Bun host driver and one child. |
+| [packages/function-runtime/src/types.ts](packages/function-runtime/src/types.ts) | Public short-lived function definition, invocation, lease, sandbox, and usage types. |
+| [packages/function-runtime/tsconfig.json](packages/function-runtime/tsconfig.json) |  |
 
 ## packages/orpc-client
 
@@ -602,12 +629,43 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/orpc-client/src/index.ts](packages/orpc-client/src/index.ts) |  |
 | [packages/orpc-client/tsconfig.json](packages/orpc-client/tsconfig.json) |  |
 
+## packages/resource-runtime
+
+| path | jsdocs |
+|---|---|
+| [packages/resource-runtime/package.json](packages/resource-runtime/package.json) |  |
+| [packages/resource-runtime/src/core/fn.resource-access.ts](packages/resource-runtime/src/core/fn.resource-access.ts) | Evaluates logical resource requirements and bindings without provider state. |
+| [packages/resource-runtime/src/core/fn.resource-lifecycle.ts](packages/resource-runtime/src/core/fn.resource-lifecycle.ts) | Defines deterministic resource catalog lifecycle transitions. |
+| [packages/resource-runtime/src/core/fn.write-capability.ts](packages/resource-runtime/src/core/fn.write-capability.ts) | Matches decoded resource write-capability claims to a fenced operation. |
+| [packages/resource-runtime/src/index.ts](packages/resource-runtime/src/index.ts) | Public resource runtime contract surface. |
+| [packages/resource-runtime/src/interface.ts](packages/resource-runtime/src/interface.ts) | Public resource gateway, Resource Store, provider, management, and control-store SPIs. |
+| [packages/resource-runtime/src/local/DbResource.ts](packages/resource-runtime/src/local/DbResource.ts) |  |
+| [packages/resource-runtime/src/local/DbResourceCoordinator.ts](packages/resource-runtime/src/local/DbResourceCoordinator.ts) |  |
+| [packages/resource-runtime/src/local/fn.resource-data.ts](packages/resource-runtime/src/local/fn.resource-data.ts) |  |
+| [packages/resource-runtime/src/local/fn.resource-key-value.ts](packages/resource-runtime/src/local/fn.resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical resource key-value files. |
+| [packages/resource-runtime/src/local/fn.resource-manager-gateway.ts](packages/resource-runtime/src/local/fn.resource-manager-gateway.ts) | Pure conversion from the legacy-neutral manager model to public gateway contracts. |
+| [packages/resource-runtime/src/local/index.ts](packages/resource-runtime/src/local/index.ts) | Node-local Resource Store implementation boundary. |
+| [packages/resource-runtime/src/local/KvResource.ts](packages/resource-runtime/src/local/KvResource.ts) |  |
+| [packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts](packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts) | Neutral contracts for independently persisted KV and secret-store entries. |
+| [packages/resource-runtime/src/local/ResourceKeyValueStore.ts](packages/resource-runtime/src/local/ResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
+| [packages/resource-runtime/src/local/ResourceManager.ts](packages/resource-runtime/src/local/ResourceManager.ts) | Local resource catalog, gateway, lifecycle, and consumer-use coordination. |
+| [packages/resource-runtime/src/local/ResourceManagerGateway.ts](packages/resource-runtime/src/local/ResourceManagerGateway.ts) | Compatibility bridge from legacy-neutral manager calls into the canonical gateway/store path. |
+| [packages/resource-runtime/src/local/ResourceOwnerLock.ts](packages/resource-runtime/src/local/ResourceOwnerLock.ts) | Cross-process ownership fence for one local Resource Store root. |
+| [packages/resource-runtime/src/local/ResourceProviderTypes.ts](packages/resource-runtime/src/local/ResourceProviderTypes.ts) | Structural local-provider contracts independent of consumer and transport packages. |
+| [packages/resource-runtime/src/local/ResourceStoreService.ts](packages/resource-runtime/src/local/ResourceStoreService.ts) | Single-owner local Resource Store and location-transparent gateway. |
+| [packages/resource-runtime/src/local/SecretStoreKeyProvider.ts](packages/resource-runtime/src/local/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
+| [packages/resource-runtime/src/local/SecretStoreResource.ts](packages/resource-runtime/src/local/SecretStoreResource.ts) |  |
+| [packages/resource-runtime/src/ResourceError.ts](packages/resource-runtime/src/ResourceError.ts) | Stable resource-domain errors and safe serialization at transport boundaries. |
+| [packages/resource-runtime/src/types.ts](packages/resource-runtime/src/types.ts) | Resource catalog, capability, data, and lifecycle types. |
+| [packages/resource-runtime/tsconfig.json](packages/resource-runtime/tsconfig.json) |  |
+
 ## packages/runtime
 
 | path | jsdocs |
 |---|---|
 | [packages/runtime/AGENTS.md](packages/runtime/AGENTS.md) |  |
 | [packages/runtime/package.json](packages/runtime/package.json) |  |
+| [packages/runtime/src/composition.ts](packages/runtime/src/composition.ts) |  |
 | [packages/runtime/src/create-runtime.ts](packages/runtime/src/create-runtime.ts) |  |
 | [packages/runtime/src/index.ts](packages/runtime/src/index.ts) |  |
 | [packages/runtime/src/interface.ts](packages/runtime/src/interface.ts) |  |
@@ -618,48 +676,27 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/sdk/.gitignore](packages/sdk/.gitignore) |  |
-| [packages/sdk/actor/index.d.ts](packages/sdk/actor/index.d.ts) |  |
-| [packages/sdk/actor/index.js](packages/sdk/actor/index.js) |  |
-| [packages/sdk/actor/package.json](packages/sdk/actor/package.json) |  |
+| [packages/sdk/function-client/index.d.ts](packages/sdk/function-client/index.d.ts) |  |
+| [packages/sdk/function-client/index.js](packages/sdk/function-client/index.js) |  |
+| [packages/sdk/function-client/package.json](packages/sdk/function-client/package.json) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
 | [packages/sdk/scripts/build.ts](packages/sdk/scripts/build.ts) |  |
-| [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
-| [packages/sdk/src/example-interface.ts](packages/sdk/src/example-interface.ts) |  |
+| [packages/sdk/server/index.d.ts](packages/sdk/server/index.d.ts) |  |
+| [packages/sdk/server/index.js](packages/sdk/server/index.js) |  |
+| [packages/sdk/server/package.json](packages/sdk/server/package.json) |  |
+| [packages/sdk/src/collaborative-state-client.ts](packages/sdk/src/collaborative-state-client.ts) |  |
+| [packages/sdk/src/function-client.ts](packages/sdk/src/function-client.ts) | Capsule guest client primitives for generated server-function proxies. |
+| [packages/sdk/src/server.ts](packages/sdk/src/server.ts) | Authoring and registration surface for bounded short-lived server functions. This tiny runtime is bundled into each server artifact. |
 | [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |
 | [packages/sdk/src/types.ts](packages/sdk/src/types.ts) |  |
-| [packages/sdk/src/widget-bridge.ts](packages/sdk/src/widget-bridge.ts) |  |
+| [packages/sdk/src/widget-channels.ts](packages/sdk/src/widget-channels.ts) |  |
 | [packages/sdk/src/widget.ts](packages/sdk/src/widget.ts) |  |
 | [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
-| [packages/sdk/vibecanvas.schema.json](packages/sdk/vibecanvas.schema.json) |  |
+| [packages/sdk/tsconfig.type-tests.json](packages/sdk/tsconfig.type-tests.json) |  |
 | [packages/sdk/widget/index.d.ts](packages/sdk/widget/index.d.ts) |  |
 | [packages/sdk/widget/index.js](packages/sdk/widget/index.js) |  |
 | [packages/sdk/widget/package.json](packages/sdk/widget/package.json) |  |
-
-## packages/service-actor
-
-| path | jsdocs |
-|---|---|
-| [packages/service-actor/AGENTS.md](packages/service-actor/AGENTS.md) |  |
-| [packages/service-actor/package.json](packages/service-actor/package.json) |  |
-| [packages/service-actor/src/actor-ipc-command.ts](packages/service-actor/src/actor-ipc-command.ts) |  |
-| [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process. |
-| [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
-| [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
-| [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
-| [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
-| [packages/service-actor/src/core/fn.normalize-actor-manifest.ts](packages/service-actor/src/core/fn.normalize-actor-manifest.ts) |  |
-| [packages/service-actor/src/core/fn.widget-error.ts](packages/service-actor/src/core/fn.widget-error.ts) |  |
-| [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
-| [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
-| [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
-| [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
-| [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) |  |
-| [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) |  |
-| [packages/service-actor/src/fn.actor-runtime.ts](packages/service-actor/src/fn.actor-runtime.ts) |  |
-| [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
-| [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
-| [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
 ## packages/service-agent
 
@@ -668,46 +705,71 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/approval/ApprovalCoordinator.ts](packages/service-agent/src/approval/ApprovalCoordinator.ts) |  |
+| [packages/service-agent/src/approval/types.ts](packages/service-agent/src/approval/types.ts) |  |
+| [packages/service-agent/src/core/CONSTANTS.ts](packages/service-agent/src/core/CONSTANTS.ts) |  |
 | [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
+| [packages/service-agent/src/core/fn.draft-resource-bindings.ts](packages/service-agent/src/core/fn.draft-resource-bindings.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
-| [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
-| [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/fn.widget-mention-context.ts](packages/service-agent/src/core/fn.widget-mention-context.ts) |  |
+| [packages/service-agent/src/core/fn.widget-typescript-command.ts](packages/service-agent/src/core/fn.widget-typescript-command.ts) |  |
+| [packages/service-agent/src/core/fx.session-records.ts](packages/service-agent/src/core/fx.session-records.ts) |  |
 | [packages/service-agent/src/core/fx.walk-files.ts](packages/service-agent/src/core/fx.walk-files.ts) |  |
-| [packages/service-agent/src/core/lint/fn.actor-registry.ts](packages/service-agent/src/core/lint/fn.actor-registry.ts) |  |
-| [packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts) |  |
-| [packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts) |  |
 | [packages/service-agent/src/core/lint/fn.manifest-shape.ts](packages/service-agent/src/core/lint/fn.manifest-shape.ts) |  |
-| [packages/service-agent/src/core/lint/fn.manifest-states.ts](packages/service-agent/src/core/lint/fn.manifest-states.ts) |  |
-| [packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts](packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts) |  |
 | [packages/service-agent/src/core/lint/fn.required-widget-files.ts](packages/service-agent/src/core/lint/fn.required-widget-files.ts) |  |
 | [packages/service-agent/src/core/lint/fn.validate-manifest.ts](packages/service-agent/src/core/lint/fn.validate-manifest.ts) |  |
-| [packages/service-agent/src/core/tx.publish-widget-draft.ts](packages/service-agent/src/core/tx.publish-widget-draft.ts) |  |
-| [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/tx.session-cwd.ts](packages/service-agent/src/core/tx.session-cwd.ts) |  |
+| [packages/service-agent/src/core/tx.session-records.ts](packages/service-agent/src/core/tx.session-records.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
 | [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
-| [packages/service-agent/src/prompts/prompt.actor-implementation.md](packages/service-agent/src/prompts/prompt.actor-implementation.md) |  |
-| [packages/service-agent/src/prompts/prompt.actor-lifecycle-and-activity.md](packages/service-agent/src/prompts/prompt.actor-lifecycle-and-activity.md) |  |
-| [packages/service-agent/src/prompts/prompt.arrow-js.md](packages/service-agent/src/prompts/prompt.arrow-js.md) |  |
+| [packages/service-agent/src/prompts/prompt.capsule.md](packages/service-agent/src/prompts/prompt.capsule.md) |  |
 | [packages/service-agent/src/prompts/prompt.product-and-manifest.md](packages/service-agent/src/prompts/prompt.product-and-manifest.md) |  |
+| [packages/service-agent/src/prompts/prompt.server-functions.md](packages/service-agent/src/prompts/prompt.server-functions.md) |  |
+| [packages/service-agent/src/prompts/prompt.state-and-resources.md](packages/service-agent/src/prompts/prompt.state-and-resources.md) |  |
 | [packages/service-agent/src/prompts/prompt.style-guide.md](packages/service-agent/src/prompts/prompt.style-guide.md) |  |
 | [packages/service-agent/src/prompts/prompt.tools.md](packages/service-agent/src/prompts/prompt.tools.md) |  |
 | [packages/service-agent/src/prompts/prompt.widget-implementation.md](packages/service-agent/src/prompts/prompt.widget-implementation.md) |  |
 | [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
-| [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
-| [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |
+| [packages/service-agent/src/tools/fn.apply-exact-edits.ts](packages/service-agent/src/tools/fn.apply-exact-edits.ts) |  |
+| [packages/service-agent/src/tools/fn.apply-unified-patch.ts](packages/service-agent/src/tools/fn.apply-unified-patch.ts) |  |
+| [packages/service-agent/src/tools/fn.redact-secret-resource-write.ts](packages/service-agent/src/tools/fn.redact-secret-resource-write.ts) |  |
+| [packages/service-agent/src/tools/fn.resource-tools.ts](packages/service-agent/src/tools/fn.resource-tools.ts) |  |
 | [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
-| [packages/service-agent/src/tools/tool.approve-actor-candidate.ts](packages/service-agent/src/tools/tool.approve-actor-candidate.ts) |  |
-| [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
-| [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
-| [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
+| [packages/service-agent/src/tools/fn.widget-create.ts](packages/service-agent/src/tools/fn.widget-create.ts) |  |
+| [packages/service-agent/src/tools/fn.widget-list.ts](packages/service-agent/src/tools/fn.widget-list.ts) |  |
+| [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
+| [packages/service-agent/src/tools/resource-service.ts](packages/service-agent/src/tools/resource-service.ts) |  |
+| [packages/service-agent/src/tools/tool.bash.ts](packages/service-agent/src/tools/tool.bash.ts) |  |
+| [packages/service-agent/src/tools/tool.resources.ts](packages/service-agent/src/tools/tool.resources.ts) |  |
 | [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |
+| [packages/service-agent/src/tools/tool.widget-workspace.ts](packages/service-agent/src/tools/tool.widget-workspace.ts) |  |
+| [packages/service-agent/src/tools/tool.workspace-files.ts](packages/service-agent/src/tools/tool.workspace-files.ts) |  |
+| [packages/service-agent/src/tools/ToolRegistry.ts](packages/service-agent/src/tools/ToolRegistry.ts) |  |
 | [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
+| [packages/service-agent/src/widget-drafts/types.ts](packages/service-agent/src/widget-drafts/types.ts) |  |
+| [packages/service-agent/src/widget-drafts/WidgetDraftController.ts](packages/service-agent/src/widget-drafts/WidgetDraftController.ts) |  |
+| [packages/service-agent/src/widget-management/CONSTANTS.ts](packages/service-agent/src/widget-management/CONSTANTS.ts) |  |
+| [packages/service-agent/src/widget-management/fn.published-source.ts](packages/service-agent/src/widget-management/fn.published-source.ts) |  |
+| [packages/service-agent/src/widget-management/fn.published-widget-placement.ts](packages/service-agent/src/widget-management/fn.published-widget-placement.ts) |  |
+| [packages/service-agent/src/widget-management/fn.widget-management.ts](packages/service-agent/src/widget-management/fn.widget-management.ts) |  |
+| [packages/service-agent/src/widget-management/types.ts](packages/service-agent/src/widget-management/types.ts) |  |
+| [packages/service-agent/src/widget-management/WidgetManagement.ts](packages/service-agent/src/widget-management/WidgetManagement.ts) |  |
+| [packages/service-agent/src/workspace/CONSTANTS.ts](packages/service-agent/src/workspace/CONSTANTS.ts) |  |
+| [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
+| [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
+| [packages/service-agent/src/workspace/fn.safe-search-pattern.ts](packages/service-agent/src/workspace/fn.safe-search-pattern.ts) |  |
+| [packages/service-agent/src/workspace/fx.chat-metadata.ts](packages/service-agent/src/workspace/fx.chat-metadata.ts) |  |
+| [packages/service-agent/src/workspace/fx.widget-catalog.ts](packages/service-agent/src/workspace/fx.widget-catalog.ts) |  |
+| [packages/service-agent/src/workspace/tx.chat-storage.ts](packages/service-agent/src/workspace/tx.chat-storage.ts) |  |
+| [packages/service-agent/src/workspace/tx.materialize-sdk-package.ts](packages/service-agent/src/workspace/tx.materialize-sdk-package.ts) |  |
+| [packages/service-agent/src/workspace/types.ts](packages/service-agent/src/workspace/types.ts) |  |
+| [packages/service-agent/src/workspace/WidgetWorkspace.ts](packages/service-agent/src/workspace/WidgetWorkspace.ts) |  |
 | [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
 
 ## packages/service-automerge
@@ -718,9 +780,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-automerge/src/adapters/turso.adapter.ts](packages/service-automerge/src/adapters/turso.adapter.ts) |  |
 | [packages/service-automerge/src/adapters/websocket.adapter.ts](packages/service-automerge/src/adapters/websocket.adapter.ts) |  |
 | [packages/service-automerge/src/AutomergeService.ts](packages/service-automerge/src/AutomergeService.ts) |  |
+| [packages/service-automerge/src/CONSTANTS.ts](packages/service-automerge/src/CONSTANTS.ts) |  |
+| [packages/service-automerge/src/core/fn.automerge-document.ts](packages/service-automerge/src/core/fn.automerge-document.ts) |  |
+| [packages/service-automerge/src/core/fn.widget-collaborative-state.ts](packages/service-automerge/src/core/fn.widget-collaborative-state.ts) |  |
 | [packages/service-automerge/src/IAutomergeService.ts](packages/service-automerge/src/IAutomergeService.ts) |  |
+| [packages/service-automerge/src/projection/fn.widget-instance-projection.ts](packages/service-automerge/src/projection/fn.widget-instance-projection.ts) |  |
+| [packages/service-automerge/src/projection/index.ts](packages/service-automerge/src/projection/index.ts) |  |
+| [packages/service-automerge/src/projection/interface.ts](packages/service-automerge/src/projection/interface.ts) |  |
+| [packages/service-automerge/src/projection/WidgetInstanceMetadataProjector.ts](packages/service-automerge/src/projection/WidgetInstanceMetadataProjector.ts) |  |
+| [packages/service-automerge/src/types/automerge-service.types.ts](packages/service-automerge/src/types/automerge-service.types.ts) |  |
 | [packages/service-automerge/src/types/canvas-doc.types.ts](packages/service-automerge/src/types/canvas-doc.types.ts) |  |
 | [packages/service-automerge/src/types/canvas-doc.zod.ts](packages/service-automerge/src/types/canvas-doc.zod.ts) |  |
+| [packages/service-automerge/src/types/widget-state.types.ts](packages/service-automerge/src/types/widget-state.types.ts) |  |
 | [packages/service-automerge/tsconfig.json](packages/service-automerge/tsconfig.json) |  |
 
 ## packages/service-db
@@ -730,39 +801,61 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/.gitignore](packages/service-db/.gitignore) |  |
 | [packages/service-db/package.json](packages/service-db/package.json) |  |
 | [packages/service-db/src/_embedded-migrations.ts](packages/service-db/src/_embedded-migrations.ts) |  |
+| [packages/service-db/src/AgentAuthoringStoreTurso.ts](packages/service-db/src/AgentAuthoringStoreTurso.ts) |  |
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
+| [packages/service-db/src/CollaborationDocumentAuthorizationStoreTurso.ts](packages/service-db/src/CollaborationDocumentAuthorizationStoreTurso.ts) |  |
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
+| [packages/service-db/src/core/fn.resource-name.ts](packages/service-db/src/core/fn.resource-name.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.database-column-type.ts](packages/service-db/src/DbServiceTurso/fn.database-column-type.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts](packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.json.ts](packages/service-db/src/DbServiceTurso/fn.json.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.legacy-row.ts](packages/service-db/src/DbServiceTurso/fn.legacy-row.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts](packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts](packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.migration-file.ts](packages/service-db/src/DbServiceTurso/fx.migration-file.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.migration-state.ts](packages/service-db/src/DbServiceTurso/fx.migration-state.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.tool-group.ts](packages/service-db/src/DbServiceTurso/fx.tool-group.ts) |  |
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql](packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
-| [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
-| [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
+| [packages/service-db/src/fn.widget-instance-metadata-projection.ts](packages/service-db/src/fn.widget-instance-metadata-projection.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso.ts](packages/service-db/src/FunctionControlStoreTurso.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-json.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-json.ts) | Deterministic JSON encoding for invocation bodies, permit receipts, and digests. |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
+| [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
+| [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
+| [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
+| [packages/service-db/src/migrations/003-widget-instance-projection.sql](packages/service-db/src/migrations/003-widget-instance-projection.sql) |  |
+| [packages/service-db/src/migrations/004-agent-authoring.sql](packages/service-db/src/migrations/004-agent-authoring.sql) |  |
+| [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
+| [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
+| [packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts](packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts) |  |
+| [packages/service-db/src/schema/expected-schema.ts](packages/service-db/src/schema/expected-schema.ts) |  |
+| [packages/service-db/src/tx.run-database-transaction.ts](packages/service-db/src/tx.run-database-transaction.ts) |  |
+| [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
+| [packages/service-db/src/WidgetControlStoreTurso.ts](packages/service-db/src/WidgetControlStoreTurso.ts) |  |
+| [packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts](packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts) |  |
+| [packages/service-db/src/WidgetInstanceMetadataStoreTurso.ts](packages/service-db/src/WidgetInstanceMetadataStoreTurso.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher
@@ -770,19 +863,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/service-event-publisher/package.json](packages/service-event-publisher/package.json) |  |
+| [packages/service-event-publisher/src/EventBus.ts](packages/service-event-publisher/src/EventBus.ts) |  |
 | [packages/service-event-publisher/src/EventPublisherService.ts](packages/service-event-publisher/src/EventPublisherService.ts) |  |
-| [packages/service-event-publisher/src/IEventPublisherService.ts](packages/service-event-publisher/src/IEventPublisherService.ts) |  |
+| [packages/service-event-publisher/src/events.ts](packages/service-event-publisher/src/events.ts) | Service-owned event contracts that do not depend on API transport schemas. |
+| [packages/service-event-publisher/src/IEventPublisherService.ts](packages/service-event-publisher/src/IEventPublisherService.ts) | Event publication capability consumed by services and transport adapters. |
+| [packages/service-event-publisher/src/index.ts](packages/service-event-publisher/src/index.ts) | Public service-owned event contracts and publisher implementation. |
 | [packages/service-event-publisher/tsconfig.json](packages/service-event-publisher/tsconfig.json) |  |
-
-## packages/service-filesystem
-
-| path | jsdocs |
-|---|---|
-| [packages/service-filesystem/package.json](packages/service-filesystem/package.json) |  |
-| [packages/service-filesystem/src/FilesystemServiceNode.ts](packages/service-filesystem/src/FilesystemServiceNode.ts) |  |
-| [packages/service-filesystem/src/IFilesystemService.ts](packages/service-filesystem/src/IFilesystemService.ts) |  |
-| [packages/service-filesystem/src/types.ts](packages/service-filesystem/src/types.ts) |  |
-| [packages/service-filesystem/tsconfig.json](packages/service-filesystem/tsconfig.json) |  |
 
 ## packages/service-kv
 
@@ -793,16 +879,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-kv/src/KvService.ts](packages/service-kv/src/KvService.ts) |  |
 | [packages/service-kv/src/types.ts](packages/service-kv/src/types.ts) |  |
 | [packages/service-kv/tsconfig.json](packages/service-kv/tsconfig.json) |  |
-
-## packages/service-pty
-
-| path | jsdocs |
-|---|---|
-| [packages/service-pty/package.json](packages/service-pty/package.json) |  |
-| [packages/service-pty/src/IPtyService.ts](packages/service-pty/src/IPtyService.ts) |  |
-| [packages/service-pty/src/PtyServiceBunPty.ts](packages/service-pty/src/PtyServiceBunPty.ts) |  |
-| [packages/service-pty/src/types.ts](packages/service-pty/src/types.ts) |  |
-| [packages/service-pty/tsconfig.json](packages/service-pty/tsconfig.json) |  |
 
 ## packages/service-theme
 
@@ -827,14 +903,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/shared-functions/package.json](packages/shared-functions/package.json) |  |
+| [packages/shared-functions/src/chat/fn.chat-id.ts](packages/shared-functions/src/chat/fn.chat-id.ts) |  |
 | [packages/shared-functions/src/functional/fn.compose.ts](packages/shared-functions/src/functional/fn.compose.ts) |  |
 | [packages/shared-functions/src/functional/fn.curry.ts](packages/shared-functions/src/functional/fn.curry.ts) |  |
 | [packages/shared-functions/src/functional/fn.debounce.ts](packages/shared-functions/src/functional/fn.debounce.ts) |  |
 | [packages/shared-functions/src/functional/fn.memoize.ts](packages/shared-functions/src/functional/fn.memoize.ts) |  |
 | [packages/shared-functions/src/functional/fn.pipe.ts](packages/shared-functions/src/functional/fn.pipe.ts) |  |
 | [packages/shared-functions/src/functional/fn.throttle.ts](packages/shared-functions/src/functional/fn.throttle.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/fn.xdg-paths.ts](packages/shared-functions/src/vibecanvas-config/fn.xdg-paths.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/tx.xdg-paths.ts](packages/shared-functions/src/vibecanvas-config/tx.xdg-paths.ts) |  |
+| [packages/shared-functions/src/serialized-operation/CONSTANTS.ts](packages/shared-functions/src/serialized-operation/CONSTANTS.ts) |  |
+| [packages/shared-functions/src/tx.run-serialized-operation.ts](packages/shared-functions/src/tx.run-serialized-operation.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts](packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts) |  |
 | [packages/shared-functions/tsconfig.json](packages/shared-functions/tsconfig.json) |  |
 
 ## packages/tapable
@@ -851,20 +931,197 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/tapable/src/SyncHook.ts](packages/tapable/src/SyncHook.ts) |  |
 | [packages/tapable/tsconfig.json](packages/tapable/tsconfig.json) |  |
 
+## packages/tenant-core
+
+| path | jsdocs |
+|---|---|
+| [packages/tenant-core/package.json](packages/tenant-core/package.json) |  |
+| [packages/tenant-core/src/core/fn.scoped-key.ts](packages/tenant-core/src/core/fn.scoped-key.ts) | Builds collision-safe keys for tenant-scoped in-memory registries and stores. |
+| [packages/tenant-core/src/core/fn.tenant-context.ts](packages/tenant-core/src/core/fn.tenant-context.ts) | Evaluates immutable tenant context capabilities and placement fences. |
+| [packages/tenant-core/src/index.ts](packages/tenant-core/src/index.ts) | Public tenant context contract surface. |
+| [packages/tenant-core/src/interface.ts](packages/tenant-core/src/interface.ts) | Narrow capabilities for deriving tenant context and resolving placement. |
+| [packages/tenant-core/src/types.ts](packages/tenant-core/src/types.ts) | Public tenant identity, scope, and placement value types. |
+| [packages/tenant-core/tsconfig.json](packages/tenant-core/tsconfig.json) |  |
+
+## packages/ui-ai-chat
+
+| path | jsdocs |
+|---|---|
+| [packages/ui-ai-chat/package.json](packages/ui-ai-chat/package.json) |  |
+| [packages/ui-ai-chat/README.md](packages/ui-ai-chat/README.md) |  |
+| [packages/ui-ai-chat/src/canvas-extension/Ai.plugin.ts](packages/ui-ai-chat/src/canvas-extension/Ai.plugin.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/DraftPreview.plugin.ts](packages/ui-ai-chat/src/canvas-extension/DraftPreview.plugin.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/Widget.plugin.ts](packages/ui-ai-chat/src/canvas-extension/Widget.plugin.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx](packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx](packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/ChatComposer/fn.suggestion-navigation.ts](packages/ui-ai-chat/src/chat/components/ChatComposer/fn.suggestion-navigation.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/ChatComposer/fn.trigger.ts](packages/ui-ai-chat/src/chat/components/ChatComposer/fn.trigger.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/ChatComposer/interface.ts](packages/ui-ai-chat/src/chat/components/ChatComposer/interface.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/fn.approval-details.ts](packages/ui-ai-chat/src/chat/components/fn.approval-details.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/fn.error.ts](packages/ui-ai-chat/src/chat/components/fn.error.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/index.css](packages/ui-ai-chat/src/chat/components/index.css) |  |
+| [packages/ui-ai-chat/src/chat/components/index.tsx](packages/ui-ai-chat/src/chat/components/index.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx](packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.markdown-blocks.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.markdown-blocks.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.markdown.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.markdown.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.tool-call.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.tool-call.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/SettingsTab.tsx](packages/ui-ai-chat/src/chat/components/tabs/SettingsTab.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/types.ts](packages/ui-ai-chat/src/chat/components/types.ts) |  |
+| [packages/ui-ai-chat/src/chat/index.tsx](packages/ui-ai-chat/src/chat/index.tsx) |  |
+| [packages/ui-ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts](packages/ui-ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts) |  |
+| [packages/ui-ai-chat/src/chat/mention-catalog/index.ts](packages/ui-ai-chat/src/chat/mention-catalog/index.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/CONSTANTS.ts](packages/ui-ai-chat/src/draft-preview/CONSTANTS.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/create-ephemeral-collaborative-state-bridge.ts](packages/ui-ai-chat/src/draft-preview/create-ephemeral-collaborative-state-bridge.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts](packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/fn.element-id.ts](packages/ui-ai-chat/src/draft-preview/fn.element-id.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/mount.ts](packages/ui-ai-chat/src/draft-preview/mount.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/typed.ts](packages/ui-ai-chat/src/draft-preview/typed.ts) |  |
+| [packages/ui-ai-chat/src/draft-preview/widget.css](packages/ui-ai-chat/src/draft-preview/widget.css) |  |
+| [packages/ui-ai-chat/src/index.ts](packages/ui-ai-chat/src/index.ts) |  |
+| [packages/ui-ai-chat/src/ports.ts](packages/ui-ai-chat/src/ports.ts) |  |
+| [packages/ui-ai-chat/src/publication/fn.publication-contract.ts](packages/ui-ai-chat/src/publication/fn.publication-contract.ts) |  |
+| [packages/ui-ai-chat/src/publication/interface.ts](packages/ui-ai-chat/src/publication/interface.ts) |  |
+| [packages/ui-ai-chat/src/publication/mount.tsx](packages/ui-ai-chat/src/publication/mount.tsx) |  |
+| [packages/ui-ai-chat/src/publication/WidgetPublicationDialog.module.css](packages/ui-ai-chat/src/publication/WidgetPublicationDialog.module.css) |  |
+| [packages/ui-ai-chat/src/publication/WidgetPublicationDialog.tsx](packages/ui-ai-chat/src/publication/WidgetPublicationDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/CreateCanvasDialog.tsx](packages/ui-ai-chat/src/sidebar/components/CreateCanvasDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/CreateResourceDialog.tsx](packages/ui-ai-chat/src/sidebar/components/CreateResourceDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx](packages/ui-ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/index.ts](packages/ui-ai-chat/src/sidebar/components/index.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/components/RenameDialog.tsx](packages/ui-ai-chat/src/sidebar/components/RenameDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/Sidebar.module.css](packages/ui-ai-chat/src/sidebar/components/Sidebar.module.css) |  |
+| [packages/ui-ai-chat/src/sidebar/components/Sidebar.tsx](packages/ui-ai-chat/src/sidebar/components/Sidebar.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/SidebarDialog.module.css](packages/ui-ai-chat/src/sidebar/components/SidebarDialog.module.css) |  |
+| [packages/ui-ai-chat/src/sidebar/components/SidebarItem.module.css](packages/ui-ai-chat/src/sidebar/components/SidebarItem.module.css) |  |
+| [packages/ui-ai-chat/src/sidebar/components/SidebarItem.tsx](packages/ui-ai-chat/src/sidebar/components/SidebarItem.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/components/ToolGroupDialog.tsx](packages/ui-ai-chat/src/sidebar/components/ToolGroupDialog.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/index.ts](packages/ui-ai-chat/src/sidebar/index.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/ports.ts](packages/ui-ai-chat/src/sidebar/ports.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/ToolIconPicker/styles.css](packages/ui-ai-chat/src/sidebar/ToolIconPicker/styles.css) |  |
+| [packages/ui-ai-chat/src/sidebar/ToolIconPicker/ToolIconPicker.tsx](packages/ui-ai-chat/src/sidebar/ToolIconPicker/ToolIconPicker.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/components/WidgetIcon.tsx](packages/ui-ai-chat/src/sidebar/widgets/components/WidgetIcon.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/components/WidgetsSidebarSection.module.css](packages/ui-ai-chat/src/sidebar/widgets/components/WidgetsSidebarSection.module.css) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/components/WidgetsSidebarSection.tsx](packages/ui-ai-chat/src/sidebar/widgets/components/WidgetsSidebarSection.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/fn.widget-catalog.ts](packages/ui-ai-chat/src/sidebar/widgets/fn.widget-catalog.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/types.ts](packages/ui-ai-chat/src/sidebar/widgets/types.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx](packages/ui-ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css](packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css) |  |
+| [packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx](packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx) |  |
+| [packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts](packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts) |  |
+| [packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts) |  |
+| [packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts](packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts](packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts](packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-catalog.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-catalog.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts](packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts](packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/index.ts](packages/ui-ai-chat/src/widget-runtime/index.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/interface.ts](packages/ui-ai-chat/src/widget-runtime/interface.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts) |  |
+| [packages/ui-ai-chat/src/widget/CONSTANTS.ts](packages/ui-ai-chat/src/widget/CONSTANTS.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.create-cloned-widget-element.ts](packages/ui-ai-chat/src/widget/fn.create-cloned-widget-element.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.create-widget-element.ts](packages/ui-ai-chat/src/widget/fn.create-widget-element.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts](packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts](packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts](packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts](packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.widget-frame.ts](packages/ui-ai-chat/src/widget/fn.widget-frame.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts](packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts) |  |
+| [packages/ui-ai-chat/src/widget/icons/CONSTANTS.ts](packages/ui-ai-chat/src/widget/icons/CONSTANTS.ts) |  |
+| [packages/ui-ai-chat/src/widget/index.ts](packages/ui-ai-chat/src/widget/index.ts) |  |
+| [packages/ui-ai-chat/src/widget/interface.ts](packages/ui-ai-chat/src/widget/interface.ts) |  |
+| [packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts](packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts) |  |
+| [packages/ui-ai-chat/src/widget/tx.mount-widget-portal.ts](packages/ui-ai-chat/src/widget/tx.mount-widget-portal.ts) |  |
+| [packages/ui-ai-chat/src/widget/tx.render-widget-error.ts](packages/ui-ai-chat/src/widget/tx.render-widget-error.ts) |  |
+| [packages/ui-ai-chat/src/widget/WidgetManagerService.ts](packages/ui-ai-chat/src/widget/WidgetManagerService.ts) |  |
+| [packages/ui-ai-chat/tsconfig.json](packages/ui-ai-chat/tsconfig.json) |  |
+| [packages/ui-ai-chat/vitest.config.ts](packages/ui-ai-chat/vitest.config.ts) |  |
+
+## packages/widget-contract
+
+| path | jsdocs |
+|---|---|
+| [packages/widget-contract/package.json](packages/widget-contract/package.json) |  |
+| [packages/widget-contract/src/browser/index.ts](packages/widget-contract/src/browser/index.ts) | Browser-safe trusted Capsule runtime metadata decoder. |
+| [packages/widget-contract/src/CONSTANTS.ts](packages/widget-contract/src/CONSTANTS.ts) |  |
+| [packages/widget-contract/src/core/fn.build-integrity.ts](packages/widget-contract/src/core/fn.build-integrity.ts) |  |
+| [packages/widget-contract/src/core/fn.capsule.ts](packages/widget-contract/src/core/fn.capsule.ts) | Pure normalization for Capsule metadata copied into widget contracts. |
+| [packages/widget-contract/src/core/fn.contract.ts](packages/widget-contract/src/core/fn.contract.ts) |  |
+| [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
+| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v3. |
+| [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
+| [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
+| [packages/widget-contract/src/function-descriptor-schema.ts](packages/widget-contract/src/function-descriptor-schema.ts) | Strict runtime schema for generated server-function registrations. |
+| [packages/widget-contract/src/index.ts](packages/widget-contract/src/index.ts) | Public widget manifest and immutable artifact contract surface. |
+| [packages/widget-contract/src/interface.ts](packages/widget-contract/src/interface.ts) | Narrow public capabilities for widget build, publication, artifact access, and GC. |
+| [packages/widget-contract/src/local/CONSTANTS.ts](packages/widget-contract/src/local/CONSTANTS.ts) |  |
+| [packages/widget-contract/src/local/fn.artifact-path.ts](packages/widget-contract/src/local/fn.artifact-path.ts) |  |
+| [packages/widget-contract/src/local/fn.artifact-read-policy.ts](packages/widget-contract/src/local/fn.artifact-read-policy.ts) |  |
+| [packages/widget-contract/src/local/fn.build-boundary.ts](packages/widget-contract/src/local/fn.build-boundary.ts) |  |
+| [packages/widget-contract/src/local/fn.server-function-modules.ts](packages/widget-contract/src/local/fn.server-function-modules.ts) | Pure server-function export mapping and synthetic entry generation. |
+| [packages/widget-contract/src/local/fn.source-snapshot.ts](packages/widget-contract/src/local/fn.source-snapshot.ts) |  |
+| [packages/widget-contract/src/local/index.ts](packages/widget-contract/src/local/index.ts) |  |
+| [packages/widget-contract/src/local/LocalWidgetArtifactStore.ts](packages/widget-contract/src/local/LocalWidgetArtifactStore.ts) |  |
+| [packages/widget-contract/src/local/PinnedLocalDirectory.ts](packages/widget-contract/src/local/PinnedLocalDirectory.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts](packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactOperationLane.ts](packages/widget-contract/src/local/WidgetArtifactOperationLane.ts) | One bounded organization-local mutation lane shared by publication and artifact GC. |
+| [packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts](packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactService.ts](packages/widget-contract/src/local/WidgetArtifactService.ts) |  |
+| [packages/widget-contract/src/local/WidgetPreviewService.ts](packages/widget-contract/src/local/WidgetPreviewService.ts) |  |
+| [packages/widget-contract/src/local/WidgetPublicationService.ts](packages/widget-contract/src/local/WidgetPublicationService.ts) |  |
+| [packages/widget-contract/src/local/WidgetSourceSnapshot.ts](packages/widget-contract/src/local/WidgetSourceSnapshot.ts) |  |
+| [packages/widget-contract/src/manifest-schema.ts](packages/widget-contract/src/manifest-schema.ts) | Strict runtime schemas for the Capsule-native widget manifest contract. |
+| [packages/widget-contract/src/runtime-descriptor-schema.ts](packages/widget-contract/src/runtime-descriptor-schema.ts) | Strict browser-safe decoder for trusted Capsule runtime metadata. |
+| [packages/widget-contract/src/tool-icon.ts](packages/widget-contract/src/tool-icon.ts) |  |
+| [packages/widget-contract/src/types.ts](packages/widget-contract/src/types.ts) | Browser-safe widget manifest, immutable artifact, publication, and retention types. |
+| [packages/widget-contract/tsconfig.json](packages/widget-contract/tsconfig.json) |  |
+
 ## scripts
 
 | path | jsdocs |
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
+| [scripts/docker/final-acceptance.Dockerfile](scripts/docker/final-acceptance.Dockerfile) |  |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
+| [scripts/fixtures/external-composition/package.json](scripts/fixtures/external-composition/package.json) |  |
+| [scripts/fixtures/external-composition/src/managed-composition.ts](scripts/fixtures/external-composition/src/managed-composition.ts) |  |
+| [scripts/fixtures/external-composition/src/packed-consumer.ts](scripts/fixtures/external-composition/src/packed-consumer.ts) |  |
+| [scripts/fixtures/external-composition/tsconfig.json](scripts/fixtures/external-composition/tsconfig.json) |  |
+| [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
-| [scripts/patch-automerge-repo-throttle.mjs](scripts/patch-automerge-repo-throttle.mjs) | Patches installed Automerge Repo throttle helpers to clamp negative timeout delays. |
+| [scripts/patch-automerge-repo-throttle.mjs](scripts/patch-automerge-repo-throttle.mjs) | Applies narrowly-scoped Automerge Repo runtime safety patches. |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
+| [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for renderer, widget hosting, and collaboration behavior. |
+| [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
+| [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
+| [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Durable M6 gate for typed, bounded, scale-to-zero server functions. |
+| [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
+| [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
+| [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
+| [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the single-owner resource runtime. |
+| [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
+| [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable M7 gate for the neutral renderer host and UI scale. |
+| [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

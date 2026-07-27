@@ -1,18 +1,6 @@
 import { z } from 'zod';
 import { MIME_TYPES } from './CONSTANTS';
 
-const RELATIVE_NO_TRAVERSAL_PATH = /^[^\\:]+$/;
-
-const ZManifestPath = z
-  .string()
-  .min(1)
-  .refine((path) => !path.startsWith("/"), "Actor manifest path must be config-relative")
-  .refine((path) => RELATIVE_NO_TRAVERSAL_PATH.test(path), "Actor manifest path must be a relative path without backslashes or drive letters")
-  .refine((path) => {
-    const segments = path.replace(/\\/g, "/").split("/");
-    return !segments.some(segment => segment === ".." || segment === "." || segment === "");
-  }, "Actor manifest path must not contain traversal segments")
-
 export const ZJson: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
   z.number(),
@@ -30,8 +18,9 @@ export const ZAccountKind = z.enum(['user', 'service_account', 'system', 'anonym
 export const ZAccountRole = z.enum(['member', 'owner', 'admin', 'viewer']);
 export const ZCanvasMemberRole = z.enum(['owner', 'editor', 'viewer']);
 export const ZMimeType = z.enum(MIME_TYPES);
-export const ZActorStatus = z.enum(['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked']);
-export const ZActorInboxStatus = z.enum(['queued', 'processing', 'processed', 'failed']);
+export const ZDbResourceDraftStatus = z.enum(['editing', 'applying', 'applied', 'discarded', 'error']);
+export const ZDbResourceDraftChangeKind = z.enum(['structure', 'sql']);
+export const ZDbResourceApplyStatus = z.enum(['preparing', 'applying', 'succeeded', 'failed', 'recovered']);
 
 export const ZWidgetErrorPhase = z.enum([
   'definition-discovery',
@@ -95,51 +84,36 @@ export const ZMediaFile = z.object({
   created_at: ZTimestamp,
 });
 
-export const ZFilesystem = z.object({
+export const ZDbResourceDraft = z.object({
   id: z.string(),
+  resource_id: z.string(),
   name: z.string(),
-  slug: z.string(),
-  path: z.string(),
-  description: z.string().nullable(),
+  status: ZDbResourceDraftStatus,
+  last_error: ZJson.nullable(),
   created_at: ZTimestamp,
   updated_at: ZTimestamp,
+  applied_at: ZTimestamp.nullable(),
 });
 
-export const ZActorDefinition = z.object({
-  name: z.string(),
-  slug: z.string(),
-  url: z.string().nullable(),
-  description: z.string().nullable(),
-  manifest_path: ZManifestPath,
+export const ZDbResourceDraftChange = z.object({
+  draft_id: z.string(),
+  sequence: z.number().int().positive(),
+  kind: ZDbResourceDraftChangeKind,
+  operation: ZJson.nullable(),
+  sql: z.string(),
   created_at: ZTimestamp,
-  updated_at: ZTimestamp,
 });
 
-export const ZActorInstance = z.object({
+export const ZDbResourceApplyRun = z.object({
   id: z.string(),
-  canvas_id: z.string(),
-  element_id: z.string(),
-  actor_definition_name: z.string(),
-  filesystem_id: z.string().nullable(),
-  display_name: z.string(),
-  status: ZActorStatus,
-  machine_state: z.string(),
-  machine_context: ZJson,
-  last_error: ZWidgetError.nullable(),
+  resource_id: z.string(),
+  draft_id: z.string().nullable(),
+  source_apply_id: z.string().nullable(),
+  status: ZDbResourceApplyStatus,
+  last_error: ZJson.nullable(),
+  backup_retained: ZSqlBoolean,
   created_at: ZTimestamp,
-  updated_at: ZTimestamp,
-});
-
-export const ZActorConnection = z.object({
-  id: z.string(),
-  canvas_id: z.string(),
-  source_actor_instance_id: z.string(),
-  target_actor_instance_id: z.string(),
-  enabled: ZSqlBoolean,
-  label: z.string().nullable(),
-  msg_name_whitelist: z.string().nullable(),
-  style: ZJson,
-  created_at: ZTimestamp,
+  completed_at: ZTimestamp.nullable(),
 });
 
 export const ZToolGroup = z.object({
@@ -153,6 +127,13 @@ export type TKeyValue =
   | { name: string; type: "json"; value: TJson }
   | { name: string; type: "number"; value: number }
   | { name: string; type: "bool"; value: boolean };
+export type TEncryptionKey = {
+  id: string;
+  purpose: string;
+  algorithm: string;
+  key_hex: string;
+  created_at: string;
+};
 export type TTimestamp = z.infer<typeof ZTimestamp>;
 export type TBlob = z.infer<typeof ZBlob>;
 export type TSqlBoolean = z.infer<typeof ZSqlBoolean>;
@@ -160,8 +141,9 @@ export type TAccountKind = z.infer<typeof ZAccountKind>;
 export type TAccountRole = z.infer<typeof ZAccountRole>;
 export type TCanvasMemberRole = z.infer<typeof ZCanvasMemberRole>;
 export type TFileFormat = z.infer<typeof ZMimeType>;
-export type TActorStatus = z.infer<typeof ZActorStatus>;
-export type TActorInboxStatus = z.infer<typeof ZActorInboxStatus>;
+export type TDbResourceDraftStatus = z.infer<typeof ZDbResourceDraftStatus>;
+export type TDbResourceDraftChangeKind = z.infer<typeof ZDbResourceDraftChangeKind>;
+export type TDbResourceApplyStatus = z.infer<typeof ZDbResourceApplyStatus>;
 export type TWidgetErrorPhase = z.infer<typeof ZWidgetErrorPhase>;
 export type TWidgetError = z.infer<typeof ZWidgetError>;
 export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
@@ -170,8 +152,7 @@ export type TCanvas = z.infer<typeof ZCanvas>;
 export type TCanvasMember = z.infer<typeof ZCanvasMember>;
 export type TMediaFile = z.infer<typeof ZMediaFile>;
 export type TFile = TMediaFile;
-export type TFilesystem = z.infer<typeof ZFilesystem>;
-export type TActorDefinition = z.infer<typeof ZActorDefinition>;
-export type TActorInstance = z.infer<typeof ZActorInstance>;
-export type TActorConnection = z.infer<typeof ZActorConnection>;
+export type TDbResourceDraft = z.infer<typeof ZDbResourceDraft>;
+export type TDbResourceDraftChange = z.infer<typeof ZDbResourceDraftChange>;
+export type TDbResourceApplyRun = z.infer<typeof ZDbResourceApplyRun>;
 export type TToolGroup = z.infer<typeof ZToolGroup>;

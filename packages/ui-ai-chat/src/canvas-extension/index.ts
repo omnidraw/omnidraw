@@ -1,0 +1,178 @@
+import type { ICanvasRuntimeExtension } from "@vibecanvas/canvas";
+import { createAiPlugin } from "./Ai.plugin";
+import { createDraftPreviewPlugin } from "./DraftPreview.plugin";
+import { createWidgetPlugin } from "./Widget.plugin";
+import type {
+  TAiChatApiPort,
+  TAiChatApplicationPort,
+  TAiChatBrowserPort,
+  TWidgetBrowserPort,
+  TWidgetTransportPort,
+} from "../ports";
+import { WidgetManagerService } from "../widget/WidgetManagerService";
+import { DraftPreviewFrameService } from "../draft-preview/DraftPreviewFrameService";
+import { WidgetPlacementService } from "../widget-placement/WidgetPlacementService";
+import { createWidgetPlacementCoordinator, type TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
+import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
+import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHostCoordinator';
+import { fnWidgetRuntimeLocalTargetMatchesElement } from '../widget-runtime/fn.runtime-identity';
+import type {
+  TWidgetCapsuleHostCatalog,
+  TWidgetCapsuleOutputSink,
+  TWidgetCapsuleThemeSource,
+  TWidgetCollaborativeStatePort,
+} from '../widget-runtime/interface';
+import { createWidgetUiArtifactMountPort } from '../widget-runtime/mount-widget-ui-artifact';
+
+export type TCreateAiChatCanvasExtensionArgs = {
+  chatApi: TAiChatApiPort;
+  widgetTransport: TWidgetTransportPort;
+  chatBrowser: TAiChatBrowserPort;
+  widgetBrowser: TWidgetBrowserPort;
+  application: TAiChatApplicationPort;
+  widgetCapsuleHostCatalog():
+    TWidgetCapsuleHostCatalog | Promise<TWidgetCapsuleHostCatalog>;
+  widgetCapsuleTheme: TWidgetCapsuleThemeSource;
+  widgetCapsuleOutput: TWidgetCapsuleOutputSink;
+  widgetPlacement?: TWidgetPlacementCoordinator;
+  widgetCollaborativeState?: TWidgetCollaborativeStatePort;
+};
+
+export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionArgs): ICanvasRuntimeExtension {
+  return {
+    name: "ai-chat",
+    install(context) {
+      const placementCoordinator = args.widgetPlacement ?? createWidgetPlacementCoordinator();
+      const capsuleHost = new CapsuleWidgetHostCoordinator({
+        document: args.widgetBrowser.document,
+        catalog: args.widgetCapsuleHostCatalog,
+      });
+      const widgetMount = createWidgetUiArtifactMountPort({
+        coordinator: capsuleHost,
+        createStreamId: args.widgetBrowser.createId,
+        digestSha256: args.widgetBrowser.digestSha256,
+        nowMs: args.widgetBrowser.now,
+        theme: args.widgetCapsuleTheme,
+        output: args.widgetCapsuleOutput,
+      });
+      const widgetRuntime = new WidgetUiRuntime({
+        transport: args.widgetTransport,
+        codec: {
+          decodeBase64: args.widgetBrowser.decodeBase64,
+          digestSha256: args.widgetBrowser.digestSha256,
+        },
+        mount: widgetMount,
+        createIdempotencyKey: args.widgetBrowser.createId,
+        organizationId: args.widgetBrowser.organizationId,
+        tenantAuthorityKey: args.widgetBrowser.tenantAuthorityKey,
+        nowMs: args.widgetBrowser.now,
+        scheduleTimeout: args.widgetBrowser.setTimeout,
+        cancelTimeout: args.widgetBrowser.clearTimeout,
+        wait: (timeoutMs, signal) => new Promise((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new Error('Widget runtime wait was cancelled.'));
+            return;
+          }
+          const timer = args.widgetBrowser.setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+          }, timeoutMs);
+          const onAbort = () => {
+            args.widgetBrowser.clearTimeout(timer);
+            reject(new Error('Widget runtime wait was cancelled.'));
+          };
+          signal?.addEventListener('abort', onAbort, { once: true });
+        }),
+        collaborativeState: args.widgetCollaborativeState,
+        isTargetCurrent: (target) => {
+          if (target.canvasId !== context.config.canvasId) return false;
+          return fnWidgetRuntimeLocalTargetMatchesElement(
+            target,
+            context.services.crdt.doc()?.elements[target.elementId],
+          );
+        },
+      });
+      const widgetManager = new WidgetManagerService({
+        crdtService: context.services.crdt,
+        contextMenuService: context.services.contextMenu,
+        historyService: context.services.history,
+        selectionService: context.services.selection,
+        sceneService: context.services.scene,
+        elementService: context.services.element,
+        toolService: context.services.tool,
+        portalService: context.services.portal,
+        product: () => context.services.scene.product,
+        renderOrderService: context.services.renderOrder,
+        confirmDialogService: context.services.confirmDialog,
+        browser: args.widgetBrowser,
+        neutralHost: {
+          canvasId: context.config.canvasId,
+          runtime: widgetRuntime,
+        },
+      });
+      const previewFrames = new DraftPreviewFrameService({
+        api: args.chatApi,
+        application: args.application,
+        browser: args.widgetBrowser,
+        mountArtifact: widgetMount,
+        crdt: context.services.crdt,
+        history: context.services.history,
+        renderOrder: context.services.renderOrder,
+        selection: context.services.selection,
+        tool: context.services.tool,
+      });
+      const widgetPlacement = new WidgetPlacementService({
+        api: args.chatApi,
+        browser: args.widgetBrowser,
+        coordinator: placementCoordinator,
+        dropPlacement: context.services.widgetPlacement,
+        previewFrames,
+        widgetManager,
+      });
+
+      return {
+        services: [
+          {
+            name: "widget-capsule-host",
+            startOrder: 119,
+            service: {
+              name: "widget-capsule-host",
+              stop: () => widgetRuntime.destroy(),
+            },
+          },
+          { name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager },
+          { name: "draft-preview-frame", startOrder: 121, service: previewFrames },
+          { name: "widget-placement", startOrder: 122, service: widgetPlacement },
+        ],
+        plugins: [
+          createDraftPreviewPlugin({ previewFrames, widgetManager }),
+          createAiPlugin({
+            api: args.chatApi,
+            application: args.application,
+            browser: args.chatBrowser,
+            createId: args.widgetBrowser.createId,
+            nowDate: args.widgetBrowser.nowDate,
+            widgetManager,
+            openWidgetPreview: (openArgs) => previewFrames.open(openArgs),
+          }),
+          createWidgetPlugin({
+            application: args.application,
+            transport: args.widgetTransport,
+            widgetManager,
+            widgetPlacement,
+          }),
+        ],
+      };
+    },
+  };
+}
+
+export type {
+  TAiChatApiPort,
+  TAiChatApplicationPort,
+  TAiChatBrowserPort,
+  TWidgetBrowserPort,
+  TWidgetTransportPort,
+} from "../ports";
+export { createWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
+export type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";

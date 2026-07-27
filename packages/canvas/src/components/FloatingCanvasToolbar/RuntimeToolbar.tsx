@@ -1,9 +1,9 @@
 import DOMPurify from "dompurify";
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import * as LucideStatic from "lucide-static";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { ToolService } from "../../services/tool/ToolService";
+import type { WidgetDropPlacementService } from "../../services/widget-placement/WidgetDropPlacementService";
 import type { TTool, TToolIcon } from "../../services/tool/types";
 import {
   DEFAULT_TOOL_GROUP_DEFINITION,
@@ -12,12 +12,12 @@ import {
   TOOLBAR_TOOL_HEIGHT_PX,
   TOOLBAR_VIEWPORT_GUTTER_PX,
   TOOLBAR_WIDE_TOOL_HEIGHT_PX,
-  TOOL_GROUPS_CHANGED_EVENT,
 } from "./CONSTANTS";
 import { fnBuildToolbarColumns, fnBuildToolbarSlots, type TToolbarGroupSlot, type TToolGroupDefinition } from "./fn.runtime-toolbar";
 import "./styles.css";
 import { ToolButton } from "./ToolButton";
 import { ToolbarLabelPopover } from "./ToolbarLabelPopover";
+import type { TCanvasToolbarGroupsPort } from "../../types";
 
 export type TRuntimeToolbarTool = {
   id: string;
@@ -31,7 +31,8 @@ export type TRuntimeToolbarProps = {
   tool: ToolService;
   viewportElement: HTMLElement;
   onToolSelect: (toolId: string) => void;
-  apiService?: TOrpcSafeClient;
+  toolbarGroups?: TCanvasToolbarGroupsPort;
+  widgetPlacement: WidgetDropPlacementService;
   groupDefinitions?: Readonly<Record<string, TToolGroupDefinition>>;
 };
 
@@ -75,19 +76,51 @@ function RuntimeToolButton(props: {
   onSelect: (toolId: string) => void;
   role?: "menuitem";
   labelPlacement?: "left" | "top";
+  widgetPlacement: WidgetDropPlacementService;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   const shortcutParts = createMemo(() => getShortcutParts(props.tool.shortcuts));
+  let suppressClick = false;
+  const placement = () => props.tool.widgetPlacement;
 
   return (
-    <ToolbarLabelPopover label={props.tool.label} placement={props.labelPlacement}>
+    <ToolbarLabelPopover
+      label={props.tool.label}
+      placement={props.labelPlacement}
+      onAddToCanvas={placement() ? () => void props.widgetPlacement.addAtViewportCenter(placement()!) : undefined}
+    >
       <ToolButton
         icon={<ToolIcon icon={props.tool.icon} fallback={props.tool.id} />}
         shortcut={shortcutParts().shortcut}
         letterShortcut={shortcutParts().letterShortcut}
         ariaLabel={props.tool.label}
+        tone={props.tool.tone}
         role={props.role}
         isActive={props.activeToolId === props.tool.id || Boolean(props.tool.active)}
-        onClick={() => props.onSelect(props.tool.id)}
+        onClick={() => {
+          if (suppressClick) {
+            suppressClick = false;
+            return;
+          }
+          props.onSelect(props.tool.id);
+        }}
+        onPointerDown={placement() ? (event) => {
+          const request = placement();
+          if (!request) return;
+          props.widgetPlacement.beginPointerSession({
+            ...request,
+            onDragStart: () => {
+              suppressClick = true;
+              request.onDragStart?.();
+              props.onDragStateChange?.(true);
+            },
+            onDragEnd: () => {
+              request.onDragEnd?.();
+              props.onDragStateChange?.(false);
+              setTimeout(() => { suppressClick = false; }, 0);
+            },
+          }, event);
+        } : undefined}
       />
     </ToolbarLabelPopover>
   );
@@ -98,6 +131,7 @@ function RuntimeToolGroup(props: {
   activeToolId: string;
   viewportElement: HTMLElement;
   onSelect: (toolId: string) => void;
+  widgetPlacement: WidgetDropPlacementService;
 }) {
   let anchorElement: HTMLDivElement | undefined;
   let groupButton: HTMLButtonElement | undefined;
@@ -105,6 +139,7 @@ function RuntimeToolGroup(props: {
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let wasOpenBeforePointerDown = false;
   const [isOpen, setIsOpen] = createSignal(false);
+  const [isDraggingMember, setIsDraggingMember] = createSignal(false);
   const [flyoutPosition, setFlyoutPosition] = createSignal({ left: 0, top: 0, maxWidth: 0 });
 
   const cancelClose = () => {
@@ -146,7 +181,7 @@ function RuntimeToolGroup(props: {
       const hasPointer = Boolean(
         anchorElement?.matches(":hover") || flyoutElement?.matches(":hover"),
       );
-      if (!hasFocus && !hasPointer) {
+      if (!hasFocus && !hasPointer && !isDraggingMember()) {
         setIsOpen(false);
       }
     }, 0);
@@ -189,7 +224,7 @@ function RuntimeToolGroup(props: {
       onPointerLeave={scheduleClose}
       onFocusIn={openFlyout}
       onFocusOut={scheduleClose}
-      onKeyDown={onKeyDown}
+      on:keydown={onKeyDown}
     >
       <button
         ref={groupButton}
@@ -199,7 +234,7 @@ function RuntimeToolGroup(props: {
         aria-label={props.slot.label}
         aria-haspopup="menu"
         aria-expanded={isOpen()}
-        onPointerDown={() => {
+        on:pointerdown={() => {
           wasOpenBeforePointerDown = isOpen();
         }}
         onClick={(event) => {
@@ -230,7 +265,7 @@ function RuntimeToolGroup(props: {
             onPointerLeave={scheduleClose}
             onFocusIn={cancelClose}
             onFocusOut={scheduleClose}
-            onKeyDown={onKeyDown}
+            on:keydown={onKeyDown}
           >
             <For each={props.slot.tools}>
               {(tool) => (
@@ -241,6 +276,11 @@ function RuntimeToolGroup(props: {
                     onSelect={selectMember}
                     role="menuitem"
                     labelPlacement="top"
+                    widgetPlacement={props.widgetPlacement}
+                    onDragStateChange={(dragging) => {
+                      setIsDraggingMember(dragging);
+                      if (!dragging) closeFlyout();
+                    }}
                   />
                 </div>
               )}
@@ -287,11 +327,13 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
 
   let resizeObserver: ResizeObserver | undefined;
   const loadGroupDefinitions = async () => {
-    const toolGroupApi = props.apiService?.api.tool?.groups;
-    if (!toolGroupApi) return;
-
-    const [err, groups] = await toolGroupApi.list();
-    if (err) return;
+    if (!props.toolbarGroups) return;
+    let groups: Awaited<ReturnType<TCanvasToolbarGroupsPort["list"]>>;
+    try {
+      groups = await props.toolbarGroups.list();
+    } catch {
+      return;
+    }
     const definitions: Record<string, TToolGroupDefinition> = {};
     for (const group of groups) {
       const icon = group.json?.svgIcon?.trim()
@@ -301,13 +343,13 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
     }
     setGroupDefinitions(definitions);
   };
-  const handleToolGroupsChanged = () => {
-    void loadGroupDefinitions();
-  };
+  let unsubscribeToolbarGroups: (() => void) | undefined;
 
   onMount(() => {
     void loadGroupDefinitions();
-    props.viewportElement.ownerDocument.defaultView?.addEventListener(TOOL_GROUPS_CHANGED_EVENT, handleToolGroupsChanged);
+    unsubscribeToolbarGroups = props.toolbarGroups?.subscribe(() => {
+      void loadGroupDefinitions();
+    });
     setViewportHeight(props.viewportElement.clientHeight);
     resizeObserver = new ResizeObserver(() => {
       setViewportHeight(props.viewportElement.clientHeight);
@@ -316,14 +358,23 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
   });
 
   onCleanup(() => {
-    props.viewportElement.ownerDocument.defaultView?.removeEventListener(TOOL_GROUPS_CHANGED_EVENT, handleToolGroupsChanged);
+    unsubscribeToolbarGroups?.();
     resizeObserver?.disconnect();
     offToolsChange();
     offActiveToolChange();
   });
 
   return (
-    <div class="vc-canvas-toolbar-anchor">
+    <div
+      class="vc-canvas-toolbar-anchor"
+      on:pointerdown={(event) => event.stopPropagation()}
+      on:pointermove={(event) => event.stopPropagation()}
+      on:pointerup={(event) => event.stopPropagation()}
+      on:pointercancel={(event) => event.stopPropagation()}
+      on:wheel={(event) => event.stopPropagation()}
+      on:keydown={(event) => event.stopPropagation()}
+      on:keyup={(event) => event.stopPropagation()}
+    >
       <div class="vc-runtime-toolbar-panel">
         <button
           type="button"
@@ -351,6 +402,7 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
                             tool={slot.tool}
                             activeToolId={activeToolId()}
                             onSelect={props.onToolSelect}
+                            widgetPlacement={props.widgetPlacement}
                           />
                         ) : null}
                       >
@@ -361,6 +413,7 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
                               activeToolId={activeToolId()}
                               viewportElement={props.viewportElement}
                               onSelect={props.onToolSelect}
+                              widgetPlacement={props.widgetPlacement}
                             />
                           </ToolbarLabelPopover>
                         )}

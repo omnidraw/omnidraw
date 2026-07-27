@@ -142,7 +142,7 @@ function detectInstallMethod(): TInstallMethod {
 }
 
 function readConfigAutoupdate(config: ICliConfig): boolean | 'notify' | undefined {
-  const configFilePath = join(config.xdgPaths.configDirPath, 'config.json');
+  const configFilePath = config.home.configFilePath;
   if (!existsSync(configFilePath)) return undefined;
 
   try {
@@ -165,7 +165,7 @@ function resolveUpdatePolicy(config: ICliConfig, method: TInstallMethod): TUpdat
 }
 
 function failedUpgradePath(config: ICliConfig): string {
-  return join(config.xdgPaths.stateDirPath, 'failed-upgrade.json');
+  return join(config.home.logsRoot, 'failed-upgrade.json');
 }
 
 function readFailedUpgrade(config: ICliConfig): TFailedUpgrade | null {
@@ -182,7 +182,7 @@ async function writeFailedUpgrade(config: ICliConfig, failure: TFailedUpgrade | 
     rmSync(path, { force: true });
     return;
   }
-  mkdirSync(config.xdgPaths.stateDirPath, { recursive: true });
+  mkdirSync(config.home.logsRoot, { recursive: true, mode: 0o700 });
   await Bun.write(path, `${JSON.stringify(failure, null, 2)}\n`);
 }
 
@@ -510,12 +510,8 @@ async function executeCandidateBinary(binaryPath: string, tempConfigDir: string)
     stderr: 'pipe',
     env: {
       ...process.env,
-      VIBECANVAS_CONFIG: tempConfigDir,
+      VIBECANVAS_HOME: tempConfigDir,
       VIBECANVAS_DISABLE_AUTOUPDATE: '1',
-      XDG_DATA_HOME: join(tempConfigDir, 'xdg', 'data'),
-      XDG_CONFIG_HOME: join(tempConfigDir, 'xdg', 'config'),
-      XDG_STATE_HOME: join(tempConfigDir, 'xdg', 'state'),
-      XDG_CACHE_HOME: join(tempConfigDir, 'xdg', 'cache'),
     },
   });
 

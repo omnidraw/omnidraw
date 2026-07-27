@@ -5,18 +5,12 @@ import { fnBuildUninstallPlan } from '../../../../src/plugins/cli/core/fn.uninst
 const portal = { dirname, join, resolve };
 
 describe('fnBuildUninstallPlan', () => {
-  test('selects curl install files and XDG Vibecanvas directories', () => {
+  test('selects curl install files and the unified Vibecanvas home', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {},
       execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
-      dbPath: '/home/tester/.local/share/vibecanvas/vibecanvas.turso',
-      xdgPaths: {
-        dataDirPath: '/home/tester/.local/share/vibecanvas',
-        configDirPath: '/home/tester/.config/vibecanvas',
-        stateDirPath: '/home/tester/.local/state/vibecanvas',
-        cacheDirPath: '/home/tester/.cache/vibecanvas',
-      },
+      vibecanvasHomeDir: '/home/tester/.vibecanvas',
     });
 
     expect(plan.removeTargets.map((target) => [target.kind, target.path])).toEqual([
@@ -24,38 +18,26 @@ describe('fnBuildUninstallPlan', () => {
       ['native-dir', '/home/tester/.vibecanvas/native'],
       ['migrations-dir', '/home/tester/.vibecanvas/database-migrations'],
       ['install-dir', '/home/tester/.vibecanvas/bin'],
-      ['data-dir', '/home/tester/.local/share/vibecanvas'],
-      ['config-dir', '/home/tester/.config/vibecanvas'],
-      ['state-dir', '/home/tester/.local/state/vibecanvas'],
-      ['cache-dir', '/home/tester/.cache/vibecanvas'],
-      ['database-file', '/home/tester/.local/share/vibecanvas/vibecanvas.turso'],
+      ['home-dir', '/home/tester/.vibecanvas'],
     ]);
     expect(plan.skippedTargets).toEqual([]);
   });
 
-  test('skips arbitrary config and database override parent directories', () => {
+  test('does not recursively remove an arbitrary custom override', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {},
       execPath: '/usr/local/bin/node',
-      dbPath: '/projects/demo/dev.sqlite',
-      xdgPaths: {
-        dataDirPath: '/projects/demo',
-        configDirPath: '/projects/demo',
-        stateDirPath: '/projects/demo',
-        cacheDirPath: '/projects/demo',
-      },
+      vibecanvasHomeDir: '/projects/demo',
     });
 
     expect(plan.removeTargets.some((target) => target.path === '/projects/demo')).toBe(false);
-    expect(plan.removeTargets.some((target) => target.path === '/projects/demo/dev.sqlite')).toBe(false);
     expect(plan.skippedTargets).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'data-dir', path: '/projects/demo' }),
-      expect.objectContaining({ kind: 'database-file', path: '/projects/demo/dev.sqlite' }),
+      expect.objectContaining({ kind: 'home-dir', path: '/projects/demo' }),
     ]));
   });
 
-  test('honors installer environment overrides', () => {
+  test('honors installer environment overrides independently of the home', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {
@@ -64,19 +46,27 @@ describe('fnBuildUninstallPlan', () => {
         VIBECANVAS_MIGRATIONS_DIR: '/opt/vibecanvas/migrations',
       },
       execPath: '/opt/vibecanvas/bin/vibecanvas',
-      dbPath: '/home/tester/.local/share/vibecanvas/vibecanvas.turso',
-      xdgPaths: {
-        dataDirPath: '/home/tester/.local/share/vibecanvas',
-        configDirPath: '/home/tester/.config/vibecanvas',
-        stateDirPath: '/home/tester/.local/state/vibecanvas',
-        cacheDirPath: '/home/tester/.cache/vibecanvas',
-      },
+      vibecanvasHomeDir: '/home/tester/.vibecanvas',
     });
 
     expect(plan.removeTargets).toEqual(expect.arrayContaining([
       { kind: 'binary', path: '/opt/vibecanvas/bin/vibecanvas', missingOk: true },
       { kind: 'native-dir', path: '/opt/vibecanvas/native-addons', missingOk: true },
       { kind: 'migrations-dir', path: '/opt/vibecanvas/migrations', missingOk: true },
+      { kind: 'home-dir', path: '/home/tester/.vibecanvas', missingOk: true },
+    ]));
+  });
+
+  test('accepts an explicitly named Vibecanvas home outside the user home', () => {
+    const plan = fnBuildUninstallPlan(portal, {
+      homedir: '/home/tester',
+      env: {},
+      execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
+      vibecanvasHomeDir: '/projects/custom/vibecanvas',
+    });
+
+    expect(plan.removeTargets).toEqual(expect.arrayContaining([
+      { kind: 'home-dir', path: '/projects/custom/vibecanvas', missingOk: true },
     ]));
   });
 });

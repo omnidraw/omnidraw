@@ -1,61 +1,76 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { SyncHook } from "@vibecanvas/tapable";
-import type Konva from "konva";
-import type { TCapStyle, TFontFamily, TLineType, TStrokeWidthOption } from "../../components/SelectionStyleMenu/types";
+import type { TCanvasProjectionDefinition } from "../../engine/projection/typed";
+import type {
+  TCapStyle,
+  TFontFamily,
+  TLineType,
+  TStrokeWidthOption,
+} from "../../components/SelectionStyleMenu/types";
 
 export type TElementNodeType = TElement["data"]["type"];
 
-export type TElementTransformHookResult = {
-  cancel: boolean;
-  crdt: boolean;
+export type TElementTransformHandle =
+  | "move"
+  | "rotate"
+  | "resize-n"
+  | "resize-ne"
+  | "resize-e"
+  | "resize-se"
+  | "resize-s"
+  | "resize-sw"
+  | "resize-w"
+  | "resize-nw";
+
+export type TElementTransformPolicy = {
+  handles?: readonly TElementTransformHandle[];
+  aspectRatioMode?: "free" | "locked" | "shift-lock" | "shift-invert";
+  allowFlip?: boolean;
+  allowRotate?: boolean;
+  minSize?: { width: number; height: number };
+  maxSize?: { width: number; height: number };
+  snapRotationDegrees?: number;
 };
 
-export type TElementTransformAnchor =
-  | "top-left"
-  | "top-center"
-  | "top-right"
-  | "middle-left"
-  | "middle-right"
-  | "bottom-left"
-  | "bottom-center"
-  | "bottom-right";
-
-export type TElementTransformBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
+export type TElementWidgetFrame = {
+  title?: string;
+  headerItems?: readonly (
+    | Readonly<{
+        type: "button";
+        id: string;
+        label: string;
+        content: Readonly<
+          | { type: "text"; text: string }
+          | { type: "icon"; resourceId: string }
+        >;
+        disabled?: boolean;
+      }>
+    | Readonly<{
+        type: "dropdown";
+        id: string;
+        label: string;
+        content: Readonly<
+          | { type: "text"; text: string }
+          | { type: "icon"; resourceId: string }
+        >;
+        disabled?: boolean;
+        items: readonly Readonly<{
+          id: string;
+          text: string;
+          disabled?: boolean;
+          destructive?: boolean;
+          shortcut?: string;
+          separatorBefore?: boolean;
+        }>[];
+      }>
+  )[];
 };
 
-export type TElementTransformOptions = {
-  enabledAnchors?: TElementTransformAnchor[];
-  keepRatio?: boolean;
-  flipEnabled?: boolean;
-  boundBoxFunc?: (oldBox: TElementTransformBox, newBox: TElementTransformBox) => TElementTransformBox;
-};
-
-export type TElementMoveArgs = {
-  node: Konva.Node;
-  element: TElement;
-  pointer: { x: number; y: number } | null;
-  selection: Konva.Node[];
-};
-
-export type TElementRotateArgs = {
-  node: Konva.Node;
-  element: TElement;
-  rotation: number;
-  selection: Konva.Node[];
-};
-
-export type TElementResizeArgs = {
-  node: Konva.Node;
-  element: TElement;
-  pointer: { x: number; y: number } | null;
-  anchors: TElementTransformAnchor[];
-  selection: Konva.Node[];
+export type TElementCloneDataArgs = {
+  source: TElement;
+  clone: TElement;
+  createId(): string;
 };
 
 export type TElementSelectionStyleSections = {
@@ -92,221 +107,29 @@ export type TElementSelectionStyleConfig = {
 export type TElementSelectionStyleArgs = {
   theme?: ThemeService;
   element?: TElement;
-  node?: Konva.Node;
 };
 
-type TElementToElement = (node: Konva.Node) => TElement | null;
-type TElementAfterToElement = (args: { node: Konva.Node; element: TElement }) => TElement | void;
-type TElementCreateNode = (element: TElement) => Konva.Node | null;
-type TElementAfterCreateNode = (args: { element: TElement; node: Konva.Node }) => void;
-type TElementAttachListeners = (node: Konva.Node) => boolean | void;
-type TElementUpdateElement = (element: TElement) => boolean | void;
-type TElementCreateDragClone = (args: {
-  node: Konva.Node;
-  selection: Array<Konva.Node>;
-}) => boolean | void;
-type TElementGetSelectionStyleMenu = (args: TElementSelectionStyleArgs) => TElementSelectionStyleConfig | null | void;
-type TElementGetTransformOptions = (args: {
-  node: Konva.Node;
-  element: TElement;
-  selection: Array<Konva.Node>;
-}) => TElementTransformOptions | void;
-type TElementMoveHook = (args: TElementMoveArgs) => TElementTransformHookResult | void;
-type TElementRotateHook = (args: TElementRotateArgs) => TElementTransformHookResult | void;
-type TElementResizeHook = (args: TElementResizeArgs) => TElementTransformHookResult | void;
-
-type TElementRequireAtLeastOne<T extends object> = {
-  [K in keyof T]-?: Required<Pick<T, K>> & Partial<Omit<T, K>>;
-}[keyof T];
-
-type TElementElementMatcher = {
-  /**
-   * Matches persisted elements for create/update/clone flows.
-   * Base definitions should usually provide this.
-   * Modifier definitions may provide it when they want to augment persisted element behavior.
-   */
-  matchesElement: (element: TElement) => boolean;
-};
-
-type TElementNodeMatcher = {
-  /**
-   * Matches runtime nodes for serialize/listener flows.
-   * Base definitions should usually provide this.
-   * Modifier definitions may provide it when they want to augment runtime node behavior.
-   */
-  matchesNode: (node: Konva.Node) => boolean;
-};
-
-type TElementElementHookBag = {
-  /**
-   * Base serialize step.
-   * The first matching definition with toElement builds the initial persisted element.
-   */
-  toElement?: TElementToElement;
-  /**
-   * Serialize augmentation step.
-   * Runs after the base toElement step for every matching definition in priority order.
-   * May return a replacement element or mutate by returning void and relying on object updates.
-   */
-  afterToElement?: TElementAfterToElement;
-  /**
-   * Base create step.
-   * The first matching definition with createNode builds the one root runtime node for the element.
-   * If the element needs multiple visual parts, return a Konva.Group.
-   */
-  createNode?: TElementCreateNode;
-  /**
-   * Create augmentation step.
-   * Runs after the base createNode step for every matching definition in priority order.
-   */
-  afterCreateNode?: TElementAfterCreateNode;
-  /**
-   * Runtime wiring step.
-   * Runs for every matching definition in priority order.
-   * Use this to attach drag/pointer/transform listeners and other runtime behavior.
-   */
-  attachListeners?: TElementAttachListeners;
-  /**
-   * Update step.
-   * Runs for every matching definition in priority order.
-   * Use this to apply persisted element state back onto an existing runtime node.
-   */
-  updateElement?: TElementUpdateElement;
-  /**
-   * Optional alt-drag clone behavior for this element definition.
-   * Returns true when the definition handled clone-drag startup.
-   */
-  createDragClone?: TElementCreateDragClone;
-  /**
-   * Optional selection-style menu config for this element definition.
-   * Used for active-tool defaults and for combining style controls across selections.
-   */
-  getSelectionStyleMenu?: TElementGetSelectionStyleMenu;
-  /**
-   * Optional transformer UI behavior for this node type.
-   * Runs in priority order and later definitions may override earlier fields.
-   */
-  getTransformOptions?: TElementGetTransformOptions;
-  /**
-   * Called while one selected node is moved.
-   * Publishes the move event to the CRDT if `crdt` is true.
-   */
-  onMove?: TElementMoveHook;
-  /**
-   * Called after move handling completes.
-   */
-  afterMove?: TElementMoveHook;
-  /**
-   * Called while one selected node is rotated.
-   * Publishes the rotate event to the CRDT if `crdt` is true.
-   */
-  onRotate?: TElementRotateHook;
-  /**
-   * Called after rotate handling completes.
-   */
-  afterRotate?: TElementRotateHook;
-  /**
-   * Called while one selected node is resized.
-   * Publishes the resize event to the CRDT if `crdt` is true.
-   */
-  onResize?: TElementResizeHook;
-  /**
-   * Called after resize handling completes.
-   */
-  afterResize?: TElementResizeHook;
-  /**
-   * Called after canvas element is removed
-   */
-  onDelete?: (element: TElement) => {}
-  /**
-   * Called when deleted element is restored via undo
-   */
-  onRestore?: (element: TElement) => {}
-};
-
-type TElementNodeRuntimeHookBag = Pick<
-  TElementElementHookBag,
-  | "attachListeners"
-  | "createDragClone"
-  | "getTransformOptions"
-  | "onMove"
-  | "afterMove"
-  | "onRotate"
-  | "afterRotate"
-  | "onResize"
-  | "afterResize"
->;
-
-type TElementElementRuntimeHookBag = Pick<
-  TElementElementHookBag,
-  | "updateElement"
-  | "getSelectionStyleMenu"
->;
-
-type TElementSerializeDefinition =
-  | (TElementNodeMatcher & {
-    toElement: TElementToElement;
-    afterToElement?: never;
-  })
-  | (TElementNodeMatcher & {
-    toElement?: never;
-    afterToElement: TElementAfterToElement;
-  })
-  | {
-    toElement?: never;
-    afterToElement?: never;
-  };
-
-type TElementCreateDefinition =
-  | (TElementElementMatcher & {
-    createNode: TElementCreateNode;
-  })
-  | (TElementElementMatcher & {
-    afterCreateNode: TElementAfterCreateNode;
-  });
-
-type TElementNodeRuntimeDefinition =
-  | (TElementNodeMatcher & TElementRequireAtLeastOne<TElementNodeRuntimeHookBag>)
-  | {
-    [K in keyof TElementNodeRuntimeHookBag]?: never;
-  };
-
-type TElementElementRuntimeDefinition =
-  | (TElementElementMatcher & TElementRequireAtLeastOne<TElementElementRuntimeHookBag>)
-  | {
-    [K in keyof TElementElementRuntimeHookBag]?: never;
-  };
-
-/**
- * One definition may own a lifecycle step or augment it, but not both in the same step.
- * The required matcher is enforced based on the hook family the definition participates in.
- */
 export type TElementElementDefinition = {
-  /**
-   * Unique registration id for this definition.
-   * This is a registration identity, not necessarily the persisted element type.
-   */
   id: string;
-  /**
-   * Lower priority runs first.
-   * Base element definitions should usually have lower priority than modifiers.
-   */
   priority?: number;
-  /**
-   * Matches persisted elements for create/update/clone flows.
-   * Required when the definition participates in element-based hooks.
-   */
-  matchesElement?: (element: TElement) => boolean;
-  /**
-   * Matches runtime nodes for serialize/listener flows.
-   * Required when the definition participates in node-based hooks.
-   */
-  matchesNode?: (node: Konva.Node) => boolean;
-} & TElementRequireAtLeastOne<TElementElementHookBag>
-  & TElementSerializeDefinition
-  & TElementCreateDefinition
-  & TElementNodeRuntimeDefinition
-  & TElementElementRuntimeDefinition;
+  matchesElement(element: TElement): boolean;
+  projection?: TCanvasProjectionDefinition;
+  getSelectionStyleMenu?(
+    args: TElementSelectionStyleArgs,
+  ): TElementSelectionStyleConfig | null | void;
+  getTransformPolicy?(args: {
+    element: TElement;
+    selection: readonly TElement[];
+  }): TElementTransformPolicy | void;
+  getWidgetFrame?(args: {
+    element: TElement;
+  }): TElementWidgetFrame | void;
+  prepareCloneData?(
+    args: TElementCloneDataArgs,
+  ): TElement["data"] | null | void;
+  onDelete?(element: TElement): void;
+  onRestore?(element: TElement): void;
+};
 
 export interface TElementServiceHooks {
   elementsChange: SyncHook<[]>;

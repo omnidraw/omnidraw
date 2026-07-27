@@ -1,6 +1,7 @@
-import { makePersisted } from "@solid-primitives/storage";
+import { fnBrowserTenantStorageKeys, type TBrowserTenantScope } from "@vibecanvas/canvas/fn.browser-tenant-scope";
 import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@vibecanvas/service-theme";
-import { createStore, type SetStoreFunction, type Store } from "solid-js/store";
+import { createStore, reconcile, type SetStoreFunction } from "solid-js/store";
+import { getBrowserTenantScope } from "./services/tenant";
 import type { TBackendCanvas } from "./types/backend.types";
 
 type TGlobalStore = {
@@ -11,12 +12,54 @@ type TGlobalStore = {
   canvases: TBackendCanvas[];
 };
 
-const [store, setStore, init] = makePersisted<TGlobalStore, [Store<TGlobalStore>, SetStoreFunction<TGlobalStore>]>(createStore<TGlobalStore>({
+const DEFAULT_STORE: TGlobalStore = {
   theme: DEFAULT_THEME_ID,
   lastLightThemeId: DEFAULT_THEME_ID,
   lastDarkThemeId: THEME_ID_DARK,
   sidebarVisible: true,
   canvases: [],
-}), { name: "vibecanvas" });
+};
 
-export { init, setStore, store };
+function storageKey(scope: TBrowserTenantScope): string {
+  return fnBrowserTenantStorageKeys(scope).frontendStore;
+}
+
+function readPersistedStore(key: string): TGlobalStore {
+  try {
+    const value = localStorage.getItem(key);
+    if (!value) return structuredClone(DEFAULT_STORE);
+    const parsed = JSON.parse(value) as Partial<TGlobalStore> | null;
+    if (!parsed || typeof parsed !== "object") return structuredClone(DEFAULT_STORE);
+    return { ...structuredClone(DEFAULT_STORE), ...parsed };
+  } catch {
+    return structuredClone(DEFAULT_STORE);
+  }
+}
+
+let activeStorageKey = storageKey(getBrowserTenantScope());
+const [store, setStoreBase] = createStore<TGlobalStore>(readPersistedStore(activeStorageKey));
+
+function persistStore(): void {
+  try {
+    localStorage.setItem(activeStorageKey, JSON.stringify(store));
+  } catch {
+    // Browser persistence is best-effort; the reactive store remains usable.
+  }
+}
+
+const setStore = ((...args: unknown[]) => {
+  (setStoreBase as (...values: unknown[]) => void)(...args);
+  persistStore();
+}) as SetStoreFunction<TGlobalStore>;
+
+function switchFrontendStoreTenant(scope: TBrowserTenantScope): void {
+  activeStorageKey = storageKey(scope);
+  setStoreBase(reconcile(readPersistedStore(activeStorageKey)));
+}
+
+async function init(): Promise<void> {
+  return undefined;
+}
+
+export { init, setStore, store, switchFrontendStoreTenant };
+export type { TGlobalStore };

@@ -1,192 +1,211 @@
-import Konva from "konva";
-import { describe, expect, test, vi } from "vitest";
-import { VC_NODE_KIND_ATTR } from "../../src/core/CONSTANTS";
+import {
+  describe,
+  expect,
+  test,
+} from "vitest";
 import { fnCreateOrderedZIndex } from "../../src/core/fn.create-ordered-z-index";
+import { ContextMenuService } from "../../src/services/context-menu/ContextMenuService";
+import { CrdtService } from "../../src/services/crdt/CrdtService";
+import { HistoryService } from "../../src/services/history/HistoryService";
 import { RenderOrderService } from "../../src/services/render-order/RenderOrderService";
+import {
+  createElement,
+  createGroup,
+  createRealDocHandle,
+} from "./crdt/helpers";
 
-type TNodeKind = "element" | "group" | null;
+const elementTarget = (id: string) => ({ kind: "element", id }) as const;
+const groupTarget = (id: string) => ({ kind: "group", id }) as const;
 
 function setup(args?: {
-  elements?: string[];
-  groups?: string[];
+  elements?: ReturnType<typeof createElement>[];
+  groups?: ReturnType<typeof createGroup>[];
 }) {
-  const staticForegroundLayer = new Konva.Layer();
-  const history = {
-    record: vi.fn(),
-  };
-  const patchElement = vi.fn();
-  const patchGroup = vi.fn();
-  const commit = vi.fn();
-  const syncDomOrder = vi.fn();
-  const nodeKinds = new Map<string, TNodeKind>();
-  const docElements = Object.fromEntries((args?.elements ?? []).map((id) => [id, { id }]));
-  const docGroups = Object.fromEntries((args?.groups ?? []).map((id) => [id, { id }]));
-
-  const canvasRegistry = {
-    getNodeType: (node: Konva.Node) => {
-      const kind = nodeKinds.get(node.id()) ?? "element";
-      if (kind === "group") {
-        return "group";
-      }
-      if (kind === "element") {
-        return "text";
-      }
-      return null;
-    },
-  };
-
-  const service = new RenderOrderService({
-    crdt: {
-      doc: () => ({ elements: docElements, groups: docGroups }),
-      build: () => ({ patchElement, patchGroup, commit }),
-    } as unknown as RenderOrderService["crdt"],
-    history: history as unknown as RenderOrderService["history"],
-    scene: { staticForegroundLayer } as unknown as RenderOrderService["scene"],
-    canvasRegistry: canvasRegistry as unknown as RenderOrderService["canvasRegistry"],
-    syncDomOrder,
+  const { docHandle } = createRealDocHandle({
+    elements: Object.fromEntries(
+      (args?.elements ?? []).map((element) => [element.id, element]),
+    ),
+    groups: Object.fromEntries(
+      (args?.groups ?? []).map((group) => [group.id, group]),
+    ),
   });
+  const crdt = new CrdtService({ docHandle });
+  crdt.start();
+  const history = new HistoryService();
+  const contextMenu = new ContextMenuService();
+  const service = new RenderOrderService({ crdt, history, contextMenu });
+  return { crdt, history, service };
+}
 
-  return { staticForegroundLayer, history, patchElement, patchGroup, commit, syncDomOrder, nodeKinds, service };
+function orderedKeys(
+  service: RenderOrderService,
+  parentGroupId: string | null = null,
+) {
+  return service.getOrderedSiblings(parentGroupId).map((item) => {
+    return `${item.target.kind}:${item.target.id}`;
+  });
 }
 
 describe("RenderOrderService", () => {
-  test("assignOrderOnInsert ignores nodes from another parent and nodes without ids in persisted patches", () => {
-    const { staticForegroundLayer, patchElement, commit, service } = setup({ elements: ["a"] });
-    const otherParent = new Konva.Group({ id: "other-parent" });
-    const a = new Konva.Rect({ id: "a" });
-    const blank = new Konva.Rect();
-    const external = new Konva.Rect({ id: "external" });
-
-    staticForegroundLayer.add(a);
-    staticForegroundLayer.add(blank);
-    otherParent.add(external);
-
-    const result = service.assignOrderOnInsert({
-      parent: staticForegroundLayer,
-      nodes: [external, blank, a],
-      position: "back",
-    });
-
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["a", ""]);
-    expect(result).toEqual([{ id: "a", zIndex: fnCreateOrderedZIndex(0) }]);
-    expect(patchElement).toHaveBeenCalledOnce();
-    expect(patchElement).toHaveBeenCalledWith("a", "zIndex", fnCreateOrderedZIndex(0));
-    expect(commit).toHaveBeenCalledOnce();
-  });
-
-  test("moveSelectionUp and moveSelectionDown record history and preserve grouped bundles", () => {
-    const { staticForegroundLayer, history, patchElement, commit, service } = setup({ elements: ["a", "b", "c", "d"] });
-    const a = new Konva.Rect({ id: "a" });
-    const b = new Konva.Rect({ id: "b" });
-    const c = new Konva.Rect({ id: "c" });
-    const d = new Konva.Rect({ id: "d" });
-
-    staticForegroundLayer.add(a);
-    staticForegroundLayer.add(b);
-    staticForegroundLayer.add(c);
-    staticForegroundLayer.add(d);
-    service.assignOrderOnInsert({ parent: staticForegroundLayer, nodes: [a, b, c, d], position: "back" });
-    patchElement.mockClear();
-    commit.mockClear();
-
-    service.registerBundleResolver("bc", (node) => {
-      if (node.id() !== "b" && node.id() !== "c") {
-        return null;
-      }
-      return [b, c];
-    });
-
-    service.moveSelectionUp([b]);
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["b", "c", "a", "d"]);
-
-    service.moveSelectionDown([b]);
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["b", "c", "a", "d"]);
-
-    expect(history.record).toHaveBeenCalledTimes(2);
-    const firstRecord = history.record.mock.calls[0]?.[0];
-    expect(firstRecord.label).toBe("render-order");
-
-    firstRecord.undo();
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["a", "b", "c", "d"]);
-    firstRecord.redo();
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["b", "c", "a", "d"]);
-    expect(patchElement).toHaveBeenCalled();
-    expect(commit).toHaveBeenCalled();
-  });
-
-  test("bringSelectionToFront and sendSelectionToBack handle duplicates and mixed parents safely", () => {
-    const { staticForegroundLayer, history, service } = setup({ elements: ["a", "b", "c"] });
-    const otherParent = new Konva.Group({ id: "other-parent" });
-    const a = new Konva.Rect({ id: "a" });
-    const b = new Konva.Rect({ id: "b" });
-    const c = new Konva.Rect({ id: "c" });
-    const external = new Konva.Rect({ id: "external" });
-
-    staticForegroundLayer.add(a);
-    staticForegroundLayer.add(b);
-    staticForegroundLayer.add(c);
-    otherParent.add(external);
-    service.assignOrderOnInsert({ parent: staticForegroundLayer, nodes: [a, b, c], position: "back" });
-
-    service.bringSelectionToFront([b, b]);
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["a", "c", "b"]);
-
-    service.sendSelectionToBack([external, b]);
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["a", "c", "b"]);
-    expect(history.record).toHaveBeenCalledTimes(1);
-  });
-
-  test("snapshot and restore work for both layer and group parents and group patches persist separately", () => {
-    const { staticForegroundLayer, nodeKinds, patchElement, patchGroup, commit, service } = setup({ elements: ["shape-1"], groups: ["group-1"] });
-    const host = new Konva.Group({ id: "host" });
-    const shape = new Konva.Rect({ id: "shape-1" });
-    const groupNode = new Konva.Group({ id: "group-1" });
-
-    nodeKinds.set("group-1", "group");
-    staticForegroundLayer.add(host);
-    host.add(shape);
-    host.add(groupNode);
-    groupNode.setAttr(VC_NODE_KIND_ATTR, "group");
-
-    service.assignOrderOnInsert({ parent: host, nodes: [shape, groupNode], position: "back" });
-    expect(patchElement).toHaveBeenCalledWith("shape-1", "zIndex", fnCreateOrderedZIndex(0));
-    expect(patchGroup).toHaveBeenCalledWith("group-1", "zIndex", fnCreateOrderedZIndex(1));
-    expect(commit).toHaveBeenCalledOnce();
-
-    const snapshot = service.snapshotParentOrder(host);
-    expect(snapshot).toEqual({
-      parentId: "host",
-      items: [
-        { id: "shape-1", zIndex: fnCreateOrderedZIndex(0), kind: "element" },
-        { id: "group-1", zIndex: fnCreateOrderedZIndex(1), kind: "group" },
+  test("orders product siblings by exact persisted zIndex and semantic key", () => {
+    const { service } = setup({
+      elements: [
+        createElement("b", { zIndex: "same" }),
+        createElement("a", { zIndex: "same" }),
+      ],
+      groups: [
+        createGroup("a", { zIndex: "same" }),
+        createGroup("first", { zIndex: "!first" }),
       ],
     });
 
-    service.sendSelectionToBack([groupNode]);
-    expect(host.getChildren().map((node) => node.id())).toEqual(["group-1", "shape-1"]);
-
-    service.restoreParentOrder(snapshot);
-    expect(host.getChildren().map((node) => node.id())).toEqual(["shape-1", "group-1"]);
+    expect(orderedKeys(service)).toEqual([
+      "group:first",
+      "element:a",
+      "element:b",
+      "group:a",
+    ]);
   });
 
-  test("sortChildren uses persisted zIndex then id tie-breaker and syncs dom order", () => {
-    const { staticForegroundLayer, syncDomOrder, service } = setup();
-    const b = new Konva.Rect({ id: "b" });
-    const a = new Konva.Rect({ id: "a" });
-    const c = new Konva.Rect({ id: "c" });
+  test("assigns product order on insert with one CRDT write batch", () => {
+    const { crdt, service } = setup({
+      elements: [
+        createElement("a", { zIndex: "legacy-A" }),
+        createElement("b", { zIndex: "legacy-B" }),
+      ],
+    });
+    const writes: unknown[] = [];
+    crdt.hooks.write.tap((ops) => writes.push(ops));
 
-    staticForegroundLayer.add(b);
-    staticForegroundLayer.add(a);
-    staticForegroundLayer.add(c);
+    const patches = service.assignOrderOnInsert({
+      parentGroupId: null,
+      targets: [elementTarget("b")],
+      position: "back",
+    });
 
-    service.setNodeZIndex(b, fnCreateOrderedZIndex(1));
-    service.setNodeZIndex(a, fnCreateOrderedZIndex(1));
-    service.setNodeZIndex(c, fnCreateOrderedZIndex(0));
+    expect(patches).toEqual([
+      { target: elementTarget("b"), zIndex: fnCreateOrderedZIndex(0) },
+      { target: elementTarget("a"), zIndex: fnCreateOrderedZIndex(1) },
+    ]);
+    expect(orderedKeys(service)).toEqual(["element:b", "element:a"]);
+    expect(writes).toHaveLength(1);
+  });
 
-    expect(service.getOrderedSiblings(staticForegroundLayer).map((node) => node.id())).toEqual(["c", "a", "b"]);
+  test("moves semantic bundles and undo/redo restores exact string keys", () => {
+    const { crdt, history, service } = setup({
+      elements: [
+        createElement("a", { zIndex: "α" }),
+        createElement("b", { zIndex: "β" }),
+        createElement("c", { zIndex: "γ" }),
+        createElement("d", { zIndex: "δ" }),
+      ],
+    });
+    service.registerBundleResolver("bc", (target) => {
+      return target.kind === "element"
+        && (target.id === "b" || target.id === "c")
+        ? [elementTarget("b"), elementTarget("c")]
+        : null;
+    });
 
-    service.sortChildren(staticForegroundLayer);
-    expect(staticForegroundLayer.getChildren().map((node) => node.id())).toEqual(["c", "a", "b"]);
-    expect(syncDomOrder).toHaveBeenCalledTimes(1);
+    expect(service.moveSelectionUp([elementTarget("b")])).toBe(true);
+    expect(orderedKeys(service)).toEqual([
+      "element:b",
+      "element:c",
+      "element:a",
+      "element:d",
+    ]);
+
+    expect(history.undo()).toBe(true);
+    expect(crdt.doc().elements.a.zIndex).toBe("α");
+    expect(crdt.doc().elements.b.zIndex).toBe("β");
+    expect(crdt.doc().elements.c.zIndex).toBe("γ");
+    expect(crdt.doc().elements.d.zIndex).toBe("δ");
+    expect(orderedKeys(service)).toEqual([
+      "element:a",
+      "element:b",
+      "element:c",
+      "element:d",
+    ]);
+
+    expect(history.redo()).toBe(true);
+    expect(orderedKeys(service)).toEqual([
+      "element:b",
+      "element:c",
+      "element:a",
+      "element:d",
+    ]);
+  });
+
+  test("moves to extremes, deduplicates targets, and rejects mixed parents", () => {
+    const { history, service } = setup({
+      elements: [
+        createElement("a", { zIndex: "A" }),
+        createElement("b", { zIndex: "B" }),
+        createElement("nested", {
+          parentGroupId: "host",
+          zIndex: "A",
+        }),
+      ],
+      groups: [createGroup("host", { zIndex: "C" })],
+    });
+
+    expect(service.bringSelectionToFront([
+      elementTarget("a"),
+      elementTarget("a"),
+    ])).toBe(true);
+    expect(orderedKeys(service)).toEqual([
+      "element:b",
+      "group:host",
+      "element:a",
+    ]);
+    expect(service.sendSelectionToBack([
+      elementTarget("a"),
+      elementTarget("nested"),
+    ])).toBe(false);
+    expect(history.getUndoStackSize()).toBe(1);
+  });
+
+  test("snapshots and restores root/group order using product parent IDs", () => {
+    const { crdt, service } = setup({
+      elements: [
+        createElement("one", {
+          parentGroupId: "host",
+          zIndex: "custom-one",
+        }),
+        createElement("two", {
+          parentGroupId: "host",
+          zIndex: "custom-two",
+        }),
+      ],
+      groups: [
+        createGroup("host", { zIndex: "root-host" }),
+        createGroup("nested", {
+          parentGroupId: "host",
+          zIndex: "custom-three",
+        }),
+      ],
+    });
+    const snapshot = service.snapshotParentOrder("host");
+    service.sendSelectionToBack([groupTarget("nested")]);
+    expect(orderedKeys(service, "host")[0]).toBe("group:nested");
+
+    expect(service.restoreParentOrder(snapshot)).toBe(true);
+    expect(crdt.doc().elements.one.zIndex).toBe("custom-one");
+    expect(crdt.doc().elements.two.zIndex).toBe("custom-two");
+    expect(crdt.doc().groups.nested.zIndex).toBe("custom-three");
+  });
+
+  test("keeps element and group targets with the same ID distinct", () => {
+    const { service } = setup({
+      elements: [createElement("same", { zIndex: "A" })],
+      groups: [createGroup("same", { zIndex: "B" })],
+    });
+
+    service.sendSelectionToBack([groupTarget("same")]);
+
+    expect(orderedKeys(service)).toEqual([
+      "group:same",
+      "element:same",
+    ]);
   });
 });

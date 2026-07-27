@@ -24,6 +24,9 @@ export default defineConfig({
         target: backendTarget,
         ws: true
       },
+      '/health': {
+        target: backendTarget
+      },
       '/files': {
         target: backendTarget
       },
@@ -47,7 +50,6 @@ export default defineConfig({
     ],
     // Include Automerge packages for proper CJS/ESM interop
     include: [
-      '@vibecanvas/canvas > @arrow-js/sandbox',
       '@automerge/automerge',
       '@automerge/automerge-repo',
       '@automerge/automerge-repo-network-websocket',

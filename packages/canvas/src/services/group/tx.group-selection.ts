@@ -1,213 +1,82 @@
-import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type Konva from "konva";
-import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
-import { isCanvasGroupNode } from "../../core/GUARDS";
-import type { CrdtService, ElementService, GroupService, HistoryService, SceneService, SelectionService } from "../../services";
-import { fnGetSelectionBounds } from "./fn.get-selection-bounds";
-import { fnFindSceneNodeById, fnGetGroupChildren, fnGetSelectionGroupParent, fnIsSceneNode, fnIsSceneParent, type TSceneNode } from "./fn.scene-node";
-import { fnToGroupPatch } from "./fn.to-group-patch";
+import type { TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TCanvasTarget } from "../../semantic/typed";
+import type { CrdtService } from "../crdt/CrdtService";
+import type { HistoryService } from "../history/HistoryService";
+import type { SelectionService } from "../selection/SelectionService";
+import { fnResolveProductTargets } from "./fn.product-groups";
 
 export type TPortalGroupSelection = {
-  Group: typeof Konva.Group;
-  Shape: typeof Konva.Shape;
-  Layer: typeof Konva.Layer;
-  element: ElementService;
-  group: GroupService;
   crdt: CrdtService;
   history: HistoryService;
-  scene: SceneService;
   selection: SelectionService;
-  setupNode: (group: Konva.Group) => Konva.Group;
-  createGroupNode: (group: TGroup) => Konva.Group;
-  sortChildrenByPersistedOrder: (parent: Konva.Layer | Konva.Group) => void;
-  getNodeZIndex: (node: TSceneNode) => string;
-  now: () => number;
-  createId: () => string;
+  createId(): string;
+  now(): number;
 };
 
-export type TArgsGroupSelection = Record<string, never>;
+export type TArgsGroupSelection = {
+  targets: readonly TCanvasTarget[];
+};
 
 export function txGroupSelection(
   portal: TPortalGroupSelection,
   args: TArgsGroupSelection,
-) {
-  const selection = portal.selection.selection.filter((node): node is TSceneNode => {
-    return fnIsSceneNode({ scene: portal.scene, node });
+): TGroup | null {
+  const document = portal.crdt.doc();
+  const resolved = fnResolveProductTargets({
+    document,
+    targets: args.targets,
   });
-  if (selection.length <= 1) {
-    return;
+  if (resolved.length < 2) {
+    return null;
   }
-
-  const parent = fnGetSelectionGroupParent({ scene: portal.scene, selection });
-  if (!parent) {
-    return;
+  const parentGroupId = resolved[0]!.entity.parentGroupId;
+  if (!resolved.every((target) => {
+    return target.entity.parentGroupId === parentGroupId;
+  })) {
+    return null;
   }
-
-  const bounds = fnGetSelectionBounds({ selection });
-  const createdAt = portal.now();
-  const groupId = portal.createId();
-  const zIndex = portal.getNodeZIndex(selection[selection.length - 1] ?? selection[0]);
-  const groupNode = portal.setupNode(portal.createGroupNode({
-    id: groupId,
-    parentGroupId: isCanvasGroupNode(parent) ? parent.id() : null,
+  const id = portal.createId();
+  if (document.groups[id] !== undefined || document.elements[id] !== undefined) {
+    throw new TypeError(`Cannot create duplicate canvas group '${id}'.`);
+  }
+  const zIndex = [...resolved]
+    .sort((left, right) => {
+      return left.entity.zIndex.localeCompare(right.entity.zIndex);
+    })
+    .at(-1)!.entity.zIndex;
+  const group: TGroup = {
+    id,
+    parentGroupId,
     zIndex,
     locked: false,
-    createdAt,
-  }));
-
-  groupNode.position({ x: bounds.x, y: bounds.y });
-  groupNode.setAttr("width", bounds.width);
-  groupNode.setAttr("height", bounds.height);
-  parent.add(groupNode);
-
-  const elementPatches: TElement[] = [];
-  const groupPatches: TGroup[] = [fnToGroupPatch({
-    groupService: portal.group,
-    group: groupNode,
-    getNodeZIndex: portal.getNodeZIndex,
-    fallbackCreatedAt: createdAt,
-  })];
-
-  selection.forEach((node) => {
-    const absolutePosition = node.getAbsolutePosition();
-    groupNode.add(node);
-    node.setAbsolutePosition(absolutePosition);
-
-    const kind = fnGetCanvasNodeKind(node);
-    if (kind === "group") {
-      const groupPatch = portal.group.toGroup(node);
-      if (groupPatch) {
-        groupPatches.push(groupPatch);
-      }
-      return;
+    createdAt: portal.now(),
+  };
+  const originalTargets = resolved.map((item) => ({ ...item.target }));
+  const builder = portal.crdt.build();
+  builder.patchGroup(group.id, group);
+  for (const item of resolved) {
+    if (item.target.kind === "element") {
+      builder.patchElement(item.target.id, "parentGroupId", group.id);
+    } else {
+      builder.patchGroup(item.target.id, "parentGroupId", group.id);
     }
-
-    if (kind !== null) {
-      const element = portal.element.toElement(node);
-      if (element) {
-        elementPatches.push(element);
-        portal.element.updateElement(element);
-      }
-    }
-  });
-
-  portal.sortChildrenByPersistedOrder(groupNode);
-  const commitResult = (() => {
-    const builder = portal.crdt.build();
-    elementPatches.forEach((element) => {
-      builder.patchElement(element.id, element);
-    });
-    groupPatches.forEach((group) => {
-      builder.patchGroup(group.id, group);
-    });
-    return builder.commit();
-  })();
-  portal.selection.setSelection([groupNode]);
-  portal.selection.setFocusedNode(groupNode);
-  portal.scene.staticForegroundLayer.batchDraw();
-
-  const childIds = selection.map((node) => node.id());
-
+  }
+  const commit = builder.commit();
+  const groupTarget = { kind: "group", id: group.id } as const;
+  portal.selection.setSelection([groupTarget]);
+  portal.selection.setFocusedTarget(groupTarget);
   portal.history.record({
     label: "group",
-    undo() {
-      const currentGroupNode = fnFindSceneNodeById({ scene: portal.scene, id: groupId });
-      if (currentGroupNode && !isCanvasGroupNode(currentGroupNode)) {
-        return;
-      }
-
-      const currentGroup = currentGroupNode as Konva.Group;
-      const children = fnGetGroupChildren({ group: currentGroup, scene: portal.scene });
-      const currentParentNode = currentGroup.getParent();
-      if (!fnIsSceneParent({ scene: portal.scene, node: currentParentNode })) {
-        return;
-      }
-
-      const currentParent = currentParentNode as Konva.Group | Konva.Layer;
-
-      children.forEach((child) => {
-        const absolutePosition = child.getAbsolutePosition();
-        currentParent.add(child);
-        child.setAbsolutePosition(absolutePosition);
-
-        const kind = fnGetCanvasNodeKind(child);
-        if (kind === "group") {
-          return;
-        }
-
-        if (kind !== null) {
-          const element = portal.element.toElement(child);
-          if (element) {
-            portal.element.updateElement(element);
-          }
-        }
-      });
-
-      currentGroup.destroy();
-      portal.selection.setSelection(children);
-      portal.selection.setFocusedNode(children.at(-1) ?? null);
-      commitResult.rollback();
-      portal.scene.staticForegroundLayer.batchDraw();
+    undo: () => {
+      portal.crdt.applyOps({ ops: commit.undoOps });
+      portal.selection.setSelection(originalTargets);
+      portal.selection.setFocusedTarget(originalTargets.at(-1) ?? null);
     },
-    redo() {
-      const nodes = childIds
-        .map((id) => fnFindSceneNodeById({ scene: portal.scene, id }))
-        .filter((node): node is TSceneNode => node !== null);
-
-      if (nodes.length !== childIds.length) {
-        return;
-      }
-
-      const redoParent = fnGetSelectionGroupParent({ scene: portal.scene, selection: nodes });
-      if (!redoParent) {
-        return;
-      }
-
-      const recreated = portal.setupNode(portal.createGroupNode({
-        id: groupId,
-        parentGroupId: redoParent && isCanvasGroupNode(redoParent) ? redoParent.id() : null,
-        zIndex,
-        locked: false,
-        createdAt,
-      }));
-      const redoBounds = fnGetSelectionBounds({ selection: nodes });
-      recreated.position({ x: redoBounds.x, y: redoBounds.y });
-      recreated.setAttr("width", redoBounds.width);
-      recreated.setAttr("height", redoBounds.height);
-      redoParent.add(recreated);
-
-      fnToGroupPatch({
-        groupService: portal.group,
-        group: recreated,
-        getNodeZIndex: portal.getNodeZIndex,
-        fallbackCreatedAt: createdAt,
-      });
-
-      nodes.forEach((node) => {
-        const absolutePosition = node.getAbsolutePosition();
-        recreated.add(node);
-        node.setAbsolutePosition(absolutePosition);
-
-        const kind = fnGetCanvasNodeKind(node);
-        if (kind === "group") {
-          return;
-        }
-
-        if (kind !== null) {
-          const element = portal.element.toElement(node);
-          if (element) {
-            portal.element.updateElement(element);
-          }
-        }
-      });
-
-      portal.sortChildrenByPersistedOrder(recreated);
-      portal.selection.setSelection([recreated]);
-      portal.selection.setFocusedNode(recreated);
-      portal.crdt.applyOps({ ops: commitResult.redoOps });
-      portal.scene.staticForegroundLayer.batchDraw();
+    redo: () => {
+      portal.crdt.applyOps({ ops: commit.redoOps });
+      portal.selection.setSelection([groupTarget]);
+      portal.selection.setFocusedTarget(groupTarget);
     },
   });
-
-  void args;
+  return group;
 }
