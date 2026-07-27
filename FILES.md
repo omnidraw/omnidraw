@@ -38,10 +38,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -83,19 +81,17 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
-| [apps/cli/src/services/widget-capsule-oci/CONSTANTS.ts](apps/cli/src/services/widget-capsule-oci/CONSTANTS.ts) |  |
-| [apps/cli/src/services/widget-capsule-oci/fn.engine-selection.ts](apps/cli/src/services/widget-capsule-oci/fn.engine-selection.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
-| [apps/cli/src/services/WidgetCapsuleOciBuild.ts](apps/cli/src/services/WidgetCapsuleOciBuild.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
 | [apps/cli/src/services/WidgetFunctionArtifactReader.ts](apps/cli/src/services/WidgetFunctionArtifactReader.ts) |  |
+| [apps/cli/src/services/WidgetNpmDistributionBuild.ts](apps/cli/src/services/WidgetNpmDistributionBuild.ts) |  |
 | [apps/cli/src/services/WidgetRuntimeLoadAdmission.ts](apps/cli/src/services/WidgetRuntimeLoadAdmission.ts) |  |
 | [apps/cli/src/services/WidgetService.ts](apps/cli/src/services/WidgetService.ts) |  |
 | [apps/cli/src/services/WidgetServicePool.ts](apps/cli/src/services/WidgetServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
 | [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
-| [apps/cli/src/widget-prerequisites/fx.probe-widget-oci-engine.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-oci-engine.ts) |  |
+| [apps/cli/src/widget-prerequisites/fx.probe-widget-npm.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-npm.ts) |  |
 | [apps/cli/src/widget-prerequisites/interface.ts](apps/cli/src/widget-prerequisites/interface.ts) |  |
 | [apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts](apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts) |  |
 | [apps/cli/tsconfig.json](apps/cli/tsconfig.json) |  |
@@ -176,14 +172,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -575,11 +563,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/capsule-vibecanvas/package.json](packages/capsule-vibecanvas/package.json) |  |
-| [packages/capsule-vibecanvas/src/build-runner/index.ts](packages/capsule-vibecanvas/src/build-runner/index.ts) |  |
 | [packages/capsule-vibecanvas/src/build/CONSTANTS.ts](packages/capsule-vibecanvas/src/build/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.build-error.ts](packages/capsule-vibecanvas/src/build/fn.build-error.ts) |  |
 | [packages/capsule-vibecanvas/src/build/fn.error.ts](packages/capsule-vibecanvas/src/build/fn.error.ts) |  |
 | [packages/capsule-vibecanvas/src/build/fn.policy.ts](packages/capsule-vibecanvas/src/build/fn.policy.ts) |  |
-| [packages/capsule-vibecanvas/src/build/fx.build-dependencies.ts](packages/capsule-vibecanvas/src/build/fx.build-dependencies.ts) |  |
 | [packages/capsule-vibecanvas/src/build/index.ts](packages/capsule-vibecanvas/src/build/index.ts) |  |
 | [packages/capsule-vibecanvas/src/build/interface.ts](packages/capsule-vibecanvas/src/build/interface.ts) |  |
 | [packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts](packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts) |  |
@@ -1137,5 +1124,4 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable M7 gate for the neutral renderer host and UI scale. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
-| [scripts/verify-widget-capsule-oci-build.ts](scripts/verify-widget-capsule-oci-build.ts) |  |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

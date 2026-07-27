@@ -25,13 +25,13 @@ describe('fnWidgetBuildError', () => {
       .toBe('Widget server build failed.');
   });
 
-  test('surfaces a bounded OCI runner code when compilation never starts', () => {
-    const cause = Object.assign(new Error('docker socket details'), {
-      code: 'SANDBOX_IMAGE_IDENTITY_MISMATCH',
+  test('surfaces a bounded host builder code when compilation never starts', () => {
+    const cause = Object.assign(new Error('npm process details'), {
+      code: 'NPM_BUILD_TIMEOUT',
     });
 
     expect(fnWidgetBuildError('ui', cause).message).toBe(
-      'Widget ui build failed: SANDBOX_IMAGE_IDENTITY_MISMATCH.',
+      'Widget ui build failed: NPM_BUILD_TIMEOUT.',
     );
   });
 });

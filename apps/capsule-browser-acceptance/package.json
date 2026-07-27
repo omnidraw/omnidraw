@@ -14,7 +14,9 @@
     "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/sdk": "workspace:*",
     "@vibecanvas/ui-ai-chat": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*"
+    "@vibecanvas/widget-contract": "workspace:*",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

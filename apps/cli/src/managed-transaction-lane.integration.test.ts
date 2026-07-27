@@ -53,10 +53,10 @@ const CHANNEL_CONTRACT_DIGEST = sha256(
 const WIDGET_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1';
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = {
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.2',
-  packageDigest: 'sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753',
+  packageVersion: '0.9.3',
+  packageDigest: 'sha256:bad823e4a7ea2d621ec7e11c815074dbac94a495750dfbb43e9a57501b4698ea',
   buildApiVersion: '0.1.0',
-  runtimeBuildDigest: 'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146',
+  runtimeBuildDigest: 'sha256:884aae4fbeb09da89790be72cad57b58765a780685510750bb66f3e6608b81dc',
 };
 const CAPSULE_BUDGETS: TWidgetCapsuleBudgets = {
   cpuMs: 100,

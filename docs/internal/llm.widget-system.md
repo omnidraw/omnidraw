@@ -39,7 +39,8 @@ flowchart LR
   A["AI chat and widget tools"] --> D["Mutable draft"]
   D --> S["Immutable source snapshot"]
   S --> B["Trusted Vibecanvas build orchestration"]
-  B --> O["Networkless Capsule OCI UI build"]
+  B --> N["Host npm ci + guest npm run build"]
+  N --> O["Capsule external dist validation"]
   B --> F["Separate server-function build"]
   O --> U["Canonical unsigned Capsule artifact"]
   U --> K["Preview or release signing"]
@@ -58,10 +59,10 @@ flowchart LR
 | --- | --- |
 | `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, profiles, budgets, capabilities, channels, lifecycle, and diagnostics |
 | `@omnidraw/cangine` | Fixed widget chrome, traffic lights, header hit regions, frame/content interaction mode, local canvas-maximized presentation, transform affordances, normalized pointer cancellation, atomic DOM portal-shell presentation, and shared menu presentation |
-| `packages/capsule-vibecanvas` | Vibecanvas build policy, target and budget mapping, dependency closure, signing composition, schemas, capability descriptors, host imports, and error mapping |
+| `packages/capsule-vibecanvas` | Vibecanvas build policy, target and budget mapping, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
 | `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
 | `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
-| `apps/cli` | Production service composition, Capsule OCI build authority, persistent signing keys, host configuration, artifact storage, and server-function tooling |
+| `apps/cli` | Production service composition, application-owned npm distribution builds, persistent signing keys, host configuration, artifact storage, and server-function tooling |
 | `packages/sdk` | The supported widget authoring API over `@omnidraw/capsule/guest` |
 | `packages/api` | Tenant-authorized runtime configuration and artifact delivery |
 | `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, Capsule content mounting, provider creation, preview, runtime ownership, product widget actions, and population scheduling |
@@ -179,36 +180,76 @@ runtime authority.
 
 `WidgetArtifactBuilderCapsule` orchestrates two deliberately separate builds.
 
+### Accepted host-build risk for the `dist/` pipeline
+
+The production build boundary is:
+
+```text
+guest package.json + lockfile + source
+  -> Vibecanvas-owned npm install and npm run build
+  -> immutable dist/
+  -> Capsule validation and artifact construction
+  -> preview or release signing
+```
+
+Vibecanvas explicitly accepts that dependency installation and
+guest-controlled build scripts execute with the build-server account's host
+authority. This is not an OS sandbox or a hostile-code isolation boundary.
+Package lifecycle hooks, `npm run build`, transitive build tooling, compiler
+plugins, and code reached by those tools may execute arbitrary native-process
+behavior. They may:
+
+- read any file or environment value available to the build-server account;
+- write, replace, or delete data writable by that account;
+- make network requests permitted to the account;
+- start child or detached processes;
+- consume CPU, memory, disk, file descriptors, or process capacity;
+- retain data in shared caches or temporary locations; and
+- exploit defects in npm, the selected toolchain, parsers, plugins, or native
+  dependencies.
+
+Capsule receives and validates `dist/` only after this host execution has
+finished. Capsule's artifact validation, QuickJS runtime, DOM membrane,
+capability policy, signing, and browser verification protect the application
+when the resulting artifact is loaded; they do not protect the build server,
+undo build-time side effects, or retroactively confine commands that produced
+`dist/`.
+
+This risk is an intentional product decision. Docker, Podman, a VM, or another
+OS isolation provider is not a prerequisite for the normal widget build path.
+Deployments may still use an isolated worker or dedicated build account as
+defense in depth. Private temporary directories, sealed environment values,
+least-privilege credentials, bounded output, deadlines, cancellation, process
+cleanup, and cache partitioning remain desirable operational controls, but none
+of them is represented as containment of deliberately hostile build code.
+
+Vibecanvas must retain end-to-end provenance across this boundary. One build
+identity must bind the exact source snapshot, `package.json`, lockfile, npm and
+Node identities, build command and policy, relevant platform identity,
+dependency and toolchain inputs, complete `dist/` bytes, Capsule version and
+validation policy, and final artifact bytes. Preview and publication must use
+the same immutable inputs and must never regenerate the lockfile or rebuild from
+mutable draft state after the source revision is selected.
+
 ### 6.1 Browser UI build
 
-The UI input contains:
+The immutable source project contains:
 
 - the complete non-server source candidate set;
 - the exact entry path;
-- a closed dependency lock and content store;
-- the materialized Vibecanvas SDK and Capsule guest runtime;
+- package-lock format 3;
+- guest-selected npm dependencies and build tooling;
 - generated browser proxies for declared server functions;
 - the normalized target, profiles, budgets, channels, and capability requests;
 - the pinned builder identity, Capsule package identity, and build policy.
 
-Untrusted UI JavaScript, TypeScript, JSX, CSS imports, asset references, and
-dependency graphs are parsed and compiled only by Capsule inside the pinned OCI
-runner. Production has no trusted-process UI parser and no in-process fallback.
-
-The OCI authority pins:
-
-- Docker or Podman executable path and SHA-256;
-- exact build image ID;
-- Linux platform;
-- network-disabled execution;
-- read-only root filesystem;
-- no new privileges or added capabilities;
-- bounded memory, CPU, processes, files, temporary storage, input, output, and
-  wall time;
-- an isolated engine home without ambient registry or credential files.
-
-Vibecanvas independently validates the returned canonical artifact bytes and
-Capsule artifact hash.
+Vibecanvas materializes that exact project in a private temporary directory,
+runs frozen `npm ci`, then the guest-owned `npm run build`. It captures only a
+bounded regular-file `dist/` tree, rejects symlinks and special files, and
+passes the exact bytes plus lock/build/producer provenance to Capsule's
+`external-distribution` API. Capsule admits only its closed ES2022 module and
+resource graph and returns the canonical artifact bytes and hash. Docker,
+Podman, an OCI image, and the removed Capsule build runner are not involved.
 
 ### 6.2 Server-function build
 
@@ -592,7 +633,11 @@ Arrow runtime endpoint, or browser source-compilation endpoint.
   realm.
 - The host-backed DOM membrane exposes only the selected compatibility
   profiles.
-- Production UI compilation crosses the pinned, networkless OCI boundary.
+- The `dist/` pipeline intentionally has no build-time OS isolation:
+  npm dependency processing and guest-controlled build scripts execute with
+  the build-server account's host authority. This accepted risk does not weaken
+  Capsule's runtime isolation claim, but Capsule does not protect the server
+  during the preceding build.
 - Exact signed bytes are verified before execution.
 - Preview and release use distinct persistent signing keys.
 - Private signing keys never leave trusted server storage.
@@ -630,7 +675,7 @@ Contracts and build:
 - [`packages/widget-contract/src/runtime-descriptor-schema.ts`](../../packages/widget-contract/src/runtime-descriptor-schema.ts)
 - [`packages/widget-contract/src/types.ts`](../../packages/widget-contract/src/types.ts)
 - [`packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts`](../../packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts)
-- [`apps/cli/src/services/WidgetCapsuleOciBuild.ts`](../../apps/cli/src/services/WidgetCapsuleOciBuild.ts)
+- [`apps/cli/src/services/WidgetNpmDistributionBuild.ts`](../../apps/cli/src/services/WidgetNpmDistributionBuild.ts)
 - [`apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts`](../../apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts)
 
 Authoring and publication:
@@ -668,7 +713,7 @@ The principal permanent gates are:
 
 ```sh
 bun run test:capsule-browser
-bun run test:capsule-oci-build
+bun test apps/cli/tests/WidgetNpmDistributionBuild.test.ts
 bun run test:widget-artifacts
 bun run test:widget-host
 bun run test:m10:load
@@ -689,8 +734,8 @@ When changing the widget system:
    instance, capability provider, function invocation, or resource binding.
 2. Keep mutable source out of published and runtime reads.
 3. Preserve exact-byte, Capsule-hash, descriptor, and contract-digest checks.
-4. Keep UI compilation inside the production OCI boundary and server builds
-   separate.
+4. Keep application-owned npm distribution builds and server-function builds
+   separate; send only captured `dist/` bytes to Capsule.
 5. Keep preview on the signed Capsule mount path without durable function or
    resource authority.
 6. Keep guest authority derived from trusted mount context.

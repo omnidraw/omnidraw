@@ -14,6 +14,16 @@ import sdkWidgetSourcePath from '../../../sdk/src/widget.ts' with { type: 'file'
 // @ts-expect-error Bun's file loader returns the source path instead of the TypeScript module exports.
 import sdkWidgetChannelsSourcePath from '../../../sdk/src/widget-channels.ts' with { type: 'file' };
 
+/**
+ * TESTING ONLY: Capsule is currently consumed from a local `file:` package while
+ * its production package path is being finalized. Generated widget projects
+ * must declare the same dependency directly because npm installs the
+ * materialized SDK directory as a link and does not install dependencies beside
+ * that linked package. Replace this with the published Capsule range when the
+ * temporary workspace import is removed.
+ */
+export const SDK_CAPSULE_DEPENDENCY = sdkPackage.dependencies['@omnidraw/capsule'];
+
 export const SDK_PACKAGE_ASSETS = [
   { relativePath: 'src/collaborative-state-client.ts', sourcePath: sdkCollaborativeStateSourcePath as unknown as string },
   { relativePath: 'src/function-client.ts', sourcePath: sdkFunctionClientSourcePath as unknown as string },

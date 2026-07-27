@@ -7,7 +7,6 @@ const SOURCE_ROOT = join(PACKAGE_ROOT, 'src');
 const EXPECTED_EXPORTS = Object.freeze({
   './contract': './src/contract/index.ts',
   './build': './src/build/index.ts',
-  './build-runner': './src/build-runner/index.ts',
   './builder': './src/builder/index.ts',
   './host': './src/host/index.ts',
   './capabilities': './src/capabilities/index.ts',
@@ -17,7 +16,6 @@ const CAPSULE_FILE_DEPENDENCY = 'file:/Users/omarezzat/Workspace/vibecanvas/caps
 const SUPPORTED_CAPSULE_IMPORTS = new Set([
   '@omnidraw/capsule',
   '@omnidraw/capsule/build',
-  '@omnidraw/capsule/build-runner',
   '@omnidraw/capsule/guest',
   '@omnidraw/capsule/protocol',
   '@omnidraw/capsule/schema',
@@ -28,7 +26,6 @@ const SUPPORTED_CAPSULE_IMPORTS = new Set([
 ]);
 const TOOLING_CAPSULE_IMPORTS = new Set([
   '@omnidraw/capsule/build',
-  '@omnidraw/capsule/build-runner',
   '@omnidraw/capsule/sign',
 ]);
 
@@ -66,7 +63,7 @@ async function sourceImports(directory: string): Promise<Array<{
 }
 
 describe('Capsule adapter package boundary', () => {
-  test('exposes only the seven environment-specific adapter subpaths', async () => {
+  test('exposes only the six environment-specific adapter subpaths', async () => {
     const manifest = JSON.parse(
       await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8'),
     ) as {
@@ -80,15 +77,8 @@ describe('Capsule adapter package boundary', () => {
     expect(manifest.exports['.']).toBeUndefined();
     expect(manifest.dependencies).toEqual({
       '@omnidraw/capsule': CAPSULE_FILE_DEPENDENCY,
-      '@types/react': '19.2.17',
-      '@types/react-dom': '19.2.3',
-      '@vibecanvas/sdk': 'workspace:*',
       '@vibecanvas/tenant-core': 'workspace:*',
       '@vibecanvas/widget-contract': 'workspace:*',
-      csstype: '3.2.3',
-      react: '19.2.7',
-      'react-dom': '19.2.7',
-      scheduler: '0.27.0',
     });
   });
 
@@ -100,7 +90,7 @@ describe('Capsule adapter package boundary', () => {
     expect(violations).toEqual([]);
   });
 
-  test('keeps build, build-runner, and signing out of browser-safe entries', async () => {
+  test('keeps build and signing out of browser-safe entries', async () => {
     const browserRoots = ['contract', 'host', 'capabilities']
       .map((directory) => join(SOURCE_ROOT, directory));
     const imports = (await Promise.all(browserRoots.map(sourceImports))).flat();
@@ -109,19 +99,6 @@ describe('Capsule adapter package boundary', () => {
     ));
 
     expect(violations).toEqual([]);
-  });
-
-  test('keeps the OCI build-runner bundle free of source compiler dependencies', async () => {
-    const result = await Bun.build({
-      entrypoints: [join(PACKAGE_ROOT, 'tests/fixtures/build-runner-import.ts')],
-      target: 'bun',
-    });
-    expect(result.success).toBe(true);
-    const output = (await Promise.all(result.outputs.map((item) => item.text()))).join('\n');
-    expect(output).toContain('runCapsuleOciBuild');
-    expect(output).not.toContain('@vue/compiler-sfc');
-    expect(output).not.toContain('vueCompilerDistributionPath');
-    expect(output).not.toContain('buildCapsuleGuest');
   });
 
   test('rejects private Capsule workspace and deep imports by construction', async () => {

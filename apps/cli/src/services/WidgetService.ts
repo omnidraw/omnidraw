@@ -4,6 +4,7 @@ import {
   WidgetArtifactBuilderCapsule,
   type CapsuleArtifactSigningKey,
   type TVibecanvasCapsuleBuild,
+  type TVibecanvasDistributionBuild,
 } from '@vibecanvas/capsule-vibecanvas/builder';
 import type { IService, IStoppableService } from '@vibecanvas/runtime';
 import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
@@ -86,6 +87,7 @@ type TWidgetServiceConfig = Readonly<{
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
   capsuleBuild: TVibecanvasCapsuleBuild;
+  distributionBuild: TVibecanvasDistributionBuild;
   loadCapsuleSigningKeys(
     purpose: 'preview' | 'release',
   ): Promise<readonly CapsuleArtifactSigningKey[]>;
@@ -183,6 +185,7 @@ class WidgetService implements
       resolveTrustedPackageImport: config.resolveTrustedPackageImport,
       loadSigningKeys: config.loadCapsuleSigningKeys,
       capsuleBuild: config.capsuleBuild,
+      distributionBuild: config.distributionBuild,
     });
     this.#builder = builder;
     this.#publication = new WidgetPublicationService({

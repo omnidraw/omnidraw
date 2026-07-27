@@ -37,7 +37,6 @@
     "test:function-runtime": "bun run scripts/test-function-runtime.ts",
     "test:widget-host": "bun run scripts/test-widget-host.ts",
     "test:capsule-browser": "bun run --cwd apps/capsule-browser-acceptance test",
-    "test:capsule-oci-build": "bun run scripts/verify-widget-capsule-oci-build.ts",
     "test:external-composition": "bunx tsc -p scripts/fixtures/external-composition/tsconfig.json --noEmit && bun test scripts/fixtures/external-composition/external-composition.test.ts",
     "test:architecture": "bunx tsc -p scripts/tsconfig.architecture.json --noEmit && bun test scripts/architecture-boundaries.test.ts scripts/external-composition-api-integration.test.ts",
     "test:managed-v3-joined": "bun test apps/cli/tests/ManagedV3JoinedFlow.test.ts",

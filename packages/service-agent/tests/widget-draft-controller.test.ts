@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -165,6 +172,30 @@ describe('WidgetManagement manifest-v3 metadata', () => {
       'utf8',
     ));
     expect(manifest.description).toBe('A precise clock.');
+  });
+
+  test('renames npm-backed drafts without capturing node_modules symlinks', async () => {
+    const { workspace, controller, createDraft } = await harness();
+    const draft = await createDraft('Linked Clock');
+    const binDirectory = join(
+      workspace.draftRoot,
+      draft.name,
+      'node_modules',
+      '.bin',
+    );
+    await mkdir(binDirectory, { recursive: true });
+    await symlink('../vite/bin/vite.js', join(binDirectory, 'vite'));
+    const management = new WidgetManagement({ workspace, drafts: controller });
+
+    const result = await management.patchDraftMetadata(draft.name, draft.revision, {
+      name: 'Renamed Clock',
+    });
+
+    expect(result.name).toBe('Renamed Clock');
+    expect(await readFile(
+      join(workspace.draftRoot, 'Renamed Clock', 'vibecanvas.json'),
+      'utf8',
+    )).toContain('"name": "Renamed Clock"');
   });
 
   test('rejects tool metadata instead of reporting a successful no-op', async () => {

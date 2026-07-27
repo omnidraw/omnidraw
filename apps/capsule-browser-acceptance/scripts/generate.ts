@@ -1,6 +1,13 @@
 import { createHash, webcrypto } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { build as viteBuild, version as viteVersion } from 'vite';
 import {
   VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
   VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
@@ -21,6 +28,7 @@ import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
+import type { TVibecanvasDistributionBuild } from '@vibecanvas/capsule-vibecanvas/builder';
 
 type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[1];
 type TTenant = Parameters<WidgetArtifactBuilderCapsule['build']>[0];
@@ -43,15 +51,17 @@ type TFixtureBuild = Readonly<{
 const encoder = new TextEncoder();
 const outputDirectory = join(import.meta.dir, '..', 'generated');
 const tempRoot = join(import.meta.dir, '..', '.tmp');
+const repositoryRoot = join(import.meta.dir, '..', '..', '..');
+const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widget.ts');
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.2',
+  packageVersion: '0.9.3',
   packageDigest:
-    'sha256:9ac71bab6984a60d7abc3ecd99c5b3733028a312ab97095615332ec8471f8753' as const,
+    'sha256:bad823e4a7ea2d621ec7e11c815074dbac94a495750dfbb43e9a57501b4698ea' as const,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest:
-    'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,
+    'sha256:884aae4fbeb09da89790be72cad57b58765a780685510750bb66f3e6608b81dc' as const,
 });
 const tenant = Object.freeze({
   orgId: 'capsule-browser-acceptance',
@@ -296,6 +306,101 @@ function snapshotDigest(
   return digest.digest('hex');
 }
 
+function capsuleHash(value: Uint8Array | string): `sha256:${string}` {
+  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
+}
+
+const browserDistributionConfiguration = Object.freeze({
+  format: 'vibecanvas-browser-acceptance-vite-v1',
+  viteVersion,
+  target: 'es2022',
+  entry: 'main.js',
+  external: Object.freeze(['capsule:bridge']),
+});
+
+const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) => {
+  await mkdir(tempRoot, { recursive: true });
+  const root = await mkdtemp(join(tempRoot, 'distribution-'));
+  try {
+    for (const file of request.files) {
+      const path = join(root, ...file.path.split('/'));
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.bytes);
+    }
+    const result = await viteBuild({
+      root,
+      configFile: false,
+      logLevel: 'error',
+      resolve: {
+        // Acceptance fixtures compile the SDK source directly so this gate does
+        // not depend on ignored/generated SDK dist files.
+        alias: {
+          '@vibecanvas/sdk/widget': sdkWidgetSourcePath,
+        },
+      },
+      build: {
+        write: false,
+        target: browserDistributionConfiguration.target,
+        sourcemap: false,
+        minify: false,
+        cssCodeSplit: false,
+        rollupOptions: {
+          input: join(root, ...request.entry.split('/')),
+          external: [...browserDistributionConfiguration.external],
+          output: {
+            format: 'es',
+            entryFileNames: browserDistributionConfiguration.entry,
+            chunkFileNames: 'chunks/[name]-[hash].mjs',
+            assetFileNames: 'assets/[name]-[hash][extname]',
+          },
+        },
+      },
+    });
+    const outputs = (Array.isArray(result) ? result : [result])
+      .flatMap((value) => {
+        if (!('output' in value)) {
+          throw new Error('Browser fixture distribution unexpectedly entered Vite watch mode.');
+        }
+        return value.output;
+      });
+    const files = outputs
+      .map((output) => Object.freeze({
+        path: output.fileName,
+        bytes: output.type === 'chunk'
+          ? encoder.encode(output.code)
+          : typeof output.source === 'string'
+            ? encoder.encode(output.source)
+            : new Uint8Array(output.source),
+      }))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    const cssRoots = files
+      .map((file) => file.path)
+      .filter((path) => path.endsWith('.css'));
+    const lockBytes = new Uint8Array(await readFile(join(repositoryRoot, 'bun.lock')));
+    return Object.freeze({
+      kind: 'external-distribution',
+      snapshot: Object.freeze({ files: Object.freeze(files) }),
+      entry: browserDistributionConfiguration.entry,
+      ...(cssRoots.length === 0
+        ? {}
+        : { cssRoots: Object.freeze(cssRoots) }),
+      producer: Object.freeze({
+        name: 'vibecanvas-browser-acceptance-vite',
+        version: viteVersion,
+        digest: capsuleHash(JSON.stringify(browserDistributionConfiguration)),
+      }),
+      sourceRevision: request.sourceRevision,
+      dependencyLockDigest: capsuleHash(lockBytes),
+      buildConfigurationDigest: capsuleHash(JSON.stringify({
+        configuration: browserDistributionConfiguration,
+        sourceEntry: request.entry,
+      })),
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
 function snapshot(files: readonly TSourceFile[]): TSnapshot {
   const ordered = [...files]
     .sort((left, right) => left.path.localeCompare(right.path))
@@ -369,6 +474,7 @@ const builder = new WidgetArtifactBuilderCapsule({
   capsuleBuildIdentity,
   buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
   capsuleBuild: buildCapsuleGuest,
+  distributionBuild: buildBrowserDistribution,
   functionDescriptorExtractor: Object.freeze({
     async extractServerFunctionDescriptors() {
       return Object.freeze([SERVER_FUNCTION_DESCRIPTOR]);

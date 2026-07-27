@@ -640,12 +640,32 @@ export class WidgetWorkspace {
   }
 
   async createTransientDraftSnapshot(requestedName: string, expectedRevision: string): Promise<TTransientDraftSnapshot> {
+    return this.#createTransientDraftSnapshot(requestedName, expectedRevision, false);
+  }
+
+  /**
+   * Creates the same filtered snapshot while `updateDraftManifestAndNameAtomic`
+   * already owns the draft write lanes. This must only be called from that
+   * method's coordinated-commit callback after its commit has completed.
+   */
+  async createTransientDraftSnapshotAtCoordinatedCommit(
+    requestedName: string,
+    expectedRevision: string,
+  ): Promise<TTransientDraftSnapshot> {
+    return this.#createTransientDraftSnapshot(requestedName, expectedRevision, true);
+  }
+
+  async #createTransientDraftSnapshot(
+    requestedName: string,
+    expectedRevision: string,
+    writeFenceHeld: boolean,
+  ): Promise<TTransientDraftSnapshot> {
     const name = this.#normalizeName(requestedName);
     const draftPath = join(this.draftRoot, name);
     const rootPath = join(this.draftRoot, `.snapshot-${this.#safeId()}-${name}`);
     let settled = false;
     try {
-      await this.#withWidgetWrite(draftPath, async () => {
+      const copy = async () => {
         if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
           throw new Error(`Widget draft '${name}' does not exist.`);
         }
@@ -671,7 +691,9 @@ export class WidgetWorkspace {
             { code: 'WIDGET_DRAFT_SNAPSHOT_MISMATCH', currentRevision: after.value },
           );
         }
-      });
+      };
+      if (writeFenceHeld) await copy();
+      else await this.#withWidgetWrite(draftPath, copy);
     } catch (error) {
       await rm(rootPath, { recursive: true, force: true }).catch(() => undefined);
       throw error;

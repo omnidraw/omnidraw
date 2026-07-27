@@ -1,4 +1,4 @@
-# Using the Capsule library
+# Using the Capsule library - 0.9.3
 
 This guide is the consumer manual for `@omnidraw/capsule`. It covers the supported package entrypoints, building or obtaining a guest artifact, creating a browser host, mounting and controlling an instance, granting authority, testing, and production hardening.
 
@@ -12,9 +12,9 @@ Capsule is one ESM package:
 bun add @omnidraw/capsule
 ```
 
-The package contains browser-host code, Bun/Node build tooling, declarations, the reviewed POSIX source-ingestion helper, and exact third-party runtime dependencies. It does not require the Capsule monorepo or a Capsule service.
+The package contains browser-host code, Bun/Node distribution-ingestion and signing tooling, declarations, and exact third-party runtime dependencies. It does not require the Capsule monorepo or a Capsule service.
 
-The tested package manager is Bun 1.3.14. Browser applications should use a modern ESM-aware bundler. The `build`, `build-runner`, and `sign` entrypoints are trusted tooling and must run outside the browser.
+The tested package manager is Bun 1.3.14. Browser applications should use a modern ESM-aware bundler. The `build` and `sign` entrypoints are trusted tooling and must run outside the browser.
 
 ## Supported imports
 
@@ -23,8 +23,7 @@ Use only these imports:
 | Import | Environment | Purpose |
 | --- | --- | --- |
 | `@omnidraw/capsule` | Browser host | Create hosts, mount artifacts, control handles, cache artifacts |
-| `@omnidraw/capsule/build` | Bun/Node tooling | Build a deterministic artifact from a closed source snapshot |
-| `@omnidraw/capsule/build-runner` | Bun/Node on POSIX | Build accepted frozen npm projects natively; ingest hostile trees and launch the optional reference OCI boundary |
+| `@omnidraw/capsule/build` | Bun/Node tooling | Validate an exact external distribution and construct an artifact |
 | `@omnidraw/capsule/guest` | Capsule guest source | Call capabilities and use guest channels inside the VM |
 | `@omnidraw/capsule/protocol` | Browser or tooling | Protocol constants and serializable contract types |
 | `@omnidraw/capsule/schema` | Browser or tooling | Canonical application-schema resources and public schema types |
@@ -35,12 +34,13 @@ Use only these imports:
 
 Every other package subpath is unsupported and rejected by the export map. Do not import the private `@omnidraw/capsule-*` workspace names seen in the source repository.
 
-The guest entrypoint imports the reserved `capsule:bridge` intrinsic. It is meant to be included in guest source and compiled by Capsule; importing it directly into an ordinary host runtime will fail.
+The guest entrypoint imports the reserved `capsule:bridge` intrinsic. It is meant to be included in guest source and compiled by the application-owned toolchain; importing it directly into an ordinary host runtime will fail.
 
 ## How the pieces fit
 
 ```text
-trusted source snapshot
+application-owned build worker
+  → exact external distribution
   → @omnidraw/capsule/build
   → immutable artifact
   → trusted release signing
@@ -179,55 +179,30 @@ Keys are explicit private Ed25519 `CryptoKey` values; Capsule owns no key store 
 
 The host verifies direct bytes before execution. A memory cache stores only verified copied bytes. After a verified artifact is cached, a later mount may use `{ hash: artifactHash }`; the host re-verifies cache hits against the current policy.
 
-## Build a dependency-free guest
+## Ingest an externally built distribution
 
-The builder accepts a complete serialized source snapshot and closed dependency graph. This example builds one plain JavaScript module with no package dependencies:
+An application may run its own frozen install and guest-selected compiler in
+its own build-worker isolation, then give Capsule only exact output bytes:
 
 ```ts
-import { buildCapsuleGuest } from '@omnidraw/capsule/build';
-import {
-  CAPSULE_DOM_CORE_V2_PROFILE,
-  CAPSULE_RUNTIME_ABI,
-  type CapsuleBuildRequest,
-  type CapsuleCompleteBudgetMaximums,
-} from '@omnidraw/capsule/protocol';
-
-const encoder = new TextEncoder();
-
-const artifactBudgets: CapsuleCompleteBudgetMaximums = {
-  cpuMs: 100,
-  memoryBytes: 16 * 1024 * 1024,
-  domNodes: 100,
-  handles: 200,
-  messageBytes: 16 * 1024,
-  streamBytes: 0,
-  assetBytes: 0,
-  networkBytes: 0,
-  gpuBytes: 0,
-  lifecycleBytes: 64 * 1024,
-};
-
-const request: CapsuleBuildRequest = {
+const built = await buildCapsuleGuest({
   input: {
-    kind: 'source',
+    kind: 'external-distribution',
     snapshot: {
-      revision: 'hello-v1',
-      files: [{
-        path: 'src/main.js',
-        bytes: encoder.encode(`
-          const output = document.createElement('output');
-          output.textContent = 'Hello from Capsule';
-          document.body.append(output);
-        `),
-      }],
+      files: [
+        { path: 'main.js', bytes: externalMainBytes },
+        { path: 'chunks/widget.mjs', bytes: externalWidgetBytes },
+      ],
     },
-    entry: 'src/main.js',
-    dependencyLock: {
-      formatVersion: 2,
-      rootDependencies: {},
-      entries: [],
+    entry: 'main.js',
+    producer: {
+      name: 'application-build-worker',
+      version: '2026.07.26',
+      digest: exactProducerDigest,
     },
-    dependencyContent: { entries: [] },
+    sourceRevision: 'git:4f5d…',
+    dependencyLockDigest: exactFrozenLockDigest,
+    buildConfigurationDigest: exactExternalBuildConfigurationDigest,
   },
   target: {
     runtimeAbi: CAPSULE_RUNTIME_ABI,
@@ -238,129 +213,29 @@ const request: CapsuleBuildRequest = {
   capabilityRequests: [],
   parkability: { parkable: false },
   requestedBudgets: artifactBudgets,
-  policy: {
-    maxFiles: 8,
-    maxFileBytes: 256 * 1024,
-    maxTotalBytes: 512 * 1024,
-    maxPathBytes: 256,
-    maxPathDepth: 8,
-    maxPackages: 1,
-    maxPackageExports: 1,
-    maxDependencyEdges: 1,
-    maxDependencyMetadataBytes: 1,
-    maxModules: 8,
-    maxOutputBytes: 2 * 1024 * 1024,
-    budgetDefaults: artifactBudgets,
-    budgetCeilings: artifactBudgets,
-  },
-};
-
-const built = await buildCapsuleGuest(request);
-console.log(built.artifactHash, built.diagnostics);
+  policy: request.policy,
+});
 ```
 
-The builder never discovers ambient `node_modules`, package manifests, compiler configuration, or host globals. For React, Vue, locked packages, CSS, PNG, sanitized SVG, WOFF, PCM16 WAVE, or silent VP8 WebM resources, provide the exact serialized dependency metadata/content and select the required trusted syntax and feature profiles. Capsule pins its trusted compiler/transforms, not ordinary guest-library versions. The checked-in fixtures and build tests are the canonical advanced examples.
+Format v1 accepts a closed ES2022 `.js`/`.mjs` graph. Every import is an exact
+relative file edge except the reserved `capsule:bridge` intrinsic, which
+Capsule lowers itself. It rejects source maps and `sourceMappingURL`, HTML,
+bare packages, runtime `require`, dynamic imports, `import.meta`, top-level await,
+workers, Wasm, native modules, unresolved output, and loose files.
 
-## Build an accepted frozen npm project
+For static styling, select one artifact-resource profile and pass ordered
+`cssRoots` and/or exact default-import `resourceBindings`. Capsule then scopes
+CSS and closes only its relative CSS, PNG/SVG/WOFF edges; resource profile v3
+also admits exact WAVE/WebM bindings. External format v1 does not infer
+resource authority from HTML or undeclared JavaScript strings/imports.
 
-An ordinary project can supply `package.json`, `package-lock.json`, `src/`, and
-assets without constructing Capsule dependency locks, export tables, or package
-content records:
-
-```ts
-import {
-  buildCapsuleNpmProjectFx,
-  type CapsuleHostNpmAuthority,
-  type CapsuleHostNpmBuildLimits,
-  type CapsuleHostNpmBuildPolicy,
-  type CapsuleNpmProjectBuildRequest,
-} from '@omnidraw/capsule/build-runner';
-
-const authority: CapsuleHostNpmAuthority = {
-  format: 'capsule-host-npm-authority-v1',
-  nodePath: '/opt/build-tools/node',
-  nodeSha256: exactNodeDigest,
-  npmPath: '/opt/build-tools/npm-cli.js',
-  npmSha256: exactNpmCliDigest,
-  environment: {},
-  environmentAuthorityId: 'release-env-2026-07',
-  registries: [{
-    id: 'tenant-registry',
-    url: 'https://registry.example.test/',
-    token: privateRegistryToken,
-    redirects: 'same-origin',
-  }],
-  registryAuthorityId: 'tenant-registry-policy-v3',
-  temporaryRoot: '/var/lib/capsule/tmp',
-  cacheRoot: '/var/lib/capsule/npm-cache',
-  cachePartitionId: 'tenant-opaque-id',
-};
-
-const hostPolicy: CapsuleHostNpmBuildPolicy = {
-  format: 'capsule-host-npm-policy-v1',
-  mode: 'frozen-ci',
-  lifecycleScripts: 'deny',
-  packageSources: 'configured-registries-only',
-  nodeVersion: '24.5.0',
-  npmVersion: '11.5.1',
-  lockfileVersion: 3,
-  buildPolicy: compilerPolicy,
-};
-
-const request: CapsuleNpmProjectBuildRequest = {
-  source: acceptedProjectSnapshot,
-  entry: 'src/main.tsx',
-  target,
-  capabilityRequests: [],
-  parkability: { parkable: false },
-  requestedBudgets: artifactBudgets,
-};
-
-const limits: CapsuleHostNpmBuildLimits = nativeBuildLimits;
-const built = await buildCapsuleNpmProjectFx(
-  authority,
-  request,
-  hostPolicy,
-  limits,
-  { signal: cancellation.signal },
-);
-```
-
-The paths, hashes, environment, registry credentials, cache partition, install
-mode, script policy, and compiler ceilings above are trusted server authority,
-not project fields. The operation verifies the exact tools, uses `npm ci` and
-the committed lockfile, denies lifecycle scripts, seals npm configuration and
-ambient environment, normalizes installed duplicates/peers/optionals into
-dependency-lock format 3, independently verifies the artifact, and removes its
-private project on every terminal path. Credentials, raw npm output, and host
-paths are not returned or hashed into public output.
-
-The project manifest and frozen lock choose React, Vue, and every other ordinary
-guest dependency. Capsule resolves the installed exports generically, retains
-declarations for build-time semantics, and bundles only the reachable runtime
-JavaScript/resources into the immutable artifact. Mounting never consults
-`node_modules` or a registry. CommonJS packages that publish conventional
-`process.env.NODE_ENV` entry shims are closed under Capsule's fixed production
-transform without granting an ambient `process` object. Abort and wall-clock
-limits also terminate the compiler worker.
-
-This workflow requires Node/npm but no Docker, Podman, OCI image, or container
-daemon. It is appropriate only when the operator accepts the project and
-dependency-processing risk. Private directories, limits, process groups, and
-`--ignore-scripts` are not a hostile-input sandbox. Hostile projects still
-require an operator-provided OS isolation boundary such as a container, VM,
-sandbox service, restricted job runner, or reviewed equivalent; the OCI runner
-below remains one optional reference.
-
-Preview and release never fall back to `npm install` and never rewrite or return
-a newly selected lock. Capsule intentionally exposes no draft lock-generation
-API in this release.
-
-Never feed an attacker-controlled filesystem tree directly to the compiler or
-trusted native npm lane without external OS isolation. Use
-`ingestCapsuleSourceTree()` with explicit POSIX helper authority and an
-appropriate isolation provider, or the reference networkless OCI path, before
-constructing the serialized compiler request.
+The signed artifact identifies `@omnidraw/capsule-build` as the ingester and
+records the external producer separately under
+`capsule-external-distribution-v1` provenance. Its reproducibility claim is
+only `deterministic-ingestion-only`; Capsule does not claim to have reproduced
+or isolated the external source build. The external worker owns installation,
+scripts, plugins, network, credentials, isolation, cancellation, and cleanup.
+Sign and mount the result normally.
 
 ## Lazy browser loading
 
@@ -371,7 +246,7 @@ const { createCapsuleHost, createDefaultCapsuleBrowserPlatform } =
   await import('@omnidraw/capsule');
 ```
 
-The production host has a release-only QuickJS loader edge. Importing the host transfers and evaluates the host/membrane closure, but the release QuickJS distribution is fetched only when the first VM is created. The debug QuickJS distribution is not part of the production graph, and warm mounts transfer no additional runtime code. Keep `testkit`, `build`, `build-runner`, and `sign` out of production browser imports.
+The production host has a release-only QuickJS loader edge. Importing the host transfers and evaluates the host/membrane closure, but the release QuickJS distribution is fetched only when the first VM is created. The debug QuickJS distribution is not part of the production graph, and warm mounts transfer no additional runtime code. Keep `testkit`, `build`, and `sign` out of production browser imports.
 
 Run `bun run benchmark:loading` in this repository for the fixed Vite/Chromium procedure, phase-specific transfer/parse/evaluation/heap evidence, and current machine-bound ceilings. Aggregate `dist/` size is not a route transfer budget.
 
@@ -623,21 +498,6 @@ Pass the returned viewport coordinates to the external browser driver when an in
 
 The guest receives the bounded facade selected by its signed profile. Native contexts, devices, buffers, textures, and queues remain host-owned. GPU bytes, object counts, submission rates, and teardown are independently accounted. `canvas-webgl-v1` is the exact reviewed WebGL2 ledger used by the pinned Three.js r185 probe, not ambient WebGL or a claim that arbitrary Three.js scenes are supported.
 
-## Build-runner boundary
-
-`@omnidraw/capsule/build-runner` is for trusted server/CLI code on supported POSIX platforms:
-
-- `buildCapsuleNpmProjectFx(authority, request, hostPolicy, limits, options?)` runs the accepted-project frozen host-native workflow above with guest-selected library versions and a terminable compiler phase;
-- `createCapsuleNpmProcessPortal()` supplies the default exact-path process-group portal;
-- `ingestCapsuleSourceTree(root, limits, authority)` performs race-resistant, no-follow source ingestion through the reviewed helper;
-- `runCapsuleOciBuild(authority, request, limits)` launches the pinned networkless OCI worker;
-- `CAPSULE_POSIX_INGEST_HELPER_SOURCE` points to the helper source included in the package.
-
-All operations require explicit trusted authority: exact executable/helper
-identity, paths, hashes, resource ceilings, environment, and platform. They do
-not discover or trust ambient tools. The native npm operation and the OCI
-operation are separate lanes; neither changes the other's threat model.
-
 ## Errors and diagnostics
 
 Expected boundary failures use normalized error classes and stable codes:
@@ -645,7 +505,6 @@ Expected boundary failures use normalized error classes and stable codes:
 - `CapsuleHostError` for host/mount failures;
 - `CapsuleBuildError` for build input, transform, and limit failures;
 - `CapsuleNpmProjectBuildError` for native npm authority, install, normalization, cancellation, and cleanup failures;
-- `CapsuleBuildRunnerError` for ingestion or OCI boundary failures;
 - `CapsuleGuestBridgeError` inside guest code.
 
 Log the stable code and bounded message. Do not depend on stack text. For a live instance, `handle.diagnostics()` returns an immutable snapshot of target, authority, budgets, lifecycle state, viewport, queues, resource ledgers, and retained counters. After successful destroy, all live instance-owned counters should be zero.

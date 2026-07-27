@@ -7,7 +7,10 @@ import {
   type CapsuleBuildOutput,
   type CapsuleBuildRequest,
 } from '@omnidraw/capsule/build';
-import { CAPSULE_ARTIFACT_RESOURCES_PROFILE } from '@omnidraw/capsule/protocol';
+import {
+  CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+  type CapsuleBuildInput,
+} from '@omnidraw/capsule/protocol';
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
 import { describe, expect, test } from 'bun:test';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
@@ -25,6 +28,7 @@ import {
 import {
   VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
   WidgetArtifactBuilderCapsule,
+  type TWidgetArtifactBuilderCapsuleConfig,
 } from '../src/build';
 
 const encoder = new TextEncoder();
@@ -34,7 +38,7 @@ const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.2',
+  packageVersion: '0.9.3',
   packageDigest: `sha256:${'b'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,
@@ -175,6 +179,7 @@ function builder(args: Readonly<{
   >;
   descriptors?: readonly TWidgetServerFunctionDescriptor[];
   bunBuild?: typeof Bun.build;
+  distributionBuild?: TWidgetArtifactBuilderCapsuleConfig['distributionBuild'];
 }>): WidgetArtifactBuilderCapsule {
   return new WidgetArtifactBuilderCapsule({
     tempRoot: args.tempRoot,
@@ -182,6 +187,19 @@ function builder(args: Readonly<{
     capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
     buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
     capsuleBuild: args.capsuleBuild,
+    distributionBuild: args.distributionBuild ?? (async (value) => Object.freeze({
+      kind: 'external-distribution',
+      snapshot: Object.freeze({ files: value.files }),
+      entry: value.entry,
+      producer: Object.freeze({
+        name: 'test',
+        version: '1',
+        digest: `sha256:${'1'.repeat(64)}`,
+      }),
+      sourceRevision: value.sourceRevision,
+      dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+      buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+    }) satisfies CapsuleBuildInput),
     functionDescriptorExtractor: Object.freeze({
       async extractServerFunctionDescriptors() {
         return args.descriptors ?? Object.freeze([]);
@@ -199,9 +217,6 @@ function sourceFiles(requestValue: CapsuleBuildRequest): readonly Readonly<{
   path: string;
   bytes: Uint8Array;
 }>[] {
-  if (requestValue.input.kind !== 'source') {
-    throw new Error('Expected a Capsule source build request.');
-  }
   return requestValue.input.snapshot.files;
 }
 
@@ -263,8 +278,41 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     });
     const artifactBuilder = builder({
       tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
+      distributionBuild: async (value) => ({
+        kind: 'external-distribution',
+        snapshot: {
+          files: [
+            {
+              path: 'main.js',
+              bytes: encoder.encode('document.body.className = "hero";'),
+            },
+            {
+              path: 'styles/main.css',
+              bytes: encoder.encode('@import "./theme.css";\n.hero{background-image:url("../pixel.png")}'),
+            },
+            {
+              path: 'styles/theme.css',
+              bytes: encoder.encode('.hero{color:rgb(1 2 3)}'),
+            },
+            { path: 'pixel.png', bytes: PNG_BYTES },
+          ],
+        },
+        entry: 'main.js',
+        cssRoots: ['styles/main.css'],
+        producer: {
+          name: 'test',
+          version: '1',
+          digest: `sha256:${'1'.repeat(64)}`,
+        },
+        sourceRevision: value.sourceRevision,
+        dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+        buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+      }),
       capsuleBuild: async (value) => {
         captured = value;
+        expect(value.target.featureProfiles).toEqual([
+          CAPSULE_ARTIFACT_RESOURCES_PROFILE,
+        ]);
         return await buildCapsuleGuest(value);
       },
     });
@@ -275,14 +323,14 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     );
 
     expect(sourceFiles(captured!).map(({ path }) => path)).toEqual([
-      'ui/main.ts',
-      'ui/pixel.png',
-      'ui/styles/main.css',
-      'ui/styles/theme.css',
+      'main.js',
+      'styles/main.css',
+      'styles/theme.css',
+      'pixel.png',
     ]);
     expect(result.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CAPSULE_STRICT_SOURCE_BUILD',
+      code: 'CAPSULE_EXTERNAL_DISTRIBUTION_INGESTED',
     }));
   });
 

@@ -7,11 +7,7 @@ export type TWidgetPrerequisiteWarning = {
 };
 
 function unavailableLabel(probe: TWidgetPrerequisiteProbe): string {
-  if (probe.subject === 'configuration') {
-    return `Capsule OCI engine configuration (${probe.status})`;
-  }
-  const engine = probe.engine === 'docker' ? 'Docker' : 'Podman';
-  return `${engine} OCI engine (${probe.status})`;
+  return `npm (${probe.status})`;
 }
 
 export function fnWidgetPrerequisiteWarning(
@@ -24,7 +20,7 @@ export function fnWidgetPrerequisiteWarning(
     .map(unavailableLabel)
     .join(', ');
   const title = 'Widget tooling prerequisites unavailable';
-  const description = `Unavailable: ${unavailableSummary}. Capsule widget creation, build, and validation require the pinned Docker or Podman OCI engine. Configure VIBECANVAS_CAPSULE_OCI_ENGINE, VIBECANVAS_CAPSULE_OCI_ENGINE_PATH, and VIBECANVAS_CAPSULE_OCI_ENGINE_SHA256, ensure the engine daemon is running and the pinned image is loaded, and restart Vibecanvas.`;
+  const description = `Unavailable: ${unavailableSummary}. Widget creation, build, and validation require npm with lockfile-v3 and npm-ci support. Install npm on the server account and restart Vibecanvas.`;
 
   return {
     cliMessage: `Warning: ${title}. ${description}`,

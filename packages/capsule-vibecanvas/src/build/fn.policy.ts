@@ -14,7 +14,6 @@ import {
   VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
   VIBECANVAS_CAPSULE_BUILD_POLICY,
   VIBECANVAS_CAPSULE_DEFAULT_BUDGETS,
-  VIBECANVAS_CAPSULE_REACT_JSX_PLUGIN,
 } from './CONSTANTS';
 
 const BUDGET_KEYS = [
@@ -66,23 +65,11 @@ export function fnVibecanvasCapsuleBuildTarget(args: Readonly<{
       throw new TypeError(`Widget Capsule feature profile '${profile}' is not supported.`);
     }
   }
-  const extension = args.entry.split('.').pop()?.toLowerCase();
-  const language = extension === 'tsx'
-    ? 'tsx'
-    : extension === 'jsx'
-      ? 'jsx'
-      : extension === 'js' || extension === 'mjs' || extension === 'cjs'
-        ? 'js'
-        : 'ts';
-  const frameworkPlugins = language === 'jsx' || language === 'tsx'
-    ? Object.freeze([VIBECANVAS_CAPSULE_REACT_JSX_PLUGIN])
-    : undefined;
   return Object.freeze({
     runtimeAbi: args.target.runtimeAbi,
     domProfile: args.target.domProfile,
     featureProfiles: Object.freeze([...args.target.featureProfiles].sort()),
-    language,
-    ...(frameworkPlugins === undefined ? {} : { frameworkPlugins }),
+    language: 'js',
   });
 }
 
