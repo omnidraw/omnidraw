@@ -261,6 +261,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
 - [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
 - [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
+- [/]: [A89](a/A89.md) - widgets: adopt Capsule native CSS and network image profiles
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
