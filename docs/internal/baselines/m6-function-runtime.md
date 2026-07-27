@@ -85,7 +85,7 @@ flowchart LR
 | Check | Result |
 | --- | --- |
 | Durable function gate | `bun run test:function-runtime` passed all 7 suites: 46 runtime tests, 34 durable-store tests, 3 atomic provider-receipt tests, 65 SDK/artifact/API/composition tests, generated-proxy type checks, and 4 static boundary tests |
-| Resource compatibility | `bun run test:resource-runtime` passed all 7 ownership, recovery, provider, API, and production-composition suites |
+| Resource compatibility | `bun run test:resource-runtime` passed all 7 lifecycle, recovery, provider, API, and production-composition suites |
 | Database constraints | `bun run db:constraints:test` passed 10 tests / 52 assertions, including strict invocation lifecycle, stale lease rejection, nonnegative usage, and receipt uniqueness |
 | Schema verification | `bun run db:schema:verify` passed 7 tests / 541 assertions against the exact 000+001+002 schema |
 | Migration/recovery | `bun run db:recovery:test` passed 48 tests / 202 assertions across fresh bootstrap, ordered prefix upgrades, checksum/schema drift refusal, crash recovery, backup/restore, and read-only preflight |

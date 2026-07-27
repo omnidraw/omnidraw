@@ -57,7 +57,7 @@ describe('TenantServicePool', () => {
     await expect(pool.forTenant(tenant('org-b'))).rejects.toThrow('tenant capacity reached');
   });
 
-  test('supports an organization placement key for one shared physical owner', async () => {
+  test('supports an organization placement key for one shared physical service', async () => {
     let createCount = 0;
     const pool = new TenantServicePool('resource-store-pool', {
       key: (context) => [context.orgId, context.cellId, context.placementEpoch].join(':'),
@@ -116,7 +116,7 @@ describe('TenantServicePool', () => {
     await pool.stop();
   });
 
-  test('fails placement turnover closed until old-owner shutdown succeeds', async () => {
+  test('fails placement turnover closed until old-placement shutdown succeeds', async () => {
     const created: number[] = [];
     let failOldStop = true;
     const pool = new TenantServicePool('placement-cleanup-pool', {
@@ -217,7 +217,7 @@ describe('TenantServicePool', () => {
     expect(stopCount).toBe(2);
   });
 
-  test('retains a failed-start child when ownership cleanup must be retried', async () => {
+  test('retains a failed-start child when service cleanup must be retried', async () => {
     let createCount = 0;
     let stopCount = 0;
     const pool = new TenantServicePool('startup-cleanup-pool', {
@@ -227,7 +227,7 @@ describe('TenantServicePool', () => {
           start: async () => { throw new Error('startup failed'); },
           stop: async () => {
             stopCount += 1;
-            if (stopCount < 3) throw new Error('owner close failed');
+            if (stopCount < 3) throw new Error('service cleanup failed');
           },
         };
       },
@@ -250,14 +250,14 @@ describe('TenantServicePool', () => {
     expect(pool.getTenantCount()).toBe(0);
   });
 
-  test('retains a child after failed shutdown so ownership cleanup can be retried', async () => {
+  test('retains a child after failed shutdown so service cleanup can be retried', async () => {
     let failStop = true;
     let stopCount = 0;
     const pool = new TenantServicePool('fail-closed-pool', {
       create: () => ({
         stop: async () => {
           stopCount += 1;
-          if (failStop) throw new Error('owner close failed');
+          if (failStop) throw new Error('service cleanup failed');
         },
       }),
     });

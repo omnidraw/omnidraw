@@ -55,10 +55,11 @@ flowchart LR
 - `@vibecanvas/api/actor` contains only compatibility definition, event, and
   instance routes. Resource contracts and handlers expose neutral `ZResource*`
   schemas and `ResourceError` mapping, with no actor resource route aliases.
-- V2 resource ownership remains in the Resource Store, v2 publication remains
-  in the immutable widget service/draft controller, and v2 function execution
-  remains in the function runtime. The optional actor runtime can consume a
-  logical resource bridge but cannot reclaim those ownership boundaries.
+- The Resource Store remains authoritative for V2 physical resource I/O, while
+  v2 publication remains in the immutable widget service/draft controller, and
+  v2 function execution remains in the function runtime. The optional actor
+  runtime can consume a logical resource bridge but cannot reclaim those
+  authority boundaries.
 
 ## UI and v2-first product behavior
 
@@ -110,7 +111,7 @@ flowchart LR
 | Frozen dependency graph | `bun install --frozen-lockfile` checked 875 installs across 1,020 packages with no changes; both required postinstall patches remained applied |
 | External composition | `bun run test:external-composition` passed 2 tests / 14 assertions against the independent exact-version fixture |
 | Architecture boundary | `bun run test:architecture` passed 16 tests / 199 assertions, including API invariance, package direction, explicit actor exports, plugin isolation, org-placement reuse/rehome, and disabled zero cost |
-| Resource and function ownership | `bun run test:resource-runtime` passed all five ownership/recovery suites; `bun run test:function-runtime` passed all seven bounded execution suites |
+| Resource and function boundaries | `bun run test:resource-runtime` passed all five resource/recovery suites; `bun run test:function-runtime` passed all seven bounded execution suites |
 | Legacy lifecycle | `service-actor` passed 99 tests / 528 assertions and `service-agent` passed 145 tests / 760 assertions, including delayed exit, SIGKILL escalation, retryable fail-closed cleanup, exact PID/count, and zero post-shutdown children |
 | Two-mode product matrix | `bun run test:legacy-matrix` passed the complete product suite first with legacy disabled and then enabled; the matrix also passed the 10,000 UI-only widget zero-actor cost fixture in both modes |
 | Common repository gate | `git diff --check` and `bun run lint:functional-core` passed; the complete sequential root suite passed twice inside the final two-mode matrix |

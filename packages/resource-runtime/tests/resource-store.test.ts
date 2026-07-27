@@ -1,7 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, expect, test } from 'bun:test';
 import type {
   IResourceControlStore,
   TResourceDescriptor,
@@ -20,12 +17,6 @@ const tenant = {
   requestId: 'request-a',
 } as const;
 const OPERATION_FINGERPRINT = 'a'.repeat(64);
-
-const roots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
 
 function descriptor(status: TResourceDescriptor['status'] = 'ready'): TResourceDescriptor {
   return {
@@ -95,13 +86,7 @@ function fakeControlStore(state: {
   } as unknown as IResourceControlStore;
 }
 
-async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-store-'));
-  roots.push(root);
-  return root;
-}
-
-describe('single-owner Resource Store', () => {
+describe('Resource Store', () => {
   test('rejects stale placement before provider dispatch', async () => {
     const state = {
       resource: descriptor(),
@@ -115,9 +100,7 @@ describe('single-owner Resource Store', () => {
       provision: async () => undefined,
       delete: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
     });
@@ -170,9 +153,7 @@ describe('single-owner Resource Store', () => {
     };
 
     for (const mismatch of mismatches) {
-      const store = await ResourceStoreService.open({
-        root: await temporaryRoot(),
-        ownerId: `store-${mismatch.label}`,
+      const store = new ResourceStoreService({
         controlStore: fakeControlStore(mismatch),
         providers: [provider],
       });
@@ -227,9 +208,7 @@ describe('single-owner Resource Store', () => {
       provision: async () => undefined,
       delete: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
       nowMs: () => 100,
@@ -358,9 +337,7 @@ describe('single-owner Resource Store', () => {
       provision: async () => undefined,
       delete: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-receipt-recovery',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
       nowMs: () => 200,
@@ -401,9 +378,7 @@ describe('single-owner Resource Store', () => {
       delete: async () => undefined,
       reconcile: async () => ({ status: 'ready' }),
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
       nowMs: () => 50,
@@ -448,9 +423,7 @@ describe('single-owner Resource Store', () => {
       },
       close: async () => { events.push('provider-close'); },
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [provider],
     });
@@ -493,9 +466,7 @@ describe('single-owner Resource Store', () => {
         return { status: 'ready' };
       },
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
     });
@@ -549,9 +520,7 @@ describe('single-owner Resource Store', () => {
       effect: () => null,
       dispatch: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [provider],
       nowMs: () => 75,
@@ -617,9 +586,7 @@ describe('single-owner Resource Store', () => {
       effect: () => null,
       dispatch: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [provider],
       nowMs: () => 80,
@@ -694,9 +661,7 @@ describe('single-owner Resource Store', () => {
       effect: () => null,
       dispatch: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [provider],
       reconciliationAuthority: {
@@ -746,9 +711,7 @@ describe('single-owner Resource Store', () => {
         return true;
       },
     });
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [{
         kind: 'kv',
@@ -784,9 +747,7 @@ describe('single-owner Resource Store', () => {
         return true;
       },
     });
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [{
         kind: 'kv',
@@ -827,9 +788,7 @@ describe('single-owner Resource Store', () => {
       effect: () => null,
       dispatch: async () => undefined,
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore,
       providers: [provider],
       reconciliationAuthority: {
@@ -887,9 +846,7 @@ describe('single-owner Resource Store', () => {
         return [{ value: 'dark' }];
       },
     };
-    const store = await ResourceStoreService.open({
-      root: await temporaryRoot(),
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
     });
@@ -929,8 +886,7 @@ describe('single-owner Resource Store', () => {
     }
   });
 
-  test('retains ownership and surfaces provider close failures until a clean retry', async () => {
-    const root = await temporaryRoot();
+  test('surfaces provider close failures and supports a clean retry', async () => {
     const state = { resource: descriptor(), placement: placement() };
     let failClose = true;
     const provider: ILocalResourceStoreProvider = {
@@ -943,30 +899,14 @@ describe('single-owner Resource Store', () => {
         if (failClose) throw new Error('handle stayed open');
       },
     };
-    const store = await ResourceStoreService.open({
-      root,
-      ownerId: 'store-a',
+    const store = new ResourceStoreService({
       controlStore: fakeControlStore(state),
       providers: [provider],
     });
 
     await expect(store.close()).rejects.toBeInstanceOf(AggregateError);
-    await expect(ResourceStoreService.open({
-      root,
-      ownerId: 'store-b',
-      controlStore: fakeControlStore(state),
-      providers: [],
-    })).rejects.toMatchObject({ code: 'RESOURCE_OWNER_CONFLICT' });
-
     failClose = false;
     await store.close();
-    const successor = await ResourceStoreService.open({
-      root,
-      ownerId: 'store-b',
-      controlStore: fakeControlStore(state),
-      providers: [],
-    });
-    await successor.close();
   });
 
   test('resolves a logical slot without exposing resource placement details', async () => {

@@ -1,5 +1,5 @@
 /**
- * @file Single-owner local Resource Store and location-transparent gateway.
+ * @file Local Resource Store and location-transparent gateway.
  */
 
 import type { TTenantContext } from '@vibecanvas/tenant-core';
@@ -30,7 +30,6 @@ import type {
   TResourceWriteCapabilityClaims,
   TResourceWritePermitRecoveryCandidate,
 } from '../index';
-import { claimResourceOwner, type ResourceOwnerLease } from './ResourceOwnerLock';
 import type { ILocalResourceProvider } from './ResourceProviderTypes';
 
 type TLocalProviderContext = Readonly<{
@@ -57,8 +56,6 @@ export type TResourceReconciliationAuthority = Readonly<{
 }>;
 
 export type TResourceStoreServiceConfig = Readonly<{
-  root: string;
-  ownerId: string;
   controlStore: IResourceControlStore;
   providers: readonly ILocalResourceStoreProvider[];
   /** Explicit host authority for one-shot recovery of catalog rows with no placement. */
@@ -119,16 +116,12 @@ export class ResourceStoreService implements IResourceStore {
   readonly #allowUnfencedWrites: boolean;
   readonly #reconciliationAuthority?: TResourceReconciliationAuthority;
   readonly #nowMs: () => number;
-  readonly #ownerLease: ResourceOwnerLease;
   readonly #writeTails = new Map<string, Promise<void>>();
   readonly #inflight = new Set<Promise<unknown>>();
   #closed = false;
   #closePromise: Promise<void> | null = null;
 
-  private constructor(
-    config: TResourceStoreServiceConfig,
-    ownerLease: ResourceOwnerLease,
-  ) {
+  constructor(config: TResourceStoreServiceConfig) {
     this.#controlStore = config.controlStore;
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
     this.#writePermitCoordinator = config.writePermitCoordinator;
@@ -136,7 +129,6 @@ export class ResourceStoreService implements IResourceStore {
     this.#allowUnfencedWrites = config.allowUnfencedWrites ?? false;
     this.#reconciliationAuthority = config.reconciliationAuthority;
     this.#nowMs = config.nowMs ?? (() => Date.now());
-    this.#ownerLease = ownerLease;
     for (const provider of config.providers) {
       if (this.#providers.has(provider.kind)) {
         throw new ResourceError(
@@ -145,16 +137,6 @@ export class ResourceStoreService implements IResourceStore {
         );
       }
       this.#providers.set(provider.kind, provider);
-    }
-  }
-
-  static async open(config: TResourceStoreServiceConfig): Promise<ResourceStoreService> {
-    const ownerLease = await claimResourceOwner({ root: config.root, ownerId: config.ownerId });
-    try {
-      return new ResourceStoreService(config, ownerLease);
-    } catch (error) {
-      await ownerLease.release();
-      throw error;
     }
   }
 
@@ -738,7 +720,7 @@ export class ResourceStoreService implements IResourceStore {
     }
   }
 
-  /** Stop admitting calls without releasing provider or owner-fence custody. */
+  /** Stop admitting calls while admitted work and providers remain available. */
   quiesce(): void {
     this.#closed = true;
   }
@@ -775,10 +757,9 @@ export class ResourceStoreService implements IResourceStore {
     if (failures.length > 0) {
       throw new AggregateError(
         failures,
-        'One or more Resource Store providers failed to close; ownership was retained.',
+        'One or more Resource Store providers failed to close; provider cleanup remains incomplete.',
       );
     }
-    await this.#ownerLease.release();
   }
 }
 

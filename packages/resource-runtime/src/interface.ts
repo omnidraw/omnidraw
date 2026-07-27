@@ -55,7 +55,7 @@ export interface IResourceGateway {
   ): Promise<TResourceCallResult>;
 }
 
-/** The single-owner execution boundary for resolved calls. */
+/** The authoritative execution boundary for resolved calls. */
 export interface IResourceStore {
   call(
     tenant: TTenantContext,

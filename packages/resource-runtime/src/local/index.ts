@@ -56,11 +56,6 @@ export type {
   TResourceKeyValueKind,
   TResourceKeyValuePage,
 } from './ResourceKeyValuePersistence';
-export { ResourceOwnerLease, claimResourceOwner } from './ResourceOwnerLock';
-export type {
-  TResourceOwnerLockConfig,
-  TResourceOwnerLockPortal,
-} from './ResourceOwnerLock';
 export {
   SECRET_STORE_DATABASE_KEY_ALGORITHM,
   SECRET_STORE_DATABASE_KEY_PURPOSE,

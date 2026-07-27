@@ -118,7 +118,7 @@ implements IService, IStartableService<object, object>, IStoppableService {
           this.#retainedStartupFailures.set(key, service);
           throw new AggregateError(
             [error, cleanupError],
-            `${this.name} child startup and ownership cleanup failed.`,
+            `${this.name} child startup and service cleanup failed.`,
           );
         }
         throw error;

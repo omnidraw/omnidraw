@@ -46,7 +46,7 @@ import {
 import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
-import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
   RESOURCE_MANAGEMENT_OPERATION,
@@ -294,18 +294,11 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     if (this.#started) return;
     if (this.#store) {
       throw new ResourceError(
-        'RESOURCE_OWNER_CONFLICT',
-        'Resource Service still retains ownership after an incomplete shutdown.',
+        'RESOURCE_LIFECYCLE_CONFLICT',
+        'Resource Service provider cleanup is incomplete; retry shutdown before starting.',
       );
     }
-    const ownerId = fnScopedKey('resource-store-owner', [
-      this.#tenant.orgId,
-      this.#tenant.cellId,
-      String(this.#tenant.placementEpoch),
-    ]);
-    const store = await ResourceStoreService.open({
-      root: this.#dataRoot,
-      ownerId,
+    const store = new ResourceStoreService({
       controlStore: this.#controlStore,
       providers: this.#providers,
       writeCapabilityVerifier: this.#writeCapabilityVerifier,

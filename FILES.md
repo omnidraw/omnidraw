@@ -498,9 +498,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/resource-runtime/src/local/ResourceKeyValueStore.ts](packages/resource-runtime/src/local/ResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
 | [packages/resource-runtime/src/local/ResourceManager.ts](packages/resource-runtime/src/local/ResourceManager.ts) | Local resource catalog, gateway, lifecycle, and consumer-use coordination. |
 | [packages/resource-runtime/src/local/ResourceManagerGateway.ts](packages/resource-runtime/src/local/ResourceManagerGateway.ts) | Compatibility bridge from legacy-neutral manager calls into the canonical gateway/store path. |
-| [packages/resource-runtime/src/local/ResourceOwnerLock.ts](packages/resource-runtime/src/local/ResourceOwnerLock.ts) | Cross-process ownership fence for one local Resource Store root. |
 | [packages/resource-runtime/src/local/ResourceProviderTypes.ts](packages/resource-runtime/src/local/ResourceProviderTypes.ts) | Structural local-provider contracts independent of consumer and transport packages. |
-| [packages/resource-runtime/src/local/ResourceStoreService.ts](packages/resource-runtime/src/local/ResourceStoreService.ts) | Single-owner local Resource Store and location-transparent gateway. |
+| [packages/resource-runtime/src/local/ResourceStoreService.ts](packages/resource-runtime/src/local/ResourceStoreService.ts) | Local Resource Store and location-transparent gateway. |
 | [packages/resource-runtime/src/local/SecretStoreKeyProvider.ts](packages/resource-runtime/src/local/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
 | [packages/resource-runtime/src/local/SecretStoreResource.ts](packages/resource-runtime/src/local/SecretStoreResource.ts) |  |
 | [packages/resource-runtime/src/ResourceError.ts](packages/resource-runtime/src/ResourceError.ts) | Stable resource-domain errors and safe serialization at transport boundaries. |

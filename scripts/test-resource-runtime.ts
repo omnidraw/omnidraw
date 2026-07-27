@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M4 gate for the single-owner resource runtime.
+ * @file Durable M4 gate for the local resource runtime.
  */
 
 import { resolve } from 'node:path';
@@ -19,7 +19,7 @@ const suites: readonly TResourceRuntimeSuite[] = [
     command: ['bun', 'test', 'scripts/resource-runtime-boundary.test.ts'],
   },
   {
-    name: 'public contracts, owner fencing, call serialization, and recovery',
+    name: 'public contracts, lifecycle, call serialization, and recovery',
     command: ['bun', 'test', 'packages/resource-runtime/tests', '--timeout=30000'],
   },
   {
@@ -38,12 +38,11 @@ const suites: readonly TResourceRuntimeSuite[] = [
     ],
   },
   {
-    name: 'production composition, owner shutdown, and active-use lease fencing',
+    name: 'production composition, provider shutdown, and active-use lease fencing',
     command: [
       'bun',
       'test',
-      'apps/cli/tests/ResourceComposition.test.ts',
-      'apps/cli/tests/ResourceServiceOwnership.test.ts',
+      'apps/cli/tests/ResourceServiceLifecycle.test.ts',
       'apps/cli/tests/ResourceUseCoordinatorBridge.test.ts',
       'apps/cli/tests/TenantServicePool.test.ts',
       'apps/cli/tests/LazyTenantServiceCapability.test.ts',
@@ -70,4 +69,4 @@ async function runSuite(suite: TResourceRuntimeSuite): Promise<void> {
 
 for (const suite of suites) await runSuite(suite);
 
-console.log(`\n[resource-runtime] passed ${suites.length} ownership and recovery suites`);
+console.log(`\n[resource-runtime] passed ${suites.length} resource and recovery suites`);

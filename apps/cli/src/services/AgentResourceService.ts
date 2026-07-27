@@ -8,7 +8,7 @@ type TCompleteAgentResourceService = {
 
 /**
  * Binds one trusted tenant context to the narrow resource capability exposed to
- * agent tools. The physical resource owner and its broader management surface
+ * agent tools. The physical resource service and its broader management surface
  * remain private to the CLI composition root.
  */
 function createAgentResourceService(

@@ -47,7 +47,7 @@ const identity = (
 const allowCommit = { assertCanCommit: async () => undefined };
 
 describe('durable function resource operation receipts', () => {
-  test('fault matrix: resource owner restart/retry replays its receipt and a stale permit rolls back', async () => {
+  test('fault matrix: resource service restart/retry replays its receipt and a stale permit rolls back', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vibecanvas-kv-receipt-'));
     roots.push(root);
     const databaseFactory: TResourceKeyValueDatabaseFactory = (path, options) => new Database(

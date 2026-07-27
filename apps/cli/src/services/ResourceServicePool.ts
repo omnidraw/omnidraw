@@ -19,7 +19,7 @@ type TResourceServiceCapabilities = {
   readonly resource: TResourceApiCapability;
 };
 
-/** One physical resource owner per organization placement, shared by accounts. */
+/** One physical resource service per organization placement, shared by accounts. */
 class ResourceServicePool extends TenantServicePool<ResourceService>
 implements TResourceApiCapability, IHumanResourceSecretService {
   constructor(options: TResourceServicePoolOptions) {

@@ -12,12 +12,11 @@ import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceT
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ResourceManagementProvider } from '../src/services/ResourceManagementProvider';
 import { ResourceService } from '../src/services/ResourceService';
-import { ResourceServicePool } from '../src/services/ResourceServicePool';
 
 const tenant: TTenantContext = {
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -26,7 +25,7 @@ const tenant: TTenantContext = {
   placementEpoch: 1,
   roles: ['owner'],
   capabilities: ['*'],
-  requestId: 'resource-owner-request',
+  requestId: 'resource-lifecycle-request',
 };
 
 const useCoordinator: IResourceUseCoordinator = {
@@ -49,7 +48,7 @@ const useCoordinator: IResourceUseCoordinator = {
   }),
 };
 
-describe('ResourceService ownership', () => {
+describe('ResourceService lifecycle', () => {
   test('preserves provider-owned function receipts through the management adapter', async () => {
     const calls: string[] = [];
     const provider: ILocalResourceProvider = {
@@ -120,8 +119,8 @@ describe('ResourceService ownership', () => {
     ]);
   });
 
-  test('drains a queued management write before releasing ownership for takeover', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-owner-'));
+  test('drains a queued management write before provider shutdown and restart', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-lifecycle-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
@@ -151,7 +150,7 @@ describe('ResourceService ownership', () => {
       return database;
     };
 
-    let owner: ResourceService | null = null;
+    let service: ResourceService | null = null;
     let successor: ResourceService | null = null;
     try {
       await dbService.start();
@@ -164,37 +163,32 @@ describe('ResourceService ownership', () => {
         useCoordinator,
         ...(factory ? { databaseFactory: factory } : {}),
       });
-      owner = createService(databaseFactory);
-      await owner.start({ config: {}, hooks: {} });
-      const resource = await owner.createResource(tenant, { kind: 'kv', name: 'Held write' });
+      service = createService(databaseFactory);
+      await service.start({ config: {}, hooks: {} });
+      const resource = await service.createResource(tenant, { kind: 'kv', name: 'Held write' });
       await expect(controlStore.getPlacement(tenant, resource.id)).resolves.toMatchObject({
         resourceId: resource.id,
         cellId: tenant.cellId,
         placementEpoch: tenant.placementEpoch,
         status: 'active',
       });
-      const write = owner.setResourceDataEntry(tenant, {
+      const write = service.setResourceDataEntry(tenant, {
         resourceId: resource.id,
         key: 'status',
         expectedRevision: null,
         value: 'committed-before-close',
       });
       await writeStarted;
-      const rename = owner.renameResource(tenant, {
+      const rename = service.renameResource(tenant, {
         id: resource.id,
         name: 'Renamed while queued',
       });
       // Let the rename enter the Store's write lane behind the held write.
       await Bun.sleep(20);
       let stopSettled = false;
-      const stopping = owner.stop().finally(() => { stopSettled = true; });
+      const stopping = service.stop().finally(() => { stopSettled = true; });
       await Promise.resolve();
       expect(stopSettled).toBe(false);
-
-      const competing = createService();
-      await expect(competing.start({ config: {}, hooks: {} })).rejects.toMatchObject({
-        code: 'RESOURCE_OWNER_CONFLICT',
-      });
 
       releaseWrite();
       await expect(write).resolves.toMatchObject({
@@ -216,7 +210,7 @@ describe('ResourceService ownership', () => {
     } finally {
       releaseWrite?.();
       await successor?.stop().catch(() => undefined);
-      await owner?.stop().catch(() => undefined);
+      await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
@@ -491,7 +485,7 @@ describe('ResourceService ownership', () => {
       accountId: '00000000-0000-4000-8000-0000000000b2',
       roles: ['admin'],
       capabilities: ['resource:secret:reveal'],
-      requestId: 'resource-owner-request-b',
+      requestId: 'resource-lifecycle-request-b',
     };
     let service: ResourceService | null = null;
     try {
@@ -562,7 +556,7 @@ describe('ResourceService ownership', () => {
     }
   });
 
-  test('retains the owner fence and retries when a KV provider handle fails to close', async () => {
+  test('retains failed provider cleanup and retries it on the next stop', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-close-failure-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
@@ -584,7 +578,7 @@ describe('ResourceService ownership', () => {
       };
       return database;
     };
-    let owner: ResourceServicePool | null = null;
+    let service: ResourceService | null = null;
     let successor: ResourceService | null = null;
     try {
       await dbService.start();
@@ -600,13 +594,11 @@ describe('ResourceService ownership', () => {
         useCoordinator,
         ...(databaseFactory ? { databaseFactory } : {}),
       });
-      owner = new ResourceServicePool({
-        create: (serviceTenant) => createService(serviceTenant, failingFactory),
-      });
-      await owner.start({ config: {}, hooks: {} });
-      const resource = await owner.createResource(tenant, { kind: 'kv', name: 'Close failure KV' });
+      service = createService(tenant, failingFactory);
+      await service.start({ config: {}, hooks: {} });
+      const resource = await service.createResource(tenant, { kind: 'kv', name: 'Close failure KV' });
       failingResourceId = resource.id;
-      await owner.setResourceDataEntry(tenant, {
+      await service.setResourceDataEntry(tenant, {
         resourceId: resource.id,
         key: 'status',
         expectedRevision: null,
@@ -615,16 +607,14 @@ describe('ResourceService ownership', () => {
 
       closeAttempts = 0;
       failClose = true;
-      await expect(owner.stop()).rejects.toBeInstanceOf(AggregateError);
+      await expect(service.stop()).rejects.toBeInstanceOf(AggregateError);
       expect(closeAttempts).toBeGreaterThan(0);
-
-      const competing = createService(tenant);
-      await expect(competing.start({ config: {}, hooks: {} })).rejects.toMatchObject({
-        code: 'RESOURCE_OWNER_CONFLICT',
+      await expect(service.start({ config: {}, hooks: {} })).rejects.toMatchObject({
+        code: 'RESOURCE_LIFECYCLE_CONFLICT',
       });
 
       failClose = false;
-      await owner.stop();
+      await service.stop();
       successor = createService(tenant);
       await successor.start({ config: {}, hooks: {} });
       await expect(successor.getResource(tenant, resource.id)).resolves.toMatchObject({
@@ -634,7 +624,7 @@ describe('ResourceService ownership', () => {
     } finally {
       failClose = false;
       await successor?.stop().catch(() => undefined);
-      await owner?.stop().catch(() => undefined);
+      await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }

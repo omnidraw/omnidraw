@@ -384,9 +384,7 @@ describe('managed baseline recovery', () => {
         ),
         databaseFactory: (databasePath, options) => new Database(databasePath, options),
       });
-      const restoredStore = await ResourceStoreService.open({
-        root: path.join(restored, 'recovery-resource-owner'),
-        ownerId: 'managed-recovery-validation',
+      const restoredStore = new ResourceStoreService({
         controlStore: new ResourceControlStoreTurso(restoredService.db),
         providers: [restoredDbResource],
       });

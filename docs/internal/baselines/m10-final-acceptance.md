@@ -49,7 +49,7 @@ The terminal acceptance result was:
 | 7 | Exercise browser-only and server-backed widgets end to end | Widget publication/host suites and the joined production flow published and mounted UI-only and server-backed revisions; only the server-backed path invoked a short-lived function. |
 | 8 | Exercise two organizations against one Automerge service | The isolation gate used same-ID documents for two organizations through one shared service, including membership, known-foreign, persistence, replay, and reconnect checks. |
 | 9 | Run load, noisy-neighbor, idle-memory, and handle tests | The structured M10 load runner selected exactly nine named cases covering 10,000 widgets, resource LRU/idle close, function zero-residue, tenant progress, admission ceilings, connection ceilings, and reconnect churn. |
-| 10 | Kill/restart server, executor, and Resource Store at fault points | The compiled server was killed with `SIGKILL`, which also terminates its embedded local executor and Resource Store. Targeted function claim/recovery, sandbox interruption, resource receipt replay, owner restart, WAL recovery, and close/reopen suites exercised each service's independent fault boundaries. |
+| 10 | Kill/restart server, executor, and Resource Store at fault points | The compiled server was killed with `SIGKILL`, which also terminates its embedded local executor and Resource Store. Targeted function claim/recovery, sandbox interruption, resource receipt replay, Resource Service restart, WAL recovery, and close/reopen suites exercised each service's independent fault boundaries. |
 | 11 | Back up and restore control, artifacts, and resource data | Recovery copied the complete home, including `main.db` and sidecars, immutable artifact bytes, encryption material, and representative resource `data.db`, then reopened it through production services. |
 | 12 | Revalidate restored schema, integrity, and isolation | The restored-root test directly compared the schema fingerprint, migration identity, representative rows, header PRAGMAs, integrity, foreign keys, artifact digest, and resource rows, then proved an owner read succeeds and the same known foreign resource ID is denied. |
 | 13 | Boot with legacy actors disabled | Docker and the final runner forced `VIBECANVAS_LEGACY_ACTOR_ENABLED=0`; the joined flow, complete product suite, health checks, and compiled binary remained operational. |
@@ -64,7 +64,7 @@ The terminal acceptance result was:
 | `bun run db:constraints:test` | 10 tests / 52 assertions passed for invalid tenant, type, lifecycle, digest, path, lease, usage, and bound-SQL mutations. |
 | `bun run db:recovery:test` | 48 tests / 233 assertions passed, including killed WAL writer, immutable migration recovery, compiled-style restart rules, and whole-home restore. |
 | `bun run test:isolation` | All nine authority suites passed across tenant derivation, repositories, collaboration, filesystem/PTY, events, HTTP media, and browser teardown/switching. |
-| `bun run test:resource-runtime` | All five ownership/recovery suites passed with mandatory file-descriptor inspection, single-owner fencing, operation receipt replay, WAL recovery, encryption, and bounded handles. |
+| `bun run test:resource-runtime` | All five resource/recovery suites passed with mandatory file-descriptor inspection, operation receipt replay, WAL recovery, encryption, lifecycle drain, and bounded handles. |
 | `bun run test:widget-artifacts` | All five immutable artifact suites passed for v2 contracts, builds, publication, rollback, authorization, retention, and crash-safe garbage collection. |
 | `bun run test:function-runtime` | All seven bounded execution suites passed for durable invocation state, idempotency, leases, cancellation, limits, receipts, recovery, SDK generation, and zero residue. |
 | `bun run test:widget-host` | All twelve neutral host suites passed, including exact CRDT projection, sandbox authority, collaborative state, function proxying, and two independent 10,000-widget paths. |
@@ -112,7 +112,7 @@ The terminal acceptance result was:
 | Canvas preservation | The four M0 protected regression suites remain green, including the unchanged renderer and widget-frame behavior. |
 | Browser-only cost | Both 10,000-widget paths report zero actor rows/processes and zero function starts/calls with bounded UI admission. |
 | Function scale-to-zero | Function runtime, M10 load, and joined production tests prove exact process/group/RSS/cwd teardown. |
-| Resource ownership | Mandatory FD inspection and owner-lock tests prove only Resource Store opens writable resource `data.db` files; logical consumers receive capabilities only. |
+| Resource boundary | Mandatory FD inspection proves logical consumers receive capabilities only and do not open writable resource `data.db` files. |
 | Collaboration | One shared Automerge service persists same-ID documents for two organizations and contains reconnect, rate, storage, and membership authority. |
 | Tenant integrity | The nine-suite same-ID and known-foreign/unknown isolation gate passes across storage, API, collaboration, resources, files, PTYs, events, media, agents, and browser state. |
 | Artifact correctness | Immutable source/build bytes, revision pins, authorization, rollback, Preview retention, tamper rejection, and crash-safe GC all pass. |

@@ -386,7 +386,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
 - [/]: [S116](s/S116.md) - delete only retired persistence/projection architecture
-- [ ]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
+- [x]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
