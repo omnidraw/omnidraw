@@ -258,13 +258,13 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
 - [ ]: [A84](a/A84.md) - AI chat: slash commands for chat actions
 - [/]: [A85](a/A85.md) - canvas-engine real widget-host qualification
-- [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
+- [-]: [A86](a/A86.md) - superseded: CanvasService collaboration policy moves to A90/A92
 - [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
 - [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
-- [ ]: [A89](a/A89.md) - canvas document: add the versioned Cangine-node contract
-- [ ]: [A90](a/A90.md) - canvas: productionize the Automerge/Cangine bridge and history
-- [ ]: [A91](a/A91.md) - canvas: build copy-on-write v1-to-v2 migration and version gates
-- [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and product tools over to Cangine nodes
+- [ ]: [A89](a/A89.md) - canvas persistence: add the shared item contract and JSONB canvas_items
+- [ ]: [A90](a/A90.md) - canvas: implement the authoritative CanvasService
+- [ ]: [A91](a/A91.md) - widget state: replace Automerge with a centralized JSONB service
+- [ ]: [A92](a/A92.md) - canvas: cut API, CLI, and runtime over to CanvasService
 - [/]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
 
 ## S ubtractions
@@ -383,7 +383,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
 - [/]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
-- [ ]: [S116](s/S116.md) - canvas: delete the parallel element/group projection architecture
+- [ ]: [S116](s/S116.md) - canvas: delete Automerge and the parallel element/group architecture
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

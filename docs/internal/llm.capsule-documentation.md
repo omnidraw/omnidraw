@@ -1,4 +1,4 @@
-# Using the Capsule library - 0.9.3
+# Using the Capsule library - 0.9.4
 
 This guide is the consumer manual for `@omnidraw/capsule`. It covers the supported package entrypoints, building or obtaining a guest artifact, creating a browser host, mounting and controlling an instance, granting authority, testing, and production hardening.
 
@@ -129,7 +129,14 @@ try {
 }
 ```
 
-`container` must be a real unreserved `HTMLElement`. Capsule owns its instance shell until the handle reaches terminal cleanup. A competing mount into the same container is denied.
+`container` must be a real, empty, unreserved `HTMLElement` without an
+attached ShadowRoot. Capsule appends its host-owned internal shell and creates
+one dedicated closed ShadowRoot on that shell; the application neither
+supplies nor receives it. Capsule owns the shell through terminal cleanup. A
+competing mount or a pre-shadowed container is denied. The empty container may
+itself live inside an application-owned ShadowRoot, in which case the two
+shadow boundaries are intentionally nested. Shadow DOM scopes CSS; Capsule's
+VM, membrane, paint containment, and capability policies provide security.
 
 Always destroy the handle when the instance is no longer needed, then destroy the host when the application no longer needs any Capsule instances:
 
@@ -278,14 +285,55 @@ The recommended base is `CAPSULE_DOM_CORE_V2_PROFILE`. Add only the profiles the
 - `CAPSULE_USER_FILES_IMAGES_PROFILE` for bounded PNG previews;
 - `CAPSULE_CLIPBOARD_TEXT_PROFILE` with `CAPSULE_DOM_SELECTION_PROFILE` for plain-text clipboard editing;
 - `CAPSULE_FETCH_BUFFERED_PROFILE` for policy-bounded buffered fetch;
+- `CAPSULE_SHADOW_BROWSER_CSS_PROFILE` for ordinary modern browser CSS scoped
+  by Capsule's owned closed ShadowRoot;
+- `CAPSULE_CSS_NETWORK_IMAGES_PROFILE` for separately granted ambient browser
+  image URLs; it requires the native Shadow CSS profile;
 - `CAPSULE_WEB_AUDIO_SYNTHESIS_PROFILE` for bounded synthesis;
 - `CAPSULE_SVG_DOM_PROFILE` for reviewed live SVG construction and copied geometry;
 - `CAPSULE_CANVAS_2D_PROFILE`, `CAPSULE_CANVAS_WEBGL_PROFILE`, or `CAPSULE_CANVAS_WEBGPU_PROFILE` for one mutually exclusive bounded canvas facade;
 - `CAPSULE_MEDIA_AUDIO_PROFILE` and/or `CAPSULE_MEDIA_VIDEO_PROFILE` for activation-gated resources-v3 playback.
 
-Profile dependencies are checked fail-closed. Canvas profiles are mutually exclusive. Static media requires resources v3. File drop requires base file authority. Image previews require base file and artifact-resource authority. Clipboard on DOM v2 requires the Selection overlay.
+Profile dependencies are checked fail-closed. Canvas profiles are mutually
+exclusive. Static media requires resources v3. File drop requires base file
+authority. Image previews require base file and artifact-resource authority.
+Clipboard on DOM v2 requires the Selection overlay. Native Shadow CSS requires
+a final DOM Core v1/v2 target and is mutually exclusive with
+construction-only `runtime-styles-v1`; CSS network images additionally require
+native Shadow CSS.
 
 Listing a feature in the host target means the host may support it; the same exact feature still must be declared by the artifact and passed in `featureGrants` for that mount.
+
+### Native Shadow CSS authoring
+
+Select `CAPSULE_SHADOW_BROWSER_CSS_PROFILE` on the build target, host target,
+and mount grant when a Vite distribution needs ordinary modern CSS. Ordinary
+selectors keep native specificity inside Capsule's closed root. Initial
+`html`, `body`, and `:root` selectors map to the managed guest root; do not
+target Capsule's internal host.
+
+Custom properties, fallbacks, math functions, gradients, modern typography
+and layout, animations, media queries, container queries, and `@supports` are
+available within the pinned grammar. Host/projection/document-global
+facilities such as `:host`, `::slotted`, `::part`, `@property`, view
+transitions, `paint()`, nesting, and runtime `@import` remain denied. Prefer
+typed theme sinks:
+
+```css
+.widget {
+  color: var(--vibecanvas-text-color, CanvasText);
+  background-color: var(--vibecanvas-surface-color, Canvas);
+}
+```
+
+Image-bearing properties deliberately reject `var()` and URL-bearing custom
+properties because inherited or later-mutated values cannot be checked
+against signed URL authority. Distribution-relative PNG/SVG resources remain
+the contained default. To use a literal HTTPS or root-relative image URL,
+also select and grant `CAPSULE_CSS_NETWORK_IMAGES_PROFILE`. That profile uses
+the browser's ambient credentials, cache, redirects, CORS, referrer, CSP, and
+decode behavior; those response bytes and decoded allocations are not charged
+to Capsule's network or asset ledgers.
 
 ### Resource v2/v3 authoring
 
