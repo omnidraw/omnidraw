@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "file:../canvas/vendor/omnidraw-cangine-0.2.2.tgz"
+    "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.3.tgz"
   },
   "devDependencies": {
     "typescript": "catalog:"
