@@ -30,10 +30,6 @@ export default defineConfig({
       '/files': {
         target: backendTarget
       },
-      '/automerge': {
-        target: backendTarget,
-        ws: true
-      }
     }
   },
   build: {
@@ -47,14 +43,6 @@ export default defineConfig({
   optimizeDeps: {
     exclude: [
       'lucide-solid',
-    ],
-    // Include Automerge packages for proper CJS/ESM interop
-    include: [
-      '@automerge/automerge',
-      '@automerge/automerge-repo',
-      '@automerge/automerge-repo-network-websocket',
-      '@automerge/automerge-repo-network-broadcastchannel',
-      '@automerge/automerge-repo-storage-indexeddb'
     ]
   }
 });

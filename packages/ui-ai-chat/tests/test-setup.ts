@@ -1,6 +1,4 @@
-import type { DocHandle } from "@automerge/automerge-repo";
 import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TAiChatApplicationPort, TAiChatBrowserPort, TWidgetBrowserPort } from "../src/ports";
 
 export function ensureDom() {
@@ -30,30 +28,6 @@ export function ensureCanvasDom() {
       value: () => Object.assign([], { item: () => null }),
     });
   }
-}
-
-export function createMockDocHandle(overrides?: Partial<TCanvasDoc>): DocHandle<TCanvasDoc> {
-  const docState: TCanvasDoc = {
-    id: "ai-chat-test-doc",
-    name: "ai-chat-test-doc",
-    elements: {},
-    groups: {},
-    ...overrides,
-  };
-  const listeners = new Set<(payload: unknown) => void>();
-  const handle = {
-    doc: () => docState,
-    change: (callback: (doc: TCanvasDoc) => void) => callback(docState),
-    on: (event: string, listener: (payload: unknown) => void) => {
-      if (event === "change") listeners.add(listener);
-      return handle;
-    },
-    off: (event: string, listener: (payload: unknown) => void) => {
-      if (event === "change") listeners.delete(listener);
-      return handle;
-    },
-  };
-  return handle as unknown as DocHandle<TCanvasDoc>;
 }
 
 export function createTestContainer(args?: { width?: number; height?: number }) {

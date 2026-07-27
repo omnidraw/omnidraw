@@ -35,51 +35,10 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps renderer-neutral widget data helpers in canvas", () => {
-    const widgetHostRoot = join(WORKSPACE_ROOT, "packages/canvas/src/widget-host");
-    const implementationFiles = [
-      "CONSTANTS.ts",
-      "types.ts",
-      "fn.create-cloned-widget-element.ts",
-      "fn.create-widget-element.ts",
-      "fn.normalize-widget-host-data.ts",
-    ];
-    const compatibilityFiles = [
-      "fn.create-cloned-widget-element.ts",
-      "fn.create-widget-element.ts",
-      "fn.normalize-widget-host-data.ts",
-    ];
-    const forbiddenCanvasDependency = /@vibecanvas\/(?:api(?:[-/]|(?=["']|$))|service-actor|ui-ai-chat)/;
-    const violations = sourceFiles(widgetHostRoot).flatMap((path) => {
-      return forbiddenCanvasDependency.test(readFileSync(path, "utf8")) ? [path] : [];
-    });
-    const invalidCompatibilityExports = compatibilityFiles.flatMap((file) => {
-      const path = join(PACKAGE_ROOT, "src/widget", file);
-      const source = readFileSync(path, "utf8");
-      const lines = source.split("\n").map((line) => line.trim()).filter(Boolean);
-      return source.includes("@vibecanvas/canvas/widget-host/")
-        && lines.length <= 2
-        && lines.every((line) => line.startsWith("export "))
-        ? []
-        : [path];
-    });
-
-    expect(sourceFiles(widgetHostRoot).map((path) => path.slice(widgetHostRoot.length + 1)).sort()).toEqual(
-      [...implementationFiles].sort(),
-    );
-    expect(forbiddenCanvasDependency.test("@vibecanvas/api")).toBe(true);
-    expect(forbiddenCanvasDependency.test("@vibecanvas/api/actor/contract")).toBe(true);
-    expect(forbiddenCanvasDependency.test(["@vibecanvas/api", "-actors/contract"].join(""))).toBe(true);
-    expect(violations).toEqual([]);
-    expect(invalidCompatibilityExports).toEqual([]);
-  });
-
-  it("keeps renderer objects out of AI widget and draft integrations", () => {
+  it("keeps renderer objects out of AI widget integrations", () => {
     const ownedRoots = [
       join(PACKAGE_ROOT, "src/widget"),
       join(PACKAGE_ROOT, "src/canvas-extension"),
-      join(PACKAGE_ROOT, "src/draft-preview"),
-      join(PACKAGE_ROOT, "src/widget-placement"),
     ];
     const forbidden = /\bKonva\b|from\s+["']konva|staticForegroundLayer|createNodeFromElement/;
     const violations = ownedRoots.flatMap(sourceFiles).filter((path) => {

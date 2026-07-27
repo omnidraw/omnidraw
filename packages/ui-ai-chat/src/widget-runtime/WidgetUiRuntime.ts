@@ -30,6 +30,7 @@ import {
   fnWidgetRuntimeIdentityMatches,
   fnWidgetRuntimeLocalTarget,
   fnWidgetRuntimeLoadRequest,
+  fnWidgetRuntimeWidgetExtension,
 } from './fn.runtime-identity';
 import { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
 import type {
@@ -82,6 +83,7 @@ type TWidgetUiRuntimeRenderAdmissionArgs = TWidgetUiRuntimeRenderArgs & Readonly
 
 type TLoadedWidget = Readonly<{
   artifact: TVerifiedWidgetUiArtifact;
+  collaborativeState: boolean;
   functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   identity: TWidgetRuntimeIdentity;
@@ -244,9 +246,10 @@ export class WidgetUiRuntime {
     let currentMode: TWidgetCapsulePopulationMode = 'inert';
     let assignedMode: TWidgetCapsulePopulationMode = 'inert';
     let pendingViewport = cloneViewport(args.initialViewport ?? DEFAULT_VIEWPORT);
+    const widgetExtension = fnWidgetRuntimeWidgetExtension(args.element);
     let pendingProps = (
-      args.element.data.type === 'widget-instance'
-        ? args.element.data.uiProps ?? {}
+      widgetExtension?.type === 'widget-instance'
+        ? widgetExtension.uiProps ?? {}
         : {}
     ) as TWidgetCapsuleProps;
     let pendingFocus: FocusOptions | undefined;
@@ -316,14 +319,11 @@ export class WidgetUiRuntime {
           () => disposed,
           abortController.signal,
         );
-        if (target.stateDocumentId !== null) {
+        if (selected.collaborativeState) {
           if (!this.config.collaborativeState) {
             throw new Error('Widget collaborative state capability is unavailable.');
           }
-          const collaborativeIdentity = Object.freeze({
-            ...selected.identity,
-            stateDocumentId: target.stateDocumentId,
-          });
+          const collaborativeIdentity = selected.identity;
           collaborativeStateBridge = await this.config.collaborativeState.open({
             identity: collaborativeIdentity,
             signal: abortController.signal,
@@ -896,6 +896,8 @@ export class WidgetUiRuntime {
     );
     return Object.freeze({
       artifact,
+      collaborativeState:
+        response.manifest.ui.state?.collaborative === true,
       functionDescriptors: response.functionDescriptors,
       browserFunctionDescriptorsDigestSha256:
         response.browserFunctionDescriptorsDigestSha256,

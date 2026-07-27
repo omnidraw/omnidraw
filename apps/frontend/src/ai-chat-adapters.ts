@@ -1,5 +1,4 @@
 import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toast";
-import { removeFromCache } from "@/services/automerge";
 import { getBrowserTenantActivation, getBrowserTenantScope } from "@/services/tenant";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { themeService, txSetThemeAppearance } from "@/services/theme";
@@ -240,7 +239,7 @@ export function createFrontendSidebarController(args: {
       canvasCreated: (canvas) => setStore("canvases", (current) => [...current, canvas]),
       canvasUpdated: (canvas) => setStore("canvases", (current) => current.map((item) => item.id === canvas.id ? canvas : item)),
       canvasDeleted: (canvas) => setStore("canvases", (current) => current.filter((item) => item.id !== canvas.id)),
-      evictCanvasDocument: (canvasId) => removeFromCache(getBrowserTenantScope(), canvasId),
+      evictCanvas: () => undefined,
       themeAppearance: () => {
         void store.theme;
         return themeService.getTheme().appearance;

@@ -40,16 +40,12 @@ const cases: readonly TAcceptanceCase[] = [
     name: 'executes one exact revision and tears down to zero PID/RSS/cwd',
   },
   {
-    file: 'packages/service-automerge/tests/websocket.adapter.test.ts',
-    name: 'enforces the global connection ceiling and releases capacity on close',
+    file: 'packages/service-canvas/tests/CanvasService.test.ts',
+    name: 'publishes after commit, replays a contiguous tail, and requires resync after gaps',
   },
   {
-    file: 'packages/service-automerge/tests/websocket.adapter.test.ts',
-    name: 'isolates per-organization connection ceilings and releases organization capacity',
-  },
-  {
-    file: 'packages/service-automerge/tests/websocket.adapter.test.ts',
-    name: 'replaces peers through a reconnect burst without retaining stale sockets',
+    file: 'packages/service-widget-state/src/WidgetStateService.test.ts',
+    name: 'release and dispose close pending subscribers and clear metrics',
   },
 ];
 

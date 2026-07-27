@@ -13,9 +13,8 @@ The project is organized as a monorepo and follows a **Functional Core / Imperat
 - Infinite canvas UI for drawing, selecting, transforming, and grouping elements
 - Canvas CLI for list/query/add/patch/move/group/ungroup/delete/reorder flows
 - Agents can edit canvases too by calling the same CLI commands
-- Real-time CRDT sync with Automerge for conflict-free collaboration
-- Unified WebSocket API endpoint for app RPC (`/api`)
-- Dedicated Automerge sync endpoint (`/automerge`)
+- Server-authoritative real-time canvas collaboration with atomic revisions
+- Unified WebSocket API endpoint for canvas events and app RPC (`/api`)
 - Native binary distribution for macOS, Linux, and Windows
 - Auto-update checks in the CLI/server runtime
 

@@ -1,0 +1,21 @@
+{
+  "name": "@vibecanvas/service-canvas",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bun x tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/canvas-contract": "workspace:*",
+    "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

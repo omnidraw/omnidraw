@@ -39,7 +39,7 @@ import type {
 
 declare const VIBECANVAS_VERSION: string | undefined;
 
-type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
+type TCanvasCreateArgs = Pick<TCanvas, "id" | "name">;
 type TFileCreateArgs = Omit<TMediaFile, "created_at">
 
 
@@ -265,7 +265,7 @@ export async function preflightDbServiceDatabase(
     readonly: true,
     fileMustExist: true,
     // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
-    experimental: ['custom_types', 'triggers', 'index_method'],
+    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'],
   });
   let connected = false;
   try {
@@ -301,8 +301,8 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
 
   constructor(private config: IDbConfig) {
     const experimental = this.config.databasePath === ":memory:"
-      ? ["custom_types", "triggers", "index_method"]
-      : ["custom_types", "triggers", "index_method", "multiprocess_wal"];
+      ? ["custom_types", "triggers", "index_method", "generated_columns"]
+      : ["custom_types", "triggers", "index_method", "generated_columns", "multiprocess_wal"];
 
     this.db = new Database(this.config.databasePath, {
       // @ts-expect-error experimental feature list is ahead of package typings

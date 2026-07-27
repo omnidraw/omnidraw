@@ -1,13 +1,10 @@
 import {
-  isValidAutomergeUrl,
-  type DocHandleChangePayload,
-} from '@automerge/automerge-repo';
-import {
   createWidgetCollaborativeStatePort,
-  type TMutableWidgetCollaborativeStateDocument,
-  type TWidgetCollaborativeStateDocumentPort,
+  type TWidgetCollaborativeStateIdentity,
+  type TWidgetCollaborativeStateTransportPort,
+  type TWidgetCollaborativeStateTransportSnapshot,
 } from '@vibecanvas/ui-ai-chat/widget-runtime';
-import { openAutomergeDocument, releaseAutomergeDocument } from './automerge';
+import { orpcWebsocketService } from './orpc-websocket';
 import {
   getBrowserTenantActivation,
   getBrowserTenantScope,
@@ -22,59 +19,138 @@ function assertCurrentActivation(
   }
 }
 
+function stateInput(identity: TWidgetCollaborativeStateIdentity) {
+  return Object.freeze({
+    canvasId: identity.canvasId,
+    elementId: identity.elementId,
+    widgetInstanceId: identity.widgetInstanceId,
+    definitionId: identity.definitionId,
+    revisionId: identity.revisionId,
+  });
+}
+
+function transportSnapshot(
+  snapshot: Readonly<{
+    identity: TWidgetCollaborativeStateIdentity;
+    version: number;
+    state: TWidgetCollaborativeStateTransportSnapshot['state'];
+  }>,
+): TWidgetCollaborativeStateTransportSnapshot {
+  return Object.freeze({
+    identity: Object.freeze({ ...snapshot.identity }),
+    version: snapshot.version,
+    state: snapshot.state,
+  });
+}
+
 export const widgetCollaborativeStatePort = createWidgetCollaborativeStatePort({
-  nowMs: () => Date.now(),
   isIdentityCurrent(identity) {
     return getBrowserTenantScope().orgId === identity.orgId;
   },
-  async openDocument({ identity, signal }): Promise<TWidgetCollaborativeStateDocumentPort> {
+  openTransport({ identity }): TWidgetCollaborativeStateTransportPort {
     const activation = getBrowserTenantActivation();
-    if (
-      activation.scope.orgId !== identity.orgId
-      || !isValidAutomergeUrl(identity.stateDocumentId)
-    ) {
-      throw new Error('Widget collaborative state document is unavailable.');
-    }
-    const handle = await openAutomergeDocument<TMutableWidgetCollaborativeStateDocument>(
-      activation.scope,
-      identity.stateDocumentId,
-      signal,
-    );
-    try {
-      assertCurrentActivation(activation);
-    } catch (error) {
-      await releaseAutomergeDocument(activation.scope, handle).catch(() => undefined);
-      throw error;
+    if (activation.scope.orgId !== identity.orgId) {
+      throw new Error('Widget collaborative state target is unavailable.');
     }
     let disposed = false;
-    const listenerMap = new Map<() => void, (payload: DocHandleChangePayload<TMutableWidgetCollaborativeStateDocument>) => void>();
+    const eventIterators = new Set<AsyncIterator<Readonly<{
+      snapshot: TWidgetCollaborativeStateTransportSnapshot;
+    }>>>();
+    const assertAvailable = (): void => {
+      if (disposed) {
+        throw new Error('Widget collaborative state transport is disposed.');
+      }
+      assertCurrentActivation(activation);
+    };
+
     return Object.freeze({
-      read() {
-        assertCurrentActivation(activation);
-        return handle.doc();
+      async get({ identity: exactIdentity, signal }) {
+        assertAvailable();
+        const [error, result] = await orpcWebsocketService.apiService.api
+          .widget.runtime.state.get(stateInput(exactIdentity), { signal });
+        assertAvailable();
+        if (error) throw error;
+        if (!result || result.status === 'unavailable') {
+          throw new Error('Widget collaborative state target is unavailable.');
+        }
+        return transportSnapshot(result.snapshot);
       },
-      change(mutator) {
-        assertCurrentActivation(activation);
-        handle.change(mutator);
+      async change({
+        identity: exactIdentity,
+        expectedVersion,
+        state,
+        signal,
+      }) {
+        assertAvailable();
+        const [error, result] = await orpcWebsocketService.apiService.api
+          .widget.runtime.state.change({
+            ...stateInput(exactIdentity),
+            expectedVersion,
+            state,
+          }, { signal });
+        assertAvailable();
+        if (error) throw error;
+        if (!result || result.status === 'unavailable') {
+          throw new Error('Widget collaborative state target is unavailable.');
+        }
+        if (result.status === 'rate-limited') {
+          throw new Error(
+            `Widget collaborative state mutation rate limit exceeded; retry after ${result.retryAfterMs}ms.`,
+          );
+        }
+        return Object.freeze({
+          status: result.status,
+          snapshot: transportSnapshot(result.snapshot),
+        });
       },
-      subscribe(listener) {
-        assertCurrentActivation(activation);
-        const onChange = () => listener();
-        listenerMap.set(listener, onChange);
-        handle.on('change', onChange);
-        return () => {
-          const registered = listenerMap.get(listener);
-          if (!registered) return;
-          listenerMap.delete(listener);
-          handle.off('change', registered);
+      async events({
+        identity: exactIdentity,
+        afterVersion,
+        signal,
+      }) {
+        assertAvailable();
+        const [error, events] = await orpcWebsocketService.apiService.api
+          .widget.runtime.state.events({
+            ...stateInput(exactIdentity),
+            afterVersion,
+          }, { signal });
+        assertAvailable();
+        if (error || !events) {
+          throw error ?? new Error('Widget collaborative state event stream is unavailable.');
+        }
+        return {
+          [Symbol.asyncIterator]() {
+            const iterator = events[Symbol.asyncIterator]();
+            eventIterators.add(iterator);
+            return {
+              async next(): Promise<IteratorResult<TWidgetCollaborativeStateTransportSnapshot>> {
+                const result = await iterator.next();
+                if (result.done) {
+                  eventIterators.delete(iterator);
+                  return { done: true, value: undefined };
+                }
+                assertAvailable();
+                return {
+                  done: false,
+                  value: transportSnapshot(result.value.snapshot),
+                };
+              },
+              async return(): Promise<IteratorResult<TWidgetCollaborativeStateTransportSnapshot>> {
+                eventIterators.delete(iterator);
+                await iterator.return?.();
+                return { done: true, value: undefined };
+              },
+            };
+          },
         };
       },
       dispose() {
         if (disposed) return;
         disposed = true;
-        for (const registered of listenerMap.values()) handle.off('change', registered);
-        listenerMap.clear();
-        void releaseAutomergeDocument(activation.scope, handle).catch(() => undefined);
+        for (const iterator of eventIterators) {
+          void iterator.return?.().catch(() => undefined);
+        }
+        eventIterators.clear();
       },
     });
   },

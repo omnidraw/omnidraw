@@ -27,7 +27,7 @@ function canvas(orgId: string): TBackendCanvas {
   return {
     id: 'shared-canvas-id',
     name: orgId,
-    automerge_url: `automerge:${orgId}`,
+    revision: 0,
     created_at: '2026-01-01 00:00:00',
   };
 }

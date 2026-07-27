@@ -1,5 +1,7 @@
 /* eslint-disable functional-core/no-runtime-globals -- legacy CLI printer writes directly to process streams */
 
+import { CANVAS_SUBCOMMANDS } from '../cmds/CONSTANTS';
+
 type TCliErrorPayload = {
   ok: false;
   command: string | null;
@@ -11,7 +13,7 @@ type TCliErrorPayload = {
   [key: string]: unknown;
 };
 
-const ROOT_COMMANDS = ['serve', 'upgrade', 'uninstall'] as const;
+const ROOT_COMMANDS = ['serve', 'canvas', 'upgrade', 'uninstall'] as const;
 
 function fnLevenshteinDistance(left: string, right: string): number {
   const a = left.toLowerCase();
@@ -63,17 +65,37 @@ export function fnBuildUnknownCommandError(scope: 'root', input: string | undefi
   };
 }
 
+export function fnBuildUnknownCanvasCommandError(input: string | undefined): TCliErrorPayload {
+  const candidates = [...CANVAS_SUBCOMMANDS];
+  const suggestion = fnFindClosestSuggestion(input, candidates);
+
+  return {
+    ok: false,
+    command: 'canvas',
+    code: 'CANVAS_COMMAND_UNKNOWN',
+    message: `Unknown canvas command '${input ?? ''}'.`,
+    hint: suggestion ? `Did you mean '${suggestion}'?` : `Available commands: ${candidates.join(', ')}.`,
+    next: suggestion
+      ? `Try: vibecanvas canvas ${suggestion} --help`
+      : 'Try: vibecanvas canvas --help',
+    suggestions: suggestion ? [suggestion] : [],
+  };
+}
+
 function fnNormalizeCommandError(error: unknown): TCliErrorPayload {
   const payload: Record<string, unknown> = typeof error === 'object' && error !== null
     ? { ...error as Record<string, unknown> }
     : { message: typeof error === 'string' ? error : String(error) };
+  const errorMessage = error instanceof Error ? error.message : undefined;
 
   const normalized: TCliErrorPayload = {
     ...payload,
     ok: false,
     command: typeof payload.command === 'string' || payload.command === null ? payload.command as string | null : 'cli',
     code: typeof payload.code === 'string' ? payload.code : 'CLI_COMMAND_FAILED',
-    message: typeof payload.message === 'string' ? payload.message : 'Command failed.',
+    message: typeof payload.message === 'string'
+      ? payload.message
+      : errorMessage ?? 'Command failed.',
   };
 
   if (!normalized.hint && normalized.code === 'DATA_DIR_FLAG_MISSING_VALUE') {

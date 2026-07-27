@@ -27,8 +27,7 @@ function tenantFor(accountId: string) {
 }
 
 async function inMemoryDb(): Promise<Database> {
-  // @ts-expect-error custom_types not typed yet
-  return connect(":memory:", { experimental: ["custom_types"] });
+  return connect(":memory:", { experimental: ["custom_types", "generated_columns"] as never });
 }
 
 async function seedCanvasRows(db: Database): Promise<void> {
@@ -61,19 +60,12 @@ async function seedCanvasRows(db: Database): Promise<void> {
       org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
     ) VALUES (?, ?, ?, 'restricted', ?, 1, 1)
   `);
-  const insertDocument = await db.prepare(`
-    INSERT INTO collaboration_documents (
-      org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
-      created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, NULL, ?, ?, 1, 1)
-  `);
-  for (const [id, name, url] of [
-    [CANVAS_ALPHA, "Alpha", "automerge:alpha"],
-    [CANVAS_BETA, "Beta", "automerge:beta"],
-    [CANVAS_PRIVATE, "Private", "automerge:private"],
+  for (const [id, name] of [
+    [CANVAS_ALPHA, "Alpha"],
+    [CANVAS_BETA, "Beta"],
+    [CANVAS_PRIVATE, "Private"],
   ] as const) {
     await insertCanvas.run(DEFAULT_OSS_ORGANIZATION_ID, id, name, DEFAULT_OSS_ACCOUNT_ID);
-    await insertDocument.run(DEFAULT_OSS_ORGANIZATION_ID, id, id, url, DEFAULT_OSS_ORGANIZATION_ID);
   }
 
   const insertMember = await db.prepare(`
@@ -119,7 +111,7 @@ describe("fx.canvas", () => {
     expect(await fxCanvasFindByName({ db }, { tenant: TEST_TENANT, name: "Beta" })).toBeNull();
     expect(await fxCanvasFindByName({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), name: "Beta" })).toMatchObject({
       id: CANVAS_BETA,
-      automerge_url: "automerge:beta",
+      revision: 0,
     });
   });
 
@@ -128,7 +120,7 @@ describe("fx.canvas", () => {
     expect(await fxCanvasFindById({ db }, { tenant: TEST_TENANT, id: CANVAS_BETA })).toBeNull();
     expect(await fxCanvasFindById({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), id: CANVAS_BETA })).toMatchObject({
       id: CANVAS_BETA,
-      automerge_url: "automerge:beta",
+      revision: 0,
     });
   });
 

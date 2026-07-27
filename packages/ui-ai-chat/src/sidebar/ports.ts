@@ -23,7 +23,7 @@ export type TSidebarApplicationPort = {
   canvasCreated(canvas: TSidebarCanvas): void;
   canvasUpdated(canvas: TSidebarCanvas): void;
   canvasDeleted(canvas: TSidebarCanvas): void;
-  evictCanvasDocument(automergeUrl: string): void;
+  evictCanvas(canvasId: string): void;
   themeAppearance(): "light" | "dark";
   setThemeAppearance(appearance: "light" | "dark"): void;
   toggleSidebar(): void;

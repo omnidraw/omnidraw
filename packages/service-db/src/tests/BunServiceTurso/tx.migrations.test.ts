@@ -16,15 +16,12 @@ import {
   INITIAL_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
-  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
-  WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
 } from '../../../src/CONSTANTS';
 import {
   AGENT_AUTHORING_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
-  WIDGET_INSTANCE_PROJECTION_MIGRATION,
 } from '../../../src/migrations/CONSTANTS';
 import {
   DbServiceTurso,
@@ -69,7 +66,7 @@ async function temporaryRoot(): Promise<string> {
 
 async function openDatabase(databasePath: string): Promise<Database> {
   const db = await connect(databasePath, {
-    experimental: ['custom_types', 'triggers', 'index_method'] as never,
+    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'] as never,
   });
   databases.push(db);
   return db;
@@ -110,14 +107,9 @@ function syntheticPreflightArgs() {
         checksumSha256: 'c'.repeat(64),
       },
       {
-        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
-        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
-        checksumSha256: 'd'.repeat(64),
-      },
-      {
         version: AGENT_AUTHORING_MIGRATION_VERSION,
         name: AGENT_AUTHORING_MIGRATION_NAME,
-        checksumSha256: 'e'.repeat(64),
+        checksumSha256: 'd'.repeat(64),
       },
     ],
   } as const;
@@ -283,11 +275,6 @@ describe('ordered managed migration runner', () => {
       }),
       expect.objectContaining({
         type: 'sql',
-        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
-        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
-      }),
-      expect.objectContaining({
-        type: 'sql',
         name: AGENT_AUTHORING_MIGRATION_NAME,
         version: AGENT_AUTHORING_MIGRATION_VERSION,
       }),
@@ -296,7 +283,6 @@ describe('ordered managed migration runner', () => {
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
-      WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
     ]);
 
@@ -308,7 +294,6 @@ describe('ordered managed migration runner', () => {
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
-      WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
     ]);
   });
@@ -351,13 +336,6 @@ describe('ordered managed migration runner', () => {
         application_version: '1.2.3-test',
       },
       {
-        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
-        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
-        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
-        applied_at_ms: 1_753_113_600_000,
-        application_version: '1.2.3-test',
-      },
-      {
         version: AGENT_AUTHORING_MIGRATION_VERSION,
         name: AGENT_AUTHORING_MIGRATION_NAME,
         checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
@@ -370,12 +348,6 @@ describe('ordered managed migration runner', () => {
         type: 'INTEGER',
         notnull: 1,
         dflt_value: '1',
-      });
-    expect((await (await db.prepare('PRAGMA table_info(collaboration_documents)')).all())
-      .find((column) => column.name === 'content_version')).toMatchObject({
-        type: 'INTEGER',
-        notnull: 1,
-        dflt_value: '0',
       });
     expect(
       await (await db.prepare('SELECT id, slug, name FROM organizations')).all(),
@@ -449,7 +421,6 @@ describe('ordered managed migration runner', () => {
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
-      { version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION, name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
     ]);
 
@@ -861,7 +832,6 @@ describe('ordered managed migration runner', () => {
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
-      { version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION, name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
     ]);
   });
@@ -1070,15 +1040,6 @@ describe('read-only startup preflight', () => {
     })).resolves.toEqual({ status: 'empty' });
 
     await fs.copyFile(
-      WIDGET_INSTANCE_PROJECTION_MIGRATION.path,
-      path.join(migrationDir, WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME),
-    );
-    await expect(preflightDbServiceDatabase({
-      homeDir,
-      databasePath: path.join(homeDir, 'main.db'),
-    })).resolves.toEqual({ status: 'empty' });
-
-    await fs.copyFile(
       AGENT_AUTHORING_MIGRATION.path,
       path.join(migrationDir, AGENT_AUTHORING_MIGRATION_NAME),
     );
@@ -1156,7 +1117,6 @@ describe('read-only startup preflight', () => {
         { name: INITIAL_MIGRATION_NAME, version: INITIAL_MIGRATION_VERSION },
         { name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME, version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION },
         { name: FUNCTION_RUNTIME_MIGRATION_NAME, version: FUNCTION_RUNTIME_MIGRATION_VERSION },
-        { name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME, version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION },
         { name: AGENT_AUTHORING_MIGRATION_NAME, version: AGENT_AUTHORING_MIGRATION_VERSION },
       ],
     });

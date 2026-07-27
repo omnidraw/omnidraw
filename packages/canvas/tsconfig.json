@@ -10,8 +10,13 @@
     "moduleResolution": "bundler",
     "experimentalDecorators": true,
     "noEmit": true,
-    "rootDir": ".",
-    "paths": {},
+    "paths": {
+      "@omnidraw/cangine": ["../canvas-contract/node_modules/@omnidraw/cangine/dist/index.d.ts"],
+      "@omnidraw/cangine/editor": ["../canvas-contract/node_modules/@omnidraw/cangine/dist/editor/index.d.ts"],
+      "@vibecanvas/canvas-contract": ["../canvas-contract/src/index.ts"],
+      "@vibecanvas/canvas-contract/CONSTANTS": ["../canvas-contract/src/CONSTANTS.ts"],
+      "@vibecanvas/tenant-core/fn.scoped-key": ["../tenant-core/src/core/fn.scoped-key.ts"]
+    },
     "strict": true,
     "skipLibCheck": true,
     "types": [

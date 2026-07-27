@@ -37,7 +37,6 @@ const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStar
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 const CANVAS_ID = uuid(700);
-const CANVAS_DOCUMENT_ID = uuid(707);
 const DEFINITION_ID = uuid(701);
 const REVISION_ID = uuid(702);
 const UI_ARTIFACT_ID = uuid(703);
@@ -108,6 +107,7 @@ async function openDatabase(databasePath = ':memory:', migrate = true): Promise<
       'custom_types',
       'triggers',
       'index_method',
+      'generated_columns',
       ...(databasePath === ':memory:' ? [] : ['multiprocess_wal']),
     ] as never),
   });
@@ -117,8 +117,7 @@ async function openDatabase(databasePath = ':memory:', migrate = true): Promise<
       '000-initial.sql',
       '001-widget-revision-sequence.sql',
       '002-function-runtime.sql',
-      '003-widget-instance-projection.sql',
-      '004-agent-authoring.sql',
+      '003-agent-authoring.sql',
     ]) {
       await database.exec(await Bun.file(new URL(`../migrations/${migration}`, import.meta.url)).text());
     }
@@ -187,17 +186,6 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
     ) VALUES (?, ?, ?, 'owner', 1, 1)
   `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, DEFAULT_OSS_ACCOUNT_ID);
-  await (await database.prepare(`
-    INSERT INTO collaboration_documents (
-      org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
-      created_at_ms, updated_at_ms, content_version
-    ) VALUES (?, ?, ?, NULL, 'automerge:function-control-canvas', 'function-control', 1, 1, 0)
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_DOCUMENT_ID, CANVAS_ID);
-  await (await database.prepare(`
-    INSERT INTO widget_instance_projection_heads (
-      org_id, canvas_id, source_sequence, snapshot_digest_sha256, projected_at_ms
-    ) VALUES (?, ?, 0, ?, 1)
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, sha256('function-control-canvas'));
   await (await database.prepare(`
     INSERT INTO artifact_references (
       org_id, id, kind, digest_sha256, byte_size, retention_state, retain_until_ms, created_at_ms
@@ -452,30 +440,6 @@ describe('FunctionControlStoreTurso', () => {
     expect(await (await database.prepare(`
       SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
     `)).get(TENANT.orgId)).toEqual({ count: 0 });
-  });
-
-  test('denies create and replay while the durable canvas projection is behind', async () => {
-    const request = createRequest(uuid(1715), { projection: 'current' }, {
-      key: 'projection-currency',
-    });
-    await expect(store.createOrReplayInvocation(TENANT, request)).resolves.toMatchObject({
-      status: 'created',
-    });
-    await (await database.prepare(`
-      UPDATE collaboration_documents
-      SET content_version = content_version + 1
-      WHERE org_id = ? AND id = ?
-    `)).run(TENANT.orgId, CANVAS_DOCUMENT_ID);
-
-    await expect(store.createOrReplayInvocation(TENANT, request))
-      .rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
-    await expect(store.createOrReplayInvocation(
-      TENANT,
-      createRequest(uuid(1716), { projection: 'delayed' }),
-    )).rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
-    expect(await (await database.prepare(`
-      SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
-    `)).get(TENANT.orgId)).toEqual({ count: 1 });
   });
 
   test('rechecks invoking account, canvas, and membership inside create and cancellation transactions', async () => {

@@ -1,28 +1,55 @@
-import type { ICanvasRuntimeExtension } from "@vibecanvas/canvas";
-import { createAiPlugin } from "./Ai.plugin";
-import { createDraftPreviewPlugin } from "./DraftPreview.plugin";
-import { createWidgetPlugin } from "./Widget.plugin";
+import {
+  createEvenOrderKeys,
+  orderKeyBetween,
+  type TPortalGeometry,
+  type TSceneNode,
+  type TSerializedSceneCommand,
+  type TWidgetFrameNode,
+} from '@omnidraw/cangine';
+import type { ICanvasRuntimeExtension } from '@vibecanvas/canvas';
+import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
+import { fnCreateChatId } from '@vibecanvas/shared-functions/chat/fn.chat-id';
+import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+import { render } from 'solid-js/web';
+import { AiChat } from '../chat/components';
+import type { TChatWidgetDraftReference } from '../chat/components/tabs/fn.tool-call';
 import type {
   TAiChatApiPort,
   TAiChatApplicationPort,
   TAiChatBrowserPort,
   TWidgetBrowserPort,
   TWidgetTransportPort,
-} from "../ports";
-import { WidgetManagerService } from "../widget/WidgetManagerService";
-import { DraftPreviewFrameService } from "../draft-preview/DraftPreviewFrameService";
-import { WidgetPlacementService } from "../widget-placement/WidgetPlacementService";
-import { createWidgetPlacementCoordinator, type TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
-import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
+} from '../ports';
+import type {
+  TWidgetPlacementCoordinator,
+  TWidgetPlacementPort,
+} from '../widget-placement/WidgetPlacementCoordinator';
+import { createWidgetPlacementCoordinator } from '../widget-placement/WidgetPlacementCoordinator';
+import { fnValidateDirectPublishedWidgetPlacement } from '../widget-placement/fn.validate-widget-placement-descriptor';
+import type { TWidgetTitleBarPortal } from '../widget/interface';
 import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHostCoordinator';
-import { fnWidgetRuntimeLocalTargetMatchesElement } from '../widget-runtime/fn.runtime-identity';
+import {
+  fnWidgetRuntimeLocalTargetMatchesElement,
+} from '../widget-runtime/fn.runtime-identity';
 import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleOutputSink,
   TWidgetCapsuleThemeSource,
   TWidgetCollaborativeStatePort,
+  TWidgetUiRuntimeRenderOwner,
 } from '../widget-runtime/interface';
 import { createWidgetUiArtifactMountPort } from '../widget-runtime/mount-widget-ui-artifact';
+import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
+import {
+  fnAiWidgetPayload,
+  fnCanvasWidgetExtension,
+  fnCanvasWidgetMountSignature,
+  fnCreateAiWidgetNode,
+  fnCreatePublishedWidgetNode,
+  fnWithAiWidgetPayload,
+  type TAiWidgetPayload,
+} from './fn.canvas-widget';
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -38,11 +65,84 @@ export type TCreateAiChatCanvasExtensionArgs = {
   widgetCollaborativeState?: TWidgetCollaborativeStatePort;
 };
 
-export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionArgs): ICanvasRuntimeExtension {
+type TPortalRegistration = {
+  signature: string;
+  unregister(): void;
+};
+
+function createAiSessionId(args: TCreateAiChatCanvasExtensionArgs): string {
+  return fnCreateChatId({
+    now: args.widgetBrowser.nowDate(),
+    uuid: args.widgetBrowser.createId(),
+  });
+}
+
+function widgetFrame(
+  node: Readonly<TSceneNode> | null,
+): Readonly<TWidgetFrameNode> | null {
+  return node?.kind === 'widget-frame' ? node : null;
+}
+
+function capsuleViewport(
+  geometry: TPortalGeometry | null,
+  visible: boolean,
+  scale: number,
+): CapsuleViewport {
   return {
-    name: "ai-chat",
+    width: geometry === null
+      ? 0
+      : Math.max(0, geometry.viewportBounds.maxX - geometry.viewportBounds.minX),
+    height: geometry === null
+      ? 0
+      : Math.max(0, geometry.viewportBounds.maxY - geometry.viewportBounds.minY),
+    scale,
+    visibility: visible ? 'visible' : 'hidden',
+    distance: 0,
+    priority: visible ? 100 : 0,
+    occlusion: 0,
+  };
+}
+
+function createTitleBarPortal(
+  handlers: Map<string, () => void>,
+): TWidgetTitleBarPortal {
+  return {
+    onAction(id, handler) {
+      handlers.set(id, handler);
+      return () => {
+        if (handlers.get(id) === handler) handlers.delete(id);
+      };
+    },
+    setActionState() {
+      // Title-bar state is browser-local. Cangine owns the fixed chrome and
+      // invokes registered actions without persisting ephemeral button state.
+    },
+  };
+}
+
+export function createAiChatCanvasExtension(
+  args: TCreateAiChatCanvasExtensionArgs,
+): ICanvasRuntimeExtension {
+  return {
+    name: 'ai-chat',
+    createWidgetNodes({ creation }) {
+      const bounds = creation.draft.worldBounds;
+      return [fnCreateAiWidgetNode({
+        id: creation.nodeId,
+        parentId: creation.parentId,
+        orderKey: '',
+        position: { x: bounds.minX, y: bounds.minY },
+        size: {
+          width: Math.max(360, bounds.maxX - bounds.minX),
+          height: Math.max(280, bounds.maxY - bounds.minY),
+        },
+        title: 'AI Chat',
+        sessionId: createAiSessionId(args),
+      })];
+    },
     install(context) {
-      const placementCoordinator = args.widgetPlacement ?? createWidgetPlacementCoordinator();
+      const placementCoordinator = args.widgetPlacement
+        ?? createWidgetPlacementCoordinator();
       const capsuleHost = new CapsuleWidgetHostCoordinator({
         document: args.widgetBrowser.document,
         catalog: args.widgetCapsuleHostCatalog,
@@ -86,82 +186,278 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         collaborativeState: args.widgetCollaborativeState,
         isTargetCurrent: (target) => {
           if (target.canvasId !== context.config.canvasId) return false;
-          return fnWidgetRuntimeLocalTargetMatchesElement(
-            target,
-            context.services.crdt.doc()?.elements[target.elementId],
-          );
+          const node = widgetFrame(context.engine.scene.get(target.elementId));
+          return node !== null
+            && fnWidgetRuntimeLocalTargetMatchesElement(target, node);
         },
-      });
-      const widgetManager = new WidgetManagerService({
-        crdtService: context.services.crdt,
-        contextMenuService: context.services.contextMenu,
-        historyService: context.services.history,
-        selectionService: context.services.selection,
-        sceneService: context.services.scene,
-        elementService: context.services.element,
-        toolService: context.services.tool,
-        portalService: context.services.portal,
-        product: () => context.services.scene.product,
-        renderOrderService: context.services.renderOrder,
-        confirmDialogService: context.services.confirmDialog,
-        browser: args.widgetBrowser,
-        neutralHost: {
-          canvasId: context.config.canvasId,
-          runtime: widgetRuntime,
-        },
-      });
-      const previewFrames = new DraftPreviewFrameService({
-        api: args.chatApi,
-        application: args.application,
-        browser: args.widgetBrowser,
-        mountArtifact: widgetMount,
-        crdt: context.services.crdt,
-        history: context.services.history,
-        renderOrder: context.services.renderOrder,
-        selection: context.services.selection,
-        tool: context.services.tool,
-      });
-      const widgetPlacement = new WidgetPlacementService({
-        api: args.chatApi,
-        browser: args.widgetBrowser,
-        coordinator: placementCoordinator,
-        dropPlacement: context.services.widgetPlacement,
-        previewFrames,
-        widgetManager,
       });
 
-      return {
-        services: [
-          {
-            name: "widget-capsule-host",
-            startOrder: 119,
-            service: {
-              name: "widget-capsule-host",
-              stop: () => widgetRuntime.destroy(),
-            },
+      const actionHandlers = new Map<string, Map<string, () => void>>();
+      const registrations = new Map<string, TPortalRegistration>();
+
+      const persistAiPayload = (
+        nodeId: string,
+        payload: TAiWidgetPayload,
+      ): void => {
+        const current = widgetFrame(context.engine.scene.get(nodeId));
+        if (current === null) return;
+        context.engine.scene.apply([{
+          type: 'upsert',
+          node: fnWithAiWidgetPayload(current, payload),
+        }], { source: 'vibecanvas:ai-chat' });
+      };
+
+      const mountAiWidget = (
+        root: HTMLDivElement,
+        node: Readonly<TWidgetFrameNode>,
+      ): (() => void) => {
+        root.replaceChildren();
+        const storedPayload = fnAiWidgetPayload(node) ?? {};
+        const initialSessionId = typeof storedPayload.sessionId === 'string'
+          && storedPayload.sessionId.length > 0
+          ? storedPayload.sessionId
+          : createAiSessionId(args);
+        let currentSessionId = initialSessionId;
+        if (storedPayload.sessionId !== initialSessionId) {
+          persistAiPayload(node.id, { sessionId: initialSessionId });
+        }
+        const handlers = new Map<string, () => void>();
+        actionHandlers.set(node.id, handlers);
+        const dispose = render(() => AiChat({
+          apiService: args.chatApi,
+          application: args.application,
+          browser: args.chatBrowser,
+          id: node.id,
+          titleBar: createTitleBarPortal(handlers),
+          sessionId: initialSessionId,
+          aiChatPreference: storedPayload,
+          onAiChatPreferenceChange: (preference) => {
+            persistAiPayload(node.id, {
+              ...preference,
+              sessionId: currentSessionId,
+            });
           },
-          { name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager },
-          { name: "draft-preview-frame", startOrder: 121, service: previewFrames },
-          { name: "widget-placement", startOrder: 122, service: widgetPlacement },
-        ],
-        plugins: [
-          createDraftPreviewPlugin({ previewFrames, widgetManager }),
-          createAiPlugin({
-            api: args.chatApi,
-            application: args.application,
-            browser: args.chatBrowser,
-            createId: args.widgetBrowser.createId,
-            nowDate: args.widgetBrowser.nowDate,
-            widgetManager,
-            openWidgetPreview: (openArgs) => previewFrames.open(openArgs),
+          onResetSessionId: () => {
+            const sessionId = createAiSessionId(args);
+            currentSessionId = sessionId;
+            persistAiPayload(node.id, {
+              ...storedPayload,
+              sessionId,
+            });
+            return sessionId;
+          },
+          onOpenWidgetPreview: async (
+            _reference: TChatWidgetDraftReference,
+          ) => {
+            context.config.notification?.showInfo(
+              'Preview placement',
+              'Publish the widget to place it on the authoritative canvas.',
+            );
+          },
+        }), root);
+        return () => {
+          actionHandlers.delete(node.id);
+          dispose();
+          root.replaceChildren();
+        };
+      };
+
+      const registerPortal = (
+        node: Readonly<TWidgetFrameNode>,
+      ): TPortalRegistration | null => {
+        const extension = fnCanvasWidgetExtension(node);
+        const portalId = node.portal?.portalId;
+        if (extension === null || portalId === undefined) return null;
+        let geometry: TPortalGeometry | null = null;
+        let visible = true;
+        let owner: TWidgetUiRuntimeRenderOwner | null = null;
+        const updateViewport = () => {
+          owner?.setViewport(capsuleViewport(
+            geometry,
+            visible,
+            context.engine.camera.state.zoom,
+          ));
+        };
+        const unregister = context.engine.portals.register({
+          portalId,
+          mount({ host }) {
+            const current = widgetFrame(context.engine.scene.get(node.id));
+            if (current === null) return undefined;
+            const currentExtension = fnCanvasWidgetExtension(current);
+            if (currentExtension?.type === 'ui-widget') {
+              if (currentExtension.kind !== 'ai') {
+                host.textContent = `Unsupported widget kind: ${currentExtension.kind}`;
+                return () => host.replaceChildren();
+              }
+              return mountAiWidget(host, current);
+            }
+            if (currentExtension?.type !== 'widget-instance') return undefined;
+            owner = widgetRuntime.renderOwned({
+              canvasId: context.config.canvasId,
+              element: current,
+              root: host,
+              initialViewport: capsuleViewport(
+                geometry,
+                visible,
+                context.engine.camera.state.zoom,
+              ),
+            });
+            return async () => {
+              const mounted = owner;
+              owner = null;
+              await mounted?.destroy('canvas portal unmounted');
+              host.replaceChildren();
+            };
+          },
+          onGeometryChange(next) {
+            geometry = next;
+            updateViewport();
+          },
+          onVisibilityChange(next) {
+            visible = next;
+            updateViewport();
+          },
+        });
+        return {
+          signature: fnCanvasWidgetMountSignature(node),
+          unregister,
+        };
+      };
+
+      const reconcilePortals = (): void => {
+        const expected = new Map(
+          context.engine.scene
+            .query((candidate) => (
+              candidate.kind === 'widget-frame'
+              && candidate.portal !== undefined
+              && fnCanvasWidgetExtension(candidate) !== null
+            ))
+            .map((candidate) => [
+              (candidate as Readonly<TWidgetFrameNode>).portal!.portalId,
+              candidate as Readonly<TWidgetFrameNode>,
+            ]),
+        );
+        for (const [portalId, registration] of registrations) {
+          if (expected.has(portalId)) continue;
+          registration.unregister();
+          registrations.delete(portalId);
+        }
+        for (const [portalId, node] of expected) {
+          const signature = fnCanvasWidgetMountSignature(node);
+          const existing = registrations.get(portalId);
+          if (existing?.signature === signature) continue;
+          existing?.unregister();
+          const next = registerPortal(node);
+          if (next === null) registrations.delete(portalId);
+          else registrations.set(portalId, next);
+        }
+      };
+
+      const addPublishedWidget = (
+        reference: TWidgetPlacementRef,
+        bounds: TWidgetFrameBounds,
+        label: string,
+      ): void => {
+        const validated = fnValidateDirectPublishedWidgetPlacement({
+          reference,
+          bounds,
+        });
+        if (validated.kind !== 'valid') {
+          throw new Error(
+            validated.kind === 'invalid'
+              ? validated.message
+              : 'Publish the widget before placing it on this canvas.',
+          );
+        }
+        const siblings = context.engine.scene.childrenOf(
+          CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+        );
+        const commands: TSerializedSceneCommand[] = [];
+        let orderKey = orderKeyBetween(siblings.at(-1)?.orderKey ?? null, null);
+        if (orderKey === null) {
+          const keys = createEvenOrderKeys(siblings.length + 1);
+          for (let index = 0; index < siblings.length; index += 1) {
+            commands.push({
+              type: 'upsert',
+              node: { ...siblings[index]!, orderKey: keys[index]! },
+            });
+          }
+          orderKey = keys.at(-1)!;
+        }
+        const viewport = context.engine.camera.visibleWorldBounds();
+        const id = args.widgetBrowser.createId();
+        commands.push({
+          type: 'upsert',
+          node: fnCreatePublishedWidgetNode({
+            id,
+            parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+            orderKey,
+            position: {
+              x: (viewport.minX + viewport.maxX - bounds.width) / 2,
+              y: (viewport.minY + viewport.maxY - bounds.height) / 2,
+            },
+            size: bounds,
+            title: label,
+            instanceId: args.widgetBrowser.createId(),
+            definitionId: validated.descriptor.definitionId,
+            revisionId: validated.descriptor.revisionId,
           }),
-          createWidgetPlugin({
-            application: args.application,
-            transport: args.widgetTransport,
-            widgetManager,
-            widgetPlacement,
-          }),
-        ],
+        });
+        context.engine.scene.apply(commands, {
+          source: 'vibecanvas:widget-placement',
+        });
+        context.editor.setSelection([id], { focusedNodeId: id });
+        context.config.notification?.showSuccess(`${label} added to canvas`);
+      };
+
+      const placement: TWidgetPlacementPort = {
+        beginPointerSession() {
+          return false;
+        },
+        async addToCanvas(placementArgs) {
+          addPublishedWidget(
+            placementArgs.reference,
+            placementArgs.bounds,
+            placementArgs.label,
+          );
+        },
+      };
+      const unregisterPlacement = placementCoordinator.register(placement);
+      const unsubscribeScene = context.engine.scene.subscribe(reconcilePortals);
+      const unsubscribeCamera = context.engine.camera.subscribe(() => {
+        context.engine.portals.syncNow();
+      });
+      const unsubscribeActivation = context.widgets.subscribeActivation(
+        (activation) => {
+          if (activation.type === 'header-button') {
+            actionHandlers.get(activation.widgetId)?.get(activation.itemId)?.();
+            return;
+          }
+          if (
+            activation.type === 'traffic-light'
+            && activation.control === 'close'
+          ) {
+            context.engine.scene.transaction((tx) => {
+              tx.remove(activation.widgetId, { descendants: 'remove' });
+            }, { source: 'vibecanvas:widget-close' });
+          }
+        },
+      );
+      reconcilePortals();
+
+      return {
+        async dispose() {
+          unregisterPlacement();
+          unsubscribeActivation();
+          unsubscribeCamera();
+          unsubscribeScene();
+          for (const registration of registrations.values()) {
+            registration.unregister();
+          }
+          registrations.clear();
+          actionHandlers.clear();
+          await widgetRuntime.destroy();
+        },
       };
     },
   };
@@ -173,6 +469,6 @@ export type {
   TAiChatBrowserPort,
   TWidgetBrowserPort,
   TWidgetTransportPort,
-} from "../ports";
-export { createWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
-export type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
+} from '../ports';
+export { createWidgetPlacementCoordinator } from '../widget-placement/WidgetPlacementCoordinator';
+export type { TWidgetPlacementCoordinator } from '../widget-placement/WidgetPlacementCoordinator';

@@ -200,7 +200,7 @@ describe('WidgetDetailPage inspector tabs', () => {
     selectTab('collaborative-state');
     await vi.waitFor(() => {
       expect(host.textContent).toContain('Instance-scoped collaborative state');
-      expect(host.textContent).toContain('Automerge state document');
+      expect(host.textContent).toContain('centralized versioned JSON state');
       expect(host.textContent).toContain('revision-7');
       expect(host.textContent).toContain('420 × 320');
     });

@@ -16,7 +16,6 @@ describe('txSwitchBrowserTenant', () => {
     const calls: string[] = [];
     await txSwitchBrowserTenant({
       disconnect: async () => { calls.push('disconnect'); },
-      clearAutomerge: async () => { calls.push('clear-automerge'); },
       activateClientState: (received) => { calls.push(`client-state:${received.orgId}`); },
       connect: (received) => { calls.push(`connect:${received.orgId}`); },
       bootstrap: async (received) => { calls.push(`bootstrap:${received.orgId}`); },
@@ -24,7 +23,6 @@ describe('txSwitchBrowserTenant', () => {
 
     expect(calls).toEqual([
       'disconnect',
-      'clear-automerge',
       'client-state:org-b',
       'connect:org-b',
       'bootstrap:org-b',

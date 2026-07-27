@@ -38,9 +38,7 @@ const sdkDir = path.join(rootDir, "packages/sdk")
 const wrapperDir = path.join(rootDir, "apps/vibecanvas")
 const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
 const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/migrations")
-const forbiddenBinaryMarkers = [
-  "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
-] as const
+const forbiddenBinaryMarkers: readonly string[] = []
 const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
 const darwinEntitlementsPath = path.join(__dirname, "vibecanvas.entitlements.plist")
 const require = createRequire(import.meta.url)
@@ -460,12 +458,6 @@ async function main() {
     return
   }
 
-  const automergeResolvedEntrypoint = Bun.resolveSync("@automerge/automerge", path.join(frontendDir, "package.json"))
-  const automergeBase64Entrypoint = path.join(path.dirname(automergeResolvedEntrypoint), "fullfat_base64.js")
-  if (!existsSync(automergeBase64Entrypoint)) {
-    throw new Error(`Automerge base64 entrypoint not found: ${automergeBase64Entrypoint}`)
-  }
-
   // Read release metadata from wrapper package.json
   const wrapperSourcePkg = await Bun.file(path.join(wrapperDir, "package.json")).json() as {
     description?: string
@@ -565,16 +557,6 @@ async function main() {
           VIBECANVAS_CHANNEL: JSON.stringify(channel),
           VIBECANVAS_RELEASE_DOWNLOAD_BASE: JSON.stringify(releaseDownloadBase),
         },
-        plugins: [
-          {
-            name: "alias-automerge-base64-entrypoint",
-            setup(build) {
-              build.onResolve({ filter: /^@automerge\/automerge$/ }, () => {
-                return { path: automergeBase64Entrypoint }
-              })
-            },
-          },
-        ],
       })
 
       if (!result.success) {

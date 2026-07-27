@@ -20,7 +20,7 @@ type TOrpcWebSocketData = {
 
 type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'agent'
-  | 'automerge'
+  | 'canvas'
   | 'db'
   | 'eventPublisher'
   | 'functionInvocation'
@@ -29,6 +29,7 @@ type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'widget'
   | 'widgetCapsuleHostConfiguration'
   | 'widgetRuntimeLoadAdmission'
+  | 'widgetState'
 >;
 
 function createOrpcTenantContext(
@@ -37,13 +38,14 @@ function createOrpcTenantContext(
 ): TApiContext {
   return {
     tenant,
-    automerge: services.automerge,
+    canvas: services.canvas,
     db: services.db,
     eventPublisher: services.eventPublisher,
     functionInvocation: services.functionInvocation,
     humanResourceSecret: services.humanResourceSecret,
     resource: services.resource,
     widget: services.widget,
+    widgetState: services.widgetState,
     widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
     agent: createLazyTenantServiceCapability<TAgentApiCapability>(
@@ -60,7 +62,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         return;
       }
 
-      const automerge = ctx.services.require('automerge');
+      const canvas = ctx.services.require('canvas');
       const db = ctx.services.require('db');
       const eventPublisher = ctx.services.require('eventPublisher');
       const functionInvocation = ctx.services.require('functionInvocation');
@@ -71,6 +73,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         'widgetCapsuleHostConfiguration',
       );
       const widgetRuntimeLoadAdmission = ctx.services.require('widgetRuntimeLoadAdmission');
+      const widgetState = ctx.services.require('widgetState');
       const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
@@ -92,13 +95,14 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         const tenant = socket.data.tenant;
         void handler.message(ws as never, message, {
           context: createOrpcTenantContext(tenant, {
-            automerge,
+            canvas,
             db,
             eventPublisher,
             functionInvocation,
             humanResourceSecret,
             resource,
             widget,
+            widgetState,
             widgetCapsuleHostConfiguration,
             widgetRuntimeLoadAdmission,
             agent,

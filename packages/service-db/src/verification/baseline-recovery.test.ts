@@ -67,7 +67,7 @@ async function openNative(databasePath: string, readonly = false): Promise<Datab
     readonly,
     fileMustExist: readonly,
     // @ts-expect-error pinned native features are ahead of the public union.
-    experimental: ['custom_types', 'triggers', 'index_method', 'multiprocess_wal'],
+    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
   });
   await database.connect();
   await database.exec('PRAGMA foreign_keys = ON');

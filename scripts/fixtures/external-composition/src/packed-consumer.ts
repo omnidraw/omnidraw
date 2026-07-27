@@ -63,7 +63,7 @@ export async function runPackedPublicComposition(): Promise<void> {
   const fixture = createManagedCompositionFixture()
   await fixture.runtime.boot()
   try {
-    assert(fixture.bootEvidence.length === 9, 'The packed managed composition did not boot every fake service.')
+    assert(fixture.bootEvidence.length === 8, 'The packed managed composition did not boot every fake service.')
     const hostConfiguration = await fixture.services.widgetCapsuleHostConfiguration.read()
     assert(
       hostConfiguration.signingKeys.every((key) => !('privateKey' in key)),

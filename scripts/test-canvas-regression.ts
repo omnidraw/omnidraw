@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable gate for renderer, widget hosting, and collaboration behavior.
+ * @file Durable gate for the authoritative canvas and widget-state runtime.
  */
 
 import { resolve } from "node:path";
@@ -16,31 +16,30 @@ const REPO_ROOT = resolve(import.meta.dir, "..");
 
 const suites: readonly TRegressionSuite[] = [
   {
-    name: "canvas interactions and deterministic CRDT state",
+    name: "Cangine canvas document runtime",
     cwd: resolve(REPO_ROOT, "packages/canvas"),
     command: ["bun", "run", "test"],
   },
   {
-    name: "widget frame, portal, fullscreen, placement, clone, and draft Preview",
+    name: "widget frame and Capsule host runtime",
     cwd: resolve(REPO_ROOT, "packages/ui-ai-chat"),
     command: [
       "node",
       "./node_modules/vitest/vitest.mjs",
       "--run",
-      "tests/widget",
-      "tests/widget-placement",
-      "tests/draft-preview",
+      "tests/widget-runtime",
+      "tests/canvas-extension",
     ],
   },
   {
-    name: "Automerge service and reconnect adapter compatibility",
-    cwd: resolve(REPO_ROOT, "packages/service-automerge"),
-    command: [
-      "bun",
-      "test",
-      "tests/AutomergeService.test.ts",
-      "tests/websocket.adapter.test.ts",
-    ],
+    name: "authoritative canvas service",
+    cwd: resolve(REPO_ROOT, "packages/service-canvas"),
+    command: ["bun", "test"],
+  },
+  {
+    name: "centralized widget state service",
+    cwd: resolve(REPO_ROOT, "packages/service-widget-state"),
+    command: ["bun", "test"],
   },
 ];
 
@@ -50,7 +49,6 @@ async function runSuite(suite: TRegressionSuite): Promise<void> {
     cwd: suite.cwd,
     env: {
       ...process.env,
-      VIBECANVAS_SILENT_AUTOMERGE_LOGS: "1",
       VIBECANVAS_SILENT_DB_MIGRATIONS: "1",
     },
     stdin: "inherit",

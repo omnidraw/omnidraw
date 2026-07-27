@@ -1,0 +1,21 @@
+{
+  "name": "@vibecanvas/canvas-contract",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./CONSTANTS": "./src/CONSTANTS.ts",
+    "./types": "./src/types.ts",
+    "./validation": "./src/validation.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omnidraw/cangine": "file:../canvas/vendor/omnidraw-cangine-0.2.2.tgz"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

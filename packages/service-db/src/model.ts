@@ -45,12 +45,6 @@ export const ZWidgetError = z.object({
   occurredAt: ZTimestamp.optional(),
 });
 
-export const ZAutomergeRepoData = z.object({
-  key: z.string(),
-  updated_at: ZTimestamp,
-  data: ZBlob,
-});
-
 export const ZAccount = z.object({
   id: z.string(),
   kind: ZAccountKind,
@@ -64,7 +58,7 @@ export const ZAccount = z.object({
 export const ZCanvas = z.object({
   id: z.string(),
   name: z.string(),
-  automerge_url: z.string(),
+  revision: z.number().int().nonnegative(),
   created_at: ZTimestamp,
 });
 
@@ -146,7 +140,6 @@ export type TDbResourceDraftChangeKind = z.infer<typeof ZDbResourceDraftChangeKi
 export type TDbResourceApplyStatus = z.infer<typeof ZDbResourceApplyStatus>;
 export type TWidgetErrorPhase = z.infer<typeof ZWidgetErrorPhase>;
 export type TWidgetError = z.infer<typeof ZWidgetError>;
-export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
 export type TAccount = z.infer<typeof ZAccount>;
 export type TCanvas = z.infer<typeof ZCanvas>;
 export type TCanvasMember = z.infer<typeof ZCanvasMember>;

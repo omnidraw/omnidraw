@@ -2,6 +2,7 @@ import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
 import type { IPlugin } from '@vibecanvas/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
+import { DEFAULT_CANVAS_CLI_PORTAL, txCmdCanvas } from './cmds/cmd.canvas';
 import { txCmdUninstall } from './cmds/cmd.uninstall';
 import { txCmdUpgrade } from './cmds/cmd.upgrade';
 import { fnBuildUnknownCommandError, fnPrintCommandError } from './core/fn.print-command-result';
@@ -14,6 +15,7 @@ Usage:
 
 Commands:
   serve     Start the vibecanvas runtime (default when no command given)
+  canvas    Query and mutate a running canvas server
   upgrade   Check for and install updates
   uninstall Remove the installed binary and local Vibecanvas data
 
@@ -30,6 +32,8 @@ Examples:
   vibecanvas
   vibecanvas serve --port 3001
   vibecanvas serve --data-dir ./tmp/vibecanvas-home
+  vibecanvas canvas list --json
+  vibecanvas canvas query --canvas <id> --kind rect --json
   vibecanvas upgrade
   vibecanvas upgrade --check
   vibecanvas uninstall --dry-run
@@ -66,6 +70,11 @@ function createCliPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
           fnPrintCommandError(fnBuildUnknownCommandError('root', ctx.config.subcommand), wantsJson);
           if (!wantsJson) printHelp();
           process.exitCode = 1;
+          return;
+        }
+
+        if (ctx.config.command === 'canvas') {
+          await txCmdCanvas(DEFAULT_CANVAS_CLI_PORTAL, { config: ctx.config });
           return;
         }
 

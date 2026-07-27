@@ -107,7 +107,6 @@ function databaseForTarget(options: Readonly<{
     status: string;
   }> | null;
   memberAccountIds?: readonly string[];
-  projectionCurrent?: boolean;
 }> = {}): Database {
   const row = {
     canvas_id: TENANT.canvasId!,
@@ -124,10 +123,6 @@ function databaseForTarget(options: Readonly<{
           const [accountId, orgId, widgetInstanceId] = values;
           if (
             options.target === null
-            || (
-              options.projectionCurrent === false
-              && sql.includes('widget_instance_projection_heads')
-            )
             || orgId !== TENANT.orgId
             || widgetInstanceId !== WIDGET_INSTANCE_ID
             || !memberAccountIds.includes(String(accountId))
@@ -377,16 +372,6 @@ describe('FunctionService host authority', () => {
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
     await inactive.stop();
 
-    const delayedProjection = createService({
-      database: databaseForTarget({ projectionCurrent: false }),
-    });
-    await expect(delayedProjection.service.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      functionName: 'run', input: {}, idempotencyKey: 'key',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(delayedProjection.calls).toHaveLength(0);
-    await delayedProjection.service.stop();
-
     const conflict = createService({
       invoke: async () => ({
         status: 'conflict',
@@ -401,10 +386,10 @@ describe('FunctionService host authority', () => {
     await conflict.stop();
   });
 
-  test('maps a projection race at durable invocation creation to the stable target code', async () => {
+  test('maps an identity race at durable invocation creation to the stable target code', async () => {
     const raced = createService({
       invoke: async () => {
-        throw Object.assign(new Error('durable projection moved'), {
+        throw Object.assign(new Error('durable widget identity moved'), {
           code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND',
         });
       },
@@ -414,7 +399,7 @@ describe('FunctionService host authority', () => {
       widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run',
       input: {},
-      idempotencyKey: 'projection-race',
+      idempotencyKey: 'identity-race',
     })).rejects.toMatchObject({
       code: 'WIDGET_INSTANCE_NOT_FOUND',
       message: 'Widget instance was not found.',

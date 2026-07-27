@@ -6,7 +6,8 @@ apps/server -> bun server
 apps/vibecanvas -> installable binary for npm package
 
 packages/api -> consolidated oRPC contracts and handlers by domain
-packages/canvas -> canvas editor core, Konva rendering, Automerge collaboration, and widgets
+packages/canvas -> Cangine canvas runtime, authoritative document client, and widgets
+packages/canvas-contract -> shared Cangine item, command, event, and query contracts
 packages/function-runtime -> public short-lived function contracts and service interfaces
 packages/orpc-client -> typed browser WebSocket client aggregating the oRPC APIs
 packages/resource-runtime -> public resource capability, provider, and gateway contracts
@@ -14,10 +15,11 @@ packages/runtime -> plugin lifecycle, service registry, and runtime orchestratio
 packages/sdk -> publishable widget and actor authoring SDK
 packages/service-actor -> actor runtime, supervision, manifests, and resource bindings
 packages/service-agent -> Pi agent sessions, approvals, widget generation, and publishing
-packages/service-automerge -> Automerge document persistence and WebSocket synchronization
+packages/service-canvas -> authoritative canvas commands, snapshots, queries, and events
 packages/service-db -> Turso-backed application data, models, and migrations
 packages/service-event-publisher -> runtime event publication to API subscription streams
 packages/service-kv -> persistent key-value service backed by the database service
+packages/service-widget-state -> centralized versioned widget JSON state
 packages/service-theme -> built-in themes and runtime theme synchronization
 packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives
@@ -30,12 +32,9 @@ We use @tasks/BASED.md to manage our work.
 When you are tasks to generate new task plans. Think if a mockup img is useful.
 When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
 
-Notes:
-- Root `package.json` has a `postinstall` hook for `scripts/patch-automerge-repo-throttle.mjs`.
-- Script patches installed `@automerge/automerge-repo` throttle helpers under `node_modules/.bun`.
-- Patch clamps negative timeout delays with `Math.max(0, wait)`.
-- Reason: upstream package can emit `TimeoutNegativeWarning` in dev/runtime.
-- Do not remove unless upstream fix is verified and hook is removed on purpose.
+Canvas persistence is one JSONB `canvas_items` row per authored Cangine node.
+CanvasService is the only durable canvas authority, and WidgetStateService is
+the only widget-instance state authority.
 
 ## Functional Core Directive
 

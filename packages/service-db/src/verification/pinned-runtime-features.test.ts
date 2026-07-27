@@ -10,7 +10,7 @@ const databases: Database[] = [];
 async function openTemporaryDatabase() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-turso-feature-probe-"));
   const db = await connect(path.join(root, "probe.db"), {
-    experimental: ["custom_types"] as never,
+    experimental: ["custom_types", "generated_columns"] as never,
   });
   temporaryRoots.push(root);
   databases.push(db);
@@ -60,6 +60,19 @@ describe("pinned @tursodatabase/database feature probe", () => {
       CREATE UNIQUE INDEX probe_one_active_child
         ON probe_children (org_id, parent_id)
         WHERE state = 'active';
+
+      CREATE TABLE probe_jsonb_items (
+        id TEXT PRIMARY KEY NOT NULL,
+        item_json BLOB NOT NULL,
+        kind TEXT GENERATED ALWAYS AS (
+          json_extract(item_json, '$.kind')
+        ) VIRTUAL NOT NULL,
+        CHECK (typeof(item_json) = 'blob'),
+        CHECK (json_valid(json(item_json)))
+      ) STRICT;
+
+      CREATE INDEX probe_jsonb_kind
+        ON probe_jsonb_items (kind, id);
     `);
 
     const insertParent = await db.prepare(
@@ -72,6 +85,10 @@ describe("pinned @tursodatabase/database feature probe", () => {
     );
     await insertParent.run("org-a", "parent-a", "{}", "queued", 1, 1_753_113_600_123);
     await insertChild.run("org-a", "child-a", "parent-a", "active");
+    await (await db.prepare(`
+      INSERT INTO probe_jsonb_items (id, item_json)
+      VALUES (?, jsonb(?))
+    `)).run("item-a", '{"kind":"rect"}');
 
     await expect(insertChild.run("org-a", "child-b", "parent-a", "active")).rejects.toThrow();
     await expect(insertChild.run("org-b", "child-c", "parent-a", "closed")).rejects.toThrow();
@@ -106,6 +123,20 @@ describe("pinned @tursodatabase/database feature probe", () => {
     expect(await (await db.prepare("PRAGMA table_info(probe_children)")).all()).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "org_id", notnull: 1, type: "TEXT" })]),
     );
+    expect(await (await db.prepare("PRAGMA table_xinfo(probe_jsonb_items)")).all()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "kind", hidden: 2, notnull: 1, type: "TEXT" }),
+      ]),
+    );
+    expect(await (await db.prepare(`
+      SELECT id, kind, typeof(item_json) AS storage_type
+      FROM probe_jsonb_items
+      WHERE kind = 'rect'
+    `)).get()).toEqual({
+      id: "item-a",
+      kind: "rect",
+      storage_type: "blob",
+    });
     expect(await (await db.prepare("PRAGMA foreign_key_list(probe_children)")).all()).toHaveLength(2);
     expect(await (await db.prepare("PRAGMA index_list(probe_children)")).all()).toEqual(
       expect.arrayContaining([

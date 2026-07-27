@@ -1,8 +1,9 @@
 import { parseArgs } from 'util';
 
-type TCliCommand = 'serve' | 'upgrade' | 'uninstall' | 'unknown';
+type TCliCommand = 'serve' | 'canvas' | 'upgrade' | 'uninstall' | 'unknown';
 
 type TCliSubcommandOptions = {
+  dryRun?: boolean;
   json?: boolean;
 };
 
@@ -30,6 +31,7 @@ type TCliParsedArgv = {
 };
 
 function getDefaultCommand(commandToken: string | undefined): TCliCommand {
+  if (commandToken === 'canvas') return 'canvas';
   if (commandToken === 'upgrade') return 'upgrade';
   if (commandToken === 'uninstall') return 'uninstall';
   if (commandToken === undefined || /^\d+$/.test(commandToken)) return 'serve';
@@ -77,6 +79,7 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
       port: { type: 'string' },
       'data-dir': { type: 'string' },
       upgrade: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
     },
   });
@@ -88,7 +91,7 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
     rawArgv: [...rawArgv],
     argv,
     command,
-    subcommand: command === 'unknown' ? commandToken : undefined,
+    subcommand: command === 'canvas' ? positionals[3] : command === 'unknown' ? commandToken : undefined,
     port: parsePort(typeof values.port === 'string' ? values.port : /^\d+$/.test(commandToken ?? '') ? commandToken : undefined),
     dataDir: validateOptionValue(
       '--data-dir',
@@ -99,6 +102,7 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
     versionRequested: values.version === true,
     upgradeTarget: typeof values.upgrade === 'string' ? values.upgrade : undefined,
     subcommandOptions: {
+      dryRun: values['dry-run'] === true,
       json: values.json === true,
     },
   };

@@ -24,6 +24,7 @@ type TResult = Readonly<{ valid: true }> | Readonly<{
 }>;
 
 type TColumnRow = {
+  hidden: number;
   name: string;
   notnull: number;
   pk: number;
@@ -68,6 +69,13 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
 
 function columnSet(columns: readonly string[]): string {
   return columns.join('\u0000');
+}
+
+function generatedColumnKind(hidden: number): string {
+  if (hidden === 0) return "none";
+  if (hidden === 2) return "virtual";
+  if (hidden === 3) return "stored";
+  return `unknown:${hidden}`;
 }
 
 function canonicalForeignKey(foreignKey: TExpectedForeignKey): string {
@@ -167,7 +175,7 @@ async function fxVerifyDatabaseSchemaContract(
 
   for (const [table, expected] of Object.entries(args.expectedSchema)) {
     const columns = await (
-      await portal.db.prepare(`PRAGMA table_info(${identifier(table)})`)
+      await portal.db.prepare(`PRAGMA table_xinfo(${identifier(table)})`)
     ).all() as TColumnRow[];
     const indexes = await (
       await portal.db.prepare(`PRAGMA index_list(${identifier(table)})`)
@@ -184,12 +192,14 @@ async function fxVerifyDatabaseSchemaContract(
       fnDatabaseColumnBaseType(column.type),
       column.notnull === 1 ? 'required' : 'nullable',
       String(primaryKeyPositions.get(column.name) ?? 0),
+      generatedColumnKind(column.hidden),
     ].join('\u0000'));
     const expectedColumns = expected.columns.map((column) => [
       column.name,
       column.type,
       column.notNull ? 'required' : 'nullable',
       String(column.primaryKeyPosition),
+      column.generated,
     ].join('\u0000'));
     if (!sameStrings(actualColumns, expectedColumns)) {
       return { valid: false, reason: `table '${table}' columns or primary-key positions differ` };

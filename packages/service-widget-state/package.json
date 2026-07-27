@@ -1,0 +1,17 @@
+{
+  "name": "@vibecanvas/service-widget-state",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*"
+  }
+}

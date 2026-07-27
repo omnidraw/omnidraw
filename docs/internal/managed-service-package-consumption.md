@@ -10,6 +10,7 @@ Production releases pin one exact, reviewed package set:
 {
   "dependencies": {
     "@vibecanvas/function-runtime": "0.1.0",
+    "@vibecanvas/canvas-contract": "0.1.0",
     "@vibecanvas/resource-runtime": "0.1.0",
     "@vibecanvas/runtime": "0.1.0",
     "@vibecanvas/tenant-core": "0.1.0",
@@ -18,23 +19,31 @@ Production releases pin one exact, reviewed package set:
 }
 ```
 
-Do not use ranges, floating Git references, or copied contract files in a managed release. Update the five pins atomically after their conformance and architecture gates pass. Pin the widget manifest schema and function `runtimeAbi` accepted by that release as part of the same change; an artifact digest is an integrity value, not read authority.
+Do not use ranges, floating Git references, or copied contract files in a managed release. Update the pins atomically after their conformance and architecture gates pass. Pin the widget manifest schema and function `runtimeAbi` accepted by that release as part of the same change; an artifact digest is an integrity value, not read authority.
 
 The public ownership is:
 
 | Package | Managed implementation seam |
 | --- | --- |
+| `@vibecanvas/canvas-contract` | Cangine canvas items, commands, queries, and revision events |
 | `@vibecanvas/tenant-core` | `IIdentityProvider`, `IPlacementDirectory`, immutable tenant context |
 | `@vibecanvas/widget-contract` | `IWidgetArtifactStore`, immutable widget/artifact contracts, neutral frame/tool metadata |
 | `@vibecanvas/function-runtime` | `IFunctionDispatcher`, `IFunctionExecutor`, stores, scheduler, sandbox, and `IUsageSink` |
 | `@vibecanvas/resource-runtime` | `IResourceGateway`, Resource Store/provider contracts |
-| `@vibecanvas/runtime` | Service registry/plugin lifecycle and `ICollaborationService` |
+| `@vibecanvas/runtime` | Service registry and plugin lifecycle |
 
-Concrete local Turso, Automerge, Bun child-process, event-publisher, and actor packages are OSS adapters. They are not dependencies of the private composition root.
+Concrete local Turso, canvas authority, widget-state, Bun child-process,
+event-publisher, and actor packages are OSS adapters. They are not dependencies
+of the private composition root.
 
 ## Composition rule
 
-Private identity, placement, artifact, scheduler/executor, resource, collaboration, and usage implementations register with `createServiceRegistry()` and are selected by the private app composition root. Consolidated OSS API handlers continue to consume the same narrow capabilities. The private repository must not import `apps/cli`, a package `src` path, an API handler module, or a concrete `service-*` implementation.
+Private identity, placement, artifact, scheduler/executor, resource, canvas,
+widget-state, and usage implementations register with `createServiceRegistry()`
+and are selected by the private app composition root. Consolidated OSS API
+handlers continue to consume the same narrow capabilities. The private
+repository must not import `apps/cli`, a package `src` path, an API handler
+module, or a concrete `service-*` implementation.
 
 The executable proof is [`scripts/fixtures/external-composition`](../../scripts/fixtures/external-composition). It is intentionally outside `apps/cli`, declares exact release dependencies, and imports package export maps only.
 

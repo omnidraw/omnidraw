@@ -1,165 +1,242 @@
-import { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { TCanvas } from "@vibecanvas/service-db/model";
-import type { ThemeService } from "@vibecanvas/service-theme";
-import { createEffect, createResource, createSignal, Match, onCleanup, onMount, Switch } from "solid-js";
-import { findDocument } from "../automerge";
-import { buildRuntime } from "../runtime";
-import type { ICanvasRuntimeExtension } from "../extension";
-import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "../types";
-import type { TBrowserTenantScope } from "../fn.browser-tenant-scope";
-import { fnBrowserTenantScopeKey } from "../fn.browser-tenant-scope";
-import { CanvasRuntimeLifecycle } from "./CanvasRuntimeLifecycle";
+import type { IStandardCanvasEditor } from '@omnidraw/cangine/editor';
+import type { TCanvas } from '@vibecanvas/service-db/model';
+import type { ThemeService } from '@vibecanvas/service-theme';
+import {
+  For,
+  Match,
+  Show,
+  Switch,
+  createEffect,
+  createSignal,
+  onCleanup,
+  onMount,
+} from 'solid-js';
+import type { ICanvasRuntimeExtension } from '../extension';
+import {
+  fnBrowserTenantScopeKey,
+  type TBrowserTenantScope,
+} from '../fn.browser-tenant-scope';
+import { buildRuntime, type TCanvasRuntime } from '../runtime';
+import type {
+  TCanvasDocumentTransport,
+} from '../services/CanvasDocumentService';
+import type {
+  TCanvasImagePort,
+  TCanvasToolbarGroupsPort,
+} from '../types';
+import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
+import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
 
 export type TBackendCanvas = TCanvas;
 
 type CanvasPageProps = {
   canvas: TBackendCanvas;
   tenant: TBrowserTenantScope;
+  transport: TCanvasDocumentTransport;
   extensions?: readonly ICanvasRuntimeExtension[];
   image: TCanvasImagePort;
   toolbarGroups?: TCanvasToolbarGroupsPort;
   store: {
     sidebarVisible: () => boolean;
     onToggleSidebar: () => void;
-  },
+  };
   notification: {
-    showSuccess(title: string, description?: string): void
-    showError(title: string, description?: string): void
-    showInfo(title: string, description?: string): void
-  }
+    showSuccess(title: string, description?: string): void;
+    showError(title: string, description?: string): void;
+    showInfo(title: string, description?: string): void;
+  };
   themeService: ThemeService;
 };
 
+type TCanvasSource = Readonly<{
+  key: string;
+  canvasId: string;
+}>;
+
+const TOOLS = [
+  ['select', 'Select'],
+  ['hand', 'Hand'],
+  ['rect', 'Rectangle'],
+  ['ellipse', 'Ellipse'],
+  ['pen', 'Pen'],
+  ['text', 'Text'],
+  ['connector', 'Connector'],
+  ['arrow', 'Arrow'],
+] as const;
 
 export function Canvas(props: CanvasPageProps) {
   let containerRef!: HTMLDivElement;
-  let activeHandle: DocHandle<TCanvasDoc> | null = null;
-  let pendingHandle: DocHandle<TCanvasDoc> | null = null;
-  let bootRetryCount = 0;
-  let bootRetryTimer: number | undefined;
-  const [bootError, setBootError] = createSignal<string | null>(null);
-  const [bootRetryToken, setBootRetryToken] = createSignal(0);
+  let activeRuntime: TCanvasRuntime | null = null;
+  let unsubscribeEditor: (() => void) | null = null;
   const [containerReady, setContainerReady] = createSignal(false);
-  const canvasSource = () => ({
-    scope: props.tenant,
-    scopeKey: fnBrowserTenantScopeKey(props.tenant),
-    url: props.canvas.automerge_url as AutomergeUrl,
-  });
-  const [docHandle] = createResource(canvasSource, async ({ scope, url }) => {
-    try {
-      return await findDocument(scope, url);
-    } catch (e) {
-      console.error("[CanvasPage] Failed to load automerge doc:", e);
-      props.notification.showError("Failed to load automerge doc");
-      throw e
-    }
+  const [booting, setBooting] = createSignal(true);
+  const [bootError, setBootError] = createSignal<string | null>(null);
+  const [editor, setEditor] = createSignal<IStandardCanvasEditor | null>(null);
+  const [editorRevision, setEditorRevision] = createSignal(0);
+
+  const source = (): TCanvasSource => ({
+    key: `${fnBrowserTenantScopeKey(props.tenant)}:${props.canvas.id}`,
+    canvasId: props.canvas.id,
   });
 
-  const lifecycle = new CanvasRuntimeLifecycle<DocHandle<TCanvasDoc>>({
-    createRuntime: (nextHandle) => {
-      return buildRuntime({
-        canvasId: props.canvas.id,
+  const lifecycle = new CanvasRuntimeLifecycle<TCanvasSource>({
+    createRuntime: (next) => {
+      activeRuntime = buildRuntime({
+        canvasId: next.canvasId,
         tenant: props.tenant,
         container: containerRef,
-        docHandle: nextHandle,
+        transport: props.transport,
+        createId: () => crypto.randomUUID(),
         onToggleSidebar: props.store.onToggleSidebar,
-        env: {
-          DEV: import.meta.env.DEV,
-        },
         image: props.image,
         toolbarGroups: props.toolbarGroups,
         notification: props.notification,
         themeService: props.themeService,
       }, props.extensions);
+      return activeRuntime;
     },
     onBootStart: () => {
+      unsubscribeEditor?.();
+      unsubscribeEditor = null;
+      setEditor(null);
+      setBooting(true);
       setBootError(null);
     },
-    onBootSuccess: (nextHandle) => {
-      if (pendingHandle === nextHandle) {
-        pendingHandle = null;
-        activeHandle = nextHandle;
-        bootRetryCount = 0;
-      }
+    onBootSuccess: () => {
+      const nextEditor = activeRuntime?.editor() ?? null;
+      setEditor(nextEditor);
+      setEditorRevision(nextEditor?.state.revision ?? 0);
+      unsubscribeEditor = nextEditor?.subscribe((state) => {
+        setEditorRevision(state.revision);
+      }) ?? null;
+      setBooting(false);
     },
-    onBootError: (error, failedHandle) => {
-      if (pendingHandle === failedHandle) {
-        pendingHandle = null;
-      }
+    onBootError: (error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("[CanvasPage] Failed to boot canvas runtime:", error);
-      props.notification.showError("Failed to start canvas", message);
+      props.notification.showError('Failed to start canvas', message);
+      setBooting(false);
       setBootError(message);
-      if (bootRetryCount === 0) {
-        bootRetryCount += 1;
-        bootRetryTimer = window.setTimeout(() => {
-          bootRetryTimer = undefined;
-          setBootRetryToken((token) => token + 1);
-        }, 0);
-      }
     },
     onShutdownError: (error) => {
-      console.error("[CanvasPage] Failed to stop canvas runtime:", error);
+      props.notification.showError(
+        'Failed to stop canvas',
+        error instanceof Error ? error.message : String(error),
+      );
     },
   });
 
-  createEffect<string | null>((previousSourceKey) => {
-    const source = canvasSource();
-    const sourceKey = `${source.scopeKey}:${source.url}`;
-    if (previousSourceKey !== null && sourceKey !== previousSourceKey) {
-      activeHandle = null;
-      pendingHandle = null;
-      bootRetryCount = 0;
-      void lifecycle.replace(null);
+  createEffect<string | null>((previousKey) => {
+    const next = source();
+    const activation = fnCanvasRuntimeActivation({
+      containerReady: containerReady(),
+      nextKey: next.key,
+      previousKey,
+    });
+    if (activation.shouldReplace) {
+      void lifecycle.replace(next);
     }
-    return sourceKey;
+    return activation.key;
   }, null);
 
-  createEffect(() => {
-    bootRetryToken();
-    const nextHandle = docHandle();
-    if (
-      !containerReady()
-      || !nextHandle
-      || nextHandle === activeHandle
-      || nextHandle === pendingHandle
-    ) return;
-
-    pendingHandle = nextHandle;
-    void lifecycle.replace(nextHandle);
-  });
-
-  onMount(() => {
-    setContainerReady(true);
-  });
-
+  onMount(() => setContainerReady(true));
   onCleanup(() => {
-    if (bootRetryTimer !== undefined) {
-      window.clearTimeout(bootRetryTimer);
-    }
-    setContainerReady(false);
-    activeHandle = null;
-    pendingHandle = null;
+    unsubscribeEditor?.();
+    unsubscribeEditor = null;
+    activeRuntime = null;
     void lifecycle.dispose();
   });
 
-  return <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--vc-canvas-background, rgba(168, 162, 158, 0.10))" }}>
-    <div ref={containerRef} style={{ position: "absolute", inset: "0" }} />
-    <div style={{ position: "absolute", inset: "0", "pointer-events": "none" }}>
+  const execute = (commandId: string) => {
+    const current = editor();
+    if (!current) return;
+    void current.executeCommand(commandId).catch((error) => {
+      props.notification.showError(
+        'Canvas action failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  };
+
+  const state = () => {
+    editorRevision();
+    return editor()?.state;
+  };
+
+  return (
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
+      background: 'var(--vc-canvas-background, rgba(168, 162, 158, 0.10))',
+    }}>
+      <div ref={containerRef} style={{ position: 'absolute', inset: '0' }} />
+      <div style={{
+        position: 'absolute',
+        top: '12px',
+        left: '12px',
+        display: 'flex',
+        gap: '4px',
+        padding: '6px',
+        'border-radius': '8px',
+        border: '1px solid var(--border)',
+        background: 'var(--popover)',
+        'box-shadow': '0 8px 24px rgba(0,0,0,.12)',
+      }}>
+        <button type="button" title="Toggle sidebar" onClick={props.store.onToggleSidebar}>☰</button>
+        <For each={TOOLS}>
+          {([id, label]) => (
+            <button
+              type="button"
+              title={label}
+              aria-pressed={state()?.activeToolId === id}
+              onClick={() => editor()?.setActiveTool(id)}
+            >
+              {label}
+            </button>
+          )}
+        </For>
+        <button
+          type="button"
+          disabled={!state()?.canUndo}
+          onClick={() => editor()?.history?.undo()}
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          disabled={!state()?.canRedo}
+          onClick={() => editor()?.history?.redo()}
+        >
+          Redo
+        </button>
+        <Show when={(state()?.selectedNodeIds.length ?? 0) > 0}>
+          <button type="button" onClick={() => execute('editor.selection.group')}>Group</button>
+          <button type="button" onClick={() => execute('editor.selection.ungroup')}>Ungroup</button>
+          <button type="button" onClick={() => execute('editor.selection.duplicate')}>Clone</button>
+          <button type="button" onClick={() => execute('editor.selection.delete')}>Delete</button>
+        </Show>
+      </div>
       <Switch>
-        <Match when={docHandle.loading}>
-          <div>Loading...</div>
-        </Match>
-        <Match when={docHandle.error}>
-          <div>Error</div>
+        <Match when={booting()}>
+          <div style={{ position: 'absolute', inset: '0', display: 'grid', 'place-items': 'center' }}>
+            Loading canvas…
+          </div>
         </Match>
         <Match when={bootError()}>
-          {(message) => <div role="alert" style={{ position: 'absolute', inset: '0', display: 'grid', 'place-items': 'center', padding: '24px', color: 'var(--vc-text-primary, #111827)' }}>
-            Canvas failed to start: {message()}
-          </div>}
+          {(message) => (
+            <div role="alert" style={{
+              position: 'absolute',
+              inset: '0',
+              display: 'grid',
+              'place-items': 'center',
+              padding: '24px',
+            }}>
+              Canvas failed to start: {message()}
+            </div>
+          )}
         </Match>
       </Switch>
     </div>
-  </div>;
+  );
 }

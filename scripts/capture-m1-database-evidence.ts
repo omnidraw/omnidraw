@@ -66,7 +66,9 @@ async function main(): Promise<void> {
   const databasePath = path.join(temporaryRoot, 'main.db');
   let database: Database | null = null;
   try {
-    database = new Database(databasePath);
+    database = new Database(databasePath, {
+      experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'],
+    });
     await database.connect();
     const bootstrap = await txRunMigrations({ db: database, Bun, TextDecoder }, {
       applicationVersion: EVIDENCE_APPLICATION_VERSION,
@@ -74,7 +76,9 @@ async function main(): Promise<void> {
       expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
     });
     await database.close();
-    database = new Database(databasePath);
+    database = new Database(databasePath, {
+      experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'],
+    });
     await database.connect();
     const restart = await txRunMigrations({ db: database, Bun, TextDecoder }, {
       applicationVersion: 'must-not-replace-ledger',

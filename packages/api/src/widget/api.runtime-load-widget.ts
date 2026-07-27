@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { ORPCError } from '@orpc/contract';
-import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc.types';
-import { zWidgetInstanceData } from '@vibecanvas/service-automerge/types/canvas-doc.zod';
+import {
+  fnReadCanvasWidgetExtension,
+  type TCanvasItemSnapshot,
+} from '@vibecanvas/canvas-contract';
 import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
@@ -21,27 +23,8 @@ import { baseWidgetOs } from './orpc';
 
 const BROWSER_ARTIFACT_CAPABILITY_TTL_MS = 60_000;
 
-type TNeutralWidgetIdentity = Readonly<{
-  type: 'widget-instance';
-  definitionId: string;
-  revisionId: string;
-  instanceId: string;
-}>;
-
-function neutralWidgetIdentity(value: unknown): TNeutralWidgetIdentity | null {
-  const parsed = zWidgetInstanceData.safeParse(value);
-  if (!parsed.success) return null;
-  const data = parsed.data;
-  return {
-    type: data.type,
-    definitionId: data.definitionId,
-    revisionId: data.revisionId,
-    instanceId: data.instanceId,
-  };
-}
-
-function widgetElementMatchesTarget(
-  element: TCanvasDoc['elements'][string] | undefined,
+function widgetItemMatchesTarget(
+  item: TCanvasItemSnapshot | undefined,
   target: Readonly<{
     elementId: string;
     widgetInstanceId: string;
@@ -49,12 +32,12 @@ function widgetElementMatchesTarget(
     revisionId: string;
   }>,
 ): boolean {
-  const data = neutralWidgetIdentity(element?.data);
-  return data !== null
-    && element?.id === target.elementId
-    && data.instanceId === target.widgetInstanceId
-    && data.definitionId === target.definitionId
-    && data.revisionId === target.revisionId;
+  if (!item || item.id !== target.elementId) return false;
+  const extension = fnReadCanvasWidgetExtension(item.item);
+  return extension?.type === 'widget-instance'
+    && extension.instanceId === target.widgetInstanceId
+    && extension.definitionId === target.definitionId
+    && extension.revisionId === target.revisionId;
 }
 
 function revisionMatchesTarget(
@@ -194,132 +177,97 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, c
     return await context.widgetRuntimeLoadAdmission.run(
       context.tenant,
       signal,
-      async (lifetimeSignal, deferCleanup) => {
-        let canvasUrl: string | null = null;
-        let handle: Readonly<{
-          whenReady(): Promise<void>;
-          doc(): TCanvasDoc;
-        }> | null = null;
-        try {
-          if (context.tenant.canvasId !== undefined && context.tenant.canvasId !== input.canvasId) {
-            throw runtimeTargetNotFound();
-          }
-          const canvas = await runtimeLoadStep(lifetimeSignal, () => (
-            context.db.canvas.findById(context.tenant, { id: input.canvasId })
+      async (lifetimeSignal) => {
+        if (context.tenant.canvasId !== undefined && context.tenant.canvasId !== input.canvasId) {
+          throw runtimeTargetNotFound();
+        }
+        const readWidgetItem = async (): Promise<TCanvasItemSnapshot> => {
+          const page = await runtimeLoadStep(lifetimeSignal, () => (
+            context.canvas.queryItems(context.tenant, {
+              canvasId: input.canvasId,
+              filter: {
+                type: 'widget-instance',
+                instanceId: input.widgetInstanceId,
+              },
+              limit: 2,
+            })
           ));
-          if (!canvas || canvas.id !== input.canvasId) throw runtimeTargetNotFound();
-          canvasUrl = canvas.automerge_url;
-          try {
-            handle = await runtimeLoadStep(lifetimeSignal, () => (
-              context.automerge.findDocument<TCanvasDoc>(context.tenant, canvasUrl!)
-            ));
-            await runtimeLoadStep(lifetimeSignal, () => handle!.whenReady());
-          } catch {
-            assertRuntimeLoadActive(lifetimeSignal);
-            throw runtimeTargetNotFound();
-          }
-          assertRuntimeLoadActive(lifetimeSignal);
-          const element = handle.doc().elements[input.elementId];
-          if (!widgetElementMatchesTarget(element, input)) throw runtimeTargetNotFound();
+          const item = page.items.find((candidate) => candidate.id === input.elementId);
+          if (!widgetItemMatchesTarget(item, input)) throw runtimeTargetNotFound();
+          return item!;
+        };
 
-          const revision = await runtimeLoadStep(lifetimeSignal, () => (
-            context.widget.getRevision(context.tenant, input.revisionId)
-          ));
-          if (!revisionMatchesTarget(revision, {
+        await readWidgetItem();
+        const revision = await runtimeLoadStep(lifetimeSignal, () => (
+          context.widget.getRevision(context.tenant, input.revisionId)
+        ));
+        if (!revisionMatchesTarget(revision, {
+          orgId: context.tenant.orgId,
+          definitionId: input.definitionId,
+          revisionId: input.revisionId,
+        })) {
+          throw runtimeTargetNotFound();
+        }
+
+        const readCapability = await runtimeLoadStep(lifetimeSignal, () => (
+          context.widget.issueBrowserUiArtifactReadCapability(context.tenant, {
+            definitionId: input.definitionId,
+            revisionId: input.revisionId,
+            artifactId: revision.uiArtifact.id,
+            artifactKind: 'ui',
+            digestSha256: revision.uiArtifact.digestSha256,
+            expiresAtMs: Date.now() + BROWSER_ARTIFACT_CAPABILITY_TTL_MS,
+          })
+        ));
+        const bytes = await runtimeLoadStep(lifetimeSignal, () => (
+          context.widget.readArtifact(context.tenant, {
+            artifactId: revision.uiArtifact.id,
+            readCapability,
+            purpose: 'browser_ui',
+          })
+        ));
+        if (!bytes || bytes.byteLength !== revision.uiArtifact.byteSize) {
+          throw runtimeTargetNotFound();
+        }
+        const exactByteDigest = createHash('sha256').update(bytes).digest('hex');
+        if (exactByteDigest !== revision.uiArtifact.digestSha256) {
+          throw runtimeTargetNotFound();
+        }
+
+        const finalRevision = await runtimeLoadStep(lifetimeSignal, () => (
+          context.widget.getRevision(context.tenant, input.revisionId)
+        ));
+        if (
+          !revisionMatchesTarget(finalRevision, {
             orgId: context.tenant.orgId,
             definitionId: input.definitionId,
             revisionId: input.revisionId,
-          })) {
-            throw runtimeTargetNotFound();
-          }
+          })
+          || !revisionArtifactBindingMatches(revision, finalRevision)
+        ) throw runtimeTargetNotFound();
+        await readWidgetItem();
+        assertRuntimeLoadActive(lifetimeSignal);
 
-          const readCapability = await runtimeLoadStep(lifetimeSignal, () => (
-            context.widget.issueBrowserUiArtifactReadCapability(context.tenant, {
-              definitionId: input.definitionId,
-              revisionId: input.revisionId,
-              artifactId: revision.uiArtifact.id,
-              artifactKind: 'ui',
-              digestSha256: revision.uiArtifact.digestSha256,
-              expiresAtMs: Date.now() + BROWSER_ARTIFACT_CAPABILITY_TTL_MS,
-            })
-          ));
-          const bytes = await runtimeLoadStep(lifetimeSignal, () => (
-            context.widget.readArtifact(context.tenant, {
-              artifactId: revision.uiArtifact.id,
-              readCapability,
-              purpose: 'browser_ui',
-            })
-          ));
-          if (!bytes || bytes.byteLength !== revision.uiArtifact.byteSize) {
-            throw runtimeTargetNotFound();
-          }
-          const exactByteDigest = createHash('sha256').update(bytes).digest('hex');
-          if (exactByteDigest !== revision.uiArtifact.digestSha256) {
-            throw runtimeTargetNotFound();
-          }
-
-          const finalRevision = await runtimeLoadStep(lifetimeSignal, () => (
-            context.widget.getRevision(context.tenant, input.revisionId)
-          ));
-          if (
-            !revisionMatchesTarget(finalRevision, {
-              orgId: context.tenant.orgId,
-              definitionId: input.definitionId,
-              revisionId: input.revisionId,
-            })
-            || !revisionArtifactBindingMatches(revision, finalRevision)
-          ) throw runtimeTargetNotFound();
-
-          try {
-            await runtimeLoadStep(lifetimeSignal, () => handle!.whenReady());
-          } catch {
-            assertRuntimeLoadActive(lifetimeSignal);
-            throw runtimeTargetNotFound();
-          }
-          const finalCanvas = await runtimeLoadStep(lifetimeSignal, () => (
-            context.db.canvas.findById(context.tenant, { id: input.canvasId })
-          ));
-          if (
-            !finalCanvas
-            || finalCanvas.id !== input.canvasId
-            || finalCanvas.automerge_url !== canvasUrl
-          ) throw runtimeTargetNotFound();
-          assertRuntimeLoadActive(lifetimeSignal);
-          let finalElement: TCanvasDoc['elements'][string] | undefined;
-          try {
-            finalElement = handle.doc().elements[input.elementId];
-          } catch {
-            throw runtimeTargetNotFound();
-          }
-          if (!widgetElementMatchesTarget(finalElement, input)) throw runtimeTargetNotFound();
-          assertRuntimeLoadActive(lifetimeSignal);
-
-          const browserFunctionContract = runtimeBrowserFunctionContract(finalRevision);
-          const { server: _server, ...browserManifest } = finalRevision.manifest;
-          return {
-            identity: {
-              canvasId: input.canvasId,
-              elementId: input.elementId,
-              widgetInstanceId: input.widgetInstanceId,
-              definitionId: input.definitionId,
-              revisionId: input.revisionId,
-            },
-            manifest: browserManifest,
-            artifact: {
-              digestSha256: finalRevision.uiArtifact.digestSha256,
-              byteSize: finalRevision.uiArtifact.byteSize,
-              bytesBase64: Buffer.from(bytes).toString('base64'),
-            },
-            runtimeDescriptor: finalRevision.uiRuntime,
-            functionDescriptors: [...browserFunctionContract.descriptors],
-            browserFunctionDescriptorsDigestSha256: browserFunctionContract.digestSha256,
-          };
-        } finally {
-          if (canvasUrl !== null) {
-            const releaseUrl = canvasUrl;
-            deferCleanup(() => context.automerge.releaseDocument(context.tenant, releaseUrl));
-          }
-        }
+        const browserFunctionContract = runtimeBrowserFunctionContract(finalRevision);
+        const { server: _server, ...browserManifest } = finalRevision.manifest;
+        return {
+          identity: {
+            canvasId: input.canvasId,
+            elementId: input.elementId,
+            widgetInstanceId: input.widgetInstanceId,
+            definitionId: input.definitionId,
+            revisionId: input.revisionId,
+          },
+          manifest: browserManifest,
+          artifact: {
+            digestSha256: finalRevision.uiArtifact.digestSha256,
+            byteSize: finalRevision.uiArtifact.byteSize,
+            bytesBase64: Buffer.from(bytes).toString('base64'),
+          },
+          runtimeDescriptor: finalRevision.uiRuntime,
+          functionDescriptors: [...browserFunctionContract.descriptors],
+          browserFunctionDescriptorsDigestSha256: browserFunctionContract.digestSha256,
+        };
       },
     );
   } catch (error) {

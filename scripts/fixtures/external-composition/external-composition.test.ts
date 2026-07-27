@@ -15,7 +15,6 @@ describe('external private-style managed composition', () => {
       'managed-dispatcher',
       'managed-executor',
       'managed-resources',
-      'managed-collaboration',
       'managed-usage',
     ])
     expect(await fixture.services.identity.resolveIdentity({ requestId: 'request', session: {} }))
@@ -43,7 +42,7 @@ describe('external private-style managed composition', () => {
     await fixture.runtime.shutdown()
   })
 
-  test('uses managed artifact, dispatcher/executor, resource, collaboration, and usage fakes', async () => {
+  test('uses managed artifact, dispatcher/executor, resource, and usage fakes', async () => {
     const fixture = createManagedCompositionFixture()
     await fixture.runtime.boot()
 
@@ -105,10 +104,6 @@ describe('external private-style managed composition', () => {
       operation: 'get',
       input: { key: 'theme' },
     })).toEqual({ output: { managed: true, orgId: MANAGED_TENANT.orgId, operation: 'get' } })
-
-    expect(await fixture.services.collaboration.admitDocument(MANAGED_TENANT, 'document-managed'))
-      .toBe(true)
-    await fixture.services.collaboration.releaseDocument(MANAGED_TENANT, 'document-managed')
 
     expect(await fixture.services.usage.listUsageOutbox(MANAGED_TENANT, { limit: 10 })).toEqual([])
     expect(await fixture.services.usage.transitionUsageOutbox(MANAGED_TENANT, {

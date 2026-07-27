@@ -1,7 +1,7 @@
 import type {
   TWidgetCollaborativeJsonValue,
-  TWidgetCollaborativeStateDocument,
   TWidgetCollaborativeStateIdentity,
+  TWidgetCollaborativeStateTransportSnapshot,
 } from './interface';
 
 const MAX_COLLABORATIVE_STATE_BYTES = 64 * 1_024;
@@ -80,28 +80,23 @@ export function fnWidgetCollaborativeStateIdentitiesMatch(
     && left.elementId === right.elementId
     && left.widgetInstanceId === right.widgetInstanceId
     && left.definitionId === right.definitionId
-    && left.revisionId === right.revisionId
-    && left.stateDocumentId === right.stateDocumentId;
+    && left.revisionId === right.revisionId;
 }
 
-export function fnReadWidgetCollaborativeStateDocument(
-  value: unknown,
+export function fnNormalizeWidgetCollaborativeStateTransportSnapshot(
+  value: TWidgetCollaborativeStateTransportSnapshot,
   expectedIdentity: TWidgetCollaborativeStateIdentity,
-): TWidgetCollaborativeJsonValue {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Widget collaborative state document is invalid.');
-  }
-  const record = value as Partial<TWidgetCollaborativeStateDocument>;
-  const identity = record.identity;
+): TWidgetCollaborativeStateTransportSnapshot {
   if (
-    record.schemaVersion !== 1
-    || identity === null
-    || typeof identity !== 'object'
-    || Array.isArray(identity)
-    || !fnWidgetCollaborativeStateIdentitiesMatch(identity, expectedIdentity)
-    || !Object.prototype.hasOwnProperty.call(record, 'state')
+    !Number.isSafeInteger(value.version)
+    || value.version < 1
+    || !fnWidgetCollaborativeStateIdentitiesMatch(value.identity, expectedIdentity)
   ) {
     throw new Error('Widget collaborative state identity mismatch.');
   }
-  return fnNormalizeWidgetCollaborativeJson(record.state);
+  return Object.freeze({
+    identity: Object.freeze({ ...expectedIdentity }),
+    version: value.version,
+    state: fnNormalizeWidgetCollaborativeJson(value.state),
+  });
 }

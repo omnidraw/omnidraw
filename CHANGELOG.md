@@ -136,7 +136,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed hosted terminal image paste on deployed/remote setups by uploading clipboard images to PTY temp storage and inserting the returned shell-escaped remote path into the terminal.
 - Kept unsupported non-text terminal paste payloads on the existing Ctrl+V fallback path.
-- Fixed live canvas scene updates so Automerge changes from remote/CLI/server mutations now appear without a page refresh.
+- Fixed live canvas scene updates so remote/CLI/server mutations appear without a page refresh.
 
 ## 0.2.2
 

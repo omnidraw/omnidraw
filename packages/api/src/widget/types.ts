@@ -1,4 +1,5 @@
-import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
+import type { ICanvasService } from '@vibecanvas/service-canvas';
+import type { IWidgetStateService } from '@vibecanvas/service-widget-state';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   IWidgetArtifactReader,
@@ -9,7 +10,6 @@ import type {
   TWidgetCapsuleHostTargetBase,
   TWidgetCapsulePublicSigningKey,
 } from '@vibecanvas/widget-contract';
-import type { TCanvasDatabaseCapability } from '../interface';
 
 type TWidgetCapsuleHostConfigurationCapability =
   IWidgetCapsuleHostConfigurationReader;
@@ -17,11 +17,6 @@ type TWidgetCapsuleHostConfigurationCapability =
 type TWidgetRuntimeApiCapability = IWidgetRevisionReader
   & IWidgetArtifactReader
   & IWidgetBrowserUiArtifactReadCapabilityIssuer;
-
-type TWidgetRuntimeAutomergeCapability = Pick<
-  IAutomergeService,
-  'findDocument' | 'releaseDocument'
->;
 
 type TWidgetRuntimeLoadAdmissionCapability = Readonly<{
   run<TResult>(
@@ -39,10 +34,10 @@ type TWidgetRuntimeLoadCleanupRegistrar = (
 ) => void;
 
 type TWidgetApiContext = Readonly<{
-  automerge: TWidgetRuntimeAutomergeCapability;
-  db: TCanvasDatabaseCapability;
+  canvas: ICanvasService;
   tenant: TTenantContext;
   widget: TWidgetRuntimeApiCapability;
+  widgetState: IWidgetStateService;
   widgetCapsuleHostConfiguration: TWidgetCapsuleHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;
 }>;
@@ -54,7 +49,6 @@ export type {
   TWidgetCapsuleHostTargetBase,
   TWidgetCapsulePublicSigningKey,
   TWidgetRuntimeApiCapability,
-  TWidgetRuntimeAutomergeCapability,
   TWidgetRuntimeLoadAdmissionCapability,
   TWidgetRuntimeLoadCleanupRegistrar,
 };

@@ -3,6 +3,7 @@ export type TExpectedColumn = {
   readonly type: "BLOB" | "INTEGER" | "REAL" | "TEXT";
   readonly notNull: boolean;
   readonly primaryKeyPosition: number;
+  readonly generated: "none" | "virtual" | "stored";
 };
 
 export type TExpectedForeignKey = {
@@ -48,10 +49,9 @@ export const EXPECTED_APPLICATION_TABLES = [
   "agent_chats",
   "agent_drafts",
   "artifact_references",
+  "canvas_items",
   "canvas_members",
   "canvases",
-  "collaboration_chunks",
-  "collaboration_documents",
   "db_resource_apply_runs",
   "db_resource_backups",
   "db_resource_draft_changes",
@@ -75,6 +75,7 @@ export const EXPECTED_APPLICATION_TABLES = [
   "widget_definition_revisions",
   "widget_definitions",
   "widget_instances",
+  "widget_instance_states",
 ] as const;
 
 export const EXPECTED_APPLICATION_TABLE_COUNT = EXPECTED_APPLICATION_TABLES.length;
@@ -89,7 +90,6 @@ export const EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLE_COUNT =
 
 export const EXPECTED_WIDGET_HOST_APPLICATION_TABLES = [
   ...EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES,
-  "widget_instance_projection_heads",
 ] as const;
 
 export const EXPECTED_WIDGET_HOST_APPLICATION_TABLE_COUNT =
@@ -113,7 +113,14 @@ const column = (
   type: TExpectedColumn["type"],
   notNull: boolean,
   primaryKeyPosition = 0,
-): TExpectedColumn => ({ name, type, notNull, primaryKeyPosition });
+  generated: TExpectedColumn["generated"] = "none",
+): TExpectedColumn => ({
+  name,
+  type,
+  notNull,
+  primaryKeyPosition,
+  generated,
+});
 
 const tenantId = (name: string, primaryKeyPosition = 0) => column(name, "TEXT", true, primaryKeyPosition);
 const text = (name: string, notNull = true, primaryKeyPosition = 0) =>
@@ -144,7 +151,7 @@ export const EXPECTED_BASELINE_SCHEMA = {
     foreignKeys: [{ columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" }],
   },
   canvases: {
-    columns: [tenantId("org_id", 1), tenantId("id", 2), text("name"), text("access_policy"), tenantId("created_by_account_id"), integer("created_at_ms"), integer("updated_at_ms")],
+    columns: [tenantId("org_id", 1), tenantId("id", 2), text("name"), text("access_policy"), tenantId("created_by_account_id"), integer("created_at_ms"), integer("updated_at_ms"), integer("revision")],
     primaryKey: ["org_id", "id"], unique: [["org_id", "name"]],
     foreignKeys: [
       { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
@@ -158,6 +165,37 @@ export const EXPECTED_BASELINE_SCHEMA = {
       { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
       { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
       { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "CASCADE" },
+    ],
+  },
+  canvas_items: {
+    columns: [
+      tenantId("org_id", 1),
+      tenantId("canvas_id", 2),
+      text("id", true, 3),
+      column("item_json", "BLOB", true),
+      integer("item_revision"),
+      integer("created_at_ms"),
+      integer("updated_at_ms"),
+      column("kind", "TEXT", true, 0, "virtual"),
+      column("parent_id", "TEXT", false, 0, "virtual"),
+      column("order_key", "TEXT", true, 0, "virtual"),
+      column("widget_instance_id", "TEXT", false, 0, "virtual"),
+      column("definition_id", "TEXT", false, 0, "virtual"),
+      column("revision_id", "TEXT", false, 0, "virtual"),
+    ],
+    primaryKey: ["org_id", "canvas_id", "id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+    ],
+    requiredSqlFragments: [
+      "CHECK (typeof(item_json) = 'blob')",
+      "CHECK (json_valid(json(item_json)))",
+      "kind TEXT AS",
+      "parent_id TEXT AS",
+      "order_key TEXT AS",
+      "widget_instance_id TEXT AS",
     ],
   },
   artifact_references: {
@@ -193,21 +231,34 @@ export const EXPECTED_BASELINE_SCHEMA = {
       { columns: ["org_id", "definition_id", "revision_id"], referencesTable: "widget_definition_revisions", referencesColumns: ["org_id", "definition_id", "id"], onDelete: "RESTRICT" },
     ],
   },
-  collaboration_documents: {
-    columns: [tenantId("org_id", 1), tenantId("id", 2), text("canvas_id", false), text("widget_instance_id", false), text("automerge_url"), text("partition_key"), integer("created_at_ms"), integer("updated_at_ms")],
-    primaryKey: ["org_id", "id"], unique: [["org_id", "automerge_url"], ["org_id", "canvas_id"], ["org_id", "widget_instance_id"]],
-    foreignKeys: [
-      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
-      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
-      { columns: ["org_id", "widget_instance_id"], referencesTable: "widget_instances", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+  widget_instance_states: {
+    columns: [
+      tenantId("org_id", 1),
+      tenantId("widget_instance_id", 2),
+      integer("version"),
+      column("state_json", "BLOB", true),
+      integer("created_at_ms"),
+      integer("updated_at_ms"),
     ],
-  },
-  collaboration_chunks: {
-    columns: [tenantId("org_id", 1), tenantId("document_id", 2), text("chunk_key", true, 3), integer("sequence"), column("chunk_bytes", "BLOB", true, 0), integer("created_at_ms")],
-    primaryKey: ["org_id", "document_id", "chunk_key"], unique: [["org_id", "document_id", "sequence"]],
+    primaryKey: ["org_id", "widget_instance_id"],
+    unique: [],
     foreignKeys: [
-      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
-      { columns: ["org_id", "document_id"], referencesTable: "collaboration_documents", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+      {
+        columns: ["org_id"],
+        referencesTable: "organizations",
+        referencesColumns: ["id"],
+        onDelete: "CASCADE",
+      },
+      {
+        columns: ["org_id", "widget_instance_id"],
+        referencesTable: "widget_instances",
+        referencesColumns: ["org_id", "id"],
+        onDelete: "CASCADE",
+      },
+    ],
+    requiredSqlFragments: [
+      "CHECK (typeof(state_json) = 'blob')",
+      "CHECK (json_valid(json(state_json)))",
     ],
   },
   resource_catalog: {
@@ -553,28 +604,6 @@ export const EXPECTED_FUNCTION_RUNTIME_SCHEMA = {
 
 export const EXPECTED_WIDGET_HOST_SCHEMA = {
   ...EXPECTED_FUNCTION_RUNTIME_SCHEMA,
-  collaboration_documents: {
-    ...EXPECTED_FUNCTION_RUNTIME_SCHEMA.collaboration_documents,
-    columns: [
-      ...EXPECTED_FUNCTION_RUNTIME_SCHEMA.collaboration_documents.columns,
-      integer("content_version"),
-    ],
-    requiredSqlFragments: [
-      "content_version INTEGER NOT NULL DEFAULT 0 CHECK (content_version >= 0)",
-    ],
-  },
-  widget_instance_projection_heads: {
-    columns: [
-      tenantId("org_id", 1), tenantId("canvas_id", 2), integer("source_sequence"),
-      text("snapshot_digest_sha256"), integer("projected_at_ms"),
-    ],
-    primaryKey: ["org_id", "canvas_id"],
-    unique: [],
-    foreignKeys: [
-      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
-      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
-    ],
-  },
 } satisfies Record<(typeof EXPECTED_WIDGET_HOST_APPLICATION_TABLES)[number], TExpectedTable>;
 
 export const EXPECTED_AGENT_AUTHORING_SCHEMA = {
@@ -655,6 +684,10 @@ export const EXPECTED_INDEXES = {
   organization_memberships_status_idx: { table: "organization_memberships", columns: ["org_id", "status", "role"], unique: false, partial: false },
   canvases_creator_idx: { table: "canvases", columns: ["org_id", "created_by_account_id"], unique: false, partial: false },
   canvas_members_account_idx: { table: "canvas_members", columns: ["org_id", "account_id", "canvas_id"], unique: false, partial: false },
+  canvas_items_kind_idx: { table: "canvas_items", columns: ["org_id", "canvas_id", "kind", "id"], unique: false, partial: false },
+  canvas_items_parent_order_idx: { table: "canvas_items", columns: ["org_id", "canvas_id", "parent_id", "order_key", "id"], unique: false, partial: false },
+  canvas_items_widget_instance_idx: { table: "canvas_items", columns: ["org_id", "widget_instance_id"], unique: true, partial: true },
+  canvas_items_widget_definition_revision_idx: { table: "canvas_items", columns: ["org_id", "definition_id", "revision_id", "widget_instance_id", "id"], unique: false, partial: true },
   artifact_references_retention_idx: { table: "artifact_references", columns: ["org_id", "retention_state", "retain_until_ms"], unique: false, partial: false },
   widget_definitions_active_revision_idx: { table: "widget_definitions", columns: ["org_id", "id", "active_revision_id"], unique: false, partial: false },
   widget_definition_revisions_lookup_idx: { table: "widget_definition_revisions", columns: ["org_id", "definition_id", "revision_number"], unique: false, partial: false },
@@ -662,7 +695,6 @@ export const EXPECTED_INDEXES = {
   widget_definition_revisions_server_artifact_idx: { table: "widget_definition_revisions", columns: ["org_id", "server_artifact_id", "server_artifact_kind"], unique: false, partial: false },
   widget_definition_revisions_capsule_artifact_idx: { table: "widget_definition_revisions", columns: ["org_id", "capsule_artifact_hash"], unique: false, partial: false },
   widget_instances_definition_idx: { table: "widget_instances", columns: ["org_id", "definition_id", "revision_id"], unique: false, partial: false },
-  collaboration_documents_partition_idx: { table: "collaboration_documents", columns: ["org_id", "partition_key", "id"], unique: false, partial: false },
   resource_catalog_status_idx: { table: "resource_catalog", columns: ["org_id", "status", "created_at_ms"], unique: false, partial: false },
   resource_catalog_kind_idx: { table: "resource_catalog", columns: ["org_id", "kind", "status"], unique: false, partial: false },
   resource_bindings_resource_idx: { table: "resource_bindings", columns: ["org_id", "resource_id", "resource_kind"], unique: false, partial: false },
@@ -725,38 +757,31 @@ export const EXPECTED_AGENT_AUTHORING_INDEXES = {
 
 export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
   Object.freeze({
-    fingerprintSha256: 'eee4f706120693e69671b450ecd0b569da6399e8ae80123bc041c15315c2698c',
+    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 0,
   }),
   Object.freeze({
-    fingerprintSha256: 'eee4f706120693e69671b450ecd0b569da6399e8ae80123bc041c15315c2698c',
+    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 1,
   }),
   Object.freeze({
-    fingerprintSha256: 'eee4f706120693e69671b450ecd0b569da6399e8ae80123bc041c15315c2698c',
+    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 2,
   }),
   Object.freeze({
-    fingerprintSha256: 'eee4f706120693e69671b450ecd0b569da6399e8ae80123bc041c15315c2698c',
+    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 3,
-  }),
-  Object.freeze({
-    fingerprintSha256: 'eee4f706120693e69671b450ecd0b569da6399e8ae80123bc041c15315c2698c',
-    indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
-    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
-    tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
-    version: 4,
   }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

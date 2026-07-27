@@ -11,10 +11,12 @@
   "dependencies": {
     "@tursodatabase/database": "catalog:",
     "@tursodatabase/database-common": "0.6.1",
+    "@vibecanvas/canvas-contract": "workspace:*",
     "@vibecanvas/function-runtime": "workspace:*",
     "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
+    "@vibecanvas/service-widget-state": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*",
     "zod": "catalog:"

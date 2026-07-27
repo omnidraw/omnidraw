@@ -2,14 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { generateAutomergeUrl } from '@automerge/automerge-repo';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract';
 import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
 } from '@vibecanvas/service-db/CONSTANTS';
-import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
@@ -114,6 +113,7 @@ describe('production short-lived function composition', () => {
     const resourceOwner = services.require('resourceOwner');
     const functionOwner = services.require('functionOwner');
     const functionInvocation = services.require('functionInvocation');
+    const canvasService = services.require('canvas');
 
     await dbService.start();
     widgetOwner.start(context);
@@ -172,7 +172,6 @@ describe('production short-lived function composition', () => {
       await dbService.canvas.create(tenant, {
         id: tenant.canvasId!,
         name: 'Function canvas',
-        automerge_url: generateAutomergeUrl(),
       });
       await (await dbService.db.prepare(`
         INSERT INTO accounts (
@@ -184,21 +183,42 @@ describe('production short-lived function composition', () => {
           org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
         ) VALUES (?, ?, 'member', 'active', 1, 30, 30)
       `)).run(tenant.orgId, outsiderTenant.accountId);
-      const projectionStore = new WidgetInstanceMetadataStoreTurso(dbService.db);
-      await projectionStore.applyProjectionBatch(tenant, {
-        snapshots: [{
-          canvasId: tenant.canvasId!,
-          sourceSequence: 0,
-          projectedAtMs: 31,
-          instances: [{
-            instanceId: uuid(966),
-            elementId: 'function-element',
-            definitionId: published.definition.id,
-            revisionId: published.revision.id,
-            stateDocumentId: null,
-          }],
+      const inserted = await canvasService.execute(tenant, {
+        commandId: uuid(968),
+        canvasId: tenant.canvasId!,
+        baseRevision: 0,
+        operations: [{
+          type: 'insert',
+          item: {
+            id: 'function-element',
+            kind: 'widget-frame',
+            parentId: null,
+            orderKey: 'a0',
+            transform: {
+              position: { x: 0, y: 0 },
+              rotation: 0,
+              scale: { x: 1, y: 1 },
+              skew: { x: 0, y: 0 },
+              origin: { x: 0, y: 0 },
+            },
+            size: { width: 320, height: 240 },
+            extensions: {
+              [CANVAS_WIDGET_EXTENSION_KEY]: {
+                schemaVersion: 1,
+                type: 'widget-instance',
+                instanceId: uuid(966),
+                definitionId: published.definition.id,
+                revisionId: published.revision.id,
+              },
+            },
+          },
+        }],
+        preconditions: [{
+          type: 'item-absent',
+          itemId: 'function-element',
         }],
       });
+      expect(inserted.revision).toBe(1);
 
       await expect(functionInvocation.invokeFunction(outsiderTenant, {
         widgetInstanceId: uuid(966),
@@ -246,17 +266,23 @@ describe('production short-lived function composition', () => {
       `)).get(tenant.orgId) as { count: unknown };
       expect(Number(usage.count)).toBe(1);
 
-      await (await dbService.db.prepare(`
-        UPDATE collaboration_documents
-        SET content_version = content_version + 1
-        WHERE org_id = ? AND canvas_id = ?
-      `)).run(tenant.orgId, tenant.canvasId!);
+      await canvasService.execute(tenant, {
+        commandId: uuid(969),
+        canvasId: tenant.canvasId!,
+        baseRevision: inserted.revision,
+        operations: [{ type: 'delete', itemId: 'function-element' }],
+        preconditions: [{
+          type: 'item-revision',
+          itemId: 'function-element',
+          itemRevision: 0,
+        }],
+      });
       await expect(functionInvocation.invokeFunction(wsTenant, {
         widgetInstanceId: uuid(966),
         functionName: 'echo',
-        input: { value: 'projection-delayed' },
-        idempotencyKey: 'function-composition-projection-delayed',
-      })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+        input: { value: 'archived' },
+        idempotencyKey: 'function-composition-archived',
+      })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
     } finally {
       await functionOwner.stop();
       await resourceOwner.stop();

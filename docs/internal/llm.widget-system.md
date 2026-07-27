@@ -594,8 +594,8 @@ The main durable records are:
 - `widget_revision_sources`: immutable source provenance;
 - `artifact_references`: content-addressed artifact ownership and retention;
 - `widget_instances`: canvas element to definition/revision/instance binding;
-- `collaboration_documents` and chunks: canvas and widget-instance Automerge
-  state;
+- `canvas_items`: authored Cangine nodes and transactional widget identity;
+- `widget_instance_states`: centralized versioned widget-instance JSON state;
 - function definitions, invocations, logs, leases, and idempotency records;
 - revision resource bindings and resource catalog/provider records;
 - authoring chats and draft descriptors.

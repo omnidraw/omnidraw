@@ -10,7 +10,6 @@ import type { IResourceGateway } from '@vibecanvas/resource-runtime'
 import {
   createRuntime,
   createServiceRegistry,
-  type ICollaborationService,
   type IPlugin,
   type IService,
 } from '@vibecanvas/runtime'
@@ -38,7 +37,6 @@ declare module '@vibecanvas/runtime' {
     managedDispatcher: TManagedService<IFunctionDispatcher>
     managedExecutor: TManagedService<IFunctionExecutor>
     managedResources: TManagedService<IResourceGateway>
-    managedCollaboration: TManagedService<ICollaborationService>
     managedUsage: TManagedService<IUsageSink>
   }
 }
@@ -61,7 +59,6 @@ const MANAGED_SERVICE_NAMES = [
   'managedDispatcher',
   'managedExecutor',
   'managedResources',
-  'managedCollaboration',
   'managedUsage',
 ] as const
 
@@ -130,7 +127,6 @@ function invocationRecord(
 export function createManagedCompositionFixture() {
   const artifactDescriptors = new Map<string, TWidgetArtifactDescriptor>()
   const artifactBytes = new Map<string, Uint8Array>()
-  const admittedDocuments = new Set<string>()
   const dispatchEvidence: Array<Readonly<{
     tenant: TTenantContext
     request: TFunctionDispatchRequest
@@ -314,17 +310,6 @@ export function createManagedCompositionFixture() {
     },
   }
 
-  const collaboration: TManagedService<ICollaborationService> = {
-    name: 'managed-collaboration',
-    async admitDocument(tenant, documentId) {
-      admittedDocuments.add(`${tenant.orgId}:${documentId}`)
-      return true
-    },
-    async releaseDocument(tenant, documentId) {
-      admittedDocuments.delete(`${tenant.orgId}:${documentId}`)
-    },
-  }
-
   const usage: TManagedService<IUsageSink> = {
     name: 'managed-usage',
     async listUsageOutbox() {
@@ -347,7 +332,6 @@ export function createManagedCompositionFixture() {
   services.provide('managedDispatcher', 40, dispatcher)
   services.provide('managedExecutor', 50, executor)
   services.provide('managedResources', 60, resources)
-  services.provide('managedCollaboration', 70, collaboration)
   services.provide('managedUsage', 80, usage)
 
   const compositionProbe: IPlugin<Pick<
@@ -379,7 +363,6 @@ export function createManagedCompositionFixture() {
       dispatcher,
       executor,
       resources,
-      collaboration,
       usage,
     },
     bootEvidence,

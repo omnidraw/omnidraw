@@ -35,17 +35,18 @@ describe('parseCliArgv flag parsing', () => {
     expect(parsed.port).toBe(5000);
   });
 
-  test('parses json as the only retained generic command option', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--json']);
+  test('retains json and dry-run generic command options', () => {
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--json', '--dry-run']);
 
-    expect(parsed.subcommandOptions).toMatchObject({ json: true });
+    expect(parsed.subcommandOptions).toMatchObject({ json: true, dryRun: true });
   });
 
-  test('treats removed canvas flags as generic unknown-command arguments', () => {
+  test('keeps the canvas subcommand while command-specific flags remain in raw argv', () => {
     const parsed = parseCliArgv(['bun', 'run', 'canvas', 'query', '--canvas-name', 'ok', '--json']);
 
-    expect(parsed.command).toBe('unknown');
-    expect(parsed.subcommand).toBe('canvas');
+    expect(parsed.command).toBe('canvas');
+    expect(parsed.subcommand).toBe('query');
+    expect(parsed.rawArgv.slice(4)).toEqual(['--canvas-name', 'ok', '--json']);
     expect(parsed.subcommandOptions).toMatchObject({ json: true });
   });
 

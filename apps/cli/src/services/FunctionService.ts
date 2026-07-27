@@ -212,14 +212,6 @@ class FunctionService implements
         ON member.org_id = instance.org_id
         AND member.canvas_id = instance.canvas_id
         AND member.account_id = ?
-      INNER JOIN collaboration_documents AS canvas_document
-        ON canvas_document.org_id = instance.org_id
-        AND canvas_document.canvas_id = instance.canvas_id
-        AND canvas_document.widget_instance_id IS NULL
-      INNER JOIN widget_instance_projection_heads AS projection_head
-        ON projection_head.org_id = canvas_document.org_id
-        AND projection_head.canvas_id = canvas_document.canvas_id
-        AND projection_head.source_sequence = canvas_document.content_version
       WHERE instance.org_id = ? AND instance.id = ?
       LIMIT 1
     `)).get(
