@@ -174,6 +174,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B61](b/B61.md) - widget projection: never publish a partial persisted canvas snapshot
 - [x]: [B62](b/B62.md) - AI widget authoring: restore durable validation and sidebar refresh
 - [x]: [B63](b/B63.md) - widgets: `npm ci` rejects draft lockfile; add widget-debug-tools lab
+- [x]: [B64](b/B64.md) - widgets: restore direct drag placement after Cangine cutover
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

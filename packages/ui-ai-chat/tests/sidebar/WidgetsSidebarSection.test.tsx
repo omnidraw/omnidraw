@@ -181,7 +181,7 @@ describe('WidgetsSidebarSection selection', () => {
     expect(published).toBeDefined();
     expect(draft).toBeDefined();
     expect(draft?.closest(`.${styles.widgetRow}`)?.classList.contains(styles.draftRow)).toBe(true);
-    expect(container.querySelector<HTMLButtonElement>('button[aria-label="Add Camera draft to canvas"]')?.classList.contains(styles.draftAddButton)).toBe(true);
+    expect(container.querySelectorAll('button[aria-label^="Add Camera "]')).toHaveLength(0);
     expect(published?.getAttribute('aria-current')).toBe('page');
     expect(published?.classList.contains(styles.selected)).toBe(true);
     expect(draft?.hasAttribute('aria-current')).toBe(false);
@@ -258,6 +258,7 @@ describe('WidgetsSidebarSection selection', () => {
 
     const add = container.querySelector<HTMLButtonElement>('button[aria-label="Add Camera published to canvas"]');
     expect(add?.disabled).toBe(false);
+    expect(add?.textContent).toBe('Add to canvas');
     add?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
     expect(addToCanvas).toHaveBeenCalledWith({
@@ -265,5 +266,65 @@ describe('WidgetsSidebarSection selection', () => {
       bounds: { width: 360, height: 320 },
       label: 'Camera',
     });
+  });
+
+  test('shows Add to canvas only while a canvas placement port is active', async () => {
+    let available = false;
+    let availabilityListener: ((value: boolean) => void) | undefined;
+    const controller = {
+      apiService: {
+        api: {
+          agent: {
+            events: vi.fn(async () => [null, { async *[Symbol.asyncIterator]() {} }]),
+            widgets: { catalog: vi.fn(async () => [null, catalog()]) },
+          },
+        },
+      },
+      browser: {
+        setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
+        clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
+      },
+      invalidation: createCatalogInvalidation(),
+      widgetPlacement: {
+        available: () => available,
+        subscribe(listener: (value: boolean) => void) {
+          availabilityListener = listener;
+          listener(available);
+          return () => { availabilityListener = undefined; };
+        },
+        beginPointerSession: vi.fn(() => true),
+        addToCanvas: vi.fn(async () => undefined),
+      },
+      application: {
+        pathname: () => '/widgets/published/Camera',
+        navigate: vi.fn(),
+        notifyError: vi.fn(),
+      },
+    } as never;
+    const container = document.createElement('div');
+    host = container;
+    document.body.appendChild(container);
+    dispose = render(() => (
+      <WidgetCatalogProvider controller={controller}>
+        <WidgetsSidebarSection controller={controller} />
+      </WidgetCatalogProvider>
+    ), container);
+
+    await vi.waitFor(() => expect(
+      container.querySelector('button[aria-label^="Camera, published."]'),
+    ).not.toBeNull());
+    expect(container.querySelector('button[aria-label="Add Camera published to canvas"]')).toBeNull();
+
+    available = true;
+    availabilityListener?.(true);
+    await vi.waitFor(() => expect(
+      container.querySelector('button[aria-label="Add Camera published to canvas"]'),
+    ).not.toBeNull());
+
+    available = false;
+    availabilityListener?.(false);
+    await vi.waitFor(() => expect(
+      container.querySelector('button[aria-label="Add Camera published to canvas"]'),
+    ).toBeNull());
   });
 });

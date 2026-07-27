@@ -861,7 +861,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx](packages/ui-ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css](packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css) |  |
 | [packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx](packages/ui-ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx) |  |
+| [packages/ui-ai-chat/src/widget-placement/fn.pointer-placement.ts](packages/ui-ai-chat/src/widget-placement/fn.pointer-placement.ts) |  |
 | [packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts](packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts) |  |
+| [packages/ui-ai-chat/src/widget-placement/tx.pointer-placement.ts](packages/ui-ai-chat/src/widget-placement/tx.pointer-placement.ts) |  |
 | [packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts](packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts](packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts) |  |

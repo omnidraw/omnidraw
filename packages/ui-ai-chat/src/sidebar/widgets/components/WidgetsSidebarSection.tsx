@@ -3,9 +3,8 @@ import { DropdownMenu } from '@kobalte/core/dropdown-menu';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
 import Pencil from 'lucide-solid/icons/pencil';
-import Plus from 'lucide-solid/icons/plus';
 import TriangleAlert from 'lucide-solid/icons/triangle-alert';
-import { For, Show, createEffect, createMemo, createSignal, type Component } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from 'solid-js';
 import { ToolGroupDialog, type TToolGroupValue } from '../../components/ToolGroupDialog';
 import { fnFindWidgetSelectionGroup, fnProjectWidgetCatalog, fnWidgetSelection } from '../fn.widget-catalog';
 import { useWidgetCatalog } from '../WidgetCatalogProvider';
@@ -21,8 +20,15 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
   const [expandedGroups, setExpandedGroups] = createSignal<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const [selectedGroup, setSelectedGroup] = createSignal<TWidgetSidebarGroup | null>(null);
+  const [placementAvailable, setPlacementAvailable] = createSignal(
+    props.controller.widgetPlacement?.available() ?? false,
+  );
   const projection = createMemo(() => catalogState.catalog() ? fnProjectWidgetCatalog(catalogState.catalog()!) : null);
   const selection = createMemo(() => fnWidgetSelection(application.pathname()));
+  const unsubscribePlacement = props.controller.widgetPlacement?.subscribe?.(
+    setPlacementAvailable,
+  );
+  onCleanup(() => unsubscribePlacement?.());
 
   const selectedName = createMemo(() => {
     const selected = selection();
@@ -135,19 +141,20 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
           <Show when={value.source === 'draft'}><span class={styles.draftBadge}><Pencil size={9} /> Draft</span></Show>
           <Show when={value.problem || value.missingGroup}><TriangleAlert class={styles.warning} size={12} aria-label={value.problem ? 'Widget problem' : 'Missing tool group'} /></Show>
         </Button>
-        <Button
-          class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
-          aria-label={`Add ${label} ${value.source} to canvas`}
-          title={disabledReason ?? 'Add to canvas'}
-          disabled={!value.placement}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            void addToCanvas();
-          }}
-        >
-          <Plus size={12} />
-        </Button>
+        <Show when={placementAvailable() && value.placement}>
+          <Button
+            class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
+            aria-label={`Add ${label} ${value.source} to canvas`}
+            title={disabledReason ?? 'Add to canvas'}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              void addToCanvas();
+            }}
+          >
+            Add to canvas
+          </Button>
+        </Show>
       </div>
     );
   };

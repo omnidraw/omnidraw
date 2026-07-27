@@ -15,11 +15,10 @@
 .groupChevron { align-self: center; justify-self: center; }
 .groupName, .widgetName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; font-weight: 700; }
 .groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
-.widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+.widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
 .widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1.5rem; color: inherit; text-align: left; }
-.addButton { display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.addButton { display: inline-flex; align-items: center; justify-content: center; padding: 0 .5rem; color: var(--muted-foreground); font-size: .625rem; font-weight: 700; white-space: nowrap; }
 .addButton:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
-.addButton:disabled { cursor: not-allowed; opacity: .35; }
 .widgetRow:hover { background: var(--accent); }
 .selected, .selected:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--background)); color: var(--foreground); }
 .draftRow { color: var(--warning); }

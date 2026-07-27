@@ -23,10 +23,10 @@ import type {
 } from '../ports';
 import type {
   TWidgetPlacementCoordinator,
-  TWidgetPlacementPort,
 } from '../widget-placement/WidgetPlacementCoordinator';
 import { createWidgetPlacementCoordinator } from '../widget-placement/WidgetPlacementCoordinator';
 import { fnValidateDirectPublishedWidgetPlacement } from '../widget-placement/fn.validate-widget-placement-descriptor';
+import { txCreateWidgetPointerPlacement } from '../widget-placement/tx.pointer-placement';
 import type { TWidgetTitleBarPortal } from '../widget/interface';
 import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHostCoordinator';
 import {
@@ -357,6 +357,7 @@ export function createAiChatCanvasExtension(
         reference: TWidgetPlacementRef,
         bounds: TWidgetFrameBounds,
         label: string,
+        position: Readonly<{ x: number; y: number }>,
       ): void => {
         const validated = fnValidateDirectPublishedWidgetPlacement({
           reference,
@@ -384,7 +385,6 @@ export function createAiChatCanvasExtension(
           }
           orderKey = keys.at(-1)!;
         }
-        const viewport = context.engine.camera.visibleWorldBounds();
         const id = args.widgetBrowser.createId();
         commands.push({
           type: 'upsert',
@@ -392,10 +392,7 @@ export function createAiChatCanvasExtension(
             id,
             parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
             orderKey,
-            position: {
-              x: (viewport.minX + viewport.maxX - bounds.width) / 2,
-              y: (viewport.minY + viewport.maxY - bounds.height) / 2,
-            },
+            position,
             size: bounds,
             title: label,
             instanceId: args.widgetBrowser.createId(),
@@ -410,18 +407,29 @@ export function createAiChatCanvasExtension(
         context.config.notification?.showSuccess(`${label} added to canvas`);
       };
 
-      const placement: TWidgetPlacementPort = {
-        beginPointerSession() {
-          return false;
-        },
-        async addToCanvas(placementArgs) {
+      const placement = txCreateWidgetPointerPlacement({
+        camera: context.engine.camera,
+        container: context.config.container,
+        document: args.widgetBrowser.document,
+        transients: context.engine.transients,
+        commit(placementArgs) {
           addPublishedWidget(
             placementArgs.reference,
             placementArgs.bounds,
             placementArgs.label,
+            placementArgs.position,
           );
         },
-      };
+        onError(error) {
+          context.config.notification?.showError(
+            'Widget placement failed',
+            error instanceof Error ? error.message : String(error),
+          );
+        },
+      }, {
+        dragThreshold: 6,
+        ownerId: `vibecanvas:widget-placement:${context.config.canvasId}`,
+      });
       const unregisterPlacement = placementCoordinator.register(placement);
       const unsubscribeScene = context.engine.scene.subscribe(reconcilePortals);
       const unsubscribeCamera = context.engine.camera.subscribe(() => {
@@ -448,6 +456,7 @@ export function createAiChatCanvasExtension(
       return {
         async dispose() {
           unregisterPlacement();
+          placement.destroy();
           unsubscribeActivation();
           unsubscribeCamera();
           unsubscribeScene();
