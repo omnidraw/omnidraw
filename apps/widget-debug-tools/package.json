@@ -1,0 +1,21 @@
+{
+  "name": "@vibecanvas/widget-debug-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lab": "bun run src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/capsule-vibecanvas": "workspace:*",
+    "@vibecanvas/function-runtime": "workspace:*",
+    "@vibecanvas/service-agent": "workspace:*",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

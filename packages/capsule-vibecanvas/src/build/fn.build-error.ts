@@ -6,6 +6,15 @@ function diagnosticField(value: unknown): string | null {
   return bounded || null;
 }
 
+function diagnosticReason(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized === '') return null;
+  return normalized.length <= 320
+    ? normalized
+    : `…${normalized.slice(-319)}`;
+}
+
 function diagnosticPositiveInteger(value: unknown): number | null {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
 }
@@ -20,13 +29,14 @@ function boundedDiagnostic(
     'path',
     'specifier',
     'construct',
-    'reason',
     'activeCssProfile',
     'requiredProfile',
   ] as const) {
     const value = diagnosticField(diagnostic[name]);
     if (value !== null) result[name] = value;
   }
+  const reason = diagnosticReason(diagnostic.reason);
+  if (reason !== null) result.reason = reason;
   for (const name of ['line', 'column'] as const) {
     const value = diagnosticPositiveInteger(diagnostic[name]);
     if (value !== null) result[name] = value;
@@ -54,7 +64,7 @@ function diagnosticMetadata(
     ['construct', diagnosticField(diagnostic?.construct)],
     ['activeCssProfile', diagnosticField(diagnostic?.activeCssProfile)],
     ['requiredProfile', diagnosticField(diagnostic?.requiredProfile)],
-    ['reason', diagnosticField(diagnostic?.reason)],
+    ['reason', diagnosticReason(diagnostic?.reason)],
   ] as const;
   const values: string[] = [];
   for (const [name, value] of fields) {

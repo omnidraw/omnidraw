@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -147,6 +156,151 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(await readdir(scratchDirectory)).toEqual([]);
     } finally {
       await rm(scratchDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('stages local file dependencies, excludes node_modules, and regenerates the lock', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'widget-npm-local-dependency-test-'));
+    const scratchDirectory = join(root, 'scratch');
+    const linkedPackage = join(root, 'linked-sdk');
+    const nestedPackage = join(root, 'nested-package');
+    const calls: string[] = [];
+    try {
+      await mkdir(join(linkedPackage, 'node_modules', 'excluded'), { recursive: true });
+      await mkdir(nestedPackage, { recursive: true });
+      await writeFile(join(nestedPackage, 'package.json'), JSON.stringify({
+        name: '@fixture/nested',
+        version: '1.0.0',
+      }));
+      await writeFile(join(nestedPackage, 'index.js'), 'export const nested = true;\n');
+      await writeFile(join(linkedPackage, 'package.json'), JSON.stringify({
+        name: '@fixture/linked-sdk',
+        version: '1.0.0',
+        files: ['index.js'],
+        dependencies: {
+          '@fixture/internal-workspace': 'workspace:*',
+          '@fixture/nested': `file:${nestedPackage}`,
+        },
+      }));
+      await writeFile(join(linkedPackage, 'index.js'), 'export const linked = true;\n');
+      await writeFile(join(linkedPackage, 'not-published.js'), 'excluded\n');
+      await writeFile(join(linkedPackage, 'node_modules', 'excluded', 'index.js'), 'excluded\n');
+      const build = createWidgetNpmDistributionBuild({
+        scratchDirectory,
+        runProcess: async (command, args, options) => {
+          calls.push(`${command} ${args.join(' ')}`);
+          if (command === 'npm' && args[0] === '--version') return '11.0.0';
+          if (command === 'node') {
+            return JSON.stringify({
+              nodeVersion: 'v22.14.0',
+              platform: 'linux',
+              architecture: 'x64',
+            });
+          }
+          if (args[0] === 'install') {
+            const packageJson = JSON.parse(
+              await readFile(join(options.cwd, 'package.json'), 'utf8'),
+            ) as { dependencies: Record<string, string> };
+            expect(packageJson.dependencies['@fixture/linked-sdk'])
+              .toBe('file:./.vibecanvas-links/dependency-0');
+            const stagedManifest = JSON.parse(await readFile(
+              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'package.json'),
+              'utf8',
+            )) as { dependencies: Record<string, string> };
+            expect(stagedManifest.dependencies).toEqual({
+              '@fixture/nested': 'file:../dependency-1',
+            });
+            const stagedLock = JSON.parse(await readFile(
+              join(options.cwd, 'package-lock.json'),
+              'utf8',
+            )) as {
+              packages: Record<string, {
+                dependencies?: Record<string, string>;
+                resolved?: string;
+              }>;
+            };
+            expect(stagedLock.packages['']?.dependencies?.['@fixture/linked-sdk'])
+              .toBe('file:./.vibecanvas-links/dependency-0');
+            expect(stagedLock.packages['node_modules/@fixture/linked-sdk'])
+              .toBeUndefined();
+            expect(await readFile(
+              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'index.js'),
+              'utf8',
+            )).toContain('linked');
+            expect(await readFile(
+              join(options.cwd, '.vibecanvas-links', 'dependency-1', 'index.js'),
+              'utf8',
+            )).toContain('nested');
+            await expect(access(
+              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'node_modules'),
+            )).rejects.toThrow();
+            await expect(access(
+              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'not-published.js'),
+            )).rejects.toThrow();
+            await writeFile(join(options.cwd, 'package-lock.json'), JSON.stringify({
+              name: 'local-dependency-fixture',
+              lockfileVersion: 3,
+              packages: {
+                '': {
+                  dependencies: {
+                    '@fixture/linked-sdk': 'file:./.vibecanvas-links/dependency-0',
+                  },
+                },
+                'node_modules/@fixture/linked-sdk': {
+                  resolved: 'file:.vibecanvas-links/dependency-0',
+                  link: true,
+                },
+              },
+            }));
+          }
+          if (args[0] === 'run') {
+            await mkdir(join(options.cwd, 'dist'), { recursive: true });
+            await writeFile(join(options.cwd, 'dist', 'main.js'), 'export default true;\n');
+          }
+        },
+      });
+
+      const result = await build({
+        sourceRevision: 'local-dependency-source',
+        entry: 'ui/main.ts',
+        files: [
+          sourceFile('package.json', JSON.stringify({
+            name: 'local-dependency-fixture',
+            scripts: { build: 'vite build' },
+            dependencies: {
+              '@fixture/linked-sdk': `file:${linkedPackage}`,
+            },
+          })),
+          sourceFile('package-lock.json', JSON.stringify({
+            name: 'local-dependency-fixture',
+            lockfileVersion: 3,
+            packages: {
+              '': {
+                dependencies: {
+                  '@fixture/linked-sdk': `file:${linkedPackage}`,
+                },
+              },
+              'node_modules/@fixture/linked-sdk': {
+                resolved: '../../../../../../linked-sdk',
+                link: true,
+              },
+            },
+          })),
+          sourceFile('ui/main.ts', 'export default true;\n'),
+        ],
+      });
+
+      expect(calls).toEqual([
+        'npm --version',
+        'node -p JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
+        'npm install --package-lock-only --ignore-scripts',
+        'npm ci',
+        'npm run build',
+      ]);
+      expect(result.dependencyLockDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(await readdir(scratchDirectory)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

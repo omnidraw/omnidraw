@@ -173,7 +173,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [B60](b/B60.md) - canvas: finish Cangine interaction and image integration
 - [x]: [B61](b/B61.md) - widget projection: never publish a partial persisted canvas snapshot
 - [x]: [B62](b/B62.md) - AI widget authoring: restore durable validation and sidebar refresh
-- [~]: [B63](b/B63.md) - widgets: `npm ci` rejects draft lockfile; add widget-debug-tools lab
+- [x]: [B63](b/B63.md) - widgets: `npm ci` rejects draft lockfile; add widget-debug-tools lab
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

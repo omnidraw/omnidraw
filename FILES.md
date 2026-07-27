@@ -230,6 +230,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
 | [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
 
+## apps/widget-debug-tools
+
+| path | jsdocs |
+|---|---|
+| [apps/widget-debug-tools/package.json](apps/widget-debug-tools/package.json) |  |
+| [apps/widget-debug-tools/src/main.ts](apps/widget-debug-tools/src/main.ts) |  |
+| [apps/widget-debug-tools/tsconfig.json](apps/widget-debug-tools/tsconfig.json) |  |
+
 ## packages/api
 
 | path | jsdocs |

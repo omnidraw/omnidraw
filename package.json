@@ -45,6 +45,7 @@
     "test:upgrade:local": "bun run scripts/test-local-upgrade.ts",
     "build": "bun run scripts/build.ts",
     "build:single": "bun run scripts/build.ts --single",
+    "lab": "bun run apps/widget-debug-tools/src/main.ts",
     "verify:turso-native-encryption": "bun run scripts/build.ts --verify-native-encryption-only",
     "verify:turso-native-encryption:host": "bun run scripts/build.ts --verify-native-encryption-host-only",
     "web:dev": "bun --filter @vibecanvas/web dev",

@@ -35,6 +35,25 @@ describe('fnWidgetBuildError', () => {
     );
   });
 
+  test('surfaces the bounded tail of a structured host command failure', () => {
+    const reason = `prefix-${'x'.repeat(500)}-npm ci cannot resolve linked package`;
+    const cause = Object.assign(new Error('host command details'), {
+      diagnostic: {
+        code: 'WIDGET_COMMAND_FAILED',
+        construct: 'npm ci',
+        reason,
+      },
+    });
+
+    const result = fnWidgetBuildError('ui', cause);
+
+    expect(result.message).toContain('Widget ui build failed: WIDGET_COMMAND_FAILED');
+    expect(result.message).toContain('construct="npm ci"');
+    expect(result.message).toContain('npm ci cannot resolve linked package');
+    expect(result.message).not.toContain('prefix-');
+    expect(result.message.length).toBeLessThan(512);
+  });
+
   test('preserves actionable CSS profile diagnostics and source location', () => {
     const diagnostic = {
       code: 'CSS_PROFILE_REQUIRED',
