@@ -18,8 +18,9 @@ export const VIBECANVAS_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1'
 export const VIBECANVAS_CAPSULE_DEFAULT_BUDGETS = Object.freeze({
   cpuMs: 750,
   memoryBytes: 32 * 1024 * 1024,
-  domNodes: 2_000,
-  handles: 4_000,
+  domNodes: 10_000,
+  // Capsule partitions this total; 22k leaves over 10k DOM object handles.
+  handles: 22_000,
   messageBytes: 64 * 1024,
   streamBytes: 256 * 1024,
   assetBytes: 4 * 1024 * 1024,
@@ -32,7 +33,7 @@ export const VIBECANVAS_CAPSULE_BUDGET_CEILINGS = Object.freeze({
   cpuMs: 2_000,
   memoryBytes: 64 * 1024 * 1024,
   domNodes: 10_000,
-  handles: 20_000,
+  handles: 22_000,
   messageBytes: 1024 * 1024,
   streamBytes: 1024 * 1024,
   assetBytes: 16 * 1024 * 1024,

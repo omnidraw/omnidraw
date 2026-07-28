@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { fnMapCapsuleBuildError } from '../src/build/fn.error';
+import { fnResolveVibecanvasCapsuleBudgets } from '../src/build/fn.policy';
 import {
   VIBECANVAS_CAPSULE_PARKABILITY,
   VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
@@ -16,6 +17,13 @@ import {
 } from '../src/host/fn.error';
 
 describe('Capsule target and budget mappings', () => {
+  test('defaults to the 10k DOM-node policy and its supporting handle budget', () => {
+    const budgets = fnResolveVibecanvasCapsuleBudgets({});
+
+    expect(budgets.domNodes).toBe(10_000);
+    expect(budgets.handles).toBe(22_000);
+  });
+
   test('fixes first-release signing identities and keeps parking denied', () => {
     expect(VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID).toBe('vibecanvas-preview-v1');
     expect(VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID).toBe('vibecanvas-release-v1');
