@@ -103,7 +103,7 @@ const ITEM_SELECT = `
   SELECT
     canvas_id,
     id,
-    json(item_json) AS item_json,
+    item_json,
     item_revision,
     created_at_ms,
     updated_at_ms,
@@ -687,12 +687,12 @@ export class CanvasItemStoreTurso {
                 created_at_ms,
                 updated_at_ms
               )
-              VALUES (?, ?, ?, jsonb(?), 0, ?, ?)
+              VALUES (?, ?, ?, ?, 0, ?, ?)
               ON CONFLICT (org_id, canvas_id, id) DO NOTHING
               RETURNING
                 canvas_id,
                 id,
-                json(item_json) AS item_json,
+                item_json,
                 item_revision,
                 created_at_ms,
                 updated_at_ms,
@@ -729,7 +729,7 @@ export class CanvasItemStoreTurso {
             const row = await (await this.database.prepare(`
               UPDATE canvas_items
               SET
-                item_json = jsonb(?),
+                item_json = ?,
                 item_revision = item_revision + 1,
                 updated_at_ms = max(updated_at_ms, ?)
               WHERE
@@ -740,7 +740,7 @@ export class CanvasItemStoreTurso {
               RETURNING
                 canvas_id,
                 id,
-                json(item_json) AS item_json,
+                item_json,
                 item_revision,
                 created_at_ms,
                 updated_at_ms,

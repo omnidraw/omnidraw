@@ -394,7 +394,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
 - [x]: [S118](s/S118.md) - canvas: toolbar should not include widget icons (delete code)
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
-- [ ]: [S120](s/S120.md) - db: adopt Turso built-in jsonb, timestamp, and boolean column types
+- [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [ ]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
 
 ## E xplorations
