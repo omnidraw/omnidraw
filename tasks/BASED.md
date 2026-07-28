@@ -170,7 +170,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
 - [x]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
 - [x]: [B59](b/B59.md) - `AuthStorage` export removed from `@earendil-works/pi-coding-agent` 0.80.10
-- [/]: [B60](b/B60.md) - canvas: finish Cangine interaction and image integration
+- [-]: [B60](b/B60.md) - superseded: Cangine interaction and image integration
 - [x]: [B61](b/B61.md) - widget projection: never publish a partial persisted canvas snapshot
 - [x]: [B62](b/B62.md) - AI widget authoring: restore durable validation and sidebar refresh
 - [x]: [B63](b/B63.md) - widgets: `npm ci` rejects draft lockfile; add widget-debug-tools lab
@@ -395,6 +395,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S118](s/S118.md) - canvas: toolbar should not include widget icons (delete code)
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
 - [ ]: [S120](s/S120.md) - db: adopt Turso built-in jsonb, timestamp, and boolean column types
+- [ ]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
