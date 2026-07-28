@@ -11,7 +11,6 @@ import path from "path"
 const rootDir = path.resolve(import.meta.dir, "..")
 const cliDir = path.join(rootDir, "apps/cli")
 const frontendDir = path.join(rootDir, "apps/frontend")
-const webDir = path.join(rootDir, "apps/web")
 const lockRootDir = path.join(os.tmpdir(), "vibecanvas-dev-ports")
 const bunExec = process.execPath
 
@@ -315,15 +314,6 @@ try {
       VIBECANVAS_BACKEND_PORT: String(actualBackendPort),
       VIBECANVAS_FRONTEND_PORT: String(frontendLease.port),
     },
-  }))
-
-  processes.push(spawnDevProcess({
-    name: "web",
-    cwd: webDir,
-    cmd: [bunExec, "run", "dev"],
-    // Astro 7 otherwise detaches automatically when it detects an agentic
-    // environment, which makes this supervisor think the web process exited.
-    env: { ASTRO_DEV_BACKGROUND: "1" },
   }))
 
   for (const child of processes) {
