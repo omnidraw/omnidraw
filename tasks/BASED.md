@@ -259,16 +259,16 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
 - [x]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
 - [ ]: [A84](a/A84.md) - AI chat: slash commands for chat actions
-- [/]: [A85](a/A85.md) - canvas-engine real widget-host qualification
+- [-]: [A85](a/A85.md) - superseded canvas-engine widget-host pilot
 - [-]: [A86](a/A86.md) - superseded: CanvasService collaboration policy moves to A90/A92
 - [x]: [A87](a/A87.md) - widgets: migrate the untrusted browser runtime to Capsule
 - [x]: [A88](a/A88.md) - style menu: pin left to screen, not canvas
-- [/]: [A89](a/A89.md) - shared contracts and canvas_items JSONB schema
-- [/]: [A90](a/A90.md) - authoritative server CanvasService
-- [/]: [A91](a/A91.md) - centralized widget state without product regression
-- [/]: [A92](a/A92.md) - coordinated cutover with product parity
+- [x]: [A89](a/A89.md) - shared contracts and canvas_items JSONB schema
+- [x]: [A90](a/A90.md) - authoritative server CanvasService
+- [x]: [A91](a/A91.md) - centralized widget state authority
+- [x]: [A92](a/A92.md) - coordinated hard cutover to CanvasService
 - [x]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
-- [/]: [A94](a/A94.md) - restore canvas, widget, and AI product parity
+- [~]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -362,7 +362,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
 - [x]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
 - [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
-- [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
+- [-]: [S92](s/S92.md) - dropped: preserve or upgrade pre-cutover databases
 - [x]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 - [?]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
@@ -386,7 +386,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
 - [x]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
-- [/]: [S116](s/S116.md) - delete only retired persistence/projection architecture
+- [x]: [S116](s/S116.md) - delete retired persistence/projection architecture
 - [x]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
 - [ ]: [S118] - canvas: toolbar should not include widget icons (delete code)
 - [ ]: [S119] - canvas: toolbar should be smaller in size and go 2 row when height small.
