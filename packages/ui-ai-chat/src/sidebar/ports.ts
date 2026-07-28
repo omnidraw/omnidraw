@@ -36,7 +36,7 @@ export type TSidebarBrowserPort = {
   clearTimeout(timer: unknown): void;
 };
 
-export type TCatalogInvalidationKind = "resources" | "toolbar-groups" | "widgets";
+export type TCatalogInvalidationKind = "resources" | "widgets";
 
 export type TCatalogInvalidationPort = {
   invalidate(kind: TCatalogInvalidationKind): void;

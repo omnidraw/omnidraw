@@ -21,7 +21,7 @@ import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsulePublicSigningKey,
 } from "@vibecanvas/ui-ai-chat/widget-runtime";
-import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
+import type { TCanvasImagePort } from "@vibecanvas/canvas";
 
 export const catalogInvalidation = createCatalogInvalidation();
 export const widgetPlacementCoordinator = createWidgetPlacementCoordinator();
@@ -170,17 +170,6 @@ export const canvasImagePort: TCanvasImagePort = {
     const [error, result] = await apiService.api.file.remove({ body });
     if (error) throw error;
     return result;
-  },
-};
-
-export const canvasToolbarGroupsPort: TCanvasToolbarGroupsPort = {
-  async list() {
-    const [error, groups] = await apiService.api.tool.groups.list();
-    if (error) throw error;
-    return groups;
-  },
-  subscribe(listener) {
-    return catalogInvalidation.subscribe("toolbar-groups", listener);
   },
 };
 

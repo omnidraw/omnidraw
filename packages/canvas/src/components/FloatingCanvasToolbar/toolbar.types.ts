@@ -9,7 +9,6 @@ export type TCanvasToolId =
   | 'text'
   | 'connector'
   | 'arrow'
-  | 'widget'
   | 'eraser';
 
 export type TCanvasToolDefinition = Readonly<{

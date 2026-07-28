@@ -75,7 +75,6 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       : await props.controller.apiService.api.agent.widgets.groups.create({ name: group.name, icon: group.json });
     if (error) { application.notifyError(error.message); return false; }
     await catalogState.refresh();
-    props.controller.invalidation.invalidate('toolbar-groups');
     return true;
   };
 
@@ -85,7 +84,6 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
     const [error] = await props.controller.apiService.api.agent.widgets.groups.remove({ name: current.name });
     if (error) { application.notifyError(error.message); return false; }
     await catalogState.refresh();
-    props.controller.invalidation.invalidate('toolbar-groups');
     return true;
   };
 

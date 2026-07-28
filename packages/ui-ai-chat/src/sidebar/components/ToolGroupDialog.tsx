@@ -63,7 +63,7 @@ export const ToolGroupDialog: Component<ToolGroupDialogProps> = (props) => {
         <Dialog.Content class={`${styles.content} ${styles.contentLarge}`}>
           <Dialog.Title class={styles.title}>{props.group ? "Edit Tool Group" : "Add Tool Group"}</Dialog.Title>
           <Dialog.Description class={styles.description}>
-            A Tool Group combines related widget tools into one toolbar button. Selecting that button opens a flyout containing the linked widgets.
+            A Tool Group organizes related widgets together in the sidebar catalog.
           </Dialog.Description>
 
           <form onSubmit={handleSave}>

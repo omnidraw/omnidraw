@@ -20,10 +20,7 @@ import { buildRuntime, type TCanvasRuntime } from '../runtime';
 import type {
   TCanvasDocumentTransport,
 } from '../services/CanvasDocumentService';
-import type {
-  TCanvasImagePort,
-  TCanvasToolbarGroupsPort,
-} from '../types';
+import type { TCanvasImagePort } from '../types';
 import { FloatingCanvasToolbar } from './FloatingCanvasToolbar';
 import {
   SelectionStyleMenu,
@@ -52,7 +49,6 @@ type CanvasPageProps = {
   transport: TCanvasDocumentTransport;
   extensions?: readonly ICanvasRuntimeExtension[];
   image: TCanvasImagePort;
-  toolbarGroups?: TCanvasToolbarGroupsPort;
   store: {
     sidebarVisible: () => boolean;
     onToggleSidebar: () => void;
@@ -87,7 +83,6 @@ const TOOL_SHORTCUTS = Object.freeze({
   p: 'pen',
   r: 'rect',
   t: 'text',
-  c: 'widget',
 } as const);
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
@@ -143,7 +138,6 @@ export function Canvas(props: CanvasPageProps) {
         createId: () => crypto.randomUUID(),
         onToggleSidebar: props.store.onToggleSidebar,
         image: props.image,
-        toolbarGroups: props.toolbarGroups,
         notification: props.notification,
         themeService: props.themeService,
       }, props.extensions);

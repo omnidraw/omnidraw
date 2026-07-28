@@ -1,5 +1,4 @@
 import ArrowRight from 'lucide-solid/icons/arrow-right';
-import Bot from 'lucide-solid/icons/bot';
 import Circle from 'lucide-solid/icons/circle';
 import Eraser from 'lucide-solid/icons/eraser';
 import Grid2x2 from 'lucide-solid/icons/grid-2x2';
@@ -22,7 +21,6 @@ import './styles.css';
 
 const TOOLS: readonly TCanvasToolDefinition[] = Object.freeze([
   { id: 'hand', label: 'Hand', shortcuts: ['H'], Icon: Hand },
-  { id: 'widget', label: 'AI / Widget', shortcuts: ['C'], Icon: Bot },
   { id: 'select', label: 'Select', shortcuts: ['1', 'Esc'], Icon: MousePointer2 },
   { id: 'rect', label: 'Rectangle', shortcuts: ['2', 'R'], Icon: Square },
   { id: 'ellipse', label: 'Ellipse', shortcuts: ['3', 'O'], Icon: Circle },
@@ -91,7 +89,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
               title="Toggle grid"
               onClick={props.onToggleGrid}
             >
-              <span class="vc-toolbar-button__icon"><Grid2x2 size={15} /></span>
+              <span class="vc-toolbar-button__icon"><Grid2x2 size={14} /></span>
               <span class="vc-toolbar-button__shortcuts">
                 <span>G</span>
               </span>
@@ -105,7 +103,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
               title="Undo"
               onClick={props.onUndo}
             >
-              <span class="vc-toolbar-button__icon"><Undo2 size={15} /></span>
+              <span class="vc-toolbar-button__icon"><Undo2 size={14} /></span>
             </button>
             <button
               type="button"
@@ -115,7 +113,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
               title="Redo"
               onClick={props.onRedo}
             >
-              <span class="vc-toolbar-button__icon"><Redo2 size={15} /></span>
+              <span class="vc-toolbar-button__icon"><Redo2 size={14} /></span>
             </button>
           </div>
         </Show>
@@ -127,7 +125,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
           title="Toggle sidebar"
           onClick={props.onToggleSidebar}
         >
-          <PanelLeft size={15} />
+          <PanelLeft size={14} />
           <span class="vc-canvas-toolbar-sidebar-shortcut">Ctrl+B</span>
         </button>
       </div>
