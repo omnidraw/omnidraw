@@ -348,7 +348,10 @@ export class WidgetUiRuntime {
         });
         args.root.replaceChildren();
         args.root.dataset.widgetRuntimeStatus = 'loading';
-        args.root.textContent = 'Starting widget runtime…';
+        const loadingMessage = args.root.ownerDocument.createTextNode(
+          'Starting widget runtime…',
+        );
+        args.root.append(loadingMessage);
         handle = await this.config.mount.mount({
           mode: 'published',
           root: args.root,
@@ -380,6 +383,7 @@ export class WidgetUiRuntime {
             void this.#requestPopulationReconcile();
           },
         });
+        loadingMessage.remove();
         if (disposed) {
           await releaseLive('mount-cancelled');
           return false;

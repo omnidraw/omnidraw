@@ -91,6 +91,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
 | [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
 | [apps/cli/src/services/fn.widget-runtime-load-admission.ts](apps/cli/src/services/fn.widget-runtime-load-admission.ts) |  |
+| [apps/cli/src/services/fn.widget-ui-entry.ts](apps/cli/src/services/fn.widget-ui-entry.ts) |  |
 | [apps/cli/src/services/FunctionResourceGatewayFactory.ts](apps/cli/src/services/FunctionResourceGatewayFactory.ts) |  |
 | [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
 | [apps/cli/src/services/FunctionServicePool.ts](apps/cli/src/services/FunctionServicePool.ts) |  |

@@ -24,6 +24,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fnBootstrapWidgetUiEntry } from './fn.widget-ui-entry';
 
 const DISTRIBUTION_ENTRY = 'main.js';
 const DISTRIBUTION_DIRECTORY = 'dist';
@@ -32,6 +33,12 @@ const MAX_DISTRIBUTION_FILES = 1_024;
 const MAX_DISTRIBUTION_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_DISTRIBUTION_TOTAL_BYTES = 32 * 1024 * 1024;
 const LOCAL_DEPENDENCY_DIRECTORY = '.vibecanvas-links';
+const GUEST_BRIDGE_BOOTSTRAP = '__vibecanvas_guest_bridge__.mjs';
+const GUEST_BRIDGE_BOOTSTRAP_SOURCE = [
+  "import { subscribeHostLifecycle } from '@omnidraw/capsule/guest';",
+  'subscribeHostLifecycle(() => undefined).unsubscribe();',
+  '',
+].join('\n');
 const LOCAL_DEPENDENCY_SECTIONS = Object.freeze([
   'dependencies',
   'devDependencies',
@@ -121,6 +128,26 @@ async function materialize(
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
     await writeFile(destination, file.bytes, { flag: 'wx', mode: 0o600 });
   }
+}
+
+async function bootstrapWidgetUiEntry(root: string, entry: string): Promise<void> {
+  assertProjectPath(entry);
+  const path = join(root, ...entry.split('/'));
+  const source = await readFile(path, 'utf8');
+  const relativeBootstrapPath = posix.relative(posix.dirname(entry), GUEST_BRIDGE_BOOTSTRAP);
+  const bootstrapSpecifier = relativeBootstrapPath.startsWith('.')
+    ? relativeBootstrapPath
+    : `./${relativeBootstrapPath}`;
+  await writeFile(
+    join(root, GUEST_BRIDGE_BOOTSTRAP),
+    GUEST_BRIDGE_BOOTSTRAP_SOURCE,
+    { flag: 'wx', mode: 0o600 },
+  );
+  await writeFile(
+    path,
+    fnBootstrapWidgetUiEntry(source, bootstrapSpecifier),
+    { mode: 0o600 },
+  );
 }
 
 export function runProcess(
@@ -547,6 +574,7 @@ export function createWidgetNpmDistributionBuild(
     const root = await mkdtemp(join(config.scratchDirectory, 'npm-distribution-'));
     try {
       await materialize(root, request.files);
+      await bootstrapWidgetUiEntry(root, request.entry);
       await readPackageContract(root);
       const stagedLocalDependencies = await stageLocalDependencies(root);
       const npmVersionOutput = await execute('npm', ['--version'], {

@@ -381,13 +381,15 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
 - [x]: [S109] - remove uuid check in db sql files.
 - [x]: [S110] - use Turso types and domains where they improve schema constraints
-- [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
-- [~]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
+- [x]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
+- [x]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
 - [x]: [S113](s/S113.md) - canvas: adopt Cangine 0.2 editor and fixed widget frames
 - [x]: [S114](s/S114.md) - widgets: remove OCI builds after Capsule host-native npm release
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
 - [/]: [S116](s/S116.md) - delete only retired persistence/projection architecture
 - [x]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
+- [ ]: [S118] - canvas: toolbar should not include widget icons (delete code)
+- [ ]: [S119] - canvas: toolbar should be smaller in size and go 2 row when height small.
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

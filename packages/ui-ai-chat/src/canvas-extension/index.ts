@@ -32,6 +32,7 @@ import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHos
 import {
   fnWidgetRuntimeLocalTargetMatchesElement,
 } from '../widget-runtime/fn.runtime-identity';
+import { fnWidgetCapsuleViewport } from '../widget-runtime/fn.capsule-viewport';
 import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleOutputSink,
@@ -88,7 +89,7 @@ function capsuleViewport(
   visible: boolean,
   scale: number,
 ): CapsuleViewport {
-  return {
+  return fnWidgetCapsuleViewport({
     width: geometry === null
       ? 0
       : Math.max(0, geometry.viewportBounds.maxX - geometry.viewportBounds.minX),
@@ -100,7 +101,7 @@ function capsuleViewport(
     distance: 0,
     priority: visible ? 100 : 0,
     occlusion: 0,
-  };
+  });
 }
 
 function createTitleBarPortal(

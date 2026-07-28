@@ -281,6 +281,23 @@ function collaborativeSession(): TWidgetCollaborativeStateSession {
 }
 
 describe('WidgetUiRuntime Capsule ownership', () => {
+  test('removes the loading message after the Capsule mount appends its shell', async () => {
+    const current = fixture();
+    current.mount.mockImplementationOnce(async (args) => {
+      const shell = args.root.ownerDocument.createElement('div');
+      shell.textContent = 'Mounted widget';
+      args.root.append(shell);
+      current.mountedHandles.push(current.mounted);
+      return current.mounted.handle;
+    });
+
+    const rendered = await renderReady(current.runtime);
+
+    expect(rendered.root.textContent).toBe('Mounted widget');
+    rendered.cleanup();
+    await current.runtime.destroy();
+  });
+
   test('mounts the persisted widget-instance UI props as the initial channel value', async () => {
     const current = fixture();
     const rendered = await renderReady(

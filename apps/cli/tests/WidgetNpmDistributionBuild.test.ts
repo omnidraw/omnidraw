@@ -102,6 +102,14 @@ describe('WidgetNpmDistributionBuild', () => {
             });
           }
           if (args[0] === 'run') {
+            expect(await readFile(join(options.cwd, 'ui', 'main.ts'), 'utf8')).toBe([
+              'import "../__vibecanvas_guest_bridge__.mjs";',
+              'document.body.textContent="source";',
+            ].join('\n'));
+            expect(await readFile(
+              join(options.cwd, '__vibecanvas_guest_bridge__.mjs'),
+              'utf8',
+            )).toContain('subscribeHostLifecycle(() => undefined).unsubscribe()');
             await mkdir(join(options.cwd, 'dist', 'assets'), { recursive: true });
             await writeFile(
               join(options.cwd, 'dist', 'main.js'),
