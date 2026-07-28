@@ -4,6 +4,7 @@ apps/frontend -> solidjs spa, renders webpage
 apps/web -> github pages, marketing website
 apps/server -> bun server
 apps/vibecanvas -> installable binary for npm package
+apps/widget-debug-tools -> use when you need to debug local widgets
 
 packages/api -> consolidated oRPC contracts and handlers by domain
 packages/canvas -> Cangine canvas runtime, authoritative document client, and widgets

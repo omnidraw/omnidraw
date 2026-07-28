@@ -63,6 +63,7 @@ flowchart LR
 | `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
 | `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
 | `apps/cli` | Production service composition, application-owned npm distribution builds, persistent signing keys, host configuration, artifact storage, and server-function tooling |
+| `apps/widget-debug-tools` | Terminal lab that drives the same agent widget/file/resource tools against a local home directory, outside the running server |
 | `packages/sdk` | The supported widget authoring API over `@omnidraw/capsule/guest` |
 | `packages/api` | Tenant-authorized runtime configuration and artifact delivery |
 | `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, Capsule content mounting, provider creation, preview, runtime ownership, product widget actions, and population scheduling |
@@ -685,7 +686,83 @@ Arrow runtime endpoint, or browser source-compilation endpoint.
 - Application shutdown destroys preview runtimes, committed owners, host
   partitions, streams, and pending operations.
 
-## 19. Important implementation files
+## 19. Local widget debug lab
+
+`apps/widget-debug-tools` is the terminal lab for debugging local widget
+authoring and builds without starting AI chat or the full product UI. Use it
+when create/validate/build fails in chat and you need a reproducible
+command-line loop against the same services and tools.
+
+Repo entrypoint:
+
+```sh
+bun run lab -- [--home <path>] <tool-name> '<json-args>'
+bun run lab -- [--home <path>] create <name>
+bun run lab -- [--home <path>] validate <name>
+bun run lab -- [--home <path>] list
+```
+
+`--home` defaults to the repository `.vibecanvas` directory. The lab uses the
+default OSS tenant, opens Turso against that home, and wires the production
+widget path: `WidgetWorkspace`, `WidgetDraftController`, `WidgetServicePool`,
+signing keys, Capsule guest build, and application-owned npm distribution
+build. Draft changes go through the real draft controller, so `validate` runs
+the trusted host build, not a stub.
+
+### Inspecting `.vibecanvas/main.db`
+
+Dev and the lab share the repo-local home. The durable control database is:
+
+```text
+.vibecanvas/main.db
+```
+
+On-disk Vibecanvas opens that file with Turso's experimental
+`multiprocess_wal` coordinator. Agents debugging widget, draft, revision,
+instance, or authoring-store problems should read it with the `tursodb` CLI
+using the same feature; ordinary SQLite tools and a plain `tursodb` open will
+fail or disagree with the live WAL.
+
+```sh
+tursodb --experimental-multiprocess-wal --readonly .vibecanvas/main.db
+```
+
+Use read-only queries against widget and authoring tables (for example
+`widget_definitions`, `widget_definition_revisions`, `widget_instances`,
+draft descriptors) to confirm what the host persisted without going through
+chat. Prefer `--readonly` while `bun run dev` or the lab may also hold the
+file open. Broader Turso CLI notes live in
+[`llm.turso.md`](../external/llm.turso.md).
+
+It registers the same agent tool factories chat uses:
+
+- widget: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`
+- files: `read`, `edit`, `patch`, `grep`
+- resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`,
+  `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`,
+  `vc_resource_data_write`
+
+Convenience aliases map to the widget tools: `create` → `vc_widget_create`,
+`validate` → `vc_widget_validate`, `list` → `vc_widget_list`. Any other
+registered tool name may be invoked directly with one JSON argument object.
+Authorization always succeeds in the lab. Output is pretty-printed JSON with
+`tool`, `isError`, `modelData`, and `details`; a tool error sets a non-zero
+exit code.
+
+Typical loop:
+
+```sh
+bun run lab -- create "Lab Counter"
+bun run lab -- validate "Lab Counter"
+bun run lab -- edit '{"path":"widgets/Lab Counter/ui/main.ts","edits":[{"oldText":"...","newText":"..."}]}'
+bun run lab -- validate "Lab Counter"
+```
+
+The lab is not a substitute for Capsule browser acceptance, publication, or
+runtime-load tests. It exists to isolate draft scaffolding, workspace mounts,
+snapshot capture, and the `dist/` npm build boundary from chat and UI noise.
+
+## 20. Important implementation files
 
 Contracts and build:
 
@@ -702,6 +779,7 @@ Authoring and publication:
 - [`packages/service-agent/src/widget-drafts/WidgetDraftController.ts`](../../packages/service-agent/src/widget-drafts/WidgetDraftController.ts)
 - [`packages/widget-contract/src/local/WidgetPreviewService.ts`](../../packages/widget-contract/src/local/WidgetPreviewService.ts)
 - [`packages/widget-contract/src/local/WidgetPublicationService.ts`](../../packages/widget-contract/src/local/WidgetPublicationService.ts)
+- [`apps/widget-debug-tools/src/main.ts`](../../apps/widget-debug-tools/src/main.ts)
 
 Browser:
 
@@ -725,7 +803,7 @@ Guest, state, and persistence:
 - [`packages/service-db/src/WidgetControlStoreTurso.ts`](../../packages/service-db/src/WidgetControlStoreTurso.ts)
 - [`packages/service-db/src/migrations/000-initial.sql`](../../packages/service-db/src/migrations/000-initial.sql)
 
-## 20. Verification
+## 21. Verification
 
 The principal permanent gates are:
 
@@ -744,7 +822,7 @@ through the production browser coordinator in headless Chromium. It covers
 plain DOM, SVG, Canvas 2D, React, functions, collaboration, lifecycle,
 authority rejection, and terminal zero-retention cleanup.
 
-## 21. Change checklist
+## 22. Change checklist
 
 When changing the widget system:
 
