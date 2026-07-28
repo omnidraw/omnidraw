@@ -38,6 +38,7 @@ import {
   fnCanBeginSpacePan,
   fnSpacePanScreenDelta,
 } from './fn.space-pan';
+import { fnCanvasToolShortcut } from './fn.canvas-tool-shortcut';
 import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
 import './Canvas.css';
 
@@ -65,25 +66,6 @@ type TCanvasSource = Readonly<{
   key: string;
   canvasId: string;
 }>;
-
-const TOOL_SHORTCUTS = Object.freeze({
-  '1': 'select',
-  '2': 'rect',
-  '3': 'ellipse',
-  '4': 'text',
-  '5': 'connector',
-  '6': 'arrow',
-  '7': 'pen',
-  '8': 'eraser',
-  a: 'arrow',
-  e: 'eraser',
-  h: 'hand',
-  l: 'connector',
-  o: 'ellipse',
-  p: 'pen',
-  r: 'rect',
-  t: 'text',
-} as const);
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -232,8 +214,8 @@ export function Canvas(props: CanvasPageProps) {
       setGridVisible((visible) => !visible);
       return;
     }
-    const toolId = TOOL_SHORTCUTS[key as keyof typeof TOOL_SHORTCUTS];
-    if (toolId === undefined) return;
+    const toolId = fnCanvasToolShortcut(key);
+    if (toolId === null) return;
     event.preventDefault();
     editor()?.setActiveTool(toolId);
   };

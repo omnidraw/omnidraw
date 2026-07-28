@@ -394,6 +394,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) |  |
 | [packages/canvas/src/components/fn.canvas-grid.ts](packages/canvas/src/components/fn.canvas-grid.ts) |  |
 | [packages/canvas/src/components/fn.canvas-runtime-activation.ts](packages/canvas/src/components/fn.canvas-runtime-activation.ts) |  |
+| [packages/canvas/src/components/fn.canvas-tool-shortcut.ts](packages/canvas/src/components/fn.canvas-tool-shortcut.ts) |  |
 | [packages/canvas/src/components/fn.space-pan.ts](packages/canvas/src/components/fn.space-pan.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/index.tsx](packages/canvas/src/components/SelectionStyleMenu/index.tsx) |  |

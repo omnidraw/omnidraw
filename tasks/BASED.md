@@ -392,7 +392,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S115](s/S115.md) - canvas: adopt Cangine PathInteractionController for lines/arrows
 - [x]: [S116](s/S116.md) - delete retired persistence/projection architecture
 - [x]: [S117](s/S117.md) - resource runtime: remove cross-process Resource Store ownership locks
-- [x]: [S118](s/S118.md) - canvas: toolbar should not include widget icons (delete code)
+- [x]: [S118](s/S118.md) - canvas: remove generic widget catalog toolbar plumbing
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [ ]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions

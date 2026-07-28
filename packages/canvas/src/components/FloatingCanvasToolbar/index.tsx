@@ -1,4 +1,5 @@
 import ArrowRight from 'lucide-solid/icons/arrow-right';
+import Bot from 'lucide-solid/icons/bot';
 import Circle from 'lucide-solid/icons/circle';
 import Eraser from 'lucide-solid/icons/eraser';
 import Grid2x2 from 'lucide-solid/icons/grid-2x2';
@@ -21,6 +22,7 @@ import './styles.css';
 
 const TOOLS: readonly TCanvasToolDefinition[] = Object.freeze([
   { id: 'hand', label: 'Hand', shortcuts: ['H'], Icon: Hand },
+  { id: 'widget', label: 'AI Chat', shortcuts: ['C'], Icon: Bot },
   { id: 'select', label: 'Select', shortcuts: ['1', 'Esc'], Icon: MousePointer2 },
   { id: 'rect', label: 'Rectangle', shortcuts: ['2', 'R'], Icon: Square },
   { id: 'ellipse', label: 'Ellipse', shortcuts: ['3', 'O'], Icon: Circle },
