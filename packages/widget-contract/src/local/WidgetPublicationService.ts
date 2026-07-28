@@ -7,6 +7,8 @@ import {
   fnCanonicalizeWidgetManifest,
   fnValidateWidgetResourceBindings,
   fnValidateWidgetBuildIntegrity,
+  fnWidgetBuildIntegrityDiagnostic,
+  fnWidgetPreviewConstructionMatchesPublication,
   type IWidgetArtifactBuilder,
   type IWidgetArtifactConstructionSigner,
   type IWidgetArtifactMutationCoordinator,
@@ -83,14 +85,11 @@ export class WidgetPublicationService implements IWidgetPublicationService {
   ): Promise<TWidgetPublishResult> {
     const { manifest, canonicalManifestJson } = this.#validatedRequest(request);
     const construction = request.construction;
-    if (
-      construction.sourceSnapshotId !== request.snapshot.id
-      || construction.sourceDigestSha256 !== request.snapshot.digestSha256
-      || construction.canonicalManifestJson !== canonicalManifestJson
-      || construction.builderIdentity !== construction.uiArtifact.builderIdentity
-      || JSON.stringify(construction.capsuleBuildIdentity)
-        !== JSON.stringify(construction.uiArtifact.capsuleBuildIdentity)
-    ) {
+    if (!fnWidgetPreviewConstructionMatchesPublication({
+      snapshot: request.snapshot,
+      construction,
+      canonicalManifestJson,
+    })) {
       throw Object.assign(new Error(
         'The selected Preview construction does not match the publication request.',
       ), { code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
@@ -181,7 +180,7 @@ export class WidgetPublicationService implements IWidgetPublicationService {
       digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
     });
     if (!integrity.valid) {
-      throw Object.assign(new Error(`Widget builder integrity check failed: ${integrity.reason}.`), {
+      throw Object.assign(new Error(fnWidgetBuildIntegrityDiagnostic(integrity)), {
         code: 'WIDGET_BUILD_INTEGRITY_FAILED',
       });
     }
@@ -248,7 +247,7 @@ export class WidgetPublicationService implements IWidgetPublicationService {
             createdAtMs: request.nowMs,
           },
           source: {
-            sourceSnapshotId: request.snapshot.id,
+            sourceSnapshotId: build.sourceSnapshotId,
             sourceDigestSha256: request.snapshot.digestSha256,
             sourceArtifact,
             builderIdentity: build.builderIdentity,

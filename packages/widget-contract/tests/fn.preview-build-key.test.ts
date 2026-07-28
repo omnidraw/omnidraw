@@ -5,6 +5,7 @@ import {
   fnCanonicalizeWidgetPreviewConstructionKey,
   fnWidgetPreviewBuildKey,
   fnWidgetPreviewConstructionKey,
+  fnWidgetPreviewWorkspaceKey,
   type TWidgetPreviewBuildKeyInput,
   type TWidgetPreviewConstructionKeyInput,
 } from '../src';
@@ -158,5 +159,23 @@ describe('Preview build key', () => {
         digestSha256,
       })).not.toBe(key);
     }
+  });
+
+  test('derives one stable private dependency workspace per tenant draft', () => {
+    const digestSha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+    const workspaceKey = fnWidgetPreviewWorkspaceKey({
+      input: { tenant: constructionInput.tenant, draftId: 'draft-1' },
+      digestSha256,
+    });
+
+    expect(workspaceKey).toStartWith('preview-');
+    expect(fnWidgetPreviewWorkspaceKey({
+      input: { tenant: constructionInput.tenant, draftId: 'draft-1' },
+      digestSha256,
+    })).toBe(workspaceKey);
+    expect(fnWidgetPreviewWorkspaceKey({
+      input: { tenant: constructionInput.tenant, draftId: 'draft-2' },
+      digestSha256,
+    })).not.toBe(workspaceKey);
   });
 });

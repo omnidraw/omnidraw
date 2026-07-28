@@ -185,7 +185,9 @@ construction.
 
 The snapshot contains:
 
-- a source snapshot ID;
+- a content-addressed source snapshot ID equal to the source digest;
+- an optional incidental capture-event ID, which is never a construction key
+  or trusted build input;
 - a SHA-256 digest;
 - normalized relative file paths;
 - exact file bytes;
@@ -254,6 +256,12 @@ canonical unsigned bytes. The durable Preview revision retains the construction
 contract digest and distribution provenance. Publish retrieves that exact
 construction and applies release signing only.
 
+Capture time and capture-event UUID describe when immutable bytes were
+observed; they do not change those bytes. The construction cache canonicalizes
+legacy capture IDs to content identity before guest execution. Integrity still
+fails closed for a foreign source identity or digest and reports which bounded
+trusted field mismatched without returning the value.
+
 ### 6.1 Browser UI build
 
 The immutable source project contains:
@@ -266,8 +274,8 @@ The immutable source project contains:
 - the normalized target, profiles, budgets, channels, and capability requests;
 - the pinned builder identity, Capsule package identity, and build policy.
 
-Vibecanvas keeps a draft-private warm workspace while at least one Preview frame
-exists. It runs install only when package/lock inputs change, invokes the
+Vibecanvas gives trusted validation and Preview the same draft-private warm
+workspace identity. It runs install only when package/lock inputs change, invokes the
 project build command, and reuses its incremental graph for source edits. It
 captures a bounded regular-file `dist/` tree, rejects symlinks and special
 files, and passes the exact bytes plus lock/build/producer provenance to
@@ -869,10 +877,11 @@ command-line loop against the same services and tools.
 Repo entrypoint:
 
 ```sh
-bun run lab -- [--home <path>] <tool-name> '<json-args>'
-bun run lab -- [--home <path>] create <name>
-bun run lab -- [--home <path>] validate <name>
-bun run lab -- [--home <path>] list
+bun run lab -- [--home <path>] [--chat-id <id>] <tool-name> '<json-args>'
+bun run lab -- [--home <path>] [--chat-id <id>] create <name>
+bun run lab -- [--home <path>] [--chat-id <id>] validate <name>
+bun run lab -- [--home <path>] [--chat-id <id>] preview <name>
+bun run lab -- --home <isolated-path> [--chat-id <id>] session < scenario.jsonl
 ```
 
 `--home` defaults to the repository `.vibecanvas` directory. The lab uses the
@@ -881,6 +890,16 @@ widget path: `WidgetWorkspace`, `WidgetDraftController`, `WidgetServicePool`,
 signing keys, Capsule guest build, and application-owned npm distribution
 build. Draft changes go through the real draft controller, so `validate` runs
 the trusted host build, not a stub.
+
+`session` requires an explicit isolated `--home` and keeps the database,
+workspace, construction cache, warm dependency workspace, tools, and controller
+alive across all stdin records. Each non-empty input line selects one production
+tool (`{"tool":"read","args":{...}}`) or the lab-owned controller adapter
+(`{"lab":"preview","args":{"name":"Counter"}}`). Output is one bounded JSON
+record per operation with duration, source revision, Preview status, build
+disposition, guest/distribution/install deltas and totals. Optional `expect`
+objects perform recursive subset assertions; a failed operation or assertion
+sets a non-zero exit code.
 
 ### Inspecting `.vibecanvas/main.db`
 
@@ -918,22 +937,19 @@ It registers the same agent tool factories chat uses:
 Convenience aliases map to the widget tools: `create` → `vc_widget_create`,
 `validate` → `vc_widget_validate`, `list` → `vc_widget_list`. Any other
 registered tool name may be invoked directly with one JSON argument object.
-Authorization always succeeds in the lab. Output is pretty-printed JSON with
-`tool`, `isError`, `modelData`, and `details`; a tool error sets a non-zero
-exit code.
+Authorization always succeeds in the lab. Single-command output remains
+pretty-printed JSON for compatibility.
 
-Typical loop:
+Typical persistent loop:
 
 ```sh
-bun run lab -- create "Lab Counter"
-bun run lab -- validate "Lab Counter"
-bun run lab -- edit '{"path":"widgets/Lab Counter/ui/main.ts","edits":[{"oldText":"...","newText":"..."}]}'
-bun run lab -- validate "Lab Counter"
+bun run lab -- --home /tmp/vibecanvas-lab session \
+  < apps/widget-debug-tools/scenarios/b67-counter.jsonl
 ```
 
-The lab is not a substitute for Capsule browser acceptance, publication, or
-runtime-load tests. It exists to isolate draft scaffolding, workspace mounts,
-snapshot capture, and the `dist/` npm build boundary from chat and UI noise.
+The lab's headless Preview proves verified build readiness and reuse, but is not
+a substitute for Capsule browser interaction, exact frame-owned publication, or
+runtime-load tests.
 
 ## 20. Important implementation files
 

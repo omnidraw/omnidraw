@@ -8,11 +8,24 @@ function diagnosticField(value: unknown): string | null {
 
 function diagnosticReason(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const normalized = value.replace(/\s+/g, ' ').trim();
+  const lines = value.split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0);
+  const sourceLine = lines.find((line) => (
+    /(?:^|\/)(?:ui|server|shared)\/[A-Za-z0-9._/-]+(?::[0-9]+){1,2}:?\s+(?:ERROR|error)\b/.test(line)
+  ));
+  const failureLine = lines.find((line) => (
+    /\b(?:error during build|build failed with [0-9]+ errors?)\b/i.test(line)
+  ));
+  const prioritized = [failureLine, sourceLine]
+    .filter((line): line is string => line !== undefined)
+    .join(' ')
+    .replace(/\[widget-workspace\]\/(?=(?:ui|server|shared)\/)/g, '');
+  const normalized = (prioritized || lines.join(' ')).trim();
   if (normalized === '') return null;
   return normalized.length <= 320
     ? normalized
-    : `…${normalized.slice(-319)}`;
+    : `${normalized.slice(0, 239)} … ${normalized.slice(-76)}`;
 }
 
 function diagnosticPositiveInteger(value: unknown): number | null {

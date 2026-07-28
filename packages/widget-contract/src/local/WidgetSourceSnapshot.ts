@@ -245,6 +245,8 @@ export class WidgetSourceSnapshot {
   async capture(
     sourceRoot: string,
     args: Readonly<{
+      captureId?: string;
+      /** @deprecated Use captureId; this value never selects construction identity. */
       id?: string;
       createdAtMs?: number;
       expectedDigestSha256?: string;
@@ -350,7 +352,8 @@ export class WidgetSourceSnapshot {
       throw new Error('Widget source changed since the expected snapshot digest was selected.');
     }
     return Object.freeze({
-      id: args.id ?? randomUUID(),
+      id: digestSha256,
+      captureId: args.captureId ?? args.id ?? randomUUID(),
       digestSha256,
       byteSize: fnWidgetSourceSnapshotByteSize(ordered),
       files: ordered,

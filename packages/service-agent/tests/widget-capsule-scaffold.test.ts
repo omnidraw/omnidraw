@@ -20,6 +20,8 @@ describe('Capsule widget authoring scaffold', () => {
       manifest,
       sdkDependency: '0.1.0',
       capsuleDependency: '0.9.4',
+      template: 'plain',
+      server: false,
     });
 
     expect(manifest).toEqual({
@@ -70,5 +72,78 @@ describe('Capsule widget authoring scaffold', () => {
     expect(files.get('/draft/ui/main.ts')).toContain('document.body.append');
     expect(files.get('/draft/ui/main.ts')).not.toContain('@omnidraw/capsule/guest');
     expect(files.get('/draft/ui/main.ts')).not.toContain('export default');
+  });
+
+  test('creates a ready React scaffold without a second dependency edit', async () => {
+    const files = new Map<string, string>();
+    const manifest = fnBuildWidgetCreateManifest({
+      name: 'React Counter',
+      description: 'A React counter',
+      template: 'react',
+    });
+    const changed = await txWriteWidgetScaffold({
+      mkdir: async () => undefined,
+      writeFile: async (path, content) => {
+        files.set(path, content);
+      },
+      join: (...paths) => paths.join('/'),
+    }, {
+      cwd: '/draft',
+      manifest,
+      sdkDependency: '0.1.0',
+      capsuleDependency: '0.9.4',
+      template: 'react',
+      server: false,
+    });
+
+    expect(manifest.ui.entry).toBe('ui/main.tsx');
+    expect(changed).toContain('ui/main.tsx');
+    expect(changed).not.toContain('ui/main.ts');
+    expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
+      dependencies: {
+        react: '19.2.7',
+        'react-dom': '19.2.7',
+      },
+      devDependencies: {
+        '@types/react': '19.2.17',
+        '@types/react-dom': '19.2.3',
+      },
+    });
+    expect(files.get('/draft/ui/main.tsx')).toContain('useState');
+    expect(files.get('/draft/ui/main.tsx')).toContain('createRoot(root).render(<App />)');
+    expect(files.has('/draft/ui/main.ts')).toBe(false);
+  });
+
+  test('creates a valid server-function starter in the initial scaffold', async () => {
+    const files = new Map<string, string>();
+    const manifest = fnBuildWidgetCreateManifest({
+      name: 'Server Probe',
+      template: 'react',
+      server: true,
+    });
+    const changed = await txWriteWidgetScaffold({
+      mkdir: async () => undefined,
+      writeFile: async (path, content) => {
+        files.set(path, content);
+      },
+      join: (...paths) => paths.join('/'),
+    }, {
+      cwd: '/draft',
+      manifest,
+      sdkDependency: '0.1.0',
+      capsuleDependency: '0.9.4',
+      template: 'react',
+      server: true,
+    });
+
+    expect(manifest.server).toEqual({
+      entry: 'server/main.server.ts',
+      runtimeAbi: 'vibecanvas-function-v1',
+    });
+    expect(changed).toContain('server/main.server.ts');
+    expect(files.get('/draft/server/main.server.ts')).toContain(
+      'export const run = defineServerFunction',
+    );
+    expect(files.get('/draft/server/main.server.ts')).toContain('effect: "fn"');
   });
 });

@@ -281,9 +281,16 @@ export type TWidgetSourceFile = Readonly<{
   bytes: Uint8Array;
 }>;
 
-/** One immutable, content-addressed input used for every artifact in a build. */
+/**
+ * One immutable, content-addressed input used for every artifact in a build.
+ *
+ * New captures use the source digest as `id`. `captureId` and `createdAtMs`
+ * describe the incidental capture event and are never construction-key inputs.
+ * `captureId` is optional so retained v1 source artifacts remain readable.
+ */
 export type TWidgetSourceSnapshot = Readonly<{
   id: TWidgetSourceSnapshotId;
+  captureId?: string;
   digestSha256: TWidgetArtifactDigest;
   files: readonly TWidgetSourceFile[];
   createdAtMs: number;

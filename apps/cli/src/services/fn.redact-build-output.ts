@@ -31,6 +31,7 @@ function fnReplaceAll(value: string, needle: string): string {
 export function fnRedactBuildOutput(
   value: string,
   environment: Readonly<Record<string, string | undefined>>,
+  hostPaths: readonly string[] = [],
 ): string {
   const sensitiveValues = [...new Set(
     Object.entries(environment)
@@ -47,6 +48,11 @@ export function fnRedactBuildOutput(
   for (const secret of sensitiveValues) {
     redacted = fnReplaceAll(redacted, secret);
   }
+  for (const hostPath of [...hostPaths].sort((left, right) => right.length - left.length)) {
+    if (hostPath.length > 0) {
+      redacted = redacted.split(hostPath).join('[widget-workspace]');
+    }
+  }
   return redacted
     .replace(
       /\b(https?:\/\/)[^\s/@:]+:[^\s/@]+@/giu,
@@ -60,6 +66,15 @@ export function fnRedactBuildOutput(
       /\b((?:_authToken|api[_-]?key|authorization|cookie|credential|password|secret|session|token)\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu,
       '$1[redacted]',
     );
+}
+
+/** Keeps the actionable command error head plus a bounded stack tail. */
+export function fnBoundedBuildOutput(value: string, maximumBytes = 4_000): string {
+  if (value.length <= maximumBytes) return value;
+  const marker = '\n… build output truncated …\n';
+  const headLength = Math.max(0, Math.floor((maximumBytes - marker.length) * 0.75));
+  const tailLength = Math.max(0, maximumBytes - marker.length - headLength);
+  return value.slice(0, headLength) + marker + value.slice(-tailLength);
 }
 
 /**

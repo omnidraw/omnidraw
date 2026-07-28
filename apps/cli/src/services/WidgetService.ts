@@ -63,7 +63,9 @@ import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
   fnValidateWidgetBuildIntegrity,
+  fnWidgetBuildIntegrityDiagnostic,
   fnWidgetPreviewBindingPlanDigest,
+  fnWidgetPreviewWorkspaceKey,
 } from '@vibecanvas/widget-contract';
 import {
   LocalWidgetArtifactStore,
@@ -106,12 +108,15 @@ type TWidgetServiceConfig = Readonly<{
 }>;
 
 type TWidgetSourceCaptureArgs = Readonly<{
+  captureId?: string;
+  /** @deprecated Use captureId; this value never selects construction identity. */
   id?: string;
   createdAtMs?: number;
   expectedDigestSha256?: string;
 }>;
 
 type TWidgetBuildValidationRequest = Readonly<{
+  draftId?: string;
   snapshot: TWidgetSourceSnapshot;
   manifest: TWidgetManifestV3;
 }>;
@@ -295,6 +300,15 @@ class WidgetService implements
         capsuleBuildIdentity: this.#capsuleBuildIdentity,
         buildPolicyId: this.#buildPolicyId,
         signingPurpose: 'preview',
+        ...(request.draftId === undefined
+          ? {}
+          : {
+              workspaceKey: fnWidgetPreviewWorkspaceKey({
+                input: { tenant, draftId: request.draftId },
+                digestSha256: (value) =>
+                  createHash('sha256').update(value).digest('hex'),
+              }),
+            }),
       });
       const descriptors = ZWidgetServerFunctionDescriptors.safeParse(build.functionDescriptors);
       if (!descriptors.success) {
@@ -317,7 +331,7 @@ class WidgetService implements
         return Object.freeze({
           valid: false,
           diagnostics: Object.freeze([
-            `Widget builder integrity check failed: ${integrity.reason}.`,
+            fnWidgetBuildIntegrityDiagnostic(integrity),
           ]),
         });
       }

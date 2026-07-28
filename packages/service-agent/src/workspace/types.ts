@@ -23,6 +23,8 @@ export type TResolvedMountedPath = {
 export type TWidgetCreateInput = {
   name: string;
   description?: string;
+  template?: 'plain' | 'react';
+  server?: boolean;
 };
 
 export type TAvailableWidget = {

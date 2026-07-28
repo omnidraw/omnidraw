@@ -56,8 +56,12 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('`localStore` is `none`, `ephemeral`, or `snapshot`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description? })');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('complete UI-only manifest-v3 Capsule draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description?, template?, server? })');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`template: "react"`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`server: true`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read only files you need to change');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not call `bash`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('React is the pre-tested component-library path');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`react` and `react-dom` to exactly `19.2.7`');
@@ -79,7 +83,7 @@ describe('AgentService.promptChat', () => {
     );
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('subscribeWidgetTheme()');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('background: var(--card)');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read `vibecanvas.json`, `package.json`, `vite.config.mjs`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`; it performs the frozen install');

@@ -243,6 +243,8 @@ export type TWidgetSourceCaptureCapability = Readonly<{
     tenant: TTenantContext,
     sourceRoot: string,
     args?: Readonly<{
+      captureId?: string;
+      /** @deprecated Use captureId; this value never selects construction identity. */
       id?: string;
       createdAtMs?: number;
       expectedDigestSha256?: string;
@@ -254,6 +256,7 @@ export type TWidgetBuildValidationCapability = Readonly<{
   validateBuild(
     tenant: TTenantContext,
     request: Readonly<{
+      draftId?: string;
       snapshot: TWidgetSourceSnapshot;
       manifest: TWidgetManifestV3;
     }>,

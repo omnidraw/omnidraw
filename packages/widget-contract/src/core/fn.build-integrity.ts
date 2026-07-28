@@ -26,8 +26,18 @@ export type TWidgetBuildIntegrityValidation =
     }>
   | Readonly<{
       valid: false;
+      reason: 'immutable_input_mismatch';
+      mismatch:
+        | 'source_snapshot_identity'
+        | 'source_digest'
+        | 'canonical_manifest'
+        | 'builder_identity'
+        | 'capsule_build_identity'
+        | 'build_policy';
+    }>
+  | Readonly<{
+      valid: false;
       reason:
-        | 'immutable_input_mismatch'
         | 'artifact_set_mismatch'
         | 'runtime_descriptor_mismatch'
         | 'function_descriptors_invalid'
@@ -48,22 +58,88 @@ export type TWidgetBuildIntegrityArgs = Readonly<{
   digestSha256: (canonicalValue: string) => string;
 }>;
 
+export function fnWidgetSourceSnapshotIdentityMatches(
+  snapshot: Pick<TWidgetSourceSnapshot, 'id' | 'digestSha256'>,
+  sourceSnapshotId: string,
+): boolean {
+  return sourceSnapshotId === snapshot.digestSha256
+    || sourceSnapshotId === snapshot.id;
+}
+
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Returns a bounded author-facing integrity diagnostic without trusted values. */
+export function fnWidgetBuildIntegrityDiagnostic(
+  validation: Extract<TWidgetBuildIntegrityValidation, { valid: false }>,
+): string {
+  if (validation.reason !== 'immutable_input_mismatch') {
+    return `Host widget integrity check failed: ${validation.reason}. Widget source edits cannot repair this host-side failure.`;
+  }
+  const field = validation.mismatch === 'source_snapshot_identity'
+    ? 'source snapshot identity'
+    : validation.mismatch === 'source_digest'
+      ? 'source digest'
+      : validation.mismatch === 'canonical_manifest'
+        ? 'canonical manifest'
+        : validation.mismatch === 'builder_identity'
+          ? 'builder identity'
+          : validation.mismatch === 'capsule_build_identity'
+            ? 'Capsule build identity'
+            : 'build policy';
+  return `Host widget integrity check failed: trusted ${field} mismatch. Widget source edits cannot repair this host-side failure.`;
 }
 
 /** Validates that one build result is bound to its exact immutable inputs and contract. */
 export function fnValidateWidgetBuildIntegrity(
   args: TWidgetBuildIntegrityArgs,
 ): TWidgetBuildIntegrityValidation {
-  if (
-    args.build.sourceSnapshotId !== args.snapshot.id
-    || args.build.sourceDigestSha256 !== args.snapshot.digestSha256
-    || args.build.canonicalManifestJson !== args.canonicalManifestJson
-    || args.build.builderIdentity !== args.builderIdentity
-    || !sameJson(args.build.capsuleBuildIdentity, args.capsuleBuildIdentity)
-    || args.build.buildPolicyId !== args.buildPolicyId
-  ) return { valid: false, reason: 'immutable_input_mismatch' };
+  if (!fnWidgetSourceSnapshotIdentityMatches(
+    args.snapshot,
+    args.build.sourceSnapshotId,
+  )) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'source_snapshot_identity',
+    };
+  }
+  if (args.build.sourceDigestSha256 !== args.snapshot.digestSha256) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'source_digest',
+    };
+  }
+  if (args.build.canonicalManifestJson !== args.canonicalManifestJson) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'canonical_manifest',
+    };
+  }
+  if (args.build.builderIdentity !== args.builderIdentity) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'builder_identity',
+    };
+  }
+  if (!sameJson(args.build.capsuleBuildIdentity, args.capsuleBuildIdentity)) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'capsule_build_identity',
+    };
+  }
+  if (args.build.buildPolicyId !== args.buildPolicyId) {
+    return {
+      valid: false,
+      reason: 'immutable_input_mismatch',
+      mismatch: 'build_policy',
+    };
+  }
 
   if (
     args.build.uiArtifact.kind !== 'ui'

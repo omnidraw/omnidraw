@@ -7,7 +7,9 @@ import {
   fnCanonicalizeWidgetManifest,
   fnNormalizeWidgetBuildDiagnostics,
   fnValidateWidgetBuildIntegrity,
+  fnWidgetBuildIntegrityDiagnostic,
   fnWidgetPreviewBindingPlanDigest,
+  fnWidgetPreviewWorkspaceKey,
 } from '..';
 import type {
   IWidgetArtifactBuilder,
@@ -228,7 +230,7 @@ implements
             definitionId: request.definitionId,
             draftRevisionSha256: request.draftRevisionSha256,
             committedMutationId: request.committedMutationId,
-            sourceSnapshotId: request.snapshot.id,
+            sourceSnapshotId: validated.build.sourceSnapshotId,
             sourceDigestSha256: request.snapshot.digestSha256,
             sourceArtifact,
             manifest,
@@ -436,20 +438,17 @@ implements
     if (!integrity.valid) {
       throw previewError(
         'WIDGET_BUILD_INTEGRITY_FAILED',
-        `Widget builder integrity check failed: ${integrity.reason}.`,
+        fnWidgetBuildIntegrityDiagnostic(integrity),
       );
     }
     return Object.freeze({ build: normalizedBuild, manifest, construction });
   }
 
   #workspaceKey(tenant: TTenantContext, draftId: string): string {
-    return `preview-${digest(JSON.stringify({
-      orgId: tenant.orgId,
-      accountId: tenant.accountId,
-      cellId: tenant.cellId,
-      placementEpoch: tenant.placementEpoch,
-      draftId,
-    }))}`;
+    return fnWidgetPreviewWorkspaceKey({
+      input: { tenant, draftId },
+      digestSha256: digest,
+    });
   }
 
   #durableRequest(request: TWidgetPreviewBuildRequest): Readonly<{

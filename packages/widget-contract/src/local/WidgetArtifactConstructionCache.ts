@@ -84,6 +84,23 @@ function cacheKey(
 }
 
 /**
+ * Construction identity is source content identity. A capture UUID/time records
+ * an observation of those bytes, but cannot select or invalidate guest output.
+ */
+function constructionSnapshot(
+  snapshot: TWidgetArtifactConstructionRequest['snapshot'],
+): TWidgetArtifactConstructionRequest['snapshot'] {
+  if (snapshot.id === snapshot.digestSha256 && snapshot.captureId === undefined) {
+    return snapshot;
+  }
+  const { captureId: _captureId, ...content } = snapshot;
+  return Object.freeze({
+    ...content,
+    id: snapshot.digestSha256,
+  });
+}
+
+/**
  * Reuses construction only. Preview and release signing always remain separate
  * trusted operations over the cached unsigned result.
  */
@@ -152,12 +169,16 @@ implements IWidgetArtifactConstructionBuilder {
       reportProgress: _callerProgress,
       ...sharedRequest
     } = request;
+    const exactSharedRequest = {
+      ...sharedRequest,
+      snapshot: constructionSnapshot(sharedRequest.snapshot),
+    };
     const construction = Promise.resolve().then(() => {
       if (controller.signal.aborted) {
         throw cancellationReason(controller.signal);
       }
       return this.config.builder.construct(tenant, {
-        ...sharedRequest,
+        ...exactSharedRequest,
         signal: controller.signal,
         reportProgress: (phase) => {
           entry.latestProgress = phase;

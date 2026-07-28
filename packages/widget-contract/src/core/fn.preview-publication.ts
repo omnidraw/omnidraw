@@ -1,12 +1,47 @@
 import type {
   TWidgetArtifactDigest,
+  TWidgetCapsuleBuildIdentity,
   TWidgetPreviewPublicationIdentity,
+  TWidgetSourceSnapshot,
 } from '../types';
+import { fnWidgetSourceSnapshotIdentityMatches } from './fn.build-integrity';
 
 type TArgs = Readonly<{
   identity: TWidgetPreviewPublicationIdentity;
   digestSha256(value: string): TWidgetArtifactDigest;
 }>;
+
+type TPreviewConstructionIdentity = Readonly<{
+  sourceSnapshotId: string;
+  sourceDigestSha256: string;
+  canonicalManifestJson: string;
+  builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  uiArtifact: Readonly<{
+    builderIdentity: string;
+    capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  }>;
+}>;
+
+type TArgsConstructionMatchesPublication = Readonly<{
+  snapshot: Pick<TWidgetSourceSnapshot, 'id' | 'digestSha256'>;
+  construction: TPreviewConstructionIdentity;
+  canonicalManifestJson: string;
+}>;
+
+export function fnWidgetPreviewConstructionMatchesPublication(
+  args: TArgsConstructionMatchesPublication,
+): boolean {
+  return fnWidgetSourceSnapshotIdentityMatches(
+    args.snapshot,
+    args.construction.sourceSnapshotId,
+  )
+    && args.construction.sourceDigestSha256 === args.snapshot.digestSha256
+    && args.construction.canonicalManifestJson === args.canonicalManifestJson
+    && args.construction.builderIdentity === args.construction.uiArtifact.builderIdentity
+    && JSON.stringify(args.construction.capsuleBuildIdentity)
+      === JSON.stringify(args.construction.uiArtifact.capsuleBuildIdentity);
+}
 
 export function fnCanonicalizeWidgetPreviewPublicationIdentity(
   identity: TWidgetPreviewPublicationIdentity,

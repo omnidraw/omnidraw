@@ -419,8 +419,18 @@ describe('production widget service', () => {
       snapshot: firstSnapshot,
       manifest,
     })).resolves.toEqual({ valid: true, diagnostics: [] });
+    const equivalentSnapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(8_432),
+      createdAtMs: 11,
+    });
+    expect(equivalentSnapshot).toMatchObject({
+      id: firstSnapshot.digestSha256,
+      digestSha256: firstSnapshot.digestSha256,
+      captureId: uuid(8_432),
+    });
+    expect(equivalentSnapshot.captureId).not.toBe(firstSnapshot.captureId);
     await expect(service.validateBuild(TENANT, {
-      snapshot: firstSnapshot,
+      snapshot: equivalentSnapshot,
       manifest,
     })).resolves.toEqual({ valid: true, diagnostics: [] });
     expect(distributionBuildCount).toBe(1);
@@ -431,7 +441,7 @@ describe('production widget service', () => {
     });
     const secondSnapshot = await service.captureSource(TENANT, sourceRoot, {
       id: uuid(8_431),
-      createdAtMs: 11,
+      createdAtMs: 12,
     });
     expect(secondSnapshot.digestSha256).not.toBe(firstSnapshot.digestSha256);
     await expect(service.validateBuild(TENANT, {
@@ -819,6 +829,16 @@ describe('production widget service', () => {
       manifest,
     });
     expect(validation).toEqual({ valid: true, diagnostics: [] });
+    const previewSnapshot = await service.captureSource(previewTenant, sourceRoot, {
+      id: uuid(8_436),
+      createdAtMs: 5,
+    });
+    await expect(service.validateBuild(previewTenant, {
+      snapshot: previewSnapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+    expect(previewSnapshot.id).toBe(snapshot.id);
+    expect(previewSnapshot.captureId).not.toBe(snapshot.captureId);
 
     const previewBuild = {
       previewId,
@@ -830,7 +850,7 @@ describe('production widget service', () => {
       definitionId,
       draftRevisionSha256: snapshot.digestSha256,
       committedMutationId,
-      snapshot,
+      snapshot: previewSnapshot,
       manifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,

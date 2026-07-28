@@ -1694,7 +1694,7 @@ export class WidgetDraftController {
             const snapshot = await this.#config.widgets.captureSource(
               this.#config.tenant,
               copied.rootPath,
-              { id: this.#config.createId(), createdAtMs: this.#now() },
+              { captureId: this.#config.createId(), createdAtMs: this.#now() },
             );
             const afterCapture = await this.#config.workspace.getDraft(nextName);
             if (!afterCapture || afterCapture.revision !== beforeCapture.revision) {
@@ -1796,6 +1796,7 @@ export class WidgetDraftController {
     if (validation.ok && manifest.ok && options.skipTrustedBuild !== true) {
       try {
         const trusted = await this.#config.widgets.validateBuild(this.#config.tenant, {
+          draftId: draft.id,
           snapshot: captured.snapshot,
           manifest: manifest.manifest,
         });
@@ -2113,7 +2114,7 @@ export class WidgetDraftController {
       const snapshot = await this.#config.widgets.captureSource(
         this.#config.tenant,
         copied.rootPath,
-        { id: this.#config.createId(), createdAtMs: this.#now() },
+        { captureId: this.#config.createId(), createdAtMs: this.#now() },
       );
       return await operation({ workspace, rootPath: copied.rootPath, snapshot });
     } finally {

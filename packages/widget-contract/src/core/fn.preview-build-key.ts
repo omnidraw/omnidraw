@@ -49,6 +49,16 @@ export type TWidgetPreviewConstructionKeyInput = Readonly<{
   environmentIdentity: string;
 }>;
 
+export type TWidgetPreviewWorkspaceKeyInput = Readonly<{
+  tenant: Readonly<{
+    orgId: string;
+    accountId: string;
+    cellId: string;
+    placementEpoch: number;
+  }>;
+  draftId: string;
+}>;
+
 type TArgsBuildKey = Readonly<{
   input: TWidgetPreviewBuildKeyInput;
   digestSha256(value: string): string;
@@ -125,4 +135,20 @@ export function fnWidgetPreviewConstructionKey(
   return args.digestSha256(
     fnCanonicalizeWidgetPreviewConstructionKey(args.input),
   );
+}
+
+/** Stable private dependency-workspace identity shared by validation and Preview. */
+export function fnWidgetPreviewWorkspaceKey(
+  args: Readonly<{
+    input: TWidgetPreviewWorkspaceKeyInput;
+    digestSha256(value: string): string;
+  }>,
+): string {
+  return `preview-${args.digestSha256(JSON.stringify({
+    orgId: args.input.tenant.orgId,
+    accountId: args.input.tenant.accountId,
+    cellId: args.input.tenant.cellId,
+    placementEpoch: args.input.tenant.placementEpoch,
+    draftId: args.input.draftId,
+  }))}`;
 }

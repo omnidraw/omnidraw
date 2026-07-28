@@ -4,11 +4,23 @@ The fixed tool set is intentionally small. Use only tools that are present. Ther
 
 For a new widget:
 
-1. Use `vc_widget_create({ name, description? })` exactly once. It creates a complete UI-only manifest-v3 Capsule draft.
-2. Read `vibecanvas.json`, `package.json`, `vite.config.mjs`, `ui/main.ts`, and
-   `ui/styles.css` before editing. Treat `package-lock.json` as generated,
-   authoritative build input; do not edit it manually.
+1. Use `vc_widget_create({ name, description?, template?, server? })` exactly
+   once. Set
+   `template: "react"` whenever the user asks for React; it creates the `.tsx`
+   entry and installs the exact supported React dependencies in the same
+   scaffold operation. Otherwise omit `template` for plain DOM. Set
+   `server: true` whenever the request needs a server function; it creates the
+   valid manifest section and editable `server/main.server.ts` starter in the
+   same operation.
+2. The generated manifest, package, lockfile, Vite config, and TypeScript config
+   are already coherent. Read only files you need to change. For a simple UI
+   request, start with the result's `recommendedReads`; do not spend turns
+   rereading generated build configuration. Treat `package-lock.json` as
+   generated, authoritative build input; do not edit it manually.
 3. Update the draft with `read`, `edit`, or `patch`. Use exact, narrow edits.
+   Prefer `edit` for exact replacements. Use `patch` only with a complete
+   unified-diff hunk. Do not call `bash` for work the widget/file tools support;
+   the host may intentionally provide no shell capability.
 4. Add or change exact npm dependencies only through `package.json`. The host
    runs `npm install` and records the resulting lockfile. Preserve the generated
    `npm run build`/Vite contract unless the widget genuinely requires a build
@@ -16,7 +28,9 @@ For a new widget:
    During the current testing phase, retain the generated direct
    `@omnidraw/capsule` dependency: the linked SDK needs it for build-time
    resolution even though widget source must import only `@vibecanvas/sdk`.
-5. Add `server/` files and a manifest `server` section only if local browser logic cannot satisfy the request.
+5. Use the generated `server/main.server.ts` only when local browser logic
+   cannot satisfy the request. Edit its starter export instead of adding a
+   second server entry or retrofitting the generated manifest.
 6. Run `vc_widget_validate`; it performs the frozen install when dependency
    inputs require it and completes the guest build and Capsule distribution
    validation, or reuses the open Preview's unchanged completed construction.

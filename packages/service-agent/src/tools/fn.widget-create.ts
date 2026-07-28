@@ -1,4 +1,5 @@
 import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetCreateInput } from '../workspace/types';
 import {
   WIDGET_CAPSULE_AUTHORING_TARGET,
   Z_VIBECANVAS_JSON,
@@ -13,7 +14,7 @@ function slugify(name: string): string {
   return slug || 'widget';
 }
 
-export function fnBuildWidgetCreateManifest(args: { name: string; description?: string }): TWidgetManifestV3 {
+export function fnBuildWidgetCreateManifest(args: TWidgetCreateInput): TWidgetManifestV3 {
   const manifest = {
     schemaVersion: 3 as const,
     slug: slugify(args.name),
@@ -21,9 +22,17 @@ export function fnBuildWidgetCreateManifest(args: { name: string; description?: 
     ...(args.description === undefined ? {} : { description: args.description }),
     ui: {
       runtime: 'capsule' as const,
-      entry: 'ui/main.ts',
+      entry: args.template === 'react' ? 'ui/main.tsx' : 'ui/main.ts',
       target: WIDGET_CAPSULE_AUTHORING_TARGET,
     },
+    ...(args.server === true
+      ? {
+          server: {
+            entry: 'server/main.server.ts',
+            runtimeAbi: 'vibecanvas-function-v1',
+          },
+        }
+      : {}),
   };
   const result = Z_VIBECANVAS_JSON.safeParse(manifest);
   if (!result.success) {

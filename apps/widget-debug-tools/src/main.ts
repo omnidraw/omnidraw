@@ -20,6 +20,7 @@ import { ApprovalCoordinator } from '@vibecanvas/service-agent/approval/Approval
 import { createResourceTools } from '@vibecanvas/service-agent/tools/tool.resources';
 import { createWidgetWorkspaceTools } from '@vibecanvas/service-agent/tools/tool.widget-workspace';
 import { createWorkspaceFileTools } from '@vibecanvas/service-agent/tools/tool.workspace-files';
+import { txTryNpmInstall } from '@vibecanvas/service-agent/tools/tx.npm-install';
 import type { TToolDefinition } from '@vibecanvas/service-agent/tools/types';
 import { WidgetDraftController } from '@vibecanvas/service-agent/widget-drafts/WidgetDraftController';
 import { WidgetWorkspace } from '@vibecanvas/service-agent/workspace/WidgetWorkspace';
@@ -31,10 +32,12 @@ import {
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..');
 const DEFAULT_HOME = join(REPOSITORY_ROOT, '.vibecanvas');
@@ -43,17 +46,22 @@ const NPM_USER_CONFIG_PATH = fnLocalRegistryNpmUserConfig({
   stateDirectory: process.env.VIBECANVAS_REGISTRY_STATE_DIR,
   join,
 });
-const CHAT_ID = 'widget-debug-tools';
+const DEFAULT_CHAT_ID = 'widget-debug-tools';
 const ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
   '@vibecanvas/sdk/server',
   'zod',
 ]);
 
+type TOperation =
+  | Readonly<{ tool: string; args: unknown; expect?: unknown }>
+  | Readonly<{ lab: 'preview'; args: unknown; expect?: unknown }>;
+
 type TCommand = Readonly<{
   home: string;
-  toolName: string;
-  args: unknown;
+  chatId: string;
+  session: boolean;
+  operation: TOperation | null;
 }>;
 
 type TToolResult = Readonly<{
@@ -65,37 +73,80 @@ type TToolResult = Readonly<{
 function usage(): string {
   return [
     'Usage:',
-    "  bun run lab -- [--home <path>] <tool-name> '<json-args>'",
-    '  bun run lab -- [--home <path>] create <name>',
-    '  bun run lab -- [--home <path>] validate <name>',
-    '  bun run lab -- [--home <path>] list',
+    "  bun run lab -- [--home <path>] [--chat-id <id>] <tool-name> '<json-args>'",
+    '  bun run lab -- [--home <path>] [--chat-id <id>] create <name>',
+    '  bun run lab -- [--home <path>] [--chat-id <id>] validate <name>',
+    '  bun run lab -- [--home <path>] [--chat-id <id>] preview <name>',
+    '  bun run lab -- [--home <path>] [--chat-id <id>] list',
+    '  bun run lab -- --home <isolated-path> [--chat-id <id>] session < operations.jsonl',
+    '',
+    'Session records:',
+    '  {"tool":"vc_widget_create","args":{"name":"Counter"}}',
+    '  {"tool":"read","args":{"path":"widgets/Counter/ui/main.ts"}}',
+    '  {"lab":"preview","args":{"name":"Counter"}}',
   ].join('\n');
 }
 
 function parseCommand(argv: readonly string[]): TCommand {
   const values = [...argv];
   let home = DEFAULT_HOME;
+  let homeSpecified = false;
+  let chatId = DEFAULT_CHAT_ID;
   const homeIndex = values.indexOf('--home');
   if (homeIndex !== -1) {
     const selected = values[homeIndex + 1];
     if (!selected) throw new Error('--home requires a path.');
     home = resolve(process.cwd(), selected);
+    homeSpecified = true;
     values.splice(homeIndex, 2);
+  }
+  const chatIndex = values.indexOf('--chat-id');
+  if (chatIndex !== -1) {
+    const selected = values[chatIndex + 1]?.trim();
+    if (!selected) throw new Error('--chat-id requires an identity.');
+    chatId = selected;
+    values.splice(chatIndex, 2);
   }
   const command = values.shift();
   if (!command) throw new Error(usage());
+  if (command === 'session') {
+    if (values.length > 0) throw new Error('session does not accept positional arguments.');
+    if (!homeSpecified) {
+      throw new Error('session requires an explicit isolated --home path.');
+    }
+    return { home, chatId, session: true, operation: null };
+  }
   if (command === 'create' || command === 'validate') {
     const name = values.join(' ').trim();
     if (!name) throw new Error(`${command} requires a widget name.`);
     return {
       home,
-      toolName: command === 'create' ? 'vc_widget_create' : 'vc_widget_validate',
-      args: { name },
+      chatId,
+      session: false,
+      operation: {
+        tool: command === 'create' ? 'vc_widget_create' : 'vc_widget_validate',
+        args: { name },
+      },
+    };
+  }
+  if (command === 'preview') {
+    const name = values.join(' ').trim();
+    if (!name) throw new Error('preview requires a widget name.');
+    return {
+      home,
+      chatId,
+      session: false,
+      operation: { lab: 'preview', args: { name } },
     };
   }
   if (command === 'list') {
     if (values.length > 0) throw new Error('list does not accept arguments.');
-    return { home, toolName: 'vc_widget_list', args: {} };
+    return {
+      home,
+      chatId,
+      session: false,
+      operation: { tool: 'vc_widget_list', args: {} },
+    };
   }
   if (values.length > 1) {
     throw new Error('A direct tool call accepts one JSON argument value.');
@@ -108,7 +159,12 @@ function parseCommand(argv: readonly string[]): TCommand {
       throw new Error('Tool arguments must be valid JSON.');
     }
   }
-  return { home, toolName: command, args };
+  return {
+    home,
+    chatId,
+    session: false,
+    operation: { tool: command, args },
+  };
 }
 
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
@@ -131,6 +187,61 @@ function resultModelData(result: TToolResult): unknown {
   } catch {
     return null;
   }
+}
+
+function boundedResultText(result: TToolResult): Readonly<{
+  text: string | null;
+  textTruncated: boolean;
+}> {
+  const text = result.content?.find((item) => item.type === 'text')?.text ?? null;
+  if (text === null) return { text: null, textTruncated: false };
+  const maximum = 16_000;
+  return {
+    text: text.slice(0, maximum),
+    textTruncated: text.length > maximum,
+  };
+}
+
+function operationFromJson(line: string): TOperation {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new Error('Session input must contain one valid JSON object per line.');
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Session operation must be a JSON object.');
+  }
+  const record = value as Record<string, unknown>;
+  const expect = record.expect;
+  if (typeof record.tool === 'string' && !('lab' in record)) {
+    return {
+      tool: record.tool,
+      args: record.args ?? {},
+      ...(expect === undefined ? {} : { expect }),
+    };
+  }
+  if (record.lab === 'preview' && !('tool' in record)) {
+    return {
+      lab: 'preview',
+      args: record.args ?? {},
+      ...(expect === undefined ? {} : { expect }),
+    };
+  }
+  throw new Error("Session operation must select exactly one 'tool' or supported 'lab' action.");
+}
+
+function matchesExpected(actual: unknown, expected: unknown): boolean {
+  if (typeof expected !== 'object' || expected === null) return Object.is(actual, expected);
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual)
+      && expected.length === actual.length
+      && expected.every((value, index) => matchesExpected(actual[index], value));
+  }
+  if (typeof actual !== 'object' || actual === null || Array.isArray(actual)) return false;
+  const actualRecord = actual as Record<string, unknown>;
+  return Object.entries(expected as Record<string, unknown>)
+    .every(([key, value]) => matchesExpected(actualRecord[key], value));
 }
 
 async function run(): Promise<void> {
@@ -174,6 +285,31 @@ async function run(): Promise<void> {
     toolchainPinnedByRunner: false,
   });
   const signingKeys = new WidgetCapsuleSigningKeyStore(join(command.home, 'keys'));
+  const telemetry = {
+    guestConstructions: 0,
+    distributionBuilds: 0,
+    dependencyInstalls: 0,
+  };
+  const npmDistributionBuild = createWidgetNpmDistributionBuild({
+    scratchDirectory: buildTempRoot,
+    npmUserConfigPath: NPM_USER_CONFIG_PATH,
+  });
+  const distributionBuild = Object.assign(
+    async (request: Parameters<typeof npmDistributionBuild>[0]) => {
+      telemetry.distributionBuilds += 1;
+      return npmDistributionBuild({
+        ...request,
+        reportProgress: (phase) => {
+          if (phase === 'installing') telemetry.dependencyInstalls += 1;
+          request.reportProgress?.(phase);
+        },
+      });
+    },
+    {
+      closeWorkspace: npmDistributionBuild.closeWorkspace.bind(npmDistributionBuild),
+      close: npmDistributionBuild.close.bind(npmDistributionBuild),
+    },
+  );
   const widgetPool = new WidgetServicePool({
     create: async (placement) => new WidgetService({
       placement,
@@ -184,11 +320,11 @@ async function run(): Promise<void> {
       buildEnvironmentIdentity,
       capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
       buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
-      capsuleBuild: buildCapsuleGuest,
-      distributionBuild: createWidgetNpmDistributionBuild({
-        scratchDirectory: buildTempRoot,
-        npmUserConfigPath: NPM_USER_CONFIG_PATH,
-      }),
+      capsuleBuild: async (request) => {
+        telemetry.guestConstructions += 1;
+        return buildCapsuleGuest(request);
+      },
+      distributionBuild,
       loadCapsuleSigningKeys: (purpose) => signingKeys.loadSigningKeys(purpose),
       artifactReadSecret: randomBytes(32),
       artifactReadMaximumTtlMs: ARTIFACT_READ_MAXIMUM_TTL_MS,
@@ -210,7 +346,7 @@ async function run(): Promise<void> {
     await database.start();
     widgetPool.start({ hooks: {}, config: {} });
     await workspace.init();
-    const cwd = await workspace.ensureChat(CHAT_ID);
+    const cwd = await workspace.ensureChat(command.chatId);
     const owner = await widgetPool.forTenant(tenant);
     const draftController = new WidgetDraftController({
       tenant,
@@ -227,25 +363,34 @@ async function run(): Promise<void> {
     });
     controller = draftController;
     const onDraftChanged = (change: Parameters<typeof draftController.handleToolChange>[0]) => (
-      draftController.handleToolChange({ ...change, chatId: CHAT_ID })
+      draftController.handleToolChange({ ...change, chatId: command.chatId })
     );
+    const trackedNpmInstall = async (installCwd: string) => {
+      telemetry.dependencyInstalls += 1;
+      return txTryNpmInstall({ access, execFile, join }, {
+        cwd: installCwd,
+        userConfigPath: NPM_USER_CONFIG_PATH,
+      });
+    };
     const authorize = async () => true;
     const tools: TToolDefinition[] = [
       ...createWidgetWorkspaceTools({
         workspace,
-        chatId: CHAT_ID,
+        chatId: command.chatId,
         authorize,
         onDraftChanged,
+        npmInstall: trackedNpmInstall,
       }),
       ...createWorkspaceFileTools({
         workspace,
-        chatId: CHAT_ID,
+        chatId: command.chatId,
         cwd,
         authorize,
         onDraftChanged,
+        npmInstall: trackedNpmInstall,
       }),
       ...createResourceTools({
-        chatId: CHAT_ID,
+        chatId: command.chatId,
         authorization: {
           accountId: tenant.accountId,
           requestId: tenant.requestId,
@@ -254,26 +399,115 @@ async function run(): Promise<void> {
         authorize,
       }),
     ];
-    const tool = tools.find((candidate) => candidate.name === command.toolName);
-    if (!tool) {
-      throw new Error(
-        `Unknown tool '${command.toolName}'. Available: ${tools.map((item) => item.name).join(', ')}`,
-      );
+    const executeOperation = async (operation: TOperation) => {
+      const before = { ...telemetry };
+      const startedAt = performance.now();
+      let record: Record<string, unknown>;
+      if ('tool' in operation) {
+        const tool = tools.find((candidate) => candidate.name === operation.tool);
+        if (!tool) {
+          throw new Error(
+            `Unknown tool '${operation.tool}'. Available: ${tools.map((item) => item.name).join(', ')}`,
+          );
+        }
+        const result = await (tool.execute as (...args: unknown[]) => Promise<TToolResult>)(
+          `widget-debug-tools-${randomUUID()}`,
+          operation.args,
+          undefined,
+          undefined,
+          {},
+        );
+        record = {
+          tool: tool.name,
+          isError: result.isError === true,
+          modelData: resultModelData(result),
+          details: result.details ?? null,
+          ...boundedResultText(result),
+        };
+      } else {
+        const args = operation.args as { name?: unknown };
+        if (typeof args.name !== 'string' || args.name.trim().length === 0) {
+          throw new Error('Preview requires a widget name.');
+        }
+        const draft = await draftController.getByName(args.name);
+        if (!draft) throw new Error(`Widget draft '${args.name}' was not found.`);
+        const preview = await draftController.buildPreview(draft.draftId);
+        record = preview.ready
+          ? {
+              lab: 'preview',
+              isError: false,
+              ready: true,
+              name: preview.name,
+              draftId: preview.draftId,
+              revision: preview.revision,
+              sourceIdentity: preview.revision,
+              committedMutationId: preview.committedMutationId,
+              uiArtifact: {
+                digestSha256: preview.uiArtifact.digestSha256,
+                byteSize: preview.uiArtifact.byteSize,
+              },
+              diagnostics: preview.diagnostics,
+            }
+          : {
+              lab: 'preview',
+              isError: true,
+              ready: false,
+              draftId: preview.draftId,
+              revision: preview.revision ?? null,
+              reason: preview.reason,
+              message: preview.message,
+              diagnostics: preview.diagnostics,
+            };
+      }
+      const delta = {
+        guestConstructions: telemetry.guestConstructions - before.guestConstructions,
+        distributionBuilds: telemetry.distributionBuilds - before.distributionBuilds,
+        dependencyInstalls: telemetry.dependencyInstalls - before.dependencyInstalls,
+      };
+      record.durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+      const buildRequested = 'lab' in operation || operation.tool === 'vc_widget_validate';
+      record.build = {
+        disposition: !buildRequested
+          ? 'not-requested'
+          : delta.guestConstructions === 0 && delta.distributionBuilds === 0
+            ? 'reused'
+            : 'constructed',
+        ...delta,
+        totals: { ...telemetry },
+      };
+      if (operation.expect !== undefined && !matchesExpected(record, operation.expect)) {
+        record.isError = true;
+        record.assertion = { passed: false };
+      } else if (operation.expect !== undefined) {
+        record.assertion = { passed: true };
+      }
+      if (record.isError === true) process.exitCode = 1;
+      return record;
+    };
+
+    if (command.session) {
+      const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+      let operationIndex = 0;
+      for await (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (line.length === 0) continue;
+        operationIndex += 1;
+        try {
+          const record = await executeOperation(operationFromJson(line));
+          console.log(JSON.stringify({ operation: operationIndex, ...record }));
+        } catch (error) {
+          process.exitCode = 1;
+          console.log(JSON.stringify({
+            operation: operationIndex,
+            isError: true,
+            message: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      }
+      return;
     }
-    const result = await (tool.execute as (...args: unknown[]) => Promise<TToolResult>)(
-      `widget-debug-tools-${randomUUID()}`,
-      command.args,
-      undefined,
-      undefined,
-      {},
-    );
-    console.log(JSON.stringify({
-      tool: tool.name,
-      isError: result.isError === true,
-      modelData: resultModelData(result),
-      details: result.details ?? null,
-    }, null, 2));
-    if (result.isError) process.exitCode = 1;
+    if (command.operation === null) throw new Error('No lab operation was selected.');
+    console.log(JSON.stringify(await executeOperation(command.operation), null, 2));
   } finally {
     approvals.close();
     await controller?.close();

@@ -177,7 +177,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B64](b/B64.md) - widgets: restore direct drag placement after Cangine cutover
 - [x]: [B65](b/B65.md) - cli: home preflight must share multiprocess WAL and report real failures
 - [x]: [B66](b/B66.md) - widget portals: keep Capsule layout intrinsic while canvas zooms
-- [ ]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
+- [x]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -397,6 +397,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [x]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
+- [ ]: [S122](s/S122.md) - agent: restore host-authority Bash with Bun PTY
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

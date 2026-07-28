@@ -57,6 +57,58 @@ function request(
 }
 
 describe('WidgetArtifactConstructionCache', () => {
+  test('reuses equal source content across distinct capture events with exact provenance', async () => {
+    let constructions = 0;
+    const constructedSnapshotIds: string[] = [];
+    const builder = {
+      async construct(
+        _tenant: TTenantContext,
+        constructionRequest: TWidgetArtifactConstructionRequest,
+      ) {
+        constructions += 1;
+        constructedSnapshotIds.push(constructionRequest.snapshot.id);
+        return {
+          sourceSnapshotId: constructionRequest.snapshot.id,
+          sourceDigestSha256: constructionRequest.snapshot.digestSha256,
+        } as unknown as TWidgetArtifactConstructionResult;
+      },
+      async signConstruction() {
+        throw new Error('unreachable');
+      },
+      async build() {
+        throw new Error('unreachable');
+      },
+    } as unknown as IWidgetArtifactConstructionBuilder;
+    const cache = new WidgetArtifactConstructionCache({
+      builder,
+      environmentIdentity: 'test-environment',
+    });
+    const digest = 'a'.repeat(64);
+    const first = request(digest);
+    const second = {
+      ...first,
+      snapshot: {
+        ...first.snapshot,
+        id: 'capture-2',
+        captureId: 'event-2',
+        createdAtMs: 2,
+      },
+    };
+
+    const [firstConstruction, secondConstruction] = await Promise.all([
+      cache.construct(tenant, first),
+      cache.construct(tenant, second),
+    ]);
+
+    expect(firstConstruction).toBe(secondConstruction);
+    expect(firstConstruction).toMatchObject({
+      sourceSnapshotId: digest,
+      sourceDigestSha256: digest,
+    });
+    expect(constructedSnapshotIds).toEqual([digest]);
+    expect(constructions).toBe(1);
+  });
+
   test('single-flights construction but signs Preview and release separately', async () => {
     let constructions = 0;
     const purposes: string[] = [];

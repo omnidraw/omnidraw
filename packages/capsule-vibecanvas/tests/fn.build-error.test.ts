@@ -35,7 +35,7 @@ describe('fnWidgetBuildError', () => {
     );
   });
 
-  test('surfaces the bounded tail of a structured host command failure', () => {
+  test('surfaces the actionable head and bounded tail of a structured host command failure', () => {
     const reason = `prefix-${'x'.repeat(500)}-npm ci cannot resolve linked package`;
     const cause = Object.assign(new Error('host command details'), {
       diagnostic: {
@@ -49,9 +49,9 @@ describe('fnWidgetBuildError', () => {
 
     expect(result.message).toContain('Widget ui build failed: WIDGET_COMMAND_FAILED');
     expect(result.message).toContain('construct="npm ci"');
+    expect(result.message).toContain('prefix-');
     expect(result.message).toContain('npm ci cannot resolve linked package');
-    expect(result.message).not.toContain('prefix-');
-    expect(result.message.length).toBeLessThan(512);
+    expect(result.message.length).toBeLessThan(600);
   });
 
   test('preserves actionable CSS profile diagnostics and source location', () => {
@@ -81,5 +81,27 @@ describe('fnWidgetBuildError', () => {
     );
     expect(result.diagnostic).toEqual(diagnostic);
     expect(Object.isFrozen(result.diagnostic)).toBe(true);
+  });
+
+  test('prioritizes a widget-relative compiler error over verbose build output', () => {
+    const cause = Object.assign(new Error('host command details'), {
+      diagnostic: {
+        code: 'WIDGET_COMMAND_FAILED',
+        construct: 'npm run build',
+        reason: [
+          '> widget build',
+          'vite building client environment for production',
+          'error during build: Build failed with 1 error:',
+          '[widget-workspace]/ui/main.ts:28:11: ERROR: Expected expression but found ";"',
+          'at verbose internal stack frame',
+        ].join('\n'),
+      },
+    });
+
+    const result = fnWidgetBuildError('ui', cause);
+
+    expect(result.message).toContain('ui/main.ts:28:11: ERROR: Expected expression');
+    expect(result.message).not.toContain('widget-workspace');
+    expect(result.message).not.toContain('internal stack');
   });
 });

@@ -60,11 +60,13 @@ export {
   fnCanonicalizeWidgetPreviewConstructionKey,
   fnWidgetPreviewBuildKey,
   fnWidgetPreviewConstructionKey,
+  fnWidgetPreviewWorkspaceKey,
 } from './core/fn.preview-build-key';
 export type {
   TWidgetPreviewBuildEnvironment,
   TWidgetPreviewBuildKeyInput,
   TWidgetPreviewConstructionKeyInput,
+  TWidgetPreviewWorkspaceKeyInput,
 } from './core/fn.preview-build-key';
 export {
   fnCanonicalizeWidgetPreviewBindingPlan,
@@ -72,9 +74,14 @@ export {
 } from './core/fn.preview-binding-plan';
 export {
   fnCanonicalizeWidgetPreviewPublicationIdentity,
+  fnWidgetPreviewConstructionMatchesPublication,
   fnWidgetPreviewPublicationFingerprint,
 } from './core/fn.preview-publication';
-export { fnValidateWidgetBuildIntegrity } from './core/fn.build-integrity';
+export {
+  fnValidateWidgetBuildIntegrity,
+  fnWidgetBuildIntegrityDiagnostic,
+  fnWidgetSourceSnapshotIdentityMatches,
+} from './core/fn.build-integrity';
 export type {
   TWidgetBuildIntegrityArgs,
   TWidgetBuildIntegrityValidation,

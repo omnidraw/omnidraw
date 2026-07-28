@@ -29,6 +29,7 @@ import {
   sep,
 } from 'node:path';
 import {
+  fnBoundedBuildOutput,
   fnRedactBuildOutput,
   fnWidgetBuildProcessEnvironment,
 } from './fn.redact-build-output';
@@ -424,7 +425,14 @@ export function runProcess(
         finish();
         return;
       }
-      const detail = fnRedactBuildOutput(output.trim(), process.env).slice(-4_000);
+      const detail = fnBoundedBuildOutput(fnRedactBuildOutput(
+        output.trim(),
+        process.env,
+        [
+          options.cwd,
+          ...(options.cwd.startsWith('/tmp/') ? [`/private${options.cwd}`] : []),
+        ],
+      ));
       const message = `Widget command '${commandDisplay}' failed`
         + ` (${signal ? `signal ${signal}` : `exit ${String(code)}`}).`
         + (detail === '' ? '' : `\n${detail}`);

@@ -35,6 +35,11 @@ type TCreateWidgetWorkspaceToolsArgs = {
 const WIDGET_CREATE_PARAMETERS = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 120 }),
   description: Type.Optional(Type.String({ maxLength: 2_000 })),
+  template: Type.Optional(Type.Union([
+    Type.Literal('plain'),
+    Type.Literal('react'),
+  ])),
+  server: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
 export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs): TToolDefinition[] {
@@ -82,26 +87,34 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const create = defineTool({
     name: 'vc_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create and mount one complete browser-first manifest-v3 Capsule widget draft. Continue by reading the generated files, editing the construction scaffold, then call vc_widget_validate. Add server files only when the requested widget needs a short server function.',
+    description: 'Create and mount one complete browser-first manifest-v3 Capsule widget draft. Choose template "react" for a ready React/TypeScript starter with dependencies already installed; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Read only files you need to change, edit them, then call vc_widget_validate.',
     parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       if (!Check(WIDGET_CREATE_PARAMETERS, params)) {
         return fnToolError({
           code: 'WIDGET_CREATE_INPUT_INVALID',
-          message: 'Widget creation accepts only a name and optional description.',
+          message: 'Widget creation accepts only a name, optional description, optional plain or react template, and optional server flag.',
         });
       }
       let draftCreated = false;
       try {
         return await args.workspace.withDraftAuthoringOperation(params.name, async () => {
-          const created = await args.workspace.createDraft(args.chatId, params, async ({ cwd, name, description }) => {
-            const manifest = fnBuildWidgetCreateManifest({ name, description });
+          const created = await args.workspace.createDraft(args.chatId, params, async ({ cwd, name, description, template, server }) => {
+            const selectedTemplate = template ?? 'plain';
+            const manifest = fnBuildWidgetCreateManifest({
+              name,
+              description,
+              template: selectedTemplate,
+              server,
+            });
             const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, {
               cwd,
               manifest,
               sdkDependency: SDK_PACKAGE_DEPENDENCY,
               capsuleDependency: SDK_CAPSULE_DEPENDENCY,
+              template: selectedTemplate,
+              server: server === true,
             });
             const installed = await (args.npmInstall
               ? args.npmInstall(cwd)
@@ -129,16 +142,28 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           if (args.onDraftChanged && !durable) {
             throw new Error('Created widget source did not receive a durable mutation fence.');
           }
+          const template = params.template ?? 'plain';
+          const server = params.server === true;
+          const editableEntry = template === 'react' ? 'ui/main.tsx' : 'ui/main.ts';
           const modelData = {
             name: created.mount.name,
             ...(durable ? { draftId: durable.draftId } : {}),
             mountPath: `widgets/${created.mount.name}`,
             source: created.mount.source,
             draft: true,
+            template,
+            server,
             files: created.files,
+            recommendedReads: [
+              `widgets/${created.mount.name}/${editableEntry}`,
+              `widgets/${created.mount.name}/ui/styles.css`,
+              ...(server
+                ? [`widgets/${created.mount.name}/server/main.server.ts`]
+                : []),
+            ],
           };
           return fnToolSuccess({
-            summary: `Created and mounted runnable unpublished widget draft '${created.mount.name}'. Read and edit its construction scaffold, then validate it.`,
+            summary: `Created and mounted runnable unpublished ${template === 'react' ? 'React' : 'plain DOM'}${server ? ' with server function' : ''} widget draft '${created.mount.name}'. Read the recommended editable files, make the requested change, then validate it.`,
             modelData,
             details: modelData,
           });
@@ -192,7 +217,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             : validation;
           const errors = authoritative.errors.slice(0, 40);
           const warnings = authoritative.warnings.slice(0, 40);
-          const files = validation.files.slice(0, 500);
+          const files = validation.files.slice(0, 100);
           const modelData = {
             name: mount.name,
             ...(durable ? { draftId: durable.draftId, revision: durable.revision } : {}),
@@ -202,6 +227,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             errors,
             warnings,
             files,
+            authoredFileCount: validation.files.length,
             errorsTruncated: authoritative.errors.length > errors.length,
             warningsTruncated: authoritative.warnings.length > warnings.length,
             filesTruncated: validation.files.length > files.length,

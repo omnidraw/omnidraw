@@ -18,6 +18,7 @@ import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 import {
   txRestoreNpmPackageLock,
   txTryNpmInstall,
+  type TNpmInstall,
   type TNpmPackageLockState,
 } from './tx.npm-install';
 
@@ -27,6 +28,7 @@ type TCreateWorkspaceFileToolsArgs = {
   cwd: string;
   authorize: (toolName: 'read' | 'edit' | 'patch' | 'grep') => Promise<boolean>;
   onDraftChanged?: TWidgetDraftChangeHandler;
+  npmInstall?: TNpmInstall;
 };
 
 function mountedWidgetName(path: string): string | undefined {
@@ -39,14 +41,16 @@ function lexicalPath(cwd: string, absolutePath: string): string {
 }
 
 async function installManifestChange(
-  args: Pick<TCreateWorkspaceFileToolsArgs, 'chatId' | 'workspace'>,
+  args: Pick<TCreateWorkspaceFileToolsArgs, 'chatId' | 'workspace' | 'npmInstall'>,
   name: string,
 ): Promise<void> {
   const mount = await args.workspace.findMountedWidget(args.chatId, name);
-  const result = await txTryNpmInstall({ access, execFile, join }, {
-    cwd: mount.targetPath,
-    userConfigPath: args.workspace.npmUserConfigPath,
-  });
+  const result = await (args.npmInstall
+    ? args.npmInstall(mount.targetPath)
+    : txTryNpmInstall({ access, execFile, join }, {
+        cwd: mount.targetPath,
+        userConfigPath: args.workspace.npmUserConfigPath,
+      }));
   if (result.status !== 'success') {
     throw new Error(result.status === 'error'
       ? `Dependency installation failed: ${result.message}`
