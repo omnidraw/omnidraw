@@ -74,7 +74,7 @@ describe('CLI test harness', () => {
     expectExitCode(result, 1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(context.homeDir);
-    expect(result.stderr).toContain('Actor-era and unknown non-empty layouts are unsupported.');
+    expect(result.stderr).toContain('Actor-era and unknown database layouts are unsupported.');
     expect(result.stderr).toContain('Archive or move');
     expect(result.stderr).toContain('--data-dir <fresh-path>');
     expect(await readdir(context.homeDir)).toEqual(['vibecanvas.turso']);

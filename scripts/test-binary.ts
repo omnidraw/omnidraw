@@ -688,7 +688,7 @@ async function assertHomePreflightRefusalBinaryScenario(args: {
     }
     for (const expected of [
       args.homePath,
-      "Actor-era and unknown non-empty layouts are unsupported.",
+      "Actor-era and unknown database layouts are unsupported.",
       "Archive or move",
       "--data-dir <fresh-path>",
     ]) {

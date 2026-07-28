@@ -64,9 +64,18 @@ async function temporaryRoot(): Promise<string> {
   return root;
 }
 
-async function openDatabase(databasePath: string): Promise<Database> {
+async function openDatabase(
+  databasePath: string,
+  options: { multiprocessWal?: boolean } = {},
+): Promise<Database> {
   const db = await connect(databasePath, {
-    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'] as never,
+    experimental: [
+      'custom_types',
+      'triggers',
+      'index_method',
+      'generated_columns',
+      ...(options.multiprocessWal ? ['multiprocess_wal'] : []),
+    ] as never,
   });
   databases.push(db);
   return db;
@@ -1121,6 +1130,31 @@ describe('read-only startup preflight', () => {
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);
+  });
+
+  test('recognizes a managed database while a multiprocess WAL connection holds it open', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const holder = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(holder);
+
+    await expect(preflightDbServiceDatabase({ homeDir, databasePath })).resolves.toMatchObject({
+      status: 'ready',
+      currentVersion: DATABASE_SCHEMA_VERSION,
+    });
+
+    expect(await pragma(holder, 'application_id')).toBe(DATABASE_APPLICATION_ID);
+    expect(await pragma(holder, 'user_version')).toBe(DATABASE_SCHEMA_VERSION);
+  });
+
+  test('includes the native cause when opening main.db fails', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    await fs.writeFile(databasePath, 'not-a-sqlite-database');
+
+    await expect(
+      preflightDbServiceDatabase({ homeDir, databasePath }),
+    ).rejects.toThrow(/read-only preflight failed.*short read/i);
   });
 });
 

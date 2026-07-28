@@ -42,6 +42,16 @@ declare const VIBECANVAS_VERSION: string | undefined;
 type TCanvasCreateArgs = Pick<TCanvas, "id" | "name">;
 type TFileCreateArgs = Omit<TMediaFile, "created_at">
 
+const TURSO_EXPERIMENTAL_FEATURES = [
+  'custom_types',
+  'triggers',
+  'index_method',
+  'generated_columns',
+];
+const TURSO_ON_DISK_EXPERIMENTAL_FEATURES = [
+  ...TURSO_EXPERIMENTAL_FEATURES,
+  'multiprocess_wal',
+];
 
 /**
  * Public customer-data repositories require a tenant context for every call.
@@ -265,7 +275,7 @@ export async function preflightDbServiceDatabase(
     readonly: true,
     fileMustExist: true,
     // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
-    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'],
+    experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
   });
   let connected = false;
   try {
@@ -284,8 +294,9 @@ export async function preflightDbServiceDatabase(
     if (error instanceof Error && error.message.startsWith('Refusing to open Vibecanvas database:')) {
       throw error;
     }
+    const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}`,
+      `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
       { cause: error },
     );
   } finally {
@@ -301,8 +312,8 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
 
   constructor(private config: IDbConfig) {
     const experimental = this.config.databasePath === ":memory:"
-      ? ["custom_types", "triggers", "index_method", "generated_columns"]
-      : ["custom_types", "triggers", "index_method", "generated_columns", "multiprocess_wal"];
+      ? [...TURSO_EXPERIMENTAL_FEATURES]
+      : [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES];
 
     this.db = new Database(this.config.databasePath, {
       // @ts-expect-error experimental feature list is ahead of package typings
