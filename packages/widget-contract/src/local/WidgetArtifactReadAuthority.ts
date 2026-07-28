@@ -42,12 +42,13 @@ function claimsAreValid(value: unknown): value is TWidgetArtifactReadCapabilityC
     || typeof claim.definitionId !== 'string'
     || typeof claim.revisionId !== 'string'
     || typeof claim.artifactId !== 'string'
-    || !['ui', 'server', 'source', 'source_map'].includes(String(claim.artifactKind))
+    || !['ui', 'unsigned_ui', 'server', 'source', 'source_map'].includes(String(claim.artifactKind))
     || typeof claim.digestSha256 !== 'string'
     || ![
       'browser_ui',
       'server_execution',
       'source_build',
+      'preview_construction',
       'source_map',
       'cell_move',
     ].includes(String(claim.purpose))

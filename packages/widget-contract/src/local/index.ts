@@ -6,6 +6,10 @@ export type {
 } from './LocalWidgetArtifactStore';
 export { WidgetArtifactGarbageCollector } from './WidgetArtifactGarbageCollector';
 export type { TWidgetArtifactGarbageCollectorConfig } from './WidgetArtifactGarbageCollector';
+export { WidgetArtifactConstructionCache } from './WidgetArtifactConstructionCache';
+export type {
+  TWidgetArtifactConstructionCacheConfig,
+} from './WidgetArtifactConstructionCache';
 export { WidgetArtifactOperationLane } from './WidgetArtifactOperationLane';
 export { WidgetArtifactReadAuthority } from './WidgetArtifactReadAuthority';
 export type { TWidgetArtifactReadAuthorityConfig } from './WidgetArtifactReadAuthority';

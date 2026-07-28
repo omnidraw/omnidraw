@@ -4,14 +4,19 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnNormalizeWidgetBuildDiagnostics,
   fnProjectWidgetBrowserFunctionDescriptors,
+  fnWidgetPreviewBindingPlanDigest,
   type TWidgetArtifactDescriptor,
+  type TWidgetBuildDiagnostic,
   type TWidgetCapsuleBuildIdentity,
   type TWidgetCapsuleRuntimeDescriptor,
   type TWidgetCapsuleUiArtifact,
   type TWidgetManifestV3,
   type TWidgetPreviewBuildRequest,
+  type TWidgetPreviewBuildResult,
   type TWidgetPublishRequest,
+  type TWidgetResourceBindingInput,
   type TWidgetRevisionDescriptor,
   type TWidgetRevisionSourceDescriptor,
   type TWidgetServerFunctionDescriptor,
@@ -24,12 +29,13 @@ import type {
   TAgentAuthoringChatDescriptor,
   TAgentAuthoringDraftDescriptor,
   TWidgetAuthoringCapability,
+  TWidgetPreviewOwnerDescriptor,
 } from '../src/widget-drafts/types';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { TEST_TENANT, createTestTenantEvents } from './tenant.fixture';
 import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
-function digest(bytes: Uint8Array): string {
+function digest(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
@@ -92,6 +98,7 @@ function browserFunctionDigest(
 export class MemoryAuthoringStore implements IAgentAuthoringStore {
   readonly chats = new Map<string, TAgentAuthoringChatDescriptor>();
   readonly drafts = new Map<string, TAgentAuthoringDraftDescriptor>();
+  readonly previewOwners = new Map<string, TWidgetPreviewOwnerDescriptor>();
   conflictPublishedCasWithAdvancedSource = false;
   alwaysConflictPublishedCas = false;
   throwPublishedCasError = false;
@@ -123,6 +130,203 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
     };
     this.chats.set(chat.id, chat);
     return chat;
+  }
+
+  async ensurePreviewOwner(
+    tenant: TTenantContext,
+    request: Parameters<IAgentAuthoringStore['ensurePreviewOwner']>[1],
+  ): Promise<TWidgetPreviewOwnerDescriptor> {
+    const draft = await this.getDraft(tenant, request.draftId);
+    const chat = await this.getChat(tenant, request.originChatId);
+    if (!draft || draft.status === 'discarded' || !chat || draft.chatId !== chat.id) {
+      throw new Error('Preview owner does not match its durable draft and chat.');
+    }
+    const existing = this.previewOwners.get(request.id);
+    if (existing) {
+      if (
+        existing.accountId !== tenant.accountId
+        || existing.canvasId !== request.canvasId
+        || existing.frameNodeId !== request.frameNodeId
+        || existing.draftId !== request.draftId
+        || existing.originChatId !== request.originChatId
+        || existing.role !== request.role
+        || existing.status === 'closed'
+      ) throw new Error('Preview owner identity conflict.');
+      return existing;
+    }
+    const frameOwner = [...this.previewOwners.values()].find((owner) => (
+      owner.orgId === tenant.orgId
+      && owner.canvasId === request.canvasId
+      && owner.frameNodeId === request.frameNodeId
+      && owner.status !== 'closed'
+    ));
+    if (frameOwner) throw new Error('Preview frame already has a different owner.');
+    if (request.role === 'companion') {
+      const companion = [...this.previewOwners.values()].find((owner) => (
+        owner.orgId === tenant.orgId
+        && owner.accountId === tenant.accountId
+        && owner.draftId === request.draftId
+        && owner.originChatId === request.originChatId
+        && owner.role === 'companion'
+        && owner.status !== 'closed'
+      ));
+      if (companion) return companion;
+    }
+    const owner: TWidgetPreviewOwnerDescriptor = {
+      orgId: tenant.orgId,
+      id: request.id,
+      accountId: tenant.accountId,
+      canvasId: request.canvasId,
+      frameNodeId: request.frameNodeId,
+      draftId: request.draftId,
+      originChatId: request.originChatId,
+      role: request.role,
+      status: 'queued',
+      activeRevisionId: null,
+      pendingBuildId: null,
+      buildSequence: 0,
+      bindingRevision: 0,
+      bindingPlanDigestSha256: null,
+      sourceDigestSha256: null,
+      committedMutationId: null,
+      runtimeDiagnostics: [],
+      publishedPreviewRevisionId: null,
+      publishedBindingRevision: null,
+      publishedBindingPlanDigestSha256: null,
+      publishedWidgetRevisionId: null,
+      publishedIdempotencyKey: null,
+      lastError: null,
+      createdAtMs: request.nowMs,
+      updatedAtMs: request.nowMs,
+      closedAtMs: null,
+    };
+    this.previewOwners.set(owner.id, owner);
+    return owner;
+  }
+
+  async getPreviewOwner(
+    tenant: TTenantContext,
+    previewId: string,
+  ): Promise<TWidgetPreviewOwnerDescriptor | null> {
+    const owner = this.previewOwners.get(previewId);
+    return owner?.orgId === tenant.orgId && owner.accountId === tenant.accountId
+      ? owner
+      : null;
+  }
+
+  async listPreviewOwners(
+    tenant: TTenantContext,
+    request: Parameters<IAgentAuthoringStore['listPreviewOwners']>[1] = {},
+  ): Promise<readonly TWidgetPreviewOwnerDescriptor[]> {
+    return [...this.previewOwners.values()].filter((owner) => (
+      owner.orgId === tenant.orgId
+      && owner.accountId === tenant.accountId
+      && (request?.draftId === undefined || owner.draftId === request.draftId)
+      && (request?.includeClosed === true || owner.status !== 'closed')
+    ));
+  }
+
+  async compareAndSetPreviewOwner(
+    tenant: TTenantContext,
+    request: Parameters<IAgentAuthoringStore['compareAndSetPreviewOwner']>[1],
+  ): Promise<TWidgetPreviewOwnerDescriptor | null> {
+    const current = await this.getPreviewOwner(tenant, request.previewId);
+    if (
+      !current
+      || current.status === 'closed'
+      || current.buildSequence !== request.expectedBuildSequence
+      || (
+        request.expectedStatus !== undefined
+        && current.status !== request.expectedStatus
+      )
+      || (
+        request.expectedPendingBuildId !== undefined
+        && current.pendingBuildId !== request.expectedPendingBuildId
+      )
+      || (
+        request.expectedBindingRevision !== undefined
+        && (
+          current.bindingRevision !== request.expectedBindingRevision
+          || current.bindingPlanDigestSha256
+            !== request.expectedBindingPlanDigestSha256
+        )
+      )
+      || (
+        request.expectedSourceDigestSha256 !== undefined
+        && (
+          current.sourceDigestSha256 !== request.expectedSourceDigestSha256
+          || current.committedMutationId !== request.expectedCommittedMutationId
+        )
+      )
+      || request.nextBuildSequence < request.expectedBuildSequence
+    ) return null;
+    const next: TWidgetPreviewOwnerDescriptor = {
+      ...current,
+      status: request.status,
+      buildSequence: request.nextBuildSequence,
+      activeRevisionId: request.activeRevisionId === undefined
+        ? current.activeRevisionId
+        : request.activeRevisionId,
+      pendingBuildId: request.pendingBuildId === undefined
+        ? current.pendingBuildId
+        : request.pendingBuildId,
+      bindingRevision: request.nextBindingRevision
+        ?? current.bindingRevision,
+      bindingPlanDigestSha256:
+        request.nextBindingPlanDigestSha256 === undefined
+          ? current.bindingPlanDigestSha256
+          : request.nextBindingPlanDigestSha256,
+      sourceDigestSha256: request.nextSourceDigestSha256 === undefined
+        ? current.sourceDigestSha256
+        : request.nextSourceDigestSha256,
+      committedMutationId: request.nextCommittedMutationId === undefined
+        ? current.committedMutationId
+        : request.nextCommittedMutationId,
+      runtimeDiagnostics: request.runtimeDiagnostics ?? current.runtimeDiagnostics,
+      lastError: request.lastError === undefined ? current.lastError : request.lastError,
+      updatedAtMs: request.nowMs,
+    };
+    this.previewOwners.set(next.id, next);
+    return next;
+  }
+
+  async closePreviewOwner(
+    tenant: TTenantContext,
+    request: Parameters<IAgentAuthoringStore['closePreviewOwner']>[1],
+  ): Promise<boolean> {
+    const current = await this.getPreviewOwner(tenant, request.previewId);
+    if (!current || current.frameNodeId !== request.frameNodeId) return false;
+    if (current.status === 'closed') return true;
+    this.previewOwners.set(current.id, {
+      ...current,
+      status: 'closed',
+      activeRevisionId: null,
+      pendingBuildId: null,
+      updatedAtMs: request.nowMs,
+      closedAtMs: request.nowMs,
+    });
+    return true;
+  }
+
+  async acquirePreviewMountLease(
+    _tenant: TTenantContext,
+    _request: Parameters<IAgentAuthoringStore['acquirePreviewMountLease']>[1],
+  ): ReturnType<IAgentAuthoringStore['acquirePreviewMountLease']> {
+    return null;
+  }
+
+  async renewPreviewMountLease(
+    _tenant: TTenantContext,
+    _request: Parameters<IAgentAuthoringStore['renewPreviewMountLease']>[1],
+  ): ReturnType<IAgentAuthoringStore['renewPreviewMountLease']> {
+    return null;
+  }
+
+  async releasePreviewMountLease(
+    _tenant: TTenantContext,
+    _request: Parameters<IAgentAuthoringStore['releasePreviewMountLease']>[1],
+  ): ReturnType<IAgentAuthoringStore['releasePreviewMountLease']> {
+    return false;
   }
 
   async getChatByExternalSessionKey(
@@ -167,6 +371,8 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
         name: request.name,
         status: publicationSeed ? 'published' : 'editing',
         sourceDigestSha256: publicationSeed?.sourceDigestSha256 ?? null,
+        committedMutationId: publicationSeed?.committedMutationId ?? null,
+        buildSequence: publicationSeed ? 1 : 0,
         lastError: null,
         updatedAtMs: request.nowMs,
       };
@@ -185,6 +391,8 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
       status: publicationSeed ? 'published' : 'editing',
       sourceRelativePath: request.sourceRelativePath,
       sourceDigestSha256: publicationSeed?.sourceDigestSha256 ?? null,
+      committedMutationId: publicationSeed?.committedMutationId ?? null,
+      buildSequence: publicationSeed ? 1 : 0,
       lastError: null,
       createdAtMs: request.nowMs,
       updatedAtMs: request.nowMs,
@@ -221,6 +429,8 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
       !current
       || current.status === 'discarded'
       || current.sourceDigestSha256 !== request.expectedSourceDigestSha256
+      || current.committedMutationId !== request.expectedCommittedMutationId
+      || current.buildSequence !== request.expectedBuildSequence
     ) {
       return { status: 'conflict', current };
     }
@@ -238,6 +448,8 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
       current = {
         ...current,
         sourceDigestSha256: 'f'.repeat(64),
+        committedMutationId: 'advanced-mutation',
+        buildSequence: current.buildSequence + 1,
         status: 'editing',
         updatedAtMs: request.nowMs,
       };
@@ -247,6 +459,8 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
     const next: TAgentAuthoringDraftDescriptor = {
       ...current,
       sourceDigestSha256: request.nextSourceDigestSha256,
+      committedMutationId: request.nextCommittedMutationId,
+      buildSequence: request.nextBuildSequence,
       status: request.nextStatus,
       lastError: request.lastError === undefined ? current.lastError : request.lastError,
       publishedRevisionId: request.publishedRevisionId === undefined
@@ -270,12 +484,16 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
       !current
       || current.name !== request.expectedName
       || current.sourceDigestSha256 !== request.expectedSourceDigestSha256
+      || current.committedMutationId !== request.expectedCommittedMutationId
+      || current.buildSequence !== request.expectedBuildSequence
     ) return { status: 'conflict', current };
     const next: TAgentAuthoringDraftDescriptor = {
       ...current,
       name: request.nextName,
       sourceRelativePath: request.nextSourceRelativePath,
       sourceDigestSha256: request.nextSourceDigestSha256,
+      committedMutationId: request.nextCommittedMutationId,
+      buildSequence: request.nextBuildSequence,
       status: 'editing',
       updatedAtMs: request.nowMs,
     };
@@ -299,6 +517,23 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
       updatedAtMs: request.nowMs,
     };
     this.drafts.set(next.id, next);
+    for (const owner of this.previewOwners.values()) {
+      if (
+        owner.orgId === tenant.orgId
+        && owner.accountId === tenant.accountId
+        && owner.draftId === next.id
+        && owner.status !== 'closed'
+      ) {
+        this.previewOwners.set(owner.id, {
+          ...owner,
+          status: 'closed',
+          activeRevisionId: null,
+          pendingBuildId: null,
+          updatedAtMs: request.nowMs,
+          closedAtMs: request.nowMs,
+        });
+      }
+    }
     return { status: 'updated', draft: next };
   }
 }
@@ -310,26 +545,38 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
   readonly revisionSnapshots = new Map<string, TWidgetSourceSnapshot>();
   readonly activeRevisions = new Map<string, string>();
   readonly artifactBytes = new Map<string, Uint8Array>();
+  readonly previewResults = new Map<string, TWidgetPreviewBuildResult>();
+  readonly activePreviewRevisions = new Map<string, string>();
+  readonly previewSnapshots = new Map<string, TWidgetSourceSnapshot>();
+  readonly closePreviewWorkspaceRequests: string[] = [];
   publishCount = 0;
+  validateBuildCount = 0;
   beforeValidateBuild: (() => Promise<void>) | null = null;
-  beforeBuildPreview: (() => Promise<void>) | null = null;
+  beforeBuildPreview: ((request: TWidgetPreviewBuildRequest) => Promise<void>) | null = null;
   beforePublish: (() => Promise<void>) | null = null;
+  previewDiagnostics: TWidgetBuildDiagnostic[] = [];
   validateBuildResult: Awaited<ReturnType<TWidgetAuthoringCapability['validateBuild']>> = {
     valid: true,
     diagnostics: [],
   };
+
+  constructor(readonly previewOwnerStore?: IAgentAuthoringStore) {}
 
   captureSource: TWidgetAuthoringCapability['captureSource'] = async (_tenant, root, args) => (
     this.source.capture(root, args)
   );
 
   validateBuild: TWidgetAuthoringCapability['validateBuild'] = async () => {
+    this.validateBuildCount += 1;
     await this.beforeValidateBuild?.();
     return this.validateBuildResult;
   };
 
   async buildPreview(_tenant: TTenantContext, request: TWidgetPreviewBuildRequest) {
-    await this.beforeBuildPreview?.();
+    await this.beforeBuildPreview?.(request);
+    request.reportProgress?.('installing');
+    request.reportProgress?.('building');
+    request.reportProgress?.('validating');
     const functionDescriptors = serverFunctions(request.manifest);
     const functionDescriptorsDigestSha256 = serverFunctionDigest(functionDescriptors);
     const artifact = this.#uiArtifact({
@@ -341,10 +588,11 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       signatureKeyId: 'vibecanvas-preview-v1',
       nowMs: request.snapshot.createdAtMs,
     });
-    return {
+    const result: TWidgetPreviewBuildResult = {
       draftId: request.draftId,
       definitionId: request.definitionId,
       draftRevisionSha256: request.draftRevisionSha256,
+      committedMutationId: request.committedMutationId,
       manifest: request.manifest,
       functionDescriptors,
       functionDescriptorsDigestSha256,
@@ -355,9 +603,96 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId: request.buildPolicyId,
       uiArtifact: artifact.uiArtifact,
-      diagnostics: [],
+      diagnostics: this.previewDiagnostics,
+      normalizedDiagnostics: fnNormalizeWidgetBuildDiagnostics({
+        diagnostics: this.previewDiagnostics,
+        draftRevision: request.draftRevisionSha256,
+        previewRevisionId: request.previewRevisionId ?? null,
+        buildId: request.previewRevisionId ?? request.snapshot.id,
+        buildSequence: request.buildSequence ?? 1,
+        timestampMs: request.nowMs ?? request.snapshot.createdAtMs,
+        digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
+      }),
+      previewId: request.previewId ?? null,
+      previewRevisionId: request.previewRevisionId ?? null,
+      buildSequence: request.buildSequence ?? null,
+      bindingRevision: request.bindingRevision ?? null,
+      bindingPlanDigestSha256: request.previewId === undefined
+        ? null
+        : fnWidgetPreviewBindingPlanDigest({
+            bindings: request.bindings ?? [],
+            digestSha256: digest,
+          }),
     };
+    if (request.previewId !== undefined && request.previewRevisionId !== undefined) {
+      const key = `${request.previewId}:${request.previewRevisionId}`;
+      this.previewResults.set(key, result);
+      this.previewSnapshots.set(key, request.snapshot);
+      this.activePreviewRevisions.set(request.previewId, request.previewRevisionId);
+      if (this.previewOwnerStore !== undefined && request.buildSequence !== undefined) {
+        await this.previewOwnerStore.compareAndSetPreviewOwner(_tenant, {
+          previewId: request.previewId,
+          expectedBuildSequence: request.buildSequence,
+          nextBuildSequence: request.buildSequence,
+          status: 'ready',
+          activeRevisionId: request.previewRevisionId,
+          pendingBuildId: null,
+          lastError: null,
+          nowMs: request.nowMs ?? request.snapshot.createdAtMs,
+        });
+      }
+    }
+    return result;
   }
+
+  loadPreview: TWidgetAuthoringCapability['loadPreview'] = async (_tenant, request) => {
+    const revisionId = this.activePreviewRevisions.get(request.previewId);
+    return revisionId === undefined
+      ? null
+      : this.previewResults.get(`${request.previewId}:${revisionId}`) ?? null;
+  };
+
+  loadPreviewRevision: TWidgetAuthoringCapability['loadPreviewRevision'] =
+    async (_tenant, request) => (
+      this.previewResults.get(`${request.previewId}:${request.revisionId}`) ?? null
+    );
+
+  publishPreview: TWidgetAuthoringCapability['publishPreview'] = async (tenant, request) => {
+    const key = `${request.previewId}:${request.previewRevisionId}`;
+    const preview = this.previewResults.get(key);
+    const snapshot = this.previewSnapshots.get(key);
+    if (
+      preview === undefined
+      || snapshot === undefined
+      || preview.draftRevisionSha256 !== request.expectedDraftRevisionSha256
+      || preview.definitionId !== request.definitionId
+      || preview.bindingRevision !== request.expectedBindingRevision
+      || preview.bindingPlanDigestSha256
+        !== request.expectedBindingPlanDigestSha256
+      || this.activePreviewRevisions.get(request.previewId) !== request.previewRevisionId
+    ) {
+      throw Object.assign(new Error(
+        'The selected Preview is no longer the current reviewed revision.',
+      ), { code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    }
+    return this.publish(tenant, {
+      definitionId: request.definitionId,
+      expectedActiveRevisionId: request.expectedActiveRevisionId,
+      revisionId: request.revisionId,
+      snapshot,
+      manifest: preview.manifest,
+      bindings: [],
+      builderIdentity: preview.builderIdentity,
+      capsuleBuildIdentity: preview.capsuleBuildIdentity,
+      buildPolicyId: preview.buildPolicyId,
+      nowMs: request.nowMs,
+    });
+  };
+
+  closePreviewWorkspace:
+    TWidgetAuthoringCapability['closePreviewWorkspace'] = async (_tenant, request) => {
+      this.closePreviewWorkspaceRequests.push(request.draftId);
+    };
 
   async publish(_tenant: TTenantContext, request: TWidgetPublishRequest) {
     await this.beforePublish?.();
@@ -388,7 +723,19 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       functionDescriptorsDigestSha256,
       capabilityContractDigestSha256: '3'.repeat(64),
       channelContractDigestSha256: '4'.repeat(64),
+      constructionContractDigestSha256: '5'.repeat(64),
       contractDigestSha256: '2'.repeat(64),
+      distributionProvenance: {
+        kind: 'external-distribution',
+        producer: {
+          name: 'widget-authoring-fixture',
+          version: '1',
+          digest: `sha256:${'6'.repeat(64)}`,
+        },
+        sourceRevision: request.snapshot.digestSha256,
+        dependencyLockDigest: `sha256:${'7'.repeat(64)}`,
+        buildConfigurationDigest: `sha256:${'8'.repeat(64)}`,
+      },
       uiArtifact: artifact.descriptor,
       uiRuntime: artifact.uiArtifact.runtimeDescriptor,
       serverArtifact: request.manifest.server
@@ -585,7 +932,8 @@ export function createWidgetDraftControllerForWorkspace(
   eventPublisher: ITenantEventPublisherService = createTestTenantEvents(),
 ) {
   const store = new MemoryAuthoringStore();
-  const widgets = new MemoryWidgetAuthoringCapability();
+  const widgets = new MemoryWidgetAuthoringCapability(store);
+  let resourceBindings: readonly TWidgetResourceBindingInput[] = [];
   let id = 0;
   let nowMs = 10_000;
   const controller = new WidgetDraftController({
@@ -594,14 +942,24 @@ export function createWidgetDraftControllerForWorkspace(
     eventPublisher,
     authoringStore: store,
     widgets,
-    resolveResourceBindings: async () => [],
+    resolveResourceBindings: async () => resourceBindings,
     createId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     nowMs: () => ++nowMs,
     builderIdentity: 'test-widget-builder/1',
     capsuleBuildIdentity: TEST_CAPSULE_BUILD_IDENTITY,
     buildPolicyId: TEST_CAPSULE_BUILD_POLICY_ID,
+    previewBuildDebounceMs: 0,
   });
-  return { controller, store, widgets };
+  return {
+    controller,
+    store,
+    widgets,
+    setResourceBindings(
+      bindings: readonly TWidgetResourceBindingInput[],
+    ): void {
+      resourceBindings = Object.freeze([...bindings]);
+    },
+  };
 }
 
 export async function createWidgetAuthoringHarness(
@@ -616,7 +974,7 @@ export async function createWidgetAuthoringHarness(
     })(),
   });
   await workspace.init();
-  const { controller, store, widgets } =
+  const { controller, store, widgets, setResourceBindings } =
     createWidgetDraftControllerForWorkspace(workspace, eventPublisher);
 
   const createDraft = async (name: string, server = false) => {
@@ -656,5 +1014,12 @@ export async function createWidgetAuthoringHarness(
     return summary;
   };
 
-  return { controller, workspace, store, widgets, createDraft };
+  return {
+    controller,
+    workspace,
+    store,
+    widgets,
+    createDraft,
+    setResourceBindings,
+  };
 }

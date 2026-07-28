@@ -40,6 +40,7 @@ describe('function API contract', () => {
   test('accepts only bounded invoke/get/cancel authority-free inputs', () => {
     const input = {
       widgetInstanceId: 'instance-a',
+      widgetRevisionId: 'revision-a',
       functionName: 'count',
       input: { text: 'hello' },
       idempotencyKey: 'key-a',
@@ -47,7 +48,7 @@ describe('function API contract', () => {
     expect(ZInvokeFunctionInput.parse(input)).toEqual(input);
     expect(ZInvokeFunctionInput.safeParse({
       ...input,
-      widgetRevisionId: 'caller-selected-revision',
+      widgetRevisionId: '',
     }).success).toBe(false);
     expect(ZInvokeFunctionInput.safeParse({
       ...input,
@@ -96,6 +97,7 @@ describe('function API contract', () => {
     const cancel = router.api.function.cancel.callable({ context });
     const request = {
       widgetInstanceId: 'instance-a',
+      widgetRevisionId: 'revision-a',
       functionName: 'count',
       input: { text: 'hello' },
       idempotencyKey: 'stable-key-a',
@@ -152,6 +154,7 @@ describe('function API contract', () => {
       try {
         await invoke({
           widgetInstanceId: 'instance-a',
+          widgetRevisionId: 'revision-a',
           functionName: 'count',
           input: {},
           idempotencyKey: 'key-a',

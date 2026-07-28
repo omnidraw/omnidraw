@@ -9,7 +9,7 @@ import type {
   TVibecanvasDistributionBuild,
   TVibecanvasDistributionBuildRequest,
 } from '@vibecanvas/capsule-vibecanvas/builder';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   lstat,
@@ -20,8 +20,20 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, posix, resolve, sep } from 'node:path';
+import {
+  dirname,
+  isAbsolute,
+  join,
+  posix,
+  resolve,
+  sep,
+} from 'node:path';
+import {
+  fnRedactBuildOutput,
+  fnWidgetBuildProcessEnvironment,
+} from './fn.redact-build-output';
 import { fnBootstrapWidgetUiEntry } from './fn.widget-ui-entry';
+import { txTerminateWidgetBuildProcessTree } from './tx.terminate-widget-build-process-tree';
 
 const DISTRIBUTION_ENTRY = 'main.js';
 const DISTRIBUTION_DIRECTORY = 'dist';
@@ -43,6 +55,28 @@ const DEPENDENCY_SECTIONS = Object.freeze([
 ] as const);
 const PRODUCER_NAME = 'vibecanvas-npm-build';
 const PRODUCER_VERSION = '1';
+const HOST_RUNNER_IDENTITY = 'host-v1';
+const DOCKER_RUNNER_VERSION = 'docker-v1';
+const DOCKER_WORKSPACE_PATH = '/workspace';
+const DOCKER_NPM_USER_CONFIG_PATH = '/run/vibecanvas-npmrc';
+const DOCKER_HOME_PATH = '/tmp/vibecanvas-home';
+const DOCKER_NPM_CACHE_PATH = '/tmp/vibecanvas-npm-cache';
+const DOCKER_TMPFS_BYTES = 512 * 1024 * 1024;
+const DOCKER_DEFAULT_CPUS = 2;
+const DOCKER_DEFAULT_MEMORY_MB = 2_048;
+const DOCKER_DEFAULT_PIDS_LIMIT = 128;
+const DOCKER_CONTROL_TIMEOUT_MS = 10_000;
+const DOCKER_CONTROL_OUTPUT_BYTES = 16 * 1024;
+const DOCKER_CLEANUP_ATTEMPTS = 3;
+const DOCKER_IMAGE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/:~-]*@sha256:[a-f0-9]{64}$/u;
+const RUNNER_IDENTITY_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*$/u;
+const WIDGET_BUILD_RUNNER_ENV = 'VIBECANVAS_WIDGET_BUILD_RUNNER';
+const WIDGET_BUILD_DOCKER_IMAGE_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE';
+const WIDGET_BUILD_DOCKER_CPUS_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_CPUS';
+const WIDGET_BUILD_DOCKER_MEMORY_MB_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_MEMORY_MB';
+const WIDGET_BUILD_DOCKER_PIDS_LIMIT_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_PIDS_LIMIT';
+const NODE_ENVIRONMENT_EXPRESSION =
+  'JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})';
 const BUILD_CONFIGURATION = Object.freeze({
   format: 'vibecanvas-npm-distribution-build-v1',
   install: Object.freeze(['npm', 'ci']),
@@ -51,6 +85,16 @@ const BUILD_CONFIGURATION = Object.freeze({
   entry: DISTRIBUTION_ENTRY,
   lockfileVersion: 3,
 });
+const WIDGET_UI_ENTRY_TRANSFORM_PROBES = Object.freeze([
+  Object.freeze({
+    source: 'export const probe = true;\n',
+    bootstrapSpecifier: './__vibecanvas_guest_bridge__.mjs',
+  }),
+  Object.freeze({
+    source: '#!/usr/bin/env node\nexport const probe = true;\n',
+    bootstrapSpecifier: '../__vibecanvas_guest_bridge__.mjs',
+  }),
+]);
 
 type TRunProcess = (
   command: string,
@@ -59,19 +103,127 @@ type TRunProcess = (
     cwd: string;
     timeoutMs: number;
     maxOutputBytes: number;
+    signal?: AbortSignal;
   }>,
 ) => Promise<string | void>;
 
 type TConfig = Readonly<{
   scratchDirectory: string;
   runProcess?: TRunProcess;
+  runnerIdentity?: string;
   installTimeoutMs?: number;
   buildTimeoutMs?: number;
   npmUserConfigPath: string;
+  maxWarmWorkspaces?: number;
+}>;
+
+type TDockerProcessConfig = Readonly<{
+  image: string;
+  npmUserConfigPath: string;
+  cpus?: number;
+  memoryMb?: number;
+  pidsLimit?: number;
+  runProcess?: TRunProcess;
+  createId?: () => string;
+  user?: string;
+}>;
+
+type TResolvedBuildRunner = Readonly<{
+  kind: 'host' | 'docker';
+  identity: string;
+  runProcess: TRunProcess;
+}>;
+
+type TWidgetNpmBuildEnvironmentIdentityArgs = Readonly<{
+  runnerIdentity: string;
+  nodeVersion: string;
+  npmVersion: string;
+  platform: string;
+  architecture: string;
+  toolchainPinnedByRunner: boolean;
+}>;
+
+type TResolveBuildRunnerArgs = Readonly<{
+  env: Readonly<Record<string, string | undefined>>;
+  npmUserConfigPath: string;
+  runProcess?: TRunProcess;
+  createId?: () => string;
+  user?: string;
+}>;
+
+type TWarmWorkspace = {
+  root: string;
+  dependencyIdentity: string | null;
+  tail: Promise<void>;
+  closed: boolean;
+};
+
+export type TWidgetNpmDistributionBuild = TVibecanvasDistributionBuild & Readonly<{
+  closeWorkspace(workspaceKey: string): Promise<void>;
+  close(): Promise<void>;
 }>;
 
 function hash(value: Uint8Array | string): CapsuleHash {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
+}
+
+function boundedEnvironmentIdentityPart(value: string, label: string): string {
+  if (
+    value.length < 1
+    || value.length > 160
+    || value.trim() !== value
+    || value.includes('\0')
+  ) {
+    throw new TypeError(`Widget build ${label} is invalid.`);
+  }
+  return value;
+}
+
+/**
+ * Canonical pre-build identity for every runner/toolchain input that can affect
+ * distribution output. Docker guest toolchains are pinned by the immutable
+ * image-bearing runner identity rather than discovered by executing a build.
+ */
+export function fnWidgetNpmBuildEnvironmentIdentity(
+  args: TWidgetNpmBuildEnvironmentIdentityArgs,
+): string {
+  assertRunnerIdentity(args.runnerIdentity);
+  const transformOutputs = WIDGET_UI_ENTRY_TRANSFORM_PROBES.map((probe) => (
+    fnBootstrapWidgetUiEntry(probe.source, probe.bootstrapSpecifier)
+  ));
+  return JSON.stringify({
+    format: 'vibecanvas.widget-npm-build-environment.v1',
+    approvedTransformsDigest: hash(JSON.stringify({
+      guestBridgeBootstrapSource: GUEST_BRIDGE_BOOTSTRAP_SOURCE,
+      widgetUiEntryTransformOutputs: transformOutputs,
+    })),
+    buildConfigurationDigest: hash(JSON.stringify({
+      producerName: PRODUCER_NAME,
+      producerVersion: PRODUCER_VERSION,
+      configuration: BUILD_CONFIGURATION,
+    })),
+    runnerIdentity: args.runnerIdentity,
+    toolchain: {
+      authority: args.toolchainPinnedByRunner ? 'runner' : 'explicit',
+      nodeVersion: boundedEnvironmentIdentityPart(
+        args.nodeVersion,
+        'Node version identity',
+      ),
+      packageManager: 'npm',
+      packageManagerVersion: boundedEnvironmentIdentityPart(
+        args.npmVersion,
+        'npm version identity',
+      ),
+      platform: boundedEnvironmentIdentityPart(
+        args.platform,
+        'platform identity',
+      ),
+      architecture: boundedEnvironmentIdentityPart(
+        args.architecture,
+        'architecture identity',
+      ),
+    },
+  });
 }
 
 function commandError(
@@ -81,13 +233,37 @@ function commandError(
   message: string,
   reason?: string,
 ): Error {
+  const construct = fnRedactBuildOutput(
+    [command, ...args].join(' '),
+    process.env,
+  );
   return Object.assign(new Error(message), {
     diagnostic: Object.freeze({
       code,
-      construct: [command, ...args].join(' '),
+      construct,
       ...(reason === undefined || reason === '' ? {} : { reason }),
     }),
   });
+}
+
+function abortError(): Error {
+  return Object.assign(new Error('Widget build was superseded.'), {
+    code: 'WIDGET_BUILD_SUPERSEDED',
+  });
+}
+
+function assertActive(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) throw abortError();
+}
+
+function assertWorkspaceKey(workspaceKey: string): void {
+  if (
+    workspaceKey.length < 1
+    || workspaceKey.length > 300
+    || !/^[A-Za-z0-9._:-]+$/.test(workspaceKey)
+  ) {
+    throw new TypeError('Widget build workspace key is invalid.');
+  }
 }
 
 function assertProjectPath(path: string): void {
@@ -108,6 +284,9 @@ async function materialize(
   const seen = new Set<string>();
   for (const file of files) {
     assertProjectPath(file.path);
+    if (file.path === 'node_modules' || file.path.startsWith('node_modules/')) {
+      throw new Error("Widget source cannot materialize the private 'node_modules' workspace.");
+    }
     const folded = file.path.toLocaleLowerCase('en-US');
     if (seen.has(folded)) {
       throw new Error(`Widget source contains a duplicate or case-colliding path '${file.path}'.`);
@@ -150,12 +329,22 @@ export function runProcess(
     cwd: string;
     timeoutMs: number;
     maxOutputBytes: number;
+    signal?: AbortSignal;
   }>,
 ): Promise<string> {
+  if (options.signal?.aborted === true) return Promise.reject(abortError());
   return new Promise((resolvePromise, reject) => {
+    const commandDisplay = fnRedactBuildOutput(
+      [command, ...args].join(' '),
+      process.env,
+    );
     const child = spawn(command, [...args], {
       cwd: options.cwd,
-      env: process.env,
+      env: fnWidgetBuildProcessEnvironment(
+        process.env,
+        options.cwd,
+        process.platform,
+      ),
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -163,21 +352,45 @@ export function runProcess(
     let output = '';
     let settled = false;
     let terminalError: Error | undefined;
-    const terminate = () => {
-      if (process.platform !== 'win32' && child.pid !== undefined) {
-        try {
-          process.kill(-child.pid, 'SIGKILL');
-          return;
-        } catch {
-          // Fall back to the direct child when its process group already exited.
-        }
-      }
-      child.kill('SIGKILL');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let termination: Promise<void> | undefined;
+    const terminate = (): Promise<void> => {
+      if (termination !== undefined) return termination;
+      termination = txTerminateWidgetBuildProcessTree({
+        platform: process.platform,
+        killProcessGroup: (pid) => process.kill(-pid, 'SIGKILL'),
+        taskkill: (pid) => new Promise((resolveTaskkill) => {
+          let completed = false;
+          const complete = (confirmed: boolean) => {
+            if (completed) return;
+            completed = true;
+            resolveTaskkill(confirmed);
+          };
+          const treeKiller = spawn('taskkill', [
+            '/PID',
+            String(pid),
+            '/T',
+            '/F',
+          ], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+          treeKiller.once('error', () => complete(false));
+          treeKiller.once('close', (code) => complete(code === 0));
+        }),
+      }, {
+        pid: child.pid,
+        killDirect: () => {
+          child.kill('SIGKILL');
+        },
+      });
+      return termination;
     };
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      if (timeout !== undefined) clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', onAbort);
       if (error) reject(error);
       else resolvePromise(output.trim());
     };
@@ -191,7 +404,7 @@ export function runProcess(
           args,
           `Widget build output exceeded ${options.maxOutputBytes} bytes.`,
         );
-        terminate();
+        void terminate();
         return;
       }
       output += chunk.toString('utf8');
@@ -201,7 +414,8 @@ export function runProcess(
     child.once('error', (error) => {
       terminalError ??= error;
     });
-    child.once('close', (code, signal) => {
+    child.once('close', async (code, signal) => {
+      await termination;
       if (terminalError) {
         finish(terminalError);
         return;
@@ -210,8 +424,8 @@ export function runProcess(
         finish();
         return;
       }
-      const detail = output.trim().slice(-4_000);
-      const message = `Widget command '${command} ${args.join(' ')}' failed`
+      const detail = fnRedactBuildOutput(output.trim(), process.env).slice(-4_000);
+      const message = `Widget command '${commandDisplay}' failed`
         + ` (${signal ? `signal ${signal}` : `exit ${String(code)}`}).`
         + (detail === '' ? '' : `\n${detail}`);
       finish(commandError(
@@ -222,16 +436,366 @@ export function runProcess(
         detail,
       ));
     });
-    const timeout = setTimeout(() => {
+    const onAbort = () => {
+      if (terminalError) return;
+      terminalError = abortError();
+      void terminate();
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted === true) onAbort();
+    timeout = setTimeout(() => {
       if (terminalError) return;
       terminalError = commandError(
         'WIDGET_COMMAND_TIMEOUT',
         command,
         args,
-        `Widget command '${command} ${args.join(' ')}' timed out.`,
+        `Widget command '${commandDisplay}' timed out.`,
       );
-      terminate();
+      void terminate();
     }, options.timeoutMs);
+  });
+}
+
+function assertDockerHostPath(path: string, label: string): void {
+  if (
+    !isAbsolute(path)
+    || path.length > 1_024
+    || /[\u0000\r\n,]/u.test(path)
+  ) {
+    throw new TypeError(`${label} must be an absolute host path without control characters or ','.`);
+  }
+}
+
+function assertDockerImage(image: string): void {
+  if (
+    image.length > 300
+    || !DOCKER_IMAGE_PATTERN.test(image)
+  ) {
+    throw new TypeError(
+      `${WIDGET_BUILD_DOCKER_IMAGE_ENV} must be an immutable image reference pinned by sha256.`,
+    );
+  }
+}
+
+function assertDockerUser(user: string | undefined): void {
+  if (user !== undefined && !/^[0-9]{1,10}:[0-9]{1,10}$/u.test(user)) {
+    throw new TypeError('Widget Docker runner user must be a numeric uid:gid pair.');
+  }
+}
+
+function assertRunnerIdentity(identity: string): void {
+  if (
+    identity.length < 1
+    || identity.length > 160
+    || !RUNNER_IDENTITY_PATTERN.test(identity)
+  ) {
+    throw new TypeError('Widget build runner identity is invalid.');
+  }
+}
+
+function assertDockerResources(config: Readonly<{
+  cpus: number;
+  memoryMb: number;
+  pidsLimit: number;
+}>): void {
+  if (
+    !Number.isFinite(config.cpus)
+    || config.cpus < 0.25
+    || config.cpus > 16
+  ) {
+    throw new TypeError('Widget Docker runner CPU limit must be between 0.25 and 16.');
+  }
+  if (
+    !Number.isSafeInteger(config.memoryMb)
+    || config.memoryMb < 256
+    || config.memoryMb > 16_384
+  ) {
+    throw new TypeError('Widget Docker runner memory limit must be between 256 and 16384 MB.');
+  }
+  if (
+    !Number.isSafeInteger(config.pidsLimit)
+    || config.pidsLimit < 16
+    || config.pidsLimit > 512
+  ) {
+    throw new TypeError('Widget Docker runner PID limit must be between 16 and 512.');
+  }
+}
+
+function dockerRunnerIdentity(config: Readonly<{
+  image: string;
+  cpus: number;
+  memoryMb: number;
+  pidsLimit: number;
+}>): string {
+  const digest = createHash('sha256').update(JSON.stringify({
+    format: DOCKER_RUNNER_VERSION,
+    image: config.image,
+    resources: {
+      cpus: config.cpus,
+      memoryMb: config.memoryMb,
+      pidsLimit: config.pidsLimit,
+      tmpfsBytes: DOCKER_TMPFS_BYTES,
+    },
+    filesystem: {
+      root: 'read-only',
+      workspace: 'read-write-bind',
+      npmUserConfig: 'read-only-bind-install-only',
+    },
+    network: 'bridge',
+    capabilities: 'none',
+    noNewPrivileges: true,
+  })).digest('hex');
+  return `${DOCKER_RUNNER_VERSION}.sha256.${digest}`;
+}
+
+function assertDockerInvocation(
+  command: string,
+  args: readonly string[],
+  npmUserConfigPath: string,
+): Readonly<{
+  command: 'node' | 'npm';
+  args: readonly string[];
+  mountNpmUserConfig: boolean;
+}> {
+  if (
+    command === 'npm'
+    && args.length === 1
+    && args[0] === '--version'
+  ) {
+    return Object.freeze({ command, args: Object.freeze([...args]), mountNpmUserConfig: false });
+  }
+  if (
+    command === 'node'
+    && args.length === 2
+    && args[0] === '-p'
+    && args[1] === NODE_ENVIRONMENT_EXPRESSION
+  ) {
+    return Object.freeze({ command, args: Object.freeze([...args]), mountNpmUserConfig: false });
+  }
+  if (
+    command === 'npm'
+    && args.length === 3
+    && args[0] === 'ci'
+    && args[1] === '--userconfig'
+    && args[2] === npmUserConfigPath
+  ) {
+    return Object.freeze({
+      command,
+      args: Object.freeze(['ci', '--userconfig', DOCKER_NPM_USER_CONFIG_PATH]),
+      mountNpmUserConfig: true,
+    });
+  }
+  if (
+    command === 'npm'
+    && args.length === 2
+    && args[0] === 'run'
+    && args[1] === 'build'
+  ) {
+    return Object.freeze({ command, args: Object.freeze([...args]), mountNpmUserConfig: false });
+  }
+  throw new TypeError(`Widget Docker runner rejected command '${command} ${args.join(' ')}'.`);
+}
+
+function envNumber(
+  env: Readonly<Record<string, string | undefined>>,
+  name: string,
+  fallback: number,
+): number {
+  const raw = env[name];
+  if (raw === undefined) return fallback;
+  const value = raw.trim();
+  if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/u.test(value)) {
+    throw new TypeError(`${name} must be a plain positive number.`);
+  }
+  return Number(value);
+}
+
+function envInteger(
+  env: Readonly<Record<string, string | undefined>>,
+  name: string,
+  fallback: number,
+): number {
+  const raw = env[name];
+  if (raw === undefined) return fallback;
+  const value = raw.trim();
+  if (!/^[1-9][0-9]*$/u.test(value)) {
+    throw new TypeError(`${name} must be a positive integer.`);
+  }
+  return Number(value);
+}
+
+/**
+ * Converts the narrow widget process port into one fresh, bounded Docker
+ * container per command. The adapter never forwards ambient host environment
+ * variables and force-removes the named container after success, failure, or
+ * cancellation.
+ */
+export function createWidgetDockerProcessAdapter(
+  config: TDockerProcessConfig,
+): TResolvedBuildRunner {
+  const cpus = config.cpus ?? DOCKER_DEFAULT_CPUS;
+  const memoryMb = config.memoryMb ?? DOCKER_DEFAULT_MEMORY_MB;
+  const pidsLimit = config.pidsLimit ?? DOCKER_DEFAULT_PIDS_LIMIT;
+  assertDockerImage(config.image);
+  assertDockerHostPath(config.npmUserConfigPath, 'Widget Docker npm user config path');
+  assertDockerUser(config.user);
+  assertDockerResources({ cpus, memoryMb, pidsLimit });
+  const execute = config.runProcess ?? runProcess;
+  const createId = config.createId ?? randomUUID;
+  const identity = dockerRunnerIdentity({
+    image: config.image,
+    cpus,
+    memoryMb,
+    pidsLimit,
+  });
+  assertRunnerIdentity(identity);
+
+  const adapter: TRunProcess = async (command, args, options) => {
+    assertActive(options.signal);
+    assertDockerHostPath(options.cwd, 'Widget Docker workspace path');
+    const invocation = assertDockerInvocation(
+      command,
+      args,
+      config.npmUserConfigPath,
+    );
+    const id = createId();
+    if (
+      id.length < 1
+      || id.length > 100
+      || !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(id)
+    ) {
+      throw new TypeError('Widget Docker runner container ID is invalid.');
+    }
+    const containerName = `vibecanvas-widget-build-${id}`;
+    const dockerArgs = [
+      'run',
+      '--init',
+      '--pull',
+      'never',
+      '--name',
+      containerName,
+      '--workdir',
+      DOCKER_WORKSPACE_PATH,
+      '--read-only',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges=true',
+      '--network',
+      'bridge',
+      '--cpus',
+      String(cpus),
+      '--memory',
+      `${memoryMb}m`,
+      '--memory-swap',
+      `${memoryMb}m`,
+      '--pids-limit',
+      String(pidsLimit),
+      '--ulimit',
+      'nofile=1024:1024',
+      '--stop-timeout',
+      '1',
+      '--tmpfs',
+      `/tmp:rw,nosuid,nodev,size=${DOCKER_TMPFS_BYTES},mode=1777`,
+      '--mount',
+      `type=bind,source=${options.cwd},target=${DOCKER_WORKSPACE_PATH}`,
+      '--env',
+      `HOME=${DOCKER_HOME_PATH}`,
+      '--env',
+      `npm_config_cache=${DOCKER_NPM_CACHE_PATH}`,
+      ...(config.user === undefined ? [] : ['--user', config.user]),
+      ...(invocation.mountNpmUserConfig
+        ? [
+            '--mount',
+            `type=bind,source=${config.npmUserConfigPath},`
+              + `target=${DOCKER_NPM_USER_CONFIG_PATH},readonly`,
+          ]
+        : []),
+      config.image,
+      invocation.command,
+      ...invocation.args,
+    ];
+    try {
+      return await execute('docker', dockerArgs, options);
+    } finally {
+      let cleanupError: unknown;
+      for (let attempt = 0; attempt < DOCKER_CLEANUP_ATTEMPTS; attempt += 1) {
+        try {
+          await execute('docker', [
+            'rm',
+            '--force',
+            '--volumes',
+            containerName,
+          ], {
+            cwd: options.cwd,
+            timeoutMs: DOCKER_CONTROL_TIMEOUT_MS,
+            maxOutputBytes: DOCKER_CONTROL_OUTPUT_BYTES,
+          });
+          cleanupError = undefined;
+          break;
+        } catch (error) {
+          cleanupError = error;
+        }
+      }
+      if (cleanupError !== undefined) {
+        throw Object.assign(new Error(
+          `Docker did not confirm removal of widget build container '${containerName}'.`,
+          { cause: cleanupError },
+        ), {
+          code: 'WIDGET_DOCKER_CLEANUP_FAILED',
+        });
+      }
+    }
+  };
+  return Object.freeze({ kind: 'docker', identity, runProcess: adapter });
+}
+
+/**
+ * Resolves the operator-selected runner. Host execution remains the default;
+ * Docker requires an immutable image reference and only accepts bounded
+ * resource overrides.
+ */
+export function resolveWidgetNpmBuildRunner(
+  args: TResolveBuildRunnerArgs,
+): TResolvedBuildRunner {
+  const selected = (args.env[WIDGET_BUILD_RUNNER_ENV] ?? 'host').trim();
+  if (selected === 'host') {
+    return Object.freeze({
+      kind: 'host',
+      identity: HOST_RUNNER_IDENTITY,
+      runProcess: args.runProcess ?? runProcess,
+    });
+  }
+  if (selected !== 'docker') {
+    throw new TypeError(`${WIDGET_BUILD_RUNNER_ENV} must be 'host' or 'docker'.`);
+  }
+  const image = args.env[WIDGET_BUILD_DOCKER_IMAGE_ENV]?.trim();
+  if (image === undefined || image === '') {
+    throw new TypeError(
+      `${WIDGET_BUILD_DOCKER_IMAGE_ENV} is required when the widget build runner is Docker.`,
+    );
+  }
+  return createWidgetDockerProcessAdapter({
+    image,
+    npmUserConfigPath: args.npmUserConfigPath,
+    cpus: envNumber(
+      args.env,
+      WIDGET_BUILD_DOCKER_CPUS_ENV,
+      DOCKER_DEFAULT_CPUS,
+    ),
+    memoryMb: envInteger(
+      args.env,
+      WIDGET_BUILD_DOCKER_MEMORY_MB_ENV,
+      DOCKER_DEFAULT_MEMORY_MB,
+    ),
+    pidsLimit: envInteger(
+      args.env,
+      WIDGET_BUILD_DOCKER_PIDS_LIMIT_ENV,
+      DOCKER_DEFAULT_PIDS_LIMIT,
+    ),
+    ...(args.runProcess === undefined ? {} : { runProcess: args.runProcess }),
+    ...(args.createId === undefined ? {} : { createId: args.createId }),
+    ...(args.user === undefined ? {} : { user: args.user }),
   });
 }
 
@@ -415,45 +979,121 @@ async function captureDistribution(root: string): Promise<readonly CapsuleSnapsh
   return Object.freeze(files);
 }
 
+function dependencyIdentity(files: readonly CapsuleSnapshotFile[]): string {
+  const dependencyFiles = files
+    .filter((file) => file.path === 'package.json' || file.path === 'package-lock.json')
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const digest = createHash('sha256');
+  for (const file of dependencyFiles) {
+    digest.update(file.path);
+    digest.update('\0');
+    digest.update(file.bytes);
+    digest.update('\0');
+  }
+  return digest.digest('hex');
+}
+
+async function clearWarmWorkspace(root: string): Promise<void> {
+  const entries = await readdir(root, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    if (entry.name === 'node_modules' && entry.isDirectory()) return;
+    await rm(join(root, entry.name), { recursive: true, force: true });
+  }));
+}
+
 export function createWidgetNpmDistributionBuild(
   config: TConfig,
-): TVibecanvasDistributionBuild {
+): TWidgetNpmDistributionBuild {
   const execute = config.runProcess ?? runProcess;
-  return async (
+  const runnerIdentity = config.runnerIdentity ?? HOST_RUNNER_IDENTITY;
+  assertRunnerIdentity(runnerIdentity);
+  const maxWarmWorkspaces = config.maxWarmWorkspaces ?? 16;
+  if (
+    !Number.isSafeInteger(maxWarmWorkspaces)
+    || maxWarmWorkspaces < 1
+    || maxWarmWorkspaces > 128
+  ) {
+    throw new TypeError('Widget warm workspace limit is invalid.');
+  }
+  const workspaces = new Map<string, Promise<TWarmWorkspace>>();
+
+  const closeEntry = async (entryPromise: Promise<TWarmWorkspace>): Promise<void> => {
+    const entry = await entryPromise;
+    entry.closed = true;
+    await entry.tail;
+    await rm(entry.root, { recursive: true, force: true });
+  };
+
+  const createWorkspace = (workspaceKey: string): Promise<TWarmWorkspace> => {
+    const existing = workspaces.get(workspaceKey);
+    if (existing !== undefined) {
+      workspaces.delete(workspaceKey);
+      workspaces.set(workspaceKey, existing);
+      return existing;
+    }
+    const created = (async (): Promise<TWarmWorkspace> => {
+      await mkdir(config.scratchDirectory, { recursive: true, mode: 0o700 });
+      return {
+        root: await mkdtemp(join(config.scratchDirectory, 'npm-workspace-')),
+        dependencyIdentity: null,
+        tail: Promise.resolve(),
+        closed: false,
+      };
+    })();
+    workspaces.set(workspaceKey, created);
+    while (workspaces.size > maxWarmWorkspaces) {
+      const oldestKey = workspaces.keys().next().value as string | undefined;
+      if (oldestKey === undefined) break;
+      const oldest = workspaces.get(oldestKey);
+      workspaces.delete(oldestKey);
+      if (oldest !== undefined) void closeEntry(oldest);
+    }
+    return created;
+  };
+
+  const performBuild = async (
+    root: string,
     request: TVibecanvasDistributionBuildRequest,
+    installRequired: boolean,
+    onInstallComplete?: () => void,
   ): Promise<CapsuleBuildInput> => {
-    await mkdir(config.scratchDirectory, { recursive: true, mode: 0o700 });
-    const root = await mkdtemp(join(config.scratchDirectory, 'npm-distribution-'));
-    try {
-      await materialize(root, request.files);
-      await bootstrapWidgetUiEntry(root, request.entry);
-      await readPackageContract(root);
-      const npmVersionOutput = await execute('npm', ['--version'], {
-        cwd: root,
-        timeoutMs: 10_000,
-        maxOutputBytes: 16 * 1024,
-      });
-      const npmVersionToken = typeof npmVersionOutput === 'string'
-        ? npmVersionOutput.trim().split(/\s+/u)[0]?.slice(0, 64)
-        : undefined;
-      const npmVersion = npmVersionToken !== undefined && npmVersionToken !== ''
-        ? npmVersionToken
-        : 'injected';
-      const nodeEnvironment = parseNodeEnvironment(await execute('node', [
-        '-p',
-        'JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
-      ], {
-        cwd: root,
-        timeoutMs: 10_000,
-        maxOutputBytes: 16 * 1024,
-      }));
-      const buildEnvironment = Object.freeze({
-        nodeVersion: nodeEnvironment.nodeVersion,
-        npmVersion,
-        platform: nodeEnvironment.platform,
-        architecture: nodeEnvironment.architecture,
-      });
-      const contract = await readPackageContract(root);
+    assertActive(request.signal);
+    await materialize(root, request.files);
+    await bootstrapWidgetUiEntry(root, request.entry);
+    const contract = await readPackageContract(root);
+    assertActive(request.signal);
+    const npmVersionOutput = await execute('npm', ['--version'], {
+      cwd: root,
+      timeoutMs: 10_000,
+      maxOutputBytes: 16 * 1024,
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    });
+    const npmVersionToken = typeof npmVersionOutput === 'string'
+      ? npmVersionOutput.trim().split(/\s+/u)[0]?.slice(0, 64)
+      : undefined;
+    const npmVersion = npmVersionToken !== undefined
+      && /^[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/u.test(npmVersionToken)
+      ? npmVersionToken
+      : 'injected';
+    const nodeEnvironment = parseNodeEnvironment(await execute('node', [
+      '-p',
+      NODE_ENVIRONMENT_EXPRESSION,
+    ], {
+      cwd: root,
+      timeoutMs: 10_000,
+      maxOutputBytes: 16 * 1024,
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    }));
+    const buildEnvironment = Object.freeze({
+      nodeVersion: nodeEnvironment.nodeVersion,
+      npmVersion,
+      platform: nodeEnvironment.platform,
+      architecture: nodeEnvironment.architecture,
+      runnerIdentity,
+    });
+    assertActive(request.signal);
+    if (installRequired) {
+      request.reportProgress?.('installing');
       await execute('npm', [
         'ci',
         '--userconfig',
@@ -462,47 +1102,115 @@ export function createWidgetNpmDistributionBuild(
         cwd: root,
         timeoutMs: config.installTimeoutMs ?? 120_000,
         maxOutputBytes: MAX_BUILD_OUTPUT_BYTES,
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
       });
-      await execute('npm', ['run', 'build'], {
-        cwd: root,
-        timeoutMs: config.buildTimeoutMs ?? 120_000,
-        maxOutputBytes: MAX_BUILD_OUTPUT_BYTES,
-      });
-      const files = await captureDistribution(root);
-      const cssRoots = files
-        .map((file) => file.path)
-        .filter((path) => path.endsWith('.css'));
-      return Object.freeze({
-        kind: 'external-distribution',
-        snapshot: Object.freeze({ files }),
-        entry: DISTRIBUTION_ENTRY,
-        ...(cssRoots.length > 0 ? { cssRoots: Object.freeze(cssRoots) } : {}),
-        producer: Object.freeze({
-          name: PRODUCER_NAME,
-          version: `${PRODUCER_VERSION}+npm.${npmVersion}`,
-          digest: hash(JSON.stringify({
-            producer: PRODUCER_NAME,
-            version: PRODUCER_VERSION,
-            configuration: BUILD_CONFIGURATION,
-            environment: buildEnvironment,
-          })),
-        }),
-        sourceRevision: request.sourceRevision,
-        dependencyLockDigest: hash(contract.lockBytes),
-        buildConfigurationDigest: hash(JSON.stringify({
+      onInstallComplete?.();
+    }
+    assertActive(request.signal);
+    request.reportProgress?.('building');
+    await execute('npm', ['run', 'build'], {
+      cwd: root,
+      timeoutMs: config.buildTimeoutMs ?? 120_000,
+      maxOutputBytes: MAX_BUILD_OUTPUT_BYTES,
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    });
+    assertActive(request.signal);
+    const files = await captureDistribution(root);
+    const cssRoots = files
+      .map((file) => file.path)
+      .filter((path) => path.endsWith('.css'));
+    return Object.freeze({
+      kind: 'external-distribution',
+      snapshot: Object.freeze({ files }),
+      entry: DISTRIBUTION_ENTRY,
+      ...(cssRoots.length > 0 ? { cssRoots: Object.freeze(cssRoots) } : {}),
+      producer: Object.freeze({
+        name: PRODUCER_NAME,
+        version: `${PRODUCER_VERSION}+runner.${runnerIdentity}.npm.${npmVersion}`,
+        digest: hash(JSON.stringify({
+          producer: PRODUCER_NAME,
+          version: PRODUCER_VERSION,
           configuration: BUILD_CONFIGURATION,
-          sourceEntry: request.entry,
-          buildScript: contract.buildScript,
           environment: buildEnvironment,
         })),
+      }),
+      sourceRevision: request.sourceRevision,
+      dependencyLockDigest: hash(contract.lockBytes),
+      buildConfigurationDigest: hash(JSON.stringify({
+        configuration: BUILD_CONFIGURATION,
+        sourceEntry: request.entry,
+        buildScript: contract.buildScript,
+        environment: buildEnvironment,
+      })),
+    });
+  };
+
+  const build = async (
+    request: TVibecanvasDistributionBuildRequest,
+  ): Promise<CapsuleBuildInput> => {
+    if (request.workspaceKey !== undefined) {
+      assertWorkspaceKey(request.workspaceKey);
+      const workspace = await createWorkspace(request.workspaceKey);
+      if (workspace.closed) throw new Error('Widget build workspace is closed.');
+      const requestedDependencyIdentity = dependencyIdentity(request.files);
+      const operation = workspace.tail.then(async () => {
+        assertActive(request.signal);
+        await clearWarmWorkspace(workspace.root);
+        const installRequired =
+          workspace.dependencyIdentity !== requestedDependencyIdentity;
+        let installCompleted = !installRequired;
+        try {
+          const result = await performBuild(
+            workspace.root,
+            request,
+            installRequired,
+            () => {
+              installCompleted = true;
+              workspace.dependencyIdentity = requestedDependencyIdentity;
+            },
+          );
+          if (!installRequired) {
+            workspace.dependencyIdentity = requestedDependencyIdentity;
+          }
+          return result;
+        } catch (error) {
+          if (installRequired && !installCompleted) workspace.dependencyIdentity = null;
+          throw error;
+        }
       });
+      workspace.tail = operation.then(() => undefined, () => undefined);
+      return operation;
+    }
+
+    await mkdir(config.scratchDirectory, { recursive: true, mode: 0o700 });
+    const root = await mkdtemp(join(config.scratchDirectory, 'npm-distribution-'));
+    try {
+      return await performBuild(root, request, true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   };
+
+  return Object.assign(build, {
+    async closeWorkspace(workspaceKey: string): Promise<void> {
+      assertWorkspaceKey(workspaceKey);
+      const entry = workspaces.get(workspaceKey);
+      if (entry === undefined) return;
+      workspaces.delete(workspaceKey);
+      await closeEntry(entry);
+    },
+    async close(): Promise<void> {
+      const entries = [...workspaces.values()];
+      workspaces.clear();
+      await Promise.all(entries.map(closeEntry));
+    },
+  });
 }
 
 export type {
   TConfig as TWidgetNpmDistributionBuildConfig,
+  TDockerProcessConfig as TWidgetDockerProcessAdapterConfig,
+  TResolvedBuildRunner as TWidgetNpmBuildRunner,
+  TWidgetNpmBuildEnvironmentIdentityArgs,
   TRunProcess as TWidgetNpmDistributionBuildProcess,
 };

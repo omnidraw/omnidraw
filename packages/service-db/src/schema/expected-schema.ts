@@ -48,6 +48,7 @@ export const EXPECTED_APPLICATION_TABLES = [
   "accounts",
   "agent_chats",
   "agent_drafts",
+  "agent_previews",
   "artifact_references",
   "canvas_items",
   "canvas_members",
@@ -97,6 +98,10 @@ export const EXPECTED_WIDGET_HOST_APPLICATION_TABLE_COUNT =
 
 export const EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES = [
   ...EXPECTED_WIDGET_HOST_APPLICATION_TABLES,
+  "agent_preview_mount_leases",
+  "agent_preview_resource_bindings",
+  "agent_preview_revisions",
+  "widget_preview_publication_idempotency",
   "widget_revision_sources",
 ] as const;
 
@@ -357,12 +362,13 @@ export const EXPECTED_BASELINE_SCHEMA = {
     ],
   },
   idempotency_records: {
-    columns: [tenantId("org_id", 1), tenantId("id", 2), text("scope_kind"), text("canvas_id", false), text("widget_instance_id", false), text("idempotency_key"), text("request_fingerprint_sha256"), tenantId("widget_definition_id"), tenantId("widget_revision_id"), tenantId("invocation_id"), integer("created_at_ms"), integer("expires_at_ms", false)],
+    columns: [tenantId("org_id", 1), tenantId("id", 2), text("scope_kind"), text("canvas_id", false), text("widget_instance_id", false), text("preview_id", false), text("idempotency_key"), text("request_fingerprint_sha256"), tenantId("widget_definition_id"), tenantId("widget_revision_id"), tenantId("invocation_id"), integer("created_at_ms"), integer("expires_at_ms", false)],
     primaryKey: ["org_id", "id"], unique: [],
     foreignKeys: [
       { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "widget_instance_id"], referencesTable: "widget_instances", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "preview_id"], referencesTable: "agent_previews", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "widget_definition_id", "widget_revision_id"], referencesTable: "widget_definition_revisions", referencesColumns: ["org_id", "definition_id", "id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "invocation_id"], referencesTable: "function_invocations", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
     ],
@@ -417,6 +423,28 @@ export const EXPECTED_BASELINE_SCHEMA = {
       { columns: ["org_id", "chat_id"], referencesTable: "agent_chats", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
     ],
   },
+  agent_previews: {
+    columns: [
+      tenantId("org_id", 1), text("id", true, 2), tenantId("account_id"),
+      tenantId("canvas_id"), text("frame_node_id"), tenantId("draft_id"),
+      tenantId("origin_chat_id"), text("role"), text("status"),
+      text("active_revision_id", false), text("pending_build_id", false),
+      integer("build_sequence"), integer("binding_revision"),
+      text("binding_plan_digest_sha256", false),
+      text("last_error_json", false),
+      integer("created_at_ms"), integer("updated_at_ms"),
+      integer("closed_at_ms", false),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [["org_id", "canvas_id", "frame_node_id"]],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "draft_id"], referencesTable: "agent_drafts", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "origin_chat_id"], referencesTable: "agent_chats", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+    ],
+  },
   schema_migrations: {
     columns: [integer("version", false, 1), text("name"), text("checksum_sha256"), integer("applied_at_ms"), text("application_version")],
     primaryKey: ["version"], unique: [["name"]], foreignKeys: [],
@@ -452,6 +480,8 @@ export const EXPECTED_FUNCTION_RUNTIME_SCHEMA = {
       text("capsule_build_identity_json"),
       text("build_policy_id"),
       text("server_runtime_abi", false),
+      text("construction_contract_digest_sha256"),
+      text("distribution_provenance_json"),
       integer("contract_format_version"),
     ],
   },
@@ -549,6 +579,7 @@ export const EXPECTED_FUNCTION_RUNTIME_SCHEMA = {
     columns: [
       tenantId("org_id", 1), tenantId("id", 2), text("function_id"),
       text("scope_kind"), text("canvas_id", false), text("widget_instance_id", false),
+      text("preview_id", false),
       text("idempotency_key"), text("request_fingerprint_sha256"),
       tenantId("widget_definition_id"), tenantId("widget_revision_id"),
       tenantId("invocation_id"), integer("created_at_ms"), integer("expires_at_ms", false),
@@ -613,8 +644,123 @@ export const EXPECTED_AGENT_AUTHORING_SCHEMA = {
   agent_drafts: {
     ...EXPECTED_WIDGET_HOST_SCHEMA.agent_drafts,
     columns: [
-      ...EXPECTED_WIDGET_HOST_SCHEMA.agent_drafts.columns,
-      text("definition_id", false), text("published_revision_id", false),
+      tenantId("org_id", 1), tenantId("id", 2), tenantId("chat_id"),
+      text("name"), text("status"), text("source_relative_path"),
+      text("source_digest_sha256", false),
+      text("committed_mutation_id", false), integer("build_sequence"),
+      text("last_error_json", false), integer("created_at_ms"),
+      integer("updated_at_ms"), text("definition_id", false),
+      text("published_revision_id", false),
+    ],
+  },
+  agent_previews: {
+    ...EXPECTED_WIDGET_HOST_SCHEMA.agent_previews,
+    columns: [
+      tenantId("org_id", 1), text("id", true, 2), tenantId("account_id"),
+      tenantId("canvas_id"), text("frame_node_id"), tenantId("draft_id"),
+      tenantId("origin_chat_id"), text("role"), text("status"),
+      text("active_revision_id", false), text("pending_build_id", false),
+      integer("build_sequence"), integer("binding_revision"),
+      text("binding_plan_digest_sha256", false),
+      text("source_digest_sha256", false),
+      text("committed_mutation_id", false),
+      text("runtime_diagnostics_json"),
+      text("published_preview_revision_id", false),
+      integer("published_binding_revision", false),
+      text("published_binding_plan_digest_sha256", false),
+      text("published_widget_revision_id", false),
+      text("published_idempotency_key", false),
+      text("last_error_json", false),
+      integer("created_at_ms"), integer("updated_at_ms"),
+      integer("closed_at_ms", false),
+    ],
+  },
+  agent_preview_revisions: {
+    columns: [
+      tenantId("org_id", 1), text("id", true, 2), text("preview_id"),
+      tenantId("draft_id"), tenantId("definition_id"),
+      text("draft_revision_sha256"), text("committed_mutation_id"),
+      text("source_snapshot_id"),
+      text("source_digest_sha256"), tenantId("source_artifact_id"),
+      text("source_artifact_kind"), text("source_artifact_digest_sha256"),
+      text("manifest_json"), text("function_descriptors_json"),
+      text("function_descriptors_digest_sha256"),
+      text("capability_contract_digest_sha256"),
+      text("channel_contract_digest_sha256"),
+      text("construction_contract_digest_sha256"),
+      text("preview_contract_digest_sha256"), text("builder_identity"),
+      text("capsule_build_identity_json"), text("build_policy_id"),
+      text("distribution_provenance_json"),
+      tenantId("unsigned_ui_artifact_id"), text("unsigned_ui_artifact_kind"),
+      text("unsigned_ui_artifact_digest_sha256"),
+      tenantId("ui_artifact_id"), text("ui_artifact_kind"),
+      text("ui_artifact_digest_sha256"), text("ui_runtime_json"),
+      text("capsule_artifact_hash"), text("server_artifact_id", false),
+      text("server_artifact_kind", false),
+      text("server_artifact_digest_sha256", false),
+      text("server_runtime_abi", false), integer("binding_revision"),
+      text("binding_plan_digest_sha256"),
+      integer("build_sequence"), text("diagnostics_json"), integer("created_at_ms"),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [["org_id", "preview_id", "id"]],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "preview_id"], referencesTable: "agent_previews", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "draft_id"], referencesTable: "agent_drafts", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "source_artifact_id", "source_artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "unsigned_ui_artifact_id", "unsigned_ui_artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "ui_artifact_id", "ui_artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "server_artifact_id", "server_artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+    ],
+  },
+  agent_preview_resource_bindings: {
+    columns: [
+      tenantId("org_id", 1), text("preview_id", true, 2),
+      text("revision_id", true, 3), text("slot_name", true, 4),
+      tenantId("resource_id"), text("resource_kind"), integer("is_required"),
+      integer("manifest_allow_read"), integer("manifest_allow_write"),
+      integer("allow_read"), integer("allow_write"), integer("created_at_ms"),
+    ],
+    primaryKey: ["org_id", "preview_id", "revision_id", "slot_name"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "preview_id", "revision_id"], referencesTable: "agent_preview_revisions", referencesColumns: ["org_id", "preview_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "resource_id", "resource_kind"], referencesTable: "resource_catalog", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+    ],
+  },
+  agent_preview_mount_leases: {
+    columns: [
+      tenantId("org_id", 1), text("id", true, 2), tenantId("account_id"),
+      text("preview_id"), text("preview_revision_id"), tenantId("canvas_id"),
+      text("frame_node_id"), integer("acquired_at_ms"), integer("renewed_at_ms"),
+      integer("expires_at_ms"),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "preview_id"], referencesTable: "agent_previews", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "preview_id", "preview_revision_id"], referencesTable: "agent_preview_revisions", referencesColumns: ["org_id", "preview_id", "id"], onDelete: "RESTRICT" },
+    ],
+  },
+  widget_preview_publication_idempotency: {
+    columns: [
+      tenantId("org_id", 1), tenantId("account_id", 2),
+      text("idempotency_key", true, 3), text("request_fingerprint_sha256"),
+      text("publication_identity_json"), tenantId("definition_id"),
+      tenantId("published_revision_id"),
+      text("previous_active_revision_id", false),
+      text("committed_definition_json"), integer("created_at_ms"),
+    ],
+    primaryKey: ["org_id", "account_id", "idempotency_key"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "RESTRICT" },
     ],
   },
   widget_revision_sources: {
@@ -663,7 +809,7 @@ export const EXPECTED_AGENT_AUTHORING_SCHEMA = {
     ...EXPECTED_WIDGET_HOST_SCHEMA.idempotency_records,
     columns: [
       tenantId("org_id", 1), tenantId("id", 2), text("function_id"), text("scope_kind"),
-      text("canvas_id", false), text("widget_instance_id", false),
+      text("canvas_id", false), text("widget_instance_id", false), text("preview_id", false),
       text("idempotency_key"), text("request_fingerprint_sha256"),
       tenantId("widget_definition_id"), tenantId("widget_revision_id"),
       tenantId("invocation_id"), integer("created_at_ms"), integer("expires_at_ms", false),
@@ -672,6 +818,7 @@ export const EXPECTED_AGENT_AUTHORING_SCHEMA = {
       { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "widget_instance_id"], referencesTable: "widget_instances", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "preview_id"], referencesTable: "agent_previews", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
       { columns: ["org_id", "invocation_id"], referencesTable: "function_invocations", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
     ],
   },
@@ -715,6 +862,7 @@ export const EXPECTED_INDEXES = {
   idempotency_records_org_key_idx: { table: "idempotency_records", columns: ["org_id", "idempotency_key"], unique: true, partial: true },
   idempotency_records_canvas_key_idx: { table: "idempotency_records", columns: ["org_id", "canvas_id", "idempotency_key"], unique: true, partial: true },
   idempotency_records_widget_key_idx: { table: "idempotency_records", columns: ["org_id", "widget_instance_id", "idempotency_key"], unique: true, partial: true },
+  idempotency_records_preview_key_idx: { table: "idempotency_records", columns: ["org_id", "preview_id", "function_id", "idempotency_key"], unique: true, partial: true },
   idempotency_records_expiry_idx: { table: "idempotency_records", columns: ["org_id", "expires_at_ms"], unique: false, partial: false },
   idempotency_records_revision_idx: { table: "idempotency_records", columns: ["org_id", "widget_definition_id", "widget_revision_id"], unique: false, partial: false },
   idempotency_records_invocation_idx: { table: "idempotency_records", columns: ["org_id", "invocation_id"], unique: false, partial: false },
@@ -731,6 +879,11 @@ export const EXPECTED_INDEXES = {
   agent_chats_account_idx: { table: "agent_chats", columns: ["org_id", "account_id", "created_at_ms"], unique: false, partial: false },
   agent_chats_canvas_idx: { table: "agent_chats", columns: ["org_id", "canvas_id", "created_at_ms"], unique: false, partial: false },
   agent_drafts_chat_idx: { table: "agent_drafts", columns: ["org_id", "chat_id", "created_at_ms"], unique: false, partial: false },
+  agent_previews_draft_idx: { table: "agent_previews", columns: ["org_id", "draft_id", "account_id", "status", "created_at_ms"], unique: false, partial: false },
+  agent_previews_account_idx: { table: "agent_previews", columns: ["org_id", "account_id", "status", "created_at_ms"], unique: false, partial: false },
+  agent_previews_origin_chat_idx: { table: "agent_previews", columns: ["org_id", "origin_chat_id", "status"], unique: false, partial: false },
+  agent_previews_active_revision_idx: { table: "agent_previews", columns: ["org_id", "active_revision_id", "status"], unique: false, partial: false },
+  agent_previews_companion_idx: { table: "agent_previews", columns: ["org_id", "account_id", "draft_id", "origin_chat_id"], unique: true, partial: true },
 } satisfies Record<string, TExpectedIndex>;
 
 export const EXPECTED_FUNCTION_RUNTIME_INDEXES = {
@@ -742,6 +895,7 @@ export const EXPECTED_FUNCTION_RUNTIME_INDEXES = {
   idempotency_records_org_key_idx: { table: "idempotency_records", columns: ["org_id", "function_id", "idempotency_key"], unique: true, partial: true },
   idempotency_records_canvas_key_idx: { table: "idempotency_records", columns: ["org_id", "canvas_id", "function_id", "idempotency_key"], unique: true, partial: true },
   idempotency_records_widget_key_idx: { table: "idempotency_records", columns: ["org_id", "widget_instance_id", "function_id", "idempotency_key"], unique: true, partial: true },
+  idempotency_records_preview_key_idx: { table: "idempotency_records", columns: ["org_id", "preview_id", "function_id", "idempotency_key"], unique: true, partial: true },
   resource_write_permits_attempt_idx: { table: "resource_write_permits", columns: ["org_id", "invocation_id", "attempt_id", "lease_epoch"], unique: false, partial: false },
 } satisfies Record<string, TExpectedIndex>;
 
@@ -749,37 +903,136 @@ export const EXPECTED_AGENT_AUTHORING_INDEXES = {
   ...EXPECTED_FUNCTION_RUNTIME_INDEXES,
   agent_chats_external_session_idx: { table: "agent_chats", columns: ["org_id", "account_id", "external_session_key"], unique: true, partial: true },
   agent_drafts_definition_idx: { table: "agent_drafts", columns: ["org_id", "definition_id", "published_revision_id"], unique: false, partial: false },
+  agent_preview_revisions_preview_idx: { table: "agent_preview_revisions", columns: ["org_id", "preview_id", "build_sequence", "created_at_ms"], unique: false, partial: false },
+  agent_preview_revisions_draft_idx: { table: "agent_preview_revisions", columns: ["org_id", "draft_id", "definition_id", "created_at_ms"], unique: false, partial: false },
+  agent_preview_revisions_definition_idx: { table: "agent_preview_revisions", columns: ["org_id", "definition_id", "created_at_ms"], unique: false, partial: false },
+  agent_preview_revisions_source_artifact_idx: { table: "agent_preview_revisions", columns: ["org_id", "source_artifact_id", "source_artifact_kind"], unique: false, partial: false },
+  agent_preview_revisions_unsigned_ui_artifact_idx: { table: "agent_preview_revisions", columns: ["org_id", "unsigned_ui_artifact_id", "unsigned_ui_artifact_kind"], unique: false, partial: false },
+  agent_preview_revisions_ui_artifact_idx: { table: "agent_preview_revisions", columns: ["org_id", "ui_artifact_id", "ui_artifact_kind"], unique: false, partial: false },
+  agent_preview_revisions_server_artifact_idx: { table: "agent_preview_revisions", columns: ["org_id", "server_artifact_id", "server_artifact_kind"], unique: false, partial: false },
+  agent_preview_resource_bindings_resource_idx: { table: "agent_preview_resource_bindings", columns: ["org_id", "resource_id", "resource_kind"], unique: false, partial: false },
+  agent_preview_mount_leases_expiry_idx: { table: "agent_preview_mount_leases", columns: ["expires_at_ms", "org_id"], unique: false, partial: false },
+  agent_preview_mount_leases_revision_idx: { table: "agent_preview_mount_leases", columns: ["org_id", "preview_id", "preview_revision_id", "expires_at_ms"], unique: false, partial: false },
+  agent_preview_mount_leases_account_idx: { table: "agent_preview_mount_leases", columns: ["org_id", "account_id"], unique: false, partial: false },
+  agent_preview_mount_leases_canvas_idx: { table: "agent_preview_mount_leases", columns: ["org_id", "canvas_id"], unique: false, partial: false },
+  widget_preview_publication_revision_idx: { table: "widget_preview_publication_idempotency", columns: ["org_id", "definition_id", "published_revision_id"], unique: false, partial: false },
   widget_revision_sources_artifact_idx: { table: "widget_revision_sources", columns: ["org_id", "source_artifact_id", "source_artifact_kind"], unique: false, partial: false },
   usage_outbox_invocation_idx: { table: "usage_outbox", columns: ["org_id", "invocation_id"], unique: false, partial: false },
 } satisfies Record<string, TExpectedIndex>;
 
+export const EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_APPLICATION_TABLES = [
+  ...EXPECTED_WIDGET_HOST_APPLICATION_TABLES,
+  "widget_revision_sources",
+] as const;
+
+export const EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_APPLICATION_TABLE_COUNT =
+  EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_APPLICATION_TABLES.length;
+
+const PREVIEW_SCHEMA_TABLE_NAMES = new Set<string>([
+  "agent_preview_mount_leases",
+  "agent_preview_resource_bindings",
+  "agent_preview_revisions",
+  "agent_previews",
+  "widget_preview_publication_idempotency",
+]);
+
+const PREVIEW_SCHEMA_INDEX_NAMES = new Set<string>([
+  "agent_preview_mount_leases_account_idx",
+  "agent_preview_mount_leases_canvas_idx",
+  "agent_preview_mount_leases_expiry_idx",
+  "agent_preview_mount_leases_revision_idx",
+  "agent_preview_resource_bindings_resource_idx",
+  "agent_preview_revisions_definition_idx",
+  "agent_preview_revisions_draft_idx",
+  "agent_preview_revisions_preview_idx",
+  "agent_preview_revisions_server_artifact_idx",
+  "agent_preview_revisions_source_artifact_idx",
+  "agent_preview_revisions_ui_artifact_idx",
+  "agent_preview_revisions_unsigned_ui_artifact_idx",
+  "agent_previews_account_idx",
+  "agent_previews_active_revision_idx",
+  "agent_previews_companion_idx",
+  "agent_previews_draft_idx",
+  "agent_previews_origin_chat_idx",
+  "idempotency_records_preview_key_idx",
+  "widget_preview_publication_revision_idx",
+]);
+
+export const EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_SCHEMA = Object.freeze({
+  ...Object.fromEntries(
+    Object.entries(EXPECTED_AGENT_AUTHORING_SCHEMA)
+      .filter(([name]) => !PREVIEW_SCHEMA_TABLE_NAMES.has(name)),
+  ),
+  agent_drafts: {
+    ...EXPECTED_AGENT_AUTHORING_SCHEMA.agent_drafts,
+    columns: EXPECTED_AGENT_AUTHORING_SCHEMA.agent_drafts.columns.filter(
+      (column) => (
+        column.name !== "committed_mutation_id"
+        && column.name !== "build_sequence"
+      ),
+    ),
+  },
+  widget_definition_revisions: {
+    ...EXPECTED_AGENT_AUTHORING_SCHEMA.widget_definition_revisions,
+    columns: EXPECTED_AGENT_AUTHORING_SCHEMA.widget_definition_revisions.columns.filter(
+      (column) => (
+        column.name !== "construction_contract_digest_sha256"
+        && column.name !== "distribution_provenance_json"
+      ),
+    ),
+  },
+  idempotency_records: {
+    ...EXPECTED_AGENT_AUTHORING_SCHEMA.idempotency_records,
+    columns: EXPECTED_AGENT_AUTHORING_SCHEMA.idempotency_records.columns.filter(
+      (column) => column.name !== "preview_id",
+    ),
+    foreignKeys: EXPECTED_AGENT_AUTHORING_SCHEMA.idempotency_records.foreignKeys.filter(
+      (foreignKey) => foreignKey.referencesTable !== "agent_previews",
+    ),
+  },
+}) satisfies TExpectedSchema;
+
+export const EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_INDEXES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(EXPECTED_AGENT_AUTHORING_INDEXES)
+      .filter(([name]) => !PREVIEW_SCHEMA_INDEX_NAMES.has(name)),
+  ),
+) satisfies TExpectedIndexManifest;
+
 export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
   Object.freeze({
     fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
-    indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
+    indexes: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
-    tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
+    tables: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_SCHEMA,
     version: 0,
   }),
   Object.freeze({
     fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
-    indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
+    indexes: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
-    tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
+    tables: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_SCHEMA,
     version: 1,
   }),
   Object.freeze({
     fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
-    indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
+    indexes: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
-    tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
+    tables: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_SCHEMA,
     version: 2,
   }),
   Object.freeze({
     fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
+    indexes: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_INDEXES,
+    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+    tables: EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_SCHEMA,
+    version: 3,
+  }),
+  Object.freeze({
+    fingerprintSha256: '1ff3c5489e7ac063f5b4e090868bf3a47085a78293f5c44fd49c6e75dc727f00',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
-    version: 3,
+    version: 4,
   }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

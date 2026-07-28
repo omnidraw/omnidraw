@@ -164,6 +164,20 @@ function successfulBuilder(bytes = new TextEncoder().encode('immutable ui artifa
         capsuleBuildIdentity: request.capsuleBuildIdentity,
         buildPolicyId: request.buildPolicyId,
         canonicalManifestJson: request.canonicalManifestJson,
+        constructionContractDigestSha256: sha256(
+          new TextEncoder().encode(`construction:${request.snapshot.digestSha256}`),
+        ),
+        distributionProvenance: Object.freeze({
+          kind: 'external-distribution' as const,
+          producer: Object.freeze({
+            name: 'widget-artifact-recovery-test',
+            version: '1',
+            digest: `sha256:${'c'.repeat(64)}` as const,
+          }),
+          sourceRevision: request.snapshot.digestSha256,
+          dependencyLockDigest: `sha256:${'d'.repeat(64)}` as const,
+          buildConfigurationDigest: `sha256:${'e'.repeat(64)}` as const,
+        }),
         functionDescriptors,
         functionDescriptorsDigestSha256,
         capabilityContractDigestSha256,
@@ -548,6 +562,37 @@ describe('widget artifact publication and GC recovery', () => {
     });
     expect(await collector.collect(tenant, gcRequest())).toMatchObject({ deleted: 2 });
     expect(await blobs.listBlobDigests()).toEqual([]);
+  });
+
+  test('the shared operation lane is reentrant without releasing serialization', async () => {
+    const lane = new WidgetArtifactOperationLane();
+    const enteredCompeting = deferred<void>();
+    const releaseOuter = deferred<void>();
+    const order: string[] = [];
+
+    const outer = lane.run(async () => {
+      order.push('outer');
+      await lane.run(async () => {
+        order.push('nested');
+      });
+      await releaseOuter.promise;
+      order.push('outer-finished');
+    });
+    await Bun.sleep(0);
+    const competing = lane.run(async () => {
+      order.push('competing');
+      enteredCompeting.resolve(undefined);
+    });
+
+    expect(order).toEqual(['outer', 'nested']);
+    const observation = await Promise.race([
+      enteredCompeting.promise.then(() => 'entered' as const),
+      Bun.sleep(25).then(() => 'blocked' as const),
+    ]);
+    expect(observation).toBe('blocked');
+    releaseOuter.resolve(undefined);
+    await bounded(Promise.all([outer, competing]), 5_000, 'reentrant lane completion');
+    expect(order).toEqual(['outer', 'nested', 'outer-finished', 'competing']);
   });
 
   test('enumerates immutable final/temp candidates and cleans only files older than grace', async () => {

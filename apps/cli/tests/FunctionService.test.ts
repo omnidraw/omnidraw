@@ -46,6 +46,8 @@ const OTHER_MEMBER_TENANT: TTenantContext = Object.freeze({
 });
 
 const WIDGET_INSTANCE_ID = '00000000-0000-4000-8000-000000000022';
+const PREVIEW_ID = '00000000-0000-4000-8000-000000000023';
+const PREVIEW_REVISION_ID = '00000000-0000-4000-8000-000000000024';
 
 function record(
   status: TInvocationRecord['status'] = 'queued',
@@ -105,6 +107,14 @@ function databaseForTarget(options: Readonly<{
     definition_id: string;
     revision_id: string;
     status: string;
+    subject_kind: 'widget_instance';
+  }> | null;
+  previewTarget?: Partial<{
+    canvas_id: string;
+    definition_id: string;
+    revision_id: string;
+    status: string;
+    subject_kind: 'widget_preview';
   }> | null;
   memberAccountIds?: readonly string[];
 }> = {}): Database {
@@ -113,23 +123,47 @@ function databaseForTarget(options: Readonly<{
     definition_id: record().envelope.widgetDefinitionId,
     revision_id: record().envelope.widgetRevisionId,
     status: 'active',
+    subject_kind: 'widget_instance' as const,
     ...options.target,
+  };
+  const previewRow = {
+    canvas_id: TENANT.canvasId!,
+    definition_id: record().envelope.widgetDefinitionId,
+    revision_id: PREVIEW_REVISION_ID,
+    status: 'ready',
+    subject_kind: 'widget_preview' as const,
+    ...options.previewTarget,
   };
   const memberAccountIds = options.memberAccountIds ?? [TENANT.accountId];
   return {
     prepare: (sql: string) => ({
       get: async (...values: unknown[]) => {
         if (sql.includes('FROM widget_instances')) {
-          const [accountId, orgId, widgetInstanceId] = values;
+          const [accountId, orgId, widgetInstanceId, widgetRevisionId] = values;
           if (
             options.target === null
             || orgId !== TENANT.orgId
             || widgetInstanceId !== WIDGET_INSTANCE_ID
+            || widgetRevisionId !== row.revision_id
             || !memberAccountIds.includes(String(accountId))
           ) {
             return undefined;
           }
           return row;
+        }
+        if (sql.includes('FROM agent_previews')) {
+          const [widgetRevisionId, accountId, orgId, ownerAccountId, previewId] = values;
+          if (
+            options.previewTarget == null
+            || orgId !== TENANT.orgId
+            || ownerAccountId !== TENANT.accountId
+            || previewId !== PREVIEW_ID
+            || widgetRevisionId !== previewRow.revision_id
+            || !memberAccountIds.includes(String(accountId))
+          ) {
+            return undefined;
+          }
+          return previewRow;
         }
         if (sql.includes('FROM canvas_members')) {
           const [orgId, canvasId, accountId] = values;
@@ -322,6 +356,7 @@ describe('FunctionService host authority', () => {
     });
     await expect(service.invokeFunction(WS_TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run',
       input: { value: 1 },
       idempotencyKey: 'request-key',
@@ -342,10 +377,109 @@ describe('FunctionService host authority', () => {
     await service.stop();
   });
 
+  test('routes an owned durable Preview through the active retained revision subject', async () => {
+    const { calls, service } = createService({
+      database: databaseForTarget({
+        target: null,
+        previewTarget: {},
+      }),
+      idempotencyTtlMs: 60_000,
+      nowMs: () => 500,
+    });
+
+    await service.invokeFunction(WS_TENANT, {
+      widgetInstanceId: PREVIEW_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: 'run',
+      input: { value: 1 },
+      idempotencyKey: 'preview-request-key',
+    });
+
+    expect(calls).toEqual([expect.objectContaining({
+      widgetDefinitionId: record().envelope.widgetDefinitionId,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      subject: {
+        kind: 'widget_preview',
+        canvasId: TENANT.canvasId,
+        widgetInstanceId: PREVIEW_ID,
+      },
+      idempotencyScope: {
+        kind: 'widget_preview',
+        previewId: PREVIEW_ID,
+      },
+      idempotencyExpiresAtMs: 60_500,
+    })]);
+    await service.stop();
+  });
+
+  test('hides another account Preview and a stale Preview canvas target', async () => {
+    const database = databaseForTarget({
+      target: null,
+      previewTarget: {},
+      memberAccountIds: [TENANT.accountId, OTHER_MEMBER_TENANT.accountId],
+    });
+    const otherAccount = createService({ database });
+    await expect(otherAccount.service.invokeFunction(OTHER_MEMBER_TENANT, {
+      widgetInstanceId: PREVIEW_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: 'run',
+      input: {},
+      idempotencyKey: 'foreign-preview',
+    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+    expect(otherAccount.calls).toHaveLength(0);
+    await otherAccount.service.stop();
+
+    const staleCanvas = createService({
+      database: databaseForTarget({
+        target: null,
+        previewTarget: {
+          canvas_id: '00000000-0000-4000-8000-000000000098',
+        },
+      }),
+    });
+    await expect(staleCanvas.service.invokeFunction(TENANT, {
+      widgetInstanceId: PREVIEW_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: 'run',
+      input: {},
+      idempotencyKey: 'stale-preview',
+    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+    expect(staleCanvas.calls).toHaveLength(0);
+    await staleCanvas.service.stop();
+
+    const staleRevision = createService({
+      database: databaseForTarget({
+        target: null,
+        previewTarget: {},
+      }),
+    });
+    await expect(staleRevision.service.invokeFunction(TENANT, {
+      widgetInstanceId: PREVIEW_ID,
+      widgetRevisionId: '00000000-0000-4000-8000-000000000099',
+      functionName: 'run',
+      input: {},
+      idempotencyKey: 'stale-preview-revision',
+    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+    expect(staleRevision.calls).toHaveLength(0);
+    await staleRevision.service.stop();
+
+    const stalePublishedRevision = createService();
+    await expect(stalePublishedRevision.service.invokeFunction(TENANT, {
+      widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: '00000000-0000-4000-8000-000000000099',
+      functionName: 'run',
+      input: {},
+      idempotencyKey: 'stale-published-revision',
+    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+    expect(stalePublishedRevision.calls).toHaveLength(0);
+    await stalePublishedRevision.service.stop();
+  });
+
   test('hides unauthorized, context-mismatched, and inactive targets behind stable codes', async () => {
     const unauthorized = createService();
     await expect(unauthorized.service.invokeFunction(OUTSIDER_TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
     expect(unauthorized.calls).toHaveLength(0);
@@ -358,6 +492,7 @@ describe('FunctionService host authority', () => {
     });
     await expect(mismatched.service.invokeFunction(TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
     expect(mismatched.calls).toHaveLength(0);
@@ -368,6 +503,7 @@ describe('FunctionService host authority', () => {
     }).service;
     await expect(inactive.invokeFunction(TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
     await inactive.stop();
@@ -381,6 +517,7 @@ describe('FunctionService host authority', () => {
     }).service;
     await expect(conflict.invokeFunction(TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     await conflict.stop();
@@ -397,6 +534,7 @@ describe('FunctionService host authority', () => {
 
     await expect(raced.invokeFunction(TENANT, {
       widgetInstanceId: WIDGET_INSTANCE_ID,
+      widgetRevisionId: record().envelope.widgetRevisionId,
       functionName: 'run',
       input: {},
       idempotencyKey: 'identity-race',

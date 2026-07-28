@@ -25,6 +25,9 @@ import type {
   TWidgetArtifactRetentionReconcileRequest,
   TWidgetArtifactRetentionReconcileResult,
   TWidgetArtifactRetentionRestoreRequest,
+  TWidgetArtifactConstructionRequest,
+  TWidgetArtifactConstructionResult,
+  TWidgetArtifactConstructionSignRequest,
   TWidgetCapsuleArtifactInspectionRequest,
   TWidgetCapsuleArtifactInspectionResult,
   TWidgetCapsuleArtifactSignRequest,
@@ -45,9 +48,22 @@ import type {
   TWidgetPublicationCommitResult,
   TWidgetPublishedPlacementDescriptor,
   TWidgetPublishedPlacementTarget,
+  TWidgetPreviewArtifactResolutionRequest,
   TWidgetPreviewBuildRequest,
   TWidgetPreviewBuildResult,
+  TWidgetPreviewCommitInput,
+  TWidgetPreviewCommitResult,
+  TWidgetPreviewGetRequest,
+  TWidgetPreviewMountLeaseAcquireRequest,
+  TWidgetPreviewMountLeaseDescriptor,
+  TWidgetPreviewMountLeaseReleaseRequest,
+  TWidgetPreviewMountLeaseRenewRequest,
+  TWidgetPreviewPromotionRequest,
+  TWidgetPreviewRevisionDescriptor,
+  TWidgetPreviewRevisionGetRequest,
+  TWidgetPreviewWorkspaceCloseRequest,
   TWidgetPublishRequest,
+  TWidgetPublishConstructionRequest,
   TWidgetPublishResult,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
@@ -55,6 +71,7 @@ import type {
   TWidgetRevisionSourceSnapshotReadRequest,
   TWidgetRevisionPruneRequest,
   TWidgetRevisionPruneResult,
+  TWidgetResourceBindingInput,
   TWidgetRollbackInput,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
@@ -68,6 +85,31 @@ export interface IWidgetCapsuleHostConfigurationReader {
 export interface IWidgetArtifactBuilder {
   build(tenant: TTenantContext, request: TWidgetBuildRequest): Promise<TWidgetBuildResult>;
 }
+
+/** Builds exact unsigned UI/source/server outputs without selecting signing authority. */
+export interface IWidgetArtifactConstructor {
+  construct(
+    tenant: TTenantContext,
+    request: TWidgetArtifactConstructionRequest,
+  ): Promise<TWidgetArtifactConstructionResult>;
+  closeWorkspace?(
+    tenant: TTenantContext,
+    request: Readonly<{ workspaceKey: string }>,
+  ): Promise<void>;
+  close?(): Promise<void>;
+}
+
+/** Applies Preview or release signing to one already-built immutable construction. */
+export interface IWidgetArtifactConstructionSigner {
+  signConstruction(
+    tenant: TTenantContext,
+    request: TWidgetArtifactConstructionSignRequest,
+  ): Promise<TWidgetBuildResult>;
+}
+
+/** Compatibility build port plus the exact construction/promotion seam. */
+export interface IWidgetArtifactConstructionBuilder
+  extends IWidgetArtifactBuilder, IWidgetArtifactConstructor, IWidgetArtifactConstructionSigner {}
 
 /** Trusted build port; implementations map Vibecanvas inputs to public Capsule build APIs. */
 export interface IWidgetCapsuleUiArtifactBuilder {
@@ -204,6 +246,85 @@ export interface IWidgetPreviewService {
   ): Promise<TWidgetPreviewBuildResult>;
 }
 
+export interface IWidgetDurablePreviewService extends IWidgetPreviewService {
+  loadPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewGetRequest,
+  ): Promise<TWidgetPreviewBuildResult | null>;
+
+  loadPreviewRevision(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetPreviewBuildResult | null>;
+}
+
+export interface IWidgetPreviewWorkspaceService {
+  closePreviewWorkspace(
+    tenant: TTenantContext,
+    request: TWidgetPreviewWorkspaceCloseRequest,
+  ): Promise<void>;
+}
+
+export interface IWidgetPreviewRevisionReader {
+  getPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
+
+  getPreviewRevision(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
+}
+
+/** Durable metadata authority for immutable frame-owned Preview revisions. */
+export interface IWidgetPreviewStore extends IWidgetPreviewRevisionReader {
+  commitPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewCommitInput,
+  ): Promise<TWidgetPreviewCommitResult>;
+
+  resolvePreviewArtifact(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactResolutionRequest,
+  ): Promise<TWidgetArtifactDescriptor | null>;
+
+  getPreviewBindings(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<readonly TWidgetResourceBindingInput[]>;
+
+  acquirePreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseAcquireRequest,
+  ): Promise<TWidgetPreviewMountLeaseDescriptor | null>;
+
+  renewPreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseRenewRequest,
+  ): Promise<TWidgetPreviewMountLeaseDescriptor | null>;
+
+  releasePreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseReleaseRequest,
+  ): Promise<boolean>;
+}
+
+/** Internal exact-construction reader used only by trusted promotion orchestration. */
+export interface IWidgetPreviewConstructionReader {
+  readPreviewConstruction(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetArtifactConstructionResult | null>;
+}
+
+export interface IWidgetPreviewPromotionService {
+  publishPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewPromotionRequest,
+  ): Promise<TWidgetPublishResult>;
+}
+
 export interface IWidgetPublishedPlacementReader {
   listPublishedPlacements(
     tenant: TTenantContext,
@@ -306,6 +427,11 @@ export interface IWidgetPublicationService extends IWidgetRevisionReader, IWidge
   publish(
     tenant: TTenantContext,
     request: TWidgetPublishRequest,
+  ): Promise<TWidgetPublishResult>;
+
+  publishConstruction(
+    tenant: TTenantContext,
+    request: TWidgetPublishConstructionRequest,
   ): Promise<TWidgetPublishResult>;
 
   rollback(

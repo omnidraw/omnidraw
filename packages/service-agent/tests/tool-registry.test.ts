@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
@@ -83,5 +83,170 @@ describe('AI Chat tool registry', () => {
     expect(denied.isError).toBe(true);
     expect(denied.content[0]?.text).toContain('TOOL_NOT_AUTHORIZED');
     expect(bashRuns).toHaveLength(1);
+  });
+
+  test('fences one mounted draft once after multi-file and failed Bash mutations', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-tool-registry-bash-fence-'));
+    roots.push(root);
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
+    await workspace.init();
+    const cwd = await workspace.ensureChat('chat-a');
+    await workspace.createDraft('chat-a', { name: 'Bash Clock' }, async ({ cwd: draftCwd }) => {
+      await mkdir(join(draftCwd, 'ui'), { recursive: true });
+      await writeFile(
+        join(draftCwd, 'vibecanvas.json'),
+        `${JSON.stringify({
+          schemaVersion: 3,
+          name: 'Bash Clock',
+          slug: 'bash-clock',
+          ui: { runtime: 'capsule', entry: 'ui/main.ts' },
+        })}\n`,
+        'utf8',
+      );
+      await writeFile(join(draftCwd, 'ui', 'main.ts'), 'export const first = 1;\n', 'utf8');
+      return ['vibecanvas.json', 'ui/main.ts'];
+    });
+    await workspace.createDraft('chat-a', { name: 'Second Clock' }, async ({ cwd: draftCwd }) => {
+      await mkdir(join(draftCwd, 'ui'), { recursive: true });
+      await writeFile(
+        join(draftCwd, 'vibecanvas.json'),
+        `${JSON.stringify({
+          schemaVersion: 3,
+          name: 'Second Clock',
+          slug: 'second-clock',
+          ui: { runtime: 'capsule', entry: 'ui/main.ts' },
+        })}\n`,
+        'utf8',
+      );
+      await writeFile(join(draftCwd, 'ui', 'main.ts'), 'export const second = 1;\n', 'utf8');
+      return ['vibecanvas.json', 'ui/main.ts'];
+    });
+
+    const changes: unknown[] = [];
+    let rejectBashClockFence = false;
+    const registry = createToolRegistry({
+      chatId: 'chat-a',
+      cwd,
+      authorization: {},
+      workspace,
+      approvals: new ApprovalCoordinator(),
+      onDraftChanged: async (change) => {
+        changes.push(change);
+        if (rejectBashClockFence && change.name === 'Bash Clock') return null;
+        return {} as never;
+      },
+      bashCapability: {
+        run: async ({ command }) => {
+          if (command === 'multi-file') {
+            await writeFile(
+              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              'export const first = 2;\n',
+              'utf8',
+            );
+            await writeFile(
+              join(workspace.draftRoot, 'Bash Clock', 'ui', 'secondary.ts'),
+              'export const second = 2;\n',
+              'utf8',
+            );
+            return {
+              content: [{ type: 'text', text: 'multi-file complete' }],
+              details: undefined,
+            };
+          }
+          if (command === 'tamper-mount') {
+            await writeFile(
+              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              'export const first = 4;\n',
+              'utf8',
+            );
+            await rm(join(cwd, 'widgets', 'Bash Clock'));
+            return {
+              content: [{ type: 'text', text: 'mount removed' }],
+              details: undefined,
+            };
+          }
+          if (command === 'multi-draft') {
+            await writeFile(
+              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              'export const first = 5;\n',
+              'utf8',
+            );
+            await writeFile(
+              join(workspace.draftRoot, 'Second Clock', 'ui', 'main.ts'),
+              'export const second = 2;\n',
+              'utf8',
+            );
+            return {
+              content: [{ type: 'text', text: 'multi-draft complete' }],
+              details: undefined,
+            };
+          }
+          await writeFile(
+            join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+            'export const first = 3;\n',
+            'utf8',
+          );
+          throw new Error('runner failed after write');
+        },
+      },
+    });
+    const bash = registry.customTools.find((tool) => tool.name === 'bash')!;
+
+    const multiFile = await executeTool(bash, { command: 'multi-file' });
+    expect(multiFile.isError).not.toBe(true);
+    expect(changes).toEqual([{
+      name: 'Bash Clock',
+      chatId: 'chat-a',
+      type: 'changed',
+    }]);
+
+    const failed = await executeTool(bash, { command: 'fail-after-write' });
+    expect(failed.isError).toBe(true);
+    expect(failed.content[0]?.text).toContain('runner failed after write');
+    expect(changes).toEqual([
+      {
+        name: 'Bash Clock',
+        chatId: 'chat-a',
+        type: 'changed',
+      },
+      {
+        name: 'Bash Clock',
+        chatId: 'chat-a',
+        type: 'changed',
+      },
+    ]);
+
+    const mountTamper = await executeTool(bash, { command: 'tamper-mount' });
+    expect(mountTamper.isError).toBe(true);
+    expect(mountTamper.content[0]?.text).toContain('changed the confined widget mount set');
+    expect(changes).toHaveLength(3);
+    expect(changes[2]).toEqual({
+      name: 'Bash Clock',
+      chatId: 'chat-a',
+      type: 'changed',
+    });
+    expect(await workspace.inspectMounts('chat-a')).toEqual([
+      expect.objectContaining({ name: 'Bash Clock' }),
+      expect.objectContaining({ name: 'Second Clock' }),
+    ]);
+
+    rejectBashClockFence = true;
+    const partialFenceFailure = await executeTool(bash, { command: 'multi-draft' });
+    expect(partialFenceFailure.isError).toBe(true);
+    expect(partialFenceFailure.content[0]?.text).toContain(
+      "Bash changed widget source 'Bash Clock' without receiving a durable mutation fence.",
+    );
+    expect(changes.slice(-2)).toEqual([
+      {
+        name: 'Bash Clock',
+        chatId: 'chat-a',
+        type: 'changed',
+      },
+      {
+        name: 'Second Clock',
+        chatId: 'chat-a',
+        type: 'changed',
+      },
+    ]);
   });
 });

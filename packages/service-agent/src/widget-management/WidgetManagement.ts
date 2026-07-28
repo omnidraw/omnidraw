@@ -260,7 +260,15 @@ export class WidgetManagement {
       : await this.#drafts.withDraftRename(name, nextName, (_cleanup, coordinateCommit) => {
           return updateDraft(coordinateCommit);
         });
-    await this.#drafts.handleToolChange({ name: result.name, type: 'changed' });
+    if (nextName === name) {
+      const durable = await this.#drafts.handleToolChange({
+        name: result.name,
+        type: 'changed',
+      });
+      if (durable === null) {
+        throw new Error('Updated widget source did not receive a durable mutation fence.');
+      }
+    }
     return { name: result.name, variant: (await this.#readVariant(result.name, 'draft')).summary };
   }
 

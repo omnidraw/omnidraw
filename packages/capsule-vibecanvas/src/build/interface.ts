@@ -16,8 +16,14 @@ export type TVibecanvasDistributionBuildRequest = Readonly<{
   sourceRevision: string;
   entry: string;
   files: readonly CapsuleSnapshotFile[];
+  workspaceKey?: string;
+  signal?: AbortSignal;
+  reportProgress?: (phase: 'installing' | 'building') => void;
 }>;
 
-export type TVibecanvasDistributionBuild = (
+export type TVibecanvasDistributionBuild = ((
   request: TVibecanvasDistributionBuildRequest,
-) => Promise<CapsuleBuildInput>;
+) => Promise<CapsuleBuildInput>) & Readonly<{
+  closeWorkspace?(workspaceKey: string): Promise<void>;
+  close?(): Promise<void>;
+}>;

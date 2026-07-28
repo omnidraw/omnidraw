@@ -337,6 +337,26 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     await current.runtime.destroy();
   });
 
+  test('renders the product-safe message from a mapped Capsule error', async () => {
+    const current = fixture();
+    const rendered = await renderReady(current.runtime);
+    const onFatal = current.mount.mock.calls[0]![0].onFatal;
+
+    onFatal({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'runtime',
+      category: 'guest',
+      capsuleCode: 'CALL_FAILED',
+      fatal: true,
+      message: 'The widget runtime failed.',
+    });
+
+    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('error');
+    expect(rendered.root.textContent).toBe('The widget runtime failed.');
+    rendered.cleanup();
+    await current.runtime.destroy();
+  });
+
   test('caches exact opaque signed bytes by revision, digest, and Capsule hash', async () => {
     const cache = new WidgetUiArtifactCache();
     const current = fixture({ cache });
@@ -644,6 +664,81 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     });
     expect(gpu.mount).toHaveBeenCalledTimes(2);
     await gpu.runtime.destroy();
+  }, 10_000);
+
+  test('shares the live population across published and Preview owners with one swap candidate', async () => {
+    const current = fixture();
+    for (let index = 0; index < 23; index += 1) {
+      current.runtime.renderOwned({
+        root: document.createElement('div'),
+        canvasId: identity.canvasId,
+        element: element(),
+      });
+    }
+    const previewMount = vi.fn(async () => runtimeHandle().handle);
+    const onError = vi.fn();
+    const preview = current.runtime.renderPreloadedOwned({
+      featureProfiles: [],
+      mount: previewMount,
+      onError,
+    });
+    await preview.ready();
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        mountedOwnerCount: 24,
+        liveRuntimeCount: 24,
+      });
+    });
+    expect(current.mount).toHaveBeenCalledTimes(23);
+    expect(previewMount).toHaveBeenCalledOnce();
+
+    const overflowMount = vi.fn(async () => runtimeHandle().handle);
+    const overflow = current.runtime.renderPreloadedOwned({
+      featureProfiles: [],
+      mount: overflowMount,
+      onError,
+    });
+    void overflow.ready().catch(() => undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(current.runtime.diagnostics().liveRuntimeCount).toBe(24);
+    expect(overflowMount).not.toHaveBeenCalled();
+
+    const firstSwapMount = vi.fn(async () => runtimeHandle().handle);
+    const firstSwap = current.runtime.renderPreloadedOwned({
+      featureProfiles: [],
+      swapFrom: preview,
+      mount: firstSwapMount,
+      onError,
+    });
+    await firstSwap.ready();
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        mountedOwnerCount: 26,
+        liveRuntimeCount: 25,
+      });
+    });
+    expect(firstSwapMount).toHaveBeenCalledOnce();
+
+    const secondSwapMount = vi.fn(async () => runtimeHandle().handle);
+    const secondSwap = current.runtime.renderPreloadedOwned({
+      featureProfiles: [],
+      swapFrom: preview,
+      mount: secondSwapMount,
+      onError,
+    });
+    void secondSwap.ready().catch(() => undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(current.runtime.diagnostics()).toMatchObject({
+      mountedOwnerCount: 27,
+      liveRuntimeCount: 25,
+    });
+    expect(secondSwapMount).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+
+    await current.runtime.destroy();
   }, 10_000);
 
   test('freezes offscreen owners after two seconds, destroys far owners, and remounts', async () => {

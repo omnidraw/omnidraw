@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -9,6 +10,8 @@ import {
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
 } from '@vibecanvas/service-db/CONSTANTS';
+import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
+import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
@@ -54,7 +57,7 @@ afterEach(async () => {
 });
 
 describe('production short-lived function composition', () => {
-  test('publishes, invokes, persists, and tears down one exact server revision', async () => {
+  test('executes exact published and durable Preview server revisions', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vibecanvas-function-composition-'));
     roots.push(root);
     const home = fnResolveVibecanvasHome({ join, resolve }, {
@@ -222,6 +225,7 @@ describe('production short-lived function composition', () => {
 
       await expect(functionInvocation.invokeFunction(outsiderTenant, {
         widgetInstanceId: uuid(966),
+        widgetRevisionId: published.revision.id,
         functionName: 'echo',
         input: { value: 'unauthorized' },
         idempotencyKey: 'function-composition-outsider-key',
@@ -229,6 +233,7 @@ describe('production short-lived function composition', () => {
 
       const accepted = await functionInvocation.invokeFunction(wsTenant, {
         widgetInstanceId: uuid(966),
+        widgetRevisionId: published.revision.id,
         functionName: 'echo',
         input: { value: 'hello' },
         idempotencyKey: 'function-composition-stable-key',
@@ -266,6 +271,215 @@ describe('production short-lived function composition', () => {
       `)).get(tenant.orgId) as { count: unknown };
       expect(Number(usage.count)).toBe(1);
 
+      const previewChatId = uuid(970);
+      const previewDraftId = uuid(971);
+      const previewId = uuid(972);
+      const previewRevisionId = uuid(973);
+      const previewCommittedMutationId = 'mutation-function-composition-preview';
+      const authoringStore = new AgentAuthoringStoreTurso(
+        dbService.db,
+        new WidgetControlStoreTurso(dbService.db),
+      );
+      await authoringStore.createChat(tenant, {
+        id: previewChatId,
+        canvasId: tenant.canvasId!,
+        externalSessionKey: 'function-composition-preview-chat',
+        name: 'Function composition Preview',
+        workspaceRelativePath: 'chats/function-composition-preview',
+        historyRelativePath: 'history/function-composition-preview.jsonl',
+        nowMs: 40,
+      });
+      await authoringStore.createDraft(tenant, {
+        id: previewDraftId,
+        chatId: previewChatId,
+        definitionId: published.definition.id,
+        name: 'Function composition Preview draft',
+        sourceRelativePath: 'drafts/function-composition-preview',
+        nowMs: 41,
+      });
+      await authoringStore.ensurePreviewOwner(tenant, {
+        id: previewId,
+        canvasId: tenant.canvasId!,
+        frameNodeId: 'function-composition-preview-frame',
+        draftId: previewDraftId,
+        originChatId: previewChatId,
+        role: 'placed',
+        nowMs: 42,
+      });
+      await (await dbService.db.prepare(`
+        INSERT INTO canvas_items (
+          org_id, canvas_id, id, item_json, item_revision,
+          created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, 0, 42, 42)
+      `)).run(
+        tenant.orgId,
+        tenant.canvasId!,
+        'function-composition-preview-frame',
+        JSON.stringify({
+          id: 'function-composition-preview-frame',
+          kind: 'widget-frame',
+          parentId: null,
+          orderKey: 'preview-frame',
+          extensions: {
+            [CANVAS_WIDGET_EXTENSION_KEY]: {
+              schemaVersion: 1,
+              type: 'ui-widget',
+              kind: 'preview',
+              payload: {
+                previewId,
+                draftId: previewDraftId,
+                originChatId: previewChatId,
+                role: 'placed',
+              },
+            },
+          },
+        }),
+      );
+      await expect(authoringStore.compareAndSetDraft(tenant, {
+        draftId: previewDraftId,
+        expectedSourceDigestSha256: null,
+        nextSourceDigestSha256: snapshot.digestSha256,
+        expectedCommittedMutationId: null,
+        nextCommittedMutationId: previewCommittedMutationId,
+        expectedBuildSequence: 0,
+        nextBuildSequence: 1,
+        nextStatus: 'ready',
+        lastError: null,
+        nowMs: 43,
+      })).resolves.toMatchObject({ status: 'updated' });
+      await expect(authoringStore.compareAndSetPreviewOwner(tenant, {
+        previewId,
+        expectedBuildSequence: 0,
+        nextBuildSequence: 1,
+        status: 'building',
+        activeRevisionId: null,
+        pendingBuildId: previewRevisionId,
+        lastError: null,
+        expectedBindingRevision: 0,
+        nextBindingRevision: 0,
+        expectedBindingPlanDigestSha256: null,
+        nextBindingPlanDigestSha256:
+          createHash('sha256').update('[]').digest('hex'),
+        expectedSourceDigestSha256: null,
+        nextSourceDigestSha256: snapshot.digestSha256,
+        expectedCommittedMutationId: null,
+        nextCommittedMutationId: previewCommittedMutationId,
+        nowMs: 44,
+      })).resolves.toMatchObject({ status: 'building' });
+      const preview = await widgetOwner.buildPreview(tenant, {
+        previewId,
+        previewRevisionId,
+        expectedActiveRevisionId: null,
+        buildSequence: 1,
+        bindingRevision: 0,
+        draftId: previewDraftId,
+        definitionId: published.definition.id,
+        draftRevisionSha256: snapshot.digestSha256,
+        committedMutationId: previewCommittedMutationId,
+        snapshot,
+        manifest,
+        bindings: [],
+        builderIdentity: fnWidgetCapsuleBuilderIdentity({
+          npmVersion: 'external',
+          serverBunVersion: Bun.version,
+        }),
+        ...CAPSULE_PUBLICATION_IDENTITY,
+        nowMs: 45,
+      });
+      expect(preview.functionDescriptors).toEqual([
+        expect.objectContaining({ exportName: 'echo' }),
+      ]);
+      const previewMountLeaseId = uuid(976);
+      const previewMountLeaseNowMs = Date.now();
+      await expect(authoringStore.acquirePreviewMountLease(tenant, {
+        leaseId: previewMountLeaseId,
+        previewId,
+        previewRevisionId,
+        canvasId: tenant.canvasId!,
+        frameNodeId: 'function-composition-preview-frame',
+        nowMs: previewMountLeaseNowMs,
+        ttlMs: 60_000,
+      })).resolves.toMatchObject({
+        leaseId: previewMountLeaseId,
+        previewId,
+        previewRevisionId,
+      });
+
+      const previewAccepted = await functionInvocation.invokeFunction(wsTenant, {
+        widgetInstanceId: previewId,
+        widgetRevisionId: previewRevisionId,
+        functionName: 'echo',
+        input: { value: 'preview' },
+        idempotencyKey: 'function-composition-preview-key',
+      });
+      const previewTerminal = await waitFor(
+        () => functionInvocation.getFunctionInvocation(wsTenant, previewAccepted.id),
+        (value) => value !== null
+          && ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(value.status),
+      );
+      expect(previewTerminal).toMatchObject({
+        id: previewAccepted.id,
+        functionName: 'echo',
+        widgetRevisionId: previewRevisionId,
+        widgetInstanceId: previewId,
+        status: 'succeeded',
+        output: { value: 'echo:preview' },
+        failure: null,
+      });
+      await expect(await (await dbService.db.prepare(`
+        SELECT scope_kind, widget_instance_id, preview_id
+        FROM idempotency_records
+        WHERE org_id = ? AND invocation_id = ?
+      `)).get(tenant.orgId, previewAccepted.id)).toEqual({
+        scope_kind: 'widget_preview',
+        widget_instance_id: null,
+        preview_id: previewId,
+      });
+      await (await dbService.db.prepare(`
+        UPDATE agent_previews
+        SET active_revision_id = ?, updated_at_ms = 46
+        WHERE org_id = ? AND id = ?
+      `)).run(uuid(974), tenant.orgId, previewId);
+      const retainedAccepted = await functionInvocation.invokeFunction(wsTenant, {
+        widgetInstanceId: previewId,
+        widgetRevisionId: previewRevisionId,
+        functionName: 'echo',
+        input: { value: 'retained' },
+        idempotencyKey: 'function-composition-retained-preview-key',
+      });
+      const retainedTerminal = await waitFor(
+        () => functionInvocation.getFunctionInvocation(wsTenant, retainedAccepted.id),
+        (value) => value !== null
+          && ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(value.status),
+      );
+      expect(retainedTerminal).toMatchObject({
+        status: 'succeeded',
+        widgetRevisionId: previewRevisionId,
+        output: { value: 'echo:retained' },
+      });
+      await expect(authoringStore.releasePreviewMountLease(tenant, {
+        leaseId: previewMountLeaseId,
+        previewId,
+        previewRevisionId,
+        canvasId: tenant.canvasId!,
+        frameNodeId: 'function-composition-preview-frame',
+        nowMs: previewMountLeaseNowMs + 1,
+      })).resolves.toBe(true);
+      await expect(functionInvocation.invokeFunction(wsTenant, {
+        widgetInstanceId: previewId,
+        widgetRevisionId: previewRevisionId,
+        functionName: 'echo',
+        input: { value: 'unmounted' },
+        idempotencyKey: 'function-composition-unmounted-preview-key',
+      })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+      await expect(functionInvocation.invokeFunction(wsTenant, {
+        widgetInstanceId: previewId,
+        widgetRevisionId: uuid(975),
+        functionName: 'echo',
+        input: { value: 'stale' },
+        idempotencyKey: 'function-composition-stale-preview-key',
+      })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+
       await canvasService.execute(tenant, {
         commandId: uuid(969),
         canvasId: tenant.canvasId!,
@@ -279,6 +493,7 @@ describe('production short-lived function composition', () => {
       });
       await expect(functionInvocation.invokeFunction(wsTenant, {
         widgetInstanceId: uuid(966),
+        widgetRevisionId: published.revision.id,
         functionName: 'echo',
         input: { value: 'archived' },
         idempotencyKey: 'function-composition-archived',

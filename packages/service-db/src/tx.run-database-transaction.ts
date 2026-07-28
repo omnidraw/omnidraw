@@ -6,6 +6,7 @@ type TPortal = Readonly<{
 }>;
 
 type TArgs<TResult> = Readonly<{
+  foreignKeyEnforcement?: 'enabled' | 'disabled';
   operation: () => Promise<TResult>;
   mode?: 'deferred' | 'immediate';
 }>;
@@ -27,9 +28,19 @@ export function txRunDatabaseTransaction<TResult>(
   portal: TPortal,
   args: TArgs<TResult>,
 ): Promise<TResult> {
-  const run = () => {
+  const runTransaction = () => {
     const transaction = portal.database.transaction(args.operation) as TDatabaseTransaction<TResult>;
     return args.mode === 'deferred' ? transaction() : transaction.immediate();
+  };
+  const run = async () => {
+    if (args.foreignKeyEnforcement !== 'disabled') return runTransaction();
+
+    await portal.database.exec('PRAGMA foreign_keys = OFF');
+    try {
+      return await runTransaction();
+    } finally {
+      await portal.database.exec('PRAGMA foreign_keys = ON');
+    }
   };
   return txRunSerializedOperation({ scope: portal.database as object }, {
     operation: run,

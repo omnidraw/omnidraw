@@ -12,7 +12,10 @@ import { WidgetIcon } from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
 import { WidgetPublicationDialog } from '../../publication/WidgetPublicationDialog';
-import type { TWidgetPublicationState } from '../../publication/interface';
+import type {
+  TWidgetPublicationPreviewSelection,
+  TWidgetPublicationState,
+} from '../../publication/interface';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
@@ -61,7 +64,14 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [description, setDescription] = createSignal('');
   const [saving, setSaving] = createSignal(false);
   const [publishOpen, setPublishOpen] = createSignal(false);
-  const [publicationState, setPublicationState] = createSignal<TWidgetPublicationState>({ open: false, loading: true, publishing: false, actionLabel: 'Publish' });
+  const [publicationState, setPublicationState] = createSignal<TWidgetPublicationState>({
+    open: false,
+    loading: true,
+    publishing: false,
+    previewAvailable: false,
+    previewSelected: false,
+    actionLabel: 'Publish',
+  });
   const [deleteOpen, setDeleteOpen] = createSignal(false);
   const [deleting, setDeleting] = createSignal(false);
   let detailRequest = 0;
@@ -215,6 +225,51 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     await loadDetail();
   };
 
+  const resolvePreviewSelections = async (): Promise<
+    readonly TWidgetPublicationPreviewSelection[]
+  > => {
+    const current = detail();
+    if (
+      !current
+      || current.source !== 'draft'
+      || current.variant.draftId === null
+    ) return [];
+    const listOwners = props.controller.apiService.api.agent.widgetPreview?.owner?.list;
+    const canvases = application.canvases?.() ?? [];
+    if (!listOwners || canvases.length === 0) return [];
+
+    const selections = await Promise.all(canvases.map(async (canvas) => {
+      const [listError, owners] = await listOwners({
+        canvasId: canvas.id,
+        draftId: current.variant.draftId!,
+      });
+      if (listError || !owners) {
+        throw new Error(
+          listError?.message
+          ?? `Could not inspect ready Previews on “${canvas.name}”.`,
+        );
+      }
+      return owners
+        .filter((owner) =>
+          owner.draftId === current.variant.draftId
+          && owner.canvasId === canvas.id
+          && owner.status === 'ready'
+          && owner.activeRevisionId !== null
+          && owner.bindingPlanDigestSha256 !== null
+          && owner.closedAtMs === null)
+        .map((owner): TWidgetPublicationPreviewSelection => ({
+          previewId: owner.id,
+          previewRevisionId: owner.activeRevisionId!,
+          expectedBindingRevision: owner.bindingRevision,
+          expectedBindingPlanDigestSha256: owner.bindingPlanDigestSha256!,
+          canvasId: owner.canvasId,
+          frameNodeId: owner.frameNodeId,
+          label: `${canvas.name} · ${owner.role === 'companion' ? 'Companion' : 'Placed'} Preview · frame ${owner.frameNodeId.slice(0, 12)}`,
+        }));
+    }));
+    return selections.flat();
+  };
+
   const removeWidget = async () => {
     const current = detail();
     if (!current) return;
@@ -255,9 +310,23 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
               class={`${styles.button} ${styles.primary}`}
               disabled={!current().variant.draftId || saving() || publicationState().loading || publicationState().open || publicationState().publishing}
               aria-busy={publicationState().publishing}
-              title={!current().variant.draftId ? 'Validate this widget again from its owning AI chat before publishing.' : undefined}
+              title={!current().variant.draftId
+                ? 'Validate this widget again from its owning AI chat before publishing.'
+                : !publicationState().loading && !publicationState().previewAvailable
+                  ? 'Open or place this draft on a canvas and wait for its Preview to become ready.'
+                  : undefined}
               onClick={() => setPublishOpen(true)}
-            >{!current().variant.draftId ? 'Needs validation' : publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
+            >{!current().variant.draftId
+              ? 'Needs validation'
+              : publicationState().publishing
+                ? `${publicationState().actionLabel}ing…`
+                : publicationState().loading
+                  ? 'Checking…'
+                  : publicationState().previewSelected
+                    ? publicationState().actionLabel
+                    : publicationState().previewAvailable
+                      ? 'Choose Preview'
+                      : 'Needs Preview'}</Button></Show>
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>
@@ -269,6 +338,12 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
 
         <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
           <section class={styles.panel}><h3>Widget</h3><dl class={styles.definitionList}><dt>Slug</dt><dd>{current().variant.slug ?? '—'}</dd><dt>Health</dt><dd><Show when={current().problem} fallback={<span class={styles.healthy}>Healthy</span>}>{(problem) => <span class={styles.problem}>{problem().code}</span>}</Show></dd><dt>Description</dt><dd>{current().variant.description || 'No description.'}</dd><dt>Tool label</dt><dd>{current().variant.tool.label ?? '—'}</dd><dt>Behavior</dt><dd>{current().variant.tool.behaviorType ?? '—'}</dd><dt>Tool group</dt><dd>{current().variant.tool.group ?? 'Ungrouped'}</dd><dt>Source relationship</dt><dd>{current().relation}</dd><dt>Updated</dt><dd>{current().variant.updatedAt ?? 'Unknown'}</dd></dl></section>
+          <Show when={current().source === 'draft' && !publicationState().loading && !publicationState().previewAvailable}>
+            <section class={styles.panel}>
+              <h3>Publication</h3>
+              <p class={styles.muted}>Publication requires an exact ready frame-owned Preview. Open or place this draft on a canvas, wait for the Preview to become ready, then publish from its title bar or return here.</p>
+            </section>
+          </Show>
           <Show when={current().source === 'draft'}><section class={styles.panel}><h3>Validation</h3><p class={styles.muted}>{current().variant.validation?.status ?? 'unknown'}</p><For each={current().variant.validation?.errors}>{(item) => <p class={styles.validationError}>{item}</p>}</For><For each={current().variant.validation?.warnings}>{(item) => <p class={styles.validationWarning}>{item}</p>}</For></section></Show>
           <Show when={current().problem}>{(problem) => <section class={styles.problemPanel}><h3>{problem().code}</h3><p>{problem().message}</p></section>}</Show>
           <section class={`${styles.panel} ${styles.dangerPanel}`}><div><h3>Delete {current().source === 'published' ? 'published widget' : 'draft'}</h3><p class={styles.muted}>{current().source === 'published' ? 'Archives this publication and deletes its draft if one exists. Existing canvas instances stay pinned to their immutable revision.' : 'Permanently removes only this draft. The published widget and all of its canvas instances remain unchanged.'}</p></div><Button class={`${styles.button} ${styles.dangerButton}`} onClick={() => setDeleteOpen(true)}><Trash2 size={13} /> {current().source === 'published' ? 'Archive publication' : 'Delete draft'}</Button></section>
@@ -407,6 +482,8 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             api={props.controller.apiService.api.agent}
             draftId={draftId()}
             draftName={current().name}
+            createIdempotencyKey={props.controller.browser.createIdempotencyKey}
+            resolvePreviewSelections={resolvePreviewSelections}
             open={publishOpen()}
             onOpenChange={setPublishOpen}
             onStateChange={setPublicationState}

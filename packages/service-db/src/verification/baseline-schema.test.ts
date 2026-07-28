@@ -34,9 +34,32 @@ async function openBaseline() {
 
 async function openCurrentSchema() {
   const db = await openBaseline();
-  const sql = await Bun.file(
-    new URL("../migrations/001-widget-revision-sequence.sql", import.meta.url),
-  ).text();
+  const migrationNames = [
+    "001-widget-revision-sequence.sql",
+    "002-function-runtime.sql",
+    "003-agent-authoring.sql",
+    "004-live-widget-preview.sql",
+  ];
+  const sql = (await Promise.all(migrationNames.map(
+    (migrationName) => Bun.file(new URL(`../migrations/${migrationName}`, import.meta.url)).text(),
+  ))).join("\n");
+  await db.exec("PRAGMA foreign_keys = OFF");
+  const apply = db.transaction(async () => db.exec(sql));
+  await apply();
+  await db.exec("PRAGMA foreign_keys = ON");
+  return db;
+}
+
+async function openVersionThreeSchema() {
+  const db = await openBaseline();
+  const migrationNames = [
+    "001-widget-revision-sequence.sql",
+    "002-function-runtime.sql",
+    "003-agent-authoring.sql",
+  ];
+  const sql = (await Promise.all(migrationNames.map(
+    (migrationName) => Bun.file(new URL(`../migrations/${migrationName}`, import.meta.url)).text(),
+  ))).join("\n");
   const apply = db.transaction(async () => db.exec(sql));
   await apply();
   return db;
@@ -88,6 +111,7 @@ describe("000-initial.sql", () => {
       "001-widget-revision-sequence.sql",
       "002-function-runtime.sql",
       "003-agent-authoring.sql",
+      "004-live-widget-preview.sql",
     ];
     for (const migrationName of migrationNames) {
       const sql = await Bun.file(new URL(`../migrations/${migrationName}`, import.meta.url)).text();
@@ -104,9 +128,9 @@ describe("000-initial.sql", () => {
   });
 
   test("matches the complete checked-in table, column, key, FK, and index manifest", async () => {
-    const db = await openBaseline();
+    const db = await openCurrentSchema();
     expect(Object.keys(EXPECTED_SCHEMA).toSorted()).toEqual([...EXPECTED_APPLICATION_TABLES].toSorted());
-    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(33);
+    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(38);
 
     const tableList = (await (await db.prepare("PRAGMA table_list")).all()) as Array<{
       name: string;
@@ -219,7 +243,7 @@ describe("000-initial.sql", () => {
   });
 
   test("unreleased ledger placeholders leave the consolidated baseline unchanged", async () => {
-    const db = await openCurrentSchema();
+    const db = await openVersionThreeSchema();
     const expected = EXPECTED_CURRENT_SCHEMA.widget_definitions;
     const columns = (await (await db.prepare("PRAGMA table_info(widget_definitions)")).all()) as Array<{
       name: string;
@@ -280,7 +304,7 @@ describe("000-initial.sql", () => {
   });
 
   test("gives every customer table a non-null tenant FK and every child FK a supporting index", async () => {
-    const db = await openBaseline();
+    const db = await openCurrentSchema();
     const globalTables = new Set(["accounts", "organizations", "schema_migrations"]);
 
     for (const table of EXPECTED_APPLICATION_TABLES) {

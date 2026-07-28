@@ -72,6 +72,7 @@ export const ZFunctionInvocationView = z.object({
 
 export const ZInvokeFunctionInput = z.object({
   widgetInstanceId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
+  widgetRevisionId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
   functionName: z.string().regex(FUNCTION_NAME_PATTERN),
   input: ZFunctionJson,
   idempotencyKey: z.string().min(1).max(200),

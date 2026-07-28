@@ -43,6 +43,8 @@ import type {
   TWidgetRuntimeTransportPort,
   TWidgetUiArtifactMountPort,
   TWidgetUiRuntimeHandle,
+  TWidgetUiRuntimePreloadedRenderArgs,
+  TWidgetUiRuntimePreloadedRenderOwner,
   TWidgetUiRuntimeRenderArgs,
   TWidgetUiRuntimeRenderOwner,
   TVerifiedWidgetUiArtifact,
@@ -102,6 +104,8 @@ const WIDGET_UI_APPLY_POPULATION = Symbol('widget-ui-apply-population');
 const WIDGET_UI_SET_REPRIORITIZATION_RANK = Symbol('widget-ui-set-reprioritization-rank');
 const WIDGET_UI_DROP_LOADED_ARTIFACT = Symbol('widget-ui-drop-loaded-artifact');
 const WIDGET_UI_LOAD_ENTRY = Symbol('widget-ui-load-entry');
+const WIDGET_UI_SWAP_FROM_POPULATION_ID =
+  Symbol('widget-ui-swap-from-population-id');
 
 type TWidgetUiRuntimeOwnedRender = TWidgetUiRuntimeRenderOwner & Readonly<{
   [WIDGET_UI_POPULATION_SNAPSHOT](): TWidgetCapsulePopulationCandidate;
@@ -109,6 +113,7 @@ type TWidgetUiRuntimeOwnedRender = TWidgetUiRuntimeRenderOwner & Readonly<{
   [WIDGET_UI_SET_REPRIORITIZATION_RANK](rank: number | null): void;
   [WIDGET_UI_DROP_LOADED_ARTIFACT](): void;
   [WIDGET_UI_LOAD_ENTRY]: TQueuedLoad;
+  [WIDGET_UI_SWAP_FROM_POPULATION_ID](): string | null;
 }>;
 
 const DEFAULT_VIEWPORT: CapsuleViewport = Object.freeze({
@@ -146,7 +151,24 @@ function isCatalogInvalidation(error: unknown): boolean {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Widget UI artifact could not be loaded.';
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  if (
+    error !== null
+    && typeof error === 'object'
+    && 'format' in error
+    && error.format === 'vibecanvas.capsule-error.v1'
+    && 'capsuleCode' in error
+    && typeof error.capsuleCode === 'string'
+    && error.capsuleCode.trim().length > 0
+    && 'message' in error
+    && typeof error.message === 'string'
+    && error.message.trim().length > 0
+  ) {
+    return error.message.trim();
+  }
+  return 'Widget UI artifact could not be loaded.';
 }
 
 function cloneViewport(value: CapsuleViewport): CapsuleViewport {
@@ -567,6 +589,9 @@ export class WidgetUiRuntime {
         }
       },
       [WIDGET_UI_LOAD_ENTRY]: queued,
+      [WIDGET_UI_SWAP_FROM_POPULATION_ID](): string | null {
+        return null;
+      },
       setProps(value): void {
         if (disposed) return;
         pendingProps = value;
@@ -622,6 +647,248 @@ export class WidgetUiRuntime {
         return disposeOperation;
       },
     });
+    this.#owners.add(owner);
+    void this.#requestPopulationReconcile();
+    return owner;
+  }
+
+  renderPreloadedOwned(
+    args: TWidgetUiRuntimePreloadedRenderArgs,
+  ): TWidgetUiRuntimePreloadedRenderOwner {
+    if (this.#destroyed) throw new Error('Widget UI runtime is destroyed.');
+    if (this.#owners.size >= WIDGET_UI_MAX_OWNER_RECORDS) {
+      throw new Error('Widget UI runtime inert-owner capacity is exhausted.');
+    }
+    const swapFromOwner = args.swapFrom === undefined
+      ? undefined
+      : [...this.#owners].find((owner) => Object.is(owner, args.swapFrom));
+    if (args.swapFrom !== undefined && swapFromOwner === undefined) {
+      throw new TypeError('Preview swap owner does not belong to this widget runtime.');
+    }
+    const swapFromPopulationId =
+      swapFromOwner?.[WIDGET_UI_POPULATION_SNAPSHOT]().id ?? null;
+
+    const order = this.#nextOwnerOrder;
+    const populationId = String(order);
+    this.#nextOwnerOrder += 1;
+    const resourceClass = fnWidgetCapsulePopulationResourceClass(
+      args.featureProfiles,
+    );
+    let disposed = false;
+    let blocked = false;
+    let handle: TWidgetUiRuntimeHandle | undefined;
+    let disposeOperation: Promise<void> | undefined;
+    let ownerOperation: Promise<unknown> = Promise.resolve();
+    let currentMode: TWidgetCapsulePopulationMode = 'inert';
+    let assignedMode: TWidgetCapsulePopulationMode = 'inert';
+    let pendingViewport = cloneViewport(args.initialViewport ?? DEFAULT_VIEWPORT);
+    let pendingProps: TWidgetCapsuleProps = {};
+    let pendingFocus: FocusOptions | undefined;
+    let focused = false;
+    let hardFrozen = args.initiallyFrozen === true;
+    const initialNowMs = this.#nowMs();
+    let hiddenSinceMs = pendingViewport.visibility === 'hidden'
+      ? initialNowMs
+      : null;
+    let farSinceMs = (
+      pendingViewport.visibility === 'hidden'
+      && pendingViewport.distance > WIDGET_UI_RETENTION_RADIUS_PX
+    ) ? initialNowMs : null;
+    let readySettled = false;
+    let resolveReady!: () => void;
+    let rejectReady!: (error: unknown) => void;
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+
+    const releaseLive = async (reason: string): Promise<boolean> => {
+      const mounted = handle;
+      const changed = mounted !== undefined || currentMode !== 'inert';
+      handle = undefined;
+      currentMode = 'inert';
+      await mounted?.destroy(reason).catch(() => undefined);
+      return changed;
+    };
+    const fail = (error: unknown): void => {
+      if (disposed) return;
+      blocked = true;
+      if (!readySettled) {
+        readySettled = true;
+        rejectReady(error);
+      }
+      args.onError(error);
+    };
+    const mountLive = async (
+      mode: Exclude<TWidgetCapsulePopulationMode, 'inert'>,
+    ): Promise<boolean> => {
+      if (disposed) return false;
+      try {
+        const mounted = await args.mount();
+        if (disposed) {
+          await mounted.destroy('preloaded-mount-cancelled').catch(() => undefined);
+          return false;
+        }
+        handle = mounted;
+        handle.setProps(pendingProps);
+        handle.setViewport(pendingViewport);
+        if (focused) handle.focus(pendingFocus);
+        await handle.ready();
+        if (mode === 'frozen') {
+          await handle.freeze('population-frozen');
+        } else {
+          await handle.setSchedulingMode(mode);
+        }
+        currentMode = mode;
+        blocked = false;
+        if (!readySettled) {
+          readySettled = true;
+          resolveReady();
+        }
+        return true;
+      } catch (error) {
+        await releaseLive('preloaded-mount-failed');
+        fail(error);
+        return false;
+      }
+    };
+    const applyPopulation = async (
+      mode: TWidgetCapsulePopulationMode,
+    ): Promise<boolean> => {
+      if (disposed) return false;
+      const assignmentChanged = assignedMode !== mode;
+      assignedMode = mode;
+      if (mode === 'inert') {
+        return await releaseLive('population-capacity-release')
+          || assignmentChanged;
+      }
+      if (handle === undefined) {
+        return await mountLive(mode) || assignmentChanged;
+      }
+      if (currentMode === mode) return assignmentChanged;
+      try {
+        if (mode === 'frozen') {
+          await handle.freeze('population-offscreen');
+        } else if (currentMode === 'frozen') {
+          await handle.resume('population-runnable');
+          await handle.setSchedulingMode(mode);
+        } else {
+          await handle.setSchedulingMode(mode);
+        }
+        currentMode = mode;
+        return true;
+      } catch (error) {
+        await releaseLive('population-transition-failed');
+        fail(error);
+        return true;
+      }
+    };
+    const updateViewportTimes = (value: CapsuleViewport): void => {
+      const nowMs = this.#nowMs();
+      if (value.visibility === 'visible') {
+        hiddenSinceMs = null;
+        farSinceMs = null;
+        return;
+      }
+      hiddenSinceMs ??= nowMs;
+      if (value.distance > WIDGET_UI_RETENTION_RADIUS_PX) {
+        farSinceMs ??= nowMs;
+      } else {
+        farSinceMs = null;
+      }
+    };
+    const queued: TQueuedLoad = {
+      id: populationId,
+      cancelled: false,
+      started: false,
+      wanted: false,
+      start() {},
+    };
+    const runtime = this;
+    const owner: TWidgetUiRuntimeOwnedRender & TWidgetUiRuntimePreloadedRenderOwner =
+      Object.freeze({
+        [WIDGET_UI_POPULATION_SNAPSHOT](): TWidgetCapsulePopulationCandidate {
+          return Object.freeze({
+            id: populationId,
+            order,
+            viewport: pendingViewport,
+            hardFrozen,
+            currentMode,
+            resourceClass,
+            artifactReady: true,
+            artifactLoading: false,
+            blocked,
+            hiddenSinceMs,
+            farSinceMs,
+          });
+        },
+        [WIDGET_UI_APPLY_POPULATION](mode): Promise<boolean> {
+          const operation = ownerOperation.then(
+            () => applyPopulation(mode),
+            () => applyPopulation(mode),
+          );
+          ownerOperation = operation;
+          return operation;
+        },
+        [WIDGET_UI_SET_REPRIORITIZATION_RANK](): void {},
+        [WIDGET_UI_DROP_LOADED_ARTIFACT](): void {},
+        [WIDGET_UI_LOAD_ENTRY]: queued,
+        [WIDGET_UI_SWAP_FROM_POPULATION_ID](): string | null {
+          return swapFromPopulationId;
+        },
+        ready: () => ready,
+        setProps(value): void {
+          if (disposed) return;
+          pendingProps = value;
+          handle?.setProps(value);
+        },
+        setViewport(value): void {
+          if (disposed) return;
+          pendingViewport = cloneViewport(value);
+          updateViewportTimes(pendingViewport);
+          handle?.setViewport(pendingViewport);
+          void runtime.#requestPopulationReconcile();
+        },
+        setFocused(value, options): void {
+          if (disposed) return;
+          focused = value;
+          pendingFocus = options;
+          if (focused) {
+            handle?.focus(options);
+            void runtime.#requestPopulationReconcile();
+          }
+        },
+        freeze(): Promise<void> {
+          if (disposed) return Promise.resolve();
+          hardFrozen = true;
+          blocked = false;
+          return runtime.#requestPopulationReconcile();
+        },
+        resume(): Promise<void> {
+          if (disposed) return Promise.resolve();
+          hardFrozen = false;
+          blocked = false;
+          return runtime.#requestPopulationReconcile();
+        },
+        diagnostics: () => handle?.diagnostics() ?? null,
+        destroy: (reason = 'preloaded-widget-unmounted'): Promise<void> => {
+          if (disposeOperation !== undefined) return disposeOperation;
+          disposed = true;
+          queued.cancelled = true;
+          runtime.#owners.delete(owner);
+          if (!readySettled) {
+            readySettled = true;
+            rejectReady(new Error('Preloaded widget runtime was destroyed before admission.'));
+          }
+          disposeOperation = ownerOperation
+            .catch(() => undefined)
+            .then(async () => {
+              await releaseLive(reason);
+              void runtime.#requestPopulationReconcile();
+            });
+          return disposeOperation;
+        },
+      });
     this.#owners.add(owner);
     void this.#requestPopulationReconcile();
     return owner;
@@ -743,6 +1010,24 @@ export class WidgetUiRuntime {
       id,
       rank,
     ]));
+    for (const { owner, snapshot } of ownerSnapshots) {
+      if (assignments.has(snapshot.id) || snapshot.blocked) continue;
+      const swapFromId = owner[WIDGET_UI_SWAP_FROM_POPULATION_ID]();
+      if (swapFromId === null) continue;
+      const swapFrom = ownerById.get(swapFromId);
+      const swapFromMode = assignments.get(swapFromId);
+      if (
+        swapFrom === undefined
+        || swapFromMode === undefined
+        || swapFrom[WIDGET_UI_POPULATION_SNAPSHOT]().currentMode === 'inert'
+      ) continue;
+      // One preloaded candidate may temporarily share its live owner's slot.
+      // This keeps last-good Preview visible while bounding swaps to one extra
+      // Capsule runtime across the canvas; destroying the old owner returns
+      // the population to the normal planner ceiling.
+      assignments.set(snapshot.id, swapFromMode);
+      break;
+    }
 
     for (const { owner, snapshot } of ownerSnapshots) {
       owner[WIDGET_UI_SET_REPRIORITIZATION_RANK](
@@ -756,7 +1041,7 @@ export class WidgetUiRuntime {
       if (snapshot.artifactReady) owner[WIDGET_UI_DROP_LOADED_ARTIFACT]();
       return changed;
     }));
-    for (const { id, mode } of plan.assignments) {
+    for (const [id, mode] of assignments) {
       const owner = ownerById.get(id);
       if (owner === undefined) continue;
       if (await owner[WIDGET_UI_APPLY_POPULATION](mode)) {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -13,8 +14,23 @@ import {
 } from '@vibecanvas/service-db/CONSTANTS';
 import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
-import type { TWidgetManifestV3, TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
-import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
+import {
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeWidgetConstructionContractPayload,
+  fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnWidgetPreviewBindingPlanDigest,
+  type TWidgetArtifactDescriptor,
+  type TWidgetDistributionBuildProvenance,
+  type TWidgetManifestV3,
+  type TWidgetRevisionDescriptor,
+} from '@vibecanvas/widget-contract';
+import {
+  LocalWidgetArtifactStore,
+  WidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract/local';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
@@ -26,11 +42,13 @@ import { WidgetCapsuleSigningKeyStore } from '../src/services/WidgetCapsuleSigni
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
 import {
   CAPSULE_PUBLICATION_IDENTITY,
+  capsuleRuntimeDescriptor,
   capsuleUi,
   testWidgetDistributionBuild,
 } from './widget-capsule.fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+const sha256 = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
 
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -112,6 +130,84 @@ async function filesBelow(root: string): Promise<readonly string[]> {
   return files.sort();
 }
 
+async function insertPreviewFrame(
+  database: DbServiceTurso,
+  args: Readonly<{
+    canvasId: string;
+    frameNodeId: string;
+    previewId: string;
+    draftId: string;
+    originChatId: string;
+    role: 'companion' | 'placed';
+  }>,
+): Promise<void> {
+  await (await database.db.prepare(`
+    INSERT INTO canvas_items (
+      org_id, canvas_id, id, item_json, item_revision,
+      created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, ?, 0, 3, 3)
+  `)).run(
+    TENANT.orgId,
+    args.canvasId,
+    args.frameNodeId,
+    JSON.stringify({
+      id: args.frameNodeId,
+      kind: 'widget-frame',
+      parentId: null,
+      orderKey: 'preview-frame',
+      extensions: {
+        'vibecanvas:widget': {
+          schemaVersion: 1,
+          type: 'ui-widget',
+          kind: 'preview',
+          payload: {
+            previewId: args.previewId,
+            draftId: args.draftId,
+            originChatId: args.originChatId,
+            role: args.role,
+          },
+        },
+      },
+    }),
+  );
+}
+
+async function insertAiChatFrame(
+  database: DbServiceTurso,
+  args: Readonly<{
+    canvasId: string;
+    frameNodeId: string;
+    sessionId: string;
+  }>,
+): Promise<void> {
+  await (await database.db.prepare(`
+    INSERT INTO canvas_items (
+      org_id, canvas_id, id, item_json, item_revision,
+      created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, ?, 0, 3, 3)
+  `)).run(
+    TENANT.orgId,
+    args.canvasId,
+    args.frameNodeId,
+    JSON.stringify({
+      id: args.frameNodeId,
+      kind: 'widget-frame',
+      parentId: null,
+      orderKey: 'ai-chat-frame',
+      extensions: {
+        'vibecanvas:widget': {
+          schemaVersion: 1,
+          type: 'ui-widget',
+          kind: 'ai',
+          payload: {
+            sessionId: args.sessionId,
+          },
+        },
+      },
+    }),
+  );
+}
+
 async function tableCount(database: DbServiceTurso, table: 'artifact_references'
   | 'widget_definition_revisions'
   | 'widget_definitions'
@@ -146,8 +242,12 @@ describe('production widget service', () => {
   let database: DbServiceTurso;
   let service: WidgetService;
   let functionDescriptorExtractor: BunChildFunctionDescriptorExtractor;
+  let capsuleBuildCount: number;
+  let distributionBuildCount: number;
 
   beforeEach(async () => {
+    capsuleBuildCount = 0;
+    distributionBuildCount = 0;
     root = await mkdtemp(join(tmpdir(), 'vibecanvas-widget-service-'));
     artifactsRoot = join(root, 'organization', 'artifacts');
     await mkdir(artifactsRoot, { recursive: true });
@@ -169,14 +269,24 @@ describe('production widget service', () => {
       artifactsRoot,
       buildTempRoot: join(root, 'temp', 'widget-builds'),
       builderIdentity: BUILDER_IDENTITY,
+      buildEnvironmentIdentity: 'widget-service-test-environment/v1',
       ...CAPSULE_PUBLICATION_IDENTITY,
-      capsuleBuild: buildCapsuleGuest,
-      distributionBuild: testWidgetDistributionBuild,
+      capsuleBuild: async (request) => {
+        capsuleBuildCount += 1;
+        return buildCapsuleGuest(request);
+      },
+      distributionBuild: async (request) => {
+        distributionBuildCount += 1;
+        return testWidgetDistributionBuild(request);
+      },
       loadCapsuleSigningKeys: (purpose) => (
         new WidgetCapsuleSigningKeyStore(join(root, 'keys')).loadSigningKeys(purpose)
       ),
       artifactReadSecret: Buffer.alloc(32, 17),
       artifactReadMaximumTtlMs: 60_000,
+      artifactGcIntervalMs: 5,
+      artifactGcGracePeriodMs: 7,
+      artifactGcLimit: 9,
       functionDescriptorExtractor,
       resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
     });
@@ -185,6 +295,50 @@ describe('production widget service', () => {
   afterEach(async () => {
     await database.stop();
     await rm(root, { recursive: true, force: true });
+  });
+
+  test('runs artifact reconciliation at startup and periodically until stopped', async () => {
+    const calls: Array<Readonly<{
+      tenant: TTenantContext;
+      request: Readonly<{ nowMs: number; gracePeriodMs: number; limit: number }>;
+    }>> = [];
+    let resolveSecondCall: (() => void) | null = null;
+    const secondCall = new Promise<void>((resolve) => {
+      resolveSecondCall = resolve;
+    });
+    service.collect = async (tenant, request) => {
+      calls.push({ tenant, request });
+      if (calls.length === 2) resolveSecondCall?.();
+      return {
+        reconciledPinned: 0,
+        reconciledEligible: 0,
+        deleted: 0,
+        restored: 0,
+      };
+    };
+
+    await service.start();
+    await Promise.race([
+      secondCall,
+      Bun.sleep(500).then(() => {
+        throw new Error('Timed out waiting for scheduled artifact reconciliation.');
+      }),
+    ]);
+    await service.stop();
+    const countAfterStop = calls.length;
+    await Bun.sleep(20);
+
+    expect(calls.length).toBe(countAfterStop);
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls.every((call) => (
+      call.tenant.orgId === TENANT.orgId
+      && call.tenant.accountId === TENANT.accountId
+      && call.tenant.cellId === TENANT.cellId
+      && call.tenant.placementEpoch === TENANT.placementEpoch
+      && call.request.gracePeriodMs === 7
+      && call.request.limit === 9
+      && Number.isSafeInteger(call.request.nowMs)
+    ))).toBe(true);
   });
 
   test('rejects invalid UI TypeScript through the Capsule build port without durable writes', async () => {
@@ -242,6 +396,57 @@ describe('production widget service', () => {
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
     expect(await tableCount(database, 'artifact_references')).toBe(0);
     expect(await filesBelow(artifactsRoot)).toEqual([]);
+  });
+
+  test('reuses one exact build and invalidates source-lock and manifest inputs', async () => {
+    const sourceRoot = join(root, 'build-key-invalidation');
+    await writeSource(sourceRoot, {
+      'package-lock.json': '{"lockfileVersion":3,"packages":{"":{"version":"1.0.0"}}}',
+      'ui/main.ts': 'document.body.textContent = "build-key";\n',
+    });
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
+      name: 'Build key widget',
+      slug: 'build-key-widget',
+      ui: capsuleUi('ui/main.ts'),
+    };
+    const firstSnapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(8_430),
+      createdAtMs: 10,
+    });
+
+    await expect(service.validateBuild(TENANT, {
+      snapshot: firstSnapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+    await expect(service.validateBuild(TENANT, {
+      snapshot: firstSnapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+    expect(distributionBuildCount).toBe(1);
+    expect(capsuleBuildCount).toBe(1);
+
+    await writeSource(sourceRoot, {
+      'package-lock.json': '{"lockfileVersion":3,"packages":{"":{"version":"1.0.1"}}}',
+    });
+    const secondSnapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(8_431),
+      createdAtMs: 11,
+    });
+    expect(secondSnapshot.digestSha256).not.toBe(firstSnapshot.digestSha256);
+    await expect(service.validateBuild(TENANT, {
+      snapshot: secondSnapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+    expect(distributionBuildCount).toBe(2);
+    expect(capsuleBuildCount).toBe(2);
+
+    await expect(service.validateBuild(TENANT, {
+      snapshot: secondSnapshot,
+      manifest: { ...manifest, description: 'Changed canonical manifest.' },
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+    expect(distributionBuildCount).toBe(3);
+    expect(capsuleBuildCount).toBe(3);
   });
 
   test('rejects invalid server TypeScript through the separate server build without durable writes', async () => {
@@ -478,7 +683,66 @@ describe('production widget service', () => {
     })).resolves.toBeNull();
   });
 
-  test('builds Preview through the same Capsule path with the preview signing authority', async () => {
+  test('promotes the exact durable Preview construction without another guest build', async () => {
+    const canvasId = uuid(814);
+    const chatId = uuid(815);
+    const draftId = uuid(816);
+    const definitionId = uuid(817);
+    const previewId = uuid(818);
+    const previewRevisionId = uuid(819);
+    const publishedRevisionId = uuid(834);
+    const previewTenant = fnFreezeTenantContext({ ...TENANT, canvasId });
+    await database.forTenant(TENANT).canvas.create({
+      id: canvasId,
+      name: 'Exact promotion canvas',
+    });
+    await service.authoringStore.createChat(previewTenant, {
+      id: chatId,
+      canvasId,
+      externalSessionKey: 'exact-promotion-chat',
+      name: 'Exact promotion chat',
+      workspaceRelativePath: 'chats/exact-promotion',
+      historyRelativePath: 'history/exact-promotion.jsonl',
+      nowMs: 1,
+    });
+    await service.authoringStore.createDraft(previewTenant, {
+      id: draftId,
+      chatId,
+      definitionId,
+      name: 'Exact promotion draft',
+      sourceRelativePath: 'drafts/exact-promotion',
+      nowMs: 2,
+    });
+    await (await database.db.prepare(`
+      INSERT INTO widget_definitions (
+        org_id, id, slug, name, status, active_revision_id,
+        created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'exact-promotion', 'Exact promotion', 'draft', NULL, 2, 2)
+    `)).run(TENANT.orgId, definitionId);
+    await insertAiChatFrame(database, {
+      canvasId,
+      frameNodeId: 'exact-promotion-ai-chat-frame',
+      sessionId: 'exact-promotion-chat',
+    });
+    await service.authoringStore.ensurePreviewOwner(previewTenant, {
+      id: previewId,
+      canvasId,
+      frameNodeId: 'exact-promotion-frame',
+      draftId,
+      originChatId: chatId,
+      role: 'companion',
+      nowMs: 3,
+    });
+    const previewFrame = {
+      canvasId,
+      frameNodeId: 'exact-promotion-frame',
+      previewId,
+      draftId,
+      originChatId: chatId,
+      role: 'companion' as const,
+    };
+    await insertPreviewFrame(database, previewFrame);
+
     const sourceRoot = join(root, 'preview-source');
     await writeSource(sourceRoot, {
       'src/ui.ts': [
@@ -486,59 +750,698 @@ describe('production widget service', () => {
         'root.textContent = "SIGNED_PREVIEW";',
         'document.body.append(root);',
       ].join('\n'),
+      'server/main.server.ts': [
+        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { z } from "zod";',
+        '',
+        'export const calculate = defineServerFunction({',
+        '  effect: "fn",',
+        '  input: z.object({ value: z.number().finite() }),',
+        '  output: z.object({ doubled: z.number().finite() }),',
+        '}, async (_context, input) => ({ doubled: input.value * 2 }));',
+        '',
+      ].join('\n'),
     });
-    const snapshot = await service.captureSource(TENANT, sourceRoot, {
-      id: uuid(814),
-      createdAtMs: 20,
+    const snapshot = await service.captureSource(previewTenant, sourceRoot, {
+      id: uuid(835),
+      createdAtMs: 4,
     });
+    const committedMutationId = 'mutation-exact-promotion-1';
     const manifest: TWidgetManifestV3 = {
       schemaVersion: 3,
-      name: 'Preview widget',
-      slug: 'preview-widget',
+      name: 'Exact promotion',
+      slug: 'exact-promotion',
       ui: capsuleUi('src/ui.ts'),
+      server: {
+        entry: 'server/main.server.ts',
+        runtimeAbi: 'vibecanvas-function-v1',
+      },
     };
-
-    const preview = await service.buildPreview(TENANT, {
-      draftId: uuid(815),
-      definitionId: uuid(816),
-      draftRevisionSha256: snapshot.digestSha256,
-      snapshot,
-      manifest,
-      builderIdentity: BUILDER_IDENTITY,
-      ...CAPSULE_PUBLICATION_IDENTITY,
+    await expect(service.authoringStore.compareAndSetDraft(previewTenant, {
+      draftId,
+      expectedSourceDigestSha256: null,
+      nextSourceDigestSha256: snapshot.digestSha256,
+      expectedCommittedMutationId: null,
+      nextCommittedMutationId: committedMutationId,
+      expectedBuildSequence: 0,
+      nextBuildSequence: 1,
+      nextStatus: 'ready',
+      nowMs: 4,
+      lastError: null,
+    })).resolves.toMatchObject({
+      status: 'updated',
+      draft: { sourceDigestSha256: snapshot.digestSha256 },
+    });
+    await expect(service.authoringStore.compareAndSetPreviewOwner(previewTenant, {
+      previewId,
+      expectedBuildSequence: 0,
+      nextBuildSequence: 1,
+      status: 'building',
+      activeRevisionId: null,
+      pendingBuildId: previewRevisionId,
+      lastError: null,
+      expectedBindingRevision: 0,
+      nextBindingRevision: 0,
+      expectedBindingPlanDigestSha256: null,
+      nextBindingPlanDigestSha256: sha256('[]'),
+      expectedSourceDigestSha256: null,
+      nextSourceDigestSha256: snapshot.digestSha256,
+      expectedCommittedMutationId: null,
+      nextCommittedMutationId: committedMutationId,
+      nowMs: 5,
+    })).resolves.toMatchObject({
+      status: 'building',
+      buildSequence: 1,
     });
 
-    expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
-      'vibecanvas-preview-v1',
-    ]);
-    expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
-    expect(preview.uiArtifact.digestSha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(preview.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(await tableCount(database, 'widget_definitions')).toBe(0);
-    expect(await filesBelow(artifactsRoot)).toEqual([]);
+    const validation = await service.validateBuild(previewTenant, {
+      snapshot,
+      manifest,
+    });
+    expect(validation).toEqual({ valid: true, diagnostics: [] });
 
-    const published = await service.publish(TENANT, {
-      definitionId: uuid(816),
-      revisionId: uuid(817),
+    const previewBuild = {
+      previewId,
+      previewRevisionId,
       expectedActiveRevisionId: null,
+      buildSequence: 1,
+      bindingRevision: 0,
+      draftId,
+      definitionId,
+      draftRevisionSha256: snapshot.digestSha256,
+      committedMutationId,
       snapshot,
       manifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
       ...CAPSULE_PUBLICATION_IDENTITY,
-      nowMs: 21,
+      nowMs: 6,
+    } as const;
+    await (await database.db.prepare(`
+      DELETE FROM canvas_items
+      WHERE org_id = ? AND canvas_id = ? AND id = ?
+    `)).run(TENANT.orgId, canvasId, previewFrame.frameNodeId);
+    await expect(service.buildPreview(previewTenant, previewBuild))
+      .rejects.toMatchObject({ code: 'WIDGET_PREVIEW_FRAME_STALE' });
+    await insertPreviewFrame(database, previewFrame);
+    const preview = await service.buildPreview(previewTenant, previewBuild);
+
+    expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
+      'vibecanvas-preview-v1',
+    ]);
+    expect(preview.functionDescriptors).toHaveLength(1);
+    expect(capsuleBuildCount).toBe(1);
+    expect(distributionBuildCount).toBe(1);
+    const reviewed = await service.authoringStore.getPreviewRevision(previewTenant, {
+      previewId,
+      revisionId: previewRevisionId,
     });
+    if (!reviewed) throw new Error('Expected durable reviewed Preview revision.');
+    expect(reviewed.uiRuntime.capsuleArtifactHash).toBe(
+      preview.uiArtifact.capsuleArtifactHash,
+    );
+    expect(reviewed.functionDescriptors).toEqual(preview.functionDescriptors);
+
+    const promotion = {
+      idempotencyKey: 'publish-exact-promotion-preview',
+      previewId,
+      previewRevisionId,
+      canvasId,
+      frameNodeId: 'exact-promotion-frame',
+      expectedDraftRevisionSha256: snapshot.digestSha256,
+      expectedBindingRevision: 0,
+      expectedBindingPlanDigestSha256:
+        preview.bindingPlanDigestSha256!,
+      definitionId,
+      expectedActiveRevisionId: null,
+      revisionId: publishedRevisionId,
+      nowMs: 7,
+    } as const;
+    await expect(service.publishPreview(previewTenant, {
+      ...promotion,
+      expectedDraftRevisionSha256: 'f'.repeat(64),
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    await expect(service.publishPreview(previewTenant, {
+      ...promotion,
+      canvasId: 'wrong-canvas',
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    await expect(service.publishPreview(previewTenant, {
+      ...promotion,
+      frameNodeId: 'wrong-frame',
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    await (await database.db.prepare(`
+      DELETE FROM canvas_items
+      WHERE org_id = ? AND canvas_id = ? AND id = ?
+    `)).run(TENANT.orgId, canvasId, previewFrame.frameNodeId);
+    await expect(service.publishPreview(previewTenant, promotion))
+      .rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    await insertPreviewFrame(database, {
+      ...previewFrame,
+      previewId: uuid(8_399),
+    });
+    await expect(service.publishPreview(previewTenant, promotion))
+      .rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    await (await database.db.prepare(`
+      DELETE FROM canvas_items
+      WHERE org_id = ? AND canvas_id = ? AND id = ?
+    `)).run(TENANT.orgId, canvasId, previewFrame.frameNodeId);
+    await insertPreviewFrame(database, previewFrame);
+    expect(capsuleBuildCount).toBe(1);
+    expect(distributionBuildCount).toBe(1);
+
+    const published = await service.publishPreview(previewTenant, promotion);
     if (published.status !== 'committed') throw new Error('Expected publication to commit.');
+    expect(await service.authoringStore.getPreviewOwner(
+      previewTenant,
+      previewId,
+    )).toMatchObject({
+      publishedPreviewRevisionId: previewRevisionId,
+      publishedBindingRevision: promotion.expectedBindingRevision,
+      publishedBindingPlanDigestSha256:
+        promotion.expectedBindingPlanDigestSha256,
+      publishedWidgetRevisionId: publishedRevisionId,
+      publishedIdempotencyKey: promotion.idempotencyKey,
+    });
+    expect(capsuleBuildCount).toBe(1);
+    expect(distributionBuildCount).toBe(1);
+    expect(published.revision.uiRuntime.capsuleArtifactHash).toBe(
+      reviewed.uiRuntime.capsuleArtifactHash,
+    );
     expect(published.revision.uiRuntime.signatureKeyIds).toEqual([
       'vibecanvas-release-v1',
     ]);
-    expect(published.revision.uiRuntime.capsuleArtifactHash).toBe(
-      preview.uiArtifact.capsuleArtifactHash,
-    );
+    expect(reviewed.uiRuntime.signatureKeyIds).toEqual([
+      'vibecanvas-preview-v1',
+    ]);
     expect(published.revision.uiArtifact.digestSha256).not.toBe(
-      preview.uiArtifact.digestSha256,
+      reviewed.uiArtifact.digestSha256,
     );
+    expect(published.revision.contractDigestSha256).not.toBe(
+      reviewed.previewContractDigestSha256,
+    );
+    expect(published.revision.constructionContractDigestSha256).toBe(
+      reviewed.constructionContractDigestSha256,
+    );
+    expect(published.revision.distributionProvenance).toEqual(
+      reviewed.distributionProvenance,
+    );
+    expect(published.revision.functionDescriptors).toEqual(
+      reviewed.functionDescriptors,
+    );
+    expect(published.revision.functionDescriptorsDigestSha256).toBe(
+      reviewed.functionDescriptorsDigestSha256,
+    );
+    expect(published.revision.serverArtifact?.digestSha256).toBe(
+      reviewed.serverArtifact?.digestSha256,
+    );
+    expect(published.revision.serverArtifact?.byteSize).toBe(
+      reviewed.serverArtifact?.byteSize,
+    );
+    const publishedSource = await service.getRevisionSource(
+      previewTenant,
+      publishedRevisionId,
+    );
+    expect(publishedSource).toMatchObject({
+      sourceSnapshotId: reviewed.sourceSnapshotId,
+      sourceDigestSha256: reviewed.sourceDigestSha256,
+      sourceArtifact: {
+        digestSha256: reviewed.sourceArtifact.digestSha256,
+        byteSize: reviewed.sourceArtifact.byteSize,
+      },
+      builderIdentity: reviewed.builderIdentity,
+    });
+
+    await expect(service.publishPreview(previewTenant, {
+      ...promotion,
+      idempotencyKey: 'publish-same-selection-again',
+      expectedActiveRevisionId: publishedRevisionId,
+      revisionId: uuid(8_389),
+      nowMs: 8,
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_ALREADY_PUBLISHED' });
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(1);
+
+    const replay = await service.publishPreview(previewTenant, {
+      ...promotion,
+      expectedActiveRevisionId: publishedRevisionId,
+      revisionId: uuid(8_390),
+      nowMs: 8,
+    });
+    expect(replay).toMatchObject({
+      status: 'committed',
+      revision: { id: publishedRevisionId },
+      previousActiveRevisionId: null,
+    });
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(1);
+
+    const noOpCommittedMutationId = 'mutation-exact-promotion-no-op';
+    await expect(service.authoringStore.compareAndSetDraft(previewTenant, {
+      draftId,
+      expectedSourceDigestSha256: snapshot.digestSha256,
+      nextSourceDigestSha256: snapshot.digestSha256,
+      expectedCommittedMutationId: committedMutationId,
+      nextCommittedMutationId: noOpCommittedMutationId,
+      expectedBuildSequence: 1,
+      nextBuildSequence: 2,
+      nextStatus: 'ready',
+      nowMs: 9,
+      lastError: null,
+    })).resolves.toMatchObject({ status: 'updated' });
+    await expect(service.publishPreview(previewTenant, {
+      ...promotion,
+      expectedActiveRevisionId: publishedRevisionId,
+      revisionId: uuid(8_393),
+      nowMs: 9,
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+
+    const changedSourceRoot = join(root, 'preview-source-conflict');
+    await writeSource(changedSourceRoot, {
+      'src/ui.ts': [
+        'const root = document.createElement("main");',
+        'root.textContent = "CONFLICTING_PREVIEW";',
+        'document.body.append(root);',
+      ].join('\n'),
+      'server/main.server.ts': [
+        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { z } from "zod";',
+        'export const calculate = defineServerFunction({',
+        '  effect: "fn",',
+        '  input: z.object({ value: z.number().finite() }),',
+        '  output: z.object({ doubled: z.number().finite() }),',
+        '}, async (_context, input) => ({ doubled: input.value * 2 }));',
+      ].join('\n'),
+    });
+    const changedSnapshot = await service.captureSource(
+      previewTenant,
+      changedSourceRoot,
+      { id: uuid(8_391), createdAtMs: 9 },
+    );
+    const changedCommittedMutationId = 'mutation-exact-promotion-2';
+    await expect(service.authoringStore.compareAndSetDraft(previewTenant, {
+      draftId,
+      expectedSourceDigestSha256: snapshot.digestSha256,
+      nextSourceDigestSha256: changedSnapshot.digestSha256,
+      expectedCommittedMutationId: noOpCommittedMutationId,
+      nextCommittedMutationId: changedCommittedMutationId,
+      expectedBuildSequence: 2,
+      nextBuildSequence: 3,
+      nextStatus: 'ready',
+      nowMs: 9,
+      lastError: null,
+    })).resolves.toMatchObject({ status: 'updated' });
+    const artifactCountBeforeConflict = await tableCount(
+      database,
+      'artifact_references',
+    );
+    await expect(service.buildPreview(previewTenant, {
+      ...previewBuild,
+      previewRevisionId: uuid(8_392),
+      expectedActiveRevisionId: previewRevisionId,
+      buildSequence: 3,
+      draftRevisionSha256: changedSnapshot.digestSha256,
+      committedMutationId: changedCommittedMutationId,
+      snapshot: changedSnapshot,
+      nowMs: 10,
+    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_CONFLICT' });
+    expect(await tableCount(database, 'artifact_references'))
+      .toBe(artifactCountBeforeConflict);
+    expect(await (await database.db.prepare(`
+      SELECT count(*) AS count
+      FROM artifact_references
+      WHERE org_id = ? AND digest_sha256 = ?
+    `)).get(
+      TENANT.orgId,
+      changedSnapshot.digestSha256,
+    )).toMatchObject({ count: 0 });
   });
+
+  test('serves an exact retained Preview server artifact and its real bindings', async () => {
+    const canvasId = uuid(820);
+    const chatId = uuid(821);
+    const draftId = uuid(822);
+    const definitionId = uuid(823);
+    const previewId = uuid(824);
+    const previewRevisionId = uuid(825);
+    const resourceId = uuid(826);
+    const previewTenant = fnFreezeTenantContext({ ...TENANT, canvasId });
+    await database.forTenant(TENANT).canvas.create({
+      id: canvasId,
+      name: 'Function Preview canvas',
+    });
+    await service.authoringStore.createChat(previewTenant, {
+      id: chatId,
+      canvasId,
+      externalSessionKey: 'function-preview-chat',
+      name: 'Function Preview chat',
+      workspaceRelativePath: 'chats/function-preview',
+      historyRelativePath: 'history/function-preview.jsonl',
+      nowMs: 1,
+    });
+    await service.authoringStore.createDraft(previewTenant, {
+      id: draftId,
+      chatId,
+      definitionId,
+      name: 'Function Preview draft',
+      sourceRelativePath: 'drafts/function-preview',
+      nowMs: 2,
+    });
+    await (await database.db.prepare(`
+      INSERT INTO widget_definitions (
+        org_id, id, slug, name, status, active_revision_id,
+        created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'function-preview', 'Function Preview', 'draft', NULL, 2, 2)
+    `)).run(TENANT.orgId, definitionId);
+    await (await database.db.prepare(`
+      INSERT INTO resource_catalog (
+        org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'kv', 'Function Preview store', 'ready', NULL, 2, 2)
+    `)).run(TENANT.orgId, resourceId);
+    await service.authoringStore.ensurePreviewOwner(previewTenant, {
+      id: previewId,
+      canvasId,
+      frameNodeId: 'function-preview-frame',
+      draftId,
+      originChatId: chatId,
+      role: 'placed',
+      nowMs: 3,
+    });
+
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
+      name: 'Function Preview',
+      slug: 'function-preview',
+      ui: capsuleUi('src/ui.ts'),
+      server: {
+        entry: 'src/server.server.ts',
+        runtimeAbi: 'vibecanvas:function-preview-test',
+      },
+      resources: [{
+        slot: 'notes',
+        kind: 'kv',
+        effect: 'read',
+        required: true,
+      }],
+    };
+    const sourceSnapshotId = uuid(827);
+    const sourceBytes = new TextEncoder().encode('retained-preview-source');
+    const unsignedUiBytes = new TextEncoder().encode('retained-preview-unsigned-ui');
+    const uiBytes = new TextEncoder().encode('retained-preview-ui');
+    const retainedServerBytes = new TextEncoder().encode('retained-preview-server');
+    const sourceDigestSha256 = sha256(sourceBytes);
+    const committedMutationId = 'mutation-retained-preview-function';
+    await (await database.db.prepare(`
+      UPDATE agent_drafts
+      SET status = 'ready', source_digest_sha256 = ?,
+        committed_mutation_id = ?, build_sequence = 1, updated_at_ms = 4
+      WHERE org_id = ? AND id = ?
+    `)).run(
+      sourceDigestSha256,
+      committedMutationId,
+      TENANT.orgId,
+      draftId,
+    );
+    await expect(service.authoringStore.compareAndSetPreviewOwner(previewTenant, {
+      previewId,
+      expectedBuildSequence: 0,
+      nextBuildSequence: 1,
+      status: 'building',
+      activeRevisionId: null,
+      pendingBuildId: previewRevisionId,
+      lastError: null,
+      expectedBindingRevision: 0,
+      nextBindingRevision: 0,
+      expectedBindingPlanDigestSha256: null,
+      nextBindingPlanDigestSha256: fnWidgetPreviewBindingPlanDigest({
+        bindings: [{
+          slot: 'notes',
+          resourceId,
+          kind: 'kv',
+          allowRead: true,
+          allowWrite: false,
+        }],
+        digestSha256: sha256,
+      }),
+      expectedSourceDigestSha256: null,
+      nextSourceDigestSha256: sourceDigestSha256,
+      expectedCommittedMutationId: null,
+      nextCommittedMutationId: committedMutationId,
+      nowMs: 4,
+    })).resolves.toMatchObject({
+      status: 'building',
+      buildSequence: 1,
+    });
+
+    const artifactBlobs = new LocalWidgetArtifactStore({
+      orgId: TENANT.orgId,
+      artifactsRoot,
+    });
+    const storeArtifact = async (
+      id: string,
+      kind: TWidgetArtifactDescriptor['kind'],
+      bytes: Uint8Array,
+    ): Promise<TWidgetArtifactDescriptor> => {
+      const stored = await artifactBlobs.writeArtifact({ kind, bytes });
+      await (await database.db.prepare(`
+        INSERT INTO artifact_references (
+          org_id, id, kind, digest_sha256, byte_size,
+          retention_state, retain_until_ms, created_at_ms
+        ) VALUES (?, ?, ?, ?, ?, 'pinned', NULL, 5)
+      `)).run(TENANT.orgId, id, kind, stored.digestSha256, stored.byteSize);
+      return Object.freeze({
+        orgId: TENANT.orgId,
+        id,
+        kind,
+        digestSha256: stored.digestSha256,
+        byteSize: stored.byteSize,
+        retentionState: 'pinned',
+        retainUntilMs: null,
+        createdAtMs: 5,
+      });
+    };
+    const [
+      sourceArtifact,
+      unsignedUiArtifact,
+      uiArtifact,
+      serverArtifactFixture,
+    ] = await Promise.all([
+      storeArtifact(uuid(830), 'source', sourceBytes),
+      storeArtifact(uuid(831), 'unsigned_ui', unsignedUiBytes),
+      storeArtifact(uuid(832), 'ui', uiBytes),
+      storeArtifact(uuid(833), 'server', retainedServerBytes),
+    ]);
+    const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
+    const functionDescriptors = [{
+      schemaVersion: 1 as const,
+      exportName: 'readNotes',
+      modulePath: 'src/server.server.ts',
+      effect: 'fx' as const,
+      inputSchema: {},
+      outputSchema: {},
+      resources: [{ slot: 'notes', effect: 'read' as const }],
+      limits: {
+        timeoutMs: 1_000,
+        memoryTier: 'small' as const,
+        outputByteLimit: 1_024,
+        logByteLimit: 1_024,
+      },
+      retry: {
+        mode: 'none' as const,
+        maxAttempts: 1,
+        initialBackoffMs: 0,
+        maxBackoffMs: 0,
+      },
+    }];
+    const functionDescriptorsJson =
+      fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors);
+    const functionDescriptorsDigestSha256 = sha256(functionDescriptorsJson);
+    const uiRuntime = capsuleRuntimeDescriptor(
+      manifest,
+      `sha256:${unsignedUiArtifact.digestSha256}`,
+      'vibecanvas-preview-v1',
+    );
+    const capabilityContractDigestSha256 = sha256(
+      fnCanonicalizeWidgetCapsuleCapabilityRequests(uiRuntime.capabilityRequests),
+    );
+    const channelContractDigestSha256 = sha256(
+      fnCanonicalizeWidgetCapsuleChannelContract(uiRuntime.channels),
+    );
+    const distributionProvenance: TWidgetDistributionBuildProvenance = {
+      kind: 'external-distribution',
+      producer: {
+        name: 'widget-service-preview-function-test',
+        version: '1',
+        digest: `sha256:${'1'.repeat(64)}`,
+      },
+      sourceRevision: sourceDigestSha256,
+      dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+      buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+    };
+    const constructionContractDigestSha256 = sha256(
+      fnCanonicalizeWidgetConstructionContractPayload({
+        sourceSnapshotId,
+        sourceDigestSha256,
+        sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+        canonicalManifestJson,
+        unsignedUiDigestSha256: unsignedUiArtifact.digestSha256,
+        capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
+        target: uiRuntime.target,
+        budgets: uiRuntime.budgets,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        serverDigestSha256: serverArtifactFixture.digestSha256,
+        serverRuntimeAbi: manifest.server!.runtimeAbi,
+        functionDescriptorsDigestSha256,
+        builderIdentity: BUILDER_IDENTITY,
+        capsuleBuildIdentity: CAPSULE_PUBLICATION_IDENTITY.capsuleBuildIdentity,
+        buildPolicyId: CAPSULE_PUBLICATION_IDENTITY.buildPolicyId,
+        distributionProvenance,
+      }),
+    );
+    const previewContractDigestSha256 = sha256(
+      fnCanonicalizeWidgetContractPayload({
+        canonicalManifestJson,
+        uiDigestSha256: uiArtifact.digestSha256,
+        capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
+        target: uiRuntime.target,
+        budgets: uiRuntime.budgets,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        signatureKeyIds: uiRuntime.signatureKeyIds,
+        serverDigestSha256: serverArtifactFixture.digestSha256,
+        serverRuntimeAbi: manifest.server!.runtimeAbi,
+        functionDescriptorsDigestSha256,
+        sourceDigestSha256,
+        builderIdentity: BUILDER_IDENTITY,
+        capsuleBuildIdentity: CAPSULE_PUBLICATION_IDENTITY.capsuleBuildIdentity,
+        buildPolicyId: CAPSULE_PUBLICATION_IDENTITY.buildPolicyId,
+      }),
+    );
+    await expect(service.authoringStore.commitPreview(previewTenant, {
+      expectedActiveRevisionId: null,
+      expectedBuildSequence: 1,
+      revision: {
+        id: previewRevisionId,
+        previewId,
+        draftId,
+        definitionId,
+        draftRevisionSha256: sourceDigestSha256,
+        committedMutationId,
+        sourceSnapshotId,
+        sourceDigestSha256,
+        sourceArtifact,
+        manifest,
+        canonicalManifestJson,
+        functionDescriptors,
+        functionDescriptorsDigestSha256,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        constructionContractDigestSha256,
+        previewContractDigestSha256,
+        builderIdentity: BUILDER_IDENTITY,
+        capsuleBuildIdentity: CAPSULE_PUBLICATION_IDENTITY.capsuleBuildIdentity,
+        buildPolicyId: CAPSULE_PUBLICATION_IDENTITY.buildPolicyId,
+        distributionProvenance,
+        unsignedUiArtifact,
+        uiArtifact,
+        uiRuntime,
+        serverArtifact: serverArtifactFixture,
+        serverRuntimeAbi: manifest.server!.runtimeAbi,
+        bindingRevision: 0,
+        bindingPlanDigestSha256: fnWidgetPreviewBindingPlanDigest({
+          bindings: [{
+            slot: 'notes',
+            resourceId,
+            kind: 'kv',
+            allowRead: true,
+            allowWrite: false,
+          }],
+          digestSha256: sha256,
+        }),
+        buildSequence: 1,
+        diagnostics: [],
+        createdAtMs: 5,
+      },
+      bindings: [{
+        slot: 'notes',
+        resourceId,
+        kind: 'kv',
+        allowRead: true,
+        allowWrite: false,
+      }],
+      nowMs: 5,
+    })).resolves.toMatchObject({
+      status: 'committed',
+      revision: { id: previewRevisionId },
+    });
+
+    const target = await service.resolvePreviewFunctionTarget(previewTenant, {
+      previewId,
+      revisionId: previewRevisionId,
+    });
+    expect(target).toMatchObject({
+      revision: {
+        id: previewRevisionId,
+        definitionId,
+        serverRuntimeAbi: manifest.server!.runtimeAbi,
+      },
+      bindings: [{
+        slot: 'notes',
+        resourceId,
+        kind: 'kv',
+        allowRead: true,
+        allowWrite: false,
+      }],
+    });
+    const serverArtifact = target?.revision.serverArtifact;
+    if (!target || !serverArtifact) throw new Error('Expected retained Preview server artifact.');
+    const serverBytes = await service.readPreviewServerArtifact(previewTenant, {
+      previewId,
+      revisionId: previewRevisionId,
+      definitionId,
+      artifactId: serverArtifact.id,
+      artifactDigestSha256: serverArtifact.digestSha256,
+      contractDigestSha256: target.revision.previewContractDigestSha256,
+      runtimeAbi: manifest.server!.runtimeAbi,
+    });
+    expect(serverBytes).not.toBeNull();
+    expect(serverBytes?.byteLength).toBe(serverArtifact.byteSize);
+
+    await (await database.db.prepare(`
+      UPDATE agent_previews
+      SET active_revision_id = ?, updated_at_ms = 6
+      WHERE org_id = ? AND id = ?
+    `)).run(uuid(828), TENANT.orgId, previewId);
+    await expect(service.resolvePreviewFunctionTarget(previewTenant, {
+      previewId,
+      revisionId: previewRevisionId,
+    })).resolves.toMatchObject({
+      revision: { id: previewRevisionId },
+    });
+    await expect(service.resolvePreviewFunctionTarget(previewTenant, {
+      previewId,
+      revisionId: uuid(829),
+    })).resolves.toBeNull();
+    await expect(service.resolvePreviewFunctionTarget(OTHER_ACCOUNT_TENANT, {
+      previewId,
+      revisionId: previewRevisionId,
+    })).resolves.toBeNull();
+    const exactArtifactRequest = {
+      previewId,
+      revisionId: previewRevisionId,
+      definitionId,
+      artifactId: serverArtifact.id,
+      artifactDigestSha256: serverArtifact.digestSha256,
+      contractDigestSha256: target.revision.previewContractDigestSha256,
+      runtimeAbi: manifest.server!.runtimeAbi,
+    };
+    await expect(service.readPreviewServerArtifact(previewTenant, {
+      ...exactArtifactRequest,
+      revisionId: uuid(829),
+    })).resolves.toBeNull();
+    await expect(service.readPreviewServerArtifact(
+      OTHER_ACCOUNT_TENANT,
+      exactArtifactRequest,
+    )).resolves.toBeNull();
+  }, 20_000);
 
   test('validates, previews, and publishes exact pinned React TSX through Capsule', async () => {
     const sourceRoot = join(root, 'react-capsule-source');
@@ -585,6 +1488,7 @@ describe('production widget service', () => {
       draftId: uuid(845),
       definitionId: uuid(846),
       draftRevisionSha256: snapshot.digestSha256,
+      committedMutationId: 'mutation-react-capsule-preview',
       snapshot,
       manifest,
       builderIdentity: BUILDER_IDENTITY,
@@ -753,6 +1657,7 @@ describe('production widget service', () => {
       draftId: uuid(851),
       definitionId: uuid(852),
       draftRevisionSha256: snapshot.digestSha256,
+      committedMutationId: 'mutation-generated-theme-preview',
       snapshot,
       manifest,
       builderIdentity: BUILDER_IDENTITY,

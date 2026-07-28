@@ -6,7 +6,17 @@ export type TAiChatApiPort = {
   api: {
     agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events" | "widgets" | "widgetPublish"> & {
       widgetDraft: Pick<TApi["agent"]["widgetDraft"], "list" | "get" | "validate">;
-      widgetPreview: Pick<TApi["agent"]["widgetPreview"], "build">;
+      widgetPreview: Pick<TApi["agent"]["widgetPreview"], "build" | "cancel"> & {
+        diagnostics: Pick<
+          TApi["agent"]["widgetPreview"]["diagnostics"],
+          "get" | "report" | "resolve" | "retest"
+        >;
+        mount: Pick<TApi["agent"]["widgetPreview"]["mount"], "acquire" | "renew" | "release">;
+        owner: Pick<
+          TApi["agent"]["widgetPreview"]["owner"],
+          "ensure" | "get" | "list" | "close"
+        >;
+      };
     };
     resource: Pick<TApi["resource"], "resources">;
   };

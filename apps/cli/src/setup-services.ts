@@ -14,7 +14,10 @@ import {
   type TVibecanvasDistributionBuild,
 } from '@vibecanvas/capsule-vibecanvas/builder';
 import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
-import { AgentService } from '@vibecanvas/service-agent';
+import {
+  AgentService,
+  PreviewBuildAdmission,
+} from '@vibecanvas/service-agent';
 import {
   CanvasService,
   CanvasServiceError,
@@ -54,7 +57,11 @@ import {
   WIDGET_CAPSULE_BUILD_POLICY_ID,
 } from './services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from './services/WidgetCapsuleSigningKeyStore';
-import { createWidgetNpmDistributionBuild } from './services/WidgetNpmDistributionBuild';
+import {
+  createWidgetNpmDistributionBuild,
+  fnWidgetNpmBuildEnvironmentIdentity,
+  resolveWidgetNpmBuildRunner,
+} from './services/WidgetNpmDistributionBuild';
 import {
   WidgetCapsuleHostConfigurationService,
 } from './services/WidgetCapsuleHostConfigurationService';
@@ -85,6 +92,7 @@ import {
 } from './services/WidgetServicePool';
 
 const WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
+const DEFAULT_WIDGET_PREVIEW_BUILD_GLOBAL_CONCURRENCY = 4;
 const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
   session: OSS_FAKE_SESSION,
   requestId: 'function-runtime-placement-bootstrap',
@@ -93,6 +101,20 @@ const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
   '@vibecanvas/sdk/server',
   'zod',
 ]);
+
+function widgetPreviewBuildGlobalConcurrency(): number {
+  const configured = process.env.VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY;
+  if (configured === undefined) {
+    return DEFAULT_WIDGET_PREVIEW_BUILD_GLOBAL_CONCURRENCY;
+  }
+  const value = Number(configured);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 64) {
+    throw new Error(
+      'VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY must be an integer from 1 to 64.',
+    );
+  }
+  return value;
+}
 
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
   if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
@@ -130,6 +152,7 @@ declare module '@vibecanvas/runtime' {
 type TSetupServicesOptions = Readonly<{
   capsuleBuild?: TVibecanvasCapsuleBuild;
   distributionBuild?: TVibecanvasDistributionBuild;
+  distributionBuildEnvironmentIdentity?: string;
   createFunctionSandboxDriver?: (args: Readonly<{
     compiledExecutable: boolean;
     tempRoot: string;
@@ -138,6 +161,10 @@ type TSetupServicesOptions = Readonly<{
 
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
+  const previewBuildAdmission = new PreviewBuildAdmission({
+    maxActivePerTenant: 2,
+    maxActiveGlobal: widgetPreviewBuildGlobalConcurrency(),
+  });
   const eventPublisher = new EventPublisherService();
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
     homeDirectory: homedir(),
@@ -154,6 +181,54 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     return { services, eventPublisher };
   }
 
+  const distributionBuildSetup = (() => {
+    const injected = options.distributionBuild;
+    if (injected !== undefined) {
+      return {
+        create: (_scratchDirectory: string): TVibecanvasDistributionBuild => injected,
+        environmentIdentity: options.distributionBuildEnvironmentIdentity
+          ?? fnWidgetNpmBuildEnvironmentIdentity({
+            runnerIdentity: 'injected-v1',
+            nodeVersion: 'injected',
+            npmVersion: 'injected',
+            platform: 'injected',
+            architecture: 'injected',
+            toolchainPinnedByRunner: true,
+          }),
+      };
+    }
+    const runner = resolveWidgetNpmBuildRunner({
+      env: process.env,
+      npmUserConfigPath,
+      ...(
+        typeof process.getuid === 'function'
+        && typeof process.getgid === 'function'
+          ? { user: `${process.getuid()}:${process.getgid()}` }
+          : {}
+      ),
+    });
+    const toolchainPinnedByRunner = runner.kind === 'docker';
+    return {
+      create: (scratchDirectory: string): TVibecanvasDistributionBuild => (
+        createWidgetNpmDistributionBuild({
+          scratchDirectory,
+          npmUserConfigPath,
+          runProcess: runner.runProcess,
+          runnerIdentity: runner.identity,
+        })
+      ),
+      environmentIdentity: fnWidgetNpmBuildEnvironmentIdentity({
+        runnerIdentity: runner.identity,
+        nodeVersion: toolchainPinnedByRunner ? 'runner-pinned' : process.version,
+        npmVersion: toolchainPinnedByRunner
+          ? 'runner-pinned'
+          : process.versions.npm ?? 'external',
+        platform: toolchainPinnedByRunner ? 'linux' : process.platform,
+        architecture: process.arch,
+        toolchainPinnedByRunner,
+      }),
+    };
+  })();
   const dbService = new DbServiceTurso({
     databasePath: config.home.mainDbPath,
     dataDir: config.home.homeDir,
@@ -195,13 +270,11 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         artifactsRoot,
         buildTempRoot,
         builderIdentity: widgetBuilderIdentity,
+        buildEnvironmentIdentity: distributionBuildSetup.environmentIdentity,
         capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
         buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
         capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
-        distributionBuild: options.distributionBuild ?? createWidgetNpmDistributionBuild({
-          scratchDirectory: buildTempRoot,
-          npmUserConfigPath,
-        }),
+        distributionBuild: distributionBuildSetup.create(buildTempRoot),
         loadCapsuleSigningKeys: (purpose) => (
           widgetCapsuleSigningKeys.loadSigningKeys(purpose)
         ),
@@ -376,6 +449,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         widgetBuilderIdentity,
         widgetCapsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
         widgetBuildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
+        previewBuildAdmission,
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)
         ),

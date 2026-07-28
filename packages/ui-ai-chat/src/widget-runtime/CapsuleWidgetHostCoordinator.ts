@@ -10,6 +10,7 @@ import {
   type CapsuleViewport,
 } from '@vibecanvas/capsule-vibecanvas/host';
 import type {
+  TVibecanvasCapsuleError,
   TVibecanvasCapsuleTarget,
 } from '@vibecanvas/capsule-vibecanvas/contract';
 import type {
@@ -47,6 +48,7 @@ type TMountArgs = Readonly<{
   container: HTMLElement;
   capabilityBindings: readonly CapsuleCapabilityBinding[];
   guestChannels?: CapsuleMountGuestChannels;
+  onDiagnostic?(error: TVibecanvasCapsuleError): void;
   onFatal(error: unknown): void;
 }>;
 
@@ -162,17 +164,26 @@ function hostCapabilityPolicy(catalog: TWidgetCapsuleMountCatalog) {
 function idempotentHandle(
   handle: CapsuleHandle,
   onFatal: (error: unknown) => void,
+  onDiagnostic: ((error: TVibecanvasCapsuleError) => void) | undefined,
   onDestroyed: () => void | Promise<void>,
 ): TCoordinatedWidgetUiRuntimeHandle {
   let destroyed = false;
   let destroyOperation: Promise<void> | undefined;
   const errorSubscription = handle.onError((event) => {
-    if (!destroyed && event.fatal) {
+    if (destroyed) return;
+    const mapped = fnMapCapsuleMountError(event);
+    if (!event.fatal) {
       try {
-        onFatal(fnMapCapsuleMountError(event));
-      } finally {
-        void destroy('capsule-fatal-error');
+        onDiagnostic?.(mapped);
+      } catch {
+        // A diagnostic observer cannot affect the live Capsule handle.
       }
+      return;
+    }
+    try {
+      onFatal(mapped);
+    } finally {
+      void destroy('capsule-fatal-error');
     }
   });
 
@@ -323,11 +334,16 @@ export class CapsuleWidgetHostCoordinator {
           throw new Error('Mounted Capsule artifact hash does not match runtime metadata.');
         }
         state.activeHandles += 1;
-        const handle = idempotentHandle(rawHandle, args.onFatal, () => {
-          this.#handles.delete(handle);
-          if (this.#states.get(state.poolKey) !== state) return;
-          return this.#serialize(() => this.#releaseHost(state));
-        });
+        const handle = idempotentHandle(
+          rawHandle,
+          args.onFatal,
+          args.onDiagnostic,
+          () => {
+            this.#handles.delete(handle);
+            if (this.#states.get(state.poolKey) !== state) return;
+            return this.#serialize(() => this.#releaseHost(state));
+          },
+        );
         logicalHandle = handle;
         this.#handles.add(handle);
         return handle;

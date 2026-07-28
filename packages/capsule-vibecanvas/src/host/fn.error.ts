@@ -106,9 +106,12 @@ export function fnMapCapsuleHostError(
   });
 }
 
-/** Maps a normalized live-mount event without forwarding guest/provider labels. */
+/** Maps a normalized live-mount event without forwarding guest/provider messages. */
 export function fnMapCapsuleMountError(
-  event: Pick<CapsuleMountErrorEvent, 'category' | 'code' | 'fatal'>,
+  event: Pick<
+    CapsuleMountErrorEvent,
+    'category' | 'code' | 'fatal' | 'capabilityId' | 'operation'
+  >,
 ): TVibecanvasCapsuleError {
   const category = categoryForMountEvent(event);
   return Object.freeze({
@@ -118,5 +121,7 @@ export function fnMapCapsuleMountError(
     capsuleCode: event.code,
     fatal: event.fatal,
     message: messageForCategory(category),
+    ...(event.capabilityId === undefined ? {} : { capability: event.capabilityId }),
+    ...(event.operation === undefined ? {} : { operation: event.operation }),
   });
 }

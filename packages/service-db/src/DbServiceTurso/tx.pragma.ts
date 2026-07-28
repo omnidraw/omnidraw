@@ -10,6 +10,7 @@ type TPortal = {
 };
 
 type TArgs = {
+  expectedForeignKeys?: 0 | 1;
   expectedUserVersion: number | null;
 };
 
@@ -51,7 +52,7 @@ async function txAssertDatabasePragmas(portal: TPortal, args: TArgs): Promise<vo
     (await portal.db.prepare('PRAGMA user_version')).get(),
   ]) as Array<Record<string, unknown> | undefined>;
 
-  expectedValue(entries[0], 'foreign_keys', 1);
+  expectedValue(entries[0], 'foreign_keys', args.expectedForeignKeys ?? 1);
   expectedValue(entries[1], 'ignore_check_constraints', 0);
   expectedValue(entries[2], 'journal_mode', DATABASE_JOURNAL_MODE);
   expectedValue(entries[3], 'busy_timeout', 5000);

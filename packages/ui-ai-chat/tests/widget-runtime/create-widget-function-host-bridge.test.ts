@@ -60,7 +60,7 @@ function invocation(status: 'queued' | 'succeeded', patch: Record<string, unknow
 }
 
 describe('widget function host bridge', () => {
-  test('retains exact host identity while sending only authority-free invoke input', async () => {
+  test('retains exact host identity and submits its expected revision fence', async () => {
     const invoke = vi.fn(async () => [undefined, invocation('queued')] as const);
     const get = vi.fn(async () => [undefined, invocation('succeeded')] as const);
     const wait = vi.fn(async () => undefined);
@@ -83,6 +83,7 @@ describe('widget function host bridge', () => {
     expect(invoke).toHaveBeenCalledWith(
       {
         widgetInstanceId: identity.widgetInstanceId,
+        widgetRevisionId: identity.revisionId,
         functionName: 'count',
         input: { values: [1, 1] },
         idempotencyKey: 'key-a',
@@ -94,6 +95,7 @@ describe('widget function host bridge', () => {
       'idempotencyKey',
       'input',
       'widgetInstanceId',
+      'widgetRevisionId',
     ]);
     expect(get).toHaveBeenCalledWith(
       { invocationId: 'invocation-a' },

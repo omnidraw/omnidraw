@@ -306,7 +306,7 @@ describe('AgentService.promptChat', () => {
       { id: 'db-2', kind: 'db', name: 'Manual QA Database', status: 'ready' },
     ]);
 
-    expect(service.clearDraftResourceBindingsChat('widget', 'session')).toEqual({ cleared: true });
+    expect(await service.clearDraftResourceBindingsChat('widget', 'session')).toEqual({ cleared: true });
     expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})).toMatchObject({
       resources: [],
       source: 'explicit-clear',

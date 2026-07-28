@@ -4,7 +4,10 @@ import {
   WIDGET_CAPSULE_BUILD_POLICY_ID,
 } from '../../cli/src/services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from '../../cli/src/services/WidgetCapsuleSigningKeyStore';
-import { createWidgetNpmDistributionBuild } from '../../cli/src/services/WidgetNpmDistributionBuild';
+import {
+  createWidgetNpmDistributionBuild,
+  fnWidgetNpmBuildEnvironmentIdentity,
+} from '../../cli/src/services/WidgetNpmDistributionBuild';
 import { fnLocalRegistryNpmUserConfig } from '../../cli/src/fn.local-registry-npm-userconfig';
 import { WidgetService } from '../../cli/src/services/WidgetService';
 import {
@@ -162,6 +165,14 @@ async function run(): Promise<void> {
     npmVersion: process.versions.npm ?? 'external',
     serverBunVersion: Bun.version,
   });
+  const buildEnvironmentIdentity = fnWidgetNpmBuildEnvironmentIdentity({
+    runnerIdentity: 'host-v1',
+    nodeVersion: process.version,
+    npmVersion: process.versions.npm ?? 'external',
+    platform: process.platform,
+    architecture: process.arch,
+    toolchainPinnedByRunner: false,
+  });
   const signingKeys = new WidgetCapsuleSigningKeyStore(join(command.home, 'keys'));
   const widgetPool = new WidgetServicePool({
     create: async (placement) => new WidgetService({
@@ -170,6 +181,7 @@ async function run(): Promise<void> {
       artifactsRoot,
       buildTempRoot,
       builderIdentity,
+      buildEnvironmentIdentity,
       capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
       buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
       capsuleBuild: buildCapsuleGuest,

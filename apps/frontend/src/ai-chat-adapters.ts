@@ -216,6 +216,7 @@ export function createFrontendSidebarController(args: {
   return {
     apiService: apiService as TSidebarApiPort,
     browser: {
+      createIdempotencyKey: () => crypto.randomUUID(),
       setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
       clearTimeout: (timer) => window.clearTimeout(timer as number),
     },

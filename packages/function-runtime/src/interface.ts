@@ -18,7 +18,6 @@ import type {
   TFunctionMemoryTier,
   TFunctionName,
   TFunctionRevisionRegistration,
-  TFunctionResolutionPurpose,
   TInvocationLease,
   TInvocationLeaseMutationResult,
   TInvocationRecord,
@@ -56,7 +55,7 @@ export interface IFunctionRegistry {
     tenant: TTenantContext,
     request: Readonly<{ widgetRevisionId: string; functionName: TFunctionName }>,
   ): Promise<TFunctionDefinition | null>;
-  /** Resolves and revalidates either a published revision or one active immutable preview. */
+  /** Resolves and revalidates either a published revision or an exact retained Preview revision. */
   resolveFunctionForSubject(
     tenant: TTenantContext,
     request: Readonly<{
@@ -64,8 +63,13 @@ export interface IFunctionRegistry {
       widgetDefinitionId: string;
       widgetRevisionId: string;
       functionName: TFunctionName;
-      purpose: TFunctionResolutionPurpose;
-    }>,
+    }> & (
+      | Readonly<{ purpose: 'admission' }>
+      | Readonly<{
+        purpose: 'execution';
+        invocationId: TFunctionInvocationId;
+      }>
+    ),
   ): Promise<TFunctionDefinition | null>;
 }
 

@@ -12,7 +12,11 @@ export type TSidebarApiPort = {
     resource: {
       resources: Pick<TApi["resource"]["resources"], "list" | "create">;
     };
-    agent: Pick<TApi["agent"], "events" | "widgets" | "widgetPublish">;
+    agent: Pick<TApi["agent"], "events" | "widgets" | "widgetPublish"> & {
+      widgetPreview: {
+        owner: Pick<TApi["agent"]["widgetPreview"]["owner"], "list">;
+      };
+    };
   };
 };
 
@@ -32,6 +36,7 @@ export type TSidebarApplicationPort = {
 };
 
 export type TSidebarBrowserPort = {
+  createIdempotencyKey(): string;
   setTimeout(callback: () => void, timeout: number): unknown;
   clearTimeout(timer: unknown): void;
 };

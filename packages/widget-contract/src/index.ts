@@ -22,6 +22,14 @@ export {
 } from './manifest-schema';
 export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
 export {
+  WIDGET_DIAGNOSTIC_FORMAT_VERSION,
+  ZWidgetDiagnostic,
+} from './diagnostic-schema';
+export type {
+  TWidgetDiagnostic,
+  TWidgetDiagnosticFingerprintInput,
+} from './diagnostic-schema';
+export {
   LUCIDE_STATIC_ICON_KEYS,
   LUCIDE_STATIC_ICON_KEY_SET,
   RECOMMENDED_LUCIDE_STATIC_ICON_KEYS,
@@ -36,6 +44,36 @@ export {
   WIDGET_FRAME_MIN_WIDTH,
 } from './CONSTANTS';
 export { fnCanonicalizeWidgetContractPayload } from './core/fn.contract';
+export {
+  fnCanonicalizeWidgetConstructionContractPayload,
+} from './core/fn.construction-contract';
+export {
+  fnCanonicalizeWidgetDiagnosticFingerprint,
+  fnWidgetDiagnosticFingerprint,
+} from './core/fn.diagnostic';
+export {
+  fnNormalizeWidgetBuildError,
+  fnNormalizeWidgetBuildDiagnostics,
+} from './core/fn.normalize-build-diagnostic';
+export {
+  fnCanonicalizeWidgetPreviewBuildKey,
+  fnCanonicalizeWidgetPreviewConstructionKey,
+  fnWidgetPreviewBuildKey,
+  fnWidgetPreviewConstructionKey,
+} from './core/fn.preview-build-key';
+export type {
+  TWidgetPreviewBuildEnvironment,
+  TWidgetPreviewBuildKeyInput,
+  TWidgetPreviewConstructionKeyInput,
+} from './core/fn.preview-build-key';
+export {
+  fnCanonicalizeWidgetPreviewBindingPlan,
+  fnWidgetPreviewBindingPlanDigest,
+} from './core/fn.preview-binding-plan';
+export {
+  fnCanonicalizeWidgetPreviewPublicationIdentity,
+  fnWidgetPreviewPublicationFingerprint,
+} from './core/fn.preview-publication';
 export { fnValidateWidgetBuildIntegrity } from './core/fn.build-integrity';
 export type {
   TWidgetBuildIntegrityArgs,

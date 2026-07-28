@@ -23,7 +23,8 @@ A widget moves through four distinct ownership domains:
 3. **Published revision** is immutable metadata plus content-addressed source,
    UI, and optional server artifacts.
 4. **Widget instance** is a canvas placement pinned to one definition revision,
-   with its own runtime identity and optional collaborative state document.
+   with its own runtime identity and optional versioned JSON state owned by
+   `WidgetStateService`.
 
 These domains are not interchangeable. In particular:
 
@@ -32,7 +33,7 @@ These domains are not interchangeable. In particular:
 - a definition's active revision affects new placement and catalog reads, not
   already placed instances;
 - a widget instance never chooses its tenant, definition, revision, resources,
-  state document, signing key, or provider authority.
+  state identity, signing key, or provider authority.
 
 ```mermaid
 flowchart LR
@@ -50,7 +51,7 @@ flowchart LR
   I --> G["Cangine fixed frame and atomic portal shell"]
   G --> H["Shared Capsule host partition"]
   H --> V["Instance-bound capabilities and channels"]
-  V --> R["Functions, Automerge state, props, theme, output"]
+  V --> R["Functions, WidgetStateService state, props, theme, output"]
 ```
 
 ## 2. Ownership by package
@@ -67,8 +68,8 @@ flowchart LR
 | `packages/sdk` | The supported widget authoring API over `@omnidraw/capsule/guest` |
 | `packages/api` | Tenant-authorized runtime configuration and artifact delivery |
 | `packages/ui-ai-chat` | Browser artifact verification, shared host coordination, Capsule content mounting, provider creation, preview, runtime ownership, product widget actions, and population scheduling |
-| `packages/canvas` | Automerge-to-Cangine projection, semantic selection, product tools and commands, CRDT history, durable collapse, portal-content reconciliation, and lifecycle signals |
-| Server services | Durable function execution, resource access, Automerge persistence, tenancy, database records, and events |
+| `packages/canvas` | Authoritative canvas document client, Cangine projection, semantic selection, product tools and command routing, durable collapse, portal-content reconciliation, and lifecycle signals |
+| Server services | `CanvasService` commands/snapshots/queries/events, `WidgetStateService` versioned widget-instance state, durable function execution, resource access, tenancy, and database records |
 
 Capsule has no Vibecanvas dependency. Vibecanvas imports Capsule only through
 its public package entries.
@@ -176,8 +177,11 @@ message bytes, stream bytes, assets, network, GPU memory, and lifecycle bytes.
 
 ## 5. Immutable source capture and validation
 
-Every validation, preview, and publication begins by capturing one coherent,
-content-addressed `TWidgetSourceSnapshot`.
+Validation and Preview capture one coherent, content-addressed
+`TWidgetSourceSnapshot`. The supported product Publish path does not recapture
+or rebuild mutable source: it verifies that the active frame-owned Preview
+revision still matches the current draft and promotes that retained
+construction.
 
 The snapshot contains:
 
@@ -217,23 +221,38 @@ guest package.json + lockfile + source
 ```
 
 Widget projects control their declared build command, package lifecycle hooks,
-bundler plugins, and compiler configuration. The default runner may execute on
-the application host. A runner adapter allows operators to select Docker or
-another isolated executor. CPU, memory, descendant-process, file, output, and
-wall-time limits exist for responsiveness and cleanup, not as a security claim.
+bundler plugins, and compiler configuration. Host execution is the default.
+Host-run guest processes receive an allowlisted process environment with a
+workspace-local `HOME`; ambient service credentials are not inherited. This
+reduces accidental secret exposure but does not isolate host filesystem or
+network authority.
+Operators may select the implemented Docker runner with
+`VIBECANVAS_WIDGET_BUILD_RUNNER=docker` and an immutable image digest. It uses
+a read-only container root, drops all capabilities, enables
+`no-new-privileges`, bounds CPU, memory, PIDs, file descriptors, output, and
+wall time, mounts only the draft-private workspace plus a read-only npm config,
+and force-removes the named container after success, failure, or cancellation.
+The workspace mount is writable because install and build outputs are expected.
 
 Capsule still receives and validates `dist/` only after this work completes.
 Its browser runtime security does not protect or attempt to protect the builder
-or server functions. Running those processes in Docker is an optional
-deployment boundary, not a release gate.
+or server functions. The Docker runner hardens that build boundary but is
+operator-selected, permits package networking, and is not a release gate or a
+claim that arbitrary build scripts are harmless.
 
 Vibecanvas must retain end-to-end provenance across this boundary. One build
 identity binds the exact source snapshot, `package.json`, lockfile, dependency
 workspace inputs, Node/package-manager/platform identities, build command and
 configuration, complete `dist/` bytes, Capsule version/validation policy, and
 final artifact bytes. Exact captured outputs are authoritative even when the
-guest build is not reproducible. Preview and publication reuse the same Preview
-revision and never rebuild during Publish.
+guest build is not reproducible. Frame-qualified Preview publication reuses the
+same Preview revision and never rebuilds during Publish.
+
+`WidgetArtifactConstructionCache` single-flights unchanged construction keys.
+Validation and Preview await that construction; preview signing wraps its
+canonical unsigned bytes. The durable Preview revision retains the construction
+contract digest and distribution provenance. Publish retrieves that exact
+construction and applies release signing only.
 
 ### 6.1 Browser UI build
 
@@ -318,68 +337,134 @@ active revision.
 
 Preview receives:
 
-- authoring collaborative state distinct from published instance state;
+- ephemeral mounted-session authoring state distinct from published instance
+  state;
 - a Preview function subject for the active server artifact;
 - real user-selected resource bindings, including their real side effects;
 - preview signing authority;
 - the normal props, theme, output, schema, target, budget, and cleanup path.
 
-The active Preview revision has no fixed TTL. It remains rooted for as long as
-at least one Preview frame owns it. Superseded revisions remain only while a
-mounted handle or in-flight invocation leases them, then GC. Deleting the frame
-closes its owner and starts lease-aware cleanup.
+The active Preview revision has no fixed TTL. Each mounted handle acquires a
+durable lease for its exact active open owner, revision, canvas, and frame;
+renewal may continue after that revision becomes superseded while the owner
+remains open. The service renews a 60-second lease, releases it after handle
+destruction, and bounds store requests to 1 second through 5 minutes.
+Superseded or closed revisions are pruned only after no unexpired mount lease
+and no function invocation pin remains. Lease expiry survives restart, and the
+periodic cleanup pass reclaims abandoned roots.
 
-### 7.1 Current implementation gap after the Cangine cutover
+### 7.1 Cangine Preview path
 
-The backend contract above is present, but the current Cangine frontend adapter
-does not complete the Preview path:
+The current Cangine adapter completes the frame-owned Preview path:
 
-- the AI Chat **Open Preview** callback only shows an informational notification;
-- direct placement accepts published references only;
-- no current frontend caller consumes `agent.widgetPreview.build` artifact
-  bytes; and
-- the pre-cutover Draft Preview frame/mount and its integration tests were
-  removed in commit `3db71817`.
+- **Open Preview** creates or focuses one companion frame beside the
+  originating AI Chat;
+- direct Draft placement creates an independently owned Preview at the
+  requested canvas position;
+- committed draft events automatically rebuild mounted and offscreen owners;
+- `agent.widgetPreview.build` returns the exact preview-signed bytes and
+  browser-safe contract for the durable revision; and
+- restart resolves the retained active revision instead of rebuilding merely
+  because the process changed.
 
-The API and isolated artifact/runtime tests can therefore pass while no Draft
-Preview is renderable from the current product UI. This is tracked in
-[`A96`](../../tasks/a/A96.md).
+`PreviewPortalRuntime` verifies and mounts a candidate in a same-size sibling
+container while the last known good handle stays interactive. A candidate may
+replace it only after acquiring its exact durable mount lease, `ready()`, and
+two host animation frames. The old lease remains active until the old handle is
+destroyed. Failure preserves the old handle, shows the failed build state, and
+disables Publish until the current draft has a successfully mounted active
+revision.
 
-### 7.2 Required authoring loop
+### 7.2 Authoring loop and diagnostics
 
-Restoring the old explicit-refresh implementation unchanged is insufficient for
-the intended AI authoring experience. The target loop is:
+The implemented authoring loop is:
 
-1. A committed AI file edit advances the draft revision and immediately marks
-   an open Preview as building.
-2. One latest-wins build coordinator reuses a draft-private warm workspace and
-   produces one content-addressed Preview revision for validation, Preview, and
-   publication.
-3. The last known good Preview stays mounted until the replacement has been
-   verified and is ready for an atomic swap.
-4. Build, host, and guest-runtime diagnostics appear in the Preview and are
-   delivered as bounded, untrusted diagnostic context to the originating AI
-   session.
-5. Preview server calls execute the active server artifact with real selected
-   resource bindings; failures join the same diagnostic loop.
-6. Publish promotes the mounted Preview revision under release signing after
-   rechecking frame, draft, revision, and resource-binding preconditions. It
-   does not rerun the guest build.
+1. Every successful widget source tool mutation receives exactly one
+   server-trusted committed-mutation ID (a multi-file create is one mutation).
+   The draft stores that ID with the exact source digest and monotonically
+   increasing build sequence. Draft events, build requests/results, streamed
+   progress, reconnect state, and Preview revisions carry the same immutable
+   fence; stale or cross-digest mutation data is rejected.
+2. One latest-wins build coordinator debounces the edit burst, cancels or
+   supersedes obsolete work, reuses a draft-private warm workspace, and
+   produces one content-addressed construction for validation, Preview, and
+   publication. A shared admission layer permits one active build per draft,
+   two per tenant, and a deployment-wide ceiling configured with
+   `VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY` (default `4`).
+3. Progress is streamed as `queued`, `installing`, `building`, `validating`,
+   `ready`, `failed`, or `superseded`. These phases describe state; the local
+   latency targets in A96 have not yet been measured.
+4. Build, verification, mount, host, capability, channel, and available
+   guest-runtime failures normalize into the shared bounded diagnostic contract.
+   Runtime diagnostics are stored separately from build errors as durable
+   `awaiting-retest` records fenced by exact Preview revision and fingerprint.
+   A successful rebuild clears its build error but does not erase unresolved
+   runtime failures. Only a matching trustworthy interaction-success class or
+   explicit **Resolve** clears a record; Capsule failures without such a class
+   remain awaiting explicit resolution. Current diagnostics are queryable on
+   reconnect and shown in Preview. Each owner admits at most 32 browser reports
+   per 10 seconds and retains at most 20 normalized diagnostics within a
+   64 KiB serialized ceiling.
+5. Owner-, draft-, chat-, source-mutation-, build-, and revision-fenced reports
+   remain visible and queryable within the owning Preview. Reports are never
+   forwarded into an AI session and never trigger hidden model work.
+6. The frame exposes **Retry**, **Reset**, **Publish**, local **Pause/Resume
+   Live Updates**, and **Cancel Build** while an exact build is pending.
+   Live-update pausing is local to the mounted frame and coalesces newer
+   revisions until resume.
+7. Preview server calls name the exact retained Preview revision. The function
+   runtime rechecks that owner/revision subject and resolves the matching
+   server artifact and selected binding revision, so a last-good handle cannot
+   drift onto a newer backend revision during a swap.
+8. Publish promotes the mounted Preview construction under release signing
+   after rechecking frame, draft, active revision, and resource-binding
+   preconditions. It does not rerun npm, the project build, or Capsule
+   construction. The owner durably records the exact published Preview
+   revision and binding selection. The same selection stays disabled after a
+   lost response or reconnect, while a newly successful Preview revision or
+   binding change becomes publishable. Same-key retries remain idempotent.
 
 The Preview revision is durable authoring authority, not a published widget
 revision. Its frame owns its lifetime, and only explicit Publish converts the
 reviewed outputs into an immutable published revision.
 
-[`E40`](../../tasks/e/E40.md) resolves the product, S108, build-isolation,
-Capsule, diagnostic, AI repair, and promotion decisions for this loop. In
-particular, Preview is full-stack and frame-lived; guest install/build scripts
-and server functions use an operator-trusted host or optional Docker runner;
-and idle runtime failures require an explicit **Ask AI to Fix** action rather
-than silently spending another model turn.
+[`E40`](../../tasks/e/E40.md) records the original product, S108,
+build-isolation, Capsule, diagnostic, and promotion decisions for this loop.
+Preview is full-stack and frame-lived; guest install/build scripts use the
+operator-trusted host or optional Docker build runner; and Preview server
+functions remain operator-trusted host execution. Its proposed AI sharing and
+repair controls were intentionally removed as premature.
+
+### 7.3 Capsule 0.9.4 runtime source-location blocker
+
+Build tools and Capsule construction errors may already provide safe relative
+file, line, and column data. Verified locations for exceptions thrown after a
+guest mounts are not implemented and must not be inferred.
+
+Capsule 0.9.4's public `CapsuleMountErrorEvent` is intentionally message-free
+and contains no generated module, line, or column. Its public mount API has no
+authoring diagnostic hook; DOM guest exceptions are caught inside Capsule and
+reduced to `guestCallbackFailures` plus `lastErrorCode: "GUEST_CALLBACK"`; and
+external-distribution JavaScript source-map references are rejected as
+`producer-denied`. Vibecanvas package-boundary tests also prohibit deep/private
+Capsule imports. Vibecanvas therefore cannot recover a verified runtime
+location through the public boundary without unsafe private imports,
+monkey-patching, or guest-controlled stack forwarding.
+
+The smallest required upstream boundary is an explicit authoring-only event
+emitted inside Capsule before those exceptions are discarded. It must contain
+only a bounded stable code, phase, and verified artifact-relative generated
+module/line/column, with no raw message, stack, cause, host path, environment,
+or secret. Vibecanvas can then retain source maps as trusted build sidecars and
+map that generated location under the exact Preview revision. Production
+telemetry remains message-free. Until that upstream event exists, mounted
+runtime diagnostics omit file, line, and column rather than claiming source
+mapping.
 
 ## 8. Publication and immutable revisions
 
-Publish is an explicit user action and requires the expected draft revision.
+Product Publish is an explicit user action and requires the expected draft
+revision plus an exact ready frame-owned Preview selection.
 
 Before durable mutation, publication:
 
@@ -387,15 +472,25 @@ Before durable mutation, publication:
 2. validates selected resource bindings against manifest ceilings;
 3. verifies the current frame-owned active Preview revision and draft CAS;
 4. validates the Preview source, function descriptors, provenance, selected
-   bindings, and complete
-   build integrity contract;
-5. release-signs the Preview revision's canonical unsigned Capsule bytes without executing
-   the widget build again; and
+   bindings, and complete build integrity contract;
+5. release-signs the Preview revision's canonical unsigned Capsule bytes
+   without executing the widget build again; and
 6. verifies the immutable source/UI/server artifacts to be committed.
 
-The current pre-A96 implementation still performs a fresh release build here.
-A96 replaces that repeated build with the verified Preview revision described in
-section 7.2.
+This path consumes the retained Preview construction. Preview and release
+signature envelopes differ, but the Capsule executable hash, source snapshot,
+server artifact, function descriptors, construction contract digest,
+distribution provenance, and selected binding revision are the reviewed
+values. Publication performs no npm command and no Capsule construction run.
+
+The Preview title-bar action submits the exact mounted selection. The draft
+detail page lists ready frame-owned Previews available to the user. It shows
+the canvas/frame label, draft content digest, Preview revision, binding
+revision, and frame ID; multiple candidates are never auto-selected. The
+dialog refreshes the selected Preview immediately before submission, then sends
+its exact owner, revision, binding, canvas, and frame identity. It fails closed
+with **Ready Preview required** or **Preview changed before publication** when
+there is no retained selection or the selected frame advances.
 
 Inside one mutation fence it stores:
 
@@ -407,6 +502,10 @@ Inside one mutation fence it stores:
 - Capsule and builder identities;
 - revision resource bindings;
 - the definition's compare-and-set active revision pointer.
+
+The same transaction also records the exact Preview revision, binding revision,
+binding-plan digest, published widget revision, and idempotency key on the
+frame owner. A different key cannot publish that same selection twice.
 
 Blob writes that lose a publication race are orphaned only under the artifact
 retention grace policy and are later reclaimed by reconciliation and garbage
@@ -432,18 +531,19 @@ A committed canvas widget stores:
 - host-owned UI props;
 
 The database projection creates a tenant-scoped `widget_instances` record bound
-to the canvas and element. Collaborative widgets receive a separate Automerge
-document bound to that widget instance.
+to the canvas and element. Collaborative widgets address one versioned JSON
+state record through `WidgetStateService` using the exact canvas, element,
+instance, definition, and revision identity.
 
 Definition revisions do not share mutable instance state. Deleting a browser
-runtime does not delete the instance's durable Automerge document.
+runtime does not delete the instance's durable widget state.
 
 ### 9.1 Canvas frame and editor ownership
 
 The authoritative flow remains one-way:
 
 ```text
-Automerge canvas document -> Vibecanvas projection -> Cangine scene
+CanvasService canvas_items -> authoritative document client -> Cangine scene
 ```
 
 Cangine's optional `/editor` entrypoint supplies the replaceable editor kernel,
@@ -451,7 +551,7 @@ fixed widget-frame controller, context-menu controller, shared menu, standard
 transform-policy resolver, and transform hover state. Vibecanvas does not use
 Cangine's linear history or standard scene-mutating tools. Undo, redo, deletion,
 collapse, resize, and every other durable product effect return through
-Vibecanvas commands and Automerge.
+Vibecanvas commands to `CanvasService`.
 
 A projected widget frame contains only fixed-frame data: size, title,
 title-bar color, bounded declarative header items, portal ID, collapsed state,
@@ -475,7 +575,7 @@ canvas, element, widget instance, definition, and revision.
 The server:
 
 1. verifies tenant and canvas authority;
-2. opens the canvas Automerge document;
+2. queries the exact canvas item through `CanvasService`;
 3. verifies the exact element and widget identity;
 4. loads the exact revision and artifact binding;
 5. issues a short-lived browser UI artifact-read capability;
@@ -576,13 +676,14 @@ the descriptor deadline, and cancels pending work on teardown.
 Collaborative state is an instance-bound Capsule capability with `get`,
 `change`, and `subscribe`.
 
-The host captures the Automerge document identity. Values are normalized,
-bounded JSON; mutation rate and pending waits are limited. Subscription streams
-are demand-driven, versioned, cancellable, and fail on overflow rather than
-silently dropping durable changes.
+The host captures the exact widget-instance identity used by
+`WidgetStateService`. Values are normalized, bounded JSON; mutation rate and
+pending waits are limited. Subscription streams are demand-driven, versioned,
+cancellable, and fail on overflow rather than silently dropping durable
+changes.
 
 Freeze stops guest delivery but does not destroy backend state. Destroy cancels
-streams and releases the document session without deleting the document.
+streams and releases the state session without deleting durable state.
 
 ### Props, theme, output, and local store
 
@@ -669,9 +770,13 @@ The main durable records are:
 - `widget_instance_states`: centralized versioned widget-instance JSON state;
 - function definitions, invocations, logs, leases, and idempotency records;
 - revision resource bindings and resource catalog/provider records;
-- frame-owned Preview owners, active Preview revision pointers,
-  source/UI/server artifact roots, Preview resource bindings, function
-  subjects, invocations/idempotency, leases, and cleanup status;
+- `agent_previews` and `agent_preview_revisions`: frame-owned owners, active
+  revision pointers, exact source/UI/server artifact roots, function subjects,
+  and cleanup status;
+- `agent_preview_resource_bindings` and `agent_preview_mount_leases`: exact
+  revision bindings and renewable mounted-handle roots;
+- `widget_preview_publication_idempotency`: retry-safe identity for one exact
+  reviewed Preview selection and its committed published revision;
 - authoring chats and draft descriptors.
 
 Database constraints enforce manifest contract version 3, Capsule runtime
@@ -683,9 +788,14 @@ kinds, tenant ownership, and revision/instance foreign keys.
 Authoring and management:
 
 - `agent.widgetDraft.list`, `get`, `validate`;
-- Preview create/get/build/close, binding, status, and function invocation
-  surfaces;
-- `agent.widgetPublish.publish`;
+- `agent.widgetPreview.owner.ensure`, `get`, `list`, and `close`;
+- `agent.widgetPreview.mount.acquire`, `renew`, and `release`;
+- `agent.widgetPreview.build`, `cancel`, `diagnostics.report`,
+  `diagnostics.get`, `diagnostics.retest`, `diagnostics.resolve`,
+  `mount.*`, and `owner.*`;
+- `agent.widgetPublish.publish`, requiring exact Preview owner, revision,
+  binding revision and binding-plan digest, canvas, frame, draft revision, and
+  a stable per-confirmation idempotency key;
 - `agent.widgets.catalog`, `detail`, `files`, `file`;
 - `agent.widgets.ensureDraft`, patch operations, deletion, and placement
   resolution.
@@ -708,11 +818,12 @@ browser source-compilation endpoint.
   realm.
 - The host-backed DOM membrane exposes only the selected compatibility
   profiles.
-- The `dist/` pipeline intentionally has no build-time OS isolation:
-  npm dependency processing and guest-controlled build scripts execute with
-  the build-server account's host authority. This accepted risk does not weaken
-  Capsule's runtime isolation claim, but Capsule does not protect the server
-  during the preceding build.
+- The default `dist/` runner has no build-time OS isolation: npm dependency
+  processing and guest-controlled build scripts execute with the build-server
+  account's host authority, although their child environment excludes ambient
+  service credentials. Operators may select the hardened Docker runner,
+  but Capsule's runtime isolation still does not protect either build runner
+  during the preceding install and build.
 - Exact signed bytes are verified before execution.
 - Preview and release use distinct persistent signing keys.
 - Private signing keys never leave trusted server storage.
@@ -739,12 +850,14 @@ browser source-compilation endpoint.
 - Catalog rotation destroys affected hosts and remounts eligible owners using
   the new generation.
 - Provider cleanup errors cannot prevent terminal handle destruction.
-- Application shutdown destroys preview runtimes, committed owners, host
-  partitions, streams, and pending operations without deleting frame-owned
-  active Preview revisions; restart rehydrates and remounts them.
+- Application shutdown destroys mounted Preview runtimes and handles, host
+  partitions, streams, and pending operations without closing durable owners
+  or deleting frame-owned active Preview revisions; restart reconciles the
+  canvas-owned records and remounts their retained revisions.
 - Preview frame deletion closes its authoring owner, cancels or drains function
-  invocations by policy, releases binding/artifact roots after active leases,
-  and then permits GC.
+  invocations by policy, and releases its mounted handles. A superseded or
+  closed revision remains rooted only while an unexpired mount lease or
+  invocation pin remains; periodic cleanup prunes it after both clear.
 
 ## 19. Local widget debug lab
 
@@ -829,6 +942,9 @@ Contracts and build:
 - [`packages/widget-contract/src/manifest-schema.ts`](../../packages/widget-contract/src/manifest-schema.ts)
 - [`packages/widget-contract/src/runtime-descriptor-schema.ts`](../../packages/widget-contract/src/runtime-descriptor-schema.ts)
 - [`packages/widget-contract/src/types.ts`](../../packages/widget-contract/src/types.ts)
+- [`packages/widget-contract/src/core/fn.diagnostic.ts`](../../packages/widget-contract/src/core/fn.diagnostic.ts)
+- [`packages/widget-contract/src/core/fn.preview-build-key.ts`](../../packages/widget-contract/src/core/fn.preview-build-key.ts)
+- [`packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts`](../../packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts)
 - [`packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts`](../../packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts)
 - [`apps/cli/src/services/WidgetNpmDistributionBuild.ts`](../../apps/cli/src/services/WidgetNpmDistributionBuild.ts)
 - [`apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts`](../../apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts)
@@ -836,6 +952,8 @@ Contracts and build:
 Authoring and publication:
 
 - [`packages/service-agent/src/workspace/WidgetWorkspace.ts`](../../packages/service-agent/src/workspace/WidgetWorkspace.ts)
+- [`packages/service-agent/src/widget-drafts/PreviewBuildCoordinator.ts`](../../packages/service-agent/src/widget-drafts/PreviewBuildCoordinator.ts)
+- [`packages/service-agent/src/widget-drafts/PreviewBuildAdmission.ts`](../../packages/service-agent/src/widget-drafts/PreviewBuildAdmission.ts)
 - [`packages/service-agent/src/widget-drafts/WidgetDraftController.ts`](../../packages/service-agent/src/widget-drafts/WidgetDraftController.ts)
 - [`packages/widget-contract/src/local/WidgetPreviewService.ts`](../../packages/widget-contract/src/local/WidgetPreviewService.ts)
 - [`packages/widget-contract/src/local/WidgetPublicationService.ts`](../../packages/widget-contract/src/local/WidgetPublicationService.ts)
@@ -852,16 +970,21 @@ Browser:
 - [`packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts`](../../packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts`](../../packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts`](../../packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts)
-- [`packages/ui-ai-chat/src/draft-preview/mount.ts`](../../packages/ui-ai-chat/src/draft-preview/mount.ts)
-- [`packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts`](../../packages/ui-ai-chat/src/widget/tx.mount-committed-widget-runtime.ts)
+- [`packages/ui-ai-chat/src/canvas-extension/index.ts`](../../packages/ui-ai-chat/src/canvas-extension/index.ts)
+- [`packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts`](../../packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts)
+- [`packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts`](../../packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts)
+- [`packages/api/src/agent/api.widgetPreview.owner.ts`](../../packages/api/src/agent/api.widgetPreview.owner.ts)
+- [`packages/api/src/agent/api.widgetPreview.mount.ts`](../../packages/api/src/agent/api.widgetPreview.mount.ts)
+- [`packages/api/src/agent/api.widgetPreview.diagnostics.ts`](../../packages/api/src/agent/api.widgetPreview.diagnostics.ts)
 
 Guest, state, and persistence:
 
 - [`packages/sdk/src/widget.ts`](../../packages/sdk/src/widget.ts)
 - [`packages/sdk/src/widget-channels.ts`](../../packages/sdk/src/widget-channels.ts)
 - [`packages/sdk/src/collaborative-state-client.ts`](../../packages/sdk/src/collaborative-state-client.ts)
+- [`packages/service-db/src/AgentAuthoringStoreTurso.ts`](../../packages/service-db/src/AgentAuthoringStoreTurso.ts)
 - [`packages/service-db/src/WidgetControlStoreTurso.ts`](../../packages/service-db/src/WidgetControlStoreTurso.ts)
-- [`packages/service-db/src/migrations/000-initial.sql`](../../packages/service-db/src/migrations/000-initial.sql)
+- [`packages/service-db/src/migrations/004-live-widget-preview.sql`](../../packages/service-db/src/migrations/004-live-widget-preview.sql)
 
 ## 21. Verification
 
@@ -875,6 +998,19 @@ bun run test:widget-host
 bun run test:m10:load
 bun run test:packed-public-composition
 bun run lint:functional-core
+```
+
+A96's focused durable-Preview suites are:
+
+```sh
+bun test packages/service-agent/tests/preview-build-coordinator.test.ts
+bun test packages/service-agent/tests/preview-build-admission.test.ts
+bun test packages/service-agent/tests/widget-draft-controller.test.ts
+bun test packages/ui-ai-chat/tests/canvas-extension/PreviewPortalRuntime.test.ts
+bun test packages/ui-ai-chat/tests/canvas-extension/index.preview-integration.test.ts
+bun test packages/service-db/src/tests/AgentAuthoringStoreTurso.test.ts
+bun test apps/cli/tests/WidgetService.test.ts
+bun test apps/cli/tests/WidgetNpmDistributionBuild.test.ts
 ```
 
 `apps/capsule-browser-acceptance` builds fresh signed artifacts and mounts them
@@ -892,8 +1028,8 @@ When changing the widget system:
 3. Preserve exact-byte, Capsule-hash, descriptor, and contract-digest checks.
 4. Keep application-owned npm distribution builds and server-function builds
    separate; send only captured `dist/` bytes to Capsule.
-5. Keep preview on the signed Capsule mount path without durable function or
-   resource authority.
+5. Keep Preview on the signed Capsule mount path with a frame-owned durable
+   revision; bind functions and resources to that exact retained revision.
 6. Keep guest authority derived from trusted mount context.
 7. Preserve current-target fencing across asynchronous reads and retries.
 8. Treat every handle, provider, stream, and portal cleanup as idempotent.
@@ -903,4 +1039,5 @@ When changing the widget system:
     wrong target, capability mismatch, overflow, cancellation, and teardown.
 11. Keep fixed chrome, portal-shell presentation, menus, pointer reconciliation,
     and transform affordances in Cangine; keep durable product authority in
-    Automerge and untrusted content execution in Capsule.
+    `CanvasService` and `WidgetStateService`, and untrusted content execution in
+    Capsule.

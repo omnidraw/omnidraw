@@ -55,17 +55,23 @@ coherent. Editing `package.json` through the file tools runs host-owned
 `npm install` and updates `package-lock.json`; never hand-edit the lockfile.
 The build must emit a bounded `dist/main.js` ES module plus any relative chunks
 and supported static assets. Do not write or import `dist/` as source.
-Package lifecycle hooks and the build script execute with the build-server
-account during this testing phase. Keep them limited to necessary compilation;
-never use them to inspect ambient credentials, host files, or unrelated
-network services.
+Package lifecycle hooks and the build script execute with the build-server's
+selected runner authority: the application host by default or an
+operator-selected hardened Docker build runner. Keep them limited to necessary
+compilation; never use them to inspect ambient credentials, host files, or
+unrelated network services.
 
-Validation, Preview, and publication pin one immutable source snapshot, run
-frozen `npm ci`, then run the guest-owned `npm run build`. Vibecanvas captures
-only the bounded regular-file `dist/` tree and gives those exact bytes to
-Capsule for closed-distribution validation and artifact construction. Capsule
-does not install dependencies or compile source. The resulting UI artifact and
-optional server artifact are signed and bound into one contract. Draft Preview
-uses this same path with a preview signature, ephemeral collaborative state, no
-real server-function authority, and no durable local-store restore. “Ready”
-never means published.
+Validation and an open Preview pin one immutable source snapshot and share its
+content-addressed construction. The draft-private warm workspace runs
+frozen `npm ci` when package or lock inputs change, then runs the
+guest-owned `npm run build`; source-only edits reuse the installed workspace.
+Vibecanvas captures only the bounded regular-file `dist/` tree and gives those
+exact bytes to Capsule for closed-distribution validation and artifact
+construction. Capsule does not install dependencies or compile source.
+
+The durable frame-owned Preview signs and retains that exact source/UI/server
+construction. Its UI invokes the exact retained server artifact with the
+user-selected resource binding revision. Preview collaborative/local state is
+authoring state and does not become published-instance state. A user Publish
+action release-signs and commits the retained construction without rerunning
+npm, the project build, or Capsule construction. “Ready” never means published.

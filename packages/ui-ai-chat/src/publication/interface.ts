@@ -7,10 +7,26 @@ export type TWidgetPublicationApi = {
   widgetPublish: Pick<TAgentApi["widgetPublish"], "publish">
 }
 
+export type TWidgetPublicationPreviewSelection = Readonly<{
+  previewId: string
+  previewRevisionId: string
+  expectedBindingRevision: number
+  expectedBindingPlanDigestSha256: string
+  canvasId: string
+  frameNodeId: string
+  label: string
+}>
+
+export type TResolveWidgetPublicationPreviewSelections = (
+) => readonly TWidgetPublicationPreviewSelection[]
+  | Promise<readonly TWidgetPublicationPreviewSelection[]>
+
 export type TWidgetPublicationState = {
   open: boolean
   loading: boolean
   publishing: boolean
+  previewAvailable: boolean
+  previewSelected: boolean
   actionLabel: "Publish" | "Republish"
 }
 

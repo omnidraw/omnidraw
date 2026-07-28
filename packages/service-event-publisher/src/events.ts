@@ -67,14 +67,40 @@ export type TAgentWidgetDraftEvent = Readonly<{
   type: 'created' | 'changed' | 'validated';
   draftId: string;
   revision: string;
+  sourceDigestSha256: string;
+  committedMutationId: string;
+  buildSequence: number;
 }>;
 
-export type TAgentWidgetPreviewEvent = Readonly<{
-  kind: 'widget-preview';
-  type: 'changed' | 'catalog-changed';
-  draftId: string;
-  revision: string;
-}>;
+export type TAgentWidgetPreviewEvent =
+  | Readonly<{
+      kind: 'widget-preview';
+      type: 'changed' | 'catalog-changed';
+      draftId: string;
+      revision: string;
+      sourceDigestSha256: string;
+      committedMutationId: string;
+      buildSequence: number;
+    }>
+  | Readonly<{
+      kind: 'widget-preview';
+      type: 'progress';
+      draftId: string;
+      revision: string;
+      sourceDigestSha256: string;
+      committedMutationId: string;
+      previewId: string;
+      buildId: string;
+      buildSequence: number;
+      phase:
+        | 'queued'
+        | 'installing'
+        | 'building'
+        | 'validating'
+        | 'ready'
+        | 'failed'
+        | 'superseded';
+    }>;
 
 export type TAgentWidgetPublishedEvent = Readonly<{
   kind: 'widget-published';

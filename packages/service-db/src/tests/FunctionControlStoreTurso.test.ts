@@ -43,7 +43,20 @@ const UI_ARTIFACT_ID = uuid(703);
 const SERVER_ARTIFACT_ID = uuid(704);
 const WIDGET_INSTANCE_ID = uuid(705);
 const RESOURCE_ID = uuid(706);
+const PREVIEW_ID = uuid(730);
+const PREVIEW_REVISION_ID = uuid(731);
+const PREVIEW_SOURCE_ARTIFACT_ID = uuid(732);
+const PREVIEW_UNSIGNED_UI_ARTIFACT_ID = uuid(733);
+const PREVIEW_UI_ARTIFACT_ID = uuid(734);
+const PREVIEW_CHAT_ID = uuid(735);
+const PREVIEW_DRAFT_ID = uuid(736);
 const CONTRACT_DIGEST = sha256('contract');
+const PREVIEW_CONTRACT_DIGEST = sha256('preview-contract');
+const PREVIEW_SOURCE_DIGEST = sha256('preview-source');
+const PREVIEW_COMMITTED_MUTATION_ID = 'mutation-preview-function';
+const PREVIEW_UNSIGNED_UI_DIGEST = sha256('preview-unsigned-ui');
+const PREVIEW_UI_DIGEST = sha256('preview-ui');
+const PREVIEW_BINDING_PLAN_DIGEST = sha256('[]');
 const UI_DIGEST = sha256('ui');
 const SERVER_DIGEST = sha256('server');
 const OPERATION_FINGERPRINT = sha256('operation');
@@ -118,6 +131,7 @@ async function openDatabase(databasePath = ':memory:', migrate = true): Promise<
       '001-widget-revision-sequence.sql',
       '002-function-runtime.sql',
       '003-agent-authoring.sql',
+      '004-live-widget-preview.sql',
     ]) {
       await database.exec(await Bun.file(new URL(`../migrations/${migration}`, import.meta.url)).text());
     }
@@ -278,6 +292,154 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
   `)).run(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID);
 }
 
+async function seedPreviewControlPlane(database: TDatabase): Promise<void> {
+  const canonicalDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors([DESCRIPTOR]);
+  const publishedRevision = await (await database.prepare(`
+    SELECT manifest_json
+    FROM widget_definition_revisions
+    WHERE org_id = ? AND id = ?
+  `)).get(TENANT.orgId, REVISION_ID) as Record<string, unknown> | undefined;
+  if (!publishedRevision) throw new Error('Published fixture revision was not found.');
+
+  await (await database.prepare(`
+    INSERT INTO artifact_references (
+      org_id, id, kind, digest_sha256, byte_size,
+      retention_state, retain_until_ms, created_at_ms
+    ) VALUES
+      (?, ?, 'source', ?, 10, 'pinned', NULL, 4),
+      (?, ?, 'unsigned_ui', ?, 10, 'pinned', NULL, 4),
+      (?, ?, 'ui', ?, 10, 'pinned', NULL, 4)
+  `)).run(
+    TENANT.orgId,
+    PREVIEW_SOURCE_ARTIFACT_ID,
+    PREVIEW_SOURCE_DIGEST,
+    TENANT.orgId,
+    PREVIEW_UNSIGNED_UI_ARTIFACT_ID,
+    PREVIEW_UNSIGNED_UI_DIGEST,
+    TENANT.orgId,
+    PREVIEW_UI_ARTIFACT_ID,
+    PREVIEW_UI_DIGEST,
+  );
+  await (await database.prepare(`
+    INSERT INTO agent_chats (
+      org_id, id, account_id, canvas_id, name, status,
+      workspace_relative_path, history_relative_path,
+      created_at_ms, updated_at_ms, external_session_key
+    ) VALUES (?, ?, ?, ?, 'Preview function chat', 'active',
+      'chats/preview-function', 'history/preview-function.jsonl', 4, 4, NULL)
+  `)).run(
+    TENANT.orgId,
+    PREVIEW_CHAT_ID,
+    TENANT.accountId,
+    CANVAS_ID,
+  );
+  await (await database.prepare(`
+    INSERT INTO agent_drafts (
+      org_id, id, chat_id, name, status, source_relative_path,
+      source_digest_sha256, committed_mutation_id, build_sequence,
+      last_error_json, created_at_ms, updated_at_ms, definition_id,
+      published_revision_id
+    ) VALUES (?, ?, ?, 'Preview function draft', 'ready',
+      'drafts/preview-function', ?, ?, 7, NULL, 4, 4, ?, NULL)
+  `)).run(
+    TENANT.orgId,
+    PREVIEW_DRAFT_ID,
+    PREVIEW_CHAT_ID,
+    PREVIEW_SOURCE_DIGEST,
+    PREVIEW_COMMITTED_MUTATION_ID,
+    DEFINITION_ID,
+  );
+  await (await database.prepare(`
+    INSERT INTO agent_previews (
+      org_id, id, account_id, canvas_id, frame_node_id, draft_id,
+      origin_chat_id, role, status, active_revision_id, pending_build_id,
+      build_sequence, binding_revision, binding_plan_digest_sha256,
+      source_digest_sha256, committed_mutation_id, last_error_json,
+      created_at_ms, updated_at_ms, closed_at_ms
+    ) VALUES (?, ?, ?, ?, 'preview-frame', ?, ?, 'placed', 'ready', ?,
+      NULL, 7, 0, ?, ?, ?, NULL, 4, 7, NULL)
+  `)).run(
+    TENANT.orgId,
+    PREVIEW_ID,
+    TENANT.accountId,
+    CANVAS_ID,
+    PREVIEW_DRAFT_ID,
+    PREVIEW_CHAT_ID,
+    PREVIEW_REVISION_ID,
+    PREVIEW_BINDING_PLAN_DIGEST,
+    PREVIEW_SOURCE_DIGEST,
+    PREVIEW_COMMITTED_MUTATION_ID,
+  );
+  await (await database.prepare(`
+    INSERT INTO agent_preview_revisions (
+      org_id, id, preview_id, draft_id, definition_id,
+      draft_revision_sha256, committed_mutation_id,
+      source_snapshot_id, source_digest_sha256,
+      source_artifact_id, source_artifact_kind, source_artifact_digest_sha256,
+      manifest_json, function_descriptors_json,
+      function_descriptors_digest_sha256,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      construction_contract_digest_sha256, preview_contract_digest_sha256,
+      builder_identity, capsule_build_identity_json, build_policy_id,
+      distribution_provenance_json,
+      unsigned_ui_artifact_id, unsigned_ui_artifact_kind,
+      unsigned_ui_artifact_digest_sha256,
+      ui_artifact_id, ui_artifact_kind, ui_artifact_digest_sha256,
+      ui_runtime_json, capsule_artifact_hash,
+      server_artifact_id, server_artifact_kind,
+      server_artifact_digest_sha256, server_runtime_abi,
+      binding_revision, binding_plan_digest_sha256, build_sequence,
+      diagnostics_json, created_at_ms
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, 'preview-source-snapshot', ?,
+      ?, 'source', ?, ?, ?, ?, ?, ?, ?, ?,
+      'preview-function-test', ?, ?, ?,
+      ?, 'unsigned_ui', ?, ?, 'ui', ?, ?, ?,
+      ?, 'server', ?, 'vibecanvas:1', 0, ?, 7, '[]', 7
+    )
+  `)).run(
+    TENANT.orgId,
+    PREVIEW_REVISION_ID,
+    PREVIEW_ID,
+    PREVIEW_DRAFT_ID,
+    DEFINITION_ID,
+    PREVIEW_SOURCE_DIGEST,
+    PREVIEW_COMMITTED_MUTATION_ID,
+    PREVIEW_SOURCE_DIGEST,
+    PREVIEW_SOURCE_ARTIFACT_ID,
+    PREVIEW_SOURCE_DIGEST,
+    String(publishedRevision.manifest_json),
+    canonicalDescriptors,
+    sha256(canonicalDescriptors),
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    sha256('preview-construction-contract'),
+    PREVIEW_CONTRACT_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
+    JSON.stringify({
+      kind: 'external-distribution',
+      producer: {
+        name: 'preview-function-test',
+        version: '1',
+        digest: `sha256:${'1'.repeat(64)}`,
+      },
+      sourceRevision: PREVIEW_SOURCE_DIGEST,
+      dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+      buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+    }),
+    PREVIEW_UNSIGNED_UI_ARTIFACT_ID,
+    PREVIEW_UNSIGNED_UI_DIGEST,
+    PREVIEW_UI_ARTIFACT_ID,
+    PREVIEW_UI_DIGEST,
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    SERVER_ARTIFACT_ID,
+    SERVER_DIGEST,
+    PREVIEW_BINDING_PLAN_DIGEST,
+  );
+}
+
 async function cloneInvocationRow(
   database: TDatabase,
   source: Readonly<{ orgId: string; invocationId: string }>,
@@ -339,6 +501,34 @@ function createRequest(
   };
 }
 
+function createPreviewRequest(
+  id: string,
+  input: unknown,
+  key = `preview-key-${id}`,
+): TInvocationCreateRequest {
+  const previewEnvelope: TFunctionInvocationEnvelope = {
+    ...envelope(id, input, key),
+    widgetRevisionId: PREVIEW_REVISION_ID,
+    subject: {
+      kind: 'widget_preview',
+      canvasId: CANVAS_ID,
+      widgetInstanceId: PREVIEW_ID,
+    },
+    definitionRevision: 7,
+    contractDigestSha256: PREVIEW_CONTRACT_DIGEST,
+  };
+  return {
+    envelope: previewEnvelope,
+    idempotencyRecordId: uuid(Number(id.slice(-4)) + 3_000),
+    idempotencyScope: {
+      kind: 'widget_preview',
+      previewId: PREVIEW_ID,
+    },
+    requestFingerprintSha256: sha256(fnFunctionCanonicalJson(input)),
+    idempotencyExpiresAtMs: 2_000,
+  };
+}
+
 describe('FunctionControlStoreTurso', () => {
   let database: TDatabase;
   let nowMs: number;
@@ -380,6 +570,249 @@ describe('FunctionControlStoreTurso', () => {
       functions: [{ ...DESCRIPTOR, limits: { ...DESCRIPTOR.limits, timeoutMs: 999 } }],
       createdAtMs: 2,
     })).rejects.toMatchObject({ code: 'FUNCTION_REVISION_REGISTRATION_CONFLICT' });
+  });
+
+  test('resolves and invokes only the owned active durable Preview revision', async () => {
+    await database.exec('PRAGMA foreign_keys = ON');
+    await seedPreviewControlPlane(database);
+    const subject = {
+      kind: 'widget_preview' as const,
+      canvasId: CANVAS_ID,
+      widgetInstanceId: PREVIEW_ID,
+    };
+
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'admission',
+    })).resolves.toMatchObject({
+      id: FUNCTION_ID,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      definitionRevision: 7,
+      serverArtifactId: SERVER_ARTIFACT_ID,
+      artifactDigestSha256: SERVER_DIGEST,
+      contractDigestSha256: PREVIEW_CONTRACT_DIGEST,
+      runtimeAbi: 'vibecanvas:1',
+      resources: DESCRIPTOR.resources,
+    });
+
+    const invocationId = uuid(737);
+    await expect(store.createOrReplayInvocation(
+      TENANT,
+      createPreviewRequest(invocationId, { preview: true }),
+    )).resolves.toMatchObject({
+      status: 'created',
+      invocation: {
+        retainsRevision: true,
+        envelope: {
+          id: invocationId,
+          widgetRevisionId: PREVIEW_REVISION_ID,
+          subject,
+        },
+      },
+    });
+    await expect(store.getInvocation(TENANT, invocationId)).resolves.toMatchObject({
+      envelope: {
+        subject,
+        contractDigestSha256: PREVIEW_CONTRACT_DIGEST,
+        artifactDigestSha256: SERVER_DIGEST,
+      },
+    });
+    await expect((await (await database.prepare(`
+      SELECT scope_kind, widget_instance_id, preview_id
+      FROM idempotency_records
+      WHERE org_id = ? AND invocation_id = ?
+    `)).get(TENANT.orgId, invocationId))).toEqual({
+      scope_kind: 'widget_preview',
+      widget_instance_id: null,
+      preview_id: PREVIEW_ID,
+    });
+
+    const foreignTenant = fnFreezeTenantContext({
+      ...TENANT,
+      orgId: uuid(739),
+      requestId: 'foreign-preview-function',
+    });
+    await expect(store.resolveFunctionForSubject(foreignTenant, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'admission',
+    })).resolves.toBeNull();
+
+    await (await database.prepare(`
+      UPDATE agent_previews
+      SET active_revision_id = ?, status = 'ready', updated_at_ms = 8
+      WHERE org_id = ? AND id = ?
+    `)).run(uuid(740), TENANT.orgId, PREVIEW_ID);
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'admission',
+    })).resolves.toBeNull();
+    await (await database.prepare(`
+      INSERT INTO agent_preview_mount_leases (
+        org_id, id, account_id, preview_id, preview_revision_id,
+        canvas_id, frame_node_id, acquired_at_ms, renewed_at_ms, expires_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, 'preview-frame', 90, 90, 1090)
+    `)).run(
+      TENANT.orgId,
+      uuid(7401),
+      TENANT.accountId,
+      PREVIEW_ID,
+      PREVIEW_REVISION_ID,
+      CANVAS_ID,
+    );
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'admission',
+    })).resolves.toMatchObject({
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      serverArtifactId: SERVER_ARTIFACT_ID,
+    });
+    nowMs = 1090;
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'admission',
+    })).resolves.toBeNull();
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'execution',
+      invocationId,
+    })).resolves.toMatchObject({
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      serverArtifactId: SERVER_ARTIFACT_ID,
+    });
+
+    const staleRevisionRequest = createPreviewRequest(uuid(738), { preview: 'stale' });
+    await expect(store.createOrReplayInvocation(
+      TENANT,
+      {
+        ...staleRevisionRequest,
+        envelope: {
+          ...staleRevisionRequest.envelope,
+          widgetRevisionId: uuid(741),
+        },
+      },
+    )).rejects.toMatchObject({
+      code: 'FUNCTION_INVOCATION_AUTHORITY_MISMATCH',
+    });
+
+    await (await database.prepare(`
+      UPDATE agent_previews
+      SET active_revision_id = NULL, status = 'closed',
+        updated_at_ms = 9, closed_at_ms = 9
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT.orgId, PREVIEW_ID);
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'execution',
+      invocationId,
+    })).resolves.toMatchObject({
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      serverArtifactId: SERVER_ARTIFACT_ID,
+    });
+    await expect(store.resolveFunctionForSubject(TENANT, {
+      subject,
+      widgetDefinitionId: DEFINITION_ID,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      functionName: FUNCTION_NAME,
+      purpose: 'execution',
+      invocationId: uuid(7420),
+    })).resolves.toBeNull();
+  });
+
+  test('keeps a closed Preview revision pinned until its terminal invocation pin compacts', async () => {
+    await database.exec('PRAGMA foreign_keys = ON');
+    await seedPreviewControlPlane(database);
+    const invocationId = uuid(742);
+    await expect(store.createOrReplayInvocation(
+      TENANT,
+      createPreviewRequest(invocationId, { pinned: true }),
+    )).resolves.toMatchObject({
+      status: 'created',
+      invocation: { retainsRevision: true },
+    });
+    await (await database.prepare(`
+      UPDATE agent_previews
+      SET status = 'closed', active_revision_id = NULL,
+        pending_build_id = NULL, updated_at_ms = 100, closed_at_ms = 100
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT.orgId, PREVIEW_ID);
+
+    await store.compactTerminalHistory(TENANT, {
+      nowMs: 101,
+      bodiesBeforeMs: 101,
+      releaseRevisionPinsBeforeMs: 101,
+      limit: 10,
+    });
+    expect(await (await database.prepare(`
+      SELECT count(*) AS count
+      FROM agent_preview_revisions
+      WHERE org_id = ? AND preview_id = ? AND id = ?
+    `)).get(TENANT.orgId, PREVIEW_ID, PREVIEW_REVISION_ID))
+      .toMatchObject({ count: 1 });
+
+    const claim = await store.claim(TENANT, {
+      invocationId,
+      attemptId: uuid(743),
+      workerId: 'preview-pin-worker',
+      sandboxDriver: 'bun-child',
+      coldStart: false,
+      nowMs: 110,
+      ttlMs: 200,
+    });
+    if (claim.status !== 'claimed') throw new Error('Expected Preview invocation claim.');
+    await store.startAttempt(TENANT, { lease: claim.lease, nowMs: 120 });
+    await store.enterGuestCode(TENANT, { lease: claim.lease, nowMs: 121 });
+    await expect(store.completeAttempt(TENANT, {
+      lease: claim.lease,
+      status: 'succeeded',
+      output: { ok: true },
+      failure: null,
+      outputByteSize: 11,
+      logByteSize: 0,
+      metrics: ZERO_METRICS,
+      billable: true,
+      nowMs: 130,
+    })).resolves.toMatchObject({
+      status: 'terminal',
+      invocation: { retainsRevision: true },
+    });
+    await expect(store.compactTerminalHistory(TENANT, {
+      nowMs: 3_000,
+      bodiesBeforeMs: 2_500,
+      releaseRevisionPinsBeforeMs: 2_500,
+      limit: 10,
+    })).resolves.toEqual({
+      compactedInvocationIds: [invocationId],
+      releasedRevisionInvocationIds: [invocationId],
+      deletedIdempotencyRecords: 1,
+    });
+    expect(await (await database.prepare(`
+      SELECT count(*) AS count
+      FROM agent_preview_revisions
+      WHERE org_id = ? AND preview_id = ? AND id = ?
+    `)).get(TENANT.orgId, PREVIEW_ID, PREVIEW_REVISION_ID))
+      .toMatchObject({ count: 0 });
   });
 
   test('atomically creates, replays, and conflicts for scalar JSON inputs', async () => {

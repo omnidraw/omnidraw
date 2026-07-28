@@ -25,11 +25,27 @@ class FunctionResourceGatewayFactory implements IInvocationResourceGatewayFactor
   async createInvocationResourceGateway(
     request: Parameters<IInvocationResourceGatewayFactory['createInvocationResourceGateway']>[0],
   ): Promise<InvocationResourceGateway> {
-    const revision = await this.#config.widgets.getRevision(request.tenant, request.definition.widgetRevisionId);
+    const previewTarget = request.envelope.subject.kind === 'widget_preview'
+      ? await this.#config.widgets.resolvePreviewFunctionTarget(request.tenant, {
+          previewId: request.envelope.subject.widgetInstanceId,
+          revisionId: request.definition.widgetRevisionId,
+          invocationId: request.envelope.id,
+        })
+      : null;
+    const revision = request.envelope.subject.kind === 'widget_preview'
+      ? previewTarget?.revision ?? null
+      : await this.#config.widgets.getRevision(
+          request.tenant,
+          request.definition.widgetRevisionId,
+        );
     if (
       revision === null
       || revision.definitionId !== request.definition.widgetDefinitionId
-      || revision.contractDigestSha256 !== request.definition.contractDigestSha256
+      || (
+        'contractDigestSha256' in revision
+          ? revision.contractDigestSha256
+          : revision.previewContractDigestSha256
+      ) !== request.definition.contractDigestSha256
       || revision.serverArtifact?.id !== request.definition.serverArtifactId
       || revision.serverArtifact.digestSha256 !== request.definition.artifactDigestSha256
       || revision.manifest.server?.runtimeAbi !== request.definition.runtimeAbi
@@ -43,6 +59,7 @@ class FunctionResourceGatewayFactory implements IInvocationResourceGatewayFactor
       definitionId: request.definition.widgetDefinitionId,
       revisionId: request.definition.widgetRevisionId,
       requirements: revision.manifest.resources ?? [],
+      ...(previewTarget === null ? {} : { bindings: previewTarget.bindings }),
     });
     return new InvocationResourceGateway({
       tenant: request.tenant,

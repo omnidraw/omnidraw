@@ -47,6 +47,7 @@ import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceT
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TWidgetResourceBindingInput } from '@vibecanvas/widget-contract';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
   RESOURCE_MANAGEMENT_OPERATION,
@@ -70,6 +71,8 @@ type TFunctionResourceGatewayRequest = Readonly<{
   definitionId: string;
   revisionId: string;
   requirements: readonly TResourceRequirement[];
+  /** Exact retained Preview bindings; omitted for published revision lookup. */
+  bindings?: readonly TWidgetResourceBindingInput[];
 }>;
 
 type TFunctionResourceGatewayAccess = Readonly<{
@@ -424,23 +427,28 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       }
       requirements.set(requirement.slot, requirement);
     }
+    const retainedBindings = request.bindings === undefined
+      ? null
+      : new Map(request.bindings.map((binding) => [binding.slot, binding]));
     const bindings: IResourceBindingResolver = Object.freeze({
       resolveBinding: async (callTenant: TTenantContext, slot: string) => {
         this.#assertTenantPlacement(callTenant);
-        const binding = await this.#controlStore.resolveBinding(callTenant, {
-          definitionId: request.definitionId,
-          revisionId: request.revisionId,
-          slot,
-        });
+        const binding = retainedBindings === null
+          ? await this.#controlStore.resolveBinding(callTenant, {
+              definitionId: request.definitionId,
+              revisionId: request.revisionId,
+              slot,
+            })
+          : retainedBindings.get(slot) ?? null;
         return binding === null ? null : {
           slot: binding.slot,
           resourceId: binding.resourceId,
           kind: binding.kind,
           allowRead: binding.allowRead,
           allowWrite: binding.allowWrite,
-          definitionId: binding.definitionId,
-          revisionId: binding.revisionId,
-          required: binding.required,
+          definitionId: request.definitionId,
+          revisionId: request.revisionId,
+          required: requirements.get(slot)?.required ?? false,
         };
       },
     });

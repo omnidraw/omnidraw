@@ -7,6 +7,8 @@ import {
   AGENT_AUTHORING_MIGRATION_VERSION,
   INITIAL_MIGRATION_NAME,
   INITIAL_MIGRATION_VERSION,
+  LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+  LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
   FUNCTION_RUNTIME_MIGRATION_NAME,
   FUNCTION_RUNTIME_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
@@ -14,6 +16,7 @@ import {
 } from '../CONSTANTS';
 import agentAuthoringMigrationPath from './003-agent-authoring.sql' with { type: 'file' };
 import initialMigrationPath from './000-initial.sql' with { type: 'file' };
+import liveWidgetPreviewMigrationPath from './004-live-widget-preview.sql' with { type: 'file' };
 import widgetRevisionSequenceMigrationPath from './001-widget-revision-sequence.sql' with { type: 'file' };
 import functionRuntimeMigrationPath from './002-function-runtime.sql' with { type: 'file' };
 
@@ -45,17 +48,26 @@ const AGENT_AUTHORING_MIGRATION = Object.freeze({
   path: agentAuthoringMigrationPath,
 });
 
+const LIVE_WIDGET_PREVIEW_MIGRATION = Object.freeze({
+  type: 'sql' as const,
+  name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+  version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+  path: liveWidgetPreviewMigrationPath,
+});
+
 const MIGRATION_FILES = Object.freeze([
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   AGENT_AUTHORING_MIGRATION,
+  LIVE_WIDGET_PREVIEW_MIGRATION,
 ]);
 
 export {
   AGENT_AUTHORING_MIGRATION,
   INITIAL_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
+  LIVE_WIDGET_PREVIEW_MIGRATION,
   MIGRATION_FILES,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
 };

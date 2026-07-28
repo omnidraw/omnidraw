@@ -1,23 +1,28 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetDiagnostic,
   ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnNormalizeWidgetBuildError,
   fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetPreviewBindingPlanDigest,
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetCapsuleBuildIdentity,
   type TWidgetCapsuleRuntimeDescriptor,
+  type TWidgetDiagnostic,
   type TWidgetManifestV3,
   type TWidgetPreviewBuildResult,
-  type TWidgetRevisionDescriptor,
+  type TWidgetPreviewMountLeaseDescriptor,
   type TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
 import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -33,13 +38,30 @@ import type {
   TWidgetDraftSummary,
   TWidgetPreviewCatalogState,
   TWidgetPreviewFailureReason,
+  TWidgetPreviewOwnerDescriptor,
+  TWidgetPreviewOwnerRole,
+  TWidgetPreviewPublishSelection,
   TWidgetPreviewReady,
   TWidgetPreviewResult,
+  TWidgetPreviewRuntimeDiagnosticRecord,
   TWidgetPublishResult,
   TWidgetResourceBindingResolver,
 } from './types';
+import {
+  PreviewBuildCoordinator,
+  type TPreviewBuildProgressPhase,
+} from './PreviewBuildCoordinator';
+import {
+  PreviewBuildAdmission,
+  type IPreviewBuildAdmission,
+} from './PreviewBuildAdmission';
 
 const WIDGET_UI_ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;
+const WIDGET_PREVIEW_MOUNT_LEASE_TTL_MS = 60_000;
+const WIDGET_PREVIEW_DIAGNOSTIC_MAX_COUNT = 20;
+const WIDGET_PREVIEW_DIAGNOSTIC_MAX_BYTES = 64 * 1_024;
+const WIDGET_PREVIEW_DIAGNOSTIC_RATE_WINDOW_MS = 10_000;
+const WIDGET_PREVIEW_DIAGNOSTIC_RATE_MAX_REPORTS = 32;
 
 type TValidationCacheEntry = TValidationResult & { revision: string };
 
@@ -61,6 +83,8 @@ export type TWidgetDraftControllerConfig = Readonly<{
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
+  previewBuildDebounceMs?: number;
+  previewBuildAdmission?: IPreviewBuildAdmission;
 }>;
 
 function controllerError(code: string, message: string): Error & { code: string } {
@@ -83,11 +107,24 @@ function errorCurrentRevision(error: unknown): string | null {
   return typeof currentRevision === 'string' ? currentRevision : null;
 }
 
-/** Durable draft/publication orchestration with stateless UI-only preview builds. */
+/** Durable draft, full-stack Preview, diagnostic, and publication orchestration. */
 export class WidgetDraftController {
   readonly #config: TWidgetDraftControllerConfig;
   readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
   readonly #operations = new Map<string, Promise<unknown>>();
+  readonly #previewBuilds: PreviewBuildCoordinator<TWidgetPreviewResult>;
+  readonly #previewBuildAdmission: IPreviewBuildAdmission;
+  readonly #previewBuildTenantKey: string;
+  readonly #previewDiagnosticRateByOwner = new Map<string, {
+    count: number;
+    windowStartedAtMs: number;
+  }>();
+  readonly #previewBuildKeysByDraft = new Map<string, Set<string>>();
+  readonly #previewBuildFencesByOwner = new Map<string, Readonly<{
+    buildId: string;
+    ownerBuildSequence: number;
+    coordinatorBuildSequence: number;
+  }>>();
   #closing = false;
 
   constructor(config: TWidgetDraftControllerConfig) {
@@ -95,10 +132,25 @@ export class WidgetDraftController {
     if (!config.builderIdentity.trim()) {
       throw new TypeError('Widget authoring builder identity is required.');
     }
+    this.#previewBuilds = new PreviewBuildCoordinator({
+      debounceMs: config.previewBuildDebounceMs,
+    });
+    this.#previewBuildAdmission = config.previewBuildAdmission
+      ?? new PreviewBuildAdmission();
+    this.#previewBuildTenantKey = JSON.stringify([
+      config.tenant.orgId,
+      config.tenant.accountId,
+      config.tenant.cellId,
+      config.tenant.placementEpoch,
+    ]);
   }
 
   async close(): Promise<void> {
     this.#closing = true;
+    this.#previewBuilds.close();
+    this.#previewBuildKeysByDraft.clear();
+    this.#previewBuildFencesByOwner.clear();
+    this.#previewDiagnosticRateByOwner.clear();
     await Promise.allSettled(this.#operations.values());
   }
 
@@ -107,15 +159,24 @@ export class WidgetDraftController {
       this.#config.tenant,
       change.name,
     );
+    if (durable && change.type !== 'validated') {
+      this.#cancelPreviewBuildsForDraft(durable.id);
+    }
     return this.#queue(durable ? this.#draftOperationKey(durable.id) : `name:${change.name}`, async () => {
       const workspace = await this.#config.workspace.getDraft(change.name);
       if (!workspace) return null;
       return this.#withCapturedWorkspace(workspace, async (captured) => {
         const draft = await this.#ensureDurableDraft(captured, change.chatId);
         if (!draft) return null;
+        const committedMutationId = change.type === 'validated'
+          ? undefined
+          : this.#config.createId();
         const synced = await this.#compareAndSetDraft(draft, captured.snapshot.digestSha256, {
           status: 'editing',
           lastError: null,
+          ...(committedMutationId === undefined
+            ? {}
+            : { committedMutationId }),
         });
         if (!synced) return null;
 
@@ -125,7 +186,7 @@ export class WidgetDraftController {
           return validated ? this.#summary(validated, captured.workspace) : null;
         }
         this.#validationByDraft.delete(synced.id);
-        this.#publishDraftEvent(change.type, synced.id, captured.snapshot.digestSha256);
+        this.#publishDraftEvent(change.type, synced);
         return this.#summary(synced, captured.workspace);
       });
     });
@@ -149,6 +210,388 @@ export class WidgetDraftController {
   async getByName(name: string): Promise<TWidgetDraftSummary | null> {
     const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
     return draft && draft.status !== 'discarded' ? this.#refreshAndSummarize(draft) : null;
+  }
+
+  async ensurePreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    draftId: string;
+    originChatId: string;
+    role: TWidgetPreviewOwnerRole;
+  }>): Promise<TWidgetPreviewOwnerDescriptor> {
+    if (this.#closing) {
+      throw controllerError(
+        'WIDGET_PREVIEW_SERVICE_CLOSING',
+        'Preview owner service is closing.',
+      );
+    }
+    return this.#config.authoringStore.ensurePreviewOwner(this.#config.tenant, {
+      id: request.previewId,
+      canvasId: request.canvasId,
+      frameNodeId: request.frameNodeId,
+      draftId: request.draftId,
+      originChatId: request.originChatId,
+      role: request.role,
+      nowMs: this.#now(),
+    });
+  }
+
+  async getPreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<TWidgetPreviewOwnerDescriptor | null> {
+    const owner = await this.#config.authoringStore.getPreviewOwner(
+      this.#config.tenant,
+      request.previewId,
+    );
+    return owner?.canvasId === request.canvasId
+      && owner.frameNodeId === request.frameNodeId
+      ? owner
+      : null;
+  }
+
+  async listPreviewOwners(request: Readonly<{
+    canvasId: string;
+    draftId?: string;
+    includeClosed?: boolean;
+  }>): Promise<readonly TWidgetPreviewOwnerDescriptor[]> {
+    const owners = await this.#config.authoringStore.listPreviewOwners(this.#config.tenant, {
+      ...(request.draftId === undefined ? {} : { draftId: request.draftId }),
+      ...(request.includeClosed === undefined ? {} : { includeClosed: request.includeClosed }),
+    });
+    return owners.filter((owner) => owner.canvasId === request.canvasId);
+  }
+
+  async closePreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<boolean> {
+    const owner = await this.getPreviewOwner({
+      previewId: request.previewId,
+      canvasId: request.canvasId,
+      frameNodeId: request.frameNodeId,
+    });
+    if (!owner) return false;
+    this.#previewBuilds.cancel(owner.id);
+    const closed = await this.#config.authoringStore.closePreviewOwner(this.#config.tenant, {
+      previewId: request.previewId,
+      frameNodeId: request.frameNodeId,
+      nowMs: this.#now(),
+    });
+    if (!closed) return false;
+    this.#previewDiagnosticRateByOwner.delete(owner.id);
+    this.#forgetPreviewBuildKey(owner.draftId, owner.id);
+    this.#previewBuildFencesByOwner.delete(owner.id);
+    this.#previewBuilds.clear(owner.id);
+    const remaining = await this.#config.authoringStore.listPreviewOwners(
+      this.#config.tenant,
+      { draftId: owner.draftId },
+    );
+    if (remaining.length === 0) {
+      await this.#config.widgets.closePreviewWorkspace(this.#config.tenant, {
+        draftId: owner.draftId,
+      });
+    }
+    return true;
+  }
+
+  async invalidatePreviewBindingsForChat(
+    externalSessionKey: string,
+  ): Promise<void> {
+    const chat = await this.#config.authoringStore.getChatByExternalSessionKey(
+      this.#config.tenant,
+      externalSessionKey,
+    );
+    if (chat === null) return;
+    const drafts = (await this.#config.authoringStore.listDrafts(
+      this.#config.tenant,
+    )).filter((draft) => (
+      draft.chatId === chat.id && draft.status !== 'discarded'
+    ));
+    const ownerGroups = await Promise.all(drafts.map((draft) =>
+      this.#config.authoringStore.listPreviewOwners(
+        this.#config.tenant,
+        { draftId: draft.id },
+      )));
+    for (const owners of ownerGroups) {
+      for (const owner of owners) this.#previewBuilds.cancel(owner.id);
+    }
+    await Promise.all(drafts.map((draft, index) =>
+      this.#queue(`draft:${draft.id}`, async () => {
+        let changed = false;
+        for (const owner of ownerGroups[index] ?? []) {
+          if (owner.status === 'closed') continue;
+          const nextBindingRevision = owner.bindingRevision + 1;
+          if (!Number.isSafeInteger(nextBindingRevision)) {
+            throw controllerError(
+              'WIDGET_PREVIEW_BINDING_REVISION_EXHAUSTED',
+              'Preview binding revision is exhausted.',
+            );
+          }
+          const invalidated =
+            await this.#config.authoringStore.compareAndSetPreviewOwner(
+              this.#config.tenant,
+              {
+                previewId: owner.id,
+                expectedBuildSequence: owner.buildSequence,
+                expectedStatus: owner.status,
+                expectedPendingBuildId: owner.pendingBuildId,
+                nextBuildSequence: owner.buildSequence,
+                status: 'queued',
+                pendingBuildId: null,
+                lastError: null,
+                expectedBindingRevision: owner.bindingRevision,
+                nextBindingRevision,
+                expectedBindingPlanDigestSha256:
+                  owner.bindingPlanDigestSha256,
+                nextBindingPlanDigestSha256: null,
+                nowMs: this.#now(),
+              },
+            );
+          changed ||= invalidated !== null;
+        }
+        if (changed && draft.sourceDigestSha256 !== null) {
+          this.#publishDraftEvent('changed', draft);
+        }
+      })));
+  }
+
+  async cancelPreviewBuild(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    buildId: string;
+    expectedBuildSequence: number;
+  }>): Promise<boolean> {
+    const owner = await this.getPreviewOwner(request);
+    if (
+      owner === null
+      || owner.status !== 'building'
+      || owner.pendingBuildId !== request.buildId
+      || owner.buildSequence !== request.expectedBuildSequence
+    ) return false;
+    const draft = await this.#activeDraft(owner.draftId);
+    if (draft === null || draft.sourceDigestSha256 === null) return false;
+
+    const localFence = this.#previewBuildFencesByOwner.get(owner.id);
+    if (
+      localFence?.buildId === request.buildId
+      && localFence.ownerBuildSequence === request.expectedBuildSequence
+    ) {
+      this.#previewBuilds.cancel(
+        owner.id,
+        localFence.coordinatorBuildSequence,
+      );
+    }
+    const superseded = await this.#clearSupersededPreviewBuild(
+      owner,
+      request.buildId,
+      draft.sourceDigestSha256,
+    );
+    if (superseded === null) return false;
+    this.#publishPreviewProgress({
+      owner: superseded,
+      draftRevision: draft.sourceDigestSha256,
+      buildId: request.buildId,
+      phase: 'superseded',
+    });
+    return true;
+  }
+
+  async acquirePreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<TWidgetPreviewMountLeaseDescriptor | null> {
+    if (this.#closing) return null;
+    return this.#config.authoringStore.acquirePreviewMountLease(this.#config.tenant, {
+      ...request,
+      nowMs: this.#now(),
+      ttlMs: WIDGET_PREVIEW_MOUNT_LEASE_TTL_MS,
+    });
+  }
+
+  async renewPreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<TWidgetPreviewMountLeaseDescriptor | null> {
+    if (this.#closing) return null;
+    return this.#config.authoringStore.renewPreviewMountLease(this.#config.tenant, {
+      ...request,
+      nowMs: this.#now(),
+      ttlMs: WIDGET_PREVIEW_MOUNT_LEASE_TTL_MS,
+    });
+  }
+
+  releasePreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<boolean> {
+    return this.#config.authoringStore.releasePreviewMountLease(this.#config.tenant, {
+      ...request,
+      nowMs: this.#now(),
+    });
+  }
+
+  async reportPreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    draftId: string;
+    originChatId: string;
+    diagnostic: TWidgetDiagnostic;
+  }>): Promise<Readonly<{
+    deduplicated: boolean;
+    diagnostic: TWidgetDiagnostic;
+    owner: TWidgetPreviewOwnerDescriptor;
+  }>> {
+    const diagnostic = ZWidgetDiagnostic.parse(request.diagnostic);
+    const owner = await this.getPreviewOwner(request);
+    if (
+      owner === null
+      || owner.status === 'closed'
+      || owner.draftId !== request.draftId
+      || owner.originChatId !== request.originChatId
+      || owner.activeRevisionId === null
+      || diagnostic.previewRevisionId !== owner.activeRevisionId
+      || diagnostic.trust !== 'untrusted'
+      || !['host', 'guest', 'capability', 'channel', 'budget', 'lifecycle']
+        .includes(diagnostic.origin)
+    ) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_SCOPE_INVALID',
+        'Preview diagnostic does not match the active frame-owned revision.',
+      );
+    }
+    this.#admitPreviewDiagnostic(owner.id);
+    const retained = await this.#config.widgets.loadPreviewRevision(
+      this.#config.tenant,
+      {
+        previewId: owner.id,
+        revisionId: owner.activeRevisionId,
+      },
+    );
+    if (
+      retained === null
+      || retained.draftId !== owner.draftId
+      || retained.draftRevisionSha256 !== diagnostic.draftRevision
+      || retained.previewRevisionId !== diagnostic.previewRevisionId
+      || diagnostic.buildId !== retained.previewRevisionId
+      || retained.buildSequence !== diagnostic.buildSequence
+    ) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_STALE',
+        'Preview diagnostic refers to an obsolete revision.',
+      );
+    }
+    const previousRecords = owner.runtimeDiagnostics;
+    const previousIndex = previousRecords.findIndex((record) => (
+      record.diagnostic.fingerprint === diagnostic.fingerprint
+      && record.diagnostic.draftRevision === diagnostic.draftRevision
+      && record.diagnostic.previewRevisionId === diagnostic.previewRevisionId
+    ));
+    const deduplicated = previousIndex >= 0;
+    const storedDiagnostic = deduplicated
+      ? {
+          ...diagnostic,
+          occurrenceCount: Math.min(
+            1_000_000,
+            previousRecords[previousIndex]!.diagnostic.occurrenceCount + 1,
+          ),
+        }
+      : diagnostic;
+    const reportedAtMs = this.#now();
+    const storedRecord: TWidgetPreviewRuntimeDiagnosticRecord = Object.freeze({
+      diagnostic: Object.freeze(storedDiagnostic),
+      status: 'awaiting-retest',
+      reportedAtMs,
+    });
+    const unboundedRecords = deduplicated
+      ? [
+          ...previousRecords.filter((_value, index) => index !== previousIndex),
+          storedRecord,
+        ]
+      : [...previousRecords, storedRecord];
+    const nextRecords = this.#boundedPreviewRuntimeDiagnostics(unboundedRecords);
+    const diagnosticOwnsCurrentBuildFence = (
+      owner.buildSequence === retained.buildSequence
+      && (owner.status === 'ready' || owner.status === 'failed')
+    );
+    const updated = await this.#config.authoringStore.compareAndSetPreviewOwner(
+      this.#config.tenant,
+      {
+        previewId: owner.id,
+        expectedBuildSequence: owner.buildSequence,
+        expectedStatus: owner.status,
+        expectedPendingBuildId: owner.pendingBuildId,
+        nextBuildSequence: owner.buildSequence,
+        status: diagnosticOwnsCurrentBuildFence ? 'failed' : owner.status,
+        activeRevisionId: owner.activeRevisionId,
+        pendingBuildId: diagnosticOwnsCurrentBuildFence
+          ? null
+          : owner.pendingBuildId,
+        runtimeDiagnostics: nextRecords,
+        nowMs: reportedAtMs,
+      },
+    );
+    if (updated === null) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_CONFLICT',
+        'Preview changed before its diagnostic could be recorded.',
+      );
+    }
+    return Object.freeze({
+      deduplicated,
+      diagnostic: Object.freeze(storedDiagnostic),
+      owner: updated,
+    });
+  }
+
+  async getPreviewDiagnostics(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<readonly TWidgetPreviewRuntimeDiagnosticRecord[]> {
+    const owner = await this.getPreviewOwner(request);
+    if (owner === null || owner.status === 'closed') {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_SCOPE_INVALID',
+        'Preview diagnostics do not match an open frame owner.',
+      );
+    }
+    return owner.runtimeDiagnostics;
+  }
+
+  resolvePreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    previewRevisionId: string;
+    fingerprint: string;
+  }>): Promise<TWidgetPreviewOwnerDescriptor> {
+    return this.#clearPreviewRuntimeDiagnostic(request, false);
+  }
+
+  retestPreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    previewRevisionId: string;
+    fingerprint: string;
+    operation: string;
+  }>): Promise<TWidgetPreviewOwnerDescriptor> {
+    return this.#clearPreviewRuntimeDiagnostic(request, true);
   }
 
   /** Reconstructs an editable draft from one exact durable publication source. */
@@ -243,6 +686,7 @@ export class WidgetDraftController {
               definitionId: request.definitionId,
               publishedRevisionId: request.publishedRevisionId,
               sourceDigestSha256: request.snapshot.digestSha256,
+              committedMutationId: this.#config.createId(),
             },
             nowMs: this.#now(),
           })
@@ -280,7 +724,7 @@ export class WidgetDraftController {
       }
       await this.#mountDurableDraft(seeded);
       this.#validationByDraft.delete(seeded.id);
-      this.#publishDraftEvent('created', seeded.id, request.snapshot.digestSha256);
+      this.#publishDraftEvent('created', seeded);
       return this.#summary(seeded, materialized.draft);
     });
   }
@@ -342,8 +786,135 @@ export class WidgetDraftController {
       : { status: 'not-ready', revision: currentRevision, message: null };
   }
 
-  async buildPreview(draftId: string): Promise<TWidgetPreviewResult> {
+  async buildPreview(
+    draftId: string,
+    ownerRef?: Readonly<{
+      previewId: string;
+      canvasId: string;
+      frameNodeId: string;
+    }>,
+  ): Promise<TWidgetPreviewResult> {
+    if (this.#closing) {
+      return this.#previewFailure(draftId, 'build-failed', 'Preview service is closing.');
+    }
+    const draft = await this.#activeDraft(draftId);
+    if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.');
+    const workspace = await this.#config.workspace.getDraft(draft.name);
+    if (!workspace) return this.#previewFailure(draft.id, 'not-found', 'Widget draft source was not found.');
+    const fencedDraft = await this.#withCapturedWorkspace(workspace, (captured) =>
+      this.#compareAndSetDraft(draft, captured.snapshot.digestSha256, {
+        status: 'editing',
+      }));
+    if (
+      fencedDraft === null
+      || fencedDraft.sourceDigestSha256 === null
+      || fencedDraft.committedMutationId === null
+    ) {
+      return this.#previewFailure(
+        draft.id,
+        'build-failed',
+        'Widget draft source could not be committed before Preview opened.',
+      );
+    }
+    const owner = ownerRef === undefined
+      ? null
+      : await this.getPreviewOwner(ownerRef);
+    if (
+      ownerRef !== undefined
+      && (owner === null || owner.status === 'closed' || owner.draftId !== fencedDraft.id)
+    ) {
+      return this.#previewFailure(
+        fencedDraft.id,
+        'build-failed',
+        'Preview frame ownership could not be verified.',
+      );
+    }
+    // This draft/owner key only deduplicates debounce scheduling. The widget
+    // construction cache owns the authoritative exact source/toolchain key.
+    const buildKey = createHash('sha256').update(JSON.stringify({
+      draftId: fencedDraft.id,
+      sourceDigestSha256: fencedDraft.sourceDigestSha256,
+      committedMutationId: fencedDraft.committedMutationId,
+      builderIdentity: this.#config.builderIdentity,
+      capsuleBuildIdentity: this.#config.capsuleBuildIdentity,
+      buildPolicyId: this.#config.buildPolicyId,
+      bindingRevision: owner?.bindingRevision ?? null,
+      bindingPlanDigestSha256: owner?.bindingPlanDigestSha256 ?? null,
+    })).digest('hex');
+    const coordinatorKey = owner?.id ?? fencedDraft.id;
+    this.#rememberPreviewBuildKey(fencedDraft.id, coordinatorKey);
+    const outcome = await this.#previewBuilds.request({
+      draftId: coordinatorKey,
+      buildKey,
+      sourceDigestSha256: fencedDraft.sourceDigestSha256,
+      committedMutationId: fencedDraft.committedMutationId,
+      buildSequence: fencedDraft.buildSequence,
+      build: async ({ buildSequence, signal, reportProgress }) => this.#previewBuildAdmission.run({
+        tenantKey: this.#previewBuildTenantKey,
+        draftId: fencedDraft.id,
+        signal,
+      }, async () => {
+        if (signal.aborted) throw controllerError(
+          'WIDGET_PREVIEW_BUILD_SUPERSEDED',
+          'Preview build was superseded.',
+        );
+        const result = await this.#buildPreviewNow(draftId, ownerRef, {
+          coordinatorBuildSequence: buildSequence,
+          sourceDigestSha256: fencedDraft.sourceDigestSha256!,
+          committedMutationId: fencedDraft.committedMutationId!,
+          signal,
+          reportProgress,
+        });
+        if (!result.ready) {
+          throw Object.assign(
+            controllerError('WIDGET_PREVIEW_BUILD_FAILED', result.message),
+            { previewFailure: result },
+          );
+        }
+        return result;
+      }),
+    });
+    if (outcome.status === 'ready') return outcome.result;
+    if (outcome.status === 'failed') {
+      const error = outcome.error;
+      if (
+        error !== null
+        && typeof error === 'object'
+        && 'previewFailure' in error
+      ) {
+        return error.previewFailure as Exclude<TWidgetPreviewResult, { ready: true }>;
+      }
+      return this.#previewFailure(draftId, 'build-failed', errorMessage(error));
+    }
+    return this.#previewFailure(
+      draftId,
+      'build-failed',
+      'Preview build was superseded by a newer draft revision.',
+    );
+  }
+
+  async #buildPreviewNow(
+    draftId: string,
+    ownerRef?: Readonly<{
+      previewId: string;
+      canvasId: string;
+      frameNodeId: string;
+    }>,
+    execution?: Readonly<{
+      coordinatorBuildSequence: number;
+      sourceDigestSha256: string;
+      committedMutationId: string;
+      signal: AbortSignal;
+      reportProgress(phase: 'installing' | 'building' | 'validating'): void;
+    }>,
+  ): Promise<TWidgetPreviewResult> {
     return this.#queue(`draft:${draftId}`, async () => {
+      if (execution?.signal.aborted) {
+        throw controllerError(
+          'WIDGET_BUILD_SUPERSEDED',
+          'Preview build was superseded.',
+        );
+      }
       if (this.#closing) {
         return this.#previewFailure(draftId, 'build-failed', 'Preview service is closing.');
       }
@@ -355,12 +926,208 @@ export class WidgetDraftController {
       return this.#withCapturedWorkspace(workspace, async (captured) => {
         const currentRevision = captured.snapshot.digestSha256;
         const synced = await this.#compareAndSetDraft(draft, currentRevision, { status: 'editing' });
-        if (!synced) {
+        if (
+          !synced
+          || (
+            execution !== undefined
+            && (
+              currentRevision !== execution.sourceDigestSha256
+              || synced.sourceDigestSha256 !== execution.sourceDigestSha256
+              || synced.committedMutationId !== execution.committedMutationId
+            )
+          )
+        ) {
           return this.#previewFailure(draft.id, 'build-failed', 'The widget draft changed before Preview opened.');
         }
 
-        const validation = await this.#validateCaptured(synced, captured);
+        let previewOwner: TWidgetPreviewOwnerDescriptor | null = null;
+        let previewRevisionId: string | null = null;
+        const markOwnerFailed = async (
+          message: string,
+          errors: readonly unknown[],
+          code = 'WIDGET_BUILD_FAILED',
+        ): Promise<void> => {
+          if (previewOwner === null) return;
+          const timestampMs = this.#now();
+          const failedBuildId = previewRevisionId ?? previewOwner.pendingBuildId;
+          if (failedBuildId === null) return;
+          const structuredDiagnostics = (errors.length === 0 ? [message] : errors)
+            .slice(0, 20)
+            .map((error) => fnNormalizeWidgetBuildError({
+              error: typeof error === 'string'
+                ? Object.assign(new Error(error), { code })
+                : error,
+              draftRevision: currentRevision,
+              previewRevisionId: null,
+              buildId: failedBuildId,
+              buildSequence: previewOwner!.buildSequence,
+              timestampMs,
+              digestSha256: (value) => (
+                createHash('sha256').update(value).digest('hex')
+              ),
+            }));
+          const failed = await this.#config.authoringStore.compareAndSetPreviewOwner(
+            this.#config.tenant,
+            {
+              previewId: previewOwner.id,
+              expectedBuildSequence: previewOwner.buildSequence,
+              expectedStatus: 'building',
+              expectedPendingBuildId: failedBuildId,
+              nextBuildSequence: previewOwner.buildSequence,
+              status: 'failed',
+              pendingBuildId: null,
+              lastError: {
+                message: message.slice(0, 2_000),
+                diagnostics: structuredDiagnostics,
+                draftRevision: currentRevision,
+                previewRevisionId: null,
+                buildId: previewRevisionId,
+              },
+              nowMs: timestampMs,
+            },
+          );
+          if (failed !== null) {
+            previewOwner = failed;
+            this.#publishPreviewProgress({
+              owner: failed,
+              draftRevision: currentRevision,
+              buildId: failedBuildId,
+              phase: 'failed',
+            });
+          }
+        };
+        if (ownerRef !== undefined) {
+          const currentOwner = await this.getPreviewOwner(ownerRef);
+          if (
+            currentOwner === null
+            || currentOwner.status === 'closed'
+            || currentOwner.draftId !== draft.id
+          ) {
+            return this.#previewFailure(
+              draft.id,
+              'build-failed',
+              'Preview frame ownership changed before the build started.',
+              { revision: currentRevision },
+            );
+          }
+          let preflightBindingPlanDigestSha256: string | null = null;
+          try {
+            const preflightManifest = await this.#readManifest(captured.rootPath);
+            if (
+              preflightManifest.ok
+              && preflightManifest.manifest.name === draft.name
+            ) {
+              const preflightBindings =
+                await this.#config.resolveResourceBindings(this.#config.tenant, {
+                  draft: synced,
+                  manifest: preflightManifest.manifest,
+                });
+              preflightBindingPlanDigestSha256 =
+                fnWidgetPreviewBindingPlanDigest({
+                  bindings: preflightBindings,
+                  digestSha256: (value) =>
+                    createHash('sha256').update(value).digest('hex'),
+                });
+            }
+          } catch {
+            // The normal validation path below records the exact failure. A
+            // null binding digest still invalidates any retained ready state.
+          }
+          if (currentOwner.activeRevisionId !== null) {
+            const retained = await this.#config.widgets.loadPreview(
+              this.#config.tenant,
+              { previewId: currentOwner.id },
+            );
+            if (
+              retained !== null
+              && retained.previewRevisionId === currentOwner.activeRevisionId
+              && retained.draftRevisionSha256 === currentRevision
+              && retained.committedMutationId === synced.committedMutationId
+              && retained.bindingRevision === currentOwner.bindingRevision
+              && retained.bindingPlanDigestSha256
+                === preflightBindingPlanDigestSha256
+              && currentOwner.bindingPlanDigestSha256
+                === preflightBindingPlanDigestSha256
+              && currentOwner.sourceDigestSha256 === currentRevision
+              && currentOwner.committedMutationId === synced.committedMutationId
+            ) {
+              return this.#previewReady(retained);
+            }
+          }
+          const nextSequence = synced.buildSequence;
+          const bindingChanged = currentOwner.bindingPlanDigestSha256
+            !== preflightBindingPlanDigestSha256;
+          const nextBindingRevision = currentOwner.bindingRevision
+            + (bindingChanged ? 1 : 0);
+          if (
+            !Number.isSafeInteger(nextSequence)
+            || nextSequence < currentOwner.buildSequence
+            || !Number.isSafeInteger(nextBindingRevision)
+          ) {
+            return this.#previewFailure(
+              draft.id,
+              'build-failed',
+              'Preview build sequence is exhausted.',
+              { revision: currentRevision },
+            );
+          }
+          previewRevisionId = this.#config.createId();
+          previewOwner = await this.#config.authoringStore.compareAndSetPreviewOwner(
+            this.#config.tenant,
+            {
+              previewId: currentOwner.id,
+              expectedBuildSequence: currentOwner.buildSequence,
+              expectedStatus: currentOwner.status,
+              expectedPendingBuildId: currentOwner.pendingBuildId,
+              nextBuildSequence: nextSequence,
+              status: 'building',
+              pendingBuildId: previewRevisionId,
+              lastError: null,
+              expectedBindingRevision: currentOwner.bindingRevision,
+              nextBindingRevision,
+              expectedBindingPlanDigestSha256:
+                currentOwner.bindingPlanDigestSha256,
+              nextBindingPlanDigestSha256:
+                preflightBindingPlanDigestSha256,
+              expectedSourceDigestSha256: currentOwner.sourceDigestSha256,
+              nextSourceDigestSha256: currentRevision,
+              expectedCommittedMutationId: currentOwner.committedMutationId,
+              nextCommittedMutationId: synced.committedMutationId!,
+              nowMs: this.#now(),
+            },
+          );
+          if (previewOwner === null) {
+            return this.#previewFailure(
+              draft.id,
+              'build-failed',
+              'Preview changed before the build could be queued.',
+              { revision: currentRevision },
+            );
+          }
+          if (execution !== undefined) {
+            this.#previewBuildFencesByOwner.set(previewOwner.id, {
+              buildId: previewRevisionId,
+              ownerBuildSequence: previewOwner.buildSequence,
+              coordinatorBuildSequence: execution.coordinatorBuildSequence,
+            });
+          }
+          this.#publishPreviewProgress({
+            owner: previewOwner,
+            draftRevision: currentRevision,
+            buildId: previewRevisionId,
+            phase: 'queued',
+          });
+        }
+
+        const validation = await this.#validateCaptured(synced, captured, {
+          skipTrustedBuild: true,
+        });
         if (!validation.ok) {
+          await markOwnerFailed(
+            'The widget draft must pass validation before it can be previewed.',
+            validation.errors,
+            'WIDGET_SOURCE_VALIDATION_FAILED',
+          );
           return this.#previewFailure(draft.id, 'validation-failed', 'The widget draft must pass validation before it can be previewed.', {
             revision: currentRevision,
             diagnostics: validation.errors,
@@ -368,6 +1135,11 @@ export class WidgetDraftController {
         }
         const manifest = await this.#readManifest(captured.rootPath);
         if (!manifest.ok) {
+          await markOwnerFailed(
+            manifest.message,
+            [manifest.message],
+            'WIDGET_MANIFEST_INVALID',
+          );
           return this.#previewFailure(draft.id, 'manifest-invalid', manifest.message, {
             revision: currentRevision,
             diagnostics: [manifest.message],
@@ -375,10 +1147,78 @@ export class WidgetDraftController {
         }
         if (manifest.manifest.name !== draft.name) {
           const message = `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`;
+          await markOwnerFailed(
+            message,
+            [message],
+            'WIDGET_MANIFEST_IDENTITY_INVALID',
+          );
           return this.#previewFailure(draft.id, 'manifest-invalid', message, {
             revision: currentRevision,
             diagnostics: [message],
           });
+        }
+        let bindings;
+        try {
+          bindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
+            draft: synced,
+            manifest: manifest.manifest,
+          });
+        } catch (error) {
+          const message = errorMessage(error);
+          await markOwnerFailed(message, [error]);
+          return this.#previewFailure(draft.id, 'build-failed', message, {
+            revision: currentRevision,
+            diagnostics: [message],
+          });
+        }
+        const bindingPlanDigestSha256 = fnWidgetPreviewBindingPlanDigest({
+          bindings,
+          digestSha256: (value) =>
+            createHash('sha256').update(value).digest('hex'),
+        });
+        if (
+          previewOwner !== null
+          && previewOwner.bindingPlanDigestSha256 !== bindingPlanDigestSha256
+        ) {
+          const nextBindingRevision = previewOwner.bindingRevision + 1;
+          if (!Number.isSafeInteger(nextBindingRevision)) {
+            await markOwnerFailed(
+              'Preview binding revision is exhausted.',
+              ['Preview binding revision is exhausted.'],
+            );
+            return this.#previewFailure(
+              draft.id,
+              'build-failed',
+              'Preview binding revision is exhausted.',
+              { revision: currentRevision },
+            );
+          }
+          const rebound = await this.#config.authoringStore.compareAndSetPreviewOwner(
+            this.#config.tenant,
+            {
+              previewId: previewOwner.id,
+              expectedBuildSequence: previewOwner.buildSequence,
+              expectedStatus: 'building',
+              expectedPendingBuildId: previewRevisionId,
+              nextBuildSequence: previewOwner.buildSequence,
+              status: 'building',
+              expectedBindingRevision: previewOwner.bindingRevision,
+              nextBindingRevision,
+              expectedBindingPlanDigestSha256:
+                previewOwner.bindingPlanDigestSha256,
+              nextBindingPlanDigestSha256: bindingPlanDigestSha256,
+              nowMs: this.#now(),
+            },
+          );
+          if (rebound === null) {
+            return this.#previewFailure(
+              draft.id,
+              'build-failed',
+              'Preview resource selection changed before the build could start.',
+              { revision: currentRevision },
+            );
+          }
+          previewOwner = rebound;
         }
 
         try {
@@ -411,22 +1251,89 @@ export class WidgetDraftController {
                   ),
                 };
               }
+              if (commitDraft.committedMutationId !== synced.committedMutationId) {
+                return {
+                  status: 'failed' as const,
+                  result: this.#previewFailure(
+                    draft.id,
+                    'build-failed',
+                    'The widget draft mutation fence changed before Preview opened.',
+                    { revision: commitDraft.sourceDigestSha256 ?? currentRevision },
+                  ),
+                };
+              }
 
               const result = await this.#config.widgets.buildPreview(this.#config.tenant, {
                 draftId: draft.id,
                 definitionId: draft.definitionId,
                 draftRevisionSha256: currentRevision,
+                committedMutationId: synced.committedMutationId!,
                 snapshot: captured.snapshot,
                 manifest: manifest.manifest,
                 builderIdentity: this.#config.builderIdentity,
                 capsuleBuildIdentity: this.#config.capsuleBuildIdentity,
                 buildPolicyId: this.#config.buildPolicyId,
+                bindings,
+                ...(execution === undefined
+                  ? {}
+                  : {
+                      signal: execution.signal,
+                      reportProgress: (
+                        phase: 'installing' | 'building' | 'validating',
+                      ) => {
+                        execution.reportProgress(phase);
+                        if (previewOwner !== null && previewRevisionId !== null) {
+                          this.#publishPreviewProgress({
+                            owner: previewOwner,
+                            draftRevision: currentRevision,
+                            buildId: previewRevisionId,
+                            phase,
+                          });
+                        }
+                      },
+                    }),
+                ...(previewOwner === null || previewRevisionId === null
+                  ? {}
+                  : {
+                      previewId: previewOwner.id,
+                      expectedActiveRevisionId: previewOwner.activeRevisionId,
+                      previewRevisionId,
+                      buildSequence: previewOwner.buildSequence,
+                      bindingRevision: previewOwner.bindingRevision,
+                      nowMs: this.#now(),
+                    }),
               });
               return { status: 'committed' as const, result };
             },
           );
-          if (fenced.status === 'failed') return fenced.result;
+          if (fenced.status === 'failed') {
+            await markOwnerFailed(
+              fenced.result.message,
+              fenced.result.diagnostics,
+            );
+            return fenced.result;
+          }
           const ready = this.#previewReady(fenced.result);
+          if (
+            ready.ready
+            && previewOwner !== null
+            && ready.previewId !== null
+            && ready.previewRevisionId !== null
+            && ready.buildSequence !== null
+          ) {
+            this.#publishPreviewProgress({
+              owner: {
+                ...previewOwner,
+                status: 'ready',
+                activeRevisionId: ready.previewRevisionId,
+                pendingBuildId: null,
+                buildSequence: ready.buildSequence,
+              },
+              draftRevision: currentRevision,
+              buildId: ready.previewRevisionId,
+              phase: 'ready',
+            });
+          }
 
           // Preview bytes are complete; event delivery remains best-effort.
           try {
@@ -435,11 +1342,38 @@ export class WidgetDraftController {
               type: 'catalog-changed',
               draftId: draft.id,
               revision: currentRevision,
+              sourceDigestSha256: currentRevision,
+              committedMutationId: synced.committedMutationId!,
+              buildSequence: synced.buildSequence,
             });
           } catch {}
           return ready;
         } catch (error) {
           const message = errorMessage(error);
+          if (
+            errorCode(error) === 'WIDGET_BUILD_SUPERSEDED'
+            && previewOwner !== null
+            && previewRevisionId !== null
+          ) {
+            const superseded = await this.#clearSupersededPreviewBuild(
+              previewOwner,
+              previewRevisionId,
+              currentRevision,
+            );
+            if (superseded !== null) {
+              this.#publishPreviewProgress({
+                owner: superseded,
+                draftRevision: currentRevision,
+                buildId: previewRevisionId,
+                phase: 'superseded',
+              });
+            }
+            return this.#previewFailure(draft.id, 'build-failed', message, {
+              revision: currentRevision,
+              diagnostics: [message],
+            });
+          }
+          await markOwnerFailed(message, [error]);
           const code = errorCode(error);
           const failureCurrentRevision = code === 'WIDGET_DRAFT_REVISION_CHANGED'
             ? await this.#currentWorkspaceSourceRevision(
@@ -456,7 +1390,11 @@ export class WidgetDraftController {
     });
   }
 
-  async publish(draftId: string, expectedRevision: string): Promise<TWidgetPublishResult> {
+  async publish(
+    draftId: string,
+    expectedRevision: string,
+    preview: TWidgetPreviewPublishSelection,
+  ): Promise<TWidgetPublishResult> {
     return this.#queue(`draft:${draftId}`, async () => {
       const draft = await this.#activeDraft(draftId);
       if (!draft) return this.#publishFailure(draftId, 'not-found', 'Widget draft was not found.');
@@ -474,7 +1412,9 @@ export class WidgetDraftController {
             currentRevision,
           );
         }
-        const validation = await this.#validateCaptured(synced, captured);
+        const validation = await this.#validateCaptured(synced, captured, {
+          skipTrustedBuild: true,
+        });
         if (!validation.ok) {
           return this.#publishFailure(
             draft.id,
@@ -492,15 +1432,34 @@ export class WidgetDraftController {
             : manifest.message;
           return this.#publishFailure(draft.id, 'validation-failed', message, currentRevision, [message]);
         }
-        let bindings;
+        let currentBindings;
         try {
-          bindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
+          currentBindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
             draft: synced,
             manifest: manifest.manifest,
           });
         } catch (error) {
           const message = errorMessage(error);
           return this.#publishFailure(draft.id, 'resource-binding-invalid', message, currentRevision, [message]);
+        }
+        const currentBindingPlanDigestSha256 = fnWidgetPreviewBindingPlanDigest({
+          bindings: currentBindings,
+          digestSha256: (value) =>
+            createHash('sha256').update(value).digest('hex'),
+        });
+        if (
+          currentBindingPlanDigestSha256
+          !== preview.expectedBindingPlanDigestSha256
+        ) {
+          const message =
+            'The selected resources changed after this Preview was reviewed. Rebuild and review the Preview again.';
+          return this.#publishFailure(
+            draft.id,
+            'resource-binding-invalid',
+            message,
+            currentRevision,
+            [message],
+          );
         }
 
         let publishedRevisionId: string;
@@ -533,39 +1492,30 @@ export class WidgetDraftController {
                 };
               }
 
-              const result = await this.#config.widgets.publish(this.#config.tenant, {
+              const result = await this.#config.widgets.publishPreview(this.#config.tenant, {
+                idempotencyKey: preview.idempotencyKey,
+                previewId: preview.previewId,
+                previewRevisionId: preview.previewRevisionId,
+                canvasId: preview.canvasId,
+                frameNodeId: preview.frameNodeId,
+                expectedDraftRevisionSha256: currentRevision,
+                expectedBindingRevision: preview.expectedBindingRevision,
+                expectedBindingPlanDigestSha256:
+                  preview.expectedBindingPlanDigestSha256,
                 definitionId: draft.definitionId,
                 expectedActiveRevisionId: commitDraft.publishedRevisionId,
                 revisionId: this.#config.createId(),
-                snapshot: captured.snapshot,
-                manifest: manifest.manifest,
-                bindings,
-                builderIdentity: this.#config.builderIdentity,
-                capsuleBuildIdentity: this.#config.capsuleBuildIdentity,
-                buildPolicyId: this.#config.buildPolicyId,
                 nowMs: this.#now(),
               });
               if (result.status === 'conflict') {
-                const idempotentRevision = await this.#idempotentPublishedRevision(
-                  draft,
-                  currentRevision,
-                  result.currentActiveRevisionId,
-                );
-                if (!idempotentRevision) {
-                  return {
-                    status: 'failed' as const,
-                    result: this.#publishFailure(
-                      draft.id,
-                      'publication-conflict',
-                      'Published widget changed before this exact draft revision could be committed.',
-                      currentRevision,
-                    ),
-                  };
-                }
                 return {
-                  status: 'committed' as const,
-                  publishedRevisionId: idempotentRevision.id,
-                  uiRuntime: idempotentRevision.uiRuntime,
+                  status: 'failed' as const,
+                  result: this.#publishFailure(
+                    draft.id,
+                    'publication-conflict',
+                    'Published widget changed before this exact reviewed Preview could be committed.',
+                    currentRevision,
+                  ),
                 };
               }
               return {
@@ -589,6 +1539,27 @@ export class WidgetDraftController {
                 draft.name,
                 errorCurrentRevision(error) ?? currentRevision,
               ),
+            );
+          }
+          if (errorCode(error) === 'WIDGET_PREVIEW_PROMOTION_STALE') {
+            return this.#publishFailure(
+              draft.id,
+              'stale-revision',
+              message,
+              currentRevision,
+              [message],
+            );
+          }
+          if (
+            errorCode(error) === 'WIDGET_PUBLICATION_IDEMPOTENCY_CONFLICT'
+            || errorCode(error) === 'WIDGET_PREVIEW_ALREADY_PUBLISHED'
+          ) {
+            return this.#publishFailure(
+              draft.id,
+              'publication-conflict',
+              message,
+              currentRevision,
+              [message],
             );
           }
           return this.#publishFailure(
@@ -630,6 +1601,7 @@ export class WidgetDraftController {
   async forget(name: string): Promise<void> {
     const initial = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
     if (!initial) return;
+    this.#cancelPreviewBuildsForDraft(initial.id);
     await this.#queue(this.#draftOperationKey(initial.id), async () => {
       const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id);
       if (!draft || draft.status === 'discarded' || draft.name !== name) return;
@@ -641,7 +1613,7 @@ export class WidgetDraftController {
       if (result.status !== 'updated') {
         throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before it could be discarded.');
       }
-      this.#validationByDraft.delete(draft.id);
+      await this.#cleanupDiscardedDraft(draft.id);
     });
   }
 
@@ -653,6 +1625,7 @@ export class WidgetDraftController {
     ) => Promise<T>,
   ): Promise<T> {
     const initial = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    if (initial) this.#cancelPreviewBuildsForDraft(initial.id);
     return this.#queue(initial ? this.#draftOperationKey(initial.id) : `name:${name}`, async () => {
       const current = initial
         ? await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id)
@@ -675,7 +1648,7 @@ export class WidgetDraftController {
         if (discardResult.status !== 'updated') {
           throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before deletion was recorded.');
         }
-        this.#validationByDraft.delete(draft.id);
+        await this.#cleanupDiscardedDraft(draft.id);
         discarded = true;
       };
       return operation(cleanup, discardBeforeRemoval);
@@ -737,12 +1710,17 @@ export class WidgetDraftController {
               nextSourceRelativePath: this.#sourceRelativePath(afterCapture),
               expectedSourceDigestSha256: draft.sourceDigestSha256,
               nextSourceDigestSha256: snapshot.digestSha256,
+              expectedCommittedMutationId: draft.committedMutationId,
+              nextCommittedMutationId: this.#config.createId(),
+              expectedBuildSequence: draft.buildSequence,
+              nextBuildSequence: draft.buildSequence + 1,
               nowMs: this.#now(),
             });
             if (renamed.status !== 'updated') {
               throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before rename was recorded.');
             }
             this.#validationByDraft.delete(draft.id);
+            this.#publishDraftEvent('changed', renamed.draft);
           } finally {
             await copied.dispose().catch(() => undefined);
           }
@@ -789,6 +1767,8 @@ export class WidgetDraftController {
         ? 'published'
         : draft.publishedRevisionId ? 'modified' : 'new',
       revision,
+      committedMutationId: draft.committedMutationId,
+      buildSequence: draft.buildSequence,
       publishedRevisionId: draft.publishedRevisionId,
       updatedAt: new Date(draft.updatedAtMs).toISOString(),
       validation,
@@ -800,6 +1780,7 @@ export class WidgetDraftController {
   async #validateCaptured(
     draft: TAgentAuthoringDraftDescriptor,
     captured: TCapturedDraft,
+    options: Readonly<{ skipTrustedBuild?: boolean }> = {},
   ): Promise<TValidationResult> {
     const validation = await txValidateWidgetFiles(
       { readdir, readFile, writeFile, rm, execFile, join, relative },
@@ -812,7 +1793,7 @@ export class WidgetDraftController {
         `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`,
       );
     }
-    if (validation.ok && manifest.ok) {
+    if (validation.ok && manifest.ok && options.skipTrustedBuild !== true) {
       try {
         const trusted = await this.#config.widgets.validateBuild(this.#config.tenant, {
           snapshot: captured.snapshot,
@@ -839,6 +1820,10 @@ export class WidgetDraftController {
       draftId: draft.id,
       expectedSourceDigestSha256: captured.snapshot.digestSha256,
       nextSourceDigestSha256: captured.snapshot.digestSha256,
+      expectedCommittedMutationId: draft.committedMutationId,
+      nextCommittedMutationId: draft.committedMutationId!,
+      expectedBuildSequence: draft.buildSequence,
+      nextBuildSequence: draft.buildSequence,
       nextStatus: validation.ok ? 'ready' : 'error',
       lastError: validation.ok ? null : this.#validationError({ ok: false, errors, warnings }),
       nowMs: this.#now(),
@@ -846,7 +1831,7 @@ export class WidgetDraftController {
     if (transitioned.status !== 'updated') {
       throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed while validation was finishing.');
     }
-    this.#publishDraftEvent('validated', draft.id, captured.snapshot.digestSha256);
+    this.#publishDraftEvent('validated', transitioned.draft);
     return { ok: validation.ok, errors, warnings };
   }
 
@@ -912,8 +1897,14 @@ export class WidgetDraftController {
         ready: true,
         draftId: preview.draftId,
         definitionId: preview.definitionId,
+        previewId: preview.previewId,
+        previewRevisionId: preview.previewRevisionId,
+        buildSequence: preview.buildSequence,
+        bindingRevision: preview.bindingRevision,
+        bindingPlanDigestSha256: preview.bindingPlanDigestSha256,
         name: preview.manifest.name,
         revision: preview.draftRevisionSha256,
+        committedMutationId: preview.committedMutationId,
         manifest: preview.manifest,
         uiArtifact: {
           digestSha256: uiArtifact.digestSha256,
@@ -926,7 +1917,7 @@ export class WidgetDraftController {
           functions: browserDescriptors,
           browserFunctionDescriptorsDigestSha256,
         },
-        diagnostics: [],
+        diagnostics: preview.normalizedDiagnostics.slice(0, 20),
       };
       return ready;
     } catch (error) {
@@ -1002,18 +1993,45 @@ export class WidgetDraftController {
     args: Readonly<{
       status: TAgentAuthoringDraftDescriptor['status'];
       lastError?: Readonly<Record<string, unknown>> | null;
+      committedMutationId?: string;
     }>,
   ): Promise<TAgentAuthoringDraftDescriptor | null> {
     if (draft.status === 'discarded') return null;
+    const commitsMutation = args.committedMutationId !== undefined;
+    if (
+      !commitsMutation
+      && (
+        draft.sourceDigestSha256 !== nextDigest
+        || draft.committedMutationId === null
+      )
+    ) return null;
+    const nextCommittedMutationId = commitsMutation
+      ? args.committedMutationId!
+      : draft.committedMutationId;
+    if (nextCommittedMutationId === null) return null;
+    const nextBuildSequence = commitsMutation
+      ? draft.buildSequence + 1
+      : draft.buildSequence;
+    if (!Number.isSafeInteger(nextBuildSequence)) {
+      throw controllerError(
+        'WIDGET_DRAFT_BUILD_SEQUENCE_EXHAUSTED',
+        'Widget draft build sequence is exhausted.',
+      );
+    }
     if (
       draft.sourceDigestSha256 === nextDigest
       && draft.status === args.status
       && args.lastError === undefined
+      && !commitsMutation
     ) return draft;
     const result = await this.#config.authoringStore.compareAndSetDraft(this.#config.tenant, {
       draftId: draft.id,
       expectedSourceDigestSha256: draft.sourceDigestSha256,
       nextSourceDigestSha256: nextDigest,
+      expectedCommittedMutationId: draft.committedMutationId,
+      nextCommittedMutationId,
+      expectedBuildSequence: draft.buildSequence,
+      nextBuildSequence,
       nextStatus: args.status,
       ...(args.lastError === undefined ? {} : { lastError: args.lastError }),
       nowMs: this.#now(),
@@ -1026,6 +2044,8 @@ export class WidgetDraftController {
       && result.current.id === draft.id
       && result.current.status !== 'discarded'
       && result.current.sourceDigestSha256 === nextDigest
+      && result.current.committedMutationId === nextCommittedMutationId
+      && result.current.buildSequence === nextBuildSequence
     ) return result.current;
     return null;
   }
@@ -1046,11 +2066,25 @@ export class WidgetDraftController {
         );
       }
       if (current.status === 'discarded') return;
+      if (
+        current.sourceDigestSha256 === null
+        || current.committedMutationId === null
+        || current.buildSequence < 1
+      ) {
+        throw controllerError(
+          'AGENT_AUTHORING_INTEGRITY_FAILED',
+          'Published widget draft has no committed source-mutation fence.',
+        );
+      }
       const sourceAdvanced = current.sourceDigestSha256 !== publishedSourceRevision;
       const result = await this.#config.authoringStore.compareAndSetDraft(this.#config.tenant, {
         draftId: original.id,
         expectedSourceDigestSha256: current.sourceDigestSha256,
-        nextSourceDigestSha256: current.sourceDigestSha256 ?? publishedSourceRevision,
+        nextSourceDigestSha256: current.sourceDigestSha256,
+        expectedCommittedMutationId: current.committedMutationId,
+        nextCommittedMutationId: current.committedMutationId,
+        expectedBuildSequence: current.buildSequence,
+        nextBuildSequence: current.buildSequence,
         nextStatus: sourceAdvanced ? current.status : 'published',
         publishedRevisionId,
         ...(sourceAdvanced ? {} : { lastError: null }),
@@ -1065,25 +2099,6 @@ export class WidgetDraftController {
       }
       current = result.current;
     }
-  }
-
-  async #idempotentPublishedRevision(
-    draft: TAgentAuthoringDraftDescriptor,
-    sourceDigestSha256: string,
-    currentActiveRevisionId: string | null,
-  ): Promise<TWidgetRevisionDescriptor | null> {
-    if (!currentActiveRevisionId) return null;
-    const [active, source] = await Promise.all([
-      this.#config.widgets.getActiveRevision(this.#config.tenant, draft.definitionId),
-      this.#config.widgets.getRevisionSource(this.#config.tenant, currentActiveRevisionId),
-    ]);
-    return active?.id === currentActiveRevisionId
-      && active.definitionId === draft.definitionId
-      && source?.revisionId === currentActiveRevisionId
-      && source.definitionId === draft.definitionId
-      && source.sourceDigestSha256 === sourceDigestSha256
-      ? active
-      : null;
   }
 
   async #withCapturedWorkspace<T>(
@@ -1283,15 +2298,253 @@ export class WidgetDraftController {
 
   #publishDraftEvent(
     type: 'created' | 'changed' | 'validated',
-    draftId: string,
-    revision: string,
+    draft: TAgentAuthoringDraftDescriptor,
   ): void {
+    if (
+      draft.sourceDigestSha256 === null
+      || draft.committedMutationId === null
+    ) return;
     try {
       this.#config.eventPublisher.publishAgentEvent({
         kind: 'widget-draft',
         type,
-        draftId,
-        revision,
+        draftId: draft.id,
+        revision: draft.sourceDigestSha256,
+        sourceDigestSha256: draft.sourceDigestSha256,
+        committedMutationId: draft.committedMutationId,
+        buildSequence: draft.buildSequence,
+      });
+    } catch {}
+  }
+
+  #clearSupersededPreviewBuild(
+    owner: TWidgetPreviewOwnerDescriptor,
+    buildId: string,
+    draftRevision: string,
+  ): Promise<TWidgetPreviewOwnerDescriptor | null> {
+    const hasLastGood = owner.activeRevisionId !== null;
+    return this.#config.authoringStore.compareAndSetPreviewOwner(
+      this.#config.tenant,
+      {
+        previewId: owner.id,
+        expectedBuildSequence: owner.buildSequence,
+        expectedStatus: 'building',
+        expectedPendingBuildId: buildId,
+        nextBuildSequence: owner.buildSequence,
+        status: hasLastGood ? 'ready' : 'failed',
+        pendingBuildId: null,
+        lastError: hasLastGood
+          ? null
+          : {
+              code: 'WIDGET_BUILD_SUPERSEDED',
+              message: 'Preview build was superseded.',
+              draftRevision,
+              buildId,
+            },
+        nowMs: this.#now(),
+      },
+    );
+  }
+
+  async #cleanupDiscardedDraft(draftId: string): Promise<void> {
+    const owners = await this.#config.authoringStore.listPreviewOwners(
+      this.#config.tenant,
+      { draftId, includeClosed: true },
+    );
+    this.#clearPreviewBuildsForDraft(
+      draftId,
+      owners.map((owner) => owner.id),
+    );
+    for (const owner of owners) {
+      this.#previewDiagnosticRateByOwner.delete(owner.id);
+    }
+    this.#validationByDraft.delete(draftId);
+    await this.#config.widgets.closePreviewWorkspace(this.#config.tenant, {
+      draftId,
+    });
+  }
+
+  #rememberPreviewBuildKey(draftId: string, coordinatorKey: string): void {
+    const keys = this.#previewBuildKeysByDraft.get(draftId) ?? new Set<string>();
+    keys.add(coordinatorKey);
+    this.#previewBuildKeysByDraft.set(draftId, keys);
+  }
+
+  #forgetPreviewBuildKey(draftId: string, coordinatorKey: string): void {
+    const keys = this.#previewBuildKeysByDraft.get(draftId);
+    if (!keys) return;
+    keys.delete(coordinatorKey);
+    if (keys.size === 0) this.#previewBuildKeysByDraft.delete(draftId);
+  }
+
+  #admitPreviewDiagnostic(previewId: string): void {
+    const nowMs = this.#now();
+    const current = this.#previewDiagnosticRateByOwner.get(previewId);
+    if (
+      current === undefined
+      || nowMs - current.windowStartedAtMs >= WIDGET_PREVIEW_DIAGNOSTIC_RATE_WINDOW_MS
+    ) {
+      this.#previewDiagnosticRateByOwner.set(previewId, {
+        count: 1,
+        windowStartedAtMs: nowMs,
+      });
+      return;
+    }
+    if (current.count >= WIDGET_PREVIEW_DIAGNOSTIC_RATE_MAX_REPORTS) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_RATE_LIMITED',
+        'Preview diagnostic report rate exceeded.',
+      );
+    }
+    current.count += 1;
+  }
+
+  async #clearPreviewRuntimeDiagnostic(
+    request: Readonly<{
+      previewId: string;
+      canvasId: string;
+      frameNodeId: string;
+      previewRevisionId: string;
+      fingerprint: string;
+      operation?: string;
+    }>,
+    retest: boolean,
+  ): Promise<TWidgetPreviewOwnerDescriptor> {
+    const owner = await this.getPreviewOwner(request);
+    if (owner === null || owner.status === 'closed') {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_SCOPE_INVALID',
+        'Preview diagnostic does not match an open frame owner.',
+      );
+    }
+    const index = owner.runtimeDiagnostics.findIndex((record) => (
+      record.diagnostic.previewRevisionId === request.previewRevisionId
+      && record.diagnostic.fingerprint === request.fingerprint
+    ));
+    if (index < 0) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_STALE',
+        'Preview diagnostic is no longer awaiting a retest or resolution.',
+      );
+    }
+    const selected = owner.runtimeDiagnostics[index]!;
+    if (retest) {
+      if (
+        owner.activeRevisionId !== request.previewRevisionId
+        || selected.diagnostic.operation === undefined
+        || selected.diagnostic.operation !== request.operation
+      ) {
+        throw controllerError(
+          selected.diagnostic.operation === undefined
+            ? 'WIDGET_PREVIEW_DIAGNOSTIC_RETEST_UNAVAILABLE'
+            : 'WIDGET_PREVIEW_DIAGNOSTIC_STALE',
+          selected.diagnostic.operation === undefined
+            ? 'This Preview diagnostic has no trustworthy interaction-success class.'
+            : 'Preview interaction success does not match the active diagnostic fence.',
+        );
+      }
+    }
+    const remaining = owner.runtimeDiagnostics.filter(
+      (_record, recordIndex) => recordIndex !== index,
+    );
+    const activeStillFailed = remaining.some(
+      (record) => record.diagnostic.previewRevisionId === owner.activeRevisionId,
+    );
+    const mayReturnReady = (
+      owner.status === 'failed'
+      && owner.lastError === null
+      && owner.activeRevisionId !== null
+      && !activeStillFailed
+    );
+    const updated = await this.#config.authoringStore.compareAndSetPreviewOwner(
+      this.#config.tenant,
+      {
+        previewId: owner.id,
+        expectedBuildSequence: owner.buildSequence,
+        expectedStatus: owner.status,
+        expectedPendingBuildId: owner.pendingBuildId,
+        nextBuildSequence: owner.buildSequence,
+        status: mayReturnReady ? 'ready' : owner.status,
+        activeRevisionId: owner.activeRevisionId,
+        pendingBuildId: owner.pendingBuildId,
+        runtimeDiagnostics: remaining,
+        nowMs: this.#now(),
+      },
+    );
+    if (updated === null) {
+      throw controllerError(
+        'WIDGET_PREVIEW_DIAGNOSTIC_CONFLICT',
+        'Preview changed before its diagnostic could be resolved.',
+      );
+    }
+    return updated;
+  }
+
+  #boundedPreviewRuntimeDiagnostics(
+    diagnostics: readonly TWidgetPreviewRuntimeDiagnosticRecord[],
+  ): readonly TWidgetPreviewRuntimeDiagnosticRecord[] {
+    const retained: TWidgetPreviewRuntimeDiagnosticRecord[] = [];
+    for (
+      let index = diagnostics.length - 1;
+      index >= 0 && retained.length < WIDGET_PREVIEW_DIAGNOSTIC_MAX_COUNT;
+      index -= 1
+    ) {
+      const candidate = [diagnostics[index]!, ...retained];
+      if (
+        Buffer.byteLength(JSON.stringify(candidate), 'utf8')
+        > WIDGET_PREVIEW_DIAGNOSTIC_MAX_BYTES
+      ) continue;
+      retained.unshift(diagnostics[index]!);
+    }
+    return retained;
+  }
+
+  #cancelPreviewBuildsForDraft(draftId: string): void {
+    this.#previewBuilds.cancel(draftId);
+    for (const key of this.#previewBuildKeysByDraft.get(draftId) ?? []) {
+      this.#previewBuilds.cancel(key);
+    }
+  }
+
+  #clearPreviewBuildsForDraft(
+    draftId: string,
+    ownerIds: readonly string[] = [],
+  ): void {
+    const keys = new Set([
+      draftId,
+      ...(this.#previewBuildKeysByDraft.get(draftId) ?? []),
+      ...ownerIds,
+    ]);
+    for (const key of keys) this.#previewBuilds.clear(key);
+    for (const ownerId of ownerIds) {
+      this.#previewBuildFencesByOwner.delete(ownerId);
+    }
+    this.#previewBuildKeysByDraft.delete(draftId);
+  }
+
+  #publishPreviewProgress(args: Readonly<{
+    owner: TWidgetPreviewOwnerDescriptor;
+    draftRevision: string;
+    buildId: string;
+    phase: TPreviewBuildProgressPhase;
+  }>): void {
+    if (
+      args.owner.sourceDigestSha256 === null
+      || args.owner.committedMutationId === null
+      || args.owner.sourceDigestSha256 !== args.draftRevision
+    ) return;
+    try {
+      this.#config.eventPublisher.publishAgentEvent({
+        kind: 'widget-preview',
+        type: 'progress',
+        draftId: args.owner.draftId,
+        revision: args.draftRevision,
+        sourceDigestSha256: args.owner.sourceDigestSha256,
+        committedMutationId: args.owner.committedMutationId,
+        previewId: args.owner.id,
+        buildId: args.buildId,
+        buildSequence: args.owner.buildSequence,
+        phase: args.phase,
       });
     } catch {}
   }

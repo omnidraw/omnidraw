@@ -36,9 +36,28 @@ class WidgetFunctionArtifactReader implements IExactFunctionArtifactReader {
       artifactDigestSha256: string;
       contractDigestSha256: string;
       runtimeAbi: string;
+      invocationId: string;
       subject: Parameters<IExactFunctionArtifactReader['readExactServerArtifact']>[1]['subject'];
     }>,
   ): Promise<Uint8Array> {
+    if (request.subject.kind === 'widget_preview') {
+      const bytes = await this.#widgets.readPreviewServerArtifact(tenant, {
+        previewId: request.subject.widgetInstanceId,
+        revisionId: request.widgetRevisionId,
+        definitionId: request.widgetDefinitionId,
+        artifactId: request.artifactId,
+        artifactDigestSha256: request.artifactDigestSha256,
+        contractDigestSha256: request.contractDigestSha256,
+        runtimeAbi: request.runtimeAbi,
+        invocationId: request.invocationId,
+      });
+      if (bytes === null) {
+        throw Object.assign(new Error('Pinned Preview function artifact is unavailable.'), {
+          code: 'FUNCTION_REVISION_NOT_AVAILABLE',
+        });
+      }
+      return bytes;
+    }
     const revision = await this.#widgets.getRevision(tenant, request.widgetRevisionId);
     const artifact = revision?.serverArtifact ?? null;
     if (
