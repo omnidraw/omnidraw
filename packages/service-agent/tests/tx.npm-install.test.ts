@@ -8,7 +8,10 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { txRestoreNpmPackageLock } from '../src/tools/tx.npm-install';
+import {
+  txRestoreNpmPackageLock,
+  txTryNpmInstall,
+} from '../src/tools/tx.npm-install';
 
 const roots: string[] = [];
 
@@ -44,5 +47,37 @@ describe('npm package-lock rollback', () => {
     });
 
     await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});
+
+describe('txTryNpmInstall', () => {
+  test('passes the host-owned npm user config explicitly', async () => {
+    let invocation: {
+      file: string;
+      args: readonly string[];
+      options: { cwd: string; timeout: number };
+    } | undefined;
+    const result = await txTryNpmInstall({
+      access: async () => undefined,
+      execFile: (file, args, options, callback) => {
+        invocation = { file, args, options };
+        callback(null, 'installed', '');
+      },
+      join: (...paths) => paths.join('/'),
+    }, {
+      cwd: '/draft',
+      userConfigPath: '/host/registry/npmrc',
+    });
+
+    expect(invocation).toEqual({
+      file: 'npm',
+      args: ['install', '--userconfig', '/host/registry/npmrc'],
+      options: { cwd: '/draft', timeout: 120_000 },
+    });
+    expect(result).toEqual({
+      status: 'success',
+      stdout: 'installed',
+      stderr: '',
+    });
   });
 });

@@ -45,6 +45,7 @@ async function installManifestChange(
   const mount = await args.workspace.findMountedWidget(args.chatId, name);
   const result = await txTryNpmInstall({ access, execFile, join }, {
     cwd: mount.targetPath,
+    userConfigPath: args.workspace.npmUserConfigPath,
   });
   if (result.status !== 'success') {
     throw new Error(result.status === 'error'

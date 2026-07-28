@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readdir, readFile } from 'node:fs/promises';
-import { extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 
 const PACKAGE_ROOT = resolve(import.meta.dir, '..');
 const SOURCE_ROOT = join(PACKAGE_ROOT, 'src');
@@ -12,7 +12,7 @@ const EXPECTED_EXPORTS = Object.freeze({
   './capabilities': './src/capabilities/index.ts',
   './testkit': './src/testkit/index.ts',
 });
-const CAPSULE_FILE_DEPENDENCY = 'file:/Users/omarezzat/Workspace/vibecanvas/capsule';
+const CAPSULE_DEPENDENCY = '0.9.4';
 const SUPPORTED_CAPSULE_IMPORTS = new Set([
   '@omnidraw/capsule',
   '@omnidraw/capsule/build',
@@ -62,6 +62,18 @@ async function sourceImports(directory: string): Promise<Array<{
   )))).flat();
 }
 
+async function resolvedPackageRoot(specifier: string): Promise<string> {
+  let directory = dirname(Bun.resolveSync(specifier, PACKAGE_ROOT));
+  while (true) {
+    const manifestPath = join(directory, 'package.json');
+    const manifest = await readFile(manifestPath, 'utf8').catch(() => null);
+    if (manifest !== null) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error(`Could not locate ${specifier} package root.`);
+    directory = parent;
+  }
+}
+
 describe('Capsule adapter package boundary', () => {
   test('exposes only the six environment-specific adapter subpaths', async () => {
     const manifest = JSON.parse(
@@ -76,7 +88,7 @@ describe('Capsule adapter package boundary', () => {
     expect(manifest.exports).toEqual(EXPECTED_EXPORTS);
     expect(manifest.exports['.']).toBeUndefined();
     expect(manifest.dependencies).toEqual({
-      '@omnidraw/capsule': CAPSULE_FILE_DEPENDENCY,
+      '@omnidraw/capsule': CAPSULE_DEPENDENCY,
       '@vibecanvas/tenant-core': 'workspace:*',
       '@vibecanvas/widget-contract': 'workspace:*',
     });
@@ -102,7 +114,7 @@ describe('Capsule adapter package boundary', () => {
   });
 
   test('rejects private Capsule workspace and deep imports by construction', async () => {
-    const capsuleRoot = CAPSULE_FILE_DEPENDENCY.slice('file:'.length);
+    const capsuleRoot = await resolvedPackageRoot('@omnidraw/capsule');
     const capsuleManifest = JSON.parse(
       await readFile(join(capsuleRoot, 'package.json'), 'utf8'),
     ) as {

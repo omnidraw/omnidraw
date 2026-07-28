@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
+    "@omnidraw/capsule": "0.9.4",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",

@@ -5,7 +5,10 @@ import { join, relative } from 'node:path';
 import { Type } from 'typebox';
 import { Check } from 'typebox/value';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
-import { SDK_CAPSULE_DEPENDENCY } from '../workspace/CONSTANTS';
+import {
+  SDK_CAPSULE_DEPENDENCY,
+  SDK_PACKAGE_DEPENDENCY,
+} from '../workspace/CONSTANTS';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
 import { fnBuildWidgetCreateManifest } from './fn.widget-create';
@@ -97,12 +100,15 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, {
               cwd,
               manifest,
-              sdkDependency: `file:${args.workspace.sdkPackagePath}`,
+              sdkDependency: SDK_PACKAGE_DEPENDENCY,
               capsuleDependency: SDK_CAPSULE_DEPENDENCY,
             });
             const installed = await (args.npmInstall
               ? args.npmInstall(cwd)
-              : txTryNpmInstall({ access, execFile, join }, { cwd }));
+              : txTryNpmInstall({ access, execFile, join }, {
+                  cwd,
+                  userConfigPath: args.workspace.npmUserConfigPath,
+                }));
             if (installed.status !== 'success') {
               throw new Error(
                 installed.status === 'error'

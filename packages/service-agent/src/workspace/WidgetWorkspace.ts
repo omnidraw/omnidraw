@@ -24,7 +24,6 @@ import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
 import { fnNormalizeWidgetName } from './fn.names';
 import { fxWidgetCatalog } from './fx.widget-catalog';
 import { txEnsureChatStorage } from './tx.chat-storage';
-import { txMaterializeSdkPackage } from './tx.materialize-sdk-package';
 import type {
   TResolvedMountedPath,
   TAvailableWidget,
@@ -39,6 +38,7 @@ type TWidgetWorkspaceConfig = {
   platform?: NodeJS.Platform;
   createId?: () => string;
   copyDirectory?: typeof cp;
+  npmUserConfigPath?: string;
 };
 
 type TTransientDraftSnapshot = {
@@ -84,7 +84,7 @@ export class WidgetWorkspace {
   readonly chatRoot: string;
   readonly draftRoot: string;
   readonly draftStateRoot: string;
-  readonly sdkPackagePath: string;
+  readonly npmUserConfigPath?: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
   readonly #copyDirectory: typeof cp;
@@ -96,16 +96,13 @@ export class WidgetWorkspace {
     this.chatRoot = join(this.agentRoot, 'chats');
     this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
     this.draftStateRoot = join(this.agentRoot, 'draft-state');
-    this.sdkPackagePath = join(this.agentRoot, 'sdk');
+    this.npmUserConfigPath = config.npmUserConfigPath;
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
     this.#copyDirectory = config.copyDirectory ?? cp;
   }
 
   async init(): Promise<void> {
-    await txMaterializeSdkPackage({ readFile, writeFile, mkdir, lstat, rename, rm, join, dirname, createId: this.#createId }, {
-      targetPath: this.sdkPackagePath,
-    });
     await Promise.all([
       mkdir(this.chatRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),

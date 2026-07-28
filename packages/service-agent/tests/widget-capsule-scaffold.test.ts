@@ -18,8 +18,8 @@ describe('Capsule widget authoring scaffold', () => {
     }, {
       cwd: '/draft',
       manifest,
-      sdkDependency: '^3.0.0',
-      capsuleDependency: 'file:/temporary/capsule',
+      sdkDependency: '0.1.0',
+      capsuleDependency: '0.9.4',
     });
 
     expect(manifest).toEqual({
@@ -51,8 +51,8 @@ describe('Capsule widget authoring scaffold', () => {
     ]);
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
       dependencies: {
-        '@omnidraw/capsule': 'file:/temporary/capsule',
-        '@vibecanvas/sdk': '^3.0.0',
+        '@omnidraw/capsule': '0.9.4',
+        '@vibecanvas/sdk': '0.1.0',
         zod: '4.4.3',
       },
       devDependencies: {
@@ -61,6 +61,7 @@ describe('Capsule widget authoring scaffold', () => {
       },
     });
     expect(files.get('/draft/vite.config.mjs')).toContain('entryFileNames: "main.js"');
+    expect(files.get('/draft/vite.config.mjs')).not.toContain('preserveSymlinks');
     expect(JSON.parse(files.get('/draft/tsconfig.json')!)).toMatchObject({
       compilerOptions: { jsx: 'react-jsx' },
       include: expect.arrayContaining(['ui/**/*.ts', 'ui/**/*.tsx']),

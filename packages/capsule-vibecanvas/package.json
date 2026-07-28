@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
+    "@omnidraw/capsule": "0.9.4",
     "@vibecanvas/tenant-core": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*"
   }

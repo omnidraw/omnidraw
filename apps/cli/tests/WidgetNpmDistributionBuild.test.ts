@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  access,
   mkdir,
   mkdtemp,
   readFile,
@@ -31,7 +30,10 @@ describe('WidgetNpmDistributionBuild', () => {
   test('executes a real guest npm build and ingests its dist through Capsule', async () => {
     const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-npm-capsule-test-'));
     try {
-      const build = createWidgetNpmDistributionBuild({ scratchDirectory });
+      const build = createWidgetNpmDistributionBuild({
+        scratchDirectory,
+        npmUserConfigPath: join(scratchDirectory, 'npmrc'),
+      });
       const input = await build({
         sourceRevision: 'real-npm-fixture',
         entry: 'ui/main.ts',
@@ -91,6 +93,7 @@ describe('WidgetNpmDistributionBuild', () => {
     try {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
+        npmUserConfigPath: '/registry/npmrc',
         runProcess: async (command, args, options) => {
           calls.push(`${command} ${args.join(' ')}`);
           if (command === 'npm' && args[0] === '--version') return '11.0.0';
@@ -132,7 +135,7 @@ describe('WidgetNpmDistributionBuild', () => {
           })),
           sourceFile('package-lock.json', JSON.stringify({
             lockfileVersion: 3,
-            packages: {},
+            packages: { '': {} },
           })),
           sourceFile('ui/main.ts', 'document.body.textContent="source";'),
         ],
@@ -141,7 +144,7 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(calls).toEqual([
         'npm --version',
         'node -p JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
-        'npm ci',
+        'npm ci --userconfig /registry/npmrc',
         'npm run build',
       ]);
       expect(result).toMatchObject({
@@ -167,108 +170,19 @@ describe('WidgetNpmDistributionBuild', () => {
     }
   });
 
-  test('stages local file dependencies, excludes node_modules, and regenerates the lock', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'widget-npm-local-dependency-test-'));
-    const scratchDirectory = join(root, 'scratch');
-    const linkedPackage = join(root, 'linked-sdk');
-    const nestedPackage = join(root, 'nested-package');
-    const calls: string[] = [];
+  test('rejects local package dependencies instead of staging them', async () => {
+    const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-npm-local-dependency-test-'));
+    let calls = 0;
     try {
-      await mkdir(join(linkedPackage, 'node_modules', 'excluded'), { recursive: true });
-      await mkdir(nestedPackage, { recursive: true });
-      await writeFile(join(nestedPackage, 'package.json'), JSON.stringify({
-        name: '@fixture/nested',
-        version: '1.0.0',
-      }));
-      await writeFile(join(nestedPackage, 'index.js'), 'export const nested = true;\n');
-      await writeFile(join(linkedPackage, 'package.json'), JSON.stringify({
-        name: '@fixture/linked-sdk',
-        version: '1.0.0',
-        files: ['index.js'],
-        dependencies: {
-          '@fixture/internal-workspace': 'workspace:*',
-          '@fixture/nested': `file:${nestedPackage}`,
-        },
-      }));
-      await writeFile(join(linkedPackage, 'index.js'), 'export const linked = true;\n');
-      await writeFile(join(linkedPackage, 'not-published.js'), 'excluded\n');
-      await writeFile(join(linkedPackage, 'node_modules', 'excluded', 'index.js'), 'excluded\n');
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
-        runProcess: async (command, args, options) => {
-          calls.push(`${command} ${args.join(' ')}`);
-          if (command === 'npm' && args[0] === '--version') return '11.0.0';
-          if (command === 'node') {
-            return JSON.stringify({
-              nodeVersion: 'v22.14.0',
-              platform: 'linux',
-              architecture: 'x64',
-            });
-          }
-          if (args[0] === 'install') {
-            const packageJson = JSON.parse(
-              await readFile(join(options.cwd, 'package.json'), 'utf8'),
-            ) as { dependencies: Record<string, string> };
-            expect(packageJson.dependencies['@fixture/linked-sdk'])
-              .toBe('file:./.vibecanvas-links/dependency-0');
-            const stagedManifest = JSON.parse(await readFile(
-              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'package.json'),
-              'utf8',
-            )) as { dependencies: Record<string, string> };
-            expect(stagedManifest.dependencies).toEqual({
-              '@fixture/nested': 'file:../dependency-1',
-            });
-            const stagedLock = JSON.parse(await readFile(
-              join(options.cwd, 'package-lock.json'),
-              'utf8',
-            )) as {
-              packages: Record<string, {
-                dependencies?: Record<string, string>;
-                resolved?: string;
-              }>;
-            };
-            expect(stagedLock.packages['']?.dependencies?.['@fixture/linked-sdk'])
-              .toBe('file:./.vibecanvas-links/dependency-0');
-            expect(stagedLock.packages['node_modules/@fixture/linked-sdk'])
-              .toBeUndefined();
-            expect(await readFile(
-              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'index.js'),
-              'utf8',
-            )).toContain('linked');
-            expect(await readFile(
-              join(options.cwd, '.vibecanvas-links', 'dependency-1', 'index.js'),
-              'utf8',
-            )).toContain('nested');
-            await expect(access(
-              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'node_modules'),
-            )).rejects.toThrow();
-            await expect(access(
-              join(options.cwd, '.vibecanvas-links', 'dependency-0', 'not-published.js'),
-            )).rejects.toThrow();
-            await writeFile(join(options.cwd, 'package-lock.json'), JSON.stringify({
-              name: 'local-dependency-fixture',
-              lockfileVersion: 3,
-              packages: {
-                '': {
-                  dependencies: {
-                    '@fixture/linked-sdk': 'file:./.vibecanvas-links/dependency-0',
-                  },
-                },
-                'node_modules/@fixture/linked-sdk': {
-                  resolved: 'file:.vibecanvas-links/dependency-0',
-                  link: true,
-                },
-              },
-            }));
-          }
-          if (args[0] === 'run') {
-            await mkdir(join(options.cwd, 'dist'), { recursive: true });
-            await writeFile(join(options.cwd, 'dist', 'main.js'), 'export default true;\n');
-          }
+        npmUserConfigPath: '/registry/npmrc',
+        runProcess: async () => {
+          calls += 1;
         },
       });
 
-      const result = await build({
+      await expect(build({
         sourceRevision: 'local-dependency-source',
         entry: 'ui/main.ts',
         files: [
@@ -276,7 +190,7 @@ describe('WidgetNpmDistributionBuild', () => {
             name: 'local-dependency-fixture',
             scripts: { build: 'vite build' },
             dependencies: {
-              '@fixture/linked-sdk': `file:${linkedPackage}`,
+              '@fixture/linked-sdk': 'file:/temporary/linked-sdk',
             },
           })),
           sourceFile('package-lock.json', JSON.stringify({
@@ -285,30 +199,22 @@ describe('WidgetNpmDistributionBuild', () => {
             packages: {
               '': {
                 dependencies: {
-                  '@fixture/linked-sdk': `file:${linkedPackage}`,
+                  '@fixture/linked-sdk': 'file:/temporary/linked-sdk',
                 },
               },
               'node_modules/@fixture/linked-sdk': {
-                resolved: '../../../../../../linked-sdk',
+                resolved: 'file:/temporary/linked-sdk',
                 link: true,
               },
             },
           })),
           sourceFile('ui/main.ts', 'export default true;\n'),
         ],
-      });
-
-      expect(calls).toEqual([
-        'npm --version',
-        'node -p JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
-        'npm install --package-lock-only --ignore-scripts',
-        'npm ci',
-        'npm run build',
-      ]);
-      expect(result.dependencyLockDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      })).rejects.toThrow('must use a registry version');
+      expect(calls).toBe(0);
       expect(await readdir(scratchDirectory)).toEqual([]);
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await rm(scratchDirectory, { recursive: true, force: true });
     }
   });
 
@@ -318,6 +224,7 @@ describe('WidgetNpmDistributionBuild', () => {
     try {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
+        npmUserConfigPath: '/registry/npmrc',
         runProcess: async () => {
           calls += 1;
         },
@@ -343,6 +250,7 @@ describe('WidgetNpmDistributionBuild', () => {
     try {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
+        npmUserConfigPath: '/registry/npmrc',
         runProcess: async (_command, args, options) => {
           if (args[0] === '--version') return '11.0.0';
           if (args[0] === '-p') {
@@ -364,7 +272,7 @@ describe('WidgetNpmDistributionBuild', () => {
         entry: 'ui/main.ts',
         files: [
           sourceFile('package.json', '{"scripts":{"build":"node build.mjs"}}'),
-          sourceFile('package-lock.json', '{"lockfileVersion":3,"packages":{}}'),
+          sourceFile('package-lock.json', '{"lockfileVersion":3,"packages":{"":{}}}'),
           sourceFile('ui/main.ts', ''),
         ],
       })).rejects.toThrow('unsupported file');

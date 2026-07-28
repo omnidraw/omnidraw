@@ -1,0 +1,632 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import {
+  closeSync,
+  constants,
+  openSync,
+} from 'node:fs';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { createConnection } from 'node:net';
+import { spawn } from 'node:child_process';
+
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
+const RUNTIME_MANIFEST_PATH = join(
+  REPOSITORY_ROOT,
+  'scripts',
+  'local-registry',
+  'package.json',
+);
+const RUNTIME_LOCK_PATH = join(
+  REPOSITORY_ROOT,
+  'scripts',
+  'local-registry',
+  'package-lock.json',
+);
+const OWNED_SCOPES = Object.freeze(['@omnidraw/', '@vibecanvas/']);
+const VIBECANVAS_PACKAGES = Object.freeze([
+  'packages/tenant-core',
+  'packages/resource-runtime',
+  'packages/widget-contract',
+  'packages/sdk',
+]);
+const START_TIMEOUT_MS = 20_000;
+const STOP_TIMEOUT_MS = 8_000;
+
+function sleep(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}
+
+function settings() {
+  const homeDirectory = homedir();
+  const stateDirectory = resolve(
+    process.env.VIBECANVAS_REGISTRY_STATE_DIR
+      ?? join(homeDirectory, '.local', 'share', 'vibecanvas', 'registry'),
+  );
+  if (dirname(stateDirectory) === stateDirectory || stateDirectory === resolve(homeDirectory)) {
+    throw new Error('VIBECANVAS_REGISTRY_STATE_DIR must not be a filesystem or home root.');
+  }
+  const registryUrl = new URL(
+    process.env.VIBECANVAS_REGISTRY_URL ?? 'http://127.0.0.1:4873/',
+  );
+  if (
+    registryUrl.protocol !== 'http:'
+    || registryUrl.hostname !== '127.0.0.1'
+    || registryUrl.username !== ''
+    || registryUrl.password !== ''
+    || (registryUrl.pathname !== '/' && registryUrl.pathname !== '')
+  ) {
+    throw new Error(
+      'VIBECANVAS_REGISTRY_URL must be an unauthenticated loopback URL such as '
+      + 'http://127.0.0.1:4873/.',
+    );
+  }
+  if (registryUrl.port === '') registryUrl.port = '80';
+  registryUrl.pathname = '/';
+  const toolDirectory = join(stateDirectory, 'tool');
+  return Object.freeze({
+    stateDirectory,
+    registryUrl: registryUrl.href,
+    hostname: registryUrl.hostname,
+    port: Number(registryUrl.port),
+    configPath: join(stateDirectory, 'config.json'),
+    storageDirectory: join(stateDirectory, 'storage'),
+    authPath: join(stateDirectory, 'htpasswd'),
+    pidPath: join(stateDirectory, 'owner.json'),
+    logPath: join(stateDirectory, 'logs', 'verdaccio.log'),
+    npmUserConfigPath: join(stateDirectory, 'npmrc'),
+    startLockPath: join(stateDirectory, 'start.lock'),
+    toolDirectory,
+    toolManifestPath: join(toolDirectory, 'package.json'),
+    verdaccioBin: join(toolDirectory, 'node_modules', 'verdaccio', 'bin', 'verdaccio'),
+    verdaccioManifestPath: join(
+      toolDirectory,
+      'node_modules',
+      'verdaccio',
+      'package.json',
+    ),
+  });
+}
+
+async function atomicWrite(path, value, mode = 0o600) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  await writeFile(temporaryPath, value, { mode });
+  await rename(temporaryPath, path);
+}
+
+async function runtimeManifest() {
+  const manifest = JSON.parse(await readFile(RUNTIME_MANIFEST_PATH, 'utf8'));
+  const version = manifest.dependencies?.verdaccio;
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/u.test(version)) {
+    throw new Error('The isolated registry runtime must pin one exact Verdaccio version.');
+  }
+  return Object.freeze({ manifest, version });
+}
+
+async function writeHostConfiguration(config) {
+  const { manifest } = await runtimeManifest();
+  const runtimeLock = await readFile(RUNTIME_LOCK_PATH, 'utf8');
+  const registry = new URL(config.registryUrl);
+  const registryAuthKey = `//${registry.host}${registry.pathname}`;
+  await Promise.all([
+    mkdir(config.storageDirectory, { recursive: true, mode: 0o700 }),
+    mkdir(dirname(config.logPath), { recursive: true, mode: 0o700 }),
+    atomicWrite(config.toolManifestPath, `${JSON.stringify(manifest, null, 2)}\n`),
+    atomicWrite(join(config.toolDirectory, 'package-lock.json'), runtimeLock),
+    atomicWrite(config.npmUserConfigPath, [
+      'registry=https://registry.npmjs.org/',
+      `@omnidraw:registry=${config.registryUrl}`,
+      `@vibecanvas:registry=${config.registryUrl}`,
+      `${registryAuthKey}:_authToken=vibecanvas-local-development`,
+      '',
+    ].join('\n')),
+    atomicWrite(config.configPath, `${JSON.stringify({
+      storage: config.storageDirectory,
+      listen: config.registryUrl,
+      auth: {
+        htpasswd: {
+          file: config.authPath,
+          max_users: -1,
+        },
+      },
+      uplinks: {
+        npmjs: {
+          url: 'https://registry.npmjs.org/',
+        },
+      },
+      packages: {
+        '@omnidraw/*': {
+          access: '$all',
+          publish: '$all',
+          unpublish: '$authenticated',
+        },
+        '@vibecanvas/*': {
+          access: '$all',
+          publish: '$all',
+          unpublish: '$authenticated',
+        },
+        '**': {
+          access: '$all',
+          publish: '$authenticated',
+          unpublish: '$authenticated',
+          proxy: 'npmjs',
+        },
+      },
+      web: {
+        enable: false,
+      },
+      log: {
+        type: 'stdout',
+        format: 'pretty',
+        level: 'http',
+      },
+    }, null, 2)}\n`),
+  ]);
+}
+
+function run(command, args, options = {}) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? REPOSITORY_ROOT,
+      env: options.env ?? process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (code === 0) {
+        resolvePromise(Object.freeze({ stdout, stderr }));
+        return;
+      }
+      reject(new Error([
+        `Command failed (${signal ?? code}): ${command} ${args.join(' ')}`,
+        stdout.trim(),
+        stderr.trim(),
+      ].filter(Boolean).join('\n')));
+    });
+  });
+}
+
+async function installRuntime(config) {
+  const { version } = await runtimeManifest();
+  const installedVersion = await readFile(config.verdaccioManifestPath, 'utf8')
+    .then((source) => JSON.parse(source).version)
+    .catch(() => null);
+  if (installedVersion === version) return version;
+  await run('npm', [
+    'ci',
+    '--prefix',
+    config.toolDirectory,
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--registry',
+    'https://registry.npmjs.org/',
+  ]);
+  const actualVersion = JSON.parse(
+    await readFile(config.verdaccioManifestPath, 'utf8'),
+  ).version;
+  if (actualVersion !== version) {
+    throw new Error(`Expected Verdaccio ${version}, installed ${String(actualVersion)}.`);
+  }
+  return version;
+}
+
+async function readOwner(config) {
+  try {
+    const value = JSON.parse(await readFile(config.pidPath, 'utf8'));
+    if (
+      !Number.isSafeInteger(value.pid)
+      || value.pid <= 1
+      || value.registryUrl !== config.registryUrl
+      || value.configPath !== config.configPath
+      || value.verdaccioBin !== config.verdaccioBin
+      || !Number.isFinite(value.processStartedAtMs)
+    ) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function processCommand(pid) {
+  if (process.platform === 'linux') {
+    const source = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch(() => '');
+    if (source !== '') return source.split('\0').join(' ');
+  }
+  return run('ps', ['-p', String(pid), '-o', 'command='])
+    .then(({ stdout }) => stdout.trim())
+    .catch(() => '');
+}
+
+async function processStartedAtMs(pid) {
+  const { stdout } = await run('ps', ['-p', String(pid), '-o', 'lstart='])
+    .catch(() => ({ stdout: '' }));
+  const timestamp = Date.parse(stdout.trim());
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+async function isOwnedProcess(config, owner) {
+  if (!owner || !processExists(owner.pid)) return false;
+  const [command, startedAtMs] = await Promise.all([
+    processCommand(owner.pid),
+    processStartedAtMs(owner.pid),
+  ]);
+  return (
+    startedAtMs === owner.processStartedAtMs
+    && (
+      command.trim() === 'verdaccio'
+      || (
+        command.includes(config.verdaccioBin)
+        && command.includes(config.configPath)
+      )
+    )
+  );
+}
+
+async function registryHealth(config) {
+  try {
+    const response = await fetch(new URL('-/ping', config.registryUrl), {
+      signal: AbortSignal.timeout(1_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function portIsOpen(config) {
+  return new Promise((resolvePromise) => {
+    const socket = createConnection({ host: config.hostname, port: config.port });
+    const done = (value) => {
+      socket.destroy();
+      resolvePromise(value);
+    };
+    socket.setTimeout(800);
+    socket.once('connect', () => done(true));
+    socket.once('timeout', () => done(false));
+    socket.once('error', () => done(false));
+  });
+}
+
+async function registryStatus(config) {
+  const owner = await readOwner(config);
+  const [healthy, occupied, owned] = await Promise.all([
+    registryHealth(config),
+    portIsOpen(config),
+    isOwnedProcess(config, owner),
+  ]);
+  const state = healthy
+    ? (owned ? 'running' : 'unmanaged')
+    : (occupied ? 'port-conflict' : (owned ? 'unhealthy' : 'stopped'));
+  return Object.freeze({
+    state,
+    registryUrl: config.registryUrl,
+    stateDirectory: config.stateDirectory,
+    npmUserConfigPath: config.npmUserConfigPath,
+    pid: owned ? owner.pid : null,
+    healthy,
+  });
+}
+
+async function acquireStartLock(config) {
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    try {
+      await mkdir(config.startLockPath, { mode: 0o700 });
+      await writeFile(join(config.startLockPath, 'owner'), `${process.pid}\n`);
+      return;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      const age = Date.now() - await stat(config.startLockPath)
+        .then((value) => value.mtimeMs)
+        .catch(() => Date.now());
+      if (age > 30_000) {
+        await rm(config.startLockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for registry start lock ${config.startLockPath}.`);
+      }
+      await sleep(100);
+    }
+  }
+}
+
+async function waitFor(config, predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return true;
+    await sleep(100);
+  }
+  return predicate();
+}
+
+async function startRegistry(config) {
+  await writeHostConfiguration(config);
+  await acquireStartLock(config);
+  try {
+    const current = await registryStatus(config);
+    if (current.state === 'running') return current;
+    if (current.state !== 'stopped') {
+      throw new Error(
+        `Cannot start the local registry: ${config.registryUrl} is ${current.state}. `
+        + `Inspect the process using port ${config.port}; this tool will not replace it.`,
+      );
+    }
+    const verdaccioVersion = await installRuntime(config);
+    const logDescriptor = openSync(config.logPath, constants.O_CREAT | constants.O_APPEND | constants.O_WRONLY, 0o600);
+    const child = spawn(process.execPath, [
+      config.verdaccioBin,
+      '--config',
+      config.configPath,
+      '--listen',
+      config.registryUrl,
+    ], {
+      cwd: config.stateDirectory,
+      env: {
+        ...process.env,
+        VERDACCIO_HANDLE_KILL_SIGNALS: 'true',
+      },
+      detached: true,
+      stdio: ['ignore', logDescriptor, logDescriptor],
+    });
+    child.unref();
+    closeSync(logDescriptor);
+    const processStartedAtMsValue = await waitFor(
+      config,
+      async () => (await processStartedAtMs(child.pid)) !== null,
+      2_000,
+    )
+      ? await processStartedAtMs(child.pid)
+      : null;
+    if (processStartedAtMsValue === null) {
+      throw new Error('Could not record the Verdaccio process start identity.');
+    }
+    await atomicWrite(config.pidPath, `${JSON.stringify({
+      pid: child.pid,
+      processStartedAtMs: processStartedAtMsValue,
+      registryUrl: config.registryUrl,
+      configPath: config.configPath,
+      verdaccioBin: config.verdaccioBin,
+      verdaccioVersion,
+      startedAt: new Date().toISOString(),
+    }, null, 2)}\n`);
+    const started = await waitFor(
+      config,
+      () => registryHealth(config),
+      START_TIMEOUT_MS,
+    );
+    if (!started) {
+      const owner = await readOwner(config);
+      if (await isOwnedProcess(config, owner)) process.kill(owner.pid, 'SIGTERM');
+      throw new Error(
+        `Verdaccio did not become healthy. Inspect ${config.logPath}.`,
+      );
+    }
+    return registryStatus(config);
+  } finally {
+    await rm(config.startLockPath, { recursive: true, force: true });
+  }
+}
+
+async function stopRegistry(config) {
+  const owner = await readOwner(config);
+  if (!await isOwnedProcess(config, owner)) {
+    const current = await registryStatus(config);
+    if (current.state === 'stopped') return current;
+    throw new Error(
+      `Refusing to stop ${config.registryUrl}: its process is not proven to be `
+      + `the registry recorded in ${config.pidPath}.`,
+    );
+  }
+  process.kill(owner.pid, 'SIGTERM');
+  const stopped = await waitFor(
+    config,
+    () => Promise.resolve(!processExists(owner.pid)),
+    STOP_TIMEOUT_MS,
+  );
+  if (!stopped && await isOwnedProcess(config, owner)) {
+    process.kill(owner.pid, 'SIGKILL');
+    await waitFor(config, () => Promise.resolve(!processExists(owner.pid)), 2_000);
+  }
+  await rm(config.pidPath, { force: true });
+  return registryStatus(config);
+}
+
+async function tarballManifest(tarball) {
+  const { stdout } = await run('tar', ['-xOf', tarball, 'package/package.json']);
+  const manifest = JSON.parse(stdout);
+  if (
+    typeof manifest.name !== 'string'
+    || typeof manifest.version !== 'string'
+    || !OWNED_SCOPES.some((scope) => manifest.name.startsWith(scope))
+  ) {
+    throw new Error(`${tarball} is not a versioned package in an owned scope.`);
+  }
+  return Object.freeze({
+    name: manifest.name,
+    version: manifest.version,
+  });
+}
+
+async function tarballIntegrity(tarball) {
+  const bytes = await readFile(tarball);
+  return `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
+}
+
+async function publishedIntegrity(config, name, version) {
+  const packageUrl = new URL(encodeURIComponent(name), config.registryUrl);
+  const response = await fetch(packageUrl);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Registry metadata request failed (${response.status}) for ${name}.`);
+  }
+  const metadata = await response.json();
+  return metadata.versions?.[version]?.dist?.integrity ?? null;
+}
+
+async function publishTarball(config, requestedTarball) {
+  const tarball = resolve(requestedTarball);
+  await access(tarball);
+  const [{ name, version }, integrity] = await Promise.all([
+    tarballManifest(tarball),
+    tarballIntegrity(tarball),
+  ]);
+  const existingIntegrity = await publishedIntegrity(config, name, version);
+  if (existingIntegrity !== null) {
+    if (existingIntegrity !== integrity) {
+      throw new Error(
+        `${name}@${version} already exists with different bytes `
+        + `(${existingIntegrity} != ${integrity}). Bump the version or use a prerelease.`,
+      );
+    }
+    return Object.freeze({
+      name,
+      version,
+      integrity,
+      registryUrl: config.registryUrl,
+      status: 'unchanged',
+    });
+  }
+  await run('npm', [
+    'publish',
+    tarball,
+    '--registry',
+    config.registryUrl,
+    '--userconfig',
+    config.npmUserConfigPath,
+    '--ignore-scripts',
+    '--json',
+  ], {
+    cwd: config.stateDirectory,
+  });
+  const storedIntegrity = await publishedIntegrity(config, name, version);
+  if (storedIntegrity !== integrity) {
+    throw new Error(
+      `${name}@${version} published with unexpected integrity ${String(storedIntegrity)}.`,
+    );
+  }
+  return Object.freeze({
+    name,
+    version,
+    integrity,
+    registryUrl: config.registryUrl,
+    status: 'published',
+  });
+}
+
+async function packVibecanvasPackages(config) {
+  await run('bun', ['run', '--filter', '@vibecanvas/sdk', 'build']);
+  const packDirectory = await mkdtemp(join(config.stateDirectory, 'packs-'));
+  const tarballs = [];
+  try {
+    for (const packageDirectory of VIBECANVAS_PACKAGES) {
+      const packageRoot = join(REPOSITORY_ROOT, packageDirectory);
+      const before = new Set(await readdir(packDirectory));
+      await run('bun', ['pm', 'pack', '--destination', packDirectory, '--quiet'], {
+        cwd: packageRoot,
+      });
+      const after = await readdir(packDirectory);
+      const created = after.find((entry) => !before.has(entry));
+      if (!created) throw new Error(`Packing ${packageDirectory} produced no tarball.`);
+      tarballs.push(join(packDirectory, created));
+    }
+    const results = [];
+    for (const tarball of tarballs) results.push(await publishTarball(config, tarball));
+    return results;
+  } finally {
+    await rm(packDirectory, { recursive: true, force: true });
+  }
+}
+
+function flagValue(args, flag) {
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) throw new Error(`${flag} requires a path.`);
+  return value;
+}
+
+async function main() {
+  const config = settings();
+  const [command = 'status', ...args] = process.argv.slice(2);
+  if (command === 'status') {
+    console.log(JSON.stringify(await registryStatus(config), null, 2));
+    return;
+  }
+  if (command === 'start' || command === 'ensure') {
+    console.log(JSON.stringify(await startRegistry(config), null, 2));
+    return;
+  }
+  if (command === 'stop') {
+    console.log(JSON.stringify(await stopRegistry(config), null, 2));
+    return;
+  }
+  if (command === 'publish') {
+    if (args.length === 0) throw new Error('publish requires one or more package tarballs.');
+    await startRegistry(config);
+    const results = [];
+    for (const tarball of args) results.push(await publishTarball(config, tarball));
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+  if (command === 'publish-vibecanvas') {
+    await startRegistry(config);
+    console.log(JSON.stringify(await packVibecanvasPackages(config), null, 2));
+    return;
+  }
+  if (command === 'bootstrap') {
+    const cangine = flagValue(args, '--cangine');
+    const capsule = flagValue(args, '--capsule');
+    if (!cangine || !capsule) {
+      throw new Error('bootstrap requires --cangine <tarball> and --capsule <tarball>.');
+    }
+    await startRegistry(config);
+    const results = [
+      await publishTarball(config, cangine),
+      await publishTarball(config, capsule),
+      ...await packVibecanvasPackages(config),
+    ];
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+  throw new Error(
+    `Unknown command '${command}'. Use start, ensure, status, stop, publish, `
+    + 'publish-vibecanvas, or bootstrap.',
+  );
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

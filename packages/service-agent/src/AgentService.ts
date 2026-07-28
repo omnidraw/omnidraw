@@ -71,6 +71,7 @@ interface IPublicMethods {
 export interface IAgentServiceConfig {
   cachePath: string;
   dataPath: string;
+  npmUserConfigPath?: string;
   configPath: string;
   eventPublisherService: ITenantEventPublisherService,
   /** Required by the manifest-v3 Capsule authoring surface. */
@@ -188,7 +189,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   constructor(config: IAgentServiceConfig) {
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
-    this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath })
+    this.#workspace = new WidgetWorkspace({
+      dataPath: config.dataPath,
+      npmUserConfigPath: config.npmUserConfigPath,
+    })
     this.#widgetDrafts = config.tenant
       && config.authoringStore
       && config.widgetAuthoringCapability

@@ -32,8 +32,6 @@ function packageJson(
       build: 'vite build --config vite.config.mjs',
     },
     dependencies: {
-      // TESTING ONLY: the linked SDK cannot resolve its temporary local Capsule
-      // package unless the widget root installs the same dependency directly.
       '@omnidraw/capsule': capsuleDependency,
       '@vibecanvas/sdk': sdkDependency,
       zod: WIDGET_ZOD_VERSION,
@@ -53,9 +51,6 @@ function viteConfig(): string {
     'const manifest = JSON.parse(readFileSync(new URL("./vibecanvas.json", import.meta.url), "utf8"));',
     '',
     'export default defineConfig({',
-    '  // TESTING ONLY: keep the linked SDK under this project so its temporary',
-    '  // direct local Capsule dependency resolves from this node_modules tree.',
-    '  resolve: { preserveSymlinks: true },',
     '  build: {',
     '    target: "es2022",',
     '    outDir: "dist",',

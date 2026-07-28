@@ -25,6 +25,7 @@ type TPortal = {
 
 type TArgs = {
   cwd: string;
+  userConfigPath?: string;
 };
 
 type TPortalRestorePackageLock = {
@@ -45,7 +46,11 @@ export async function txTryNpmInstall(portal: TPortal, args: TArgs): Promise<TNp
   }
 
   return new Promise((resolve) => {
-    portal.execFile('npm', ['install'], { cwd: args.cwd, timeout: 120_000 }, (error, stdout, stderr) => {
+    const commandArgs = [
+      'install',
+      ...(args.userConfigPath === undefined ? [] : ['--userconfig', args.userConfigPath]),
+    ];
+    portal.execFile('npm', commandArgs, { cwd: args.cwd, timeout: 120_000 }, (error, stdout, stderr) => {
       if (error) {
         resolve({
           status: 'error',

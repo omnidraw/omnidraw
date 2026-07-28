@@ -28,8 +28,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
-    "@vibecanvas/widget-contract": "workspace:*"
+    "@omnidraw/capsule": "0.9.4",
+    "@vibecanvas/widget-contract": "0.1.0"
   },
   "devDependencies": {
     "typescript": "catalog:"

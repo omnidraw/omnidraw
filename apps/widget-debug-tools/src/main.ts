@@ -5,6 +5,7 @@ import {
 } from '../../cli/src/services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from '../../cli/src/services/WidgetCapsuleSigningKeyStore';
 import { createWidgetNpmDistributionBuild } from '../../cli/src/services/WidgetNpmDistributionBuild';
+import { fnLocalRegistryNpmUserConfig } from '../../cli/src/fn.local-registry-npm-userconfig';
 import { WidgetService } from '../../cli/src/services/WidgetService';
 import {
   createWidgetAuthoringCapability,
@@ -29,10 +30,16 @@ import { EventPublisherService } from '@vibecanvas/service-event-publisher/Event
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..');
 const DEFAULT_HOME = join(REPOSITORY_ROOT, '.vibecanvas');
+const NPM_USER_CONFIG_PATH = fnLocalRegistryNpmUserConfig({
+  homeDirectory: homedir(),
+  stateDirectory: process.env.VIBECANVAS_REGISTRY_STATE_DIR,
+  join,
+});
 const CHAT_ID = 'widget-debug-tools';
 const ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
@@ -168,6 +175,7 @@ async function run(): Promise<void> {
       capsuleBuild: buildCapsuleGuest,
       distributionBuild: createWidgetNpmDistributionBuild({
         scratchDirectory: buildTempRoot,
+        npmUserConfigPath: NPM_USER_CONFIG_PATH,
       }),
       loadCapsuleSigningKeys: (purpose) => signingKeys.loadSigningKeys(purpose),
       artifactReadSecret: randomBytes(32),
@@ -180,7 +188,10 @@ async function run(): Promise<void> {
     }),
   });
   const eventPublisher = new EventPublisherService();
-  const workspace = new WidgetWorkspace({ dataPath: agentDataPath });
+  const workspace = new WidgetWorkspace({
+    dataPath: agentDataPath,
+    npmUserConfigPath: NPM_USER_CONFIG_PATH,
+  });
   const approvals = new ApprovalCoordinator();
   let controller: WidgetDraftController | undefined;
   try {

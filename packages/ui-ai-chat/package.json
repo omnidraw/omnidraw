@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
-    "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.2.3.tgz",
+    "@omnidraw/cangine": "0.2.3",
     "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/canvas": "workspace:*",
     "@vibecanvas/canvas-contract": "workspace:*",

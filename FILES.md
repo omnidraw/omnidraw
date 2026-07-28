@@ -44,6 +44,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
 | [apps/cli/src/fn.home-preflight-error.ts](apps/cli/src/fn.home-preflight-error.ts) |  |
+| [apps/cli/src/fn.local-registry-npm-userconfig.ts](apps/cli/src/fn.local-registry-npm-userconfig.ts) |  |
 | [apps/cli/src/hooks.ts](apps/cli/src/hooks.ts) |  |
 | [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
@@ -617,7 +618,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/workspace/fx.chat-metadata.ts](packages/service-agent/src/workspace/fx.chat-metadata.ts) |  |
 | [packages/service-agent/src/workspace/fx.widget-catalog.ts](packages/service-agent/src/workspace/fx.widget-catalog.ts) |  |
 | [packages/service-agent/src/workspace/tx.chat-storage.ts](packages/service-agent/src/workspace/tx.chat-storage.ts) |  |
-| [packages/service-agent/src/workspace/tx.materialize-sdk-package.ts](packages/service-agent/src/workspace/tx.materialize-sdk-package.ts) |  |
 | [packages/service-agent/src/workspace/types.ts](packages/service-agent/src/workspace/types.ts) |  |
 | [packages/service-agent/src/workspace/WidgetWorkspace.ts](packages/service-agent/src/workspace/WidgetWorkspace.ts) |  |
 | [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
@@ -937,6 +937,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
+| [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
+| [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
+| [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
+| [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |

@@ -36,6 +36,7 @@ import {
   type IWidgetStateService,
 } from '@vibecanvas/service-widget-state';
 import { mkdir } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'path';
 import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type {
@@ -43,6 +44,7 @@ import type {
   TResourceApiCapability,
 } from '@vibecanvas/api/resource/types';
 import type { ICliConfig } from './config';
+import { fnLocalRegistryNpmUserConfig } from './fn.local-registry-npm-userconfig';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
@@ -137,6 +139,11 @@ type TSetupServicesOptions = Readonly<{
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
   const eventPublisher = new EventPublisherService();
+  const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
+    homeDirectory: homedir(),
+    stateDirectory: process.env.VIBECANVAS_REGISTRY_STATE_DIR,
+    join,
+  });
   services.provide('eventPublisher', 10, eventPublisher);
 
   const shouldSetupStatefulServices = !config.helpRequested
@@ -193,6 +200,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
         distributionBuild: options.distributionBuild ?? createWidgetNpmDistributionBuild({
           scratchDirectory: buildTempRoot,
+          npmUserConfigPath,
         }),
         loadCapsuleSigningKeys: (purpose) => (
           widgetCapsuleSigningKeys.loadSigningKeys(purpose)
@@ -314,6 +322,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       );
       return new AgentService({
         dataPath: agentRoot,
+        npmUserConfigPath,
         cachePath: cacheRoot,
         configPath: artifactsRoot,
         eventPublisherService: eventPublisher.forTenant(tenant),
