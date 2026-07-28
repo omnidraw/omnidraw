@@ -177,6 +177,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B64](b/B64.md) - widgets: restore direct drag placement after Cangine cutover
 - [x]: [B65](b/B65.md) - cli: home preflight must share multiprocess WAL and report real failures
 - [x]: [B66](b/B66.md) - widget portals: keep Capsule layout intrinsic while canvas zooms
+- [ ]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
