@@ -382,7 +382,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S105](s/S105.md) - remove scoped_events table and related code
 - [x]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
 - [x]: [S107](s/S107.md) - widgets: remove the actor system completely
-- [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
+- [x]: [S108](s/S108.md) - widgets: historical UI-only Preview subtraction (superseded by E40/A96)
 - [x]: [S109] - remove uuid check in db sql files.
 - [x]: [S110] - use Turso types and domains where they improve schema constraints
 - [x]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
@@ -433,7 +433,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
 - [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
 - [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
-- [ ]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
+- [x]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions

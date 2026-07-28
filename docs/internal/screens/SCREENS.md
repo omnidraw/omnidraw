@@ -51,7 +51,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens a UI-only Preview beside its originating chat. Mount, refresh, and reset build the current draft with ephemeral collaborative state; functions and resources become available only after Publish. |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. The frame owns its active Preview revision for as long as it remains on the canvas, survives restart, and runs the exact server artifact with real selected resource bindings. Live UI, build, host, function, and provider failures return to the originating AI Chat; Publish promotes the exact reviewed outputs. |
 
 | Direct widget placement |
 | --- |
