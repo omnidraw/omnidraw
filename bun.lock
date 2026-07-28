@@ -125,6 +125,7 @@
       "dependencies": {
         "@vibecanvas/capsule-vibecanvas": "workspace:*",
         "@vibecanvas/function-runtime": "workspace:*",
+        "@vibecanvas/sdk": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",

@@ -335,6 +335,49 @@ Preview receives:
 
 Server functions and resources become usable only after publication.
 
+### 7.1 Current implementation gap after the Cangine cutover
+
+The backend contract above is present, but the current Cangine frontend adapter
+does not complete the Preview path:
+
+- the AI Chat **Open Preview** callback only shows an informational notification;
+- direct placement accepts published references only;
+- no current frontend caller consumes `agent.widgetPreview.build` artifact
+  bytes; and
+- the pre-cutover Draft Preview frame/mount and its integration tests were
+  removed in commit `3db71817`.
+
+The API and isolated artifact/runtime tests can therefore pass while no Draft
+Preview is renderable from the current product UI. This is tracked in
+[`A96`](../../tasks/a/A96.md).
+
+### 7.2 Required authoring loop
+
+Restoring the old explicit-refresh implementation unchanged is insufficient for
+the intended AI authoring experience. The target loop is:
+
+1. A committed AI file edit advances the draft revision and immediately marks
+   an open Preview as building.
+2. One latest-wins build coordinator reuses an unchanged dependency layer and
+   produces one content-addressed staged build for validation, Preview, and
+   publication.
+3. The last known good Preview stays mounted until the replacement has been
+   verified and is ready for an atomic swap.
+4. Build, host, and guest-runtime diagnostics appear in the Preview and are
+   delivered as bounded, untrusted diagnostic context to the originating AI
+   session.
+5. Publish promotes the mounted staged executable payload under release signing
+   after rechecking draft and resource-binding preconditions. It does not rerun
+   the guest build.
+
+The staged build is an expiring build cache, not a Preview execution authority:
+it grants no server functions or resources and does not create a durable widget
+revision until explicit publication.
+
+This direction is not yet an implementation decision. [`E40`](../../tasks/e/E40.md)
+records the unresolved product, S108, build-isolation, Capsule, diagnostic, AI
+repair, and promotion questions that must be answered before A96 begins.
+
 ## 8. Publication and immutable revisions
 
 Publish is an explicit user action and requires the expected draft revision.

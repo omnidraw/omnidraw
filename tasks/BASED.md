@@ -272,6 +272,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
 - [~]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
 - [x]: [A95](a/A95.md) - local Verdaccio registry for Cangine, Capsule, and widget SDK
+- [ ]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -431,6 +432,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
 - [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
 - [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
+- [ ]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
