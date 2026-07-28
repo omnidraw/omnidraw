@@ -4,12 +4,13 @@ const BASE_COLUMN_TYPE_BY_DECLARED_TYPE = Object.freeze({
   function_attempt_status: 'TEXT',
   function_invocation_status: 'TEXT',
   json: 'TEXT',
+  jsonb: 'BLOB',
   resource_apply_status: 'TEXT',
   resource_catalog_status: 'TEXT',
   resource_draft_status: 'TEXT',
   sha256_hex: 'TEXT',
   usage_outcome: 'TEXT',
-} as const satisfies Readonly<Record<string, 'INTEGER' | 'TEXT'>>);
+} as const satisfies Readonly<Record<string, 'BLOB' | 'INTEGER' | 'TEXT'>>);
 
 function fnDatabaseColumnBaseType(declaredType: string): string {
   const normalizedType = declaredType.toLowerCase() as keyof typeof BASE_COLUMN_TYPE_BY_DECLARED_TYPE;

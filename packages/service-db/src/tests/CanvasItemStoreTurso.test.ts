@@ -9,6 +9,7 @@ import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
 } from "../CONSTANTS";
+import { WidgetInstanceStateStoreTurso } from "../WidgetInstanceStateStoreTurso";
 import {
   WIDGET_CAPSULE_ARTIFACT_HASH,
   WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
@@ -291,7 +292,7 @@ describe("CanvasItemStoreTurso", () => {
       FROM canvas_items
       WHERE org_id = ? AND canvas_id = ? AND id = 'widget'
     `)).get(ORG_A, CANVAS_A)).toEqual({
-      storage_type: "blob",
+      storage_type: "text",
       kind: "widget-frame",
       parent_id: "root",
       order_key: "B",
@@ -535,8 +536,35 @@ describe("CanvasItemStoreTurso", () => {
         state_json,
         created_at_ms,
         updated_at_ms
-      ) VALUES (?, 'instance-a', 1, jsonb('{"count":1}'), 20, 20)
+      ) VALUES (?, 'instance-a', 1, '{"count":1}', 20, 20)
     `)).run(ORG_A);
+    const stateStore = new WidgetInstanceStateStoreTurso(database);
+    const stateIdentity = {
+      orgId: ORG_A,
+      canvasId: CANVAS_A,
+      elementId: "widget",
+      widgetInstanceId: "instance-a",
+      definitionId: "definition-b",
+      revisionId: "revision-b",
+    };
+    expect(await stateStore.getAuthorizedExactInstance({
+      tenant: TENANT_A,
+      identity: stateIdentity,
+      initialSnapshot: { version: 1, state: null },
+    })).toEqual({
+      status: "found",
+      snapshot: { version: 1, state: { count: 1 } },
+    });
+    expect(await stateStore.compareAndSwapAuthorizedExactInstance({
+      tenant: TENANT_A,
+      identity: stateIdentity,
+      initialSnapshot: { version: 1, state: null },
+      expectedVersion: 1,
+      state: { count: 2 },
+    })).toEqual({
+      status: "changed",
+      snapshot: { version: 2, state: { count: 2 } },
+    });
 
     await expect(store.applyMutations(TENANT_A, {
       canvasId: CANVAS_A,
@@ -673,12 +701,12 @@ describe("CanvasItemStoreTurso", () => {
       ) VALUES (?, ?, ?, ?, 0, 1, 1)
     `;
     const insert = await database.prepare(insertSql);
-    await expect(insert.run(
+    await insert.run(
       ORG_A,
       CANVAS_A,
       "text-json",
       JSON.stringify(rect("text-json")),
-    )).rejects.toThrow();
+    );
     await expect(insert.run(
       ORG_A,
       CANVAS_A,
@@ -689,7 +717,7 @@ describe("CanvasItemStoreTurso", () => {
     await expect((await database.prepare(`
       INSERT INTO canvas_items (
         org_id, canvas_id, id, item_json, item_revision, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, jsonb(?), 0, 1, 1)
+      ) VALUES (?, ?, ?, ?, 0, 1, 1)
     `)).run(
       ORG_A,
       CANVAS_A,
@@ -699,7 +727,7 @@ describe("CanvasItemStoreTurso", () => {
     await expect((await database.prepare(`
       INSERT INTO canvas_items (
         org_id, canvas_id, id, item_json, item_revision, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, jsonb(?), 0, 1, 1)
+      ) VALUES (?, ?, ?, ?, 0, 1, 1)
     `)).run(
       ORG_A,
       CANVAS_A,
@@ -718,7 +746,7 @@ describe("CanvasItemStoreTurso", () => {
     await expect((await database.prepare(`
       INSERT INTO canvas_items (
         org_id, canvas_id, id, item_json, item_revision, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, jsonb(?), 0, 1, 1)
+      ) VALUES (?, ?, ?, ?, 0, 1, 1)
     `)).run(
       ORG_A,
       CANVAS_A,

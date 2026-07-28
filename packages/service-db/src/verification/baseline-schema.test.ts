@@ -330,7 +330,11 @@ describe("000-initial.sql", () => {
     expect(sql).toMatch(/\bCREATE\s+DOMAIN\b/i);
     expect(sql).not.toMatch(/\bCREATE\s+TYPE\b/i);
     expect(sql).not.toMatch(/\bWITHOUT\s+ROWID\b/i);
-    expect(sql).toMatch(/\bboolean\b/i);
+    expect(sql).toMatch(/\bBOOLEAN\b/);
+    expect(sql).not.toMatch(/\bboolean\b/);
+    expect(sql).toMatch(/\bJSONB\b/);
+    expect(sql.match(/\bJSONB\b/g)).toHaveLength(2);
+    expect(sql).not.toMatch(/\bjsonb\b/);
     expect(sql).toMatch(/\bJSON\b/);
     expect(sql).not.toMatch(/\b(entity_id|json_document|json_object_value|json_array_value)\b/);
     expect(sql).not.toMatch(/\b(nonnegative_integer|positive_integer|trimmed_text_\d+|timestamp_ms)\b/);

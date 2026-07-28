@@ -63,12 +63,10 @@ describe("pinned @tursodatabase/database feature probe", () => {
 
       CREATE TABLE probe_jsonb_items (
         id TEXT PRIMARY KEY NOT NULL,
-        item_json BLOB NOT NULL,
+        item_json JSONB NOT NULL,
         kind TEXT GENERATED ALWAYS AS (
           json_extract(item_json, '$.kind')
-        ) VIRTUAL NOT NULL,
-        CHECK (typeof(item_json) = 'blob'),
-        CHECK (json_valid(json(item_json)))
+        ) VIRTUAL NOT NULL
       ) STRICT;
 
       CREATE INDEX probe_jsonb_kind
@@ -87,7 +85,7 @@ describe("pinned @tursodatabase/database feature probe", () => {
     await insertChild.run("org-a", "child-a", "parent-a", "active");
     await (await db.prepare(`
       INSERT INTO probe_jsonb_items (id, item_json)
-      VALUES (?, jsonb(?))
+      VALUES (?, ?)
     `)).run("item-a", '{"kind":"rect"}');
 
     await expect(insertChild.run("org-a", "child-b", "parent-a", "active")).rejects.toThrow();
@@ -96,6 +94,10 @@ describe("pinned @tursodatabase/database feature probe", () => {
     await expect(insertParent.run("org-a", "parent-status", '{"case":"status"}', "unknown", 1, 1)).rejects.toThrow();
     await expect(insertParent.run("org-a", "parent-bool", '{"case":"bool"}', "queued", 2, 1)).rejects.toThrow();
     await expect(insertParent.run("org-a", "parent-time", '{"case":"time"}', "queued", 1, -1)).rejects.toThrow();
+    await expect((await db.prepare(`
+      INSERT INTO probe_jsonb_items (id, item_json)
+      VALUES (?, jsonb(?))
+    `)).run("item-pre-encoded", '{"kind":"rect"}')).rejects.toThrow();
 
     const transaction = db.transaction(async () => {
       await insertParent.run("org-a", "rolled-back", '{"ok":true}', "processing", 1, 2);
@@ -125,17 +127,19 @@ describe("pinned @tursodatabase/database feature probe", () => {
     );
     expect(await (await db.prepare("PRAGMA table_xinfo(probe_jsonb_items)")).all()).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ name: "item_json", hidden: 0, notnull: 1, type: "JSONB" }),
         expect.objectContaining({ name: "kind", hidden: 2, notnull: 1, type: "TEXT" }),
       ]),
     );
     expect(await (await db.prepare(`
-      SELECT id, kind, typeof(item_json) AS storage_type
+      SELECT id, kind, item_json, typeof(item_json) AS decoded_type
       FROM probe_jsonb_items
       WHERE kind = 'rect'
     `)).get()).toEqual({
       id: "item-a",
       kind: "rect",
-      storage_type: "blob",
+      item_json: '{"kind":"rect"}',
+      decoded_type: "text",
     });
     expect(await (await db.prepare("PRAGMA foreign_key_list(probe_children)")).all()).toHaveLength(2);
     expect(await (await db.prepare("PRAGMA index_list(probe_children)")).all()).toEqual(

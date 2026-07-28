@@ -190,8 +190,7 @@ export const EXPECTED_BASELINE_SCHEMA = {
       { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
     ],
     requiredSqlFragments: [
-      "CHECK (typeof(item_json) = 'blob')",
-      "CHECK (json_valid(json(item_json)))",
+      "item_json JSONB NOT NULL",
       "kind TEXT AS",
       "parent_id TEXT AS",
       "order_key TEXT AS",
@@ -257,8 +256,7 @@ export const EXPECTED_BASELINE_SCHEMA = {
       },
     ],
     requiredSqlFragments: [
-      "CHECK (typeof(state_json) = 'blob')",
-      "CHECK (json_valid(json(state_json)))",
+      "state_json JSONB NOT NULL",
     ],
   },
   resource_catalog: {
@@ -757,28 +755,28 @@ export const EXPECTED_AGENT_AUTHORING_INDEXES = {
 
 export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
   Object.freeze({
-    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
+    fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 0,
   }),
   Object.freeze({
-    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
+    fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 1,
   }),
   Object.freeze({
-    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
+    fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 2,
   }),
   Object.freeze({
-    fingerprintSha256: 'c647f66be8161db3d42126490e54f2fab750c1444660ef79c0038a25b90b2aa8',
+    fingerprintSha256: '703ec1c660ff84d1e0c5dbb0c48947d7a7927aff9de098b63bba9091ef6e8c2f',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,

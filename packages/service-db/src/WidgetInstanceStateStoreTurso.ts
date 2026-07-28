@@ -90,12 +90,12 @@ export class WidgetInstanceStateStoreTurso implements IWidgetStateStore {
         const row = await (await this.database.prepare(`
           UPDATE widget_instance_states
           SET version = version + 1,
-              state_json = jsonb(?),
+              state_json = ?,
               updated_at_ms = ?
           WHERE org_id = ?
             AND widget_instance_id = ?
             AND version = ?
-          RETURNING version, json(state_json) AS state_json
+          RETURNING version, state_json
         `)).get(
           this.#encode(args.state),
           updatedAtMs,
@@ -165,7 +165,7 @@ export class WidgetInstanceStateStoreTurso implements IWidgetStateStore {
         state_json,
         created_at_ms,
         updated_at_ms
-      ) VALUES (?, ?, ?, jsonb(?), ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT (org_id, widget_instance_id) DO NOTHING
     `)).run(
       args.identity.orgId,
@@ -181,7 +181,7 @@ export class WidgetInstanceStateStoreTurso implements IWidgetStateStore {
     identity: TWidgetStateInstanceIdentity,
   ): Promise<TWidgetStateStoredSnapshot> {
     const row = await (await this.database.prepare(`
-      SELECT version, json(state_json) AS state_json
+      SELECT version, state_json
       FROM widget_instance_states
       WHERE org_id = ? AND widget_instance_id = ?
     `)).get(identity.orgId, identity.widgetInstanceId) as TStoredStateRow | null;
