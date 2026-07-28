@@ -28,7 +28,7 @@ export function fnPublicationContract(detail: TWidgetDetail): TPublicationContra
     title: isUpdate ? `Republish ${displayName}?` : `Publish ${displayName}?`,
     description: isUpdate
       ? `Validation will run before a new immutable revision becomes the published default. Existing canvas instances remain pinned to their current revision until an explicit remount or runtime policy advances them, preserving their instance identity and data.`
-      : `Validation will run first. If it passes, this draft will become a published widget definition available from the canvas toolbar.`,
+      : `Validation will run first. If it passes, this draft will become a published widget definition available from the sidebar.`,
   }
 }
 

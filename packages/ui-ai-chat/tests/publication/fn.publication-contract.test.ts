@@ -35,7 +35,7 @@ describe("publication contract", () => {
     const contract = fnPublicationContract(detail(null))
     expect(contract.isUpdate).toBe(false)
     expect(contract.actionLabel).toBe("Publish")
-    expect(contract.description).toContain("canvas toolbar")
+    expect(contract.description).toContain("sidebar")
     expect(contract.description).not.toContain("existing canvas instance")
   })
 

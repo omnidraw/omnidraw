@@ -22,7 +22,7 @@ export function ToolButton(props: TToolButtonProps) {
       onClick={() => props.onSelect(props.toolId)}
     >
       <span class="vc-toolbar-button__icon">
-        <props.Icon size={15} />
+        <props.Icon size={14} />
       </span>
       <span class="vc-toolbar-button__shortcuts">
         <For each={props.shortcuts}>

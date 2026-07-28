@@ -21,7 +21,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
-| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -39,10 +38,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -210,8 +207,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -679,7 +674,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso.ts](packages/service-db/src/FunctionControlStoreTurso.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts) |  |
@@ -956,7 +950,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
-| [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the single-owner resource runtime. |
+| [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the local resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable gate for canvas widget identity, state, and Capsule hosting. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |

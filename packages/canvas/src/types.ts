@@ -17,19 +17,6 @@ export type TCanvasImagePort = Readonly<{
   deleteImage(body: Readonly<{ url: string }>): Promise<Readonly<{ ok: true }>>;
 }>;
 
-export type TCanvasToolbarGroup = Readonly<{
-  name: string;
-  json?: Readonly<{
-    svgIcon?: string | null;
-    lucidIcon?: string | null;
-  }> | null;
-}>;
-
-export type TCanvasToolbarGroupsPort = Readonly<{
-  list(): Promise<readonly TCanvasToolbarGroup[]>;
-  subscribe(listener: () => void): () => void;
-}>;
-
 export type TCanvasNotificationPort = Readonly<{
   showSuccess(title: string, description?: string): void;
   showError(title: string, description?: string): void;
@@ -45,6 +32,5 @@ export type TCanvasRuntimeConfig = Readonly<{
   onToggleSidebar(): void;
   themeService: ThemeService;
   image: TCanvasImagePort;
-  toolbarGroups?: TCanvasToolbarGroupsPort;
   notification?: TCanvasNotificationPort;
 }>;

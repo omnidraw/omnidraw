@@ -56,7 +56,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar/toolbar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement pins an immutable revision; every successful Draft drop creates a new frame and builds the current draft at the world-space drop point. |
+| **Sidebar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement pins an immutable revision; every successful Draft drop creates a new frame and builds the current draft at the world-space drop point. |
 
 ## Widget inspector
 
