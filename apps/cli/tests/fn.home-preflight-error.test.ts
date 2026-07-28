@@ -23,19 +23,20 @@ describe('fnBuildHomePreflightError', () => {
     });
   });
 
-  test('keeps archive guidance for actor-era schema refusals', () => {
+  test('keeps archive guidance for unknown schema refusals without legacy actor wording', () => {
     const result = fnBuildHomePreflightError({
       homeDir: HOME_DIR,
-      error: new Error(`Actor-era database found at ${HOME_DIR}/vibecanvas.turso`),
+      error: new Error('Refusing to open Vibecanvas database: found a non-empty unknown database.'),
     });
 
     expect(result.hint).toBe(
-      'Actor-era and unknown database layouts are unsupported. The selected home was not modified.',
+      'Unknown or incompatible database layouts are unsupported. The selected home was not modified.',
     );
     expect(result.next).toBe(
       `Archive or move '${HOME_DIR}' manually, or retry with --data-dir <fresh-path>.`,
     );
     expect(result.hint).not.toContain('locked');
+    expect(result.hint).not.toContain('Actor-era');
   });
 
   test('uses the deepest cause in fallback output', () => {

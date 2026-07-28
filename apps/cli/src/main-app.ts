@@ -41,16 +41,10 @@ export async function runCliMain() {
   }
 
   if (config.command === 'serve' && !config.helpRequested) {
-    const [{ existsSync }, { join }, { preflightDbServiceDatabase }] = await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('@vibecanvas/service-db/DbServiceTurso/DbServiceTurso'),
-    ]);
+    const { preflightDbServiceDatabase } = await import(
+      '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso'
+    );
     try {
-      const actorEraDatabasePath = join(config.home.homeDir, 'vibecanvas.turso');
-      if (existsSync(actorEraDatabasePath)) {
-        throw new Error(`Actor-era database found at ${actorEraDatabasePath}`);
-      }
       await preflightDbServiceDatabase({
         homeDir: config.home.homeDir,
         databasePath: config.home.mainDbPath,
