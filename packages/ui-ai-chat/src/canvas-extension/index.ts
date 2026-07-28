@@ -6,10 +6,13 @@ import {
   type TSerializedSceneCommand,
   type TWidgetFrameNode,
 } from '@omnidraw/cangine';
+import {
+  portalGeometryToCapsuleViewport,
+  readPortalContentCssSize,
+} from '@omnidraw/cangine/integrations/capsule';
 import type { ICanvasRuntimeExtension } from '@vibecanvas/canvas';
 import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
 import { fnCreateChatId } from '@vibecanvas/shared-functions/chat/fn.chat-id';
-import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
 import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 import { render } from 'solid-js/web';
 import { AiChat } from '../chat/components';
@@ -32,7 +35,6 @@ import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHos
 import {
   fnWidgetRuntimeLocalTargetMatchesElement,
 } from '../widget-runtime/fn.runtime-identity';
-import { fnWidgetCapsuleViewport } from '../widget-runtime/fn.capsule-viewport';
 import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleOutputSink,
@@ -51,6 +53,7 @@ import {
   fnWithAiWidgetPayload,
   type TAiWidgetPayload,
 } from './fn.canvas-widget';
+import { fxWidgetCapsuleViewport } from './fx.capsule-portal-viewport';
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -82,26 +85,6 @@ function widgetFrame(
   node: Readonly<TSceneNode> | null,
 ): Readonly<TWidgetFrameNode> | null {
   return node?.kind === 'widget-frame' ? node : null;
-}
-
-function capsuleViewport(
-  geometry: TPortalGeometry | null,
-  visible: boolean,
-  scale: number,
-): CapsuleViewport {
-  return fnWidgetCapsuleViewport({
-    width: geometry === null
-      ? 0
-      : Math.max(0, geometry.viewportBounds.maxX - geometry.viewportBounds.minX),
-    height: geometry === null
-      ? 0
-      : Math.max(0, geometry.viewportBounds.maxY - geometry.viewportBounds.minY),
-    scale,
-    visibility: visible ? 'visible' : 'hidden',
-    distance: 0,
-    priority: visible ? 100 : 0,
-    occlusion: 0,
-  });
 }
 
 function createTitleBarPortal(
@@ -192,6 +175,10 @@ export function createAiChatCanvasExtension(
             && fnWidgetRuntimeLocalTargetMatchesElement(target, node);
         },
       });
+      const capsuleViewportPortal = {
+        portalGeometryToCapsuleViewport,
+        readPortalContentCssSize,
+      };
 
       const actionHandlers = new Map<string, Map<string, () => void>>();
       const registrations = new Map<string, TPortalRegistration>();
@@ -271,13 +258,14 @@ export function createAiChatCanvasExtension(
         if (extension === null || portalId === undefined) return null;
         let geometry: TPortalGeometry | null = null;
         let visible = true;
+        let portalHost: HTMLElement | null = null;
         let owner: TWidgetUiRuntimeRenderOwner | null = null;
         const updateViewport = () => {
-          owner?.setViewport(capsuleViewport(
+          owner?.setViewport(fxWidgetCapsuleViewport(capsuleViewportPortal, {
+            host: portalHost,
             geometry,
             visible,
-            context.engine.camera.state.zoom,
-          ));
+          }));
         };
         const unregister = context.engine.portals.register({
           portalId,
@@ -293,19 +281,21 @@ export function createAiChatCanvasExtension(
               return mountAiWidget(host, current);
             }
             if (currentExtension?.type !== 'widget-instance') return undefined;
+            portalHost = host;
             owner = widgetRuntime.renderOwned({
               canvasId: context.config.canvasId,
               element: current,
               root: host,
-              initialViewport: capsuleViewport(
+              initialViewport: fxWidgetCapsuleViewport(capsuleViewportPortal, {
+                host,
                 geometry,
                 visible,
-                context.engine.camera.state.zoom,
-              ),
+              }),
             });
             return async () => {
               const mounted = owner;
               owner = null;
+              if (portalHost === host) portalHost = null;
               await mounted?.destroy('canvas portal unmounted');
               host.replaceChildren();
             };

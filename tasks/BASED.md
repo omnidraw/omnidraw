@@ -176,6 +176,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B63](b/B63.md) - widgets: `npm ci` rejects draft lockfile; add widget-debug-tools lab
 - [x]: [B64](b/B64.md) - widgets: restore direct drag placement after Cangine cutover
 - [x]: [B65](b/B65.md) - cli: home preflight must share multiprocess WAL and report real failures
+- [x]: [B66](b/B66.md) - widget portals: keep Capsule layout intrinsic while canvas zooms
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

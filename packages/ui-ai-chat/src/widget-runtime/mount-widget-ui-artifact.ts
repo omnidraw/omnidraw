@@ -1,3 +1,6 @@
+import {
+  readPortalContentCssSize,
+} from '@omnidraw/cangine/integrations/capsule';
 import type {
   CapsuleCapabilityBinding,
   CapsuleMountGuestChannels,
@@ -378,11 +381,11 @@ export function createWidgetUiArtifactMountPort(
         if (themeRevision !== initialThemeRevision) {
           mounted.setTheme(latestTheme);
         }
-        const bounds = mountArgs.root.getBoundingClientRect();
+        const size = readPortalContentCssSize(mountArgs.root);
         mounted.setViewport(fnWidgetCapsuleViewport({
-          width: bounds.width,
-          height: bounds.height,
-          scale: 1,
+          width: size.width,
+          height: size.height,
+          scale: mountArgs.root.ownerDocument.defaultView?.devicePixelRatio ?? 1,
           visibility: 'visible',
           distance: 0,
           priority: 0,

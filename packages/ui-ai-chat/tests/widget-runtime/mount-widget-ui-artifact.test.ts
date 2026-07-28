@@ -224,6 +224,7 @@ function rawHandle(artifactHash = HASH_A) {
   const destroy = vi.fn(async () => undefined);
   const setProps = vi.fn();
   const setTheme = vi.fn();
+  const setViewport = vi.fn();
   const handle = {
     ready: vi.fn(async () => undefined),
     setSchedulingMode: vi.fn(async () => undefined),
@@ -234,7 +235,7 @@ function rawHandle(artifactHash = HASH_A) {
     focus: vi.fn(),
     setProps,
     setTheme,
-    setViewport: vi.fn(),
+    setViewport,
     destroy,
     onLifecycle: vi.fn(() => ({ unsubscribe: vi.fn() })),
     onOutput: vi.fn(() => ({ unsubscribe: vi.fn() })),
@@ -242,7 +243,7 @@ function rawHandle(artifactHash = HASH_A) {
     onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
     diagnostics: vi.fn(() => ({ artifactHash })),
   } as unknown as CapsuleHandle;
-  return { destroy, handle, setProps, setTheme };
+  return { destroy, handle, setProps, setTheme, setViewport };
 }
 
 function fakeHostFactory(mountedArtifactHash = HASH_A) {
@@ -298,6 +299,79 @@ async function settleWithin<T>(
 }
 
 describe('Capsule widget mount boundary', () => {
+  test('sizes the initial viewport from intrinsic host dimensions', async () => {
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const root = document.createElement('div');
+    Object.defineProperties(root, {
+      clientWidth: { configurable: true, value: 552 },
+      clientHeight: { configurable: true, value: 874 },
+    });
+    const transformedBounds = vi.spyOn(root, 'getBoundingClientRect')
+      .mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 414,
+        bottom: 655.5,
+        left: 0,
+        width: 414,
+        height: 655.5,
+        toJSON: () => ({}),
+      });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+
+    const handle = await mount.mount({
+      mode: 'published',
+      root,
+      identity: functionBridge.identity,
+      artifact: artifact('published', []),
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge,
+      collaborativeStateBridge: null,
+      onFatal: vi.fn(),
+    });
+
+    expect(transformedBounds).not.toHaveBeenCalled();
+    expect(factory.created[0]!.raw.setViewport).toHaveBeenCalledWith({
+      width: 552,
+      height: 874,
+      scale: root.ownerDocument.defaultView?.devicePixelRatio ?? 1,
+      visibility: 'visible',
+      distance: 0,
+      priority: 0,
+      occlusion: 0,
+    });
+
+    await handle.destroy();
+    await coordinator.destroy();
+  });
+
   test('derives artifact capability schemas and policy through the public adapter', async () => {
     const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(
       new Uint8Array(32).buffer,
