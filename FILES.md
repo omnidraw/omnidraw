@@ -406,6 +406,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
+| [packages/canvas/src/services/fn.local-document.ts](packages/canvas/src/services/fn.local-document.ts) |  |
 | [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
@@ -806,6 +807,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts](packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx](packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx](packages/ui-ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx) |  |

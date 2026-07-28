@@ -7,6 +7,7 @@ import type {
 import { validateSceneSnapshot } from "@omnidraw/cangine/testing";
 import {
   CANVAS_AUTHORING_EXTENSION_KEY,
+  CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
@@ -15,6 +16,7 @@ import type {
   TCanvasAuthoringExtensionV1,
   TCanvasContractIssue,
   TCanvasContractValidation,
+  TCanvasImageExtensionV1,
   TCanvasWidgetExtensionV1,
 } from "./types";
 
@@ -43,6 +45,17 @@ const AUTHORING_KEYS = new Set([
   "schemaVersion",
   "locked",
   "penSource",
+]);
+const IMAGE_KEYS = new Set([
+  "schemaVersion",
+  "url",
+  "mimeType",
+]);
+const IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
 ]);
 const PEN_SOURCE_KEYS = new Set([
   "points",
@@ -254,6 +267,63 @@ function validateAuthoringExtension(
   return issues;
 }
 
+function validateImageExtension(
+  node: TSceneNode,
+  value: TJsonValue,
+  path: string,
+): TCanvasContractIssue[] {
+  if (!isRecord(value)) {
+    return [issue(
+      "INVALID_IMAGE_EXTENSION",
+      path,
+      "The Vibecanvas image extension must be an object.",
+      node.id,
+    )];
+  }
+  if (node.kind !== "image") {
+    return [issue(
+      "IMAGE_EXTENSION_NODE_KIND",
+      path,
+      "The Vibecanvas image extension is allowed only on image nodes.",
+      node.id,
+    )];
+  }
+  const issues: TCanvasContractIssue[] = [];
+  if (!hasOnlyKeys(value, IMAGE_KEYS)) {
+    issues.push(issue(
+      "IMAGE_EXTENSION_FIELDS",
+      path,
+      "The Vibecanvas image extension contains unsupported fields.",
+      node.id,
+    ));
+  }
+  if (value.schemaVersion !== 1) {
+    issues.push(issue(
+      "IMAGE_EXTENSION_VERSION",
+      `${path}/schemaVersion`,
+      "The Vibecanvas image extension schemaVersion must be 1.",
+      node.id,
+    ));
+  }
+  if (!isNonEmptyString(value.url)) {
+    issues.push(issue(
+      "IMAGE_EXTENSION_URL",
+      `${path}/url`,
+      "The Vibecanvas image URL must be a non-empty string.",
+      node.id,
+    ));
+  }
+  if (!IMAGE_MIME_TYPES.has(String(value.mimeType))) {
+    issues.push(issue(
+      "IMAGE_EXTENSION_MIME_TYPE",
+      `${path}/mimeType`,
+      "The Vibecanvas image MIME type is unsupported.",
+      node.id,
+    ));
+  }
+  return issues;
+}
+
 export function fnValidateCanvasItemExtensions(
   node: TSceneNode,
 ): TCanvasContractValidation {
@@ -272,6 +342,21 @@ export function fnValidateCanvasItemExtensions(
       node,
       authoring,
       `/extensions/${CANVAS_AUTHORING_EXTENSION_KEY}`,
+    ));
+  }
+  const image = node.extensions?.[CANVAS_IMAGE_EXTENSION_KEY];
+  if (node.kind === "image" && image === undefined) {
+    issues.push(issue(
+      "IMAGE_EXTENSION_REQUIRED",
+      `/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
+      "Persisted image nodes require a durable Vibecanvas image extension.",
+      node.id,
+    ));
+  } else if (image !== undefined) {
+    issues.push(...validateImageExtension(
+      node,
+      image,
+      `/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
     ));
   }
   return { valid: issues.length === 0, issues };
@@ -313,6 +398,7 @@ export function fnValidateCanvasItems(
   items: readonly TSceneNode[],
 ): TCanvasContractValidation {
   const issues: TCanvasContractIssue[] = [];
+  const imageDescriptors = new Map<string, TCanvasImageExtensionV1>();
   for (const [index, item] of items.entries()) {
     if (item.id === CANVAS_SYNTHETIC_CONTENT_LAYER_ID) {
       issues.push(issue(
@@ -343,6 +429,27 @@ export function fnValidateCanvasItems(
       ...extensionIssue,
       path: `/items/${index}${extensionIssue.path}`,
     })));
+    if (item.kind === "image") {
+      const descriptor = fnReadCanvasImageExtension(item);
+      const existing = imageDescriptors.get(item.resourceId);
+      if (
+        descriptor !== null
+        && existing !== undefined
+        && (
+          descriptor.url !== existing.url
+          || descriptor.mimeType !== existing.mimeType
+        )
+      ) {
+        issues.push(issue(
+          "IMAGE_RESOURCE_DESCRIPTOR_CONFLICT",
+          `/items/${index}/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
+          `Image resource '${item.resourceId}' has conflicting durable descriptors.`,
+          item.id,
+        ));
+      } else if (descriptor !== null && existing === undefined) {
+        imageDescriptors.set(item.resourceId, descriptor);
+      }
+    }
   }
   if (issues.length > 0) return { valid: false, issues };
 
@@ -398,4 +505,18 @@ export function fnReadCanvasAuthoringExtension(
   );
   if (validation.length > 0) return null;
   return value as unknown as TCanvasAuthoringExtensionV1;
+}
+
+export function fnReadCanvasImageExtension(
+  node: TSceneNode,
+): TCanvasImageExtensionV1 | null {
+  const value = node.extensions?.[CANVAS_IMAGE_EXTENSION_KEY];
+  if (value === undefined) return null;
+  const validation = validateImageExtension(
+    node,
+    value,
+    `/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
+  );
+  if (validation.length > 0) return null;
+  return value as unknown as TCanvasImageExtensionV1;
 }

@@ -4,6 +4,7 @@ import Circle from 'lucide-solid/icons/circle';
 import Eraser from 'lucide-solid/icons/eraser';
 import Grid2x2 from 'lucide-solid/icons/grid-2x2';
 import Hand from 'lucide-solid/icons/hand';
+import ImageIcon from 'lucide-solid/icons/image';
 import Minus from 'lucide-solid/icons/minus';
 import MousePointer2 from 'lucide-solid/icons/mouse-pointer-2';
 import PanelLeft from 'lucide-solid/icons/panel-left';
@@ -40,6 +41,7 @@ type TFloatingCanvasToolbarProps = Readonly<{
   gridVisible: boolean;
   sidebarVisible: boolean;
   onRedo(): void;
+  onImportImage(): void;
   onSelectTool(toolId: TCanvasToolId): void;
   onToggleGrid(): void;
   onToggleSidebar(): void;
@@ -82,6 +84,15 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
                 />
               )}
             </For>
+            <button
+              type="button"
+              class="vc-toolbar-button"
+              aria-label="Import image"
+              title="Import image"
+              onClick={props.onImportImage}
+            >
+              <span class="vc-toolbar-button__icon"><ImageIcon size={14} /></span>
+            </button>
             <button
               type="button"
               class="vc-toolbar-button"

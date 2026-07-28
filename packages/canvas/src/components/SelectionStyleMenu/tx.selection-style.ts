@@ -1,14 +1,18 @@
 import type {
-  IInfiniteCanvasEngine,
   TNodeId,
+  TSerializedSceneCommand,
 } from '@omnidraw/cangine';
+import type { IStandardCanvasEditor } from '@omnidraw/cangine/editor';
+import {
+  fnSceneNodesEqual,
+} from '../../services/fn.scene-node-diff';
 import {
   fnApplySelectionStyle,
   type TSelectionStylePatch,
 } from './fn.selection-style';
 
 export type TPortal = Readonly<{
-  engine: IInfiniteCanvasEngine;
+  editor: IStandardCanvasEditor;
 }>;
 
 export type TArgs = Readonly<{
@@ -17,14 +21,21 @@ export type TArgs = Readonly<{
 }>;
 
 export function txApplySelectionStyle(portal: TPortal, args: TArgs): void {
-  portal.engine.scene.transaction((transaction) => {
-    for (const nodeId of args.nodeIds) {
-      transaction.update(nodeId, (node) => (
-        fnApplySelectionStyle(node, args.patch)
-      ));
-    }
-  }, {
+  const commands: TSerializedSceneCommand[] = [];
+  for (const nodeId of args.nodeIds) {
+    const node = portal.editor.engine.scene.get(nodeId);
+    if (node === null) continue;
+    const next = fnApplySelectionStyle(node, args.patch);
+    if (fnSceneNodesEqual(node, next)) continue;
+    commands.push({
+      type: 'upsert',
+      node: next,
+    });
+  }
+  if (commands.length === 0) return;
+  portal.editor.commitSceneMutation({
     source: 'vibecanvas:selection-style',
     coalesceKey: 'vibecanvas:selection-style',
+    commands,
   });
 }

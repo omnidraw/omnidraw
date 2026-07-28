@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
 } from '@vibecanvas/canvas-contract';
 import type {
@@ -66,6 +67,30 @@ function group(
     orderKey,
     kind: 'group',
     transform,
+  };
+}
+
+function image(
+  id: string,
+  resourceId: string,
+  url: string,
+  orderKey = id,
+): TSceneNode {
+  return {
+    id,
+    parentId: null,
+    orderKey,
+    kind: 'image',
+    transform,
+    resourceId,
+    size: { width: 80, height: 60 },
+    extensions: {
+      'vibecanvas:image': {
+        schemaVersion: 1,
+        url,
+        mimeType: 'image/png',
+      },
+    },
   };
 }
 
@@ -190,6 +215,43 @@ class MemoryCanvasStore implements ICanvasStore {
     };
   }
 
+  async queryImageResourceClaims(
+    context: TTenantContext,
+    args: Readonly<{
+      canvasId: string;
+      resourceIds: readonly string[];
+      excludeItemIds: readonly string[];
+      limit: number;
+    }>,
+  ) {
+    const canvas = this.canvases.get(this.key(context, args.canvasId));
+    if (canvas === undefined) return [];
+    const resourceIds = new Set(args.resourceIds);
+    const excluded = new Set(args.excludeItemIds);
+    const claims = new Map<string, {
+      resourceId: string;
+      url: string;
+      mimeType: string;
+    }>();
+    for (const row of canvas.rows.values()) {
+      if (
+        excluded.has(row.id)
+        || row.item.kind !== 'image'
+        || !resourceIds.has(row.item.resourceId)
+      ) continue;
+      const descriptor = fnReadCanvasImageExtension(row.item);
+      if (descriptor === null) continue;
+      const claim = {
+        resourceId: row.item.resourceId,
+        url: descriptor.url,
+        mimeType: descriptor.mimeType,
+      };
+      claims.set(JSON.stringify(claim), claim);
+      if (claims.size >= args.limit) break;
+    }
+    return [...claims.values()];
+  }
+
   async applyMutations(
     context: TTenantContext,
     args: TCanvasStoreApplyArgs,
@@ -309,6 +371,10 @@ class InstrumentedScaleStore implements ICanvasStore {
     return { items: [structuredClone(this.row)], nextCursor: null };
   }
 
+  async queryImageResourceClaims() {
+    return [];
+  }
+
   async applyMutations(
     _context: TTenantContext,
     args: TCanvasStoreApplyArgs,
@@ -424,6 +490,71 @@ describe('CanvasService authoritative commands', () => {
       expect(elapsedMs).toBeLessThan(250);
       await canvas.stop();
     }
+  });
+
+  test('rejects source-less image rows at the durable authority boundary', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas(tenant, 'canvas-a');
+    const canvas = service(store);
+    const sourceLessImage: TSceneNode = {
+      id: 'image-a',
+      parentId: null,
+      orderKey: 'A',
+      kind: 'image',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    await expect(canvas.execute(
+      tenant,
+      insertCommand('insert-image-a', 'canvas-a', 0, sourceLessImage),
+    )).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
+    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).items)
+      .toEqual([]);
+  });
+
+  test('rejects conflicting descriptors for a shared durable image resource', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas(tenant, 'canvas-a', [
+      image(
+        'image-a',
+        'resource-a',
+        'https://media.test/image-a.png',
+      ),
+    ]);
+    const canvas = service(store);
+
+    await expect(canvas.execute(
+      tenant,
+      insertCommand(
+        'insert-conflicting-clone',
+        'canvas-a',
+        0,
+        image(
+          'image-b',
+          'resource-a',
+          'https://media.test/image-b.png',
+        ),
+      ),
+    )).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
+
+    const accepted = await canvas.execute(
+      tenant,
+      insertCommand(
+        'insert-matching-clone',
+        'canvas-a',
+        0,
+        image(
+          'image-b',
+          'resource-a',
+          'https://media.test/image-a.png',
+        ),
+      ),
+    );
+    expect(accepted.changedItems.map((entry) => entry.id)).toEqual(['image-b']);
+    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).items)
+      .toHaveLength(2);
   });
 
   test('accepts stale disjoint paths, rejects a same-path race, and stays sparse', async () => {

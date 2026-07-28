@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { TRectNode, TWidgetFrameNode } from "@omnidraw/cangine";
+import type { TImageNode, TRectNode, TWidgetFrameNode } from "@omnidraw/cangine";
 import {
+  CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   fnMaterializeCanvasValidationSnapshot,
+  fnReadCanvasImageExtension,
   fnValidateCanvasItems,
 } from "../src";
 
@@ -140,5 +142,103 @@ describe("@vibecanvas/canvas-contract", () => {
     expect(validation.issues.map((entry) => entry.code)).toEqual(
       expect.arrayContaining(["RESERVED_ITEM_ID", "AUTHORING_EXTENSION_PEN_LENGTH"]),
     );
+  });
+
+  test("validates and reads durable image descriptors", () => {
+    const image: TImageNode = {
+      id: "image-a",
+      parentId: null,
+      orderKey: "A",
+      kind: "image",
+      transform,
+      resourceId: "resource-a",
+      size: { width: 80, height: 60 },
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: "https://media.test/image-a.png",
+          mimeType: "image/png",
+        },
+      },
+    };
+
+    expect(fnValidateCanvasItems([image])).toEqual({ valid: true, issues: [] });
+    expect(fnReadCanvasImageExtension(image)).toEqual({
+      schemaVersion: 1,
+      url: "https://media.test/image-a.png",
+      mimeType: "image/png",
+    });
+
+    const sourceLess: TImageNode = {
+      ...image,
+      extensions: undefined,
+    };
+    expect(fnValidateCanvasItems([sourceLess])).toMatchObject({
+      valid: false,
+      issues: [
+        expect.objectContaining({ code: "IMAGE_EXTENSION_REQUIRED" }),
+      ],
+    });
+
+    image.extensions![CANVAS_IMAGE_EXTENSION_KEY] = {
+      schemaVersion: 1,
+      url: "",
+      mimeType: "image/svg+xml",
+    };
+    expect(fnValidateCanvasItems([image])).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: "IMAGE_EXTENSION_URL" }),
+        expect.objectContaining({ code: "IMAGE_EXTENSION_MIME_TYPE" }),
+      ]),
+    });
+
+    const wrongKind = rect("rect-with-image");
+    wrongKind.extensions = {
+      [CANVAS_IMAGE_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        url: "https://media.test/image-a.png",
+        mimeType: "image/png",
+      },
+    };
+    expect(fnValidateCanvasItems([wrongKind])).toMatchObject({
+      valid: false,
+      issues: [expect.objectContaining({ code: "IMAGE_EXTENSION_NODE_KIND" })],
+    });
+
+    const conflictingClone: TImageNode = {
+      ...sourceLess,
+      id: "image-b",
+      orderKey: "B",
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: "https://media.test/image-b.png",
+          mimeType: "image/png",
+        },
+      },
+    };
+    const originalWithDescriptor: TImageNode = {
+      ...sourceLess,
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: "https://media.test/image-a.png",
+          mimeType: "image/png",
+        },
+      },
+    };
+    expect(fnValidateCanvasItems([
+      originalWithDescriptor,
+      conflictingClone,
+    ])).toMatchObject({
+      valid: false,
+      issues: [
+        expect.objectContaining({
+          code: "IMAGE_RESOURCE_DESCRIPTOR_CONFLICT",
+          itemId: "image-b",
+        }),
+      ],
+    });
   });
 });

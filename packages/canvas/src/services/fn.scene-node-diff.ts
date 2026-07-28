@@ -142,6 +142,13 @@ export function fnDiffSceneNodeStructure(
   });
 }
 
+export function fnSceneNodesEqual(
+  left: TSceneNode | null,
+  right: TSceneNode | null,
+): boolean {
+  return equalJson(left, right);
+}
+
 export function fnApplySceneNodePatches(
   node: TSceneNode,
   patches: readonly TCanvasItemPatch[],

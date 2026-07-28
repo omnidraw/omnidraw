@@ -85,6 +85,30 @@ function rect(
   };
 }
 
+function image(
+  id: string,
+  resourceId: string,
+  url: string,
+  orderKey: string,
+): TCanvasItem {
+  return {
+    id,
+    parentId: null,
+    orderKey,
+    kind: "image",
+    transform,
+    resourceId,
+    size: { width: 100, height: 60 },
+    extensions: {
+      "vibecanvas:image": {
+        schemaVersion: 1,
+        url,
+        mimeType: "image/png",
+      },
+    },
+  };
+}
+
 function widget(
   id: string,
   parentId: string | null,
@@ -363,6 +387,71 @@ describe("CanvasItemStoreTurso", () => {
         { id: "widget" },
       ],
     });
+  });
+
+  test("queries distinct durable image claims with exclusions and a limit", async () => {
+    const database = await openDatabase();
+    await seedCanvas(database, ORG_A, CANVAS_A);
+    const store = new CanvasItemStoreTurso(database);
+    const first = image(
+      "image-a",
+      "resource-a",
+      "https://media.test/a.png",
+      "A",
+    );
+    const duplicate = image(
+      "image-b",
+      "resource-a",
+      "https://media.test/a.png",
+      "B",
+    );
+    const second = image(
+      "image-c",
+      "resource-b",
+      "https://media.test/b.png",
+      "C",
+    );
+
+    await store.applyMutations(TENANT_A, {
+      canvasId: CANVAS_A,
+      expectedCanvasRevision: 0,
+      nowMs: 10,
+      mutations: [
+        { type: "insert", item: first },
+        { type: "insert", item: duplicate },
+        { type: "insert", item: second },
+      ],
+    });
+
+    expect(await store.queryImageResourceClaims(TENANT_A, {
+      canvasId: CANVAS_A,
+      resourceIds: ["resource-a", "resource-b"],
+      excludeItemIds: [],
+      limit: 3,
+    })).toEqual([
+      {
+        resourceId: "resource-a",
+        url: "https://media.test/a.png",
+        mimeType: "image/png",
+      },
+      {
+        resourceId: "resource-b",
+        url: "https://media.test/b.png",
+        mimeType: "image/png",
+      },
+    ]);
+    expect(await store.queryImageResourceClaims(TENANT_A, {
+      canvasId: CANVAS_A,
+      resourceIds: ["resource-a"],
+      excludeItemIds: ["image-a", "image-b"],
+      limit: 1,
+    })).toEqual([]);
+    expect((await store.queryImageResourceClaims(TENANT_A, {
+      canvasId: CANVAS_A,
+      resourceIds: ["resource-a", "resource-b"],
+      excludeItemIds: [],
+      limit: 1,
+    }))).toHaveLength(1);
   });
 
   test("rolls back a whole mutation batch on revision and item conflicts", async () => {

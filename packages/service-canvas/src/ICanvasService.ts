@@ -53,6 +53,12 @@ export type TCanvasStoreApplyResult =
       revision: number | null;
     }>;
 
+export type TCanvasImageResourceClaim = Readonly<{
+  resourceId: string;
+  url: string;
+  mimeType: string;
+}>;
+
 /**
  * Persistence boundary for the authoritative service.
  *
@@ -74,6 +80,15 @@ export interface ICanvasStore {
     tenant: TTenantContext,
     query: TCanvasItemQuery,
   ): Promise<TCanvasItemPage>;
+  queryImageResourceClaims(
+    tenant: TTenantContext,
+    args: Readonly<{
+      canvasId: string;
+      resourceIds: readonly string[];
+      excludeItemIds: readonly TCanvasItemId[];
+      limit: number;
+    }>,
+  ): Promise<readonly TCanvasImageResourceClaim[]>;
   applyMutations(
     tenant: TTenantContext,
     args: TCanvasStoreApplyArgs,

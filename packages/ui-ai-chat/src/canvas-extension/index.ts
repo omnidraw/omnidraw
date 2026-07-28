@@ -50,10 +50,10 @@ import {
   fnCanvasWidgetMountSignature,
   fnCreateAiWidgetNode,
   fnCreatePublishedWidgetNode,
-  fnWithAiWidgetPayload,
   type TAiWidgetPayload,
 } from './fn.canvas-widget';
 import { fxWidgetCapsuleViewport } from './fx.capsule-portal-viewport';
+import { txPersistAiWidgetPayload } from './tx.ai-widget-payload';
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -189,10 +189,10 @@ export function createAiChatCanvasExtension(
       ): void => {
         const current = widgetFrame(context.engine.scene.get(nodeId));
         if (current === null) return;
-        context.engine.scene.apply([{
-          type: 'upsert',
-          node: fnWithAiWidgetPayload(current, payload),
-        }], { source: 'vibecanvas:ai-chat' });
+        txPersistAiWidgetPayload({ editor: context.editor }, {
+          node: current,
+          payload,
+        });
       };
 
       const mountAiWidget = (
@@ -391,8 +391,9 @@ export function createAiChatCanvasExtension(
             revisionId: validated.descriptor.revisionId,
           }),
         });
-        context.engine.scene.apply(commands, {
+        context.editor.commitSceneMutation({
           source: 'vibecanvas:widget-placement',
+          commands,
         });
         context.editor.setSelection([id], { focusedNodeId: id });
         context.config.notification?.showSuccess(`${label} added to canvas`);
@@ -436,9 +437,14 @@ export function createAiChatCanvasExtension(
             activation.type === 'traffic-light'
             && activation.control === 'close'
           ) {
-            context.engine.scene.transaction((tx) => {
-              tx.remove(activation.widgetId, { descendants: 'remove' });
-            }, { source: 'vibecanvas:widget-close' });
+            context.editor.commitSceneMutation({
+              source: 'vibecanvas:widget-close',
+              commands: [{
+                type: 'remove',
+                nodeId: activation.widgetId,
+                descendants: 'remove',
+              }],
+            });
           }
         },
       );

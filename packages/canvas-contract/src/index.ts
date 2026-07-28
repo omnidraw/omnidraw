@@ -1,6 +1,7 @@
 export {
   CANVAS_AUTHORING_EXTENSION_KEY,
   CANVAS_COMMAND_MAX_OPERATIONS,
+  CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_QUERY_DEFAULT_LIMIT,
   CANVAS_QUERY_MAX_LIMIT,
   CANVAS_SCENE_SCHEMA_VERSION,
@@ -21,6 +22,7 @@ export type {
   TCanvasItemQueryFilter,
   TCanvasItemRevision,
   TCanvasItemSnapshot,
+  TCanvasImageExtensionV1,
   TCanvasItemsChangedEvent,
   TCanvasJsonPath,
   TCanvasOperation,
@@ -34,6 +36,7 @@ export {
   fnAssertValidCanvasItems,
   fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasAuthoringExtension,
+  fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItemExtensions,
   fnValidateCanvasItems,

@@ -36,6 +36,12 @@ export type TCanvasAuthoringExtensionV1 = Readonly<{
   }>;
 }>;
 
+export type TCanvasImageExtensionV1 = Readonly<{
+  schemaVersion: 1;
+  url: string;
+  mimeType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+}>;
+
 /** One complete authored Cangine node and its database concurrency metadata. */
 export type TCanvasItemSnapshot = Readonly<{
   id: TCanvasItemId;

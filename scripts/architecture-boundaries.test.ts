@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { parse } from '@typescript-eslint/parser'
 import { readdir, readFile } from 'node:fs/promises'
 import { extname, join, relative, resolve, sep } from 'node:path'
 
@@ -219,6 +220,275 @@ async function packageManifests(): Promise<Array<{
     path,
     manifest: JSON.parse(await readFile(path, 'utf8')),
   })))
+}
+
+const DURABLE_SCENE_METHODS = new Set([
+  'apply',
+  'replace',
+  'transaction',
+])
+const JAVASCRIPT_TYPESCRIPT_EXTENSIONS = new Set([
+  '.cjs',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.mts',
+  '.ts',
+  '.tsx',
+])
+
+type TDurableSceneWrite = Readonly<{
+  column: number
+  line: number
+  method: string
+}>
+
+type TAstNode = {
+  type: string
+  loc?: Readonly<{
+    start: Readonly<{
+      column: number
+      line: number
+    }>
+  }>
+  [key: string]: unknown
+}
+
+function isAstNode(value: unknown): value is TAstNode {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as { type?: unknown }).type === 'string'
+  )
+}
+
+function childAstNodes(node: TAstNode): readonly TAstNode[] {
+  const children: TAstNode[] = []
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'loc' || key === 'range' || key === 'tokens' || key === 'comments') {
+      continue
+    }
+    if (isAstNode(value)) {
+      children.push(value)
+      continue
+    }
+    if (!Array.isArray(value)) continue
+    for (const item of value) {
+      if (isAstNode(item)) children.push(item)
+    }
+  }
+  return children
+}
+
+function identifierName(node: TAstNode): string | null {
+  return node.type === 'Identifier' && typeof node.name === 'string'
+    ? node.name
+    : null
+}
+
+function unwrapExpression(expression: TAstNode): TAstNode {
+  let current = expression
+  const wrappers = new Set([
+    'ChainExpression',
+    'TSAsExpression',
+    'TSInstantiationExpression',
+    'TSNonNullExpression',
+    'TSSatisfiesExpression',
+    'TSTypeAssertion',
+  ])
+  while (wrappers.has(current.type) && isAstNode(current.expression)) {
+    current = current.expression
+  }
+  return current
+}
+
+function staticMember(
+  expression: TAstNode,
+): Readonly<{ name: string | null; receiver: TAstNode }> | null {
+  const current = unwrapExpression(expression)
+  if (
+    current.type !== 'MemberExpression'
+    || !isAstNode(current.object)
+    || !isAstNode(current.property)
+  ) return null
+  const computed = current.computed === true
+  const property = unwrapExpression(current.property)
+  const name = computed
+    ? property.type === 'Literal' && typeof property.value === 'string'
+      ? property.value
+      : property.type === 'TemplateLiteral'
+        && Array.isArray(property.expressions)
+        && property.expressions.length === 0
+        && Array.isArray(property.quasis)
+        && isAstNode(property.quasis[0])
+        && isAstNode(property.quasis[0].value)
+        && typeof property.quasis[0].value.cooked === 'string'
+        ? property.quasis[0].value.cooked
+        : null
+    : identifierName(property)
+  return {
+    name,
+    receiver: current.object,
+  }
+}
+
+function bindingNames(
+  pattern: TAstNode,
+): readonly Readonly<{ name: string; property: string }>[] {
+  if (pattern.type !== 'ObjectPattern' || !Array.isArray(pattern.properties)) {
+    return []
+  }
+  const result: Array<Readonly<{ name: string; property: string }>> = []
+  for (const candidate of pattern.properties) {
+    if (
+      !isAstNode(candidate)
+      || candidate.type !== 'Property'
+      || !isAstNode(candidate.key)
+      || !isAstNode(candidate.value)
+    ) continue
+    const name = identifierName(candidate.value)
+    const property = identifierName(candidate.key)
+      ?? (
+        candidate.key.type === 'Literal'
+        && typeof candidate.key.value === 'string'
+        ? candidate.key.value
+        : null
+      )
+    if (name !== null && property !== null) result.push({ name, property })
+  }
+  return result
+}
+
+function durableSceneWrites(
+  path: string,
+  source: string,
+): readonly TDurableSceneWrite[] {
+  const sourceFile = parse(source, {
+    comment: false,
+    jsx: path.endsWith('.tsx') || path.endsWith('.jsx'),
+    loc: true,
+    range: false,
+    sourceType: 'module',
+    tokens: false,
+  }) as unknown as TAstNode
+  const sceneAliases = new Set(['scene'])
+  const methodAliases = new Map<string, string>()
+  const isSceneExpression = (expression: TAstNode): boolean => {
+    const current = unwrapExpression(expression)
+    const name = identifierName(current)
+    if (name !== null) return sceneAliases.has(name)
+    return staticMember(current)?.name === 'scene'
+  }
+  const rememberMethodAlias = (
+    name: string,
+    expression: TAstNode,
+  ): boolean => {
+    const current = unwrapExpression(expression)
+    const identifier = identifierName(current)
+    if (identifier !== null) {
+      const method = methodAliases.get(identifier)
+      if (method === undefined || methodAliases.get(name) === method) return false
+      methodAliases.set(name, method)
+      return true
+    }
+    const member = staticMember(current)
+    if (
+      member === null
+      || member.name === null
+      || !DURABLE_SCENE_METHODS.has(member.name)
+      || !isSceneExpression(member.receiver)
+      || methodAliases.get(name) === member.name
+    ) return false
+    methodAliases.set(name, member.name)
+    return true
+  }
+  const rememberAliases = (node: TAstNode): boolean => {
+    let changed = false
+    if (
+      node.type === 'VariableDeclarator'
+      && isAstNode(node.id)
+      && isAstNode(node.init)
+    ) {
+      const name = identifierName(node.id)
+      if (name !== null) {
+        if (isSceneExpression(node.init) && !sceneAliases.has(name)) {
+          sceneAliases.add(name)
+          changed = true
+        }
+        if (rememberMethodAlias(name, node.init)) changed = true
+      } else {
+        const initializerIsScene = isSceneExpression(node.init)
+        for (const binding of bindingNames(node.id)) {
+          if (binding.property === 'scene' && !sceneAliases.has(binding.name)) {
+            sceneAliases.add(binding.name)
+            changed = true
+          }
+          if (
+            initializerIsScene
+            && DURABLE_SCENE_METHODS.has(binding.property)
+            && methodAliases.get(binding.name) !== binding.property
+          ) {
+            methodAliases.set(binding.name, binding.property)
+            changed = true
+          }
+        }
+      }
+    }
+    if (
+      node.type === 'AssignmentExpression'
+      && node.operator === '='
+      && isAstNode(node.left)
+      && isAstNode(node.right)
+    ) {
+      const name = identifierName(unwrapExpression(node.left))
+      if (name !== null) {
+        if (isSceneExpression(node.right) && !sceneAliases.has(name)) {
+          sceneAliases.add(name)
+          changed = true
+        }
+        if (rememberMethodAlias(name, node.right)) changed = true
+      }
+    }
+    for (const child of childAstNodes(node)) {
+      if (rememberAliases(child)) changed = true
+    }
+    return changed
+  }
+  while (rememberAliases(sourceFile)) {
+    // Resolve alias chains independent of declaration order.
+  }
+
+  const writes: TDurableSceneWrite[] = []
+  const visit = (node: TAstNode): void => {
+    if (node.type === 'CallExpression' && isAstNode(node.callee)) {
+      const target = unwrapExpression(node.callee)
+      const identifier = identifierName(target)
+      let method = identifier !== null
+        ? (methodAliases.get(identifier) ?? null)
+        : null
+      if (method === null) {
+        const member = staticMember(target)
+        if (member !== null && isSceneExpression(member.receiver)) {
+          method = member.name === null
+            ? '<computed>'
+            : DURABLE_SCENE_METHODS.has(member.name)
+            ? member.name
+            : null
+        }
+      }
+      if (method !== null) {
+        writes.push({
+          method,
+          line: node.loc?.start.line ?? 0,
+          column: (node.loc?.start.column ?? -1) + 1,
+        })
+      }
+    }
+    for (const child of childAstNodes(node)) visit(child)
+  }
+  visit(sourceFile)
+  return writes
 }
 
 describe('managed composition architecture boundaries', () => {
@@ -497,6 +767,54 @@ describe('managed composition architecture boundaries', () => {
         }
       }
     }
+  })
+
+  test('keeps durable Cangine scene writes behind CanvasDocumentService', async () => {
+    const allowedWriters = new Map([
+      [
+        'packages/canvas/src/services/CanvasDocumentService.ts',
+        new Set(['apply', 'replace']),
+      ],
+    ])
+    const violations: string[] = []
+    for (const root of ['apps', 'packages']) {
+      for (const file of await sourceFiles(join(ROOT, root))) {
+        const path = relative(ROOT, file).split(sep).join('/')
+        if (
+          !path.includes('/src/')
+          || !JAVASCRIPT_TYPESCRIPT_EXTENSIONS.has(extname(file))
+        ) continue
+        const source = await readFile(file, 'utf8')
+        if (!source.includes('scene')) continue
+        for (const write of durableSceneWrites(path, source)) {
+          if (allowedWriters.get(path)?.has(write.method) === true) continue
+          violations.push(
+            `${path}:${write.line}:${write.column} calls scene.${write.method}()`,
+          )
+        }
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  test('detects direct, computed, and aliased durable scene writes', () => {
+    const writes = durableSceneWrites('fixture.ts', `
+      engine.scene.apply(commands)
+      const projected = engine.scene
+      projected['replace'](snapshot)
+      const { transaction: mutate } = projected
+      mutate(callback)
+      const direct = projected.apply
+      direct(commands)
+      projected[method](commands)
+    `)
+    expect(writes.map(({ method }) => method)).toEqual([
+      'apply',
+      'replace',
+      'transaction',
+      'apply',
+      '<computed>',
+    ])
   })
 
 })

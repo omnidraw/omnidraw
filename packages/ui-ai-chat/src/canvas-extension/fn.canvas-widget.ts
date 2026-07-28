@@ -34,6 +34,46 @@ type TArgsPublishedNode = TArgsNodeBase & Readonly<{
   revisionId: string;
 }>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function equalJsonData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => equalJsonData(value, right[index]));
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => (
+      key === rightKeys[index] && equalJsonData(left[key], right[key])
+    ));
+}
+
+function normalizedAiWidgetPayload(
+  payload: TAiWidgetPayload,
+): TAiWidgetPayload {
+  return {
+    sessionId: payload.sessionId,
+    ...(payload.model === undefined
+      ? {}
+      : {
+          model: {
+            provider: payload.model.provider,
+            modelId: payload.model.modelId,
+          },
+        }),
+    ...(payload.thinkingLevel === undefined
+      ? {}
+      : { thinkingLevel: payload.thinkingLevel }),
+  };
+}
+
 function fnBaseWidgetNode(args: TArgsNodeBase): Omit<
   TWidgetFrameNode,
   'extensions'
@@ -158,10 +198,23 @@ export function fnWithAiWidgetPayload(
       ...(node.extensions ?? {}),
       [CANVAS_WIDGET_EXTENSION_KEY]: {
         ...extension,
-        payload: payload as TJsonValue,
+        payload: normalizedAiWidgetPayload(payload) as TJsonValue,
       },
     },
   };
+}
+
+export function fnAiWidgetPayloadEquals(
+  node: Readonly<TWidgetFrameNode>,
+  payload: TAiWidgetPayload,
+): boolean {
+  const extension = fnCanvasWidgetExtension(node);
+  return extension?.type === 'ui-widget'
+    && extension.kind === 'ai'
+    && equalJsonData(
+      extension.payload,
+      normalizedAiWidgetPayload(payload),
+    );
 }
 
 export function fnCanvasWidgetMountSignature(

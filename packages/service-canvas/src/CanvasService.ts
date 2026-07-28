@@ -1,6 +1,7 @@
 import {
   CANVAS_COMMAND_MAX_OPERATIONS,
   CANVAS_QUERY_MAX_LIMIT,
+  fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItems,
 } from '@vibecanvas/canvas-contract';
@@ -632,6 +633,87 @@ export class CanvasService implements ICanvasService {
       );
     }
     await this.#validateWidgetIdentities(context);
+    await this.#validateImageResourceClaims(context);
+  }
+
+  async #validateImageResourceClaims(
+    context: TAttemptContext,
+  ): Promise<void> {
+    const resourceIds = new Set<string>();
+    for (const id of context.changedIds) {
+      const original = context.original.get(id)?.item;
+      const finalItem = context.finalItems.get(id) ?? null;
+      if (original?.kind === 'image') resourceIds.add(original.resourceId);
+      if (finalItem?.kind === 'image') resourceIds.add(finalItem.resourceId);
+    }
+    if (resourceIds.size === 0) return;
+
+    const claimLimit = this.#options.maxTouchedItems + 1;
+    const storedClaims = await this.#store.queryImageResourceClaims(
+      context.tenant,
+      {
+        canvasId: context.command.canvasId,
+        resourceIds: [...resourceIds],
+        excludeItemIds: [...context.changedIds],
+        limit: claimLimit,
+      },
+    );
+    if (storedClaims.length >= claimLimit) {
+      throw new CanvasServiceError(
+        'LIMIT_EXCEEDED',
+        'Durable image resource validation exceeded its bounded claim budget.',
+      );
+    }
+
+    const claims = new Map<string, Readonly<{ url: string; mimeType: string }>>();
+    const addClaim = (
+      resourceId: string,
+      descriptor: Readonly<{ url: string; mimeType: string }>,
+    ): void => {
+      if (!resourceIds.has(resourceId)) {
+        throw new CanvasServiceError(
+          'STORE_CONFLICT',
+          'The canvas store returned an unexpected image resource claim.',
+        );
+      }
+      const existing = claims.get(resourceId);
+      if (
+        existing !== undefined
+        && (
+          existing.url !== descriptor.url
+          || existing.mimeType !== descriptor.mimeType
+        )
+      ) {
+        throw new CanvasServiceError(
+          'INVALID_COMMAND',
+          `Image resource '${resourceId}' has conflicting durable descriptors.`,
+        );
+      }
+      claims.set(resourceId, descriptor);
+    };
+    for (const claim of storedClaims) {
+      if (
+        typeof claim.resourceId !== 'string'
+        || claim.resourceId.length === 0
+        || typeof claim.url !== 'string'
+        || claim.url.trim().length === 0
+        || typeof claim.mimeType !== 'string'
+        || claim.mimeType.length === 0
+      ) {
+        throw new CanvasServiceError(
+          'STORE_CONFLICT',
+          'The canvas store returned an invalid image resource claim.',
+        );
+      }
+      addClaim(claim.resourceId, claim);
+    }
+    for (const id of context.changedIds) {
+      const finalItem = context.finalItems.get(id) ?? null;
+      if (finalItem?.kind !== 'image') continue;
+      const descriptor = fnReadCanvasImageExtension(finalItem);
+      if (descriptor === null) continue;
+      addClaim(finalItem.resourceId, descriptor);
+    }
   }
 
   async #expandValidationClosure(

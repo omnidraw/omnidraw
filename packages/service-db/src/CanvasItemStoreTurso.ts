@@ -99,6 +99,12 @@ type TWidgetInstanceIdentity = Readonly<{
   revisionId: string;
 }>;
 
+type TCanvasImageResourceClaim = Readonly<{
+  resourceId: string;
+  url: string;
+  mimeType: string;
+}>;
+
 const ITEM_SELECT = `
   SELECT
     canvas_id,
@@ -617,6 +623,88 @@ export class CanvasItemStoreTurso {
       items: pageRows.map(parseItemRow),
       nextCursor: hasNext ? nextCursor(query, pageRows.at(-1)!) : null,
     };
+  }
+
+  async queryImageResourceClaims(
+    tenant: TTenantContext,
+    request: Readonly<{
+      canvasId: string;
+      resourceIds: readonly string[];
+      excludeItemIds: readonly string[];
+      limit: number;
+    }>,
+  ): Promise<readonly TCanvasImageResourceClaim[]> {
+    const resourceIds = [...new Set(request.resourceIds)];
+    const excludeItemIds = [...new Set(request.excludeItemIds)];
+    if (
+      resourceIds.length < 1
+      || resourceIds.some((resourceId) => (
+        typeof resourceId !== "string" || resourceId.length === 0
+      ))
+      || excludeItemIds.some((itemId) => (
+        typeof itemId !== "string" || itemId.length === 0
+      ))
+      || !Number.isSafeInteger(request.limit)
+      || request.limit < 1
+    ) {
+      throw new CanvasItemStoreError(
+        "CANVAS_ITEM_QUERY_INVALID",
+        "Image resource claim queries require resource IDs and a positive limit.",
+      );
+    }
+
+    const resourcePath = "json_extract(item_json, '$.resourceId')";
+    const urlPath = "json_extract(item_json, '$.extensions.\"vibecanvas:image\".url')";
+    const mimeTypePath = "json_extract(item_json, '$.extensions.\"vibecanvas:image\".mimeType')";
+    const parameters: Array<string | number> = [
+      tenant.orgId,
+      request.canvasId,
+      ...resourceIds,
+    ];
+    let exclusions = "";
+    if (excludeItemIds.length > 0) {
+      exclusions = `AND id NOT IN (${excludeItemIds.map(() => "?").join(", ")})`;
+      parameters.push(...excludeItemIds);
+    }
+    parameters.push(request.limit);
+    const rows = await (await this.database.prepare(`
+      SELECT DISTINCT
+        ${resourcePath} AS resource_id,
+        ${urlPath} AS url,
+        ${mimeTypePath} AS mime_type
+      FROM canvas_items
+      WHERE org_id = ?
+        AND canvas_id = ?
+        AND kind = 'image'
+        AND ${resourcePath} IN (${resourceIds.map(() => "?").join(", ")})
+        ${exclusions}
+      ORDER BY resource_id, url, mime_type
+      LIMIT ?
+    `)).all(...parameters) as Array<{
+      resource_id: unknown;
+      url: unknown;
+      mime_type: unknown;
+    }>;
+    return rows.map((row) => {
+      if (
+        typeof row.resource_id !== "string"
+        || row.resource_id.length === 0
+        || typeof row.url !== "string"
+        || row.url.trim().length === 0
+        || typeof row.mime_type !== "string"
+        || row.mime_type.length === 0
+      ) {
+        throw new CanvasItemStoreError(
+          "CANVAS_ITEM_ROW_INVALID",
+          "A stored image resource claim is invalid.",
+        );
+      }
+      return {
+        resourceId: row.resource_id,
+        url: row.url,
+        mimeType: row.mime_type,
+      };
+    });
   }
 
   async findByWidgetInstance(

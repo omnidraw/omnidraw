@@ -358,10 +358,9 @@ export function Canvas(props: CanvasPageProps) {
 
   const applySelectionStyle = (patch: TSelectionStylePatch) => {
     const currentEditor = editor();
-    const engine = activeRuntime?.engine();
-    if (!currentEditor || !engine) return;
+    if (!currentEditor) return;
     txApplySelectionStyle(
-      { engine },
+      { editor: currentEditor },
       {
         nodeIds: currentEditor.state.selectedNodeIds,
         patch,
@@ -409,6 +408,7 @@ export function Canvas(props: CanvasPageProps) {
         canUndo={state()?.canUndo ?? false}
         gridVisible={gridVisible()}
         sidebarVisible={props.store.sidebarVisible()}
+        onImportImage={() => activeRuntime?.openImagePicker()}
         onSelectTool={(toolId) => editor()?.setActiveTool(toolId)}
         onToggleGrid={() => setGridVisible((visible) => !visible)}
         onToggleSidebar={props.store.onToggleSidebar}

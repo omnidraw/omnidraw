@@ -395,7 +395,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S118](s/S118.md) - canvas: remove generic widget catalog toolbar plumbing
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
-- [ ]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
+- [x]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

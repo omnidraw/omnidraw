@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { CANVAS_WIDGET_EXTENSION_KEY } from "@vibecanvas/canvas-contract/CONSTANTS";
 import {
+  fnAiWidgetPayloadEquals,
   fnAiWidgetPayload,
   fnCanvasWidgetExtension,
   fnCreateAiWidgetNode,
@@ -50,5 +51,13 @@ describe("direct Cangine widget nodes", () => {
       thinkingLevel: "high",
     });
     expect(changed.extensions?.[CANVAS_WIDGET_EXTENSION_KEY]).toBeDefined();
+    expect(fnAiWidgetPayloadEquals(changed, {
+      thinkingLevel: "high",
+      model: { modelId: "gpt-5", provider: "openai" },
+      sessionId: "session-1",
+    })).toBe(true);
+    expect(fnAiWidgetPayloadEquals(changed, {
+      sessionId: "session-2",
+    })).toBe(false);
   });
 });

@@ -38,44 +38,36 @@ business logic, permissions, or UI.
 
 ## 2. Package status and imports
 
-The library is versioned as `@omnidraw/cangine@0.2.2`. Registry
-publication is not part of the current release, but the repository produces a
-deterministic immutable tarball containing compiled ESM and declarations:
+The supported release is the immutable public registry artifact
+`@omnidraw/cangine@0.2.4`, containing compiled ESM and declarations. The
+audited provenance is:
 
 ```text
-artifacts/omnidraw-cangine-0.1.0.tgz
-SHA-256 7ec90675650dbe65ea8989af297c4b6a297404c03180bd13e6e9cc3c34a643a8
+package       @omnidraw/cangine@0.2.4
+source commit d77e343 (feat(editor): add controlled host mutations)
+artifact SHA-256 b20642d15fa83d7ab9363cc6a3be0e2e608aff077a3bc6abf66cdb206c54c0bd
 ```
 
-For a separate application, copy the tarball into a version-controlled vendor
-directory and install that relative immutable file:
+Install the audited release by exact version:
 
 ```bash
-mkdir -p vendor/cangine
-cp /trusted/download/omnidraw-cangine-0.1.0.tgz vendor/cangine/
-shasum -a 256 vendor/cangine/omnidraw-cangine-0.1.0.tgz
-bun add ./vendor/cangine/omnidraw-cangine-0.1.0.tgz
+bun add --exact @omnidraw/cangine@0.2.4
 ```
 
-Do not commit an absolute `file:` dependency. Once a registry release is
-separately authorized, consumers can replace the relative tarball dependency
-with an immutable version or an appropriate semver range.
-
-Inside this repository, use the workspace dependency so Vite follows the
-TypeScript source and preserves engine hot reload:
+Vibecanvas consuming manifests pin the same registry version:
 
 ```json
 {
   "dependencies": {
-    "@omnidraw/cangine": "workspace:*"
+    "@omnidraw/cangine": "0.2.4"
   }
 }
 ```
 
-The checked-in workspace manifest intentionally points exports at `src/`.
-The packed manifest points the same public specifiers at compiled `dist/`.
-Consumer code must therefore use package specifiers and behave identically in
-both modes.
+Keep the lockfile integrity entry and consumer contract test. Do not replace
+the package with a workspace checkout, absolute `file:` dependency, generated
+`dist/` edit, or local patch. Consumer code must use only public package
+specifiers.
 
 Public entrypoints:
 
@@ -2189,6 +2181,62 @@ Application document / collaboration authority
   -> next projected engine transaction
 ```
 
+### Controlled scene and image ports
+
+Applications that own the local document should configure
+`IEditorSceneMutationPort` from `@omnidraw/cangine/editor`. In controlled mode,
+Cangine sends one immutable `TEditorSceneMutationRequest` containing the
+transaction ID, basis scene revision, source, optional coalescing key, exact
+serialized commands, and affected node IDs. `commit()` must synchronously
+accept the host document change, project those commands through exactly one
+`engine.scene.apply()`, and return the immediate successor scene revision. It
+must not wait for persistence, collaboration, or media work. If the host
+throws, Cangine does not rewrite, retry, or fall back to a direct scene write.
+
+Use a custom `IEditorHistory` adapter when undo/redo must pass through that same
+host boundary; the recorder-backed linear adapter is not required. Product
+commands can enter the boundary through `editor.commitSceneMutation()`.
+
+Prepared native images use `IEditorImageImportPort`. Clipboard and image-drop
+controllers perform extraction, decode, fitting, placement, ordering, and
+temporary resource registration, then call `commitPrepared()` with final image
+nodes, intrinsic sizes, MIME types, resource IDs, and original `Blob`s. A
+controlled host must adopt any Blob/resource ownership it needs, commit the
+mutation synchronously, return the same successor-revision receipt, and run
+upload or durable-URL promotion afterward. Pass the same port as
+`imageImportPort` to clipboard, drop, and file-picker flows.
+
+```ts
+import {
+  createClipboardImagePasteController,
+  createStandardCanvasEditor,
+} from "@omnidraw/cangine/editor";
+import type {
+  IEditorHistory,
+  IEditorImageImportPort,
+  IEditorSceneMutationPort,
+} from "@omnidraw/cangine/editor";
+
+type TDocumentPort = IEditorSceneMutationPort & IEditorImageImportPort;
+
+declare const documentPort: TDocumentPort;
+declare const documentHistory: IEditorHistory;
+
+const editor = createStandardCanvasEditor({
+  engine,
+  contentParentId: "content",
+  sceneMutationPort: documentPort,
+  history: { kind: "custom", adapter: documentHistory },
+});
+
+const clipboard = createClipboardImagePasteController({
+  editor,
+  eventTarget: host,
+  parentId: "content",
+  imageImportPort: documentPort,
+});
+```
+
 Create the editor explicitly; the root engine never creates it:
 
 ```ts
@@ -2256,11 +2304,12 @@ paths.attach();
 editor.attach();
 ```
 
-Linear history requires an engine created with `record`; it is disabled by
-default. You can register/replace tools and commands or supply a custom history
-adapter. `createCanvasEditor()` provides only the lower-level lifecycle,
-registry, selected/focused-ID, input-routing, and history kernel when the
-standard preset is not appropriate.
+The built-in linear history requires an engine created with `record`; it is
+disabled by default. A controlled document host normally supplies custom
+history instead and need not enable the recorder. You can register/replace
+tools and commands or supply a custom history adapter. `createCanvasEditor()`
+provides only the lower-level lifecycle, registry, selected/focused-ID,
+input-routing, and history kernel when the standard preset is not appropriate.
 
 `CanvasMenuController` is the shared browser DOM menu for right-click commands
 and widget dropdowns. Pass `overlayHost: host` to enable its visual presenter;
@@ -2646,6 +2695,7 @@ detached controllers unless their specific documentation says otherwise; call
 | Group | Exported types |
 |---|---|
 | Kernel | `ICanvasEditor`, `TCanvasEditorConfig`, `TEditorState`, `TEditorStatus`, `TEditorSelectionOverlayConfig`, `TEditorTool`, `TEditorToolId`, `TEditorToolInfo`, `TEditorToolContext`, `TEditorCommand`, `TEditorCommandId`, `TEditorCommandInfo`, `TEditorCommandContext` |
+| Controlled mutations | `IEditorSceneMutationPort`, `TEditorSceneMutation`, `TEditorSceneMutationRequest`, `TEditorSceneMutationReceipt`, `TEditorSceneMutationDispatchOptions`, `IEditorImageImportPort`, `TEditorImageImportSource`, `TPreparedEditorImage`, `TPreparedImageImportRequest` |
 | Standard preset | `IStandardCanvasEditor`, `TStandardCanvasEditorConfig`, `TStandardEditorToolId`, `TStandardEditorToolOptions`, `TStandardEditorCommandId`, `TStandardEditorCommandOptions`, `TStandardCreatableKind`, `TStandardEditorCreationOptions`, `TStandardNodeCreationContext`, `TStandardNodeFactory`, `TStandardTextEditRequest`, `TStandardTextEditingSessionOptions` |
 | Transform policy | `TStandardTransformPolicyOptions`, `TStandardTransformCommitOptions`, `TStandardWidgetMode` |
 | Cloning | `TClonePlan`, `TClonedNodes`, `TRemapClonePlanOptions` |
