@@ -23,7 +23,34 @@ describe('published v3 Edit as draft', () => {
     const { controller, store, widgets, createDraft } =
       await createWidgetAuthoringHarness(root);
     const original = await createDraft('Published Editor', true);
-    const published = await controller.publish(original.draftId, original.revision);
+    const originalOwner = await controller.ensurePreviewOwner({
+      previewId: '80000000-0000-4000-8000-000000000001',
+      canvasId: 'canvas-published-editor',
+      frameNodeId: 'frame-published-editor',
+      draftId: original.draftId,
+      originChatId: original.chatId,
+      role: 'companion',
+    });
+    const originalPreview = await controller.buildPreview(original.draftId, {
+      previewId: originalOwner.id,
+      canvasId: originalOwner.canvasId,
+      frameNodeId: originalOwner.frameNodeId,
+    });
+    if (
+      !originalPreview.ready
+      || originalPreview.previewRevisionId === null
+      || originalPreview.bindingRevision === null
+    ) throw new Error('Expected a ready frame-owned Preview before publication.');
+    const published = await controller.publish(original.draftId, original.revision, {
+      idempotencyKey: 'publish-original-preview',
+      previewId: originalOwner.id,
+      previewRevisionId: originalPreview.previewRevisionId,
+      canvasId: originalOwner.canvasId,
+      frameNodeId: originalOwner.frameNodeId,
+      expectedBindingRevision: originalPreview.bindingRevision,
+      expectedBindingPlanDigestSha256:
+        originalPreview.bindingPlanDigestSha256!,
+    });
     expect(published.published).toBe(true);
     if (!published.published) return;
     const revision = widgets.revisions.get(published.publishedRevisionId);
@@ -105,7 +132,34 @@ describe('published v3 Edit as draft', () => {
       revision: source.sourceDigestSha256,
       validation: { status: 'valid' },
     });
-    expect(await service.publishWidgetDraft(durable.id, source.sourceDigestSha256)).toMatchObject({
+    const republishOwner = await service.ensureWidgetPreviewOwner({
+      previewId: '80000000-0000-4000-8000-000000000002',
+      canvasId: 'canvas-republished-editor',
+      frameNodeId: 'frame-republished-editor',
+      draftId: durable.id,
+      originChatId: durable.chatId,
+      role: 'placed',
+    });
+    const republishPreview = await service.buildWidgetPreview(durable.id, {
+      previewId: republishOwner.id,
+      canvasId: republishOwner.canvasId,
+      frameNodeId: republishOwner.frameNodeId,
+    });
+    if (
+      !republishPreview.ready
+      || republishPreview.previewRevisionId === null
+      || republishPreview.bindingRevision === null
+    ) throw new Error('Expected a ready frame-owned Preview before republication.');
+    expect(await service.publishWidgetDraft(durable.id, source.sourceDigestSha256, {
+      idempotencyKey: 'republish-reviewed-preview',
+      previewId: republishOwner.id,
+      previewRevisionId: republishPreview.previewRevisionId,
+      canvasId: republishOwner.canvasId,
+      frameNodeId: republishOwner.frameNodeId,
+      expectedBindingRevision: republishPreview.bindingRevision,
+      expectedBindingPlanDigestSha256:
+        republishPreview.bindingPlanDigestSha256!,
+    })).toMatchObject({
       published: true,
       draftId: durable.id,
       definitionId: target.definitionId,

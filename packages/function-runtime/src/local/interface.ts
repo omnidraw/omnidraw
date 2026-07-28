@@ -21,6 +21,7 @@ export interface IExactFunctionArtifactReader {
       contractDigestSha256: string;
       runtimeAbi: string;
       subject: TFunctionInvocationSubject;
+      invocationId: string;
     }>,
   ): Promise<Uint8Array>;
 }

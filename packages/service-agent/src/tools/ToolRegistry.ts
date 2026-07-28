@@ -72,6 +72,11 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
     createBashTool({
       authorize: () => authorize('bash'),
       capability: args.bashCapability,
+      chatId: args.chatId,
+      workspace: args.workspace,
+      onDraftChanged: args.onDraftChanged
+        ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
+        : undefined,
     }),
   ];
   const definitions = new Map(tools.map((tool) => [tool.name, tool]));

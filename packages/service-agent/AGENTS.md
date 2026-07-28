@@ -85,16 +85,32 @@ Chat filesystem ownership:
 - Canvas/API field `sessionId` is the stable Vibecanvas chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
 - `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
 - `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
-- Request-time draft snapshots are temporary siblings under `widgets/drafts/` and are removed before the operation returns; there is no durable Preview root.
+- Build workspaces remain draft-private and warm while a Preview frame for that
+  draft exists. Durable, content-addressed Preview revisions retain their exact
+  source/UI/server artifacts and control metadata independently of that
+  reconstructable workspace.
 - `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to the shared draft root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
 
 Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
 
-Publishing remains a user-controlled API operation in `AgentService`. Publish captures the selected draft and atomically commits immutable source, UI, and optional server artifacts with the active revision metadata and resource bindings. Published catalog, detail, files, placement, and edit-as-draft reads come only from that durable revision and its verified source artifact. Every chat remains mounted to the editable draft, and published slugs are immutable after first publication.
+Publishing remains a user-controlled API operation in `AgentService`. Publish
+accepts the exact active, frame-owned Preview revision, rechecks draft and
+binding authority, release-signs the retained canonical construction, and
+atomically commits its already-built source, UI, and optional server artifacts
+without rerunning guest build commands. Published catalog, detail, files,
+placement, and edit-as-draft reads come only from that durable revision and its
+verified source artifact. Every chat remains mounted to the editable draft, and
+published slugs are immutable after first publication.
 
-Draft Preview is a stateless UI-only build of the current draft snapshot. It returns verified UI bytes directly, keeps collaborative state in the browser, and deliberately rejects server-function and resource calls until Publish. Preview frames persist only draft identity and require no backend cleanup.
+Draft Preview is a durable, full-stack authoring runtime owned by a Cangine
+frame. Its verified UI invokes the exact active retained server revision through
+real selected resource bindings. Open frames follow committed draft changes
+through a latest-wins coordinator, retain the last good revision while building,
+and close their backend owner/workspace when the frame is removed. A stateless
+build request remains only as a compatibility surface; it is not the live
+Cangine Preview model.
 
 Shared current session-record helpers:
 

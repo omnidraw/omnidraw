@@ -33,13 +33,15 @@ Functions are not background workers. Do not use them for timers, sleeps, long-l
 
 ## Draft Preview
 
-Draft Preview builds and renders the current UI source without publishing it. Preview state is ephemeral, and server functions and resources are unavailable until Publish. Refreshing a Preview builds the current draft again.
+Draft Preview is a durable, frame-owned full-stack authoring revision. An open Preview follows committed draft edits automatically, streams install/build/validation progress, and keeps the last known good UI interactive while a replacement builds. The frame survives application restart and remounts its exact retained active revision rather than rebuilding solely because the process changed. Its UI calls the exact retained Preview server artifact with the selected resource bindings, so function and resource behavior can be reviewed before publication. Selected resource permissions are real in Preview, including permitted writes.
 
-Publishing commits immutable source, UI, and optional server artifacts together with the revision metadata and resource bindings. Canvas instances remain pinned to the revision that was placed.
+Preview state is ephemeral authoring-session state and does not become published-instance state. Runtime and build failures are scoped to and visible in the owning Preview; **Retry** and **Reset** provide explicit recovery. **Pause/Resume Live Updates** coalesces newer revisions locally, while **Cancel Build** targets only the exact pending build shown by the frame.
+
+Publishing release-signs and commits the reviewed Preview construction—immutable source, UI, optional server artifact, function descriptors, provenance, and resource bindings—without rerunning npm or the widget build. The Preview title bar uses the exact mounted revision. The draft detail page requires a ready frame-owned Preview, shows its canvas/frame and revision identity, requires you to choose when several are available, and rechecks that selection before committing. A stable confirmation key makes a lost-response retry idempotent, while a changed binding revision or binding-plan digest fails closed. Canvas instances remain pinned to the revision that was placed.
 
 ## Build prerequisite
 
-Widget UI projects own their npm dependencies, package-lock-v3 file, and build script. Vibecanvas runs frozen `npm ci` and the guest-controlled `npm run build`, then Capsule validates the resulting `dist/` before it can be signed or loaded. Node.js/npm are server prerequisites; Docker and Podman are not. Build scripts run with the Vibecanvas server account's host authority, so operators should treat that account and its credentials accordingly.
+Widget UI projects own their npm dependencies, package-lock-v3 file, and build script. A draft-private warm workspace runs frozen `npm ci` when package or lock inputs change and the guest-controlled `npm run build` for each required construction; Capsule then validates the resulting `dist/` before it can be signed or loaded. Node.js/npm remain prerequisites for the default host runner. Operators may instead select the optional Docker runner with an immutable image digest and bounded CPU, memory, PID, filesystem, and cleanup policy. Build scripts still run with the selected runner's authority, so operators must treat package installation and build plugins as trusted build-server work rather than Capsule-sandboxed browser code.
 
 ## Supported UI authoring
 

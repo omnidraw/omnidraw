@@ -21,6 +21,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -38,8 +39,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -87,6 +90,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
 | [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/fn.redact-build-output.ts](apps/cli/src/services/fn.redact-build-output.ts) |  |
 | [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
 | [apps/cli/src/services/fn.widget-runtime-load-admission.ts](apps/cli/src/services/fn.widget-runtime-load-admission.ts) |  |
 | [apps/cli/src/services/fn.widget-ui-entry.ts](apps/cli/src/services/fn.widget-ui-entry.ts) |  |
@@ -99,6 +103,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
+| [apps/cli/src/services/tx.terminate-widget-build-process-tree.ts](apps/cli/src/services/tx.terminate-widget-build-process-tree.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
 | [apps/cli/src/services/WidgetFunctionArtifactReader.ts](apps/cli/src/services/WidgetFunctionArtifactReader.ts) |  |
@@ -208,6 +213,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -265,6 +272,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/agent/api.widgetDraft.list.ts](packages/api/src/agent/api.widgetDraft.list.ts) |  |
 | [packages/api/src/agent/api.widgetDraft.validate.ts](packages/api/src/agent/api.widgetDraft.validate.ts) |  |
 | [packages/api/src/agent/api.widgetPreview.build.ts](packages/api/src/agent/api.widgetPreview.build.ts) |  |
+| [packages/api/src/agent/api.widgetPreview.cancel.ts](packages/api/src/agent/api.widgetPreview.cancel.ts) |  |
+| [packages/api/src/agent/api.widgetPreview.diagnostics.ts](packages/api/src/agent/api.widgetPreview.diagnostics.ts) |  |
+| [packages/api/src/agent/api.widgetPreview.mount.ts](packages/api/src/agent/api.widgetPreview.mount.ts) |  |
+| [packages/api/src/agent/api.widgetPreview.owner.ts](packages/api/src/agent/api.widgetPreview.owner.ts) |  |
 | [packages/api/src/agent/api.widgetPublish.publish.ts](packages/api/src/agent/api.widgetPublish.publish.ts) |  |
 | [packages/api/src/agent/api.widgets.ts](packages/api/src/agent/api.widgets.ts) |  |
 | [packages/api/src/agent/authoring-schema.ts](packages/api/src/agent/authoring-schema.ts) |  |
@@ -605,6 +616,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
+| [packages/service-agent/src/widget-drafts/PreviewBuildAdmission.ts](packages/service-agent/src/widget-drafts/PreviewBuildAdmission.ts) |  |
+| [packages/service-agent/src/widget-drafts/PreviewBuildCoordinator.ts](packages/service-agent/src/widget-drafts/PreviewBuildCoordinator.ts) |  |
 | [packages/service-agent/src/widget-drafts/types.ts](packages/service-agent/src/widget-drafts/types.ts) |  |
 | [packages/service-agent/src/widget-drafts/WidgetDraftController.ts](packages/service-agent/src/widget-drafts/WidgetDraftController.ts) |  |
 | [packages/service-agent/src/widget-management/CONSTANTS.ts](packages/service-agent/src/widget-management/CONSTANTS.ts) |  |
@@ -676,6 +689,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso.ts](packages/service-db/src/FunctionControlStoreTurso.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts) |  |
 | [packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts) |  |
@@ -685,6 +699,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
 | [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
 | [packages/service-db/src/migrations/003-agent-authoring.sql](packages/service-db/src/migrations/003-agent-authoring.sql) |  |
+| [packages/service-db/src/migrations/004-live-widget-preview.sql](packages/service-db/src/migrations/004-live-widget-preview.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
@@ -804,9 +819,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/ui-ai-chat/package.json](packages/ui-ai-chat/package.json) |  |
 | [packages/ui-ai-chat/README.md](packages/ui-ai-chat/README.md) |  |
+| [packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts](packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts](packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts](packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx](packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx) |  |
@@ -816,6 +834,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/chat/components/ChatComposer/interface.ts](packages/ui-ai-chat/src/chat/components/ChatComposer/interface.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/fn.approval-details.ts](packages/ui-ai-chat/src/chat/components/fn.approval-details.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/fn.error.ts](packages/ui-ai-chat/src/chat/components/fn.error.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/fn.preview-auto-open.ts](packages/ui-ai-chat/src/chat/components/fn.preview-auto-open.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/index.css](packages/ui-ai-chat/src/chat/components/index.css) |  |
 | [packages/ui-ai-chat/src/chat/components/index.tsx](packages/ui-ai-chat/src/chat/components/index.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx](packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx) |  |
@@ -835,6 +854,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/publication/fn.publication-contract.ts](packages/ui-ai-chat/src/publication/fn.publication-contract.ts) |  |
 | [packages/ui-ai-chat/src/publication/interface.ts](packages/ui-ai-chat/src/publication/interface.ts) |  |
 | [packages/ui-ai-chat/src/publication/mount.tsx](packages/ui-ai-chat/src/publication/mount.tsx) |  |
+| [packages/ui-ai-chat/src/publication/PreviewPublicationConfirmationDialog.tsx](packages/ui-ai-chat/src/publication/PreviewPublicationConfirmationDialog.tsx) |  |
 | [packages/ui-ai-chat/src/publication/WidgetPublicationDialog.module.css](packages/ui-ai-chat/src/publication/WidgetPublicationDialog.module.css) |  |
 | [packages/ui-ai-chat/src/publication/WidgetPublicationDialog.tsx](packages/ui-ai-chat/src/publication/WidgetPublicationDialog.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/components/CreateCanvasDialog.tsx](packages/ui-ai-chat/src/sidebar/components/CreateCanvasDialog.tsx) |  |
@@ -895,11 +915,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/CONSTANTS.ts](packages/widget-contract/src/CONSTANTS.ts) |  |
 | [packages/widget-contract/src/core/fn.build-integrity.ts](packages/widget-contract/src/core/fn.build-integrity.ts) |  |
 | [packages/widget-contract/src/core/fn.capsule.ts](packages/widget-contract/src/core/fn.capsule.ts) | Pure normalization for Capsule metadata copied into widget contracts. |
+| [packages/widget-contract/src/core/fn.construction-contract.ts](packages/widget-contract/src/core/fn.construction-contract.ts) |  |
 | [packages/widget-contract/src/core/fn.contract.ts](packages/widget-contract/src/core/fn.contract.ts) |  |
+| [packages/widget-contract/src/core/fn.diagnostic.ts](packages/widget-contract/src/core/fn.diagnostic.ts) |  |
 | [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
 | [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v3. |
+| [packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts](packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts) |  |
+| [packages/widget-contract/src/core/fn.preview-binding-plan.ts](packages/widget-contract/src/core/fn.preview-binding-plan.ts) |  |
+| [packages/widget-contract/src/core/fn.preview-build-key.ts](packages/widget-contract/src/core/fn.preview-build-key.ts) |  |
+| [packages/widget-contract/src/core/fn.preview-publication.ts](packages/widget-contract/src/core/fn.preview-publication.ts) |  |
 | [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
 | [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
+| [packages/widget-contract/src/diagnostic-schema.ts](packages/widget-contract/src/diagnostic-schema.ts) |  |
 | [packages/widget-contract/src/function-descriptor-schema.ts](packages/widget-contract/src/function-descriptor-schema.ts) | Strict runtime schema for generated server-function registrations. |
 | [packages/widget-contract/src/index.ts](packages/widget-contract/src/index.ts) | Public widget manifest and immutable artifact contract surface. |
 | [packages/widget-contract/src/interface.ts](packages/widget-contract/src/interface.ts) | Narrow public capabilities for widget build, publication, artifact access, and GC. |
@@ -912,8 +939,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/local/index.ts](packages/widget-contract/src/local/index.ts) |  |
 | [packages/widget-contract/src/local/LocalWidgetArtifactStore.ts](packages/widget-contract/src/local/LocalWidgetArtifactStore.ts) |  |
 | [packages/widget-contract/src/local/PinnedLocalDirectory.ts](packages/widget-contract/src/local/PinnedLocalDirectory.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts](packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts) | Tenant-qualified single-flight cache for immutable unsigned widget constructions. |
 | [packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts](packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts) |  |
-| [packages/widget-contract/src/local/WidgetArtifactOperationLane.ts](packages/widget-contract/src/local/WidgetArtifactOperationLane.ts) | One bounded organization-local mutation lane shared by publication and artifact GC. |
+| [packages/widget-contract/src/local/WidgetArtifactOperationLane.ts](packages/widget-contract/src/local/WidgetArtifactOperationLane.ts) |  |
 | [packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts](packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts) |  |
 | [packages/widget-contract/src/local/WidgetArtifactService.ts](packages/widget-contract/src/local/WidgetArtifactService.ts) |  |
 | [packages/widget-contract/src/local/WidgetPreviewService.ts](packages/widget-contract/src/local/WidgetPreviewService.ts) |  |

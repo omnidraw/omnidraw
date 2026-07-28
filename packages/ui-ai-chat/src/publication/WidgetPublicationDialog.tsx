@@ -8,7 +8,9 @@ import {
   fnPublicationFailureTitle,
 } from "./fn.publication-contract"
 import type {
+  TResolveWidgetPublicationPreviewSelections,
   TWidgetPublicationApi,
+  TWidgetPublicationPreviewSelection,
   TWidgetPublicationState,
   TWidgetPublicationSuccess,
 } from "./interface"
@@ -26,7 +28,9 @@ export type TWidgetPublicationDialogProps = {
   draftId: string
   draftName: string
   open: boolean
+  createIdempotencyKey: () => string
   getPinnedRevision?: () => string
+  resolvePreviewSelections: TResolveWidgetPublicationPreviewSelections
   onOpenChange: (open: boolean) => void
   onStateChange?: (state: TWidgetPublicationState) => void
   onPublished?: (success: TWidgetPublicationSuccess) => void | Promise<void>
@@ -38,11 +42,25 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
   const [loading, setLoading] = createSignal(true)
   const [publishing, setPublishing] = createSignal(false)
   const [issue, setIssue] = createSignal<TDialogIssue | null>(null)
+  const [previewSelections, setPreviewSelections] = createSignal<
+    readonly TWidgetPublicationPreviewSelection[]
+  >([])
+  const [selectedPreviewKey, setSelectedPreviewKey] = createSignal("")
   let detailRequest = 0
+  let publicationAttempt: Readonly<{
+    idempotencyKey: string
+    identity: string | null
+  }> | null = null
 
+  const previewKey = (selection: TWidgetPublicationPreviewSelection) =>
+    `${selection.previewId}:${selection.previewRevisionId}:${selection.expectedBindingRevision}:${selection.expectedBindingPlanDigestSha256}`
   const contract = createMemo(() => {
     const current = detail()
     return current ? fnPublicationContract(current) : null
+  })
+  const selectedPreview = createMemo(() => {
+    const key = selectedPreviewKey()
+    return previewSelections().find((selection) => previewKey(selection) === key) ?? null
   })
   const previewIsStale = createMemo(() => {
     const current = detail()
@@ -54,19 +72,59 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
     open: props.open,
     loading: loading(),
     publishing: publishing(),
+    previewAvailable: previewSelections().length > 0,
+    previewSelected: selectedPreview() !== null,
     actionLabel: contract()?.actionLabel ?? "Publish",
   })
+
+  const setResolvedPreviewSelections = (
+    selections: readonly TWidgetPublicationPreviewSelection[],
+  ) => {
+    const ordered = [...selections].sort((left, right) =>
+      left.label.localeCompare(right.label)
+      || previewKey(left).localeCompare(previewKey(right)))
+    const previousKey = selectedPreviewKey()
+    setPreviewSelections(ordered)
+    setSelectedPreviewKey(
+      ordered.some((selection) => previewKey(selection) === previousKey)
+        ? previousKey
+        : ordered.length === 1 && ordered[0]
+          ? previewKey(ordered[0])
+          : "",
+    )
+  }
 
   const loadCurrentDetail = async () => {
     const request = ++detailRequest
     setLoading(true)
     setIssue(null)
     emitState()
-    const [loadError, value] = await props.api.widgets.detail({ name: props.draftName, source: "draft" })
+    let loadError: Error | null | undefined
+    let value: TWidgetDetail | null | undefined
+    let selections: readonly TWidgetPublicationPreviewSelection[]
+    try {
+      [[loadError, value], selections] = await Promise.all([
+        props.api.widgets.detail({ name: props.draftName, source: "draft" }),
+        props.resolvePreviewSelections(),
+      ])
+    } catch (error) {
+      if (request !== detailRequest) return null
+      setDetail(null)
+      setResolvedPreviewSelections([])
+      setLoading(false)
+      setIssue({
+        title: "Ready Preview lookup failed",
+        message: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      })
+      emitState()
+      return null
+    }
     if (request !== detailRequest) return null
     setLoading(false)
     if (loadError || !value || value.source !== "draft") {
       setDetail(null)
+      setResolvedPreviewSelections([])
       setIssue({
         title: value ? "Widget draft is unavailable" : "Widget draft not found",
         message: loadError?.message ?? `The widget draft “${props.draftName}” could not be loaded.`,
@@ -80,6 +138,7 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
       draftName: props.draftName,
     })) {
       setDetail(null)
+      setResolvedPreviewSelections([])
       setIssue({
         title: "Widget draft identity changed",
         message: `The draft returned for “${props.draftName}” does not belong to this Preview. Refresh or reopen the Preview before publishing.`,
@@ -89,9 +148,30 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
       return null
     }
     setDetail(value)
+    setResolvedPreviewSelections(selections)
+    if (selections.length === 0) {
+      setIssue({
+        title: "Ready Preview required",
+        message: "Open or place this draft on a canvas, wait for its Preview to become ready, then publish from that Preview title bar or return here.",
+        tone: "error",
+      })
+    }
     emitState()
     return value
   }
+
+  createEffect(() => {
+    if (!props.open) {
+      publicationAttempt = null
+      return
+    }
+    if (publicationAttempt === null) {
+      publicationAttempt = {
+        idempotencyKey: props.createIdempotencyKey(),
+        identity: null,
+      }
+    }
+  })
 
   createEffect(() => {
     void props.draftId
@@ -132,12 +212,30 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
 
   const publish = async () => {
     const confirmed = detail()
-    if (!confirmed || publishing() || previewIsStale()) return
+    const confirmedSelection = selectedPreview()
+    if (!confirmed || !confirmedSelection || publishing() || previewIsStale()) return
     setPublishing(true)
     setIssue(null)
     emitState()
 
-    const [refreshError, current] = await props.api.widgets.detail({ name: props.draftName, source: "draft" })
+    let refreshError: Error | null | undefined
+    let current: TWidgetDetail | null | undefined
+    let refreshedSelections: readonly TWidgetPublicationPreviewSelection[]
+    try {
+      [[refreshError, current], refreshedSelections] = await Promise.all([
+        props.api.widgets.detail({ name: props.draftName, source: "draft" }),
+        props.resolvePreviewSelections(),
+      ])
+    } catch (error) {
+      setPublishing(false)
+      setIssue({
+        title: "Could not verify the ready Preview",
+        message: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      })
+      emitState()
+      return
+    }
     if (refreshError || !current || current.source !== "draft") {
       setPublishing(false)
       setIssue({
@@ -173,11 +271,72 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
       emitState()
       return
     }
+    const confirmedPreviewKey = previewKey(confirmedSelection)
+    if (!refreshedSelections.some(
+      (selection) => previewKey(selection) === confirmedPreviewKey,
+    )) {
+      setResolvedPreviewSelections(refreshedSelections)
+      setPublishing(false)
+      setIssue({
+        title: "Preview changed before publication",
+        message: refreshedSelections.length === 0
+          ? "That ready Preview is no longer retained. Open or place the draft on a canvas and publish from a newly ready Preview."
+          : "The selected Preview frame advanced while this dialog was open. Review the exact ready Preview below, then confirm publication again.",
+        tone: "error",
+      })
+      emitState()
+      return
+    }
 
-    const [publishError, result] = await props.api.widgetPublish.publish({
-      draftId: props.draftId,
-      expectedRevision: current.variant.revision,
-    })
+    const publicationIdentity = [
+      props.draftId,
+      current.variant.revision,
+      confirmedPreviewKey,
+    ].join(":")
+    if (
+      publicationAttempt === null
+      || (
+        publicationAttempt.identity !== null
+        && publicationAttempt.identity !== publicationIdentity
+      )
+    ) {
+      publicationAttempt = {
+        idempotencyKey: props.createIdempotencyKey(),
+        identity: publicationIdentity,
+      }
+    } else if (publicationAttempt.identity === null) {
+      publicationAttempt = {
+        ...publicationAttempt,
+        identity: publicationIdentity,
+      }
+    }
+    let publishResponse: Awaited<
+      ReturnType<TWidgetPublicationApi["widgetPublish"]["publish"]>
+    >
+    try {
+      publishResponse = await props.api.widgetPublish.publish({
+        idempotencyKey: publicationAttempt.idempotencyKey,
+        draftId: props.draftId,
+        expectedRevision: current.variant.revision,
+        previewId: confirmedSelection.previewId,
+        previewRevisionId: confirmedSelection.previewRevisionId,
+        expectedBindingRevision: confirmedSelection.expectedBindingRevision,
+        expectedBindingPlanDigestSha256:
+          confirmedSelection.expectedBindingPlanDigestSha256,
+        canvasId: confirmedSelection.canvasId,
+        frameNodeId: confirmedSelection.frameNodeId,
+      })
+    } catch (error) {
+      setPublishing(false)
+      setIssue({
+        title: "Publication request failed",
+        message: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      })
+      emitState()
+      return
+    }
+    const [publishError, result] = publishResponse
     if (publishError) {
       setPublishing(false)
       setIssue({ title: "Publication request failed", message: publishError.message, tone: "error" })
@@ -194,6 +353,19 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
       }
       if (result.reason === "stale-revision") await loadCurrentDetail()
       setIssue(failureIssue)
+      emitState()
+      return
+    }
+    if (
+      result.draftId !== props.draftId
+      || result.revision !== current.variant.revision
+    ) {
+      setPublishing(false)
+      setIssue({
+        title: "Publication response did not match the selected Preview",
+        message: "The server returned a different draft identity or revision. Nothing in this dialog will be treated as published.",
+        tone: "error",
+      })
       emitState()
       return
     }
@@ -258,13 +430,62 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
             </div>}
           </Show>
 
+          <Show when={previewSelections().length > 0 && issue()?.tone !== "success"}>
+            <label class={styles.previewSelection}>
+              <span>Exact ready Preview</span>
+              <select
+                value={selectedPreviewKey()}
+                disabled={publishing()}
+                onChange={(event) => {
+                  setSelectedPreviewKey(event.currentTarget.value)
+                  emitState()
+                }}
+              >
+                <Show when={!selectedPreview()}>
+                  <option value="" disabled>Select a ready Preview frame…</option>
+                </Show>
+                <For each={previewSelections()}>
+                  {(selection) => <option value={previewKey(selection)}>
+                    {selection.label} · revision {selection.previewRevisionId.slice(0, 12)}
+                  </option>}
+                </For>
+              </select>
+              <Show
+                when={selectedPreview()}
+                fallback={<small>Choose the exact frame whose retained Preview you reviewed.</small>}
+              >
+                {(selection) => <small>
+                  Draft digest {(detail()?.variant.contentFingerprint ?? detail()?.variant.revision ?? "unknown").slice(0, 12)}
+                  {" · "}Preview {selection().previewRevisionId.slice(0, 12)}
+                  {" · "}binding revision {selection().expectedBindingRevision}
+                  {" · "}binding plan {
+                    selection().expectedBindingPlanDigestSha256.slice(0, 12)
+                  }
+                  {" · "}frame {selection().frameNodeId}
+                </small>}
+              </Show>
+            </label>
+          </Show>
+
           <div class={styles.actions}>
             <AlertDialog.CloseButton class={styles.button} disabled={publishing()}>{issue()?.tone === "success" ? "Done" : "Cancel"}</AlertDialog.CloseButton>
             <Show when={issue()?.tone !== "success" && previewIsStale() && props.onRequestPreviewRefresh}>
               <Button class={`${styles.button} ${styles.primary}`} disabled={publishing()} onClick={refreshPreview}>{publishing() ? "Refreshing…" : "Refresh Preview"}</Button>
             </Show>
             <Show when={issue()?.tone !== "success" && !previewIsStale()}>
-              <Button class={`${styles.button} ${styles.primary}`} disabled={loading() || publishing() || !detail()} onClick={publish}>{publishing() ? `${contract()?.actionLabel ?? "Publish"}ing…` : contract()?.actionLabel ?? "Publish"}</Button>
+              <Button
+                class={`${styles.button} ${styles.primary}`}
+                disabled={loading() || publishing() || !detail() || !selectedPreview()}
+                onClick={publish}
+              >
+                {publishing()
+                  ? `${contract()?.actionLabel ?? "Publish"}ing…`
+                  : selectedPreview()
+                    ? contract()?.actionLabel ?? "Publish"
+                    : previewSelections().length > 0
+                      ? "Choose Preview"
+                      : "Needs Preview"}
+              </Button>
             </Show>
           </div>
         </AlertDialog.Content>

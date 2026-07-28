@@ -7,6 +7,7 @@ import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetManifestV3,
   type TWidgetCapsuleBuildIdentity,
+  type TWidgetDiagnostic,
   type TWidgetManifestV3,
   type TWidgetRevisionDescriptor,
   type TWidgetSourceSnapshot,
@@ -30,11 +31,13 @@ import type { TWidgetDbChangeProposalRecord, TWidgetResourceSelection } from './
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
+import type { IPreviewBuildAdmission } from './widget-drafts/PreviewBuildAdmission';
 import type {
   IAgentAuthoringStore,
   TAgentAuthoringDraftDescriptor,
   TWidgetAuthoringCapability,
   TWidgetAuthoringResourceSelection,
+  TWidgetPreviewDiagnosticReportResult,
   TWidgetResourceBindingResolver,
 } from './widget-drafts/types';
 import { WidgetManagement } from './widget-management/WidgetManagement';
@@ -84,6 +87,7 @@ export interface IAgentServiceConfig {
   widgetBuilderIdentity?: string;
   widgetCapsuleBuildIdentity?: TWidgetCapsuleBuildIdentity;
   widgetBuildPolicyId?: string;
+  previewBuildAdmission?: IPreviewBuildAdmission;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
   listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
@@ -166,7 +170,6 @@ const PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 const PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(PROMPT_IMAGE_MAX_BYTES / 3) * 4
 const PROMPT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 const PROMPT_IMAGE_BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
-
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IAgentServiceConfig;
@@ -223,6 +226,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           builderIdentity: config.widgetBuilderIdentity,
           capsuleBuildIdentity: config.widgetCapsuleBuildIdentity,
           buildPolicyId: config.widgetBuildPolicyId,
+          previewBuildAdmission: config.previewBuildAdmission,
         })
       : this.#unavailableWidgetDrafts()
     this.#widgetManagement = new WidgetManagement({
@@ -358,6 +362,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           selectedAt: new Date().toISOString(),
           source: 'mention',
         })
+        await this.#widgetDrafts.invalidatePreviewBindingsForChat(sessionId)
       }
     }
 
@@ -398,7 +403,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
   }
 
-  clearDraftResourceBindingsChat(id: TWidgetId, sessionId: string): { cleared: true } {
+  async clearDraftResourceBindingsChat(
+    id: TWidgetId,
+    sessionId: string,
+  ): Promise<{ cleared: true }> {
     const connectedEntry = this.sessionMap[id]?.[sessionId]
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
@@ -408,6 +416,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       selectedAt: new Date().toISOString(),
       source: 'explicit-clear',
     })
+    await this.#widgetDrafts.invalidatePreviewBindingsForChat(sessionId)
     return { cleared: true }
   }
 
@@ -475,9 +484,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async cancelChat(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
     const session = this.sessionMap[id]?.[sessionId]?.session
-    if (!session || !session.isStreaming) {
+    if (!session) {
       return { canceled: false, running: false }
     }
+    if (!session.isStreaming) return { canceled: false, running: false }
 
     this.#approvals.cancelChat(sessionId, 'Chat prompt was canceled before approval.')
     await session.abort()
@@ -518,12 +528,150 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetDrafts.validate(draftId, expectedRevision)
   }
 
-  buildWidgetPreview(draftId: string) {
-    return this.#widgetDrafts.buildPreview(draftId)
+  ensureWidgetPreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    draftId: string;
+    originChatId: string;
+    role: 'companion' | 'placed';
+  }>) {
+    return this.#widgetDrafts.ensurePreviewOwner(request)
   }
 
-  publishWidgetDraft(draftId: string, expectedRevision: string) {
-    return this.#widgetDrafts.publish(draftId, expectedRevision)
+  getWidgetPreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>) {
+    return this.#widgetDrafts.getPreviewOwner(request)
+  }
+
+  listWidgetPreviewOwners(request: Readonly<{
+    canvasId: string;
+    draftId?: string;
+    includeClosed?: boolean;
+  }>) {
+    return this.#widgetDrafts.listPreviewOwners(request)
+  }
+
+  async closeWidgetPreviewOwner(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>): Promise<boolean> {
+    return this.#widgetDrafts.closePreviewOwner(request)
+  }
+
+  async cancelWidgetPreviewBuild(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    buildId: string;
+    expectedBuildSequence: number;
+  }>): Promise<boolean> {
+    return this.#widgetDrafts.cancelPreviewBuild(request)
+  }
+
+  acquireWidgetPreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>) {
+    return this.#widgetDrafts.acquirePreviewMountLease(request)
+  }
+
+  renewWidgetPreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>) {
+    return this.#widgetDrafts.renewPreviewMountLease(request)
+  }
+
+  releaseWidgetPreviewMountLease(request: Readonly<{
+    leaseId: string;
+    previewId: string;
+    previewRevisionId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>) {
+    return this.#widgetDrafts.releasePreviewMountLease(request)
+  }
+
+  async reportWidgetPreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    draftId: string;
+    originChatId: string;
+    diagnostic: TWidgetDiagnostic;
+  }>): Promise<TWidgetPreviewDiagnosticReportResult> {
+    const recorded = await this.#widgetDrafts.reportPreviewDiagnostic(request)
+    return {
+      accepted: true,
+      deduplicated: recorded.deduplicated,
+    }
+  }
+
+  async getWidgetPreviewDiagnostics(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+  }>) {
+    return [...await this.#widgetDrafts.getPreviewDiagnostics(request)]
+  }
+
+  async retestWidgetPreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    previewRevisionId: string;
+    fingerprint: string;
+    operation: string;
+  }>) {
+    return this.#widgetDrafts.retestPreviewDiagnostic(request)
+  }
+
+  async resolveWidgetPreviewDiagnostic(request: Readonly<{
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    previewRevisionId: string;
+    fingerprint: string;
+  }>) {
+    return this.#widgetDrafts.resolvePreviewDiagnostic(request)
+  }
+
+  async buildWidgetPreview(
+    draftId: string,
+    ownerRef?: Readonly<{
+      previewId: string;
+      canvasId: string;
+      frameNodeId: string;
+    }>,
+  ) {
+    return this.#widgetDrafts.buildPreview(draftId, ownerRef)
+  }
+
+  publishWidgetDraft(
+    draftId: string,
+    expectedRevision: string,
+    preview: Readonly<{
+      idempotencyKey: string;
+      previewId: string;
+      previewRevisionId: string;
+      canvasId: string;
+      frameNodeId: string;
+      expectedBindingRevision: number;
+      expectedBindingPlanDigestSha256: string;
+    }>,
+  ) {
+    return this.#widgetDrafts.publish(draftId, expectedRevision, preview)
   }
 
   async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
@@ -949,11 +1097,30 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return { status: 'superseded' }
     }
 
-    await this.#installChatSessionEntry(id, sessionId, sessionEntry, replacementGeneration !== undefined
-      ? 'Chat runtime was intentionally replaced.'
-      : 'Chat ownership changed before approval.')
-    if (replacementGeneration !== undefined && replacementGeneration <= generation) {
-      this.#chatReplacementGenerations.delete(sessionId)
+    let installed = false
+    try {
+      if (this.#isStopping) {
+        throw new Error('Agent service is stopping.')
+      }
+      if (generation !== this.#chatConnectionGenerations.get(sessionId)) {
+        this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+        return { status: 'superseded' }
+      }
+      await this.#installChatSessionEntry(
+        id,
+        sessionId,
+        sessionEntry,
+        replacementGeneration !== undefined
+          ? 'Chat runtime was intentionally replaced.'
+          : 'Chat ownership changed before approval.',
+      )
+      installed = true
+      if (replacementGeneration !== undefined && replacementGeneration <= generation) {
+        this.#chatReplacementGenerations.delete(sessionId)
+      }
+    } catch (error) {
+      if (!installed) this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      throw error
     }
     return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, sessionEntry) }
   }
@@ -1350,6 +1517,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       list: async () => [],
       get: async () => null,
       getByName: async () => null,
+      ensurePreviewOwner: async () => unavailable(),
+      getPreviewOwner: async () => null,
+      listPreviewOwners: async () => [],
+      invalidatePreviewBindingsForChat: async () => undefined,
+      closePreviewOwner: async () => false,
+      cancelPreviewBuild: async () => false,
+      acquirePreviewMountLease: async () => null,
+      renewPreviewMountLease: async () => null,
+      releasePreviewMountLease: async () => false,
       getWorkspaceRevision: async () => unavailable(),
       validate: async () => null,
       getPreviewCatalogState: async () => null,

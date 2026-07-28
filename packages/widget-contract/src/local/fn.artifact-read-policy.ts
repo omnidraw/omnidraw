@@ -33,5 +33,8 @@ export function fnWidgetArtifactPurposeAllowsKind(
   if (purpose === 'browser_ui') return kind === 'ui';
   if (purpose === 'server_execution') return kind === 'server';
   if (purpose === 'source_build') return kind === 'source';
+  if (purpose === 'preview_construction') {
+    return kind === 'source' || kind === 'unsigned_ui' || kind === 'server';
+  }
   return purpose === 'source_map' && kind === 'source_map';
 }

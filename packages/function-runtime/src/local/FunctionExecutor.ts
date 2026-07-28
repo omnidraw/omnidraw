@@ -155,6 +155,7 @@ export class FunctionExecutor implements IFunctionExecutor {
       widgetRevisionId: envelope.widgetRevisionId,
       functionName: envelope.functionName,
       purpose: 'execution',
+      invocationId: envelope.id,
     });
     if (!definition || !definitionMatchesEnvelope(definition, envelope)) {
       return { status: 'not_claimed', reason: 'definition_pin_mismatch' };
@@ -263,6 +264,7 @@ export class FunctionExecutor implements IFunctionExecutor {
           contractDigestSha256: definition.contractDigestSha256,
           runtimeAbi: definition.runtimeAbi,
           subject: envelope.subject,
+          invocationId: envelope.id,
         });
         handle = await this.#config.driver.prepare({ definition, artifact });
         await inspectCancellation();

@@ -14,6 +14,8 @@ import {
   FUNCTION_RUNTIME_MIGRATION_VERSION,
   INITIAL_MIGRATION_NAME,
   INITIAL_MIGRATION_VERSION,
+  LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+  LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
 } from '../../../src/CONSTANTS';
@@ -21,6 +23,7 @@ import {
   AGENT_AUTHORING_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
+  LIVE_WIDGET_PREVIEW_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
 } from '../../../src/migrations/CONSTANTS';
 import {
@@ -53,6 +56,13 @@ const databases: Database[] = [];
 const V0_DEFINITION_ID = '00000000-0000-4000-8000-000000000701';
 const V0_ARTIFACT_ID = '00000000-0000-4000-8000-000000000702';
 const V0_REVISION_ID = '00000000-0000-4000-8000-000000000703';
+const V3_CANVAS_ID = '00000000-0000-4000-8000-000000000704';
+const V3_INSTANCE_ID = '00000000-0000-4000-8000-000000000705';
+const V3_INVOCATION_ID = '00000000-0000-4000-8000-000000000706';
+const V3_IDEMPOTENCY_ID = '00000000-0000-4000-8000-000000000707';
+const V3_CHAT_ID = '00000000-0000-4000-8000-000000000708';
+const V3_DRAFT_ID = '00000000-0000-4000-8000-000000000709';
+const V3_DRAFT_SOURCE_DIGEST = '9'.repeat(64);
 
 type TImmediateTransaction = (() => Promise<void>) & {
   immediate(): Promise<void>;
@@ -119,6 +129,11 @@ function syntheticPreflightArgs() {
         version: AGENT_AUTHORING_MIGRATION_VERSION,
         name: AGENT_AUTHORING_MIGRATION_NAME,
         checksumSha256: 'd'.repeat(64),
+      },
+      {
+        version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+        name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+        checksumSha256: 'e'.repeat(64),
       },
     ],
   } as const;
@@ -201,6 +216,139 @@ async function seedVersionZeroRevision(db: Database): Promise<void> {
     WIDGET_CAPSULE_CHANNEL_DIGEST,
     WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
     WIDGET_CAPSULE_BUILD_POLICY_ID,
+  );
+}
+
+async function bootstrapVersionThree(db: Database): Promise<void> {
+  await bootstrapVersionZero(db);
+  const pending = [
+    WIDGET_REVISION_SEQUENCE_MIGRATION,
+    FUNCTION_RUNTIME_MIGRATION,
+    AGENT_AUTHORING_MIGRATION,
+  ] as const;
+  const resolved = await Promise.all(pending.map(async (migration) => ({
+    ...migration,
+    checksum: await migrationChecksum(migration.path),
+    sql: await Bun.file(migration.path).text(),
+  })));
+  const apply = db.transaction(async () => {
+    for (const migration of resolved) {
+      await db.exec(migration.sql);
+      await (await db.prepare(`
+        INSERT INTO schema_migrations (
+          version, name, checksum_sha256, applied_at_ms, application_version
+        ) VALUES (?, ?, ?, 2, '1.0.0-v3-test')
+      `)).run(migration.version, migration.name, migration.checksum);
+    }
+    await db.exec(`PRAGMA user_version = ${AGENT_AUTHORING_MIGRATION_VERSION}`);
+  }) as TImmediateTransaction;
+  await apply.immediate();
+}
+
+async function seedVersionThreeRebuildRows(db: Database): Promise<void> {
+  await seedVersionZeroRevision(db);
+  await (await db.prepare(`
+    INSERT INTO canvases (
+      org_id, id, name, access_policy, created_by_account_id,
+      created_at_ms, updated_at_ms
+    ) VALUES (?, ?, 'V3 migration canvas', 'org', ?, 2, 2)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, V3_CANVAS_ID, DEFAULT_OSS_ACCOUNT_ID);
+  await (await db.prepare(`
+    INSERT INTO widget_instances (
+      org_id, id, canvas_id, element_id, definition_id, revision_id,
+      status, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, 'v3-migration-widget', ?, ?, 'active', 3, 3)
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    V3_INSTANCE_ID,
+    V3_CANVAS_ID,
+    V0_DEFINITION_ID,
+    V0_REVISION_ID,
+  );
+  await (await db.prepare(`
+    INSERT INTO agent_chats (
+      org_id, id, account_id, canvas_id, name, status,
+      workspace_relative_path, history_relative_path,
+      created_at_ms, updated_at_ms, external_session_key
+    ) VALUES (
+      ?, ?, ?, ?, 'V3 migration chat', 'active',
+      'chats/v3-migration', 'history/v3-migration.jsonl',
+      3, 3, 'v3-migration-session'
+    )
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    V3_CHAT_ID,
+    DEFAULT_OSS_ACCOUNT_ID,
+    V3_CANVAS_ID,
+  );
+  await (await db.prepare(`
+    INSERT INTO agent_drafts (
+      org_id, id, chat_id, name, status, source_relative_path,
+      source_digest_sha256, last_error_json, created_at_ms, updated_at_ms,
+      definition_id, published_revision_id
+    ) VALUES (
+      ?, ?, ?, 'V3 migration draft', 'ready', 'widgets/v3-migration',
+      ?, NULL, 3, 3, ?, ?
+    )
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    V3_DRAFT_ID,
+    V3_CHAT_ID,
+    V3_DRAFT_SOURCE_DIGEST,
+    V0_DEFINITION_ID,
+    V0_REVISION_ID,
+  );
+  await (await db.prepare(`
+    INSERT INTO function_invocations (
+      org_id, id, account_id, subject_kind, canvas_id,
+      widget_definition_id, widget_revision_id, widget_instance_id,
+      function_id, function_name, definition_revision, artifact_digest_sha256,
+      contract_digest_sha256, runtime_abi, tenant_cell_id, tenant_placement_epoch,
+      tenant_request_id, tenant_roles_json, tenant_capabilities_json, input_json,
+      input_digest_sha256, idempotency_key, policy_version, priority, timeout_ms,
+      memory_tier, output_byte_limit, log_byte_limit, retry_mode, max_attempts,
+      initial_backoff_ms, max_backoff_ms, status, result_json, failure_json,
+      result_digest_sha256, output_byte_size, log_byte_size, body_state,
+      retains_revision, created_at_ms, available_at_ms, deadline_at_ms,
+      cancel_requested_at_ms, started_at_ms, finished_at_ms, bodies_compacted_at_ms
+    ) VALUES (
+      ?, ?, ?, 'widget_instance', ?, ?, ?, ?,
+      'v3-run', 'run', 1, ?, ?, 'vibecanvas:1',
+      '00000000-0000-4000-8000-000000000003', 1, 'v3-migration-request',
+      '["owner"]', '["*"]', '{}', ?, 'v3-migration-key', 1, 7, 1000,
+      'small', 1024, 1024, 'none', 1, 0, 0, 'queued', NULL, NULL, NULL,
+      0, 0, 'full', 1, 4, 4, 1004, NULL, NULL, NULL, NULL
+    )
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    V3_INVOCATION_ID,
+    DEFAULT_OSS_ACCOUNT_ID,
+    V3_CANVAS_ID,
+    V0_DEFINITION_ID,
+    V0_REVISION_ID,
+    V3_INSTANCE_ID,
+    'c'.repeat(64),
+    'd'.repeat(64),
+    'e'.repeat(64),
+  );
+  await (await db.prepare(`
+    INSERT INTO idempotency_records (
+      org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
+      idempotency_key, request_fingerprint_sha256,
+      widget_definition_id, widget_revision_id, invocation_id,
+      created_at_ms, expires_at_ms
+    ) VALUES (
+      ?, ?, 'v3-run', 'widget_instance', NULL, ?,
+      'v3-idempotency', ?, ?, ?, ?, 5, NULL
+    )
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    V3_IDEMPOTENCY_ID,
+    V3_INSTANCE_ID,
+    'f'.repeat(64),
+    V0_DEFINITION_ID,
+    V0_REVISION_ID,
+    V3_INVOCATION_ID,
   );
 }
 
@@ -287,12 +435,18 @@ describe('ordered managed migration runner', () => {
         name: AGENT_AUTHORING_MIGRATION_NAME,
         version: AGENT_AUTHORING_MIGRATION_VERSION,
       }),
+      expect.objectContaining({
+        type: 'sql',
+        name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+        version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+      }),
     ]);
     expect(listEmbeddedMigrationFiles()).toEqual([
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
+      LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
     ]);
 
     const migrationDirectory = new URL('../../../src/migrations/', import.meta.url).pathname;
@@ -304,6 +458,7 @@ describe('ordered managed migration runner', () => {
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
+      LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
     ]);
   });
 
@@ -347,6 +502,13 @@ describe('ordered managed migration runner', () => {
       {
         version: AGENT_AUTHORING_MIGRATION_VERSION,
         name: AGENT_AUTHORING_MIGRATION_NAME,
+        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        applied_at_ms: 1_753_113_600_000,
+        application_version: '1.2.3-test',
+      },
+      {
+        version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+        name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
         checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         applied_at_ms: 1_753_113_600_000,
         application_version: '1.2.3-test',
@@ -431,11 +593,117 @@ describe('ordered managed migration runner', () => {
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
+      { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
     ]);
 
     const ledger = await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all();
     expect(await runMigrations(db, { appliedAtMs: 9_999 })).toEqual({ applied: false });
     expect(await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all()).toEqual(ledger);
+  });
+
+  test('upgrades a populated v3 database to v4 without losing rebuilt-table rows and survives restart', async () => {
+    const root = await temporaryRoot();
+    const databasePath = path.join(root, 'populated-v3.db');
+    const db = await openDatabase(databasePath);
+    await bootstrapVersionThree(db);
+    await seedVersionThreeRebuildRows(db);
+
+    expect(await pragma(db, 'user_version')).toBe(AGENT_AUTHORING_MIGRATION_VERSION);
+    const artifactBefore = await (await db.prepare(`
+      SELECT * FROM artifact_references WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_ARTIFACT_ID);
+    const revisionBefore = await (await db.prepare(`
+      SELECT * FROM widget_definition_revisions WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_REVISION_ID) as Record<string, unknown>;
+    const invocationBefore = await (await db.prepare(`
+      SELECT * FROM function_invocations WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_INVOCATION_ID);
+    const idempotencyBefore = await (await db.prepare(`
+      SELECT * FROM idempotency_records WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_IDEMPOTENCY_ID) as Record<string, unknown>;
+    const draftBefore = await (await db.prepare(`
+      SELECT * FROM agent_drafts WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_DRAFT_ID) as Record<string, unknown>;
+
+    expect(await runMigrations(db)).toEqual({ applied: true });
+    expect(await pragma(db, 'user_version')).toBe(LIVE_WIDGET_PREVIEW_MIGRATION_VERSION);
+    expect(await pragma(db, 'foreign_keys')).toBe(1);
+    expect(await (await db.prepare(`
+      SELECT * FROM artifact_references WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_ARTIFACT_ID)).toEqual(artifactBefore);
+
+    const revisionAfter = await (await db.prepare(`
+      SELECT * FROM widget_definition_revisions WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_REVISION_ID) as Record<string, unknown>;
+    const {
+      construction_contract_digest_sha256: constructionContractDigest,
+      distribution_provenance_json: distributionProvenance,
+      ...legacyRevisionAfter
+    } = revisionAfter;
+    expect(legacyRevisionAfter).toEqual(revisionBefore);
+    expect(constructionContractDigest).toBe('0'.repeat(64));
+    expect(JSON.parse(String(distributionProvenance))).toMatchObject({
+      kind: 'external-distribution',
+      producer: { name: 'unavailable', version: '0' },
+      sourceRevision: '0'.repeat(64),
+    });
+
+    expect(await (await db.prepare(`
+      SELECT * FROM function_invocations WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_INVOCATION_ID)).toEqual(invocationBefore);
+    const idempotencyAfter = await (await db.prepare(`
+      SELECT * FROM idempotency_records WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_IDEMPOTENCY_ID) as Record<string, unknown>;
+    const { preview_id: previewId, ...legacyIdempotencyAfter } = idempotencyAfter;
+    expect(previewId).toBeNull();
+    expect(legacyIdempotencyAfter).toEqual(idempotencyBefore);
+    const draftAfter = await (await db.prepare(`
+      SELECT * FROM agent_drafts WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_DRAFT_ID) as Record<string, unknown>;
+    const {
+      committed_mutation_id: committedMutationId,
+      build_sequence: draftBuildSequence,
+      ...legacyDraftAfter
+    } = draftAfter;
+    expect(legacyDraftAfter).toEqual(draftBefore);
+    expect(committedMutationId).toBe(
+      `v4-migration:${DEFAULT_OSS_ORGANIZATION_ID}:${V3_DRAFT_ID}`,
+    );
+    expect(draftBuildSequence).toBe(1);
+    expect(await (await db.prepare(`
+      SELECT id FROM widget_instances WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_INSTANCE_ID)).toEqual({ id: V3_INSTANCE_ID });
+    expect(await (await db.prepare(`
+      SELECT name FROM sqlite_schema
+      WHERE name GLOB 'a96_*' OR name LIKE '%_v3_data'
+    `)).all()).toEqual([]);
+
+    const ledger = await (await db.prepare(`
+      SELECT version, name FROM schema_migrations ORDER BY version
+    `)).all();
+    expect(ledger.at(-1)).toEqual({
+      version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+      name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+    });
+    await closeDatabase(db);
+
+    const restarted = await openDatabase(databasePath);
+    expect(await runMigrations(restarted, { appliedAtMs: 9_999 })).toEqual({ applied: false });
+    expect(await (await restarted.prepare(`
+      SELECT * FROM function_invocations WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_INVOCATION_ID)).toEqual(invocationBefore);
+    expect(await (await restarted.prepare(`
+      SELECT source_digest_sha256, committed_mutation_id, build_sequence
+      FROM agent_drafts WHERE org_id = ? AND id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_DRAFT_ID)).toEqual({
+      source_digest_sha256: V3_DRAFT_SOURCE_DIGEST,
+      committed_mutation_id:
+        `v4-migration:${DEFAULT_OSS_ORGANIZATION_ID}:${V3_DRAFT_ID}`,
+      build_sequence: 1,
+    });
+    expect(await (await restarted.prepare(`
+      SELECT version, name FROM schema_migrations ORDER BY version
+    `)).all()).toEqual(ledger);
   });
 
   test('rolls a failed v0-to-v1 migration back to the exact valid prefix and retries', async () => {
@@ -842,6 +1110,7 @@ describe('ordered managed migration runner', () => {
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
+      { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
     ]);
   });
 
@@ -1057,6 +1326,15 @@ describe('read-only startup preflight', () => {
       databasePath: path.join(homeDir, 'main.db'),
     })).resolves.toEqual({ status: 'empty' });
 
+    await fs.copyFile(
+      LIVE_WIDGET_PREVIEW_MIGRATION.path,
+      path.join(migrationDir, LIVE_WIDGET_PREVIEW_MIGRATION_NAME),
+    );
+    await expect(preflightDbServiceDatabase({
+      homeDir,
+      databasePath: path.join(homeDir, 'main.db'),
+    })).resolves.toEqual({ status: 'empty' });
+
     await fs.rm(path.join(migrationDir, INITIAL_MIGRATION_NAME));
     await expect(preflightDbServiceDatabase({
       homeDir,
@@ -1127,6 +1405,7 @@ describe('read-only startup preflight', () => {
         { name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME, version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION },
         { name: FUNCTION_RUNTIME_MIGRATION_NAME, version: FUNCTION_RUNTIME_MIGRATION_VERSION },
         { name: AGENT_AUTHORING_MIGRATION_NAME, version: AGENT_AUTHORING_MIGRATION_VERSION },
+        { name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME, version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION },
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);

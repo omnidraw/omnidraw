@@ -4,6 +4,9 @@ import type {
   CapsuleViewport,
   CreateCapsuleHostOptions,
 } from '@vibecanvas/capsule-vibecanvas/host';
+import type {
+  TVibecanvasCapsuleError,
+} from '@vibecanvas/capsule-vibecanvas/contract';
 import type { TWidgetFrameNode } from '@omnidraw/cangine';
 import type {
   CapsuleCapabilityDescriptor,
@@ -218,6 +221,7 @@ export type TWidgetUiArtifactMountPort = Readonly<{
     functionBridge: TWidgetFunctionHostBridge;
     collaborativeStateBridge: TWidgetCollaborativeStateBridge | null;
     props?: TWidgetCapsuleProps;
+    onDiagnostic?(error: TVibecanvasCapsuleError): void;
     onFatal(error: unknown): void;
   }>): Promise<TWidgetUiRuntimeHandle>;
   destroy(reason?: string): Promise<void>;
@@ -237,4 +241,18 @@ export type TWidgetUiRuntimeRenderOwner = Readonly<{
   resume(reason?: string): Promise<void>;
   diagnostics(): CapsuleMountDiagnostics | null;
   destroy(reason?: string): Promise<void>;
+}>;
+
+export type TWidgetUiRuntimePreloadedRenderOwner =
+  TWidgetUiRuntimeRenderOwner & Readonly<{
+    ready(): Promise<void>;
+  }>;
+
+export type TWidgetUiRuntimePreloadedRenderArgs = Readonly<{
+  featureProfiles: readonly string[];
+  initialViewport?: CapsuleViewport;
+  initiallyFrozen?: boolean;
+  swapFrom?: TWidgetUiRuntimePreloadedRenderOwner;
+  mount(): Promise<TWidgetUiRuntimeHandle>;
+  onError(error: unknown): void;
 }>;

@@ -336,6 +336,7 @@ export function createWidgetFunctionHostBridge(
         };
         const invocationRequest = Object.freeze({
           widgetInstanceId: args.identity.widgetInstanceId,
+          widgetRevisionId: args.identity.revisionId,
           functionName: request.functionName,
           input: request.input,
           idempotencyKey,

@@ -17,10 +17,16 @@ For a new widget:
    `@omnidraw/capsule` dependency: the linked SDK needs it for build-time
    resolution even though widget source must import only `@vibecanvas/sdk`.
 5. Add `server/` files and a manifest `server` section only if local browser logic cannot satisfy the request.
-6. Run `vc_widget_validate`; it performs the frozen install, guest build, and
-   Capsule distribution validation. Inspect every diagnostic and fix all
-   errors.
-7. Stop after a validated draft. The AI cannot publish a draft; only a direct user action in the draft Preview title bar or draft detail page can Publish or **Republish**.
+6. Run `vc_widget_validate`; it performs the frozen install when dependency
+   inputs require it and completes the guest build and Capsule distribution
+   validation, or reuses the open Preview's unchanged completed construction.
+   Inspect every diagnostic and fix all errors. If a durable Preview is open,
+   committed edits already trigger its latest-wins rebuild; do not poll or
+   invent a refresh loop.
+7. Stop after a validated draft. The AI cannot publish a draft; only a direct
+   user action starting from the draft Preview title bar or draft detail page
+   can Publish or **Republish**. Either surface must resolve the exact ready
+   frame-owned Preview revision; never suggest a source-only publish.
 
 Use resource discovery and inspection only when the user selected or requested shared data. Protected database or secret changes require host approval. Never bypass an approval, expose a secret, copy a host path, or turn validation into publication.
 

@@ -1,9 +1,19 @@
 import type { TWidgetDetail } from "@vibecanvas/orpc-client"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { mountWidgetPublicationDialog } from "../../src/publication/mount"
+import type { TWidgetPublicationPreviewSelection } from "../../src/publication/interface"
 import type { TWidgetTitleBarActionState, TWidgetTitleBarPortal } from "../../src/widget/interface"
 
 const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+const PREVIEW_SELECTION: TWidgetPublicationPreviewSelection = {
+  previewId: "40000000-0000-4000-8000-000000000001",
+  previewRevisionId: "preview-revision-1",
+  expectedBindingRevision: 3,
+  expectedBindingPlanDigestSha256: "a".repeat(64),
+  canvasId: "canvas-one",
+  frameNodeId: "frame-one",
+  label: "Main canvas · Companion Preview · frame frame-one",
+}
 
 function detail(args: { revision?: string; published?: boolean } = {}): TWidgetDetail {
   const variant: TWidgetDetail["variant"] = {
@@ -38,6 +48,8 @@ function setup(args: {
   pinnedRevision?: string
   current?: TWidgetDetail
   detailResponses?: readonly TWidgetDetail[]
+  previewSelection?: TWidgetPublicationPreviewSelection | null
+  getPreviewSelection?: () => TWidgetPublicationPreviewSelection | null
   publishResult?: unknown
 } = {}) {
   let action = () => undefined
@@ -77,17 +89,32 @@ function setup(args: {
   }] as const)
   const refreshPreview = vi.fn(async () => undefined)
   const published = vi.fn(async () => undefined)
+  const createIdempotencyKey = vi.fn(() => "publication-attempt-1")
   const dispose = mountWidgetPublicationDialog({
     document,
     api: { widgets: { detail: detailApi }, widgetPublish: { publish } } as never,
     draftId: DRAFT_ID,
     draftName: "Weather",
+    createIdempotencyKey,
     getPinnedRevision: () => args.pinnedRevision ?? current.variant.revision,
+    getPreviewSelection: args.getPreviewSelection ?? (() =>
+      args.previewSelection === undefined
+        ? PREVIEW_SELECTION
+        : args.previewSelection),
     titleBar,
     onPublished: published,
     onRequestPreviewRefresh: refreshPreview,
   })
-  return { invokeAction: () => action(), states, detailApi, publish, published, refreshPreview, dispose }
+  return {
+    invokeAction: () => action(),
+    states,
+    detailApi,
+    publish,
+    published,
+    refreshPreview,
+    createIdempotencyKey,
+    dispose,
+  }
 }
 
 afterEach(() => {
@@ -103,11 +130,22 @@ describe("mounted publication coordinator", () => {
     mounted.invokeAction()
     await vi.waitFor(() => expect(document.body.textContent).toContain("Publish Weather board?"))
     expect(document.body.textContent).not.toContain("Expected draft revision")
-    expect(document.body.textContent).not.toContain("rev-2")
+    expect(document.body.textContent).toContain("Draft digest rev-2")
     expect(mounted.publish).not.toHaveBeenCalled()
     button("Publish")?.click()
 
-    await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledWith({ draftId: DRAFT_ID, expectedRevision: "rev-2" }))
+    await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledWith({
+      idempotencyKey: "publication-attempt-1",
+      draftId: DRAFT_ID,
+      expectedRevision: "rev-2",
+      previewId: PREVIEW_SELECTION.previewId,
+      previewRevisionId: PREVIEW_SELECTION.previewRevisionId,
+      expectedBindingRevision: PREVIEW_SELECTION.expectedBindingRevision,
+      expectedBindingPlanDigestSha256:
+        PREVIEW_SELECTION.expectedBindingPlanDigestSha256,
+      canvasId: PREVIEW_SELECTION.canvasId,
+      frameNodeId: PREVIEW_SELECTION.frameNodeId,
+    }))
     expect(mounted.published).toHaveBeenCalledOnce()
     expect(document.body.textContent).toContain("Widget published")
     await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({ label: "Republish" }))
@@ -138,6 +176,30 @@ describe("mounted publication coordinator", () => {
     mounted.dispose()
   })
 
+  test("reuses one idempotency key when a lost publication response is retried", async () => {
+    const mounted = setup()
+    mounted.publish.mockRejectedValueOnce(new Error("connection lost"))
+    await vi.waitFor(() => expect(mounted.states.at(-1)?.disabled).toBe(false))
+    mounted.invokeAction()
+    await vi.waitFor(() => {
+      expect(button("Publish")).toBeDefined()
+      expect(button("Publish")?.disabled).toBe(false)
+    })
+
+    button("Publish")?.click()
+    await vi.waitFor(() => expect(document.body.textContent).toContain("connection lost"))
+    expect(mounted.publish).toHaveBeenCalledOnce()
+
+    button("Publish")?.click()
+    await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledTimes(2))
+    expect(mounted.publish.mock.calls[0]?.[0].idempotencyKey)
+      .toBe("publication-attempt-1")
+    expect(mounted.publish.mock.calls[1]?.[0].idempotencyKey)
+      .toBe("publication-attempt-1")
+    expect(mounted.createIdempotencyKey).toHaveBeenCalledOnce()
+    mounted.dispose()
+  })
+
   test("fails closed when the loaded detail belongs to another draft", async () => {
     const current = detail()
     const mounted = setup({
@@ -146,10 +208,13 @@ describe("mounted publication coordinator", () => {
         variant: { ...current.variant, draftId: "10000000-0000-4000-8000-000000000002" },
       },
     })
-    await vi.waitFor(() => expect(mounted.states.at(-1)?.disabled).toBe(false))
+    await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({
+      disabled: true,
+      label: "Preview not ready",
+    }))
     mounted.invokeAction()
     await vi.waitFor(() => expect(document.body.textContent).toContain("Widget draft identity changed"))
-    expect(button("Publish")?.disabled).toBe(true)
+    expect(button("Needs Preview")?.disabled).toBe(true)
     expect(mounted.publish).not.toHaveBeenCalled()
     mounted.dispose()
   })
@@ -184,6 +249,44 @@ describe("mounted publication coordinator", () => {
     await vi.waitFor(() => expect(mounted.refreshPreview).toHaveBeenCalledOnce())
     expect(mounted.publish).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(document.body.textContent).not.toContain("Preview revision is stale"))
+    mounted.dispose()
+  })
+
+  test("keeps the title-bar publication action disabled without an exact ready Preview", async () => {
+    const mounted = setup({ previewSelection: null })
+    await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({
+      disabled: true,
+      label: "Preview not ready",
+    }))
+    mounted.invokeAction()
+    expect(mounted.publish).not.toHaveBeenCalled()
+    mounted.dispose()
+  })
+
+  test("rechecks the exact binding plan and fails closed when it advances before confirmation", async () => {
+    let selection = PREVIEW_SELECTION
+    const mounted = setup({ getPreviewSelection: () => selection })
+    await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({
+      disabled: false,
+      label: "Publish",
+    }))
+    mounted.invokeAction()
+    await vi.waitFor(() => expect(document.body.textContent).toContain("binding revision 3"))
+    const confirm = await vi.waitFor(() => {
+      const current = button("Publish")
+      expect(current).toBeDefined()
+      expect(current?.disabled).toBe(false)
+      return current!
+    })
+    selection = {
+      ...selection,
+      expectedBindingPlanDigestSha256: "b".repeat(64),
+    }
+    confirm.click()
+
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Preview changed before publication"))
+    expect(document.body.textContent).toContain("binding plan bbbbbbbbbbbb")
+    expect(mounted.publish).not.toHaveBeenCalled()
     mounted.dispose()
   })
 

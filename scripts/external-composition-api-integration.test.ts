@@ -49,7 +49,7 @@ function createManagedFunctionApiAdapter(
     async invokeFunction(tenant, request) {
       const result = await dispatcher.invoke(tenant, {
         widgetDefinitionId: MANAGED_FUNCTION_TARGET.widgetDefinitionId,
-        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
+        widgetRevisionId: request.widgetRevisionId,
         subject: {
           kind: 'widget_instance',
           canvasId: MANAGED_FUNCTION_TARGET.canvasId,
@@ -100,6 +100,7 @@ describe('external managed composition through unchanged OSS API handlers', () =
       const cancel = router.api.function.cancel.callable({ context })
       const request = {
         widgetInstanceId: 'managed-instance',
+        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
         functionName: 'run',
         input: { value: 7 },
         idempotencyKey: 'managed-api-key',
@@ -156,6 +157,7 @@ describe('external managed composition through unchanged OSS API handlers', () =
       const invoke = router.api.function.invoke.callable({ context })
       const request = {
         widgetInstanceId: 'managed-instance',
+        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
         functionName: 'run',
         input: { value: 7 },
         idempotencyKey: 'managed-conflict-key',

@@ -70,6 +70,20 @@ function builder(): IWidgetArtifactBuilder {
         capsuleBuildIdentity: request.capsuleBuildIdentity,
         buildPolicyId: request.buildPolicyId,
         canonicalManifestJson: request.canonicalManifestJson,
+        constructionContractDigestSha256: sha256(
+          `construction:${request.snapshot.digestSha256}`,
+        ),
+        distributionProvenance: Object.freeze({
+          kind: 'external-distribution' as const,
+          producer: Object.freeze({
+            name: 'widget-preview-test',
+            version: '1',
+            digest: `sha256:${'c'.repeat(64)}` as const,
+          }),
+          sourceRevision: request.snapshot.digestSha256,
+          dependencyLockDigest: `sha256:${'d'.repeat(64)}` as const,
+          buildConfigurationDigest: `sha256:${'e'.repeat(64)}` as const,
+        }),
         functionDescriptors,
         functionDescriptorsDigestSha256,
         capabilityContractDigestSha256,
@@ -98,6 +112,7 @@ function request(draftRevisionSha256 = snapshot.digestSha256) {
     draftId: 'draft-ui',
     definitionId: 'definition-ui',
     draftRevisionSha256,
+    committedMutationId: 'mutation-ui-1',
     snapshot,
     manifest: CAPSULE_MANIFEST,
     builderIdentity: 'preview-builder-v1',

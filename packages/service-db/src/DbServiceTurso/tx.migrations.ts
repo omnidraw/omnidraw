@@ -106,6 +106,7 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
   if (initialState.status === 'ready') return { applied: false };
 
   const applied = await txRunDatabaseTransaction({ database: portal.db }, {
+    foreignKeyEnforcement: 'disabled',
     operation: async () => {
       // The read-only preflight preserves unknown databases. Rechecking after the
       // immediate writer lock makes concurrent starters observe one ledger owner.
@@ -117,7 +118,7 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
       if (lockedState.status === 'ready') {
         await txAssertDatabasePragmas(
           { db: portal.db },
-          { expectedUserVersion: DATABASE_SCHEMA_VERSION },
+          { expectedForeignKeys: 0, expectedUserVersion: DATABASE_SCHEMA_VERSION },
         );
         return false;
       }
@@ -153,7 +154,7 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
       // held. Throwing here rolls DDL, ledger, and header metadata back together.
       await txAssertDatabasePragmas(
         { db: portal.db },
-        { expectedUserVersion: DATABASE_SCHEMA_VERSION },
+        { expectedForeignKeys: 0, expectedUserVersion: DATABASE_SCHEMA_VERSION },
       );
       const committedState = await fxPreflightMigrationState(
         { Bun: portal.Bun, db: portal.db },

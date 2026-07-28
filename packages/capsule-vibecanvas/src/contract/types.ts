@@ -57,6 +57,8 @@ export type TVibecanvasCapsuleError = Readonly<{
   capsuleCode: string;
   fatal: boolean;
   message: string;
+  capability?: string;
+  operation?: string;
 }>;
 
 type TAssertTargetCompatible =

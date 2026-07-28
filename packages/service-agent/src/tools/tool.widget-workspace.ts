@@ -126,6 +126,9 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           draftCreated = true;
           args.onMounted?.(created.mount);
           const durable = await args.onDraftChanged?.({ name: created.mount.name, type: 'created' });
+          if (args.onDraftChanged && !durable) {
+            throw new Error('Created widget source did not receive a durable mutation fence.');
+          }
           const modelData = {
             name: created.mount.name,
             ...(durable ? { draftId: durable.draftId } : {}),

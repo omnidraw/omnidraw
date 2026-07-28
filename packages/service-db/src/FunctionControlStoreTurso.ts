@@ -49,6 +49,7 @@ import type {
 } from '@vibecanvas/resource-runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
+  ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
@@ -227,9 +228,129 @@ export class FunctionControlStoreTurso implements
       widgetDefinitionId: string;
       widgetRevisionId: string;
       functionName: string;
-      purpose: 'admission' | 'execution';
-    }>,
+    }> & (
+      | Readonly<{ purpose: 'admission' }>
+      | Readonly<{ purpose: 'execution'; invocationId: string }>
+    ),
   ): Promise<TFunctionDefinition | null> {
+    if (request.subject.kind === 'widget_preview') {
+      const row = await (await this.database.prepare(`
+        SELECT revision.definition_id, revision.id AS revision_id,
+          revision.function_descriptors_json,
+          revision.preview_contract_digest_sha256,
+          revision.server_artifact_id,
+          revision.server_artifact_digest_sha256,
+          revision.server_runtime_abi,
+          revision.build_sequence,
+          owner.canvas_id, owner.account_id, owner.status,
+          owner.active_revision_id
+        FROM agent_preview_revisions AS revision
+        INNER JOIN agent_previews AS owner
+          ON owner.org_id = revision.org_id
+          AND owner.id = revision.preview_id
+        INNER JOIN canvas_members AS member
+          ON member.org_id = owner.org_id
+          AND member.canvas_id = owner.canvas_id
+          AND member.account_id = ?
+        WHERE revision.org_id = ?
+          AND revision.preview_id = ?
+          AND revision.id = ?
+          AND revision.definition_id = ?
+          AND owner.account_id = ?
+          AND (? IS NULL OR owner.canvas_id = ?)
+          AND (
+            (
+              ? = 'admission'
+              AND owner.status <> 'closed'
+              AND (
+                owner.active_revision_id = revision.id
+                OR EXISTS (
+                  SELECT 1
+                  FROM agent_preview_mount_leases AS lease
+                  WHERE lease.org_id = revision.org_id
+                    AND lease.account_id = owner.account_id
+                    AND lease.preview_id = revision.preview_id
+                    AND lease.preview_revision_id = revision.id
+                    AND lease.canvas_id = owner.canvas_id
+                    AND lease.frame_node_id = owner.frame_node_id
+                    AND lease.expires_at_ms > ?
+                )
+              )
+            )
+            OR (
+              ? = 'execution'
+              AND EXISTS (
+                SELECT 1
+                FROM function_invocations AS invocation
+                WHERE invocation.org_id = revision.org_id
+                  AND invocation.id = ?
+                  AND invocation.account_id = owner.account_id
+                  AND invocation.subject_kind = 'widget_preview'
+                  AND invocation.canvas_id = owner.canvas_id
+                  AND invocation.widget_definition_id = revision.definition_id
+                  AND invocation.widget_revision_id = revision.id
+                  AND invocation.widget_instance_id = revision.preview_id
+                  AND invocation.function_name = ?
+                  AND invocation.retains_revision = 1
+              )
+            )
+          )
+        LIMIT 1
+      `)).get(
+        tenant.accountId,
+        tenant.orgId,
+        request.subject.widgetInstanceId,
+        request.widgetRevisionId,
+        request.widgetDefinitionId,
+        tenant.accountId,
+        tenant.canvasId ?? null,
+        tenant.canvasId ?? null,
+        request.purpose,
+        this.#nowMs(),
+        request.purpose,
+        request.purpose === 'execution' ? request.invocationId : null,
+        request.functionName,
+      ) as Record<string, unknown> | undefined;
+      if (
+        !row
+        || String(row.canvas_id) !== request.subject.canvasId
+        || row.server_artifact_id === null
+        || row.server_artifact_id === undefined
+        || row.server_artifact_digest_sha256 === null
+        || row.server_artifact_digest_sha256 === undefined
+        || row.server_runtime_abi === null
+        || row.server_runtime_abi === undefined
+      ) return null;
+      const payload = JSON.parse(String(row.function_descriptors_json)) as {
+        functions?: unknown;
+      };
+      const descriptors = ZWidgetServerFunctionDescriptors.parse(
+        payload.functions,
+      );
+      const descriptor = descriptors.find(
+        (candidate) => candidate.exportName === request.functionName,
+      );
+      if (!descriptor) return null;
+      return Object.freeze({
+        orgId: tenant.orgId,
+        id: fnFunctionId(request.widgetDefinitionId, descriptor.exportName),
+        widgetDefinitionId: request.widgetDefinitionId,
+        widgetRevisionId: request.widgetRevisionId,
+        name: descriptor.exportName,
+        effect: descriptor.effect,
+        definitionRevision: Number(row.build_sequence),
+        serverArtifactId: String(row.server_artifact_id),
+        artifactDigestSha256: String(row.server_artifact_digest_sha256),
+        contractDigestSha256: String(row.preview_contract_digest_sha256),
+        descriptorDigestSha256: sha256(fnFunctionCanonicalJson(descriptor)),
+        runtimeAbi: String(row.server_runtime_abi),
+        inputSchema: descriptor.inputSchema,
+        outputSchema: descriptor.outputSchema,
+        resources: descriptor.resources,
+        limits: descriptor.limits,
+        retry: descriptor.retry,
+      });
+    }
     const definition = await this.resolveFunction(tenant, request);
     return definition?.widgetDefinitionId === request.widgetDefinitionId ? definition : null;
   }
@@ -268,30 +389,59 @@ export class FunctionControlStoreTurso implements
         || envelope.deadlineAtMs > envelope.createdAtMs + envelope.limits.timeoutMs) {
         throw new TypeError('Invocation deadline exceeds its immutable timeout ceiling.');
       }
-      const instance = await (await this.database.prepare(`
-        SELECT instance.canvas_id
-        FROM widget_instances AS instance
-        INNER JOIN canvas_members AS member
-          ON member.org_id = instance.org_id
-          AND member.canvas_id = instance.canvas_id
-          AND member.account_id = ?
-        WHERE instance.org_id = ? AND instance.definition_id = ?
-          AND instance.revision_id = ? AND instance.id = ?
-          AND instance.status = 'active'
-          AND (? IS NULL OR instance.canvas_id = ?)
-        `)).get(
-          tenant.accountId,
-          tenant.orgId,
-          envelope.widgetDefinitionId,
-          envelope.widgetRevisionId,
-          envelope.subject.widgetInstanceId,
-          tenant.canvasId ?? null,
-          tenant.canvasId ?? null,
-        ) as Record<string, unknown> | undefined;
-        if (!instance || String(instance.canvas_id) !== envelope.subject.canvasId) {
-          throw functionStoreError('FUNCTION_WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
-        }
-      const canvasId = String(instance.canvas_id);
+      const subject = envelope.subject;
+      const target = subject.kind === 'widget_instance'
+        ? await (await this.database.prepare(`
+            SELECT instance.canvas_id
+            FROM widget_instances AS instance
+            INNER JOIN canvas_members AS member
+              ON member.org_id = instance.org_id
+              AND member.canvas_id = instance.canvas_id
+              AND member.account_id = ?
+            WHERE instance.org_id = ? AND instance.definition_id = ?
+              AND instance.revision_id = ? AND instance.id = ?
+              AND instance.status = 'active'
+              AND (? IS NULL OR instance.canvas_id = ?)
+          `)).get(
+            tenant.accountId,
+            tenant.orgId,
+            envelope.widgetDefinitionId,
+            envelope.widgetRevisionId,
+            subject.widgetInstanceId,
+            tenant.canvasId ?? null,
+            tenant.canvasId ?? null,
+          ) as Record<string, unknown> | undefined
+        : await (await this.database.prepare(`
+            SELECT owner.canvas_id
+            FROM agent_previews AS owner
+            INNER JOIN agent_preview_revisions AS revision
+              ON revision.org_id = owner.org_id
+              AND revision.preview_id = owner.id
+              AND revision.id = ?
+            INNER JOIN canvas_members AS member
+              ON member.org_id = owner.org_id
+              AND member.canvas_id = owner.canvas_id
+              AND member.account_id = ?
+            WHERE owner.org_id = ?
+              AND owner.id = ?
+              AND owner.account_id = ?
+              AND owner.status <> 'closed'
+              AND revision.definition_id = ?
+              AND (? IS NULL OR owner.canvas_id = ?)
+          `)).get(
+            envelope.widgetRevisionId,
+            tenant.accountId,
+            tenant.orgId,
+            subject.widgetInstanceId,
+            tenant.accountId,
+            envelope.widgetDefinitionId,
+            tenant.canvasId ?? null,
+            tenant.canvasId ?? null,
+          ) as Record<string, unknown> | undefined;
+      if (!target || String(target.canvas_id) !== subject.canvasId) {
+        throw functionStoreError('FUNCTION_WIDGET_INSTANCE_NOT_FOUND', 'Widget runtime subject was not found.');
+      }
+      const canvasId = String(target.canvas_id);
       this.#assertIdempotencyScope(request, envelope.subject);
       await this.#deleteExpiredIdempotencyKey(tenant, request, envelope.createdAtMs);
       const existing = await this.#findIdempotencyRecord(tenant, request);
@@ -377,9 +527,10 @@ export class FunctionControlStoreTurso implements
       await (await this.database.prepare(`
         INSERT INTO idempotency_records (
           org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
-          idempotency_key, request_fingerprint_sha256, widget_definition_id,
-          widget_revision_id, invocation_id, created_at_ms, expires_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          preview_id, idempotency_key, request_fingerprint_sha256,
+          widget_definition_id, widget_revision_id, invocation_id,
+          created_at_ms, expires_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)).run(
         tenant.orgId,
         request.idempotencyRecordId,
@@ -387,6 +538,7 @@ export class FunctionControlStoreTurso implements
         scope.kind,
         scope.kind === 'canvas' ? scope.canvasId : null,
         scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+        scope.kind === 'widget_preview' ? scope.previewId : null,
         envelope.idempotencyKey,
         request.requestFingerprintSha256,
         envelope.widgetDefinitionId,
@@ -1358,6 +1510,39 @@ export class FunctionControlStoreTurso implements
         `)).run(tenant.orgId, id);
         if (updated.changes > 0) releasedRevisionInvocationIds.push(id);
       }
+      await (await this.database.prepare(`
+        DELETE FROM agent_preview_mount_leases
+        WHERE org_id = ? AND expires_at_ms <= ?
+      `)).run(tenant.orgId, request.nowMs);
+      await (await this.database.prepare(`
+        DELETE FROM agent_preview_revisions AS revision
+        WHERE revision.org_id = ?
+          AND EXISTS (
+            SELECT 1 FROM agent_previews AS owner
+            WHERE owner.org_id = revision.org_id
+              AND owner.id = revision.preview_id
+              AND (
+                owner.status = 'closed'
+                OR owner.active_revision_id IS NULL
+                OR owner.active_revision_id <> revision.id
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_preview_mount_leases AS lease
+            WHERE lease.org_id = revision.org_id
+              AND lease.preview_id = revision.preview_id
+              AND lease.preview_revision_id = revision.id
+              AND lease.expires_at_ms > ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM function_invocations AS invocation
+            WHERE invocation.org_id = revision.org_id
+              AND invocation.subject_kind = 'widget_preview'
+              AND invocation.widget_instance_id = revision.preview_id
+              AND invocation.widget_revision_id = revision.id
+              AND invocation.retains_revision = 1
+          )
+      `)).run(tenant.orgId, request.nowMs);
       return {
         compactedInvocationIds,
         releasedRevisionInvocationIds,
@@ -1787,7 +1972,7 @@ export class FunctionControlStoreTurso implements
       DELETE FROM idempotency_records
       WHERE org_id = ? AND function_id = ? AND scope_kind = ? AND idempotency_key = ?
         AND expires_at_ms IS NOT NULL AND expires_at_ms <= ?
-        AND canvas_id IS ? AND widget_instance_id IS ?
+        AND canvas_id IS ? AND widget_instance_id IS ? AND preview_id IS ?
     `)).run(
       tenant.orgId,
       envelope.functionId,
@@ -1796,6 +1981,7 @@ export class FunctionControlStoreTurso implements
       nowMs,
       scope.kind === 'canvas' ? scope.canvasId : null,
       scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+      scope.kind === 'widget_preview' ? scope.previewId : null,
     );
   }
 
@@ -1807,7 +1993,7 @@ export class FunctionControlStoreTurso implements
     const row = await (await this.database.prepare(`
       SELECT * FROM idempotency_records
       WHERE org_id = ? AND function_id = ? AND scope_kind = ? AND idempotency_key = ?
-        AND canvas_id IS ? AND widget_instance_id IS ?
+        AND canvas_id IS ? AND widget_instance_id IS ? AND preview_id IS ?
     `)).get(
       tenant.orgId,
       request.envelope.functionId,
@@ -1815,6 +2001,7 @@ export class FunctionControlStoreTurso implements
       request.envelope.idempotencyKey,
       scope.kind === 'canvas' ? scope.canvasId : null,
       scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+      scope.kind === 'widget_preview' ? scope.previewId : null,
     );
     return row ? row as Record<string, unknown> : null;
   }
@@ -1866,10 +2053,22 @@ export class FunctionControlStoreTurso implements
     if (scope.kind === 'canvas' && scope.canvasId !== subject.canvasId) {
       throw functionStoreError('FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH', 'Canvas idempotency scope is invalid.');
     }
-    if (scope.kind === 'widget_instance' && scope.widgetInstanceId !== subject.widgetInstanceId) {
+    if (scope.kind === 'widget_instance' && (
+      subject.kind !== 'widget_instance'
+      || scope.widgetInstanceId !== subject.widgetInstanceId
+    )) {
       throw functionStoreError(
         'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH',
         'Widget-instance idempotency scope is invalid.',
+      );
+    }
+    if (scope.kind === 'widget_preview' && (
+      subject.kind !== 'widget_preview'
+      || scope.previewId !== subject.widgetInstanceId
+    )) {
+      throw functionStoreError(
+        'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH',
+        'Widget-Preview idempotency scope is invalid.',
       );
     }
   }

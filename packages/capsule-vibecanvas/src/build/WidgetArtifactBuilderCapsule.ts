@@ -16,13 +16,17 @@ import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeWidgetConstructionContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnGenerateWidgetServerFunctionClientModule,
   fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
-  type IWidgetArtifactBuilder,
+  type IWidgetArtifactConstructionBuilder,
+  type TWidgetArtifactConstructionRequest,
+  type TWidgetArtifactConstructionResult,
+  type TWidgetArtifactConstructionSignRequest,
   type IWidgetServerFunctionDescriptorExtractor,
   type TWidgetBuildResult,
   type TWidgetCapsuleBuildIdentity,
@@ -30,6 +34,7 @@ import {
   type TWidgetCapsuleChannelContract,
   type TWidgetCapsuleHash,
   type TWidgetBuildRequest,
+  type TWidgetDistributionBuildProvenance,
   type TWidgetServerBuildArtifact,
   type TWidgetServerFunctionDescriptor,
   type TWidgetSourceSnapshot,
@@ -189,8 +194,16 @@ function serverOutputLoader(loader: string): string {
   return ['js', 'jsx', 'ts', 'tsx'].includes(loader) ? 'js' : loader;
 }
 
+function assertBuildActive(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw Object.assign(new Error('Widget build was superseded.'), {
+      code: 'WIDGET_BUILD_SUPERSEDED',
+    });
+  }
+}
+
 /** Orchestrates an injected Capsule UI build and a separate Bun server-function artifact. */
-export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
+export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstructionBuilder {
   readonly #snapshotService: WidgetSourceSnapshot;
   readonly #capsuleBuild: TVibecanvasCapsuleBuild;
   readonly #distributionBuild: TVibecanvasDistributionBuild;
@@ -215,6 +228,25 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
     tenant: TTenantContext,
     request: TWidgetBuildRequest,
   ): Promise<TWidgetBuildResult> {
+    const construction = await this.construct(tenant, {
+      snapshot: request.snapshot,
+      manifest: request.manifest,
+      canonicalManifestJson: request.canonicalManifestJson,
+      builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+    });
+    return this.signConstruction(tenant, {
+      construction,
+      signingPurpose: request.signingPurpose,
+    });
+  }
+
+  async construct(
+    tenant: TTenantContext,
+    request: TWidgetArtifactConstructionRequest,
+  ): Promise<TWidgetArtifactConstructionResult> {
+    assertBuildActive(request.signal);
     const buildPolicyId = this.config.buildPolicyId ?? VIBECANVAS_CAPSULE_BUILD_POLICY_ID;
     if (
       request.builderIdentity !== this.config.builderIdentity
@@ -245,6 +277,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
     const serverArtifact = manifest.server === undefined
       ? null
       : await this.#buildServer(request.snapshot, manifest.server, functionModules);
+    assertBuildActive(request.signal);
     let functionDescriptors: readonly TWidgetServerFunctionDescriptor[] = [];
     if (serverArtifact !== null && manifest.server !== undefined) {
       const extracted = await this.config.functionDescriptorExtractor
@@ -320,15 +353,25 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
     const effectiveBudgets = fnResolveVibecanvasCapsuleBudgets(
       manifest.ui.budgets ?? {},
     );
+    let distributionInput: Awaited<ReturnType<TVibecanvasDistributionBuild>>;
     let built: CapsuleBuildOutput;
     try {
-      const input = await this.#distributionBuild({
+      distributionInput = await this.#distributionBuild({
         sourceRevision: request.snapshot.digestSha256,
         entry: manifest.ui.entry,
         files: Object.freeze(uiFiles),
+        ...(request.workspaceKey === undefined ? {} : { workspaceKey: request.workspaceKey }),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+        ...(request.reportProgress === undefined
+          ? {}
+          : {
+              reportProgress: (phase) => request.reportProgress?.(phase),
+            }),
       });
+      assertBuildActive(request.signal);
+      request.reportProgress?.('validating');
       built = await this.#capsuleBuild({
-        input,
+        input: distributionInput,
         target: capsuleTarget,
         capabilityRequests,
         guestChannels: channels.declaration,
@@ -336,17 +379,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
         requestedBudgets: manifest.ui.budgets ?? {},
         policy: fnVibecanvasCapsuleBuildPolicy(),
       });
+      assertBuildActive(request.signal);
     } catch (cause) {
       throw fnWidgetBuildError('ui', cause);
     }
-    const signed = await txSignVibecanvasCapsuleArtifact({
-      loadKeys: this.config.loadSigningKeys,
-      sign: async (bytes, keys) => await this.#capsuleSign(bytes, keys),
-    }, {
-      bytes: built.artifactBytes,
-      capsuleArtifactHash: built.artifactHash,
-      purpose: request.signingPurpose,
-    });
     const runtimeDescriptor = Object.freeze({
       format: 'vibecanvas.capsule-runtime.v1' as const,
       capsuleArtifactHash: built.artifactHash,
@@ -355,48 +391,63 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       capabilityRequests: capabilityRequests as readonly TWidgetCapsuleCapabilityRequest[],
       channels: channels.declaration as TWidgetCapsuleChannelContract,
       parkability: Object.freeze({ parkable: false as const }),
-      signatureKeyIds: signed.signatureKeyIds,
     });
-    const uiDigestSha256 = sha256(signed.signedBytes);
     const capabilityContractDigestSha256 = sha256(
       fnCanonicalizeWidgetCapsuleCapabilityRequests(runtimeDescriptor.capabilityRequests),
     );
     const channelContractDigestSha256 = sha256(
       fnCanonicalizeWidgetCapsuleChannelContract(runtimeDescriptor.channels),
     );
-    const contractDigestSha256 = sha256(fnCanonicalizeWidgetContractPayload({
-      canonicalManifestJson: request.canonicalManifestJson,
-      uiDigestSha256,
-      capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
-      target: runtimeDescriptor.target,
-      budgets: runtimeDescriptor.budgets,
-      capabilityContractDigestSha256,
-      channelContractDigestSha256,
-      signatureKeyIds: runtimeDescriptor.signatureKeyIds,
-      serverDigestSha256: serverArtifact?.digestSha256 ?? null,
-      serverRuntimeAbi: serverArtifact?.runtimeAbi ?? null,
-      functionDescriptorsDigestSha256,
-      sourceDigestSha256: request.snapshot.digestSha256,
+    const sourceArtifact = this.#snapshotService.encodeArtifact(request.snapshot, {
       builderIdentity: request.builderIdentity,
-      capsuleBuildIdentity: request.capsuleBuildIdentity,
-      buildPolicyId,
-    }));
+    });
+    const unsignedUiDigestSha256 = sha256(built.artifactBytes);
+    const distributionProvenance = Object.freeze({
+      kind: distributionInput.kind,
+      producer: Object.freeze({ ...distributionInput.producer }),
+      sourceRevision: distributionInput.sourceRevision,
+      dependencyLockDigest: distributionInput.dependencyLockDigest,
+      buildConfigurationDigest: distributionInput.buildConfigurationDigest,
+    }) satisfies TWidgetDistributionBuildProvenance;
+    const constructionContractDigestSha256 = sha256(
+      fnCanonicalizeWidgetConstructionContractPayload({
+        sourceSnapshotId: request.snapshot.id,
+        sourceDigestSha256: request.snapshot.digestSha256,
+        sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+        canonicalManifestJson: request.canonicalManifestJson,
+        unsignedUiDigestSha256,
+        capsuleArtifactHash: built.artifactHash,
+        target: runtimeDescriptor.target,
+        budgets: runtimeDescriptor.budgets,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        serverDigestSha256: serverArtifact?.digestSha256 ?? null,
+        serverRuntimeAbi: serverArtifact?.runtimeAbi ?? null,
+        functionDescriptorsDigestSha256,
+        builderIdentity: request.builderIdentity,
+        capsuleBuildIdentity: request.capsuleBuildIdentity,
+        buildPolicyId,
+        distributionProvenance,
+      }),
+    );
     return Object.freeze({
       sourceSnapshotId: request.snapshot.id,
       sourceDigestSha256: request.snapshot.digestSha256,
+      sourceArtifact,
       builderIdentity: request.builderIdentity,
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId,
       canonicalManifestJson: request.canonicalManifestJson,
+      distributionProvenance,
       functionDescriptors,
       functionDescriptorsDigestSha256,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
-      contractDigestSha256,
+      constructionContractDigestSha256,
       uiArtifact: Object.freeze({
-        kind: 'ui' as const,
-        digestSha256: uiDigestSha256,
-        bytes: signed.signedBytes,
+        kind: 'unsigned-ui' as const,
+        digestSha256: unsignedUiDigestSha256,
+        unsignedBytes: new Uint8Array(built.artifactBytes),
         capsuleArtifactHash: built.artifactHash,
         runtimeDescriptor,
         requestedBudgets: manifest.ui.budgets ?? {},
@@ -407,6 +458,176 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactBuilder {
       serverArtifact,
       diagnostics: Object.freeze(built.diagnostics.map((item) => Object.freeze({ ...item }))),
     });
+  }
+
+  async signConstruction(
+    _tenant: TTenantContext,
+    request: TWidgetArtifactConstructionSignRequest,
+  ): Promise<TWidgetBuildResult> {
+    const construction = request.construction;
+    this.#assertTrustedConstruction(construction);
+    const signed = await txSignVibecanvasCapsuleArtifact({
+      loadKeys: this.config.loadSigningKeys,
+      sign: async (bytes, keys) => await this.#capsuleSign(bytes, keys),
+    }, {
+      bytes: construction.uiArtifact.unsignedBytes,
+      capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+      purpose: request.signingPurpose,
+    });
+    const runtimeDescriptor = Object.freeze({
+      ...construction.uiArtifact.runtimeDescriptor,
+      signatureKeyIds: signed.signatureKeyIds,
+    });
+    const uiDigestSha256 = sha256(signed.signedBytes);
+    const contractDigestSha256 = sha256(fnCanonicalizeWidgetContractPayload({
+      canonicalManifestJson: construction.canonicalManifestJson,
+      uiDigestSha256,
+      capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
+      target: runtimeDescriptor.target,
+      budgets: runtimeDescriptor.budgets,
+      capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
+      channelContractDigestSha256: construction.channelContractDigestSha256,
+      signatureKeyIds: runtimeDescriptor.signatureKeyIds,
+      serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
+      serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+      functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
+      sourceDigestSha256: construction.sourceDigestSha256,
+      builderIdentity: construction.builderIdentity,
+      capsuleBuildIdentity: construction.capsuleBuildIdentity,
+      buildPolicyId: construction.buildPolicyId,
+    }));
+    return Object.freeze({
+      sourceSnapshotId: construction.sourceSnapshotId,
+      sourceDigestSha256: construction.sourceDigestSha256,
+      builderIdentity: construction.builderIdentity,
+      capsuleBuildIdentity: construction.capsuleBuildIdentity,
+      buildPolicyId: construction.buildPolicyId,
+      canonicalManifestJson: construction.canonicalManifestJson,
+      constructionContractDigestSha256: construction.constructionContractDigestSha256,
+      distributionProvenance: construction.distributionProvenance,
+      functionDescriptors: construction.functionDescriptors,
+      functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
+      channelContractDigestSha256: construction.channelContractDigestSha256,
+      contractDigestSha256,
+      uiArtifact: Object.freeze({
+        kind: 'ui' as const,
+        digestSha256: uiDigestSha256,
+        bytes: signed.signedBytes,
+        capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+        runtimeDescriptor,
+        requestedBudgets: construction.uiArtifact.requestedBudgets,
+        effectiveBudgets: construction.uiArtifact.effectiveBudgets,
+        builderIdentity: construction.builderIdentity,
+        capsuleBuildIdentity: construction.capsuleBuildIdentity,
+      }),
+      serverArtifact: construction.serverArtifact,
+      diagnostics: construction.diagnostics,
+    });
+  }
+
+  async closeWorkspace(
+    _tenant: TTenantContext,
+    request: Readonly<{ workspaceKey: string }>,
+  ): Promise<void> {
+    await this.#distributionBuild.closeWorkspace?.(request.workspaceKey);
+  }
+
+  async close(): Promise<void> {
+    await this.#distributionBuild.close?.();
+  }
+
+  #assertTrustedConstruction(construction: TWidgetArtifactConstructionResult): void {
+    const buildPolicyId = this.config.buildPolicyId ?? VIBECANVAS_CAPSULE_BUILD_POLICY_ID;
+    if (
+      construction.builderIdentity !== this.config.builderIdentity
+      || JSON.stringify(construction.capsuleBuildIdentity)
+        !== JSON.stringify(this.config.capsuleBuildIdentity)
+      || construction.buildPolicyId !== buildPolicyId
+      || construction.uiArtifact.kind !== 'unsigned-ui'
+      || construction.uiArtifact.builderIdentity !== construction.builderIdentity
+      || JSON.stringify(construction.uiArtifact.capsuleBuildIdentity)
+        !== JSON.stringify(construction.capsuleBuildIdentity)
+      || construction.uiArtifact.capsuleArtifactHash
+        !== construction.uiArtifact.runtimeDescriptor.capsuleArtifactHash
+      || construction.distributionProvenance.sourceRevision
+        !== construction.sourceDigestSha256
+      || sha256(construction.uiArtifact.unsignedBytes)
+        !== construction.uiArtifact.digestSha256
+    ) {
+      throw new Error('Widget construction requested an untrusted build identity or policy.');
+    }
+    let manifest;
+    try {
+      manifest = ZWidgetManifestV3.parse(JSON.parse(construction.canonicalManifestJson));
+    } catch (cause) {
+      throw new Error('Widget construction canonical manifest is invalid.', { cause });
+    }
+    if (
+      construction.canonicalManifestJson !== fnCanonicalizeWidgetManifest(manifest)
+      || JSON.stringify(construction.uiArtifact.runtimeDescriptor.target)
+        !== JSON.stringify(manifest.ui.target)
+      || JSON.stringify(construction.uiArtifact.requestedBudgets)
+        !== JSON.stringify(manifest.ui.budgets ?? {})
+      || JSON.stringify(construction.uiArtifact.effectiveBudgets)
+        !== JSON.stringify(fnResolveVibecanvasCapsuleBudgets(manifest.ui.budgets ?? {}))
+      || (manifest.server === undefined) !== (construction.serverArtifact === null)
+      || (
+        construction.serverArtifact !== null
+        && construction.serverArtifact.runtimeAbi !== manifest.server?.runtimeAbi
+      )
+    ) {
+      throw new Error('Widget construction metadata failed integrity validation.');
+    }
+    this.#snapshotService.decodeArtifact(construction.sourceArtifact, {
+      expectedSnapshotId: construction.sourceSnapshotId,
+      expectedSourceDigestSha256: construction.sourceDigestSha256,
+      expectedBuilderIdentity: construction.builderIdentity,
+    });
+    if (
+      construction.serverArtifact !== null
+      && sha256(construction.serverArtifact.bytes)
+        !== construction.serverArtifact.digestSha256
+    ) {
+      throw new Error('Widget construction server artifact failed integrity validation.');
+    }
+    const descriptorValidation = fnValidateWidgetServerFunctionDescriptors(
+      manifest,
+      construction.functionDescriptors,
+    );
+    if (
+      !descriptorValidation.valid
+      || sha256(fnCanonicalizeWidgetServerFunctionDescriptors(
+        construction.functionDescriptors,
+      )) !== construction.functionDescriptorsDigestSha256
+      || sha256(fnCanonicalizeWidgetCapsuleCapabilityRequests(
+        construction.uiArtifact.runtimeDescriptor.capabilityRequests,
+      )) !== construction.capabilityContractDigestSha256
+      || sha256(fnCanonicalizeWidgetCapsuleChannelContract(
+        construction.uiArtifact.runtimeDescriptor.channels,
+      )) !== construction.channelContractDigestSha256
+      || sha256(fnCanonicalizeWidgetConstructionContractPayload({
+        sourceSnapshotId: construction.sourceSnapshotId,
+        sourceDigestSha256: construction.sourceDigestSha256,
+        sourceArtifactDigestSha256: construction.sourceArtifact.digestSha256,
+        canonicalManifestJson: construction.canonicalManifestJson,
+        unsignedUiDigestSha256: construction.uiArtifact.digestSha256,
+        capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+        target: construction.uiArtifact.runtimeDescriptor.target,
+        budgets: construction.uiArtifact.runtimeDescriptor.budgets,
+        capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
+        channelContractDigestSha256: construction.channelContractDigestSha256,
+        serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
+        serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+        functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
+        builderIdentity: construction.builderIdentity,
+        capsuleBuildIdentity: construction.capsuleBuildIdentity,
+        buildPolicyId: construction.buildPolicyId,
+        distributionProvenance: construction.distributionProvenance,
+      })) !== construction.constructionContractDigestSha256
+    ) {
+      throw new Error('Widget construction contract failed integrity validation.');
+    }
   }
 
   async #buildServer(

@@ -86,8 +86,14 @@ export function fnFunctionControlStoreDefinition(row: unknown): TFunctionDefinit
 export function fnFunctionControlStoreInvocation(row: unknown): TInvocationRecord {
   const value = row as Record<string, unknown>;
   const bodyState = value.body_state as TInvocationRecord['bodyState'];
+  if (
+    value.subject_kind !== 'widget_instance'
+    && value.subject_kind !== 'widget_preview'
+  ) {
+    throw new TypeError('Stored function invocation subject kind is invalid.');
+  }
   const subject = {
-    kind: 'widget_instance' as const,
+    kind: value.subject_kind as 'widget_instance' | 'widget_preview',
     canvasId: String(value.canvas_id),
     widgetInstanceId: String(value.widget_instance_id),
   };

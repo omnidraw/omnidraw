@@ -125,6 +125,7 @@ export class LocalFunctionDispatcher implements IFunctionDispatcher {
       request.idempotencyKey.trim().length === 0
       || request.idempotencyKey.length > 200
     ) throw inputError('FUNCTION_IDEMPOTENCY_KEY_INVALID', 'Function idempotency key is invalid.');
+    const nowMs = this.#nowMs();
     const definition = await this.#config.store.resolveFunctionForSubject(tenant, {
       subject: request.subject,
       widgetDefinitionId: request.widgetDefinitionId,
@@ -152,7 +153,6 @@ export class LocalFunctionDispatcher implements IFunctionDispatcher {
     if (!validation.valid) {
       throw inputError('FUNCTION_INPUT_SCHEMA_INVALID', 'Function input does not match its canonical schema.');
     }
-    const nowMs = this.#nowMs();
     const deadlineAtMs = Math.min(
       request.deadlineAtMs ?? nowMs + definition.limits.timeoutMs,
       nowMs + definition.limits.timeoutMs,
@@ -207,7 +207,16 @@ export class LocalFunctionDispatcher implements IFunctionDispatcher {
     const result = await this.#config.store.createOrReplayInvocation(tenant, {
       envelope,
       idempotencyRecordId: this.#createId(),
-      idempotencyScope: request.idempotencyScope ?? request.subject,
+      idempotencyScope: request.idempotencyScope
+        ?? (request.subject.kind === 'widget_preview'
+          ? {
+              kind: 'widget_preview',
+              previewId: request.subject.widgetInstanceId,
+            }
+          : {
+              kind: 'widget_instance',
+              widgetInstanceId: request.subject.widgetInstanceId,
+            }),
       requestFingerprintSha256,
       idempotencyExpiresAtMs: request.idempotencyExpiresAtMs ?? null,
     });

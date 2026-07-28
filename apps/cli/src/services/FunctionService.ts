@@ -38,6 +38,7 @@ type TWidgetInvocationTargetRow = Readonly<{
   definition_id: string;
   revision_id: string;
   status: string;
+  subject_kind: 'widget_instance' | 'widget_preview';
 }>;
 
 function functionServiceError(code: string, message: string): Error {
@@ -113,24 +114,33 @@ class FunctionService implements
   ): Promise<TFunctionInvocationView> {
     this.#assertPlacement(tenant);
     this.#assertStarted();
-    const target = await this.#resolveTarget(tenant, request.widgetInstanceId);
+    const target = await this.#resolveTarget(
+      tenant,
+      request.widgetInstanceId,
+      request.widgetRevisionId,
+    );
     let result: TInvocationCreateResult;
     try {
       result = await this.#dispatcher.invoke(tenant, {
         widgetDefinitionId: target.definition_id,
         widgetRevisionId: target.revision_id,
         subject: {
-          kind: 'widget_instance',
+          kind: target.subject_kind,
           canvasId: target.canvas_id,
           widgetInstanceId: request.widgetInstanceId,
         },
         functionName: request.functionName,
         input: request.input,
         idempotencyKey: request.idempotencyKey,
-        idempotencyScope: {
-          kind: 'widget_instance',
-          widgetInstanceId: request.widgetInstanceId,
-        },
+        idempotencyScope: target.subject_kind === 'widget_preview'
+          ? {
+              kind: 'widget_preview',
+              previewId: request.widgetInstanceId,
+            }
+          : {
+              kind: 'widget_instance',
+              widgetInstanceId: request.widgetInstanceId,
+            },
         idempotencyExpiresAtMs: this.#nowMs() + this.#idempotencyTtlMs,
       });
     } catch (error) {
@@ -204,20 +214,64 @@ class FunctionService implements
   async #resolveTarget(
     tenant: TTenantContext,
     widgetInstanceId: string,
+    widgetRevisionId: string,
   ): Promise<TWidgetInvocationTargetRow> {
-    const row = await (await this.#database.prepare(`
-      SELECT instance.canvas_id, instance.definition_id, instance.revision_id, instance.status
+    const nowMs = this.#nowMs();
+    const published = await (await this.#database.prepare(`
+      SELECT instance.canvas_id, instance.definition_id, instance.revision_id,
+        instance.status, 'widget_instance' AS subject_kind
       FROM widget_instances AS instance
       INNER JOIN canvas_members AS member
         ON member.org_id = instance.org_id
         AND member.canvas_id = instance.canvas_id
         AND member.account_id = ?
-      WHERE instance.org_id = ? AND instance.id = ?
+      WHERE instance.org_id = ? AND instance.id = ? AND instance.revision_id = ?
       LIMIT 1
     `)).get(
       tenant.accountId,
       tenant.orgId,
       widgetInstanceId,
+      widgetRevisionId,
+    ) as TWidgetInvocationTargetRow | null | undefined;
+    const row = published ?? await (await this.#database.prepare(`
+      SELECT owner.canvas_id, revision.definition_id,
+        revision.id AS revision_id, owner.status,
+        'widget_preview' AS subject_kind
+      FROM agent_previews AS owner
+      INNER JOIN agent_preview_revisions AS revision
+        ON revision.org_id = owner.org_id
+        AND revision.preview_id = owner.id
+        AND revision.id = ?
+      INNER JOIN canvas_members AS member
+        ON member.org_id = owner.org_id
+        AND member.canvas_id = owner.canvas_id
+        AND member.account_id = ?
+      WHERE owner.org_id = ?
+        AND owner.account_id = ?
+        AND owner.id = ?
+        AND owner.status <> 'closed'
+        AND (
+          owner.active_revision_id = revision.id
+          OR EXISTS (
+            SELECT 1
+            FROM agent_preview_mount_leases AS lease
+            WHERE lease.org_id = revision.org_id
+              AND lease.account_id = owner.account_id
+              AND lease.preview_id = revision.preview_id
+              AND lease.preview_revision_id = revision.id
+              AND lease.canvas_id = owner.canvas_id
+              AND lease.frame_node_id = owner.frame_node_id
+              AND lease.expires_at_ms > ?
+          )
+        )
+      LIMIT 1
+    `)).get(
+      widgetRevisionId,
+      tenant.accountId,
+      tenant.orgId,
+      tenant.accountId,
+      widgetInstanceId,
+      nowMs,
     ) as TWidgetInvocationTargetRow | null | undefined;
     if (!row) {
       throw functionServiceError('WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
@@ -225,7 +279,7 @@ class FunctionService implements
     if (tenant.canvasId !== undefined && tenant.canvasId !== row.canvas_id) {
       throw functionServiceError('WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
     }
-    if (row.status !== 'active') {
+    if (row.subject_kind === 'widget_instance' && row.status !== 'active') {
       throw functionServiceError('WIDGET_INSTANCE_ARCHIVED', 'Widget instance is not active.');
     }
     return row;

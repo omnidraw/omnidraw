@@ -12,7 +12,23 @@ import {
   ZAgentRevisionDigest,
   ZAgentWidgetDraftSummaries,
   ZAgentWidgetDraftSummary,
+  ZAgentWidgetPreviewOwnerCloseInput,
+  ZAgentWidgetPreviewOwnerDescriptor,
+  ZAgentWidgetPreviewOwnerDescriptors,
+  ZAgentWidgetPreviewBuildInput,
+  ZAgentWidgetPreviewCancelInput,
+  ZAgentWidgetPreviewDiagnosticReportInput,
+  ZAgentWidgetPreviewDiagnosticReportResult,
+  ZAgentWidgetPreviewDiagnosticRetestInput,
+  ZAgentWidgetPreviewDiagnosticSelectionInput,
+  ZAgentWidgetPreviewRuntimeDiagnosticRecords,
+  ZAgentWidgetPreviewMountLeaseDescriptor,
+  ZAgentWidgetPreviewMountLeaseInput,
+  ZAgentWidgetPreviewOwnerEnsureInput,
+  ZAgentWidgetPreviewOwnerListInput,
+  ZAgentWidgetPreviewOwnerRef,
   ZAgentWidgetPreviewResult,
+  ZAgentWidgetPublishInput,
   ZAgentWidgetPublishResult,
 } from './authoring-schema';
 
@@ -217,11 +233,51 @@ export const agentContract = oc.router({
     get: oc.input(ZAgentWidgetDraftRef).output(ZAgentWidgetDraftSummary.nullable()),
     validate: oc.input(ZAgentWidgetDraftRevisionRef).output(ZAgentWidgetDraftSummary.nullable()),
   },
-  widgetPreview: {
-    build: oc.input(ZAgentWidgetDraftRef).output(ZAgentWidgetPreviewResult),
+    widgetPreview: {
+        build: oc.input(ZAgentWidgetPreviewBuildInput).output(ZAgentWidgetPreviewResult),
+        cancel: oc.input(ZAgentWidgetPreviewCancelInput).output(z.boolean()),
+        mount: {
+          acquire: oc
+            .input(ZAgentWidgetPreviewMountLeaseInput)
+            .output(ZAgentWidgetPreviewMountLeaseDescriptor.nullable()),
+          renew: oc
+            .input(ZAgentWidgetPreviewMountLeaseInput)
+            .output(ZAgentWidgetPreviewMountLeaseDescriptor.nullable()),
+          release: oc
+            .input(ZAgentWidgetPreviewMountLeaseInput)
+            .output(z.boolean()),
+        },
+        diagnostics: {
+          report: oc
+            .input(ZAgentWidgetPreviewDiagnosticReportInput)
+            .output(ZAgentWidgetPreviewDiagnosticReportResult),
+          get: oc
+            .input(ZAgentWidgetPreviewOwnerRef)
+            .output(ZAgentWidgetPreviewRuntimeDiagnosticRecords),
+          retest: oc
+            .input(ZAgentWidgetPreviewDiagnosticRetestInput)
+            .output(ZAgentWidgetPreviewOwnerDescriptor),
+          resolve: oc
+            .input(ZAgentWidgetPreviewDiagnosticSelectionInput)
+            .output(ZAgentWidgetPreviewOwnerDescriptor),
+        },
+    owner: {
+      ensure: oc
+        .input(ZAgentWidgetPreviewOwnerEnsureInput)
+        .output(ZAgentWidgetPreviewOwnerDescriptor),
+      get: oc
+        .input(ZAgentWidgetPreviewOwnerRef)
+        .output(ZAgentWidgetPreviewOwnerDescriptor.nullable()),
+      list: oc
+        .input(ZAgentWidgetPreviewOwnerListInput)
+        .output(ZAgentWidgetPreviewOwnerDescriptors),
+      close: oc
+        .input(ZAgentWidgetPreviewOwnerCloseInput)
+        .output(z.boolean()),
+    },
   },
   widgetPublish: {
-    publish: oc.input(ZAgentWidgetDraftRevisionRef).output(ZAgentWidgetPublishResult),
+    publish: oc.input(ZAgentWidgetPublishInput).output(ZAgentWidgetPublishResult),
   },
   widgets: {
     catalog: oc.input(z.object({})).output(orpcType<TWidgetCatalog>()),

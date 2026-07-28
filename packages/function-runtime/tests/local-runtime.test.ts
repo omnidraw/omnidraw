@@ -2195,13 +2195,16 @@ describe('local short-lived function runtime', () => {
     expect(createCalls).toBe(2);
   });
 
-  test('pins a widget-instance subject to its exact published revision', async () => {
+  test('pins published and Preview subjects to their exact revisions and idempotency identities', async () => {
     const definitionValue = {
       ...definition('a'.repeat(64)),
       widgetRevisionId: 'published-revision-a',
     };
     const resolutions: unknown[] = [];
-    const creations: TFunctionInvocationEnvelope[] = [];
+    const creations: Array<Readonly<{
+      envelope: TFunctionInvocationEnvelope;
+      idempotencyScope: unknown;
+    }>> = [];
     const store = {
       resolveFunctionForSubject: async (_tenant: unknown, request: unknown) => {
         resolutions.push(request);
@@ -2209,8 +2212,9 @@ describe('local short-lived function runtime', () => {
       },
       createOrReplayInvocation: async (_tenant: unknown, request: {
         envelope: TFunctionInvocationEnvelope;
+        idempotencyScope: unknown;
       }) => {
-        creations.push(request.envelope);
+        creations.push(request);
         return {
           status: 'created' as const,
           invocation: invocationRecord(request.envelope),
@@ -2254,8 +2258,34 @@ describe('local short-lived function runtime', () => {
 
     expect(resolutions).toEqual([expect.objectContaining({ subject })]);
     expect(creations).toHaveLength(1);
-    expect(creations[0]?.subject).toEqual(subject);
-    expect(creations[0]?.subject).toHaveProperty('widgetInstanceId', 'widget-a');
+    expect(creations[0]?.envelope.subject).toEqual(subject);
+    expect(creations[0]?.idempotencyScope).toEqual({
+      kind: 'widget_instance',
+      widgetInstanceId: 'widget-a',
+    });
+
+    const previewSubject = {
+      kind: 'widget_preview' as const,
+      canvasId: 'canvas-a',
+      widgetInstanceId: 'preview-a',
+    };
+    await dispatcher.invoke(tenant, {
+      widgetDefinitionId: definitionValue.widgetDefinitionId,
+      widgetRevisionId: definitionValue.widgetRevisionId,
+      subject: previewSubject,
+      functionName: definitionValue.name,
+      input: { value: 'preview' },
+      idempotencyKey: 'preview-key',
+    });
+
+    expect(resolutions.at(-1)).toEqual(expect.objectContaining({
+      subject: previewSubject,
+    }));
+    expect(creations.at(-1)?.envelope.subject).toEqual(previewSubject);
+    expect(creations.at(-1)?.idempotencyScope).toEqual({
+      kind: 'widget_preview',
+      previewId: 'preview-a',
+    });
   });
 
   test('rejects sparse invocation input before it can collide with an empty-input idempotency fingerprint', async () => {

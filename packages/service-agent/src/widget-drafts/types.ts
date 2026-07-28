@@ -1,11 +1,18 @@
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
-  IWidgetPreviewService,
+  IWidgetDurablePreviewService,
+  IWidgetPreviewPromotionService,
+  IWidgetPreviewWorkspaceService,
   IWidgetPublicationService,
   IWidgetRevisionSourceSnapshotReader,
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetManifestV3,
+  TWidgetDiagnostic,
+  TWidgetPreviewMountLeaseAcquireRequest,
+  TWidgetPreviewMountLeaseDescriptor,
+  TWidgetPreviewMountLeaseReleaseRequest,
+  TWidgetPreviewMountLeaseRenewRequest,
   TWidgetResourceBindingInput,
   TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
@@ -42,6 +49,8 @@ export type TAgentAuthoringDraftDescriptor = Readonly<{
   status: TAgentAuthoringDraftStatus;
   sourceRelativePath: string;
   sourceDigestSha256: string | null;
+  committedMutationId: string | null;
+  buildSequence: number;
   lastError: Readonly<Record<string, unknown>> | null;
   createdAtMs: number;
   updatedAtMs: number;
@@ -55,6 +64,7 @@ export type TAgentAuthoringDraftPublicationSeed = Readonly<{
   definitionId: string;
   publishedRevisionId: string;
   sourceDigestSha256: string;
+  committedMutationId: string;
 }>;
 
 export type TAgentAuthoringDraftCreate = Readonly<{
@@ -68,8 +78,109 @@ export type TAgentAuthoringDraftCreate = Readonly<{
   | Readonly<{ definitionId?: undefined; publicationSeed: TAgentAuthoringDraftPublicationSeed }>
 );
 
+export type TWidgetPreviewOwnerRole = 'companion' | 'placed';
+export type TWidgetPreviewOwnerStatus =
+  | 'queued'
+  | 'building'
+  | 'ready'
+  | 'failed'
+  | 'closed';
+
+export type TWidgetPreviewRuntimeDiagnosticRecord = Readonly<{
+  diagnostic: TWidgetDiagnostic;
+  status: 'awaiting-retest';
+  reportedAtMs: number;
+}>;
+
+export type TWidgetPreviewOwnerDescriptor = Readonly<{
+  orgId: string;
+  id: string;
+  accountId: string;
+  canvasId: string;
+  frameNodeId: string;
+  draftId: string;
+  originChatId: string;
+  role: TWidgetPreviewOwnerRole;
+  status: TWidgetPreviewOwnerStatus;
+  activeRevisionId: string | null;
+  pendingBuildId: string | null;
+  buildSequence: number;
+  bindingRevision: number;
+  bindingPlanDigestSha256: string | null;
+  sourceDigestSha256: string | null;
+  committedMutationId: string | null;
+  runtimeDiagnostics: readonly TWidgetPreviewRuntimeDiagnosticRecord[];
+  publishedPreviewRevisionId: string | null;
+  publishedBindingRevision: number | null;
+  publishedBindingPlanDigestSha256: string | null;
+  publishedWidgetRevisionId: string | null;
+  publishedIdempotencyKey: string | null;
+  lastError: Readonly<Record<string, unknown>> | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  closedAtMs: number | null;
+}>;
+
+export interface IWidgetPreviewOwnerStore {
+  ensurePreviewOwner(tenant: TTenantContext, request: Readonly<{
+    id: string;
+    canvasId: string;
+    frameNodeId: string;
+    draftId: string;
+    originChatId: string;
+    role: TWidgetPreviewOwnerRole;
+    nowMs: number;
+  }>): Promise<TWidgetPreviewOwnerDescriptor>;
+  getPreviewOwner(
+    tenant: TTenantContext,
+    previewId: string,
+  ): Promise<TWidgetPreviewOwnerDescriptor | null>;
+  listPreviewOwners(
+    tenant: TTenantContext,
+    request?: Readonly<{ draftId?: string; includeClosed?: boolean }>,
+  ): Promise<readonly TWidgetPreviewOwnerDescriptor[]>;
+  compareAndSetPreviewOwner(tenant: TTenantContext, request: Readonly<{
+    previewId: string;
+    expectedBuildSequence: number;
+    expectedStatus?: Exclude<TWidgetPreviewOwnerStatus, 'closed'>;
+    expectedPendingBuildId?: string | null;
+    nextBuildSequence: number;
+    status: Exclude<TWidgetPreviewOwnerStatus, 'closed'>;
+    activeRevisionId?: string | null;
+    pendingBuildId?: string | null;
+    lastError?: Readonly<Record<string, unknown>> | null;
+    expectedBindingRevision?: number;
+    nextBindingRevision?: number;
+    expectedBindingPlanDigestSha256?: string | null;
+    nextBindingPlanDigestSha256?: string | null;
+    expectedSourceDigestSha256?: string | null;
+    nextSourceDigestSha256?: string | null;
+    expectedCommittedMutationId?: string | null;
+    nextCommittedMutationId?: string | null;
+    runtimeDiagnostics?: readonly TWidgetPreviewRuntimeDiagnosticRecord[];
+    nowMs: number;
+  }>): Promise<TWidgetPreviewOwnerDescriptor | null>;
+  closePreviewOwner(tenant: TTenantContext, request: Readonly<{
+    previewId: string;
+    frameNodeId: string;
+    nowMs: number;
+  }>): Promise<boolean>;
+  acquirePreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseAcquireRequest,
+  ): Promise<TWidgetPreviewMountLeaseDescriptor | null>;
+  renewPreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseRenewRequest,
+  ): Promise<TWidgetPreviewMountLeaseDescriptor | null>;
+  releasePreviewMountLease(
+    tenant: TTenantContext,
+    request: TWidgetPreviewMountLeaseReleaseRequest,
+  ): Promise<boolean>;
+}
+
 /** Structural subset implemented by AgentAuthoringStoreTurso and managed adapters. */
-export interface IAgentAuthoringStore {
+export interface IAgentAuthoringStore extends IWidgetPreviewOwnerStore {
   createChat(tenant: TTenantContext, request: Readonly<{
     id: string;
     canvasId: string | null;
@@ -98,6 +209,10 @@ export interface IAgentAuthoringStore {
     draftId: string;
     expectedSourceDigestSha256: string | null;
     nextSourceDigestSha256: string;
+    expectedCommittedMutationId: string | null;
+    nextCommittedMutationId: string;
+    expectedBuildSequence: number;
+    nextBuildSequence: number;
     nextStatus: TAgentAuthoringDraftStatus;
     nowMs: number;
     lastError?: Readonly<Record<string, unknown>> | null;
@@ -110,6 +225,10 @@ export interface IAgentAuthoringStore {
     nextSourceRelativePath: string;
     expectedSourceDigestSha256: string | null;
     nextSourceDigestSha256: string;
+    expectedCommittedMutationId: string | null;
+    nextCommittedMutationId: string;
+    expectedBuildSequence: number;
+    nextBuildSequence: number;
     nowMs: number;
   }>): Promise<TAgentAuthoringDraftCasResult>;
   discardDraft(tenant: TTenantContext, request: Readonly<{
@@ -146,8 +265,10 @@ export type TWidgetBuildValidationCapability = Readonly<{
 
 export type TWidgetAuthoringCapability = TWidgetSourceCaptureCapability
   & TWidgetBuildValidationCapability
-  & IWidgetPreviewService
-  & IWidgetPublicationService
+  & IWidgetDurablePreviewService
+  & IWidgetPreviewPromotionService
+  & IWidgetPreviewWorkspaceService
+  & Omit<IWidgetPublicationService, 'publishConstruction'>
   & IWidgetRevisionSourceSnapshotReader;
 
 export type TWidgetResourceBindingResolver = (
@@ -182,6 +303,8 @@ export type TWidgetDraftSummary = Readonly<{
   displayName: string;
   state: 'new' | 'modified' | 'published';
   revision: string;
+  committedMutationId: string | null;
+  buildSequence: number;
   publishedRevisionId: string | null;
   updatedAt: string;
   validation: TWidgetDraftValidation;
@@ -193,8 +316,14 @@ export type TWidgetPreviewReady = Readonly<{
   ready: true;
   draftId: string;
   definitionId: string;
+  previewId: string | null;
+  previewRevisionId: string | null;
+  buildSequence: number | null;
+  bindingRevision: number | null;
+  bindingPlanDigestSha256: string | null;
   name: string;
   revision: string;
+  committedMutationId: string;
   manifest: TWidgetManifestV3;
   uiArtifact: Readonly<{
     digestSha256: string;
@@ -207,7 +336,7 @@ export type TWidgetPreviewReady = Readonly<{
     functions: readonly TWidgetBrowserFunctionDescriptor[];
     browserFunctionDescriptorsDigestSha256: string;
   }>;
-  diagnostics: readonly string[];
+  diagnostics: readonly TWidgetDiagnostic[];
 }>;
 
 export type TWidgetPreviewFailureReason =
@@ -230,6 +359,21 @@ export type TWidgetPreviewCatalogState =
   | Readonly<{ status: 'ready'; revision: string }>
   | Readonly<{ status: 'failed'; revision: string; message: string }>
   | Readonly<{ status: 'not-ready'; revision: string; message: string | null }>;
+
+export type TWidgetPreviewPublishSelection = Readonly<{
+  idempotencyKey: string;
+  previewId: string;
+  previewRevisionId: string;
+  canvasId: string;
+  frameNodeId: string;
+  expectedBindingRevision: number;
+  expectedBindingPlanDigestSha256: string;
+}>;
+
+export type TWidgetPreviewDiagnosticReportResult = Readonly<{
+  accepted: true;
+  deduplicated: boolean;
+}>;
 
 export type TWidgetPublishResult =
   | Readonly<{

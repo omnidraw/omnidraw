@@ -4,6 +4,12 @@ import { AsyncStateView } from "./AsyncStateView"
 import { ChatTab } from "./tabs/ChatTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { fnCreateAiChatWidgetError } from "./fn.error"
+import {
+  fnFirstAutoOpenWidgetPreviewReference,
+  fnNormalizeAutoOpenedPreviewDraftIds,
+  fnRecordAutoOpenedPreviewDraftId,
+  fnWidgetPreviewReferenceKey,
+} from "./fn.preview-auto-open"
 import { fnFindApprovalResourceId, fnGetApprovalResourceId } from "./tabs/fn.tool-call"
 import type { TChatWidgetDraftReference } from "./tabs/fn.tool-call"
 import type { TAiChatApproval, TAiChatApprovalStatus, TAiChatWidgetError, TAiChatWidgetErrorKind } from "./types"
@@ -18,6 +24,7 @@ type TAiChatThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 type TAiChatPreference = {
   model?: { provider: string; modelId: string }
   thinkingLevel?: TAiChatThinkingLevel
+  autoOpenedPreviewDraftIds?: string[]
 }
 type TChatConnectIntent = { request: number; mode: "reuse" | "replace"; sessionId?: string }
 
@@ -66,7 +73,12 @@ export function AiChat(props: IProps) {
   const [isRunning, setIsRunning] = createSignal(false)
   const [isCanceling, setIsCanceling] = createSignal(false)
   const [chatDraftText, setChatDraftText] = createSignal("")
-  const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>(props.aiChatPreference ?? {})
+  const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>({
+    ...(props.aiChatPreference ?? {}),
+    autoOpenedPreviewDraftIds: fnNormalizeAutoOpenedPreviewDraftIds(
+      props.aiChatPreference?.autoOpenedPreviewDraftIds,
+    ),
+  })
   const [chatConnectIntent, setChatConnectIntent] = createSignal<TChatConnectIntent>({ request: 0, mode: "reuse" })
   const [eventStreamNonce, setEventStreamNonce] = createSignal(0)
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
@@ -117,7 +129,12 @@ export function AiChat(props: IProps) {
   }
 
   createEffect(() => {
-    setLocalAiChatPreference(props.aiChatPreference ?? {})
+    setLocalAiChatPreference({
+      ...(props.aiChatPreference ?? {}),
+      autoOpenedPreviewDraftIds: fnNormalizeAutoOpenedPreviewDraftIds(
+        props.aiChatPreference?.autoOpenedPreviewDraftIds,
+      ),
+    })
   })
 
   createEffect(() => {
@@ -322,6 +339,7 @@ export function AiChat(props: IProps) {
     setWidgetError(undefined)
     refreshedApprovalIds.clear()
     setSessionId(nextSessionId)
+    props.onAiChatPreferenceChange?.(localAiChatPreference())
     void props.apiService.api.agent.chat.newSession({ widgetId: props.id, sessionId: previousSessionId })
   }
 
@@ -361,14 +379,59 @@ export function AiChat(props: IProps) {
     setSelectedView("settings")
   }
 
-  const openWidgetPreview = async (reference: TChatWidgetDraftReference) => {
+  const previewOpenOperations = new Map<string, Promise<boolean>>()
+  const requestWidgetPreview = (
+    reference: TChatWidgetDraftReference,
+  ): Promise<boolean> => {
+    const key = fnWidgetPreviewReferenceKey(reference)
+    const pending = previewOpenOperations.get(key)
+    if (pending !== undefined) return pending
+
     clearWidgetError("preview")
-    try {
-      await props.onOpenWidgetPreview(reference)
-    } catch (error) {
-      reportWidgetError("preview", error)
-    }
+    const operation = (async (): Promise<boolean> => {
+      try {
+        await props.onOpenWidgetPreview(reference)
+        if (reference.draftId !== undefined) {
+          const currentIds = fnNormalizeAutoOpenedPreviewDraftIds(
+            localAiChatPreference().autoOpenedPreviewDraftIds,
+          )
+          if (!currentIds.includes(reference.draftId)) {
+            updateAiChatPreference({
+              autoOpenedPreviewDraftIds: fnRecordAutoOpenedPreviewDraftId(
+                currentIds,
+                reference.draftId,
+              ),
+            })
+          }
+        }
+        return true
+      } catch (error) {
+        reportWidgetError("preview", error)
+        return false
+      }
+    })()
+    previewOpenOperations.set(key, operation)
+    void operation.then(() => {
+      if (previewOpenOperations.get(key) === operation) {
+        previewOpenOperations.delete(key)
+      }
+    })
+    return operation
   }
+
+  const openWidgetPreview = async (
+    reference: TChatWidgetDraftReference,
+  ): Promise<void> => {
+    await requestWidgetPreview(reference)
+  }
+
+  createEffect(() => {
+    const reference = fnFirstAutoOpenWidgetPreviewReference(
+      messageHistory,
+      localAiChatPreference().autoOpenedPreviewDraftIds,
+    )
+    if (reference !== undefined) void requestWidgetPreview(reference)
+  })
 
   const retryWidgetError = () => {
     const currentError = widgetError()

@@ -11,17 +11,20 @@ import {
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnWidgetPreviewBindingPlanDigest,
 } from '@vibecanvas/widget-contract';
 import type {
   IWidgetArtifactMutationCoordinator,
   IWidgetControlStore,
   TWidgetArtifactDescriptor,
   TWidgetCapsuleRuntimeDescriptor,
+  TWidgetDistributionBuildProvenance,
   TWidgetManifestV3,
   TWidgetPublicationCommitResult,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
+import { AgentAuthoringStoreTurso } from '../AgentAuthoringStoreTurso';
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
 import { fnFunctionId } from '../FunctionControlStoreTurso/fn.function-id';
@@ -137,7 +140,9 @@ async function publish(
     expectedActiveRevisionId?: string | null;
     manifest?: TWidgetManifestV3;
     canonicalManifestJson?: string;
+    constructionContractDigestSha256?: string;
     contractDigestSha256?: string;
+    distributionProvenance?: TWidgetDistributionBuildProvenance;
     uiArtifact?: TWidgetArtifactDescriptor;
     serverArtifact?: TWidgetArtifactDescriptor | null;
     sourceArtifact?: TWidgetArtifactDescriptor;
@@ -147,6 +152,8 @@ async function publish(
     uiRuntime?: TWidgetCapsuleRuntimeDescriptor;
     bindings?: Parameters<IWidgetControlStore['commitPublication']>[1]['bindings'];
     functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
+    publicationIdempotencyKey?: string;
+    previewRevisionId?: string;
     nowMs?: number;
   }>,
 ): Promise<TWidgetPublicationCommitResult> {
@@ -154,6 +161,7 @@ async function publish(
   const nowMs = args.nowMs ?? 20;
   const canonicalManifestJson = args.canonicalManifestJson
     ?? fnCanonicalizeWidgetManifest(value);
+  const sourceSnapshotId = args.sourceSnapshotId ?? uuid(910_000 + nowMs);
   const uiArtifact = args.uiArtifact ?? artifact(tenant, {
     id: uuid(500 + nowMs),
     kind: 'ui',
@@ -169,6 +177,20 @@ async function publish(
   });
   const sourceDigestSha256 = args.sourceDigestSha256 ?? sourceArtifact.digestSha256;
   const builderIdentity = args.builderIdentity ?? 'widget-control-store-test';
+  const constructionContractDigestSha256 =
+    args.constructionContractDigestSha256 ?? digest(800_000 + nowMs);
+  const distributionProvenance: TWidgetDistributionBuildProvenance =
+    args.distributionProvenance ?? {
+    kind: 'external-distribution',
+    producer: {
+      name: 'widget-control-store-test',
+      version: '1',
+      digest: `sha256:${'c'.repeat(64)}`,
+    },
+    sourceRevision: sourceDigestSha256,
+    dependencyLockDigest: `sha256:${'d'.repeat(64)}`,
+    buildConfigurationDigest: `sha256:${'e'.repeat(64)}`,
+  };
   const uiRuntime = args.uiRuntime ?? {
     format: 'vibecanvas.capsule-runtime.v1',
     capsuleArtifactHash: `sha256:${uiArtifact.digestSha256}`,
@@ -228,6 +250,7 @@ async function publish(
       buildPolicyId: 'vibecanvas-release-v1',
     }))
     .digest('hex');
+  const bindings = args.bindings ?? [];
   return store.commitPublication(tenant, {
     expectedActiveRevisionId: args.expectedActiveRevisionId ?? null,
     revision: {
@@ -239,7 +262,9 @@ async function publish(
       functionDescriptorsDigestSha256,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
+      constructionContractDigestSha256,
       contractDigestSha256,
+      distributionProvenance,
       uiArtifact,
       uiRuntime,
       serverArtifact,
@@ -249,13 +274,53 @@ async function publish(
       createdAtMs: nowMs,
     },
     source: {
-      sourceSnapshotId: args.sourceSnapshotId ?? uuid(910_000 + nowMs),
+      sourceSnapshotId,
       sourceDigestSha256,
       sourceArtifact,
       builderIdentity,
       createdAtMs: nowMs,
     },
-    bindings: args.bindings ?? [],
+    bindings,
+    ...(args.publicationIdempotencyKey === undefined
+      ? {}
+      : {
+          publicationIdentity: {
+            idempotencyKey: args.publicationIdempotencyKey,
+            previewId: uuid(920_001),
+            previewRevisionId: args.previewRevisionId ?? uuid(920_002),
+            canvasId: CANVAS_A,
+            frameNodeId: 'frame-publication-idempotency',
+            draftId: uuid(920_003),
+            draftRevisionSha256: sourceDigestSha256,
+            committedMutationId: 'mutation-publication-replay',
+            definitionId: args.definitionId ?? DEFINITION_A,
+            expectedActiveRevisionId: args.expectedActiveRevisionId ?? null,
+            bindingRevision: 2,
+            bindingPlanDigestSha256: fnWidgetPreviewBindingPlanDigest({
+              bindings,
+              digestSha256: (input) =>
+                createHash('sha256').update(input).digest('hex'),
+            }),
+            sourceSnapshotId,
+            sourceDigestSha256,
+            sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+            canonicalManifestDigestSha256:
+              createHash('sha256').update(canonicalManifestJson).digest('hex'),
+            functionDescriptorsDigestSha256,
+            capabilityContractDigestSha256,
+            channelContractDigestSha256,
+            constructionContractDigestSha256,
+            previewContractDigestSha256: digest(920_004),
+            unsignedUiArtifactDigestSha256: digest(920_005),
+            previewUiArtifactDigestSha256: digest(920_006),
+            capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
+            serverArtifactDigestSha256:
+              serverArtifact?.digestSha256 ?? null,
+            builderIdentity,
+            capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+            buildPolicyId: 'vibecanvas-release-v1',
+          },
+        }),
     nowMs,
   });
 }
@@ -500,6 +565,275 @@ describe('WidgetControlStoreTurso', () => {
     })).resolves.toBeNull();
     await expect(store.isArtifactDigestReferenced(TENANT_A, { digestSha256: digest(2) })).resolves.toBe(true);
     await expect(store.isArtifactDigestReferenced(TENANT_B, { digestSha256: digest(2) })).resolves.toBe(false);
+  });
+
+  test('replays one exact Preview publication after draft reconciliation and rejects key reuse', async () => {
+    const previewId = uuid(920_001);
+    const draftId = uuid(920_003);
+    const chatId = uuid(4_010);
+    await (await service.db.prepare(`
+      INSERT INTO canvases (
+        org_id, id, name, access_policy, created_by_account_id,
+        created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'Publication replay canvas', 'org', ?, 1, 1)
+    `)).run(TENANT_A.orgId, CANVAS_A, TENANT_A.accountId);
+    await (await service.db.prepare(`
+      INSERT INTO canvas_members (
+        org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, 'owner', 1, 1)
+    `)).run(TENANT_A.orgId, CANVAS_A, TENANT_A.accountId);
+    const authoringStore = new AgentAuthoringStoreTurso(service.db, store);
+    await authoringStore.createChat(TENANT_A, {
+      id: chatId,
+      canvasId: CANVAS_A,
+      externalSessionKey: 'publication-replay-chat',
+      name: 'Publication replay chat',
+      workspaceRelativePath: 'chats/publication-replay',
+      historyRelativePath: 'history/publication-replay.jsonl',
+      nowMs: 1,
+    });
+    await authoringStore.createDraft(TENANT_A, {
+      id: draftId,
+      chatId,
+      definitionId: DEFINITION_A,
+      name: 'Publication replay draft',
+      sourceRelativePath: 'drafts/publication-replay',
+      nowMs: 2,
+    });
+    await authoringStore.ensurePreviewOwner(TENANT_A, {
+      id: previewId,
+      canvasId: CANVAS_A,
+      frameNodeId: 'frame-publication-idempotency',
+      draftId,
+      originChatId: chatId,
+      role: 'placed',
+      nowMs: 3,
+    });
+    const reviewedPreviewRevisionId = uuid(920_002);
+    const reviewedBindingPlanDigestSha256 = fnWidgetPreviewBindingPlanDigest({
+      bindings: [],
+      digestSha256: (input) =>
+        createHash('sha256').update(input).digest('hex'),
+    });
+    await (await service.db.prepare(`
+      UPDATE agent_drafts
+      SET status = 'ready', source_digest_sha256 = ?,
+        committed_mutation_id = 'mutation-publication-replay',
+        build_sequence = 1, updated_at_ms = 4
+      WHERE org_id = ? AND id = ?
+    `)).run(
+      digest(4_006),
+      TENANT_A.orgId,
+      draftId,
+    );
+    await (await service.db.prepare(`
+      UPDATE agent_previews
+      SET status = 'ready', active_revision_id = ?,
+        binding_revision = 2, binding_plan_digest_sha256 = ?,
+        source_digest_sha256 = ?,
+        committed_mutation_id = 'mutation-publication-replay',
+        build_sequence = 1,
+        updated_at_ms = 4
+      WHERE org_id = ? AND account_id = ? AND id = ?
+    `)).run(
+      reviewedPreviewRevisionId,
+      reviewedBindingPlanDigestSha256,
+      digest(4_006),
+      TENANT_A.orgId,
+      TENANT_A.accountId,
+      previewId,
+    );
+
+    const publishedRevisionId = uuid(4_001);
+    const uiArtifact = artifact(TENANT_A, {
+      id: uuid(4_003),
+      kind: 'ui',
+      digest: digest(4_004),
+      nowMs: 55,
+    });
+    const sourceArtifact = artifact(TENANT_A, {
+      id: uuid(4_005),
+      kind: 'source',
+      digest: digest(4_006),
+      nowMs: 55,
+    });
+    const common = {
+      publicationIdempotencyKey: 'publish-reviewed-preview-once',
+      uiArtifact,
+      sourceArtifact,
+      sourceSnapshotId: uuid(4_007),
+      sourceDigestSha256: sourceArtifact.digestSha256,
+      nowMs: 55,
+    } as const;
+    const first = await publish(store, TENANT_A, {
+      ...common,
+      revisionId: publishedRevisionId,
+    });
+    expect(first).toMatchObject({
+      status: 'committed',
+      revision: { id: publishedRevisionId },
+      previousActiveRevisionId: null,
+    });
+    expect(await authoringStore.getPreviewOwner(TENANT_A, previewId))
+      .toMatchObject({
+        publishedPreviewRevisionId: reviewedPreviewRevisionId,
+        publishedBindingRevision: 2,
+        publishedBindingPlanDigestSha256: reviewedBindingPlanDigestSha256,
+        publishedWidgetRevisionId: publishedRevisionId,
+        publishedIdempotencyKey: common.publicationIdempotencyKey,
+      });
+
+    const restartedStore = new WidgetControlStoreTurso(service.db);
+    const replay = await publish(restartedStore, TENANT_A, {
+      ...common,
+      revisionId: uuid(4_002),
+      expectedActiveRevisionId: publishedRevisionId,
+    });
+    expect(replay).toMatchObject({
+      status: 'committed',
+      revision: { id: publishedRevisionId },
+      previousActiveRevisionId: null,
+    });
+    expect(await rowCount(service, 'widget_definition_revisions')).toBe(1);
+    const replayRows = await (await service.db.prepare(`
+      SELECT count(*) AS count
+      FROM widget_preview_publication_idempotency
+      WHERE org_id = ? AND account_id = ?
+    `)).get(TENANT_A.orgId, TENANT_A.accountId) as { count: unknown };
+    expect(Number(replayRows.count)).toBe(1);
+
+    await expect(publish(restartedStore, TENANT_A, {
+      ...common,
+      publicationIdempotencyKey: 'publish-reviewed-preview-twice',
+      revisionId: uuid(4_010),
+      expectedActiveRevisionId: publishedRevisionId,
+    })).rejects.toMatchObject({
+      code: 'WIDGET_PREVIEW_ALREADY_PUBLISHED',
+    });
+    expect(await rowCount(service, 'widget_definition_revisions')).toBe(1);
+    await (await service.db.prepare(`
+      UPDATE agent_previews
+      SET committed_mutation_id = 'mutation-publication-advanced'
+      WHERE org_id = ? AND account_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, TENANT_A.accountId, previewId);
+    await expect(publish(restartedStore, TENANT_A, {
+      ...common,
+      publicationIdempotencyKey: 'publish-stale-mutation-fence',
+      revisionId: uuid(4_014),
+      expectedActiveRevisionId: publishedRevisionId,
+      nowMs: 55,
+    })).rejects.toMatchObject({
+      code: 'WIDGET_PREVIEW_PUBLICATION_STALE',
+    });
+    await (await service.db.prepare(`
+      UPDATE agent_previews
+      SET committed_mutation_id = 'mutation-publication-replay'
+      WHERE org_id = ? AND account_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, TENANT_A.accountId, previewId);
+
+    const nextReviewedPreviewRevisionId = uuid(920_010);
+    await (await service.db.prepare(`
+      UPDATE agent_previews
+      SET active_revision_id = ?, updated_at_ms = 55
+      WHERE org_id = ? AND account_id = ? AND id = ?
+    `)).run(
+      nextReviewedPreviewRevisionId,
+      TENANT_A.orgId,
+      TENANT_A.accountId,
+      previewId,
+    );
+    await (await service.db.prepare(`
+      CREATE TRIGGER test_publication_owner_selection_race
+      AFTER INSERT ON widget_preview_publication_idempotency
+      WHEN NEW.idempotency_key = 'publish-owner-selection-race'
+      BEGIN
+        UPDATE agent_previews
+        SET active_revision_id = 'raced-preview-revision'
+        WHERE org_id = NEW.org_id
+          AND account_id = NEW.account_id
+          AND id = json_extract(NEW.publication_identity_json, '$.previewId');
+      END
+    `)).run();
+    await expect(publish(restartedStore, TENANT_A, {
+      ...common,
+      publicationIdempotencyKey: 'publish-owner-selection-race',
+      previewRevisionId: nextReviewedPreviewRevisionId,
+      revisionId: uuid(4_013),
+      expectedActiveRevisionId: publishedRevisionId,
+      nowMs: 55,
+    })).rejects.toMatchObject({
+      code: 'WIDGET_PREVIEW_PUBLICATION_STALE',
+      message:
+        'The reviewed Preview revision or binding plan changed before publication committed.',
+    });
+    expect(await rowCount(service, 'widget_definition_revisions')).toBe(1);
+    expect(await restartedStore.getActiveRevision(TENANT_A, DEFINITION_A))
+      .toMatchObject({ id: publishedRevisionId });
+    expect(await (await service.db.prepare(`
+      SELECT count(*) AS count
+      FROM widget_preview_publication_idempotency
+      WHERE org_id = ? AND account_id = ?
+    `)).get(TENANT_A.orgId, TENANT_A.accountId)).toMatchObject({ count: 1 });
+    expect(await authoringStore.getPreviewOwner(TENANT_A, previewId))
+      .toMatchObject({ activeRevisionId: nextReviewedPreviewRevisionId });
+    await (await service.db.prepare(`
+      DROP TRIGGER test_publication_owner_selection_race
+    `)).run();
+    await (await service.db.prepare(`
+      UPDATE agent_previews
+      SET active_revision_id = ?, updated_at_ms = 57
+      WHERE org_id = ? AND account_id = ? AND id = ?
+    `)).run(
+      reviewedPreviewRevisionId,
+      TENANT_A.orgId,
+      TENANT_A.accountId,
+      previewId,
+    );
+
+    await expect(publish(store, TENANT_A, {
+      ...common,
+      revisionId: uuid(4_008),
+      expectedActiveRevisionId: publishedRevisionId,
+      previewRevisionId: uuid(4_009),
+    })).rejects.toMatchObject({
+      code: 'WIDGET_PUBLICATION_IDEMPOTENCY_CONFLICT',
+    });
+
+    const newerRevisionId = uuid(4_011);
+    committed(await publish(store, TENANT_A, {
+      revisionId: newerRevisionId,
+      expectedActiveRevisionId: publishedRevisionId,
+      nowMs: 60,
+    }));
+    expect((await store.pruneInactiveRevisions(TENANT_A, {
+      nowMs: 60,
+      inactiveBeforeMs: 60,
+      limit: 100,
+    })).prunedRevisionIds).toEqual([]);
+    await expect(publish(store, TENANT_A, {
+      ...common,
+      revisionId: uuid(4_012),
+      expectedActiveRevisionId: publishedRevisionId,
+    })).resolves.toMatchObject({
+      status: 'committed',
+      revision: { id: publishedRevisionId },
+    });
+
+    await expect(authoringStore.closePreviewOwner(TENANT_A, {
+      previewId,
+      frameNodeId: 'frame-publication-idempotency',
+      nowMs: 61,
+    })).resolves.toBe(true);
+    expect(await (await service.db.prepare(`
+      SELECT count(*) AS count
+      FROM widget_preview_publication_idempotency
+      WHERE org_id = ? AND account_id = ?
+    `)).get(TENANT_A.orgId, TENANT_A.accountId)).toMatchObject({ count: 0 });
+    expect((await store.pruneInactiveRevisions(TENANT_A, {
+      nowMs: 61,
+      inactiveBeforeMs: 60,
+      limit: 100,
+    })).prunedRevisionIds).toEqual([publishedRevisionId]);
   });
 
   test('rolls back every publication write on CAS, binding, identity, and artifact-scope failures', async () => {

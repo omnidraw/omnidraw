@@ -8,6 +8,7 @@ import {
   fnValidateWidgetResourceBindings,
   fnValidateWidgetBuildIntegrity,
   type IWidgetArtifactBuilder,
+  type IWidgetArtifactConstructionSigner,
   type IWidgetArtifactMutationCoordinator,
   type IWidgetArtifactStore,
   type IWidgetControlStore,
@@ -15,6 +16,9 @@ import {
   type TWidgetActiveRevisionCasResult,
   type TWidgetDefinitionArchiveInput,
   type TWidgetDefinitionArchiveResult,
+  type TWidgetBuildResult,
+  type TWidgetManifestV3,
+  type TWidgetPublishConstructionRequest,
   type TWidgetPublishRequest,
   type TWidgetPublishResult,
   type TWidgetRevisionDescriptor,
@@ -27,6 +31,7 @@ import { WidgetSourceSnapshot } from './WidgetSourceSnapshot';
 
 export type TWidgetPublicationServiceConfig = Readonly<{
   builder: IWidgetArtifactBuilder;
+  constructionSigner?: IWidgetArtifactConstructionSigner;
   artifacts: IWidgetArtifactStore;
   controlStore: IWidgetControlStore;
   mutationCoordinator: IWidgetArtifactMutationCoordinator;
@@ -59,14 +64,7 @@ export class WidgetPublicationService implements IWidgetPublicationService {
     tenant: TTenantContext,
     request: TWidgetPublishRequest,
   ): Promise<TWidgetPublishResult> {
-    const manifest = ZWidgetManifestV3.parse(request.manifest);
-    const bindingValidation = fnValidateWidgetResourceBindings(manifest, request.bindings);
-    if (!bindingValidation.valid) {
-      throw invalidBindings(bindingValidation.reason, bindingValidation.slot);
-    }
-    const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
-
-    // All build targets finish before any durable metadata is mutated.
+    const { manifest, canonicalManifestJson } = this.#validatedRequest(request);
     const build = await this.config.builder.build(tenant, {
       snapshot: request.snapshot,
       manifest,
@@ -76,6 +74,85 @@ export class WidgetPublicationService implements IWidgetPublicationService {
       buildPolicyId: request.buildPolicyId,
       signingPurpose: 'release',
     });
+    return this.#commitBuild(tenant, request, manifest, canonicalManifestJson, build);
+  }
+
+  async publishConstruction(
+    tenant: TTenantContext,
+    request: TWidgetPublishConstructionRequest,
+  ): Promise<TWidgetPublishResult> {
+    const { manifest, canonicalManifestJson } = this.#validatedRequest(request);
+    const construction = request.construction;
+    if (
+      construction.sourceSnapshotId !== request.snapshot.id
+      || construction.sourceDigestSha256 !== request.snapshot.digestSha256
+      || construction.canonicalManifestJson !== canonicalManifestJson
+      || construction.builderIdentity !== construction.uiArtifact.builderIdentity
+      || JSON.stringify(construction.capsuleBuildIdentity)
+        !== JSON.stringify(construction.uiArtifact.capsuleBuildIdentity)
+    ) {
+      throw Object.assign(new Error(
+        'The selected Preview construction does not match the publication request.',
+      ), { code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
+    }
+    const signer = this.config.constructionSigner
+      ?? (
+        'signConstruction' in this.config.builder
+          ? this.config.builder as IWidgetArtifactConstructionSigner
+          : null
+      );
+    if (signer === null) {
+      throw Object.assign(new Error(
+        'The configured widget builder cannot promote an existing Preview construction.',
+      ), { code: 'WIDGET_PREVIEW_PROMOTION_UNAVAILABLE' });
+    }
+    // This is the only build-adjacent operation in promotion: it signs the
+    // retained canonical unsigned bytes and never invokes guest construction.
+    const build = await signer.signConstruction(tenant, {
+      construction,
+      signingPurpose: 'release',
+    });
+    return this.#commitBuild(
+      tenant,
+      request,
+      manifest,
+      canonicalManifestJson,
+      build,
+      construction.sourceArtifact,
+    );
+  }
+
+  #validatedRequest(
+    request: Pick<
+      TWidgetPublishRequest,
+      'manifest' | 'bindings'
+    >,
+  ): Readonly<{
+    manifest: TWidgetManifestV3;
+    canonicalManifestJson: string;
+  }> {
+    const manifest = ZWidgetManifestV3.parse(request.manifest);
+    const bindingValidation = fnValidateWidgetResourceBindings(manifest, request.bindings);
+    if (!bindingValidation.valid) {
+      throw invalidBindings(bindingValidation.reason, bindingValidation.slot);
+    }
+    return Object.freeze({
+      manifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(manifest),
+    });
+  }
+
+  async #commitBuild(
+    tenant: TTenantContext,
+    request: TWidgetPublishRequest | TWidgetPublishConstructionRequest,
+    manifest: TWidgetManifestV3,
+    canonicalManifestJson: string,
+    build: TWidgetBuildResult,
+    retainedSourceArtifact?: Readonly<{
+      digestSha256: string;
+      bytes: Uint8Array;
+    }>,
+  ): Promise<TWidgetPublishResult> {
     const parsedFunctionDescriptors = ZWidgetServerFunctionDescriptors.safeParse(
       build.functionDescriptors,
     );
@@ -97,9 +174,9 @@ export class WidgetPublicationService implements IWidgetPublicationService {
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
-      builderIdentity: request.builderIdentity,
-      capsuleBuildIdentity: request.capsuleBuildIdentity,
-      buildPolicyId: request.buildPolicyId,
+      builderIdentity: build.builderIdentity,
+      capsuleBuildIdentity: build.capsuleBuildIdentity,
+      buildPolicyId: build.buildPolicyId,
       build: normalizedBuild,
       digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
     });
@@ -108,9 +185,10 @@ export class WidgetPublicationService implements IWidgetPublicationService {
         code: 'WIDGET_BUILD_INTEGRITY_FAILED',
       });
     }
-    const sourceArtifactBytes = this.#sourceSnapshots.encodeArtifact(request.snapshot, {
-      builderIdentity: request.builderIdentity,
-    });
+    const sourceArtifactBytes = retainedSourceArtifact
+      ?? this.#sourceSnapshots.encodeArtifact(request.snapshot, {
+        builderIdentity: build.builderIdentity,
+      });
 
     return this.#operationLane.run(() => (
       this.config.mutationCoordinator.runArtifactMutation(tenant, async () => {
@@ -158,23 +236,28 @@ export class WidgetPublicationService implements IWidgetPublicationService {
             functionDescriptorsDigestSha256: integrity.functionDescriptorsDigestSha256,
             capabilityContractDigestSha256: build.capabilityContractDigestSha256,
             channelContractDigestSha256: build.channelContractDigestSha256,
+            constructionContractDigestSha256: build.constructionContractDigestSha256,
             contractDigestSha256: integrity.contractDigestSha256,
+            distributionProvenance: build.distributionProvenance,
             uiArtifact,
             uiRuntime: runtimeDescriptor,
             serverArtifact,
             serverRuntimeAbi: build.serverArtifact?.runtimeAbi ?? null,
-            capsuleBuildIdentity: request.capsuleBuildIdentity,
-            buildPolicyId: request.buildPolicyId,
+            capsuleBuildIdentity: build.capsuleBuildIdentity,
+            buildPolicyId: build.buildPolicyId,
             createdAtMs: request.nowMs,
           },
           source: {
             sourceSnapshotId: request.snapshot.id,
             sourceDigestSha256: request.snapshot.digestSha256,
             sourceArtifact,
-            builderIdentity: request.builderIdentity,
+            builderIdentity: build.builderIdentity,
             createdAtMs: request.nowMs,
           },
           bindings: request.bindings,
+          ...('publicationIdentity' in request
+            ? { publicationIdentity: request.publicationIdentity }
+            : {}),
           nowMs: request.nowMs,
         });
       })

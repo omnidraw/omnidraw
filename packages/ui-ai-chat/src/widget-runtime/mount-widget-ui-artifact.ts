@@ -376,6 +376,9 @@ export function createWidgetUiArtifactMountPort(
           container: mountArgs.root,
           capabilityBindings: bindings,
           guestChannels: guestChannels(mountArgs, latestTheme, routeOutput),
+          ...(mountArgs.onDiagnostic === undefined
+            ? {}
+            : { onDiagnostic: mountArgs.onDiagnostic }),
           onFatal: mountArgs.onFatal,
         });
         if (themeRevision !== initialThemeRevision) {

@@ -187,7 +187,12 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
               throw error;
             }
           }
-          if (name) await args.onDraftChanged?.({ name, type: 'changed' });
+          if (name) {
+            const durable = await args.onDraftChanged?.({ name, type: 'changed' });
+            if (args.onDraftChanged && !durable) {
+              throw new Error('Edited widget source did not receive a durable mutation fence.');
+            }
+          }
           const modelData = {
             path: params.path,
             replacements: params.edits.length,
@@ -257,7 +262,12 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
               throw error;
             }
           }
-          if (name) await args.onDraftChanged?.({ name, type: 'changed' });
+          if (name) {
+            const durable = await args.onDraftChanged?.({ name, type: 'changed' });
+            if (args.onDraftChanged && !durable) {
+              throw new Error('Patched widget source did not receive a durable mutation fence.');
+            }
+          }
           const modelData = { path: params.path };
           return fnToolSuccess({ summary: `Applied patch to ${params.path}.`, modelData, details: modelData });
         };

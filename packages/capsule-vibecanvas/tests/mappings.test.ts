@@ -132,6 +132,8 @@ describe('Capsule error mappings', () => {
       category: 'capability',
       code: 'RATE_LIMIT',
       fatal: false,
+      capabilityId: 'vibecanvas.widget.functions.habc',
+      operation: 'save',
     })).toEqual({
       format: 'vibecanvas.capsule-error.v1',
       phase: 'runtime',
@@ -139,6 +141,8 @@ describe('Capsule error mappings', () => {
       capsuleCode: 'RATE_LIMIT',
       fatal: false,
       message: 'The widget exceeded a Capsule resource budget.',
+      capability: 'vibecanvas.widget.functions.habc',
+      operation: 'save',
     });
   });
 });

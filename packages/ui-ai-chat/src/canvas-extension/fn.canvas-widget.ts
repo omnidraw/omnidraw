@@ -8,11 +8,19 @@ import type { TCanvasWidgetExtensionV1 } from '@vibecanvas/canvas-contract/types
 
 export type TAiWidgetPayload = Readonly<{
   sessionId: string;
+  autoOpenedPreviewDraftIds?: string[];
   model?: Readonly<{
     provider: string;
     modelId: string;
   }>;
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+}>;
+
+export type TPreviewWidgetPayload = Readonly<{
+  previewId: string;
+  draftId: string;
+  originChatId: string;
+  role: 'companion' | 'placed';
 }>;
 
 type TArgsNodeBase = Readonly<{
@@ -27,6 +35,8 @@ type TArgsNodeBase = Readonly<{
 type TArgsAiNode = TArgsNodeBase & Readonly<{
   sessionId: string;
 }>;
+
+type TArgsPreviewNode = TArgsNodeBase & TPreviewWidgetPayload;
 
 type TArgsPublishedNode = TArgsNodeBase & Readonly<{
   definitionId: string;
@@ -60,6 +70,13 @@ function normalizedAiWidgetPayload(
 ): TAiWidgetPayload {
   return {
     sessionId: payload.sessionId,
+    ...(payload.autoOpenedPreviewDraftIds === undefined
+      ? {}
+      : {
+          autoOpenedPreviewDraftIds: [
+            ...payload.autoOpenedPreviewDraftIds,
+          ],
+        }),
     ...(payload.model === undefined
       ? {}
       : {
@@ -129,6 +146,61 @@ export function fnCreateAiWidgetNode(args: TArgsAiNode): TWidgetFrameNode {
   };
 }
 
+export function fnCreatePreviewWidgetNode(
+  args: TArgsPreviewNode,
+): TWidgetFrameNode {
+  const payload: TPreviewWidgetPayload = {
+    previewId: args.previewId,
+    draftId: args.draftId,
+    originChatId: args.originChatId,
+    role: args.role,
+  };
+  const extension: TCanvasWidgetExtensionV1 = {
+    schemaVersion: 1,
+    type: 'ui-widget',
+    kind: 'preview',
+    payload,
+  };
+  return {
+    ...fnBaseWidgetNode(args),
+    headerItems: [
+      {
+        type: 'button',
+        id: 'live-updates',
+        label: 'Pause Live Updates',
+        content: { type: 'text', text: 'Pause' },
+      },
+      {
+        type: 'button',
+        id: 'cancel-build',
+        label: 'Cancel Build',
+        content: { type: 'text', text: 'Cancel' },
+      },
+      {
+        type: 'button',
+        id: 'retry',
+        label: 'Retry',
+        content: { type: 'text', text: 'Retry' },
+      },
+      {
+        type: 'button',
+        id: 'reset',
+        label: 'Reset',
+        content: { type: 'text', text: 'Reset' },
+      },
+      {
+        type: 'button',
+        id: 'publish',
+        label: 'Publish',
+        content: { type: 'text', text: 'Publish' },
+      },
+    ],
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: extension,
+    },
+  };
+}
+
 export function fnCreatePublishedWidgetNode(
   args: TArgsPublishedNode,
 ): TWidgetFrameNode {
@@ -182,6 +254,35 @@ export function fnAiWidgetPayload(
     return {};
   }
   return payload as Partial<TAiWidgetPayload>;
+}
+
+export function fnPreviewWidgetPayload(
+  node: Readonly<TSceneNode> | null | undefined,
+): TPreviewWidgetPayload | null {
+  const extension = fnCanvasWidgetExtension(node);
+  if (extension?.type !== 'ui-widget' || extension.kind !== 'preview') return null;
+  const payload = extension.payload;
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return null;
+  }
+  if (
+    Object.keys(payload).length !== 4
+    || typeof payload.previewId !== 'string'
+    || payload.previewId.trim().length === 0
+    || typeof payload.draftId !== 'string'
+    || payload.draftId.trim().length === 0
+    || typeof payload.originChatId !== 'string'
+    || payload.originChatId.trim().length === 0
+    || (payload.role !== 'companion' && payload.role !== 'placed')
+  ) {
+    return null;
+  }
+  return {
+    previewId: payload.previewId,
+    draftId: payload.draftId,
+    originChatId: payload.originChatId,
+    role: payload.role,
+  };
 }
 
 export function fnWithAiWidgetPayload(

@@ -34,7 +34,7 @@ export type TAgentApiCapability = {
   clearDraftResourceBindingsChat(
     widgetId: TAgentInputs['chat']['resourceBindings']['clear']['widgetId'],
     sessionId: TAgentInputs['chat']['resourceBindings']['clear']['sessionId'],
-  ): TAgentOutputs['chat']['resourceBindings']['clear'];
+  ): Promise<TAgentOutputs['chat']['resourceBindings']['clear']>;
   approveChatDbChange(
     widgetId: TAgentInputs['chat']['dbChange']['approve']['widgetId'],
     sessionId: TAgentInputs['chat']['dbChange']['approve']['sessionId'],
@@ -81,10 +81,61 @@ export type TAgentApiCapability = {
 
   buildWidgetPreview(
     draftId: TAgentInputs['widgetPreview']['build']['draftId'],
+    ownerRef?: Readonly<{
+      previewId: NonNullable<TAgentInputs['widgetPreview']['build']['previewId']>;
+      canvasId: NonNullable<TAgentInputs['widgetPreview']['build']['canvasId']>;
+      frameNodeId: NonNullable<TAgentInputs['widgetPreview']['build']['frameNodeId']>;
+    }>,
   ): Promise<TAgentOutputs['widgetPreview']['build']>;
+  cancelWidgetPreviewBuild(
+    request: TAgentInputs['widgetPreview']['cancel'],
+  ): Promise<TAgentOutputs['widgetPreview']['cancel']>;
+  acquireWidgetPreviewMountLease(
+    request: TAgentInputs['widgetPreview']['mount']['acquire'],
+  ): Promise<TAgentOutputs['widgetPreview']['mount']['acquire']>;
+  renewWidgetPreviewMountLease(
+    request: TAgentInputs['widgetPreview']['mount']['renew'],
+  ): Promise<TAgentOutputs['widgetPreview']['mount']['renew']>;
+  releaseWidgetPreviewMountLease(
+    request: TAgentInputs['widgetPreview']['mount']['release'],
+  ): Promise<TAgentOutputs['widgetPreview']['mount']['release']>;
+  reportWidgetPreviewDiagnostic(
+    request: TAgentInputs['widgetPreview']['diagnostics']['report'],
+  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['report']>;
+  getWidgetPreviewDiagnostics(
+    request: TAgentInputs['widgetPreview']['diagnostics']['get'],
+  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['get']>;
+  retestWidgetPreviewDiagnostic(
+    request: TAgentInputs['widgetPreview']['diagnostics']['retest'],
+  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['retest']>;
+  resolveWidgetPreviewDiagnostic(
+    request: TAgentInputs['widgetPreview']['diagnostics']['resolve'],
+  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['resolve']>;
+  ensureWidgetPreviewOwner(
+    request: TAgentInputs['widgetPreview']['owner']['ensure'],
+  ): Promise<TAgentOutputs['widgetPreview']['owner']['ensure']>;
+  getWidgetPreviewOwner(
+    request: TAgentInputs['widgetPreview']['owner']['get'],
+  ): Promise<TAgentOutputs['widgetPreview']['owner']['get']>;
+  listWidgetPreviewOwners(
+    request: TAgentInputs['widgetPreview']['owner']['list'],
+  ): Promise<TAgentOutputs['widgetPreview']['owner']['list']>;
+  closeWidgetPreviewOwner(
+    request: TAgentInputs['widgetPreview']['owner']['close'],
+  ): Promise<TAgentOutputs['widgetPreview']['owner']['close']>;
   publishWidgetDraft(
     draftId: TAgentInputs['widgetPublish']['publish']['draftId'],
     expectedRevision: TAgentInputs['widgetPublish']['publish']['expectedRevision'],
+    preview: Readonly<{
+      idempotencyKey: TAgentInputs['widgetPublish']['publish']['idempotencyKey'];
+      previewId: TAgentInputs['widgetPublish']['publish']['previewId'];
+      previewRevisionId: TAgentInputs['widgetPublish']['publish']['previewRevisionId'];
+      canvasId: TAgentInputs['widgetPublish']['publish']['canvasId'];
+      frameNodeId: TAgentInputs['widgetPublish']['publish']['frameNodeId'];
+      expectedBindingRevision: TAgentInputs['widgetPublish']['publish']['expectedBindingRevision'];
+      expectedBindingPlanDigestSha256:
+        TAgentInputs['widgetPublish']['publish']['expectedBindingPlanDigestSha256'];
+    }>,
   ): Promise<TAgentOutputs['widgetPublish']['publish']>;
 
   getWidgetCatalog(

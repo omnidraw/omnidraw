@@ -18,8 +18,9 @@ export type TFunctionAttemptId = string;
 export type TFunctionResolutionPurpose = 'admission' | 'execution';
 
 export type TFunctionInvocationSubject = Readonly<{
-  kind: 'widget_instance';
+  kind: 'widget_instance' | 'widget_preview';
   canvasId: string;
+  /** Published instance ID or durable Preview owner ID, according to kind. */
   widgetInstanceId: string;
 }>;
 
@@ -243,7 +244,8 @@ export type TFunctionRevisionRegistration = Readonly<{
 export type TInvocationIdempotencyScope =
   | Readonly<{ kind: 'organization' }>
   | Readonly<{ kind: 'canvas'; canvasId: string }>
-  | Readonly<{ kind: 'widget_instance'; widgetInstanceId: string }>;
+  | Readonly<{ kind: 'widget_instance'; widgetInstanceId: string }>
+  | Readonly<{ kind: 'widget_preview'; previewId: string }>;
 
 export type TInvocationCreateRequest = Readonly<{
   envelope: TFunctionInvocationEnvelope;

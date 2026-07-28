@@ -385,9 +385,15 @@ export class WidgetWorkspace {
   }
 
   async listMounts(chatId: string): Promise<TWidgetMount[]> {
-    const chatRoot = await this.ensureChat(chatId);
+    await this.ensureChat(chatId);
+    return this.inspectMounts(chatId);
+  }
+
+  /** Reads the current mount set without reconciling missing shared mounts. */
+  async inspectMounts(chatId: string): Promise<TWidgetMount[]> {
+    const chatRoot = this.getChatRoot(chatId);
     const widgetsRoot = join(chatRoot, 'widgets');
-    const entries = await readdir(widgetsRoot, { withFileTypes: true });
+    const entries = await readdir(widgetsRoot, { withFileTypes: true }).catch(() => []);
     const mounts: TWidgetMount[] = [];
     for (const entry of entries) {
       if (!entry.isSymbolicLink()) continue;
@@ -520,6 +526,21 @@ export class WidgetWorkspace {
     const name = this.#normalizeName(requestedName);
     const key = await this.#canonicalWriteLaneKey(join(this.draftRoot, name));
     return this.#withQueue(this.#authoringQueues, key, operation);
+  }
+
+  async withDraftAuthoringOperations<T>(
+    requestedNames: readonly string[],
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const names = [...new Set(requestedNames.map((name) => this.#normalizeName(name)))]
+      .sort((left, right) => left.localeCompare(right, 'en-US'));
+    const run = (index: number): Promise<T> => {
+      const name = names[index];
+      return name === undefined
+        ? operation()
+        : this.withDraftAuthoringOperation(name, () => run(index + 1));
+    };
+    return run(0);
   }
 
   async updateMountedFileAtomic<T>(

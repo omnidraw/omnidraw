@@ -9,6 +9,7 @@ import type {
 import type {
   CapsuleHandle,
   CapsuleHost,
+  CapsuleMountErrorEvent,
   CreateCapsuleHostOptions,
 } from '@vibecanvas/capsule-vibecanvas/host';
 import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
@@ -225,6 +226,10 @@ function rawHandle(artifactHash = HASH_A) {
   const setProps = vi.fn();
   const setTheme = vi.fn();
   const setViewport = vi.fn();
+  const errorListeners = new Set<(event: CapsuleMountErrorEvent) => void>();
+  const emitError = (event: CapsuleMountErrorEvent): void => {
+    for (const listener of errorListeners) listener(event);
+  };
   const handle = {
     ready: vi.fn(async () => undefined),
     setSchedulingMode: vi.fn(async () => undefined),
@@ -239,11 +244,18 @@ function rawHandle(artifactHash = HASH_A) {
     destroy,
     onLifecycle: vi.fn(() => ({ unsubscribe: vi.fn() })),
     onOutput: vi.fn(() => ({ unsubscribe: vi.fn() })),
-    onError: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onError: vi.fn((listener: (event: CapsuleMountErrorEvent) => void) => {
+      errorListeners.add(listener);
+      return {
+        unsubscribe: vi.fn(() => {
+          errorListeners.delete(listener);
+        }),
+      };
+    }),
     onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
     diagnostics: vi.fn(() => ({ artifactHash })),
   } as unknown as CapsuleHandle;
-  return { destroy, handle, setProps, setTheme, setViewport };
+  return { destroy, emitError, handle, setProps, setTheme, setViewport };
 }
 
 function fakeHostFactory(mountedArtifactHash = HASH_A) {
@@ -688,6 +700,106 @@ describe('Capsule widget mount boundary', () => {
       input: { value: 1 },
       signal: expect.any(AbortSignal),
     });
+  });
+
+  test('reports a real provider rejection without destroying the live handle', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockImplementation(
+      async (_algorithm, value) => {
+        const bytes = ArrayBuffer.isView(value)
+          ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+          : new Uint8Array(value);
+        return Uint8Array.from(
+          createHash('sha256').update(bytes).digest(),
+        ).buffer;
+      },
+    );
+    try {
+      const factory = fakeHostFactory();
+      const currentCatalog = catalog('catalog-a', []);
+      const coordinator = new CapsuleWidgetHostCoordinator({
+        document,
+        catalog: () => currentCatalog,
+        hostFactory: factory,
+      });
+      const mount = createWidgetUiArtifactMountPort({
+        coordinator,
+        createStreamId: () => 'stream-a',
+        digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+        nowMs: () => 0,
+        theme: {
+          read: () => THEME,
+          subscribe: () => vi.fn(),
+        },
+        output: { notification: vi.fn() },
+      });
+      const providerFailure = new Error('provider detail must stay private');
+      const functionBridge: TWidgetFunctionHostBridge = {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
+        },
+        invoke: vi.fn(async () => {
+          throw providerFailure;
+        }),
+        dispose: vi.fn(),
+      };
+      const onDiagnostic = vi.fn();
+      const onFatal = vi.fn();
+      const handle = await mount.mount({
+        mode: 'preview',
+        root: document.createElement('div'),
+        identity: functionBridge.identity,
+        artifact: artifact('preview'),
+        functionDescriptors: functionMetadata,
+        browserFunctionDescriptorsDigestSha256: browserFunctionDigest(functionMetadata),
+        functionBridge,
+        collaborativeStateBridge: null,
+        onDiagnostic,
+        onFatal,
+      });
+      const hostMount = factory.created[0]!.mount.mock.calls[0]![0];
+      const binding = hostMount.capabilityBindings[0]!;
+
+      await expect(binding.invoke(
+        { signal: new AbortController().signal } as never,
+        'count',
+        { value: 1 },
+      )).rejects.toBe(providerFailure);
+      factory.created[0]!.raw.emitError({
+        format: 'capsule-mount-error-v1',
+        sequence: 1,
+        timestamp: 1,
+        lifecycleGeneration: 1,
+        category: 'capability',
+        source: 'call.failed',
+        code: 'PROVIDER_FAILED',
+        fatal: false,
+        capabilityId: functionDescriptor.id,
+        operation: 'count',
+        traceId: 'call-1',
+      });
+
+      expect(onDiagnostic).toHaveBeenCalledWith({
+        format: 'vibecanvas.capsule-error.v1',
+        phase: 'runtime',
+        category: 'capability',
+        capsuleCode: 'PROVIDER_FAILED',
+        fatal: false,
+        message: 'A widget capability was denied or failed.',
+        capability: functionDescriptor.id,
+        operation: 'count',
+      });
+      expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain('provider detail');
+      expect(onFatal).not.toHaveBeenCalled();
+      expect(factory.created[0]!.raw.destroy).not.toHaveBeenCalled();
+
+      await handle.destroy('test-complete');
+      await coordinator.destroy();
+    } finally {
+      digest.mockRestore();
+    }
   });
 
   test('streams one atomic current snapshot and cancels the pending wait', async () => {

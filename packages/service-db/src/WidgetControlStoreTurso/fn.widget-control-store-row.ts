@@ -4,6 +4,7 @@ import type {
   TWidgetCapsuleBuildIdentity,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetDefinitionDescriptor,
+  TWidgetDistributionBuildProvenance,
   TWidgetManifestV3,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
@@ -118,6 +119,9 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
   const capsuleBuildIdentity = (typeof value.capsule_build_identity_json === 'string'
     ? JSON.parse(value.capsule_build_identity_json)
     : value.capsule_build_identity_json) as TWidgetCapsuleBuildIdentity;
+  const distributionProvenance = (typeof value.distribution_provenance_json === 'string'
+    ? JSON.parse(value.distribution_provenance_json)
+    : value.distribution_provenance_json) as TWidgetDistributionBuildProvenance;
   return {
     orgId: value.org_id,
     id: value.id,
@@ -133,7 +137,9 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
     functionDescriptorsDigestSha256: String(value.function_descriptors_digest_sha256),
     capabilityContractDigestSha256: String(value.capability_contract_digest_sha256),
     channelContractDigestSha256: String(value.channel_contract_digest_sha256),
+    constructionContractDigestSha256: String(value.construction_contract_digest_sha256),
     contractDigestSha256: String(value.contract_digest_sha256),
+    distributionProvenance,
     uiArtifact: fnWidgetControlStoreArtifact({
       org_id: value.org_id,
       id: value.ui_id,

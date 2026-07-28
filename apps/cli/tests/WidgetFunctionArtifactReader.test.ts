@@ -11,6 +11,7 @@ const request = {
   widgetDefinitionId: 'definition-a', widgetRevisionId: 'revision-a',
   artifactId: artifact.id, artifactDigestSha256: artifact.digestSha256,
   contractDigestSha256: 'b'.repeat(64), runtimeAbi: 'vibecanvas:test',
+  invocationId: 'invocation-a',
   subject: { kind: 'widget_instance' as const, canvasId: 'canvas-a', widgetInstanceId: 'widget-a' },
 };
 
@@ -46,5 +47,67 @@ describe('WidgetFunctionArtifactReader', () => {
       }],
       ['read', { artifactId: artifact.id, readCapability: 'capability', purpose: 'server_execution' }],
     ]);
+  });
+
+  test('reads the exact retained Preview server artifact without published capabilities', async () => {
+    const calls: unknown[] = [];
+    const previewRequest = {
+      ...request,
+      widgetRevisionId: 'preview-revision-a',
+      subject: {
+        kind: 'widget_preview' as const,
+        canvasId: 'canvas-a',
+        widgetInstanceId: 'preview-a',
+      },
+    };
+    const widgets = {
+      readPreviewServerArtifact: async (_tenant: TTenantContext, value: unknown) => {
+        calls.push(value);
+        return new Uint8Array([4, 5, 6]);
+      },
+      getRevision: async () => {
+        throw new Error('Published revision lookup must not run for Preview.');
+      },
+      issueServerExecutionArtifactReadCapability: async () => {
+        throw new Error('Published capability issuance must not run for Preview.');
+      },
+      readArtifact: async () => {
+        throw new Error('Published artifact reads must not run for Preview.');
+      },
+    };
+    const reader = new WidgetFunctionArtifactReader({ widgets: widgets as never });
+
+    await expect(reader.readExactServerArtifact(tenant, previewRequest))
+      .resolves.toEqual(new Uint8Array([4, 5, 6]));
+    expect(calls).toEqual([{
+      previewId: 'preview-a',
+      revisionId: 'preview-revision-a',
+      definitionId: request.widgetDefinitionId,
+      artifactId: request.artifactId,
+      artifactDigestSha256: request.artifactDigestSha256,
+      contractDigestSha256: request.contractDigestSha256,
+      runtimeAbi: request.runtimeAbi,
+      invocationId: request.invocationId,
+    }]);
+  });
+
+  test('fails closed when the retained Preview revision or tenant is stale', async () => {
+    const widgets = {
+      readPreviewServerArtifact: async () => null,
+    };
+    const reader = new WidgetFunctionArtifactReader({ widgets: widgets as never });
+
+    await expect(reader.readExactServerArtifact(tenant, {
+      ...request,
+      widgetRevisionId: 'stale-preview-revision',
+      subject: {
+        kind: 'widget_preview',
+        canvasId: 'canvas-a',
+        widgetInstanceId: 'preview-a',
+      },
+    })).rejects.toMatchObject({
+      code: 'FUNCTION_REVISION_NOT_AVAILABLE',
+      message: 'Pinned Preview function artifact is unavailable.',
+    });
   });
 });

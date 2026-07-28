@@ -21,6 +21,24 @@ import { apiWidgetDraftGet } from './api.widgetDraft.get';
 import { apiWidgetDraftList } from './api.widgetDraft.list';
 import { apiWidgetDraftValidate } from './api.widgetDraft.validate';
 import { apiWidgetPreviewBuild } from './api.widgetPreview.build';
+import { apiWidgetPreviewCancel } from './api.widgetPreview.cancel';
+import {
+    apiWidgetPreviewMountAcquire,
+    apiWidgetPreviewMountRelease,
+    apiWidgetPreviewMountRenew,
+} from './api.widgetPreview.mount';
+import {
+    apiWidgetPreviewDiagnosticReport,
+    apiWidgetPreviewDiagnosticResolve,
+    apiWidgetPreviewDiagnosticRetest,
+    apiWidgetPreviewDiagnosticsGet,
+} from './api.widgetPreview.diagnostics';
+import {
+    apiWidgetPreviewOwnerClose,
+    apiWidgetPreviewOwnerEnsure,
+    apiWidgetPreviewOwnerGet,
+    apiWidgetPreviewOwnerList,
+} from './api.widgetPreview.owner';
 import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
 import { apiApprovalGet } from './api.approval.get';
 import { apiApprovalList } from './api.approval.list';
@@ -79,6 +97,24 @@ const agentHandlers = {
     },
     widgetPreview: {
         build: apiWidgetPreviewBuild,
+        cancel: apiWidgetPreviewCancel,
+        mount: {
+            acquire: apiWidgetPreviewMountAcquire,
+            renew: apiWidgetPreviewMountRenew,
+            release: apiWidgetPreviewMountRelease,
+        },
+        diagnostics: {
+            report: apiWidgetPreviewDiagnosticReport,
+            get: apiWidgetPreviewDiagnosticsGet,
+            retest: apiWidgetPreviewDiagnosticRetest,
+            resolve: apiWidgetPreviewDiagnosticResolve,
+        },
+        owner: {
+            ensure: apiWidgetPreviewOwnerEnsure,
+            get: apiWidgetPreviewOwnerGet,
+            list: apiWidgetPreviewOwnerList,
+            close: apiWidgetPreviewOwnerClose,
+        },
     },
     widgetPublish: {
         publish: apiWidgetPublishPublish,

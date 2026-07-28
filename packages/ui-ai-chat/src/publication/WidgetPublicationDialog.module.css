@@ -8,6 +8,14 @@
 .status strong, .status p { display: block; margin: 0; }
 .status p { margin-top: .25rem; color: inherit; }
 .diagnostics { max-height: 9rem; margin: .5rem 0 0; padding-left: 1.15rem; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .68rem; }
+.previewSelection { display: grid; gap: .35rem; margin-top: .9rem; color: var(--foreground, #111827); font-weight: 750; }
+.previewSelection select { width: 100%; min-height: 2.25rem; box-sizing: border-box; padding: .4rem .5rem; border: 1px solid var(--border, #d0d5dd); border-radius: 0; background: var(--background, #fff); color: inherit; font: inherit; }
+.previewSelection select:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring, #38bdf8); }
+.previewSelection small { color: var(--muted-foreground, #667085); font-size: .68rem; font-weight: 500; }
+.previewDetails { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); margin: 1rem 0 0; border-top: 1px solid var(--border, #d0d5dd); font-size: .72rem; }
+.previewDetails dt, .previewDetails dd { min-width: 0; margin: 0; padding: .45rem .35rem; border-bottom: 1px solid var(--border, #d0d5dd); }
+.previewDetails dt { color: var(--muted-foreground, #667085); font-weight: 750; }
+.previewDetails dd { overflow-wrap: anywhere; }
 .actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }
 .button { display: inline-flex; align-items: center; justify-content: center; min-width: 5.5rem; min-height: 2.25rem; padding: .45rem 1rem; border: 1px solid var(--border, #d0d5dd); border-radius: 0; background: var(--background, #fff); color: var(--foreground, #111827); font: inherit; font-weight: 750; }
 .button:hover:not(:disabled) { background: var(--accent, #f2f4f7); }

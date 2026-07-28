@@ -35,6 +35,9 @@ import {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const sha256 = (value: Uint8Array | string): string => (
+  createHash('sha256').update(value).digest('hex')
+);
 const BUILDER_IDENTITY = 'capsule-boundary-test';
 const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
@@ -182,6 +185,8 @@ function builder(args: Readonly<{
   descriptors?: readonly TWidgetServerFunctionDescriptor[];
   bunBuild?: typeof Bun.build;
   distributionBuild?: TWidgetArtifactBuilderCapsuleConfig['distributionBuild'];
+  loadSigningKeys?: TWidgetArtifactBuilderCapsuleConfig['loadSigningKeys'];
+  capsuleSign?: TWidgetArtifactBuilderCapsuleConfig['capsuleSign'];
 }>): WidgetArtifactBuilderCapsule {
   return new WidgetArtifactBuilderCapsule({
     tempRoot: args.tempRoot,
@@ -207,10 +212,8 @@ function builder(args: Readonly<{
         return args.descriptors ?? Object.freeze([]);
       },
     }),
-    async loadSigningKeys() {
-      return Object.freeze([SIGNING_KEY]);
-    },
-    capsuleSign: async (bytes) => new Uint8Array(bytes),
+    loadSigningKeys: args.loadSigningKeys ?? (async () => Object.freeze([SIGNING_KEY])),
+    capsuleSign: args.capsuleSign ?? (async (bytes) => new Uint8Array(bytes)),
     ...(args.bunBuild === undefined ? {} : { bunBuild: args.bunBuild }),
   });
 }
@@ -566,6 +569,192 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         required: true,
         operations: ['fnHello'],
       }]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('constructs full-stack outputs once and signs exact Preview and release envelopes', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'capsule-construction-'));
+    let distributionBuildCalls = 0;
+    let capsuleBuildCalls = 0;
+    let serverBuildCalls = 0;
+    let signingCalls = 0;
+    const previewKey = Object.freeze({
+      keyId: 'capsule-preview-key',
+      privateKey: {} as CryptoKey,
+    }) satisfies CapsuleArtifactSigningKey;
+    const releaseKey = Object.freeze({
+      keyId: 'capsule-release-key',
+      privateKey: {} as CryptoKey,
+    }) satisfies CapsuleArtifactSigningKey;
+    const countedBunBuild = (async (
+      options: Parameters<typeof Bun.build>[0],
+    ) => {
+      serverBuildCalls += 1;
+      return await Bun.build(options);
+    }) as typeof Bun.build;
+    try {
+      const sourceSnapshot = snapshot([
+        {
+          path: 'ui/main.ts',
+          value: [
+            'import { fnHello } from "../server/functions.server";',
+            'void fnHello;',
+          ].join('\n'),
+        },
+        {
+          path: 'server/entry.ts',
+          value: 'import "./functions.server";',
+        },
+        {
+          path: 'server/functions.server.ts',
+          value: 'export function fnHello(value: unknown): unknown { return value; }',
+        },
+      ]);
+      const widgetManifest = manifest({
+        entry: 'ui/main.ts',
+        serverEntry: 'server/entry.ts',
+      });
+      const artifactBuilder = builder({
+        tempRoot,
+        descriptors: Object.freeze([FN_HELLO_DESCRIPTOR]),
+        bunBuild: countedBunBuild,
+        distributionBuild: async (value) => {
+          distributionBuildCalls += 1;
+          return Object.freeze({
+            kind: 'external-distribution',
+            snapshot: Object.freeze({ files: value.files }),
+            entry: value.entry,
+            producer: Object.freeze({
+              name: 'construction-test',
+              version: '1',
+              digest: `sha256:${'1'.repeat(64)}`,
+            }),
+            sourceRevision: value.sourceRevision,
+            dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+            buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+          });
+        },
+        capsuleBuild: async () => {
+          capsuleBuildCalls += 1;
+          return EMPTY_CAPSULE_OUTPUT;
+        },
+        loadSigningKeys: async (purpose) => Object.freeze([
+          purpose === 'preview' ? previewKey : releaseKey,
+        ]),
+        capsuleSign: async (unsignedBytes, keys) => {
+          signingCalls += 1;
+          return new Uint8Array([
+            ...unsignedBytes,
+            ...encoder.encode(keys[0]!.keyId),
+          ]);
+        },
+      });
+      const buildRequest = request(sourceSnapshot, widgetManifest);
+      const construction = await artifactBuilder.construct(TENANT, {
+        snapshot: buildRequest.snapshot,
+        manifest: buildRequest.manifest,
+        canonicalManifestJson: buildRequest.canonicalManifestJson,
+        builderIdentity: buildRequest.builderIdentity,
+        capsuleBuildIdentity: buildRequest.capsuleBuildIdentity,
+        buildPolicyId: buildRequest.buildPolicyId,
+      });
+
+      expect(distributionBuildCalls).toBe(1);
+      expect(capsuleBuildCalls).toBe(1);
+      expect(serverBuildCalls).toBe(1);
+      expect(construction.sourceArtifact.kind).toBe('source');
+      expect(construction.sourceArtifact.digestSha256)
+        .toBe(sha256(construction.sourceArtifact.bytes));
+      expect(construction.uiArtifact.digestSha256)
+        .toBe(sha256(construction.uiArtifact.unsignedBytes));
+      expect(construction.distributionProvenance).toEqual({
+        kind: 'external-distribution',
+        producer: {
+          name: 'construction-test',
+          version: '1',
+          digest: `sha256:${'1'.repeat(64)}`,
+        },
+        sourceRevision: sourceSnapshot.digestSha256,
+        dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+        buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+      });
+      expect(construction.constructionContractDigestSha256)
+        .toMatch(/^[0-9a-f]{64}$/);
+
+      const preview = await artifactBuilder.signConstruction(TENANT, {
+        construction,
+        signingPurpose: 'preview',
+      });
+      const release = await artifactBuilder.signConstruction(TENANT, {
+        construction,
+        signingPurpose: 'release',
+      });
+
+      expect(distributionBuildCalls).toBe(1);
+      expect(capsuleBuildCalls).toBe(1);
+      expect(serverBuildCalls).toBe(1);
+      expect(signingCalls).toBe(2);
+      expect(preview.sourceSnapshotId).toBe(construction.sourceSnapshotId);
+      expect(release.sourceSnapshotId).toBe(construction.sourceSnapshotId);
+      expect(preview.sourceDigestSha256).toBe(construction.sourceDigestSha256);
+      expect(release.sourceDigestSha256).toBe(construction.sourceDigestSha256);
+      expect(preview.uiArtifact.capsuleArtifactHash)
+        .toBe(construction.uiArtifact.capsuleArtifactHash);
+      expect(release.uiArtifact.capsuleArtifactHash)
+        .toBe(construction.uiArtifact.capsuleArtifactHash);
+      expect(preview.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
+      expect(release.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
+      expect(preview.functionDescriptors).toEqual(construction.functionDescriptors);
+      expect(release.functionDescriptors).toEqual(construction.functionDescriptors);
+      expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds)
+        .toEqual([previewKey.keyId]);
+      expect(release.uiArtifact.runtimeDescriptor.signatureKeyIds)
+        .toEqual([releaseKey.keyId]);
+      expect(preview.uiArtifact.bytes).not.toEqual(release.uiArtifact.bytes);
+      expect(preview.contractDigestSha256).not.toBe(release.contractDigestSha256);
+
+      const unsignedBytes = new Uint8Array(construction.uiArtifact.unsignedBytes);
+      unsignedBytes[0] = (unsignedBytes[0] ?? 0) ^ 0xff;
+      await expect(artifactBuilder.signConstruction(TENANT, {
+        construction: {
+          ...construction,
+          uiArtifact: { ...construction.uiArtifact, unsignedBytes },
+        },
+        signingPurpose: 'release',
+      })).rejects.toThrow();
+      await expect(artifactBuilder.signConstruction(TENANT, {
+        construction: {
+          ...construction,
+          distributionProvenance: {
+            ...construction.distributionProvenance,
+            dependencyLockDigest: `sha256:${'9'.repeat(64)}`,
+          },
+        },
+        signingPurpose: 'release',
+      })).rejects.toThrow();
+      const sourceBytes = new Uint8Array(construction.sourceArtifact.bytes);
+      sourceBytes[sourceBytes.byteLength - 1] = (
+        sourceBytes[sourceBytes.byteLength - 1] ?? 0
+      ) ^ 0xff;
+      await expect(artifactBuilder.signConstruction(TENANT, {
+        construction: {
+          ...construction,
+          sourceArtifact: { ...construction.sourceArtifact, bytes: sourceBytes },
+        },
+        signingPurpose: 'release',
+      })).rejects.toThrow();
+      const serverBytes = new Uint8Array(construction.serverArtifact!.bytes);
+      serverBytes[0] = (serverBytes[0] ?? 0) ^ 0xff;
+      await expect(artifactBuilder.signConstruction(TENANT, {
+        construction: {
+          ...construction,
+          serverArtifact: { ...construction.serverArtifact!, bytes: serverBytes },
+        },
+        signingPurpose: 'release',
+      })).rejects.toThrow();
+      expect(signingCalls).toBe(2);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

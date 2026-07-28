@@ -12,9 +12,12 @@ import {
   fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetPreviewPublicationIdentity,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
   fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetPreviewBindingPlanDigest,
+  fnWidgetPreviewPublicationFingerprint,
   fnWidgetRevisionArtifactsMatchManifest,
 } from '@vibecanvas/widget-contract';
 import type {
@@ -37,9 +40,11 @@ import type {
   TWidgetDefinitionArchiveResult,
   TWidgetDefinitionDescriptor,
   TWidgetDefinitionId,
+  TWidgetDistributionBuildProvenance,
   TWidgetManifestV3,
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
+  TWidgetPreviewPublicationIdentity,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
@@ -75,6 +80,22 @@ type TValidatedPublicationRuntime = Readonly<{
   canonicalJson: string;
   capsuleBuildIdentityJson: string;
 }>;
+type TValidatedDistributionProvenance = Readonly<{
+  provenance: TWidgetDistributionBuildProvenance;
+  canonicalJson: string;
+}>;
+type TValidatedPublicationIdempotency = Readonly<{
+  identity: TWidgetPreviewPublicationIdentity;
+  canonicalJson: string;
+  fingerprintSha256: string;
+}>;
+type TPreviewPublicationMarkerRow = Readonly<{
+  published_preview_revision_id: unknown;
+  published_binding_revision: unknown;
+  published_binding_plan_digest_sha256: unknown;
+  published_widget_revision_id: unknown;
+  published_idempotency_key: unknown;
+}>;
 
 const CONTROL_STORE_MAX_BATCH = 500;
 
@@ -97,6 +118,27 @@ const DURABLE_ARTIFACT_REFERENCE_SQL = `
     WHERE source.org_id = artifact_references.org_id
       AND source.source_artifact_id = artifact_references.id
       AND source.source_artifact_kind = artifact_references.kind
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM agent_preview_revisions AS preview_revision
+    JOIN agent_previews AS preview
+      ON preview.org_id = preview_revision.org_id
+     AND preview.id = preview_revision.preview_id
+    WHERE preview_revision.org_id = artifact_references.org_id
+      AND (
+        (preview_revision.source_artifact_id = artifact_references.id
+          AND preview_revision.source_artifact_kind = artifact_references.kind)
+        OR
+        (preview_revision.unsigned_ui_artifact_id = artifact_references.id
+          AND preview_revision.unsigned_ui_artifact_kind = artifact_references.kind)
+        OR
+        (preview_revision.ui_artifact_id = artifact_references.id
+          AND preview_revision.ui_artifact_kind = artifact_references.kind)
+        OR
+        (preview_revision.server_artifact_id = artifact_references.id
+          AND preview_revision.server_artifact_kind = artifact_references.kind)
+      )
   )
 `;
 
@@ -145,6 +187,69 @@ function canonicalCapsuleBuildIdentity(value: unknown): Readonly<{
     runtimeBuildDigest: record.runtimeBuildDigest as TWidgetCapsuleBuildIdentity['runtimeBuildDigest'],
   };
   return { identity, canonicalJson: JSON.stringify(identity) };
+}
+
+function canonicalDistributionProvenance(
+  value: unknown,
+): TValidatedDistributionProvenance {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Distribution build provenance must be an object.');
+  }
+  const record = value as Record<string, unknown>;
+  const expectedKeys = [
+    'buildConfigurationDigest',
+    'dependencyLockDigest',
+    'kind',
+    'producer',
+    'sourceRevision',
+  ];
+  if (Object.keys(record).sort().join('\0') !== expectedKeys.join('\0')) {
+    throw new TypeError('Distribution build provenance has unexpected fields.');
+  }
+  if (
+    record.producer === null
+    || typeof record.producer !== 'object'
+    || Array.isArray(record.producer)
+  ) {
+    throw new TypeError('Distribution build producer must be an object.');
+  }
+  const producer = record.producer as Record<string, unknown>;
+  if (Object.keys(producer).sort().join('\0') !== 'digest\0name\0version') {
+    throw new TypeError('Distribution build producer has unexpected fields.');
+  }
+  if (
+    record.kind !== 'external-distribution'
+    || typeof producer.name !== 'string'
+    || producer.name.length < 1
+    || producer.name.length > 300
+    || typeof producer.version !== 'string'
+    || producer.version.length < 1
+    || producer.version.length > 300
+    || typeof producer.digest !== 'string'
+    || !/^sha256:[0-9a-f]{64}$/.test(producer.digest)
+    || typeof record.sourceRevision !== 'string'
+    || !/^[0-9a-f]{64}$/.test(record.sourceRevision)
+    || typeof record.dependencyLockDigest !== 'string'
+    || !/^sha256:[0-9a-f]{64}$/.test(record.dependencyLockDigest)
+    || typeof record.buildConfigurationDigest !== 'string'
+    || !/^sha256:[0-9a-f]{64}$/.test(record.buildConfigurationDigest)
+  ) {
+    throw new TypeError('Distribution build provenance is invalid.');
+  }
+  const provenance: TWidgetDistributionBuildProvenance = Object.freeze({
+    kind: 'external-distribution',
+    producer: Object.freeze({
+      name: producer.name,
+      version: producer.version,
+      digest: producer.digest as TWidgetDistributionBuildProvenance['producer']['digest'],
+    }),
+    sourceRevision: record.sourceRevision,
+    dependencyLockDigest:
+      record.dependencyLockDigest as TWidgetDistributionBuildProvenance['dependencyLockDigest'],
+    buildConfigurationDigest:
+      record.buildConfigurationDigest as TWidgetDistributionBuildProvenance['buildConfigurationDigest'],
+  });
+  return Object.freeze({ provenance, canonicalJson: JSON.stringify(provenance) });
 }
 
 /** Turso-backed tenant-qualified immutable widget metadata and retention repository. */
@@ -365,10 +470,96 @@ export class WidgetControlStoreTurso implements
     request: TWidgetPublicationCommitInput,
   ): Promise<TWidgetPublicationCommitResult> {
     const transitionAtMs = this.#timestamp(request.nowMs, 'widget publication transition timestamp');
+    const publicationIdempotency = request.publicationIdentity === undefined
+      ? null
+      : this.#validatedPublicationIdempotency(request);
     return this.#runImmediate(tenant, async () => {
+      if (publicationIdempotency !== null) {
+        const replay = await (await this.database.prepare(`
+          SELECT *
+          FROM widget_preview_publication_idempotency
+          WHERE org_id = ? AND account_id = ? AND idempotency_key = ?
+        `)).get(
+          tenant.orgId,
+          tenant.accountId,
+          publicationIdempotency.identity.idempotencyKey,
+        ) as Record<string, unknown> | undefined;
+        if (replay !== undefined) {
+          const publishedRevisionId = String(replay.published_revision_id);
+          const previousActiveRevisionId =
+            replay.previous_active_revision_id === null
+              ? null
+              : String(replay.previous_active_revision_id);
+          const comparisonIdentity =
+            publicationIdempotency.identity.expectedActiveRevisionId
+              === publishedRevisionId
+              ? {
+                  ...publicationIdempotency.identity,
+                  expectedActiveRevisionId: previousActiveRevisionId,
+                }
+              : publicationIdempotency.identity;
+          const comparisonCanonicalJson =
+            fnCanonicalizeWidgetPreviewPublicationIdentity(comparisonIdentity);
+          const comparisonFingerprintSha256 =
+            fnWidgetPreviewPublicationFingerprint({
+              identity: comparisonIdentity,
+              digestSha256: (value) => this.#digest(value),
+            });
+          if (
+            String(replay.request_fingerprint_sha256)
+              !== comparisonFingerprintSha256
+            || String(replay.publication_identity_json)
+              !== comparisonCanonicalJson
+          ) {
+            throw widgetStoreError(
+              'WIDGET_PUBLICATION_IDEMPOTENCY_CONFLICT',
+              'The publication idempotency key is already bound to another reviewed Preview.',
+            );
+          }
+          const revision = await this.getRevision(
+            tenant,
+            publishedRevisionId,
+          );
+          const definition = this.#publicationReplayDefinition(
+            String(replay.committed_definition_json),
+          );
+          if (
+            revision === null
+            || revision.definitionId !== String(replay.definition_id)
+            || definition.orgId !== tenant.orgId
+            || definition.id !== revision.definitionId
+            || definition.activeRevisionId !== revision.id
+          ) {
+            throw widgetStoreError(
+              'WIDGET_PUBLICATION_IDEMPOTENCY_RESULT_INVALID',
+              'The durable publication result failed integrity validation.',
+            );
+          }
+          await this.#markPreviewPublication(
+            tenant,
+            publicationIdempotency.identity,
+            publishedRevisionId,
+            transitionAtMs,
+            true,
+          );
+          return {
+            status: 'committed',
+            definition,
+            revision,
+            previousActiveRevisionId,
+          } as const;
+        }
+      }
+      if (publicationIdempotency !== null) {
+        await this.#assertPreviewPublicationSelectionAvailable(
+          tenant,
+          publicationIdempotency.identity,
+        );
+      }
       const publicationManifest = this.#validatedPublicationManifest(request);
       const publicationFunctions = this.#validatedPublicationFunctions(request, publicationManifest);
       const publicationRuntime = this.#validatedPublicationRuntime(request, publicationManifest);
+      const publicationProvenance = this.#validatedPublicationProvenance(request);
       this.#assertPublicationContract(
         request,
         publicationManifest,
@@ -440,10 +631,11 @@ export class WidgetControlStoreTurso implements
           ui_runtime_json, capsule_artifact_hash,
           capability_contract_digest_sha256, channel_contract_digest_sha256,
           capsule_build_identity_json, build_policy_id, server_runtime_abi,
+          construction_contract_digest_sha256, distribution_provenance_json,
           contract_format_version
         ) VALUES (
           ?, ?, ?, ?, ?, 'ui', ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, 3
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, 3
         )
       `)).run(
         tenant.orgId,
@@ -465,6 +657,8 @@ export class WidgetControlStoreTurso implements
         publicationRuntime.capsuleBuildIdentityJson,
         request.revision.buildPolicyId,
         request.revision.serverRuntimeAbi,
+        request.revision.constructionContractDigestSha256,
+        publicationProvenance.canonicalJson,
       );
 
       await (await this.database.prepare(`
@@ -569,6 +763,33 @@ export class WidgetControlStoreTurso implements
       const committedRevision = await this.getRevision(tenant, request.revision.id);
       if (!committedDefinition || !committedRevision) {
         throw new Error('Committed widget publication could not be read back.');
+      }
+      if (publicationIdempotency !== null) {
+        await (await this.database.prepare(`
+          INSERT INTO widget_preview_publication_idempotency (
+            org_id, account_id, idempotency_key, request_fingerprint_sha256,
+            publication_identity_json, definition_id, published_revision_id,
+            previous_active_revision_id, committed_definition_json, created_at_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)).run(
+          tenant.orgId,
+          tenant.accountId,
+          publicationIdempotency.identity.idempotencyKey,
+          publicationIdempotency.fingerprintSha256,
+          publicationIdempotency.canonicalJson,
+          committedDefinition.id,
+          committedRevision.id,
+          definition.activeRevisionId,
+          JSON.stringify(committedDefinition),
+          transitionAtMs,
+        );
+        await this.#markPreviewPublication(
+          tenant,
+          publicationIdempotency.identity,
+          committedRevision.id,
+          transitionAtMs,
+          false,
+        );
       }
       return {
         status: 'committed',
@@ -699,6 +920,16 @@ export class WidgetControlStoreTurso implements
     const cutoff = Math.min(nowMs,
       this.#timestamp(request.inactiveBeforeMs, 'inactive revision cutoff'));
     return this.#runImmediate(tenant, async () => {
+      await (await this.database.prepare(`
+        DELETE FROM agent_preview_mount_leases
+        WHERE org_id = ? AND id IN (
+          SELECT id
+          FROM agent_preview_mount_leases
+          WHERE org_id = ? AND expires_at_ms <= ?
+          ORDER BY expires_at_ms ASC, id ASC
+          LIMIT ?
+        )
+      `)).run(tenant.orgId, tenant.orgId, nowMs, limit);
       const rows = await (await this.database.prepare(`
         SELECT revision.id
         FROM widget_definition_revisions AS revision
@@ -726,6 +957,33 @@ export class WidgetControlStoreTurso implements
             WHERE idempotency.org_id = revision.org_id
               AND idempotency.widget_definition_id = revision.definition_id
               AND idempotency.widget_revision_id = revision.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM widget_preview_publication_idempotency AS publication
+            JOIN agent_previews AS preview
+              ON preview.org_id = publication.org_id
+             AND preview.account_id = publication.account_id
+             AND preview.id = json_extract(
+               publication.publication_identity_json,
+               '$.previewId'
+             )
+             AND preview.canvas_id = json_extract(
+               publication.publication_identity_json,
+               '$.canvasId'
+             )
+             AND preview.frame_node_id = json_extract(
+               publication.publication_identity_json,
+               '$.frameNodeId'
+             )
+             AND preview.draft_id = json_extract(
+               publication.publication_identity_json,
+               '$.draftId'
+             )
+            WHERE publication.org_id = revision.org_id
+              AND publication.definition_id = revision.definition_id
+              AND publication.published_revision_id = revision.id
+              AND preview.status <> 'closed'
           )
         ORDER BY definition.updated_at_ms ASC, revision.revision_number ASC, revision.id ASC
         LIMIT ?
@@ -762,9 +1020,74 @@ export class WidgetControlStoreTurso implements
                 AND idempotency.widget_definition_id = revision.definition_id
                 AND idempotency.widget_revision_id = revision.id
             )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM widget_preview_publication_idempotency AS publication
+              JOIN agent_previews AS preview
+                ON preview.org_id = publication.org_id
+               AND preview.account_id = publication.account_id
+               AND preview.id = json_extract(
+                 publication.publication_identity_json,
+                 '$.previewId'
+               )
+               AND preview.canvas_id = json_extract(
+                 publication.publication_identity_json,
+                 '$.canvasId'
+               )
+               AND preview.frame_node_id = json_extract(
+                 publication.publication_identity_json,
+                 '$.frameNodeId'
+               )
+               AND preview.draft_id = json_extract(
+                 publication.publication_identity_json,
+                 '$.draftId'
+               )
+              WHERE publication.org_id = revision.org_id
+                AND publication.definition_id = revision.definition_id
+                AND publication.published_revision_id = revision.id
+                AND preview.status <> 'closed'
+            )
         `)).run(tenant.orgId, row.id, cutoff);
-        if (result.changes === 1) pruned.push(row.id);
+        if (result.changes === 1) {
+          await (await this.database.prepare(`
+            DELETE FROM widget_preview_publication_idempotency
+            WHERE org_id = ? AND published_revision_id = ?
+          `)).run(tenant.orgId, row.id);
+          pruned.push(row.id);
+        }
       }
+      await (await this.database.prepare(`
+        DELETE FROM agent_preview_revisions
+        WHERE org_id = ? AND id IN (
+          SELECT revision.id
+          FROM agent_preview_revisions AS revision
+          JOIN agent_previews AS owner
+            ON owner.org_id = revision.org_id
+           AND owner.id = revision.preview_id
+          WHERE revision.org_id = ?
+            AND (
+              owner.status = 'closed'
+              OR owner.active_revision_id IS NULL
+              OR owner.active_revision_id <> revision.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_preview_mount_leases AS lease
+              WHERE lease.org_id = revision.org_id
+                AND lease.preview_id = revision.preview_id
+                AND lease.preview_revision_id = revision.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM function_invocations AS invocation
+              WHERE invocation.org_id = revision.org_id
+                AND invocation.subject_kind = 'widget_preview'
+                AND invocation.widget_instance_id = revision.preview_id
+                AND invocation.widget_revision_id = revision.id
+                AND invocation.retains_revision = 1
+            )
+          ORDER BY revision.created_at_ms ASC, revision.id ASC
+          LIMIT ?
+        )
+      `)).run(tenant.orgId, tenant.orgId, limit);
       return { prunedRevisionIds: pruned };
     });
   }
@@ -1045,6 +1368,22 @@ export class WidgetControlStoreTurso implements
       ) {
         throw new Error('Stored Capsule build policy identity is invalid.');
       }
+      const distributionProvenance = canonicalDistributionProvenance(
+        validatedRevision.distributionProvenance,
+      );
+      if (
+        distributionProvenance.canonicalJson
+          !== String(storedRow.distribution_provenance_json)
+        || distributionProvenance.provenance.sourceRevision
+          !== storedRow.stored_source_digest_sha256
+        || !/^[0-9a-f]{64}$/.test(
+          validatedRevision.constructionContractDigestSha256,
+        )
+        || validatedRevision.constructionContractDigestSha256
+          !== String(storedRow.construction_contract_digest_sha256)
+      ) {
+        throw new Error('Stored distribution construction provenance is invalid.');
+      }
       const serverRuntimeAbi = parsedManifest.data.server?.runtimeAbi ?? null;
       if (
         validatedRevision.serverRuntimeAbi !== serverRuntimeAbi
@@ -1114,6 +1453,7 @@ export class WidgetControlStoreTurso implements
         ...validatedRevision,
         uiRuntime: parsedRuntime.data,
         capsuleBuildIdentity: capsuleBuildIdentity.identity,
+        distributionProvenance: distributionProvenance.provenance,
       };
     } catch {
       throw widgetStoreError(
@@ -1233,6 +1573,34 @@ export class WidgetControlStoreTurso implements
     };
   }
 
+  #validatedPublicationProvenance(
+    request: TWidgetPublicationCommitInput,
+  ): TValidatedDistributionProvenance {
+    let validated;
+    try {
+      validated = canonicalDistributionProvenance(
+        request.revision.distributionProvenance,
+      );
+    } catch {
+      throw widgetStoreError(
+        'WIDGET_REVISION_INTEGRITY_FAILED',
+        'Widget distribution build provenance is invalid.',
+      );
+    }
+    if (
+      validated.provenance.sourceRevision !== request.source.sourceDigestSha256
+      || !/^[0-9a-f]{64}$/.test(
+        request.revision.constructionContractDigestSha256,
+      )
+    ) {
+      throw widgetStoreError(
+        'WIDGET_REVISION_INTEGRITY_FAILED',
+        'Widget construction provenance does not match its source revision.',
+      );
+    }
+    return validated;
+  }
+
   async #assertStoredFunctionDefinitions(
     revision: TWidgetRevisionDescriptor,
     descriptors: readonly TWidgetServerFunctionDescriptor[],
@@ -1313,6 +1681,275 @@ export class WidgetControlStoreTurso implements
 
   #digest(value: string): string {
     return createHash('sha256').update(value).digest('hex');
+  }
+
+  async #previewPublicationMarker(
+    tenant: TTenantContext,
+    identity: TWidgetPreviewPublicationIdentity,
+  ): Promise<TPreviewPublicationMarkerRow | null> {
+    const row = await (await this.database.prepare(`
+      SELECT
+        published_preview_revision_id,
+        published_binding_revision,
+        published_binding_plan_digest_sha256,
+        published_widget_revision_id,
+        published_idempotency_key
+      FROM agent_previews
+      WHERE org_id = ? AND account_id = ? AND id = ?
+        AND canvas_id = ? AND frame_node_id = ? AND draft_id = ?
+        AND status = 'ready'
+        AND active_revision_id = ?
+        AND binding_revision = ?
+        AND binding_plan_digest_sha256 = ?
+        AND source_digest_sha256 = ?
+        AND committed_mutation_id = ?
+    `)).get(
+      tenant.orgId,
+      tenant.accountId,
+      identity.previewId,
+      identity.canvasId,
+      identity.frameNodeId,
+      identity.draftId,
+      identity.previewRevisionId,
+      identity.bindingRevision,
+      identity.bindingPlanDigestSha256,
+      identity.draftRevisionSha256,
+      identity.committedMutationId,
+    ) as TPreviewPublicationMarkerRow | undefined;
+    return row ?? null;
+  }
+
+  #isCurrentPreviewPublicationMarker(
+    row: TPreviewPublicationMarkerRow,
+    identity: TWidgetPreviewPublicationIdentity,
+  ): boolean {
+    return row.published_preview_revision_id === identity.previewRevisionId
+      && Number(row.published_binding_revision) === identity.bindingRevision
+      && row.published_binding_plan_digest_sha256
+        === identity.bindingPlanDigestSha256;
+  }
+
+  async #assertPreviewPublicationSelectionAvailable(
+    tenant: TTenantContext,
+    identity: TWidgetPreviewPublicationIdentity,
+  ): Promise<void> {
+    const marker = await this.#previewPublicationMarker(tenant, identity);
+    if (marker === null) {
+      throw widgetStoreError(
+        'WIDGET_PREVIEW_PUBLICATION_STALE',
+        'The reviewed Preview revision or binding plan changed before publication.',
+      );
+    }
+    if (!this.#isCurrentPreviewPublicationMarker(marker, identity)) return;
+    if (marker.published_idempotency_key !== identity.idempotencyKey) {
+      throw widgetStoreError(
+        'WIDGET_PREVIEW_ALREADY_PUBLISHED',
+        'The reviewed Preview revision and binding plan were already published.',
+      );
+    }
+    throw widgetStoreError(
+      'WIDGET_PREVIEW_PUBLICATION_RESULT_INVALID',
+      'The durable Preview publication marker has no matching idempotency result.',
+    );
+  }
+
+  async #markPreviewPublication(
+    tenant: TTenantContext,
+    identity: TWidgetPreviewPublicationIdentity,
+    publishedWidgetRevisionId: string,
+    nowMs: number,
+    allowAdvancedSelection: boolean,
+  ): Promise<void> {
+    const marked = await (await this.database.prepare(`
+      UPDATE agent_previews
+      SET published_preview_revision_id = ?,
+        published_binding_revision = ?,
+        published_binding_plan_digest_sha256 = ?,
+        published_widget_revision_id = ?,
+        published_idempotency_key = ?,
+        updated_at_ms = MAX(updated_at_ms, ?)
+      WHERE org_id = ? AND account_id = ? AND id = ?
+        AND canvas_id = ? AND frame_node_id = ? AND draft_id = ?
+        AND status = 'ready'
+        AND active_revision_id = ?
+        AND binding_revision = ?
+        AND binding_plan_digest_sha256 = ?
+        AND source_digest_sha256 = ?
+        AND committed_mutation_id = ?
+        AND (
+          published_preview_revision_id IS NULL
+          OR published_preview_revision_id <> active_revision_id
+          OR published_binding_revision IS NULL
+          OR published_binding_revision <> binding_revision
+          OR published_binding_plan_digest_sha256 IS NULL
+          OR published_binding_plan_digest_sha256 <> binding_plan_digest_sha256
+          OR published_idempotency_key = ?
+        )
+    `)).run(
+      identity.previewRevisionId,
+      identity.bindingRevision,
+      identity.bindingPlanDigestSha256,
+      publishedWidgetRevisionId,
+      identity.idempotencyKey,
+      nowMs,
+      tenant.orgId,
+      tenant.accountId,
+      identity.previewId,
+      identity.canvasId,
+      identity.frameNodeId,
+      identity.draftId,
+      identity.previewRevisionId,
+      identity.bindingRevision,
+      identity.bindingPlanDigestSha256,
+      identity.draftRevisionSha256,
+      identity.committedMutationId,
+      identity.idempotencyKey,
+    );
+    if (marked.changes === 1) return;
+
+    const marker = await this.#previewPublicationMarker(tenant, identity);
+    if (marker === null && allowAdvancedSelection) return;
+    if (
+      marker !== null
+      && this.#isCurrentPreviewPublicationMarker(marker, identity)
+      && marker.published_idempotency_key !== identity.idempotencyKey
+    ) {
+      throw widgetStoreError(
+        'WIDGET_PREVIEW_ALREADY_PUBLISHED',
+        'The reviewed Preview revision and binding plan were already published.',
+      );
+    }
+    throw widgetStoreError(
+      'WIDGET_PREVIEW_PUBLICATION_STALE',
+      'The reviewed Preview revision or binding plan changed before publication committed.',
+    );
+  }
+
+  #validatedPublicationIdempotency(
+    request: TWidgetPublicationCommitInput,
+  ): TValidatedPublicationIdempotency {
+    const identity = request.publicationIdentity;
+    if (identity === undefined) {
+      throw new TypeError('Preview publication identity is required.');
+    }
+    const digestFields = [
+      identity.bindingPlanDigestSha256,
+      identity.draftRevisionSha256,
+      identity.sourceDigestSha256,
+      identity.sourceArtifactDigestSha256,
+      identity.canonicalManifestDigestSha256,
+      identity.functionDescriptorsDigestSha256,
+      identity.capabilityContractDigestSha256,
+      identity.channelContractDigestSha256,
+      identity.constructionContractDigestSha256,
+      identity.previewContractDigestSha256,
+      identity.unsignedUiArtifactDigestSha256,
+      identity.previewUiArtifactDigestSha256,
+      identity.serverArtifactDigestSha256,
+    ];
+    if (
+      !/^[A-Za-z0-9._~:+-]{1,200}$/.test(identity.idempotencyKey)
+      || !Number.isSafeInteger(identity.bindingRevision)
+      || identity.bindingRevision < 0
+      || digestFields.some((value) => (
+        value !== null && !/^[0-9a-f]{64}$/.test(value)
+      ))
+      || !identity.previewId.trim()
+      || !identity.previewRevisionId.trim()
+      || !identity.canvasId.trim()
+      || !identity.frameNodeId.trim()
+      || !identity.draftId.trim()
+      || !identity.committedMutationId.trim()
+      || identity.committedMutationId.length > 1_024
+      || !identity.sourceSnapshotId.trim()
+      || !identity.builderIdentity.trim()
+      || !identity.buildPolicyId.trim()
+      || !/^sha256:[0-9a-f]{64}$/.test(identity.capsuleArtifactHash)
+    ) {
+      throw widgetStoreError(
+        'WIDGET_PUBLICATION_IDEMPOTENCY_IDENTITY_INVALID',
+        'Preview publication identity is malformed.',
+      );
+    }
+    const bindingPlanDigestSha256 = fnWidgetPreviewBindingPlanDigest({
+      bindings: request.bindings,
+      digestSha256: (value) => this.#digest(value),
+    });
+    if (
+      identity.definitionId !== request.revision.definitionId
+      || identity.expectedActiveRevisionId !== request.expectedActiveRevisionId
+      || identity.draftRevisionSha256 !== request.source.sourceDigestSha256
+      || identity.sourceSnapshotId !== request.source.sourceSnapshotId
+      || identity.sourceDigestSha256 !== request.source.sourceDigestSha256
+      || identity.sourceArtifactDigestSha256
+        !== request.source.sourceArtifact.digestSha256
+      || identity.canonicalManifestDigestSha256
+        !== this.#digest(request.revision.canonicalManifestJson)
+      || identity.functionDescriptorsDigestSha256
+        !== request.revision.functionDescriptorsDigestSha256
+      || identity.capabilityContractDigestSha256
+        !== request.revision.capabilityContractDigestSha256
+      || identity.channelContractDigestSha256
+        !== request.revision.channelContractDigestSha256
+      || identity.constructionContractDigestSha256
+        !== request.revision.constructionContractDigestSha256
+      || identity.capsuleArtifactHash
+        !== request.revision.uiRuntime.capsuleArtifactHash
+      || identity.serverArtifactDigestSha256
+        !== (request.revision.serverArtifact?.digestSha256 ?? null)
+      || identity.builderIdentity !== request.source.builderIdentity
+      || JSON.stringify(identity.capsuleBuildIdentity)
+        !== JSON.stringify(request.revision.capsuleBuildIdentity)
+      || identity.buildPolicyId !== request.revision.buildPolicyId
+      || identity.bindingPlanDigestSha256 !== bindingPlanDigestSha256
+    ) {
+      throw widgetStoreError(
+        'WIDGET_PUBLICATION_IDEMPOTENCY_IDENTITY_MISMATCH',
+        'Preview publication identity does not match the immutable commit input.',
+      );
+    }
+    const canonicalJson = fnCanonicalizeWidgetPreviewPublicationIdentity(identity);
+    return {
+      identity,
+      canonicalJson,
+      fingerprintSha256: fnWidgetPreviewPublicationFingerprint({
+        identity,
+        digestSha256: (value) => this.#digest(value),
+      }),
+    };
+  }
+
+  #publicationReplayDefinition(value: string): TWidgetDefinitionDescriptor {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (
+        typeof parsed.orgId !== 'string'
+        || typeof parsed.id !== 'string'
+        || typeof parsed.slug !== 'string'
+        || typeof parsed.name !== 'string'
+        || parsed.status !== 'published'
+        || typeof parsed.activeRevisionId !== 'string'
+        || !Number.isSafeInteger(parsed.createdAtMs)
+        || !Number.isSafeInteger(parsed.updatedAtMs)
+        || Number(parsed.createdAtMs) < 0
+        || Number(parsed.updatedAtMs) < Number(parsed.createdAtMs)
+      ) throw new Error('Stored publication definition is malformed.');
+      return Object.freeze({
+        orgId: parsed.orgId,
+        id: parsed.id,
+        slug: parsed.slug,
+        name: parsed.name,
+        status: 'published',
+        activeRevisionId: parsed.activeRevisionId,
+        createdAtMs: Number(parsed.createdAtMs),
+        updatedAtMs: Number(parsed.updatedAtMs),
+      });
+    } catch {
+      throw widgetStoreError(
+        'WIDGET_PUBLICATION_IDEMPOTENCY_RESULT_INVALID',
+        'The durable publication result failed integrity validation.',
+      );
+    }
   }
 
   #assertPublicationInput(
