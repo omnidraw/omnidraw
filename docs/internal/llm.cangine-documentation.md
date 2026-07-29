@@ -1,4 +1,4 @@
-# `@omnidraw/cangine` Library Guide
+# `@omnidraw/cangine` Library Guide - 0.3.0
 
 This is the consumer guide for the implemented `@omnidraw/cangine`
 library. It covers installation, ordinary application usage, every public
@@ -38,36 +38,44 @@ business logic, permissions, or UI.
 
 ## 2. Package status and imports
 
-The supported release is the immutable public registry artifact
-`@omnidraw/cangine@0.2.6`, containing compiled ESM and declarations. The
-audited provenance is:
+The library is versioned as `@omnidraw/cangine@0.2.2`. Registry
+publication is not part of the current release, but the repository produces a
+deterministic immutable tarball containing compiled ESM and declarations:
 
 ```text
-package       @omnidraw/cangine@0.2.6
-source commit 1c060b4 (feat(editor): add transient dropdown state)
-artifact SHA-256 3c97c723b582ca10457204174e776c3107c85474e5ed457cb2616b510fdada29
+artifacts/omnidraw-cangine-0.1.0.tgz
+SHA-256 7ec90675650dbe65ea8989af297c4b6a297404c03180bd13e6e9cc3c34a643a8
 ```
 
-Install the audited release by exact version:
+For a separate application, copy the tarball into a version-controlled vendor
+directory and install that relative immutable file:
 
 ```bash
-bun add --exact @omnidraw/cangine@0.2.6
+mkdir -p vendor/cangine
+cp /trusted/download/omnidraw-cangine-0.1.0.tgz vendor/cangine/
+shasum -a 256 vendor/cangine/omnidraw-cangine-0.1.0.tgz
+bun add ./vendor/cangine/omnidraw-cangine-0.1.0.tgz
 ```
 
-Vibecanvas consuming manifests pin the same registry version:
+Do not commit an absolute `file:` dependency. Once a registry release is
+separately authorized, consumers can replace the relative tarball dependency
+with an immutable version or an appropriate semver range.
+
+Inside this repository, use the workspace dependency so Vite follows the
+TypeScript source and preserves engine hot reload:
 
 ```json
 {
   "dependencies": {
-    "@omnidraw/cangine": "0.2.6"
+    "@omnidraw/cangine": "workspace:*"
   }
 }
 ```
 
-Keep the lockfile integrity entry and consumer contract test. Do not replace
-the package with a workspace checkout, absolute `file:` dependency, generated
-`dist/` edit, or local patch. Consumer code must use only public package
-specifiers.
+The checked-in workspace manifest intentionally points exports at `src/`.
+The packed manifest points the same public specifiers at compiled `dist/`.
+Consumer code must therefore use package specifiers and behave identically in
+both modes.
 
 Public entrypoints:
 
@@ -1177,9 +1185,10 @@ const unsubscribeTransforms = engine.transforms.subscribe((event) => {
 
 If `proposal.nextSize` is present, apply it to that kind's intrinsic size or
 layout width. Never silently drop it behind an incomplete kind allowlist.
-Widget/image/shape resize preserves authored transform scale; fixed/auto-height
-text east/west resize changes wrapping width without changing font size. The
-engine never creates the application history entry for you.
+Widget/image/shape resize preserves authored transform scale. The optional
+standard editor normalizes committed text to fixed layout and maps its locked
+corner resize to uniform font-size, explicit line-height, and box-size changes.
+The engine never creates the application history entry for you.
 
 A snapping system can register a proposal adjuster:
 
@@ -1515,7 +1524,12 @@ if (node?.kind === "text") {
 
 Offsets are UTF-16 offsets snapped to valid grapheme boundaries by the service. Registered fonts use exact retained bytes for shaping and outlines. Unregistered system fallback is supported without fabricating a registered resource ID.
 
-To project an application-owned textarea over an existing text node, call `engine.interactions.createTextEditingSession({ nodeId, element, onCommit, onCancel })`. The session synchronizes camera/scene transforms, focus, IME-safe Escape cancellation, blur commit, and cleanup; text mutation and editor styling remain application-owned.
+To project an application-owned textarea over an existing text node, call
+`engine.interactions.createTextEditingSession({ nodeId, element, escapeKey,
+onCommit, onCancel })`. The session synchronizes camera/scene transforms,
+focus, IME-safe Escape handling, blur commit, and cleanup. `escapeKey` defaults
+to `"cancel"`; pass `"commit"` when Escape should finish the edit. Text
+mutation and editor styling remain application-owned.
 
 ## 19. HTML portals
 
@@ -2181,62 +2195,6 @@ Application document / collaboration authority
   -> next projected engine transaction
 ```
 
-### Controlled scene and image ports
-
-Applications that own the local document should configure
-`IEditorSceneMutationPort` from `@omnidraw/cangine/editor`. In controlled mode,
-Cangine sends one immutable `TEditorSceneMutationRequest` containing the
-transaction ID, basis scene revision, source, optional coalescing key, exact
-serialized commands, and affected node IDs. `commit()` must synchronously
-accept the host document change, project those commands through exactly one
-`engine.scene.apply()`, and return the immediate successor scene revision. It
-must not wait for persistence, collaboration, or media work. If the host
-throws, Cangine does not rewrite, retry, or fall back to a direct scene write.
-
-Use a custom `IEditorHistory` adapter when undo/redo must pass through that same
-host boundary; the recorder-backed linear adapter is not required. Product
-commands can enter the boundary through `editor.commitSceneMutation()`.
-
-Prepared native images use `IEditorImageImportPort`. Clipboard and image-drop
-controllers perform extraction, decode, fitting, placement, ordering, and
-temporary resource registration, then call `commitPrepared()` with final image
-nodes, intrinsic sizes, MIME types, resource IDs, and original `Blob`s. A
-controlled host must adopt any Blob/resource ownership it needs, commit the
-mutation synchronously, return the same successor-revision receipt, and run
-upload or durable-URL promotion afterward. Pass the same port as
-`imageImportPort` to clipboard, drop, and file-picker flows.
-
-```ts
-import {
-  createClipboardImagePasteController,
-  createStandardCanvasEditor,
-} from "@omnidraw/cangine/editor";
-import type {
-  IEditorHistory,
-  IEditorImageImportPort,
-  IEditorSceneMutationPort,
-} from "@omnidraw/cangine/editor";
-
-type TDocumentPort = IEditorSceneMutationPort & IEditorImageImportPort;
-
-declare const documentPort: TDocumentPort;
-declare const documentHistory: IEditorHistory;
-
-const editor = createStandardCanvasEditor({
-  engine,
-  contentParentId: "content",
-  sceneMutationPort: documentPort,
-  history: { kind: "custom", adapter: documentHistory },
-});
-
-const clipboard = createClipboardImagePasteController({
-  editor,
-  eventTarget: host,
-  parentId: "content",
-  imageImportPort: documentPort,
-});
-```
-
 Create the editor explicitly; the root engine never creates it:
 
 ```ts
@@ -2304,12 +2262,58 @@ paths.attach();
 editor.attach();
 ```
 
-The built-in linear history requires an engine created with `record`; it is
-disabled by default. A controlled document host normally supplies custom
-history instead and need not enable the recorder. You can register/replace
-tools and commands or supply a custom history adapter. `createCanvasEditor()`
-provides only the lower-level lifecycle, registry, selected/focused-ID,
-input-routing, and history kernel when the standard preset is not appropriate.
+Linear history requires an engine created with `record`; it is disabled by
+default. You can register/replace tools and commands or supply a custom history
+adapter. `createCanvasEditor()` provides only the lower-level lifecycle,
+registry, selected/focused-ID, input-routing, and history kernel when the
+standard preset is not appropriate.
+
+When the application document must be the first writer, install a synchronous
+mutation port. Every durable standard action is delivered as one immutable
+incremental command batch. The host accepts the exact batch into its local
+document, projects it once, and returns the immediate scene revision:
+
+```ts
+const projectAcceptedMutation = (request) => {
+  localDocument.apply(request.commands, {
+    transactionId: request.transactionId,
+    basisSceneRevision: request.basisSceneRevision,
+    source: request.source,
+    coalesceKey: request.coalesceKey,
+  });
+  engine.scene.apply([...request.commands], {
+    source: request.source,
+    coalesceKey: request.coalesceKey,
+  });
+  return { projectedSceneRevision: engine.scene.revision };
+};
+
+const editor = createStandardCanvasEditor({
+  engine,
+  contentParentId: "content",
+  sceneMutationPort: { commit: projectAcceptedMutation },
+  history: {
+    kind: "custom",
+    adapter: applicationHistory,
+  },
+});
+```
+
+The port must finish synchronously, project exactly one successor revision, and
+throw atomically when it rejects the basis or commands. It must not rewrite,
+retry, or wait for a server. Controlled mode rejects the built-in linear
+history because product undo/redo must share the same application authority;
+disable editor history or provide a custom adapter.
+
+Clipboard and drop/file image controllers additionally accept an
+`imageImportPort`. Its `commitPrepared()` receives the same mutation request
+plus final image nodes, decoded-resource IDs, intrinsic sizes, MIME types, and
+the original Blobs. The host adopts the Blobs and any independent resource
+retain synchronously, projects `request.mutation.commands` once, then starts
+upload in the background. In this mode the controller does not select the new
+nodes or keep editor-session resource leases. The resources are already
+registered during handoff; calling `resources.register()` again is not a
+second ownership claim.
 
 `CanvasMenuController` is the shared browser DOM menu for right-click commands
 and widget dropdowns. Pass `overlayHost: host` to enable its visual presenter;
@@ -2333,7 +2337,14 @@ assistive-technology projection; there is no hidden duplicate.
 requests. It owns one temporary textarea, delegates durable edits to the
 engine text-editing session, and removes the textarea on commit, cancel,
 detach, or destroy. Widget portal content is never routed through this
-controller.
+controller. Its default textarea is transparent, borderless, padding-free, and
+has no placeholder; it matches the durable node's base family, size, weight,
+style, stretch, spacing, alignment, direction, decoration, resolved renderer
+line height, and solid fill where available. Its initial box uses the same text
+layout projection as retained rendering, so entering edit mode does not
+replace the glyphs with a differently sized textarea. Enter inserts a newline,
+Escape and Ctrl/Cmd+Enter commit, and the selected transform overlay is
+suppressed until the edit finishes.
 
 The clipboard controller accepts trusted native clipboard image items only,
 ignores editable and portal targets, decodes all candidates before one atomic
@@ -2350,9 +2361,10 @@ Standard transform policy is per-kind:
 | image | move/rotate/eight intrinsic resize; locked unless Shift |
 | unconstrained compatible multi | common move/rotate/resize; strongest member aspect mode |
 | multi containing a min/max-constrained member | common move/rotate only; no resize |
-| auto-width text | move/rotate |
-| fixed/auto-height text | move/rotate/east-west width reflow |
-| single path/connector | path-specific anchors, point-only resize, rotate; no generic box handles |
+| non-fixed text | move/rotate until standard-editor commit normalization |
+| fixed text | move/rotate/four corners; always locked uniform glyph/box scale |
+| single authored path/connector | path-specific anchors, point-only resize, rotate; no generic box handles |
+| single freehand path | move/rotate/four corner resize; ratio always locked; positive uniform transform scale only |
 | multi containing path/connector | move/rotate only; no resize |
 | widget frame | move/eight intrinsic resize, no rotation |
 | content-focused/canvas-maximized widget | no handles |
@@ -2395,10 +2407,25 @@ title bar/content active, exposes no transform handles, and restores exact
 durable window geometry. It is not browser fullscreen, is not serialized or
 shared, and does not end merely because editor selection changes.
 
-`PathInteractionController` is the framework-neutral path-like selection and
-point editor. It activates only for one selected `path` or `connector`,
+`PathInteractionController` is the framework-neutral authored-path selection
+and point editor. It activates only for one selected authored `path` or
+`connector`,
 suppresses the standard box overlay through a composable lease, and publishes
 constant-CSS-size semantic anchor, midpoint, resize, and rotation handles.
+Standard Pen-tool nodes carry the
+`org.omnidraw.cangine.editor/freehand` version-2 provenance extension and never
+activate this point editor. They remain atomic selections with move, rotate,
+and four corner handles; corner resizing is always positive and uniform, even
+while Shift is held. Preview and commit change only the path transform, so
+large immutable command arrays are not rewritten per pointer sample.
+Version-1 marker-only strokes remain compatible and atomic. Version 2 retains
+bounded local input/profile data so the selection-style controller can
+truthfully regenerate brush width; the rendered path remains authoritative and
+standard freehand never exposes dash patterns.
+Applications importing older unmarked pen paths can supply the same
+`resolvePathInteractionMode` callback to the standard editor and path
+controller; `createStandardEditorSession` shares either configured callback
+between both automatically.
 The standard Select tool gives otherwise-missed path/connector strokes a
 six-CSS-pixel screen-space acquisition band. Existing anchors drag in normal
 selection, and the selected frame interior is a move surface below every
@@ -2413,6 +2440,64 @@ scale. Connector endpoints retain node attachments through local offsets,
 inserted anchors persist as `waypoints`, and `setSegmentMode()` selects
 straight, smooth, or orthogonal elbow routing. One core effective-node preview
 feeds rendering, bounds, picking, and dependencies before one durable commit.
+
+`SelectionStyleController` is separate from the command menu. Construct it
+from the editor and render its immutable state in the host framework:
+
+```ts
+import {
+  createSelectionStyleController,
+  type TSelectionStyleState,
+} from "@omnidraw/cangine/editor";
+
+const styles = createSelectionStyleController({
+  editor,
+  continuousClock: {
+    requestFrame: (callback) => requestAnimationFrame(callback),
+    cancelFrame: (handle) => cancelAnimationFrame(handle),
+  },
+});
+styles.attach();
+const unsubscribe = styles.subscribe((state: TSelectionStyleState) => {
+  renderToolbar(state);
+});
+
+styles.apply({ propertyId: "foreground", value: paletteBlue });
+styles.beginContinuous("opacity");
+styles.updateContinuous({ propertyId: "opacity", value: 0.65 });
+styles.endContinuous();
+styles.activate("bring-to-front");
+
+unsubscribe();
+styles.destroy();
+```
+
+`state.controls` is already ordered and contains per-property
+shared/mixed/complex values plus selected/candidate/eligible coverage. It
+recurses selected groups for paint, stroke, and text properties, changes only
+compatible leaves in one atomic mutation, and keeps opacity on semantic roots.
+Widget frames and widget-containing groups never expose opacity. The supplied
+snapshot contains semantic state and typed intents only. It has no camera,
+viewport, position, visibility, focus, DOM, or layout contract. The host
+decides whether and how to render it—for example, the repository whiteboard
+uses a fixed top window panel that does not move with canvas panning. That
+React application also owns its per-element eligibility predicate and does not
+mount the panel when any directly selected node is a `widget-frame`; another
+application can choose a different presentation policy without changing the
+headless controller.
+
+Foreground is the visible ink slot: connector stroke, ordinary shape border,
+text glyph fill, or standard freehand fill. Background is ordinary shape fill.
+Text changes normalize the same run override and font-size changes preserve
+proportional fixed-layout behavior. Line routing is semantic
+(`straight | curved | elbow`); manual/waypoint routes remain untouched.
+Selected roots move as one stable sibling block for all four layer actions.
+Call `refresh()` only when a host-supplied semantic resolver changes without
+an editor/scene update; presentation suppression does not belong to this
+controller.
+Supplying `continuousClock` keeps geometry-heavy continuous changes to the
+latest accepted value per host frame; `endContinuous()` cancels any pending
+frame and commits the final exact value synchronously.
 
 Tear down in reverse ownership order:
 
@@ -2676,7 +2761,8 @@ detached controllers unless their specific documentation says otherwise; call
 | Group | Runtime exports and constants |
 |---|---|
 | Kernel | `CanvasEditor`, `createCanvasEditor`, `EDITOR_COMMAND_UNDO`, `EDITOR_COMMAND_REDO` |
-| Standard preset | `StandardCanvasEditor`, `createStandardCanvasEditor`, `createStandardEditorTools`, `createStandardEditorCommands`, `resolveStandardSelectableNodeId` |
+| Standard preset | `StandardCanvasEditor`, `createStandardCanvasEditor`, `createStandardEditorTools`, `createStandardEditorCommands`, `resolveStandardSelectableNodeId`, `STANDARD_EDITOR_FREEHAND_EXTENSION`, `resolveStandardPathInteractionMode`, `isStandardFreehandPath`, `standardFreehandPathExtensions` |
+| Selection styling | `SelectionStyleController`, `createSelectionStyleController`, `planSelectionOrderMove`, `STANDARD_EDITOR_MAX_FREEHAND_SAMPLES`, `createStandardFreehandProvenance`, `resolveStandardFreehandProvenance` |
 | Standard tool IDs | `EDITOR_TOOL_SELECT`, `EDITOR_TOOL_HAND`, `EDITOR_TOOL_RECT`, `EDITOR_TOOL_ELLIPSE`, `EDITOR_TOOL_PEN`, `EDITOR_TOOL_TEXT`, `EDITOR_TOOL_CONNECTOR`, `EDITOR_TOOL_ARROW`, `EDITOR_TOOL_WIDGET`, `EDITOR_TOOL_ERASER`, `STANDARD_EDITOR_TOOL_IDS` |
 | Standard command IDs | `EDITOR_COMMAND_SELECT_ALL`, `EDITOR_COMMAND_DELETE_SELECTION`, `EDITOR_COMMAND_CLEAR`, `EDITOR_COMMAND_GROUP`, `EDITOR_COMMAND_UNGROUP`, `EDITOR_COMMAND_BRING_FORWARD`, `EDITOR_COMMAND_SEND_BACKWARD`, `EDITOR_COMMAND_BRING_TO_FRONT`, `EDITOR_COMMAND_SEND_TO_BACK`, `EDITOR_COMMAND_ZOOM_IN`, `EDITOR_COMMAND_ZOOM_OUT`, `EDITOR_COMMAND_ZOOM_RESET`, `EDITOR_COMMAND_ZOOM_FIT`, `EDITOR_COMMAND_EXPORT_SVG_BLOB`, `EDITOR_COMMAND_DUPLICATE`, `EDITOR_COMMAND_COPY`, `EDITOR_COMMAND_PASTE`, `EDITOR_COMMAND_CAMERA_ROTATE_CW`, `EDITOR_COMMAND_CAMERA_ROTATE_CCW` |
 | Transform policy | `resolveStandardTransformPolicy`, `commitStandardTransformProposals` |
@@ -2695,9 +2781,9 @@ detached controllers unless their specific documentation says otherwise; call
 | Group | Exported types |
 |---|---|
 | Kernel | `ICanvasEditor`, `TCanvasEditorConfig`, `TEditorState`, `TEditorStatus`, `TEditorSelectionOverlayConfig`, `TEditorTool`, `TEditorToolId`, `TEditorToolInfo`, `TEditorToolContext`, `TEditorCommand`, `TEditorCommandId`, `TEditorCommandInfo`, `TEditorCommandContext` |
-| Controlled mutations | `IEditorSceneMutationPort`, `TEditorSceneMutation`, `TEditorSceneMutationRequest`, `TEditorSceneMutationReceipt`, `TEditorSceneMutationDispatchOptions`, `IEditorImageImportPort`, `TEditorImageImportSource`, `TPreparedEditorImage`, `TPreparedImageImportRequest` |
 | Standard preset | `IStandardCanvasEditor`, `TStandardCanvasEditorConfig`, `TStandardEditorToolId`, `TStandardEditorToolOptions`, `TStandardEditorCommandId`, `TStandardEditorCommandOptions`, `TStandardCreatableKind`, `TStandardEditorCreationOptions`, `TStandardNodeCreationContext`, `TStandardNodeFactory`, `TStandardTextEditRequest`, `TStandardTextEditingSessionOptions` |
-| Transform policy | `TStandardTransformPolicyOptions`, `TStandardTransformCommitOptions`, `TStandardWidgetMode` |
+| Selection styling | `ISelectionStyleController`, `TSelectionStyleControllerOptions`, `TSelectionStyleState`, `TSelectionStylePropertyId`, `TSelectionStyleActionId`, `TSelectionStyleChange`, `TSelectionStyleControl`, `TSelectionStyleAction`, `TSelectionStyleCoverage`, `TSelectionStyleUnavailable`, `TSelectionStyleSemanticValue`, `TSelectionLineRouting`, `TSelectionStrokePattern`, `TSharedStyleValue`, `TSharedPaintStyleValue`, `TSelectionOrderActionId`, `TSelectionOrderPlan`, `TStandardFreehandProvenanceInput`, `TStandardFreehandSample`, `TStandardFreehandEndProfile`, `TStandardFreehandBrushProfile`, `TStandardFreehandProvenanceV2` |
+| Transform policy | `TStandardTransformPolicyOptions`, `TStandardTransformCommitOptions`, `TStandardWidgetMode`, `TStandardPathInteractionMode`, `TStandardPathInteractionResolver` |
 | Cloning | `TClonePlan`, `TClonedNodes`, `TRemapClonePlanOptions` |
 | Snap-to-grid | `TSnapToGridAdjusterOptions` |
 | History | `IEditorHistory`, `TEditorHistoryConfig`, `TLinearEditorHistoryOptions` |

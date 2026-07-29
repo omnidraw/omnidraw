@@ -10,6 +10,7 @@ import {
   portalGeometryToCapsuleViewport,
   readPortalContentCssSize,
 } from '@omnidraw/cangine/integrations/capsule';
+import type { IWidgetInteractionController } from '@omnidraw/cangine/editor';
 import type { ICanvasRuntimeExtension } from '@vibecanvas/canvas';
 import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
 import type { TWidgetDraftSummary } from '@vibecanvas/orpc-client';
@@ -67,6 +68,7 @@ import {
 } from './fn.canvas-widget';
 import {
   fnPreviewControlPresentation,
+  type TWidgetDropdownItemPresentation,
 } from './fn.preview-control-presentation';
 import { fxWidgetCapsuleViewport } from './fx.capsule-portal-viewport';
 import { txPersistAiWidgetPayload } from './tx.ai-widget-payload';
@@ -75,6 +77,33 @@ import {
   type TPreviewDraftFence,
   type TPreviewPortalRuntime,
 } from './PreviewPortalRuntime';
+
+type TLegacyDropdownPresentationController = IWidgetInteractionController & {
+  clearDropdownItemPresentation?(widgetId: string): void;
+  setDropdownItemPresentation?(
+    widgetId: string,
+    itemId: string,
+    presentation: Readonly<Record<string, TWidgetDropdownItemPresentation>>,
+  ): void;
+};
+
+function clearDropdownItemPresentation(
+  widgets: IWidgetInteractionController,
+  widgetId: string,
+): void {
+  (widgets as TLegacyDropdownPresentationController)
+    .clearDropdownItemPresentation?.(widgetId);
+}
+
+function setDropdownItemPresentation(
+  widgets: IWidgetInteractionController,
+  widgetId: string,
+  itemId: string,
+  presentation: Readonly<Record<string, TWidgetDropdownItemPresentation>>,
+): void {
+  (widgets as TLegacyDropdownPresentationController)
+    .setDropdownItemPresentation?.(widgetId, itemId, presentation);
+}
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -805,7 +834,7 @@ export function createAiChatCanvasExtension(
           closePreviewPublicationDialog(node.id);
           void previous.destroy('preview-remounted');
         }
-        context.widgets.clearDropdownItemPresentation(node.id);
+        clearDropdownItemPresentation(context.widgets, node.id);
         const handlers = new Map<string, () => void>();
         const runtime = createPreviewPortalRuntime({
           root,
@@ -849,7 +878,8 @@ export function createAiChatCanvasExtension(
             },
           },
           onControlStateChange(state) {
-            context.widgets.setDropdownItemPresentation(
+            setDropdownItemPresentation(
+              context.widgets,
               node.id,
               'manage',
               fnPreviewControlPresentation({
@@ -949,7 +979,7 @@ export function createAiChatCanvasExtension(
                   previewRuntimes.delete(node.id);
                 }
                 actionHandlers.delete(node.id);
-                context.widgets.clearDropdownItemPresentation(node.id);
+                clearDropdownItemPresentation(context.widgets, node.id);
                 closePreviewPublicationDialog(node.id);
                 owner = null;
                 if (portalHost === host) portalHost = null;
@@ -1581,7 +1611,7 @@ export function createAiChatCanvasExtension(
           for (const close of previewPublicationDialogs.values()) close();
           previewPublicationDialogs.clear();
           for (const frameNodeId of previewRuntimes.keys()) {
-            context.widgets.clearDropdownItemPresentation(frameNodeId);
+            clearDropdownItemPresentation(context.widgets, frameNodeId);
           }
           await Promise.allSettled(
             mountedPreviews.map((runtime) => (
