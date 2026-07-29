@@ -273,11 +273,12 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A91](a/A91.md) - centralized widget state authority
 - [x]: [A92](a/A92.md) - coordinated hard cutover to CanvasService
 - [x]: [A93](a/A93.md) - widgets: adopt Capsule native CSS and network image profiles
-- [~]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
+- [x]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
 - [x]: [A95](a/A95.md) - local Verdaccio registry for Cangine, Capsule, and widget SDK
-- [~]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
+- [x]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
 - [x]: [A97](a/A97.md) - AI Preview: host-owned log terminal below widget content
 - [x]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
+- [ ]: [A99](a/A99.md) - qualify recovered canvas and updated Capsule Preview diagnostics
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
