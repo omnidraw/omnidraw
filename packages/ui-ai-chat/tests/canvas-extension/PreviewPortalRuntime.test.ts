@@ -454,6 +454,176 @@ async function flushSwap(
 }
 
 describe('PreviewPortalRuntime', () => {
+  test('keeps the host log terminal beside and outside the guest content lane', async () => {
+    const root = document.createElement('div');
+    const runtime = createPreviewPortalRuntime({
+      root,
+      payload: {
+        previewId: PREVIEW_ONE,
+        draftId: DRAFT_ID,
+        originChatId: 'chat-1',
+        role: 'companion',
+      },
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      api: runtimeApi(vi.fn(), PREVIEW_ONE).api,
+      publishApi: publishApi(),
+      codec: {
+        decodeBase64: (value) => Buffer.from(value, 'base64'),
+        digestSha256: async (value) => digest(value),
+      },
+      mount: { mount: vi.fn(), destroy: vi.fn() },
+      runtime: previewPopulationRuntime(),
+      requestFrame: vi.fn(),
+      cancelFrame: vi.fn(),
+      nowMs: () => 1,
+      functions: functionHost(),
+      onError: vi.fn(),
+    });
+    const guest = root.querySelector<HTMLElement>('[data-preview-guest-content]');
+    const terminal = root.querySelector<HTMLElement>('[data-preview-log-terminal]');
+    if (guest === null || terminal === null) {
+      throw new Error('Expected the Preview guest and terminal lanes.');
+    }
+
+    expect(guest.parentElement).toBe(terminal.parentElement);
+    expect(guest.nextElementSibling).toBe(terminal);
+    expect(guest.contains(terminal)).toBe(false);
+    expect(terminal.tabIndex).toBe(0);
+    expect(terminal.querySelector('[role="log"]')).not.toBeNull();
+
+    guest.innerHTML = '<style>[data-preview-log-terminal]{display:none}</style>'
+      + '<div data-preview-log-terminal>guest impersonation</div>';
+    runtime.reportDraftFence({
+      draftId: DRAFT_ID,
+      revision: REVISION_TWO,
+      sourceDigestSha256: REVISION_TWO,
+      committedMutationId: 'mutation-progress-2',
+      buildSequence: 2,
+    });
+    runtime.reportProgress({
+      previewId: PREVIEW_ONE,
+      revision: REVISION_TWO,
+      sourceDigestSha256: REVISION_TWO,
+      committedMutationId: 'mutation-progress-2',
+      buildId: PREVIEW_REVISION_TWO,
+      buildSequence: 2,
+      phase: 'building',
+    });
+
+    expect(root.querySelectorAll(':scope > section > [data-preview-log-terminal]'))
+      .toHaveLength(1);
+    expect(getComputedStyle(terminal).display).toBe('flex');
+    expect(terminal.textContent).toContain('[build #2]');
+    expect(terminal.textContent).toContain('Building bbbbbbbb…');
+
+    const logViewport = terminal.querySelector<HTMLElement>(
+      '[data-preview-log-viewport]',
+    );
+    if (logViewport === null) {
+      throw new Error('Expected the Preview log scrollback viewport.');
+    }
+    Object.defineProperties(logViewport, {
+      clientHeight: { configurable: true, value: 40 },
+      scrollHeight: { configurable: true, value: 120 },
+    });
+    logViewport.scrollTop = 10;
+    runtime.reportProgress({
+      previewId: PREVIEW_ONE,
+      revision: REVISION_TWO,
+      sourceDigestSha256: REVISION_TWO,
+      committedMutationId: 'mutation-progress-2',
+      buildId: PREVIEW_REVISION_TWO,
+      buildSequence: 2,
+      phase: 'validating',
+    });
+    expect(logViewport.scrollTop).toBe(10);
+
+    logViewport.scrollTop = 80;
+    runtime.reportProgress({
+      previewId: PREVIEW_ONE,
+      revision: REVISION_TWO,
+      sourceDigestSha256: REVISION_TWO,
+      committedMutationId: 'mutation-progress-2',
+      buildId: PREVIEW_REVISION_TWO,
+      buildSequence: 2,
+      phase: 'ready',
+    });
+    expect(logViewport.scrollTop).toBe(120);
+
+    const clear = terminal.querySelector<HTMLButtonElement>(
+      '[aria-label="Clear Preview logs"]',
+    );
+    if (clear === null) throw new Error('Expected the Preview log clear control.');
+    clear.click();
+    expect(terminal.querySelectorAll('[data-preview-log-entry]')).toHaveLength(0);
+    await runtime.destroy();
+  });
+
+  test('sizes the Capsule viewport to the guest lane below host chrome', async () => {
+    const root = document.createElement('div');
+    const animation = manualAnimationFrames();
+    const mounted = runtimeHandle();
+    const runtime = createPreviewPortalRuntime({
+      root,
+      payload: {
+        previewId: PREVIEW_ONE,
+        draftId: DRAFT_ID,
+        originChatId: 'chat-1',
+        role: 'companion',
+      },
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      api: runtimeApi(vi.fn().mockResolvedValue([
+        undefined,
+        ready(REVISION_ONE),
+      ]), PREVIEW_ONE).api,
+      publishApi: publishApi(),
+      codec: {
+        decodeBase64: (value) => Buffer.from(value, 'base64'),
+        digestSha256: async (value) => digest(value),
+      },
+      mount: {
+        mount: vi.fn(async () => mounted.handle),
+        destroy: vi.fn(),
+      },
+      runtime: previewPopulationRuntime(),
+      requestFrame: animation.request,
+      cancelFrame: animation.cancel,
+      nowMs: () => 1,
+      functions: functionHost(),
+      onError: vi.fn(),
+    });
+    const guest = root.querySelector<HTMLElement>('[data-preview-guest-content]');
+    if (guest === null) throw new Error('Expected the Preview guest lane.');
+    Object.defineProperties(guest, {
+      clientWidth: { configurable: true, value: 480 },
+      clientHeight: { configurable: true, value: 224 },
+    });
+
+    runtime.setViewport({
+      width: 480,
+      height: 320,
+      scale: 2,
+      visibility: 'visible',
+      distance: 0,
+      priority: 100,
+      occlusion: 0,
+    });
+    await flushSwap(animation, runtime.refresh());
+
+    expect(mounted.handle.setViewport).toHaveBeenLastCalledWith({
+      width: 480,
+      height: 224,
+      scale: 2,
+      visibility: 'visible',
+      distance: 0,
+      priority: 100,
+      occlusion: 0,
+    });
+    await runtime.destroy();
+  });
+
   test('pauses only automatic refreshes and coalesces one catch-up refresh', async () => {
     const root = document.createElement('div');
     const buildFailure = new Error('expected build failure');
@@ -1444,7 +1614,7 @@ describe('PreviewPortalRuntime', () => {
       ...owner,
       status: 'ready',
     }] as never);
-    preview.getDiagnostics.mockResolvedValue([undefined, [{
+    const diagnosticRecord = {
       status: 'awaiting-retest',
       reportedAtMs: 2,
       diagnostic: {
@@ -1464,7 +1634,11 @@ describe('PreviewPortalRuntime', () => {
         retryability: 'unknown',
         timestampMs: 1,
       },
-    }]] as never);
+    } as const;
+    preview.getDiagnostics.mockResolvedValue([
+      undefined,
+      [diagnosticRecord],
+    ] as never);
     const runtime = createPreviewPortalRuntime({
       root,
       payload: {
@@ -1498,6 +1672,26 @@ describe('PreviewPortalRuntime', () => {
       .toBe(
         'WIDGET_GUEST_RUNTIME_FAILED: Guest render failed safely. • Awaiting retest 1',
       );
+    runtime.reportOwnerState({
+      ...owner,
+      status: 'ready',
+      runtimeDiagnostics: [{
+        ...diagnosticRecord,
+        reportedAtMs: 3,
+        diagnostic: {
+          ...diagnosticRecord.diagnostic,
+          occurrenceCount: 2,
+          timestampMs: 3,
+        },
+      }],
+    });
+    expect(
+      [...root.querySelectorAll('[data-preview-log-source="diagnostic"]')]
+        .map((entry) => entry.textContent),
+    ).toEqual([
+      '[diagnostic]WIDGET_GUEST_RUNTIME_FAILED: Guest render failed safely. • occurrence 1',
+      '[diagnostic]WIDGET_GUEST_RUNTIME_FAILED: Guest render failed safely. • occurrence 2',
+    ]);
     const resolve = root.querySelector<HTMLButtonElement>(
       '[aria-label="Resolve the latest Preview runtime diagnostic"]',
     );
