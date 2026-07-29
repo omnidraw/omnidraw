@@ -1,4 +1,8 @@
 import { describe, expect, test } from "vitest";
+import {
+  hitTestWidgetFramePart,
+  resolveWidgetFrameLayout,
+} from '@omnidraw/cangine/geometry';
 import { CANVAS_WIDGET_EXTENSION_KEY } from "@vibecanvas/canvas-contract/CONSTANTS";
 import {
   fnAiWidgetPayloadEquals,
@@ -89,13 +93,19 @@ describe("direct Cangine widget nodes", () => {
         portalId: "vibecanvas:widget:node-1",
         interactive: true,
       },
-      headerItems: [
-        { type: "button", id: "live-updates", label: "Pause Live Updates" },
-        { type: "button", id: "cancel-build", label: "Cancel Build" },
-        { type: "button", id: "retry", label: "Retry" },
-        { type: "button", id: "reset", label: "Reset" },
-        { type: "button", id: "publish", label: "Publish" },
-      ],
+      headerItems: [{
+        type: 'dropdown',
+        id: 'manage',
+        label: 'Manage Preview',
+        content: { type: 'text', text: 'Manage' },
+        items: [
+          { id: 'live-updates', text: 'Pause live updates' },
+          { id: 'cancel-build', text: 'Cancel build' },
+          { id: 'retry', text: 'Retry' },
+          { id: 'reset', text: 'Reset' },
+          { id: 'publish', text: 'Publish' },
+        ],
+      }],
     });
     expect(fnCanvasWidgetExtension(node)).toEqual({
       schemaVersion: 1,
@@ -114,6 +124,71 @@ describe("direct Cangine widget nodes", () => {
       originChatId: "chat-1",
       role: "companion",
     });
+  });
+
+  test('reclaims the old Cancel target as draggable title bar', () => {
+    const node = fnCreatePreviewWidgetNode({
+      ...base,
+      size: { width: 480, height: 320 },
+      title: 'Weather Preview',
+      previewId: 'preview-1',
+      draftId: 'draft-1',
+      originChatId: 'chat-1',
+      role: 'companion',
+    });
+    const previousLayout = resolveWidgetFrameLayout({
+      ...node,
+      headerItems: [
+        {
+          type: 'button',
+          id: 'live-updates',
+          label: 'Pause Live Updates',
+          content: { type: 'text', text: 'Pause' },
+        },
+        {
+          type: 'button',
+          id: 'cancel-build',
+          label: 'Cancel Build',
+          content: { type: 'text', text: 'Cancel' },
+        },
+        {
+          type: 'button',
+          id: 'retry',
+          label: 'Retry',
+          content: { type: 'text', text: 'Retry' },
+        },
+        {
+          type: 'button',
+          id: 'reset',
+          label: 'Reset',
+          content: { type: 'text', text: 'Reset' },
+        },
+        {
+          type: 'button',
+          id: 'publish',
+          label: 'Publish',
+          content: { type: 'text', text: 'Publish' },
+        },
+      ],
+    });
+    const oldCancel = previousLayout.headerItems.find(
+      ({ id }) => id === 'cancel-build',
+    );
+    if (oldCancel === undefined) throw new Error('Old Cancel fixture overflowed.');
+    const reclaimedPoint = {
+      x: oldCancel.rect.x + oldCancel.rect.width / 2,
+      y: oldCancel.rect.y + oldCancel.rect.height / 2,
+    };
+    const layout = resolveWidgetFrameLayout(node);
+    const manage = layout.headerItems.find(({ id }) => id === 'manage');
+    if (manage === undefined) throw new Error('Manage control overflowed.');
+
+    expect(hitTestWidgetFramePart(layout, reclaimedPoint)).toBe('title-bar');
+    expect(hitTestWidgetFramePart(layout, {
+      x: manage.rect.x + manage.rect.width / 2,
+      y: manage.rect.y + manage.rect.height / 2,
+    })).toBe('header-item:manage');
+    expect(node.headerItems).toHaveLength(1);
   });
 
   test.each([

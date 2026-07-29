@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.2.5",
+    "@omnidraw/cangine": "0.2.6",
     "@vibecanvas/canvas-contract": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-theme": "workspace:*",

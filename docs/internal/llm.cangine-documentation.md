@@ -39,19 +39,19 @@ business logic, permissions, or UI.
 ## 2. Package status and imports
 
 The supported release is the immutable public registry artifact
-`@omnidraw/cangine@0.2.4`, containing compiled ESM and declarations. The
+`@omnidraw/cangine@0.2.6`, containing compiled ESM and declarations. The
 audited provenance is:
 
 ```text
-package       @omnidraw/cangine@0.2.4
-source commit d77e343 (feat(editor): add controlled host mutations)
-artifact SHA-256 b20642d15fa83d7ab9363cc6a3be0e2e608aff077a3bc6abf66cdb206c54c0bd
+package       @omnidraw/cangine@0.2.6
+source commit 1c060b4 (feat(editor): add transient dropdown state)
+artifact SHA-256 3c97c723b582ca10457204174e776c3107c85474e5ed457cb2616b510fdada29
 ```
 
 Install the audited release by exact version:
 
 ```bash
-bun add --exact @omnidraw/cangine@0.2.4
+bun add --exact @omnidraw/cangine@0.2.6
 ```
 
 Vibecanvas consuming manifests pin the same registry version:
@@ -59,7 +59,7 @@ Vibecanvas consuming manifests pin the same registry version:
 ```json
 {
   "dependencies": {
-    "@omnidraw/cangine": "0.2.4"
+    "@omnidraw/cangine": "0.2.6"
   }
 }
 ```

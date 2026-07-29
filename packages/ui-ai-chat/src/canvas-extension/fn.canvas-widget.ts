@@ -163,38 +163,19 @@ export function fnCreatePreviewWidgetNode(
   };
   return {
     ...fnBaseWidgetNode(args),
-    headerItems: [
-      {
-        type: 'button',
-        id: 'live-updates',
-        label: 'Pause Live Updates',
-        content: { type: 'text', text: 'Pause' },
-      },
-      {
-        type: 'button',
-        id: 'cancel-build',
-        label: 'Cancel Build',
-        content: { type: 'text', text: 'Cancel' },
-      },
-      {
-        type: 'button',
-        id: 'retry',
-        label: 'Retry',
-        content: { type: 'text', text: 'Retry' },
-      },
-      {
-        type: 'button',
-        id: 'reset',
-        label: 'Reset',
-        content: { type: 'text', text: 'Reset' },
-      },
-      {
-        type: 'button',
-        id: 'publish',
-        label: 'Publish',
-        content: { type: 'text', text: 'Publish' },
-      },
-    ],
+    headerItems: [{
+      type: 'dropdown',
+      id: 'manage',
+      label: 'Manage Preview',
+      content: { type: 'text', text: 'Manage' },
+      items: [
+        { id: 'live-updates', text: 'Pause live updates' },
+        { id: 'cancel-build', text: 'Cancel build' },
+        { id: 'retry', text: 'Retry' },
+        { id: 'reset', text: 'Reset' },
+        { id: 'publish', text: 'Publish' },
+      ],
+    }],
     extensions: {
       [CANVAS_WIDGET_EXTENSION_KEY]: extension,
     },

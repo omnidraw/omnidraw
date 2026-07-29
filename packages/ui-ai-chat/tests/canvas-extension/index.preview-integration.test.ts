@@ -434,11 +434,34 @@ function fixture() {
   }] as const);
   const getPreviewFunction = vi.fn();
   const logError = vi.fn();
+  const dropdownPresentations = new Map<
+    string,
+    Readonly<Record<string, Readonly<{
+      text?: string;
+      disabled?: boolean;
+      hidden?: boolean;
+    }>>>
+  >();
+  const setDropdownItemPresentation = vi.fn((
+    widgetId: string,
+    _headerItemId: string,
+    presentation: Readonly<Record<string, Readonly<{
+      text?: string;
+      disabled?: boolean;
+      hidden?: boolean;
+    }>>>,
+  ) => {
+    dropdownPresentations.set(widgetId, presentation);
+  });
+  const clearDropdownItemPresentation = vi.fn((widgetId: string) => {
+    dropdownPresentations.delete(widgetId);
+  });
   let nextAnimationFrame = 1;
   let activationListener: ((activation: {
     type: string;
     widgetId: string;
     itemId?: string;
+    dropdownItemId?: string;
     control?: string;
   }) => void) | null = null;
   const extension = createAiChatCanvasExtension({
@@ -602,6 +625,8 @@ function fixture() {
       },
     },
     widgets: {
+      clearDropdownItemPresentation,
+      setDropdownItemPresentation,
       subscribeActivation: vi.fn((listener) => {
         activationListener = listener;
         return () => {
@@ -619,6 +644,7 @@ function fixture() {
     closeAgentEvents: agentEvents.close,
     closePreviewOwner,
     context,
+    clearDropdownItemPresentation,
     draft,
     emitAgentEvent: agentEvents.push,
     extension,
@@ -626,8 +652,17 @@ function fixture() {
       type: string;
       widgetId: string;
       itemId?: string;
+      dropdownItemId?: string;
       control?: string;
     }) => activationListener?.(activation),
+    emitManageAction: (widgetId: string, dropdownItemId: string) => (
+      activationListener?.({
+        type: 'dropdown-item',
+        widgetId,
+        itemId: 'manage',
+        dropdownItemId,
+      })
+    ),
     getDraft,
     getPreviewFunction,
     getPreviewOwner,
@@ -647,6 +682,10 @@ function fixture() {
     releasePreviewMountLease,
     renewPreviewMountLease,
     setSelection,
+    setDropdownItemPresentation,
+    dropdownPresentation: (widgetId: string) => (
+      dropdownPresentations.get(widgetId)
+    ),
   };
 }
 
@@ -684,13 +723,6 @@ describe('current Cangine Preview integration', () => {
     if (previewPortal === undefined) {
       throw new Error('Preview portal was not registered.');
     }
-    const previewTitleBar = document.createElement('div');
-    previewTitleBar.dataset.vibecanvasWidgetTitlebar = 'true';
-    const publishButton = document.createElement('button');
-    publishButton.dataset.widgetNodeId = frameNodeId;
-    publishButton.dataset.widgetControlPart = 'header-item:publish';
-    previewTitleBar.append(publishButton);
-    document.body.append(previewTitleBar);
     const previewHost = document.createElement('div');
     previewPortal.cleanup = previewPortal.config.mount({
       host: previewHost,
@@ -719,7 +751,9 @@ describe('current Cangine Preview integration', () => {
         ':scope > section > [data-preview-log-terminal]',
       ),
     ).toHaveLength(1);
-    expect(publishButton.disabled).toBe(false);
+    expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
+      disabled: false,
+    });
     await vi.waitFor(() => expect(current.requestAgentEvents).toHaveBeenCalledOnce());
 
     current.getPreviewOwner.mockResolvedValue([
@@ -759,7 +793,9 @@ describe('current Cangine Preview integration', () => {
       reconnectedEvents.iterable,
     ]);
     current.closeAgentEvents();
-    await vi.waitFor(() => expect(publishButton.disabled).toBe(true));
+    await vi.waitFor(() => expect(
+      current.dropdownPresentation(frameNodeId)?.publish,
+    ).toEqual({ disabled: true }));
 
     await vi.waitFor(
       () => expect(current.requestAgentEvents).toHaveBeenCalledTimes(2),
@@ -774,12 +810,10 @@ describe('current Cangine Preview integration', () => {
       previewHost.querySelector('section')?.dataset.previewStatus,
     ).toBe('error'));
     expect(previewHost.textContent).toContain('The reconnect build failed.');
-    expect(publishButton.disabled).toBe(true);
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: frameNodeId,
-      itemId: 'publish',
+    expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
+      disabled: true,
     });
+    current.emitManageAction(frameNodeId, 'publish');
     expect(current.publishPreview).not.toHaveBeenCalled();
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${frameNodeId}"]`,
@@ -829,13 +863,6 @@ describe('current Cangine Preview integration', () => {
     if (previewPortal === undefined) {
       throw new Error('Preview portal was not registered.');
     }
-    const previewTitleBar = document.createElement('div');
-    previewTitleBar.dataset.vibecanvasWidgetTitlebar = 'true';
-    const publishButton = document.createElement('button');
-    publishButton.dataset.widgetNodeId = frameNodeId;
-    publishButton.dataset.widgetControlPart = 'header-item:publish';
-    previewTitleBar.append(publishButton);
-    document.body.append(previewTitleBar);
     const previewHost = document.createElement('div');
     previewPortal.cleanup = previewPortal.config.mount({
       host: previewHost,
@@ -843,7 +870,9 @@ describe('current Cangine Preview integration', () => {
     await vi.waitFor(() => expect(
       previewHost.querySelector('section')?.dataset.previewStatus,
     ).toBe('ready'));
-    expect(publishButton.disabled).toBe(false);
+    expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
+      disabled: false,
+    });
     await vi.waitFor(() => expect(current.requestAgentEvents).toHaveBeenCalledOnce());
 
     current.getDraft.mockResolvedValue([
@@ -865,12 +894,10 @@ describe('current Cangine Preview integration', () => {
       draftId: DRAFT_ID,
     }));
     expect(current.getPreviewOwner).not.toHaveBeenCalled();
-    expect(publishButton.disabled).toBe(true);
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: frameNodeId,
-      itemId: 'publish',
+    expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
+      disabled: true,
     });
+    current.emitManageAction(frameNodeId, 'publish');
     expect(current.publishPreview).not.toHaveBeenCalled();
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${frameNodeId}"]`,
@@ -1184,26 +1211,6 @@ describe('current Cangine Preview integration', () => {
     if (previewPortal === undefined) {
       throw new Error('Preview portal was not registered.');
     }
-    const previewTitleBar = document.createElement('div');
-    previewTitleBar.dataset.vibecanvasWidgetTitlebar = 'true';
-    const liveUpdatesButton = document.createElement('button');
-    liveUpdatesButton.dataset.widgetNodeId = companions[0]!.id;
-    liveUpdatesButton.dataset.widgetControlPart = 'header-item:live-updates';
-    liveUpdatesButton.textContent = 'Pause';
-    const cancelBuildButton = document.createElement('button');
-    cancelBuildButton.dataset.widgetNodeId = companions[0]!.id;
-    cancelBuildButton.dataset.widgetControlPart = 'header-item:cancel-build';
-    cancelBuildButton.textContent = 'Cancel';
-    const publishButton = document.createElement('button');
-    publishButton.dataset.widgetNodeId = companions[0]!.id;
-    publishButton.dataset.widgetControlPart = 'header-item:publish';
-    publishButton.textContent = 'Publish';
-    previewTitleBar.append(
-      liveUpdatesButton,
-      cancelBuildButton,
-      publishButton,
-    );
-    document.body.append(previewTitleBar);
     const previewHost = document.createElement('div');
     previewPortal.cleanup = previewPortal.config.mount({
       host: previewHost,
@@ -1245,20 +1252,18 @@ describe('current Cangine Preview integration', () => {
         .toBe('ready');
     });
     expect(previewHost.textContent).toContain('Mounted Preview');
-    expect(liveUpdatesButton.textContent).toBe('Pause');
-    expect(liveUpdatesButton.getAttribute('aria-label')).toBe('Pause Live Updates');
-    expect(liveUpdatesButton.getAttribute('aria-pressed')).toBe('false');
-    expect(cancelBuildButton.hidden).toBe(true);
-    expect(publishButton.disabled).toBe(false);
-
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'live-updates',
+    expect(current.dropdownPresentation(companions[0]!.id)).toEqual({
+      'live-updates': { text: 'Pause live updates' },
+      'cancel-build': { disabled: true },
+      retry: {},
+      reset: {},
+      publish: { disabled: false },
     });
-    expect(liveUpdatesButton.textContent).toBe('Resume');
-    expect(liveUpdatesButton.getAttribute('aria-label')).toBe('Resume Live Updates');
-    expect(liveUpdatesButton.getAttribute('aria-pressed')).toBe('true');
+
+    current.emitManageAction(companions[0]!.id, 'live-updates');
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.['live-updates'],
+    ).toEqual({ text: 'Resume live updates' });
     current.emitAgentEvent({
       kind: 'widget-draft',
       type: 'changed',
@@ -1280,21 +1285,13 @@ describe('current Cangine Preview integration', () => {
         committedMutationId: 'mutation-new-draft-revision',
       }),
     ]);
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'retry',
-    });
+    current.emitManageAction(companions[0]!.id, 'retry');
     await vi.waitFor(() => expect(current.buildPreview).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(mockedArtifactMount.mount).toHaveBeenCalledTimes(2));
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'live-updates',
-    });
-    expect(liveUpdatesButton.textContent).toBe('Pause');
-    expect(liveUpdatesButton.getAttribute('aria-label')).toBe('Pause Live Updates');
-    expect(liveUpdatesButton.getAttribute('aria-pressed')).toBe('false');
+    current.emitManageAction(companions[0]!.id, 'live-updates');
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.['live-updates'],
+    ).toEqual({ text: 'Pause live updates' });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(current.buildPreview).toHaveBeenCalledTimes(2);
     await vi.waitFor(() => expect(current.releasePreviewMountLease)
@@ -1329,11 +1326,7 @@ describe('current Cangine Preview integration', () => {
       signal: expect.any(AbortSignal),
     });
 
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'publish',
-    });
+    current.emitManageAction(companions[0]!.id, 'publish');
     const publicationDialog = await vi.waitFor(() => {
       const host = document.querySelector<HTMLElement>(
         `[data-preview-publication-dialog-for="${companions[0]!.id}"]`,
@@ -1369,7 +1362,9 @@ describe('current Cangine Preview integration', () => {
     await vi.waitFor(() => expect(document.querySelector(
       `[data-preview-publication-dialog-for="${companions[0]!.id}"]`,
     )).toBeNull());
-    expect(publishButton.disabled).toBe(true);
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.publish,
+    ).toEqual({ disabled: true });
 
     current.emitAgentEvent({
       kind: 'widget-preview',
@@ -1386,14 +1381,13 @@ describe('current Cangine Preview integration', () => {
     await vi.waitFor(() => expect(
       previewHost.querySelector('section')?.dataset.previewStatus,
     ).toBe('building'));
-    expect(publishButton.disabled).toBe(true);
-    expect(cancelBuildButton.hidden).toBe(false);
-    expect(cancelBuildButton.disabled).toBe(false);
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'cancel-build',
-    });
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.publish,
+    ).toEqual({ disabled: true });
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.['cancel-build'],
+    ).toEqual({ disabled: false });
+    current.emitManageAction(companions[0]!.id, 'cancel-build');
     await vi.waitFor(() => expect(current.cancelPreviewBuild).toHaveBeenCalledWith({
       previewId: '60000000-0000-4000-8000-000000000006',
       canvasId: 'canvas-1',
@@ -1401,22 +1395,26 @@ describe('current Cangine Preview integration', () => {
       buildId: 'build-2',
       expectedBuildSequence: 2,
     }));
-    await vi.waitFor(() => expect(cancelBuildButton.hidden).toBe(true));
+    await vi.waitFor(() => expect(
+      current.dropdownPresentation(companions[0]!.id)?.['cancel-build'],
+    ).toEqual({ disabled: true }));
     expect(current.context.config.notification.showSuccess).toHaveBeenCalledWith(
       'Preview build cancelled',
     );
-    expect(publishButton.disabled).toBe(true);
-    current.emitActivation({
-      type: 'header-button',
-      widgetId: companions[0]!.id,
-      itemId: 'publish',
-    });
+    current.emitManageAction(companions[0]!.id, 'cancel-build');
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(current.cancelPreviewBuild).toHaveBeenCalledOnce();
+    expect(current.context.config.notification.showInfo).not.toHaveBeenCalled();
+    expect(
+      current.dropdownPresentation(companions[0]!.id)?.publish,
+    ).toEqual({ disabled: true });
+    current.emitManageAction(companions[0]!.id, 'publish');
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${companions[0]!.id}"]`,
     )).toBeNull();
-    expect(current.context.config.notification.showError).toHaveBeenCalledWith(
+    expect(current.context.config.notification.showError).not.toHaveBeenCalledWith(
       'Preview is not ready to publish',
-      expect.stringContaining('current build to complete'),
+      expect.anything(),
     );
     expect(current.publishPreview).toHaveBeenCalledOnce();
 
@@ -1429,6 +1427,9 @@ describe('current Cangine Preview integration', () => {
     current.nodes.set(companions[0]!.id, companions[0]!);
 
     await previewPortal.cleanup?.();
+    expect(current.clearDropdownItemPresentation).toHaveBeenCalledWith(
+      companions[0]!.id,
+    );
     expect(current.releasePreviewMountLease).toHaveBeenCalledWith({
       previewId: '60000000-0000-4000-8000-000000000006',
       previewRevisionId: 'd0000000-0000-4000-8000-00000000000d',
@@ -1447,8 +1448,56 @@ describe('current Cangine Preview integration', () => {
     }));
 
     await installed.dispose?.();
-    previewTitleBar.remove();
     expect(current.closePreviewOwner).toHaveBeenCalledOnce();
+  });
+
+  test('routes Reset from the Manage dropdown through a fresh Preview build', async () => {
+    const current = fixture();
+    const frameNodeId = '50000000-0000-4000-8000-000000000054';
+    const previewId = '60000000-0000-4000-8000-000000000064';
+    const previewNode = fnCreatePreviewWidgetNode({
+      id: frameNodeId,
+      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      orderKey: 'b',
+      position: { x: 400, y: 20 },
+      size: { width: 480, height: 320 },
+      title: 'Weather Board Preview',
+      previewId,
+      draftId: DRAFT_ID,
+      originChatId: CHAT_ID,
+      role: 'companion',
+    });
+    current.nodes.set(frameNodeId, previewNode);
+
+    const installed = await current.extension.install(current.context as never);
+    const previewPortal = current.portalRegistrations.get(
+      previewNode.portal.portalId,
+    );
+    if (previewPortal === undefined) {
+      throw new Error('Preview portal was not registered.');
+    }
+    const previewHost = document.createElement('div');
+    previewPortal.cleanup = previewPortal.config.mount({
+      host: previewHost,
+    }) ?? undefined;
+    await vi.waitFor(() => expect(current.buildPreview).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(
+      previewHost.querySelector('section')?.dataset.previewStatus,
+    ).toBe('ready'));
+
+    current.emitManageAction(frameNodeId, 'reset');
+
+    await vi.waitFor(() => expect(current.buildPreview).toHaveBeenCalledTimes(2));
+    expect(current.buildPreview).toHaveBeenNthCalledWith(2, {
+      draftId: DRAFT_ID,
+      previewId,
+      canvasId: 'canvas-1',
+      frameNodeId,
+    });
+    await vi.waitFor(() => expect(mockedArtifactMount.mount).toHaveBeenCalledTimes(2));
+
+    await previewPortal.cleanup?.();
+    await installed.dispose?.();
   });
 
   test('resolves direct Draft placement into an independent Preview and preserves published placement', async () => {

@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
-    "@omnidraw/cangine": "0.2.5",
+    "@omnidraw/cangine": "0.2.6",
     "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/canvas": "workspace:*",
     "@vibecanvas/canvas-contract": "workspace:*",
