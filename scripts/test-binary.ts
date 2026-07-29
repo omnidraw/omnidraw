@@ -7,7 +7,7 @@
 import path from "path"
 import net from "node:net"
 import { createHash } from "node:crypto"
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { Glob } from "bun"
@@ -20,6 +20,7 @@ import {
   DEFAULT_OSS_ORGANIZATION_ID,
   FUNCTION_RUNTIME_MIGRATION_NAME,
   INITIAL_MIGRATION_NAME,
+  LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
 } from "../packages/service-db/src/CONSTANTS"
 import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
@@ -84,6 +85,7 @@ const EXPECTED_MIGRATION_NAMES = Object.freeze([
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   FUNCTION_RUNTIME_MIGRATION_NAME,
   AGENT_AUTHORING_MIGRATION_NAME,
+  LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
 ])
 
 function parseArgs(): TArgs {
@@ -651,7 +653,7 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
   }
 }
 
-async function assertHomePreflightRefusalBinaryScenario(args: {
+async function assertLegacyMarkerIgnoredBinaryScenario(args: {
   binaryPath: string
   homePath: string
   port: number
@@ -673,43 +675,38 @@ async function assertHomePreflightRefusalBinaryScenario(args: {
   })
   const stdoutPromise = new Response(proc.stdout).text()
   const stderrPromise = new Response(proc.stderr).text()
-  let exited = false
+  let reachabilityError: unknown
 
   try {
-    const exitCode = await withTimeout(proc.exited, args.timeoutMs, "compiled home preflight refusal")
-    exited = true
-    const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
-
-    if (exitCode === 0) {
-      throw new Error(`Compiled binary accepted an actor-era home: ${args.homePath}`)
-    }
-    if (stdout.trim().length !== 0) {
-      throw new Error(`Compiled home preflight unexpectedly wrote stdout: ${stdout}`)
-    }
-    for (const expected of [
-      args.homePath,
-      "Actor-era and unknown database layouts are unsupported.",
-      "Archive or move",
-      "--data-dir <fresh-path>",
-    ]) {
-      if (!stderr.includes(expected)) {
-        throw new Error(`Compiled home preflight stderr did not include ${JSON.stringify(expected)}: ${stderr || "<empty>"}`)
-      }
-    }
-
-    const entries = (await readdir(args.homePath)).sort()
-    if (JSON.stringify(entries) !== JSON.stringify(["vibecanvas.turso"])) {
-      throw new Error(`Compiled home preflight mutated the selected root: ${JSON.stringify(entries)}`)
-    }
-    if (await Bun.file(actorEraDatabasePath).text() !== originalContents) {
-      throw new Error(`Compiled home preflight modified the actor-era marker: ${actorEraDatabasePath}`)
-    }
-    await assertPathMissing(path.join(args.homePath, "main.db"), "compiled refused main.db")
+    await waitForHttpReachable(`http://127.0.0.1:${args.port}`, args.timeoutMs)
+    await Bun.sleep(250)
+  } catch (error) {
+    reachabilityError = error
   } finally {
-    if (!exited) {
-      proc.kill()
-      await proc.exited
-    }
+    proc.kill()
+    await proc.exited
+  }
+
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
+  if (reachabilityError !== undefined) {
+    throw new Error(
+      `Compiled binary did not ignore the legacy marker: ${String(reachabilityError)}\n`
+        + `stdout: ${stdout || "<empty>"}\nstderr: ${stderr || "<empty>"}`,
+    )
+  }
+  if (!stdout.includes(`Server listening on http://localhost:${args.port}`)) {
+    throw new Error(`Compiled legacy-marker server did not finish startup: ${stdout || "<empty>"}`)
+  }
+  if (/actor-era/i.test(stderr)) {
+    throw new Error(`Compiled legacy-marker server emitted a retired actor warning: ${stderr}`)
+  }
+  if (await Bun.file(actorEraDatabasePath).text() !== originalContents) {
+    throw new Error(`Compiled server modified the legacy marker: ${actorEraDatabasePath}`)
+  }
+  await assertPathExists(path.join(args.homePath, "main.db"), "compiled legacy-marker main.db")
+  const sqliteShmSentinel = path.join(args.homePath, "main.db-shm")
+  if (!(await lstat(sqliteShmSentinel)).isDirectory()) {
+    throw new Error(`Compiled server did not reserve the SQLite shm sentinel: ${sqliteShmSentinel}`)
   }
 }
 
@@ -904,13 +901,13 @@ async function main() {
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
 
-  await assertHomePreflightRefusalBinaryScenario({
+  await assertLegacyMarkerIgnoredBinaryScenario({
     binaryPath,
-    homePath: path.join(tempRoot, "actor-era-home"),
+    homePath: path.join(tempRoot, "legacy-marker-home"),
     port: args.port + 2,
     timeoutMs: args.startupTimeoutMs,
   })
-  console.log("[test-binary] PASS compiled home preflight refuses actor-era data without mutation")
+  console.log("[test-binary] PASS compiled server ignores the legacy marker and reserves SQLite shm")
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,

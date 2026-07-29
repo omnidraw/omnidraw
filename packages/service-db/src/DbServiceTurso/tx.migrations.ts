@@ -6,6 +6,7 @@ import {
 import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import { txRunDatabaseTransaction } from '../tx.run-database-transaction';
 import { fnFindTopLevelMigrationTransactionControl } from './fn.migration-sql-transaction-control';
+import { fxReadDatabaseChecks } from './fx.database-checks';
 import { fxReadMigrationFile } from './fx.migration-file';
 import { fxPreflightMigrationState } from './fx.migration-state';
 import type { TMigrationChecksum } from './migration-types';
@@ -34,17 +35,8 @@ type TResolvedMigration = TMigrationChecksum & Readonly<{
 }>;
 
 async function assertDatabaseChecks(db: Database): Promise<void> {
-  const [integrityRow, quickRow] = await Promise.all([
-    (await db.prepare('PRAGMA integrity_check')).get(),
-    (await db.prepare('PRAGMA quick_check')).get(),
-  ]) as [Record<string, unknown> | undefined, Record<string, unknown> | undefined];
-
-  if (integrityRow?.integrity_check !== 'ok') {
-    throw new Error(`Database integrity_check failed: ${String(integrityRow?.integrity_check)}.`);
-  }
-  if (quickRow?.quick_check !== 'ok') {
-    throw new Error(`Database quick_check failed: ${String(quickRow?.quick_check)}.`);
-  }
+  const checks = await fxReadDatabaseChecks({ db }, {});
+  if (!checks.ok) throw new Error(checks.failureMessage ?? 'Database integrity checks failed.');
 }
 
 async function resolveMigrations(portal: TPortal): Promise<readonly TResolvedMigration[]> {

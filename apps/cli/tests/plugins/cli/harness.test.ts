@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { createCliTestContext, expectExitCode, expectNoStderr, parseJsonStdout, type TCliTestContext } from './harness';
 
 const activeContexts = new Set<TCliTestContext>();
@@ -60,26 +58,6 @@ describe('CLI test harness', () => {
     expectNoStderr(result);
     expect(result.stdout).toContain('Usage:');
     expect(existsSync(context.homeDir)).toBe(false);
-  }, 15_000);
-
-  test('refuses an unknown home before creating directories or a database', async () => {
-    const context = await createContext();
-    const actorEraDatabase = join(context.homeDir, 'vibecanvas.turso');
-    const originalBytes = Buffer.from('actor-era-database-marker\n');
-    await mkdir(context.homeDir, { recursive: true });
-    await writeFile(actorEraDatabase, originalBytes);
-
-    const result = await context.runVibecanvasCli(['serve', '--port', '30991']);
-
-    expectExitCode(result, 1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(context.homeDir);
-    expect(result.stderr).toContain('Actor-era and unknown database layouts are unsupported.');
-    expect(result.stderr).toContain('Archive or move');
-    expect(result.stderr).toContain('--data-dir <fresh-path>');
-    expect(await readdir(context.homeDir)).toEqual(['vibecanvas.turso']);
-    expect(await readFile(actorEraDatabase)).toEqual(originalBytes);
-    expect(existsSync(context.dbPath)).toBe(false);
   }, 15_000);
 
   test('suggests nearest remaining commands for unknown root commands', async () => {

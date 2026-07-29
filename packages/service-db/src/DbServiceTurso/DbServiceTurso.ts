@@ -29,6 +29,10 @@ import { txResourceEncryptionKeyGetOrCreate } from "./tx.encryption-key";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
+import {
+  txHealDatabaseCoordinator,
+  type TDatabaseCoordinatorHealing,
+} from './tx.heal-database-coordinator';
 import { txRunMigrations } from "./tx.migrations";
 import { txRunDatabaseWrite } from "../tx.run-database-transaction";
 import { Database } from "./turso-native";
@@ -106,6 +110,10 @@ function isMissingPathError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
+function isExistingPathError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'EEXIST';
+}
+
 function migrationApplicationVersion(): string {
   return (
     (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION)
@@ -127,6 +135,50 @@ async function readMigrationChecksums(): Promise<readonly TMigrationChecksum[]> 
     name: migration.name,
     checksumSha256: (await fxReadMigrationFile({ Bun, TextDecoder }, { path: migration.path })).checksumSha256,
   })));
+}
+
+async function healDbServiceDatabaseCoordinator(args: {
+  cacheDir: string;
+  databasePath: string;
+  homeDir: string;
+  migrations: readonly TMigrationChecksum[];
+}): Promise<TDatabaseCoordinatorHealing | null> {
+  const tshmPath = `${args.databasePath}-tshm`;
+  try {
+    const tshmStat = await fs.lstat(tshmPath);
+    if (!tshmStat.isFile()) return null;
+  } catch (error) {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  }
+
+  const quarantineDirectory = path.join(args.cacheDir, 'database-recovery');
+  const quarantinePath = path.join(
+    quarantineDirectory,
+    `${path.basename(tshmPath)}.stale-${Date.now()}-${process.pid}`,
+  );
+  return txHealDatabaseCoordinator({
+    Bun,
+    lstat: fs.lstat,
+    mkdir: fs.mkdir,
+    openCanonicalDatabase: () => new Database(args.databasePath, {
+      fileMustExist: true,
+      // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
+      experimental: [...TURSO_EXPERIMENTAL_FEATURES],
+    }),
+    rename: fs.rename,
+    validateBeforeQuarantine: (preflight) => validateVibecanvasHomeLayout(
+      args.homeDir,
+      args.databasePath,
+      preflight.status === 'empty',
+    ),
+  }, {
+    expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+    migrations: args.migrations,
+    quarantineDirectory,
+    quarantinePath,
+    tshmPath,
+  });
 }
 
 async function validateOrganizationsDirectory(
@@ -250,6 +302,16 @@ async function validateVibecanvasHomeLayout(
       continue;
     }
 
+    if (databaseName !== null && entry.name === `${databaseName}-shm`) {
+      if (!entry.isDirectory()) {
+        throw new Error(
+          `Refusing incompatible SQLite WAL coordinator '${entry.name}' in ${homeDir}; `
+            + 'close the external database client before retrying.',
+        );
+      }
+      continue;
+    }
+
     continue;
   }
 }
@@ -278,6 +340,8 @@ export async function preflightDbServiceDatabase(
     experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
   });
   let connected = false;
+  let inspectionCompleted = false;
+  let preflightError: unknown;
   try {
     await database.connect();
     connected = true;
@@ -288,44 +352,109 @@ export async function preflightDbServiceDatabase(
         migrations,
       },
     );
+    inspectionCompleted = true;
     await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
     return result;
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Refusing to open Vibecanvas database:')) {
-      throw error;
-    }
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
-      { cause: error },
-    );
+    preflightError = error;
   } finally {
     if (connected) await database.close();
   }
+
+  if (!inspectionCompleted) {
+    let healing: TDatabaseCoordinatorHealing | null = null;
+    try {
+      healing = await healDbServiceDatabaseCoordinator({
+        cacheDir: path.join(args.homeDir, 'cache'),
+        databasePath: args.databasePath,
+        homeDir: args.homeDir,
+        migrations,
+      });
+    } catch {
+      // The original preflight error remains the most useful safe failure.
+    }
+    if (healing) {
+      return healing.preflight;
+    }
+  }
+
+  if (
+    preflightError instanceof Error
+    && preflightError.message.startsWith('Refusing to open Vibecanvas database:')
+  ) {
+    throw preflightError;
+  }
+  const reason = preflightError instanceof Error ? preflightError.message : String(preflightError);
+  throw new Error(
+    `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
+    { cause: preflightError },
+  );
 }
 
 export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'DbServiceTurso'
-  db: Database
+  #database: Database
+  #databasePortal: Database
   #resourceWriteTails = new Map<string, Promise<void>>()
   #isConnected = false
 
   constructor(private config: IDbConfig) {
+    this.#database = this.#createDatabase()
+    this.#databasePortal = new Proxy({} as Database, {
+      get: (_target, property) => {
+        const value = Reflect.get(this.#database, property, this.#database);
+        return typeof value === 'function' ? value.bind(this.#database) : value;
+      },
+      set: (_target, property, value) => (
+        Reflect.set(this.#database, property, value, this.#database)
+      ),
+    });
+  }
+
+  get db(): Database {
+    return this.#databasePortal;
+  }
+
+  set db(database: Database) {
+    this.#database = database;
+  }
+
+  #createDatabase(): Database {
     const experimental = this.config.databasePath === ":memory:"
       ? [...TURSO_EXPERIMENTAL_FEATURES]
       : [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES];
 
-    this.db = new Database(this.config.databasePath, {
+    return new Database(this.config.databasePath, {
       // @ts-expect-error experimental feature list is ahead of package typings
       experimental,
     })
   }
-  async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
-    await this.db.connect()
+
+  async #ensureSqliteShmSentinel(): Promise<void> {
+    if (this.config.databasePath === ':memory:') return;
+    const sentinelPath = `${this.config.databasePath}-shm`;
+    try {
+      await fs.mkdir(sentinelPath);
+      return;
+    } catch (error) {
+      if (!isExistingPathError(error)) throw error;
+    }
+
+    const stat = await fs.lstat(sentinelPath);
+    if (!stat.isDirectory()) {
+      throw new Error(
+        `Refusing incompatible SQLite WAL coordinator at ${sentinelPath}; `
+          + 'close the external database client before retrying.',
+      );
+    }
+  }
+
+  async #connectAndMigrate(): Promise<void> {
+    await this.#database.connect()
     this.#isConnected = true
     try {
       await txRunMigrations({
-        db: this.db,
+        db: this.#database,
         Bun,
         TextDecoder,
       }, {
@@ -334,15 +463,46 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
       })
     } catch (error) {
-      await this.db.close()
+      await this.#database.close()
       this.#isConnected = false
       throw error
     }
   }
 
+  async #healCoordinatorAfterStartupFailure(): Promise<boolean> {
+    if (this.config.databasePath === ':memory:') return false;
+    const migrations = await readMigrationChecksums();
+    const healing = await healDbServiceDatabaseCoordinator({
+      cacheDir: this.config.cacheDir,
+      databasePath: this.config.databasePath,
+      homeDir: this.config.dataDir,
+      migrations,
+    });
+    return healing !== null;
+  }
+
+  async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
+    await this.#ensureSqliteShmSentinel();
+    try {
+      await this.#connectAndMigrate();
+      return;
+    } catch (startupError) {
+      let healed = false;
+      try {
+        healed = await this.#healCoordinatorAfterStartupFailure();
+      } catch {
+        throw startupError;
+      }
+      if (!healed) throw startupError;
+    }
+
+    this.#database = this.#createDatabase();
+    await this.#connectAndMigrate();
+  }
+
   async stop(): Promise<void> {
     if (!this.#isConnected) return
-    await this.db.close()
+    await this.#database.close()
     this.#isConnected = false
   }
 

@@ -52,7 +52,7 @@ function refusal(reason: string): Error {
   return new Error(
     `Refusing to open Vibecanvas database: ${reason} `
       + 'The database was inspected read-only and was not modified. '
-      + 'Actor-era and unknown databases are not migrated; select a fresh Vibecanvas home.',
+      + 'Unknown databases are not migrated; select a fresh Vibecanvas home.',
   );
 }
 
@@ -158,7 +158,7 @@ async function fxPreflightMigrationState(
   if (applicationId !== DATABASE_APPLICATION_ID) {
     throw refusal(
       applicationId === 0
-        ? `found a non-empty unknown or actor-era database with tables `
+        ? `found a non-empty unknown database with tables `
           + `[${applicationTableNames.join(', ')}], views [${applicationViews.join(', ')}], `
           + `and triggers [${applicationTriggers.join(', ')}].`
         : `application_id is ${applicationId}, expected ${DATABASE_APPLICATION_ID}.`,

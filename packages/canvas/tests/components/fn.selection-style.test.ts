@@ -1,7 +1,8 @@
-import type { TRectNode } from '@omnidraw/cangine';
+import type { TRectNode, TWidgetFrameNode } from '@omnidraw/cangine';
 import { describe, expect, it } from 'vitest';
 import {
   fnApplySelectionStyle,
+  fnCanShowSelectionStyleMenu,
   fnCanvasColorToCss,
   fnHexToCanvasColor,
   fnSelectionStyleState,
@@ -33,6 +34,30 @@ const RECT: TRectNode = {
   },
 };
 
+const WIDGET: TWidgetFrameNode = {
+  id: 'widget-1',
+  parentId: null,
+  orderKey: '2',
+  kind: 'widget-frame',
+  transform: {
+    position: { x: 0, y: 0 },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    skew: { x: 0, y: 0 },
+    origin: { x: 0, y: 0 },
+  },
+  size: { width: 320, height: 240 },
+  title: 'Widget',
+  portal: {
+    portalId: 'widget-1',
+    interactive: true,
+    scaleMode: 'world',
+    suspendWhenOffscreen: true,
+    overscan: 96,
+  },
+  resizable: true,
+};
+
 describe('selection style functions', () => {
   it('converts hex colors to canonical canvas colors', () => {
     expect(fnHexToCanvasColor('#3b82f6')).toEqual({
@@ -55,6 +80,16 @@ describe('selection style functions', () => {
       strokeColor: '#000000',
       strokeWidth: 2,
       opacity: 1,
+    });
+  });
+
+  it('does not expose selection styles for a widget frame', () => {
+    expect(fnCanShowSelectionStyleMenu([WIDGET])).toBe(false);
+    expect(fnSelectionStyleState([WIDGET])).toMatchObject({
+      showFill: false,
+      showStroke: false,
+      showStrokeWidth: false,
+      showOpacity: false,
     });
   });
 

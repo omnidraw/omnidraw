@@ -153,7 +153,7 @@
   font-size: 8px;
 }
 
-@media (max-height: 42rem) {
+@media (max-height: 30rem) {
   .vc-canvas-toolbar-list {
     display: grid;
     grid-template-columns: repeat(2, 2.125rem);

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { connect, type Database } from '@tursodatabase/database';
+import { connect, Database as TursoDatabase, type Database } from '@tursodatabase/database';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -35,6 +35,7 @@ import {
 } from '../../../src/DbServiceTurso/fn.migration-sql-transaction-control';
 import { listMigrationFiles } from '../../../src/DbServiceTurso/list-migration-files';
 import { fxPreflightMigrationState } from '../../../src/DbServiceTurso/fx.migration-state';
+import { txHealDatabaseCoordinator } from '../../../src/DbServiceTurso/tx.heal-database-coordinator';
 import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
 import { listEmbeddedMigrationFiles } from '../../../src/_embedded-migrations';
 import {
@@ -72,6 +73,14 @@ async function temporaryRoot(): Promise<string> {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'vibecanvas-migration-runner-'));
   temporaryRoots.push(root);
   return root;
+}
+
+async function waitForPath(pathname: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (await Bun.file(pathname).exists()) return;
+    await Bun.sleep(10);
+  }
+  throw new Error(`Timed out waiting for fixture path: ${pathname}`);
 }
 
 async function openDatabase(
@@ -154,6 +163,38 @@ async function migrationChecksum(pathname: string): Promise<string> {
   return new Bun.CryptoHasher('sha256')
     .update(new Uint8Array(await Bun.file(pathname).arrayBuffer()))
     .digest('hex');
+}
+
+async function registeredPreflightArgs() {
+  const migrations = [
+    INITIAL_MIGRATION,
+    WIDGET_REVISION_SEQUENCE_MIGRATION,
+    FUNCTION_RUNTIME_MIGRATION,
+    AGENT_AUTHORING_MIGRATION,
+    LIVE_WIDGET_PREVIEW_MIGRATION,
+  ];
+  return {
+    expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+    migrations: await Promise.all(migrations.map(async (migration) => ({
+      version: migration.version,
+      name: migration.name,
+      checksumSha256: await migrationChecksum(migration.path),
+    }))),
+  };
+}
+
+function coordinatorHealingPortal(databasePath: string) {
+  return {
+    Bun,
+    lstat: fs.lstat,
+    mkdir: fs.mkdir,
+    openCanonicalDatabase: () => new TursoDatabase(databasePath, {
+      fileMustExist: true,
+      experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'] as never,
+    }),
+    rename: fs.rename,
+    validateBeforeQuarantine: async () => {},
+  };
 }
 
 async function bootstrapVersionZero(db: Database, sqlOverride?: string): Promise<void> {
@@ -1114,13 +1155,13 @@ describe('ordered managed migration runner', () => {
     ]);
   });
 
-  test('unknown actor-era database is refused before write-affecting pragmas', async () => {
+  test('unknown database is refused before write-affecting pragmas without legacy actor wording', async () => {
     const root = await temporaryRoot();
     const db = await openDatabase(path.join(root, 'main.db'));
     await db.exec('PRAGMA cache_size = 1234; CREATE TABLE actor_definitions (id TEXT)');
     const journalModeBefore = await pragma(db, 'journal_mode');
 
-    await expect(runMigrations(db)).rejects.toThrow(/actor-era/i);
+    await expect(runMigrations(db)).rejects.toThrow(/non-empty unknown database/i);
     expect(await pragma(db, 'journal_mode')).toBe(journalModeBefore);
     expect(await pragma(db, 'cache_size')).toBe(1234);
     expect(await pragma(db, 'application_id')).toBe(0);
@@ -1135,7 +1176,7 @@ describe('ordered managed migration runner', () => {
     await db.exec('PRAGMA cache_size = 1234; CREATE VIEW unknown_view AS SELECT 1 AS value');
     const journalModeBefore = await pragma(db, 'journal_mode');
 
-    await expect(runMigrations(db)).rejects.toThrow(/unknown|actor-era/i);
+    await expect(runMigrations(db)).rejects.toThrow(/unknown/i);
     expect(await pragma(db, 'journal_mode')).toBe(journalModeBefore);
     expect(await pragma(db, 'cache_size')).toBe(1234);
     expect(await pragma(db, 'application_id')).toBe(0);
@@ -1199,7 +1240,7 @@ describe('ordered managed migration runner', () => {
     await expect(fxPreflightMigrationState(
       { Bun, db: fakeDb },
       syntheticPreflightArgs(),
-    )).rejects.toThrow(/non-empty unknown|actor-era/i);
+    )).rejects.toThrow(/non-empty unknown/i);
   });
 
   for (const extra of [
@@ -1411,6 +1452,32 @@ describe('read-only startup preflight', () => {
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);
   });
 
+  test('accepts the reserved SQLite shm sentinel directory', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const db = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(db);
+    await closeDatabase(db);
+    await fs.mkdir(`${databasePath}-shm`);
+
+    await expect(preflightDbServiceDatabase({ homeDir, databasePath })).resolves.toMatchObject({
+      status: 'ready',
+    });
+  });
+
+  test('refuses a generic SQLite shm file before runtime startup', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const db = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(db);
+    await closeDatabase(db);
+    await fs.writeFile(`${databasePath}-shm`, 'external-sqlite-shm');
+
+    await expect(preflightDbServiceDatabase({ homeDir, databasePath }))
+      .rejects.toThrow(/incompatible SQLite WAL coordinator/i);
+    expect(await fs.readFile(`${databasePath}-shm`, 'utf8')).toBe('external-sqlite-shm');
+  });
+
   test('recognizes a managed database while a multiprocess WAL connection holds it open', async () => {
     const homeDir = await temporaryRoot();
     const databasePath = path.join(homeDir, 'main.db');
@@ -1448,9 +1515,176 @@ describe('database service lifecycle', () => {
     });
 
     await service.start();
+    expect((await fs.lstat(`${path.join(homeDir, 'main.db')}-shm`)).isDirectory()).toBe(true);
     await service.stop();
     expect(() => service.db.prepare('SELECT 1')).toThrow(/not open|closed/i);
     await expect(service.stop()).resolves.toBeUndefined();
+  });
+
+  test('quarantines a coordinator only after canonical DB and WAL validation, then retries startup once', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const setupDb = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(setupDb);
+    await closeDatabase(setupDb);
+    const tshmPath = `${databasePath}-tshm`;
+    const tshmBefore = await fs.readFile(tshmPath);
+    const databaseBefore = await fs.readFile(databasePath);
+    const walBefore = await fs.readFile(`${databasePath}-wal`);
+    const service = new DbServiceTurso({
+      databasePath,
+      dataDir: homeDir,
+      cacheDir: path.join(homeDir, 'cache'),
+      silentMigrations: true,
+    });
+    service.db = {
+      connect: async () => {
+        throw new Error('synthetic stale coordinator startup failure');
+      },
+    } as unknown as Database;
+    const capturedDatabase = service.db;
+
+    await service.start();
+
+    expect(service.db).toBe(capturedDatabase);
+    expect(await fs.readFile(databasePath)).toEqual(databaseBefore);
+    expect(await fs.readFile(`${databasePath}-wal`)).toEqual(walBefore);
+    expect((await fs.lstat(`${databasePath}-shm`)).isDirectory()).toBe(true);
+    expect((await fs.lstat(tshmPath)).isFile()).toBe(true);
+    const recoveryDirectory = path.join(homeDir, 'cache', 'database-recovery');
+    const recoveryEntries = await fs.readdir(recoveryDirectory);
+    expect(recoveryEntries).toHaveLength(1);
+    expect(await fs.readFile(path.join(recoveryDirectory, recoveryEntries[0]!))).toEqual(tshmBefore);
+    expect(await (await capturedDatabase.prepare('PRAGMA integrity_check')).all()).toEqual([
+      { integrity_check: 'ok' },
+    ]);
+    await service.stop();
+  });
+
+  test('does not quarantine a coordinator while another multiprocess holder is live', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const setupDb = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(setupDb);
+    await closeDatabase(setupDb);
+    const readyPath = path.join(homeDir, 'holder.ready');
+    const fixturePath = path.resolve(
+      import.meta.dir,
+      '../../verification/fixtures/multiprocess-wal-holder.ts',
+    );
+    const holder = Bun.spawn([
+      Bun.which('bun') ?? process.execPath,
+      fixturePath,
+      databasePath,
+      readyPath,
+    ], {
+      cwd: path.resolve(import.meta.dir, '../../../../..'),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    await waitForPath(readyPath);
+    const tshmPath = `${databasePath}-tshm`;
+    const tshmBefore = await fs.readFile(tshmPath);
+    const service = new DbServiceTurso({
+      databasePath,
+      dataDir: homeDir,
+      cacheDir: path.join(homeDir, 'cache'),
+      silentMigrations: true,
+    });
+    service.db = {
+      connect: async () => {
+        throw new Error('synthetic startup failure while holder is live');
+      },
+    } as unknown as Database;
+
+    try {
+      await expect(service.start()).rejects.toThrow(/synthetic startup failure/i);
+      expect(await fs.readFile(tshmPath)).toEqual(tshmBefore);
+      await expect(fs.readdir(path.join(homeDir, 'cache', 'database-recovery')))
+        .rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      holder.kill(9);
+      await holder.exited;
+    }
+  });
+
+  test('refuses a pre-existing SQLite shm file without replacing it', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const sqliteShmPath = `${databasePath}-shm`;
+    await fs.writeFile(sqliteShmPath, 'external-sqlite-shm');
+    const service = new DbServiceTurso({
+      databasePath,
+      dataDir: homeDir,
+      cacheDir: path.join(homeDir, 'cache'),
+      silentMigrations: true,
+    });
+
+    await expect(service.start()).rejects.toThrow(/incompatible SQLite WAL coordinator/i);
+    expect(await fs.readFile(sqliteShmPath, 'utf8')).toBe('external-sqlite-shm');
+    await expect(fs.lstat(databasePath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('direct coordinator healing preserves canonical DB and WAL bytes', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const db = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(db);
+    await closeDatabase(db);
+    const tshmPath = `${databasePath}-tshm`;
+    const quarantineDirectory = path.join(homeDir, 'cache', 'database-recovery');
+    const quarantinePath = path.join(quarantineDirectory, 'main.db-tshm.stale-test');
+    const databaseBefore = await fs.readFile(databasePath);
+    const walBefore = await fs.readFile(`${databasePath}-wal`);
+    const tshmBefore = await fs.readFile(tshmPath);
+
+    const healed = await txHealDatabaseCoordinator(
+      coordinatorHealingPortal(databasePath),
+      {
+        ...await registeredPreflightArgs(),
+        quarantineDirectory,
+        quarantinePath,
+        tshmPath,
+      },
+    );
+
+    expect(healed.preflight.status).toBe('ready');
+    expect(healed.quarantinedPath).toBe(quarantinePath);
+    expect(await fs.readFile(databasePath)).toEqual(databaseBefore);
+    expect(await fs.readFile(`${databasePath}-wal`)).toEqual(walBefore);
+    expect(await fs.readFile(quarantinePath)).toEqual(tshmBefore);
+    await expect(fs.lstat(tshmPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('refused home validation happens before coordinator quarantine', async () => {
+    const homeDir = await temporaryRoot();
+    const databasePath = path.join(homeDir, 'main.db');
+    const db = await openDatabase(databasePath, { multiprocessWal: true });
+    await runMigrations(db);
+    await closeDatabase(db);
+    const tshmPath = `${databasePath}-tshm`;
+    const tshmBefore = await fs.readFile(tshmPath);
+    const quarantineDirectory = path.join(homeDir, 'cache', 'database-recovery');
+    const quarantinePath = path.join(quarantineDirectory, 'main.db-tshm.stale-test');
+    const portal = coordinatorHealingPortal(databasePath);
+
+    await expect(txHealDatabaseCoordinator(
+      {
+        ...portal,
+        validateBeforeQuarantine: async () => {
+          throw new Error('synthetic incompatible home layout');
+        },
+      },
+      {
+        ...await registeredPreflightArgs(),
+        quarantineDirectory,
+        quarantinePath,
+        tshmPath,
+      },
+    )).rejects.toThrow(/incompatible home layout/i);
+
+    expect(await fs.readFile(tshmPath)).toEqual(tshmBefore);
+    await expect(fs.lstat(quarantineDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   test('failed startup closes the native database before rethrowing', async () => {
@@ -1466,7 +1700,7 @@ describe('database service lifecycle', () => {
       silentMigrations: true,
     });
 
-    await expect(service.start()).rejects.toThrow(/actor-era/i);
+    await expect(service.start()).rejects.toThrow(/non-empty unknown database/i);
     expect(() => service.db.prepare('SELECT 1')).toThrow(/not open|closed/i);
     await expect(service.stop()).resolves.toBeUndefined();
   });

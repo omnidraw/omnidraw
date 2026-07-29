@@ -658,6 +658,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts](packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.database-checks.ts](packages/service-db/src/DbServiceTurso/fx.database-checks.ts) | Read complete Turso integrity and quick-check diagnostics. |
 | [packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts](packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
@@ -674,6 +675,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.heal-database-coordinator.ts](packages/service-db/src/DbServiceTurso/tx.heal-database-coordinator.ts) | Validate the canonical DB/WAL view and quarantine stale Turso coordinator metadata. |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
@@ -694,6 +696,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts](packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts) |  |
 | [packages/service-db/src/schema/expected-schema.ts](packages/service-db/src/schema/expected-schema.ts) |  |
 | [packages/service-db/src/tx.run-database-transaction.ts](packages/service-db/src/tx.run-database-transaction.ts) |  |
+| [packages/service-db/src/verification/fixtures/multiprocess-wal-holder.ts](packages/service-db/src/verification/fixtures/multiprocess-wal-holder.ts) | Hold a multiprocess WAL connection open for coordinator-healing tests. |
 | [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
 | [packages/service-db/src/WidgetControlStoreTurso.ts](packages/service-db/src/WidgetControlStoreTurso.ts) |  |
 | [packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts](packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts) |  |

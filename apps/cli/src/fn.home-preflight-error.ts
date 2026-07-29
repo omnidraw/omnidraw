@@ -56,8 +56,7 @@ function fnIsDatabaseLockReason(reason: string): boolean {
 function fnIsSchemaOrLayoutReason(reason: string): boolean {
   const normalized = reason.toLowerCase();
   if (
-    normalized.includes('actor-era')
-    || normalized.includes('unknown database')
+    normalized.includes('unknown database')
     || normalized.includes('unknown non-empty')
     || normalized.includes('checksum')
     || normalized.includes('schema manifest')
@@ -86,7 +85,7 @@ function fnBuildHomePreflightError(args: TArgs): THomePreflightError {
       }
     : isSchemaOrLayoutRefusal
       ? {
-          hint: 'Actor-era and unknown database layouts are unsupported. The selected home was not modified.',
+          hint: 'Unknown or incompatible database layouts are unsupported. The selected home was not modified.',
           next: `Archive or move '${args.homeDir}' manually, or retry with --data-dir <fresh-path>.`,
         }
       : {

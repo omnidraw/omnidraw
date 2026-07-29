@@ -47,6 +47,7 @@ afterEach(() => {
 
 describe('Canvas AI Chat shortcut', () => {
   test('selects the Cangine widget creation tool when C is pressed', async () => {
+    runtimeMocks.runtime.widgetContentFocused.mockReturnValue(false);
     const host = document.createElement('div');
     document.body.appendChild(host);
     dispose = render(() => Canvas({
@@ -87,5 +88,35 @@ describe('Canvas AI Chat shortcut', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(runtimeMocks.setActiveTool).toHaveBeenCalledOnce();
     expect(runtimeMocks.setActiveTool).toHaveBeenCalledWith('widget');
+
+    runtimeMocks.setActiveTool.mockClear();
+    runtimeMocks.runtime.widgetContentFocused.mockReturnValue(true);
+    const canvasSurface = host.querySelector<HTMLElement>(
+      '.vc-canvas-engine-host',
+    );
+    expect(canvasSurface).not.toBeNull();
+    const canvasKeydown = vi.fn();
+    canvasSurface?.addEventListener('keydown', canvasKeydown);
+    canvasSurface?.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyC',
+      key: 'c',
+    }));
+    expect(runtimeMocks.setActiveTool).toHaveBeenCalledOnce();
+    expect(runtimeMocks.setActiveTool).toHaveBeenCalledWith('widget');
+    expect(canvasKeydown).not.toHaveBeenCalled();
+
+    runtimeMocks.setActiveTool.mockClear();
+    const widgetContent = document.createElement('div');
+    widgetContent.dataset.vibecanvasPortalId = 'widget-1';
+    canvasSurface?.append(widgetContent);
+    widgetContent.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyC',
+      key: 'c',
+    }));
+    expect(runtimeMocks.setActiveTool).not.toHaveBeenCalled();
   });
 });
