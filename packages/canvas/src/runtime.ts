@@ -1,6 +1,7 @@
 import {
   createInfiniteCanvas,
   type IInfiniteCanvasEngine,
+  type TConnectorRouting,
 } from '@omnidraw/cangine';
 import {
   createImageDropController,
@@ -8,6 +9,7 @@ import {
   type IImageDropController,
   type IStandardCanvasEditor,
   type IStandardEditorSession,
+  type TPathSegmentMode,
 } from '@omnidraw/cangine/editor';
 import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
 import type {
@@ -31,8 +33,25 @@ export type TCanvasRuntime = Readonly<{
   engine(): IInfiniteCanvasEngine | null;
   document(): CanvasDocumentService | null;
   openImagePicker(): void;
+  setSelectedConnectorSegmentMode(mode: TPathSegmentMode): void;
   widgetContentFocused(): boolean;
 }>;
+
+function connectorSegmentMode(
+  routing: Readonly<TConnectorRouting>,
+): TPathSegmentMode | null {
+  switch (routing.type) {
+    case 'straight':
+      return 'straight';
+    case 'quadratic':
+    case 'bezier':
+      return 'smooth';
+    case 'orthogonal':
+      return 'elbow';
+    case 'manual':
+      return null;
+  }
+}
 
 export function buildRuntime(
   config: TCanvasRuntimeConfig,
@@ -193,6 +212,22 @@ export function buildRuntime(
     engine: () => engine,
     document: () => documentService,
     openImagePicker: () => imageInput?.click(),
+    setSelectedConnectorSegmentMode: (mode) => {
+      const session = editorSession;
+      if (session === null || session.paths === null) return;
+      const selectedNodeIds = session.editor.state.selectedNodeIds;
+      if (selectedNodeIds.length !== 1) return;
+      const selectedNode = engine?.scene.get(selectedNodeIds[0]);
+      if (
+        selectedNode?.kind !== 'connector'
+        || selectedNode.routing.type === 'manual'
+      ) return;
+      if (connectorSegmentMode(selectedNode.routing) === mode) return;
+      if (session.editor.state.activeToolId !== 'select') {
+        session.editor.setActiveTool('select');
+      }
+      session.paths.setSegmentMode(mode);
+    },
     widgetContentFocused: () => {
       const contentNodeId = editorSession?.widgets.state.contentNodeId;
       return contentNodeId !== null && contentNodeId !== undefined;

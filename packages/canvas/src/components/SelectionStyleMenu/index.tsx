@@ -4,6 +4,7 @@ import type {
 } from '@vibecanvas/service-theme';
 import { For, Show } from 'solid-js';
 import type {
+  TSelectionLineShape,
   TSelectionStylePatch,
   TSelectionStyleState,
 } from './fn.selection-style';
@@ -14,7 +15,17 @@ type TSelectionStyleMenuProps = Readonly<{
   state: TSelectionStyleState;
   strokeWidths: readonly TThemeStrokeWidthOption[];
   onApply(patch: TSelectionStylePatch): void;
+  onSetLineShape(lineShape: TSelectionLineShape): void;
 }>;
+
+const LINE_SHAPES = [
+  { label: 'Straight', value: 'straight' },
+  { label: 'Curved', value: 'curved' },
+  { label: 'Elbow', value: 'elbow' },
+] as const satisfies readonly Readonly<{
+  label: string;
+  value: TSelectionLineShape;
+}>[];
 
 function ColorButton(props: Readonly<{
   color: string;
@@ -37,6 +48,15 @@ function ColorButton(props: Readonly<{
 }
 
 export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
+  const activateLineShapeFromKeyboard = (
+    event: KeyboardEvent,
+    lineShape: TSelectionLineShape,
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    props.onSetLineShape(lineShape);
+  };
+
   return (
     <aside
       class="vc-selection-style-menu"
@@ -49,6 +69,33 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
       on:keydown={(event) => event.stopPropagation()}
       on:keyup={(event) => event.stopPropagation()}
     >
+      <Show when={props.state.showLine}>
+        <section class="vc-selection-style-section">
+          <span>LINE</span>
+          <div class="vc-selection-style-lines">
+            <For each={LINE_SHAPES}>
+              {(option) => (
+                <button
+                  type="button"
+                  classList={{
+                    'vc-selection-style-choice': true,
+                    'vc-selection-style-choice--selected':
+                      props.state.lineShape === option.value,
+                  }}
+                  aria-pressed={props.state.lineShape === option.value}
+                  onClick={() => props.onSetLineShape(option.value)}
+                  on:keydown={(event) => (
+                    activateLineShapeFromKeyboard(event, option.value)
+                  )}
+                >
+                  {option.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </section>
+      </Show>
+
       <Show when={props.state.showFill}>
         <section class="vc-selection-style-section">
           <span>FILL</span>

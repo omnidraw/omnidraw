@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const runtimeState = vi.hoisted(() => ({
+  activeToolIds: [] as string[],
   documentInstance: null as null | {
     history: object;
   },
@@ -9,6 +10,9 @@ const runtimeState = vi.hoisted(() => ({
   engine: null as unknown,
   engineConfig: null as unknown,
   events: [] as string[],
+  segmentModes: [] as string[],
+  selectedNode: null as unknown,
+  selectedNodeIds: [] as string[],
   sessionConfig: null as unknown,
 }));
 
@@ -38,8 +42,14 @@ vi.mock('@omnidraw/cangine/editor', () => ({
     const editor = {
       engine: config.engine,
       state: {
+        activeToolId: 'line',
         contentNodeId: null,
+        selectedNodeIds: runtimeState.selectedNodeIds,
         status: 'detached',
+      },
+      setActiveTool(toolId: string) {
+        editor.state.activeToolId = toolId;
+        runtimeState.activeToolIds.push(toolId);
       },
       subscribe: () => () => undefined,
     };
@@ -47,6 +57,11 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       editor,
       widgets: {
         state: { contentNodeId: null },
+      },
+      paths: {
+        setSegmentMode(mode: string) {
+          runtimeState.segmentModes.push(mode);
+        },
       },
       attach() {
         editor.state.status = 'attached';
@@ -94,13 +109,22 @@ class TestResizeObserver {
 
 describe('canvas runtime composition', () => {
   beforeEach(() => {
+    runtimeState.activeToolIds.length = 0;
     runtimeState.documentInstance = null;
     runtimeState.documentOptions = null;
     runtimeState.dropConfig = null;
     runtimeState.engineConfig = null;
     runtimeState.events.length = 0;
+    runtimeState.segmentModes.length = 0;
+    runtimeState.selectedNode = null;
+    runtimeState.selectedNodeIds.length = 0;
     runtimeState.sessionConfig = null;
     runtimeState.engine = {
+      scene: {
+        get() {
+          return runtimeState.selectedNode;
+        },
+      },
       resize() {
         runtimeState.events.push('engine:resize');
       },
@@ -261,5 +285,87 @@ describe('canvas runtime composition', () => {
       'engine:destroy',
     ]));
     expect(container.childNodes).toHaveLength(0);
+  });
+
+  test('exposes only supported selected connector segment changes', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      tenant: {
+        accountId: 'account-a',
+        cellId: 'cell-a',
+        deploymentOrigin: 'https://example.test',
+        orgId: 'org-a',
+        placementEpoch: 1,
+      },
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      onToggleSidebar: () => undefined,
+      themeService: {} as never,
+    });
+    await runtime.boot();
+
+    runtimeState.selectedNodeIds.push('connector-a');
+    runtimeState.selectedNode = {
+      id: 'connector-a',
+      kind: 'connector',
+      routing: { type: 'straight' },
+    };
+    runtime.setSelectedConnectorSegmentMode('straight');
+    runtime.setSelectedConnectorSegmentMode('smooth');
+    runtime.setSelectedConnectorSegmentMode('elbow');
+
+    expect(runtimeState.segmentModes).toEqual([
+      'smooth',
+      'elbow',
+    ]);
+    expect(runtimeState.activeToolIds).toEqual(['select']);
+
+    const bezierRouting = {
+      type: 'bezier',
+      control1: { x: 20, y: 30 },
+      control2: { x: 80, y: 70 },
+    };
+    runtimeState.selectedNode = {
+      id: 'connector-a',
+      kind: 'connector',
+      routing: bezierRouting,
+    };
+    runtime.setSelectedConnectorSegmentMode('smooth');
+    expect(runtimeState.selectedNode).toMatchObject({
+      routing: bezierRouting,
+    });
+
+    const orthogonalRouting = {
+      type: 'orthogonal',
+      cornerRadius: 12,
+      obstaclePadding: 8,
+      preferredAxis: 'horizontal',
+    };
+    runtimeState.selectedNode = {
+      id: 'connector-a',
+      kind: 'connector',
+      routing: orthogonalRouting,
+    };
+    runtime.setSelectedConnectorSegmentMode('elbow');
+    expect(runtimeState.selectedNode).toMatchObject({
+      routing: orthogonalRouting,
+    });
+
+    runtimeState.selectedNode = {
+      id: 'connector-a',
+      kind: 'connector',
+      routing: { type: 'manual', path: { commands: [] } },
+    };
+    runtime.setSelectedConnectorSegmentMode('straight');
+    runtimeState.selectedNode = { id: 'path-a', kind: 'path' };
+    runtime.setSelectedConnectorSegmentMode('smooth');
+    runtimeState.selectedNodeIds.push('path-a');
+    runtime.setSelectedConnectorSegmentMode('elbow');
+
+    expect(runtimeState.segmentModes).toEqual(['smooth', 'elbow']);
+    await runtime.shutdown();
   });
 });

@@ -1,9 +1,13 @@
 import type {
   TColor,
+  TConnectorRouting,
   TPaint,
   TSceneNode,
   TStrokeStyle,
 } from '@omnidraw/cangine';
+import type { TPathSegmentMode } from '@omnidraw/cangine/editor';
+
+export type TSelectionLineShape = 'straight' | 'curved' | 'elbow';
 
 export type TSelectionStylePatch = Readonly<{
   fillColor?: string;
@@ -13,10 +17,12 @@ export type TSelectionStylePatch = Readonly<{
 }>;
 
 export type TSelectionStyleState = Readonly<{
+  showLine: boolean;
   showFill: boolean;
   showStroke: boolean;
   showStrokeWidth: boolean;
   showOpacity: boolean;
+  lineShape: TSelectionLineShape | null;
   fillColor: string | null;
   strokeColor: string | null;
   strokeWidth: number | null;
@@ -146,17 +152,47 @@ export function fnCanShowSelectionStyleMenu(
   return nodes.some((node) => node.kind !== 'widget-frame');
 }
 
+export function fnConnectorRoutingToLineShape(
+  routing: Readonly<TConnectorRouting>,
+): TSelectionLineShape | null {
+  switch (routing.type) {
+    case 'straight':
+      return 'straight';
+    case 'quadratic':
+    case 'bezier':
+      return 'curved';
+    case 'orthogonal':
+      return 'elbow';
+    case 'manual':
+      return null;
+  }
+}
+
+export function fnLineShapeToSegmentMode(
+  lineShape: TSelectionLineShape,
+): TPathSegmentMode {
+  return lineShape === 'curved' ? 'smooth' : lineShape;
+}
+
 export function fnSelectionStyleState(
   nodes: readonly Readonly<TSceneNode>[],
 ): TSelectionStyleState {
+  const connector = nodes.length === 1 && nodes[0]?.kind === 'connector'
+    ? nodes[0]
+    : null;
+  const lineShape = connector === null
+    ? null
+    : fnConnectorRoutingToLineShape(connector.routing);
   const fillNode = nodes.find(supportsFill);
   const strokeNode = nodes.find(supportsStroke);
   const stroke = strokeNode ? strokeStyle(strokeNode) : undefined;
   return {
+    showLine: lineShape !== null,
     showFill: Boolean(fillNode),
     showStroke: Boolean(strokeNode),
     showStrokeWidth: Boolean(strokeNode),
     showOpacity: fnCanShowSelectionStyleMenu(nodes),
+    lineShape,
     fillColor: fnCanvasColorToCss(
       fillNode ? solidColor(fillPaint(fillNode)) : null,
     ),
