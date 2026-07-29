@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.2.4"
+    "@omnidraw/cangine": "0.2.5"
   },
   "devDependencies": {
     "typescript": "catalog:"
