@@ -280,6 +280,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
 - [ ]: [A99](a/A99.md) - qualify recovered canvas and updated Capsule Preview diagnostics
 - [ ]: [A100](a/A100.md) - canvas: developer reproduction trace recorder
+- [ ]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
