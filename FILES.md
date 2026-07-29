@@ -86,6 +86,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
+| [apps/cli/src/services/AgentBashCapability.ts](apps/cli/src/services/AgentBashCapability.ts) |  |
 | [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
 | [apps/cli/src/services/fn.redact-build-output.ts](apps/cli/src/services/fn.redact-build-output.ts) |  |

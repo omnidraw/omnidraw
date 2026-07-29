@@ -6,7 +6,11 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
-import { BASH_DEFAULT_TIMEOUT_SECONDS, BASH_MAX_TIMEOUT_SECONDS } from './CONSTANTS';
+import {
+  BASH_DEFAULT_TIMEOUT_SECONDS,
+  BASH_MAX_TIMEOUT_SECONDS,
+  TOOL_ERROR_DETAILS_MARKER,
+} from './CONSTANTS';
 import { fnToolError } from './fn.result';
 import type {
   TToolDefinition,
@@ -17,6 +21,7 @@ type TCreateBashToolArgs = {
   authorize: () => Promise<boolean>;
   capability?: TAgentBashCapability;
   chatId: string;
+  cwd: string;
   workspace: WidgetWorkspace;
   onDraftChanged?: TWidgetDraftChangeHandler;
 };
@@ -24,6 +29,7 @@ type TCreateBashToolArgs = {
 export type TAgentBashRunArgs = Readonly<{
   toolCallId: string;
   command: string;
+  cwd: string;
   timeoutSeconds: number;
   signal?: AbortSignal;
   onUpdate?: AgentToolUpdateCallback<unknown>;
@@ -31,15 +37,20 @@ export type TAgentBashRunArgs = Readonly<{
 }>;
 
 /**
- * Host-provided, pre-confined command runner.
+ * Host-provided command runner with the Vibecanvas host process's authority.
  *
- * Implementations must confine the command to the chat workspace, prevent
- * direct access to the shared draft root, and prevent commands from replacing
- * chat mount entries. Mounted widget contents may remain writable; this tool
- * detects and durably fences those source changes after the command settles.
+ * `cwd` is only the command's starting directory. Implementations must preserve
+ * normal Bash traversal, subprocess, environment, executable lookup, and
+ * network behavior. Higher-level deployment or operating-system isolation owns
+ * confinement. This tool detects and durably fences mounted draft source
+ * changes after the command settles.
  */
+export type TAgentBashToolResult = AgentToolResult<unknown> & Readonly<{
+  isError?: boolean;
+}>;
+
 export type TAgentBashCapability = Readonly<{
-  run(args: TAgentBashRunArgs): AgentToolResult<unknown> | Promise<AgentToolResult<unknown>>;
+  run(args: TAgentBashRunArgs): TAgentBashToolResult | Promise<TAgentBashToolResult>;
 }>;
 
 const BASH_MUTATION_FENCE_MAX_MOUNTS = 64;
@@ -54,11 +65,27 @@ async function captureDraftRevisions(
   ] as const)));
 }
 
+function markBashToolError(result: TAgentBashToolResult): TAgentBashToolResult {
+  if (!result.isError) return result;
+  const details = typeof result.details === 'object'
+    && result.details !== null
+    && !Array.isArray(result.details)
+    ? result.details
+    : { bashDetails: result.details };
+  return {
+    ...result,
+    details: {
+      ...details,
+      [TOOL_ERROR_DETAILS_MARKER]: true,
+    },
+  };
+}
+
 export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
   return defineTool({
     name: 'bash',
     label: 'Bash',
-    description: `Execute a command through the host-provided confined bash capability. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
+    description: `Execute a host-authority Bash command starting in the chat workspace. The workspace is an initial cwd, not a confinement boundary. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
     parameters: Type.Object({
       command: Type.String({ minLength: 1, description: 'Bash command to execute.' }),
       timeout: Type.Optional(Type.Number({
@@ -80,8 +107,8 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
       }
       if (!args.capability) {
         return fnToolError({
-          code: 'BASH_UNAVAILABLE',
-          message: 'Bash is unavailable because this host did not provide a confined command capability.',
+          code: 'BASH_RUNTIME_UNAVAILABLE',
+          message: 'Bash is unavailable because this host runtime did not provide a command capability.',
         });
       }
       try {
@@ -95,13 +122,14 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
         const names = mounts.map((mount) => mount.name);
         return await args.workspace.withDraftAuthoringOperations(names, async () => {
           const before = await captureDraftRevisions(args.workspace, names);
-          let result: AgentToolResult<unknown> | undefined;
+          let result: TAgentBashToolResult | undefined;
           let runError: unknown;
           let runFailed = false;
           try {
             result = await args.capability!.run({
               toolCallId,
               command: params.command,
+              cwd: args.cwd,
               timeoutSeconds: timeout,
               signal,
               onUpdate,
@@ -148,7 +176,7 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
               .filter((name) => !expectedNames.has(name))
               .map((name) => args.workspace.removeMount(args.chatId, name)));
             failures.push(new Error(
-              'Bash changed the confined widget mount set; mount lifecycle changes require structured tools.',
+              'Bash changed the managed widget mount set; mount lifecycle changes require structured tools.',
             ));
           }
           if (runFailed) failures.push(runError);
@@ -161,7 +189,7 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
               )).join(' '),
             );
           }
-          return result!;
+          return markBashToolError(result!);
         });
       } catch (error) {
         return fnToolError({

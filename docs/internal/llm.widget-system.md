@@ -106,6 +106,23 @@ Draft metadata is durable in the authoring store and uses compare-and-set
 revision checks. Validation results are tied to the exact captured source
 digest. Any source change invalidates the previous validation result.
 
+AI Chat also has an authorized host-authority Bash capability for builds,
+tests, formatting, package commands, and general host work. Each call starts
+`bash -lc` in the exact conversation workspace using one short-lived Bun PTY.
+The workspace is an initial `cwd`, not a confinement boundary: traversal,
+absolute paths, subprocesses, inherited executable lookup, environment access,
+and host networking retain the Vibecanvas process's authority. Output updates
+and the final head/tail result are bounded; exit code, signal, timeout,
+cancellation, duration, and truncation remain model-visible. The child is
+awaited and its PTY closed before the call returns. Higher-level deployment or
+operating-system isolation owns confinement.
+
+The Bash wrapper captures mounted draft revisions before and after every
+authorized call and applies the same durable draft mutation fences and mount-set
+repair used by structured authoring, including non-zero, timed-out, cancelled,
+and truncated-output outcomes. Shell access does not create protected resource,
+approval, Preview, or publication authority.
+
 `vc_widget_create` creates a manifest-v3, plain-DOM scaffold. Widget source
 imports `@vibecanvas/sdk/widget`; it does not import Capsule directly. The
 authoring prompt permits only UI stacks that the trusted build has explicitly

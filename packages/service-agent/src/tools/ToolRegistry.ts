@@ -73,6 +73,7 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       authorize: () => authorize('bash'),
       capability: args.bashCapability,
       chatId: args.chatId,
+      cwd: args.cwd,
       workspace: args.workspace,
       onDraftChanged: args.onDraftChanged
         ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })

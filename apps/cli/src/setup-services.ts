@@ -51,6 +51,7 @@ import { fnLocalRegistryNpmUserConfig } from './fn.local-registry-npm-userconfig
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
+import { createBunAgentBashCapability } from './services/AgentBashCapability';
 import { fnWidgetCapsuleBuilderIdentity } from './services/fn.widget-capsule-builder-identity';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
@@ -377,6 +378,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     },
   });
   const functionCapability = createFunctionInvocationCapability(functionService);
+  const agentBashCapability = createBunAgentBashCapability();
   const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
@@ -450,6 +452,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         widgetCapsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
         widgetBuildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
         previewBuildAdmission,
+        bashCapability: agentBashCapability,
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)
         ),

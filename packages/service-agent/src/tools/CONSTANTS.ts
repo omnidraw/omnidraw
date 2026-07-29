@@ -16,9 +16,9 @@ export const Z_VIBECANVAS_JSON = ZWidgetManifestV3;
 export const AJV = new Ajv({ allErrors: true, strict: false });
 addFormats(AJV);
 
-// Bash starts in the chat workspace but is not filesystem-isolated there. Pi's shell can
-// traverse paths, spawn subprocesses, use inherited executable lookup, and access
-// the network with the same authority as the Vibecanvas host process.
+// Bash starts in the chat workspace but is not filesystem-isolated there. The
+// host child can traverse paths, spawn subprocesses, use inherited executable
+// lookup, and access the network with the Vibecanvas host process's authority.
 export const BASH_DEFAULT_TIMEOUT_SECONDS = 120;
 export const BASH_MAX_TIMEOUT_SECONDS = 600;
 

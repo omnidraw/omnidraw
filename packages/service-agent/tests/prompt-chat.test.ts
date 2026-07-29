@@ -61,6 +61,9 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`server: true`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read only files you need to change');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not call `bash`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not a confinement boundary');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain("Vibecanvas host process's filesystem");
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Shell access does not manufacture approval');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('React is the pre-tested component-library path');

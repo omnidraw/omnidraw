@@ -400,7 +400,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S119](s/S119.md) - canvas: toolbar should be smaller in size and go 2 row when height small.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [x]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
-- [ ]: [S122](s/S122.md) - agent: restore host-authority Bash with Bun PTY
+- [x]: [S122](s/S122.md) - agent: restore host-authority Bash with Bun PTY
 - [ ]: [S123](s/S123.md) - Preview: move actions into one Manage dropdown
 
 ## E xplorations

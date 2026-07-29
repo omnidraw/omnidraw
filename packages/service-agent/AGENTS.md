@@ -76,7 +76,7 @@ Every conversation receives exactly these 16 tools for its complete lifecycle:
 - Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
 - General: `web_fetch`, `bash`
 
-There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there.
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there. Production supplies one stateless host-authority capability backed by a fresh short-lived Bun PTY per call. It streams and retains bounded output, forwards timeout/cancellation, reports exact process settlement metadata, and closes the PTY after the child settles. Higher-level host or OS isolation owns confinement.
 
 Chat filesystem ownership:
 

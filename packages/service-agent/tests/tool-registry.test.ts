@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
+import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
 import { createToolRegistry } from '../src/tools/ToolRegistry';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { executeTool } from './tool.test-helpers';
@@ -37,7 +38,7 @@ describe('AI Chat tool registry', () => {
     const bash = registry.customTools.find((tool) => tool.name === 'bash')!;
     const unavailable = await executeTool(bash, { command: 'pwd' });
     expect(unavailable.isError).toBe(true);
-    expect(unavailable.content[0]?.text).toContain('BASH_UNAVAILABLE');
+    expect(unavailable.content[0]?.text).toContain('BASH_RUNTIME_UNAVAILABLE');
 
     const bashRuns: unknown[] = [];
     const injectedRegistry = createToolRegistry({
@@ -49,7 +50,7 @@ describe('AI Chat tool registry', () => {
       bashCapability: {
         run: async (call) => {
           bashRuns.push(call);
-          return { content: [{ type: 'text', text: 'confined runner invoked' }], details: undefined };
+          return { content: [{ type: 'text', text: 'host runner invoked' }], details: undefined };
         },
       },
     });
@@ -57,11 +58,12 @@ describe('AI Chat tool registry', () => {
       command: 'pwd',
       timeout: 12,
     });
-    expect(injected.content[0]?.text).toBe('confined runner invoked');
+    expect(injected.content[0]?.text).toBe('host runner invoked');
     expect(bashRuns).toHaveLength(1);
     expect(bashRuns[0]).toMatchObject({
       toolCallId: 'tool-call',
       command: 'pwd',
+      cwd,
       timeoutSeconds: 12,
     });
 
@@ -181,6 +183,18 @@ describe('AI Chat tool registry', () => {
               details: undefined,
             };
           }
+          if (command.startsWith('settled:')) {
+            await writeFile(
+              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              `export const settled = ${JSON.stringify(command)};\n`,
+              'utf8',
+            );
+            return {
+              content: [{ type: 'text', text: command }],
+              details: undefined,
+              ...(command === 'settled:truncated' ? {} : { isError: true }),
+            };
+          }
           await writeFile(
             join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
             'export const first = 3;\n',
@@ -216,11 +230,18 @@ describe('AI Chat tool registry', () => {
       },
     ]);
 
+    for (const outcome of ['non-zero', 'timeout', 'cancelled', 'truncated']) {
+      const settled = await executeTool(bash, { command: `settled:${outcome}` });
+      expect(settled.content[0]?.text).toBe(`settled:${outcome}`);
+      expect(fnIsStructuredToolErrorDetails(settled.details)).toBe(outcome !== 'truncated');
+    }
+    expect(changes).toHaveLength(6);
+
     const mountTamper = await executeTool(bash, { command: 'tamper-mount' });
     expect(mountTamper.isError).toBe(true);
-    expect(mountTamper.content[0]?.text).toContain('changed the confined widget mount set');
-    expect(changes).toHaveLength(3);
-    expect(changes[2]).toEqual({
+    expect(mountTamper.content[0]?.text).toContain('changed the managed widget mount set');
+    expect(changes).toHaveLength(7);
+    expect(changes[6]).toEqual({
       name: 'Bash Clock',
       chatId: 'chat-a',
       type: 'changed',

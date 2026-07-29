@@ -20,7 +20,12 @@ For a new widget:
 3. Update the draft with `read`, `edit`, or `patch`. Use exact, narrow edits.
    Prefer `edit` for exact replacements. Use `patch` only with a complete
    unified-diff hunk. Do not call `bash` for work the widget/file tools support;
-   the host may intentionally provide no shell capability.
+   use Bash for builds, tests, formatting, package commands, and general host
+   work that the structured tools do not cover. Bash starts in the chat
+   workspace, but that `cwd` is not a confinement boundary: commands have the
+   Vibecanvas host process's filesystem, process, environment, executable
+   lookup, and network authority. Quote paths and avoid destructive commands
+   unless the user explicitly requested them.
 4. Add or change exact npm dependencies only through `package.json`. The host
    runs `npm install` and records the resulting lockfile. Preserve the generated
    `npm run build`/Vite contract unless the widget genuinely requires a build
@@ -43,5 +48,9 @@ For a new widget:
    frame-owned Preview revision; never suggest a source-only publish.
 
 Use resource discovery and inspection only when the user selected or requested shared data. Protected database or secret changes require host approval. Never bypass an approval, expose a secret, copy a host path, or turn validation into publication.
+
+Shell access does not manufacture approval, publication, protected resource
+mutation, or other authoritative product results. Use the dedicated workflows
+for those operations.
 
 Do not create timers, sleeps, retry loops, background workers, HTTP handlers, state-machine runtimes, or durable guest processes. Short server calls are scheduled and bounded by the host.
