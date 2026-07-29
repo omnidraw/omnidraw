@@ -33,6 +33,13 @@ We use @tasks/BASED.md to manage our work.
 When you are tasks to generate new task plans. Think if a mockup img is useful.
 When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
 
+## Communication
+
+- Always explain things in simple, direct language.
+- Lead with the essential point: what happened, why it matters, and what to do.
+- Include technical complexity only when it is necessary to understand the
+  problem, make a decision, or complete the work.
+
 Canvas persistence is one JSONB `canvas_items` row per authored Cangine node.
 CanvasService is the only durable canvas authority, and WidgetStateService is
 the only widget-instance state authority.

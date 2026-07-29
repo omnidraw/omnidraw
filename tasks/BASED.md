@@ -277,6 +277,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A95](a/A95.md) - local Verdaccio registry for Cangine, Capsule, and widget SDK
 - [~]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
 - [ ]: [A97](a/A97.md) - AI Preview: host-owned log terminal below widget content
+- [ ]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
 - [x]: [S2](s/S2.md) - rename CLAUDE.md -> AGENTS.md
@@ -400,6 +401,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [x]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
 - [ ]: [S122](s/S122.md) - agent: restore host-authority Bash with Bun PTY
+- [ ]: [S123](s/S123.md) - Preview: move actions into one Manage dropdown
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
