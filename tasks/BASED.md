@@ -401,7 +401,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S120](s/S120.md) - db: adopt Turso JSONB for canvas and widget-state payloads
 - [x]: [S121](s/S121.md) - canvas: replace recorder persistence with Cangine controlled transactions
 - [x]: [S122](s/S122.md) - agent: restore host-authority Bash with Bun PTY
-- [ ]: [S123](s/S123.md) - Preview: move actions into one Manage dropdown
+- [x]: [S123](s/S123.md) - Preview: move actions into one Manage dropdown
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

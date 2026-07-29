@@ -158,7 +158,7 @@
     "packages/canvas": {
       "name": "@vibecanvas/canvas",
       "dependencies": {
-        "@omnidraw/cangine": "0.2.4",
+        "@omnidraw/cangine": "0.2.6",
         "@vibecanvas/canvas-contract": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-theme": "workspace:*",
@@ -178,7 +178,7 @@
       "name": "@vibecanvas/canvas-contract",
       "version": "0.1.0",
       "dependencies": {
-        "@omnidraw/cangine": "0.2.4",
+        "@omnidraw/cangine": "0.2.6",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -335,7 +335,7 @@
       "name": "@vibecanvas/ui-ai-chat",
       "dependencies": {
         "@kobalte/core": "catalog:",
-        "@omnidraw/cangine": "0.2.4",
+        "@omnidraw/cangine": "0.2.6",
         "@vibecanvas/canvas": "workspace:*",
         "@vibecanvas/canvas-contract": "workspace:*",
         "@vibecanvas/capsule-vibecanvas": "workspace:*",
@@ -792,7 +792,7 @@
 
     "@nothing-but/utils": ["@nothing-but/utils@0.17.0", "", {}, "sha512-TuCHcHLOqDL0SnaAxACfuRHBNRgNJcNn9X0GiH5H3YSDBVquCr3qEIG3FOQAuMyZCbu9w8nk2CHhOsn7IvhIwQ=="],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@0.2.4", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.2.4.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-qPZrRqo1/EyBZC/5yRNEp2eJuz9LGy99yVd8SWSPvRFQlh/CjLGwGoRt83a3dg8roFBUBtURL4jweOQhp7Zw8A=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@0.2.6", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.2.6.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-xoz9Ph4ykpBpj6q+1MAphrYmNM9BwZ3BB3avCSDZb736nWfsZHJtAuxzant/C8Z8zqk6R/dPjfHFh0IyZY904Q=="],
 
     "@omnidraw/capsule": ["@omnidraw/capsule@0.9.4", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.9.4.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-Zwjw007IAwlqrjpeOBjB9JPesOu2/81e2oIjkJS9sE0f21I/zTcf/Um2qNqpTElHzBXW3EQ8UVSp9rDeSQI1tQ=="],
 

@@ -814,6 +814,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts](packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts](packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.preview-control-presentation.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-control-presentation.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.preview-log.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-log.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.preview-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-viewport.ts) |  |

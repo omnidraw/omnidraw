@@ -65,6 +65,9 @@ import {
   type TAiWidgetPayload,
   type TPreviewWidgetPayload,
 } from './fn.canvas-widget';
+import {
+  fnPreviewControlPresentation,
+} from './fn.preview-control-presentation';
 import { fxWidgetCapsuleViewport } from './fx.capsule-portal-viewport';
 import { txPersistAiWidgetPayload } from './tx.ai-widget-payload';
 import {
@@ -304,7 +307,6 @@ export function createAiChatCanvasExtension(
       const actionHandlers = new Map<string, Map<string, () => void>>();
       const registrations = new Map<string, TPortalRegistration>();
       const previewRuntimes = new Map<string, TPreviewPortalRuntime>();
-      const previewTitleBars = new Map<string, TLocalTitleBarPortal>();
       const previewPublicationDialogs = new Map<string, () => void>();
       const latestPreviewDraftFences = new Map<string, TPreviewDraftFence>();
       let previewOwnerSnapshot = new Map<string, TPreviewWidgetPayload>();
@@ -803,15 +805,8 @@ export function createAiChatCanvasExtension(
           closePreviewPublicationDialog(node.id);
           void previous.destroy('preview-remounted');
         }
-        previewTitleBars.get(node.id)?.destroy();
-        previewTitleBars.delete(node.id);
+        context.widgets.clearDropdownItemPresentation(node.id);
         const handlers = new Map<string, () => void>();
-        const titleBar = createTitleBarPortal(handlers, {
-          document: args.widgetBrowser.document,
-          widgetId: node.id,
-          schedule: args.widgetBrowser.setTimeout,
-          cancelSchedule: args.widgetBrowser.clearTimeout,
-        });
         const runtime = createPreviewPortalRuntime({
           root,
           payload,
@@ -854,26 +849,15 @@ export function createAiChatCanvasExtension(
             },
           },
           onControlStateChange(state) {
-            titleBar.setActionState('live-updates', {
-              pressed: state.liveUpdatesPaused,
-              label: state.liveUpdatesPaused
-                ? 'Resume Live Updates'
-                : 'Pause Live Updates',
-              content: state.liveUpdatesPaused ? 'Resume' : 'Pause',
-            });
-            titleBar.setActionState('cancel-build', {
-              hidden: state.pendingBuild === null,
-              disabled: state.pendingBuild === null,
-              label: 'Cancel Build',
-              content: 'Cancel',
-            });
-            titleBar.setActionState('publish', {
-              disabled: !state.publishable,
-              label: state.publishable
-                ? 'Publish'
-                : 'Publish unavailable',
-              content: 'Publish',
-            });
+            context.widgets.setDropdownItemPresentation(
+              node.id,
+              'manage',
+              fnPreviewControlPresentation({
+                liveUpdatesPaused: state.liveUpdatesPaused,
+                pendingBuild: state.pendingBuild !== null,
+                publishable: state.publishable,
+              }),
+            );
           },
           onError: args.application.logError,
         });
@@ -885,16 +869,12 @@ export function createAiChatCanvasExtension(
           runtime.pauseLiveUpdates();
         });
         handlers.set('cancel-build', () => {
+          if (runtime.controlState().pendingBuild === null) return;
           void runtime.cancelBuild()
             .then((cancelled) => {
-              if (cancelled) {
-                context.config.notification?.showSuccess(
-                  'Preview build cancelled',
-                );
-                return;
-              }
-              context.config.notification?.showInfo(
-                'Preview build is no longer cancellable',
+              if (!cancelled) return;
+              context.config.notification?.showSuccess(
+                'Preview build cancelled',
               );
             })
             .catch((error) => {
@@ -912,6 +892,7 @@ export function createAiChatCanvasExtension(
           void runtime.reset();
         });
         handlers.set('publish', () => {
+          if (!runtime.controlState().publishable) return;
           openPreviewPublicationDialog(node, runtime);
         });
         actionHandlers.set(node.id, handlers);
@@ -920,7 +901,6 @@ export function createAiChatCanvasExtension(
         if (latestDraftFence !== undefined) {
           runtime.reportDraftFence(latestDraftFence);
         }
-        previewTitleBars.set(node.id, titleBar);
         return runtime;
       };
 
@@ -961,7 +941,6 @@ export function createAiChatCanvasExtension(
               }
               portalHost = host;
               owner = previewRuntime;
-              const previewTitleBar = previewTitleBars.get(node.id);
               updateViewport();
               void previewRuntime.refresh();
               return async () => {
@@ -970,13 +949,7 @@ export function createAiChatCanvasExtension(
                   previewRuntimes.delete(node.id);
                 }
                 actionHandlers.delete(node.id);
-                if (
-                  previewTitleBar !== undefined
-                  && previewTitleBars.get(node.id) === previewTitleBar
-                ) {
-                  previewTitleBars.delete(node.id);
-                  previewTitleBar.destroy();
-                }
+                context.widgets.clearDropdownItemPresentation(node.id);
                 closePreviewPublicationDialog(node.id);
                 owner = null;
                 if (portalHost === host) portalHost = null;
@@ -1061,7 +1034,6 @@ export function createAiChatCanvasExtension(
         }
         previewOwnerSnapshot = nextPreviewOwnerSnapshot;
         previewOwnerSnapshotInitialized = true;
-        previewTitleBars.forEach((titleBar) => titleBar.sync());
       };
 
       const recoverPreviewOwnerStatuses = async (): Promise<void> => {
@@ -1558,6 +1530,16 @@ export function createAiChatCanvasExtension(
             return;
           }
           if (
+            activation.type === 'dropdown-item'
+            && activation.itemId === 'manage'
+          ) {
+            actionHandlers
+              .get(activation.widgetId)
+              ?.get(activation.dropdownItemId)
+              ?.();
+            return;
+          }
+          if (
             activation.type === 'traffic-light'
             && activation.control === 'close'
           ) {
@@ -1598,8 +1580,9 @@ export function createAiChatCanvasExtension(
           actionHandlers.clear();
           for (const close of previewPublicationDialogs.values()) close();
           previewPublicationDialogs.clear();
-          previewTitleBars.forEach((titleBar) => titleBar.destroy());
-          previewTitleBars.clear();
+          for (const frameNodeId of previewRuntimes.keys()) {
+            context.widgets.clearDropdownItemPresentation(frameNodeId);
+          }
           await Promise.allSettled(
             mountedPreviews.map((runtime) => (
               runtime.destroy('canvas extension disposed')
