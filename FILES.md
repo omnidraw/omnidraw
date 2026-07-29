@@ -810,9 +810,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/ui-ai-chat/package.json](packages/ui-ai-chat/package.json) |  |
 | [packages/ui-ai-chat/README.md](packages/ui-ai-chat/README.md) |  |
+| [packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts](packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts](packages/ui-ai-chat/src/canvas-extension/create-ephemeral-preview-state.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.preview-log.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-log.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.preview-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts](packages/ui-ai-chat/src/canvas-extension/PreviewPortalRuntime.ts) |  |

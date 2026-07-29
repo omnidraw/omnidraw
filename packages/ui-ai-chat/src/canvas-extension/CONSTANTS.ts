@@ -1,0 +1,2 @@
+export const PREVIEW_LOG_MAX_ENTRIES = 80;
+export const PREVIEW_LOG_MAX_MESSAGE_LENGTH = 512;

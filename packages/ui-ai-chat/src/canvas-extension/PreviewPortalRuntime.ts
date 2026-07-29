@@ -14,11 +14,20 @@ import type {
 } from '../widget-runtime/interface';
 import type { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 import { createWidgetFunctionHostBridge } from '../widget-runtime/create-widget-function-host-bridge';
+import { PREVIEW_LOG_MAX_ENTRIES } from './CONSTANTS';
 import {
   createEphemeralPreviewStateOwner,
   type TEphemeralPreviewStateOwner,
 } from './create-ephemeral-preview-state';
 import { fnNormalizePreviewDiagnostic } from './fn.preview-diagnostic';
+import {
+  fnProjectPreviewLogEntry,
+  fnRetainPreviewLogEntries,
+  type TPreviewLogEntry,
+  type TPreviewLogEvent,
+  type TPreviewLogSelection,
+} from './fn.preview-log';
+import { fnPreviewGuestViewport } from './fn.preview-viewport';
 import type { TPreviewWidgetPayload } from './fn.canvas-widget';
 
 const PREVIEW_MOUNT_LEASE_RENEW_MAX_DELAY_MS = 30_000;
@@ -215,6 +224,12 @@ export function createPreviewPortalRuntime(
   const layers = dom.createElement('div');
   const status = dom.createElement('div');
   const statusMessage = dom.createElement('span');
+  const terminal = dom.createElement('aside');
+  const terminalHeader = dom.createElement('div');
+  const terminalTitle = dom.createElement('strong');
+  const terminalViewport = dom.createElement('div');
+  const terminalList = dom.createElement('div');
+  const clearLogButton = dom.createElement('button');
   const diagnosticStatus = dom.createElement('span');
   const diagnosticStatusMessage = dom.createElement('span');
   const resolveDiagnosticButton = dom.createElement('button');
@@ -236,36 +251,83 @@ export function createPreviewPortalRuntime(
   let pendingBuild: TPreviewPendingBuild | null = null;
   let publishedSelection: TPublishedPreviewSelection | null = null;
   let runtimeDiagnostics: TPreviewOwner['runtimeDiagnostics'] = [];
+  let previewLogEntries: readonly TPreviewLogEntry[] = [];
+  let previewLogSequence = 0;
   let stateOwner = createEphemeralPreviewStateOwner();
   let ownerPromise: Promise<TPreviewOwner> | null = null;
   const pending = new Set<TMountedPreview>();
   const pendingFrames = new Map<number, () => void>();
   const reportedDiagnostics = new Set<string>();
+  const loggedDiagnostics = new Set<string>();
   const stateOwners = new Set<TEphemeralPreviewStateOwner>([stateOwner]);
 
   shell.dataset.previewStatus = 'idle';
   shell.setAttribute('aria-label', 'Widget Preview');
   shell.style.position = 'relative';
+  shell.style.display = 'flex';
+  shell.style.flexDirection = 'column';
   shell.style.width = '100%';
   shell.style.height = '100%';
   shell.style.overflow = 'hidden';
-  layers.style.position = 'absolute';
-  layers.style.inset = '0';
+  layers.dataset.previewGuestContent = '';
+  layers.style.position = 'relative';
+  layers.style.flex = '1 1 auto';
+  layers.style.minHeight = '0';
+  layers.style.overflow = 'hidden';
+  layers.style.isolation = 'isolate';
   status.style.position = 'absolute';
-  status.style.zIndex = '2';
-  status.style.inset = '12px 12px auto';
-  status.style.padding = '8px 10px';
-  status.style.borderRadius = '8px';
-  status.style.background = 'var(--background, rgba(255, 255, 255, 0.94))';
-  status.style.color = 'var(--foreground, #111)';
-  status.style.display = 'flex';
-  status.style.alignItems = 'center';
-  status.style.justifyContent = 'space-between';
-  status.style.gap = '12px';
-  status.style.flexWrap = 'wrap';
+  status.style.width = '1px';
+  status.style.height = '1px';
+  status.style.overflow = 'hidden';
+  status.style.clipPath = 'inset(50%)';
+  status.style.whiteSpace = 'nowrap';
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   statusMessage.dataset.previewStatusMessage = '';
+  terminal.dataset.previewLogTerminal = '';
+  terminal.setAttribute('aria-label', 'Preview logs');
+  terminal.tabIndex = 0;
+  terminal.style.position = 'relative';
+  terminal.style.zIndex = '3';
+  terminal.style.setProperty('display', 'flex', 'important');
+  terminal.style.flex = '0 0 96px';
+  terminal.style.flexDirection = 'column';
+  terminal.style.minHeight = '72px';
+  terminal.style.maxHeight = '38%';
+  terminal.style.overflow = 'hidden';
+  terminal.style.borderTop = '1px solid var(--border, #374151)';
+  terminal.style.background = 'var(--preview-terminal-background, #111827)';
+  terminal.style.color = 'var(--preview-terminal-foreground, #e5e7eb)';
+  terminal.style.font = '11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  terminalHeader.style.display = 'flex';
+  terminalHeader.style.alignItems = 'center';
+  terminalHeader.style.gap = '8px';
+  terminalHeader.style.minHeight = '26px';
+  terminalHeader.style.padding = '3px 8px';
+  terminalHeader.style.borderBottom = '1px solid var(--border, #374151)';
+  terminalTitle.textContent = 'Preview logs';
+  terminalTitle.style.marginRight = 'auto';
+  terminalTitle.style.fontWeight = '600';
+  terminalViewport.dataset.previewLogViewport = '';
+  terminalViewport.setAttribute('role', 'log');
+  terminalViewport.setAttribute('aria-live', 'polite');
+  terminalViewport.setAttribute('aria-relevant', 'additions');
+  terminalViewport.tabIndex = 0;
+  terminalViewport.style.flex = '1 1 auto';
+  terminalViewport.style.minHeight = '0';
+  terminalViewport.style.overflow = 'auto';
+  terminalViewport.style.padding = '5px 8px 7px';
+  terminalList.dataset.previewLogEntries = '';
+  clearLogButton.type = 'button';
+  clearLogButton.textContent = 'Clear';
+  clearLogButton.setAttribute('aria-label', 'Clear Preview logs');
+  clearLogButton.style.padding = '1px 5px';
+  clearLogButton.style.border = '1px solid var(--border, #4b5563)';
+  clearLogButton.style.borderRadius = '4px';
+  clearLogButton.style.background = 'transparent';
+  clearLogButton.style.color = 'inherit';
+  clearLogButton.style.font = 'inherit';
+  clearLogButton.style.cursor = 'pointer';
   diagnosticStatus.dataset.previewDiagnosticStatus = '';
   diagnosticStatus.hidden = true;
   diagnosticStatus.style.alignItems = 'center';
@@ -273,8 +335,7 @@ export function createPreviewPortalRuntime(
   diagnosticStatus.style.maxWidth = '100%';
   diagnosticStatus.style.whiteSpace = 'nowrap';
   diagnosticStatusMessage.dataset.previewDiagnosticMessage = '';
-  diagnosticStatusMessage.style.overflow = 'hidden';
-  diagnosticStatusMessage.style.textOverflow = 'ellipsis';
+  diagnosticStatusMessage.style.display = 'none';
   resolveDiagnosticButton.type = 'button';
   resolveDiagnosticButton.textContent = 'Resolve';
   resolveDiagnosticButton.setAttribute(
@@ -284,9 +345,13 @@ export function createPreviewPortalRuntime(
   resolveDiagnosticButton.style.font = 'inherit';
   resolveDiagnosticButton.style.cursor = 'pointer';
   diagnosticStatus.append(diagnosticStatusMessage, resolveDiagnosticButton);
-  status.append(statusMessage, diagnosticStatus);
-  shell.append(layers, status);
+  status.append(statusMessage);
+  terminalHeader.append(terminalTitle, diagnosticStatus, clearLogButton);
+  terminalViewport.append(terminalList);
+  terminal.append(terminalHeader, terminalViewport, status);
+  shell.append(layers, terminal);
   args.root.replaceChildren(shell);
+  clearLogButton.disabled = true;
 
   const currentMatchesDraftFence = (): boolean => (
     !draftFenceReconciliationRequired
@@ -367,12 +432,99 @@ export function createPreviewPortalRuntime(
     return true;
   };
 
+  const logSelection = (
+    selected: TMountedPreview | null = current,
+  ): TPreviewLogSelection | null => (
+    selected === null
+      ? null
+      : {
+          revision: selected.revision,
+          bindingRevision: selected.bindingRevision,
+        }
+  );
+
+  const renderPreviewLog = (): void => {
+    const previousScrollTop = terminalViewport.scrollTop;
+    const followsTail = terminalList.childElementCount === 0
+      || (
+        terminalViewport.scrollHeight
+        - previousScrollTop
+        - terminalViewport.clientHeight
+      ) <= 2;
+    const fragment = dom.createDocumentFragment();
+    for (const entry of previewLogEntries) {
+      const row = dom.createElement('div');
+      const source = dom.createElement('span');
+      const message = dom.createElement('span');
+      row.dataset.previewLogEntry = String(entry.sequence);
+      row.dataset.previewLogLevel = entry.level;
+      row.dataset.previewLogSource = entry.source;
+      if (entry.buildSequence !== null) {
+        row.dataset.previewLogBuildSequence = String(entry.buildSequence);
+      }
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = 'max-content minmax(0, 1fr)';
+      row.style.columnGap = '7px';
+      row.style.padding = '1px 0';
+      source.textContent = entry.source === 'build'
+        && entry.buildSequence !== null
+        ? `[build #${String(entry.buildSequence)}]`
+        : `[${entry.source}]`;
+      source.style.color = 'var(--preview-terminal-muted, #9ca3af)';
+      message.textContent = entry.message;
+      message.style.minWidth = '0';
+      message.style.whiteSpace = 'pre-wrap';
+      message.style.overflowWrap = 'anywhere';
+      message.style.color = entry.level === 'error'
+        ? 'var(--preview-terminal-error, #fca5a5)'
+        : entry.level === 'warning'
+          ? 'var(--preview-terminal-warning, #fcd34d)'
+          : entry.level === 'success'
+            ? 'var(--preview-terminal-success, #86efac)'
+            : 'inherit';
+      if (entry.truncated) {
+        message.title = 'This Preview log entry was truncated by the host.';
+      }
+      row.append(source, message);
+      fragment.append(row);
+    }
+    terminalList.replaceChildren(fragment);
+    clearLogButton.disabled = previewLogEntries.length === 0;
+    terminalViewport.scrollTop = followsTail
+      ? terminalViewport.scrollHeight
+      : previousScrollTop;
+  };
+
+  const appendPreviewLog = (event: TPreviewLogEvent): TPreviewLogEntry => {
+    previewLogSequence += 1;
+    const entry = fnProjectPreviewLogEntry({
+      sequence: previewLogSequence,
+      event,
+    });
+    previewLogEntries = fnRetainPreviewLogEntries({
+      entries: previewLogEntries,
+      entry,
+    });
+    renderPreviewLog();
+    return entry;
+  };
+
   const setStatus = (
     state: 'building' | 'error' | 'ready',
     message: string,
+    event: TPreviewLogEvent = {
+      kind: 'lifecycle',
+      level: state === 'error'
+        ? 'error'
+        : state === 'ready'
+          ? 'success'
+          : 'info',
+      message,
+    },
   ): void => {
     shell.dataset.previewStatus = state;
-    statusMessage.textContent = message;
+    const entry = appendPreviewLog(event);
+    statusMessage.textContent = entry.message;
     status.hidden = false;
     status.setAttribute('role', state === 'error' ? 'alert' : 'status');
   };
@@ -400,9 +552,13 @@ export function createPreviewPortalRuntime(
       || owner.role !== args.payload.role
       || owner.status === 'closed'
     ) return;
-    runtimeDiagnostics = owner.runtimeDiagnostics.filter(
-      (record) => record.diagnostic.previewRevisionId === owner.activeRevisionId,
-    );
+    runtimeDiagnostics = owner.runtimeDiagnostics
+      .filter(
+        (record) => (
+          record.diagnostic.previewRevisionId === owner.activeRevisionId
+        ),
+      )
+      .slice(-PREVIEW_LOG_MAX_ENTRIES);
     diagnosticStatus.hidden = runtimeDiagnostics.length === 0;
     diagnosticStatus.style.display = runtimeDiagnostics.length > 0
       ? 'inline-flex'
@@ -415,6 +571,32 @@ export function createPreviewPortalRuntime(
     diagnosticStatusMessage.textContent = diagnosticMessage;
     diagnosticStatusMessage.title = diagnosticMessage;
     resolveDiagnosticButton.disabled = runtimeDiagnostics.length === 0;
+    const activeDiagnostics = runtimeDiagnostics.map((record) => ({
+      record,
+      key: JSON.stringify([
+        record.diagnostic.previewRevisionId,
+        record.diagnostic.fingerprint,
+        record.status,
+        record.diagnostic.occurrenceCount,
+        record.reportedAtMs,
+      ]),
+    }));
+    const activeDiagnosticKeys = new Set(
+      activeDiagnostics.map(({ key }) => key),
+    );
+    for (const key of loggedDiagnostics) {
+      if (!activeDiagnosticKeys.has(key)) loggedDiagnostics.delete(key);
+    }
+    for (const { key, record } of activeDiagnostics) {
+      if (loggedDiagnostics.has(key)) continue;
+      loggedDiagnostics.add(key);
+      appendPreviewLog({
+        kind: 'diagnostic',
+        code: record.diagnostic.code,
+        message: record.diagnostic.message,
+        occurrenceCount: record.diagnostic.occurrenceCount,
+      });
+    }
     if (
       owner.publishedPreviewRevisionId !== null
       && owner.publishedBindingRevision !== null
@@ -1051,7 +1233,13 @@ export function createPreviewPortalRuntime(
       stateOwnerAdopted = true;
       candidate.container.style.opacity = '1';
       candidate.container.style.pointerEvents = '';
-      setStatus('ready', displayedStatus(candidate));
+      setStatus('ready', displayedStatus(candidate), {
+        kind: 'revision',
+        selection: {
+          revision: candidate.revision,
+          bindingRevision: candidate.bindingRevision,
+        },
+      });
       if (previous !== null) {
         await destroyMounted(previous, 'preview-replaced');
       }
@@ -1173,6 +1361,13 @@ export function createPreviewPortalRuntime(
       setStatus(
         'building',
         withDisplayedStatus(`Build ${shortRevision(selected.revision)} cancelled.`),
+        {
+          kind: 'build',
+          phase: 'cancelled',
+          revision: selected.revision,
+          buildSequence: selected.buildSequence,
+          displayed: logSelection(),
+        },
       );
     }
     return true;
@@ -1293,6 +1488,12 @@ export function createPreviewPortalRuntime(
       return false;
     }
   };
+  clearLogButton.addEventListener('click', () => {
+    if (disposed || previewLogEntries.length === 0) return;
+    previewLogEntries = [];
+    renderPreviewLog();
+    terminalViewport.focus({ preventScroll: true });
+  });
   resolveDiagnosticButton.addEventListener('click', () => {
     const selected = runtimeDiagnostics.at(-1);
     if (
@@ -1407,6 +1608,13 @@ export function createPreviewPortalRuntime(
           withDisplayedStatus(
             `${action} ${shortRevision(progress.revision)}…`,
           ),
+          {
+            kind: 'build',
+            phase: progress.phase,
+            revision: progress.revision,
+            buildSequence: progress.buildSequence,
+            displayed: logSelection(),
+          },
         );
         return;
       }
@@ -1424,6 +1632,13 @@ export function createPreviewPortalRuntime(
           withDisplayedStatus(
             `Verifying ${shortRevision(progress.revision)}…`,
           ),
+          {
+            kind: 'build',
+            phase: 'ready',
+            revision: progress.revision,
+            buildSequence: progress.buildSequence,
+            displayed: logSelection(),
+          },
         );
         return;
       }
@@ -1434,6 +1649,13 @@ export function createPreviewPortalRuntime(
           withDisplayedStatus(
             `Build ${shortRevision(progress.revision)} failed.`,
           ),
+          {
+            kind: 'build',
+            phase: 'failed',
+            revision: progress.revision,
+            buildSequence: progress.buildSequence,
+            displayed: logSelection(),
+          },
         );
         return;
       }
@@ -1442,6 +1664,13 @@ export function createPreviewPortalRuntime(
         withDisplayedStatus(
           `Build ${shortRevision(progress.revision)} superseded…`,
         ),
+        {
+          kind: 'build',
+          phase: 'superseded',
+          revision: progress.revision,
+          buildSequence: progress.buildSequence,
+          displayed: logSelection(),
+        },
       );
     },
     currentRevision: () => current?.revision ?? null,
@@ -1453,7 +1682,13 @@ export function createPreviewPortalRuntime(
     },
     setViewport(value): void {
       if (disposed) return;
-      viewport = Object.freeze({ ...value });
+      viewport = fnPreviewGuestViewport({
+        viewport: value,
+        contentSize: {
+          width: layers.clientWidth,
+          height: layers.clientHeight,
+        },
+      });
       current?.handle?.setViewport(viewport);
       pending.forEach((mounted) => mounted.handle?.setViewport(viewport!));
     },
