@@ -224,6 +224,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             mountPath: `widgets/${mount.name}`,
             source: mount.source,
             ok: authoritative.ok,
+            validationScope: 'construction' as const,
             errors,
             warnings,
             files,
@@ -233,7 +234,9 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             filesTruncated: validation.files.length > files.length,
           };
           return fnToolSuccess({
-            summary: `Widget '${mount.name}' is ${authoritative.ok ? 'valid' : 'invalid'}.`,
+            summary: authoritative.ok
+              ? `Widget '${mount.name}' construction is valid. Preview execution was not run.`
+              : `Widget '${mount.name}' construction is invalid.`,
             modelData,
             details: modelData,
           });

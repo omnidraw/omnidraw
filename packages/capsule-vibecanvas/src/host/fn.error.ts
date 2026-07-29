@@ -9,6 +9,54 @@ import type {
   TVibecanvasCapsuleErrorCategory,
 } from '../contract/types';
 
+const WEBGL_CONTEXT_FAILURE_MESSAGES = Object.freeze([
+  'Error creating WebGL context.',
+  'Error creating WebGL context with your selected attributes.',
+  'THREE.WebGLRenderer: Error creating WebGL context.',
+  'THREE.WebGLRenderer: Error creating WebGL context with your selected attributes.',
+  'WebGL platform or budget is unavailable.',
+]);
+
+const CANVAS_PROFILE_FAILURE_MESSAGES = Object.freeze([
+  'The canvas element is not allowed',
+]);
+
+const MESSAGE_BUDGET_FAILURE_MESSAGES = Object.freeze([
+  'marshal_error: VM string exceeds the configured byte limit.',
+]);
+
+const PERFORMANCE_API_FAILURE_MESSAGES = Object.freeze([
+  "'performance' is not defined",
+]);
+
+type TThrownCapsuleHostError = Readonly<{
+  code: CapsuleHostErrorCode;
+  message?: unknown;
+  cause?: unknown;
+}>;
+
+function record(value: unknown): Readonly<Record<string, unknown>> | null {
+  return typeof value === 'object' && value !== null
+    ? value as Readonly<Record<string, unknown>>
+    : null;
+}
+
+function hasKnownFailure(
+  error: unknown,
+  messages: readonly string[],
+  depth = 0,
+): boolean {
+  if (depth > 4) return false;
+  const value = record(error);
+  if (value === null) return false;
+  const candidates = [value.message, value.guestMessage];
+  if (candidates.some((message) => (
+    typeof message === 'string'
+    && messages.includes(message)
+  ))) return true;
+  return hasKnownFailure(value.cause, messages, depth + 1);
+}
+
 function categoryForHostCode(
   code: CapsuleHostErrorCode,
 ): TVibecanvasCapsuleErrorCategory {
@@ -104,6 +152,63 @@ export function fnMapCapsuleHostError(
     fatal: true,
     message: messageForCategory(category),
   });
+}
+
+/**
+ * Maps a thrown host error and only recognizes allowlisted nested guest causes.
+ * Guest-controlled message and stack text never cross this boundary.
+ */
+export function fnMapThrownCapsuleHostError(
+  error: TThrownCapsuleHostError,
+): TVibecanvasCapsuleError {
+  if (hasKnownFailure(error, PERFORMANCE_API_FAILURE_MESSAGES)) {
+    return Object.freeze({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'PERFORMANCE_API_UNAVAILABLE',
+      fatal: true,
+      message: 'Capsule widgets do not expose the ambient performance API. '
+        + 'Use the monotonic timestamp passed to requestAnimationFrame callbacks '
+        + 'for animation timing.',
+    });
+  }
+  if (hasKnownFailure(error, MESSAGE_BUDGET_FAILURE_MESSAGES)) {
+    return Object.freeze({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'budget',
+      capsuleCode: 'MESSAGE_BUDGET_EXCEEDED',
+      fatal: true,
+      message: 'The widget exceeded its Capsule message budget. Reduce or split '
+        + 'the guest-host payload, or request a measured ui.budgets.messageBytes '
+        + 'value within the host ceiling.',
+    });
+  }
+  if (hasKnownFailure(error, WEBGL_CONTEXT_FAILURE_MESSAGES)) {
+    return Object.freeze({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
+      fatal: true,
+      message: 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
+        + 'and a positive ui.budgets.gpuBytes value.',
+    });
+  }
+  if (hasKnownFailure(error, CANVAS_PROFILE_FAILURE_MESSAGES)) {
+    return Object.freeze({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'CANVAS_PROFILE_REQUIRED',
+      fatal: true,
+      message: 'Canvas rendering requires an exact Capsule canvas profile. '
+        + 'Select canvas-2d-v1, canvas-webgl-v1, or canvas-webgpu-v1 to match '
+        + 'the requested rendering context.',
+    });
+  }
+  return fnMapCapsuleHostError(error.code);
 }
 
 /** Maps a normalized live-mount event without forwarding guest/provider messages. */

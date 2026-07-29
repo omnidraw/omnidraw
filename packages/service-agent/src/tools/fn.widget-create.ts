@@ -1,7 +1,7 @@
 import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { TWidgetCreateInput } from '../workspace/types';
 import {
-  WIDGET_CAPSULE_AUTHORING_TARGET,
+  VIBECANVAS_CAPSULE_AUTHORING_TARGET,
   Z_VIBECANVAS_JSON,
 } from './CONSTANTS';
 
@@ -23,7 +23,7 @@ export function fnBuildWidgetCreateManifest(args: TWidgetCreateInput): TWidgetMa
     ui: {
       runtime: 'capsule' as const,
       entry: args.template === 'react' ? 'ui/main.tsx' : 'ui/main.ts',
-      target: WIDGET_CAPSULE_AUTHORING_TARGET,
+      target: VIBECANVAS_CAPSULE_AUTHORING_TARGET,
     },
     ...(args.server === true
       ? {

@@ -93,7 +93,26 @@ function safeCode(error: Readonly<Record<string, unknown>> | null, phase: TPrevi
     : fallbackCode(phase);
 }
 
-function safeMessage(origin: TDiagnosticOrigin): string {
+function safeMessage(code: string, origin: TDiagnosticOrigin): string {
+  if (code === 'PERFORMANCE_API_UNAVAILABLE') {
+    return 'Capsule widgets do not expose the ambient performance API. '
+      + 'Use the monotonic timestamp passed to requestAnimationFrame callbacks '
+      + 'for animation timing.';
+  }
+  if (code === 'MESSAGE_BUDGET_EXCEEDED') {
+    return 'The widget exceeded its Capsule message budget. Reduce or split '
+      + 'the guest-host payload, or request a measured ui.budgets.messageBytes '
+      + 'value within the host ceiling.';
+  }
+  if (code === 'WEBGL_CONTEXT_UNAVAILABLE') {
+    return 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
+      + 'and a positive ui.budgets.gpuBytes value.';
+  }
+  if (code === 'CANVAS_PROFILE_REQUIRED') {
+    return 'Canvas rendering requires an exact Capsule canvas profile. '
+      + 'Select canvas-2d-v1, canvas-webgl-v1, or canvas-webgpu-v1 to match '
+      + 'the requested rendering context.';
+  }
   switch (origin) {
     case 'budget':
       return 'The Widget Preview exceeded a browser sandbox resource budget.';
@@ -142,7 +161,7 @@ export async function fnNormalizePreviewDiagnostic(
     phase: args.phase,
     code,
     severity: 'error',
-    message: safeMessage(origin),
+    message: safeMessage(code, origin),
     trust: 'untrusted',
     draftRevision: args.draftRevision,
     previewRevisionId: args.previewRevisionId,

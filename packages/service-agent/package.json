@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",
+    "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",

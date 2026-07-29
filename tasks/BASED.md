@@ -178,7 +178,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B65](b/B65.md) - cli: home preflight must share multiprocess WAL and report real failures
 - [x]: [B66](b/B66.md) - widget portals: keep Capsule layout intrinsic while canvas zooms
 - [x]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
-- [ ]: [B68](b/B68.md) - AI widget authoring: request and diagnose Capsule WebGL authority
+- [x]: [B68](b/B68.md) - AI widget authoring: request and diagnose Capsule WebGL authority
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -275,7 +275,6 @@ the leaf task's `## Plan` instead of living as detached references.
 - [~]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
 - [x]: [A95](a/A95.md) - local Verdaccio registry for Cangine, Capsule, and widget SDK
 - [~]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
-
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
 - [x]: [S2](s/S2.md) - rename CLAUDE.md -> AGENTS.md

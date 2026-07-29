@@ -1411,6 +1411,39 @@ describe('PreviewPortalRuntime', () => {
     ]);
     const preview = runtimeApi(build, PREVIEW_ONE);
     const fingerprint = '9'.repeat(64);
+    const owner = {
+      orgId: 'org-1',
+      id: PREVIEW_ONE,
+      accountId: 'account-1',
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      draftId: DRAFT_ID,
+      originChatId: 'chat-1',
+      role: 'companion',
+      status: 'failed',
+      activeRevisionId: PREVIEW_REVISION_ONE,
+      pendingBuildId: null,
+      buildSequence: 1,
+      bindingRevision: 0,
+      bindingPlanDigestSha256: 'f'.repeat(64),
+      sourceDigestSha256: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      runtimeDiagnostics: [],
+      publishedPreviewRevisionId: null,
+      publishedBindingRevision: null,
+      publishedBindingPlanDigestSha256: null,
+      publishedWidgetRevisionId: null,
+      publishedIdempotencyKey: null,
+      lastError: null,
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      closedAtMs: null,
+    } as const;
+    preview.ensure.mockResolvedValue([undefined, owner] as never);
+    preview.resolveDiagnostic.mockResolvedValue([undefined, {
+      ...owner,
+      status: 'ready',
+    }] as never);
     preview.getDiagnostics.mockResolvedValue([undefined, [{
       status: 'awaiting-retest',
       reportedAtMs: 2,
@@ -1462,7 +1495,9 @@ describe('PreviewPortalRuntime', () => {
 
     await flushSwap(animation, runtime.refresh());
     expect(root.querySelector('[data-preview-diagnostic-message]')?.textContent)
-      .toBe('Awaiting retest • 1');
+      .toBe(
+        'WIDGET_GUEST_RUNTIME_FAILED: Guest render failed safely. • Awaiting retest 1',
+      );
     const resolve = root.querySelector<HTMLButtonElement>(
       '[aria-label="Resolve the latest Preview runtime diagnostic"]',
     );
@@ -1479,6 +1514,100 @@ describe('PreviewPortalRuntime', () => {
       root.querySelector<HTMLElement>('[data-preview-diagnostic-status]')?.hidden,
     ).toBe(true));
     expect(preview.retestDiagnostic).not.toHaveBeenCalled();
+    await runtime.destroy();
+  });
+
+  test('hides diagnostics from a superseded Preview revision', async () => {
+    const root = document.createElement('div');
+    const animation = manualAnimationFrames();
+    const build = vi.fn().mockResolvedValue([
+      undefined,
+      ready(REVISION_TWO, PREVIEW_ONE, PREVIEW_REVISION_TWO, 2, 0),
+    ]);
+    const preview = runtimeApi(build, PREVIEW_ONE);
+    preview.ensure.mockResolvedValue([undefined, {
+      orgId: 'org-1',
+      id: PREVIEW_ONE,
+      accountId: 'account-1',
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      draftId: DRAFT_ID,
+      originChatId: 'chat-1',
+      role: 'companion',
+      status: 'ready',
+      activeRevisionId: PREVIEW_REVISION_TWO,
+      pendingBuildId: null,
+      buildSequence: 2,
+      bindingRevision: 0,
+      bindingPlanDigestSha256: 'f'.repeat(64),
+      sourceDigestSha256: REVISION_TWO,
+      committedMutationId: `mutation-${REVISION_TWO}`,
+      runtimeDiagnostics: [],
+      publishedPreviewRevisionId: null,
+      publishedBindingRevision: null,
+      publishedBindingPlanDigestSha256: null,
+      publishedWidgetRevisionId: null,
+      publishedIdempotencyKey: null,
+      lastError: null,
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      closedAtMs: null,
+    }] as never);
+    preview.getDiagnostics.mockResolvedValue([undefined, [{
+      status: 'awaiting-retest',
+      reportedAtMs: 1,
+      diagnostic: {
+        formatVersion: 1,
+        fingerprint: '8'.repeat(64),
+        origin: 'guest',
+        phase: 'runtime',
+        code: 'PERFORMANCE_API_UNAVAILABLE',
+        severity: 'error',
+        message: 'The previous revision used an unavailable API.',
+        trust: 'untrusted',
+        draftRevision: REVISION_ONE,
+        previewRevisionId: PREVIEW_REVISION_ONE,
+        buildId: PREVIEW_REVISION_ONE,
+        buildSequence: 1,
+        occurrenceCount: 1,
+        retryability: 'unknown',
+        timestampMs: 1,
+      },
+    }]] as never);
+    const runtime = createPreviewPortalRuntime({
+      root,
+      payload: {
+        previewId: PREVIEW_ONE,
+        draftId: DRAFT_ID,
+        originChatId: 'chat-1',
+        role: 'companion',
+      },
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      api: preview.api,
+      publishApi: publishApi(),
+      codec: {
+        decodeBase64: (value) => Buffer.from(value, 'base64'),
+        digestSha256: async (value) => digest(value),
+      },
+      mount: {
+        mount: vi.fn(async () => runtimeHandle().handle),
+        destroy: vi.fn(),
+      },
+      runtime: previewPopulationRuntime(),
+      requestFrame: animation.request,
+      cancelFrame: animation.cancel,
+      nowMs: () => 2,
+      functions: functionHost(),
+      onError: vi.fn(),
+    });
+
+    await flushSwap(animation, runtime.refresh());
+    expect(
+      root.querySelector<HTMLElement>('[data-preview-diagnostic-status]')?.hidden,
+    ).toBe(true);
+    expect(root.querySelector('[data-preview-diagnostic-message]')?.textContent)
+      .toBe('');
     await runtime.destroy();
   });
 

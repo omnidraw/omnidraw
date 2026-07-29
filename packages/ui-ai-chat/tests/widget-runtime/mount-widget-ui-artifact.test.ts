@@ -12,6 +12,7 @@ import type {
   CapsuleMountErrorEvent,
   CreateCapsuleHostOptions,
 } from '@vibecanvas/capsule-vibecanvas/host';
+import { CapsuleHostError } from '@vibecanvas/capsule-vibecanvas/host';
 import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
 import { createVibecanvasGuestChannelContract } from '@vibecanvas/capsule-vibecanvas/capabilities';
 import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
@@ -258,7 +259,10 @@ function rawHandle(artifactHash = HASH_A) {
   return { destroy, emitError, handle, setProps, setTheme, setViewport };
 }
 
-function fakeHostFactory(mountedArtifactHash = HASH_A) {
+function fakeHostFactory(
+  mountedArtifactHash = HASH_A,
+  mountError?: unknown,
+) {
   const created: Array<{
     options: CreateCapsuleHostOptions;
     host: CapsuleHost;
@@ -268,7 +272,10 @@ function fakeHostFactory(mountedArtifactHash = HASH_A) {
   }> = [];
   const create = vi.fn(async (options: CreateCapsuleHostOptions) => {
     const raw = rawHandle(mountedArtifactHash);
-    const mount = vi.fn(async () => raw.handle);
+    const mount = vi.fn(async () => {
+      if (mountError !== undefined) throw mountError;
+      return raw.handle;
+    });
     const destroy = vi.fn(async () => undefined);
     const host = {
       registerSchema: vi.fn(),
@@ -311,6 +318,80 @@ async function settleWithin<T>(
 }
 
 describe('Capsule widget mount boundary', () => {
+  test('maps a retained Three.js context failure without exposing guest text', async () => {
+    const guestFailure = Object.assign(
+      new Error('Guest execution threw an exception.'),
+      {
+        code: 'guest_error',
+        guestMessage: 'Error creating WebGL context.',
+        guestStack: '/private/widget/source.js',
+      },
+    );
+    const factory = fakeHostFactory(
+      HASH_A,
+      new CapsuleHostError(
+        'MOUNT_FAILED',
+        'Capsule mount failed before becoming ready.',
+        { cause: guestFailure },
+      ),
+    );
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+
+    const outcome = await settleWithin(mount.mount({
+      mode: 'preview',
+      root: document.createElement('div'),
+      identity: functionBridge.identity,
+      artifact: artifact('preview', []),
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge,
+      collaborativeStateBridge: null,
+      onFatal: vi.fn(),
+    }), 1_000);
+
+    expect(outcome).toEqual({
+      status: 'rejected',
+      reason: {
+        format: 'vibecanvas.capsule-error.v1',
+        phase: 'host',
+        category: 'capability',
+        capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
+        fatal: true,
+        message: 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
+          + 'and a positive ui.budgets.gpuBytes value.',
+      },
+    });
+    expect(JSON.stringify(outcome)).not.toContain('/private/widget/source.js');
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(functionBridge.dispose).toHaveBeenCalledOnce();
+    await coordinator.destroy();
+  });
+
   test('sizes the initial viewport from intrinsic host dimensions', async () => {
     const factory = fakeHostFactory();
     const coordinator = new CapsuleWidgetHostCoordinator({

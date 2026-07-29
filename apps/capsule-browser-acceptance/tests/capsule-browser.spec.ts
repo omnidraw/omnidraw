@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import sharp from 'sharp';
 
 type TResult = Readonly<{
   name: string;
@@ -23,6 +24,7 @@ const REQUIRED_OUTPUTS = Object.freeze([
   'theme:light',
   'svg-ready',
   'canvas-ready',
+  'three-ready:2',
   'react-css-ready:rgb(18,52,86)',
   'lifecycle:active:1',
   'collab-stream:0',
@@ -44,7 +46,34 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
     }
   });
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?pixelHandshake=1', { waitUntil: 'domcontentloaded' });
+
+  await page.waitForFunction(
+    () => document.documentElement.dataset.capsuleThreeReady === 'true',
+    undefined,
+    { timeout: 120_000 },
+  );
+  try {
+    const screenshot = await page.locator('[data-surface="three"]').screenshot();
+    const { data, info } = await sharp(screenshot)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let orbPixels = 0;
+    for (let offset = 0; offset < data.length; offset += info.channels) {
+      const red = data[offset] ?? 0;
+      const green = data[offset + 1] ?? 0;
+      const blue = data[offset + 2] ?? 0;
+      if (blue > 80 && (red > 80 || green > 80)) orbPixels += 1;
+    }
+    expect(orbPixels).toBeGreaterThan(1_000);
+  } finally {
+    await page.evaluate(() => {
+      (window as Window & {
+        __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
+      }).__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?.();
+    });
+  }
 
   try {
     await page.waitForFunction(

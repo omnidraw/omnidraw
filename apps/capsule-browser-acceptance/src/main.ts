@@ -46,6 +46,7 @@ type TPublishedResult = Readonly<{
 declare global {
   interface Window {
     __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__?: TPublishedResult;
+    __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
   }
 }
 
@@ -549,7 +550,7 @@ async function rejectedScenario(
   value: TBrowserArtifact,
   props: TMountProps = {},
   options: TMountOptions = {},
-): Promise<void> {
+): Promise<unknown> {
   const runtime = createMountPort(catalog);
   const outcome = await settleWithin(
     mount(runtime.port, name, value, props, options),
@@ -570,6 +571,7 @@ async function rejectedScenario(
   assert(afterDestroy.destroyed, `${name} coordinator did not terminate.`);
   assert(afterDestroy.handles === 0, `${name} retained handles after termination.`);
   assert(afterDestroy.hosts.length === 0, `${name} retained hosts after termination.`);
+  return outcome.reason;
 }
 
 publish('running');
@@ -598,6 +600,11 @@ const catalog: TWidgetCapsuleHostCatalog = Object.freeze({
 const plainArtifact = artifact(fixture.artifacts.plain);
 const svgArtifact = artifact(fixture.artifacts.svg);
 const canvasArtifact = artifact(fixture.artifacts.canvas);
+const threeArtifact = artifact(fixture.artifacts.three);
+const threeReleaseArtifact = artifact(fixture.artifacts.threeRelease);
+const threePbrArtifact = artifact(fixture.artifacts.threePbr);
+const threeClockArtifact = artifact(fixture.artifacts.threeClock);
+const threeMissingAuthorityArtifact = artifact(fixture.artifacts.threeMissingAuthority);
 const reactArtifact = artifact(fixture.artifacts.react);
 const publishedArtifact = artifact(fixture.artifacts.published);
 const publishedFunctionDescriptors =
@@ -613,6 +620,41 @@ await check('generated artifacts bind exact requested profiles', () => {
     canvasArtifact.runtimeDescriptor.target.featureProfiles.length === 1
       && canvasArtifact.runtimeDescriptor.target.featureProfiles[0] === 'canvas-2d-v1',
     'Canvas artifact lacks its exact profile.',
+  );
+  for (const value of [
+    threeArtifact,
+    threeReleaseArtifact,
+    threePbrArtifact,
+    threeClockArtifact,
+  ]) {
+    assert(
+      value.runtimeDescriptor.target.featureProfiles.length === 1
+        && value.runtimeDescriptor.target.featureProfiles[0] === 'canvas-webgl-v1',
+      'Three.js artifact lacks its exact WebGL profile.',
+    );
+    assert(
+      value.runtimeDescriptor.budgets.gpuBytes === 8 * 1024 * 1024,
+      'Three.js artifact lacks its measured GPU budget.',
+    );
+    if (value !== threePbrArtifact && value !== threeClockArtifact) {
+      assert(
+        value.runtimeDescriptor.budgets.messageBytes === 256 * 1024,
+        'Supported Three.js artifact lacks its measured message budget.',
+      );
+    }
+  }
+  assert(
+    threeArtifact.capsuleArtifactHash === threeReleaseArtifact.capsuleArtifactHash,
+    'Preview and release signing did not reuse one Three.js construction.',
+  );
+  assert(
+    threeMissingAuthorityArtifact.runtimeDescriptor.target.featureProfiles.length === 0
+      && threeMissingAuthorityArtifact.runtimeDescriptor.budgets.gpuBytes === 0,
+    'Negative Three.js artifact unexpectedly received ambient GPU authority.',
+  );
+  assert(
+    fixture.testedThreeVersion === '0.185.1',
+    'Three.js acceptance version drifted from product authoring guidance.',
   );
   assert(
     plainArtifact.runtimeDescriptor.target.featureProfiles.length === 0,
@@ -676,6 +718,19 @@ await check('Canvas2D guest mounts only with the explicit Canvas profile', async
   const handle = await mount(positive.port, 'canvas', canvasArtifact);
   handles.set('canvas', handle);
   await waitForOutput('canvas-ready');
+});
+
+await check('Three.js r185 renders through the exact WebGL profile and GPU budget', async () => {
+  const handle = await mount(positive.port, 'three', threeArtifact);
+  handles.set('three', handle);
+  await waitForOutput('three-ready:2');
+  document.documentElement.dataset.capsuleThreeReady = 'true';
+  if (new URLSearchParams(window.location.search).has('pixelHandshake')) {
+    await new Promise<void>((resolve) => {
+      window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__ = resolve;
+    });
+    delete window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__;
+  }
 });
 
 await check('React mounts with native modern CSS and inherited host variables', async () => {
@@ -743,6 +798,18 @@ await check('release-signed published guest receives exact function and collabor
   assert(providerState.collaborativeChanges === 1, 'Collaborative change count is not exact.');
   assert(providerState.collaborativeNexts >= 1, 'Collaborative subscription did not advance.');
   assert(collaborativeWaiters.size === 0, 'Collaborative subscription retained a pending wait.');
+});
+
+await check('the retained Three.js construction mounts with release authority', async () => {
+  const bridge = functionBridge('three-release');
+  const handle = await mount(
+    positive.port,
+    'three-release',
+    threeReleaseArtifact,
+    {},
+    { mode: 'published', functionBridge: bridge },
+  );
+  handles.set('three-release', handle);
 });
 
 await check('active and throttled lifecycle transitions reach host diagnostics and guest', async () => {
@@ -841,6 +908,72 @@ await check('feature profile outside deployment policy is rejected before execut
   );
 });
 
+await check('oversized Three.js PBR payload fails with bounded budget guidance', async () => {
+  const reason = await rejectedScenario(
+    'three-pbr-message-budget',
+    catalog,
+    threePbrArtifact,
+  );
+  assert(
+    reason !== null
+      && typeof reason === 'object'
+      && 'capsuleCode' in reason
+      && reason.capsuleCode === 'MESSAGE_BUDGET_EXCEEDED',
+    `Three.js PBR rejection returned ${JSON.stringify(reason)}.`,
+  );
+  assert(
+    'message' in reason
+      && typeof reason.message === 'string'
+      && reason.message.includes('message budget')
+      && reason.message.includes('ui.budgets.messageBytes'),
+    'Three.js PBR rejection did not return renderer-neutral budget guidance.',
+  );
+});
+
+await check('unsupported Three.js Clock fails with actionable bounded guidance', async () => {
+  const reason = await rejectedScenario(
+    'three-clock-performance-api',
+    catalog,
+    threeClockArtifact,
+  );
+  assert(
+    reason !== null
+      && typeof reason === 'object'
+      && 'capsuleCode' in reason
+      && reason.capsuleCode === 'PERFORMANCE_API_UNAVAILABLE',
+    `Three.js Clock rejection returned ${JSON.stringify(reason)}.`,
+  );
+  assert(
+    'message' in reason
+      && typeof reason.message === 'string'
+      && reason.message.includes('monotonic timestamp')
+      && reason.message.includes('requestAnimationFrame'),
+    'Three.js Clock rejection did not return frame-timestamp guidance.',
+  );
+});
+
+await check('Three.js without signed WebGL authority fails with actionable diagnostics', async () => {
+  const reason = await rejectedScenario(
+    'three-missing-authority',
+    catalog,
+    threeMissingAuthorityArtifact,
+  );
+  assert(
+    reason !== null
+      && typeof reason === 'object'
+      && 'capsuleCode' in reason
+      && reason.capsuleCode === 'CANVAS_PROFILE_REQUIRED',
+    `Missing WebGL authority returned ${JSON.stringify(reason)}.`,
+  );
+  assert(
+    'message' in reason
+      && typeof reason.message === 'string'
+      && reason.message.includes('canvas-webgl-v1')
+      && reason.message.includes('canvas-2d-v1'),
+    'Missing WebGL authority did not return neutral canvas-profile guidance.',
+  );
+});
+
 await check('missing function metadata cannot create a provider binding', async () => {
   await rejectedScenario(
     'function-binding',
@@ -902,8 +1035,8 @@ await check('invalid initial props are rejected by the fixed channel schema', as
 
 await check('destroy is idempotent and terminal diagnostics retain zero resources', async () => {
   const failures: string[] = [];
-  if (handles.size !== 5) {
-    failures.push(`expected five positive handles; found ${handles.size}`);
+  if (handles.size !== 7) {
+    failures.push(`expected seven positive handles; found ${handles.size}`);
   }
   const terminals: unknown[] = [];
   for (const [name, handle] of handles) {

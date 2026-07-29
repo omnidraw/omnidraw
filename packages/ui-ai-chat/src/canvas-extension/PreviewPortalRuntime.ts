@@ -262,6 +262,7 @@ export function createPreviewPortalRuntime(
   status.style.alignItems = 'center';
   status.style.justifyContent = 'space-between';
   status.style.gap = '12px';
+  status.style.flexWrap = 'wrap';
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   statusMessage.dataset.previewStatusMessage = '';
@@ -269,8 +270,11 @@ export function createPreviewPortalRuntime(
   diagnosticStatus.hidden = true;
   diagnosticStatus.style.alignItems = 'center';
   diagnosticStatus.style.gap = '8px';
+  diagnosticStatus.style.maxWidth = '100%';
   diagnosticStatus.style.whiteSpace = 'nowrap';
   diagnosticStatusMessage.dataset.previewDiagnosticMessage = '';
+  diagnosticStatusMessage.style.overflow = 'hidden';
+  diagnosticStatusMessage.style.textOverflow = 'ellipsis';
   resolveDiagnosticButton.type = 'button';
   resolveDiagnosticButton.textContent = 'Resolve';
   resolveDiagnosticButton.setAttribute(
@@ -396,14 +400,20 @@ export function createPreviewPortalRuntime(
       || owner.role !== args.payload.role
       || owner.status === 'closed'
     ) return;
-    runtimeDiagnostics = owner.runtimeDiagnostics;
+    runtimeDiagnostics = owner.runtimeDiagnostics.filter(
+      (record) => record.diagnostic.previewRevisionId === owner.activeRevisionId,
+    );
     diagnosticStatus.hidden = runtimeDiagnostics.length === 0;
     diagnosticStatus.style.display = runtimeDiagnostics.length > 0
       ? 'inline-flex'
       : 'none';
-    diagnosticStatusMessage.textContent = runtimeDiagnostics.length > 0
-      ? `Awaiting retest • ${runtimeDiagnostics.length}`
-      : '';
+    const latestDiagnostic = runtimeDiagnostics.at(-1)?.diagnostic;
+    const diagnosticMessage = latestDiagnostic === undefined
+      ? ''
+      : `${latestDiagnostic.code}: ${latestDiagnostic.message} • `
+        + `Awaiting retest ${String(runtimeDiagnostics.length)}`;
+    diagnosticStatusMessage.textContent = diagnosticMessage;
+    diagnosticStatusMessage.title = diagnosticMessage;
     resolveDiagnosticButton.disabled = runtimeDiagnostics.length === 0;
     if (
       owner.publishedPreviewRevisionId !== null

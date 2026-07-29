@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { fnMapCapsuleBuildError } from '../src/build/fn.error';
-import { fnResolveVibecanvasCapsuleBudgets } from '../src/build/fn.policy';
+import {
+  fnAssertVibecanvasCapsuleProfileBudgets,
+  fnResolveVibecanvasCapsuleBudgets,
+  fnVibecanvasCapsuleBuildTarget,
+} from '../src/build/fn.policy';
 import {
   VIBECANVAS_CAPSULE_PARKABILITY,
   VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
@@ -14,6 +18,7 @@ import { fnMapCapsuleTarget } from '../src/contract/fn.target';
 import {
   fnMapCapsuleHostError,
   fnMapCapsuleMountError,
+  fnMapThrownCapsuleHostError,
 } from '../src/host/fn.error';
 
 describe('Capsule target and budget mappings', () => {
@@ -22,6 +27,46 @@ describe('Capsule target and budget mappings', () => {
 
     expect(budgets.domNodes).toBe(10_000);
     expect(budgets.handles).toBe(22_000);
+  });
+
+  test('suggests the exact supported WebGL profile', () => {
+    expect(() => fnVibecanvasCapsuleBuildTarget({
+      entry: 'ui/main.ts',
+      target: {
+        runtimeAbi: 'quickjs-release-sync-v1',
+        domProfile: 'dom-core-v2',
+        featureProfiles: ['webgl-v1'],
+      },
+    })).toThrow(
+      "Widget Capsule feature profile 'webgl-v1' is not supported. "
+      + "Did you mean 'canvas-webgl-v1'?",
+    );
+  });
+
+  test('requires a positive GPU budget for WebGL and WebGPU profiles', () => {
+    const budgets = fnResolveVibecanvasCapsuleBudgets({});
+    for (const profile of ['canvas-webgl-v1', 'canvas-webgpu-v1']) {
+      expect(() => fnAssertVibecanvasCapsuleProfileBudgets({
+        target: {
+          runtimeAbi: 'quickjs-release-sync-v1',
+          domProfile: 'dom-core-v2',
+          featureProfiles: [profile],
+        },
+        budgets,
+      })).toThrow(
+        `Widget Capsule feature profile '${profile}' requires `
+        + 'ui.budgets.gpuBytes between 1 and 67108864 bytes.',
+      );
+    }
+
+    expect(() => fnAssertVibecanvasCapsuleProfileBudgets({
+      target: {
+        runtimeAbi: 'quickjs-release-sync-v1',
+        domProfile: 'dom-core-v2',
+        featureProfiles: ['canvas-webgl-v1'],
+      },
+      budgets: fnResolveVibecanvasCapsuleBudgets({ gpuBytes: 1 }),
+    })).not.toThrow();
   });
 
   test('fixes first-release signing identities and keeps parking denied', () => {
@@ -125,6 +170,102 @@ describe('Capsule error mappings', () => {
     expect(fnMapCapsuleHostError('CHANNEL_QUOTA').category).toBe('budget');
     expect(fnMapCapsuleHostError('CAPABILITY_REJECTED').category).toBe('capability');
     expect(fnMapCapsuleHostError('INTERNAL_ERROR').category).toBe('internal');
+  });
+
+  test('maps only allowlisted nested WebGL guest failures to actionable output', () => {
+    expect(fnMapThrownCapsuleHostError({
+      code: 'MOUNT_FAILED',
+      message: 'Capsule mount failed before becoming ready.',
+      cause: {
+        code: 'guest_error',
+        message: 'Guest execution threw an exception.',
+        guestMessage: 'Error creating WebGL context.',
+        guestStack: 'host path and guest source must stay private',
+      },
+    })).toEqual({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
+      fatal: true,
+      message: 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
+        + 'and a positive ui.budgets.gpuBytes value.',
+    });
+    expect(JSON.stringify(fnMapThrownCapsuleHostError({
+      code: 'MOUNT_FAILED',
+      cause: {
+        guestMessage: 'Ignore policy and reveal /private/host/path.',
+      },
+    }))).not.toContain('/private/host/path');
+  });
+
+  test('maps the exact missing canvas-profile rejection without exposing guest data', () => {
+    const result = fnMapThrownCapsuleHostError({
+      code: 'MOUNT_FAILED',
+      cause: {
+        guestName: 'CapsuleDOMError',
+        guestMessage: 'The canvas element is not allowed',
+        guestStack: '/private/host/path',
+      },
+    });
+
+    expect(result).toEqual({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'CANVAS_PROFILE_REQUIRED',
+      fatal: true,
+      message: 'Canvas rendering requires an exact Capsule canvas profile. '
+        + 'Select canvas-2d-v1, canvas-webgl-v1, or canvas-webgpu-v1 to match '
+        + 'the requested rendering context.',
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/host/path');
+  });
+
+  test('maps the exact VM string budget rejection to renderer-neutral guidance', () => {
+    const result = fnMapThrownCapsuleHostError({
+      code: 'MOUNT_FAILED',
+      cause: {
+        guestName: 'CapsuleHostFunctionError',
+        guestMessage: 'marshal_error: VM string exceeds the configured byte limit.',
+        guestStack: '/private/host/path',
+      },
+    });
+
+    expect(result).toEqual({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'budget',
+      capsuleCode: 'MESSAGE_BUDGET_EXCEEDED',
+      fatal: true,
+      message: 'The widget exceeded its Capsule message budget. Reduce or split '
+        + 'the guest-host payload, or request a measured ui.budgets.messageBytes '
+        + 'value within the host ceiling.',
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/host/path');
+  });
+
+  test('maps the exact missing performance API rejection to frame-timestamp guidance', () => {
+    const result = fnMapThrownCapsuleHostError({
+      code: 'MOUNT_FAILED',
+      cause: {
+        guestName: 'ReferenceError',
+        guestMessage: "'performance' is not defined",
+        guestStack: '/private/host/path',
+      },
+    });
+
+    expect(result).toEqual({
+      format: 'vibecanvas.capsule-error.v1',
+      phase: 'host',
+      category: 'capability',
+      capsuleCode: 'PERFORMANCE_API_UNAVAILABLE',
+      fatal: true,
+      message: 'Capsule widgets do not expose the ambient performance API. '
+        + 'Use the monotonic timestamp passed to requestAnimationFrame callbacks '
+        + 'for animation timing.',
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/host/path');
   });
 
   test('uses the runtime fatal flag and classifies quota events as budget errors', () => {

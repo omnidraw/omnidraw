@@ -14,6 +14,7 @@ import {
   VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
   VIBECANVAS_CAPSULE_BUILD_POLICY,
   VIBECANVAS_CAPSULE_DEFAULT_BUDGETS,
+  VIBECANVAS_CAPSULE_GPU_FEATURE_PROFILES,
 } from './CONSTANTS';
 
 const BUDGET_KEYS = [
@@ -62,7 +63,15 @@ export function fnVibecanvasCapsuleBuildTarget(args: Readonly<{
   const allowed = new Set<string>(VIBECANVAS_CAPSULE_ALLOWED_FEATURE_PROFILES);
   for (const profile of args.target.featureProfiles) {
     if (!allowed.has(profile)) {
-      throw new TypeError(`Widget Capsule feature profile '${profile}' is not supported.`);
+      const suggestion = profile === 'webgl-v1'
+        ? " Did you mean 'canvas-webgl-v1'?"
+        : profile === 'webgpu-v1'
+          ? " Did you mean 'canvas-webgpu-v1'?"
+          : '';
+      throw new TypeError(
+        `Widget Capsule feature profile '${profile}' is not supported.${suggestion} `
+        + `Supported profiles: ${VIBECANVAS_CAPSULE_ALLOWED_FEATURE_PROFILES.join(', ')}.`,
+      );
     }
   }
   return Object.freeze({
@@ -71,6 +80,22 @@ export function fnVibecanvasCapsuleBuildTarget(args: Readonly<{
     featureProfiles: Object.freeze([...args.target.featureProfiles].sort()),
     language: 'js',
   });
+}
+
+export function fnAssertVibecanvasCapsuleProfileBudgets(args: Readonly<{
+  target: TWidgetCapsuleTarget;
+  budgets: TWidgetCapsuleBudgets;
+}>): void {
+  const gpuProfile = args.target.featureProfiles.find(
+    (profile) => VIBECANVAS_CAPSULE_GPU_FEATURE_PROFILES.includes(
+      profile as (typeof VIBECANVAS_CAPSULE_GPU_FEATURE_PROFILES)[number],
+    ),
+  );
+  if (gpuProfile === undefined || args.budgets.gpuBytes > 0) return;
+  throw new TypeError(
+    `Widget Capsule feature profile '${gpuProfile}' requires ui.budgets.gpuBytes `
+    + `between 1 and ${String(VIBECANVAS_CAPSULE_BUDGET_CEILINGS.gpuBytes)} bytes.`,
+  );
 }
 
 export function fnVibecanvasCapsuleBuildPolicy(): CapsuleBuildPolicy {

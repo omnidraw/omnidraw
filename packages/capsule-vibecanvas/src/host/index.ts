@@ -1,4 +1,8 @@
-export { fnMapCapsuleHostError, fnMapCapsuleMountError } from './fn.error';
+export {
+  fnMapCapsuleHostError,
+  fnMapCapsuleMountError,
+  fnMapThrownCapsuleHostError,
+} from './fn.error';
 
 export {
   CAPSULE_MOUNT_ERROR_FORMAT,

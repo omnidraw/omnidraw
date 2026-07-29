@@ -63,6 +63,7 @@ import {
   VIBECANVAS_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 import {
+  fnAssertVibecanvasCapsuleProfileBudgets,
   fnResolveVibecanvasCapsuleBudgets,
   fnVibecanvasCapsuleBuildPolicy,
   fnVibecanvasCapsuleBuildTarget,
@@ -353,6 +354,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     const effectiveBudgets = fnResolveVibecanvasCapsuleBudgets(
       manifest.ui.budgets ?? {},
     );
+    fnAssertVibecanvasCapsuleProfileBudgets({
+      target: manifest.ui.target,
+      budgets: effectiveBudgets,
+    });
     let distributionInput: Awaited<ReturnType<TVibecanvasDistributionBuild>>;
     let built: CapsuleBuildOutput;
     try {

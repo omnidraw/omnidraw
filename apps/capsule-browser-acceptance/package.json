@@ -16,10 +16,12 @@
     "@vibecanvas/ui-ai-chat": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "three": "0.185.1"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
+    "sharp": "0.35.3",
     "typescript": "catalog:",
     "vite": "^8.1.4"
   }

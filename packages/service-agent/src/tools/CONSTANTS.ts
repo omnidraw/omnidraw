@@ -1,6 +1,9 @@
 import { ZWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+export {
+  VIBECANVAS_CAPSULE_AUTHORING_TARGET,
+} from '@vibecanvas/capsule-vibecanvas/contract';
 
 export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetEditSession';
 export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetResourceSelection';
@@ -9,16 +12,6 @@ export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetDbC
 export const TOOL_ERROR_DETAILS_MARKER = Symbol('vibecanvas.toolError');
 
 export const Z_VIBECANVAS_JSON = ZWidgetManifestV3;
-
-export const WIDGET_CAPSULE_AUTHORING_TARGET = Object.freeze({
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: Object.freeze([
-    'artifact-resources-v1',
-    'css-network-images-v1',
-    'shadow-browser-css-v1',
-  ]),
-});
 
 export const AJV = new Ajv({ allErrors: true, strict: false });
 addFormats(AJV);

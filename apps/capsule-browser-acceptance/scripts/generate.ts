@@ -19,6 +19,7 @@ import {
 import {
   CAPSULE_ARTIFACT_RESOURCES_PROFILE,
   CAPSULE_CANVAS_2D_PROFILE,
+  CAPSULE_CANVAS_WEBGL_PROFILE,
   CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
   CAPSULE_DOM_CORE_V2_PROFILE,
   CAPSULE_RUNTIME_ABI,
@@ -26,9 +27,11 @@ import {
   CAPSULE_SVG_DOM_PROFILE,
   VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
   VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
+  VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
 } from '@vibecanvas/capsule-vibecanvas/contract';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetManifest,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
 import type { TVibecanvasDistributionBuild } from '@vibecanvas/capsule-vibecanvas/builder';
@@ -45,6 +48,7 @@ type TFixtureBuild = Readonly<{
   entry: string;
   files: readonly TSourceFile[];
   featureProfiles?: readonly string[];
+  budgets?: Readonly<{ gpuBytes?: number; messageBytes?: number }>;
   localStore?: 'none' | 'ephemeral';
   collaborative?: boolean;
   server?: Readonly<{ entry: string; runtimeAbi: string }>;
@@ -161,6 +165,164 @@ emitWidgetOutput({
   tone: 'success',
   message: 'canvas-ready',
 });
+`.trim(),
+  three: `
+import * as THREE from 'three';
+import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+
+if (THREE.REVISION !== '185') {
+  throw new Error('Unexpected Three.js revision ' + THREE.REVISION);
+}
+
+const canvas = document.createElement('canvas');
+canvas.width = 192;
+canvas.height = 128;
+canvas.setAttribute('aria-label', 'Three.js WebGL acceptance surface');
+document.body.append(canvas);
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  alpha: false,
+  antialias: false,
+});
+renderer.setPixelRatio(1);
+renderer.setSize(192, 128, false);
+renderer.setClearColor(0x05070d, 1);
+
+const spherePositions: number[] = [];
+const sphereNormals: number[] = [];
+const sphereIndices: number[] = [];
+const widthSegments = 24;
+const heightSegments = 16;
+for (let y = 0; y <= heightSegments; y += 1) {
+  const v = y / heightSegments;
+  const phi = v * Math.PI;
+  for (let x = 0; x <= widthSegments; x += 1) {
+    const u = x / widthSegments;
+    const theta = u * Math.PI * 2;
+    const nx = -Math.cos(theta) * Math.sin(phi);
+    const ny = Math.cos(phi);
+    const nz = Math.sin(theta) * Math.sin(phi);
+    sphereNormals.push(nx, ny, nz);
+    spherePositions.push(nx * 1.35, ny * 1.35, nz * 1.35);
+  }
+}
+for (let y = 0; y < heightSegments; y += 1) {
+  for (let x = 0; x < widthSegments; x += 1) {
+    const first = y * (widthSegments + 1) + x;
+    const second = first + widthSegments + 1;
+    sphereIndices.push(first, second, first + 1, second, second + 1, first + 1);
+  }
+}
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.Float32BufferAttribute(spherePositions, 3));
+geometry.setAttribute('normal', new THREE.Float32BufferAttribute(sphereNormals, 3));
+geometry.setIndex(sphereIndices);
+const material = new THREE.RawShaderMaterial({
+  uniforms: {
+    time: { value: 0 },
+  },
+  vertexShader: [
+    'precision highp float;',
+    'attribute vec3 position;',
+    'attribute vec3 normal;',
+    'uniform mat4 projectionMatrix;',
+    'uniform mat4 modelViewMatrix;',
+    'uniform mat3 normalMatrix;',
+    'uniform float time;',
+    'varying vec3 vNormal;',
+    'varying vec3 vPosition;',
+    'void main() {',
+    '  vNormal = normalize(normalMatrix * normal);',
+    '  float pulse = 1.0 + 0.055 * sin(time * 2.0 + position.y * 5.0);',
+    '  vec3 transformed = position * pulse;',
+    '  vPosition = transformed;',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);',
+    '}',
+  ].join('\\n'),
+  fragmentShader: [
+    'precision highp float;',
+    'uniform float time;',
+    'varying vec3 vNormal;',
+    'varying vec3 vPosition;',
+    'void main() {',
+    '  float rim = pow(1.0 - abs(vNormal.z), 2.1);',
+    '  float bands = 0.5 + 0.5 * sin(vPosition.y * 9.0 - time * 2.4);',
+    '  vec3 magenta = vec3(1.0, 0.03, 0.72);',
+    '  vec3 cyan = vec3(0.04, 0.9, 1.0);',
+    '  vec3 color = mix(magenta, cyan, bands);',
+    '  gl_FragColor = vec4(color * (0.35 + 1.65 * rim), 1.0);',
+    '}',
+  ].join('\\n'),
+  depthTest: false,
+  depthWrite: false,
+});
+const scene = new THREE.Scene();
+const orb = new THREE.Mesh(geometry, material);
+scene.add(orb);
+const camera = new THREE.PerspectiveCamera(42, 192 / 128, 0.1, 100);
+camera.position.set(0, 0, 5);
+let frames = 0;
+let startedAtMs: number | null = null;
+function render(timestampMs: number): void {
+  if (startedAtMs === null) startedAtMs = timestampMs;
+  const elapsedSeconds = (timestampMs - startedAtMs) / 1000;
+  material.uniforms.time.value = elapsedSeconds;
+  orb.rotation.x = elapsedSeconds * 0.75;
+  orb.rotation.y = elapsedSeconds * 1.2;
+  renderer.render(scene, camera);
+  frames += 1;
+  if (frames === 2) {
+    emitWidgetOutput({
+      type: 'notification',
+      tone: 'success',
+      message: 'three-ready:' + frames,
+    });
+  }
+  if (frames < 3) requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+window.addEventListener('pagehide', () => {
+  geometry.dispose();
+  material.dispose();
+  renderer.dispose();
+}, { once: true });
+`.trim(),
+  threePbr: `
+import * as THREE from 'three';
+
+const canvas = document.createElement('canvas');
+canvas.width = 192;
+canvas.height = 128;
+document.body.append(canvas);
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  alpha: false,
+  antialias: false,
+});
+renderer.setSize(192, 128, false);
+const scene = new THREE.Scene();
+scene.add(new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.82, 4),
+  new THREE.MeshPhysicalMaterial({
+    color: 0x6c5cff,
+    emissive: 0x24107a,
+    emissiveIntensity: 2.6,
+    metalness: 0.35,
+    roughness: 0.22,
+    clearcoat: 1,
+  }),
+));
+scene.add(new THREE.HemisphereLight(0xb8dfff, 0x18072e, 2.1));
+const camera = new THREE.PerspectiveCamera(42, 192 / 128, 0.1, 100);
+camera.position.z = 5;
+renderer.render(scene, camera);
+`.trim(),
+  threeClock: `
+import * as THREE from 'three';
+
+const clock = new THREE.Clock();
+if (clock.getDelta() < 0) throw new Error('unreachable');
 `.trim(),
   react: `
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -518,6 +680,7 @@ function manifest(args: TFixtureBuild): TManifest {
         localStore: args.localStore ?? 'none',
       }),
       parkability: Object.freeze({ enabled: false }),
+      ...(args.budgets === undefined ? {} : { budgets: args.budgets }),
     }),
     ...(args.server === undefined ? {} : { server: args.server }),
   });
@@ -568,20 +731,28 @@ const builder = new WidgetArtifactBuilderCapsule({
   },
 });
 
-async function build(args: TFixtureBuild) {
+async function construct(args: TFixtureBuild) {
   const widgetManifest = manifest(args);
-  const signingPurpose = args.signingPurpose ?? 'preview';
   const featureProfiles = args.featureProfiles ?? [];
   console.log(
-    `Building ${args.slug} (${args.entry}; ${signingPurpose}; profiles=${featureProfiles.join(',') || 'none'})…`,
+    `Constructing ${args.slug} (${args.entry}; profiles=${featureProfiles.join(',') || 'none'})…`,
   );
-  const result = await builder.build(tenant, {
+  return await builder.construct(tenant, {
     snapshot: snapshot(args.files),
     manifest: widgetManifest,
-    canonicalManifestJson: JSON.stringify(widgetManifest),
+    canonicalManifestJson: fnCanonicalizeWidgetManifest(widgetManifest),
     builderIdentity,
     capsuleBuildIdentity,
     buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
+  });
+}
+
+async function sign(
+  construction: Awaited<ReturnType<typeof construct>>,
+  signingPurpose: 'preview' | 'release',
+) {
+  const result = await builder.signConstruction(tenant, {
+    construction,
     signingPurpose,
   });
   const expectedKeyId = signingPurpose === 'preview'
@@ -591,7 +762,7 @@ async function build(args: TFixtureBuild) {
     result.uiArtifact.runtimeDescriptor.signatureKeyIds.length !== 1
     || result.uiArtifact.runtimeDescriptor.signatureKeyIds[0] !== expectedKeyId
   ) {
-    throw new Error(`${args.slug} was not signed by the ${signingPurpose} authority.`);
+    throw new Error(`Capsule artifact was not signed by the ${signingPurpose} authority.`);
   }
   const functionDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
     result.functionDescriptors,
@@ -616,6 +787,35 @@ async function build(args: TFixtureBuild) {
   });
 }
 
+async function build(args: TFixtureBuild) {
+  return await sign(await construct(args), args.signingPurpose ?? 'preview');
+}
+
+async function buildSigningPair(args: TFixtureBuild) {
+  const construction = await construct(args);
+  const [preview, release] = await Promise.all([
+    sign(construction, 'preview'),
+    sign(construction, 'release'),
+  ]);
+  return Object.freeze({
+    preview,
+    release,
+    constructionContractDigestSha256: construction.constructionContractDigestSha256,
+  });
+}
+
+const threePair = await buildSigningPair({
+  name: 'Browser Three.js acceptance',
+  slug: 'browser-three-acceptance',
+  entry: 'src/three.ts',
+  files: [{ path: 'src/three.ts', source: sources.three }],
+  featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
+  budgets: Object.freeze({
+    gpuBytes: 8 * 1024 * 1024,
+    messageBytes: 256 * 1024,
+  }),
+});
+
 const artifacts = Object.freeze({
   plain: await build({
     name: 'Browser channel acceptance',
@@ -637,6 +837,30 @@ const artifacts = Object.freeze({
     entry: 'src/canvas.ts',
     files: [{ path: 'src/canvas.ts', source: sources.canvas }],
     featureProfiles: [CAPSULE_CANVAS_2D_PROFILE],
+  }),
+  three: threePair.preview,
+  threeRelease: threePair.release,
+  threePbr: await build({
+    name: 'Browser Three.js unsupported PBR material',
+    slug: 'browser-three-pbr-material',
+    entry: 'src/three-pbr.ts',
+    files: [{ path: 'src/three-pbr.ts', source: sources.threePbr }],
+    featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
+    budgets: Object.freeze({ gpuBytes: 8 * 1024 * 1024 }),
+  }),
+  threeClock: await build({
+    name: 'Browser Three.js unsupported clock',
+    slug: 'browser-three-clock',
+    entry: 'src/three-clock.ts',
+    files: [{ path: 'src/three-clock.ts', source: sources.threeClock }],
+    featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
+    budgets: Object.freeze({ gpuBytes: 8 * 1024 * 1024 }),
+  }),
+  threeMissingAuthority: await build({
+    name: 'Browser Three.js missing authority',
+    slug: 'browser-three-missing-authority',
+    entry: 'src/three.ts',
+    files: [{ path: 'src/three.ts', source: sources.three }],
   }),
   react: await build({
     name: 'Browser React acceptance',
@@ -706,6 +930,7 @@ const fixture = Object.freeze({
     allowedFeatureProfiles: Object.freeze([
       CAPSULE_ARTIFACT_RESOURCES_PROFILE,
       CAPSULE_CANVAS_2D_PROFILE,
+      CAPSULE_CANVAS_WEBGL_PROFILE,
       CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
       CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
       CAPSULE_SVG_DOM_PROFILE,
@@ -716,6 +941,8 @@ const fixture = Object.freeze({
     releaseSigningKeyId: VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
   }),
   artifacts,
+  threeConstructionContractDigestSha256: threePair.constructionContractDigestSha256,
+  testedThreeVersion: VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
 });
 const serialized = `${JSON.stringify(fixture)}\n`;
 if (/private|pkcs8/i.test(serialized)) {

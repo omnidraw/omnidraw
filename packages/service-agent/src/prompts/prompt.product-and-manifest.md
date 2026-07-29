@@ -40,6 +40,9 @@ and must use schema version 3:
   `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
   `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use
   product defaults. Zero explicitly denies that dimension.
+- `vc_widget_validate` proves manifest policy, compilation, and artifact
+  construction. It does not mount or execute the browser guest, so do not call
+  a widget Preview-ready until its retained Preview has actually reached ready.
 - Add `ui.state` only when needed. `collaborative` declares shared
   widget-instance state; `localStore` is `none` or `ephemeral`.
 - Parking is unavailable in this release. Do not request it.

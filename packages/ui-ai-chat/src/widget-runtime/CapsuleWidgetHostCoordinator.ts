@@ -1,8 +1,10 @@
 import {
+  CapsuleHostError,
   CapsuleMemoryArtifactCache,
   createCapsuleHost,
   createDefaultCapsuleBrowserPlatform,
   fnMapCapsuleMountError,
+  fnMapThrownCapsuleHostError,
   type CapsuleCapabilityBinding,
   type CapsuleHandle,
   type CapsuleHost,
@@ -357,7 +359,9 @@ export class CapsuleWidgetHostCoordinator {
         for (const binding of args.capabilityBindings) {
           await Promise.resolve(binding.dispose()).catch(() => undefined);
         }
-        throw error;
+        throw error instanceof CapsuleHostError
+          ? fnMapThrownCapsuleHostError(error)
+          : error;
       }
     });
   }

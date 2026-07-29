@@ -31,6 +31,7 @@ export {
   VIBECANVAS_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 export {
+  fnAssertVibecanvasCapsuleProfileBudgets,
   fnResolveVibecanvasCapsuleBudgets,
   fnVibecanvasCapsuleBuildPolicy,
   fnVibecanvasCapsuleBuildTarget,
