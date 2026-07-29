@@ -2,6 +2,10 @@
 
 Captured on 2026-07-22 for the clean managed-service rewrite.
 
+> Historical snapshot: this file preserves the M9 acceptance state before the
+> S107 and S116 subtractions. `service-actor`, `ui-actor-legacy`, and Automerge
+> no longer exist in the current architecture.
+
 ## Optional legacy boundary
 
 ```mermaid

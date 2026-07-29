@@ -1,5 +1,10 @@
 # M2 package and API boundary evidence
 
+> Historical snapshot: this file records the M2 architecture when captured.
+> The later S107 and S116 subtractions removed `service-actor`,
+> `ui-actor-legacy`, and Automerge. References below are evidence of that
+> earlier milestone, not the current package map.
+
 M2 replaces the nine transport packages with one consolidated API boundary, gives both UI packages architecture-accurate names, extracts reusable widget-host logic into the canvas package, and establishes the small versioned contracts consumed by later managed-service milestones.
 
 ## Consolidated API contract

@@ -14,18 +14,16 @@ packages/orpc-client -> typed browser WebSocket client aggregating the oRPC APIs
 packages/resource-runtime -> public resource capability, provider, and gateway contracts
 packages/runtime -> plugin lifecycle, service registry, and runtime orchestration
 packages/sdk -> publishable widget and actor authoring SDK
-packages/service-actor -> actor runtime, supervision, manifests, and resource bindings
 packages/service-agent -> Pi agent sessions, approvals, widget generation, and publishing
 packages/service-canvas -> authoritative canvas commands, snapshots, queries, and events
 packages/service-db -> Turso-backed application data, models, and migrations
 packages/service-event-publisher -> runtime event publication to API subscription streams
-packages/service-kv -> persistent key-value service backed by the database service
+packages/service-kv -> reserved persistent key-value service for planned future use
 packages/service-widget-state -> centralized versioned widget JSON state
 packages/service-theme -> built-in themes and runtime theme synchronization
 packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives
 packages/tenant-core -> public tenant context, placement, and scoped-key contracts
-packages/ui-actor-legacy -> SolidJS legacy actor state-machine visualization
 packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
 packages/widget-contract -> public widget manifest, artifact, and revision contracts
 

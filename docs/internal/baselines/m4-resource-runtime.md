@@ -2,6 +2,10 @@
 
 Captured on 2026-07-21 for the clean managed-service rewrite.
 
+> Historical snapshot: this file preserves the M4 acceptance state. S107 later
+> removed `service-actor` and its compatibility paths. Actor references below
+> do not describe the current package graph.
+
 ## Runtime authority and composition
 
 ```mermaid

@@ -2,6 +2,11 @@
 
 Captured on 2026-07-22 for the completed clean managed-service rewrite.
 
+> Historical snapshot: this file records acceptance for the immutable revision
+> named below. Later subtraction tasks removed `service-actor`,
+> `ui-actor-legacy`, PTY, filesystem, and Automerge packages and paths; their
+> appearance below is historical evidence, not the current package map.
+
 ## Accepted immutable revision
 
 | Field | Evidence |
