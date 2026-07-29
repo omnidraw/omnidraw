@@ -26,6 +26,7 @@ import {
   SelectionStyleMenu,
 } from './SelectionStyleMenu';
 import {
+  fnCanShowSelectionStyleMenu,
   fnSelectionStyleState,
   type TSelectionStylePatch,
 } from './SelectionStyleMenu/fn.selection-style';
@@ -82,6 +83,13 @@ function isNativeSpaceControl(target: EventTarget | null): boolean {
     isTextEntryTarget(target)
     || target instanceof HTMLButtonElement
     || target instanceof HTMLAnchorElement
+  );
+}
+
+function isWidgetContentTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element
+    && target.closest('[data-vibecanvas-portal-id]') !== null
   );
 }
 
@@ -185,17 +193,22 @@ export function Canvas(props: CanvasPageProps) {
   const handleKeyboardShortcut = (event: KeyboardEvent) => {
     if (event.repeat) return;
     if (
-      activeRuntime?.widgetContentFocused() === true
+      (
+        activeRuntime?.widgetContentFocused() === true
+        && isWidgetContentTarget(event.target)
+      )
       || isTextEntryTarget(event.target)
     ) return;
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && key === 'b') {
       event.preventDefault();
+      event.stopPropagation();
       props.store.onToggleSidebar();
       return;
     }
     if (event.code === 'Space' && !isNativeSpaceControl(event.target)) {
       event.preventDefault();
+      event.stopPropagation();
       setSpaceHeld(true);
       return;
     }
@@ -206,17 +219,20 @@ export function Canvas(props: CanvasPageProps) {
     ) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       editor()?.setActiveTool('select');
       return;
     }
     if (key === 'g') {
       event.preventDefault();
+      event.stopPropagation();
       setGridVisible((visible) => !visible);
       return;
     }
     const toolId = fnCanvasToolShortcut(key);
     if (toolId === null) return;
     event.preventDefault();
+    event.stopPropagation();
     editor()?.setActiveTool(toolId);
   };
 
@@ -254,7 +270,10 @@ export function Canvas(props: CanvasPageProps) {
       insideCanvasSurface: target instanceof Node && containerRef.contains(target),
       primaryButton: event.button === 0,
       spaceHeld: spaceHeld(),
-      widgetContentFocused: activeRuntime?.widgetContentFocused() === true,
+      widgetContentFocused: (
+        activeRuntime?.widgetContentFocused() === true
+        && isWidgetContentTarget(target)
+      ),
     })) return;
     event.preventDefault();
     event.stopPropagation();
@@ -415,7 +434,7 @@ export function Canvas(props: CanvasPageProps) {
         onUndo={() => editor()?.history?.undo()}
         onRedo={() => editor()?.history?.redo()}
       />
-      <Show when={(state()?.selectedNodeIds.length ?? 0) > 0}>
+      <Show when={fnCanShowSelectionStyleMenu(selectedNodes())}>
         <SelectionStyleMenu
           state={fnSelectionStyleState(selectedNodes())}
           palette={props.themeService.getThemeColorPickerPalette()}

@@ -140,6 +140,12 @@ export function fnCanvasColorToCss(color: TColor | null): string | null {
   return `rgba(${red}, ${green}, ${blue}, ${color.a})`;
 }
 
+export function fnCanShowSelectionStyleMenu(
+  nodes: readonly Readonly<TSceneNode>[],
+): boolean {
+  return nodes.some((node) => node.kind !== 'widget-frame');
+}
+
 export function fnSelectionStyleState(
   nodes: readonly Readonly<TSceneNode>[],
 ): TSelectionStyleState {
@@ -150,7 +156,7 @@ export function fnSelectionStyleState(
     showFill: Boolean(fillNode),
     showStroke: Boolean(strokeNode),
     showStrokeWidth: Boolean(strokeNode),
-    showOpacity: nodes.length > 0,
+    showOpacity: fnCanShowSelectionStyleMenu(nodes),
     fillColor: fnCanvasColorToCss(
       fillNode ? solidColor(fillPaint(fillNode)) : null,
     ),
