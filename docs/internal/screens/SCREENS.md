@@ -35,8 +35,8 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | Populated canvas | Selection and style tools |
 | --- | --- |
-| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with fill, stroke, text, size, and alignment controls](assets/11-canvas-selection-style.webp) |
-| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected shape.** Transformer handles and the contextual style panel for a rectangle. |
+| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected line connector with Straight, Curved, and Elbow style controls](assets/11-canvas-selection-style.webp) |
+| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected connector.** Path handles and the contextual style panel expose line shape, stroke color, width, and opacity without changing connector meaning. |
 
 | Widget actions | Widget canvas maximize |
 | --- | --- |
