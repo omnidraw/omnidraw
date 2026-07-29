@@ -178,7 +178,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B65](b/B65.md) - cli: home preflight must share multiprocess WAL and report real failures
 - [x]: [B66](b/B66.md) - widget portals: keep Capsule layout intrinsic while canvas zooms
 - [x]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
-- [x]: [B68](b/B68.md) - AI widget authoring: request and diagnose Capsule WebGL authority
+- [x]: [B69](b/B69.md) - AI widget authoring: request and diagnose Capsule WebGL authority
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
