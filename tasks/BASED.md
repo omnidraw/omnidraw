@@ -125,7 +125,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B13](b/B13.md) - canvas CLI: top-level alias docs lie; `vibecanvas query ...` is rejected
 - [x]: [B14](b/B14.md) - canvas CLI: `canvas group --help` falls back to global help
 - [x]: [B15](b/B15.md) - canvas CLI: `--json` output is not real JSON
-- [ ]: [B16](b/B16.md) - ci: `@vibecanvas/canvas` tests load Konva node entry and require native `canvas` - only fails in ci
+- [-]: [B16](b/B16.md) - ci: `@vibecanvas/canvas` tests load Konva node entry and require native `canvas` - only fails in ci
 - [x]: [B17](b/B17.md) - canvas CLI: `add --schema rect` still requires an element source instead of printing schema
 - [x]: [B18](b/B18.md) - terminal image paste not working in deploy version
 - [x]: [B19](b/B19.md) - cli usage -> no realtime updates via automerge
@@ -138,7 +138,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
 - [-]: [B26] - investigate if cli respect zIndex - check tmp/script
 - [x]: [B27] - preview does not attach listeners correctly for all elements
-- [ ]: [B28] - group with widget and rect -> delete rect must also deletes widget
+- [-]: [B28] - group with widget and rect -> delete rect must also deletes widget
 - [x]: [B29] - shape2d -> edit must show vertical heigt correctly and hide konva.text while editing
 - [x]: [B30] - can't delete text
 - [x]: [B31](b/B31.md) - binary: compiled app cannot find Turso native binding
@@ -165,7 +165,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
 - [x]: [B54](b/B54.md) - widget publish: retain the draft but show it only after edits
-- [ ]: [B55](b/B55.md) - image undo: hard delete removes the only restorable media record
+- [-]: [B55](b/B55.md) - image undo: hard delete removes the only restorable media record
 - [x]: [B56](b/B56.md) - canvas input: synthesize click and double-click from valid pointer sequences
 - [x]: [B57](b/B57.md) - canvas text: resolve active editing during runtime teardown
 - [x]: [B58](b/B58.md) - widget portals: serialize asynchronous renderer updates
@@ -220,9 +220,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
 - [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
 - [x]: [A40](a/A40.md) - canvas: non-sandboxed terminal widget plugin
-- [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
+- [?]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
 - [x]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
-- [ ]: [A43](a/A43.md) - db: add authz for public DB methods
+- [?]: [A43](a/A43.md) - db: add authz for public DB methods
 - [-]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
 - [x]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
@@ -330,7 +330,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S45](s/S45.md) - canvas tests: text edit/session lane
 - [x]: [S46](s/S46.md) - canvas tests: element creation and clone lane
 - [x]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
-- [ ]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
+- [-]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
 - [x]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 - [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
@@ -363,14 +363,14 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S78](s/S78.md) - migrate workspace builds to Vite 8
 - [x]: [S79](s/S79.md) - migrate DOM tests to jsdom 29
 - [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
-- [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
+- [-]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
 - [-]: [S82](s/S82.md) - replace the session-bound AI wizard with a shared multi-resource agent
 - [x]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
 - [x]: [S84](s/S84.md) - simplify canvas AI frontend to chat, user preview, and user publish
 - [x]: [S85](s/S85.md) - agent tools: name-addressed resources, visible results, and Pi Bash
 - [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
 - [x]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
-- [ ]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
+- [x]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
 - [x]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
 - [x]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
 - [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
