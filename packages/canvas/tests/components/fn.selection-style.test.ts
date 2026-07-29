@@ -1,10 +1,16 @@
-import type { TRectNode, TWidgetFrameNode } from '@omnidraw/cangine';
+import type {
+  TConnectorNode,
+  TRectNode,
+  TWidgetFrameNode,
+} from '@omnidraw/cangine';
 import { describe, expect, it } from 'vitest';
 import {
   fnApplySelectionStyle,
   fnCanShowSelectionStyleMenu,
   fnCanvasColorToCss,
+  fnConnectorRoutingToLineShape,
   fnHexToCanvasColor,
+  fnLineShapeToSegmentMode,
   fnSelectionStyleState,
 } from '../../src/components/SelectionStyleMenu/fn.selection-style';
 
@@ -58,6 +64,30 @@ const WIDGET: TWidgetFrameNode = {
   resizable: true,
 };
 
+const CONNECTOR: TConnectorNode = {
+  id: 'connector-1',
+  parentId: null,
+  orderKey: '3',
+  kind: 'connector',
+  transform: {
+    position: { x: 0, y: 0 },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    skew: { x: 0, y: 0 },
+    origin: { x: 0, y: 0 },
+  },
+  from: { type: 'point', point: { x: 0, y: 0 } },
+  to: { type: 'point', point: { x: 100, y: 80 } },
+  routing: { type: 'straight' },
+  stroke: {
+    paint: {
+      type: 'solid',
+      color: { space: 'srgb', r: 0, g: 0, b: 0, a: 1 },
+    },
+    width: 2,
+  },
+};
+
 describe('selection style functions', () => {
   it('converts hex colors to canonical canvas colors', () => {
     expect(fnHexToCanvasColor('#3b82f6')).toEqual({
@@ -90,6 +120,59 @@ describe('selection style functions', () => {
       showStroke: false,
       showStrokeWidth: false,
       showOpacity: false,
+    });
+  });
+
+  it('projects supported connector routing into product line shapes', () => {
+    expect(fnConnectorRoutingToLineShape({ type: 'straight' })).toBe('straight');
+    expect(fnConnectorRoutingToLineShape({
+      type: 'quadratic',
+      control: { x: 50, y: 10 },
+    })).toBe('curved');
+    expect(fnConnectorRoutingToLineShape({
+      type: 'bezier',
+      control1: { x: 25, y: 10 },
+      control2: { x: 75, y: 70 },
+    })).toBe('curved');
+    expect(fnConnectorRoutingToLineShape({ type: 'orthogonal' })).toBe('elbow');
+    expect(fnConnectorRoutingToLineShape({
+      type: 'manual',
+      path: { commands: [] },
+    })).toBeNull();
+    expect(fnLineShapeToSegmentMode('straight')).toBe('straight');
+    expect(fnLineShapeToSegmentMode('curved')).toBe('smooth');
+    expect(fnLineShapeToSegmentMode('elbow')).toBe('elbow');
+  });
+
+  it('shows line shape only for one non-manual connector', () => {
+    expect(fnSelectionStyleState([CONNECTOR])).toMatchObject({
+      showLine: true,
+      lineShape: 'straight',
+    });
+    expect(fnSelectionStyleState([{
+      ...CONNECTOR,
+      routing: { type: 'orthogonal' },
+    }])).toMatchObject({
+      showLine: true,
+      lineShape: 'elbow',
+    });
+    expect(fnSelectionStyleState([{
+      ...CONNECTOR,
+      routing: {
+        type: 'manual',
+        path: { commands: [] },
+      },
+    }])).toMatchObject({
+      showLine: false,
+      lineShape: null,
+    });
+    expect(fnSelectionStyleState([CONNECTOR, RECT])).toMatchObject({
+      showLine: false,
+      lineShape: null,
+    });
+    expect(fnSelectionStyleState([RECT])).toMatchObject({
+      showLine: false,
+      lineShape: null,
     });
   });
 

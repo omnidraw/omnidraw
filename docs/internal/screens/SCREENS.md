@@ -35,8 +35,8 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | Populated canvas | Selection and style tools |
 | --- | --- |
-| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with fill, stroke, text, size, and alignment controls](assets/11-canvas-selection-style.webp) |
-| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected shape.** Transformer handles and the contextual style panel for a rectangle. |
+| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected line connector with Straight, Curved, and Elbow style controls](assets/11-canvas-selection-style.webp) |
+| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected connector.** Path handles and the contextual style panel expose line shape, stroke color, width, and opacity without changing connector meaning. |
 
 | Widget actions | Widget canvas maximize |
 | --- | --- |
@@ -51,7 +51,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. The durable frame survives restart, follows committed edits automatically, and shows queued, install, build, validation, failure, superseded, and ready progress without blanking its last known good UI. Its functions use the exact retained server artifact and real selected binding revision. **Retry**, **Reset**, and **Publish** are explicit frame actions; Publish is unavailable for stale or failed output and promotes the exact reviewed construction under release signing. |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. Guest content occupies the flexible upper lane; a compact, keyboard-focusable host-owned log terminal is docked below it with bounded scrollback and a clear action. Revision/binding selection, queued/install/build/validation/failure/superseded/ready progress, and structured runtime diagnostics stay in this terminal rather than covering or entering guest content; the latest diagnostic retains its host-owned **Resolve** action. The durable frame survives restart, follows committed edits automatically, and keeps its last known good UI visible through failures. Its functions use the exact retained server artifact and real selected binding revision. **Retry**, **Reset**, and **Publish** are explicit frame actions; Publish is unavailable for stale or failed output and promotes the exact reviewed construction under release signing. |
 
 | Direct widget placement |
 | --- |

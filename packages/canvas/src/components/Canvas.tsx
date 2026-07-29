@@ -27,7 +27,9 @@ import {
 } from './SelectionStyleMenu';
 import {
   fnCanShowSelectionStyleMenu,
+  fnLineShapeToSegmentMode,
   fnSelectionStyleState,
+  type TSelectionLineShape,
   type TSelectionStylePatch,
 } from './SelectionStyleMenu/fn.selection-style';
 import {
@@ -388,6 +390,14 @@ export function Canvas(props: CanvasPageProps) {
     currentEditor.refreshSelectionOverlay();
   };
 
+  const setSelectedConnectorLineShape = (
+    lineShape: TSelectionLineShape,
+  ) => {
+    activeRuntime?.setSelectedConnectorSegmentMode(
+      fnLineShapeToSegmentMode(lineShape),
+    );
+  };
+
   return (
     <div
       ref={canvasRootRef}
@@ -440,6 +450,7 @@ export function Canvas(props: CanvasPageProps) {
           palette={props.themeService.getThemeColorPickerPalette()}
           strokeWidths={props.themeService.getStrokeWidthOptions()}
           onApply={applySelectionStyle}
+          onSetLineShape={setSelectedConnectorLineShape}
         />
       </Show>
       <Switch>

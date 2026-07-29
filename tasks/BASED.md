@@ -276,8 +276,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [~]: [A94](a/A94.md) - restore remaining canvas, widget, and AI product gaps
 - [x]: [A95](a/A95.md) - local Verdaccio registry for Cangine, Capsule, and widget SDK
 - [~]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
-- [ ]: [A97](a/A97.md) - AI Preview: host-owned log terminal below widget content
-- [ ]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
+- [x]: [A97](a/A97.md) - AI Preview: host-owned log terminal below widget content
+- [x]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
 - [x]: [S2](s/S2.md) - rename CLAUDE.md -> AGENTS.md

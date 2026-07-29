@@ -32,6 +32,7 @@
 }
 
 .vc-selection-style-colors,
+.vc-selection-style-lines,
 .vc-selection-style-widths {
   display: flex;
   gap: 0.25rem;

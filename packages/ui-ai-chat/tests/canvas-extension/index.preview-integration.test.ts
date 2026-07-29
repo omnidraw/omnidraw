@@ -698,6 +698,27 @@ describe('current Cangine Preview integration', () => {
     await vi.waitFor(() => expect(
       previewHost.querySelector('section')?.dataset.previewStatus,
     ).toBe('ready'));
+    const guestContent = previewHost.querySelector<HTMLElement>(
+      '[data-preview-guest-content]',
+    );
+    const logTerminal = previewHost.querySelector<HTMLElement>(
+      '[data-preview-log-terminal]',
+    );
+    if (guestContent === null || logTerminal === null) {
+      throw new Error('Preview guest content and log terminal must both mount.');
+    }
+    expect(guestContent.nextElementSibling).toBe(logTerminal);
+    expect(guestContent.textContent).toContain('Mounted Preview');
+    expect(logTerminal.textContent).toContain('Showing draft-re • bindings #0');
+    const guestImpersonation = document.createElement('div');
+    guestImpersonation.dataset.previewLogTerminal = '';
+    guestImpersonation.textContent = 'guest log impersonation';
+    guestContent.append(guestImpersonation);
+    expect(
+      previewHost.querySelectorAll(
+        ':scope > section > [data-preview-log-terminal]',
+      ),
+    ).toHaveLength(1);
     expect(publishButton.disabled).toBe(false);
     await vi.waitFor(() => expect(current.requestAgentEvents).toHaveBeenCalledOnce());
 
