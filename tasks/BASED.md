@@ -410,7 +410,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S124](s/S124.md) - packages: remove deleted-package residue and stale docs
 - [ ]: [S125](s/S125.md) - canvas: remove duplicate host resize observer
 - [ ]: [S126](s/S126.md) - canvas: delete the CSS grid and use Cangine background rendering
-- [ ]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
+- [x]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

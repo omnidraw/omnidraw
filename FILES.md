@@ -429,9 +429,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
-| [packages/canvas/src/services/fn.local-document.ts](packages/canvas/src/services/fn.local-document.ts) |  |
 | [packages/canvas/src/services/fn.runtime-scene.ts](packages/canvas/src/services/fn.runtime-scene.ts) |  |
 | [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
+| [packages/canvas/src/services/fn.scene-reduction.ts](packages/canvas/src/services/fn.scene-reduction.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
@@ -992,7 +992,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
-| [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded local-reduction plus trace capture cost independently of total canvas size. |
+| [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded Cangine scene reduction plus trace capture cost independently of total canvas size. |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
