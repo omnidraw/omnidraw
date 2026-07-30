@@ -16,8 +16,9 @@ document or persistence authority.
 - `src/services/CanvasDocumentService.ts` owns server-accepted rows, the
   optimistic runtime-node map, pending commands, custom history, reconciliation,
   and prepared-image media state.
-- `src/services/fn.local-document.ts` applies one editor command batch to the
-  optimistic document and returns bounded before/after images.
+- Cangine's `@omnidraw/cangine/scene` reducer owns serialized scene-command
+  semantics; `src/services/fn.scene-reduction.ts` maps its bounded changes to
+  product before/after images and validates conservative editor effect IDs.
 - `src/services/fn.scene-node-diff.ts` owns pure authored-node diff and patch
   helpers at the application-to-server edge.
 - `src/extension.ts` is the only optional runtime extension seam.
@@ -30,8 +31,9 @@ types in `@vibecanvas/canvas-contract`.
 - Do not add another durable browser authority.
 - Do not persist the synthetic content layer.
 - Keep server-accepted item snapshots separate from optimistic runtime nodes.
-- Accept an editor request synchronously: reduce it locally, install its pending
-  record, call `scene.apply()` exactly once, and return the successor revision.
+- Accept an editor request synchronously: reduce it through Cangine, prepare
+  product effects, call `scene.apply()` exactly once, then atomically adopt the
+  reduction/revision pair, read model, and pending record before returning.
 - Never await transport or media work from `commit()` or `commitPrepared()`.
 - Route product mutations, undo, and redo through the document boundary. Only
   `CanvasDocumentService` may write the durable scene projection.
@@ -61,5 +63,5 @@ Run:
 ```sh
 bun run --cwd packages/canvas typecheck
 bun run --cwd packages/canvas test
-bun run .codex/hooks/functional-core-eslint.ts packages/canvas/src/services/fn.local-document.ts packages/canvas/src/services/fn.scene-node-diff.ts
+bun run .codex/hooks/functional-core-eslint.ts packages/canvas/src/services/fn.scene-reduction.ts packages/canvas/src/services/fn.scene-node-diff.ts
 ```

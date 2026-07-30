@@ -7,9 +7,13 @@ import type {
 } from "@omnidraw/cangine/editor";
 
 describe("Cangine controlled-editor consumer contract", () => {
-  test("resolves the packed 0.3.0 editor entrypoint", async () => {
+  test("resolves the packed 0.4.0 editor and scene entrypoints", async () => {
     const editorEntrypoint = Bun.resolveSync(
       "@omnidraw/cangine/editor",
+      import.meta.dir,
+    );
+    const sceneEntrypoint = Bun.resolveSync(
+      "@omnidraw/cangine/scene",
       import.meta.dir,
     );
     const manifestPath = Bun.resolveSync(
@@ -22,13 +26,53 @@ describe("Cangine controlled-editor consumer contract", () => {
     };
 
     expect(editorEntrypoint).toContain(
-      "node_modules/.bun/@omnidraw+cangine@0.3.0/",
+      "node_modules/.bun/@omnidraw+cangine@0.4.0/",
     );
     expect(editorEntrypoint).toEndWith("/dist/editor/index.js");
+    expect(sceneEntrypoint).toContain(
+      "node_modules/.bun/@omnidraw+cangine@0.4.0/",
+    );
+    expect(sceneEntrypoint).toEndWith("/dist/scene/index.js");
     expect(manifest).toMatchObject({
       name: "@omnidraw/cangine",
-      version: "0.3.0",
+      version: "0.4.0",
     });
+  });
+
+  test("imports the scene reducer without touching renderer globals", () => {
+    const consumer = Bun.spawnSync({
+      cmd: [process.execPath, "--eval", `
+        for (const name of [
+          "window",
+          "document",
+          "HTMLCanvasElement",
+          "OffscreenCanvas",
+        ]) {
+          Object.defineProperty(globalThis, name, {
+            configurable: true,
+            get() {
+              throw new Error("renderer global accessed: " + name);
+            },
+          });
+        }
+        const scene = await import("@omnidraw/cangine/scene");
+        const state = scene.createSceneReductionState({
+          schemaVersion: "1.0.0",
+          rootLayerIds: [],
+          nodes: [],
+        });
+        const reduction = scene.reduceSerializedSceneCommands(state, []);
+        if (reduction.state !== state || reduction.changes.length !== 0) {
+          throw new Error("unexpected empty reduction");
+        }
+      `],
+      cwd: import.meta.dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    expect(new TextDecoder().decode(consumer.stderr)).toBe("");
+    expect(consumer.exitCode).toBe(0);
   });
 
   test("exposes synchronous scene and prepared-image mutation ports", () => {

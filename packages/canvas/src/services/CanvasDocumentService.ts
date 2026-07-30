@@ -6,6 +6,13 @@ import type {
   TSceneNode,
   TSerializedSceneCommand,
 } from '@omnidraw/cangine';
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+  sceneReductionStateSnapshot,
+  type TSceneReductionState,
+  type TSerializedSceneCommandReduction,
+} from '@omnidraw/cangine/scene';
 import type {
   IEditorHistory,
   IEditorImageImportPort,
@@ -35,16 +42,17 @@ import type {
   TImageUploadFormat,
 } from '../types';
 import {
-  fnReduceLocalDocument,
-  type TLocalDocumentNodeImage,
-} from './fn.local-document';
-import {
   fnAuthoredCanvasNode,
   fnDiffSceneNodeStructure,
   fnDiffSceneNodes,
   fnRuntimeCanvasNode,
   fnSceneNodesEqual,
 } from './fn.scene-node-diff';
+import {
+  fnBoundedSceneChanges,
+  fnSceneChangeImages,
+  type TSceneNodeImage,
+} from './fn.scene-reduction';
 import {
   fnRuntimeGridNode,
   fnRuntimeSceneSnapshot,
@@ -122,10 +130,20 @@ export type TCanvasDocumentObservation = Readonly<{
 }>;
 
 type THistoryEntry = Readonly<{
-  before: ReadonlyMap<string, TLocalDocumentNodeImage>;
-  after: ReadonlyMap<string, TLocalDocumentNodeImage>;
+  before: ReadonlyMap<string, TSceneNodeImage>;
+  after: ReadonlyMap<string, TSceneNodeImage>;
   coalesceKey?: string;
 }>;
+
+type TSceneProjection = Readonly<{
+  state: TSceneReductionState;
+  revision: number;
+}>;
+
+type TIncrementalSceneReduction = Extract<
+  TSerializedSceneCommandReduction,
+  Readonly<{ mode: 'incremental' }>
+>;
 
 type TCommandPlan = Readonly<{
   operations: readonly TCanvasOperation[];
@@ -147,8 +165,8 @@ type TPendingTransaction = {
   readonly ownedImageResourceIds: readonly string[];
   dispatchState: 'queued' | 'executing';
   ownedMediaCleanupScheduled: boolean;
-  before: Map<string, TLocalDocumentNodeImage>;
-  after: Map<string, TLocalDocumentNodeImage>;
+  before: Map<string, TSceneNodeImage>;
+  after: Map<string, TSceneNodeImage>;
   plan: TCommandPlan;
 };
 
@@ -324,8 +342,8 @@ class CanvasDocumentHistory implements IEditorHistory {
 
   promoteImages(promotions: ReadonlyMap<string, TImagePromotion>): void {
     const rewrite = (
-      images: ReadonlyMap<string, TLocalDocumentNodeImage>,
-    ): ReadonlyMap<string, TLocalDocumentNodeImage> => {
+      images: ReadonlyMap<string, TSceneNodeImage>,
+    ): ReadonlyMap<string, TSceneNodeImage> => {
       const next = new Map(images);
       for (const [nodeId, node] of next) {
         if (node?.kind !== 'image') continue;
@@ -358,7 +376,7 @@ class CanvasDocumentHistory implements IEditorHistory {
 
   overlaps(nodeIds: ReadonlySet<string>): boolean {
     const overlapsImages = (
-      images: ReadonlyMap<string, TLocalDocumentNodeImage>,
+      images: ReadonlyMap<string, TSceneNodeImage>,
     ): boolean => {
       for (const nodeId of images.keys()) {
         if (nodeIds.has(nodeId)) return true;
@@ -413,10 +431,10 @@ export class CanvasDocumentService
     Map<string, TIndexedImageDescriptor>
   >();
   #optimisticNodes: ReadonlyMap<string, TSceneNode> = new Map();
+  #projection: TSceneProjection | null = null;
   #engine: IInfiniteCanvasEngine | null = null;
   #resourceRegistrations: IResourceRegistrationOwner | null = null;
   #acceptedRevision = 0;
-  #projectionRevision = 0;
   #disposed = false;
   #committing = false;
   #recoveryPending = false;
@@ -455,7 +473,7 @@ export class CanvasDocumentService
   }
 
   get projectedSceneRevision(): number {
-    return this.#projectionRevision;
+    return this.#projection?.revision ?? 0;
   }
 
   get pendingTransactionCount(): number {
@@ -494,6 +512,7 @@ export class CanvasDocumentService
         this.#reportError(destroyError);
       }
       this.#resourceRegistrations = null;
+      this.#projection = null;
       this.#engine = null;
       throw error;
     }
@@ -534,10 +553,6 @@ export class CanvasDocumentService
       [{ type: 'upsert', node: nextGridNode }],
       RUNTIME_GRID_SCENE_SOURCE,
     );
-    if (!(this.#optimisticNodes instanceof Map)) throw new TypeError(
-      'Canvas optimistic document storage is not mutable.',
-    );
-    this.#optimisticNodes.set(nextGridNode.id, nextGridNode);
     this.#runtimeGridPresentation = presentation;
     return true;
   }
@@ -741,6 +756,7 @@ export class CanvasDocumentService
     }
     this.#acceptedItems.clear();
     this.#optimisticNodes = new Map();
+    this.#projection = null;
     this.#imageNodeCounts.clear();
     this.#imageDescriptorCounts.clear();
     this.#engine = null;
@@ -789,12 +805,12 @@ export class CanvasDocumentService
       throw new RangeError(`Duplicate editor transaction ID '${request.transactionId}'.`);
     }
     if (
-      request.basisSceneRevision !== this.#projectionRevision
+      request.basisSceneRevision !== this.projectedSceneRevision
       || request.basisSceneRevision !== this.#engine!.scene.revision
     ) {
       throw new RangeError(
         `Stale editor transaction basis ${request.basisSceneRevision}; `
-          + `document and engine are at ${this.#projectionRevision} and `
+          + `document and engine are at ${this.projectedSceneRevision} and `
           + `${this.#engine!.scene.revision}.`,
       );
     }
@@ -802,21 +818,36 @@ export class CanvasDocumentService
 
     this.#committing = true;
     let pending: TPendingTransaction | null = null;
-    const previousNodes = this.#optimisticNodes;
     try {
-      if (!(previousNodes instanceof Map)) {
-        throw new TypeError('Canvas optimistic document storage is not mutable.');
+      const projection = this.#projection;
+      if (projection === null) {
+        throw new RangeError('Canvas scene projection is not initialized.');
       }
-      const reduction = fnReduceLocalDocument(previousNodes, request);
+      const reduction = reduceSerializedSceneCommands(
+        projection.state,
+        request.commands,
+      );
+      if (reduction.mode !== 'incremental') {
+        throw new RangeError(
+          'replace-snapshot is not an incremental local document command.',
+        );
+      }
+      const bounded = fnBoundedSceneChanges(
+        reduction.changes,
+        request.affectedNodeIds,
+      );
+      if (reduction.changes.length === 0) {
+        throw new RangeError('Editor transaction has no local document change.');
+      }
       this.#assertPersistableImages(
-        reduction.after,
+        bounded.after,
         new Set(options.preparedImageResourceIds ?? []),
       );
       const imageIndexPatch = this.#stageImageIndexChanges(
-        reduction.before,
-        reduction.after,
+        bounded.before,
+        bounded.after,
       );
-      const plan = this.#planFromNodes(reduction.before, reduction.after);
+      const plan = this.#planFromNodes(bounded.before, bounded.after);
       if (plan.operations.length === 0) {
         throw new RangeError('Editor transaction has no durable canvas operation.');
       }
@@ -824,7 +855,7 @@ export class CanvasDocumentService
         phase: 'durable-plan-prepared',
         priority: 'critical',
         transactionId: request.transactionId,
-        nodeIds: reduction.affectedNodeIds,
+        nodeIds: bounded.nodeIds,
         data: {
           operationCount: plan.operations.length,
           preconditionCount: plan.preconditions.length,
@@ -832,8 +863,8 @@ export class CanvasDocumentService
         },
       });
       const historyEntry: THistoryEntry = {
-        before: new Map(reduction.before),
-        after: new Map(reduction.after),
+        before: new Map(bounded.before),
+        after: new Map(bounded.after),
         ...(request.coalesceKey === undefined
           ? {}
           : { coalesceKey: request.coalesceKey }),
@@ -853,10 +884,10 @@ export class CanvasDocumentService
           ...(request.coalesceKey === undefined
             ? {}
             : { coalesceKey: request.coalesceKey }),
-          affectedNodeIds: Object.freeze([...reduction.affectedNodeIds]),
+          affectedNodeIds: bounded.nodeIds,
           commandId,
-          before: new Map(reduction.before),
-          after: new Map(reduction.after),
+          before: new Map(bounded.before),
+          after: new Map(bounded.after),
           plan,
           mediaGate: options.mediaGate ?? null,
           ownedImageResourceIds: Object.freeze([
@@ -867,7 +898,29 @@ export class CanvasDocumentService
         };
       }
 
-      this.#optimisticNodes = reduction.nodes;
+      try {
+        this.#applySceneReduction(
+          request.commands,
+          reduction,
+          request.source,
+          request.coalesceKey,
+        );
+      } catch (error) {
+        this.#scheduleRecovery(error);
+        throw error;
+      }
+      const expectedRevision = request.basisSceneRevision + 1;
+      this.#observe({
+        phase: 'projection-applied',
+        priority: 'critical',
+        transactionId: request.transactionId,
+        ...(pending === null ? {} : { commandId: pending.commandId }),
+        nodeIds: bounded.nodeIds,
+        data: {
+          source: request.source,
+          successorRevision: expectedRevision,
+        },
+      });
       if (pending !== null) {
         this.#installPending(pending);
         this.#observe({
@@ -878,45 +931,6 @@ export class CanvasDocumentService
           nodeIds: pending.affectedNodeIds,
         });
       }
-      try {
-        this.#engine!.scene.apply([...request.commands], {
-          source: request.source,
-          ...(request.coalesceKey === undefined
-            ? {}
-            : { coalesceKey: request.coalesceKey }),
-        });
-      } catch (error) {
-        this.#optimisticNodes = previousNodes;
-        if (pending !== null) this.#retirePending(pending);
-        throw error;
-      }
-
-      const expectedRevision = request.basisSceneRevision + 1;
-      if (this.#engine!.scene.revision !== expectedRevision) {
-        this.#optimisticNodes = previousNodes;
-        if (pending !== null) this.#retirePending(pending);
-        this.#scheduleRecovery();
-        throw new RangeError(
-          'Canvas scene projection did not produce exactly one successor revision.',
-        );
-      }
-      this.#projectionRevision = expectedRevision;
-      this.#observe({
-        phase: 'projection-applied',
-        priority: 'critical',
-        transactionId: request.transactionId,
-        ...(pending === null ? {} : { commandId: pending.commandId }),
-        nodeIds: reduction.affectedNodeIds,
-        data: {
-          source: request.source,
-          successorRevision: expectedRevision,
-        },
-      });
-      for (const [nodeId, node] of reduction.after) {
-        if (node === null) previousNodes.delete(nodeId);
-        else previousNodes.set(nodeId, node);
-      }
-      this.#optimisticNodes = previousNodes;
       this.#applyImageIndexPatch(imageIndexPatch);
       if (imageIndexPatch.registrationsChanged) {
         try {
@@ -940,7 +954,7 @@ export class CanvasDocumentService
   }
 
   #assertPersistableImages(
-    after: ReadonlyMap<string, TLocalDocumentNodeImage>,
+    after: ReadonlyMap<string, TSceneNodeImage>,
     preparedResourceIds: ReadonlySet<string>,
   ): void {
     for (const node of after.values()) {
@@ -972,7 +986,7 @@ export class CanvasDocumentService
     const planned = this.#commandsForNodeImages(desired);
     const request: TEditorSceneMutationRequest = {
       transactionId: `history:${this.#createCommandId()}`,
-      basisSceneRevision: this.#projectionRevision,
+      basisSceneRevision: this.projectedSceneRevision,
       source: direction === 'undo' ? UNDO_SCENE_SOURCE : REDO_SCENE_SOURCE,
       commands: planned.commands,
       affectedNodeIds: planned.affectedNodeIds,
@@ -984,7 +998,7 @@ export class CanvasDocumentService
   }
 
   #commandsForNodeImages(
-    desired: ReadonlyMap<string, TLocalDocumentNodeImage>,
+    desired: ReadonlyMap<string, TSceneNodeImage>,
   ): Readonly<{
     commands: readonly TSerializedSceneCommand[];
     affectedNodeIds: readonly string[];
@@ -1018,8 +1032,8 @@ export class CanvasDocumentService
   }
 
   #planFromNodes(
-    before: ReadonlyMap<string, TLocalDocumentNodeImage>,
-    after: ReadonlyMap<string, TLocalDocumentNodeImage>,
+    before: ReadonlyMap<string, TSceneNodeImage>,
+    after: ReadonlyMap<string, TSceneNodeImage>,
   ): TCommandPlan {
     const operations: TCanvasOperation[] = [];
     const preconditions: TCanvasPrecondition[] = [];
@@ -1305,18 +1319,36 @@ export class CanvasDocumentService
         );
       }
     }
-    const projectedDeletionIds = this.#projectedDeletionIds(event);
-    const projectedEffectIds = new Set([
-      ...changedIds,
-      ...projectedDeletionIds,
-    ]);
-    const explicitDeletedIds = new Set(event.deletedItemIds);
-    for (const nodeId of projectedDeletionIds) {
-      if (
-        explicitDeletedIds.has(nodeId)
-        || changedIds.has(nodeId)
-        || !this.#acceptedItems.has(nodeId)
-      ) continue;
+    const projection = this.#projection;
+    if (
+      this.#engine === null
+      || projection === null
+      || this.#engine.scene.revision !== projection.revision
+    ) {
+      throw new RangeError('Canvas scene projection is not synchronized.');
+    }
+    const eventCommands: TSerializedSceneCommand[] = [
+      ...event.changedItems.map((item): TSerializedSceneCommand => ({
+        type: 'upsert',
+        node: fnRuntimeCanvasNode(item.item),
+      })),
+      ...event.deletedItemIds.map((itemId): TSerializedSceneCommand => ({
+        type: 'remove',
+        nodeId: itemId,
+        descendants: 'remove',
+      })),
+    ];
+    const eventReduction = reduceSerializedSceneCommands(
+      projection.state,
+      eventCommands,
+    );
+    if (eventReduction.mode !== 'incremental') {
+      throw new RangeError('Canvas events cannot replace the retained scene.');
+    }
+    const eventChanges = fnSceneChangeImages(eventReduction.changes);
+    const projectedEffectIds = new Set(eventChanges.nodeIds);
+    for (const nodeId of eventChanges.nodeIds) {
+      if (changedIds.has(nodeId) || !this.#acceptedItems.has(nodeId)) continue;
       throw new Error(
         `Canvas event '${event.commandId}' omits an attached descendant `
           + `'${nodeId}' from its structural result.`,
@@ -1330,19 +1362,45 @@ export class CanvasDocumentService
     if (this.#pendingOverlaps(conflictingIds, pending)) {
       throw new Error('A remote canvas event overlaps an unresolved local mutation.');
     }
-    if (
+    const clearHistory = (
       pending === null
       && this.#history.overlaps(
         this.#historyEffectIds(event, projectedEffectIds),
       )
-    ) {
-      this.#history.clear();
+    );
+    const protectedIds = pending === null
+      ? new Set<string>()
+      : this.#pendingAffectedIds(pending);
+    const commands = protectedIds.size === 0
+      ? eventCommands
+      : eventCommands.filter((command) => {
+        if (command.type === 'upsert') return !protectedIds.has(command.node.id);
+        if (command.type === 'remove') return !protectedIds.has(command.nodeId);
+        return true;
+      });
+    const reduction = commands === eventCommands
+      ? eventReduction
+      : reduceSerializedSceneCommands(projection.state, commands);
+    if (reduction.mode !== 'incremental') {
+      throw new RangeError('Canvas events cannot replace the retained scene.');
+    }
+    const bounded = fnSceneChangeImages(reduction.changes);
+    const imageIndexPatch = this.#stageImageIndexChanges(
+      bounded.before,
+      bounded.after,
+    );
+
+    if (reduction.state !== projection.state) {
+      this.#applySceneReduction(commands, reduction, SERVER_SCENE_SOURCE);
     }
 
     for (const item of event.changedItems) this.#acceptedItems.set(item.id, item);
     for (const itemId of event.deletedItemIds) this.#acceptedItems.delete(itemId);
     this.#acceptedRevision = event.revision;
     this.#acceptedCommandIds.add(event.commandId);
+    this.#applyImageIndexPatch(imageIndexPatch);
+    if (imageIndexPatch.registrationsChanged) this.#syncDurableResources();
+    if (clearHistory) this.#history.clear();
     this.#observe({
       phase: pending === null
         ? 'remote-event-accepted'
@@ -1358,47 +1416,6 @@ export class CanvasDocumentService
       },
     });
     if (pending !== null) this.#retirePending(pending);
-
-    const protectedIds = this.#pendingAffectedIds();
-    const nextNodes = new Map(this.#optimisticNodes);
-    const commands: TSerializedSceneCommand[] = [];
-    for (const item of event.changedItems) {
-      if (protectedIds.has(item.id)) continue;
-      const next = fnRuntimeCanvasNode(item.item);
-      const current = nextNodes.get(item.id) ?? null;
-      if (fnSceneNodesEqual(current, next)) continue;
-      nextNodes.set(item.id, next);
-      commands.push({ type: 'upsert', node: next });
-    }
-    const projectedDeletionRoots = event.deletedItemIds.filter(
-      (itemId) => !protectedIds.has(itemId),
-    );
-    const appliedDeletionIds = this.#projectedDeletionIds({
-      ...event,
-      deletedItemIds: projectedDeletionRoots,
-    }, nextNodes);
-    for (const itemId of appliedDeletionIds) {
-      if (!nextNodes.has(itemId)) continue;
-      nextNodes.delete(itemId);
-    }
-    for (const itemId of projectedDeletionRoots) {
-      if (
-        !this.#optimisticNodes.has(itemId)
-      ) continue;
-      commands.push({
-        type: 'remove',
-        nodeId: itemId,
-        descendants: 'remove',
-      });
-    }
-    const nextImageIndex = this.#buildImageDocumentIndex(nextNodes);
-    this.#syncDurableResources(nextImageIndex);
-    this.#optimisticNodes = nextNodes;
-    this.#imageNodeCounts = nextImageIndex.nodeCounts;
-    this.#imageDescriptorCounts = nextImageIndex.descriptorCounts;
-    if (commands.length > 0) {
-      this.#projectSceneCommands(commands);
-    }
     this.#releaseOrphanLocalImages(true);
   }
 
@@ -1419,30 +1436,6 @@ export class CanvasDocumentService
         );
       }
       result.add(itemId);
-    }
-    return result;
-  }
-
-  #projectedDeletionIds(
-    event: TCanvasItemsChangedEvent,
-    nodes: ReadonlyMap<string, TSceneNode> = this.#optimisticNodes,
-  ): Set<string> {
-    const result = new Set(event.deletedItemIds);
-    const children = new Map<string, string[]>();
-    for (const node of nodes.values()) {
-      if (node.parentId === null) continue;
-      const siblings = children.get(node.parentId);
-      if (siblings === undefined) children.set(node.parentId, [node.id]);
-      else siblings.push(node.id);
-    }
-    const work = [...event.deletedItemIds];
-    while (work.length > 0) {
-      const nodeId = work.pop()!;
-      for (const childId of children.get(nodeId) ?? []) {
-        if (result.has(childId)) continue;
-        result.add(childId);
-        work.push(childId);
-      }
     }
     return result;
   }
@@ -1490,29 +1483,103 @@ export class CanvasDocumentService
   #projectSceneCommands(
     commands: readonly TSerializedSceneCommand[],
     source = SERVER_SCENE_SOURCE,
-  ): void {
+  ): TIncrementalSceneReduction {
     if (this.#committing) {
       throw new RangeError('Cannot reconcile the scene during a local commit.');
     }
+    const projection = this.#projection;
     if (
       this.#engine === null
-      || this.#engine.scene.revision !== this.#projectionRevision
+      || projection === null
+      || this.#engine.scene.revision !== projection.revision
     ) {
       throw new RangeError('Canvas scene projection is not synchronized.');
     }
-    const expectedRevision = this.#projectionRevision + 1;
-    this.#engine.scene.apply([...commands], { source });
-    if (this.#engine.scene.revision !== expectedRevision) {
+    const reduction = reduceSerializedSceneCommands(projection.state, commands);
+    if (reduction.mode !== 'incremental') {
       throw new RangeError(
-        'Accepted canvas projection did not produce exactly one revision.',
+        'replace-snapshot requires authoritative canvas replacement.',
       );
     }
-    this.#projectionRevision = expectedRevision;
+    if (reduction.state === projection.state) return reduction;
+    try {
+      this.#applySceneReduction(commands, reduction, source);
+    } catch (error) {
+      this.#scheduleRecovery(error);
+      throw error;
+    }
+    return reduction;
   }
 
-  #pendingAffectedIds(): Set<string> {
+  #applySceneReduction(
+    commands: readonly TSerializedSceneCommand[],
+    reduction: TIncrementalSceneReduction,
+    source: string,
+    coalesceKey?: string,
+  ): void {
+    const engine = this.#engine;
+    const projection = this.#projection;
+    if (
+      engine === null
+      || projection === null
+      || engine.scene.revision !== projection.revision
+    ) {
+      throw new RangeError('Canvas scene projection is not synchronized.');
+    }
+    if (!(this.#optimisticNodes instanceof Map)) {
+      throw new TypeError('Canvas optimistic document storage is not mutable.');
+    }
+    if (reduction.state === projection.state) return;
+
+    const expectedRevision = projection.revision + 1;
+    engine.scene.apply(commands, {
+      source,
+      ...(coalesceKey === undefined ? {} : { coalesceKey }),
+    });
+    if (engine.scene.revision !== expectedRevision) {
+      throw new RangeError(
+        'Canvas scene projection did not produce exactly one successor revision.',
+      );
+    }
+    for (const change of reduction.changes) {
+      if (
+        !fnSceneNodesEqual(
+          engine.scene.get(change.nodeId) as TSceneNode | null,
+          change.after as TSceneNode | null,
+        )
+      ) {
+        throw new RangeError(
+          `Canvas scene projection disagrees for node '${change.nodeId}'.`,
+        );
+      }
+    }
+
+    this.#projection = Object.freeze({
+      state: reduction.state,
+      revision: expectedRevision,
+    });
+    for (const change of reduction.changes) {
+      if (change.after === null) this.#optimisticNodes.delete(change.nodeId);
+      else this.#optimisticNodes.set(change.nodeId, change.after);
+    }
+    for (const change of reduction.changes) {
+      if (
+        !fnSceneNodesEqual(
+          this.#projection.state.get(change.nodeId) as TSceneNode | null,
+          this.#optimisticNodes.get(change.nodeId) ?? null,
+        )
+      ) {
+        throw new RangeError(
+          `Canvas reduction state disagrees for node '${change.nodeId}'.`,
+        );
+      }
+    }
+  }
+
+  #pendingAffectedIds(except: TPendingTransaction | null): Set<string> {
     const result = new Set<string>();
     for (const pending of this.#pendingByTransactionId.values()) {
+      if (pending === except) continue;
       for (const nodeId of pending.affectedNodeIds) result.add(nodeId);
     }
     return result;
@@ -1621,7 +1688,7 @@ export class CanvasDocumentService
       );
       this.#commitMutation({
         transactionId: `image-promotion:${this.#createCommandId()}`,
-        basisSceneRevision: this.#projectionRevision,
+        basisSceneRevision: this.projectedSceneRevision,
         source: IMAGE_PROMOTION_SOURCE,
         commands,
         affectedNodeIds,
@@ -1651,7 +1718,7 @@ export class CanvasDocumentService
     promotions: ReadonlyMap<string, TImagePromotion>,
   ): void {
     const rewrite = (
-      images: Map<string, TLocalDocumentNodeImage>,
+      images: Map<string, TSceneNodeImage>,
     ): void => {
       for (const [nodeId, node] of images) {
         if (node?.kind !== 'image') continue;
@@ -1772,8 +1839,12 @@ export class CanvasDocumentService
         authoredNodes: snapshot.items.map((item) => item.item),
         grid: this.#runtimeGridPresentation,
       });
+      const reductionState = createSceneReductionState(
+        projectedSnapshot,
+      );
+      const admittedSnapshot = sceneReductionStateSnapshot(reductionState);
       const optimisticNodes = new Map(
-        projectedSnapshot.nodes.map((node) => [node.id, node]),
+        admittedSnapshot.nodes.map((node) => [node.id, node]),
       );
       const nextImageIndex = this.#buildImageDocumentIndex(optimisticNodes);
 
@@ -1792,8 +1863,11 @@ export class CanvasDocumentService
         this.#optimisticNodes = optimisticNodes;
         this.#imageNodeCounts = nextImageIndex.nodeCounts;
         this.#imageDescriptorCounts = nextImageIndex.descriptorCounts;
-        engine.scene.replace(projectedSnapshot, { source: SNAPSHOT_SCENE_SOURCE });
-        this.#projectionRevision = engine.scene.revision;
+        engine.scene.replace(admittedSnapshot, { source: SNAPSHOT_SCENE_SOURCE });
+        this.#projection = Object.freeze({
+          state: reductionState,
+          revision: engine.scene.revision,
+        });
       } catch (error) {
         this.#acceptedRevision = previousRevision;
         this.#acceptedItems.clear();
@@ -1857,8 +1931,8 @@ export class CanvasDocumentService
   }
 
   #stageImageIndexChanges(
-    before: ReadonlyMap<string, TLocalDocumentNodeImage>,
-    after: ReadonlyMap<string, TLocalDocumentNodeImage>,
+    before: ReadonlyMap<string, TSceneNodeImage>,
+    after: ReadonlyMap<string, TSceneNodeImage>,
   ): TImageIndexPatch {
     const touchedResourceIds = new Set<string>();
     for (const node of before.values()) {
@@ -1889,7 +1963,7 @@ export class CanvasDocumentService
       );
     }
 
-    const removeNode = (node: TLocalDocumentNodeImage): void => {
+    const removeNode = (node: TSceneNodeImage): void => {
       if (node?.kind !== 'image') return;
       adjustCount(nodeCounts, node.resourceId, -1);
       const extension = fnReadCanvasImageExtension(node);
@@ -1902,7 +1976,7 @@ export class CanvasDocumentService
         );
       }
     };
-    const addNode = (node: TLocalDocumentNodeImage): void => {
+    const addNode = (node: TSceneNodeImage): void => {
       if (node?.kind !== 'image') return;
       adjustCount(nodeCounts, node.resourceId, 1);
       const extension = fnReadCanvasImageExtension(node);
@@ -2133,7 +2207,7 @@ export class CanvasDocumentService
       this.#observeDocument(Object.freeze({
         ...observation,
         acceptedRevision: this.#acceptedRevision,
-        projectedSceneRevision: this.#projectionRevision,
+        projectedSceneRevision: this.projectedSceneRevision,
         pendingCount: this.#pendingByTransactionId.size,
       }));
     } catch {
@@ -2153,6 +2227,12 @@ export class CanvasDocumentService
     }
     if (this.#recoveryPending || this.#reloading) {
       throw new RangeError('Canvas document reconciliation is in progress.');
+    }
+    if (
+      this.#projection === null
+      || this.#engine.scene.revision !== this.#projection.revision
+    ) {
+      throw new RangeError('Canvas scene projection is not synchronized.');
     }
   }
 
@@ -2266,7 +2346,7 @@ function withImageExtension(
 }
 
 function nodeImagesReferenceResource(
-  images: ReadonlyMap<string, TLocalDocumentNodeImage>,
+  images: ReadonlyMap<string, TSceneNodeImage>,
   resourceId: string,
 ): boolean {
   for (const node of images.values()) {

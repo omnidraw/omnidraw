@@ -26,7 +26,7 @@ const CanvasPage: Component<CanvasPageProps> = (props) => {
         development: import.meta.env.DEV,
         applicationVersion: import.meta.env.VITE_APP_VERSION,
         buildMode: import.meta.env.MODE,
-        cangineVersion: "0.2.6",
+        cangineVersion: "0.4.0",
       })}
       tenant={tenant}
       transport={canvasDocumentTransport}

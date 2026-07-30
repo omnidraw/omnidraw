@@ -1,25 +1,28 @@
 /**
- * @file Measures bounded local-reduction plus trace capture cost independently
- * of total canvas size.
+ * @file Measures bounded Cangine scene reduction plus trace capture cost
+ * independently of total canvas size.
  */
 
-import type { TRectNode, TSceneNode } from '@omnidraw/cangine';
 import type {
-  TEditorSceneMutationRequest,
-} from '@omnidraw/cangine/editor';
+  TLayerNode,
+  TRectNode,
+  TSceneSnapshot,
+  TSerializedSceneCommand,
+} from '@omnidraw/cangine';
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+} from '@omnidraw/cangine/scene';
 import {
   createReproductionTrace,
 } from '../packages/canvas/src/debug-trace/createReproductionTrace';
-import {
-  fnReduceLocalDocument,
-} from '../packages/canvas/src/services/fn.local-document';
 
 const ITERATIONS = 2_000;
 
 function rect(id: string, x = 0): TRectNode {
   return {
     id,
-    parentId: null,
+    parentId: 'content',
     orderKey: id,
     kind: 'rect',
     transform: {
@@ -33,31 +36,44 @@ function rect(id: string, x = 0): TRectNode {
   };
 }
 
-function document(size: number): ReadonlyMap<string, TSceneNode> {
-  return new Map(Array.from({ length: size }, (_, index) => {
-    const node = rect(`rect-${index}`);
-    return [node.id, node];
-  }));
-}
-
-function request(index: number): TEditorSceneMutationRequest {
+function document(size: number): TSceneSnapshot {
+  const content: TLayerNode = {
+    id: 'content',
+    parentId: null,
+    orderKey: 'A',
+    kind: 'layer',
+    role: 'content',
+    coordinateSpace: 'world',
+    transform: {
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      scale: { x: 1, y: 1 },
+      skew: { x: 0, y: 0 },
+      origin: { x: 0, y: 0 },
+    },
+  };
   return {
-    transactionId: `transaction-${index}`,
-    basisSceneRevision: 0,
-    source: 'trace-measurement',
-    commands: [{ type: 'upsert', node: rect('rect-0', index + 1) }],
-    affectedNodeIds: ['rect-0'],
+    schemaVersion: '1.0.0',
+    rootLayerIds: [content.id],
+    nodes: [
+      content,
+      ...Array.from({ length: size }, (_, index) => rect(`rect-${index}`)),
+    ],
   };
 }
 
+function commands(index: number): readonly TSerializedSceneCommand[] {
+  return [{ type: 'upsert', node: rect('rect-0', index + 1) }];
+}
+
 function measure(totalNodes: number, recording: boolean) {
-  const nodes = document(totalNodes);
+  const state = createSceneReductionState(document(totalNodes));
   const trace = createReproductionTrace({
     environment: () => ({
       applicationVersion: 'measurement',
       buildMode: 'development',
       canvasId: 'measurement',
-      cangineVersion: '0.2.6',
+      cangineVersion: '0.4.0',
       browser: 'bun',
       platform: process.platform,
       viewport: { width: 1_000, height: 800 },
@@ -75,14 +91,14 @@ function measure(totalNodes: number, recording: boolean) {
   if (recording) trace.start(['document', 'system']);
   const startedAt = performance.now();
   for (let index = 0; index < ITERATIONS; index += 1) {
-    const reduced = fnReduceLocalDocument(nodes, request(index));
+    const reduction = reduceSerializedSceneCommands(state, commands(index));
     trace.emit({
       channel: 'document',
       type: 'durable-plan-prepared',
       priority: 'critical',
       correlation: { transactionId: `transaction-${index}` },
       data: {
-        nodeIds: reduced.affectedNodeIds,
+        nodeIds: reduction.changes.map((change) => change.nodeId),
         operationCount: 1,
       },
     });

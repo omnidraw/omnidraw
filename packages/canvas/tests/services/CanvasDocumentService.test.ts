@@ -7,6 +7,11 @@ import type {
   TSceneSnapshot,
   TSerializedSceneCommand,
 } from '@omnidraw/cangine';
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+  sceneReductionStateSnapshot,
+} from '@omnidraw/cangine/scene';
 import type {
   TEditorSceneMutationRequest,
   TPreparedImageImportRequest,
@@ -158,62 +163,6 @@ function eventQueue(): Readonly<{
   };
 }
 
-function applyCommands(
-  nodes: Map<string, TSceneNode>,
-  commands: readonly TSerializedSceneCommand[],
-): void {
-  const childrenOf = (parentId: string): string[] => (
-    [...nodes.values()]
-      .filter((node) => node.parentId === parentId)
-      .map((node) => node.id)
-  );
-  for (const command of commands) {
-    if (command.type === 'upsert') {
-      nodes.set(command.node.id, structuredClone(command.node));
-      continue;
-    }
-    if (command.type === 'remove') {
-      const node = nodes.get(command.nodeId);
-      if (node === undefined) continue;
-      if (command.descendants === 'reparent') {
-        for (const childId of childrenOf(node.id)) {
-          const child = nodes.get(childId)!;
-          nodes.set(childId, { ...child, parentId: node.parentId });
-        }
-        nodes.delete(node.id);
-        continue;
-      }
-      const work = [node.id];
-      while (work.length > 0) {
-        const nodeId = work.pop()!;
-        work.push(...childrenOf(nodeId));
-        nodes.delete(nodeId);
-      }
-      continue;
-    }
-    if (command.type === 'reparent') {
-      const node = nodes.get(command.nodeId);
-      if (node === undefined) throw new Error('missing test node');
-      nodes.set(node.id, {
-        ...node,
-        parentId: command.parentId,
-        orderKey: command.orderKey ?? node.orderKey,
-      });
-      continue;
-    }
-    if (command.type === 'reorder') {
-      const node = nodes.get(command.nodeId);
-      if (node === undefined) throw new Error('missing test node');
-      nodes.set(node.id, { ...node, orderKey: command.orderKey });
-      continue;
-    }
-    nodes.clear();
-    for (const node of command.snapshot.nodes) {
-      nodes.set(node.id, structuredClone(node));
-    }
-  }
-}
-
 function fakeEngine(): Readonly<{
   engine: IInfiniteCanvasEngine;
   apply: ReturnType<typeof vi.fn>;
@@ -226,28 +175,43 @@ function fakeEngine(): Readonly<{
   rejectNextApply(): void;
   rejectNextRegistrationReplace(): void;
   setNextApplyRevisionDelta(delta: number): void;
-  setApplyHook(hook: (() => void) | null): void;
+  setApplyHook(
+    hook: ((commands: readonly TSerializedSceneCommand[]) => void) | null,
+  ): void;
 }> {
-  const nodes = new Map<string, TSceneNode>();
+  let sceneState = createSceneReductionState({
+    schemaVersion: '1.0.0',
+    rootLayerIds: [],
+    nodes: [],
+  });
   const resourceIds = new Set<string>();
   let revision = 0;
   let rejectApply = false;
   let rejectRegistrationReplace = false;
   let nextApplyRevisionDelta = 1;
-  let applyHook: (() => void) | null = null;
-  const apply = vi.fn((commands: TSerializedSceneCommand[]) => {
-    applyHook?.();
+  let applyHook: (
+    (commands: readonly TSerializedSceneCommand[]) => void
+  ) | null = null;
+  const apply = vi.fn((commands: readonly TSerializedSceneCommand[]) => {
+    applyHook?.(commands);
     if (rejectApply) {
       rejectApply = false;
       throw new Error('projection rejected');
     }
-    applyCommands(nodes, commands);
-    revision += nextApplyRevisionDelta;
+    const reduction = reduceSerializedSceneCommands(sceneState, commands);
+    if (reduction.state !== sceneState) {
+      sceneState = reduction.state;
+      revision += nextApplyRevisionDelta;
+    }
     nextApplyRevisionDelta = 1;
   });
   const replace = vi.fn((next: TSceneSnapshot) => {
-    nodes.clear();
-    for (const node of next.nodes) nodes.set(node.id, structuredClone(node));
+    const reduction = reduceSerializedSceneCommands(sceneState, [{
+      type: 'replace-snapshot',
+      snapshot: next,
+    }]);
+    if (reduction.state === sceneState) return;
+    sceneState = reduction.state;
     revision += 1;
   });
   const retain = vi.fn((resourceId: string) => {
@@ -265,22 +229,13 @@ function fakeEngine(): Readonly<{
       get revision() {
         return revision;
       },
-      get: (nodeId: string) => nodes.get(nodeId) ?? null,
-      has: (nodeId: string) => nodes.has(nodeId),
-      childrenOf: (parentId: string | null) => (
-        [...nodes.values()].filter((node) => node.parentId === parentId)
-      ),
+      get: (nodeId: string) => sceneState.get(nodeId),
+      has: (nodeId: string) => sceneState.has(nodeId),
+      childrenOf: (parentId: string | null) => sceneState.childrenOf(parentId),
       query: (predicate: (node: TSceneNode) => boolean) => (
-        [...nodes.values()].filter(predicate)
+        sceneReductionStateSnapshot(sceneState).nodes.filter(predicate)
       ),
-      snapshot: () => ({
-        schemaVersion: '1.0.0' as const,
-        rootLayerIds: [...nodes.values()]
-          .filter((node) => node.kind === 'layer' && node.parentId === null)
-          .sort((left, right) => left.orderKey.localeCompare(right.orderKey))
-          .map((node) => node.id),
-        nodes: [...nodes.values()],
-      }),
+      snapshot: () => sceneReductionStateSnapshot(sceneState),
       apply,
       replace,
     },
@@ -363,13 +318,33 @@ function mutation(
   };
 }
 
+function expectProjectionMatchesReadModel(
+  service: CanvasDocumentService,
+  engine: IInfiniteCanvasEngine,
+): void {
+  const projected = engine.scene.snapshot();
+  const expectedIds = [
+    CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+    CANVAS_RUNTIME_GRID_NODE_ID,
+    CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+    ...service.items().map((snapshot) => snapshot.id),
+  ].sort();
+  expect(projected.nodes.map((node) => node.id).sort()).toEqual(expectedIds);
+  for (const node of projected.nodes) {
+    expect(service.node(node.id)).toEqual(node);
+  }
+}
+
 describe('CanvasDocumentService', () => {
   test('owns runtime grid projection without changing the authored document', async () => {
+    const durableAfter = rect('rect-a', 25);
     const transport = transportWith(
       snapshot([item(rect())]),
-      async () => {
-        throw new Error('unexpected execute');
-      },
+      async (command) => event(
+        command.commandId,
+        1,
+        [item(durableAfter, 2)],
+      ),
     );
     const fake = fakeEngine();
     const nextColors = BUILTIN_THEMES[1]!.colors;
@@ -405,6 +380,21 @@ describe('CanvasDocumentService', () => {
       [{ type: 'remove', nodeId: CANVAS_RUNTIME_GRID_NODE_ID }],
       [CANVAS_RUNTIME_GRID_NODE_ID],
     ))).toThrow('Editor mutations cannot target runtime canvas nodes.');
+
+    service.commit(mutation(
+      fake.engine,
+      'authored-after-grid',
+      [{ type: 'upsert', node: runtimeNode(durableAfter) }],
+      [durableAfter.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(transport.execute.mock.calls[0]?.[0])).not.toContain(
+      CANVAS_RUNTIME_GRID_NODE_ID,
+    );
+    expect(JSON.stringify(transport.execute.mock.calls[0]?.[0])).not.toContain(
+      CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+    );
 
     await service.dispose();
     expect(() => service.setRuntimeGridPresentation(nextGrid)).toThrow(
@@ -455,6 +445,10 @@ describe('CanvasDocumentService', () => {
         'pending-retired',
       ]),
     );
+    const phases = observations.map((observation) => observation.phase);
+    expect(phases.indexOf('projection-applied')).toBeLessThan(
+      phases.indexOf('pending-queued'),
+    );
     const plan = observations.find(
       (observation) => observation.phase === 'durable-plan-prepared',
     );
@@ -488,13 +482,22 @@ describe('CanvasDocumentService', () => {
     await service.start(fake.engine);
     fake.apply.mockClear();
     fake.replaceRegistrations.mockClear();
+    const commands = Object.freeze([
+      { type: 'upsert', node: runtimeNode(after) },
+    ] satisfies readonly TSerializedSceneCommand[]);
+    fake.setApplyHook((received) => {
+      expect(received).toBe(commands);
+      expect(service.node(after.id)?.transform.position.x).toBe(0);
+      expect(service.pendingTransactionCount).toBe(0);
+    });
 
     const receipt = service.commit(mutation(
       fake.engine,
       'transaction-a',
-      [{ type: 'upsert', node: runtimeNode(after) }],
+      commands,
       [after.id],
     ));
+    fake.setApplyHook(null);
 
     expect(receipt.projectedSceneRevision).toBe(2);
     expect(service.node(after.id)?.transform.position.x).toBe(25);
@@ -529,6 +532,121 @@ describe('CanvasDocumentService', () => {
     expect(service.revision).toBe(1);
     expect(service.item(after.id)?.item).toEqual(after);
     expect(fake.apply).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('accepts conservative affected IDs but rejects invalid or missing IDs', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'conservative-extra',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['conservative-extra', after.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    expect(transport.execute.mock.calls[0]?.[0].operations).toHaveLength(1);
+    expect(service.history.canUndo).toBe(true);
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'missing-net-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['conservative-extra'],
+    ))).toThrow("changed undeclared node 'rect-a'");
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'duplicate-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a', 'rect-a'],
+    ))).toThrow("affected node ID 'rect-a' is duplicated");
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'invalid-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      [''],
+    ))).toThrow('must contain 1–256 UTF-16 code units');
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('rejects semantic no-ops and replacement without consuming identity', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const createCommandId = vi.fn(() => 'command-a');
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+    const initialRevision = fake.engine.scene.revision;
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'invalid-no-op-effects',
+      [{ type: 'upsert', node: runtimeNode(before) }],
+      [''],
+    ))).toThrow('must contain 1–256 UTF-16 code units');
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'semantic-no-op',
+      [
+        { type: 'upsert', node: runtimeNode(before) },
+        { type: 'remove', nodeId: 'missing', descendants: 'remove' },
+      ],
+      ['rect-a', 'missing', 'conservative-extra'],
+    ))).toThrow('no local document change');
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'replacement',
+      [{
+        type: 'replace-snapshot',
+        snapshot: fake.engine.scene.snapshot(),
+      }],
+      [],
+    ))).toThrow('replace-snapshot is not an incremental');
+
+    expect(fake.apply).not.toHaveBeenCalled();
+    expect(fake.engine.scene.revision).toBe(initialRevision);
+    expect(createCommandId).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.history.canUndo).toBe(false);
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    service.commit(mutation(
+      fake.engine,
+      'semantic-no-op',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(createCommandId).toHaveBeenCalledTimes(1);
 
     await service.dispose();
   });
@@ -590,8 +708,12 @@ describe('CanvasDocumentService', () => {
       transactionId: 'stale',
       basisSceneRevision: 0,
       source: 'test',
-      commands: [{ type: 'upsert', node: runtimeNode(rect('rect-a', 5)) }],
-      affectedNodeIds: ['rect-a'],
+      commands: [{
+        type: 'reparent',
+        nodeId: 'missing',
+        parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      }],
+      affectedNodeIds: ['missing'],
     })).toThrow('Stale editor transaction basis');
 
     fake.rejectNextApply();
@@ -603,6 +725,10 @@ describe('CanvasDocumentService', () => {
     ))).toThrow('projection rejected');
     expect(service.node('rect-a')?.transform.position.x).toBe(0);
     expect(service.pendingTransactionCount).toBe(0);
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => (
+      expect(service.projectedSceneRevision).toBe(fake.engine.scene.revision)
+    ));
 
     const request = mutation(
       fake.engine,
@@ -635,6 +761,44 @@ describe('CanvasDocumentService', () => {
       [item(rect('rect-a', 20), 2)],
     ));
     await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    await service.dispose();
+  });
+
+  test('preserves projection state after reducer rejection for a valid retry', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'retry-after-reduction',
+      [{ type: 'reorder', nodeId: 'missing', orderKey: 'Z' }],
+      ['missing'],
+    ))).toThrow();
+    expect(service.node(before.id)?.transform.position.x).toBe(0);
+    expect(fake.apply).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+
+    service.commit(mutation(
+      fake.engine,
+      'retry-after-reduction',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+
     await service.dispose();
   });
 
@@ -821,6 +985,144 @@ describe('CanvasDocumentService', () => {
     expect(service.revision).toBe(3);
     expect(service.node(authoritative.id)).not.toBeNull();
     expect(service.node(remote.id)).toBeNull();
+
+    await service.dispose();
+  });
+
+  test('keeps the read model equivalent across a remote insert and local reorder', async () => {
+    const queue = eventQueue();
+    const remote = rect('rect-remote', 40);
+    const reordered: TRectNode = { ...remote, orderKey: 'Z' };
+    const transport = transportWith(
+      snapshot([]),
+      async (command) => event(
+        command.commandId,
+        2,
+        [item(reordered, 2)],
+      ),
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    expectProjectionMatchesReadModel(service, fake.engine);
+
+    queue.push(event('remote-insert', 1, [item(remote)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expectProjectionMatchesReadModel(service, fake.engine);
+    service.commit(mutation(
+      fake.engine,
+      'reorder-remote',
+      [{ type: 'reorder', nodeId: remote.id, orderKey: 'Z' }],
+      [remote.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(service.node(remote.id)?.orderKey).toBe('Z');
+    expect(fake.engine.scene.get(remote.id)?.orderKey).toBe('Z');
+    expectProjectionMatchesReadModel(service, fake.engine);
+    expect(transport.execute.mock.calls[0]?.[0].operations).toContainEqual({
+      type: 'reorder',
+      itemId: remote.id,
+      orderKey: 'Z',
+    });
+
+    await service.dispose();
+  });
+
+  test('accepts a semantically equal remote event without disturbing pending state', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+      queue,
+    );
+    const fake = fakeEngine();
+    const onError = vi.fn();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(service.history.canUndo).toBe(true);
+
+    queue.push(event('remote-equal', 1, [item(after, 2)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(service.history.canUndo).toBe(true);
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+
+    acknowledgement.resolve(event('command-a', 2, [item(after, 3)]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(2);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('recovers before accepting a no-op event when the engine revision diverges', async () => {
+    const before = rect();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => {
+        throw new Error('unexpected execute');
+      },
+      queue,
+    );
+    const fake = fakeEngine();
+    const onError = vi.fn();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError,
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    fake.engine.scene.apply(
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 99)) }],
+      { source: 'uncoordinated-test-write' },
+    );
+    expect(fake.engine.scene.revision).toBe(service.projectedSceneRevision + 1);
+
+    queue.push(event('remote-no-op', 1, [item(before, 2)]));
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => (
+      expect(service.projectedSceneRevision).toBe(fake.engine.scene.revision)
+    ));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Canvas scene projection is not synchronized.',
+    }));
+    expect(service.revision).toBe(0);
+    expect(service.node(before.id)?.transform.position.x).toBe(0);
+    expect(transport.execute).not.toHaveBeenCalled();
 
     await service.dispose();
   });
@@ -1216,7 +1518,7 @@ describe('CanvasDocumentService', () => {
   });
 
   test('reloads when a remote parent deletion omits an attached child', async () => {
-    const parent = rect('parent');
+    const parent = group('parent');
     const child: TRectNode = {
       ...rect('child'),
       parentId: parent.id,
@@ -1254,7 +1556,7 @@ describe('CanvasDocumentService', () => {
   });
 
   test('remote child reparent plus parent deletion retains the child', async () => {
-    const parent = rect('parent');
+    const parent = group('parent');
     const child: TRectNode = {
       ...rect('child'),
       parentId: parent.id,

@@ -71,6 +71,7 @@
   "keywords": [],
   "license": "MIT",
   "devDependencies": {
+    "@omnidraw/cangine": "0.4.0",
     "@typescript-eslint/parser": "^8.63.0",
     "bun-types": "^1.3.14",
     "eslint": "^10.7.0"
@@ -89,6 +90,6 @@
     "pixi.js": "^8.19.0"
   },
   "patchedDependencies": {
-    "@omnidraw/cangine@0.3.0": "patches/@omnidraw%2Fcangine@0.3.0.patch"
+    "@omnidraw/cangine@0.4.0": "patches/@omnidraw%2Fcangine@0.4.0.patch"
   }
 }

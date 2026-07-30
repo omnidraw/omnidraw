@@ -459,7 +459,7 @@ describe('canvas runtime composition', () => {
         applicationVersion: 'test',
         buildMode: 'test',
         canvasId: 'canvas-a',
-        cangineVersion: '0.2.6',
+        cangineVersion: '0.4.0',
         browser: 'test',
         platform: 'test',
         viewport: { width: 1_000, height: 800 },
