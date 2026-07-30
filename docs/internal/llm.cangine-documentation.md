@@ -1,9 +1,13 @@
-# `@omnidraw/cangine` Library Guide — 0.4.0
+# `@omnidraw/cangine` Library Guide — 0.5.0
 
 This is the consumer guide for the implemented `@omnidraw/cangine`
 library. It covers installation, ordinary application usage, every public
 engine service and package entrypoint, lifecycle rules, and the ownership
 boundary between the engine and its host application.
+
+> **Release note:** Version `0.5.0` adds application-owned retained runtime
+> projections. The qualified artifact described here has not been published to
+> a registry.
 
 For normative edge-case behavior, consult [`spec.md`](spec.md). For
 implementation status and evidence, see [`FINAL.md`](FINAL.md) and
@@ -24,6 +28,7 @@ authority for what an installed release contains.
 - normalized pointer/touch/wheel/keyboard input;
 - selection overlays and transform proposals;
 - connectors and widget frames;
+- application-owned retained background/world/screen projections;
 - images, fonts, text, and HTML portals;
 - deterministic SVG export;
 - shared-clock animation;
@@ -40,17 +45,17 @@ business logic, permissions, or UI.
 ## 2. Package status and imports
 
 The checked-in package and qualified artifact version is
-`@omnidraw/cangine@0.4.0`. It includes the renderer-free `/scene` entrypoint.
-The exact qualified artifact was subsequently published through the
-separately authorized local-registry release channel; installed `0.4.0`
-consumers can import `/scene`.
+`@omnidraw/cangine@0.5.0`. It includes retained projections and the
+renderer-free `/scene` entrypoint. The prior immutable `0.4.0` artifact remains
+available through its separately authorized local-registry release channel;
+the `0.5.0` artifact has not been published.
 
 The following is a previously verified immutable artifact example containing
 compiled ESM and declarations:
 
 ```text
-artifacts/omnidraw-cangine-0.4.0.tgz
-SHA-256 800c517e3705fddefd4c72bc572ee824310134be8ee7ace4eae727679337f130
+artifacts/omnidraw-cangine-0.5.0.tgz
+SHA-256 d14a96266ba7548a6b1ba6ad8a3713f08582b2094948baeadcc1b0ab9b118d9b
 ```
 
 For a separate application, copy the tarball into a version-controlled vendor
@@ -58,14 +63,14 @@ directory and install that relative immutable file:
 
 ```bash
 mkdir -p vendor/cangine
-cp /trusted/download/omnidraw-cangine-0.4.0.tgz vendor/cangine/
-shasum -a 256 vendor/cangine/omnidraw-cangine-0.4.0.tgz
-bun add ./vendor/cangine/omnidraw-cangine-0.4.0.tgz
+cp /trusted/download/omnidraw-cangine-0.5.0.tgz vendor/cangine/
+shasum -a 256 vendor/cangine/omnidraw-cangine-0.5.0.tgz
+bun add ./vendor/cangine/omnidraw-cangine-0.5.0.tgz
 ```
 
 Do not commit an absolute `file:` dependency. Consumers configured for the
-selected local registry can replace the relative tarball dependency with the
-immutable `0.4.0` version or an appropriate semver range.
+selected registry can replace the relative tarball dependency after `0.5.0`
+is explicitly published.
 
 Inside this repository, use the workspace dependency so Vite follows the
 TypeScript source and preserves engine hot reload:
@@ -133,7 +138,7 @@ import {
 } from "@omnidraw/cangine/scene";
 ```
 
-The `0.4.0` package exposes these entrypoints:
+The `0.5.0` package exposes these entrypoints:
 
 | Entrypoint | Intended use |
 |---|---|
@@ -313,6 +318,7 @@ Runtime values are registered through services:
 
 - image/font/mesh bytes through `engine.resources`;
 - portal mount callbacks through `engine.portals`;
+- long-lived non-document presentation through `engine.projections`;
 - runtime named anchors through `engine.geometry`;
 - transient animation through `engine.animations`;
 - selection and transform previews through `engine.transforms`.
@@ -363,6 +369,7 @@ Important options:
 | `accessibility` | Opt-in canvas-node metadata projection |
 | `validationLimits` | Scene and serialized-data ceilings |
 | `transientLimits` | Owner, node, hierarchy, replacement, and indexed-transient ceilings |
+| `projectionLimits` | Owner, node, hierarchy, replacement, and indexed retained-projection ceilings |
 | `renderWorkLimits` | Geometry/compiler/query ceilings |
 | `resourceLimits` | Registry, byte, stream, and decoded-pixel ceilings |
 | `threeDLimits` | Mesh, draw, light, raster, and raycast ceilings |
@@ -1001,6 +1008,258 @@ the durable-to-transient ID map. The application still owns ID allocation,
 gesture state, product cloning, commit/history policy, and the final
 `owner.replace()` lifecycle. Pass `replaceOwnerId` when re-preparing a ghost
 that the same owner will publish next.
+
+### Application-owned retained runtime projections
+
+Use `engine.projections` for long-lived application presentation that should
+render through normal retained 2D geometry without becoming document content.
+Unlike a transient preview, a projection owner has local node IDs, survives
+every durable scene replacement, and can paint in a `background`,
+`world-overlay`, or `screen-overlay` band. Owners in one band sort by
+`(orderKey, ownerId)`; nodes inside one owner sort by `(orderKey, nodeId)`.
+
+The examples in this section require `@omnidraw/cangine@0.5.0` or the matching
+workspace checkout. They do not work with `0.4.0`.
+
+#### Customer grid
+
+A product grid belongs below all authored content. Theme changes replace one
+small owner snapshot; hiding the grid clears that owner without touching the
+durable scene revision.
+
+```ts
+const grid = engine.projections.createOwner("customer:grid", {
+  band: "background",
+  orderKey: "1000000000000000",
+  hitTest: "none",
+});
+
+grid.replace({
+  nodes: [{
+    id: "paper-grid",
+    kind: "background",
+    parentId: null,
+    orderKey: "1000000000000000",
+    transform: IDENTITY_TRANSFORM_2D,
+    pointerEvents: "none",
+    background: {
+      type: "grid",
+      minorSize: 32,
+      majorEvery: 4,
+      minorColor: {
+        space: "srgb",
+        r: 0.82,
+        g: 0.86,
+        b: 0.92,
+        a: 0.7,
+      },
+      majorColor: {
+        space: "srgb",
+        r: 0.62,
+        g: 0.68,
+        b: 0.78,
+        a: 0.8,
+      },
+      lineWidth: 1,
+    },
+  }],
+});
+
+// Product preference off/on:
+const savedGridSnapshot = grid.snapshot();
+grid.clear();
+grid.replace(savedGridSnapshot);
+```
+
+Background nodes never participate in picking, even when their owner is
+configured with `hitTest: "enabled"`. Grid, dots, solid, image, and previously
+registered trusted-shader backgrounds use the ordinary bounded background
+contract and stay anchored to world coordinates. Shader registration,
+retention, validation, and animation state are available to a supporting
+scoped backend; the built-in WebGL2 vector pass currently emits
+`WEBGL2_BACKGROUND_SHADER_UNSUPPORTED` and draws no trusted-shader background,
+the same explicit capability behavior it uses for durable shader backgrounds.
+
+#### Multiplayer presence
+
+World-space cursors and selections belong above document content and follow
+camera pan, zoom, and rotation. Owner-local IDs can equal durable IDs or IDs in
+another owner without reservation or collision.
+
+```ts
+const presence = engine.projections.createOwner("room:presence", {
+  band: "world-overlay",
+  orderKey: "5000000000000000",
+  hitTest: "enabled",
+});
+
+presence.replace({
+  nodes: [{
+    id: "peer-ada:cursor",
+    kind: "ellipse",
+    parentId: null,
+    orderKey: "1000000000000000",
+    transform: {
+      ...IDENTITY_TRANSFORM_2D,
+      position: { x: 840, y: 460 },
+    },
+    size: { width: 14, height: 14 },
+    pointerEvents: "painted",
+    fill: {
+      type: "solid",
+      color: { space: "srgb", r: 0.56, g: 0.26, b: 0.98, a: 1 },
+    },
+  }],
+});
+
+const hit = engine.input.hitTestWorld({ x: 840, y: 460 })[0] ?? null;
+if (hit?.projectionOwnerId === presence.id) {
+  showPresenceCard(hit.nodeId); // "peer-ada:cursor", never a private ID
+}
+```
+
+Replace the complete owner snapshot when a coalesced presence sample arrives.
+Cangine provides retained sampling/rendering and optional owner-qualified
+picking; the application still owns transport, interpolation policy,
+authorization, labels, and user identity. The standard editor deliberately
+ignores projection-qualified hits, so a presence marker cannot become a
+document selection or mutation target.
+
+#### Screen-fixed debug HUD
+
+A screen projection uses viewport CSS pixels and remains fixed through camera
+pan, zoom, rotation, and device-pixel-ratio changes. Camera or resize changes
+do not increment the owner revision.
+
+```ts
+const hud = engine.projections.createOwner("debug:frame-hud", {
+  band: "screen-overlay",
+  orderKey: "8000000000000000",
+  hitTest: "none",
+});
+
+hud.replace({
+  nodes: [{
+    id: "frame-label",
+    kind: "text",
+    parentId: null,
+    orderKey: "1000000000000000",
+    transform: {
+      ...IDENTITY_TRANSFORM_2D,
+      position: { x: 16, y: 16 },
+    },
+    pointerEvents: "none",
+    runs: [{ text: "Renderer: WebGL2 · 60 fps" }],
+    style: {
+      fontFamilies: ["ui-monospace", "monospace"],
+      fontSize: 12,
+      lineHeight: 16,
+      fill: {
+        type: "solid",
+        color: { space: "srgb", r: 0.92, g: 0.96, b: 1, a: 1 },
+      },
+    },
+    layout: { type: "auto-width", maxWidth: 320 },
+    selectable: false,
+  }],
+});
+```
+
+For a constant-CSS-size marker anchored to a world position, convert the
+anchor with `engine.camera.worldToViewport()` and replace the screen owner
+when the camera or application data changes.
+
+#### Animated pet
+
+Projection animation targets are qualified by both owner and local node ID.
+They use the same clock and coalescing scheduler as durable animation; they do
+not mutate the owner snapshot or either revision.
+
+```ts
+// Register "pet-idle" through engine.resources before publishing this owner.
+const pet = engine.projections.createOwner("decoration:pet", {
+  band: "world-overlay",
+  orderKey: "7000000000000000",
+  hitTest: "enabled",
+});
+
+pet.replace({
+  nodes: [{
+    id: "sprite",
+    kind: "image",
+    parentId: null,
+    orderKey: "1000000000000000",
+    transform: {
+      ...IDENTITY_TRANSFORM_2D,
+      position: { x: 120, y: 180 },
+    },
+    size: { width: 96, height: 96 },
+    resourceId: "pet-idle",
+    fit: "contain",
+    pointerEvents: "painted",
+  }],
+});
+
+engine.animations.register({
+  id: "pet-bob",
+  target: {
+    type: "projection-node",
+    ownerId: pet.id,
+    nodeId: "sprite",
+    property: "transform.position.y",
+  },
+  keyframes: [
+    { offset: 0, value: 180 },
+    { offset: 0.5, value: 168, easing: "ease-in-out" },
+    { offset: 1, value: 180, easing: "ease-in-out" },
+  ],
+  durationMs: 900,
+  iterations: "infinite",
+  fill: "both",
+});
+engine.animations.play("pet-bob");
+```
+
+Use `type: "projection-background"` for a typed grid/dots/shader-background
+property. Do not drive animation by calling `replace()` from a second
+`requestAnimationFrame` loop. Pet behavior, timers, sound, state machines,
+networking, and permissions remain application-owned.
+
+When an animated trusted-shader uniform contains a resource ID, register every
+resource named by its keyframes before registering the track. Sampling moves
+the projection’s retain from the old resource to the new one atomically; a
+backend publication failure restores the last-good sample and exact prior
+claims.
+
+#### Projection lifecycle and isolation
+
+- `replace()` publishes a complete copied, validated, deeply frozen owner
+  forest. A semantic no-op returns `false`, does not advance the owner
+  revision, and schedules no frame.
+- `clear()` removes visible nodes but retains the live owner reservation.
+  `dispose()` is idempotent, permanently invalidates that handle, cancels its
+  projection animations, releases resource claims, and permits a new handle
+  to reuse the public owner ID.
+- Create a stable owner once per mounted application feature. Dispose it and
+  unregister application-created animation registrations during feature
+  teardown. `engine.destroy()` also reclaims every remaining owner, so cleanup
+  order is not a correctness requirement.
+- Projection references are owner-local only. A projected parent, clip,
+  connector endpoint, label, or obstacle cannot reference durable content or
+  another owner.
+- Images, fonts, patterns, icons, image backgrounds, and trusted shaders must
+  already be registered through `engine.resources`. Projection snapshots hold
+  references; they never carry URLs, source bytes, callbacks, DOM, shader
+  source, or backend objects. Resource-valued shader animation keyframes follow
+  the same prior-registration rule.
+- Projections stay out of durable snapshots/revision/events, recorder/replay,
+  `/scene` reduction, history, SVG export, accessibility, portals, and 3D.
+  Keep the application’s desired projection inputs separately if they must be
+  reconstructed after a new engine is created.
+- Owner-local geometry has no ambiguous public `engine.geometry` overload in
+  A47. Use owner reads plus application-known coordinates, or owner-qualified
+  input hits, instead of passing a local projection ID to durable geometry
+  methods.
 
 ## 12. Rendering and lifecycle
 
@@ -1790,7 +2049,13 @@ engine.animations.cancel("fade-card");
 engine.animations.unregister("fade-card");
 ```
 
-Allowed targets are explicitly typed node, camera, and background properties. Arbitrary property paths are rejected.
+Allowed targets are explicitly typed node, camera, background,
+owner-qualified projection-node, and projection-background properties.
+Arbitrary property paths are rejected.
+Projection tracks resolve `(ownerId, nodeId)` rather than treating an
+owner-local node ID as globally unique. A compatible owner replacement keeps
+the track over its new base; removing or changing the target incompatibly
+cancels it.
 
 If an animation’s final value should become durable, the application must commit it in a scene transaction and record its own history entry.
 
@@ -2137,6 +2402,8 @@ console.log({
   portals: snapshot.portalCount,
   transientOwners: snapshot.transientOwnerCount,
   transientNodes: snapshot.transientNodeCount,
+  projectionOwners: snapshot.projectionOwnerCount,
+  projectionNodes: snapshot.projectionNodeCount,
   contextLosses: snapshot.contextLossCount,
 });
 ```
@@ -2238,6 +2505,15 @@ These functions reject invalid or non-finite results rather than silently return
 ## 29. Advanced custom backends
 
 The `@omnidraw/cangine/backend` entrypoint exports backend contracts and the built-in WebGL2 backend. A custom backend must implement the full lifecycle, capability, resize, scene-change, render, warning/error, cleanup, and context-loss contracts and must keep backend-native values private.
+
+To render projections, a custom retained pass also implements
+`applyProjectionChanges(change)`. The change contains the
+public owner ID, band, owner order, hit policy, revision/status, an owner-local
+snapshot, and owner-local affected IDs. The engine never gives a custom pass
+its merged private effective identities. Existing custom backends that do not
+support the optional method remain valid until an application publishes a
+projection they would need to render; that publication fails recoverably
+instead of leaking private state or silently omitting content.
 
 Use a custom factory only when you can run the repository’s backend contract and visual parity suites. Ordinary applications should select the built-in WebGL2 profile.
 
@@ -2629,6 +2905,7 @@ engine.status        // lifecycle state
 engine.capabilities  // actual enabled capabilities
 engine.scene         // durable 2D scene/viewports and transactions
 engine.transients    // owner-scoped non-durable 2D forests
+engine.projections   // retained owner-local runtime 2D forests
 engine.recorder      // opt-in durable transaction journal, otherwise null
 engine.camera        // camera state and coordinate conversion
 engine.geometry      // transforms, bounds, paths, connectors, anchors
@@ -2713,18 +2990,30 @@ Widget-frame scene declarations use `TWidgetTrafficLight`,
 `TWidgetHeaderContent` is the text-or-registered-icon union shown in section 9;
 these types contain declarative data only, never callbacks.
 
-### 33.3 Transients and recorder
+### 33.3 Transients, retained projections, and recorder
 
 | Surface | Members |
 |---|---|
 | `ITransientScene` | `createOwner`, `cloneFromScene` |
 | `ITransientSceneOwner` | `id`, `replace`, `clear`, `destroy` |
+| `IRetainedSceneProjections` | `createOwner` |
+| `IRetainedProjectionOwner` | `id`, `band`, `orderKey`, `hitTest`, `revision`, `status`, `get`, `snapshot`, `replace`, `clear`, `dispose` |
 | `ISceneRecorder` | `status`, `retainedWeight`, `start`, `stop`, `read`, `subscribe`, `clear`, `checkpoint`, `destroy` |
 
 Transient `replace()` publishes a complete owner forest, never a partial
-command list. `engine.recorder` is `null` unless `TCanvasEngineConfig.record`
-was supplied. Recorder entries are a mechanism for replay; applications still
-own history, persistence, grouping, and collaboration policy.
+command list. Retained-projection `replace()` also publishes a complete forest,
+but returns whether a semantic change occurred and uses owner-local identity;
+`clear()` keeps the owner reserved while `dispose()` releases it. The retained
+projection surfaces in this row were added in `0.5.0`.
+Their data contracts are `TRetainedProjectionOwnerId`,
+`TRetainedProjectionBand`, `TRetainedProjectionHitTestMode`,
+`TRetainedProjectionOwnerOptions`, `TRetainedProjectionOwnerStatus`,
+`TRetainedProjectionSnapshot`, the closed `TRetainedProjectionNode` union,
+and `TRetainedProjectionLimits`. `THitResult.projectionOwnerId` qualifies
+owner-local hit IDs.
+`engine.recorder` is `null` unless `TCanvasEngineConfig.record` was supplied.
+Recorder entries are a mechanism for replay; applications still own history,
+persistence, grouping, and collaboration policy.
 
 ### 33.4 Camera, geometry, and input
 
@@ -2830,7 +3119,9 @@ non-finite public geometry. A singular matrix inversion returns `null`.
 The backend entrypoint exports `IRenderBackendFactory`,
 `IRenderPassBackend`, their lifecycle/init/resize/frame/result context types,
 `TFrameScheduleState`, `TInvalidationReason`, `WebGl2BackendFactory`, and
-`WebGl2VectorBackend`.
+`WebGl2VectorBackend`. Version `0.5.0` additionally exports
+`TBackendProjectionChange` and the optional scoped
+`IRenderPassBackend.applyProjectionChanges()` hook.
 
 `IRenderBackendFactory.supports()` probes a complete engine configuration and
 `create()` returns one or more ordered render-pass backends. Each pass must
@@ -2855,7 +3146,7 @@ The root does not re-export these values. A reduction-state handle contains
 package-private indexes and methods, so it is not structured cloneable or
 transferable. Transfer its frozen snapshot across a worker boundary and
 recreate the handle with `createSceneReductionState()` inside the destination
-runtime. This inventory describes the `0.4.0` package artifact.
+runtime. This inventory describes the `0.5.0` package artifact.
 
 ### 33.12 `/editor` exports
 
