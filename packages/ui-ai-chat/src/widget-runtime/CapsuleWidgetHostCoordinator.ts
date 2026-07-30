@@ -13,7 +13,6 @@ import {
 } from '@vibecanvas/capsule-vibecanvas/host';
 import type {
   TVibecanvasCapsuleError,
-  TVibecanvasCapsuleTarget,
 } from '@vibecanvas/capsule-vibecanvas/contract';
 import type {
   CapsuleCapabilityGrant,
@@ -24,6 +23,8 @@ import {
   fnValidateWidgetCapsuleHostCatalog,
   fnValidateWidgetCapsuleMountCatalog,
 } from './fn.capsule-catalog';
+import { fnWidgetCapsuleRuntimeApis } from './fn.capsule-runtime-apis';
+import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
 import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleHostFactory,
@@ -56,7 +57,7 @@ type TMountArgs = Readonly<{
 
 type THostState = {
   poolKey: string;
-  target: TVibecanvasCapsuleTarget;
+  apis: readonly TWidgetCapsuleApiGroup[];
   signingKeyId: string;
   generation: string;
   host: CapsuleHost;
@@ -76,10 +77,8 @@ const DEFAULT_HOST_FACTORY: TWidgetCapsuleHostFactory = Object.freeze({
 function catalogSignature(catalog: TWidgetCapsuleHostCatalog): string {
   return JSON.stringify({
     generation: catalog.generation,
-    targetBase: catalog.targetBase,
-    allowedFeatureProfiles: [...catalog.allowedFeatureProfiles].sort(),
-    budgetCeiling: catalog.budgetCeiling,
-    budgetDefaults: catalog.budgetDefaults,
+    allowedApis: catalog.allowedApis,
+    limits: catalog.limits,
     signingKeyIds: [...catalog.trustedSigningKeys.keys()].sort(),
     previewSigningKeyId: catalog.previewSigningKeyId,
     releaseSigningKeyId: catalog.releaseSigningKeyId,
@@ -113,18 +112,6 @@ function capabilityBindingsMatch(
   });
 }
 
-function targetKey(target: TVibecanvasCapsuleTarget): string {
-  return JSON.stringify({
-    runtimeAbi: target.runtimeAbi,
-    domProfile: target.domProfile,
-    featureProfiles: [...target.featureProfiles].sort(),
-  });
-}
-
-function targetFeatureProfiles(target: TVibecanvasCapsuleTarget): readonly string[] {
-  return Object.freeze([...target.featureProfiles].sort());
-}
-
 function mountPolicySignature(catalog: TWidgetCapsuleMountCatalog): string {
   return canonicalJson({
     schemas: catalog.schemas.map((schema) => schema.reference.hash).sort(),
@@ -142,12 +129,12 @@ function mountPolicySignature(catalog: TWidgetCapsuleMountCatalog): string {
 }
 
 function hostPoolKey(
-  target: TVibecanvasCapsuleTarget,
+  apis: readonly TWidgetCapsuleApiGroup[],
   signingKeyId: string,
   policySignature: string,
 ): string {
   return canonicalJson({
-    target: targetKey(target),
+    apis,
     signingKeyId,
     policySignature,
   });
@@ -253,10 +240,8 @@ function idempotentHandle(
 
 /**
  * Owns one generation-scoped pool of shared Capsule hosts keyed by exact
- * execution target, signing authority, and locally derived capability policy.
- * Capsule 0.9 requires exact feature-profile equality and immutable host
- * verification/capability policy, so incompatible artifacts cannot share one
- * literal host. Idle policy partitions are retired when their last handle is
+ * public API contract, signing authority, and locally derived capability
+ * policy. Idle policy partitions are retired when their last handle is
  * destroyed. Deployment-catalog changes are terminal for the whole pool.
  */
 export class CapsuleWidgetHostCoordinator {
@@ -308,7 +293,7 @@ export class CapsuleWidgetHostCoordinator {
 
       const state = await this.#ensureHost(
         catalog,
-        args.artifact.runtimeDescriptor.target,
+        fnWidgetCapsuleRuntimeApis(args.artifact.runtimeDescriptor),
         args.mode,
       );
       const grants: readonly CapsuleCapabilityGrant[] = Object.freeze(
@@ -322,8 +307,6 @@ export class CapsuleWidgetHostCoordinator {
           container: args.container,
           capabilityBindings: args.capabilityBindings,
           grants,
-          featureGrants: targetFeatureProfiles(args.artifact.runtimeDescriptor.target),
-          budgets: args.artifact.runtimeDescriptor.budgets,
           ...(args.guestChannels === undefined
             ? {}
             : { guestChannels: args.guestChannels }),
@@ -334,6 +317,30 @@ export class CapsuleWidgetHostCoordinator {
           rawHandle = undefined;
           await rejectedHandle.destroy('artifact-hash-mismatch').catch(() => undefined);
           throw new Error('Mounted Capsule artifact hash does not match runtime metadata.');
+        }
+        const expectedLegacy =
+          args.artifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v1';
+        const expectedApis = fnWidgetCapsuleRuntimeApis(
+          args.artifact.runtimeDescriptor,
+        );
+        const apiContractMatches = (
+          diagnostics.apiContract.legacy === expectedLegacy
+          && canonicalJson(diagnostics.apiContract.requestedApis)
+            === canonicalJson(expectedApis)
+          && (
+            expectedLegacy
+            || (
+              args.artifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
+              && diagnostics.apiContract.bundleDigest
+                === args.artifact.runtimeDescriptor.apiContract.bundleDigest
+            )
+          )
+        );
+        if (!apiContractMatches) {
+          const rejectedHandle = rawHandle;
+          rawHandle = undefined;
+          await rejectedHandle.destroy('api-contract-version-mismatch').catch(() => undefined);
+          throw new Error('Mounted Capsule artifact API contract is inconsistent.');
         }
         state.activeHandles += 1;
         const handle = idempotentHandle(
@@ -395,7 +402,7 @@ export class CapsuleWidgetHostCoordinator {
     generation: string | null;
     handles: number;
     hosts: readonly Readonly<{
-      target: TVibecanvasCapsuleTarget;
+      apis: readonly TWidgetCapsuleApiGroup[];
       signingKeyId: string;
       diagnostics: ReturnType<CapsuleHost['diagnostics']>;
     }>[];
@@ -405,7 +412,7 @@ export class CapsuleWidgetHostCoordinator {
       generation: this.#generation ?? null,
       handles: this.#handles.size,
       hosts: Object.freeze([...this.#states.values()].map((state) => Object.freeze({
-        target: state.target,
+        apis: state.apis,
         signingKeyId: state.signingKeyId,
         diagnostics: state.host.diagnostics(),
       }))),
@@ -414,7 +421,7 @@ export class CapsuleWidgetHostCoordinator {
 
   async #ensureHost(
     catalog: TWidgetCapsuleMountCatalog,
-    requestedTarget: TVibecanvasCapsuleTarget,
+    requestedApis: readonly TWidgetCapsuleApiGroup[],
     mode: TMountArgs['mode'],
   ): Promise<THostState> {
     const signature = catalogSignature(catalog);
@@ -435,18 +442,18 @@ export class CapsuleWidgetHostCoordinator {
       ? catalog.previewSigningKeyId
       : catalog.releaseSigningKeyId;
     const key = hostPoolKey(
-      requestedTarget,
+      requestedApis,
       signingKeyId,
       mountPolicySignature(catalog),
     );
     const current = this.#states.get(key);
     if (current !== undefined) return current;
-    return await this.#createHost(catalog, requestedTarget, signingKeyId, key);
+    return await this.#createHost(catalog, requestedApis, signingKeyId, key);
   }
 
   async #createHost(
     catalog: TWidgetCapsuleMountCatalog,
-    target: TVibecanvasCapsuleTarget,
+    apis: readonly TWidgetCapsuleApiGroup[],
     signingKeyId: string,
     key: string,
   ): Promise<THostState> {
@@ -455,24 +462,21 @@ export class CapsuleWidgetHostCoordinator {
       throw new Error('Widget Capsule signing authority is unavailable.');
     }
     const host = await this.#hostFactory.create({
-      runtimePolicy: {
-        target,
-        capabilities: hostCapabilityPolicy(catalog),
-        budgetCeiling: catalog.budgetCeiling,
-        budgetDefaults: catalog.budgetDefaults,
-        artifactVerification: {
-          signaturePolicy: {
-            trustedKeys: new Map([[signingKeyId, signingKey]]),
-            minimumValidSignatures: 1,
-            requiredKeyIds: [signingKeyId],
-            rejectUntrustedSignatures: true,
-          },
+      allowedApis: apis,
+      limits: catalog.limits,
+      capabilities: hostCapabilityPolicy(catalog),
+      artifactVerification: {
+        signaturePolicy: {
+          trustedKeys: new Map([[signingKeyId, signingKey]]),
+          minimumValidSignatures: 1,
+          requiredKeyIds: [signingKeyId],
+          rejectUntrustedSignatures: true,
         },
-        vm: {
-          mode: 'release',
-          maxJobsPerDrain: 1_000,
-          maxEntryDepth: 32,
-        },
+      },
+      vm: {
+        mode: 'release',
+        maxJobsPerDrain: 1_000,
+        maxEntryDepth: 32,
       },
       browserPlatform: createDefaultCapsuleBrowserPlatform({
         document: this.#config.document,
@@ -494,7 +498,7 @@ export class CapsuleWidgetHostCoordinator {
     }
     const state: THostState = {
       poolKey: key,
-      target,
+      apis,
       signingKeyId,
       generation: catalog.generation,
       host,

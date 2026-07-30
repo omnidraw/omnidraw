@@ -10,16 +10,17 @@ import {
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnGenerateWidgetServerFunctionClientModule,
+  fnMigrateWidgetManifestDraft,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '../src';
 import {
   CAPSULE_BUDGETS,
+  CAPSULE_API_CONTRACT,
   CAPSULE_BUILD_IDENTITY,
   CAPSULE_HASH_A,
   CAPSULE_HASH_B,
   CAPSULE_MANIFEST,
   CAPSULE_RUNTIME_DESCRIPTOR,
-  CAPSULE_TARGET,
   RAW_DIGEST_A,
   RAW_DIGEST_B,
 } from './capsule.fixture';
@@ -31,7 +32,7 @@ function contract(overrides: Record<string, unknown> = {}): string {
     canonicalManifestJson: fnCanonicalizeWidgetManifest(CAPSULE_MANIFEST),
     uiDigestSha256: RAW_DIGEST_A,
     capsuleArtifactHash: CAPSULE_HASH_A,
-    target: CAPSULE_TARGET,
+    apiContract: CAPSULE_API_CONTRACT,
     budgets: CAPSULE_BUDGETS,
     capabilityContractDigestSha256: RAW_DIGEST_A,
     channelContractDigestSha256: RAW_DIGEST_B,
@@ -53,21 +54,18 @@ describe('widget manifest v3', () => {
       ...CAPSULE_MANIFEST,
       ui: {
         ...CAPSULE_MANIFEST.ui,
-        target: {
-          ...CAPSULE_TARGET,
-          featureProfiles: ['svg-dom-v1', 'canvas-2d-v1'],
-        },
+        apis: ['CANVAS_2D', 'DOM'],
         budgets: { cpuMs: 0, networkBytes: 0 },
         state: { collaborative: true, localStore: 'ephemeral' },
         parkability: { enabled: false },
       },
     });
-    expect(parsed.ui.target.featureProfiles).toEqual(['canvas-2d-v1', 'svg-dom-v1']);
+    expect(parsed.ui.apis).toEqual(['DOM', 'CANVAS_2D']);
     expect(parsed.ui.budgets).toEqual({ cpuMs: 0, networkBytes: 0 });
     expect(JSON.parse(fnCanonicalizeWidgetManifest(parsed))).toEqual(parsed);
   });
 
-  test('rejects v2, unknown fields, duplicate profiles, snapshot state, and parking', () => {
+  test('rejects v2, unknown fields, duplicate or conflicting APIs, snapshot state, and parking', () => {
     expect(ZWidgetManifestV3.safeParse({
       schemaVersion: 2,
       name: 'old',
@@ -82,7 +80,21 @@ describe('widget manifest v3', () => {
       ...CAPSULE_MANIFEST,
       ui: {
         ...CAPSULE_MANIFEST.ui,
-        target: { ...CAPSULE_TARGET, featureProfiles: ['svg-dom-v1', 'svg-dom-v1'] },
+        apis: ['DOM', 'DOM'],
+      },
+    }).success).toBe(false);
+    expect(ZWidgetManifestV3.safeParse({
+      ...CAPSULE_MANIFEST,
+      ui: {
+        ...CAPSULE_MANIFEST.ui,
+        apis: ['DOM', 'WEBGL', 'WEBGPU'],
+      },
+    }).success).toBe(false);
+    expect(ZWidgetManifestV3.safeParse({
+      ...CAPSULE_MANIFEST,
+      ui: {
+        ...CAPSULE_MANIFEST.ui,
+        target: { runtimeAbi: 'private', domProfile: 'private', featureProfiles: [] },
       },
     }).success).toBe(false);
     expect(ZWidgetManifestV3.safeParse({
@@ -96,6 +108,43 @@ describe('widget manifest v3', () => {
         state: { collaborative: false, localStore: 'snapshot' },
       },
     }).success).toBe(false);
+  });
+
+  test('normalizes persisted editable targets only at the trusted migration boundary', () => {
+    const persisted = {
+      schemaVersion: 3,
+      name: 'Persisted WebGL draft',
+      slug: 'persisted-webgl-draft',
+      ui: {
+        runtime: 'capsule',
+        entry: 'ui/main.ts',
+        target: {
+          runtimeAbi: 'quickjs-release-sync-v1',
+          domProfile: 'dom-core-v2',
+          featureProfiles: [
+            'artifact-resources-v1',
+            'canvas-webgl-v1',
+            'shadow-browser-css-v1',
+          ],
+        },
+        budgets: { messageBytes: 131_072 },
+      },
+    };
+    expect(ZWidgetManifestV3.safeParse(persisted).success).toBe(false);
+
+    const migrated = fnMigrateWidgetManifestDraft(persisted);
+    expect(migrated).toMatchObject({
+      migrated: true,
+      value: {
+        ui: {
+          apis: ['DOM', 'WEBGL'],
+          budgets: { messageBytes: 131_072 },
+        },
+      },
+    });
+    expect((migrated.value as { ui: Record<string, unknown> }).ui)
+      .not.toHaveProperty('target');
+    expect(ZWidgetManifestV3.safeParse(migrated.value).success).toBe(true);
   });
 });
 
@@ -111,7 +160,12 @@ describe('Capsule widget contract v3', () => {
       },
       { uiDigestSha256: RAW_DIGEST_B },
       { capsuleArtifactHash: CAPSULE_HASH_B },
-      { target: { ...CAPSULE_TARGET, featureProfiles: ['svg-dom-v1'] } },
+      {
+        apiContract: {
+          ...CAPSULE_API_CONTRACT,
+          groups: ['DOM', 'WEBGL'],
+        },
+      },
       { budgets: { ...CAPSULE_BUDGETS, cpuMs: CAPSULE_BUDGETS.cpuMs + 1 } },
       { capabilityContractDigestSha256: RAW_DIGEST_B },
       { channelContractDigestSha256: RAW_DIGEST_A },

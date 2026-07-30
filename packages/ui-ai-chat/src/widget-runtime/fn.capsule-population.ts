@@ -1,8 +1,8 @@
 import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
 import {
   WIDGET_UI_FAR_OFFSCREEN_DESTROY_MS,
-  WIDGET_UI_GPU_FEATURE_PROFILES,
-  WIDGET_UI_HEAVY_FEATURE_PROFILES,
+  WIDGET_UI_GPU_APIS,
+  WIDGET_UI_HEAVY_APIS,
   WIDGET_UI_MAX_ACTIVE_RUNTIMES,
   WIDGET_UI_MAX_FROZEN_RUNTIMES,
   WIDGET_UI_MAX_GPU_RUNTIMES,
@@ -168,14 +168,14 @@ function reprioritizationCandidates(
 }
 
 export function fnWidgetCapsulePopulationResourceClass(
-  featureProfiles: readonly string[] | null,
+  apis: readonly string[] | null,
 ): TWidgetCapsulePopulationResourceClass {
-  if (featureProfiles === null) return UNKNOWN_RESOURCE_CLASS;
-  const heavy = featureProfiles.some((profile) => (
-    WIDGET_UI_HEAVY_FEATURE_PROFILES.includes(profile)
+  if (apis === null) return UNKNOWN_RESOURCE_CLASS;
+  const heavy = apis.some((api) => (
+    WIDGET_UI_HEAVY_APIS.includes(api)
   ));
-  const gpu = featureProfiles.some((profile) => (
-    WIDGET_UI_GPU_FEATURE_PROFILES.includes(profile)
+  const gpu = apis.some((api) => (
+    WIDGET_UI_GPU_APIS.includes(api)
   ));
   return Object.freeze({ known: true, heavy, gpu });
 }

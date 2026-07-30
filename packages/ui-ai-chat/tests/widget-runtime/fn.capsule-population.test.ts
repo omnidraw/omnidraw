@@ -8,8 +8,8 @@ import {
 } from '../../src/widget-runtime/fn.capsule-population';
 
 const LIGHT = fnWidgetCapsulePopulationResourceClass([]);
-const CANVAS_2D = fnWidgetCapsulePopulationResourceClass(['canvas-2d-v1']);
-const WEBGPU = fnWidgetCapsulePopulationResourceClass(['canvas-webgpu-v1']);
+const CANVAS_2D = fnWidgetCapsulePopulationResourceClass(['DOM', 'CANVAS_2D']);
+const WEBGPU = fnWidgetCapsulePopulationResourceClass(['DOM', 'WEBGPU']);
 
 function candidate(
   id: number,

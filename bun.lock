@@ -36,7 +36,7 @@
     "apps/cli": {
       "name": "@vibecanvas/cli",
       "dependencies": {
-        "@omnidraw/capsule": "0.9.4",
+        "@omnidraw/capsule": "0.10.0",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
@@ -188,7 +188,7 @@
       "name": "@vibecanvas/capsule-vibecanvas",
       "version": "0.1.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.9.4",
+        "@omnidraw/capsule": "0.10.0",
         "@vibecanvas/tenant-core": "workspace:*",
         "@vibecanvas/widget-contract": "workspace:*",
       },
@@ -233,7 +233,7 @@
       "name": "@vibecanvas/sdk",
       "version": "0.1.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.9.4",
+        "@omnidraw/capsule": "0.10.0",
         "@vibecanvas/widget-contract": "0.1.0",
       },
       "devDependencies": {
@@ -797,7 +797,7 @@
 
     "@omnidraw/cangine": ["@omnidraw/cangine@0.3.0", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.3.0.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-EzwpSUlSs5fEMNc9LXWK6gMEe66lUD5UcVIqGCkdp+WAU7/2cSrhTqN1RQGtWN+k0RaThNScHRidGwWWU/6eWw=="],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.9.4", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.9.4.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-Zwjw007IAwlqrjpeOBjB9JPesOu2/81e2oIjkJS9sE0f21I/zTcf/Um2qNqpTElHzBXW3EQ8UVSp9rDeSQI1tQ=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-N/8z1HdFo3MhESKHaQLXG6QdHcgANmLQzZdHJ48C+OJQehUKvtqaZ6nYSZ9xofAijEhCWZDBb7+beudUArWzog=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

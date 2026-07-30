@@ -206,12 +206,8 @@ export function createManagedCompositionFixture() {
   const widgetCapsuleHostConfigurationValue: TWidgetCapsuleHostConfiguration =
     Object.freeze({
       generation: 'd'.repeat(64),
-      targetBase: Object.freeze({
-        runtimeAbi: 'quickjs-release-sync-v1',
-        domProfile: 'dom-core-v2',
-      }),
-      allowedFeatureProfiles: Object.freeze([]),
-      budgetCeiling: Object.freeze({
+      allowedApis: Object.freeze(['DOM'] as const),
+      limits: Object.freeze({
         cpuMs: 100,
         memoryBytes: 16 * 1024 * 1024,
         domNodes: 1_000,
@@ -222,18 +218,6 @@ export function createManagedCompositionFixture() {
         networkBytes: 0,
         gpuBytes: 0,
         lifecycleBytes: 64 * 1024,
-      }),
-      budgetDefaults: Object.freeze({
-        cpuMs: 50,
-        memoryBytes: 8 * 1024 * 1024,
-        domNodes: 500,
-        handles: 1_000,
-        messageBytes: 32 * 1024,
-        streamBytes: 32 * 1024,
-        assetBytes: 0,
-        networkBytes: 0,
-        gpuBytes: 0,
-        lifecycleBytes: 32 * 1024,
       }),
       previewSigningKeyId: 'managed-preview-v1',
       releaseSigningKeyId: 'managed-release-v1',

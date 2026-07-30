@@ -7,7 +7,6 @@ import type {
   IWidgetCapsuleHostConfigurationReader,
   IWidgetRevisionReader,
   TWidgetCapsuleHostConfiguration,
-  TWidgetCapsuleHostTargetBase,
   TWidgetCapsulePublicSigningKey,
 } from '@vibecanvas/widget-contract';
 
@@ -46,7 +45,6 @@ export type {
   TWidgetApiContext,
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsuleHostConfigurationCapability,
-  TWidgetCapsuleHostTargetBase,
   TWidgetCapsulePublicSigningKey,
   TWidgetRuntimeApiCapability,
   TWidgetRuntimeLoadAdmissionCapability,

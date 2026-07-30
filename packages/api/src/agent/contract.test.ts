@@ -12,15 +12,15 @@ const draftId = '00000000-0000-4000-8000-000000000001';
 const definitionId = '00000000-0000-4000-8000-000000000002';
 const publishedRevisionId = '00000000-0000-4000-8000-000000000003';
 const revision = 'a'.repeat(64);
-const target = {
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: [],
-};
+const apis = ['DOM'] as const;
 const runtimeDescriptor = {
-  format: 'vibecanvas.capsule-runtime.v1',
+  format: 'vibecanvas.capsule-runtime.v2',
   capsuleArtifactHash: `sha256:${'b'.repeat(64)}`,
-  target,
+  apiContract: {
+    format: 'capsule-api-groups-v1',
+    groups: apis,
+    bundleDigest: `sha256:${'c'.repeat(64)}`,
+  },
   budgets: {
     cpuMs: 50,
     memoryBytes: 8 * 1_024 * 1_024,
@@ -42,7 +42,7 @@ const manifest = {
   schemaVersion: 3,
   name: 'Clock',
   slug: 'clock',
-  ui: { runtime: 'capsule', entry: 'src/ui.ts', target },
+  ui: { runtime: 'capsule', entry: 'src/ui.ts', apis },
 };
 
 function api() {

@@ -63,11 +63,14 @@ import {
   VIBECANVAS_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 import {
-  fnAssertVibecanvasCapsuleProfileBudgets,
-  fnResolveVibecanvasCapsuleBudgets,
+  fnVibecanvasCapsuleApis,
+  fnVibecanvasCapsuleBudgetRequest,
   fnVibecanvasCapsuleBuildPolicy,
-  fnVibecanvasCapsuleBuildTarget,
 } from './fn.policy';
+import {
+  VIBECANVAS_CAPSULE_API_BUNDLE_DIGEST,
+  VIBECANVAS_CAPSULE_API_CONTRACT_FORMAT,
+} from '../contract/CONSTANTS';
 import { fnWidgetBuildError } from './fn.build-error';
 import type {
   TVibecanvasCapsuleBuild,
@@ -316,10 +319,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       (value) => value !== null,
     );
     const capabilityRequests = capabilityContracts.map((value) => value.request);
-    const capsuleTarget = fnVibecanvasCapsuleBuildTarget({
-      target: manifest.ui.target,
-      entry: manifest.ui.entry,
-    });
+    const capsuleApis = fnVibecanvasCapsuleApis(manifest.ui.apis);
     const functionModulePaths = new Set(functionModules.map(({ path }) => path));
     // This namespace separation happens before application-owned npm/build
     // execution. Capsule receives only the resulting external distribution.
@@ -351,13 +351,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         }));
       }
     }
-    const effectiveBudgets = fnResolveVibecanvasCapsuleBudgets(
+    const requestedBudgets = fnVibecanvasCapsuleBudgetRequest(
       manifest.ui.budgets ?? {},
     );
-    fnAssertVibecanvasCapsuleProfileBudgets({
-      target: manifest.ui.target,
-      budgets: effectiveBudgets,
-    });
     let distributionInput: Awaited<ReturnType<TVibecanvasDistributionBuild>>;
     let built: CapsuleBuildOutput;
     try {
@@ -377,11 +373,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       request.reportProgress?.('validating');
       built = await this.#capsuleBuild({
         input: distributionInput,
-        target: capsuleTarget,
+        apis: capsuleApis,
         capabilityRequests,
         guestChannels: channels.declaration,
         parkability: { parkable: false },
-        requestedBudgets: manifest.ui.budgets ?? {},
+        ...(Object.keys(requestedBudgets).length === 0
+          ? {}
+          : { budgets: requestedBudgets }),
         policy: fnVibecanvasCapsuleBuildPolicy(),
       });
       assertBuildActive(request.signal);
@@ -389,10 +387,14 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       throw fnWidgetBuildError('ui', cause);
     }
     const runtimeDescriptor = Object.freeze({
-      format: 'vibecanvas.capsule-runtime.v1' as const,
+      format: 'vibecanvas.capsule-runtime.v2' as const,
       capsuleArtifactHash: built.artifactHash,
-      target: manifest.ui.target,
-      budgets: effectiveBudgets,
+      apiContract: Object.freeze({
+        format: VIBECANVAS_CAPSULE_API_CONTRACT_FORMAT,
+        groups: Object.freeze([...capsuleApis]),
+        bundleDigest: VIBECANVAS_CAPSULE_API_BUNDLE_DIGEST,
+      }),
+      budgets: requestedBudgets,
       capabilityRequests: capabilityRequests as readonly TWidgetCapsuleCapabilityRequest[],
       channels: channels.declaration as TWidgetCapsuleChannelContract,
       parkability: Object.freeze({ parkable: false as const }),
@@ -422,7 +424,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         canonicalManifestJson: request.canonicalManifestJson,
         unsignedUiDigestSha256,
         capsuleArtifactHash: built.artifactHash,
-        target: runtimeDescriptor.target,
+        apiContract: runtimeDescriptor.apiContract,
         budgets: runtimeDescriptor.budgets,
         capabilityContractDigestSha256,
         channelContractDigestSha256,
@@ -455,8 +457,6 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         unsignedBytes: new Uint8Array(built.artifactBytes),
         capsuleArtifactHash: built.artifactHash,
         runtimeDescriptor,
-        requestedBudgets: manifest.ui.budgets ?? {},
-        effectiveBudgets,
         builderIdentity: request.builderIdentity,
         capsuleBuildIdentity: request.capsuleBuildIdentity,
       }),
@@ -488,7 +488,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       canonicalManifestJson: construction.canonicalManifestJson,
       uiDigestSha256,
       capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
-      target: runtimeDescriptor.target,
+      apiContract: runtimeDescriptor.apiContract,
       budgets: runtimeDescriptor.budgets,
       capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
       channelContractDigestSha256: construction.channelContractDigestSha256,
@@ -521,8 +521,6 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         bytes: signed.signedBytes,
         capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
         runtimeDescriptor,
-        requestedBudgets: construction.uiArtifact.requestedBudgets,
-        effectiveBudgets: construction.uiArtifact.effectiveBudgets,
         builderIdentity: construction.builderIdentity,
         capsuleBuildIdentity: construction.capsuleBuildIdentity,
       }),
@@ -570,12 +568,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     }
     if (
       construction.canonicalManifestJson !== fnCanonicalizeWidgetManifest(manifest)
-      || JSON.stringify(construction.uiArtifact.runtimeDescriptor.target)
-        !== JSON.stringify(manifest.ui.target)
-      || JSON.stringify(construction.uiArtifact.requestedBudgets)
+      || JSON.stringify(construction.uiArtifact.runtimeDescriptor.apiContract.groups)
+        !== JSON.stringify(manifest.ui.apis)
+      || JSON.stringify(construction.uiArtifact.runtimeDescriptor.budgets)
         !== JSON.stringify(manifest.ui.budgets ?? {})
-      || JSON.stringify(construction.uiArtifact.effectiveBudgets)
-        !== JSON.stringify(fnResolveVibecanvasCapsuleBudgets(manifest.ui.budgets ?? {}))
       || (manifest.server === undefined) !== (construction.serverArtifact === null)
       || (
         construction.serverArtifact !== null
@@ -618,7 +614,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         canonicalManifestJson: construction.canonicalManifestJson,
         unsignedUiDigestSha256: construction.uiArtifact.digestSha256,
         capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
-        target: construction.uiArtifact.runtimeDescriptor.target,
+        apiContract: construction.uiArtifact.runtimeDescriptor.apiContract,
         budgets: construction.uiArtifact.runtimeDescriptor.budgets,
         capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
         channelContractDigestSha256: construction.channelContractDigestSha256,

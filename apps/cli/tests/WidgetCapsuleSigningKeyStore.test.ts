@@ -164,13 +164,10 @@ describe('WidgetCapsuleSigningKeyStore', () => {
     expect(ZWidgetCapsuleHostConfiguration.parse(first)).toEqual(first);
     expect(second).toEqual(first);
     expect(first.generation).toMatch(/^[0-9a-f]{64}$/);
-    expect(first.targetBase).toEqual({
-      runtimeAbi: 'quickjs-release-sync-v1',
-      domProfile: 'dom-core-v2',
-    });
-    expect(first.allowedFeatureProfiles).toEqual(
-      [...first.allowedFeatureProfiles].sort(),
-    );
+    expect(first.allowedApis).toContain('DOM');
+    expect(first.limits).toEqual({});
+    expect(first).not.toHaveProperty('targetBase');
+    expect(first).not.toHaveProperty('allowedFeatureProfiles');
     expect(JSON.stringify(first)).not.toContain('private');
   });
 });

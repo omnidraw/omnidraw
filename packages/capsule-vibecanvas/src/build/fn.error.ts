@@ -36,7 +36,7 @@ function messageForBuildCategory(
     case 'budget':
       return 'The widget UI build exceeded a configured resource limit.';
     case 'target':
-      return 'The widget UI target is not supported.';
+      return 'The widget UI API-group request is not supported.';
     default:
       return 'The widget UI build failed.';
   }

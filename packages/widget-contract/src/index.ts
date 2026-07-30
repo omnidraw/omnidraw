@@ -13,6 +13,7 @@ export {
 export {
   ZWidgetCapsuleBudgetRequest,
   ZWidgetCapsuleBudgets,
+  ZWidgetCapsuleApis,
   ZWidgetCapsuleCapabilityRequest,
   ZWidgetCapsuleChannelContract,
   ZWidgetCapsuleParkability,
@@ -43,7 +44,14 @@ export {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
 } from './CONSTANTS';
-export { fnCanonicalizeWidgetContractPayload } from './core/fn.contract';
+export {
+  fnCanonicalizeLegacyWidgetContractPayload,
+  fnCanonicalizeWidgetContractPayload,
+} from './core/fn.contract';
+export {
+  fnMigrateWidgetManifestDraft,
+  type TWidgetManifestDraftMigration,
+} from './core/fn.manifest-migration';
 export {
   fnCanonicalizeWidgetConstructionContractPayload,
 } from './core/fn.construction-contract';
@@ -92,6 +100,8 @@ export {
   fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
   fnNormalizeWidgetCapsuleBudgetRequest,
   fnNormalizeWidgetCapsuleBudgets,
+  fnNormalizeWidgetCapsuleApiContract,
+  fnNormalizeWidgetCapsuleApis,
   fnNormalizeWidgetCapsuleCapabilityRequests,
   fnNormalizeWidgetCapsuleChannelContract,
   fnNormalizeWidgetCapsuleRuntimeDescriptor,

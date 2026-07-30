@@ -7,6 +7,7 @@
     "./browser": "./src/browser/index.ts",
     "./CONSTANTS": "./src/CONSTANTS.ts",
     "./fn.diagnostic": "./src/core/fn.diagnostic.ts",
+    "./fn.manifest-migration": "./src/core/fn.manifest-migration.ts",
     "./core/fn.widget-frame": "./src/core/fn.widget-frame.ts",
     "./fn.widget-frame": "./src/core/fn.widget-frame.ts",
     "./local": "./src/local/index.ts"

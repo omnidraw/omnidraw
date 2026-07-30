@@ -164,11 +164,7 @@ describe('M5 immutable widget artifact boundaries', () => {
       ui: {
         runtime: 'capsule',
         entry: 'src/ui.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
-        },
+        apis: ['DOM'],
       },
     } as const;
     expect(ZWidgetManifestV3.safeParse(validManifest).success).toBe(true);

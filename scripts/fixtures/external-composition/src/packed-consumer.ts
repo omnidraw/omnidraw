@@ -31,12 +31,12 @@ export async function runPackedPublicComposition(): Promise<void> {
   const frame = fnNormalizeWidgetFrame()
   assert(frame.width === 360 && frame.height === 320, 'The packed widget frame subpath changed defaults.')
   const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse({
-    format: 'vibecanvas.capsule-runtime.v1',
+    format: 'vibecanvas.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${'a'.repeat(64)}`,
-    target: {
-      runtimeAbi: 'quickjs-release-sync-v1',
-      domProfile: 'dom-core-v2',
-      featureProfiles: [],
+    apiContract: {
+      format: 'capsule-api-groups-v1',
+      groups: ['DOM'],
+      bundleDigest: `sha256:${'b'.repeat(64)}`,
     },
     budgets: {
       cpuMs: 100,
@@ -56,7 +56,8 @@ export async function runPackedPublicComposition(): Promise<void> {
     signatureKeyIds: ['managed-release-v1'],
   })
   assert(
-    runtimeDescriptor.target.runtimeAbi === 'quickjs-release-sync-v1',
+    runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
+      && runtimeDescriptor.apiContract.groups[0] === 'DOM',
     'The packed browser subpath failed to decode trusted Capsule runtime metadata.',
   )
 

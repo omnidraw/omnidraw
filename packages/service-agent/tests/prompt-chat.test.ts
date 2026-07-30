@@ -44,7 +44,7 @@ describe('AgentService.promptChat', () => {
   test('teaches widget agents the browser-first Capsule and short-function contract', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 3');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtime": "capsule"');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtimeAbi": "quickjs-release-sync-v1"');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"apis": ["DOM"]');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Omit `server` and `resources` for a UI-only widget');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('UI-only widgets start no backend process');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('defineServerFunction');
@@ -76,24 +76,22 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Package lifecycle hooks and the build script execute with the build-server');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('retain the generated direct');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`@omnidraw/capsule` dependency');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('shadow-browser-css-v1');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('css-network-images-v1');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('canvas-webgl-v1');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`["DOM", "WEBGL"]`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('canvas-webgl-v1');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`three` to exactly `0.185.1`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('omitted `gpuBytes` defaults to');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('rely on the `WEBGL` group defaults');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('explicitly indexed');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`THREE.RawShaderMaterial`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not ambient `drawArrays`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('default `65536`-byte');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('such as `262144`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('never above 1048576');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('measured `messageBytes`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not use built-in lit/PBR materials');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not use `THREE.Clock`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('monotonic timestamp passed to each');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('independent of');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Validation does not execute the browser guest');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('custom properties and `var()`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not covered by the signed artifact');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('browser Preview execution result');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('custom properties and');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`var()` fallbacks');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not part of the signed artifact');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('exact Capsule');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain(
       'Capsule does not admit CSS custom-property references',

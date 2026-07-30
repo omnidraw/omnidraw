@@ -173,7 +173,9 @@ function previewRevision(args: Readonly<{
       canonicalManifestJson,
       unsignedUiDigestSha256: unsignedUiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      target: uiRuntime.target,
+      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
+        ? uiRuntime.apiContract
+        : (() => { throw new Error('native runtime expected'); })(),
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -191,7 +193,9 @@ function previewRevision(args: Readonly<{
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      target: uiRuntime.target,
+      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
+        ? uiRuntime.apiContract
+        : (() => { throw new Error('native runtime expected'); })(),
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -1750,6 +1754,25 @@ describe('AgentAuthoringStoreTurso', () => {
       nowMs: 18,
       ttlMs: 1_000,
     })).toMatchObject({ leaseId: activeLeaseId });
+    expect(await store.hasConfirmedPreviewExecution(TENANT, {
+      draftId: context.draftId,
+      draftRevisionSha256: sourceDigestSha256,
+      nowMs: 18,
+    })).toBe(false);
+    expect(await store.renewPreviewMountLease(TENANT, {
+      leaseId: activeLeaseId,
+      previewId,
+      previewRevisionId: secondRevisionId,
+      canvasId: context.canvasId,
+      frameNodeId,
+      nowMs: 19,
+      ttlMs: 1_000,
+    })).toMatchObject({ leaseId: activeLeaseId, renewedAtMs: 19 });
+    expect(await store.hasConfirmedPreviewExecution(TENANT, {
+      draftId: context.draftId,
+      draftRevisionSha256: sourceDigestSha256,
+      nowMs: 19,
+    })).toBe(true);
     expect(await store.releasePreviewMountLease(TENANT, {
       leaseId: secondLeaseId,
       previewId,

@@ -1035,4 +1035,11 @@ export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 4,
   }),
+  Object.freeze({
+    fingerprintSha256: '2118e4c6dd67004b2b4de23bc479c70ad2138db7f2a30cb1571ab87ef2098a59',
+    indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
+    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+    tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
+    version: 5,
+  }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

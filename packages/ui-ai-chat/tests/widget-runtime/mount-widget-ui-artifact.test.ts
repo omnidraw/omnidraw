@@ -26,6 +26,7 @@ import type {
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   type TWidgetBrowserFunctionDescriptor,
+  type TWidgetCapsuleApiGroup,
   type TWidgetCapsuleTheme,
 } from '@vibecanvas/widget-contract';
 
@@ -62,23 +63,10 @@ const FUNCTION_DESCRIPTOR_DIGEST = browserFunctionDigest(functionMetadata);
 const HASH_A = `sha256:${FUNCTION_DESCRIPTOR_DIGEST}` as const;
 const HASH_B = `sha256:${'b'.repeat(64)}` as const;
 const SCHEMA_HASH = `sha256:${'c'.repeat(64)}` as const;
-const TARGET = Object.freeze({
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: Object.freeze([]),
-});
-const TARGET_WITH_SVG = Object.freeze({
-  ...TARGET,
-  featureProfiles: Object.freeze(['svg-dom-v1']),
-});
-const TARGET_WITH_CSS_NETWORK_IMAGES = Object.freeze({
-  ...TARGET,
-  featureProfiles: Object.freeze([
-    'artifact-resources-v1',
-    'css-network-images-v1',
-    'shadow-browser-css-v1',
-  ]),
-});
+const API_BUNDLE_DIGEST = `sha256:${'d'.repeat(64)}` as const;
+const DOM_APIS = Object.freeze(['DOM'] as const);
+const NETWORK_APIS = Object.freeze(['DOM', 'NETWORK'] as const);
+const CANVAS_APIS = Object.freeze(['DOM', 'CANVAS_2D'] as const);
 const BUDGETS = Object.freeze({
   cpuMs: 100,
   memoryBytes: 32 * 1_024 * 1_024,
@@ -161,17 +149,18 @@ function catalog(
     { kind: 'server-functions' as const, descriptor: functionDescriptor },
     { kind: 'collaborative-state' as const, descriptor: stateDescriptor },
   ],
-  allowedFeatureProfiles: readonly string[] = [],
+  allowedApis: readonly TWidgetCapsuleApiGroup[] = [
+    'DOM',
+    'NETWORK',
+    'CANVAS_2D',
+    'WEBGL',
+    'WEBGPU',
+  ],
 ): TWidgetCapsuleMountCatalog {
   return {
     generation,
-    targetBase: {
-      runtimeAbi: TARGET.runtimeAbi,
-      domProfile: TARGET.domProfile,
-    },
-    allowedFeatureProfiles,
-    budgetCeiling: BUDGETS,
-    budgetDefaults: BUDGETS,
+    allowedApis,
+    limits: BUDGETS,
     schemas: [schema],
     capabilities,
     trustedSigningKeys: new Map([
@@ -192,14 +181,18 @@ function runtimeDescriptor(
     required: true,
     operations: ['count'],
   }],
-  target = TARGET,
+  apis: readonly TWidgetCapsuleApiGroup[] = DOM_APIS,
   channels: TVerifiedWidgetUiArtifact['runtimeDescriptor']['channels'] = null,
 ) {
   return {
-    format: 'vibecanvas.capsule-runtime.v1' as const,
+    format: 'vibecanvas.capsule-runtime.v2' as const,
     capsuleArtifactHash: HASH_A,
-    target,
-    budgets: BUDGETS,
+    apiContract: {
+      format: 'capsule-api-groups-v1' as const,
+      groups: apis,
+      bundleDigest: API_BUNDLE_DIGEST,
+    },
+    budgets: {},
     capabilityRequests: requests,
     channels,
     parkability: { parkable: false as const },
@@ -210,19 +203,22 @@ function runtimeDescriptor(
 function artifact(
   mode: 'preview' | 'published' = 'published',
   requests?: Parameters<typeof runtimeDescriptor>[1],
-  target?: Parameters<typeof runtimeDescriptor>[2],
+  apis?: Parameters<typeof runtimeDescriptor>[2],
   channels?: Parameters<typeof runtimeDescriptor>[3],
 ): TVerifiedWidgetUiArtifact {
   return {
     digestSha256: 'd'.repeat(64),
     bytes: new Uint8Array([1, 2, 3]),
     capsuleArtifactHash: HASH_A,
-    runtimeDescriptor: runtimeDescriptor(mode, requests, target, channels),
+    runtimeDescriptor: runtimeDescriptor(mode, requests, apis, channels),
     retainedByteSize: 3,
   };
 }
 
-function rawHandle(artifactHash = HASH_A) {
+function rawHandle(
+  artifactHash = HASH_A,
+  apis: readonly TWidgetCapsuleApiGroup[] = DOM_APIS,
+) {
   const destroy = vi.fn(async () => undefined);
   const setProps = vi.fn();
   const setTheme = vi.fn();
@@ -254,7 +250,17 @@ function rawHandle(artifactHash = HASH_A) {
       };
     }),
     onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
-    diagnostics: vi.fn(() => ({ artifactHash })),
+    diagnostics: vi.fn(() => ({
+      artifactHash,
+      apiContract: {
+        format: 'capsule-api-groups-v1',
+        bundleDigest: API_BUNDLE_DIGEST,
+        requestedApis: apis,
+        effectiveApis: apis,
+        legacy: false,
+        resourceFamilies: [],
+      },
+    })),
   } as unknown as CapsuleHandle;
   return { destroy, emitError, handle, setProps, setTheme, setViewport };
 }
@@ -271,7 +277,7 @@ function fakeHostFactory(
     raw: ReturnType<typeof rawHandle>;
   }> = [];
   const create = vi.fn(async (options: CreateCapsuleHostOptions) => {
-    const raw = rawHandle(mountedArtifactHash);
+    const raw = rawHandle(mountedArtifactHash, options.allowedApis);
     const mount = vi.fn(async () => {
       if (mountError !== undefined) throw mountError;
       return raw.handle;
@@ -382,8 +388,8 @@ describe('Capsule widget mount boundary', () => {
         category: 'capability',
         capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
         fatal: true,
-        message: 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
-          + 'and a positive ui.budgets.gpuBytes value.',
+        message: 'WebGL Preview requires browser WebGL2 support and the public '
+          + 'WEBGL API group. Add WEBGL to ui.apis.',
       },
     });
     expect(JSON.stringify(outcome)).not.toContain('/private/widget/source.js');
@@ -513,7 +519,7 @@ describe('Capsule widget mount boundary', () => {
 
       expect(factory.created).toHaveLength(1);
       expect(factory.created[0]!.options.schemas.length).toBeGreaterThan(0);
-      expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([
+      expect(factory.created[0]!.options.capabilities).toEqual([
         expect.objectContaining({
           id: functionDescriptor.id,
           contractHash: HASH_A,
@@ -672,7 +678,7 @@ describe('Capsule widget mount boundary', () => {
       artifact: artifact(
         'published',
         [],
-        TARGET,
+        DOM_APIS,
         channelContract.declaration,
       ),
       functionDescriptors: [],
@@ -963,17 +969,17 @@ describe('Capsule widget mount boundary', () => {
     });
     expect(factory.create).toHaveBeenCalledOnce();
     expect(
-      factory.created[0]!.options.runtimePolicy.artifactVerification?.signaturePolicy,
+      factory.created[0]!.options.artifactVerification?.signaturePolicy,
     ).toMatchObject({
       minimumValidSignatures: 1,
       requiredKeyIds: ['release-key'],
       rejectUntrustedSignatures: true,
     });
     expect([
-      ...factory.created[0]!.options.runtimePolicy.artifactVerification!
+      ...factory.created[0]!.options.artifactVerification!
         .signaturePolicy.trustedKeys.keys(),
     ]).toEqual(['release-key']);
-    expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([{
+    expect(factory.created[0]!.options.capabilities).toEqual([{
       effect: 'allow',
       id: functionDescriptor.id,
       versionRange: '1.0.0',
@@ -1104,7 +1110,7 @@ describe('Capsule widget mount boundary', () => {
     await coordinator.destroy();
   });
 
-  test('shares hosts by exact target and never widens one host across profiles', async () => {
+  test('shares hosts by exact public APIs and never widens one host', async () => {
     const factory = fakeHostFactory();
     const currentCatalog = catalog(
       'catalog-a',
@@ -1112,17 +1118,17 @@ describe('Capsule widget mount boundary', () => {
         { kind: 'server-functions', descriptor: functionDescriptor },
         { kind: 'collaborative-state', descriptor: stateDescriptor },
       ],
-      ['svg-dom-v1'],
+      ['DOM', 'CANVAS_2D'],
     );
     const coordinator = new CapsuleWidgetHostCoordinator({
       document,
       catalog: () => currentCatalog,
       hostFactory: factory,
     });
-    const mount = (target = TARGET) => coordinator.mount({
+    const mount = (apis: readonly TWidgetCapsuleApiGroup[] = DOM_APIS) => coordinator.mount({
       mode: 'published' as const,
       catalog: currentCatalog,
-      artifact: artifact('published', undefined, target),
+      artifact: artifact('published', undefined, apis),
       container: document.createElement('div'),
       capabilityBindings: [{
         descriptor: functionDescriptor,
@@ -1134,14 +1140,14 @@ describe('Capsule widget mount boundary', () => {
 
     await mount();
     await mount();
-    await mount(TARGET_WITH_SVG);
+    await mount(CANVAS_APIS);
     expect(factory.create).toHaveBeenCalledTimes(2);
-    expect(factory.created.map(({ options }) => options.runtimePolicy.target))
-      .toEqual([TARGET, TARGET_WITH_SVG]);
+    expect(factory.created.map(({ options }) => options.allowedApis))
+      .toEqual([DOM_APIS, CANVAS_APIS]);
     await coordinator.destroy();
   });
 
-  test('passes exact native CSS and network-image grants to a matching host partition', async () => {
+  test('creates a NETWORK host partition without restating policy at mount', async () => {
     const factory = fakeHostFactory();
     const currentCatalog = catalog(
       'catalog-a',
@@ -1149,7 +1155,7 @@ describe('Capsule widget mount boundary', () => {
         { kind: 'server-functions', descriptor: functionDescriptor },
         { kind: 'collaborative-state', descriptor: stateDescriptor },
       ],
-      TARGET_WITH_CSS_NETWORK_IMAGES.featureProfiles,
+      NETWORK_APIS,
     );
     const coordinator = new CapsuleWidgetHostCoordinator({
       document,
@@ -1160,7 +1166,7 @@ describe('Capsule widget mount boundary', () => {
     await coordinator.mount({
       mode: 'published',
       catalog: currentCatalog,
-      artifact: artifact('published', undefined, TARGET_WITH_CSS_NETWORK_IMAGES),
+      artifact: artifact('published', undefined, NETWORK_APIS),
       container: document.createElement('div'),
       capabilityBindings: [{
         descriptor: functionDescriptor,
@@ -1171,11 +1177,10 @@ describe('Capsule widget mount boundary', () => {
     });
 
     expect(factory.created).toHaveLength(1);
-    expect(factory.created[0]!.options.runtimePolicy.target)
-      .toEqual(TARGET_WITH_CSS_NETWORK_IMAGES);
-    expect(factory.created[0]!.mount).toHaveBeenCalledWith(expect.objectContaining({
-      featureGrants: TARGET_WITH_CSS_NETWORK_IMAGES.featureProfiles,
-    }));
+    expect(factory.created[0]!.options.allowedApis).toEqual(NETWORK_APIS);
+    const mountOptions = factory.created[0]!.mount.mock.calls[0]![0];
+    expect(mountOptions).not.toHaveProperty('allowedApis');
+    expect(mountOptions).not.toHaveProperty('limits');
     await coordinator.destroy();
   });
 
@@ -1205,7 +1210,7 @@ describe('Capsule widget mount boundary', () => {
     await mount('published');
     expect(factory.create).toHaveBeenCalledTimes(2);
     expect(factory.created.map(({ options }) => (
-      options.runtimePolicy.artifactVerification?.signaturePolicy.requiredKeyIds
+      options.artifactVerification?.signaturePolicy.requiredKeyIds
     ))).toEqual([['preview-key'], ['release-key']]);
     await coordinator.destroy();
   });

@@ -8,6 +8,7 @@ import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeLegacyWidgetContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
@@ -42,26 +43,15 @@ const RESOURCE_KV_A = uuid(406);
 const RESOURCE_DB_A = uuid(407);
 const RESOURCE_FOREIGN = uuid(408);
 const CANVAS_A = uuid(409);
-const CAPSULE_TARGET = Object.freeze({
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: ['artifact-resources-v1'],
+const CAPSULE_API_CONTRACT = Object.freeze({
+  format: 'capsule-api-groups-v1' as const,
+  groups: Object.freeze(['DOM'] as const),
+  bundleDigest: `sha256:${'f'.repeat(64)}` as const,
 });
-const CAPSULE_BUDGETS = Object.freeze({
-  cpuMs: 50,
-  memoryBytes: 8 * 1_024 * 1_024,
-  domNodes: 1_000,
-  handles: 1_000,
-  messageBytes: 1_024 * 1_024,
-  streamBytes: 1_024 * 1_024,
-  assetBytes: 4 * 1_024 * 1_024,
-  networkBytes: 0,
-  gpuBytes: 0,
-  lifecycleBytes: 64 * 1_024,
-});
+const CAPSULE_BUDGETS = Object.freeze({});
 const CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.4',
+  packageVersion: '0.10.0',
   packageDigest: `sha256:${'a'.repeat(64)}` as const,
   buildApiVersion: 'capsule-build-v1',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}` as const,
@@ -124,7 +114,7 @@ function manifest(
     ui: {
       runtime: 'capsule',
       entry: 'src/ui.tsx',
-      target: CAPSULE_TARGET,
+      apis: ['DOM'],
     },
     ...(args.server ? { server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' } } : {}),
     ...(args.resources ? { resources: args.resources } : {}),
@@ -192,9 +182,9 @@ async function publish(
     buildConfigurationDigest: `sha256:${'e'.repeat(64)}`,
   };
   const uiRuntime = args.uiRuntime ?? {
-    format: 'vibecanvas.capsule-runtime.v1',
+    format: 'vibecanvas.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${uiArtifact.digestSha256}`,
-    target: CAPSULE_TARGET,
+    apiContract: CAPSULE_API_CONTRACT,
     budgets: CAPSULE_BUDGETS,
     capabilityRequests: [],
     channels: null,
@@ -236,7 +226,9 @@ async function publish(
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      target: uiRuntime.target,
+      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
+        ? uiRuntime.apiContract
+        : (() => { throw new Error('native runtime expected'); })(),
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -412,7 +404,7 @@ describe('WidgetControlStoreTurso', () => {
       serverArtifact: null,
       uiArtifact: { id: uuid(412), kind: 'ui', retentionState: 'pinned' },
       uiRuntime: {
-        format: 'vibecanvas.capsule-runtime.v1',
+        format: 'vibecanvas.capsule-runtime.v2',
         signatureKeyIds: ['vibecanvas-release-v1'],
       },
       capsuleBuildIdentity: { packageName: '@omnidraw/capsule' },
@@ -478,7 +470,7 @@ describe('WidgetControlStoreTurso', () => {
       uiArtifact: { id: uuid(412), digestSha256: digest(1) },
       uiRuntime: {
         capsuleArtifactHash: `sha256:${digest(1)}`,
-        target: CAPSULE_TARGET,
+        apiContract: CAPSULE_API_CONTRACT,
       },
       serverArtifact: { id: uuid(415), kind: 'server', digestSha256: digest(2) },
       serverRuntimeAbi: 'vibecanvas:1',
@@ -1029,6 +1021,113 @@ describe('WidgetControlStoreTurso', () => {
     expect(await store.getRevisionSource(TENANT_A, revisionId)).toMatchObject({ revisionId });
   });
 
+  test('reads immutable Capsule 0.9.4 publications through the legacy verifier only', async () => {
+    const revisionId = uuid(1_646);
+    const published = committed(await publish(store, TENANT_A, {
+      revisionId,
+      nowMs: 20,
+    }));
+    const source = await store.getRevisionSource(TENANT_A, revisionId);
+    if (source === null) throw new Error('Expected the retained publication source.');
+
+    const legacyManifest = {
+      schemaVersion: 3,
+      name: published.manifest.name,
+      slug: published.manifest.slug,
+      ui: {
+        runtime: 'capsule',
+        entry: published.manifest.ui.entry,
+        target: {
+          runtimeAbi: 'quickjs-release-sync-v1',
+          domProfile: 'dom-core-v2',
+          featureProfiles: [],
+        },
+      },
+    };
+    const canonicalManifestJson = JSON.stringify(legacyManifest);
+    const legacyBudgets = {
+      cpuMs: 750,
+      memoryBytes: 32 * 1024 * 1024,
+      domNodes: 10_000,
+      handles: 22_000,
+      messageBytes: 64 * 1024,
+      streamBytes: 256 * 1024,
+      assetBytes: 4 * 1024 * 1024,
+      networkBytes: 0,
+      gpuBytes: 0,
+      lifecycleBytes: 256 * 1024,
+    };
+    const legacyRuntime = {
+      format: 'vibecanvas.capsule-runtime.v1' as const,
+      capsuleArtifactHash: published.uiRuntime.capsuleArtifactHash,
+      target: legacyManifest.ui.target,
+      budgets: legacyBudgets,
+      capabilityRequests: published.uiRuntime.capabilityRequests,
+      channels: published.uiRuntime.channels,
+      parkability: { parkable: false as const },
+      signatureKeyIds: published.uiRuntime.signatureKeyIds,
+    };
+    const legacyBuildIdentity = {
+      ...published.capsuleBuildIdentity,
+      packageVersion: '0.9.4',
+    };
+    const legacyBuildPolicyId = 'vibecanvas-capsule-widget-v1';
+    const legacyContractDigest = createHash('sha256')
+      .update(fnCanonicalizeLegacyWidgetContractPayload({
+        canonicalManifestJson,
+        uiDigestSha256: published.uiArtifact.digestSha256,
+        capsuleArtifactHash: legacyRuntime.capsuleArtifactHash,
+        target: legacyRuntime.target,
+        budgets: legacyRuntime.budgets,
+        capabilityContractDigestSha256:
+          published.capabilityContractDigestSha256,
+        channelContractDigestSha256: published.channelContractDigestSha256,
+        signatureKeyIds: legacyRuntime.signatureKeyIds,
+        serverDigestSha256: null,
+        serverRuntimeAbi: null,
+        functionDescriptorsDigestSha256:
+          published.functionDescriptorsDigestSha256,
+        sourceDigestSha256: source.sourceDigestSha256,
+        builderIdentity: source.builderIdentity,
+        capsuleBuildIdentity: legacyBuildIdentity,
+        buildPolicyId: legacyBuildPolicyId,
+      }))
+      .digest('hex');
+
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET manifest_json = ?, ui_runtime_json = ?,
+        capsule_build_identity_json = ?, build_policy_id = ?,
+        contract_digest_sha256 = ?
+      WHERE org_id = ? AND id = ?
+    `)).run(
+      canonicalManifestJson,
+      JSON.stringify(legacyRuntime),
+      JSON.stringify(legacyBuildIdentity),
+      legacyBuildPolicyId,
+      legacyContractDigest,
+      TENANT_A.orgId,
+      revisionId,
+    );
+
+    await expect(store.getRevision(TENANT_A, revisionId)).resolves.toMatchObject({
+      id: revisionId,
+      manifest: {
+        ui: {
+          apis: ['DOM'],
+        },
+      },
+      uiRuntime: {
+        format: 'vibecanvas.capsule-runtime.v1',
+        target: legacyRuntime.target,
+      },
+      contractDigestSha256: legacyContractDigest,
+      capsuleBuildIdentity: {
+        packageVersion: '0.9.4',
+      },
+    });
+  });
+
   test('rejects mismatched publication contracts and fails closed on stored revision tampering', async () => {
     const rejectedDefinition = uuid(444);
     await expect(publish(store, TENANT_A, {
@@ -1093,9 +1192,11 @@ describe('WidgetControlStoreTurso', () => {
       published.contractDigestSha256,
       JSON.stringify({
         ...published.uiRuntime,
-        target: {
-          ...published.uiRuntime.target,
-          featureProfiles: ['artifact-resources-v1', 'canvas-2d-v1'],
+        apiContract: {
+          ...(published.uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
+            ? published.uiRuntime.apiContract
+            : CAPSULE_API_CONTRACT),
+          groups: ['DOM', 'CANVAS_2D'],
         },
       }),
       TENANT_A.orgId,

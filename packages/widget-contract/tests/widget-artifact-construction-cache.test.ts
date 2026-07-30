@@ -36,18 +36,14 @@ function request(
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
-        },
+        apis: ['DOM'],
       },
     },
     canonicalManifestJson: '{"schemaVersion":3}',
     builderIdentity: 'builder-1',
     capsuleBuildIdentity: {
       packageName: '@omnidraw/capsule',
-      packageVersion: '0.9.4',
+      packageVersion: '0.10.0',
       packageDigest: `sha256:${'b'.repeat(64)}`,
       buildApiVersion: '0.1.0',
       runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,

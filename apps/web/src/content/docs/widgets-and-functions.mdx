@@ -47,11 +47,17 @@ Widget UI projects own their npm dependencies, package-lock-v3 file, and build s
 
 Plain DOM is the default. React is the supported component-library path: use a `.tsx` entry, import from `react` and `react-dom/client`, and pin `react`/`react-dom` to `19.2.7`, `@types/react` to `19.2.17`, and `@types/react-dom` to `19.2.3`. The trusted build selects Capsule's reviewed JSX transform and verifies the exact closed package projection; widgets do not choose build plugins. Other UI libraries, remote ESM/CDN imports, dynamic imports, and runtime package loaders are unsupported.
 
-Request only the compatibility profiles the UI actually uses: `artifact-resources-v1` for static CSS/assets, `svg-dom-v1` for SVG, `canvas-2d-v1` for Canvas 2D, `canvas-webgl-v1` for WebGL, and `canvas-webgpu-v1` for WebGPU. GPU widgets must also request an explicit non-zero `gpuBytes` budget. A profile request describes compatibility—it does not grant host, network, file, or resource authority.
+Request only the public Capsule API groups the UI actually uses. `DOM` is
+explicit and mandatory; add `NETWORK`, `FILES`, `CLIPBOARD`, `DIALOGS`,
+`CANVAS_2D`, `WEBGL`, `WEBGPU`, `AUDIO`, or `VIDEO` only when needed.
+`CANVAS_2D`, `WEBGL`, and `WEBGPU` are mutually exclusive. Capsule supplies
+the selected groups' normal budgets; use a partial budget override only when
+Preview diagnostics show a measured need. An API-group request describes
+compatibility—it does not grant host, network, file, or resource authority.
 
 ## Widget UI limits
 
-Widget UI code runs from a signed, immutable artifact inside the Capsule browser sandbox. It does not receive direct access to the host page, canvas engine, database, credentials, or Bun process objects. DOM access and communication with collaborative state, server functions, and widget channels are limited to the Capsule profiles and capabilities declared by the published revision.
+Widget UI code runs from a signed, immutable artifact inside the Capsule browser sandbox. It does not receive direct access to the host page, canvas engine, database, credentials, or Bun process objects. DOM access and communication with collaborative state, server functions, and widget channels are limited to the public Capsule API groups and capabilities declared by the published revision.
 
 The practical rule is:
 

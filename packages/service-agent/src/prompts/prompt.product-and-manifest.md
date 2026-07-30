@@ -12,15 +12,7 @@ and must use schema version 3:
   "ui": {
     "runtime": "capsule",
     "entry": "ui/main.ts",
-    "target": {
-      "runtimeAbi": "quickjs-release-sync-v1",
-      "domProfile": "dom-core-v2",
-      "featureProfiles": [
-        "artifact-resources-v1",
-        "css-network-images-v1",
-        "shadow-browser-css-v1"
-      ]
-    }
+    "apis": ["DOM"]
   }
 }
 ```
@@ -29,20 +21,15 @@ and must use schema version 3:
 - `slug` is lowercase kebab-case and remains stable after publication.
 - `ui.runtime` is always `capsule`; `ui.entry` is one safe relative TypeScript
   or JavaScript entry path.
-- `ui.target` requests the runtime and browser compatibility profiles needed by
-  the source. Keep feature profiles minimal and sorted. The host may reduce or
-  reject a request; it never becomes authority by appearing in the manifest.
-- New scaffolds select native Shadow DOM CSS and its separate CSS network-image
-  profile. Keep both only when the widget needs ordinary modern CSS plus
-  literal HTTPS or root-relative image URLs; removing the network-image profile
-  restores default-deny browser image networking.
+- `ui.apis` requests Capsule public API groups. `DOM` is explicit and mandatory.
+  Add only the groups the source needs. `CANVAS_2D`, `WEBGL`, and `WEBGPU` are
+  mutually exclusive.
 - `ui.budgets` may request non-negative Capsule ceilings for `cpuMs`,
   `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
   `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use
-  product defaults. Zero explicitly denies that dimension.
-- `vc_widget_validate` proves manifest policy, compilation, and artifact
-  construction. It does not mount or execute the browser guest, so do not call
-  a widget Preview-ready until its retained Preview has actually reached ready.
+  Capsule's selected-group defaults. Zero explicitly denies that dimension.
+- Do not call a widget Preview-ready unless validation retained a successful
+  browser Preview execution result for that exact construction.
 - Add `ui.state` only when needed. `collaborative` declares shared
   widget-instance state; `localStore` is `none` or `ephemeral`.
 - Parking is unavailable in this release. Do not request it.

@@ -1,6 +1,6 @@
 # Widget style guide
 
-Capsule's native Shadow CSS profile supports custom properties and `var()`
+Capsule's `DOM` API group supports native Shadow CSS, custom properties, and `var()`
 fallbacks for resource-free values. Host custom properties may inherit through
 the closed ShadowRoot, but `getWidgetTheme()` and `subscribeWidgetTheme()`
 remain the stable semantic theme contract. Keep layout, spacing, typography,
@@ -60,7 +60,7 @@ the host theme changes.
   properties or put `url(...)` in a custom property.
 - Modern math functions, gradients, logical layout, Grid/Flexbox, typography,
   transitions, animations, media/container queries, and `@supports` are
-  available under `shadow-browser-css-v1`.
+  available under `DOM`.
 - Do not use `:host`, `:host-context`, `::slotted`, `::part`, `@property`,
   document-level view transitions, `paint()`, nesting, or runtime `@import`.
 - Scope selectors with a root class, for example `.todo-widget`.
@@ -69,9 +69,9 @@ the host theme changes.
 - Use `overflow: auto` for content that can grow.
 - Keep the browser's native visible focus outline. Do not reset it unless the
   replacement has itself passed trusted Capsule validation.
-- Prefer bundled assets. Literal HTTPS and root-relative CSS image URLs require
-  `css-network-images-v1`; their runtime response bytes are not part of the
-  signed artifact.
+- Prefer bundled assets. Browser-network image URLs require the public
+  `NETWORK` group plus an explicit trusted network-image policy; their runtime
+  response bytes are not part of the signed artifact.
 - Avoid large fixed pixel widths or heights.
 
 Example:

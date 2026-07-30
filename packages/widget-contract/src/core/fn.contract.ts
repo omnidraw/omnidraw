@@ -1,5 +1,10 @@
-import type { TWidgetContractPayloadInput } from '../types';
+import type {
+  TWidgetContractPayloadInput,
+  TWidgetLegacyContractPayloadInput,
+} from '../types';
 import {
+  fnNormalizeWidgetCapsuleApiContract,
+  fnNormalizeWidgetCapsuleBudgetRequest,
   fnNormalizeWidgetCapsuleBudgets,
   fnNormalizeWidgetCapsuleTarget,
 } from './fn.capsule';
@@ -21,6 +26,39 @@ function normalizedSignatureKeyIds(values: readonly string[]): readonly string[]
 /** Stable payload used to hash and independently verify a published widget contract. */
 export function fnCanonicalizeWidgetContractPayload(
   input: TWidgetContractPayloadInput,
+): string {
+  return JSON.stringify({
+    format: 'vibecanvas.widget-contract.v4',
+    canonicalManifestJson: input.canonicalManifestJson,
+    uiDigestSha256: input.uiDigestSha256,
+    capsuleArtifactHash: input.capsuleArtifactHash,
+    apiContract: fnNormalizeWidgetCapsuleApiContract(input.apiContract),
+    budgets: fnNormalizeWidgetCapsuleBudgetRequest(input.budgets),
+    capabilityContractDigestSha256: input.capabilityContractDigestSha256,
+    channelContractDigestSha256: input.channelContractDigestSha256,
+    signatureKeyIds: normalizedSignatureKeyIds(input.signatureKeyIds),
+    serverDigestSha256: input.serverDigestSha256,
+    serverRuntimeAbi: input.serverRuntimeAbi,
+    functionDescriptorsDigestSha256: input.functionDescriptorsDigestSha256,
+    sourceDigestSha256: input.sourceDigestSha256,
+    builderIdentity: input.builderIdentity,
+    capsuleBuildIdentity: {
+      packageName: '@omnidraw/capsule',
+      packageVersion: input.capsuleBuildIdentity.packageVersion,
+      packageDigest: input.capsuleBuildIdentity.packageDigest,
+      buildApiVersion: input.capsuleBuildIdentity.buildApiVersion,
+      runtimeBuildDigest: input.capsuleBuildIdentity.runtimeBuildDigest,
+    },
+    buildPolicyId: input.buildPolicyId,
+  });
+}
+
+/**
+ * Frozen verifier for immutable Capsule 0.9.4 publication digests. New
+ * construction never calls this legacy exact-target contract.
+ */
+export function fnCanonicalizeLegacyWidgetContractPayload(
+  input: TWidgetLegacyContractPayloadInput,
 ): string {
   return JSON.stringify({
     format: 'vibecanvas.widget-contract.v3',

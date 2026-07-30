@@ -7,10 +7,9 @@ import type {
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
+  fnNormalizeWidgetCapsuleApiContract,
   fnNormalizeWidgetCapsuleBudgetRequest,
-  fnNormalizeWidgetCapsuleBudgets,
   fnNormalizeWidgetCapsuleRuntimeDescriptor,
-  fnNormalizeWidgetCapsuleTarget,
 } from './fn.capsule';
 import { fnCanonicalizeWidgetContractPayload } from './fn.contract';
 import {
@@ -158,14 +157,15 @@ export function fnValidateWidgetBuildIntegrity(
     args.build.uiArtifact.capsuleArtifactHash !== runtime.capsuleArtifactHash
     || args.build.uiArtifact.builderIdentity !== args.builderIdentity
     || !sameJson(args.build.uiArtifact.capsuleBuildIdentity, args.capsuleBuildIdentity)
-    || !sameJson(runtime.target, fnNormalizeWidgetCapsuleTarget(args.manifest.ui.target))
+    || runtime.format !== 'vibecanvas.capsule-runtime.v2'
+    || !sameJson(runtime.apiContract.groups, args.manifest.ui.apis)
     || !sameJson(
-      args.build.uiArtifact.requestedBudgets,
-      fnNormalizeWidgetCapsuleBudgetRequest(args.manifest.ui.budgets ?? {}),
+      runtime.apiContract,
+      fnNormalizeWidgetCapsuleApiContract(runtime.apiContract),
     )
     || !sameJson(
-      args.build.uiArtifact.effectiveBudgets,
-      fnNormalizeWidgetCapsuleBudgets(runtime.budgets),
+      runtime.budgets,
+      fnNormalizeWidgetCapsuleBudgetRequest(args.manifest.ui.budgets ?? {}),
     )
   ) return { valid: false, reason: 'runtime_descriptor_mismatch' };
 
@@ -202,7 +202,7 @@ export function fnValidateWidgetBuildIntegrity(
     canonicalManifestJson: args.canonicalManifestJson,
     uiDigestSha256: args.build.uiArtifact.digestSha256,
     capsuleArtifactHash: runtime.capsuleArtifactHash,
-    target: runtime.target,
+    apiContract: runtime.apiContract,
     budgets: runtime.budgets,
     capabilityContractDigestSha256,
     channelContractDigestSha256,

@@ -58,9 +58,9 @@ flowchart LR
 
 | Owner | Responsibility |
 | --- | --- |
-| `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, profiles, budgets, capabilities, channels, lifecycle, and diagnostics |
+| `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, public API groups, budgets, capabilities, channels, lifecycle, and diagnostics |
 | `@omnidraw/cangine` | Fixed widget chrome, traffic lights, header hit regions, frame/content interaction mode, local canvas-maximized presentation, transform affordances, normalized pointer cancellation, atomic DOM portal-shell presentation, and shared menu presentation |
-| `packages/capsule-vibecanvas` | Vibecanvas build policy, target and budget mapping, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
+| `packages/capsule-vibecanvas` | Vibecanvas API-group and budget policy, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
 | `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
 | `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
 | `apps/cli` | Production service composition, application-owned npm distribution builds, persistent signing keys, host configuration, artifact storage, and server-function tooling |
@@ -142,15 +142,7 @@ rejected.
   "ui": {
     "runtime": "capsule",
     "entry": "ui/main.ts",
-    "target": {
-      "runtimeAbi": "quickjs-release-sync-v1",
-      "domProfile": "dom-core-v2",
-      "featureProfiles": [
-        "artifact-resources-v1",
-        "css-network-images-v1",
-        "shadow-browser-css-v1"
-      ]
-    },
+    "apis": ["DOM"],
     "state": {
       "collaborative": false,
       "localStore": "ephemeral"
@@ -164,10 +156,11 @@ rejected.
 
 The manifest expresses requested product behavior, not host authority.
 
-- Target and profile names are normalized and checked against deployment
-  policy.
-- Budget fields are optional requests. The adapter applies defaults and
-  ceilings; zero is a valid explicit denial.
+- `DOM` is explicit and mandatory. Other public API groups are requested only
+  when the widget uses them; `CANVAS_2D`, `WEBGL`, and `WEBGPU` are mutually
+  exclusive.
+- Budget fields are optional partial requests. Omission uses Capsule's
+  selected-group defaults; zero is a valid explicit denial.
 - Collaborative state is opt-in.
 - Local store is `none` or `ephemeral`.
 - Parking is disabled in the current release.
@@ -175,16 +168,11 @@ The manifest expresses requested product behavior, not host authority.
 - Resource requirements declare slots, kinds, and effect ceilings, never
   concrete resource IDs.
 
-New widget scaffolds opt into Capsule's native Shadow DOM CSS profile and its
-separate CSS network-image profile. Older manifests without those declarations
-retain the conservative CSS contract and are never widened. Native CSS keeps
-ordinary selector specificity within Capsule's closed ShadowRoot, supports
-resource-free custom properties and modern layout/query/animation syntax, and
-maps only the virtual `html`, `body`, and `:root` aliases.
-
-The network-image profile admits reviewed CSS image sinks with signed literal
-HTTPS or root-relative URL text only when the artifact declares the profile
-and the mount grants it. Browser response bytes, caching, credentials,
+Capsule infers private CSS and artifact-resource implementation details from
+the built distribution's CSS roots and resource bindings. Those private names
+are historical implementation vocabulary and are never author input.
+`NETWORK` is a separate public group; browser image sinks additionally require
+trusted network policy. Browser response bytes, caching, credentials,
 redirects, tracking, CSP behavior, and decoded allocations are runtime
 dependencies outside the artifact hash. URL-bearing custom properties and
 `var()` in image sinks remain denied.
@@ -288,7 +276,7 @@ The immutable source project contains:
 - package-lock format 3;
 - declared dependencies admitted by the dependency policy;
 - generated browser proxies for declared server functions;
-- the normalized target, profiles, budgets, channels, and capability requests;
+- the normalized public APIs, partial budgets, channels, and capability requests;
 - the pinned builder identity, Capsule package identity, and build policy.
 
 Vibecanvas gives trusted validation and Preview the same draft-private warm
@@ -334,7 +322,8 @@ Two artifact identities are retained:
 - `capsuleArtifactHash` is Capsule's validated canonical artifact identity.
 
 The widget contract digest binds the canonical manifest, signed UI digest,
-Capsule hash, target, effective budgets, capability and channel digests,
+Capsule hash, signed public API contract and bundle digest, requested budgets,
+capability and channel digests,
 signature key IDs, optional server identity, function descriptors, source
 digest, builder identity, Capsule build identity, and build policy.
 
@@ -367,7 +356,7 @@ Preview receives:
 - a Preview function subject for the active server artifact;
 - real user-selected resource bindings, including their real side effects;
 - preview signing authority;
-- the normal props, theme, output, schema, target, budget, and cleanup path.
+- the normal props, theme, output, schema, API-group, budget, and cleanup path.
 
 The active Preview revision has no fixed TTL. Each mounted handle acquires a
 durable lease for its exact active open owner, revision, canvas, and frame;
@@ -614,8 +603,8 @@ The response never includes private keys, server module paths, resource IDs,
 provider objects, or a guest-selectable state document.
 
 `widget.runtime.config` returns the browser-safe deployment catalog: generation,
-target base, allowed profiles, budget defaults and ceilings, preview/release key
-IDs, and public verification keys.
+allowed public APIs, partial product limits, preview/release key IDs, and
+public verification keys.
 
 ## 11. Browser mount and host coordination
 
@@ -630,7 +619,7 @@ before mount.
 `CapsuleWidgetHostCoordinator` owns a generation-scoped pool of shared Capsule
 hosts. A literal host is partitioned by exact:
 
-- execution target;
+- requested public API groups;
 - signing authority;
 - schema and capability policy.
 
@@ -648,7 +637,7 @@ Each mount owns:
 - props, theme, output, lifecycle, and optional ephemeral-store channels;
 - idempotent terminal cleanup.
 
-With the DOM portal profile, the widget frame is one atomic shell: fixed chrome
+With the DOM API group, the widget frame is one atomic shell: fixed chrome
 and application content share one transform, clipping context, opacity,
 visibility, and scene z-index. The WebGL2 pass does not paint a second retained
 copy of the chrome. Cangine alone writes portal placement, transform, clip,
@@ -678,8 +667,9 @@ The SDK wraps `@omnidraw/capsule/guest`. Widget authors do not import the guest
 ABI directly and do not construct capability selectors, hashes, signing key
 IDs, or instance identities.
 
-Current compatibility includes plain DOM, explicit SVG and Canvas 2D profiles,
-the pinned React projection, and explicitly budgeted WebGL/WebGPU profiles.
+Current compatibility includes plain DOM and SVG through `DOM`, Canvas 2D
+through `CANVAS_2D`, the pinned React projection, and bounded WebGL/WebGPU
+through their public groups.
 Runtime package installation, remote ESM imports, Node built-ins, ambient host
 objects, and arbitrary browser APIs are unsupported.
 
@@ -841,8 +831,8 @@ browser source-compilation endpoint.
 
 - Untrusted UI code executes in Capsule's QuickJS VM, not the host JavaScript
   realm.
-- The host-backed DOM membrane exposes only the selected compatibility
-  profiles.
+- The host-backed DOM membrane exposes only the signed and host-allowed public
+  API groups.
 - The default `dist/` runner has no build-time OS isolation: npm dependency
   processing and guest-controlled build scripts execute with the build-server
   account's host authority, although their child environment excludes ambient

@@ -164,6 +164,12 @@ export class WidgetPublicationService implements IWidgetPublicationService {
     const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse(
       build.uiArtifact.runtimeDescriptor,
     );
+    if (runtimeDescriptor.format !== 'vibecanvas.capsule-runtime.v2') {
+      throw Object.assign(
+        new Error('New publications require a native Capsule API-group artifact.'),
+        { code: 'WIDGET_BUILD_INTEGRITY_FAILED' },
+      );
+    }
     const normalizedBuild = {
       ...build,
       functionDescriptors,

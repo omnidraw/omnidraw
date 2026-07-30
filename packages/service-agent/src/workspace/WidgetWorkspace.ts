@@ -16,7 +16,11 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ZWidgetManifestV3, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
+import {
+  ZWidgetManifestV3,
+  fnMigrateWidgetManifestDraft,
+  type TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
@@ -162,6 +166,7 @@ export class WidgetWorkspace {
     const name = this.#normalizeName(requestedName);
     const chatRoot = await this.ensureChat(chatId);
     await this.#assertNoCaseCollision(this.draftRoot, name);
+    await this.#migratePersistedDraftManifest(name);
     const targetPath = await this.#resolveDraftTarget(name);
     const mountPath = join(chatRoot, 'widgets', name);
     await this.#assertNoCaseCollision(join(chatRoot, 'widgets'), name);
@@ -422,6 +427,7 @@ export class WidgetWorkspace {
     await this.#assertNoCaseCollision(this.draftRoot, name);
     const draftPath = join(this.draftRoot, name);
     if (await this.isDraftMaterializationPending(name)) return null;
+    await this.#migratePersistedDraftManifest(name);
     return this.#readDraftEntry(name, draftPath);
   }
 
@@ -994,6 +1000,40 @@ export class WidgetWorkspace {
     };
   }
 
+  /**
+   * One-time trusted source migration for editable pre-0.10 drafts. Published
+   * artifacts never pass through this mutable workspace boundary.
+   */
+  async #migratePersistedDraftManifest(name: string): Promise<void> {
+    const draftPath = join(this.draftRoot, name);
+    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return;
+    const manifestPath = join(draftPath, 'vibecanvas.json');
+    const entry = await lstat(manifestPath).catch(() => null);
+    if (!entry || entry.isSymbolicLink() || !entry.isFile()) return;
+    const candidate: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+    if (!fnMigrateWidgetManifestDraft(candidate).migrated) return;
+
+    await this.#withWidgetWrite(draftPath, async () => {
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return;
+      const currentEntry = await lstat(manifestPath).catch(() => null);
+      if (!currentEntry || currentEntry.isSymbolicLink() || !currentEntry.isFile()) return;
+      const source: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+      const migration = fnMigrateWidgetManifestDraft(source);
+      if (!migration.migrated) return;
+      const manifest = ZWidgetManifestV3.parse(migration.value);
+      const temporary = join(
+        draftPath,
+        `.vibecanvas.json.capsule-api-groups-${this.#safeId()}.tmp`,
+      );
+      try {
+        await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+        await rename(temporary, manifestPath);
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+      }
+    });
+  }
+
   #draftMaterializationMarkerPath(name: string): string {
     const key = createHash('sha256').update(name).digest('hex');
     return join(this.draftStateRoot, `materialization-${key}.json`);
@@ -1284,7 +1324,8 @@ export class WidgetWorkspace {
 
   async #readManifest(root: string): Promise<Record<string, unknown> | null> {
     try {
-      const value: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const source: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const value = fnMigrateWidgetManifestDraft(source).value;
       return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
     } catch {
       return null;

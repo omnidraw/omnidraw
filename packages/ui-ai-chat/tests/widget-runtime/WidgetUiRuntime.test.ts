@@ -15,23 +15,7 @@ import type {
 } from '../../src/widget-runtime/interface';
 
 const CAPSULE_HASH = `sha256:${'a'.repeat(64)}` as const;
-const TARGET = Object.freeze({
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: Object.freeze([]),
-});
-const BUDGETS = Object.freeze({
-  cpuMs: 100,
-  memoryBytes: 32 * 1_024 * 1_024,
-  domNodes: 2_000,
-  handles: 4_000,
-  messageBytes: 64 * 1_024,
-  streamBytes: 64 * 1_024,
-  assetBytes: 0,
-  networkBytes: 0,
-  gpuBytes: 0,
-  lifecycleBytes: 256 * 1_024,
-});
+const CAPSULE_BUNDLE_DIGEST = `sha256:${'b'.repeat(64)}` as const;
 const identity: TWidgetRuntimeIdentity = Object.freeze({
   orgId: 'org-a',
   canvasId: 'canvas-a',
@@ -147,7 +131,7 @@ function fixture(args: Readonly<{
   clock?: ReturnType<typeof manualClock>;
   collaborativeState?: TWidgetCollaborativeStatePort;
   collaborativeStateEnabled?: boolean;
-  featureProfiles?: readonly string[];
+  apis?: readonly ('DOM' | 'CANVAS_2D' | 'WEBGL' | 'WEBGPU')[];
   organizationId?: () => string;
   tenantAuthorityKey?: () => string;
   isTargetCurrent?(target: TWidgetRuntimeLocalTarget): boolean;
@@ -157,10 +141,7 @@ function fixture(args: Readonly<{
   load?: TWidgetRuntimeTransportPort['api']['widget']['runtime']['load'];
 }> = {}) {
   const bytes = new Uint8Array([9, 8, 7, 6]);
-  const target = Object.freeze({
-    ...TARGET,
-    featureProfiles: Object.freeze([...(args.featureProfiles ?? [])]),
-  });
+  const apis = Object.freeze([...(args.apis ?? ['DOM' as const])]);
   const response = {
     identity: {
       canvasId: identity.canvasId,
@@ -176,7 +157,7 @@ function fixture(args: Readonly<{
       ui: {
         runtime: 'capsule' as const,
         entry: 'ui/main.ts',
-        target,
+        apis,
         ...(args.collaborativeStateEnabled === true
           ? {
               state: {
@@ -193,10 +174,14 @@ function fixture(args: Readonly<{
       bytesBase64: Buffer.from(bytes).toString('base64'),
     },
     runtimeDescriptor: {
-      format: 'vibecanvas.capsule-runtime.v1' as const,
+      format: 'vibecanvas.capsule-runtime.v2' as const,
       capsuleArtifactHash: CAPSULE_HASH,
-      target,
-      budgets: BUDGETS,
+      apiContract: {
+        format: 'capsule-api-groups-v1' as const,
+        groups: apis,
+        bundleDigest: CAPSULE_BUNDLE_DIGEST,
+      },
+      budgets: {},
       capabilityRequests: [],
       channels: null,
       parkability: { parkable: false as const },
@@ -625,7 +610,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     expect(light.mount).toHaveBeenCalledTimes(24);
     await light.runtime.destroy();
 
-    const heavy = fixture({ featureProfiles: ['canvas-2d-v1'] });
+    const heavy = fixture({ apis: ['DOM', 'CANVAS_2D'] });
     for (let index = 0; index < 12; index += 1) {
       heavy.runtime.renderOwned({
         root: document.createElement('div'),
@@ -645,7 +630,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     expect(heavy.mount).toHaveBeenCalledTimes(8);
     await heavy.runtime.destroy();
 
-    const gpu = fixture({ featureProfiles: ['canvas-webgpu-v1'] });
+    const gpu = fixture({ apis: ['DOM', 'WEBGPU'] });
     for (let index = 0; index < 12; index += 1) {
       gpu.runtime.renderOwned({
         root: document.createElement('div'),
@@ -678,7 +663,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     const previewMount = vi.fn(async () => runtimeHandle().handle);
     const onError = vi.fn();
     const preview = current.runtime.renderPreloadedOwned({
-      featureProfiles: [],
+      apis: ['DOM'],
       mount: previewMount,
       onError,
     });
@@ -694,7 +679,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
 
     const overflowMount = vi.fn(async () => runtimeHandle().handle);
     const overflow = current.runtime.renderPreloadedOwned({
-      featureProfiles: [],
+      apis: ['DOM'],
       mount: overflowMount,
       onError,
     });
@@ -706,7 +691,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
 
     const firstSwapMount = vi.fn(async () => runtimeHandle().handle);
     const firstSwap = current.runtime.renderPreloadedOwned({
-      featureProfiles: [],
+      apis: ['DOM'],
       swapFrom: preview,
       mount: firstSwapMount,
       onError,
@@ -722,7 +707,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
 
     const secondSwapMount = vi.fn(async () => runtimeHandle().handle);
     const secondSwap = current.runtime.renderPreloadedOwned({
-      featureProfiles: [],
+      apis: ['DOM'],
       swapFrom: preview,
       mount: secondSwapMount,
       onError,

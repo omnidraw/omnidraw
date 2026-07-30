@@ -8,13 +8,13 @@ export const FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS = 90 * 24 * 60 * 60 * 1_000;
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.4',
-  packageDigest: 'sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189',
+  packageVersion: '0.10.0',
+  packageDigest: 'sha256:409a6680d581b0028180f108e0ed270c98dc73b0e466a60ffe60deabdbabc7c1',
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: 'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146',
 }) satisfies TWidgetCapsuleBuildIdentity;
 
-export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1';
+export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v2';
 export const WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID = 'vibecanvas-preview-v1';
 export const WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID = 'vibecanvas-release-v1';
 

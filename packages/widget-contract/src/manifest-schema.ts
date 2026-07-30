@@ -11,6 +11,7 @@ import {
 import type {
   TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleBudgets,
+  TWidgetCapsuleApiGroup,
   TWidgetCapsuleCapabilityRequest,
   TWidgetCapsuleChannelContract,
   TWidgetCapsuleHash,
@@ -31,6 +32,23 @@ const CAPSULE_OPERATION_PATTERN = /^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/;
 const CAPSULE_VERSION_RANGE_PATTERN =
   /^(?:\*|[\^~]?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
 const BUILD_ENTRY_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
+const CAPSULE_API_GROUPS = [
+  'DOM',
+  'NETWORK',
+  'FILES',
+  'CLIPBOARD',
+  'DIALOGS',
+  'CANVAS_2D',
+  'WEBGL',
+  'WEBGPU',
+  'AUDIO',
+  'VIDEO',
+] as const satisfies readonly TWidgetCapsuleApiGroup[];
+const CAPSULE_RENDERING_API_GROUPS = new Set<TWidgetCapsuleApiGroup>([
+  'CANVAS_2D',
+  'WEBGL',
+  'WEBGPU',
+]);
 
 const ZWidgetRelativePath = z.string().superRefine((value, context) => {
   if (fnNormalizeWidgetRelativePath(value) === null) {
@@ -72,6 +90,38 @@ export const ZWidgetCapsuleTarget: z.ZodType<TWidgetCapsuleTarget> = z.object({
   domProfile: target.domProfile,
   featureProfiles: [...target.featureProfiles].sort(),
 }));
+
+export const ZWidgetCapsuleApis: z.ZodType<readonly TWidgetCapsuleApiGroup[]> =
+  z.array(z.enum(CAPSULE_API_GROUPS)).min(1).max(CAPSULE_API_GROUPS.length)
+    .superRefine((apis, context) => {
+      const seen = new Set<TWidgetCapsuleApiGroup>();
+      let renderingGroups = 0;
+      apis.forEach((api, index) => {
+        if (seen.has(api)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Duplicate Capsule API group: ${api}`,
+            path: [index],
+          });
+        }
+        seen.add(api);
+        if (CAPSULE_RENDERING_API_GROUPS.has(api)) renderingGroups += 1;
+      });
+      if (!seen.has('DOM')) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Capsule API groups must explicitly include DOM',
+        });
+      }
+      if (renderingGroups > 1) {
+        context.addIssue({
+          code: 'custom',
+          message: 'CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive',
+        });
+      }
+    }).transform((apis) => (
+      CAPSULE_API_GROUPS.filter((api) => apis.includes(api))
+    ));
 
 const ZWidgetCapsuleBudgetsShape = z.object({
   cpuMs: z.number().finite().min(0),
@@ -201,7 +251,7 @@ const ZWidgetManifestV3Shape = z.object({
   ui: z.object({
     runtime: z.literal('capsule'),
     entry: ZWidgetBuildEntryPath,
-    target: ZWidgetCapsuleTarget,
+    apis: ZWidgetCapsuleApis,
     budgets: ZWidgetCapsuleBudgetRequest.optional(),
     state: z.object({
       collaborative: z.boolean(),

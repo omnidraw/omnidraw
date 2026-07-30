@@ -41,13 +41,13 @@ function digest(bytes: Uint8Array | string): string {
 
 export const TEST_CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.4',
+  packageVersion: '0.10.0',
   packageDigest: `sha256:${'a'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}`,
 });
 
-export const TEST_CAPSULE_BUILD_POLICY_ID = 'test-vibecanvas-capsule-widget-v1';
+export const TEST_CAPSULE_BUILD_POLICY_ID = 'test-vibecanvas-capsule-widget-v2';
 
 const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,
@@ -326,6 +326,13 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
     _tenant: TTenantContext,
     _request: Parameters<IAgentAuthoringStore['releasePreviewMountLease']>[1],
   ): ReturnType<IAgentAuthoringStore['releasePreviewMountLease']> {
+    return false;
+  }
+
+  async hasConfirmedPreviewExecution(
+    _tenant: TTenantContext,
+    _request: Parameters<IAgentAuthoringStore['hasConfirmedPreviewExecution']>[1],
+  ): ReturnType<IAgentAuthoringStore['hasConfirmedPreviewExecution']> {
     return false;
   }
 
@@ -853,21 +860,14 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
     ));
     const digestSha256 = digest(bytes);
     const runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor = {
-      format: 'vibecanvas.capsule-runtime.v1',
+      format: 'vibecanvas.capsule-runtime.v2',
       capsuleArtifactHash: `sha256:${digestSha256}`,
-      target: request.manifest.ui.target,
-      budgets: {
-        cpuMs: 100,
-        memoryBytes: 16 * 1024 * 1024,
-        domNodes: 1_000,
-        handles: 2_000,
-        messageBytes: 64 * 1024,
-        streamBytes: 64 * 1024,
-        assetBytes: 2 * 1024 * 1024,
-        networkBytes: 0,
-        gpuBytes: 0,
-        lifecycleBytes: 64 * 1024,
+      apiContract: {
+        format: 'capsule-api-groups-v1',
+        groups: request.manifest.ui.apis,
+        bundleDigest: `sha256:${'f'.repeat(64)}`,
       },
+      budgets: request.manifest.ui.budgets ?? {},
       capabilityRequests: functionDescriptors.length === 0
         ? []
         : [{
@@ -896,8 +896,6 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       bytes,
       capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
       runtimeDescriptor,
-      requestedBudgets: request.manifest.ui.budgets ?? {},
-      effectiveBudgets: runtimeDescriptor.budgets,
       builderIdentity: request.builderIdentity,
       capsuleBuildIdentity: request.capsuleBuildIdentity,
     };
@@ -993,11 +991,7 @@ export async function createWidgetAuthoringHarness(
         ui: {
           runtime: 'capsule',
           entry: 'ui/main.ts',
-          target: {
-            runtimeAbi: 'quickjs-release-sync-v1',
-            domProfile: 'dom-core-v2',
-            featureProfiles: [],
-          },
+          apis: ['DOM'],
         },
         ...(server ? { server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' } } : {}),
       };

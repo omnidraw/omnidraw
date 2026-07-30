@@ -1,12 +1,12 @@
 import type {
   CapsuleBuildOutput,
-  CapsuleBuildRequest,
+  CapsuleApiGroupBuildRequest,
   CapsuleSnapshotFile,
 } from '@omnidraw/capsule/build';
 import type { CapsuleBuildInput } from '@omnidraw/capsule/protocol';
 
 export type TVibecanvasCapsuleBuild = (
-  request: CapsuleBuildRequest,
+  request: CapsuleApiGroupBuildRequest,
 ) => Promise<Pick<
   CapsuleBuildOutput,
   'artifactBytes' | 'artifactHash' | 'diagnostics'

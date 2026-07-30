@@ -18,6 +18,7 @@ import {
 } from './CONSTANTS';
 import { createWidgetFunctionHostBridge } from './create-widget-function-host-bridge';
 import { fnWidgetUiArtifactCacheKey } from './fn.artifact-cache-key';
+import { fnWidgetCapsuleRuntimeApis } from './fn.capsule-runtime-apis';
 import {
   fnPlanWidgetCapsulePopulation,
   fnWidgetCapsulePopulationResourceClass,
@@ -508,7 +509,7 @@ export class WidgetUiRuntime {
               abortController.signal,
             );
             resourceClass = fnWidgetCapsulePopulationResourceClass(
-              loaded.artifact.runtimeDescriptor.target.featureProfiles,
+              fnWidgetCapsuleRuntimeApis(loaded.artifact.runtimeDescriptor),
             );
             blocked = false;
             break;
@@ -672,7 +673,7 @@ export class WidgetUiRuntime {
     const populationId = String(order);
     this.#nextOwnerOrder += 1;
     const resourceClass = fnWidgetCapsulePopulationResourceClass(
-      args.featureProfiles,
+      args.apis,
     );
     let disposed = false;
     let blocked = false;

@@ -104,11 +104,7 @@ function previewReady(
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
-        },
+        apis: ['DOM'],
       },
     },
     uiArtifact: {
@@ -116,12 +112,12 @@ function previewReady(
       byteSize: bytes.byteLength,
       bytesBase64: bytes.toString('base64'),
       runtimeDescriptor: {
-        format: 'vibecanvas.capsule-runtime.v1',
+        format: 'vibecanvas.capsule-runtime.v2',
         capsuleArtifactHash: `sha256:${'b'.repeat(64)}`,
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
+        apiContract: {
+          format: 'capsule-api-groups-v1',
+          groups: ['DOM'],
+          bundleDigest: `sha256:${'a'.repeat(64)}`,
         },
         budgets: {
           cpuMs: 100,

@@ -6,6 +6,11 @@ import {
   type TWidgetUiRuntimeHandle,
   type TVerifiedWidgetUiArtifact,
 } from '@vibecanvas/ui-ai-chat/widget-runtime';
+import {
+  createCapsuleHost,
+  createDefaultCapsuleBrowserPlatform,
+} from '@vibecanvas/capsule-vibecanvas/host';
+import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
 import fixture from '../generated/fixtures.json';
 
 type TResult = Readonly<{
@@ -133,6 +138,23 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+async function expectRejected<T>(operation: Promise<T>): Promise<unknown> {
+  try {
+    const value = await operation;
+    if (
+      value !== null
+      && typeof value === 'object'
+      && 'destroy' in value
+      && typeof value.destroy === 'function'
+    ) {
+      await value.destroy('unexpected-success');
+    }
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected the operation to reject.');
+}
+
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -156,7 +178,9 @@ async function importVerificationKey(publicKeyBase64: string): Promise<CryptoKey
 }
 
 function artifact(
-  value: (typeof fixture.artifacts)[keyof typeof fixture.artifacts],
+  value:
+    | (typeof fixture.artifacts)[keyof typeof fixture.artifacts]
+    | typeof fixture.legacy.artifact,
 ): TBrowserArtifact {
   const bytes = decodeBase64(value.bytesBase64);
   return Object.freeze({
@@ -576,14 +600,15 @@ async function rejectedScenario(
 
 publish('running');
 
-const [previewKey, releaseKey, wrongKey] = await Promise.all([
+const [previewKey, releaseKey, wrongKey, legacyKey] = await Promise.all([
   importVerificationKey(fixture.publicKeys.preview.publicKeyBase64),
   importVerificationKey(fixture.publicKeys.release.publicKeyBase64),
   importVerificationKey(fixture.publicKeys.wrong.publicKeyBase64),
+  importVerificationKey(fixture.legacy.publicKey.publicKeyBase64),
 ]);
 
 await check('verification keys are non-extractable and verify-only', () => {
-  for (const key of [previewKey, releaseKey, wrongKey]) {
+  for (const key of [previewKey, releaseKey, wrongKey, legacyKey]) {
     assert(key.extractable === false, 'A verification key is extractable.');
     assert(key.type === 'public', 'A verification key is not public.');
     assert(key.usages.length === 1 && key.usages[0] === 'verify', 'Key usage widened.');
@@ -592,6 +617,7 @@ await check('verification keys are non-extractable and verify-only', () => {
 
 const catalog: TWidgetCapsuleHostCatalog = Object.freeze({
   ...fixture.host,
+  allowedApis: fixture.host.allowedApis as readonly TWidgetCapsuleApiGroup[],
   trustedSigningKeys: new Map([
     [fixture.publicKeys.preview.keyId, previewKey],
     [fixture.publicKeys.release.keyId, releaseKey],
@@ -607,19 +633,27 @@ const threeClockArtifact = artifact(fixture.artifacts.threeClock);
 const threeMissingAuthorityArtifact = artifact(fixture.artifacts.threeMissingAuthority);
 const reactArtifact = artifact(fixture.artifacts.react);
 const publishedArtifact = artifact(fixture.artifacts.published);
+const legacyArtifact = artifact(fixture.legacy.artifact);
 const publishedFunctionDescriptors =
   fixture.artifacts.published.functionDescriptors as TFunctionDescriptors;
 
-await check('generated artifacts bind exact requested profiles', () => {
+function artifactApis(value: TBrowserArtifact): readonly string[] {
   assert(
-    svgArtifact.runtimeDescriptor.target.featureProfiles.length === 1
-      && svgArtifact.runtimeDescriptor.target.featureProfiles[0] === 'svg-dom-v1',
-    'SVG artifact lacks its exact profile.',
+    value.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2',
+    'Generated acceptance artifact is not native Capsule 0.10.',
+  );
+  return value.runtimeDescriptor.apiContract.groups;
+}
+
+await check('generated artifacts bind signed public API contracts', () => {
+  assert(
+    JSON.stringify(artifactApis(svgArtifact)) === JSON.stringify(['DOM']),
+    'SVG artifact requested unexpected authority.',
   );
   assert(
-    canvasArtifact.runtimeDescriptor.target.featureProfiles.length === 1
-      && canvasArtifact.runtimeDescriptor.target.featureProfiles[0] === 'canvas-2d-v1',
-    'Canvas artifact lacks its exact profile.',
+    JSON.stringify(artifactApis(canvasArtifact))
+      === JSON.stringify(['DOM', 'CANVAS_2D']),
+    'Canvas artifact lacks CANVAS_2D.',
   );
   for (const value of [
     threeArtifact,
@@ -628,28 +662,28 @@ await check('generated artifacts bind exact requested profiles', () => {
     threeClockArtifact,
   ]) {
     assert(
-      value.runtimeDescriptor.target.featureProfiles.length === 1
-        && value.runtimeDescriptor.target.featureProfiles[0] === 'canvas-webgl-v1',
-      'Three.js artifact lacks its exact WebGL profile.',
+      value.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2',
+      'Three.js fixture is not native Capsule 0.10.',
     );
     assert(
-      value.runtimeDescriptor.budgets.gpuBytes === 8 * 1024 * 1024,
-      'Three.js artifact lacks its measured GPU budget.',
+      JSON.stringify(artifactApis(value)) === JSON.stringify(['DOM', 'WEBGL']),
+      'Three.js artifact lacks WEBGL.',
     );
-    if (value !== threePbrArtifact && value !== threeClockArtifact) {
-      assert(
-        value.runtimeDescriptor.budgets.messageBytes === 256 * 1024,
-        'Supported Three.js artifact lacks its measured message budget.',
-      );
-    }
+    assert(Object.keys(value.runtimeDescriptor.budgets).length === 0,
+      'Three.js fixture should exercise API-group budget defaults.');
+    assert(value.runtimeDescriptor.apiContract.format === 'capsule-api-groups-v1',
+      'Three.js artifact has the wrong API contract format.');
+    assert(/^sha256:[0-9a-f]{64}$/.test(
+      value.runtimeDescriptor.apiContract.bundleDigest,
+    ), 'Three.js artifact lacks a signed bundle digest.');
   }
   assert(
     threeArtifact.capsuleArtifactHash === threeReleaseArtifact.capsuleArtifactHash,
     'Preview and release signing did not reuse one Three.js construction.',
   );
   assert(
-    threeMissingAuthorityArtifact.runtimeDescriptor.target.featureProfiles.length === 0
-      && threeMissingAuthorityArtifact.runtimeDescriptor.budgets.gpuBytes === 0,
+    JSON.stringify(artifactApis(threeMissingAuthorityArtifact))
+      === JSON.stringify(['DOM']),
     'Negative Three.js artifact unexpectedly received ambient GPU authority.',
   );
   assert(
@@ -657,20 +691,15 @@ await check('generated artifacts bind exact requested profiles', () => {
     'Three.js acceptance version drifted from product authoring guidance.',
   );
   assert(
-    plainArtifact.runtimeDescriptor.target.featureProfiles.length === 0,
+    JSON.stringify(artifactApis(plainArtifact)) === JSON.stringify(['DOM']),
     'Plain DOM artifact received ambient feature authority.',
   );
   assert(
-    JSON.stringify(reactArtifact.runtimeDescriptor.target.featureProfiles)
-      === JSON.stringify([
-        'artifact-resources-v1',
-        'css-network-images-v1',
-        'shadow-browser-css-v1',
-      ]),
-    'React artifact lacks its exact CSS profiles.',
+    JSON.stringify(artifactApis(reactArtifact)) === JSON.stringify(['DOM']),
+    'React artifact received unexpected authority.',
   );
   assert(
-    publishedArtifact.runtimeDescriptor.target.featureProfiles.length === 0,
+    JSON.stringify(artifactApis(publishedArtifact)) === JSON.stringify(['DOM']),
     'Published artifact received ambient feature authority.',
   );
   assert(
@@ -684,10 +713,54 @@ await check('generated artifacts bind exact requested profiles', () => {
       === 'vibecanvas-function-v1',
     'Published artifact lacks its exact server runtime identity.',
   );
+  assert(
+    legacyArtifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v1'
+      && fixture.legacy.capsulePackageVersion === '0.9.4',
+    'Frozen legacy acceptance artifact is not an immutable Capsule 0.9.4 artifact.',
+  );
 });
 
 const positive = createMountPort(catalog);
 const handles = new Map<string, TWidgetUiRuntimeHandle>();
+
+await check('frozen Capsule 0.9.4 artifact mounts only through the legacy adapter', async () => {
+  const legacyCatalog: TWidgetCapsuleHostCatalog = Object.freeze({
+    ...catalog,
+    generation: 'capsule-browser-acceptance-legacy-v1',
+    previewSigningKeyId: fixture.legacy.publicKey.keyId,
+    releaseSigningKeyId: fixture.legacy.publicKey.keyId,
+    trustedSigningKeys: new Map([[fixture.legacy.publicKey.keyId, legacyKey]]),
+  });
+  const runtime = createMountPort(legacyCatalog);
+  const handle = await mount(
+    runtime.port,
+    'legacy',
+    legacyArtifact,
+    {},
+    {
+      mode: 'published',
+      browserFunctionDescriptorsDigestSha256:
+        plainArtifact.browserFunctionDescriptorsDigestSha256,
+    },
+  );
+  const diagnostics = handle.diagnostics();
+  assert(
+    diagnostics.apiContract.format === 'legacy-exact-target-0.9.4'
+      && diagnostics.apiContract.legacy === true,
+    'Retained Capsule 0.9.4 artifact did not use the legacy adapter.',
+  );
+  assert(
+    JSON.stringify(diagnostics.apiContract.requestedApis)
+      === JSON.stringify(['DOM'])
+      && JSON.stringify(diagnostics.apiContract.effectiveApis)
+        === JSON.stringify(['DOM']),
+    'Legacy adapter reported unexpected public API authority.',
+  );
+  await handle.destroy('legacy-acceptance-complete');
+  await runtime.port.destroy('legacy-acceptance-complete');
+  assert(runtime.coordinator.diagnostics().hosts.length === 0,
+    'Legacy adapter retained its host after destroy.');
+});
 
 await check('plain DOM guest mounts and reads initial props/theme', async () => {
   const handle = await mount(positive.port, 'plain', plainArtifact, { count: 1 });
@@ -708,22 +781,32 @@ await check('live theme crosses the fixed semantic SDK channel', async () => {
   await waitForOutput('theme:light');
 });
 
-await check('SVG guest mounts only with the explicit SVG profile', async () => {
+await check('SVG guest mounts through the DOM API group', async () => {
   const handle = await mount(positive.port, 'svg', svgArtifact);
   handles.set('svg', handle);
   await waitForOutput('svg-ready');
 });
 
-await check('Canvas2D guest mounts only with the explicit Canvas profile', async () => {
+await check('Canvas2D guest mounts through the CANVAS_2D API group', async () => {
   const handle = await mount(positive.port, 'canvas', canvasArtifact);
   handles.set('canvas', handle);
   await waitForOutput('canvas-ready');
 });
 
-await check('Three.js r185 renders through the exact WebGL profile and GPU budget', async () => {
+await check('Three.js r185 renders through WEBGL group defaults', async () => {
   const handle = await mount(positive.port, 'three', threeArtifact);
   handles.set('three', handle);
   await waitForOutput('three-ready:2');
+  const diagnostics = handle.diagnostics();
+  assert(
+    diagnostics.apiContract.format === 'capsule-api-groups-v1'
+      && diagnostics.apiContract.legacy === false
+      && JSON.stringify(diagnostics.apiContract.requestedApis)
+        === JSON.stringify(['DOM', 'WEBGL'])
+      && JSON.stringify(diagnostics.apiContract.effectiveApis)
+        === JSON.stringify(['DOM', 'WEBGL']),
+    'Three.js diagnostics do not preserve requested/effective public APIs.',
+  );
   document.documentElement.dataset.capsuleThreeReady = 'true';
   if (new URLSearchParams(window.location.search).has('pixelHandshake')) {
     await new Promise<void>((resolve) => {
@@ -874,14 +957,18 @@ await check('wrong artifact hash is rejected without coordinator deadlock', asyn
   }), { count: 1 });
 });
 
-await check('wrong execution target is rejected by the signed Capsule boundary', async () => {
-  await rejectedScenario('wrong-target', catalog, Object.freeze({
+await check('mismatched API metadata is rejected by the signed Capsule boundary', async () => {
+  await rejectedScenario('wrong-api-contract', catalog, Object.freeze({
     ...plainArtifact,
     runtimeDescriptor: Object.freeze({
       ...plainArtifact.runtimeDescriptor,
-      target: Object.freeze({
-        ...plainArtifact.runtimeDescriptor.target,
-        featureProfiles: Object.freeze(['svg-dom-v1']),
+      apiContract: Object.freeze({
+        ...(plainArtifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
+          ? plainArtifact.runtimeDescriptor.apiContract
+          : {}),
+        format: 'capsule-api-groups-v1' as const,
+        groups: Object.freeze(['DOM' as const, 'CANVAS_2D' as const]),
+        bundleDigest: `sha256:${'0'.repeat(64)}` as const,
       }),
     }),
   }), { count: 1 });
@@ -897,15 +984,47 @@ await check('preview authority cannot be used for a published mount', async () =
   );
 });
 
-await check('feature profile outside deployment policy is rejected before execution', async () => {
+await check('WEBGL outside deployment policy is rejected before execution', async () => {
   await rejectedScenario(
-    'profile-policy',
+    'api-policy',
     Object.freeze({
       ...catalog,
-      allowedFeatureProfiles: Object.freeze([]),
+      allowedApis: Object.freeze(catalog.allowedApis.filter((api) => api !== 'WEBGL')),
     }),
-    svgArtifact,
+    threeArtifact,
   );
+});
+
+await check('mount narrowing can remove WEBGL but cannot widen the artifact', async () => {
+  const host = await createCapsuleHost({
+    allowedApis: ['DOM', 'WEBGL'],
+    limits: catalog.limits,
+    artifactVerification: {
+      signaturePolicy: {
+        trustedKeys: new Map([[fixture.publicKeys.preview.keyId, previewKey]]),
+        minimumValidSignatures: 1,
+        requiredKeyIds: [fixture.publicKeys.preview.keyId],
+        rejectUntrustedSignatures: true,
+      },
+    },
+    vm: {
+      mode: 'release',
+      maxJobsPerDrain: 1_000,
+      maxEntryDepth: 32,
+    },
+    browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
+  });
+  try {
+    await expectRejected(
+      host.mount({
+        artifact: threeArtifact.bytes,
+        container: surface('mount-narrowing'),
+        allowedApis: ['DOM'],
+      }),
+    );
+  } finally {
+    await host.destroy();
+  }
 });
 
 await check('oversized Three.js PBR payload fails with bounded budget guidance', async () => {
@@ -962,15 +1081,15 @@ await check('Three.js without signed WebGL authority fails with actionable diagn
     reason !== null
       && typeof reason === 'object'
       && 'capsuleCode' in reason
-      && reason.capsuleCode === 'CANVAS_PROFILE_REQUIRED',
+      && reason.capsuleCode === 'WEBGL_CONTEXT_UNAVAILABLE',
     `Missing WebGL authority returned ${JSON.stringify(reason)}.`,
   );
   assert(
     'message' in reason
       && typeof reason.message === 'string'
-      && reason.message.includes('canvas-webgl-v1')
-      && reason.message.includes('canvas-2d-v1'),
-    'Missing WebGL authority did not return neutral canvas-profile guidance.',
+      && reason.message.includes('WEBGL')
+      && reason.message.includes('ui.apis'),
+    'Missing WebGL authority did not return public WEBGL guidance.',
   );
 });
 

@@ -6,6 +6,7 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetManifestV3,
+  fnMigrateWidgetManifestDraft,
   type TWidgetCapsuleBuildIdentity,
   type TWidgetDiagnostic,
   type TWidgetManifestV3,
@@ -1389,7 +1390,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV3> {
     return ZWidgetManifestV3.parse(
-      JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')),
+      fnMigrateWidgetManifestDraft(
+        JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')),
+      ).value,
     )
   }
 

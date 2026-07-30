@@ -20,6 +20,7 @@ import {
   type TEphemeralPreviewStateOwner,
 } from './create-ephemeral-preview-state';
 import { fnNormalizePreviewDiagnostic } from './fn.preview-diagnostic';
+import { fnWidgetCapsuleRuntimeApis } from '../widget-runtime/fn.capsule-runtime-apis';
 import {
   fnProjectPreviewLogEntry,
   fnRetainPreviewLogEntries,
@@ -810,6 +811,37 @@ export function createPreviewPortalRuntime(
     return operation;
   };
 
+  const confirmMountedLease = async (
+    mounted: TMountedPreview,
+  ): Promise<void> => {
+    if (mounted.lease.renewTimer !== undefined) {
+      args.functions.cancelTimeout(mounted.lease.renewTimer);
+      mounted.lease.renewTimer = undefined;
+    }
+    const operation = (async (): Promise<void> => {
+      const [renewError, descriptor] =
+        await args.api.mount.renew(leaseRequest(mounted));
+      if (renewError || !descriptor) {
+        throw new Error(errorMessage(
+          renewError,
+          'Preview mount authority is no longer available.',
+        ));
+      }
+      validateLeaseDescriptor(mounted, descriptor);
+      if (descriptor.renewedAtMs <= descriptor.acquiredAtMs) {
+        throw new Error('Preview execution confirmation did not advance its mount lease.');
+      }
+      mounted.lease.descriptor = descriptor;
+      scheduleLeaseRenewal(mounted);
+    })();
+    mounted.lease.renewOperation = operation;
+    try {
+      await operation;
+    } finally {
+      mounted.lease.renewOperation = undefined;
+    }
+  };
+
   const applyLocalState = async (
     mounted: TMountedPreview,
   ): Promise<void> => {
@@ -1152,7 +1184,7 @@ export function createPreviewPortalRuntime(
       };
       const previousAdmission = current?.handle;
       candidate.handle = args.runtime.renderPreloadedOwned({
-        featureProfiles: artifact.runtimeDescriptor.target.featureProfiles,
+        apis: fnWidgetCapsuleRuntimeApis(artifact.runtimeDescriptor),
         ...(viewport === null ? {} : { initialViewport: viewport }),
         initiallyFrozen: frozen,
         ...(previousAdmission === undefined
@@ -1194,6 +1226,11 @@ export function createPreviewPortalRuntime(
         return;
       }
       await waitForFrame();
+      if (disposed || refreshSequence !== sequence || !candidate.active) {
+        await destroyMounted(candidate, 'preview-build-superseded');
+        return;
+      }
+      await confirmMountedLease(candidate);
       if (disposed || refreshSequence !== sequence || !candidate.active) {
         await destroyMounted(candidate, 'preview-build-superseded');
         return;

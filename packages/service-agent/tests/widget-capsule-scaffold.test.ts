@@ -19,7 +19,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.9.4',
+      capsuleDependency: '0.10.0',
       template: 'plain',
       server: false,
     });
@@ -32,15 +32,7 @@ describe('Capsule widget authoring scaffold', () => {
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [
-            'artifact-resources-v1',
-            'css-network-images-v1',
-            'shadow-browser-css-v1',
-          ],
-        },
+        apis: ['DOM'],
       },
     });
     expect(changed).toEqual([
@@ -53,7 +45,7 @@ describe('Capsule widget authoring scaffold', () => {
     ]);
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
       dependencies: {
-        '@omnidraw/capsule': '0.9.4',
+        '@omnidraw/capsule': '0.10.0',
         '@vibecanvas/sdk': '0.1.0',
         zod: '4.4.3',
       },
@@ -91,7 +83,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.9.4',
+      capsuleDependency: '0.10.0',
       template: 'react',
       server: false,
     });
@@ -131,7 +123,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.9.4',
+      capsuleDependency: '0.10.0',
       template: 'react',
       server: true,
     });

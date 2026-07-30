@@ -1,10 +1,8 @@
 import type {
   CapsuleBudgetRequest,
-  CapsuleCompleteBudgetMaximums,
 } from '@omnidraw/capsule/protocol';
 import type {
   TVibecanvasCapsuleBudgetRequest,
-  TVibecanvasCapsuleBudgets,
 } from './types';
 
 /**
@@ -26,23 +24,5 @@ export function fnMapCapsuleBudgetRequest(
     ...(budgets.lifecycleBytes === undefined
       ? {}
       : { lifecycleBytes: budgets.lifecycleBytes }),
-  });
-}
-
-/** Copies a complete product budget into Capsule's complete maximums contract. */
-export function fnMapCapsuleBudgets(
-  budgets: TVibecanvasCapsuleBudgets,
-): CapsuleCompleteBudgetMaximums {
-  return Object.freeze({
-    cpuMs: budgets.cpuMs,
-    memoryBytes: budgets.memoryBytes,
-    domNodes: budgets.domNodes,
-    handles: budgets.handles,
-    messageBytes: budgets.messageBytes,
-    streamBytes: budgets.streamBytes,
-    assetBytes: budgets.assetBytes,
-    networkBytes: budgets.networkBytes,
-    gpuBytes: budgets.gpuBytes,
-    lifecycleBytes: budgets.lifecycleBytes,
   });
 }

@@ -5,12 +5,27 @@
 import type {
   TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleBudgets,
+  TWidgetCapsuleApiContract,
+  TWidgetCapsuleApiGroup,
   TWidgetCapsuleCapabilityRequest,
   TWidgetCapsuleChannelContract,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetCapsuleSchemaReference,
   TWidgetCapsuleTarget,
 } from '../types';
+
+const CAPSULE_API_GROUPS = [
+  'DOM',
+  'NETWORK',
+  'FILES',
+  'CLIPBOARD',
+  'DIALOGS',
+  'CANVAS_2D',
+  'WEBGL',
+  'WEBGPU',
+  'AUDIO',
+  'VIDEO',
+] as const satisfies readonly TWidgetCapsuleApiGroup[];
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -42,6 +57,34 @@ export function fnNormalizeWidgetCapsuleTarget(
     runtimeAbi: target.runtimeAbi,
     domProfile: target.domProfile,
     featureProfiles: sortedUnique(target.featureProfiles, 'Capsule feature profiles'),
+  };
+}
+
+export function fnNormalizeWidgetCapsuleApis(
+  apis: readonly TWidgetCapsuleApiGroup[],
+): readonly TWidgetCapsuleApiGroup[] {
+  const selected = new Set(apis);
+  if (selected.size !== apis.length) {
+    throw new TypeError('Capsule API groups must not contain duplicates.');
+  }
+  if (!selected.has('DOM')) {
+    throw new TypeError('Capsule API groups must explicitly include DOM.');
+  }
+  const renderingGroups = ['CANVAS_2D', 'WEBGL', 'WEBGPU']
+    .filter((api) => selected.has(api as TWidgetCapsuleApiGroup));
+  if (renderingGroups.length > 1) {
+    throw new TypeError('CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive.');
+  }
+  return CAPSULE_API_GROUPS.filter((api) => selected.has(api));
+}
+
+export function fnNormalizeWidgetCapsuleApiContract(
+  contract: TWidgetCapsuleApiContract,
+): TWidgetCapsuleApiContract {
+  return {
+    format: 'capsule-api-groups-v1',
+    groups: fnNormalizeWidgetCapsuleApis(contract.groups),
+    bundleDigest: contract.bundleDigest,
   };
 }
 
@@ -133,6 +176,23 @@ export function fnNormalizeWidgetCapsuleChannelContract(
 export function fnNormalizeWidgetCapsuleRuntimeDescriptor(
   descriptor: TWidgetCapsuleRuntimeDescriptor,
 ): TWidgetCapsuleRuntimeDescriptor {
+  if (descriptor.format === 'vibecanvas.capsule-runtime.v2') {
+    return {
+      format: 'vibecanvas.capsule-runtime.v2',
+      capsuleArtifactHash: descriptor.capsuleArtifactHash,
+      apiContract: fnNormalizeWidgetCapsuleApiContract(descriptor.apiContract),
+      budgets: fnNormalizeWidgetCapsuleBudgetRequest(descriptor.budgets),
+      capabilityRequests: fnNormalizeWidgetCapsuleCapabilityRequests(
+        descriptor.capabilityRequests,
+      ),
+      channels: fnNormalizeWidgetCapsuleChannelContract(descriptor.channels),
+      parkability: { parkable: false },
+      signatureKeyIds: sortedUnique(
+        descriptor.signatureKeyIds,
+        'Capsule signature key IDs',
+      ),
+    };
+  }
   return {
     format: 'vibecanvas.capsule-runtime.v1',
     capsuleArtifactHash: descriptor.capsuleArtifactHash,

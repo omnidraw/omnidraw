@@ -1,40 +1,12 @@
 import type {
+  CapsuleApiContract,
+  CapsuleApiGroup,
   CapsuleBudgetRequest,
-  CapsuleCompleteBudgetMaximums,
-  CapsuleExecutionTarget,
 } from '@omnidraw/capsule/protocol';
 
-export type TVibecanvasCapsuleTarget = Readonly<{
-  runtimeAbi: string;
-  domProfile: string;
-  featureProfiles: readonly string[];
-}>;
-
-export type TVibecanvasCapsuleBudgetRequest = Readonly<{
-  cpuMs?: number;
-  memoryBytes?: number;
-  domNodes?: number;
-  handles?: number;
-  messageBytes?: number;
-  streamBytes?: number;
-  assetBytes?: number;
-  networkBytes?: number;
-  gpuBytes?: number;
-  lifecycleBytes?: number;
-}>;
-
-export type TVibecanvasCapsuleBudgets = Readonly<{
-  cpuMs: number;
-  memoryBytes: number;
-  domNodes: number;
-  handles: number;
-  messageBytes: number;
-  streamBytes: number;
-  assetBytes: number;
-  networkBytes: number;
-  gpuBytes: number;
-  lifecycleBytes: number;
-}>;
+export type TVibecanvasCapsuleApiGroup = CapsuleApiGroup;
+export type TVibecanvasCapsuleApiContract = CapsuleApiContract;
+export type TVibecanvasCapsuleBudgetRequest = CapsuleBudgetRequest;
 
 export type TVibecanvasCapsuleErrorPhase = 'build' | 'host' | 'runtime';
 
@@ -59,17 +31,4 @@ export type TVibecanvasCapsuleError = Readonly<{
   message: string;
   capability?: string;
   operation?: string;
-}>;
-
-type TAssertTargetCompatible =
-  TVibecanvasCapsuleTarget extends CapsuleExecutionTarget ? true : never;
-type TAssertBudgetRequestCompatible =
-  TVibecanvasCapsuleBudgetRequest extends CapsuleBudgetRequest ? true : never;
-type TAssertBudgetsCompatible =
-  TVibecanvasCapsuleBudgets extends CapsuleCompleteBudgetMaximums ? true : never;
-
-export type TVibecanvasCapsuleContractCompatibility = Readonly<{
-  target: TAssertTargetCompatible;
-  budgetRequest: TAssertBudgetRequestCompatible;
-  budgets: TAssertBudgetsCompatible;
 }>;

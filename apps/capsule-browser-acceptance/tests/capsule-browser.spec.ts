@@ -41,9 +41,6 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
   });
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname === '/capsule-network-image.svg') {
-      networkImageRequests.push(url.pathname);
-    }
   });
 
   await page.goto('/?pixelHandshake=1', { waitUntil: 'domcontentloaded' });
@@ -118,7 +115,7 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
   expect(new Set(published?.results.map((result) => result.name).filter(Boolean)).size, detail)
     .toBe(published?.results.length);
   expect(published?.outputs, detail).toEqual(expect.arrayContaining([...REQUIRED_OUTPUTS]));
-  expect(networkImageRequests, detail).toContain('/capsule-network-image.svg');
+  expect(networkImageRequests, detail).toEqual([]);
   await expect(page.locator('#summary')).toHaveText(
     `PASSED: ${String(published?.passed)} passed, 0 failed`,
   );

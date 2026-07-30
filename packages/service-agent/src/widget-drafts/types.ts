@@ -177,6 +177,14 @@ export interface IWidgetPreviewOwnerStore {
     tenant: TTenantContext,
     request: TWidgetPreviewMountLeaseReleaseRequest,
   ): Promise<boolean>;
+  hasConfirmedPreviewExecution(
+    tenant: TTenantContext,
+    request: Readonly<{
+      draftId: string;
+      draftRevisionSha256: string;
+      nowMs: number;
+    }>,
+  ): Promise<boolean>;
 }
 
 /** Structural subset implemented by AgentAuthoringStoreTurso and managed adapters. */

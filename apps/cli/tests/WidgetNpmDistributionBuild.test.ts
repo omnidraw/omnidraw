@@ -20,7 +20,6 @@ import {
 import {
   buildCapsuleGuest,
   fnVibecanvasCapsuleBuildPolicy,
-  fnVibecanvasCapsuleBuildTarget,
 } from '@vibecanvas/capsule-vibecanvas/build';
 
 const encoder = new TextEncoder();
@@ -67,17 +66,9 @@ describe('WidgetNpmDistributionBuild', () => {
       });
       const capsule = await buildCapsuleGuest({
         input,
-        target: fnVibecanvasCapsuleBuildTarget({
-          entry: 'ui/main.ts',
-          target: {
-            runtimeAbi: 'quickjs-release-sync-v1',
-            domProfile: 'dom-core-v2',
-            featureProfiles: [],
-          },
-        }),
+        apis: ['DOM'],
         capabilityRequests: [],
         parkability: { parkable: false },
-        requestedBudgets: {},
         policy: fnVibecanvasCapsuleBuildPolicy(),
       });
       expect(capsule.artifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);

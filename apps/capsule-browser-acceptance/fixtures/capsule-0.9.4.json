@@ -1,0 +1,46 @@
+{
+  "format": "vibecanvas.capsule-browser-legacy-fixture.v1",
+  "capsulePackageVersion": "0.9.4",
+  "publicKey": {
+    "keyId": "capsule-browser-acceptance-legacy-v1",
+    "algorithm": "Ed25519",
+    "format": "raw",
+    "publicKeyBase64": "vIANBd+8NKkOD7w0ihpFv85SSdSvggV+vy2wyUOIpNc="
+  },
+  "artifact": {
+    "bytesBase64": "o2Zmb3JtYXRzY2Fwc3VsZS1hcnRpZmFjdC12MWhtYW5pZmVzdKllYnVpbGSoaXRvb2xjaGFpbqNkbmFtZXdAb21uaWRyYXcvY2Fwc3VsZS1idWlsZGZkaWdlc3R4R3NoYTI1NjpmN2I0M2ZkOTdlNTY3MTY1NzJkODA3YzAwNjIxZDc0Yzg1MTY4NjU4ODY0MTg5YjA3NWU4MjhjYjI0OGNkM2JkZ3ZlcnNpb25lMC4xLjBqdHJhbnNmb3Jtc4GjYmlkeCRjYXBzdWxlLWV4dGVybmFsLWRpc3RyaWJ1dGlvbi1pbmdlc3RmZGlnZXN0eEdzaGEyNTY6ZTJiZjA2NWZhY2IxNDhkZGU2Mjc0NzY3MzNjMzc5MWNmZjM1YTMxMGRlMDllMjhiMjUzMjZmZTBiMDI4MmQ0Nmd2ZXJzaW9uZTEuMC4wbGRlcGVuZGVuY2llc4BscmVwcm9kdWNpYmxl9Wxzb3VyY2VEaWdlc3R4R3NoYTI1NjozY2M4YmY0YTNhOTI4MmZhNmU1ZGQ4YWU2MjQ1Y2VlYzMxNWQzMDNlNTkyYmZhYzQzOTdjN2RlOWNhZWY4NmQ2bnNvdXJjZVJldmlzaW9ueEA4NmY1YWVkNGQwOTViNTdlMmQ2MGZkMDgzNDM1Y2IyOGVjNDc1MTRlNGY5MDE1OTU3YzlmOGNmYTQ5YjQ5MmJhdGRlcGVuZGVuY3lMb2NrRGlnZXN0eEdzaGEyNTY6MTQwYmVkYmY5YzNmNmQ1NmE5ODQ2ZDJiYTcwODg3OTg2ODNmNGRhMGMyNDgyMzEzMzZlNmEwNTY3OWU0ZmRmZXRleHRlcm5hbERpc3RyaWJ1dGlvbqVmZm9ybWF0eCBjYXBzdWxlLWV4dGVybmFsLWRpc3RyaWJ1dGlvbi12MWhwcm9kdWNlcqNkbmFtZXgjdmliZWNhbnZhcy1mcm96ZW4tbGVnYWN5LWFjY2VwdGFuY2VmZGlnZXN0eEdzaGEyNTY6YTcwYzBlMDEzZTEwMzI2ZTQ5ZTc5Y2ZiNmNkYjEwMzFjNDA1MzlhZWNjZmY0YTk0ZTQ1MGEwZGJjMDQ1ZTY1YWd2ZXJzaW9uZTEuMC4wb3JlcHJvZHVjaWJpbGl0eXgcZGV0ZXJtaW5pc3RpYy1pbmdlc3Rpb24tb25seXJkaXN0cmlidXRpb25EaWdlc3R4R3NoYTI1NjozY2M4YmY0YTNhOTI4MmZhNmU1ZGQ4YWU2MjQ1Y2VlYzMxNWQzMDNlNTkyYmZhYzQzOTdjN2RlOWNhZWY4NmQ2eBhidWlsZENvbmZpZ3VyYXRpb25EaWdlc3R4R3NoYTI1Njo4NjZlODNlMzM4MmQ5NDg1YTE4YzhhYzQ3ZTJlZmY2NTkwYmE2ZTRiMzg4ZDNiNDRlMzhkMzM5YzRmOTdmOWViZnRhcmdldKJqZG9tUHJvZmlsZWtkb20tY29yZS12MmpydW50aW1lQWJpd3F1aWNranMtcmVsZWFzZS1zeW5jLXYxaWV4ZWN1dGlvbqNka2luZHRqYXZhc2NyaXB0LW1vZHVsZS12MWVlbnRyeWdtYWluLmpzaHBheWxvYWRzgaViaWRnbWFpbi5qc2RoYXNoeEdzaGEyNTY6ODZmNWFlZDRkMDk1YjU3ZTJkNjBmZDA4MzQzNWNiMjhlYzQ3NTE0ZTRmOTAxNTk1N2M5ZjhjZmE0OWI0OTJiYWRraW5kZWNodW5rZHNpemUYsGltZWRpYVR5cGVvdGV4dC9qYXZhc2NyaXB0anNpZ25hdHVyZXOBo2VrZXlJZHgkY2Fwc3VsZS1icm93c2VyLWFjY2VwdGFuY2UtbGVnYWN5LXYxaWFsZ29yaXRobWdFZDI1NTE5aXNpZ25hdHVyZVhAsBtTje2q/NE+6lgQJ6uHIYaevr+zcSfye4j1QUpclfyPLUfOuV35DYqSAIb4Ux33z+7kMcc5JWlu5Nziui7hA2twYXJrYWJpbGl0eaFocGFya2FibGX0bGFydGlmYWN0SGFzaHhHc2hhMjU2OmEzMzgzYzlhZDQwMWM4ZDEyN2Q0ZTYyMmJlZjgwNjYwMzgwZDA1ODM4MWNkNTQwM2FkNjFiYWU0MDQ1MWM3MGVtc2NoZW1hVmVyc2lvbgFuYnVkZ2V0TWF4aW11bXOqZWNwdU1zGQLuZ2hhbmRsZXMZVfBoZG9tTm9kZXMZJxBoZ3B1Qnl0ZXMAamFzc2V0Qnl0ZXMaAEAAAGttZW1vcnlCeXRlcxoCAAAAa3N0cmVhbUJ5dGVzGgAEAABsbWVzc2FnZUJ5dGVzGgABAABsbmV0d29ya0J5dGVzAG5saWZlY3ljbGVCeXRlcxoABAAAcmNhcGFiaWxpdHlSZXF1ZXN0c4BocGF5bG9hZHOBomJpZGdtYWluLmpzZWJ5dGVzWLAKY29uc3Qgcm9vdCA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ21haW4nKTsKcm9vdC5zZXRBdHRyaWJ1dGUoJ2RhdGEtbGVnYWN5LWNhcHN1bGUnLCAnMC45LjQnKTsKcm9vdC50ZXh0Q29udGVudCA9ICdMZWdhY3kgQ2Fwc3VsZSAwLjkuNCBtb3VudGVkJzsKZG9jdW1lbnQuYm9keS5hcHBlbmQocm9vdCk7Cg==",
+    "digestSha256": "66007ae1c768f2c54c155e56c28dac1a5b85f1cd2a987b2dcf5205ac011c9d9b",
+    "capsuleArtifactHash": "sha256:a3383c9ad401c8d127d4e622bef80660380d058381cd5403ad61bae40451c70e",
+    "runtimeDescriptor": {
+      "format": "vibecanvas.capsule-runtime.v1",
+      "capsuleArtifactHash": "sha256:a3383c9ad401c8d127d4e622bef80660380d058381cd5403ad61bae40451c70e",
+      "target": {
+        "runtimeAbi": "quickjs-release-sync-v1",
+        "domProfile": "dom-core-v2",
+        "featureProfiles": []
+      },
+      "budgets": {
+        "cpuMs": 750,
+        "memoryBytes": 33554432,
+        "domNodes": 10000,
+        "handles": 22000,
+        "messageBytes": 65536,
+        "streamBytes": 262144,
+        "assetBytes": 4194304,
+        "networkBytes": 0,
+        "gpuBytes": 0,
+        "lifecycleBytes": 262144
+      },
+      "capabilityRequests": [],
+      "channels": null,
+      "parkability": {
+        "parkable": false
+      },
+      "signatureKeyIds": [
+        "capsule-browser-acceptance-legacy-v1"
+      ]
+    },
+    "retainedByteSize": 1984,
+    "browserFunctionDescriptorsDigestSha256": "ae767300380f34d34aad5552d4ca5d55c08193525cd6540002bbe0c78a5a5ccb"
+  }
+}

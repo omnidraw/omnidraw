@@ -218,13 +218,20 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           const errors = authoritative.errors.slice(0, 40);
           const warnings = authoritative.warnings.slice(0, 40);
           const files = validation.files.slice(0, 100);
+          const previewExecutionRetained = durable?.publishReady === true;
           const modelData = {
             name: mount.name,
             ...(durable ? { draftId: durable.draftId, revision: durable.revision } : {}),
             mountPath: `widgets/${mount.name}`,
             source: mount.source,
             ok: authoritative.ok,
-            validationScope: 'construction' as const,
+            validationScope: previewExecutionRetained
+              ? 'construction-and-preview' as const
+              : 'construction' as const,
+            previewExecution: previewExecutionRetained
+              ? 'retained-success' as const
+              : 'not-run' as const,
+            publishReady: previewExecutionRetained,
             errors,
             warnings,
             files,
@@ -235,7 +242,9 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           };
           return fnToolSuccess({
             summary: authoritative.ok
-              ? `Widget '${mount.name}' construction is valid. Preview execution was not run.`
+              ? previewExecutionRetained
+                ? `Widget '${mount.name}' construction and retained Preview execution are valid. The exact Preview is ready to publish.`
+                : `Widget '${mount.name}' construction is valid. Preview execution was not run.`
               : `Widget '${mount.name}' construction is invalid.`,
             modelData,
             details: modelData,
