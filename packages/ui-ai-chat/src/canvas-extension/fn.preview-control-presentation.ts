@@ -1,6 +1,7 @@
-import type {
-  TWidgetDropdownItemPresentation,
-} from '@omnidraw/cangine/editor';
+export type TWidgetDropdownItemPresentation = Readonly<{
+  text?: string;
+  disabled?: boolean;
+}>;
 
 export type TArgs = Readonly<{
   liveUpdatesPaused: boolean;
