@@ -2,7 +2,10 @@ import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toa
 import { themeService } from "@/services/theme";
 import { setStore, store } from "@/store";
 import type { TBackendCanvas } from "@/types/backend.types";
-import { Canvas } from "@vibecanvas/canvas";
+import {
+  Canvas,
+  fnReproductionTraceDiagnostics,
+} from "@vibecanvas/canvas";
 import { useNavigate } from "@solidjs/router";
 import { type Component } from "solid-js";
 import { canvasImagePort, createFrontendAiChatExtension } from "../ai-chat-adapters";
@@ -19,6 +22,12 @@ const CanvasPage: Component<CanvasPageProps> = (props) => {
   const tenantCanvas = createBrowserTenantBoundary((tenant) => (
     <Canvas
       canvas={props.canvas}
+      diagnostics={fnReproductionTraceDiagnostics({
+        development: import.meta.env.DEV,
+        applicationVersion: import.meta.env.VITE_APP_VERSION,
+        buildMode: import.meta.env.MODE,
+        cangineVersion: "0.2.6",
+      })}
       tenant={tenant}
       transport={canvasDocumentTransport}
       extensions={[aiChatExtension]}

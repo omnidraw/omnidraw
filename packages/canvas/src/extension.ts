@@ -9,12 +9,14 @@ import type {
 } from '@omnidraw/cangine/editor';
 import type { CanvasDocumentService } from './services/CanvasDocumentService';
 import type { TCanvasRuntimeConfig } from './types';
+import type { TReproductionTraceSink } from './debug-trace/typed';
 
 export type TCanvasRuntimeExtensionContext = Readonly<{
   config: TCanvasRuntimeConfig;
   document: CanvasDocumentService;
   editor: IStandardCanvasEditor;
   engine: IInfiniteCanvasEngine;
+  trace: TReproductionTraceSink | null;
   widgets: IWidgetInteractionController;
 }>;
 

@@ -11,6 +11,15 @@ import {
   onCleanup,
   onMount,
 } from 'solid-js';
+import {
+  createReproductionTrace,
+} from '../debug-trace/createReproductionTrace';
+import {
+  REPRODUCTION_TRACE_PASSIVE_INPUT_SAMPLE_RATE,
+} from '../debug-trace/CONSTANTS';
+import type {
+  TReproductionTraceOwner,
+} from '../debug-trace/typed';
 import type { ICanvasRuntimeExtension } from '../extension';
 import {
   fnBrowserTenantScopeKey,
@@ -20,7 +29,10 @@ import { buildRuntime, type TCanvasRuntime } from '../runtime';
 import type {
   TCanvasDocumentTransport,
 } from '../services/CanvasDocumentService';
-import type { TCanvasImagePort } from '../types';
+import type {
+  TCanvasDiagnostics,
+  TCanvasImagePort,
+} from '../types';
 import { FloatingCanvasToolbar } from './FloatingCanvasToolbar';
 import {
   SelectionStyleMenu,
@@ -63,6 +75,7 @@ type CanvasPageProps = {
     showInfo(title: string, description?: string): void;
   };
   themeService: ThemeService;
+  diagnostics?: TCanvasDiagnostics | false;
 };
 
 type TCanvasSource = Readonly<{
@@ -95,6 +108,40 @@ function isWidgetContentTarget(target: EventTarget | null): boolean {
   );
 }
 
+function semanticTraceTarget(
+  target: EventTarget | null,
+): Readonly<Record<string, string | null>> {
+  if (!(target instanceof Element)) {
+    return { kind: target === null ? 'none' : 'event-target', role: null };
+  }
+  const semantic = target.closest<HTMLElement>(
+    '[data-vibecanvas-portal-id], [data-vibecanvas-widget-id], [data-canvas-node-id], [role]',
+  ) ?? target;
+  return {
+    kind: semantic.tagName.toLowerCase(),
+    role: semantic.getAttribute('role'),
+    portalId: semantic.getAttribute('data-vibecanvas-portal-id'),
+    widgetId: semantic.getAttribute('data-vibecanvas-widget-id'),
+    nodeId: semantic.getAttribute('data-canvas-node-id'),
+  };
+}
+
+function traceKeyboardIdentity(
+  event: KeyboardEvent,
+): Readonly<{ key: string; code: string }> {
+  const contentTarget = (
+    isTextEntryTarget(event.target)
+    || isWidgetContentTarget(event.target)
+  );
+  if (!contentTarget || event.code === 'Space') {
+    return { key: event.key, code: event.code };
+  }
+  const printable = Array.from(event.key).length === 1;
+  return printable
+    ? { key: '[redacted-text-entry]', code: '[redacted-text-entry]' }
+    : { key: event.key, code: event.code };
+}
+
 export function Canvas(props: CanvasPageProps) {
   let canvasRootRef!: HTMLDivElement;
   let containerRef!: HTMLDivElement;
@@ -104,6 +151,53 @@ export function Canvas(props: CanvasPageProps) {
   let unsubscribeScene: (() => void) | null = null;
   let spacePointerId: number | null = null;
   let spacePointerPosition: Readonly<{ x: number; y: number }> | null = null;
+  const pointerGestureIds = new Map<number, string>();
+  const passivePointerMoveCounts = new Map<number, number>();
+  const trace: TReproductionTraceOwner | null = (
+    props.diagnostics !== false
+    && props.diagnostics?.reproductionTrace === true
+  )
+    ? createReproductionTrace({
+        environment: () => ({
+          applicationVersion: props.diagnostics === false
+            ? 'unknown'
+            : props.diagnostics?.applicationVersion ?? 'unknown',
+          buildMode: props.diagnostics === false
+            ? 'unknown'
+            : props.diagnostics?.buildMode ?? 'development',
+          canvasId: props.canvas.id,
+          cangineVersion: props.diagnostics === false
+            ? 'unknown'
+            : props.diagnostics?.cangineVersion ?? 'unknown',
+          browser: navigator.userAgent.slice(0, 256),
+          platform: navigator.platform || 'unknown',
+          viewport: {
+            width: canvasRootRef?.clientWidth ?? window.innerWidth,
+            height: canvasRootRef?.clientHeight ?? window.innerHeight,
+          },
+          devicePixelRatio: window.devicePixelRatio,
+        }),
+        monotonicNow: () => performance.now(),
+        wallClockNow: () => new Date(),
+        defer: (callback) => queueMicrotask(callback),
+        schedule: (callback, delayMs) => {
+          const timeout = window.setTimeout(callback, delayMs);
+          return () => window.clearTimeout(timeout);
+        },
+        writeClipboard: (text) => navigator.clipboard.writeText(text),
+        createObjectUrl: ({ mimeType, text }) => URL.createObjectURL(
+          new Blob([text], { type: mimeType }),
+        ),
+        revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+        download: ({ filename, url }) => {
+          const anchor = document.createElement('a');
+          anchor.download = filename;
+          anchor.href = url;
+          anchor.click();
+          anchor.remove();
+        },
+      })
+    : null;
   const [containerReady, setContainerReady] = createSignal(false);
   const [booting, setBooting] = createSignal(true);
   const [bootError, setBootError] = createSignal<string | null>(null);
@@ -132,10 +226,16 @@ export function Canvas(props: CanvasPageProps) {
         image: props.image,
         notification: props.notification,
         themeService: props.themeService,
+        trace,
       }, props.extensions);
       return activeRuntime;
     },
     onBootStart: () => {
+      trace?.emit({
+        channel: 'system',
+        type: 'runtime-replacement-started',
+        priority: 'critical',
+      });
       unsubscribeEditor?.();
       unsubscribeEditor = null;
       unsubscribeCamera?.();
@@ -164,12 +264,25 @@ export function Canvas(props: CanvasPageProps) {
       setCameraRevision((revision) => revision + 1);
       setSceneRevision((revision) => revision + 1);
       setBooting(false);
+      trace?.emit({
+        channel: 'system',
+        type: 'runtime-ready',
+        priority: 'critical',
+        correlation: { canvasId: props.canvas.id },
+      });
     },
     onBootError: (error) => {
       const message = error instanceof Error ? error.message : String(error);
       props.notification.showError('Failed to start canvas', message);
       setBooting(false);
       setBootError(message);
+      trace?.emit({
+        channel: 'system',
+        type: 'runtime-failed',
+        priority: 'critical',
+        correlation: { canvasId: props.canvas.id },
+        data: { error: { name: 'Error', message } },
+      });
     },
     onShutdownError: (error) => {
       props.notification.showError(
@@ -193,6 +306,32 @@ export function Canvas(props: CanvasPageProps) {
   }, null);
 
   const handleKeyboardShortcut = (event: KeyboardEvent) => {
+    const traceControlTarget = (
+      event.target instanceof Element
+      && event.target.closest('.vc-trace-control') !== null
+    );
+    if (trace !== null && !traceControlTarget) {
+      const identity = traceKeyboardIdentity(event);
+      trace.emit({
+        channel: 'input.dom',
+        type: 'key-down',
+        priority: 'high',
+        data: {
+          key: identity.key,
+          code: identity.code,
+          repeat: event.repeat,
+          composing: event.isComposing,
+          modifiers: {
+            alt: event.altKey,
+            control: event.ctrlKey,
+            meta: event.metaKey,
+            shift: event.shiftKey,
+          },
+          defaultPrevented: event.defaultPrevented,
+          target: semanticTraceTarget(event.target),
+        },
+      });
+    }
     if (event.repeat) return;
     if (
       (
@@ -256,12 +395,41 @@ export function Canvas(props: CanvasPageProps) {
   };
 
   const handleKeyboardRelease = (event: KeyboardEvent) => {
+    const traceControlTarget = (
+      event.target instanceof Element
+      && event.target.closest('.vc-trace-control') !== null
+    );
+    if (trace !== null && !traceControlTarget) {
+      const identity = traceKeyboardIdentity(event);
+      trace.emit({
+        channel: 'input.dom',
+        type: 'key-up',
+        priority: 'high',
+        data: {
+          key: identity.key,
+          code: identity.code,
+          modifiers: {
+            alt: event.altKey,
+            control: event.ctrlKey,
+            meta: event.metaKey,
+            shift: event.shiftKey,
+          },
+          defaultPrevented: event.defaultPrevented,
+          target: semanticTraceTarget(event.target),
+        },
+      });
+    }
     if (event.code !== 'Space') return;
     setSpaceHeld(false);
     finishSpacePan();
   };
 
   const handleWindowBlur = () => {
+    trace?.emit({
+      channel: 'system',
+      type: 'window-blurred',
+      priority: 'high',
+    });
     setSpaceHeld(false);
     finishSpacePan();
   };
@@ -314,11 +482,110 @@ export function Canvas(props: CanvasPageProps) {
     setSpaceDragging(false);
   };
 
+  const traceDomPointer = (event: PointerEvent) => {
+    if (
+      event.target instanceof Element
+      && event.target.closest('.vc-trace-control') !== null
+    ) return;
+    const type = event.type === 'pointerdown'
+      ? 'pointer-down'
+      : event.type === 'pointermove'
+        ? 'pointer-move'
+        : event.type === 'pointerup'
+          ? 'pointer-up'
+          : event.type === 'pointercancel'
+            ? 'pointer-cancel'
+            : event.type === 'gotpointercapture'
+              ? 'capture-gained'
+              : 'capture-lost';
+    if (event.type === 'pointerdown') {
+      passivePointerMoveCounts.delete(event.pointerId);
+      pointerGestureIds.set(
+        event.pointerId,
+        `dom:${event.pointerId}:${Math.round(event.timeStamp)}`,
+      );
+    }
+    let gestureId = pointerGestureIds.get(event.pointerId);
+    const isPassivePointerMove = (
+      event.type === 'pointermove'
+      && (
+        event.buttons === 0
+        || gestureId === undefined
+      )
+    );
+    if (isPassivePointerMove) {
+      pointerGestureIds.delete(event.pointerId);
+      gestureId = undefined;
+      const passiveCount = (
+        passivePointerMoveCounts.get(event.pointerId) ?? 0
+      ) + 1;
+      passivePointerMoveCounts.set(event.pointerId, passiveCount);
+      if (
+        passiveCount % REPRODUCTION_TRACE_PASSIVE_INPUT_SAMPLE_RATE !== 0
+      ) return;
+    } else if (event.type === 'pointermove') {
+      passivePointerMoveCounts.delete(event.pointerId);
+    }
+    const target = event.target;
+    trace?.emit({
+      channel: 'input.dom',
+      type,
+      priority: type === 'pointer-move' ? 'low' : 'critical',
+      correlation: {
+        pointerId: String(event.pointerId),
+        ...(gestureId === undefined ? {} : { gestureId }),
+      },
+      data: {
+        phase: event.eventPhase,
+        pointerType: event.pointerType,
+        button: event.button,
+        buttons: event.buttons,
+        pressure: event.pressure,
+        client: { x: event.clientX, y: event.clientY },
+        viewport: { x: event.clientX, y: event.clientY },
+        modifiers: {
+          alt: event.altKey,
+          control: event.ctrlKey,
+          meta: event.metaKey,
+          shift: event.shiftKey,
+        },
+        cancelable: event.cancelable,
+        defaultPrevented: event.defaultPrevented,
+        target: semanticTraceTarget(target),
+        captureOwner: (
+          target instanceof HTMLElement
+          && target.hasPointerCapture(event.pointerId)
+        ) ? semanticTraceTarget(target) : null,
+      },
+    });
+    if (
+      event.type === 'pointercancel'
+      || event.type === 'lostpointercapture'
+    ) {
+      pointerGestureIds.delete(event.pointerId);
+    }
+    if (
+      event.type === 'pointerup'
+      || event.type === 'pointercancel'
+      || event.type === 'lostpointercapture'
+    ) {
+      passivePointerMoveCounts.delete(event.pointerId);
+    }
+  };
+
   onMount(() => {
     setContainerReady(true);
     document.addEventListener('keydown', handleKeyboardShortcut, true);
     document.addEventListener('keyup', handleKeyboardRelease, true);
     window.addEventListener('blur', handleWindowBlur);
+    if (trace !== null) {
+      canvasRootRef.addEventListener('pointerdown', traceDomPointer, true);
+      canvasRootRef.addEventListener('pointermove', traceDomPointer, true);
+      canvasRootRef.addEventListener('pointerup', traceDomPointer, true);
+      canvasRootRef.addEventListener('pointercancel', traceDomPointer, true);
+      canvasRootRef.addEventListener('gotpointercapture', traceDomPointer, true);
+      canvasRootRef.addEventListener('lostpointercapture', traceDomPointer, true);
+    }
     canvasRootRef.addEventListener('pointerdown', beginSpacePan, true);
     canvasRootRef.addEventListener('pointermove', moveSpacePan, true);
     canvasRootRef.addEventListener('pointerup', endSpacePan, true);
@@ -329,6 +596,14 @@ export function Canvas(props: CanvasPageProps) {
     document.removeEventListener('keydown', handleKeyboardShortcut, true);
     document.removeEventListener('keyup', handleKeyboardRelease, true);
     window.removeEventListener('blur', handleWindowBlur);
+    if (trace !== null) {
+      canvasRootRef.removeEventListener('pointerdown', traceDomPointer, true);
+      canvasRootRef.removeEventListener('pointermove', traceDomPointer, true);
+      canvasRootRef.removeEventListener('pointerup', traceDomPointer, true);
+      canvasRootRef.removeEventListener('pointercancel', traceDomPointer, true);
+      canvasRootRef.removeEventListener('gotpointercapture', traceDomPointer, true);
+      canvasRootRef.removeEventListener('lostpointercapture', traceDomPointer, true);
+    }
     canvasRootRef.removeEventListener('pointerdown', beginSpacePan, true);
     canvasRootRef.removeEventListener('pointermove', moveSpacePan, true);
     canvasRootRef.removeEventListener('pointerup', endSpacePan, true);
@@ -343,6 +618,7 @@ export function Canvas(props: CanvasPageProps) {
     unsubscribeScene = null;
     activeRuntime = null;
     void lifecycle.dispose();
+    trace?.dispose();
   });
 
   const state = () => {
@@ -443,6 +719,15 @@ export function Canvas(props: CanvasPageProps) {
         onToggleSidebar={props.store.onToggleSidebar}
         onUndo={() => editor()?.history?.undo()}
         onRedo={() => editor()?.history?.redo()}
+        trace={trace}
+        onTraceCopied={() => props.notification.showSuccess(
+          'Developer trace copied',
+          'Paste it directly into a coding-agent chat.',
+        )}
+        onTraceError={(error) => props.notification.showError(
+          'Developer trace export failed',
+          error instanceof Error ? error.message : String(error),
+        )}
       />
       <Show when={fnCanShowSelectionStyleMenu(selectedNodes())}>
         <SelectionStyleMenu

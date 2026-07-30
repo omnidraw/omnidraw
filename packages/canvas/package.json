@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./CONSTANTS": "./src/CONSTANTS.ts",
+    "./debug-trace": "./src/debug-trace/index.ts",
     "./extension": "./src/extension.ts",
     "./fn.browser-tenant-scope": "./src/fn.browser-tenant-scope.ts",
     "./runtime": "./src/runtime.ts",

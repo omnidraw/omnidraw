@@ -73,6 +73,37 @@ export type TCanvasDocumentServiceOptions = Readonly<{
   createCommandId(): string;
   image?: TCanvasImagePort;
   onError?(error: unknown): void;
+  observe?(observation: TCanvasDocumentObservation): void;
+}>;
+
+export type TCanvasDocumentObservation = Readonly<{
+  phase:
+    | 'local-request'
+    | 'local-request-rejected'
+    | 'durable-plan-prepared'
+    | 'projection-applied'
+    | 'pending-queued'
+    | 'command-dispatched'
+    | 'acknowledgement-accepted'
+    | 'acknowledgement-rejected'
+    | 'remote-event-accepted'
+    | 'pending-retired'
+    | 'pending-invalidated'
+    | 'recovery-scheduled'
+    | 'recovery-started'
+    | 'recovery-completed'
+    | 'recovery-failed'
+    | 'reload-started'
+    | 'reload-completed'
+    | 'reload-failed';
+  priority: 'critical' | 'high' | 'normal' | 'low';
+  transactionId?: string;
+  commandId?: string;
+  nodeIds?: readonly string[];
+  acceptedRevision: number;
+  projectedSceneRevision: number;
+  pendingCount: number;
+  data?: Readonly<Record<string, string | number | boolean | null | readonly string[]>>;
 }>;
 
 type THistoryEntry = Readonly<{
@@ -350,6 +381,7 @@ export class CanvasDocumentService
   readonly #createCommandId: () => string;
   readonly #image: TCanvasImagePort | null;
   readonly #onError: (error: unknown) => void;
+  readonly #observeDocument: ((observation: TCanvasDocumentObservation) => void) | null;
   readonly #acceptedItems = new Map<string, TCanvasItemSnapshot>();
   readonly #pendingByTransactionId = new Map<string, TPendingTransaction>();
   readonly #pendingByCommandId = new Map<string, TPendingTransaction>();
@@ -386,6 +418,7 @@ export class CanvasDocumentService
     this.#createCommandId = options.createCommandId;
     this.#image = options.image ?? null;
     this.#onError = options.onError ?? (() => undefined);
+    this.#observeDocument = options.observe ?? null;
     this.#history = new CanvasDocumentHistory(
       (entry, direction) => {
         this.#performHistory(entry, direction);
@@ -654,6 +687,38 @@ export class CanvasDocumentService
     request: TEditorSceneMutationRequest,
     options: TCommitOptions,
   ): TCommitResult {
+    this.#observe({
+      phase: 'local-request',
+      priority: 'critical',
+      transactionId: request.transactionId,
+      nodeIds: request.affectedNodeIds,
+      data: {
+        source: request.source,
+        commandCount: request.commands.length,
+        basisSceneRevision: request.basisSceneRevision,
+      },
+    });
+    try {
+      return this.#performCommitMutation(request, options);
+    } catch (error) {
+      this.#observe({
+        phase: 'local-request-rejected',
+        priority: 'critical',
+        transactionId: request.transactionId,
+        nodeIds: request.affectedNodeIds,
+        data: {
+          errorName: error instanceof Error ? error.name : 'Error',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
+  }
+
+  #performCommitMutation(
+    request: TEditorSceneMutationRequest,
+    options: TCommitOptions,
+  ): TCommitResult {
     this.#assertReadyForCommit();
     assertIdentifier(request.transactionId, 'editor transaction ID');
     assertIdentifier(request.source, 'editor mutation source');
@@ -691,6 +756,17 @@ export class CanvasDocumentService
       if (plan.operations.length === 0) {
         throw new RangeError('Editor transaction has no durable canvas operation.');
       }
+      this.#observe({
+        phase: 'durable-plan-prepared',
+        priority: 'critical',
+        transactionId: request.transactionId,
+        nodeIds: reduction.affectedNodeIds,
+        data: {
+          operationCount: plan.operations.length,
+          preconditionCount: plan.preconditions.length,
+          operationTypes: plan.operations.map((operation) => operation.type),
+        },
+      });
       const historyEntry: THistoryEntry = {
         before: new Map(reduction.before),
         after: new Map(reduction.after),
@@ -728,7 +804,16 @@ export class CanvasDocumentService
       }
 
       this.#optimisticNodes = reduction.nodes;
-      if (pending !== null) this.#installPending(pending);
+      if (pending !== null) {
+        this.#installPending(pending);
+        this.#observe({
+          phase: 'pending-queued',
+          priority: 'critical',
+          transactionId: pending.transactionId,
+          commandId: pending.commandId,
+          nodeIds: pending.affectedNodeIds,
+        });
+      }
       try {
         this.#engine!.scene.apply([...request.commands], {
           source: request.source,
@@ -752,6 +837,17 @@ export class CanvasDocumentService
         );
       }
       this.#projectionRevision = expectedRevision;
+      this.#observe({
+        phase: 'projection-applied',
+        priority: 'critical',
+        transactionId: request.transactionId,
+        ...(pending === null ? {} : { commandId: pending.commandId }),
+        nodeIds: reduction.affectedNodeIds,
+        data: {
+          source: request.source,
+          successorRevision: expectedRevision,
+        },
+      });
       for (const [nodeId, node] of reduction.after) {
         if (node === null) previousNodes.delete(nodeId);
         else previousNodes.set(nodeId, node);
@@ -932,6 +1028,13 @@ export class CanvasDocumentService
       this.#pendingByCommandId.delete(pending.commandId);
     }
     pending.mediaGate?.release();
+    this.#observe({
+      phase: 'pending-retired',
+      priority: 'critical',
+      transactionId: pending.transactionId,
+      commandId: pending.commandId,
+      nodeIds: pending.affectedNodeIds,
+    });
   }
 
   #enqueuePending(pending: TPendingTransaction): void {
@@ -950,6 +1053,17 @@ export class CanvasDocumentService
       this.#inFlightTransactions.add(pending);
       try {
         const command = this.#commandForPending(pending);
+        this.#observe({
+          phase: 'command-dispatched',
+          priority: 'critical',
+          transactionId: pending.transactionId,
+          commandId: pending.commandId,
+          nodeIds: pending.affectedNodeIds,
+          data: {
+            baseRevision: command.baseRevision,
+            operationCount: command.operations.length,
+          },
+        });
         const event = await this.#transport.execute(command);
         if (this.#disposed) {
           this.#inFlightTransactions.delete(pending);
@@ -964,6 +1078,18 @@ export class CanvasDocumentService
           try {
             this.#acceptEvent(event, pending);
           } catch (error) {
+            this.#observe({
+              phase: 'acknowledgement-rejected',
+              priority: 'critical',
+              transactionId: pending.transactionId,
+              commandId: pending.commandId,
+              nodeIds: pending.affectedNodeIds,
+              data: {
+                errorMessage: error instanceof Error
+                  ? error.message
+                  : String(error),
+              },
+            });
             this.#scheduleRecovery(error);
             await (this.#recoveryTask ?? Promise.resolve());
           }
@@ -971,6 +1097,16 @@ export class CanvasDocumentService
         this.#inFlightTransactions.delete(pending);
         this.#releaseOrphanLocalImages(true);
       } catch (error) {
+        this.#observe({
+          phase: 'acknowledgement-rejected',
+          priority: 'critical',
+          transactionId: pending.transactionId,
+          commandId: pending.commandId,
+          nodeIds: pending.affectedNodeIds,
+          data: {
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+        });
         if (this.#disposed) {
           this.#inFlightTransactions.delete(pending);
           await this.#deletePendingOwnedMedia(pending);
@@ -1142,8 +1278,22 @@ export class CanvasDocumentService
     for (const item of event.changedItems) this.#acceptedItems.set(item.id, item);
     for (const itemId of event.deletedItemIds) this.#acceptedItems.delete(itemId);
     this.#acceptedRevision = event.revision;
-    if (pending !== null) this.#retirePending(pending);
     this.#acceptedCommandIds.add(event.commandId);
+    this.#observe({
+      phase: pending === null
+        ? 'remote-event-accepted'
+        : 'acknowledgement-accepted',
+      priority: 'critical',
+      ...(pending === null ? {} : { transactionId: pending.transactionId }),
+      commandId: event.commandId,
+      nodeIds: [...changedIds],
+      data: {
+        revision: event.revision,
+        changedCount: event.changedItems.length,
+        deletedCount: event.deletedItemIds.length,
+      },
+    });
+    if (pending !== null) this.#retirePending(pending);
 
     const protectedIds = this.#pendingAffectedIds();
     const nextNodes = new Map(this.#optimisticNodes);
@@ -1464,6 +1614,15 @@ export class CanvasDocumentService
   #scheduleRecovery(cause?: unknown): void {
     if (cause !== undefined) this.#reportError(cause);
     if (this.#recoveryPending || this.#disposed) return;
+    this.#observe({
+      phase: 'recovery-scheduled',
+      priority: 'critical',
+      data: {
+        errorMessage: cause instanceof Error
+          ? cause.message
+          : cause === undefined ? '' : String(cause),
+      },
+    });
     this.#recoveryPending = true;
     this.#outboxGeneration += 1;
     this.#invalidatePending();
@@ -1477,12 +1636,21 @@ export class CanvasDocumentService
 
   async #reloadUntilRecovered(): Promise<void> {
     while (!this.#disposed && this.#recoveryPending) {
+      this.#observe({ phase: 'recovery-started', priority: 'critical' });
       try {
         await this.#reload(true);
         this.#recoveryPending = false;
+        this.#observe({ phase: 'recovery-completed', priority: 'critical' });
         return;
       } catch (error) {
         if (this.#disposed) return;
+        this.#observe({
+          phase: 'recovery-failed',
+          priority: 'critical',
+          data: {
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+        });
         this.#reportError(error);
         await new Promise<void>((resolve) => setTimeout(resolve, 250));
       }
@@ -1490,6 +1658,7 @@ export class CanvasDocumentService
   }
 
   #invalidatePending(): void {
+    const invalidated = [...this.#pendingByTransactionId.values()];
     for (const pending of this.#pendingByTransactionId.values()) {
       pending.mediaGate?.release();
     }
@@ -1497,6 +1666,15 @@ export class CanvasDocumentService
     this.#pendingByCommandId.clear();
     this.#activeImports.clear();
     this.#history.clear();
+    for (const pending of invalidated) {
+      this.#observe({
+        phase: 'pending-invalidated',
+        priority: 'critical',
+        transactionId: pending.transactionId,
+        commandId: pending.commandId,
+        nodeIds: pending.affectedNodeIds,
+      });
+    }
   }
 
   async #reload(clearHistory: boolean): Promise<void> {
@@ -1504,6 +1682,11 @@ export class CanvasDocumentService
       throw new RangeError('Canvas reconciliation is already in progress.');
     }
     this.#reloading = true;
+    this.#observe({
+      phase: 'reload-started',
+      priority: 'high',
+      data: { clearHistory },
+    });
     try {
       const snapshot = await this.#transport.getSnapshot({ canvasId: this.#canvasId });
       if (this.#disposed) return;
@@ -1565,6 +1748,24 @@ export class CanvasDocumentService
       }
       if (clearHistory) this.#history.clear();
       this.#releaseOrphanLocalImages(true);
+      this.#observe({
+        phase: 'reload-completed',
+        priority: 'high',
+        data: {
+          clearHistory,
+          itemCount: this.#acceptedItems.size,
+        },
+      });
+    } catch (error) {
+      this.#observe({
+        phase: 'reload-failed',
+        priority: 'critical',
+        data: {
+          clearHistory,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
     } finally {
       this.#reloading = false;
     }
@@ -1854,6 +2055,27 @@ export class CanvasDocumentService
       this.#onError(error);
     } catch {
       // Error observers are isolated from document state transitions.
+    }
+  }
+
+  #observe(
+    observation: Omit<
+      TCanvasDocumentObservation,
+      | 'acceptedRevision'
+      | 'projectedSceneRevision'
+      | 'pendingCount'
+    >,
+  ): void {
+    if (this.#observeDocument === null) return;
+    try {
+      this.#observeDocument(Object.freeze({
+        ...observation,
+        acceptedRevision: this.#acceptedRevision,
+        projectedSceneRevision: this.#projectionRevision,
+        pendingCount: this.#pendingByTransactionId.size,
+      }));
+    } catch {
+      // Diagnostics are isolated from all document behavior.
     }
   }
 

@@ -10,6 +10,11 @@ const runtimeState = vi.hoisted(() => ({
   engine: null as unknown,
   engineConfig: null as unknown,
   events: [] as string[],
+  inputListener: null as ((event: unknown) => void) | null,
+  transformListener: null as ((event: unknown) => void) | null,
+  hoverListener: null as ((event: unknown) => void) | null,
+  widgetListener: null as ((event: unknown) => void) | null,
+  widgetActivationListener: null as ((event: unknown) => void) | null,
   segmentModes: [] as string[],
   selectedNode: null as unknown,
   selectedNodeIds: [] as string[],
@@ -57,6 +62,20 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       editor,
       widgets: {
         state: { contentNodeId: null },
+        subscribe(listener: (event: unknown) => void) {
+          runtimeState.widgetListener = listener;
+          return () => {
+            runtimeState.events.push('trace:widget:release');
+            runtimeState.widgetListener = null;
+          };
+        },
+        subscribeActivation(listener: (event: unknown) => void) {
+          runtimeState.widgetActivationListener = listener;
+          return () => {
+            runtimeState.events.push('trace:widget-activation:release');
+            runtimeState.widgetActivationListener = null;
+          };
+        },
       },
       paths: {
         setSegmentMode(mode: string) {
@@ -115,6 +134,11 @@ describe('canvas runtime composition', () => {
     runtimeState.dropConfig = null;
     runtimeState.engineConfig = null;
     runtimeState.events.length = 0;
+    runtimeState.inputListener = null;
+    runtimeState.transformListener = null;
+    runtimeState.hoverListener = null;
+    runtimeState.widgetListener = null;
+    runtimeState.widgetActivationListener = null;
     runtimeState.segmentModes.length = 0;
     runtimeState.selectedNode = null;
     runtimeState.selectedNodeIds.length = 0;
@@ -123,6 +147,37 @@ describe('canvas runtime composition', () => {
       scene: {
         get() {
           return runtimeState.selectedNode;
+        },
+        get revision() {
+          return 1;
+        },
+        subscribe() {
+          return () => runtimeState.events.push('trace:scene:release');
+        },
+      },
+      input: {
+        subscribe(listener: (event: unknown) => void) {
+          runtimeState.inputListener = listener;
+          return () => {
+            runtimeState.events.push('trace:input:release');
+            runtimeState.inputListener = null;
+          };
+        },
+      },
+      transforms: {
+        subscribe(listener: (event: unknown) => void) {
+          runtimeState.transformListener = listener;
+          return () => {
+            runtimeState.events.push('trace:transform:release');
+            runtimeState.transformListener = null;
+          };
+        },
+        subscribeHover(listener: (event: unknown) => void) {
+          runtimeState.hoverListener = listener;
+          return () => {
+            runtimeState.events.push('trace:hover:release');
+            runtimeState.hoverListener = null;
+          };
         },
       },
       resize() {
@@ -244,6 +299,177 @@ describe('canvas runtime composition', () => {
       'engine:destroy',
     ]);
     expect(container.childNodes).toHaveLength(0);
+  });
+
+  test('installs normalized input before recording and releases active trace subscriptions', async () => {
+    const { createReproductionTrace } = await import(
+      '../src/debug-trace/createReproductionTrace'
+    );
+    let elapsed = 0;
+    const trace = createReproductionTrace({
+      environment: () => ({
+        applicationVersion: 'test',
+        buildMode: 'test',
+        canvasId: 'canvas-a',
+        cangineVersion: '0.2.6',
+        browser: 'test',
+        platform: 'test',
+        viewport: { width: 1_000, height: 800 },
+        devicePixelRatio: 1,
+      }),
+      monotonicNow: () => elapsed,
+      wallClockNow: () => new Date(0),
+      defer: (callback) => queueMicrotask(callback),
+      schedule: () => () => {},
+      writeClipboard: async () => {},
+      createObjectUrl: () => 'blob:test',
+      revokeObjectUrl: () => {},
+      download: () => {},
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      tenant: {
+        accountId: 'account-a',
+        cellId: 'cell-a',
+        deploymentOrigin: 'https://example.test',
+        orgId: 'org-a',
+        placementEpoch: 1,
+      },
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      onToggleSidebar: () => undefined,
+      themeService: {} as never,
+      image: {
+        uploadImage: vi.fn(),
+        cloneImage: vi.fn(),
+        deleteImage: vi.fn(),
+      },
+      trace,
+    });
+    await runtime.boot();
+
+    expect(runtimeState.inputListener).not.toBeNull();
+    expect(runtimeState.transformListener).not.toBeNull();
+    trace.start();
+    expect(runtimeState.transformListener).not.toBeNull();
+    expect(runtimeState.widgetListener).not.toBeNull();
+    elapsed = 5;
+    const idlePointerMove = {
+      type: 'pointer-move' as const,
+      pointerId: 1,
+      pointerType: 'mouse' as const,
+      buttons: 0,
+      button: -1,
+      pressure: 0,
+      tilt: { x: 0, y: 0 },
+      client: { x: 8, y: 18 },
+      viewport: { x: 8, y: 18 },
+      world: { x: 8, y: 18 },
+      deltaViewport: { x: 1, y: 1 },
+      deltaWorld: { x: 1, y: 1 },
+      hit: null,
+      modifiers: {
+        alt: false,
+        control: false,
+        meta: false,
+        shift: false,
+      },
+      timeStamp: 0,
+    };
+    runtimeState.inputListener?.(idlePointerMove);
+    runtimeState.inputListener?.(idlePointerMove);
+    runtimeState.hoverListener?.({
+      pointerId: 1,
+      pointerType: 'mouse',
+      handle: 'move',
+      cursor: 'default',
+    });
+    expect(trace.state().retainedEvents).toBe(0);
+    runtimeState.inputListener?.({
+      type: 'pointer-down',
+      pointerId: 1,
+      pointerType: 'mouse',
+      buttons: 1,
+      button: 0,
+      pressure: 0.5,
+      tilt: { x: 0, y: 0 },
+      client: { x: 10, y: 20 },
+      viewport: { x: 10, y: 20 },
+      world: { x: 10, y: 20 },
+      deltaViewport: { x: 0, y: 0 },
+      deltaWorld: { x: 0, y: 0 },
+      hit: null,
+      modifiers: {
+        alt: false,
+        control: false,
+        meta: false,
+        shift: false,
+      },
+      timeStamp: 1,
+    });
+    runtimeState.inputListener?.({
+      ...idlePointerMove,
+      buttons: 1,
+      client: { x: 12, y: 22 },
+      viewport: { x: 12, y: 22 },
+      world: { x: 12, y: 22 },
+      timeStamp: 1.5,
+    });
+    runtimeState.inputListener?.({
+      type: 'key-down',
+      key: 's',
+      code: 'KeyS',
+      repeat: false,
+      composing: false,
+      modifiers: {
+        alt: false,
+        control: false,
+        meta: false,
+        shift: false,
+      },
+      timeStamp: 2,
+    });
+    expect(trace.state().retainedEvents).toBe(3);
+    runtimeState.inputListener?.({
+      ...idlePointerMove,
+      type: 'pointer-up',
+      button: 0,
+      timeStamp: 2.5,
+    });
+    for (let index = 0; index < 19; index += 1) {
+      runtimeState.inputListener?.({
+        ...idlePointerMove,
+        client: { x: 20 + index, y: 30 },
+        viewport: { x: 20 + index, y: 30 },
+        world: { x: 20 + index, y: 30 },
+        timeStamp: 3 + index,
+      });
+    }
+    expect(trace.state().retainedEvents).toBe(4);
+    runtimeState.inputListener?.({
+      ...idlePointerMove,
+      client: { x: 30, y: 30 },
+      viewport: { x: 30, y: 30 },
+      world: { x: 30, y: 30 },
+      timeStamp: 12,
+    });
+    expect(trace.state().retainedEvents).toBe(4);
+
+    trace.stop();
+    expect(trace.artifacts()?.copy.text).toContain('"key":"[printable]"');
+    expect(trace.artifacts()?.copy.text).not.toContain('"code":"KeyS"');
+    expect(runtimeState.transformListener).not.toBeNull();
+    expect(runtimeState.widgetListener).toBeNull();
+    await runtime.shutdown();
+    expect(runtimeState.inputListener).toBeNull();
+    expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'trace:transform:release',
+      'trace:widget:release',
+      'trace:input:release',
+    ]));
   });
 
   test('continues core teardown when an extension disposer throws', async () => {

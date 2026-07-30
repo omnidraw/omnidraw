@@ -910,6 +910,21 @@ export function createAiChatCanvasExtension(
         const extension = fnCanvasWidgetExtension(node);
         const portalId = node.portal?.portalId;
         if (extension === null || portalId === undefined) return null;
+        context.trace?.emit({
+          channel: 'widget-host',
+          type: 'portal-reconcile',
+          priority: 'normal',
+          correlation: {
+            canvasId: context.config.canvasId,
+            nodeId: node.id,
+            widgetId: node.id,
+          },
+          data: {
+            portalId,
+            widgetType: extension.type,
+            widgetKind: extension.type === 'ui-widget' ? extension.kind : null,
+          },
+        });
         let geometry: TPortalGeometry | null = null;
         let visible = true;
         let portalHost: HTMLElement | null = null;
@@ -924,26 +939,59 @@ export function createAiChatCanvasExtension(
         const unregister = context.engine.portals.register({
           portalId,
           mount({ host }) {
+            const reportUnmount = () => context.trace?.emit({
+              channel: 'widget-host',
+              type: 'portal-unmounted',
+              priority: 'high',
+              correlation: {
+                canvasId: context.config.canvasId,
+                nodeId: node.id,
+                widgetId: node.id,
+              },
+              data: { portalId },
+            });
+            context.trace?.emit({
+              channel: 'widget-host',
+              type: 'portal-mounted',
+              priority: 'high',
+              correlation: {
+                canvasId: context.config.canvasId,
+                nodeId: node.id,
+                widgetId: node.id,
+              },
+              data: { portalId },
+            });
             const current = widgetFrame(context.engine.scene.get(node.id));
             if (current === null) return undefined;
             const currentExtension = fnCanvasWidgetExtension(current);
             if (currentExtension?.type === 'ui-widget') {
               if (currentExtension.kind === 'ai') {
-                return mountAiWidget(host, current);
+                const unmount = mountAiWidget(host, current);
+                return () => {
+                  reportUnmount();
+                  unmount();
+                };
               }
               if (currentExtension.kind !== 'preview') {
                 host.textContent = `Unsupported widget kind: ${currentExtension.kind}`;
-                return () => host.replaceChildren();
+                return () => {
+                  reportUnmount();
+                  host.replaceChildren();
+                };
               }
               const previewRuntime = mountPreviewWidget(host, current);
               if (previewRuntime === null) {
-                return () => host.replaceChildren();
+                return () => {
+                  reportUnmount();
+                  host.replaceChildren();
+                };
               }
               portalHost = host;
               owner = previewRuntime;
               updateViewport();
               void previewRuntime.refresh();
               return async () => {
+                reportUnmount();
                 const mounted = previewRuntimes.get(node.id);
                 if (mounted === previewRuntime) {
                   previewRuntimes.delete(node.id);
@@ -970,6 +1018,7 @@ export function createAiChatCanvasExtension(
               }),
             });
             return async () => {
+              reportUnmount();
               const mounted = owner;
               owner = null;
               if (portalHost === host) portalHost = null;
@@ -1007,6 +1056,13 @@ export function createAiChatCanvasExtension(
         );
         for (const [portalId, registration] of registrations) {
           if (expected.has(portalId)) continue;
+          context.trace?.emit({
+            channel: 'widget-host',
+            type: 'portal-unregistered',
+            priority: 'high',
+            correlation: { canvasId: context.config.canvasId },
+            data: { portalId },
+          });
           registration.unregister();
           registrations.delete(portalId);
         }
@@ -1017,7 +1073,20 @@ export function createAiChatCanvasExtension(
           existing?.unregister();
           const next = registerPortal(node);
           if (next === null) registrations.delete(portalId);
-          else registrations.set(portalId, next);
+          else {
+            registrations.set(portalId, next);
+            context.trace?.emit({
+              channel: 'widget-host',
+              type: 'portal-registered',
+              priority: 'high',
+              correlation: {
+                canvasId: context.config.canvasId,
+                nodeId: node.id,
+                widgetId: node.id,
+              },
+              data: { portalId },
+            });
+          }
         }
         const nextPreviewOwnerSnapshot = new Map<string, TPreviewWidgetPayload>();
         for (const node of expected.values()) {
@@ -1493,6 +1562,17 @@ export function createAiChatCanvasExtension(
         document: args.widgetBrowser.document,
         transients: context.engine.transients,
         async commit(placementArgs) {
+          context.trace?.emit({
+            channel: 'widget-host',
+            type: 'placement-commit',
+            priority: 'critical',
+            correlation: { canvasId: context.config.canvasId },
+            data: {
+              source: placementArgs.reference.source,
+              position: placementArgs.position,
+              bounds: placementArgs.bounds,
+            },
+          });
           if (placementArgs.reference.source === 'draft') {
             await addPreviewWidget(
               placementArgs.reference,
@@ -1525,6 +1605,16 @@ export function createAiChatCanvasExtension(
       });
       const unsubscribeActivation = context.widgets.subscribeActivation(
         (activation) => {
+          context.trace?.emit({
+            channel: 'widget-host',
+            type: 'host-control-activated',
+            priority: 'critical',
+            correlation: {
+              canvasId: context.config.canvasId,
+              widgetId: activation.widgetId,
+            },
+            data: activation,
+          });
           if (activation.type === 'header-button') {
             actionHandlers.get(activation.widgetId)?.get(activation.itemId)?.();
             return;

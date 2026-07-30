@@ -23,6 +23,7 @@ import {
 import { describe, expect, test, vi } from 'vitest';
 import {
   CanvasDocumentService,
+  type TCanvasDocumentObservation,
   type TCanvasDocumentTransport,
 } from '../../src/services/CanvasDocumentService';
 
@@ -357,6 +358,65 @@ function mutation(
 }
 
 describe('CanvasDocumentService', () => {
+  test('reports bounded lifecycle facts and isolates a throwing observer', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const observations: TCanvasDocumentObservation[] = [];
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      observe: (observation) => {
+        observations.push(observation);
+        if (observation.phase === 'durable-plan-prepared') {
+          throw new Error('diagnostic observer failed');
+        }
+      },
+    });
+    await service.start(fake.engine);
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ))).not.toThrow();
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(observations.map((observation) => observation.phase)).toEqual(
+      expect.arrayContaining([
+        'reload-started',
+        'reload-completed',
+        'local-request',
+        'durable-plan-prepared',
+        'pending-queued',
+        'projection-applied',
+        'command-dispatched',
+        'acknowledgement-accepted',
+        'pending-retired',
+      ]),
+    );
+    const plan = observations.find(
+      (observation) => observation.phase === 'durable-plan-prepared',
+    );
+    expect(plan).toMatchObject({
+      transactionId: 'transaction-a',
+      nodeIds: ['rect-a'],
+      data: {
+        operationCount: 1,
+        operationTypes: ['patch'],
+      },
+    });
+    expect(JSON.stringify(observations)).not.toContain('"size"');
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+    await service.dispose();
+  });
+
   test('updates the local document and scene before awaiting one server command', async () => {
     const before = rect();
     const after = rect('rect-a', 25);

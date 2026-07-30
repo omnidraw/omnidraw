@@ -1,6 +1,10 @@
 import type { ThemeService } from '@vibecanvas/service-theme';
 import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 import type { TCanvasDocumentTransport } from './services/CanvasDocumentService';
+import type {
+  TReproductionTraceDiagnostics,
+  TReproductionTraceOwner,
+} from './debug-trace/typed';
 
 export type TImageUploadFormat =
   | 'image/jpeg'
@@ -33,4 +37,7 @@ export type TCanvasRuntimeConfig = Readonly<{
   themeService: ThemeService;
   image: TCanvasImagePort;
   notification?: TCanvasNotificationPort;
+  trace?: TReproductionTraceOwner | null;
 }>;
+
+export type TCanvasDiagnostics = TReproductionTraceDiagnostics;

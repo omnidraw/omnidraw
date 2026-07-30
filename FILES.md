@@ -389,6 +389,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/Canvas.css](packages/canvas/src/components/Canvas.css) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasRuntimeLifecycle.ts](packages/canvas/src/components/CanvasRuntimeLifecycle.ts) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/DeveloperTraceControl.tsx](packages/canvas/src/components/FloatingCanvasToolbar/DeveloperTraceControl.tsx) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) |  |
@@ -402,6 +403,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/styles.css](packages/canvas/src/components/SelectionStyleMenu/styles.css) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts) |  |
 | [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
+| [packages/canvas/src/debug-trace/CONSTANTS.ts](packages/canvas/src/debug-trace/CONSTANTS.ts) |  |
+| [packages/canvas/src/debug-trace/createReproductionTrace.ts](packages/canvas/src/debug-trace/createReproductionTrace.ts) |  |
+| [packages/canvas/src/debug-trace/createTracedCanvasDocumentTransport.ts](packages/canvas/src/debug-trace/createTracedCanvasDocumentTransport.ts) |  |
+| [packages/canvas/src/debug-trace/fn.reproduction-trace-diagnostics.ts](packages/canvas/src/debug-trace/fn.reproduction-trace-diagnostics.ts) |  |
+| [packages/canvas/src/debug-trace/fn.reproduction-trace.ts](packages/canvas/src/debug-trace/fn.reproduction-trace.ts) |  |
+| [packages/canvas/src/debug-trace/index.ts](packages/canvas/src/debug-trace/index.ts) |  |
+| [packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts](packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts) |  |
+| [packages/canvas/src/debug-trace/typed.ts](packages/canvas/src/debug-trace/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
 | [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
@@ -969,6 +978,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
+| [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded local-reduction plus trace capture cost independently of total canvas size. |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |

@@ -15,6 +15,10 @@ import Type from 'lucide-solid/icons/type';
 import Undo2 from 'lucide-solid/icons/undo-2';
 import { For, Show, createSignal } from 'solid-js';
 import { ToolButton } from './ToolButton';
+import { DeveloperTraceControl } from './DeveloperTraceControl';
+import type {
+  TReproductionTraceOwner,
+} from '../../debug-trace/typed';
 import type {
   TCanvasToolDefinition,
   TCanvasToolId,
@@ -46,6 +50,9 @@ type TFloatingCanvasToolbarProps = Readonly<{
   onToggleGrid(): void;
   onToggleSidebar(): void;
   onUndo(): void;
+  trace?: TReproductionTraceOwner | null;
+  onTraceCopied?(): void;
+  onTraceError?(error: unknown): void;
 }>;
 
 export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
@@ -128,6 +135,15 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
             >
               <span class="vc-toolbar-button__icon"><Redo2 size={14} /></span>
             </button>
+            <Show when={props.trace}>
+              {(trace) => (
+                <DeveloperTraceControl
+                  trace={trace()}
+                  onCopied={() => props.onTraceCopied?.()}
+                  onError={(error) => props.onTraceError?.(error)}
+                />
+              )}
+            </Show>
           </div>
         </Show>
         <button
