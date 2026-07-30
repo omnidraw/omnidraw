@@ -10,5 +10,4 @@ export type {
   TWidgetCapsuleParkability,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetCapsuleSchemaReference,
-  TWidgetCapsuleTarget,
 } from '../types';

@@ -1036,7 +1036,7 @@ export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
     version: 4,
   }),
   Object.freeze({
-    fingerprintSha256: '2118e4c6dd67004b2b4de23bc479c70ad2138db7f2a30cb1571ab87ef2098a59',
+    fingerprintSha256: '856f0c0103ba63d340b5437420336e62cb67c5a112be54a6efe05d9d873fb26e',
     indexes: EXPECTED_AGENT_AUTHORING_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,

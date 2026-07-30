@@ -8,7 +8,6 @@ import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
-  fnCanonicalizeLegacyWidgetContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
@@ -226,9 +225,7 @@ async function publish(
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
-        ? uiRuntime.apiContract
-        : (() => { throw new Error('native runtime expected'); })(),
+      apiContract: uiRuntime.apiContract,
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -485,7 +482,7 @@ describe('WidgetControlStoreTurso', () => {
       capability_contract_digest_sha256: secondRevision.capabilityContractDigestSha256,
       channel_contract_digest_sha256: secondRevision.channelContractDigestSha256,
       build_policy_id: secondRevision.buildPolicyId,
-      contract_format_version: 3,
+      contract_format_version: 4,
     });
     expect(await (await service.db.prepare(`
       SELECT id, export_name, effect, definition_revision, artifact_digest_sha256,
@@ -1021,113 +1018,6 @@ describe('WidgetControlStoreTurso', () => {
     expect(await store.getRevisionSource(TENANT_A, revisionId)).toMatchObject({ revisionId });
   });
 
-  test('reads immutable Capsule 0.9.4 publications through the legacy verifier only', async () => {
-    const revisionId = uuid(1_646);
-    const published = committed(await publish(store, TENANT_A, {
-      revisionId,
-      nowMs: 20,
-    }));
-    const source = await store.getRevisionSource(TENANT_A, revisionId);
-    if (source === null) throw new Error('Expected the retained publication source.');
-
-    const legacyManifest = {
-      schemaVersion: 3,
-      name: published.manifest.name,
-      slug: published.manifest.slug,
-      ui: {
-        runtime: 'capsule',
-        entry: published.manifest.ui.entry,
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
-        },
-      },
-    };
-    const canonicalManifestJson = JSON.stringify(legacyManifest);
-    const legacyBudgets = {
-      cpuMs: 750,
-      memoryBytes: 32 * 1024 * 1024,
-      domNodes: 10_000,
-      handles: 22_000,
-      messageBytes: 64 * 1024,
-      streamBytes: 256 * 1024,
-      assetBytes: 4 * 1024 * 1024,
-      networkBytes: 0,
-      gpuBytes: 0,
-      lifecycleBytes: 256 * 1024,
-    };
-    const legacyRuntime = {
-      format: 'vibecanvas.capsule-runtime.v1' as const,
-      capsuleArtifactHash: published.uiRuntime.capsuleArtifactHash,
-      target: legacyManifest.ui.target,
-      budgets: legacyBudgets,
-      capabilityRequests: published.uiRuntime.capabilityRequests,
-      channels: published.uiRuntime.channels,
-      parkability: { parkable: false as const },
-      signatureKeyIds: published.uiRuntime.signatureKeyIds,
-    };
-    const legacyBuildIdentity = {
-      ...published.capsuleBuildIdentity,
-      packageVersion: '0.9.4',
-    };
-    const legacyBuildPolicyId = 'vibecanvas-capsule-widget-v1';
-    const legacyContractDigest = createHash('sha256')
-      .update(fnCanonicalizeLegacyWidgetContractPayload({
-        canonicalManifestJson,
-        uiDigestSha256: published.uiArtifact.digestSha256,
-        capsuleArtifactHash: legacyRuntime.capsuleArtifactHash,
-        target: legacyRuntime.target,
-        budgets: legacyRuntime.budgets,
-        capabilityContractDigestSha256:
-          published.capabilityContractDigestSha256,
-        channelContractDigestSha256: published.channelContractDigestSha256,
-        signatureKeyIds: legacyRuntime.signatureKeyIds,
-        serverDigestSha256: null,
-        serverRuntimeAbi: null,
-        functionDescriptorsDigestSha256:
-          published.functionDescriptorsDigestSha256,
-        sourceDigestSha256: source.sourceDigestSha256,
-        builderIdentity: source.builderIdentity,
-        capsuleBuildIdentity: legacyBuildIdentity,
-        buildPolicyId: legacyBuildPolicyId,
-      }))
-      .digest('hex');
-
-    await (await service.db.prepare(`
-      UPDATE widget_definition_revisions
-      SET manifest_json = ?, ui_runtime_json = ?,
-        capsule_build_identity_json = ?, build_policy_id = ?,
-        contract_digest_sha256 = ?
-      WHERE org_id = ? AND id = ?
-    `)).run(
-      canonicalManifestJson,
-      JSON.stringify(legacyRuntime),
-      JSON.stringify(legacyBuildIdentity),
-      legacyBuildPolicyId,
-      legacyContractDigest,
-      TENANT_A.orgId,
-      revisionId,
-    );
-
-    await expect(store.getRevision(TENANT_A, revisionId)).resolves.toMatchObject({
-      id: revisionId,
-      manifest: {
-        ui: {
-          apis: ['DOM'],
-        },
-      },
-      uiRuntime: {
-        format: 'vibecanvas.capsule-runtime.v1',
-        target: legacyRuntime.target,
-      },
-      contractDigestSha256: legacyContractDigest,
-      capsuleBuildIdentity: {
-        packageVersion: '0.9.4',
-      },
-    });
-  });
-
   test('rejects mismatched publication contracts and fails closed on stored revision tampering', async () => {
     const rejectedDefinition = uuid(444);
     await expect(publish(store, TENANT_A, {
@@ -1144,6 +1034,20 @@ describe('WidgetControlStoreTurso', () => {
       revisionId,
       nowMs: 20,
     }));
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET contract_format_version = 3
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, revisionId);
+    await expect(store.getRevision(TENANT_A, revisionId)).rejects.toMatchObject({
+      code: 'WIDGET_REVISION_INTEGRITY_FAILED',
+    });
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET contract_format_version = 4
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, revisionId);
+
     await (await service.db.prepare(`
       UPDATE widget_definition_revisions
       SET manifest_json = ?
@@ -1193,9 +1097,7 @@ describe('WidgetControlStoreTurso', () => {
       JSON.stringify({
         ...published.uiRuntime,
         apiContract: {
-          ...(published.uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
-            ? published.uiRuntime.apiContract
-            : CAPSULE_API_CONTRACT),
+          ...published.uiRuntime.apiContract,
           groups: ['DOM', 'CANVAS_2D'],
         },
       }),

@@ -12,13 +12,12 @@ export {
 } from './function-descriptor-schema';
 export {
   ZWidgetCapsuleBudgetRequest,
-  ZWidgetCapsuleBudgets,
+  ZWidgetCapsuleAllowedApis,
   ZWidgetCapsuleApis,
   ZWidgetCapsuleCapabilityRequest,
   ZWidgetCapsuleChannelContract,
   ZWidgetCapsuleParkability,
   ZWidgetCapsuleSchemaReference,
-  ZWidgetCapsuleTarget,
   ZWidgetManifestV3,
 } from './manifest-schema';
 export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
@@ -44,14 +43,7 @@ export {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
 } from './CONSTANTS';
-export {
-  fnCanonicalizeLegacyWidgetContractPayload,
-  fnCanonicalizeWidgetContractPayload,
-} from './core/fn.contract';
-export {
-  fnMigrateWidgetManifestDraft,
-  type TWidgetManifestDraftMigration,
-} from './core/fn.manifest-migration';
+export { fnCanonicalizeWidgetContractPayload } from './core/fn.contract';
 export {
   fnCanonicalizeWidgetConstructionContractPayload,
 } from './core/fn.construction-contract';
@@ -99,13 +91,11 @@ export {
   fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
   fnNormalizeWidgetCapsuleBudgetRequest,
-  fnNormalizeWidgetCapsuleBudgets,
   fnNormalizeWidgetCapsuleApiContract,
   fnNormalizeWidgetCapsuleApis,
   fnNormalizeWidgetCapsuleCapabilityRequests,
   fnNormalizeWidgetCapsuleChannelContract,
   fnNormalizeWidgetCapsuleRuntimeDescriptor,
-  fnNormalizeWidgetCapsuleTarget,
 } from './core/fn.capsule';
 export {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,

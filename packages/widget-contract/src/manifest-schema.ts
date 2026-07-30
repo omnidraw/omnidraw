@@ -8,6 +8,7 @@ import {
   fnNormalizeWidgetManifest,
   fnNormalizeWidgetRelativePath,
 } from './core/fn.manifest';
+import { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
 import type {
   TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleBudgets,
@@ -17,7 +18,6 @@ import type {
   TWidgetCapsuleHash,
   TWidgetCapsuleParkability,
   TWidgetCapsuleSchemaReference,
-  TWidgetCapsuleTarget,
   TWidgetManifestV3,
 } from './types';
 
@@ -32,18 +32,6 @@ const CAPSULE_OPERATION_PATTERN = /^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/;
 const CAPSULE_VERSION_RANGE_PATTERN =
   /^(?:\*|[\^~]?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
 const BUILD_ENTRY_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
-const CAPSULE_API_GROUPS = [
-  'DOM',
-  'NETWORK',
-  'FILES',
-  'CLIPBOARD',
-  'DIALOGS',
-  'CANVAS_2D',
-  'WEBGL',
-  'WEBGPU',
-  'AUDIO',
-  'VIDEO',
-] as const satisfies readonly TWidgetCapsuleApiGroup[];
 const CAPSULE_RENDERING_API_GROUPS = new Set<TWidgetCapsuleApiGroup>([
   'CANVAS_2D',
   'WEBGL',
@@ -64,38 +52,18 @@ const ZWidgetBuildEntryPath = ZWidgetRelativePath.refine(
   'Widget build entries must use a JavaScript or TypeScript extension',
 );
 
-const ZCapsuleTargetId = z.string().min(1).max(100).regex(TARGET_ID_PATTERN);
 const ZCapsuleHash = z.string().regex(CAPSULE_HASH_PATTERN)
   .transform((value): TWidgetCapsuleHash => value as TWidgetCapsuleHash);
 const ZCapsuleIntegerBudget = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
-export const ZWidgetCapsuleTarget: z.ZodType<TWidgetCapsuleTarget> = z.object({
-  runtimeAbi: ZCapsuleTargetId,
-  domProfile: ZCapsuleTargetId,
-  featureProfiles: z.array(ZCapsuleTargetId).max(64).superRefine((profiles, context) => {
-    const seen = new Set<string>();
-    profiles.forEach((profile, index) => {
-      if (seen.has(profile)) {
-        context.addIssue({
-          code: 'custom',
-          message: `Duplicate Capsule feature profile: ${profile}`,
-          path: [index],
-        });
-      }
-      seen.add(profile);
-    });
-  }),
-}).strict().transform((target) => ({
-  runtimeAbi: target.runtimeAbi,
-  domProfile: target.domProfile,
-  featureProfiles: [...target.featureProfiles].sort(),
-}));
+export const ZWidgetCapsuleApiGroup = z.enum(WIDGET_CAPSULE_API_GROUPS);
 
-export const ZWidgetCapsuleApis: z.ZodType<readonly TWidgetCapsuleApiGroup[]> =
-  z.array(z.enum(CAPSULE_API_GROUPS)).min(1).max(CAPSULE_API_GROUPS.length)
+export const ZWidgetCapsuleAllowedApis: z.ZodType<
+  readonly TWidgetCapsuleApiGroup[]
+> =
+  z.array(ZWidgetCapsuleApiGroup).min(1).max(WIDGET_CAPSULE_API_GROUPS.length)
     .superRefine((apis, context) => {
       const seen = new Set<TWidgetCapsuleApiGroup>();
-      let renderingGroups = 0;
       apis.forEach((api, index) => {
         if (seen.has(api)) {
           context.addIssue({
@@ -105,7 +73,6 @@ export const ZWidgetCapsuleApis: z.ZodType<readonly TWidgetCapsuleApiGroup[]> =
           });
         }
         seen.add(api);
-        if (CAPSULE_RENDERING_API_GROUPS.has(api)) renderingGroups += 1;
       });
       if (!seen.has('DOM')) {
         context.addIssue({
@@ -113,15 +80,20 @@ export const ZWidgetCapsuleApis: z.ZodType<readonly TWidgetCapsuleApiGroup[]> =
           message: 'Capsule API groups must explicitly include DOM',
         });
       }
-      if (renderingGroups > 1) {
-        context.addIssue({
-          code: 'custom',
-          message: 'CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive',
-        });
-      }
     }).transform((apis) => (
-      CAPSULE_API_GROUPS.filter((api) => apis.includes(api))
+      WIDGET_CAPSULE_API_GROUPS.filter((api) => apis.includes(api))
     ));
+
+export const ZWidgetCapsuleApis = ZWidgetCapsuleAllowedApis.superRefine(
+  (apis, context) => {
+    if (apis.filter((api) => CAPSULE_RENDERING_API_GROUPS.has(api)).length > 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive',
+      });
+    }
+  },
+);
 
 const ZWidgetCapsuleBudgetsShape = z.object({
   cpuMs: z.number().finite().min(0),

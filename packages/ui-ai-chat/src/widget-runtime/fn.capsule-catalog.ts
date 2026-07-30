@@ -11,7 +11,6 @@ import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleMountCatalog,
 } from './interface';
-import { fnWidgetCapsuleRuntimeApis } from './fn.capsule-runtime-apis';
 
 export type TResolvedWidgetCapsuleCapability = Readonly<{
   request: TWidgetCapsuleCapabilityRequest;
@@ -122,7 +121,7 @@ export function fnAssertWidgetCapsuleRuntimeCompatible(
   descriptor: TWidgetCapsuleRuntimeDescriptor,
   mode: 'preview' | 'published',
 ): void {
-  if (!apisAllowed(catalog, fnWidgetCapsuleRuntimeApis(descriptor))) {
+  if (!apisAllowed(catalog, descriptor.apiContract.groups)) {
     throw new Error('Widget Capsule API request is outside the shared host catalog.');
   }
   const dimensions = Object.keys(catalog.limits) as Array<

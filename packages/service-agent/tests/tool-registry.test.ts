@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ZWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
@@ -87,7 +88,7 @@ describe('AI Chat tool registry', () => {
     expect(bashRuns).toHaveLength(1);
   });
 
-  test('persists the one-time editable draft migration to public Capsule APIs', async () => {
+  test('does not rewrite unsupported private-target draft source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-capsule-api-groups-migration-'));
     roots.push(root);
     const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
@@ -125,8 +126,8 @@ describe('AI Chat tool registry', () => {
       join(created.mount.targetPath, 'vibecanvas.json'),
       'utf8',
     ));
-    expect(manifest.ui).toMatchObject({ apis: ['DOM', 'WEBGL'] });
-    expect(manifest.ui).not.toHaveProperty('target');
+    expect(manifest.ui).toHaveProperty('target');
+    expect(ZWidgetManifestV3.safeParse(manifest).success).toBe(false);
     const first = await workspace.getDraft('Migrated WebGL');
     const second = await workspace.getDraft('Migrated WebGL');
     expect(first?.revision).toMatch(/^[0-9a-f]{64}$/);

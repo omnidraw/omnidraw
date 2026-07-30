@@ -10,13 +10,11 @@ import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
-  fnCanonicalizeLegacyWidgetContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetPreviewPublicationIdentity,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
-  fnMigrateWidgetManifestDraft,
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetPreviewBindingPlanDigest,
   fnWidgetPreviewPublicationFingerprint,
@@ -638,7 +636,7 @@ export class WidgetControlStoreTurso implements
           contract_format_version
         ) VALUES (
           ?, ?, ?, ?, ?, 'ui', ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, 3
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, 4
         )
       `)).run(
         tenant.orgId,
@@ -1306,8 +1304,8 @@ export class WidgetControlStoreTurso implements
       const revision = fnWidgetControlStoreRevision(row);
       const storedRow = row as Record<string, unknown>;
       const contractFormatVersion = Number(storedRow.contract_format_version);
-      if (contractFormatVersion !== 3) {
-        throw new Error('Stored widget contract format is not Capsule v3.');
+      if (contractFormatVersion !== 4) {
+        throw new Error('Stored widget contract format is not Capsule v4.');
       }
 
       const parsedRuntime = ZWidgetCapsuleRuntimeDescriptor.safeParse(revision.uiRuntime);
@@ -1317,21 +1315,10 @@ export class WidgetControlStoreTurso implements
       ) {
         throw new Error('Stored Capsule runtime descriptor is invalid.');
       }
-      const legacyManifestMigration =
-        parsedRuntime.data.format === 'vibecanvas.capsule-runtime.v1'
-          ? fnMigrateWidgetManifestDraft(revision.manifest)
-          : null;
-      if (legacyManifestMigration !== null && !legacyManifestMigration.migrated) {
-        throw new Error('Legacy Capsule runtime requires an immutable exact-target manifest.');
-      }
-      const manifestCandidate = legacyManifestMigration?.value ?? revision.manifest;
-      const parsedManifest = ZWidgetManifestV3.safeParse(manifestCandidate);
+      const parsedManifest = ZWidgetManifestV3.safeParse(revision.manifest);
       if (!parsedManifest.success) throw new Error('Stored widget manifest is invalid.');
 
-      const canonicalManifestJson =
-        parsedRuntime.data.format === 'vibecanvas.capsule-runtime.v1'
-          ? JSON.stringify(revision.manifest)
-          : fnCanonicalizeWidgetManifest(parsedManifest.data);
+      const canonicalManifestJson = fnCanonicalizeWidgetManifest(parsedManifest.data);
       if (canonicalManifestJson !== revision.canonicalManifestJson) {
         throw new Error('Stored widget manifest is not canonical.');
       }
@@ -1350,11 +1337,8 @@ export class WidgetControlStoreTurso implements
       if (
         canonicalRuntimeJson !== String(storedRow.ui_runtime_json)
         || parsedRuntime.data.capsuleArtifactHash !== String(storedRow.capsule_artifact_hash)
-        || (
-          parsedRuntime.data.format === 'vibecanvas.capsule-runtime.v2'
-          && JSON.stringify(parsedRuntime.data.apiContract.groups)
-            !== JSON.stringify(parsedManifest.data.ui.apis)
-        )
+        || JSON.stringify(parsedRuntime.data.apiContract.groups)
+          !== JSON.stringify(parsedManifest.data.ui.apis)
       ) {
         throw new Error('Stored Capsule runtime descriptor is not canonical.');
       }
@@ -1445,10 +1429,12 @@ export class WidgetControlStoreTurso implements
       if (!descriptorValidation.valid) {
         throw new Error('Stored function descriptors exceed their manifest ceiling.');
       }
-      const contractPayload = {
+      const expectedContractDigest = this.#contractDigest({
         canonicalManifestJson,
         uiDigestSha256: validatedRevision.uiArtifact.digestSha256,
         capsuleArtifactHash: parsedRuntime.data.capsuleArtifactHash,
+        apiContract: parsedRuntime.data.apiContract,
+        budgets: parsedRuntime.data.budgets,
         capabilityContractDigestSha256: capabilityContractDigest,
         channelContractDigestSha256: channelContractDigest,
         signatureKeyIds: parsedRuntime.data.signatureKeyIds,
@@ -1459,19 +1445,7 @@ export class WidgetControlStoreTurso implements
         builderIdentity: storedRow.stored_builder_identity,
         capsuleBuildIdentity: capsuleBuildIdentity.identity,
         buildPolicyId: validatedRevision.buildPolicyId,
-      };
-      const expectedContractDigest =
-        parsedRuntime.data.format === 'vibecanvas.capsule-runtime.v2'
-          ? this.#contractDigest({
-            ...contractPayload,
-            apiContract: parsedRuntime.data.apiContract,
-            budgets: parsedRuntime.data.budgets,
-          })
-          : this.#digest(fnCanonicalizeLegacyWidgetContractPayload({
-            ...contractPayload,
-            target: parsedRuntime.data.target,
-            budgets: parsedRuntime.data.budgets,
-          }));
+      });
       await this.#assertStoredFunctionDefinitions(
         validatedRevision,
         parsedDescriptors.data,
@@ -1550,7 +1524,6 @@ export class WidgetControlStoreTurso implements
     const parsed = ZWidgetCapsuleRuntimeDescriptor.safeParse(request.revision.uiRuntime);
     if (
       !parsed.success
-      || parsed.data.format !== 'vibecanvas.capsule-runtime.v2'
       || parsed.data.signatureKeyIds.length === 0
     ) {
       throw widgetStoreError(

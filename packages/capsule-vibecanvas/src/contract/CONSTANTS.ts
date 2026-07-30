@@ -1,4 +1,5 @@
 import {
+  CAPSULE_API_GROUP_BUDGET_DIMENSIONS,
   CAPSULE_API_GROUP_BUNDLE_DIGEST,
   CAPSULE_API_GROUP_CONTRACT_FORMAT,
   CAPSULE_API_GROUPS,
@@ -11,10 +12,10 @@ export const VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID = 'vibecanvas-release-v1'
 export const VIBECANVAS_CAPSULE_TESTED_THREE_VERSION = '0.185.1';
 
 /** Product API admission ceiling; each host receives one valid artifact subset. */
-export const VIBECANVAS_CAPSULE_ALLOWED_APIS = Object.freeze([
-  ...CAPSULE_API_GROUPS,
-]);
+export const VIBECANVAS_CAPSULE_ALLOWED_APIS = CAPSULE_API_GROUPS;
 export const VIBECANVAS_CAPSULE_AUTHORING_APIS = Object.freeze(['DOM'] as const);
+export const VIBECANVAS_CAPSULE_BUDGET_DIMENSIONS =
+  CAPSULE_API_GROUP_BUDGET_DIMENSIONS;
 
 /** Product-owned overrides only; omitted dimensions use Capsule group policy. */
 export const VIBECANVAS_CAPSULE_LIMITS = Object.freeze({

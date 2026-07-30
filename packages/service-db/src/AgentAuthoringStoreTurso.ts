@@ -2063,9 +2063,6 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         throw new Error('function descriptors differ');
       }
       const uiRuntime = ZWidgetCapsuleRuntimeDescriptor.parse(revision.uiRuntime);
-      if (uiRuntime.format !== 'vibecanvas.capsule-runtime.v2') {
-        throw new Error('legacy preview constructions cannot be promoted');
-      }
       const uiRuntimeJson = fnCanonicalizeWidgetCapsuleRuntimeDescriptor(uiRuntime);
       if (
         uiRuntime.capsuleArtifactHash

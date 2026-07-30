@@ -320,12 +320,6 @@ implements
         'A retained Preview construction artifact failed integrity verification.',
       );
     }
-    if (revision.uiRuntime.format !== 'vibecanvas.capsule-runtime.v2') {
-      throw previewError(
-        'WIDGET_PREVIEW_ARTIFACT_INVALID',
-        'Legacy Capsule artifacts cannot be reused as native Preview constructions.',
-      );
-    }
     const { signatureKeyIds: _signatureKeyIds, ...unsignedRuntime } = revision.uiRuntime;
     return Object.freeze({
       sourceSnapshotId: revision.sourceSnapshotId,
@@ -424,12 +418,6 @@ implements
     const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse(
       build.uiArtifact.runtimeDescriptor,
     );
-    if (runtimeDescriptor.format !== 'vibecanvas.capsule-runtime.v2') {
-      throw previewError(
-        'WIDGET_BUILD_INTEGRITY_FAILED',
-        'New Preview builds require a native Capsule API-group artifact.',
-      );
-    }
     const normalizedBuild = Object.freeze({
       ...build,
       functionDescriptors: parsedDescriptors.data,
@@ -560,12 +548,6 @@ implements
       throw previewError(
         'WIDGET_PREVIEW_ARTIFACT_INVALID',
         'The retained Preview UI artifact failed integrity verification.',
-      );
-    }
-    if (revision.uiRuntime.format !== 'vibecanvas.capsule-runtime.v2') {
-      throw previewError(
-        'WIDGET_PREVIEW_ARTIFACT_INVALID',
-        'Legacy Capsule artifacts cannot be promoted as native Preview builds.',
       );
     }
     return Object.freeze({

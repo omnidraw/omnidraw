@@ -138,6 +138,10 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 async function expectRejected<T>(operation: Promise<T>): Promise<unknown> {
   try {
     const value = await operation;
@@ -178,9 +182,7 @@ async function importVerificationKey(publicKeyBase64: string): Promise<CryptoKey
 }
 
 function artifact(
-  value:
-    | (typeof fixture.artifacts)[keyof typeof fixture.artifacts]
-    | typeof fixture.legacy.artifact,
+  value: (typeof fixture.artifacts)[keyof typeof fixture.artifacts],
 ): TBrowserArtifact {
   const bytes = decodeBase64(value.bytesBase64);
   return Object.freeze({
@@ -600,15 +602,14 @@ async function rejectedScenario(
 
 publish('running');
 
-const [previewKey, releaseKey, wrongKey, legacyKey] = await Promise.all([
+const [previewKey, releaseKey, wrongKey] = await Promise.all([
   importVerificationKey(fixture.publicKeys.preview.publicKeyBase64),
   importVerificationKey(fixture.publicKeys.release.publicKeyBase64),
   importVerificationKey(fixture.publicKeys.wrong.publicKeyBase64),
-  importVerificationKey(fixture.legacy.publicKey.publicKeyBase64),
 ]);
 
 await check('verification keys are non-extractable and verify-only', () => {
-  for (const key of [previewKey, releaseKey, wrongKey, legacyKey]) {
+  for (const key of [previewKey, releaseKey, wrongKey]) {
     assert(key.extractable === false, 'A verification key is extractable.');
     assert(key.type === 'public', 'A verification key is not public.');
     assert(key.usages.length === 1 && key.usages[0] === 'verify', 'Key usage widened.');
@@ -633,7 +634,6 @@ const threeClockArtifact = artifact(fixture.artifacts.threeClock);
 const threeMissingAuthorityArtifact = artifact(fixture.artifacts.threeMissingAuthority);
 const reactArtifact = artifact(fixture.artifacts.react);
 const publishedArtifact = artifact(fixture.artifacts.published);
-const legacyArtifact = artifact(fixture.legacy.artifact);
 const publishedFunctionDescriptors =
   fixture.artifacts.published.functionDescriptors as TFunctionDescriptors;
 
@@ -647,12 +647,11 @@ function artifactApis(value: TBrowserArtifact): readonly string[] {
 
 await check('generated artifacts bind signed public API contracts', () => {
   assert(
-    JSON.stringify(artifactApis(svgArtifact)) === JSON.stringify(['DOM']),
+    sameJson(artifactApis(svgArtifact), ['DOM']),
     'SVG artifact requested unexpected authority.',
   );
   assert(
-    JSON.stringify(artifactApis(canvasArtifact))
-      === JSON.stringify(['DOM', 'CANVAS_2D']),
+    sameJson(artifactApis(canvasArtifact), ['DOM', 'CANVAS_2D']),
     'Canvas artifact lacks CANVAS_2D.',
   );
   for (const value of [
@@ -666,7 +665,7 @@ await check('generated artifacts bind signed public API contracts', () => {
       'Three.js fixture is not native Capsule 0.10.',
     );
     assert(
-      JSON.stringify(artifactApis(value)) === JSON.stringify(['DOM', 'WEBGL']),
+      sameJson(artifactApis(value), ['DOM', 'WEBGL']),
       'Three.js artifact lacks WEBGL.',
     );
     assert(Object.keys(value.runtimeDescriptor.budgets).length === 0,
@@ -682,8 +681,7 @@ await check('generated artifacts bind signed public API contracts', () => {
     'Preview and release signing did not reuse one Three.js construction.',
   );
   assert(
-    JSON.stringify(artifactApis(threeMissingAuthorityArtifact))
-      === JSON.stringify(['DOM']),
+    sameJson(artifactApis(threeMissingAuthorityArtifact), ['DOM']),
     'Negative Three.js artifact unexpectedly received ambient GPU authority.',
   );
   assert(
@@ -691,15 +689,15 @@ await check('generated artifacts bind signed public API contracts', () => {
     'Three.js acceptance version drifted from product authoring guidance.',
   );
   assert(
-    JSON.stringify(artifactApis(plainArtifact)) === JSON.stringify(['DOM']),
+    sameJson(artifactApis(plainArtifact), ['DOM']),
     'Plain DOM artifact received ambient feature authority.',
   );
   assert(
-    JSON.stringify(artifactApis(reactArtifact)) === JSON.stringify(['DOM']),
+    sameJson(artifactApis(reactArtifact), ['DOM']),
     'React artifact received unexpected authority.',
   );
   assert(
-    JSON.stringify(artifactApis(publishedArtifact)) === JSON.stringify(['DOM']),
+    sameJson(artifactApis(publishedArtifact), ['DOM']),
     'Published artifact received ambient feature authority.',
   );
   assert(
@@ -713,54 +711,10 @@ await check('generated artifacts bind signed public API contracts', () => {
       === 'vibecanvas-function-v1',
     'Published artifact lacks its exact server runtime identity.',
   );
-  assert(
-    legacyArtifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v1'
-      && fixture.legacy.capsulePackageVersion === '0.9.4',
-    'Frozen legacy acceptance artifact is not an immutable Capsule 0.9.4 artifact.',
-  );
 });
 
 const positive = createMountPort(catalog);
 const handles = new Map<string, TWidgetUiRuntimeHandle>();
-
-await check('frozen Capsule 0.9.4 artifact mounts only through the legacy adapter', async () => {
-  const legacyCatalog: TWidgetCapsuleHostCatalog = Object.freeze({
-    ...catalog,
-    generation: 'capsule-browser-acceptance-legacy-v1',
-    previewSigningKeyId: fixture.legacy.publicKey.keyId,
-    releaseSigningKeyId: fixture.legacy.publicKey.keyId,
-    trustedSigningKeys: new Map([[fixture.legacy.publicKey.keyId, legacyKey]]),
-  });
-  const runtime = createMountPort(legacyCatalog);
-  const handle = await mount(
-    runtime.port,
-    'legacy',
-    legacyArtifact,
-    {},
-    {
-      mode: 'published',
-      browserFunctionDescriptorsDigestSha256:
-        plainArtifact.browserFunctionDescriptorsDigestSha256,
-    },
-  );
-  const diagnostics = handle.diagnostics();
-  assert(
-    diagnostics.apiContract.format === 'legacy-exact-target-0.9.4'
-      && diagnostics.apiContract.legacy === true,
-    'Retained Capsule 0.9.4 artifact did not use the legacy adapter.',
-  );
-  assert(
-    JSON.stringify(diagnostics.apiContract.requestedApis)
-      === JSON.stringify(['DOM'])
-      && JSON.stringify(diagnostics.apiContract.effectiveApis)
-        === JSON.stringify(['DOM']),
-    'Legacy adapter reported unexpected public API authority.',
-  );
-  await handle.destroy('legacy-acceptance-complete');
-  await runtime.port.destroy('legacy-acceptance-complete');
-  assert(runtime.coordinator.diagnostics().hosts.length === 0,
-    'Legacy adapter retained its host after destroy.');
-});
 
 await check('plain DOM guest mounts and reads initial props/theme', async () => {
   const handle = await mount(positive.port, 'plain', plainArtifact, { count: 1 });
@@ -801,10 +755,8 @@ await check('Three.js r185 renders through WEBGL group defaults', async () => {
   assert(
     diagnostics.apiContract.format === 'capsule-api-groups-v1'
       && diagnostics.apiContract.legacy === false
-      && JSON.stringify(diagnostics.apiContract.requestedApis)
-        === JSON.stringify(['DOM', 'WEBGL'])
-      && JSON.stringify(diagnostics.apiContract.effectiveApis)
-        === JSON.stringify(['DOM', 'WEBGL']),
+      && sameJson(diagnostics.apiContract.requestedApis, ['DOM', 'WEBGL'])
+      && sameJson(diagnostics.apiContract.effectiveApis, ['DOM', 'WEBGL']),
     'Three.js diagnostics do not preserve requested/effective public APIs.',
   );
   document.documentElement.dataset.capsuleThreeReady = 'true';
@@ -863,8 +815,7 @@ await check('release-signed published guest receives exact function and collabor
     assert(authority !== undefined, `Capability "${request.id}" was not granted.`);
     assert(authority.contractHash === request.contractHash, 'Capability contract hash widened.');
     assert(
-      JSON.stringify([...authority.operations].sort())
-        === JSON.stringify([...request.operations].sort()),
+      sameJson([...authority.operations].sort(), [...request.operations].sort()),
       'Capability operation grant does not exactly match the signed request.',
     );
   }
@@ -963,9 +914,7 @@ await check('mismatched API metadata is rejected by the signed Capsule boundary'
     runtimeDescriptor: Object.freeze({
       ...plainArtifact.runtimeDescriptor,
       apiContract: Object.freeze({
-        ...(plainArtifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
-          ? plainArtifact.runtimeDescriptor.apiContract
-          : {}),
+        ...plainArtifact.runtimeDescriptor.apiContract,
         format: 'capsule-api-groups-v1' as const,
         groups: Object.freeze(['DOM' as const, 'CANVAS_2D' as const]),
         bundleDigest: `sha256:${'0'.repeat(64)}` as const,

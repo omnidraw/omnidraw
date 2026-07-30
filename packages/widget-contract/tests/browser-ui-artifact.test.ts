@@ -17,7 +17,6 @@ describe('browser Capsule runtime descriptor', () => {
     });
 
     expect(parsed.format).toBe('vibecanvas.capsule-runtime.v2');
-    if (parsed.format !== 'vibecanvas.capsule-runtime.v2') throw new Error('native runtime');
     expect(parsed.apiContract.groups).toEqual(['DOM', 'WEBGL']);
     expect(parsed.signatureKeyIds).toEqual([
       'vibecanvas-preview-v1',

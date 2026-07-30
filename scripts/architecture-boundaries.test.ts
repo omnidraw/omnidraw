@@ -687,11 +687,7 @@ describe('managed composition architecture boundaries', () => {
     expect(rootPackage.workspaces).toContain('scripts/fixtures/external-composition')
   })
 
-  test('keeps Capsule private profile names behind explicit legacy compatibility boundaries', async () => {
-    const compatibilityBoundaries = new Set([
-      'packages/ui-ai-chat/src/widget-runtime/fn.capsule-runtime-apis.ts',
-      'packages/widget-contract/src/core/fn.manifest-migration.ts',
-    ])
+  test('keeps Capsule private profile names out of production source', async () => {
     const privateProfileNames = [
       'artifact-resources-v1',
       'artifact-resources-v2',
@@ -710,8 +706,7 @@ describe('managed composition architecture boundaries', () => {
       for (const file of await sourceFiles(join(ROOT, root))) {
         const path = relative(ROOT, file).split(sep).join('/')
         if (
-          compatibilityBoundaries.has(path)
-          || path.includes('/tests/')
+          path.includes('/tests/')
           || path.endsWith('.test.ts')
           || path.endsWith('.test.tsx')
         ) continue

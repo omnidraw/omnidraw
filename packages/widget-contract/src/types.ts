@@ -9,6 +9,7 @@ import type {
   TResourceRequirement,
 } from '@vibecanvas/resource-runtime';
 import type { TOrganizationId } from '@vibecanvas/tenant-core';
+import type { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
 import type { TWidgetDiagnostic } from './diagnostic-schema';
 
 export type TWidgetDefinitionId = string;
@@ -69,28 +70,12 @@ export type TWidgetCapsuleHash = `sha256:${string}`;
 
 /** Public Capsule API groups available to widget authors. */
 export type TWidgetCapsuleApiGroup =
-  | 'DOM'
-  | 'NETWORK'
-  | 'FILES'
-  | 'CLIPBOARD'
-  | 'DIALOGS'
-  | 'CANVAS_2D'
-  | 'WEBGL'
-  | 'WEBGPU'
-  | 'AUDIO'
-  | 'VIDEO';
+  (typeof WIDGET_CAPSULE_API_GROUPS)[number];
 
 export type TWidgetCapsuleApiContract = Readonly<{
   format: 'capsule-api-groups-v1';
   groups: readonly TWidgetCapsuleApiGroup[];
   bundleDigest: TWidgetCapsuleHash;
-}>;
-
-/** Private resolved target retained only for legacy artifact audit. */
-export type TWidgetCapsuleTarget = Readonly<{
-  runtimeAbi: string;
-  domProfile: string;
-  featureProfiles: readonly string[];
 }>;
 
 /** Complete Capsule resource ceiling. Zero is a valid explicit denial. */
@@ -318,7 +303,7 @@ export type TWidgetCapsuleBuildIdentity = Readonly<{
 }>;
 
 /** Trusted, serializable metadata inspected from exact signed Capsule bytes. */
-export type TWidgetNativeCapsuleRuntimeDescriptor = Readonly<{
+export type TWidgetCapsuleRuntimeDescriptor = Readonly<{
   format: 'vibecanvas.capsule-runtime.v2';
   capsuleArtifactHash: TWidgetCapsuleHash;
   apiContract: TWidgetCapsuleApiContract;
@@ -328,22 +313,7 @@ export type TWidgetNativeCapsuleRuntimeDescriptor = Readonly<{
   parkability: TWidgetCapsuleParkability;
   signatureKeyIds: readonly string[];
 }>;
-
-/** Immutable 0.9.4 metadata retained only for legacy published artifacts. */
-export type TWidgetLegacyCapsuleRuntimeDescriptor = Readonly<{
-  format: 'vibecanvas.capsule-runtime.v1';
-  capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
-  capabilityRequests: readonly TWidgetCapsuleCapabilityRequest[];
-  channels: TWidgetCapsuleChannelContract | null;
-  parkability: TWidgetCapsuleParkability;
-  signatureKeyIds: readonly string[];
-}>;
-
-export type TWidgetCapsuleRuntimeDescriptor =
-  | TWidgetNativeCapsuleRuntimeDescriptor
-  | TWidgetLegacyCapsuleRuntimeDescriptor;
+export type TWidgetNativeCapsuleRuntimeDescriptor = TWidgetCapsuleRuntimeDescriptor;
 
 export type TWidgetBuildRequest = Readonly<{
   snapshot: TWidgetSourceSnapshot;
@@ -537,13 +507,10 @@ export type TWidgetBuildResult = Readonly<{
   diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
-/** Persisted inputs whose canonical encoding binds a revision to its artifacts. */
-export type TWidgetContractPayloadInput = Readonly<{
+type TWidgetContractPayloadBase = Readonly<{
   canonicalManifestJson: string;
   uiDigestSha256: TWidgetArtifactDigest;
   capsuleArtifactHash: TWidgetCapsuleHash;
-  apiContract: TWidgetCapsuleApiContract;
-  budgets: TWidgetCapsuleBudgetRequest;
   capabilityContractDigestSha256: TWidgetArtifactDigest;
   channelContractDigestSha256: TWidgetArtifactDigest;
   signatureKeyIds: readonly string[];
@@ -556,23 +523,10 @@ export type TWidgetContractPayloadInput = Readonly<{
   buildPolicyId: string;
 }>;
 
-/** Frozen v3 digest input used only to verify immutable Capsule 0.9.4 revisions. */
-export type TWidgetLegacyContractPayloadInput = Readonly<{
-  canonicalManifestJson: string;
-  uiDigestSha256: TWidgetArtifactDigest;
-  capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
-  capabilityContractDigestSha256: TWidgetArtifactDigest;
-  channelContractDigestSha256: TWidgetArtifactDigest;
-  signatureKeyIds: readonly string[];
-  serverDigestSha256: TWidgetArtifactDigest | null;
-  serverRuntimeAbi: string | null;
-  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
-  sourceDigestSha256: TWidgetArtifactDigest;
-  builderIdentity: string;
-  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
-  buildPolicyId: string;
+/** Persisted inputs whose canonical encoding binds a revision to its artifacts. */
+export type TWidgetContractPayloadInput = TWidgetContractPayloadBase & Readonly<{
+  apiContract: TWidgetCapsuleApiContract;
+  budgets: TWidgetCapsuleBudgetRequest;
 }>;
 
 export type TWidgetServerFunctionDescriptorExtractionRequest = Readonly<{

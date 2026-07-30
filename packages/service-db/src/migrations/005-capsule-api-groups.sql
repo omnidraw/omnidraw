@@ -117,7 +117,8 @@ CREATE TABLE widget_definition_revisions (
     AND length(json_extract(distribution_provenance_json, '$.buildConfigurationDigest')) = 71
     AND substr(json_extract(distribution_provenance_json, '$.buildConfigurationDigest'), 1, 7) = 'sha256:'
   ),
-  contract_format_version INTEGER NOT NULL DEFAULT 3 CHECK (contract_format_version = 3),
+  contract_format_version INTEGER NOT NULL DEFAULT 4
+    CHECK (contract_format_version IN (3, 4)),
   PRIMARY KEY (org_id, id),
   UNIQUE (org_id, definition_id, id),
   UNIQUE (org_id, definition_id, revision_number),

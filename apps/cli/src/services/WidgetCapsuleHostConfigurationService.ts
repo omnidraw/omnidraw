@@ -33,22 +33,18 @@ implements IWidgetCapsuleHostConfigurationReader {
     const signingKeys = Object.freeze([
       ...await this.signingKeys.publicSigningKeys(),
     ].sort((left, right) => left.keyId.localeCompare(right.keyId)));
-    const allowedApis = Object.freeze([...VIBECANVAS_CAPSULE_ALLOWED_APIS]);
-    const limits = Object.freeze({ ...VIBECANVAS_CAPSULE_HOST_LIMITS });
-    const canonical = JSON.stringify({
-      allowedApis,
-      limits,
+    const policy = Object.freeze({
+      allowedApis: VIBECANVAS_CAPSULE_ALLOWED_APIS,
+      limits: VIBECANVAS_CAPSULE_HOST_LIMITS,
       previewSigningKeyId: WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID,
       releaseSigningKeyId: WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
       signingKeys,
     });
     return Object.freeze({
-      generation: createHash('sha256').update(canonical).digest('hex'),
-      allowedApis,
-      limits,
-      previewSigningKeyId: WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID,
-      releaseSigningKeyId: WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
-      signingKeys,
+      generation: createHash('sha256')
+        .update(JSON.stringify(policy))
+        .digest('hex'),
+      ...policy,
     });
   }
 }

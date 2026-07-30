@@ -52,6 +52,7 @@ import {
   WIDGET_CAPSULE_CAPABILITY_DIGEST,
   WIDGET_CAPSULE_CHANNEL_DIGEST,
   WIDGET_CAPSULE_RUNTIME_JSON,
+  WIDGET_CAPSULE_V1_RUNTIME_JSON,
   widgetManifestV3Json,
 } from '../widget-capsule-fixture';
 
@@ -67,31 +68,6 @@ const V3_IDEMPOTENCY_ID = '00000000-0000-4000-8000-000000000707';
 const V3_CHAT_ID = '00000000-0000-4000-8000-000000000708';
 const V3_DRAFT_ID = '00000000-0000-4000-8000-000000000709';
 const V3_DRAFT_SOURCE_DIGEST = '9'.repeat(64);
-const FROZEN_CAPSULE_094_RUNTIME_JSON = JSON.stringify({
-  format: 'vibecanvas.capsule-runtime.v1',
-  capsuleArtifactHash: WIDGET_CAPSULE_ARTIFACT_HASH,
-  target: {
-    runtimeAbi: 'quickjs-release-sync-v1',
-    domProfile: 'dom-core-v2',
-    featureProfiles: [],
-  },
-  budgets: {
-    cpuMs: 50,
-    memoryBytes: 8 * 1_024 * 1_024,
-    domNodes: 1_000,
-    handles: 1_000,
-    messageBytes: 1_024 * 1_024,
-    streamBytes: 1_024 * 1_024,
-    assetBytes: 4 * 1_024 * 1_024,
-    networkBytes: 0,
-    gpuBytes: 0,
-    lifecycleBytes: 64 * 1_024,
-  },
-  capabilityRequests: [],
-  channels: null,
-  parkability: { parkable: false },
-  signatureKeyIds: ['vibecanvas-release-v1'],
-});
 const FROZEN_CAPSULE_094_MANIFEST_JSON = JSON.stringify({
   schemaVersion: 3,
   name: 'V0 sequence',
@@ -299,7 +275,7 @@ async function seedVersionZeroRevision(db: Database): Promise<void> {
     V0_ARTIFACT_ID,
     FROZEN_CAPSULE_094_MANIFEST_JSON,
     'b'.repeat(64),
-    FROZEN_CAPSULE_094_RUNTIME_JSON,
+    WIDGET_CAPSULE_V1_RUNTIME_JSON,
     WIDGET_CAPSULE_ARTIFACT_HASH,
     WIDGET_CAPSULE_CAPABILITY_DIGEST,
     WIDGET_CAPSULE_CHANNEL_DIGEST,

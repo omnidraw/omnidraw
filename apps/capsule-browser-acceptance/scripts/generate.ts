@@ -52,12 +52,6 @@ const encoder = new TextEncoder();
 const outputDirectory = join(import.meta.dir, '..', 'generated');
 const tempRoot = join(import.meta.dir, '..', '.tmp');
 const repositoryRoot = join(import.meta.dir, '..', '..', '..');
-const frozenLegacyFixturePath = join(
-  import.meta.dir,
-  '..',
-  'fixtures',
-  'capsule-0.9.4.json',
-);
 const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widget.ts');
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
@@ -702,36 +696,6 @@ const [previewKey, releaseKey, wrongKey] = await Promise.all([
   generateKey(VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID),
   generateKey('capsule-browser-acceptance-wrong-key'),
 ]);
-const frozenLegacyFixture = JSON.parse(
-  await readFile(frozenLegacyFixturePath, 'utf8'),
-) as Readonly<{
-  format: string;
-  capsulePackageVersion: string;
-  publicKey: Readonly<{
-    keyId: string;
-    algorithm: string;
-    format: string;
-    publicKeyBase64: string;
-  }>;
-  artifact: Readonly<{
-    bytesBase64: string;
-    digestSha256: string;
-    capsuleArtifactHash: string;
-    runtimeDescriptor: Readonly<{ format: string }>;
-    retainedByteSize: number;
-    browserFunctionDescriptorsDigestSha256: string;
-  }>;
-}>;
-if (
-  frozenLegacyFixture.format !== 'vibecanvas.capsule-browser-legacy-fixture.v1'
-  || frozenLegacyFixture.capsulePackageVersion !== '0.9.4'
-  || frozenLegacyFixture.publicKey.algorithm !== 'Ed25519'
-  || frozenLegacyFixture.publicKey.format !== 'raw'
-  || frozenLegacyFixture.artifact.runtimeDescriptor.format
-    !== 'vibecanvas.capsule-runtime.v1'
-) {
-  throw new Error('Frozen Capsule 0.9.4 browser fixture is invalid.');
-}
 const keys = Object.freeze({
   preview: previewKey.signing,
   release: releaseKey.signing,
@@ -938,7 +902,6 @@ const fixture = Object.freeze({
     previewSigningKeyId: VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
     releaseSigningKeyId: VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
   }),
-  legacy: frozenLegacyFixture,
   artifacts,
   threeConstructionContractDigestSha256: threePair.constructionContractDigestSha256,
   testedThreeVersion: VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,

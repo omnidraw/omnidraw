@@ -157,7 +157,6 @@ export function fnValidateWidgetBuildIntegrity(
     args.build.uiArtifact.capsuleArtifactHash !== runtime.capsuleArtifactHash
     || args.build.uiArtifact.builderIdentity !== args.builderIdentity
     || !sameJson(args.build.uiArtifact.capsuleBuildIdentity, args.capsuleBuildIdentity)
-    || runtime.format !== 'vibecanvas.capsule-runtime.v2'
     || !sameJson(runtime.apiContract.groups, args.manifest.ui.apis)
     || !sameJson(
       runtime.apiContract,

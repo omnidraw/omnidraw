@@ -23,7 +23,6 @@ import {
   fnValidateWidgetCapsuleHostCatalog,
   fnValidateWidgetCapsuleMountCatalog,
 } from './fn.capsule-catalog';
-import { fnWidgetCapsuleRuntimeApis } from './fn.capsule-runtime-apis';
 import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
 import type {
   TWidgetCapsuleHostCatalog,
@@ -291,11 +290,8 @@ export class CapsuleWidgetHostCoordinator {
         throw new Error('Widget Capsule capability bindings do not match the signed request.');
       }
 
-      const state = await this.#ensureHost(
-        catalog,
-        fnWidgetCapsuleRuntimeApis(args.artifact.runtimeDescriptor),
-        args.mode,
-      );
+      const requestedApis = args.artifact.runtimeDescriptor.apiContract.groups;
+      const state = await this.#ensureHost(catalog, requestedApis, args.mode);
       const grants: readonly CapsuleCapabilityGrant[] = Object.freeze(
         resolved.map(({ grant }) => grant),
       );
@@ -318,23 +314,12 @@ export class CapsuleWidgetHostCoordinator {
           await rejectedHandle.destroy('artifact-hash-mismatch').catch(() => undefined);
           throw new Error('Mounted Capsule artifact hash does not match runtime metadata.');
         }
-        const expectedLegacy =
-          args.artifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v1';
-        const expectedApis = fnWidgetCapsuleRuntimeApis(
-          args.artifact.runtimeDescriptor,
-        );
         const apiContractMatches = (
-          diagnostics.apiContract.legacy === expectedLegacy
+          diagnostics.apiContract.legacy === false
           && canonicalJson(diagnostics.apiContract.requestedApis)
-            === canonicalJson(expectedApis)
-          && (
-            expectedLegacy
-            || (
-              args.artifact.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
-              && diagnostics.apiContract.bundleDigest
-                === args.artifact.runtimeDescriptor.apiContract.bundleDigest
-            )
-          )
+            === canonicalJson(requestedApis)
+          && diagnostics.apiContract.bundleDigest
+            === args.artifact.runtimeDescriptor.apiContract.bundleDigest
         );
         if (!apiContractMatches) {
           const rejectedHandle = rawHandle;

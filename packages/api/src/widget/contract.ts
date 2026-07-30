@@ -7,7 +7,7 @@ import type {
 } from '@vibecanvas/service-widget-state';
 import {
   ZWidgetBrowserFunctionDescriptors,
-  ZWidgetCapsuleApis,
+  ZWidgetCapsuleAllowedApis,
   ZWidgetCapsuleBudgetRequest,
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetManifestV3,
@@ -42,36 +42,7 @@ export const ZWidgetCapsuleHostConfiguration: z.ZodType<
   TWidgetCapsuleHostConfiguration
 > = z.object({
   generation: z.string().regex(/^[0-9a-f]{64}$/),
-  allowedApis: z.array(z.enum([
-    'DOM',
-    'NETWORK',
-    'FILES',
-    'CLIPBOARD',
-    'DIALOGS',
-    'CANVAS_2D',
-    'WEBGL',
-    'WEBGPU',
-    'AUDIO',
-    'VIDEO',
-  ])).min(1).max(10).superRefine((apis, context) => {
-    const seen = new Set<string>();
-    apis.forEach((api, index) => {
-      if (seen.has(api)) {
-        context.addIssue({
-          code: 'custom',
-          message: `Duplicate Capsule API group: ${api}`,
-          path: [index],
-        });
-      }
-      seen.add(api);
-    });
-    if (!seen.has('DOM')) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Capsule host policy must allow DOM',
-      });
-    }
-  }),
+  allowedApis: ZWidgetCapsuleAllowedApis,
   limits: ZWidgetCapsuleBudgetRequest,
   previewSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   releaseSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),

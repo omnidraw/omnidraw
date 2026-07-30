@@ -10,7 +10,6 @@ import {
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnGenerateWidgetServerFunctionClientModule,
-  fnMigrateWidgetManifestDraft,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '../src';
 import {
@@ -110,45 +109,9 @@ describe('widget manifest v3', () => {
     }).success).toBe(false);
   });
 
-  test('normalizes persisted editable targets only at the trusted migration boundary', () => {
-    const persisted = {
-      schemaVersion: 3,
-      name: 'Persisted WebGL draft',
-      slug: 'persisted-webgl-draft',
-      ui: {
-        runtime: 'capsule',
-        entry: 'ui/main.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [
-            'artifact-resources-v1',
-            'canvas-webgl-v1',
-            'shadow-browser-css-v1',
-          ],
-        },
-        budgets: { messageBytes: 131_072 },
-      },
-    };
-    expect(ZWidgetManifestV3.safeParse(persisted).success).toBe(false);
-
-    const migrated = fnMigrateWidgetManifestDraft(persisted);
-    expect(migrated).toMatchObject({
-      migrated: true,
-      value: {
-        ui: {
-          apis: ['DOM', 'WEBGL'],
-          budgets: { messageBytes: 131_072 },
-        },
-      },
-    });
-    expect((migrated.value as { ui: Record<string, unknown> }).ui)
-      .not.toHaveProperty('target');
-    expect(ZWidgetManifestV3.safeParse(migrated.value).success).toBe(true);
-  });
 });
 
-describe('Capsule widget contract v3', () => {
+describe('Capsule widget contract v4', () => {
   test('binds every runtime-authority identity independently', () => {
     const baseline = contract();
     const mutations = [

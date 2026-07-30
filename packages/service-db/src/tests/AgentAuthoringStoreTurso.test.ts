@@ -173,9 +173,7 @@ function previewRevision(args: Readonly<{
       canonicalManifestJson,
       unsignedUiDigestSha256: unsignedUiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
-        ? uiRuntime.apiContract
-        : (() => { throw new Error('native runtime expected'); })(),
+      apiContract: uiRuntime.apiContract,
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -193,9 +191,7 @@ function previewRevision(args: Readonly<{
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      apiContract: uiRuntime.format === 'vibecanvas.capsule-runtime.v2'
-        ? uiRuntime.apiContract
-        : (() => { throw new Error('native runtime expected'); })(),
+      apiContract: uiRuntime.apiContract,
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,

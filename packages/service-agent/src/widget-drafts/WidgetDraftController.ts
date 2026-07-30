@@ -12,7 +12,6 @@ import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnMigrateWidgetManifestDraft,
   fnNormalizeWidgetBuildError,
   fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
@@ -2199,9 +2198,7 @@ export class WidgetDraftController {
   ): Promise<{ ok: true; manifest: TWidgetManifestV3 } | { ok: false; message: string }> {
     try {
       const source = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
-      const parsed = ZWidgetManifestV3.safeParse(
-        fnMigrateWidgetManifestDraft(source).value,
-      );
+      const parsed = ZWidgetManifestV3.safeParse(source);
       if (!parsed.success) {
         return {
           ok: false,

@@ -1067,7 +1067,16 @@ describe('PreviewPortalRuntime', () => {
       onError: vi.fn(),
     });
 
-    await flushSwap(animation, runtime.refresh());
+    const refresh = runtime.refresh();
+    await vi.waitFor(() => expect(animation.pending()).toBe(1));
+    expect(preview.renew).not.toHaveBeenCalled();
+    expect(timeouts.pending()).toEqual([]);
+    animation.flush();
+    await vi.waitFor(() => expect(animation.pending()).toBe(1));
+    expect(preview.renew).not.toHaveBeenCalled();
+    expect(timeouts.pending()).toEqual([]);
+    animation.flush();
+    await refresh;
     const leaseRequest = {
       previewId: PREVIEW_ONE,
       previewRevisionId: PREVIEW_REVISION_ONE,
