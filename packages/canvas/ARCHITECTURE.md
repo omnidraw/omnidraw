@@ -16,6 +16,8 @@ pointer / keyboard / product intent
 
 The browser owns current-session optimistic state. The server owns durable rows,
 item revisions, and concurrency decisions. Cangine owns editor planning,
+including `SelectionStyleController` target discovery, semantic style state,
+atomic mutation planning, and continuous history framing. It also owns
 transient interaction, resources, and rendering; its scene is a projection,
 not the source of document truth.
 
@@ -45,10 +47,13 @@ prepared Blob immediately, blocks its pending server command on upload, then
 promotes the stable resource ID with a validated durable URL extension before
 releasing the media gate. A source-less image row must never reach the server.
 
-`buildRuntime` composes Cangine, its standard editor session, the document
-service, optional extensions, and host resize ownership. Shutdown reverses
-those resources. `CanvasRuntimeLifecycle` ensures two runtime instances never
-own the same host concurrently.
+`buildRuntime` composes Cangine, its standard editor session, one headless
+selection-style controller, the document service, optional extensions, and
+host resize ownership. Style mutations still commit through the controlled
+editor port into `CanvasDocumentService`; the controller is not a second scene
+writer. Shutdown destroys it before the editor session.
+`CanvasRuntimeLifecycle` ensures two runtime instances never own the same host
+concurrently.
 
 Recorder output is not used for persistence or product history. Durable product
 writes go through `editor.commitSceneMutation()`; outside bootstrap/resync,

@@ -1,3 +1,16 @@
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-400.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-500.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-600.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-700.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('/fonts/fraunces-400.ttf') format('truetype'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('/fonts/fraunces-500.ttf') format('truetype'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('/fonts/fraunces-600.ttf') format('truetype'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('/fonts/fraunces-700.ttf') format('truetype'); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-400.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-500.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-600.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-700.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
+
 .vc-selection-style-menu {
   position: fixed;
   top: 0.75rem;
@@ -32,10 +45,14 @@
 }
 
 .vc-selection-style-colors,
-.vc-selection-style-lines,
-.vc-selection-style-widths {
+.vc-selection-style-choices {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+.vc-selection-style-choices[data-property='font-family'] {
+  flex-wrap: nowrap;
 }
 
 .vc-style-color {
@@ -50,12 +67,12 @@
     repeating-conic-gradient(var(--muted) 0 25%, var(--background) 0 50%) 50% / 8px 8px;
 }
 
-.vc-style-color--selected {
+.vc-style-color[aria-pressed='true'] {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
-.vc-style-color--selected::after {
+.vc-style-color[aria-pressed='true']::after {
   position: absolute;
   right: 2px;
   bottom: 2px;
@@ -72,7 +89,7 @@
 }
 
 .vc-selection-style-choice {
-  flex: 1;
+  flex: 1 1 auto;
   border: 1px solid var(--border);
   padding: 0.3rem 0.35rem;
   color: var(--muted-foreground);
@@ -81,17 +98,50 @@
 }
 
 .vc-selection-style-choice:hover,
-.vc-selection-style-choice--selected {
+.vc-selection-style-choice[aria-pressed='true'] {
   background: var(--stone-200);
   color: var(--foreground);
 }
 
 .dark .vc-selection-style-choice:hover,
-.dark .vc-selection-style-choice--selected {
+.dark .vc-selection-style-choice[aria-pressed='true'] {
   background: var(--stone-800);
 }
 
 .vc-selection-style-section input[type='range'] {
+  appearance: none;
   width: 100%;
-  accent-color: var(--primary);
+  height: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background:
+    linear-gradient(
+      to right,
+      var(--primary) 0 var(--vc-style-opacity),
+      var(--muted) var(--vc-style-opacity) 100%
+    );
+}
+
+.vc-selection-style-section input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.75rem;
+  height: 1.5rem;
+  border: 1px solid var(--foreground);
+  border-radius: 0;
+  background: var(--card-foreground);
+}
+
+.vc-selection-style-section input[type='range']::-moz-range-thumb {
+  width: 0.75rem;
+  height: 1.5rem;
+  border: 1px solid var(--foreground);
+  border-radius: 0;
+  background: var(--card-foreground);
+}
+
+.vc-selection-style-section output {
+  padding: 0 0.25rem;
+  background: var(--muted);
+  color: var(--foreground);
+  font-weight: 700;
 }

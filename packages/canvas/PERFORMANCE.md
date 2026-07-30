@@ -26,6 +26,9 @@ Keep these bounds observable:
 - before/after images and server plans are limited to affected nodes;
 - one ordinary editor action normally creates one pending transaction and one
   server command;
+- continuous selection-style changes retain only the latest value per host
+  animation frame, while gesture completion synchronously flushes the exact
+  final controlled mutation under one history-coalescing key;
 - accepted rows and optimistic nodes remain separate maps with one entry per
   document node;
 - the server command and event limits remain authoritative;

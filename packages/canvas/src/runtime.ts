@@ -7,8 +7,10 @@ import {
 } from '@omnidraw/cangine';
 import {
   createImageDropController,
+  createSelectionStyleController,
   createStandardEditorSession,
   type IImageDropController,
+  type ISelectionStyleController,
   type IStandardCanvasEditor,
   type IStandardEditorSession,
   type TPathSegmentMode,
@@ -31,12 +33,23 @@ import type {
 } from './debug-trace/typed';
 import type { TCanvasRuntimeConfig } from './types';
 
-const IMAGE_FILE_ACCEPT = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-].join(',');
+const IMAGE_FILE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
+const FONT_WEIGHTS = [400, 500, 600, 700] as const;
+const FONT_FAMILIES = [
+  ['Inter', 'sans-serif', 'inter', 'woff2'],
+  ['Fraunces', 'serif', 'fraunces', 'ttf'],
+  ['JetBrains Mono', 'monospace', 'jetbrains-mono', 'woff2'],
+] as const;
+const FONT_RESOURCES = FONT_FAMILIES.flatMap(([family, , slug, format]) => (
+  FONT_WEIGHTS.map((weight) => ({
+    descriptor: {
+      id: `vibecanvas-font:${slug}:${weight}`,
+      type: 'font' as const, family, weight,
+      style: 'normal' as const, mimeType: `font/${format}`,
+    },
+    source: { type: 'url' as const, url: `/fonts/${slug}-${weight}.${format}` },
+  }))
+));
 
 export type TCanvasRuntime = Readonly<{
   boot(): Promise<void>;
@@ -44,6 +57,7 @@ export type TCanvasRuntime = Readonly<{
   editor(): IStandardCanvasEditor | null;
   engine(): IInfiniteCanvasEngine | null;
   document(): CanvasDocumentService | null;
+  selectionStyles(): ISelectionStyleController | null;
   openImagePicker(): void;
   setSelectedConnectorSegmentMode(mode: TPathSegmentMode): void;
   widgetContentFocused(): boolean;
@@ -413,6 +427,7 @@ export function buildRuntime(
 ): TCanvasRuntime {
   let engine: IInfiniteCanvasEngine | null = null;
   let editorSession: IStandardEditorSession | null = null;
+  let selectionStyleController: ISelectionStyleController | null = null;
   let documentService: CanvasDocumentService | null = null;
   let imageDropController: IImageDropController | null = null;
   let imageInput: HTMLInputElement | null = null;
@@ -441,6 +456,10 @@ export function buildRuntime(
           engine,
         );
       }
+      for (const font of FONT_RESOURCES) {
+        engine.resources.register(font.descriptor, font.source);
+      }
+      await engine.resources.preload(FONT_RESOURCES.map((font) => font.descriptor.id));
       documentService = new CanvasDocumentService({
         canvasId: config.canvasId,
         transport: createTracedCanvasDocumentTransport(
@@ -491,13 +510,13 @@ export function buildRuntime(
           contentParentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
           createNodeId: config.createId,
           sceneMutationPort: documentService,
-          history: {
-            kind: 'custom',
-            adapter: documentService.history,
-          },
-          ...(extensions.some((extension) => extension.createWidgetNodes !== undefined)
-            ? {
-                creation: {
+          history: { kind: 'custom', adapter: documentService.history },
+          creation: {
+            textFontFamilies: [FONT_FAMILIES[0][0], FONT_FAMILIES[0][1]],
+            ...(extensions.some(
+              (extension) => extension.createWidgetNodes !== undefined,
+            )
+              ? {
                   factories: {
                     widget: (creation) => {
                       for (const extension of extensions) {
@@ -511,9 +530,9 @@ export function buildRuntime(
                       return null;
                     },
                   },
-                },
-              }
-            : {}),
+                }
+              : {}),
+          },
           onCallbackError: (error) => {
             reportTraceCallbackError(config.trace, 'editor', error);
             config.notification?.showError(
@@ -591,6 +610,28 @@ export function buildRuntime(
           updateTraceSubscriptions,
         );
       }
+      const ownerWindow = config.container.ownerDocument.defaultView;
+      if (ownerWindow === null) {
+        throw new Error('Canvas selection styles require an owning window.');
+      }
+      selectionStyleController = createSelectionStyleController({
+        editor: editorSession.editor,
+        fontFamilies: FONT_FAMILIES.map(
+          ([family, fallback]) => [family, fallback],
+        ),
+        continuousClock: {
+          requestFrame: ownerWindow.requestAnimationFrame.bind(ownerWindow),
+          cancelFrame: ownerWindow.cancelAnimationFrame.bind(ownerWindow),
+        },
+        onCallbackError: (error) => {
+          reportTraceCallbackError(config.trace, 'selection-style', error);
+          config.notification?.showError(
+            'Selection style failed',
+            error instanceof Error ? error.message : String(error),
+          );
+        },
+      });
+      selectionStyleController.attach();
       resizeObserver = new ResizeObserver(() => engine?.resize());
       resizeObserver.observe(config.container);
       engine.resize();
@@ -627,6 +668,9 @@ export function buildRuntime(
       const input = imageInput;
       imageInput = null;
       await attempt(() => input?.remove());
+      const styles = selectionStyleController;
+      selectionStyleController = null;
+      await attempt(() => styles?.destroy());
       const session = editorSession;
       editorSession = null;
       await attempt(() => session?.destroy());
@@ -645,6 +689,7 @@ export function buildRuntime(
     editor: () => editorSession?.editor ?? null,
     engine: () => engine,
     document: () => documentService,
+    selectionStyles: () => selectionStyleController,
     openImagePicker: () => imageInput?.click(),
     setSelectedConnectorSegmentMode: (mode) => {
       const session = editorSession;

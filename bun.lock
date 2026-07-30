@@ -386,6 +386,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@omnidraw/cangine@0.3.0": "patches/@omnidraw%2Fcangine@0.3.0.patch",
+  },
   "overrides": {
     "@codemirror/language": "6.12.4",
     "@codemirror/state": "6.7.1",

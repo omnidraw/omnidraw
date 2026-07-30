@@ -24,6 +24,7 @@ const runtimeMocks = vi.hoisted(() => {
     document: vi.fn(() => null),
     editor: vi.fn(() => editor),
     engine: vi.fn(() => null),
+    selectionStyles: vi.fn(() => null),
     shutdown: vi.fn(async () => {}),
     widgetContentFocused: vi.fn(() => false),
   };

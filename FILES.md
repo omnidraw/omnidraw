@@ -21,7 +21,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
-| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -125,6 +124,22 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/index.html](apps/frontend/index.html) |  |
 | [apps/frontend/package.json](apps/frontend/package.json) |  |
 | [apps/frontend/public/favicon.png](apps/frontend/public/favicon.png) |  |
+| [apps/frontend/public/fonts/fraunces-400.ttf](apps/frontend/public/fonts/fraunces-400.ttf) |  |
+| [apps/frontend/public/fonts/fraunces-500.ttf](apps/frontend/public/fonts/fraunces-500.ttf) |  |
+| [apps/frontend/public/fonts/fraunces-600.ttf](apps/frontend/public/fonts/fraunces-600.ttf) |  |
+| [apps/frontend/public/fonts/fraunces-700.ttf](apps/frontend/public/fonts/fraunces-700.ttf) |  |
+| [apps/frontend/public/fonts/Fraunces-OFL.txt](apps/frontend/public/fonts/Fraunces-OFL.txt) |  |
+| [apps/frontend/public/fonts/inter-400.woff2](apps/frontend/public/fonts/inter-400.woff2) |  |
+| [apps/frontend/public/fonts/inter-500.woff2](apps/frontend/public/fonts/inter-500.woff2) |  |
+| [apps/frontend/public/fonts/inter-600.woff2](apps/frontend/public/fonts/inter-600.woff2) |  |
+| [apps/frontend/public/fonts/inter-700.woff2](apps/frontend/public/fonts/inter-700.woff2) |  |
+| [apps/frontend/public/fonts/Inter-OFL.txt](apps/frontend/public/fonts/Inter-OFL.txt) |  |
+| [apps/frontend/public/fonts/jetbrains-mono-400.woff2](apps/frontend/public/fonts/jetbrains-mono-400.woff2) |  |
+| [apps/frontend/public/fonts/jetbrains-mono-500.woff2](apps/frontend/public/fonts/jetbrains-mono-500.woff2) |  |
+| [apps/frontend/public/fonts/jetbrains-mono-600.woff2](apps/frontend/public/fonts/jetbrains-mono-600.woff2) |  |
+| [apps/frontend/public/fonts/jetbrains-mono-700.woff2](apps/frontend/public/fonts/jetbrains-mono-700.woff2) |  |
+| [apps/frontend/public/fonts/JetBrains-Mono-OFL.txt](apps/frontend/public/fonts/JetBrains-Mono-OFL.txt) |  |
+| [apps/frontend/public/fonts/README.md](apps/frontend/public/fonts/README.md) |  |
 | [apps/frontend/public/logo.png](apps/frontend/public/logo.png) |  |
 | [apps/frontend/src/ai-chat-adapters.ts](apps/frontend/src/ai-chat-adapters.ts) |  |
 | [apps/frontend/src/App.module.css](apps/frontend/src/App.module.css) |  |
@@ -398,10 +413,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/fn.canvas-runtime-activation.ts](packages/canvas/src/components/fn.canvas-runtime-activation.ts) |  |
 | [packages/canvas/src/components/fn.canvas-tool-shortcut.ts](packages/canvas/src/components/fn.canvas-tool-shortcut.ts) |  |
 | [packages/canvas/src/components/fn.space-pan.ts](packages/canvas/src/components/fn.space-pan.ts) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style.ts) |  |
+| [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style-presentation.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style-presentation.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/index.tsx](packages/canvas/src/components/SelectionStyleMenu/index.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/styles.css](packages/canvas/src/components/SelectionStyleMenu/styles.css) |  |
-| [packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts](packages/canvas/src/components/SelectionStyleMenu/tx.selection-style.ts) |  |
 | [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
 | [packages/canvas/src/debug-trace/CONSTANTS.ts](packages/canvas/src/debug-trace/CONSTANTS.ts) |  |
 | [packages/canvas/src/debug-trace/createReproductionTrace.ts](packages/canvas/src/debug-trace/createReproductionTrace.ts) |  |
