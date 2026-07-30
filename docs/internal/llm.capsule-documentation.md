@@ -1,6 +1,6 @@
-# Using the Capsule library — 0.10.0
+# Using the Capsule library — 0.10.1
 
-This is the consumer manual for `@omnidraw/capsule`. Capsule 0.10.0 uses
+This is the consumer manual for `@omnidraw/capsule`. Capsule 0.10.1 uses
 public browser API groups; runtime ABI, DOM profiles, feature profiles, and
 feature grants remain private enforcement details.
 
@@ -210,6 +210,18 @@ Capsule accepts only `external-distribution`: exact application-built
 `.js`/`.mjs` bytes plus provenance. Static exact relative imports and the
 reserved `capsule:bridge` intrinsic are the only module edges.
 
+Capsule preserves every application JavaScript module byte exactly. The
+reserved bridge and declared resource imports resolve to signed generated
+virtual modules instead of rewriting the importer. The artifact signs the
+sorted application-owned module set eligible for generated runtime locations;
+Capsule-generated bridge/resource modules are never eligible.
+
+An external bundler may preserve a project-relative resource specifier such
+as `../../../assets/tone.wav` even though its normalized output is
+`main.js`. When that exact import has a declared resource binding, Capsule
+maps it to a deterministic reserved adapter ID using the escaped-root count;
+it does not traverse the filesystem or alter the application module.
+
 The ingester rejects raw TypeScript, JSX, Vue source, source maps,
 `sourceMappingURL`, HTML discovery, bare package imports, runtime `require`,
 dynamic imports, `import.meta`, top-level await, workers, WebAssembly, native
@@ -217,7 +229,9 @@ modules, unresolved output, and loose unreachable files.
 
 The signed provenance records the external producer, source revision,
 dependency-lock digest, build-configuration digest, complete distribution
-digest, and Capsule ingestion transform. Its claim is
+digest, and the `capsule-external-distribution-ingest@2.0.0` transform. That
+transform binds byte-preserved application modules, generated bridge/resource
+adapters, escaped-root resource mapping, and final graph validation. Its claim is
 `deterministic-ingestion-only`: Capsule does not claim that it compiled,
 reproduced, or OS-isolated the application build. The application owns
 package installation, scripts, plugins, credentials, network, cancellation,
@@ -643,16 +657,42 @@ parkability and snapshot contract.
 Use bounded observation:
 
 ```ts
+const startupErrors = [];
+const mount = host.mount({
+  artifact,
+  container,
+  onError(event) {
+    startupErrors.push(event);
+  },
+});
+const handle = await mount;
+
 const stopErrors = handle.onError((event) => {
-  console.error(event.code, event.source);
+  if (event.category === 'vm') {
+    console.error(
+      event.artifactHash,
+      event.runtimeGeneration,
+      event.location,
+    );
+  }
 });
 const stopMetrics = handle.onMetrics((event) => {
   metricsSink.record(event);
 });
 ```
 
-Listener failures are contained. Error records contain normalized bounded
-data, not guest/provider stacks or host objects.
+The mount listener is active before application-module evaluation and is
+released when mount settles. Handle listeners do not replay startup events.
+Listener failures are contained.
+
+Current errors use the exact message-free `capsule-mount-error-v2`
+discriminated union. Guest failures carry the exact artifact hash, a positive
+never-reused runtime generation, and an optional frozen generated location.
+Locations use one-based lines and zero-based UTF-16 columns against the exact
+application-owned distribution bytes; apply consumer-owned source maps
+outside Capsule. Omitted locations are normal when native metadata is absent,
+ineligible, stale, malformed, internal, or out of bounds. The separately
+exported v1 format and `*V1` types are historical shapes, not aliases for v2.
 
 ## Diagnostics
 
@@ -814,7 +854,7 @@ feature grants during the upgrade.
 
 ## Versioning
 
-The package version is `@omnidraw/capsule` 0.10.0. The group-contract format
+The package version is `@omnidraw/capsule` 0.10.1. The group-contract format
 and bundle digest, artifact envelope, runtime ABI, private ledgers/profiles,
 capability identities, network-policy format, and snapshot schemas are
 independently versioned exact contracts.

@@ -281,7 +281,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [A99](a/A99.md) - qualify recovered canvas and updated Capsule Preview diagnostics
 - [x]: [A100](a/A100.md) - canvas: developer reproduction trace recorder
 - [x]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
-- [ ]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
+- [x]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
