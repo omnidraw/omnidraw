@@ -342,6 +342,11 @@ export type TWidgetPreviewReady = Readonly<{
     bytesBase64: string;
     runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
   }>;
+  sourceMapArtifact: Readonly<{
+    digestSha256: string;
+    byteSize: number;
+    bytesBase64: string;
+  }> | null;
   contract: Readonly<{
     digestSha256: string;
     functions: readonly TWidgetBrowserFunctionDescriptor[];

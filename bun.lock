@@ -37,7 +37,7 @@
     "apps/cli": {
       "name": "@vibecanvas/cli",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.0",
+        "@omnidraw/capsule": "0.10.1",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
@@ -189,7 +189,7 @@
       "name": "@vibecanvas/capsule-vibecanvas",
       "version": "0.1.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.0",
+        "@omnidraw/capsule": "0.10.1",
         "@vibecanvas/tenant-core": "workspace:*",
         "@vibecanvas/widget-contract": "workspace:*",
       },
@@ -234,7 +234,7 @@
       "name": "@vibecanvas/sdk",
       "version": "0.1.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.0",
+        "@omnidraw/capsule": "0.10.1",
         "@vibecanvas/widget-contract": "0.1.0",
       },
       "devDependencies": {
@@ -335,6 +335,7 @@
     "packages/ui-ai-chat": {
       "name": "@vibecanvas/ui-ai-chat",
       "dependencies": {
+        "@jridgewell/trace-mapping": "0.3.31",
         "@kobalte/core": "catalog:",
         "@omnidraw/cangine": "0.5.1",
         "@vibecanvas/canvas": "workspace:*",
@@ -795,7 +796,7 @@
 
     "@omnidraw/cangine": ["@omnidraw/cangine@0.5.1", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.5.1.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-GH1aChUThl7XE1lZt9RUgUEcf7yuysb6F5NJazUyPdyNYwKa8z/PZTS/S8o05cE2llcyTr/3xn8aFgFIX1pS2A=="],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-N/8z1HdFo3MhESKHaQLXG6QdHcgANmLQzZdHJ48C+OJQehUKvtqaZ6nYSZ9xofAijEhCWZDBb7+beudUArWzog=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.1", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.1.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-+dX5eKV6+igf6XmTJR4b+6+8MLScG36OnfjWzTVU9fms94CpxKLeBSGM7zTuD5cHR7vHuM+iv+Ai5VnTkCNS4g=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

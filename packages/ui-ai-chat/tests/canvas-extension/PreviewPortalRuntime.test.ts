@@ -85,6 +85,7 @@ function ready(
         signatureKeyIds: ['preview-key'],
       },
     },
+    sourceMapArtifact: null,
     contract: {
       digestSha256: 'd'.repeat(64),
       functions: [],
@@ -209,6 +210,7 @@ function runtimeApi(
   }] as const);
   const release = vi.fn(async () => [undefined, true] as const);
   const getDiagnostics = vi.fn(async () => [undefined, []] as const);
+  const getOwner = vi.fn(async () => [undefined, currentOwner] as const);
   const resolveDiagnostic = vi.fn(async () => [undefined, currentOwner] as const);
   const retestDiagnostic = vi.fn(async () => [undefined, currentOwner] as const);
   return {
@@ -228,7 +230,7 @@ function runtimeApi(
       },
       owner: {
         ensure: ensure as never,
-        get: vi.fn() as never,
+        get: getOwner as never,
         list: vi.fn() as never,
         close: vi.fn() as never,
       },
@@ -237,6 +239,7 @@ function runtimeApi(
     cancel,
     ensure,
     getDiagnostics,
+    getOwner,
     release,
     report,
     resolveDiagnostic,
@@ -1828,6 +1831,51 @@ describe('PreviewPortalRuntime', () => {
       deduplicated: false,
     }] as const);
     const preview = runtimeApi(build, PREVIEW_ONE, report);
+    const fingerprintSource = fnCanonicalizeWidgetDiagnosticFingerprint({
+      origin: 'budget',
+      phase: 'runtime',
+      code: 'RATE_LIMIT',
+      buildId: PREVIEW_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    });
+    const expectedDiagnostic = {
+      formatVersion: 1,
+      fingerprint: digest(Buffer.from(fingerprintSource, 'utf8')),
+      origin: 'budget',
+      phase: 'runtime',
+      code: 'RATE_LIMIT',
+      severity: 'error',
+      message: 'The Widget Preview exceeded a browser sandbox resource budget.',
+      trust: 'untrusted',
+      draftRevision: REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+      buildId: PREVIEW_REVISION_TWO,
+      buildSequence: 1,
+      occurrenceCount: 1,
+      retryability: 'unknown',
+      timestampMs: 123,
+    } as const;
+    preview.getOwner.mockResolvedValue([undefined, {
+      id: PREVIEW_ONE,
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      draftId: DRAFT_ID,
+      originChatId: 'chat-1',
+      role: 'companion',
+      status: 'failed',
+      activeRevisionId: PREVIEW_REVISION_TWO,
+      sourceDigestSha256: null,
+      runtimeDiagnostics: [{
+        diagnostic: expectedDiagnostic,
+        status: 'awaiting-retest',
+        reportedAtMs: 123,
+      }],
+      publishedPreviewRevisionId: null,
+      publishedBindingRevision: null,
+      publishedBindingPlanDigestSha256: null,
+      publishedWidgetRevisionId: null,
+      publishedIdempotencyKey: null,
+    }] as never);
     const fatals: Array<(error: unknown) => void> = [];
     const handles = [runtimeHandle(), runtimeHandle()];
     const mount = vi.fn<TWidgetUiArtifactMountPort['mount']>(
@@ -1877,43 +1925,30 @@ describe('PreviewPortalRuntime', () => {
     fatals[1]!(hostile);
 
     await vi.waitFor(() => expect(report).toHaveBeenCalledOnce());
-    const fingerprintSource = fnCanonicalizeWidgetDiagnosticFingerprint({
-      origin: 'budget',
-      phase: 'runtime',
-      code: 'RATE_LIMIT',
-      buildId: PREVIEW_REVISION_TWO,
-      previewRevisionId: PREVIEW_REVISION_TWO,
-    });
     expect(report).toHaveBeenCalledWith({
       previewId: PREVIEW_ONE,
       canvasId: CANVAS_ID,
       frameNodeId: FRAME_ID,
       draftId: DRAFT_ID,
       originChatId: 'chat-1',
-      diagnostic: {
-        formatVersion: 1,
-        fingerprint: digest(Buffer.from(fingerprintSource, 'utf8')),
-        origin: 'budget',
-        phase: 'runtime',
-        code: 'RATE_LIMIT',
-        severity: 'error',
-        message: 'The Widget Preview exceeded a browser sandbox resource budget.',
-        trust: 'untrusted',
-        draftRevision: REVISION_TWO,
-        previewRevisionId: PREVIEW_REVISION_TWO,
-        buildId: PREVIEW_REVISION_TWO,
-        buildSequence: 1,
-        occurrenceCount: 1,
-        retryability: 'unknown',
-        timestampMs: 123,
-      },
+      diagnostic: expectedDiagnostic,
     });
+    expect(preview.getOwner).toHaveBeenCalledWith({
+      previewId: PREVIEW_ONE,
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+    });
+    expect(root.querySelector('[data-preview-diagnostic-message]')?.textContent)
+      .toBe(
+        'RATE_LIMIT: The Widget Preview exceeded a browser sandbox resource budget. '
+        + '• Awaiting retest 1',
+      );
     expect(JSON.stringify(report.mock.calls)).not.toContain('Ignore prior instructions');
     expect(onError).toHaveBeenCalledTimes(2);
     await runtime.destroy();
   });
 
-  test('reports the same nonfatal Capsule failure once for each Preview revision', async () => {
+  test('coalesces concurrent diagnostics but reports later occurrences', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const build = vi.fn()
@@ -1982,15 +2017,18 @@ describe('PreviewPortalRuntime', () => {
     diagnostics[0]!(providerFailure);
     await vi.waitFor(() => expect(report).toHaveBeenCalledOnce());
     expect(handles[0]!.destroy).not.toHaveBeenCalled();
+    diagnostics[0]!(providerFailure);
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2));
 
     await flushSwap(animation, runtime.refresh());
     diagnostics[0]!(providerFailure);
     diagnostics[1]!(providerFailure);
     diagnostics[1]!(providerFailure);
-    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(3));
 
     const first = report.mock.calls[0]![0].diagnostic;
     const second = report.mock.calls[1]![0].diagnostic;
+    const third = report.mock.calls[2]![0].diagnostic;
     expect(first).toMatchObject({
       previewRevisionId: PREVIEW_REVISION_ONE,
       buildId: PREVIEW_REVISION_ONE,
@@ -2000,6 +2038,14 @@ describe('PreviewPortalRuntime', () => {
       operation: providerFailure.operation,
     });
     expect(second).toMatchObject({
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      buildId: PREVIEW_REVISION_ONE,
+      buildSequence: 1,
+      code: 'PROVIDER_FAILED',
+      capability: providerFailure.capability,
+      operation: providerFailure.operation,
+    });
+    expect(third).toMatchObject({
       previewRevisionId: PREVIEW_REVISION_TWO,
       buildId: PREVIEW_REVISION_TWO,
       buildSequence: 2,
@@ -2007,7 +2053,8 @@ describe('PreviewPortalRuntime', () => {
       capability: providerFailure.capability,
       operation: providerFailure.operation,
     });
-    expect(second.fingerprint).not.toBe(first.fingerprint);
+    expect(second.fingerprint).toBe(first.fingerprint);
+    expect(third.fingerprint).not.toBe(first.fingerprint);
 
     await runtime.destroy();
   });

@@ -21,9 +21,20 @@ export type TVibecanvasDistributionBuildRequest = Readonly<{
   reportProgress?: (phase: 'installing' | 'building') => void;
 }>;
 
+/** Trusted generated maps retained outside the Capsule guest distribution. */
+export type TVibecanvasDistributionSourceMap = Readonly<{
+  module: string;
+  bytes: Uint8Array;
+}>;
+
+export type TVibecanvasDistributionBuildOutput =
+  CapsuleBuildInput & Readonly<{
+    sourceMaps?: readonly TVibecanvasDistributionSourceMap[];
+  }>;
+
 export type TVibecanvasDistributionBuild = ((
   request: TVibecanvasDistributionBuildRequest,
-) => Promise<CapsuleBuildInput>) & Readonly<{
+) => Promise<TVibecanvasDistributionBuildOutput>) & Readonly<{
   closeWorkspace?(workspaceKey: string): Promise<void>;
   close?(): Promise<void>;
 }>;

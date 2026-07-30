@@ -210,6 +210,7 @@ function successfulBuilder(bytes = new TextEncoder().encode('immutable ui artifa
           builderIdentity: request.builderIdentity,
           capsuleBuildIdentity: request.capsuleBuildIdentity,
         }),
+        sourceMapArtifact: null,
         serverArtifact: null,
         diagnostics: Object.freeze([]),
       });

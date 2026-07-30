@@ -41,7 +41,7 @@ function digest(bytes: Uint8Array | string): string {
 
 export const TEST_CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.10.0',
+  packageVersion: '0.10.1',
   packageDigest: `sha256:${'a'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}`,
@@ -610,6 +610,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId: request.buildPolicyId,
       uiArtifact: artifact.uiArtifact,
+      sourceMapArtifact: null,
       diagnostics: this.previewDiagnostics,
       normalizedDiagnostics: fnNormalizeWidgetBuildDiagnostics({
         diagnostics: this.previewDiagnostics,

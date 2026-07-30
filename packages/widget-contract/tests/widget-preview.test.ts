@@ -98,6 +98,7 @@ function builder(): IWidgetArtifactBuilder {
           builderIdentity: request.builderIdentity,
           capsuleBuildIdentity: request.capsuleBuildIdentity,
         }),
+        sourceMapArtifact: null,
         serverArtifact: null,
         diagnostics: Object.freeze([]),
       });

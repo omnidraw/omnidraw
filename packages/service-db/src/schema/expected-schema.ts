@@ -108,6 +108,14 @@ export const EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES = [
 export const EXPECTED_AGENT_AUTHORING_APPLICATION_TABLE_COUNT =
   EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES.length;
 
+export const EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLES = [
+  ...EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES,
+  "agent_preview_source_maps",
+] as const;
+
+export const EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLE_COUNT =
+  EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLES.length;
+
 export const EXPECTED_APPLICATION_SCHEMA_OBJECTS = Object.freeze({
   views: Object.freeze([]),
   triggers: Object.freeze([]),
@@ -920,6 +928,39 @@ export const EXPECTED_AGENT_AUTHORING_INDEXES = {
   usage_outbox_invocation_idx: { table: "usage_outbox", columns: ["org_id", "invocation_id"], unique: false, partial: false },
 } satisfies Record<string, TExpectedIndex>;
 
+export const EXPECTED_PREVIEW_SOURCE_MAP_SCHEMA = {
+  ...EXPECTED_AGENT_AUTHORING_SCHEMA,
+  agent_preview_source_maps: {
+    columns: [
+      tenantId("org_id", 1),
+      text("preview_id", true, 2),
+      text("revision_id", true, 3),
+      tenantId("artifact_id"),
+      text("artifact_kind"),
+      text("artifact_digest_sha256"),
+    ],
+    primaryKey: ["org_id", "preview_id", "revision_id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id", "preview_id", "revision_id"], referencesTable: "agent_preview_revisions", referencesColumns: ["org_id", "preview_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "artifact_id", "artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+    ],
+  },
+} satisfies Record<
+  (typeof EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLES)[number],
+  TExpectedTable
+>;
+
+export const EXPECTED_PREVIEW_SOURCE_MAP_INDEXES = {
+  ...EXPECTED_AGENT_AUTHORING_INDEXES,
+  idx_agent_preview_source_maps_artifact: {
+    table: "agent_preview_source_maps",
+    columns: ["org_id", "artifact_id", "artifact_kind"],
+    unique: false,
+    partial: false,
+  },
+} satisfies Record<string, TExpectedIndex>;
+
 export const EXPECTED_PREVIEW_LEGACY_AGENT_AUTHORING_APPLICATION_TABLES = [
   ...EXPECTED_WIDGET_HOST_APPLICATION_TABLES,
   "widget_revision_sources",
@@ -1041,5 +1082,12 @@ export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_AGENT_AUTHORING_SCHEMA,
     version: 5,
+  }),
+  Object.freeze({
+    fingerprintSha256: 'eb35092b8b5c0b4639413396037b3cb17117ff991d8a1eb9f8a0b24d10f6be2a',
+    indexes: EXPECTED_PREVIEW_SOURCE_MAP_INDEXES,
+    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+    tables: EXPECTED_PREVIEW_SOURCE_MAP_SCHEMA,
+    version: 6,
   }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

@@ -46,7 +46,9 @@ export type {
 export type {
   TVibecanvasCapsuleBuild,
   TVibecanvasDistributionBuild,
+  TVibecanvasDistributionBuildOutput,
   TVibecanvasDistributionBuildRequest,
+  TVibecanvasDistributionSourceMap,
 } from './interface';
 export type {
   CapsuleArtifactSigningErrorCode,

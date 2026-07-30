@@ -65,7 +65,7 @@ const OTHER_ORGANIZATION_TENANT = fnFreezeTenantContext({
 
 function artifact(
   id: string,
-  kind: 'source' | 'unsigned_ui' | 'ui' | 'server',
+  kind: 'source' | 'source_map' | 'unsigned_ui' | 'ui' | 'server',
   digestSha256: string,
   createdAtMs: number,
 ): TWidgetArtifactDescriptor {
@@ -94,6 +94,7 @@ function previewRevision(args: Readonly<{
   sourceDigestSha256: string;
   committedMutationId: string;
   sourceArtifactId: string;
+  sourceMapArtifactId?: string;
   unsignedUiArtifactId: string;
   uiArtifactId: string;
   buildSequence: number;
@@ -152,6 +153,14 @@ function previewRevision(args: Readonly<{
     digest(args.buildSequence + 1_000),
     args.createdAtMs,
   );
+  const sourceMapArtifact = args.sourceMapArtifactId === undefined
+    ? null
+    : artifact(
+        args.sourceMapArtifactId,
+        'source_map',
+        digest(args.buildSequence + 3_000),
+        args.createdAtMs,
+      );
   const uiArtifact = artifact(
     args.uiArtifactId,
     'ui',
@@ -170,6 +179,7 @@ function previewRevision(args: Readonly<{
       sourceSnapshotId: args.sourceSnapshotId,
       sourceDigestSha256: args.sourceDigestSha256,
       sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+      sourceMapArtifactDigestSha256: sourceMapArtifact?.digestSha256 ?? null,
       canonicalManifestJson,
       unsignedUiDigestSha256: unsignedUiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
@@ -215,6 +225,7 @@ function previewRevision(args: Readonly<{
     sourceSnapshotId: args.sourceSnapshotId,
     sourceDigestSha256: args.sourceDigestSha256,
     sourceArtifact,
+    sourceMapArtifact,
     manifest,
     canonicalManifestJson,
     functionDescriptors,
@@ -1222,6 +1233,7 @@ describe('AgentAuthoringStoreTurso', () => {
     const revisionId = uuid(986);
     const resourceId = uuid(987);
     const sourceArtifactId = uuid(988);
+    const sourceMapArtifactId = uuid(1_002);
     const unsignedUiArtifactId = uuid(989);
     const uiArtifactId = uuid(990);
     const committedMutationId = 'mutation:preview-9800';
@@ -1288,6 +1300,7 @@ describe('AgentAuthoringStoreTurso', () => {
       sourceDigestSha256,
       committedMutationId,
       sourceArtifactId,
+      sourceMapArtifactId,
       unsignedUiArtifactId,
       uiArtifactId,
       buildSequence: 1,
@@ -1373,6 +1386,7 @@ describe('AgentAuthoringStoreTurso', () => {
 
     for (const descriptor of [
       revision.sourceArtifact,
+      revision.sourceMapArtifact!,
       revision.unsignedUiArtifact,
       revision.uiArtifact,
     ]) {
@@ -1380,7 +1394,7 @@ describe('AgentAuthoringStoreTurso', () => {
         previewId,
         revisionId,
         artifactId: descriptor.id,
-        kind: descriptor.kind as 'source' | 'unsigned_ui' | 'ui',
+        kind: descriptor.kind as 'source' | 'source_map' | 'unsigned_ui' | 'ui',
         digestSha256: descriptor.digestSha256,
       })).toMatchObject({
         id: descriptor.id,
@@ -1512,6 +1526,11 @@ describe('AgentAuthoringStoreTurso', () => {
       FROM agent_preview_resource_bindings
       WHERE org_id = ? AND preview_id = ?
     `)).get(TENANT.orgId, previewId)).toMatchObject({ count: 0 });
+    expect(await (await service.db.prepare(`
+      SELECT count(*) AS count
+      FROM agent_preview_source_maps
+      WHERE org_id = ? AND preview_id = ?
+    `)).get(TENANT.orgId, previewId)).toMatchObject({ count: 0 });
 
     const released = await controlStore.reconcileArtifactRetention(TENANT, {
       nowMs: 1_014,
@@ -1520,20 +1539,22 @@ describe('AgentAuthoringStoreTurso', () => {
     });
     expect(new Set(released.eligibleArtifactIds)).toEqual(new Set([
       sourceArtifactId,
+      sourceMapArtifactId,
       unsignedUiArtifactId,
       uiArtifactId,
     ]));
     expect(await (await service.db.prepare(`
       SELECT count(*) AS count
       FROM artifact_references
-      WHERE org_id = ? AND id IN (?, ?, ?)
+      WHERE org_id = ? AND id IN (?, ?, ?, ?)
         AND retention_state = 'eligible' AND retain_until_ms = 1024
     `)).get(
       TENANT.orgId,
       sourceArtifactId,
+      sourceMapArtifactId,
       unsignedUiArtifactId,
       uiArtifactId,
-    )).toMatchObject({ count: 3 });
+    )).toMatchObject({ count: 4 });
     expect(await store.closePreviewOwner(TENANT, {
       previewId,
       frameNodeId,

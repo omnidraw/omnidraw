@@ -212,10 +212,8 @@ export function fnMapThrownCapsuleHostError(
 
 /** Maps a normalized live-mount event without forwarding guest/provider messages. */
 export function fnMapCapsuleMountError(
-  event: Pick<
-    CapsuleMountErrorEvent,
-    'category' | 'code' | 'fatal' | 'capabilityId' | 'operation'
-  >,
+  event: Pick<CapsuleMountErrorEvent, 'category' | 'code' | 'fatal'>
+    & Readonly<{ capabilityId?: string; operation?: string }>,
 ): TVibecanvasCapsuleError {
   const category = categoryForMountEvent(event);
   return Object.freeze({

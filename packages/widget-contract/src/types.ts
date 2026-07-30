@@ -399,6 +399,13 @@ export type TWidgetSourceArtifact = Readonly<{
   bytes: Uint8Array;
 }>;
 
+/** Trusted generated-to-authored mapping bytes; never included in a guest artifact. */
+export type TWidgetSourceMapArtifact = Readonly<{
+  kind: 'source_map';
+  digestSha256: TWidgetArtifactDigest;
+  bytes: Uint8Array;
+}>;
+
 export type TWidgetBuildDiagnostic = Readonly<{
   severity: 'error' | 'warning' | 'info';
   code: string;
@@ -443,6 +450,7 @@ export type TWidgetConstructionContractPayloadInput = Readonly<{
   sourceSnapshotId: TWidgetSourceSnapshotId;
   sourceDigestSha256: TWidgetArtifactDigest;
   sourceArtifactDigestSha256: TWidgetArtifactDigest;
+  sourceMapArtifactDigestSha256: TWidgetArtifactDigest | null;
   canonicalManifestJson: string;
   unsignedUiDigestSha256: TWidgetArtifactDigest;
   capsuleArtifactHash: TWidgetCapsuleHash;
@@ -467,6 +475,7 @@ export type TWidgetArtifactConstructionResult = Readonly<{
   sourceSnapshotId: TWidgetSourceSnapshotId;
   sourceDigestSha256: TWidgetArtifactDigest;
   sourceArtifact: TWidgetSourceArtifact;
+  sourceMapArtifact: TWidgetSourceMapArtifact | null;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
@@ -503,6 +512,7 @@ export type TWidgetBuildResult = Readonly<{
   channelContractDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetCapsuleUiArtifact;
+  sourceMapArtifact: TWidgetSourceMapArtifact | null;
   serverArtifact: TWidgetServerBuildArtifact | null;
   diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
@@ -729,6 +739,7 @@ export type TWidgetPreviewPublicationIdentity = Readonly<{
   sourceSnapshotId: TWidgetSourceSnapshotId;
   sourceDigestSha256: TWidgetArtifactDigest;
   sourceArtifactDigestSha256: TWidgetArtifactDigest;
+  sourceMapArtifactDigestSha256: TWidgetArtifactDigest | null;
   canonicalManifestDigestSha256: TWidgetArtifactDigest;
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   capabilityContractDigestSha256: TWidgetArtifactDigest;
@@ -871,7 +882,7 @@ export type TWidgetArtifactRetentionRestoreRequest = Readonly<{
 
 export type TWidgetPreviewArtifactKind = Extract<
   TWidgetArtifactKind,
-  'ui' | 'unsigned_ui' | 'server' | 'source'
+  'ui' | 'unsigned_ui' | 'server' | 'source' | 'source_map'
 >;
 
 /**
@@ -890,6 +901,7 @@ export type TWidgetPreviewRevisionDescriptor = Readonly<{
   sourceSnapshotId: TWidgetSourceSnapshotId;
   sourceDigestSha256: TWidgetArtifactDigest;
   sourceArtifact: TWidgetArtifactDescriptor;
+  sourceMapArtifact: TWidgetArtifactDescriptor | null;
   manifest: TWidgetManifestV3;
   canonicalManifestJson: string;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
@@ -1033,6 +1045,7 @@ export type TWidgetPreviewBuildResult = Readonly<{
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
   uiArtifact: TWidgetCapsuleUiArtifact;
+  sourceMapArtifact: TWidgetSourceMapArtifact | null;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   capabilityContractDigestSha256: TWidgetArtifactDigest;

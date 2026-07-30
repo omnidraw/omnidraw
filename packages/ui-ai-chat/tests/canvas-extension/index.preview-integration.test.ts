@@ -137,6 +137,7 @@ function previewReady(
         signatureKeyIds: ['preview-key'],
       },
     },
+    sourceMapArtifact: null,
     contract: {
       digestSha256: 'c'.repeat(64),
       functions: [{

@@ -72,6 +72,7 @@ import {
   VIBECANVAS_CAPSULE_API_CONTRACT_FORMAT,
 } from '../contract/CONSTANTS';
 import { fnWidgetBuildError } from './fn.build-error';
+import { fnCanonicalizeWidgetSourceMapArtifact } from './fn.source-map-artifact';
 import type {
   TVibecanvasCapsuleBuild,
   TVibecanvasDistributionBuild,
@@ -371,8 +372,12 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       });
       assertBuildActive(request.signal);
       request.reportProgress?.('validating');
+      const {
+        sourceMaps: _sourceMaps,
+        ...capsuleDistributionInput
+      } = distributionInput;
       built = await this.#capsuleBuild({
-        input: distributionInput,
+        input: capsuleDistributionInput,
         apis: capsuleApis,
         capabilityRequests,
         guestChannels: channels.declaration,
@@ -408,6 +413,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     const sourceArtifact = this.#snapshotService.encodeArtifact(request.snapshot, {
       builderIdentity: request.builderIdentity,
     });
+    const sourceMapArtifact = this.#sourceMapArtifact({
+      sourceRevision: request.snapshot.digestSha256,
+      capsuleArtifactHash: built.artifactHash,
+      authoredPaths: request.snapshot.files.map((file) => file.path),
+      generatedModules: distributionInput.snapshot.files.map((file) => file.path),
+      sourceMaps: distributionInput.sourceMaps ?? [],
+    });
     const unsignedUiDigestSha256 = sha256(built.artifactBytes);
     const distributionProvenance = Object.freeze({
       kind: distributionInput.kind,
@@ -421,6 +433,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         sourceSnapshotId: request.snapshot.id,
         sourceDigestSha256: request.snapshot.digestSha256,
         sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+        sourceMapArtifactDigestSha256: sourceMapArtifact?.digestSha256 ?? null,
         canonicalManifestJson: request.canonicalManifestJson,
         unsignedUiDigestSha256,
         capsuleArtifactHash: built.artifactHash,
@@ -441,6 +454,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       sourceSnapshotId: request.snapshot.id,
       sourceDigestSha256: request.snapshot.digestSha256,
       sourceArtifact,
+      sourceMapArtifact,
       builderIdentity: request.builderIdentity,
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId,
@@ -524,6 +538,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         builderIdentity: construction.builderIdentity,
         capsuleBuildIdentity: construction.capsuleBuildIdentity,
       }),
+      sourceMapArtifact: construction.sourceMapArtifact,
       serverArtifact: construction.serverArtifact,
       diagnostics: construction.diagnostics,
     });
@@ -557,6 +572,11 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         !== construction.sourceDigestSha256
       || sha256(construction.uiArtifact.unsignedBytes)
         !== construction.uiArtifact.digestSha256
+      || (
+        construction.sourceMapArtifact !== null
+        && sha256(construction.sourceMapArtifact.bytes)
+          !== construction.sourceMapArtifact.digestSha256
+      )
     ) {
       throw new Error('Widget construction requested an untrusted build identity or policy.');
     }
@@ -611,6 +631,8 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         sourceSnapshotId: construction.sourceSnapshotId,
         sourceDigestSha256: construction.sourceDigestSha256,
         sourceArtifactDigestSha256: construction.sourceArtifact.digestSha256,
+        sourceMapArtifactDigestSha256:
+          construction.sourceMapArtifact?.digestSha256 ?? null,
         canonicalManifestJson: construction.canonicalManifestJson,
         unsignedUiDigestSha256: construction.uiArtifact.digestSha256,
         capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
@@ -629,6 +651,40 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     ) {
       throw new Error('Widget construction contract failed integrity validation.');
     }
+  }
+
+  #sourceMapArtifact(args: Readonly<{
+    sourceRevision: string;
+    capsuleArtifactHash: TWidgetCapsuleHash;
+    authoredPaths: readonly string[];
+    generatedModules: readonly string[];
+    sourceMaps: readonly Readonly<{ module: string; bytes: Uint8Array }>[];
+  }>): import('@vibecanvas/widget-contract').TWidgetSourceMapArtifact | null {
+    if (args.sourceMaps.length === 0) return null;
+    const generatedModules = new Set(args.generatedModules);
+    if (args.sourceMaps.some(({ module, bytes }) => (
+      !generatedModules.has(module)
+      || bytes.byteLength < 1
+      || bytes.byteLength > 4 * 1024 * 1024
+    ))) {
+      throw fnWidgetBuildError('ui');
+    }
+    const canonical = fnCanonicalizeWidgetSourceMapArtifact({
+      sourceRevision: args.sourceRevision,
+      capsuleArtifactHash: args.capsuleArtifactHash,
+      authoredPaths: args.authoredPaths,
+      maps: args.sourceMaps.map(({ module, bytes }) => Object.freeze({
+        module,
+        mapBase64: Buffer.from(bytes).toString('base64'),
+      })),
+    });
+    const bytes = new TextEncoder().encode(canonical);
+    if (bytes.byteLength > 16 * 1024 * 1024) throw fnWidgetBuildError('ui');
+    return Object.freeze({
+      kind: 'source_map',
+      digestSha256: sha256(bytes),
+      bytes,
+    });
   }
 
   async #buildServer(

@@ -730,7 +730,7 @@ describe('managed composition architecture boundaries', () => {
       expect(
         capsuleVersion,
         `${relative(ROOT, path)} must pin the Capsule production cutover exactly`,
-      ).toBe('0.10.0')
+      ).toBe('0.10.1')
     }
   })
 

@@ -4,7 +4,11 @@ import type {
   TAiChatApiPort,
   TWidgetBrowserPort,
 } from '../ports';
+import { TraceMap } from '@jridgewell/trace-mapping';
 import { fxDecodeAndVerifyUiArtifact } from '../widget-runtime/fx.decode-and-verify-ui-artifact';
+import {
+  fxDecodeAndVerifySourceMapArtifact,
+} from '../widget-runtime/fx.decode-and-verify-source-map-artifact';
 import type {
   TWidgetPreviewRuntimeIdentity,
   TWidgetRuntimeIdentity,
@@ -257,7 +261,7 @@ export function createPreviewPortalRuntime(
   let ownerPromise: Promise<TPreviewOwner> | null = null;
   const pending = new Set<TMountedPreview>();
   const pendingFrames = new Map<number, () => void>();
-  const reportedDiagnostics = new Set<string>();
+  const pendingDiagnostics = new Set<string>();
   const loggedDiagnostics = new Set<string>();
   const stateOwners = new Set<TEphemeralPreviewStateOwner>([stateOwner]);
 
@@ -931,35 +935,37 @@ export function createPreviewPortalRuntime(
       diagnostic.previewRevisionId,
       diagnostic.fingerprint,
     ]);
-    if (!isReportable() || reportedDiagnostics.has(diagnosticKey)) return;
-    reportedDiagnostics.add(diagnosticKey);
-    const [reportError, result] = await args.api.diagnostics.report({
-      previewId: scope.previewId,
-      canvasId: args.canvasId,
-      frameNodeId: args.frameNodeId,
-      draftId: args.payload.draftId,
-      originChatId: args.payload.originChatId,
-      diagnostic,
-    });
-    if (reportError || !result?.accepted) {
-      reportedDiagnostics.delete(diagnosticKey);
-      throw new Error(errorMessage(
-        reportError,
-        'Could not report the Widget Preview diagnostic.',
-      ));
-    }
-    const owner = await ensureOwner();
-    const [diagnosticsError, authoritativeDiagnostics] =
-      await args.api.diagnostics.get({
-        previewId: owner.id,
-        canvasId: owner.canvasId,
-        frameNodeId: owner.frameNodeId,
+    if (!isReportable() || pendingDiagnostics.has(diagnosticKey)) return;
+    pendingDiagnostics.add(diagnosticKey);
+    try {
+      const [reportError, result] = await args.api.diagnostics.report({
+        previewId: scope.previewId,
+        canvasId: args.canvasId,
+        frameNodeId: args.frameNodeId,
+        draftId: args.payload.draftId,
+        originChatId: args.payload.originChatId,
+        diagnostic,
       });
-    if (!diagnosticsError && authoritativeDiagnostics) {
-      applyOwnerState({
-        ...owner,
-        runtimeDiagnostics: authoritativeDiagnostics,
+      if (reportError || !result?.accepted) {
+        throw new Error(errorMessage(
+          reportError,
+          'Could not report the Widget Preview diagnostic.',
+        ));
+      }
+      const [ownerError, owner] = await args.api.owner.get({
+        previewId: scope.previewId,
+        canvasId: args.canvasId,
+        frameNodeId: args.frameNodeId,
       });
+      if (ownerError || !owner) {
+        throw new Error(errorMessage(
+          ownerError,
+          'Could not reconcile the Widget Preview diagnostic.',
+        ));
+      }
+      applyOwnerState(owner);
+    } finally {
+      pendingDiagnostics.delete(diagnosticKey);
     }
   };
 
@@ -1065,6 +1071,25 @@ export function createPreviewPortalRuntime(
       });
       if (artifact.retainedByteSize !== result.uiArtifact.byteSize) {
         throw new Error('Preview artifact byte size metadata mismatch.');
+      }
+      const sourceMapArtifact = result.sourceMapArtifact === null
+        ? undefined
+        : await fxDecodeAndVerifySourceMapArtifact({
+            codec: args.codec,
+            decodeUtf8: (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+            parseSourceMap: (json) => new TraceMap(json),
+          }, {
+            expectedDigestSha256: result.sourceMapArtifact.digestSha256,
+            expectedCapsuleArtifactHash:
+              result.uiArtifact.runtimeDescriptor.capsuleArtifactHash,
+            expectedSourceRevision: result.revision,
+            bytesBase64: result.sourceMapArtifact.bytesBase64,
+          });
+      if (
+        sourceMapArtifact !== undefined
+        && sourceMapArtifact.retainedByteSize !== result.sourceMapArtifact?.byteSize
+      ) {
+        throw new Error('Preview source-map byte size metadata mismatch.');
       }
       if (disposed || refreshSequence !== sequence) return;
       failurePhase = 'mounting';
@@ -1186,6 +1211,7 @@ export function createPreviewPortalRuntime(
           root: container,
           identity: previewIdentity,
           artifact,
+          ...(sourceMapArtifact === undefined ? {} : { sourceMapArtifact }),
           functionDescriptors: result.contract.functions,
           browserFunctionDescriptorsDigestSha256:
             result.contract.browserFunctionDescriptorsDigestSha256,

@@ -78,6 +78,7 @@ export function fnCanonicalizeWidgetPreviewPublicationIdentity(
     previewUiArtifactDigestSha256: identity.previewUiArtifactDigestSha256,
     serverArtifactDigestSha256: identity.serverArtifactDigestSha256,
     sourceArtifactDigestSha256: identity.sourceArtifactDigestSha256,
+    sourceMapArtifactDigestSha256: identity.sourceMapArtifactDigestSha256,
     sourceDigestSha256: identity.sourceDigestSha256,
     sourceSnapshotId: identity.sourceSnapshotId,
     unsignedUiArtifactDigestSha256: identity.unsignedUiArtifactDigestSha256,

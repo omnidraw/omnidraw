@@ -1903,6 +1903,21 @@ export class WidgetDraftController {
           'Preview server-function descriptors do not match the signed runtime request.',
         );
       }
+      const sourceMapArtifact = preview.sourceMapArtifact;
+      if (
+        sourceMapArtifact !== null
+        && (
+          sourceMapArtifact.bytes.byteLength < 1
+          || sourceMapArtifact.bytes.byteLength > WIDGET_UI_ARTIFACT_MAX_BYTES
+          || createHash('sha256').update(sourceMapArtifact.bytes).digest('hex')
+            !== sourceMapArtifact.digestSha256
+        )
+      ) {
+        throw controllerError(
+          'WIDGET_PREVIEW_ARTIFACT_INVALID',
+          'Preview source-map artifact integrity verification failed.',
+        );
+      }
       const ready: TWidgetPreviewReady = {
         ready: true,
         draftId: preview.draftId,
@@ -1922,6 +1937,13 @@ export class WidgetDraftController {
           bytesBase64: Buffer.from(bytes).toString('base64'),
           runtimeDescriptor,
         },
+        sourceMapArtifact: sourceMapArtifact === null
+          ? null
+          : {
+              digestSha256: sourceMapArtifact.digestSha256,
+              byteSize: sourceMapArtifact.bytes.byteLength,
+              bytesBase64: Buffer.from(sourceMapArtifact.bytes).toString('base64'),
+            },
         contract: {
           digestSha256: preview.contractDigestSha256,
           functions: browserDescriptors,

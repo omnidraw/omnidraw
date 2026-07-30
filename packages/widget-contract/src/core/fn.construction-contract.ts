@@ -9,10 +9,11 @@ export function fnCanonicalizeWidgetConstructionContractPayload(
   input: TWidgetConstructionContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.widget-construction-contract.v2',
+    format: 'vibecanvas.widget-construction-contract.v3',
     sourceSnapshotId: input.sourceSnapshotId,
     sourceDigestSha256: input.sourceDigestSha256,
     sourceArtifactDigestSha256: input.sourceArtifactDigestSha256,
+    sourceMapArtifactDigestSha256: input.sourceMapArtifactDigestSha256,
     canonicalManifestJson: input.canonicalManifestJson,
     unsignedUiDigestSha256: input.unsignedUiDigestSha256,
     capsuleArtifactHash: input.capsuleArtifactHash,

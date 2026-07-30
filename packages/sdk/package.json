@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.10.0",
+    "@omnidraw/capsule": "0.10.1",
     "@vibecanvas/widget-contract": "0.1.0"
   },
   "devDependencies": {

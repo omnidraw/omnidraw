@@ -609,6 +609,8 @@ class WidgetService implements
             sourceSnapshotId: revision.sourceSnapshotId,
             sourceDigestSha256: revision.sourceDigestSha256,
             sourceArtifactDigestSha256: revision.sourceArtifact.digestSha256,
+            sourceMapArtifactDigestSha256:
+              revision.sourceMapArtifact?.digestSha256 ?? null,
             canonicalManifestDigestSha256:
               createHash('sha256')
                 .update(revision.canonicalManifestJson)

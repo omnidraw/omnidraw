@@ -12,7 +12,7 @@ const EXPECTED_EXPORTS = Object.freeze({
   './capabilities': './src/capabilities/index.ts',
   './testkit': './src/testkit/index.ts',
 });
-const CAPSULE_DEPENDENCY = '0.10.0';
+const CAPSULE_DEPENDENCY = '0.10.1';
 const SUPPORTED_CAPSULE_IMPORTS = new Set([
   '@omnidraw/capsule',
   '@omnidraw/capsule/build',

@@ -185,7 +185,12 @@ export type TAgentAuthoringDraftDiscard = Readonly<{
   nowMs: number;
 }>;
 
-type TPreviewArtifactAlias = 'source' | 'unsigned_ui' | 'ui' | 'server';
+type TPreviewArtifactAlias =
+  | 'source'
+  | 'source_map'
+  | 'unsigned_ui'
+  | 'ui'
+  | 'server';
 
 type TValidatedPreviewBinding = Readonly<{
   input: TWidgetResourceBindingInput;
@@ -1567,6 +1572,13 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         revision.sourceArtifact,
         'source',
       );
+      const sourceMapArtifact = revision.sourceMapArtifact === null
+        ? null
+        : await this.#pinPreviewArtifact(
+            tenant,
+            revision.sourceMapArtifact,
+            'source_map',
+          );
       const unsignedUiArtifact = await this.#pinPreviewArtifact(
         tenant,
         revision.unsignedUiArtifact,
@@ -1582,6 +1594,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         : await this.#pinPreviewArtifact(tenant, revision.serverArtifact, 'server');
       const artifactIds = [
         sourceArtifact.id,
+        ...(sourceMapArtifact === null ? [] : [sourceMapArtifact.id]),
         unsignedUiArtifact.id,
         uiArtifact.id,
         ...(serverArtifact === null ? [] : [serverArtifact.id]),
@@ -1656,6 +1669,20 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         validated.diagnosticsJson,
         revision.createdAtMs,
       );
+      if (sourceMapArtifact !== null) {
+        await (await this.database.prepare(`
+          INSERT INTO agent_preview_source_maps (
+            org_id, preview_id, revision_id,
+            artifact_id, artifact_kind, artifact_digest_sha256
+          ) VALUES (?, ?, ?, ?, 'source_map', ?)
+        `)).run(
+          tenant.orgId,
+          revision.previewId,
+          revision.id,
+          sourceMapArtifact.id,
+          sourceMapArtifact.digestSha256,
+        );
+      }
 
       for (const binding of bindings) {
         const ceiling = fnWidgetControlStoreResourceCeiling(binding.requirement);
@@ -1988,6 +2015,8 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     if (revision === null) return null;
     const artifact = request.kind === 'source'
       ? revision.sourceArtifact
+      : request.kind === 'source_map'
+        ? revision.sourceMapArtifact
       : request.kind === 'unsigned_ui'
         ? revision.unsignedUiArtifact
         : request.kind === 'ui'
@@ -2125,6 +2154,10 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
       const diagnosticsJson = JSON.stringify(diagnostics);
       if (
         revision.sourceArtifact.kind !== 'source'
+        || (
+          revision.sourceMapArtifact !== null
+          && revision.sourceMapArtifact.kind !== 'source_map'
+        )
         || revision.unsignedUiArtifact.kind !== 'unsigned_ui'
         || revision.uiArtifact.kind !== 'ui'
         || (
@@ -2143,6 +2176,8 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
           sourceSnapshotId: revision.sourceSnapshotId,
           sourceDigestSha256: revision.sourceDigestSha256,
           sourceArtifactDigestSha256: revision.sourceArtifact.digestSha256,
+          sourceMapArtifactDigestSha256:
+            revision.sourceMapArtifact?.digestSha256 ?? null,
           canonicalManifestJson,
           unsignedUiDigestSha256: revision.unsignedUiArtifact.digestSha256,
           capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
@@ -2340,6 +2375,15 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
       );
       const diagnosticsPayload = this.#parsedJson(value.diagnostics_json);
       if (!Array.isArray(diagnosticsPayload)) throw new Error('diagnostics are not an array');
+      const sourceMapArtifact = value.source_map_ref_id === null
+        || value.source_map_ref_id === undefined
+        ? null
+        : this.#previewArtifact(value, 'source_map');
+      if (
+        sourceMapArtifact !== null
+        && sourceMapArtifact.digestSha256
+          !== String(value.source_map_link_digest_sha256)
+      ) throw new Error('source-map association digest differs');
       const revision: TWidgetPreviewRevisionDescriptor = {
         orgId: String(value.org_id),
         id: String(value.id),
@@ -2351,6 +2395,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         sourceSnapshotId: String(value.source_snapshot_id),
         sourceDigestSha256: String(value.source_digest_sha256),
         sourceArtifact: this.#previewArtifact(value, 'source'),
+        sourceMapArtifact,
         manifest,
         canonicalManifestJson: String(value.manifest_json),
         functionDescriptors,
@@ -2436,6 +2481,14 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         source.retention_state AS source_ref_retention_state,
         source.retain_until_ms AS source_ref_retain_until_ms,
         source.created_at_ms AS source_ref_created_at_ms,
+        source_map.id AS source_map_ref_id,
+        source_map.kind AS source_map_ref_kind,
+        source_map.digest_sha256 AS source_map_ref_digest_sha256,
+        source_map.byte_size AS source_map_ref_byte_size,
+        source_map.retention_state AS source_map_ref_retention_state,
+        source_map.retain_until_ms AS source_map_ref_retain_until_ms,
+        source_map.created_at_ms AS source_map_ref_created_at_ms,
+        source_map_link.artifact_digest_sha256 AS source_map_link_digest_sha256,
         unsigned_ui.id AS unsigned_ui_ref_id,
         unsigned_ui.kind AS unsigned_ui_ref_kind,
         unsigned_ui.digest_sha256 AS unsigned_ui_ref_digest_sha256,
@@ -2464,6 +2517,14 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         ON source.org_id = revision.org_id
        AND source.id = revision.source_artifact_id
        AND source.kind = revision.source_artifact_kind
+      LEFT JOIN agent_preview_source_maps AS source_map_link
+        ON source_map_link.org_id = revision.org_id
+       AND source_map_link.preview_id = revision.preview_id
+       AND source_map_link.revision_id = revision.id
+      LEFT JOIN artifact_references AS source_map
+        ON source_map.org_id = source_map_link.org_id
+       AND source_map.id = source_map_link.artifact_id
+       AND source_map.kind = source_map_link.artifact_kind
       JOIN artifact_references AS unsigned_ui
         ON unsigned_ui.org_id = revision.org_id
        AND unsigned_ui.id = revision.unsigned_ui_artifact_id
