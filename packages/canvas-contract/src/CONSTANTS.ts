@@ -1,6 +1,8 @@
 export const CANVAS_WIDGET_EXTENSION_KEY = "vibecanvas:widget";
 export const CANVAS_AUTHORING_EXTENSION_KEY = "vibecanvas:authoring";
 export const CANVAS_IMAGE_EXTENSION_KEY = "vibecanvas:image";
+export const CANVAS_RUNTIME_BACKGROUND_LAYER_ID = "vibecanvas:runtime:background";
+export const CANVAS_RUNTIME_GRID_NODE_ID = "vibecanvas:runtime:grid";
 export const CANVAS_SYNTHETIC_CONTENT_LAYER_ID = "vibecanvas:runtime:content";
 export const CANVAS_SCENE_SCHEMA_VERSION = "1.0.0";
 

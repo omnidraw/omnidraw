@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { TImageNode, TRectNode, TWidgetFrameNode } from "@omnidraw/cangine";
+import type {
+  TImageNode,
+  TRectNode,
+  TSceneNode,
+  TWidgetFrameNode,
+} from "@omnidraw/cangine";
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+  CANVAS_RUNTIME_GRID_NODE_ID,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasImageExtension,
@@ -122,9 +129,19 @@ describe("@vibecanvas/canvas-contract", () => {
       valid: false,
       issues: [expect.objectContaining({ code: "RUNTIME_ONLY_NODE_KIND" })],
     });
+
+    expect(fnValidateCanvasItems([{
+      id: "background",
+      parentId: null,
+      orderKey: "A",
+      kind: "background",
+    } as TSceneNode])).toMatchObject({
+      valid: false,
+      issues: [expect.objectContaining({ code: "RUNTIME_ONLY_NODE_KIND" })],
+    });
   });
 
-  test("rejects malformed authoring samples and the reserved layer ID", () => {
+  test("rejects malformed authoring samples and reserved runtime IDs", () => {
     const malformed = rect(CANVAS_SYNTHETIC_CONTENT_LAYER_ID);
     malformed.extensions = {
       "vibecanvas:authoring": {
@@ -142,6 +159,21 @@ describe("@vibecanvas/canvas-contract", () => {
     expect(validation.issues.map((entry) => entry.code)).toEqual(
       expect.arrayContaining(["RESERVED_ITEM_ID", "AUTHORING_EXTENSION_PEN_LENGTH"]),
     );
+
+    for (const reservedId of [
+      CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+      CANVAS_RUNTIME_GRID_NODE_ID,
+    ]) {
+      expect(fnValidateCanvasItems([rect(reservedId)])).toMatchObject({
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: "RESERVED_ITEM_ID",
+            itemId: reservedId,
+          }),
+        ],
+      });
+    }
   });
 
   test("validates and reads durable image descriptors", () => {

@@ -82,7 +82,9 @@ vi.mock('../../src/runtime', () => ({
       document: vi.fn(() => null),
       editor: vi.fn(() => editor),
       engine: vi.fn(() => null),
+      gridVisible: vi.fn(() => true),
       selectionStyles: vi.fn(() => controller),
+      setGridVisible: vi.fn(() => true),
       shutdown: vi.fn(async () => undefined),
       widgetContentFocused: vi.fn(() => false),
     };

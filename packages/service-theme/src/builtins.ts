@@ -1,5 +1,8 @@
 export type ThemeId = string;
 
+export type TCanvasGridThemeColor =
+  Readonly<{ space: "srgb"; r: number; g: number; b: number; a: number }>;
+
 export type TThemeColors = {
   background: string;
   foreground: string;
@@ -25,8 +28,8 @@ export type TThemeColors = {
   input: string;
   ring: string;
   canvasBackground: string;
-  canvasGridMinor: string;
-  canvasGridMajor: string;
+  canvasGridMinor: TCanvasGridThemeColor;
+  canvasGridMajor: TCanvasGridThemeColor;
   canvasSelectionFill: string;
   canvasSelectionStroke: string;
   canvasGroupBoundary: string;
@@ -83,8 +86,8 @@ export const BUILTIN_THEMES: TThemeDefinition[] = [
       input: "#d6d3d1",
       ring: "#f59e0b",
       canvasBackground: "rgba(168, 162, 158, 0.10)",
-      canvasGridMinor: "rgba(71, 85, 105, 0.16)",
-      canvasGridMajor: "rgba(71, 85, 105, 0.28)",
+      canvasGridMinor: { space: "srgb", r: 71 / 255, g: 85 / 255, b: 105 / 255, a: 0.16 },
+      canvasGridMajor: { space: "srgb", r: 71 / 255, g: 85 / 255, b: 105 / 255, a: 0.28 },
       canvasSelectionFill: "rgba(59, 130, 246, 0.12)",
       canvasSelectionStroke: "#3b82f6",
       canvasGroupBoundary: "#1e1e1e",
@@ -127,8 +130,8 @@ export const BUILTIN_THEMES: TThemeDefinition[] = [
       input: "#292524",
       ring: "#f59e0b",
       canvasBackground: "rgba(12, 10, 9, 0.92)",
-      canvasGridMinor: "rgba(148, 163, 184, 0.16)",
-      canvasGridMajor: "rgba(148, 163, 184, 0.28)",
+      canvasGridMinor: { space: "srgb", r: 148 / 255, g: 163 / 255, b: 184 / 255, a: 0.16 },
+      canvasGridMajor: { space: "srgb", r: 148 / 255, g: 163 / 255, b: 184 / 255, a: 0.28 },
       canvasSelectionFill: "rgba(96, 165, 250, 0.18)",
       canvasSelectionStroke: "#60a5fa",
       canvasGroupBoundary: "#e7e5e4",
@@ -171,8 +174,8 @@ export const BUILTIN_THEMES: TThemeDefinition[] = [
       input: "#d7c3a1",
       ring: "#c17b2e",
       canvasBackground: "rgba(215, 195, 161, 0.20)",
-      canvasGridMinor: "rgba(124, 101, 73, 0.14)",
-      canvasGridMajor: "rgba(124, 101, 73, 0.24)",
+      canvasGridMinor: { space: "srgb", r: 124 / 255, g: 101 / 255, b: 73 / 255, a: 0.14 },
+      canvasGridMajor: { space: "srgb", r: 124 / 255, g: 101 / 255, b: 73 / 255, a: 0.24 },
       canvasSelectionFill: "rgba(193, 123, 46, 0.16)",
       canvasSelectionStroke: "#c17b2e",
       canvasGroupBoundary: "#6b4f2d",
@@ -215,8 +218,8 @@ export const BUILTIN_THEMES: TThemeDefinition[] = [
       input: "#374151",
       ring: "#f59e0b",
       canvasBackground: "rgba(15, 23, 42, 0.92)",
-      canvasGridMinor: "rgba(148, 163, 184, 0.16)",
-      canvasGridMajor: "rgba(148, 163, 184, 0.30)",
+      canvasGridMinor: { space: "srgb", r: 148 / 255, g: 163 / 255, b: 184 / 255, a: 0.16 },
+      canvasGridMajor: { space: "srgb", r: 148 / 255, g: 163 / 255, b: 184 / 255, a: 0.30 },
       canvasSelectionFill: "rgba(96, 165, 250, 0.18)",
       canvasSelectionStroke: "#60a5fa",
       canvasGroupBoundary: "#cbd5e1",

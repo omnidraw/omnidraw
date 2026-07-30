@@ -13,6 +13,8 @@ import type {
 } from '@omnidraw/cangine/editor';
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+  CANVAS_RUNTIME_GRID_NODE_ID,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   type TCanvasCommand,
   type TCanvasEvent,
@@ -20,6 +22,7 @@ import {
   type TCanvasItemsChangedEvent,
   type TCanvasSnapshot,
 } from '@vibecanvas/canvas-contract';
+import { BUILTIN_THEMES } from '@vibecanvas/service-theme';
 import { describe, expect, test, vi } from 'vitest';
 import {
   CanvasDocumentService,
@@ -272,7 +275,10 @@ function fakeEngine(): Readonly<{
       ),
       snapshot: () => ({
         schemaVersion: '1.0.0' as const,
-        rootLayerIds: [CANVAS_SYNTHETIC_CONTENT_LAYER_ID],
+        rootLayerIds: [...nodes.values()]
+          .filter((node) => node.kind === 'layer' && node.parentId === null)
+          .sort((left, right) => left.orderKey.localeCompare(right.orderKey))
+          .map((node) => node.id),
         nodes: [...nodes.values()],
       }),
       apply,
@@ -358,6 +364,54 @@ function mutation(
 }
 
 describe('CanvasDocumentService', () => {
+  test('owns runtime grid projection without changing the authored document', async () => {
+    const transport = transportWith(
+      snapshot([item(rect())]),
+      async () => {
+        throw new Error('unexpected execute');
+      },
+    );
+    const fake = fakeEngine();
+    const nextColors = BUILTIN_THEMES[1]!.colors;
+    const nextGrid = {
+      visible: false,
+      minorColor: nextColors.canvasGridMinor,
+      majorColor: nextColors.canvasGridMajor,
+    } as const;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+
+    expect(() => service.setRuntimeGridPresentation(nextGrid)).toThrow(
+      'Canvas document service is not started.',
+    );
+    await service.start(fake.engine);
+
+    fake.apply.mockClear();
+    expect(service.setRuntimeGridPresentation(nextGrid)).toBe(true);
+    expect(service.setRuntimeGridPresentation(nextGrid)).toBe(false);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(service.projectedSceneRevision).toBe(fake.engine.scene.revision);
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.history.canUndo).toBe(false);
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(service.items().map((entry) => entry.id)).toEqual(['rect-a']);
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'runtime-grid-mutation',
+      [{ type: 'remove', nodeId: CANVAS_RUNTIME_GRID_NODE_ID }],
+      [CANVAS_RUNTIME_GRID_NODE_ID],
+    ))).toThrow('Editor mutations cannot target runtime canvas nodes.');
+
+    await service.dispose();
+    expect(() => service.setRuntimeGridPresentation(nextGrid)).toThrow(
+      'Canvas document service is disposed.',
+    );
+  });
+
   test('reports bounded lifecycle facts and isolates a throwing observer', async () => {
     const before = rect();
     const after = rect('rect-a', 25);
@@ -889,6 +943,12 @@ describe('CanvasDocumentService', () => {
   test('rejects commits while an authoritative recovery snapshot is deferred', async () => {
     const before = rect();
     const recoverySnapshot = deferred<TCanvasSnapshot>();
+    const recoveryColors = BUILTIN_THEMES[2]!.colors;
+    const recoveryGrid = {
+      visible: false,
+      minorColor: recoveryColors.canvasGridMinor,
+      majorColor: recoveryColors.canvasGridMajor,
+    } as const;
     const getSnapshot = vi.fn()
       .mockResolvedValueOnce(snapshot([item(before)]))
       .mockImplementationOnce(async () => recoverySnapshot.promise);
@@ -915,6 +975,10 @@ describe('CanvasDocumentService', () => {
     ));
     await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
 
+    fake.apply.mockClear();
+    expect(service.setRuntimeGridPresentation(recoveryGrid)).toBe(true);
+    expect(service.setRuntimeGridPresentation(recoveryGrid)).toBe(false);
+    expect(fake.apply).not.toHaveBeenCalled();
     expect(() => service.commit(mutation(
       fake.engine,
       'transaction-during-recovery',
@@ -924,6 +988,13 @@ describe('CanvasDocumentService', () => {
 
     recoverySnapshot.resolve(snapshot([item(before)], 1));
     await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(fake.engine.scene.get(CANVAS_RUNTIME_GRID_NODE_ID)).toMatchObject({
+      visibility: 'hidden',
+      background: expect.objectContaining({
+        minorColor: recoveryGrid.minorColor,
+        majorColor: recoveryGrid.majorColor,
+      }),
+    });
     expect(service.node('rect-a')?.transform.position.x).toBe(0);
     expect(service.pendingTransactionCount).toBe(0);
     await service.dispose();

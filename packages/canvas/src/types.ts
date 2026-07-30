@@ -35,6 +35,7 @@ export type TCanvasRuntimeConfig = Readonly<{
   createId(): string;
   onToggleSidebar(): void;
   themeService: ThemeService;
+  initialGridVisible?: boolean;
   image: TCanvasImagePort;
   notification?: TCanvasNotificationPort;
   trace?: TReproductionTraceOwner | null;

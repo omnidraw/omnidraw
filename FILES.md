@@ -409,7 +409,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) |  |
-| [packages/canvas/src/components/fn.canvas-grid.ts](packages/canvas/src/components/fn.canvas-grid.ts) |  |
 | [packages/canvas/src/components/fn.canvas-runtime-activation.ts](packages/canvas/src/components/fn.canvas-runtime-activation.ts) |  |
 | [packages/canvas/src/components/fn.canvas-tool-shortcut.ts](packages/canvas/src/components/fn.canvas-tool-shortcut.ts) |  |
 | [packages/canvas/src/components/fn.space-pan.ts](packages/canvas/src/components/fn.space-pan.ts) |  |
@@ -431,6 +430,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
 | [packages/canvas/src/services/fn.local-document.ts](packages/canvas/src/services/fn.local-document.ts) |  |
+| [packages/canvas/src/services/fn.runtime-scene.ts](packages/canvas/src/services/fn.runtime-scene.ts) |  |
 | [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |

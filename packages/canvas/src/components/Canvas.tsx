@@ -45,7 +45,6 @@ import {
   fnSelectionStyleMenuVisible,
 } from './SelectionStyleMenu/fn.selection-style-presentation';
 import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
-import { fnCanvasGridStyle } from './fn.canvas-grid';
 import {
   fnCanBeginSpacePan,
   fnSpacePanScreenDelta,
@@ -153,7 +152,6 @@ export function Canvas(props: CanvasPageProps) {
   let containerRef!: HTMLDivElement;
   let activeRuntime: TCanvasRuntime | null = null;
   let unsubscribeEditor: (() => void) | null = null;
-  let unsubscribeCamera: (() => void) | null = null;
   let unsubscribeSelectionStyles: (() => void) | null = null;
   let spacePointerId: number | null = null;
   let spacePointerPosition: Readonly<{ x: number; y: number }> | null = null;
@@ -209,7 +207,6 @@ export function Canvas(props: CanvasPageProps) {
   const [bootError, setBootError] = createSignal<string | null>(null);
   const [editor, setEditor] = createSignal<IStandardCanvasEditor | null>(null);
   const [editorRevision, setEditorRevision] = createSignal(0);
-  const [cameraRevision, setCameraRevision] = createSignal(0);
   const [selectionStyleState, setSelectionStyleState] = createSignal<
     TSelectionStyleState
   >(
@@ -233,6 +230,7 @@ export function Canvas(props: CanvasPageProps) {
         transport: props.transport,
         createId: () => crypto.randomUUID(),
         onToggleSidebar: props.store.onToggleSidebar,
+        initialGridVisible: gridVisible(),
         image: props.image,
         notification: props.notification,
         themeService: props.themeService,
@@ -248,8 +246,6 @@ export function Canvas(props: CanvasPageProps) {
       });
       unsubscribeEditor?.();
       unsubscribeEditor = null;
-      unsubscribeCamera?.();
-      unsubscribeCamera = null;
       unsubscribeSelectionStyles?.();
       unsubscribeSelectionStyles = null;
       setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
@@ -264,10 +260,6 @@ export function Canvas(props: CanvasPageProps) {
       unsubscribeEditor = nextEditor?.subscribe((state) => {
         setEditorRevision(state.revision);
       }) ?? null;
-      const nextCamera = activeRuntime?.engine()?.camera;
-      unsubscribeCamera = nextCamera?.subscribe(() => {
-        setCameraRevision((revision) => revision + 1);
-      }) ?? null;
       const runtime = activeRuntime;
       const styles = runtime?.selectionStyles() ?? null;
       setSelectionStyleState(styles?.state ?? DETACHED_SELECTION_STYLE_STATE);
@@ -279,7 +271,6 @@ export function Canvas(props: CanvasPageProps) {
           setSelectionStyleState(nextState);
         }
       }) ?? null;
-      setCameraRevision((revision) => revision + 1);
       setBooting(false);
       trace?.emit({
         channel: 'system',
@@ -385,7 +376,7 @@ export function Canvas(props: CanvasPageProps) {
     if (key === 'g') {
       event.preventDefault();
       event.stopPropagation();
-      setGridVisible((visible) => !visible);
+      toggleGrid();
       return;
     }
     const toolId = fnCanvasToolShortcut(key);
@@ -630,8 +621,6 @@ export function Canvas(props: CanvasPageProps) {
     finishSpacePan();
     unsubscribeEditor?.();
     unsubscribeEditor = null;
-    unsubscribeCamera?.();
-    unsubscribeCamera = null;
     unsubscribeSelectionStyles?.();
     unsubscribeSelectionStyles = null;
     setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
@@ -645,25 +634,13 @@ export function Canvas(props: CanvasPageProps) {
     return editor()?.state;
   };
 
-  const gridStyle = () => {
-    cameraRevision();
-    const camera = activeRuntime?.engine()?.camera;
-    if (!camera) {
-      return fnCanvasGridStyle({
-        origin: { x: 0, y: 0 },
-        visible: false,
-        zoom: 1,
-      });
-    }
-    return fnCanvasGridStyle({
-      origin: camera.worldToViewport({ x: 0, y: 0 }),
-      visible: gridVisible(),
-      zoom: camera.state.zoom,
-    });
-  };
-
   const applySelectionStyle = (change: TSelectionStyleChange) =>
     activeRuntime?.selectionStyles()?.apply(change) ?? false;
+  const toggleGrid = () => {
+    const visible = !gridVisible();
+    activeRuntime?.setGridVisible(visible);
+    setGridVisible(visible);
+  };
 
   const applySelectionColor = (
     propertyId: 'background' | 'foreground',
@@ -698,18 +675,6 @@ export function Canvas(props: CanvasPageProps) {
       }}
     >
       <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: '0',
-          'pointer-events': 'none',
-          'background-image': gridStyle().backgroundImage,
-          'background-position': gridStyle().backgroundPosition,
-          'background-size': gridStyle().backgroundSize,
-          display: gridStyle().display,
-        }}
-      />
-      <div
         ref={containerRef}
         class="vc-canvas-engine-host"
         style={{ position: 'absolute', inset: '0' }}
@@ -722,7 +687,7 @@ export function Canvas(props: CanvasPageProps) {
         sidebarVisible={props.store.sidebarVisible()}
         onImportImage={() => activeRuntime?.openImagePicker()}
         onSelectTool={(toolId) => editor()?.setActiveTool(toolId)}
-        onToggleGrid={() => setGridVisible((visible) => !visible)}
+        onToggleGrid={toggleGrid}
         onToggleSidebar={props.store.onToggleSidebar}
         onUndo={() => editor()?.history?.undo()}
         onRedo={() => editor()?.history?.redo()}

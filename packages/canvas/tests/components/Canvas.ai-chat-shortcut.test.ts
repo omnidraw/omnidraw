@@ -24,7 +24,9 @@ const runtimeMocks = vi.hoisted(() => {
     document: vi.fn(() => null),
     editor: vi.fn(() => editor),
     engine: vi.fn(() => null),
+    gridVisible: vi.fn(() => true),
     selectionStyles: vi.fn(() => null),
+    setGridVisible: vi.fn(() => true),
     shutdown: vi.fn(async () => {}),
     widgetContentFocused: vi.fn(() => false),
   };
@@ -104,6 +106,14 @@ describe('Canvas AI Chat shortcut', () => {
     await vi.waitFor(() => {
       expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
     });
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      code: 'KeyG',
+      key: 'g',
+    }));
+    expect(runtimeMocks.runtime.setGridVisible).toHaveBeenCalledWith(false);
+    host.querySelector<HTMLButtonElement>('button[aria-label="Grid"]')?.click();
+    expect(runtimeMocks.runtime.setGridVisible).toHaveBeenLastCalledWith(true);
 
     host.querySelector<HTMLButtonElement>(
       'button[aria-label="Developer trace: idle"]',
