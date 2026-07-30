@@ -1941,6 +1941,45 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     });
   }
 
+  async hasConfirmedPreviewExecution(
+    tenant: TTenantContext,
+    request: Readonly<{
+      draftId: string;
+      draftRevisionSha256: string;
+      nowMs: number;
+    }>,
+  ): Promise<boolean> {
+    this.#boundedText(request.draftId, 300, 'Preview draft ID');
+    this.#sha256Digest(request.draftRevisionSha256, 'Preview draft revision');
+    this.#timestamp(request.nowMs, 'Preview execution lookup timestamp');
+    const row = await (await this.database.prepare(`
+      SELECT 1
+      FROM agent_preview_mount_leases AS lease
+      JOIN agent_previews AS preview
+        ON preview.org_id = lease.org_id
+       AND preview.id = lease.preview_id
+      JOIN agent_preview_revisions AS revision
+        ON revision.org_id = lease.org_id
+       AND revision.preview_id = lease.preview_id
+       AND revision.id = lease.preview_revision_id
+      WHERE lease.org_id = ? AND lease.account_id = ?
+        AND preview.draft_id = ?
+        AND preview.status = 'ready'
+        AND preview.active_revision_id = revision.id
+        AND revision.draft_revision_sha256 = ?
+        AND lease.renewed_at_ms > lease.acquired_at_ms
+        AND lease.expires_at_ms > ?
+      LIMIT 1
+    `)).get(
+      tenant.orgId,
+      tenant.accountId,
+      request.draftId,
+      request.draftRevisionSha256,
+      request.nowMs,
+    );
+    return row !== undefined;
+  }
+
   async resolvePreviewArtifact(
     tenant: TTenantContext,
     request: TWidgetPreviewArtifactResolutionRequest,
@@ -2107,7 +2146,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
           canonicalManifestJson,
           unsignedUiDigestSha256: revision.unsignedUiArtifact.digestSha256,
           capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-          target: uiRuntime.target,
+          apiContract: uiRuntime.apiContract,
           budgets: uiRuntime.budgets,
           capabilityContractDigestSha256:
             revision.capabilityContractDigestSha256,
@@ -2126,7 +2165,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         canonicalManifestJson,
         uiDigestSha256: revision.uiArtifact.digestSha256,
         capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-        target: uiRuntime.target,
+        apiContract: uiRuntime.apiContract,
         budgets: uiRuntime.budgets,
         capabilityContractDigestSha256: revision.capabilityContractDigestSha256,
         channelContractDigestSha256: revision.channelContractDigestSha256,

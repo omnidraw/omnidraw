@@ -17,7 +17,7 @@ import type {
 } from '../types';
 import {
   fnNormalizeWidgetCapsuleBudgetRequest,
-  fnNormalizeWidgetCapsuleTarget,
+  fnNormalizeWidgetCapsuleApis,
 } from './fn.capsule';
 
 type TRequestedEffect = Exclude<TResourceEffect, 'read_write'>;
@@ -117,7 +117,7 @@ export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV3): TWidgetM
     ui: {
       runtime: 'capsule',
       entry: uiEntry,
-      target: fnNormalizeWidgetCapsuleTarget(manifest.ui.target),
+      apis: fnNormalizeWidgetCapsuleApis(manifest.ui.apis),
       ...(manifest.ui.budgets === undefined
         ? {}
         : { budgets: fnNormalizeWidgetCapsuleBudgetRequest(manifest.ui.budgets) }),

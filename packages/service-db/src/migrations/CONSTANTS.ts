@@ -9,6 +9,8 @@ import {
   INITIAL_MIGRATION_VERSION,
   LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
   LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+  CAPSULE_API_GROUPS_MIGRATION_NAME,
+  CAPSULE_API_GROUPS_MIGRATION_VERSION,
   FUNCTION_RUNTIME_MIGRATION_NAME,
   FUNCTION_RUNTIME_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
@@ -17,6 +19,7 @@ import {
 import agentAuthoringMigrationPath from './003-agent-authoring.sql' with { type: 'file' };
 import initialMigrationPath from './000-initial.sql' with { type: 'file' };
 import liveWidgetPreviewMigrationPath from './004-live-widget-preview.sql' with { type: 'file' };
+import capsuleApiGroupsMigrationPath from './005-capsule-api-groups.sql' with { type: 'file' };
 import widgetRevisionSequenceMigrationPath from './001-widget-revision-sequence.sql' with { type: 'file' };
 import functionRuntimeMigrationPath from './002-function-runtime.sql' with { type: 'file' };
 
@@ -55,12 +58,20 @@ const LIVE_WIDGET_PREVIEW_MIGRATION = Object.freeze({
   path: liveWidgetPreviewMigrationPath,
 });
 
+const CAPSULE_API_GROUPS_MIGRATION = Object.freeze({
+  type: 'sql' as const,
+  name: CAPSULE_API_GROUPS_MIGRATION_NAME,
+  version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
+  path: capsuleApiGroupsMigrationPath,
+});
+
 const MIGRATION_FILES = Object.freeze([
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   AGENT_AUTHORING_MIGRATION,
   LIVE_WIDGET_PREVIEW_MIGRATION,
+  CAPSULE_API_GROUPS_MIGRATION,
 ]);
 
 export {
@@ -68,6 +79,7 @@ export {
   INITIAL_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   LIVE_WIDGET_PREVIEW_MIGRATION,
+  CAPSULE_API_GROUPS_MIGRATION,
   MIGRATION_FILES,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
 };

@@ -687,6 +687,53 @@ describe('managed composition architecture boundaries', () => {
     expect(rootPackage.workspaces).toContain('scripts/fixtures/external-composition')
   })
 
+  test('keeps Capsule private profile names out of production source', async () => {
+    const privateProfileNames = [
+      'artifact-resources-v1',
+      'artifact-resources-v2',
+      'artifact-resources-v3',
+      'canvas-2d-v1',
+      'canvas-webgl-v1',
+      'canvas-webgpu-v1',
+      'css-network-images-v1',
+      'dom-selection-v1',
+      'fetch-buffered-v1',
+      'shadow-browser-css-v1',
+      'svg-dom-v1',
+    ]
+    const violations: string[] = []
+    for (const root of ['apps', 'packages']) {
+      for (const file of await sourceFiles(join(ROOT, root))) {
+        const path = relative(ROOT, file).split(sep).join('/')
+        if (
+          path.includes('/tests/')
+          || path.endsWith('.test.ts')
+          || path.endsWith('.test.tsx')
+        ) continue
+        const source = await readFile(file, 'utf8')
+        for (const name of privateProfileNames) {
+          if (source.includes(name)) violations.push(`${path}: ${name}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
+
+    for (const { path, manifest } of await packageManifests()) {
+      const capsuleVersion = [
+        manifest.dependencies,
+        manifest.devDependencies,
+        manifest.optionalDependencies,
+        manifest.peerDependencies,
+      ].map((group) => group?.['@omnidraw/capsule'])
+        .find((version) => version !== undefined)
+      if (capsuleVersion === undefined) continue
+      expect(
+        capsuleVersion,
+        `${relative(ROOT, path)} must pin the Capsule production cutover exactly`,
+      ).toBe('0.10.0')
+    }
+  })
+
   test('imports only documented public package exports and fixture-local modules', async () => {
     const files = await sourceFiles(FIXTURE_ROOT)
     const allowedPackages = new Set(Object.keys(PUBLIC_PACKAGES))

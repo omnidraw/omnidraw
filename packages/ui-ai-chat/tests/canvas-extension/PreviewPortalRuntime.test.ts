@@ -52,11 +52,7 @@ function ready(
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
-        },
+        apis: ['DOM'],
       },
     },
     uiArtifact: {
@@ -64,12 +60,12 @@ function ready(
       byteSize: bytes.byteLength,
       bytesBase64: bytes.toString('base64'),
       runtimeDescriptor: {
-        format: 'vibecanvas.capsule-runtime.v1',
+        format: 'vibecanvas.capsule-runtime.v2',
         capsuleArtifactHash: `sha256:${'c'.repeat(64)}`,
-        target: {
-          runtimeAbi: 'quickjs-release-sync-v1',
-          domProfile: 'dom-core-v2',
-          featureProfiles: [],
+        apiContract: {
+          format: 'capsule-api-groups-v1',
+          groups: ['DOM'],
+          bundleDigest: `sha256:${'a'.repeat(64)}`,
         },
         budgets: {
           cpuMs: 100,
@@ -1028,7 +1024,7 @@ describe('PreviewPortalRuntime', () => {
     expect(handles[1]!.destroy).toHaveBeenCalledWith('preview-unmounted');
   });
 
-  test('acquires before mount, renews from expiry, and releases after current handle destruction once', async () => {
+  test('acquires before mount, confirms after two frames, renews, and releases once', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const timeouts = manualTimeouts();
@@ -1071,7 +1067,16 @@ describe('PreviewPortalRuntime', () => {
       onError: vi.fn(),
     });
 
-    await flushSwap(animation, runtime.refresh());
+    const refresh = runtime.refresh();
+    await vi.waitFor(() => expect(animation.pending()).toBe(1));
+    expect(preview.renew).not.toHaveBeenCalled();
+    expect(timeouts.pending()).toEqual([]);
+    animation.flush();
+    await vi.waitFor(() => expect(animation.pending()).toBe(1));
+    expect(preview.renew).not.toHaveBeenCalled();
+    expect(timeouts.pending()).toEqual([]);
+    animation.flush();
+    await refresh;
     const leaseRequest = {
       previewId: PREVIEW_ONE,
       previewRevisionId: PREVIEW_REVISION_ONE,
@@ -1082,14 +1087,16 @@ describe('PreviewPortalRuntime', () => {
     expect(preview.acquire).toHaveBeenCalledWith(leaseRequest);
     expect(preview.acquire.mock.invocationCallOrder[0])
       .toBeLessThan(mount.mock.invocationCallOrder[0]!);
+    expect(preview.renew).toHaveBeenCalledOnce();
+    expect(mount.mock.invocationCallOrder[0])
+      .toBeLessThan(preview.renew.mock.invocationCallOrder[0]!);
     expect(timeouts.pending()).toEqual([
       expect.objectContaining({ timeoutMs: 30_000 }),
     ]);
 
     timeouts.flush();
-    await vi.waitFor(() => expect(preview.renew).toHaveBeenCalledWith(
-      leaseRequest,
-    ));
+    await vi.waitFor(() => expect(preview.renew).toHaveBeenCalledTimes(2));
+    expect(preview.renew).toHaveBeenLastCalledWith(leaseRequest);
     expect(timeouts.pending()).toEqual([
       expect.objectContaining({ timeoutMs: 30_000 }),
     ]);
@@ -1111,7 +1118,7 @@ describe('PreviewPortalRuntime', () => {
     expect(preview.release).toHaveBeenCalledOnce();
   });
 
-  test('fails closed and releases when renewal loses durable mount authority', async () => {
+  test('fails closed and releases when execution confirmation loses mount authority', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const timeouts = manualTimeouts();
@@ -1155,10 +1162,9 @@ describe('PreviewPortalRuntime', () => {
     });
 
     await flushSwap(animation, runtime.refresh());
-    timeouts.flush();
 
     await vi.waitFor(() => expect(preview.release).toHaveBeenCalledOnce());
-    expect(mounted.destroy).toHaveBeenCalledWith('preview-mount-lease-lost');
+    expect(mounted.destroy).toHaveBeenCalledWith('preview-mount-failed');
     expect(mounted.destroy.mock.invocationCallOrder[0])
       .toBeLessThan(preview.release.mock.invocationCallOrder[0]!);
     expect(runtime.currentRevision()).toBeNull();

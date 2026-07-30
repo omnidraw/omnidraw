@@ -192,8 +192,8 @@ export function fnMapThrownCapsuleHostError(
       category: 'capability',
       capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
       fatal: true,
-      message: 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
-        + 'and a positive ui.budgets.gpuBytes value.',
+      message: 'WebGL Preview requires browser WebGL2 support and the public '
+        + 'WEBGL API group. Add WEBGL to ui.apis.',
     });
   }
   if (hasKnownFailure(error, CANVAS_PROFILE_FAILURE_MESSAGES)) {
@@ -203,9 +203,8 @@ export function fnMapThrownCapsuleHostError(
       category: 'capability',
       capsuleCode: 'CANVAS_PROFILE_REQUIRED',
       fatal: true,
-      message: 'Canvas rendering requires an exact Capsule canvas profile. '
-        + 'Select canvas-2d-v1, canvas-webgl-v1, or canvas-webgpu-v1 to match '
-        + 'the requested rendering context.',
+      message: 'Canvas rendering requires the matching public Capsule API '
+        + 'group: CANVAS_2D, WEBGL, or WEBGPU.',
     });
   }
   return fnMapCapsuleHostError(error.code);

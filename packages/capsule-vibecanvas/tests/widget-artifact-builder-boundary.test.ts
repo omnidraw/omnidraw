@@ -5,12 +5,10 @@ import { join } from 'node:path';
 import {
   buildCapsuleGuest,
   type CapsuleBuildOutput,
-  type CapsuleBuildRequest,
+  type CapsuleApiGroupBuildRequest,
 } from '@omnidraw/capsule/build';
 import {
-  CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-  CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-  CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
+  type CapsuleApiGroup,
   type CapsuleBuildInput,
 } from '@omnidraw/capsule/protocol';
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
@@ -43,7 +41,7 @@ const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.9.4',
+  packageVersion: '0.10.0',
   packageDigest: `sha256:${'b'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,
@@ -135,7 +133,7 @@ function snapshot(files: readonly TSourceFile[]): TWidgetSourceSnapshot {
 
 function manifest(args: Readonly<{
   entry: string;
-  featureProfiles?: readonly string[];
+  apis?: readonly CapsuleApiGroup[];
   serverEntry?: string;
 }>): TWidgetManifestV3 {
   return Object.freeze({
@@ -145,11 +143,7 @@ function manifest(args: Readonly<{
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,
-      target: Object.freeze({
-        runtimeAbi: 'quickjs-release-sync-v1',
-        domProfile: 'dom-core-v2',
-        featureProfiles: Object.freeze([...(args.featureProfiles ?? [])]),
-      }),
+      apis: Object.freeze(['DOM' as const, ...(args.apis ?? [])]),
     }),
     ...(args.serverEntry === undefined
       ? {}
@@ -179,7 +173,7 @@ function request(
 
 function builder(args: Readonly<{
   tempRoot: string;
-  capsuleBuild(request: CapsuleBuildRequest): Promise<
+  capsuleBuild(request: CapsuleApiGroupBuildRequest): Promise<
     Pick<CapsuleBuildOutput, 'artifactBytes' | 'artifactHash' | 'diagnostics'>
   >;
   descriptors?: readonly TWidgetServerFunctionDescriptor[];
@@ -218,7 +212,7 @@ function builder(args: Readonly<{
   });
 }
 
-function sourceFiles(requestValue: CapsuleBuildRequest): readonly Readonly<{
+function sourceFiles(requestValue: CapsuleApiGroupBuildRequest): readonly Readonly<{
   path: string;
   bytes: Uint8Array;
 }>[] {
@@ -227,7 +221,7 @@ function sourceFiles(requestValue: CapsuleBuildRequest): readonly Readonly<{
 
 describe('WidgetArtifactBuilderCapsule trust boundary', () => {
   test('forwards hostile UI syntax unchanged only to the injected Capsule build port', async () => {
-    let captured: CapsuleBuildRequest | undefined;
+    let captured: CapsuleApiGroupBuildRequest | undefined;
     let bunBuildCalls = 0;
     const hostileTypeScript = [
       'const deliberatelyInvalid: = ;',
@@ -264,7 +258,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
   });
 
   test('lets Capsule close CSS imports and URL assets from the immutable source snapshot', async () => {
-    let captured: CapsuleBuildRequest | undefined;
+    let captured: CapsuleApiGroupBuildRequest | undefined;
     const sourceSnapshot = snapshot([
       {
         path: 'ui/main.ts',
@@ -277,10 +271,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       { path: 'ui/styles/theme.css', value: '.hero{color:rgb(1 2 3)}' },
       { path: 'ui/pixel.png', value: PNG_BYTES },
     ]);
-    const widgetManifest = manifest({
-      entry: 'ui/main.ts',
-      featureProfiles: [CAPSULE_ARTIFACT_RESOURCES_PROFILE],
-    });
+    const widgetManifest = manifest({ entry: 'ui/main.ts' });
     const artifactBuilder = builder({
       tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
       distributionBuild: async (value) => ({
@@ -315,9 +306,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       }),
       capsuleBuild: async (value) => {
         captured = value;
-        expect(value.target.featureProfiles).toEqual([
-          CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-        ]);
+        expect(value.apis).toEqual(['DOM']);
         return await buildCapsuleGuest(value);
       },
     });
@@ -339,7 +328,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     }));
   });
 
-  test('adopts native Shadow CSS and separately signed browser image URLs', async () => {
+  test('infers native Shadow CSS from declared CSS roots', async () => {
     const sourceSnapshot = snapshot([
       { path: 'ui/main.ts', value: 'import "./styles.css";' },
       {
@@ -356,7 +345,6 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       '  padding-inline: max(1rem, 2vi);',
       '  color: var(--accent, CanvasText);',
       '  background: linear-gradient(Canvas, CanvasText);',
-      '  background-image: url("https://images.example.test/counter.png");',
       '  font-variant-numeric: tabular-nums;',
       '  transition: opacity 120ms ease;',
       '}',
@@ -399,85 +387,18 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       distributionBuild,
       capsuleBuild: buildCapsuleGuest,
     });
-    const nativeManifest = manifest({
-      entry: 'ui/main.ts',
-      featureProfiles: [
-        CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-        CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-        CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-      ],
-    });
+    const nativeManifest = manifest({ entry: 'ui/main.ts' });
 
     const result = await artifactBuilder.build(
       TENANT,
       request(sourceSnapshot, nativeManifest),
     );
 
-    expect(result.uiArtifact.runtimeDescriptor.target.featureProfiles).toEqual([
-      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-    ]);
-
-    const conservativeManifest = manifest({
-      entry: 'ui/main.ts',
-      featureProfiles: [CAPSULE_ARTIFACT_RESOURCES_PROFILE],
-    });
-    await expect(artifactBuilder.build(
-      TENANT,
-      request(sourceSnapshot, conservativeManifest),
-    )).rejects.toMatchObject({
-      code: 'WIDGET_BUILD_FAILED',
-      diagnostic: {
-        code: 'CSS_PROFILE_REQUIRED',
-        path: 'app/assets/main.css',
-        requiredProfile: CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-      },
-    });
-
-    const localOnlyManifest = manifest({
-      entry: 'ui/main.ts',
-      featureProfiles: [
-        CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-        CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-      ],
-    });
-    await expect(artifactBuilder.build(
-      TENANT,
-      request(sourceSnapshot, localOnlyManifest),
-    )).rejects.toMatchObject({
-      code: 'WIDGET_BUILD_FAILED',
-      diagnostic: {
-        code: 'CSS_PROFILE_REQUIRED',
-        path: 'app/assets/main.css',
-        requiredProfile: CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-      },
-    });
-
-    const substitutionBuilder = builder({
-      tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
-      distributionBuild: distribution([
-        ':root { --network-image: url("https://images.example.test/counter.png"); }',
-        '.counter { background-image: var(--network-image); }',
-      ].join('\n')),
-      capsuleBuild: buildCapsuleGuest,
-    });
-    await expect(substitutionBuilder.build(
-      TENANT,
-      request(sourceSnapshot, nativeManifest),
-    )).rejects.toMatchObject({
-      code: 'WIDGET_BUILD_FAILED',
-      diagnostic: {
-        code: 'CSS_POLICY_DENIED',
-        path: 'app/assets/main.css',
-        construct: '--network-image: url()',
-        activeCssProfile: CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-      },
-    });
+    expect(result.uiArtifact.runtimeDescriptor.apiContract.groups).toEqual(['DOM']);
   });
 
   test('replaces server-function modules with proxies and withholds all other server source', async () => {
-    let captured: CapsuleBuildRequest | undefined;
+    let captured: CapsuleApiGroupBuildRequest | undefined;
     const tempRoot = await mkdtemp(join(tmpdir(), 'capsule-boundary-server-'));
     try {
       const sourceSnapshot = snapshot([

@@ -9,17 +9,15 @@ describe('browser Capsule runtime descriptor', () => {
   test('strictly decodes and normalizes trusted runtime metadata', () => {
     const parsed = ZWidgetCapsuleRuntimeDescriptor.parse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
-      target: {
-        ...CAPSULE_RUNTIME_DESCRIPTOR.target,
-        featureProfiles: ['svg-dom-v1', 'artifact-resources-v2'],
+      apiContract: {
+        ...CAPSULE_RUNTIME_DESCRIPTOR.apiContract,
+        groups: ['WEBGL', 'DOM'],
       },
       signatureKeyIds: ['vibecanvas-release-v1', 'vibecanvas-preview-v1'],
     });
 
-    expect(parsed.target.featureProfiles).toEqual([
-      'artifact-resources-v2',
-      'svg-dom-v1',
-    ]);
+    expect(parsed.format).toBe('vibecanvas.capsule-runtime.v2');
+    expect(parsed.apiContract.groups).toEqual(['DOM', 'WEBGL']);
     expect(parsed.signatureKeyIds).toEqual([
       'vibecanvas-preview-v1',
       'vibecanvas-release-v1',

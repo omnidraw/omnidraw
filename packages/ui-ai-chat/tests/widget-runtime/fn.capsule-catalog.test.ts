@@ -7,11 +7,11 @@ import type {
   TWidgetCapsuleHostCatalog,
 } from '../../src/widget-runtime/interface';
 import type {
-  TWidgetCapsuleBudgets,
+  TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleRuntimeDescriptor,
 } from '@vibecanvas/widget-contract';
 
-const BUDGETS: TWidgetCapsuleBudgets = Object.freeze({
+const BUDGETS: TWidgetCapsuleBudgetRequest = Object.freeze({
   cpuMs: 0.5,
   memoryBytes: 16 * 1_024 * 1_024,
   domNodes: 1_000,
@@ -37,18 +37,12 @@ const INTEGER_BUDGET_DIMENSIONS = Object.freeze([
 ] as const);
 
 function catalog(
-  budgetCeiling: TWidgetCapsuleBudgets = BUDGETS,
-  budgetDefaults: TWidgetCapsuleBudgets = BUDGETS,
+  limits: TWidgetCapsuleBudgetRequest = BUDGETS,
 ): TWidgetCapsuleHostCatalog {
   return Object.freeze({
     generation: 'fractional-cpu-budget',
-    targetBase: Object.freeze({
-      runtimeAbi: 'quickjs-release-sync-v1',
-      domProfile: 'dom-core-v2',
-    }),
-    allowedFeatureProfiles: Object.freeze([]),
-    budgetCeiling,
-    budgetDefaults,
+    allowedApis: Object.freeze(['DOM']),
+    limits,
     previewSigningKeyId: 'preview-key',
     releaseSigningKeyId: 'release-key',
     trustedSigningKeys: new Map([
@@ -59,15 +53,15 @@ function catalog(
 }
 
 function descriptor(
-  budgets: TWidgetCapsuleBudgets = BUDGETS,
+  budgets: TWidgetCapsuleBudgetRequest = BUDGETS,
 ): TWidgetCapsuleRuntimeDescriptor {
   return Object.freeze({
-    format: 'vibecanvas.capsule-runtime.v1',
+    format: 'vibecanvas.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${'a'.repeat(64)}`,
-    target: Object.freeze({
-      runtimeAbi: 'quickjs-release-sync-v1',
-      domProfile: 'dom-core-v2',
-      featureProfiles: Object.freeze([]),
+    apiContract: Object.freeze({
+      format: 'capsule-api-groups-v1',
+      groups: Object.freeze(['DOM']),
+      bundleDigest: `sha256:${'b'.repeat(64)}`,
     }),
     budgets,
     capabilityRequests: Object.freeze([]),
@@ -98,13 +92,13 @@ describe('Capsule widget budget catalog', () => {
       });
 
       expect(() => fnValidateWidgetCapsuleHostCatalog(
-        catalog(fractional, fractional),
-      )).toThrow('Widget Capsule budget catalog is invalid.');
+        catalog(fractional),
+      )).toThrow('Widget Capsule limit catalog is invalid.');
       expect(() => fnAssertWidgetCapsuleRuntimeCompatible(
         catalog(),
         descriptor(fractional),
         'published',
-      )).toThrow('Widget Capsule budgets exceed the shared host catalog.');
+      )).toThrow('Widget Capsule budgets exceed the shared host limits.');
     },
   );
 });

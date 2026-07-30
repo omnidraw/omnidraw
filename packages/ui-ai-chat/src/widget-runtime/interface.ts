@@ -249,7 +249,7 @@ export type TWidgetUiRuntimePreloadedRenderOwner =
   }>;
 
 export type TWidgetUiRuntimePreloadedRenderArgs = Readonly<{
-  featureProfiles: readonly string[];
+  apis: readonly string[];
   initialViewport?: CapsuleViewport;
   initiallyFrozen?: boolean;
   swapFrom?: TWidgetUiRuntimePreloadedRenderOwner;

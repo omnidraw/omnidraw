@@ -16,7 +16,10 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ZWidgetManifestV3, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
+import {
+  ZWidgetManifestV3,
+  type TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';

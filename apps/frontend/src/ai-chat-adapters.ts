@@ -117,10 +117,8 @@ async function loadWidgetCapsuleHostCatalog(): Promise<TWidgetCapsuleHostCatalog
   }
   return Object.freeze({
     generation: configuration.generation,
-    targetBase: Object.freeze({ ...configuration.targetBase }),
-    allowedFeatureProfiles: Object.freeze([...configuration.allowedFeatureProfiles]),
-    budgetCeiling: Object.freeze({ ...configuration.budgetCeiling }),
-    budgetDefaults: Object.freeze({ ...configuration.budgetDefaults }),
+    allowedApis: Object.freeze([...configuration.allowedApis]),
+    limits: Object.freeze({ ...configuration.limits }),
     previewSigningKeyId: configuration.previewSigningKeyId,
     releaseSigningKeyId: configuration.releaseSigningKeyId,
     trustedSigningKeys,

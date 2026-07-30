@@ -4,13 +4,14 @@
 
 import type {
   TWidgetCapsuleBudgetRequest,
-  TWidgetCapsuleBudgets,
+  TWidgetCapsuleApiContract,
+  TWidgetCapsuleApiGroup,
   TWidgetCapsuleCapabilityRequest,
   TWidgetCapsuleChannelContract,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetCapsuleSchemaReference,
-  TWidgetCapsuleTarget,
 } from '../types';
+import { WIDGET_CAPSULE_API_GROUPS } from '../CONSTANTS';
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -35,13 +36,31 @@ function normalizeSchemaReference(
   };
 }
 
-export function fnNormalizeWidgetCapsuleTarget(
-  target: TWidgetCapsuleTarget,
-): TWidgetCapsuleTarget {
+export function fnNormalizeWidgetCapsuleApis(
+  apis: readonly TWidgetCapsuleApiGroup[],
+): readonly TWidgetCapsuleApiGroup[] {
+  const selected = new Set(apis);
+  if (selected.size !== apis.length) {
+    throw new TypeError('Capsule API groups must not contain duplicates.');
+  }
+  if (!selected.has('DOM')) {
+    throw new TypeError('Capsule API groups must explicitly include DOM.');
+  }
+  const renderingGroups = ['CANVAS_2D', 'WEBGL', 'WEBGPU']
+    .filter((api) => selected.has(api as TWidgetCapsuleApiGroup));
+  if (renderingGroups.length > 1) {
+    throw new TypeError('CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive.');
+  }
+  return WIDGET_CAPSULE_API_GROUPS.filter((api) => selected.has(api));
+}
+
+export function fnNormalizeWidgetCapsuleApiContract(
+  contract: TWidgetCapsuleApiContract,
+): TWidgetCapsuleApiContract {
   return {
-    runtimeAbi: target.runtimeAbi,
-    domProfile: target.domProfile,
-    featureProfiles: sortedUnique(target.featureProfiles, 'Capsule feature profiles'),
+    format: 'capsule-api-groups-v1',
+    groups: fnNormalizeWidgetCapsuleApis(contract.groups),
+    bundleDigest: contract.bundleDigest,
   };
 }
 
@@ -61,23 +80,6 @@ export function fnNormalizeWidgetCapsuleBudgetRequest(
     ...(budgets.lifecycleBytes === undefined
       ? {}
       : { lifecycleBytes: budgets.lifecycleBytes }),
-  };
-}
-
-export function fnNormalizeWidgetCapsuleBudgets(
-  budgets: TWidgetCapsuleBudgets,
-): TWidgetCapsuleBudgets {
-  return {
-    cpuMs: budgets.cpuMs,
-    memoryBytes: budgets.memoryBytes,
-    domNodes: budgets.domNodes,
-    handles: budgets.handles,
-    messageBytes: budgets.messageBytes,
-    streamBytes: budgets.streamBytes,
-    assetBytes: budgets.assetBytes,
-    networkBytes: budgets.networkBytes,
-    gpuBytes: budgets.gpuBytes,
-    lifecycleBytes: budgets.lifecycleBytes,
   };
 }
 
@@ -130,23 +132,31 @@ export function fnNormalizeWidgetCapsuleChannelContract(
   };
 }
 
-export function fnNormalizeWidgetCapsuleRuntimeDescriptor(
+function normalizeRuntimeDescriptorTail(
   descriptor: TWidgetCapsuleRuntimeDescriptor,
-): TWidgetCapsuleRuntimeDescriptor {
+) {
   return {
-    format: 'vibecanvas.capsule-runtime.v1',
-    capsuleArtifactHash: descriptor.capsuleArtifactHash,
-    target: fnNormalizeWidgetCapsuleTarget(descriptor.target),
-    budgets: fnNormalizeWidgetCapsuleBudgets(descriptor.budgets),
     capabilityRequests: fnNormalizeWidgetCapsuleCapabilityRequests(
       descriptor.capabilityRequests,
     ),
     channels: fnNormalizeWidgetCapsuleChannelContract(descriptor.channels),
-    parkability: { parkable: false },
+    parkability: { parkable: false as const },
     signatureKeyIds: sortedUnique(
       descriptor.signatureKeyIds,
       'Capsule signature key IDs',
     ),
+  };
+}
+
+export function fnNormalizeWidgetCapsuleRuntimeDescriptor(
+  descriptor: TWidgetCapsuleRuntimeDescriptor,
+): TWidgetCapsuleRuntimeDescriptor {
+  return {
+    format: 'vibecanvas.capsule-runtime.v2',
+    capsuleArtifactHash: descriptor.capsuleArtifactHash,
+    apiContract: fnNormalizeWidgetCapsuleApiContract(descriptor.apiContract),
+    budgets: fnNormalizeWidgetCapsuleBudgetRequest(descriptor.budgets),
+    ...normalizeRuntimeDescriptorTail(descriptor),
   };
 }
 

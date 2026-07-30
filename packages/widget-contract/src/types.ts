@@ -9,6 +9,7 @@ import type {
   TResourceRequirement,
 } from '@vibecanvas/resource-runtime';
 import type { TOrganizationId } from '@vibecanvas/tenant-core';
+import type { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
 import type { TWidgetDiagnostic } from './diagnostic-schema';
 
 export type TWidgetDefinitionId = string;
@@ -67,11 +68,14 @@ export type TWidgetArtifactReadPurpose =
 /** Capsule content addresses include their digest algorithm domain. */
 export type TWidgetCapsuleHash = `sha256:${string}`;
 
-/** Normalized Capsule execution target selected by trusted build policy. */
-export type TWidgetCapsuleTarget = Readonly<{
-  runtimeAbi: string;
-  domProfile: string;
-  featureProfiles: readonly string[];
+/** Public Capsule API groups available to widget authors. */
+export type TWidgetCapsuleApiGroup =
+  (typeof WIDGET_CAPSULE_API_GROUPS)[number];
+
+export type TWidgetCapsuleApiContract = Readonly<{
+  format: 'capsule-api-groups-v1';
+  groups: readonly TWidgetCapsuleApiGroup[];
+  bundleDigest: TWidgetCapsuleHash;
 }>;
 
 /** Complete Capsule resource ceiling. Zero is a valid explicit denial. */
@@ -90,11 +94,6 @@ export type TWidgetCapsuleBudgets = Readonly<{
 
 export type TWidgetCapsuleBudgetRequest = Readonly<Partial<TWidgetCapsuleBudgets>>;
 
-/** Browser-safe deployment target shared by trusted build and host policy. */
-export type TWidgetCapsuleHostTargetBase = Readonly<
-  Pick<TWidgetCapsuleTarget, 'runtimeAbi' | 'domProfile'>
->;
-
 /** Public verification material; private Capsule signing keys never cross this boundary. */
 export type TWidgetCapsulePublicSigningKey = Readonly<{
   keyId: string;
@@ -106,10 +105,8 @@ export type TWidgetCapsulePublicSigningKey = Readonly<{
 /** Public, cacheable policy required to construct a Capsule browser host. */
 export type TWidgetCapsuleHostConfiguration = Readonly<{
   generation: string;
-  targetBase: TWidgetCapsuleHostTargetBase;
-  allowedFeatureProfiles: readonly string[];
-  budgetCeiling: TWidgetCapsuleBudgets;
-  budgetDefaults: TWidgetCapsuleBudgets;
+  allowedApis: readonly TWidgetCapsuleApiGroup[];
+  limits: TWidgetCapsuleBudgetRequest;
   previewSigningKeyId: string;
   releaseSigningKeyId: string;
   signingKeys: readonly TWidgetCapsulePublicSigningKey[];
@@ -188,7 +185,7 @@ export type TWidgetCapsuleParkability = Readonly<{
 export type TWidgetUiManifest = Readonly<{
   runtime: 'capsule';
   entry: string;
-  target: TWidgetCapsuleTarget;
+  apis: readonly TWidgetCapsuleApiGroup[];
   budgets?: TWidgetCapsuleBudgetRequest;
   state?: Readonly<{
     collaborative: boolean;
@@ -307,15 +304,16 @@ export type TWidgetCapsuleBuildIdentity = Readonly<{
 
 /** Trusted, serializable metadata inspected from exact signed Capsule bytes. */
 export type TWidgetCapsuleRuntimeDescriptor = Readonly<{
-  format: 'vibecanvas.capsule-runtime.v1';
+  format: 'vibecanvas.capsule-runtime.v2';
   capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
+  apiContract: TWidgetCapsuleApiContract;
+  budgets: TWidgetCapsuleBudgetRequest;
   capabilityRequests: readonly TWidgetCapsuleCapabilityRequest[];
   channels: TWidgetCapsuleChannelContract | null;
   parkability: TWidgetCapsuleParkability;
   signatureKeyIds: readonly string[];
 }>;
+export type TWidgetNativeCapsuleRuntimeDescriptor = TWidgetCapsuleRuntimeDescriptor;
 
 export type TWidgetBuildRequest = Readonly<{
   snapshot: TWidgetSourceSnapshot;
@@ -345,9 +343,7 @@ export type TWidgetCapsuleUiArtifact = Readonly<{
   digestSha256: TWidgetArtifactDigest;
   bytes: Uint8Array;
   capsuleArtifactHash: TWidgetCapsuleHash;
-  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
-  requestedBudgets: TWidgetCapsuleBudgetRequest;
-  effectiveBudgets: TWidgetCapsuleBudgets;
+  runtimeDescriptor: TWidgetNativeCapsuleRuntimeDescriptor;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
 }>;
@@ -371,7 +367,7 @@ export type TWidgetCapsuleArtifactSignResult = Readonly<{
 
 export type TWidgetCapsuleArtifactInspectionRequest = Readonly<{
   signedBytes: Uint8Array;
-  expectedTarget: TWidgetCapsuleTarget;
+  expectedApis: readonly TWidgetCapsuleApiGroup[];
 }>;
 
 export type TWidgetCapsuleArtifactInspectionResult = Readonly<{
@@ -381,8 +377,8 @@ export type TWidgetCapsuleArtifactInspectionResult = Readonly<{
 
 export type TWidgetCapsuleRuntimeDescriptorCreateRequest = Readonly<{
   capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
+  apiContract: TWidgetCapsuleApiContract;
+  budgets: TWidgetCapsuleBudgetRequest;
   capabilityRequests: readonly TWidgetCapsuleCapabilityRequest[];
   channels: TWidgetCapsuleChannelContract | null;
   signatureKeyIds: readonly string[];
@@ -427,7 +423,7 @@ export type TWidgetDistributionBuildProvenance = Readonly<{
 
 /** Runtime metadata that is stable before Preview or release keys are selected. */
 export type TWidgetUnsignedCapsuleRuntimeDescriptor = Omit<
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetNativeCapsuleRuntimeDescriptor,
   'signatureKeyIds'
 >;
 
@@ -438,8 +434,6 @@ export type TWidgetUnsignedCapsuleUiArtifact = Readonly<{
   unsignedBytes: Uint8Array;
   capsuleArtifactHash: TWidgetCapsuleHash;
   runtimeDescriptor: TWidgetUnsignedCapsuleRuntimeDescriptor;
-  requestedBudgets: TWidgetCapsuleBudgetRequest;
-  effectiveBudgets: TWidgetCapsuleBudgets;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
 }>;
@@ -452,8 +446,8 @@ export type TWidgetConstructionContractPayloadInput = Readonly<{
   canonicalManifestJson: string;
   unsignedUiDigestSha256: TWidgetArtifactDigest;
   capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
+  apiContract: TWidgetCapsuleApiContract;
+  budgets: TWidgetCapsuleBudgetRequest;
   capabilityContractDigestSha256: TWidgetArtifactDigest;
   channelContractDigestSha256: TWidgetArtifactDigest;
   serverDigestSha256: TWidgetArtifactDigest | null;
@@ -513,13 +507,10 @@ export type TWidgetBuildResult = Readonly<{
   diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
-/** Persisted inputs whose canonical encoding binds a revision to its artifacts. */
-export type TWidgetContractPayloadInput = Readonly<{
+type TWidgetContractPayloadBase = Readonly<{
   canonicalManifestJson: string;
   uiDigestSha256: TWidgetArtifactDigest;
   capsuleArtifactHash: TWidgetCapsuleHash;
-  target: TWidgetCapsuleTarget;
-  budgets: TWidgetCapsuleBudgets;
   capabilityContractDigestSha256: TWidgetArtifactDigest;
   channelContractDigestSha256: TWidgetArtifactDigest;
   signatureKeyIds: readonly string[];
@@ -530,6 +521,12 @@ export type TWidgetContractPayloadInput = Readonly<{
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
+}>;
+
+/** Persisted inputs whose canonical encoding binds a revision to its artifacts. */
+export type TWidgetContractPayloadInput = TWidgetContractPayloadBase & Readonly<{
+  apiContract: TWidgetCapsuleApiContract;
+  budgets: TWidgetCapsuleBudgetRequest;
 }>;
 
 export type TWidgetServerFunctionDescriptorExtractionRequest = Readonly<{

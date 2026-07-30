@@ -12,12 +12,12 @@ export {
 } from './function-descriptor-schema';
 export {
   ZWidgetCapsuleBudgetRequest,
-  ZWidgetCapsuleBudgets,
+  ZWidgetCapsuleAllowedApis,
+  ZWidgetCapsuleApis,
   ZWidgetCapsuleCapabilityRequest,
   ZWidgetCapsuleChannelContract,
   ZWidgetCapsuleParkability,
   ZWidgetCapsuleSchemaReference,
-  ZWidgetCapsuleTarget,
   ZWidgetManifestV3,
 } from './manifest-schema';
 export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
@@ -91,11 +91,11 @@ export {
   fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
   fnNormalizeWidgetCapsuleBudgetRequest,
-  fnNormalizeWidgetCapsuleBudgets,
+  fnNormalizeWidgetCapsuleApiContract,
+  fnNormalizeWidgetCapsuleApis,
   fnNormalizeWidgetCapsuleCapabilityRequests,
   fnNormalizeWidgetCapsuleChannelContract,
   fnNormalizeWidgetCapsuleRuntimeDescriptor,
-  fnNormalizeWidgetCapsuleTarget,
 } from './core/fn.capsule';
 export {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,

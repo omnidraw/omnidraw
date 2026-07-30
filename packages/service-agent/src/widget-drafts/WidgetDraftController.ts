@@ -1757,6 +1757,15 @@ export class WidgetDraftController {
       workspace.draftPath,
       manifest.manifest.ui.entry,
     );
+    const publishReady = validation.status === 'valid'
+      && await this.#config.authoringStore.hasConfirmedPreviewExecution(
+        this.#config.tenant,
+        {
+          draftId: draft.id,
+          draftRevisionSha256: revision,
+          nowMs: this.#now(),
+        },
+      );
     return {
       draftId: draft.id,
       definitionId: draft.definitionId,
@@ -1773,7 +1782,7 @@ export class WidgetDraftController {
       updatedAt: new Date(draft.updatedAtMs).toISOString(),
       validation,
       previewAvailable,
-      publishReady: validation.status === 'valid',
+      publishReady,
     };
   }
 
@@ -2188,9 +2197,8 @@ export class WidgetDraftController {
     root: string,
   ): Promise<{ ok: true; manifest: TWidgetManifestV3 } | { ok: false; message: string }> {
     try {
-      const parsed = ZWidgetManifestV3.safeParse(
-        JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8')),
-      );
+      const source = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const parsed = ZWidgetManifestV3.safeParse(source);
       if (!parsed.success) {
         return {
           ok: false,

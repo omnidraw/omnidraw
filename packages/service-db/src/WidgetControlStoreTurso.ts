@@ -42,6 +42,7 @@ import type {
   TWidgetDefinitionId,
   TWidgetDistributionBuildProvenance,
   TWidgetManifestV3,
+  TWidgetNativeCapsuleRuntimeDescriptor,
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
   TWidgetPreviewPublicationIdentity,
@@ -76,7 +77,7 @@ type TValidatedPublicationFunctions = Readonly<{
   digestSha256: string;
 }>;
 type TValidatedPublicationRuntime = Readonly<{
-  descriptor: TWidgetCapsuleRuntimeDescriptor;
+  descriptor: TWidgetNativeCapsuleRuntimeDescriptor;
   canonicalJson: string;
   capsuleBuildIdentityJson: string;
 }>;
@@ -635,7 +636,7 @@ export class WidgetControlStoreTurso implements
           contract_format_version
         ) VALUES (
           ?, ?, ?, ?, ?, 'ui', ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, 3
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, 4
         )
       `)).run(
         tenant.orgId,
@@ -1303,10 +1304,17 @@ export class WidgetControlStoreTurso implements
       const revision = fnWidgetControlStoreRevision(row);
       const storedRow = row as Record<string, unknown>;
       const contractFormatVersion = Number(storedRow.contract_format_version);
-      if (contractFormatVersion !== 3) {
-        throw new Error('Stored widget contract format is not Capsule v3.');
+      if (contractFormatVersion !== 4) {
+        throw new Error('Stored widget contract format is not Capsule v4.');
       }
 
+      const parsedRuntime = ZWidgetCapsuleRuntimeDescriptor.safeParse(revision.uiRuntime);
+      if (
+        !parsedRuntime.success
+        || parsedRuntime.data.signatureKeyIds.length === 0
+      ) {
+        throw new Error('Stored Capsule runtime descriptor is invalid.');
+      }
       const parsedManifest = ZWidgetManifestV3.safeParse(revision.manifest);
       if (!parsedManifest.success) throw new Error('Stored widget manifest is invalid.');
 
@@ -1323,17 +1331,14 @@ export class WidgetControlStoreTurso implements
         throw new Error('Stored widget artifacts do not match the manifest.');
       }
 
-      const parsedRuntime = ZWidgetCapsuleRuntimeDescriptor.safeParse(revision.uiRuntime);
-      if (!parsedRuntime.success || parsedRuntime.data.signatureKeyIds.length === 0) {
-        throw new Error('Stored Capsule runtime descriptor is invalid.');
-      }
       const canonicalRuntimeJson = fnCanonicalizeWidgetCapsuleRuntimeDescriptor(
         parsedRuntime.data,
       );
       if (
         canonicalRuntimeJson !== String(storedRow.ui_runtime_json)
         || parsedRuntime.data.capsuleArtifactHash !== String(storedRow.capsule_artifact_hash)
-        || JSON.stringify(parsedRuntime.data.target) !== JSON.stringify(parsedManifest.data.ui.target)
+        || JSON.stringify(parsedRuntime.data.apiContract.groups)
+          !== JSON.stringify(parsedManifest.data.ui.apis)
       ) {
         throw new Error('Stored Capsule runtime descriptor is not canonical.');
       }
@@ -1428,7 +1433,7 @@ export class WidgetControlStoreTurso implements
         canonicalManifestJson,
         uiDigestSha256: validatedRevision.uiArtifact.digestSha256,
         capsuleArtifactHash: parsedRuntime.data.capsuleArtifactHash,
-        target: parsedRuntime.data.target,
+        apiContract: parsedRuntime.data.apiContract,
         budgets: parsedRuntime.data.budgets,
         capabilityContractDigestSha256: capabilityContractDigest,
         channelContractDigestSha256: channelContractDigest,
@@ -1517,14 +1522,17 @@ export class WidgetControlStoreTurso implements
     manifest: TWidgetManifestV3,
   ): TValidatedPublicationRuntime {
     const parsed = ZWidgetCapsuleRuntimeDescriptor.safeParse(request.revision.uiRuntime);
-    if (!parsed.success || parsed.data.signatureKeyIds.length === 0) {
+    if (
+      !parsed.success
+      || parsed.data.signatureKeyIds.length === 0
+    ) {
       throw widgetStoreError(
         'WIDGET_CAPSULE_RUNTIME_INVALID',
         'Widget publication requires signed Capsule runtime metadata.',
       );
     }
     if (
-      JSON.stringify(parsed.data.target) !== JSON.stringify(manifest.ui.target)
+      JSON.stringify(parsed.data.apiContract.groups) !== JSON.stringify(manifest.ui.apis)
       || request.revision.serverRuntimeAbi !== (manifest.server?.runtimeAbi ?? null)
     ) {
       throw widgetStoreError(
@@ -1647,14 +1655,14 @@ export class WidgetControlStoreTurso implements
   #assertPublicationContract(
     request: TWidgetPublicationCommitInput,
     manifest: TWidgetManifestV3,
-    runtime: TWidgetCapsuleRuntimeDescriptor,
+    runtime: TWidgetNativeCapsuleRuntimeDescriptor,
     functionDescriptorsDigestSha256: string,
   ): void {
     const expectedContractDigest = this.#contractDigest({
       canonicalManifestJson: request.revision.canonicalManifestJson,
       uiDigestSha256: request.revision.uiArtifact.digestSha256,
       capsuleArtifactHash: runtime.capsuleArtifactHash,
-      target: runtime.target,
+      apiContract: runtime.apiContract,
       budgets: runtime.budgets,
       capabilityContractDigestSha256: request.revision.capabilityContractDigestSha256,
       channelContractDigestSha256: request.revision.channelContractDigestSha256,

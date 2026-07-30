@@ -9,7 +9,7 @@ export type {
   CapsuleBuildDiagnosticRecord,
   CapsuleBuildErrorCode,
   CapsuleBuildOutput,
-  CapsuleBuildRequest,
+  CapsuleApiGroupBuildRequest,
   CapsuleExternalDistribution,
   CapsuleExternalDistributionProducerIdentity,
   CapsuleExternalResourceBinding,
@@ -21,21 +21,18 @@ export {
   signCapsuleArtifactBytes,
 } from '@omnidraw/capsule/sign';
 export {
-  VIBECANVAS_CAPSULE_ALLOWED_FEATURE_PROFILES,
+  VIBECANVAS_CAPSULE_ALLOWED_APIS,
   VIBECANVAS_CAPSULE_ALLOWED_SERVER_IMPORTS,
-  VIBECANVAS_CAPSULE_ALLOWED_TARGET,
-  VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
   VIBECANVAS_CAPSULE_BUILD_POLICY,
   VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
-  VIBECANVAS_CAPSULE_DEFAULT_BUDGETS,
+  VIBECANVAS_CAPSULE_HOST_LIMITS,
+  VIBECANVAS_CAPSULE_LIMITS,
   VIBECANVAS_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 export {
-  fnAssertVibecanvasCapsuleProfileBudgets,
-  fnResolveVibecanvasCapsuleBudgets,
+  fnVibecanvasCapsuleApis,
+  fnVibecanvasCapsuleBudgetRequest,
   fnVibecanvasCapsuleBuildPolicy,
-  fnVibecanvasCapsuleBuildTarget,
-  fnVibecanvasCapsuleCompleteBudgets,
 } from './fn.policy';
 export { txSignVibecanvasCapsuleArtifact } from './tx.sign-capsule-artifact';
 export type {

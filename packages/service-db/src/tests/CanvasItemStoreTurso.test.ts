@@ -16,7 +16,7 @@ import {
   WIDGET_CAPSULE_BUILD_POLICY_ID,
   WIDGET_CAPSULE_CAPABILITY_DIGEST,
   WIDGET_CAPSULE_CHANNEL_DIGEST,
-  WIDGET_CAPSULE_RUNTIME_JSON,
+  WIDGET_CAPSULE_V1_RUNTIME_JSON,
   widgetManifestV3Json,
 } from "./widget-capsule-fixture";
 
@@ -258,7 +258,7 @@ async function seedWidgetRevision(
       slug: `widget-${args.suffix}`,
     }),
     "c".repeat(64),
-    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_V1_RUNTIME_JSON,
     WIDGET_CAPSULE_ARTIFACT_HASH,
     WIDGET_CAPSULE_CAPABILITY_DIGEST,
     WIDGET_CAPSULE_CHANNEL_DIGEST,

@@ -25,7 +25,6 @@ export type {
   CapsuleHost,
   CapsuleHostDiagnostics,
   CapsuleHostErrorCode,
-  CapsuleHostRuntimePolicy,
   CapsuleMemoryArtifactCacheOptions,
   CapsuleMountDiagnostics,
   CapsuleMountErrorCategory,

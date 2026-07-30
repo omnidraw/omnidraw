@@ -9,22 +9,14 @@ import {
 import { dirname, join } from 'node:path';
 import { build as viteBuild, version as viteVersion } from 'vite';
 import {
-  VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
   VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
-  VIBECANVAS_CAPSULE_DEFAULT_BUDGETS,
   WidgetArtifactBuilderCapsule,
   buildCapsuleGuest,
   type CapsuleArtifactSigningKey,
 } from '@vibecanvas/capsule-vibecanvas/build';
 import {
-  CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-  CAPSULE_CANVAS_2D_PROFILE,
-  CAPSULE_CANVAS_WEBGL_PROFILE,
-  CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-  CAPSULE_DOM_CORE_V2_PROFILE,
-  CAPSULE_RUNTIME_ABI,
-  CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-  CAPSULE_SVG_DOM_PROFILE,
+  VIBECANVAS_CAPSULE_ALLOWED_APIS,
+  VIBECANVAS_CAPSULE_HOST_LIMITS,
   VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
   VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
   VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
@@ -34,6 +26,7 @@ import {
   fnCanonicalizeWidgetManifest,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
+import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
 import type { TVibecanvasDistributionBuild } from '@vibecanvas/capsule-vibecanvas/builder';
 
 type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[1];
@@ -47,7 +40,7 @@ type TFixtureBuild = Readonly<{
   slug: string;
   entry: string;
   files: readonly TSourceFile[];
-  featureProfiles?: readonly string[];
+  apis?: readonly TWidgetCapsuleApiGroup[];
   budgets?: Readonly<{ gpuBytes?: number; messageBytes?: number }>;
   localStore?: 'none' | 'ephemeral';
   collaborative?: boolean;
@@ -63,9 +56,9 @@ const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widg
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.4',
+  packageVersion: '0.10.0',
   packageDigest:
-    'sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189' as const,
+    'sha256:409a6680d581b0028180f108e0ed270c98dc73b0e466a60ffe60deabdbabc7c1' as const,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest:
     'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,
@@ -395,10 +388,7 @@ createRoot(root).render(<App />);
   display: block;
   inline-size: 24px;
   block-size: 24px;
-  background-image: url("/capsule-network-image.svg");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
+  background: linear-gradient(135deg, rgb(16 185 129), rgb(14 116 144));
 }
 
 @media (min-width: 20rem) {
@@ -670,11 +660,7 @@ function manifest(args: TFixtureBuild): TManifest {
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,
-      target: Object.freeze({
-        runtimeAbi: CAPSULE_RUNTIME_ABI,
-        domProfile: CAPSULE_DOM_CORE_V2_PROFILE,
-        featureProfiles: Object.freeze([...(args.featureProfiles ?? [])].sort()),
-      }),
+      apis: Object.freeze(['DOM' as const, ...(args.apis ?? [])]),
       state: Object.freeze({
         collaborative: args.collaborative ?? false,
         localStore: args.localStore ?? 'none',
@@ -733,9 +719,9 @@ const builder = new WidgetArtifactBuilderCapsule({
 
 async function construct(args: TFixtureBuild) {
   const widgetManifest = manifest(args);
-  const featureProfiles = args.featureProfiles ?? [];
+  const apis = ['DOM', ...(args.apis ?? [])];
   console.log(
-    `Constructing ${args.slug} (${args.entry}; profiles=${featureProfiles.join(',') || 'none'})…`,
+    `Constructing ${args.slug} (${args.entry}; apis=${apis.join(',')})…`,
   );
   return await builder.construct(tenant, {
     snapshot: snapshot(args.files),
@@ -809,11 +795,7 @@ const threePair = await buildSigningPair({
   slug: 'browser-three-acceptance',
   entry: 'src/three.ts',
   files: [{ path: 'src/three.ts', source: sources.three }],
-  featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
-  budgets: Object.freeze({
-    gpuBytes: 8 * 1024 * 1024,
-    messageBytes: 256 * 1024,
-  }),
+  apis: ['WEBGL'],
 });
 
 const artifacts = Object.freeze({
@@ -829,14 +811,13 @@ const artifacts = Object.freeze({
     slug: 'browser-svg-acceptance',
     entry: 'src/svg.ts',
     files: [{ path: 'src/svg.ts', source: sources.svg }],
-    featureProfiles: [CAPSULE_SVG_DOM_PROFILE],
   }),
   canvas: await build({
     name: 'Browser Canvas acceptance',
     slug: 'browser-canvas-acceptance',
     entry: 'src/canvas.ts',
     files: [{ path: 'src/canvas.ts', source: sources.canvas }],
-    featureProfiles: [CAPSULE_CANVAS_2D_PROFILE],
+    apis: ['CANVAS_2D'],
   }),
   three: threePair.preview,
   threeRelease: threePair.release,
@@ -845,16 +826,14 @@ const artifacts = Object.freeze({
     slug: 'browser-three-pbr-material',
     entry: 'src/three-pbr.ts',
     files: [{ path: 'src/three-pbr.ts', source: sources.threePbr }],
-    featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
-    budgets: Object.freeze({ gpuBytes: 8 * 1024 * 1024 }),
+    apis: ['WEBGL'],
   }),
   threeClock: await build({
     name: 'Browser Three.js unsupported clock',
     slug: 'browser-three-clock',
     entry: 'src/three-clock.ts',
     files: [{ path: 'src/three-clock.ts', source: sources.threeClock }],
-    featureProfiles: [CAPSULE_CANVAS_WEBGL_PROFILE],
-    budgets: Object.freeze({ gpuBytes: 8 * 1024 * 1024 }),
+    apis: ['WEBGL'],
   }),
   threeMissingAuthority: await build({
     name: 'Browser Three.js missing authority',
@@ -869,11 +848,6 @@ const artifacts = Object.freeze({
     files: [
       { path: 'src/react.tsx', source: sources.react },
       { path: 'src/react.css', source: sources.reactCss },
-    ],
-    featureProfiles: [
-      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
     ],
   }),
   published: await build({
@@ -923,20 +897,8 @@ const fixture = Object.freeze({
   }),
   host: Object.freeze({
     generation: 'capsule-browser-acceptance-v1',
-    targetBase: Object.freeze({
-      runtimeAbi: CAPSULE_RUNTIME_ABI,
-      domProfile: CAPSULE_DOM_CORE_V2_PROFILE,
-    }),
-    allowedFeatureProfiles: Object.freeze([
-      CAPSULE_ARTIFACT_RESOURCES_PROFILE,
-      CAPSULE_CANVAS_2D_PROFILE,
-      CAPSULE_CANVAS_WEBGL_PROFILE,
-      CAPSULE_CSS_NETWORK_IMAGES_PROFILE,
-      CAPSULE_SHADOW_BROWSER_CSS_PROFILE,
-      CAPSULE_SVG_DOM_PROFILE,
-    ].sort()),
-    budgetCeiling: VIBECANVAS_CAPSULE_BUDGET_CEILINGS,
-    budgetDefaults: VIBECANVAS_CAPSULE_DEFAULT_BUDGETS,
+    allowedApis: VIBECANVAS_CAPSULE_ALLOWED_APIS,
+    limits: VIBECANVAS_CAPSULE_HOST_LIMITS,
     previewSigningKeyId: VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
     releaseSigningKeyId: VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
   }),

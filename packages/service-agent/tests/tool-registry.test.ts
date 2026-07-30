@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ZWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
@@ -85,6 +86,52 @@ describe('AI Chat tool registry', () => {
     expect(denied.isError).toBe(true);
     expect(denied.content[0]?.text).toContain('TOOL_NOT_AUTHORIZED');
     expect(bashRuns).toHaveLength(1);
+  });
+
+  test('does not rewrite unsupported private-target draft source', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-capsule-api-groups-migration-'));
+    roots.push(root);
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
+    await workspace.init();
+
+    const created = await workspace.createDraft(
+      'chat-a',
+      { name: 'Migrated WebGL' },
+      async ({ cwd }) => {
+        await mkdir(join(cwd, 'ui'), { recursive: true });
+        await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("canvas"));\n', 'utf8');
+        await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+          schemaVersion: 3,
+          name: 'Migrated WebGL',
+          slug: 'migrated-webgl',
+          ui: {
+            runtime: 'capsule',
+            entry: 'ui/main.ts',
+            target: {
+              runtimeAbi: 'quickjs-release-sync-v1',
+              domProfile: 'dom-core-v2',
+              featureProfiles: [
+                'artifact-resources-v1',
+                'canvas-webgl-v1',
+                'shadow-browser-css-v1',
+              ],
+            },
+          },
+        }, null, 2)}\n`, 'utf8');
+        return ['vibecanvas.json', 'ui/main.ts'];
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(
+      join(created.mount.targetPath, 'vibecanvas.json'),
+      'utf8',
+    ));
+    expect(manifest.ui).toHaveProperty('target');
+    expect(ZWidgetManifestV3.safeParse(manifest).success).toBe(false);
+    const first = await workspace.getDraft('Migrated WebGL');
+    const second = await workspace.getDraft('Migrated WebGL');
+    expect(first?.revision).toMatch(/^[0-9a-f]{64}$/);
+    expect(second?.revision).toBe(first?.revision);
   });
 
   test('fences one mounted draft once after multi-file and failed Bash mutations', async () => {

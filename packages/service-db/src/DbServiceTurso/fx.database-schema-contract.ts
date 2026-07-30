@@ -170,7 +170,10 @@ async function fxVerifyDatabaseSchemaContract(
     .update(fingerprintPayload)
     .digest('hex');
   if (fingerprintSha256 !== args.expectedFingerprintSha256) {
-    return { valid: false, reason: 'whole-schema SHA-256 fingerprint differs' };
+    return {
+      valid: false,
+      reason: `whole-schema SHA-256 fingerprint differs (found ${fingerprintSha256})`,
+    };
   }
 
   for (const [table, expected] of Object.entries(args.expectedSchema)) {

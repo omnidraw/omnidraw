@@ -7,21 +7,20 @@ import type {
 } from '@vibecanvas/service-widget-state';
 import {
   ZWidgetBrowserFunctionDescriptors,
-  ZWidgetCapsuleBudgets,
+  ZWidgetCapsuleAllowedApis,
+  ZWidgetCapsuleBudgetRequest,
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetManifestV3,
 } from '@vibecanvas/widget-contract';
 import { z } from 'zod';
 import type {
   TWidgetCapsuleHostConfiguration,
-  TWidgetCapsuleHostTargetBase,
   TWidgetCapsulePublicSigningKey,
 } from './types';
 
 const IDENTIFIER_MAX_LENGTH = 200;
 const ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;
 const ARTIFACT_MAX_BASE64_LENGTH = Math.ceil(ARTIFACT_MAX_BYTES / 3) * 4;
-const CAPSULE_TARGET_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,99}$/;
 const CAPSULE_SIGNING_KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,169}$/;
 const RAW_ED25519_PUBLIC_KEY_BASE64_PATTERN =
   /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/;
@@ -30,15 +29,6 @@ const ZSignedWidgetCapsuleRuntimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.re
   (descriptor) => descriptor.signatureKeyIds.length > 0,
   'Runtime artifact must contain at least one trusted Capsule signature.',
 );
-const ZCapsuleTargetId = z.string().regex(CAPSULE_TARGET_ID_PATTERN);
-
-export const ZWidgetCapsuleHostTargetBase: z.ZodType<
-  TWidgetCapsuleHostTargetBase
-> = z.object({
-  runtimeAbi: ZCapsuleTargetId,
-  domProfile: ZCapsuleTargetId,
-}).strict();
-
 export const ZWidgetCapsulePublicSigningKey: z.ZodType<
   TWidgetCapsulePublicSigningKey
 > = z.object({
@@ -52,25 +42,8 @@ export const ZWidgetCapsuleHostConfiguration: z.ZodType<
   TWidgetCapsuleHostConfiguration
 > = z.object({
   generation: z.string().regex(/^[0-9a-f]{64}$/),
-  targetBase: ZWidgetCapsuleHostTargetBase,
-  allowedFeatureProfiles: z.array(ZCapsuleTargetId)
-    .max(64)
-    .superRefine((profiles, context) => {
-      const seen = new Set<string>();
-      profiles.forEach((profile, index) => {
-        if (seen.has(profile)) {
-          context.addIssue({
-            code: 'custom',
-            message: `Duplicate Capsule feature profile: ${profile}`,
-            path: [index],
-          });
-        }
-        seen.add(profile);
-      });
-    })
-    .transform((profiles) => [...profiles].sort()),
-  budgetCeiling: ZWidgetCapsuleBudgets,
-  budgetDefaults: ZWidgetCapsuleBudgets,
+  allowedApis: ZWidgetCapsuleAllowedApis,
+  limits: ZWidgetCapsuleBudgetRequest,
   previewSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   releaseSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   signingKeys: z.array(ZWidgetCapsulePublicSigningKey).min(2).max(32),
@@ -116,20 +89,6 @@ export const ZWidgetCapsuleHostConfiguration: z.ZodType<
     }
   }
 
-  for (const dimension of Object.keys(configuration.budgetCeiling) as Array<
-    keyof typeof configuration.budgetCeiling
-  >) {
-    if (
-      configuration.budgetDefaults[dimension]
-      > configuration.budgetCeiling[dimension]
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: `Capsule budget default exceeds its ceiling: ${dimension}`,
-        path: ['budgetDefaults', dimension],
-      });
-    }
-  }
 });
 
 function decodedBase64ByteLength(value: string): number {

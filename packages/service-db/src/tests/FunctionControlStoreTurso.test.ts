@@ -132,6 +132,7 @@ async function openDatabase(databasePath = ':memory:', migrate = true): Promise<
       '002-function-runtime.sql',
       '003-agent-authoring.sql',
       '004-live-widget-preview.sql',
+      '005-capsule-api-groups.sql',
     ]) {
       await database.exec(await Bun.file(new URL(`../migrations/${migration}`, import.meta.url)).text());
     }
@@ -181,11 +182,7 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
     ui: {
       runtime: 'capsule',
       entry: 'ui.js',
-      target: {
-        runtimeAbi: 'quickjs-release-sync-v1',
-        domProfile: 'dom-core-v2',
-        featureProfiles: [],
-      },
+      apis: ['DOM'],
     },
     server: { entry: 'server.js', runtimeAbi: 'vibecanvas:1' },
     resources: [{ slot: 'preferences', kind: 'kv', effect: 'write', required: true }],

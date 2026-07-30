@@ -1,7 +1,7 @@
 import type { TWidgetConstructionContractPayloadInput } from '../types';
 import {
-  fnNormalizeWidgetCapsuleBudgets,
-  fnNormalizeWidgetCapsuleTarget,
+  fnNormalizeWidgetCapsuleApiContract,
+  fnNormalizeWidgetCapsuleBudgetRequest,
 } from './fn.capsule';
 
 /** Stable payload used to hash and verify an unsigned guest construction. */
@@ -9,15 +9,15 @@ export function fnCanonicalizeWidgetConstructionContractPayload(
   input: TWidgetConstructionContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.widget-construction-contract.v1',
+    format: 'vibecanvas.widget-construction-contract.v2',
     sourceSnapshotId: input.sourceSnapshotId,
     sourceDigestSha256: input.sourceDigestSha256,
     sourceArtifactDigestSha256: input.sourceArtifactDigestSha256,
     canonicalManifestJson: input.canonicalManifestJson,
     unsignedUiDigestSha256: input.unsignedUiDigestSha256,
     capsuleArtifactHash: input.capsuleArtifactHash,
-    target: fnNormalizeWidgetCapsuleTarget(input.target),
-    budgets: fnNormalizeWidgetCapsuleBudgets(input.budgets),
+    apiContract: fnNormalizeWidgetCapsuleApiContract(input.apiContract),
+    budgets: fnNormalizeWidgetCapsuleBudgetRequest(input.budgets),
     capabilityContractDigestSha256: input.capabilityContractDigestSha256,
     channelContractDigestSha256: input.channelContractDigestSha256,
     serverDigestSha256: input.serverDigestSha256,

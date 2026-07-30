@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import {
   AGENT_AUTHORING_MIGRATION_NAME,
   AGENT_AUTHORING_MIGRATION_VERSION,
+  CAPSULE_API_GROUPS_MIGRATION_NAME,
+  CAPSULE_API_GROUPS_MIGRATION_VERSION,
   DATABASE_APPLICATION_ID,
   DATABASE_SCHEMA_VERSION,
   DEFAULT_OSS_ACCOUNT_ID,
@@ -21,6 +23,7 @@ import {
 } from '../../../src/CONSTANTS';
 import {
   AGENT_AUTHORING_MIGRATION,
+  CAPSULE_API_GROUPS_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
   LIVE_WIDGET_PREVIEW_MIGRATION,
@@ -49,6 +52,7 @@ import {
   WIDGET_CAPSULE_CAPABILITY_DIGEST,
   WIDGET_CAPSULE_CHANNEL_DIGEST,
   WIDGET_CAPSULE_RUNTIME_JSON,
+  WIDGET_CAPSULE_V1_RUNTIME_JSON,
   widgetManifestV3Json,
 } from '../widget-capsule-fixture';
 
@@ -64,6 +68,20 @@ const V3_IDEMPOTENCY_ID = '00000000-0000-4000-8000-000000000707';
 const V3_CHAT_ID = '00000000-0000-4000-8000-000000000708';
 const V3_DRAFT_ID = '00000000-0000-4000-8000-000000000709';
 const V3_DRAFT_SOURCE_DIGEST = '9'.repeat(64);
+const FROZEN_CAPSULE_094_MANIFEST_JSON = JSON.stringify({
+  schemaVersion: 3,
+  name: 'V0 sequence',
+  slug: 'v0-sequence',
+  ui: {
+    runtime: 'capsule',
+    entry: 'ui.ts',
+    target: {
+      runtimeAbi: 'quickjs-release-sync-v1',
+      domProfile: 'dom-core-v2',
+      featureProfiles: [],
+    },
+  },
+});
 
 type TImmediateTransaction = (() => Promise<void>) & {
   immediate(): Promise<void>;
@@ -144,6 +162,11 @@ function syntheticPreflightArgs() {
         name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
         checksumSha256: 'e'.repeat(64),
       },
+      {
+        version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
+        name: CAPSULE_API_GROUPS_MIGRATION_NAME,
+        checksumSha256: 'f'.repeat(64),
+      },
     ],
   } as const;
 }
@@ -172,6 +195,7 @@ async function registeredPreflightArgs() {
     FUNCTION_RUNTIME_MIGRATION,
     AGENT_AUTHORING_MIGRATION,
     LIVE_WIDGET_PREVIEW_MIGRATION,
+    CAPSULE_API_GROUPS_MIGRATION,
   ];
   return {
     expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
@@ -249,9 +273,9 @@ async function seedVersionZeroRevision(db: Database): Promise<void> {
     V0_REVISION_ID,
     V0_DEFINITION_ID,
     V0_ARTIFACT_ID,
-    widgetManifestV3Json({ name: 'V0 sequence', slug: 'v0-sequence' }),
+    FROZEN_CAPSULE_094_MANIFEST_JSON,
     'b'.repeat(64),
-    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_V1_RUNTIME_JSON,
     WIDGET_CAPSULE_ARTIFACT_HASH,
     WIDGET_CAPSULE_CAPABILITY_DIGEST,
     WIDGET_CAPSULE_CHANNEL_DIGEST,
@@ -481,6 +505,11 @@ describe('ordered managed migration runner', () => {
         name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
         version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
       }),
+      expect.objectContaining({
+        type: 'sql',
+        name: CAPSULE_API_GROUPS_MIGRATION_NAME,
+        version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
+      }),
     ]);
     expect(listEmbeddedMigrationFiles()).toEqual([
       INITIAL_MIGRATION_NAME,
@@ -488,6 +517,7 @@ describe('ordered managed migration runner', () => {
       FUNCTION_RUNTIME_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
       LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+      CAPSULE_API_GROUPS_MIGRATION_NAME,
     ]);
 
     const migrationDirectory = new URL('../../../src/migrations/', import.meta.url).pathname;
@@ -500,6 +530,7 @@ describe('ordered managed migration runner', () => {
       FUNCTION_RUNTIME_MIGRATION_NAME,
       AGENT_AUTHORING_MIGRATION_NAME,
       LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+      CAPSULE_API_GROUPS_MIGRATION_NAME,
     ]);
   });
 
@@ -550,6 +581,13 @@ describe('ordered managed migration runner', () => {
       {
         version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
         name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        applied_at_ms: 1_753_113_600_000,
+        application_version: '1.2.3-test',
+      },
+      {
+        version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
+        name: CAPSULE_API_GROUPS_MIGRATION_NAME,
         checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         applied_at_ms: 1_753_113_600_000,
         application_version: '1.2.3-test',
@@ -635,6 +673,7 @@ describe('ordered managed migration runner', () => {
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
       { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
+      { version: CAPSULE_API_GROUPS_MIGRATION_VERSION, name: CAPSULE_API_GROUPS_MIGRATION_NAME },
     ]);
 
     const ledger = await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all();
@@ -642,7 +681,7 @@ describe('ordered managed migration runner', () => {
     expect(await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all()).toEqual(ledger);
   });
 
-  test('upgrades a populated v3 database to v4 without losing rebuilt-table rows and survives restart', async () => {
+  test('upgrades a populated v3 database through API groups without losing rows', async () => {
     const root = await temporaryRoot();
     const databasePath = path.join(root, 'populated-v3.db');
     const db = await openDatabase(databasePath);
@@ -667,7 +706,7 @@ describe('ordered managed migration runner', () => {
     `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_DRAFT_ID) as Record<string, unknown>;
 
     expect(await runMigrations(db)).toEqual({ applied: true });
-    expect(await pragma(db, 'user_version')).toBe(LIVE_WIDGET_PREVIEW_MIGRATION_VERSION);
+    expect(await pragma(db, 'user_version')).toBe(CAPSULE_API_GROUPS_MIGRATION_VERSION);
     expect(await pragma(db, 'foreign_keys')).toBe(1);
     expect(await (await db.prepare(`
       SELECT * FROM artifact_references WHERE org_id = ? AND id = ?
@@ -723,8 +762,8 @@ describe('ordered managed migration runner', () => {
       SELECT version, name FROM schema_migrations ORDER BY version
     `)).all();
     expect(ledger.at(-1)).toEqual({
-      version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
-      name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+      version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
+      name: CAPSULE_API_GROUPS_MIGRATION_NAME,
     });
     await closeDatabase(db);
 
@@ -1152,6 +1191,7 @@ describe('ordered managed migration runner', () => {
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
       { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
+      { version: CAPSULE_API_GROUPS_MIGRATION_VERSION, name: CAPSULE_API_GROUPS_MIGRATION_NAME },
     ]);
   });
 
@@ -1447,6 +1487,7 @@ describe('read-only startup preflight', () => {
         { name: FUNCTION_RUNTIME_MIGRATION_NAME, version: FUNCTION_RUNTIME_MIGRATION_VERSION },
         { name: AGENT_AUTHORING_MIGRATION_NAME, version: AGENT_AUTHORING_MIGRATION_VERSION },
         { name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME, version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION },
+        { name: CAPSULE_API_GROUPS_MIGRATION_NAME, version: CAPSULE_API_GROUPS_MIGRATION_VERSION },
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);

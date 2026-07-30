@@ -8,15 +8,16 @@ import {
   fnNormalizeWidgetManifest,
   fnNormalizeWidgetRelativePath,
 } from './core/fn.manifest';
+import { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
 import type {
   TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleBudgets,
+  TWidgetCapsuleApiGroup,
   TWidgetCapsuleCapabilityRequest,
   TWidgetCapsuleChannelContract,
   TWidgetCapsuleHash,
   TWidgetCapsuleParkability,
   TWidgetCapsuleSchemaReference,
-  TWidgetCapsuleTarget,
   TWidgetManifestV3,
 } from './types';
 
@@ -31,6 +32,11 @@ const CAPSULE_OPERATION_PATTERN = /^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/;
 const CAPSULE_VERSION_RANGE_PATTERN =
   /^(?:\*|[\^~]?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
 const BUILD_ENTRY_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
+const CAPSULE_RENDERING_API_GROUPS = new Set<TWidgetCapsuleApiGroup>([
+  'CANVAS_2D',
+  'WEBGL',
+  'WEBGPU',
+]);
 
 const ZWidgetRelativePath = z.string().superRefine((value, context) => {
   if (fnNormalizeWidgetRelativePath(value) === null) {
@@ -46,32 +52,48 @@ const ZWidgetBuildEntryPath = ZWidgetRelativePath.refine(
   'Widget build entries must use a JavaScript or TypeScript extension',
 );
 
-const ZCapsuleTargetId = z.string().min(1).max(100).regex(TARGET_ID_PATTERN);
 const ZCapsuleHash = z.string().regex(CAPSULE_HASH_PATTERN)
   .transform((value): TWidgetCapsuleHash => value as TWidgetCapsuleHash);
 const ZCapsuleIntegerBudget = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
-export const ZWidgetCapsuleTarget: z.ZodType<TWidgetCapsuleTarget> = z.object({
-  runtimeAbi: ZCapsuleTargetId,
-  domProfile: ZCapsuleTargetId,
-  featureProfiles: z.array(ZCapsuleTargetId).max(64).superRefine((profiles, context) => {
-    const seen = new Set<string>();
-    profiles.forEach((profile, index) => {
-      if (seen.has(profile)) {
+export const ZWidgetCapsuleApiGroup = z.enum(WIDGET_CAPSULE_API_GROUPS);
+
+export const ZWidgetCapsuleAllowedApis: z.ZodType<
+  readonly TWidgetCapsuleApiGroup[]
+> =
+  z.array(ZWidgetCapsuleApiGroup).min(1).max(WIDGET_CAPSULE_API_GROUPS.length)
+    .superRefine((apis, context) => {
+      const seen = new Set<TWidgetCapsuleApiGroup>();
+      apis.forEach((api, index) => {
+        if (seen.has(api)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Duplicate Capsule API group: ${api}`,
+            path: [index],
+          });
+        }
+        seen.add(api);
+      });
+      if (!seen.has('DOM')) {
         context.addIssue({
           code: 'custom',
-          message: `Duplicate Capsule feature profile: ${profile}`,
-          path: [index],
+          message: 'Capsule API groups must explicitly include DOM',
         });
       }
-      seen.add(profile);
-    });
-  }),
-}).strict().transform((target) => ({
-  runtimeAbi: target.runtimeAbi,
-  domProfile: target.domProfile,
-  featureProfiles: [...target.featureProfiles].sort(),
-}));
+    }).transform((apis) => (
+      WIDGET_CAPSULE_API_GROUPS.filter((api) => apis.includes(api))
+    ));
+
+export const ZWidgetCapsuleApis = ZWidgetCapsuleAllowedApis.superRefine(
+  (apis, context) => {
+    if (apis.filter((api) => CAPSULE_RENDERING_API_GROUPS.has(api)).length > 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'CANVAS_2D, WEBGL, and WEBGPU are mutually exclusive',
+      });
+    }
+  },
+);
 
 const ZWidgetCapsuleBudgetsShape = z.object({
   cpuMs: z.number().finite().min(0),
@@ -201,7 +223,7 @@ const ZWidgetManifestV3Shape = z.object({
   ui: z.object({
     runtime: z.literal('capsule'),
     entry: ZWidgetBuildEntryPath,
-    target: ZWidgetCapsuleTarget,
+    apis: ZWidgetCapsuleApis,
     budgets: ZWidgetCapsuleBudgetRequest.optional(),
     state: z.object({
       collaborative: z.boolean(),

@@ -744,6 +744,26 @@ export function createPreviewPortalRuntime(
     void destroyMounted(mounted, 'preview-mount-lease-lost');
   };
 
+  async function renewMountedLease(
+    mounted: TMountedPreview,
+    confirmExecution: boolean,
+  ): Promise<void> {
+    const [renewError, descriptor] =
+      await args.api.mount.renew(leaseRequest(mounted));
+    if (renewError || !descriptor) {
+      throw new Error(errorMessage(
+        renewError,
+        'Preview mount authority is no longer available.',
+      ));
+    }
+    validateLeaseDescriptor(mounted, descriptor);
+    if (confirmExecution && descriptor.renewedAtMs <= descriptor.acquiredAtMs) {
+      throw new Error('Preview execution confirmation did not advance its mount lease.');
+    }
+    mounted.lease.descriptor = descriptor;
+    scheduleLeaseRenewal(mounted);
+  }
+
   const scheduleLeaseRenewal = (
     mounted: TMountedPreview,
   ): void => {
@@ -768,19 +788,7 @@ export function createPreviewPortalRuntime(
     mounted.lease.renewTimer = args.functions.scheduleTimeout(() => {
       mounted.lease.renewTimer = undefined;
       if (!mounted.active || mounted.lease.stopped) return;
-      const operation = (async (): Promise<void> => {
-        const [renewError, descriptor] =
-          await args.api.mount.renew(leaseRequest(mounted));
-        if (renewError || !descriptor) {
-          throw new Error(errorMessage(
-            renewError,
-            'Preview mount authority is no longer available.',
-          ));
-        }
-        validateLeaseDescriptor(mounted, descriptor);
-        mounted.lease.descriptor = descriptor;
-        scheduleLeaseRenewal(mounted);
-      })()
+      const operation = renewMountedLease(mounted, false)
         .catch((error) => handleLeaseFailure(mounted, error))
         .finally(() => {
           mounted.lease.renewOperation = undefined;
@@ -804,10 +812,25 @@ export function createPreviewPortalRuntime(
       }
       validateLeaseDescriptor(mounted, descriptor);
       mounted.lease.descriptor = descriptor;
-      scheduleLeaseRenewal(mounted);
     })();
     mounted.lease.acquireOperation = operation;
     return operation;
+  };
+
+  const confirmMountedLease = async (
+    mounted: TMountedPreview,
+  ): Promise<void> => {
+    if (mounted.lease.renewTimer !== undefined) {
+      args.functions.cancelTimeout(mounted.lease.renewTimer);
+      mounted.lease.renewTimer = undefined;
+    }
+    const operation = renewMountedLease(mounted, true);
+    mounted.lease.renewOperation = operation;
+    try {
+      await operation;
+    } finally {
+      mounted.lease.renewOperation = undefined;
+    }
   };
 
   const applyLocalState = async (
@@ -1152,7 +1175,7 @@ export function createPreviewPortalRuntime(
       };
       const previousAdmission = current?.handle;
       candidate.handle = args.runtime.renderPreloadedOwned({
-        featureProfiles: artifact.runtimeDescriptor.target.featureProfiles,
+        apis: artifact.runtimeDescriptor.apiContract.groups,
         ...(viewport === null ? {} : { initialViewport: viewport }),
         initiallyFrozen: frozen,
         ...(previousAdmission === undefined
@@ -1194,6 +1217,11 @@ export function createPreviewPortalRuntime(
         return;
       }
       await waitForFrame();
+      if (disposed || refreshSequence !== sequence || !candidate.active) {
+        await destroyMounted(candidate, 'preview-build-superseded');
+        return;
+      }
+      await confirmMountedLease(candidate);
       if (disposed || refreshSequence !== sequence || !candidate.active) {
         await destroyMounted(candidate, 'preview-build-superseded');
         return;

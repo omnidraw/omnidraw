@@ -57,11 +57,7 @@ const manifest: TWidgetManifestV3 = {
   ui: {
     runtime: 'capsule',
     entry: 'ui/main.ts',
-    target: {
-      runtimeAbi: 'quickjs-release-sync-v1',
-      domProfile: 'dom-core-v2',
-      featureProfiles: [],
-    },
+    apis: ['DOM'],
   },
 };
 

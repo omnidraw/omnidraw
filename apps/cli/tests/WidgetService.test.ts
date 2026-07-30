@@ -654,8 +654,13 @@ describe('production widget service', () => {
     expect(bytes).toHaveLength(artifact.byteSize);
     expect(Buffer.from(bytes!).subarray(0, 1).toString('utf8')).not.toBe('{');
     expect(published.revision.uiRuntime).toMatchObject({
-      format: 'vibecanvas.capsule-runtime.v1',
+      format: 'vibecanvas.capsule-runtime.v2',
       capsuleArtifactHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      apiContract: {
+        format: 'capsule-api-groups-v1',
+        groups: ['DOM'],
+        bundleDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      },
       signatureKeyIds: ['vibecanvas-release-v1'],
     });
     await expect(service.readArtifact(TENANT, {
@@ -1303,7 +1308,7 @@ describe('production widget service', () => {
         canonicalManifestJson,
         unsignedUiDigestSha256: unsignedUiArtifact.digestSha256,
         capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-        target: uiRuntime.target,
+        apiContract: uiRuntime.apiContract,
         budgets: uiRuntime.budgets,
         capabilityContractDigestSha256,
         channelContractDigestSha256,
@@ -1321,7 +1326,7 @@ describe('production widget service', () => {
         canonicalManifestJson,
         uiDigestSha256: uiArtifact.digestSha256,
         capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-        target: uiRuntime.target,
+        apiContract: uiRuntime.apiContract,
         budgets: uiRuntime.budgets,
         capabilityContractDigestSha256,
         channelContractDigestSha256,
@@ -1496,7 +1501,7 @@ describe('production widget service', () => {
       schemaVersion: 3,
       name: 'React Capsule widget',
       slug: 'react-capsule-widget',
-      ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
+      ui: capsuleUi('ui/main.tsx'),
     };
 
     await expect(service.validateBuild(TENANT, {
@@ -1623,7 +1628,7 @@ describe('production widget service', () => {
         name: 'Hello World',
         slug: 'hello-world',
         description: 'A simple React hello world widget.',
-        ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
+        ui: capsuleUi('ui/main.tsx'),
       }, null, 2)}\n`,
       'package.json': `${JSON.stringify({
         name: 'hello-world',
@@ -1665,7 +1670,7 @@ describe('production widget service', () => {
       name: 'Hello World',
       slug: 'hello-world',
       description: 'A simple React hello world widget.',
-      ui: capsuleUi('ui/main.tsx', ['artifact-resources-v1']),
+      ui: capsuleUi('ui/main.tsx'),
     };
 
     await expect(service.validateBuild(TENANT, {

@@ -15,14 +15,14 @@ export const WIDGET_UI_FAR_OFFSCREEN_DESTROY_MS = 30_000;
  * population ceilings but intentionally leaves the spatial radius to its host.
  */
 export const WIDGET_UI_RETENTION_RADIUS_PX = 2_048;
-export const WIDGET_UI_HEAVY_FEATURE_PROFILES = Object.freeze([
-  'canvas-2d-v1',
-  'canvas-webgl-v1',
-  'canvas-webgpu-v1',
+export const WIDGET_UI_HEAVY_APIS = Object.freeze([
+  'CANVAS_2D',
+  'WEBGL',
+  'WEBGPU',
 ]);
-export const WIDGET_UI_GPU_FEATURE_PROFILES = Object.freeze([
-  'canvas-webgl-v1',
-  'canvas-webgpu-v1',
+export const WIDGET_UI_GPU_APIS = Object.freeze([
+  'WEBGL',
+  'WEBGPU',
 ]);
 export const WIDGET_UI_OUTPUT_RATE_WINDOW_MS = 10_000;
 export const WIDGET_UI_OUTPUT_RATE_MAX_EVENTS = 5;

@@ -74,11 +74,7 @@ const widgetDetail: TWidgetDetail = {
     ui: {
       runtime: 'capsule',
       entry: 'ui/main.ts',
-      target: {
-        runtimeAbi: 'quickjs-release-sync-v1',
-        domProfile: 'dom-core-v2',
-        featureProfiles: [],
-      },
+      apis: ['DOM'],
     },
     server: { entry: 'server/main.ts', runtimeAbi: 'vibecanvas:1' },
     resources: [{

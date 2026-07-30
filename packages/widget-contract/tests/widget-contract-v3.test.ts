@@ -14,12 +14,12 @@ import {
 } from '../src';
 import {
   CAPSULE_BUDGETS,
+  CAPSULE_API_CONTRACT,
   CAPSULE_BUILD_IDENTITY,
   CAPSULE_HASH_A,
   CAPSULE_HASH_B,
   CAPSULE_MANIFEST,
   CAPSULE_RUNTIME_DESCRIPTOR,
-  CAPSULE_TARGET,
   RAW_DIGEST_A,
   RAW_DIGEST_B,
 } from './capsule.fixture';
@@ -31,7 +31,7 @@ function contract(overrides: Record<string, unknown> = {}): string {
     canonicalManifestJson: fnCanonicalizeWidgetManifest(CAPSULE_MANIFEST),
     uiDigestSha256: RAW_DIGEST_A,
     capsuleArtifactHash: CAPSULE_HASH_A,
-    target: CAPSULE_TARGET,
+    apiContract: CAPSULE_API_CONTRACT,
     budgets: CAPSULE_BUDGETS,
     capabilityContractDigestSha256: RAW_DIGEST_A,
     channelContractDigestSha256: RAW_DIGEST_B,
@@ -53,21 +53,18 @@ describe('widget manifest v3', () => {
       ...CAPSULE_MANIFEST,
       ui: {
         ...CAPSULE_MANIFEST.ui,
-        target: {
-          ...CAPSULE_TARGET,
-          featureProfiles: ['svg-dom-v1', 'canvas-2d-v1'],
-        },
+        apis: ['CANVAS_2D', 'DOM'],
         budgets: { cpuMs: 0, networkBytes: 0 },
         state: { collaborative: true, localStore: 'ephemeral' },
         parkability: { enabled: false },
       },
     });
-    expect(parsed.ui.target.featureProfiles).toEqual(['canvas-2d-v1', 'svg-dom-v1']);
+    expect(parsed.ui.apis).toEqual(['DOM', 'CANVAS_2D']);
     expect(parsed.ui.budgets).toEqual({ cpuMs: 0, networkBytes: 0 });
     expect(JSON.parse(fnCanonicalizeWidgetManifest(parsed))).toEqual(parsed);
   });
 
-  test('rejects v2, unknown fields, duplicate profiles, snapshot state, and parking', () => {
+  test('rejects v2, unknown fields, duplicate or conflicting APIs, snapshot state, and parking', () => {
     expect(ZWidgetManifestV3.safeParse({
       schemaVersion: 2,
       name: 'old',
@@ -82,7 +79,21 @@ describe('widget manifest v3', () => {
       ...CAPSULE_MANIFEST,
       ui: {
         ...CAPSULE_MANIFEST.ui,
-        target: { ...CAPSULE_TARGET, featureProfiles: ['svg-dom-v1', 'svg-dom-v1'] },
+        apis: ['DOM', 'DOM'],
+      },
+    }).success).toBe(false);
+    expect(ZWidgetManifestV3.safeParse({
+      ...CAPSULE_MANIFEST,
+      ui: {
+        ...CAPSULE_MANIFEST.ui,
+        apis: ['DOM', 'WEBGL', 'WEBGPU'],
+      },
+    }).success).toBe(false);
+    expect(ZWidgetManifestV3.safeParse({
+      ...CAPSULE_MANIFEST,
+      ui: {
+        ...CAPSULE_MANIFEST.ui,
+        target: { runtimeAbi: 'private', domProfile: 'private', featureProfiles: [] },
       },
     }).success).toBe(false);
     expect(ZWidgetManifestV3.safeParse({
@@ -97,9 +108,10 @@ describe('widget manifest v3', () => {
       },
     }).success).toBe(false);
   });
+
 });
 
-describe('Capsule widget contract v3', () => {
+describe('Capsule widget contract v4', () => {
   test('binds every runtime-authority identity independently', () => {
     const baseline = contract();
     const mutations = [
@@ -111,7 +123,12 @@ describe('Capsule widget contract v3', () => {
       },
       { uiDigestSha256: RAW_DIGEST_B },
       { capsuleArtifactHash: CAPSULE_HASH_B },
-      { target: { ...CAPSULE_TARGET, featureProfiles: ['svg-dom-v1'] } },
+      {
+        apiContract: {
+          ...CAPSULE_API_CONTRACT,
+          groups: ['DOM', 'WEBGL'],
+        },
+      },
       { budgets: { ...CAPSULE_BUDGETS, cpuMs: CAPSULE_BUDGETS.cpuMs + 1 } },
       { capabilityContractDigestSha256: RAW_DIGEST_B },
       { channelContractDigestSha256: RAW_DIGEST_A },

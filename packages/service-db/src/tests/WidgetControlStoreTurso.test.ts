@@ -42,26 +42,15 @@ const RESOURCE_KV_A = uuid(406);
 const RESOURCE_DB_A = uuid(407);
 const RESOURCE_FOREIGN = uuid(408);
 const CANVAS_A = uuid(409);
-const CAPSULE_TARGET = Object.freeze({
-  runtimeAbi: 'quickjs-release-sync-v1',
-  domProfile: 'dom-core-v2',
-  featureProfiles: ['artifact-resources-v1'],
+const CAPSULE_API_CONTRACT = Object.freeze({
+  format: 'capsule-api-groups-v1' as const,
+  groups: Object.freeze(['DOM'] as const),
+  bundleDigest: `sha256:${'f'.repeat(64)}` as const,
 });
-const CAPSULE_BUDGETS = Object.freeze({
-  cpuMs: 50,
-  memoryBytes: 8 * 1_024 * 1_024,
-  domNodes: 1_000,
-  handles: 1_000,
-  messageBytes: 1_024 * 1_024,
-  streamBytes: 1_024 * 1_024,
-  assetBytes: 4 * 1_024 * 1_024,
-  networkBytes: 0,
-  gpuBytes: 0,
-  lifecycleBytes: 64 * 1_024,
-});
+const CAPSULE_BUDGETS = Object.freeze({});
 const CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.9.4',
+  packageVersion: '0.10.0',
   packageDigest: `sha256:${'a'.repeat(64)}` as const,
   buildApiVersion: 'capsule-build-v1',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}` as const,
@@ -124,7 +113,7 @@ function manifest(
     ui: {
       runtime: 'capsule',
       entry: 'src/ui.tsx',
-      target: CAPSULE_TARGET,
+      apis: ['DOM'],
     },
     ...(args.server ? { server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' } } : {}),
     ...(args.resources ? { resources: args.resources } : {}),
@@ -192,9 +181,9 @@ async function publish(
     buildConfigurationDigest: `sha256:${'e'.repeat(64)}`,
   };
   const uiRuntime = args.uiRuntime ?? {
-    format: 'vibecanvas.capsule-runtime.v1',
+    format: 'vibecanvas.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${uiArtifact.digestSha256}`,
-    target: CAPSULE_TARGET,
+    apiContract: CAPSULE_API_CONTRACT,
     budgets: CAPSULE_BUDGETS,
     capabilityRequests: [],
     channels: null,
@@ -236,7 +225,7 @@ async function publish(
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
-      target: uiRuntime.target,
+      apiContract: uiRuntime.apiContract,
       budgets: uiRuntime.budgets,
       capabilityContractDigestSha256,
       channelContractDigestSha256,
@@ -412,7 +401,7 @@ describe('WidgetControlStoreTurso', () => {
       serverArtifact: null,
       uiArtifact: { id: uuid(412), kind: 'ui', retentionState: 'pinned' },
       uiRuntime: {
-        format: 'vibecanvas.capsule-runtime.v1',
+        format: 'vibecanvas.capsule-runtime.v2',
         signatureKeyIds: ['vibecanvas-release-v1'],
       },
       capsuleBuildIdentity: { packageName: '@omnidraw/capsule' },
@@ -478,7 +467,7 @@ describe('WidgetControlStoreTurso', () => {
       uiArtifact: { id: uuid(412), digestSha256: digest(1) },
       uiRuntime: {
         capsuleArtifactHash: `sha256:${digest(1)}`,
-        target: CAPSULE_TARGET,
+        apiContract: CAPSULE_API_CONTRACT,
       },
       serverArtifact: { id: uuid(415), kind: 'server', digestSha256: digest(2) },
       serverRuntimeAbi: 'vibecanvas:1',
@@ -493,7 +482,7 @@ describe('WidgetControlStoreTurso', () => {
       capability_contract_digest_sha256: secondRevision.capabilityContractDigestSha256,
       channel_contract_digest_sha256: secondRevision.channelContractDigestSha256,
       build_policy_id: secondRevision.buildPolicyId,
-      contract_format_version: 3,
+      contract_format_version: 4,
     });
     expect(await (await service.db.prepare(`
       SELECT id, export_name, effect, definition_revision, artifact_digest_sha256,
@@ -1047,6 +1036,20 @@ describe('WidgetControlStoreTurso', () => {
     }));
     await (await service.db.prepare(`
       UPDATE widget_definition_revisions
+      SET contract_format_version = 3
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, revisionId);
+    await expect(store.getRevision(TENANT_A, revisionId)).rejects.toMatchObject({
+      code: 'WIDGET_REVISION_INTEGRITY_FAILED',
+    });
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET contract_format_version = 4
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, revisionId);
+
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
       SET manifest_json = ?
       WHERE org_id = ? AND id = ?
     `)).run(
@@ -1093,9 +1096,9 @@ describe('WidgetControlStoreTurso', () => {
       published.contractDigestSha256,
       JSON.stringify({
         ...published.uiRuntime,
-        target: {
-          ...published.uiRuntime.target,
-          featureProfiles: ['artifact-resources-v1', 'canvas-2d-v1'],
+        apiContract: {
+          ...published.uiRuntime.apiContract,
+          groups: ['DOM', 'CANVAS_2D'],
         },
       }),
       TENANT_A.orgId,

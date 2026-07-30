@@ -508,7 +508,7 @@ export class WidgetUiRuntime {
               abortController.signal,
             );
             resourceClass = fnWidgetCapsulePopulationResourceClass(
-              loaded.artifact.runtimeDescriptor.target.featureProfiles,
+              loaded.artifact.runtimeDescriptor.apiContract.groups,
             );
             blocked = false;
             break;
@@ -672,7 +672,7 @@ export class WidgetUiRuntime {
     const populationId = String(order);
     this.#nextOwnerOrder += 1;
     const resourceClass = fnWidgetCapsulePopulationResourceClass(
-      args.featureProfiles,
+      args.apis,
     );
     let disposed = false;
     let blocked = false;

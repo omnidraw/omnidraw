@@ -1,7 +1,7 @@
 import type { TWidgetContractPayloadInput } from '../types';
 import {
-  fnNormalizeWidgetCapsuleBudgets,
-  fnNormalizeWidgetCapsuleTarget,
+  fnNormalizeWidgetCapsuleApiContract,
+  fnNormalizeWidgetCapsuleBudgetRequest,
 } from './fn.capsule';
 
 function compareText(left: string, right: string): number {
@@ -18,17 +18,10 @@ function normalizedSignatureKeyIds(values: readonly string[]): readonly string[]
   return sorted;
 }
 
-/** Stable payload used to hash and independently verify a published widget contract. */
-export function fnCanonicalizeWidgetContractPayload(
+function normalizedContractTail(
   input: TWidgetContractPayloadInput,
-): string {
-  return JSON.stringify({
-    format: 'vibecanvas.widget-contract.v3',
-    canonicalManifestJson: input.canonicalManifestJson,
-    uiDigestSha256: input.uiDigestSha256,
-    capsuleArtifactHash: input.capsuleArtifactHash,
-    target: fnNormalizeWidgetCapsuleTarget(input.target),
-    budgets: fnNormalizeWidgetCapsuleBudgets(input.budgets),
+) {
+  return {
     capabilityContractDigestSha256: input.capabilityContractDigestSha256,
     channelContractDigestSha256: input.channelContractDigestSha256,
     signatureKeyIds: normalizedSignatureKeyIds(input.signatureKeyIds),
@@ -45,5 +38,20 @@ export function fnCanonicalizeWidgetContractPayload(
       runtimeBuildDigest: input.capsuleBuildIdentity.runtimeBuildDigest,
     },
     buildPolicyId: input.buildPolicyId,
+  };
+}
+
+/** Stable payload used to hash and independently verify a published widget contract. */
+export function fnCanonicalizeWidgetContractPayload(
+  input: TWidgetContractPayloadInput,
+): string {
+  return JSON.stringify({
+    format: 'vibecanvas.widget-contract.v4',
+    canonicalManifestJson: input.canonicalManifestJson,
+    uiDigestSha256: input.uiDigestSha256,
+    capsuleArtifactHash: input.capsuleArtifactHash,
+    apiContract: fnNormalizeWidgetCapsuleApiContract(input.apiContract),
+    budgets: fnNormalizeWidgetCapsuleBudgetRequest(input.budgets),
+    ...normalizedContractTail(input),
   });
 }

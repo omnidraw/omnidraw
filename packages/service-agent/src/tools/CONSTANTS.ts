@@ -2,7 +2,7 @@ import { ZWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 export {
-  VIBECANVAS_CAPSULE_AUTHORING_TARGET,
+  VIBECANVAS_CAPSULE_AUTHORING_APIS,
 } from '@vibecanvas/capsule-vibecanvas/contract';
 
 export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetEditSession';

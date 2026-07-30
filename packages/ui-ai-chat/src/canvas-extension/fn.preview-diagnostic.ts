@@ -105,13 +105,12 @@ function safeMessage(code: string, origin: TDiagnosticOrigin): string {
       + 'value within the host ceiling.';
   }
   if (code === 'WEBGL_CONTEXT_UNAVAILABLE') {
-    return 'WebGL Preview requires browser WebGL2 support, canvas-webgl-v1, '
-      + 'and a positive ui.budgets.gpuBytes value.';
+    return 'WebGL Preview requires browser WebGL2 support and the public '
+      + 'WEBGL API group. Add WEBGL to ui.apis.';
   }
   if (code === 'CANVAS_PROFILE_REQUIRED') {
-    return 'Canvas rendering requires an exact Capsule canvas profile. '
-      + 'Select canvas-2d-v1, canvas-webgl-v1, or canvas-webgpu-v1 to match '
-      + 'the requested rendering context.';
+    return 'Canvas rendering requires the matching public Capsule API group: '
+      + 'CANVAS_2D, WEBGL, or WEBGPU.';
   }
   switch (origin) {
     case 'budget':

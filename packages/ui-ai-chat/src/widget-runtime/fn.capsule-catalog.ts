@@ -20,16 +20,13 @@ export type TResolvedWidgetCapsuleCapability = Readonly<{
 
 const KEY_ID_PATTERN = /^[A-Za-z0-9._~:+-]{1,170}$/;
 
-function targetsEqual(
+function apisAllowed(
   catalog: TWidgetCapsuleHostCatalog,
-  right: TWidgetCapsuleRuntimeDescriptor['target'],
+  requested: readonly string[],
 ): boolean {
-  const profiles = new Set(right.featureProfiles);
-  const allowed = new Set(catalog.allowedFeatureProfiles);
-  return catalog.targetBase.runtimeAbi === right.runtimeAbi
-    && catalog.targetBase.domProfile === right.domProfile
-    && profiles.size === right.featureProfiles.length
-    && right.featureProfiles.every((profile) => allowed.has(profile));
+  const allowed = new Set<string>(catalog.allowedApis);
+  return requested.length > 0
+    && requested.every((api) => allowed.has(api));
 }
 
 export function fnValidateWidgetCapsuleHostCatalog(
@@ -47,39 +44,30 @@ export function fnValidateWidgetCapsuleHostCatalog(
   ) {
     throw new TypeError('Widget Capsule signing-key catalog is invalid.');
   }
-  if (
-    catalog.targetBase.runtimeAbi.length < 1
-    || catalog.targetBase.domProfile.length < 1
-    || catalog.allowedFeatureProfiles.length > 64
-  ) {
-    throw new TypeError('Widget Capsule target policy is invalid.');
+  if (catalog.allowedApis.length < 1 || catalog.allowedApis.length > 10) {
+    throw new TypeError('Widget Capsule API policy is invalid.');
   }
-  const featureProfiles = new Set<string>();
-  for (const profile of catalog.allowedFeatureProfiles) {
-    if (profile.length < 1 || featureProfiles.has(profile)) {
-      throw new TypeError('Widget Capsule feature-profile policy is invalid.');
+  const apis = new Set<string>();
+  for (const api of catalog.allowedApis) {
+    if (apis.has(api)) {
+      throw new TypeError('Widget Capsule API policy is invalid.');
     }
-    featureProfiles.add(profile);
+    apis.add(api);
   }
+  if (!apis.has('DOM')) throw new TypeError('Widget Capsule API policy must allow DOM.');
 
-  const dimensions = Object.keys(catalog.budgetCeiling) as Array<
-    keyof TWidgetCapsuleHostCatalog['budgetCeiling']
+  const dimensions = Object.keys(catalog.limits) as Array<
+    keyof TWidgetCapsuleHostCatalog['limits']
   >;
   for (const dimension of dimensions) {
-    const ceiling = catalog.budgetCeiling[dimension];
-    const defaultValue = catalog.budgetDefaults[dimension];
+    const ceiling = catalog.limits[dimension];
     if (
       typeof ceiling !== 'number'
       || !Number.isFinite(ceiling)
       || ceiling < 0
       || (dimension !== 'cpuMs' && !Number.isSafeInteger(ceiling))
-      || typeof defaultValue !== 'number'
-      || !Number.isFinite(defaultValue)
-      || defaultValue < 0
-      || (dimension !== 'cpuMs' && !Number.isSafeInteger(defaultValue))
-      || defaultValue > ceiling
     ) {
-      throw new TypeError('Widget Capsule budget catalog is invalid.');
+      throw new TypeError('Widget Capsule limit catalog is invalid.');
     }
   }
 }
@@ -133,22 +121,25 @@ export function fnAssertWidgetCapsuleRuntimeCompatible(
   descriptor: TWidgetCapsuleRuntimeDescriptor,
   mode: 'preview' | 'published',
 ): void {
-  if (!targetsEqual(catalog, descriptor.target)) {
-    throw new Error('Widget Capsule execution target is outside the shared host catalog.');
+  if (!apisAllowed(catalog, descriptor.apiContract.groups)) {
+    throw new Error('Widget Capsule API request is outside the shared host catalog.');
   }
-  const dimensions = Object.keys(catalog.budgetCeiling) as Array<
-    keyof TWidgetCapsuleHostCatalog['budgetCeiling']
+  const dimensions = Object.keys(catalog.limits) as Array<
+    keyof TWidgetCapsuleHostCatalog['limits']
   >;
   for (const dimension of dimensions) {
     const value = descriptor.budgets[dimension];
     if (
-      typeof value !== 'number'
-      || !Number.isFinite(value)
-      || value < 0
-      || (dimension !== 'cpuMs' && !Number.isSafeInteger(value))
-      || value > catalog.budgetCeiling[dimension]
+      value !== undefined
+      && (
+        typeof value !== 'number'
+        || !Number.isFinite(value)
+        || value < 0
+        || (dimension !== 'cpuMs' && !Number.isSafeInteger(value))
+        || value > catalog.limits[dimension]!
+      )
     ) {
-      throw new Error('Widget Capsule budgets exceed the shared host catalog.');
+      throw new Error('Widget Capsule budgets exceed the shared host limits.');
     }
   }
   const expectedKeyId = mode === 'preview'
