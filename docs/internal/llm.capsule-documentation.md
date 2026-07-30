@@ -1,8 +1,13 @@
-# Using the Capsule library - 0.9.4
+# Using the Capsule library — 0.10.0
 
-This guide is the consumer manual for `@omnidraw/capsule`. It covers the supported package entrypoints, building or obtaining a guest artifact, creating a browser host, mounting and controlling an instance, granting authority, testing, and production hardening.
+This is the consumer manual for `@omnidraw/capsule`. Capsule 0.10.0 uses
+public browser API groups; runtime ABI, DOM profiles, feature profiles, and
+feature grants remain private enforcement details.
 
-For the exact exported names, see [`public-api.md`](./public-api.md). For the normative security contract, see [`CAPSULE.md`](./CAPSULE.md).
+For exact exports, see [`public-api.md`](./public-api.md). For the normative
+security contract, see [`CAPSULE.md`](./CAPSULE.md). The generated
+[`capsule-api-groups-v1` table](./api-groups-v1.generated.md) is the exact
+group and bundle-digest index.
 
 ## Install
 
@@ -12,166 +17,454 @@ Capsule is one ESM package:
 bun add @omnidraw/capsule
 ```
 
-The package contains browser-host code, Bun/Node distribution-ingestion and signing tooling, declarations, and exact third-party runtime dependencies. It does not require the Capsule monorepo or a Capsule service.
+The tested package manager is Bun 1.3.14. Browser applications should use a
+modern ESM-aware bundler. The `build` and `sign` entries are trusted
+Bun/Node tooling and must stay out of browser bundles.
 
-The tested package manager is Bun 1.3.14. Browser applications should use a modern ESM-aware bundler. The `build` and `sign` entrypoints are trusted tooling and must run outside the browser.
+## Quick start: build, host, mount
 
-## Supported imports
+An application-owned build worker first produces a closed ES2022
+distribution. Capsule validates that output and binds an exact group contract
+into the artifact's content-hash and signature domain:
 
-Use only these imports:
+```ts
+import { buildCapsuleGuest } from '@omnidraw/capsule/build';
 
-| Import | Environment | Purpose |
-| --- | --- | --- |
-| `@omnidraw/capsule` | Browser host | Create hosts, mount artifacts, control handles, cache artifacts |
-| `@omnidraw/capsule/build` | Bun/Node tooling | Validate an exact external distribution and construct an artifact |
-| `@omnidraw/capsule/guest` | Capsule guest source | Call capabilities and use guest channels inside the VM |
-| `@omnidraw/capsule/protocol` | Browser or tooling | Protocol constants and serializable contract types |
-| `@omnidraw/capsule/schema` | Browser or tooling | Canonical application-schema resources and public schema types |
-| `@omnidraw/capsule/sign` | Bun/Node release tooling | Canonically sign exact artifact bytes with explicit Ed25519 private keys |
-| `@omnidraw/capsule/testkit` | Browser tests | Root-confined closed-tree automation |
-| `@omnidraw/capsule/webgl` | Trusted browser adapter | Bounded WebGL platform integration |
-| `@omnidraw/capsule/webgpu` | Trusted browser adapter | Bounded WebGPU platform integration |
-
-Every other package subpath is unsupported and rejected by the export map. Do not import the private `@omnidraw/capsule-*` workspace names seen in the source repository.
-
-The guest entrypoint imports the reserved `capsule:bridge` intrinsic. It is meant to be included in guest source and compiled by the application-owned toolchain; importing it directly into an ordinary host runtime will fail.
-
-## How the pieces fit
-
-```text
-application-owned build worker
-  → exact external distribution
-  → @omnidraw/capsule/build
-  → immutable artifact
-  → trusted release signing
-  → @omnidraw/capsule browser host
-  → policy ∩ artifact request ∩ mount grant ∩ live binding
-  → QuickJS guest + host-owned DOM/capability membranes
+const built = await buildCapsuleGuest({
+  input: {
+    kind: 'external-distribution',
+    snapshot: {
+      files: [{ path: 'main.js', bytes: compiledMainBytes }],
+    },
+    entry: 'main.js',
+    producer: {
+      name: 'application-build-worker',
+      version: '2026.07.29',
+      digest: producerDigest,
+    },
+    sourceRevision: sourceRevision,
+    dependencyLockDigest: dependencyLockDigest,
+    buildConfigurationDigest: buildConfigurationDigest,
+  },
+  apis: ['DOM'],
+  parkability: { parkable: false },
+  policy: {
+    maxFiles: 128,
+    maxFileBytes: 2 * 1024 * 1024,
+    maxTotalBytes: 8 * 1024 * 1024,
+    maxPathBytes: 256,
+    maxPathDepth: 16,
+    maxModules: 128,
+    maxOutputBytes: 8 * 1024 * 1024,
+  },
+});
 ```
 
-Artifacts describe requested authority; they never grant it. The host policy, mount grants, live bindings, feature grants, browser support, and budgets all have to agree before authority becomes effective.
-
-## Minimal browser mount
-
-The simplest integration starts with artifact bytes produced by your trusted build/release pipeline.
-
-```html
-<div id="capsule-surface"></div>
-```
+The browser host declares an independent group ceiling:
 
 ```ts
 import {
-  CapsuleMemoryArtifactCache,
   createCapsuleHost,
   createDefaultCapsuleBrowserPlatform,
-  type CapsuleHandle,
 } from '@omnidraw/capsule';
-import {
-  CAPSULE_DOM_CORE_V2_PROFILE,
-  CAPSULE_RUNTIME_ABI,
-  type CapsuleCompleteBudgetMaximums,
-} from '@omnidraw/capsule/protocol';
 
+const host = await createCapsuleHost({
+  allowedApis: ['DOM'],
+  browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
+});
+```
+
+The common mount does not repeat groups, feature grants, empty capability
+arrays, or complete budgets:
+
+```ts
 const container = document.querySelector<HTMLElement>('#capsule-surface');
 if (container === null) throw new Error('Capsule container is missing.');
 
-const budgets: CapsuleCompleteBudgetMaximums = Object.freeze({
-  cpuMs: 100,
-  memoryBytes: 32 * 1024 * 1024,
-  domNodes: 2_000,
-  handles: 4_000,
-  messageBytes: 64 * 1024,
-  streamBytes: 64 * 1024,
-  assetBytes: 2 * 1024 * 1024,
-  networkBytes: 0,
-  gpuBytes: 0,
-  lifecycleBytes: 256 * 1024,
+const handle = await host.mount({
+  artifact: built.artifactBytes,
+  container,
 });
-
-const host = await createCapsuleHost({
-  runtimePolicy: {
-    target: {
-      runtimeAbi: CAPSULE_RUNTIME_ABI,
-      domProfile: CAPSULE_DOM_CORE_V2_PROFILE,
-      featureProfiles: [],
-    },
-    capabilities: [],
-    budgetCeiling: budgets,
-    budgetDefaults: budgets,
-    vm: {
-      mode: 'release',
-      maxJobsPerDrain: 1_000,
-      maxEntryDepth: 32,
-    },
-  },
-  browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
-  artifactCache: new CapsuleMemoryArtifactCache({
-    maxEntries: 32,
-    maxTotalBytes: 64 * 1024 * 1024,
-    maxArtifactBytes: 8 * 1024 * 1024,
-  }),
-});
-
-let handle: CapsuleHandle | undefined;
-try {
-  handle = await host.mount({
-    artifact: signedArtifactBytes,
-    container,
-    capabilityBindings: [],
-    grants: [],
-    featureGrants: [],
-  });
-  await handle.ready();
-} catch (error) {
-  await handle?.destroy('mount-failed');
-  await host.destroy();
-  throw error;
-}
+await handle.ready();
 ```
 
-`container` must be a real, empty, unreserved `HTMLElement` without an
-attached ShadowRoot. Capsule appends its host-owned internal shell and creates
-one dedicated closed ShadowRoot on that shell; the application neither
-supplies nor receives it. Capsule owns the shell through terminal cleanup. A
-competing mount or a pre-shadowed container is denied. The empty container may
-itself live inside an application-owned ShadowRoot, in which case the two
-shadow boundaries are intentionally nested. Shadow DOM scopes CSS; Capsule's
-VM, membrane, paint containment, and capability policies provide security.
+For production, sign the artifact in a trusted release step and configure the
+host's signature policy as shown below.
 
-Always destroy the handle when the instance is no longer needed, then destroy the host when the application no longer needs any Capsule instances:
+Always release instances and shared hosts:
 
 ```ts
-await handle?.destroy('route-unmounted');
+await handle.destroy('route-unmounted');
 await host.destroy();
 ```
 
 Both operations are idempotent.
 
-## Artifact verification and signing
+## Supported imports
 
-`buildCapsuleGuest()` produces deterministic, content-addressed artifact bytes. Production releases should sign those bytes in a trusted release step and require the expected key at the host:
+Use only these entries:
+
+| Import | Environment | Purpose |
+| --- | --- | --- |
+| `@omnidraw/capsule` | Browser host | Create hosts, mount artifacts, control handles, cache artifacts |
+| `@omnidraw/capsule/build` | Bun/Node tooling | Validate a closed external distribution and construct an artifact |
+| `@omnidraw/capsule/guest` | Capsule guest source | Call application capabilities and use guest channels |
+| `@omnidraw/capsule/protocol` | Browser or tooling | Group, network, capability, budget, and serializable contract types |
+| `@omnidraw/capsule/schema` | Browser or tooling | Canonical application-schema resources |
+| `@omnidraw/capsule/sign` | Bun/Node release tooling | Sign exact artifact bytes with explicit Ed25519 keys |
+| `@omnidraw/capsule/testkit` | Browser tests | Root-confined closed-tree automation |
+| `@omnidraw/capsule/webgl` | Trusted browser adapter | Fixed bounded WebGL integration |
+| `@omnidraw/capsule/webgpu` | Trusted browser adapter | Fixed bounded WebGPU integration |
+
+Every other package subpath is rejected. Never import private
+`@omnidraw/capsule-*` workspace packages from an application.
+
+The guest entry imports the reserved `capsule:bridge` intrinsic. Include it
+only in guest code compiled by the application-owned toolchain.
+
+## Authority model
+
+The browser surface is the intersection of independent facts:
+
+```text
+signed artifact API request
+  ∩ host allowed APIs and subordinate policy
+  ∩ optional mount narrowing
+  ∩ available browser platform primitives
+  ∩ effective budgets
+```
+
+A group is a bounded browser API family, not ambient authority. Signature
+trust, network destinations, browser-image sinks, resources, user activation,
+application capabilities, channels, viewport policy, and parkability remain
+separate named contracts.
+
+Application capabilities have their own intersection:
+
+```text
+artifact capability request
+  ∩ host capability policy
+  ∩ mount grant
+  ∩ live instance-bound provider binding
+```
+
+## The ten public groups
+
+`capsule-api-groups-v1` has exactly these names:
+
+| Group | Meaning |
+| --- | --- |
+| `DOM` | Bounded HTML DOM, events, forms, layout, observers, timers/frames, confined mutable Selection, CSS, coarse keyboard convention, and bounded live SVG |
+| `NETWORK` | Bounded buffered fetch and explicitly authorized browser network-image sinks |
+| `FILES` | User chooser, trusted external drop, immutable file snapshots, and PNG preview tokens |
+| `CLIPBOARD` | Synchronous bounded plain-text copy, cut, and paste |
+| `DIALOGS` | Activation-gated bounded synchronous `alert`; `confirm` and `prompt` remain denied |
+| `CANVAS_2D` | Bounded write-oriented Canvas 2D |
+| `WEBGL` | Bounded host-owned WebGL2 |
+| `WEBGPU` | Bounded host-owned visible-canvas WebGPU |
+| `AUDIO` | Signed static audio playback and bounded Web Audio synthesis |
+| `VIDEO` | Signed bounded video playback |
+
+`DOM` must be listed explicitly in every v1 artifact. All other groups depend
+on it. `CANVAS_2D`, `WEBGL`, and `WEBGPU` are pairwise mutually exclusive.
+Unknown names, aliases, duplicates, wrong case, missing dependencies, and
+conflicts fail before artifact creation or guest execution.
+
+Group arrays are defensively copied and normalized into canonical registry
+order. Capsule does not scan JavaScript to infer them. A v1 group never
+silently gains members or authority; a wider public contract needs a new
+versioned identity.
+
+## Signed group and resolved-target identity
+
+A new artifact includes both:
 
 ```ts
-const host = await createCapsuleHost({
-  runtimePolicy: {
-    target,
-    capabilities: [],
-    budgetCeiling: budgets,
-    budgetDefaults: budgets,
-    artifactVerification: {
-      signaturePolicy: {
-        trustedKeys: new Map([['app-release-2026', releasePublicKey]]),
-        minimumValidSignatures: 1,
-        requiredKeyIds: ['app-release-2026'],
-        rejectUntrustedSignatures: true,
-      },
-    },
+{
+  apiContract: {
+    format: 'capsule-api-groups-v1',
+    groups: ['DOM', 'NETWORK', 'WEBGL'],
+    bundleDigest: 'sha256:…',
   },
+  resolvedTarget: {
+    runtimeAbi: '…',
+    domProfile: '…',
+    featureProfiles: ['…'],
+  },
+}
+```
+
+`apiContract` is the consumer's public intent and exact registry revision.
+`resolvedTarget` is Capsule's private enforcement identity. The builder and
+artifact verifier independently resolve the group contract and require
+byte-for-byte agreement. Consumers inspect the resolved identity for audit
+and compatibility evidence but never assemble it.
+
+The contract bundle digest binds names, ordering, dependencies, conflicts,
+private expansion, conditional resource rules, subordinate-policy
+requirements, budgets, denials, ledgers, and evidence owners.
+
+## Build a closed external distribution
+
+Capsule accepts only `external-distribution`: exact application-built
+`.js`/`.mjs` bytes plus provenance. Static exact relative imports and the
+reserved `capsule:bridge` intrinsic are the only module edges.
+
+The ingester rejects raw TypeScript, JSX, Vue source, source maps,
+`sourceMappingURL`, HTML discovery, bare package imports, runtime `require`,
+dynamic imports, `import.meta`, top-level await, workers, WebAssembly, native
+modules, unresolved output, and loose unreachable files.
+
+The signed provenance records the external producer, source revision,
+dependency-lock digest, build-configuration digest, complete distribution
+digest, and Capsule ingestion transform. Its claim is
+`deterministic-ingestion-only`: Capsule does not claim that it compiled,
+reproduced, or OS-isolated the application build. The application owns
+package installation, scripts, plugins, credentials, network, cancellation,
+and worker cleanup.
+
+`buildCapsuleGuest()` returns:
+
+```ts
+{
+  artifactBytes: Uint8Array;
+  artifactHash: `sha256:${string}`;
+  diagnostics: readonly CapsuleBuildDiagnosticRecord[];
+}
+```
+
+Loose executable bytes or side metadata are not a mount input. The browser
+host independently decodes and verifies the canonical artifact inside each
+mount transaction.
+
+## Explicit resources, private formats
+
+Resources are not API groups. Supply only explicit roots and bindings:
+
+```ts
+const built = await buildCapsuleGuest({
+  input: {
+    ...distributionInput,
+    cssRoots: ['styles.css'],
+    resourceBindings: [{
+      module: 'main.js',
+      specifier: './tone.wav',
+      path: 'tone.wav',
+    }],
+  },
+  apis: ['DOM', 'AUDIO'],
+  parkability: { parkable: false },
+  policy: buildValidationPolicy,
+});
+```
+
+Capsule closes reachable relative CSS and resource edges and selects the
+narrowest private format:
+
+- CSS and PNG use the v1 resource format;
+- sanitized SVG and validated WOFF require v2;
+- an explicit WAVE or WebM binding requires v3 and respectively `AUDIO` or
+  `VIDEO`.
+
+An unbound `AUDIO` or `VIDEO` artifact still receives the complete stable
+facade promised by its group; it simply has no signed media token to assign.
+Selecting those groups does not infer resource v3. `FILES` PNG previews are
+validated inbound file authority and do not require an artifact resource
+graph.
+
+Resource presence cannot change a selected group's promised members. Loose
+files, resource-like JavaScript strings, network URLs, and HTML references do
+not grant resource or API authority.
+
+### CSS, images, fonts, and live SVG
+
+List every source stylesheet in `cssRoots`. Capsule closes relative CSS
+imports and PNG/SVG/WOFF edges, scopes the result to the owned closed root,
+and signs the resource graph. Initial `html`, `body`, and `:root` selectors
+map to the managed guest root. Do not target Capsule's internal host.
+
+The DOM group includes the reviewed native/dynamic CSS surface. Custom
+properties, fallbacks, math, gradients, modern typography/layout, animations,
+media/container/supports rules, and ordinary scoped selectors are available
+within the pinned grammar. Host/projection/document-global facilities such as
+`:host`, `::slotted`, `::part`, `@property`, view transitions, `paint()`,
+nesting, and runtime `@import` remain denied.
+
+Distribution-relative PNG/SVG resources are the contained image path. A
+sanitized SVG excludes scripts, handlers, links, entities, external URLs,
+animation, filters, masks, and `foreignObject`.
+
+Declare a WOFF 1 font only through source CSS:
+
+```css
+@font-face {
+  font-family: "Widget";
+  src: url("./widget.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+}
+```
+
+Capsule rewrites the URL and family identity, loads the face before guest
+evaluation, and exposes neither native identity. `local()`, network fonts,
+WOFF2, variations, color/SVG font tables, and guest `FontFace` or
+`document.fonts` authority remain denied.
+
+Live SVG is part of `DOM`; it is not another group. Use the reviewed
+`document.createElementNS()` element/attribute surface. Parser assignment,
+links, styles, filters, masks, animation, and external resources remain
+absent.
+
+Literal browser-loaded CSS images require both `NETWORK` and explicit
+`networkPolicy.browserImages` authority. URL-bearing custom properties and
+`var()` in image-bearing sinks are denied so later inheritance cannot bypass
+the signed policy.
+
+### Media and rendering resources
+
+An explicit `.wav` or `.webm` default import becomes an opaque signed token.
+Assign only that token to the matching `AUDIO` or `VIDEO` facade and call
+`play()` synchronously during trusted user activation. Autoplay, network
+media, raw bytes, streaming, DRM, capture, fullscreen, picture-in-picture,
+remote playback, and native media objects remain denied.
+
+`CANVAS_2D` exposes bounded write/path/text/artifact-image operations; pixel
+readback and export remain absent. `WEBGL` and `WEBGPU` expose only their
+generated fixed ledgers. Select exactly one rendering group.
+
+## Network policy
+
+`NETWORK` selects the network API family. It does not select any destination.
+Use `CapsuleNetworkPolicy` at build and host boundaries:
+
+```ts
+import {
+  CAPSULE_NETWORK_POLICY_FORMAT,
+  type CapsuleNetworkPolicy,
+} from '@omnidraw/capsule/protocol';
+
+const networkPolicy: CapsuleNetworkPolicy = {
+  format: CAPSULE_NETWORK_POLICY_FORMAT,
+  bufferedFetch: [{
+    origin: 'https://api.example.com',
+    pathPrefix: '/widgets/',
+    methods: ['GET', 'POST'],
+  }],
+};
+
+const built = await buildCapsuleGuest({
+  input: distributionInput,
+  apis: ['DOM', 'NETWORK'],
+  networkPolicy,
+  budgets: { networkBytes: 1024 * 1024 },
+  parkability: { parkable: false },
+  policy: buildValidationPolicy,
+});
+
+const host = await createCapsuleHost({
+  allowedApis: ['DOM', 'NETWORK'],
+  networkPolicy,
+  limits: { networkBytes: 1024 * 1024 },
   browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
 });
 ```
 
-The public tooling entry exposes one narrow bytes-in/bytes-out producer rather than artifact mutation or CBOR codecs:
+The effective buffered-fetch rules are the exact intersection of signed
+artifact, host, and optional mount policies. Omitting policy while selecting
+`NETWORK` materializes a deny-all network policy; it never creates ambient
+fetch authority. Supplying policy without `NETWORK` is invalid.
+
+An optional `browserImages` record authorizes exact origins/URLs and reviewed
+CSS image sinks. It is deliberately separate from buffered fetch: browser
+credentials, redirects, CORS, CSP, cache, response traffic, and decode
+allocation follow the embedding browser and do not consume Capsule's
+`networkBytes` ledger. Omit it when mediated bytes are required.
+
+## Budgets and limits
+
+All ten dimensions are finite:
+
+```ts
+type CapsuleBudgetDimension =
+  | 'cpuMs'
+  | 'memoryBytes'
+  | 'domNodes'
+  | 'handles'
+  | 'messageBytes'
+  | 'streamBytes'
+  | 'assetBytes'
+  | 'networkBytes'
+  | 'gpuBytes'
+  | 'lifecycleBytes';
+```
+
+The registry gives every selected group immutable default requests and hard
+maxima. Base `DOM` supplies finite defaults for every dimension and keeps
+network and GPU authority at zero. Other groups contribute only the bounded
+increases they need.
+
+All public overrides are partial:
+
+- build `budgets` narrows or requests selected dimensions;
+- build `policy.budgetCeilings` is an optional partial trusted ceiling;
+- host `limits` is an optional partial ceiling;
+- mount `limits` is an optional per-instance narrowing.
+
+Omitted dimensions use the applicable group defaults. Effective values are
+the component-wise minimum of artifact request, host ceiling, optional mount
+narrowing, profile hard maxima, and shared partitions. Zero is an exact deny
+value.
+
+```ts
+const handle = await host.mount({
+  artifact: signedArtifactBytes,
+  container,
+  limits: {
+    cpuMs: 100,
+    assetBytes: 2 * 1024 * 1024,
+  },
+});
+```
+
+Read `handle.diagnostics().budgets` and the resource ledgers when tuning.
+Fixture measurements are evidence about those fixtures, not universal
+deployment recommendations.
+
+## Host and mount narrowing
+
+A shared host may allow more than one artifact:
+
+```ts
+const host = await createCapsuleHost({
+  allowedApis: ['DOM', 'NETWORK', 'AUDIO'],
+  networkPolicy: hostNetworkCeiling,
+  browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
+});
+```
+
+The mount may only remove authority:
+
+```ts
+const handle = await host.mount({
+  artifact: signedArtifactBytes,
+  container,
+  allowedApis: ['DOM', 'NETWORK'],
+  networkPolicy: instanceNetworkNarrowing,
+  limits: { networkBytes: 256 * 1024 },
+});
+```
+
+Mount `allowedApis` must remain a valid dependency-complete subset of both the
+signed artifact and host. It cannot add a group. Omission keeps the signed
+request intersected with the host ceiling.
+
+A missing required browser primitive rejects before guest execution. V1 has
+no partially degraded group. Build and sign a separate artifact with fewer
+groups when a product needs a fallback.
+
+## Artifact signing and verification
+
+Sign canonical bytes in a trusted release environment:
 
 ```ts
 import { signCapsuleArtifactBytes } from '@omnidraw/capsule/sign';
@@ -182,199 +475,43 @@ const signedArtifactBytes = await signCapsuleArtifactBytes(
 );
 ```
 
-Keys are explicit private Ed25519 `CryptoKey` values; Capsule owns no key store or ambient credential lookup. One call may add multiple unique signatures, ordered canonically by key ID. Signing preserves the content address and rejects malformed/noncanonical bytes, duplicate IDs, invalid keys, and configured byte/signature limits. Keep this entry out of browser builds. Omitting host `signaturePolicy` permits zero trusted signatures and is appropriate only for bounded local construction work where unsigned artifacts are an explicit choice.
-
-The host verifies direct bytes before execution. A memory cache stores only verified copied bytes. After a verified artifact is cached, a later mount may use `{ hash: artifactHash }`; the host re-verifies cache hits against the current policy.
-
-## Ingest an externally built distribution
-
-An application may run its own frozen install and guest-selected compiler in
-its own build-worker isolation, then give Capsule only exact output bytes:
+Require the matching public key in the browser host:
 
 ```ts
-const built = await buildCapsuleGuest({
-  input: {
-    kind: 'external-distribution',
-    snapshot: {
-      files: [
-        { path: 'main.js', bytes: externalMainBytes },
-        { path: 'chunks/widget.mjs', bytes: externalWidgetBytes },
-      ],
+const host = await createCapsuleHost({
+  allowedApis: ['DOM'],
+  artifactVerification: {
+    signaturePolicy: {
+      trustedKeys: new Map([['app-release-2026', releasePublicKey]]),
+      minimumValidSignatures: 1,
+      requiredKeyIds: ['app-release-2026'],
+      rejectUntrustedSignatures: true,
     },
-    entry: 'main.js',
-    producer: {
-      name: 'application-build-worker',
-      version: '2026.07.26',
-      digest: exactProducerDigest,
-    },
-    sourceRevision: 'git:4f5d…',
-    dependencyLockDigest: exactFrozenLockDigest,
-    buildConfigurationDigest: exactExternalBuildConfigurationDigest,
   },
-  target: {
-    runtimeAbi: CAPSULE_RUNTIME_ABI,
-    domProfile: CAPSULE_DOM_CORE_V2_PROFILE,
-    featureProfiles: [],
-    language: 'js',
-  },
-  capabilityRequests: [],
-  parkability: { parkable: false },
-  requestedBudgets: artifactBudgets,
-  policy: request.policy,
+  browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
 });
 ```
 
-Format v1 accepts a closed ES2022 `.js`/`.mjs` graph. Every import is an exact
-relative file edge except the reserved `capsule:bridge` intrinsic, which
-Capsule lowers itself. It rejects source maps and `sourceMappingURL`, HTML,
-bare packages, runtime `require`, dynamic imports, `import.meta`, top-level await,
-workers, Wasm, native modules, unresolved output, and loose files.
+The signer owns no ambient key store. It accepts explicit private Ed25519
+`CryptoKey` values, orders signatures canonically by key ID, preserves the
+content hash, and rejects malformed or noncanonical bytes and duplicate keys.
 
-For static styling, select one artifact-resource profile and pass ordered
-`cssRoots` and/or exact default-import `resourceBindings`. Capsule then scopes
-CSS and closes only its relative CSS, PNG/SVG/WOFF edges; resource profile v3
-also admits exact WAVE/WebM bindings. External format v1 does not infer
-resource authority from HTML or undeclared JavaScript strings/imports.
+Omitting signature policy permits zero trusted signatures. That is suitable
+only for bounded local construction where unsigned artifacts are an explicit
+choice.
 
-The signed artifact identifies `@omnidraw/capsule-build` as the ingester and
-records the external producer separately under
-`capsule-external-distribution-v1` provenance. Its reproducibility claim is
-only `deterministic-ingestion-only`; Capsule does not claim to have reproduced
-or isolated the external source build. The external worker owns installation,
-scripts, plugins, network, credentials, isolation, cancellation, and cleanup.
-Sign and mount the result normally.
+`CapsuleMemoryArtifactCache` stores copied verified canonical bytes. A later
+mount may use `{ hash: artifactHash }`, but the host revalidates the cache hit
+under current signature and policy requirements.
 
-## Lazy browser loading
+## Application capabilities
 
-Import the browser host at the route or visibility boundary where the first Capsule widget is admitted rather than in the application bootstrap:
+Browser API groups and application capabilities are deliberately separate.
+Capabilities retain exact IDs, versions, contract hashes, schemas, operations,
+quotas, providers, and lifecycle policy.
 
-```ts
-const { createCapsuleHost, createDefaultCapsuleBrowserPlatform } =
-  await import('@omnidraw/capsule');
-```
-
-The production host has a release-only QuickJS loader edge. Importing the host transfers and evaluates the host/membrane closure, but the release QuickJS distribution is fetched only when the first VM is created. The debug QuickJS distribution is not part of the production graph, and warm mounts transfer no additional runtime code. Keep `testkit`, `build`, and `sign` out of production browser imports.
-
-Run `bun run benchmark:loading` in this repository for the fixed Vite/Chromium procedure, phase-specific transfer/parse/evaluation/heap evidence, and current machine-bound ceilings. Aggregate `dist/` size is not a route transfer budget.
-
-## Population and virtualization
-
-Do not allocate one live Capsule runtime per persisted or offscreen widget. The retained construction policy `capsule-virtualized-canvas-admission-v1` permits at most 10,000 inert records and 512 queued reprioritization candidates while admitting no more than:
-
-- 16 active runtimes;
-- eight additional throttled runtimes;
-- 16 frozen runtimes;
-- eight mixed-heavy runtimes;
-- two GPU runtimes; and
-- 24 aggregate live runtimes across all states.
-
-At most 64 parked envelopes may be retained, and only for artifacts whose snapshot semantics have separately passed application acceptance. The reference policy freezes offscreen instances after a two-second grace and destroys instances outside the retention radius after 30 seconds unless they are eligible for bounded parking.
-
-These are conservative deployment maxima, not latency or physical-memory guarantees. A deployment may narrow them using evidence from its actual browser, machine, and widget mix. It must not widen them without a new aggregate capacity report. Run `bun run benchmark:capacity` for Capsule's bounded construction procedure; its short churn window explicitly does not establish a two-hour physical-memory trend.
-
-## Target and feature profiles
-
-The build target, host target, artifact target, and mount feature grants must agree.
-
-The recommended base is `CAPSULE_DOM_CORE_V2_PROFILE`. Add only the profiles the application needs:
-
-- `CAPSULE_ARTIFACT_RESOURCES_PROFILE` for signed CSS/PNG resources, mutually exclusive `CAPSULE_ARTIFACT_RESOURCES_V2_PROFILE` for sanitized SVG/WOFF too, or `CAPSULE_ARTIFACT_RESOURCES_V3_PROFILE` for those plus PCM16 WAVE and silent VP8 WebM;
-- `CAPSULE_CONTROLLED_DIALOGS_PROFILE` for mediated synchronous alerts;
-- `CAPSULE_USER_FILES_PROFILE` for chooser-selected text files;
-- `CAPSULE_USER_FILES_DROP_PROFILE` for bounded inbound file drops;
-- `CAPSULE_USER_FILES_IMAGES_PROFILE` for bounded PNG previews;
-- `CAPSULE_CLIPBOARD_TEXT_PROFILE` with `CAPSULE_DOM_SELECTION_PROFILE` for plain-text clipboard editing;
-- `CAPSULE_FETCH_BUFFERED_PROFILE` for policy-bounded buffered fetch;
-- `CAPSULE_SHADOW_BROWSER_CSS_PROFILE` for ordinary modern browser CSS scoped
-  by Capsule's owned closed ShadowRoot;
-- `CAPSULE_CSS_NETWORK_IMAGES_PROFILE` for separately granted ambient browser
-  image URLs; it requires the native Shadow CSS profile;
-- `CAPSULE_WEB_AUDIO_SYNTHESIS_PROFILE` for bounded synthesis;
-- `CAPSULE_SVG_DOM_PROFILE` for reviewed live SVG construction and copied geometry;
-- `CAPSULE_CANVAS_2D_PROFILE`, `CAPSULE_CANVAS_WEBGL_PROFILE`, or `CAPSULE_CANVAS_WEBGPU_PROFILE` for one mutually exclusive bounded canvas facade;
-- `CAPSULE_MEDIA_AUDIO_PROFILE` and/or `CAPSULE_MEDIA_VIDEO_PROFILE` for activation-gated resources-v3 playback.
-
-Profile dependencies are checked fail-closed. Canvas profiles are mutually
-exclusive. Static media requires resources v3. File drop requires base file
-authority. Image previews require base file and artifact-resource authority.
-Clipboard on DOM v2 requires the Selection overlay. Native Shadow CSS requires
-a final DOM Core v1/v2 target and is mutually exclusive with
-construction-only `runtime-styles-v1`; CSS network images additionally require
-native Shadow CSS.
-
-Listing a feature in the host target means the host may support it; the same exact feature still must be declared by the artifact and passed in `featureGrants` for that mount.
-
-### Native Shadow CSS authoring
-
-Select `CAPSULE_SHADOW_BROWSER_CSS_PROFILE` on the build target, host target,
-and mount grant when a Vite distribution needs ordinary modern CSS. Ordinary
-selectors keep native specificity inside Capsule's closed root. Initial
-`html`, `body`, and `:root` selectors map to the managed guest root; do not
-target Capsule's internal host.
-
-Custom properties, fallbacks, math functions, gradients, modern typography
-and layout, animations, media queries, container queries, and `@supports` are
-available within the pinned grammar. Host/projection/document-global
-facilities such as `:host`, `::slotted`, `::part`, `@property`, view
-transitions, `paint()`, nesting, and runtime `@import` remain denied. Prefer
-typed theme sinks:
-
-```css
-.widget {
-  color: var(--vibecanvas-text-color, CanvasText);
-  background-color: var(--vibecanvas-surface-color, Canvas);
-}
-```
-
-Image-bearing properties deliberately reject `var()` and URL-bearing custom
-properties because inherited or later-mutated values cannot be checked
-against signed URL authority. Distribution-relative PNG/SVG resources remain
-the contained default. To use a literal HTTPS or root-relative image URL,
-also select and grant `CAPSULE_CSS_NETWORK_IMAGES_PROFILE`. That profile uses
-the browser's ambient credentials, cache, redirects, CORS, referrer, CSP, and
-decode behavior; those response bytes and decoded allocations are not charged
-to Capsule's network or asset ledgers.
-
-### Resource v2/v3 authoring
-
-With `artifact-resources-v2` or v3, import `.svg` exactly like `.png` and assign its opaque token to a reviewed `<img src>` or CSS image sink. SVG source is canonicalized to a small non-interactive element/attribute subset; scripts, handlers, links, entities, external URLs, animation, filters, masks, and `foreignObject` fail the build.
-
-Declare an artifact font only in source CSS:
-
-```css
-@font-face {
-  font-family: "Widget Fixture";
-  src: url("./widget.woff") format("woff");
-  font-weight: 400;
-  font-style: normal;
-}
-.title { font-family: "Widget Fixture"; }
-```
-
-Capsule admits WOFF 1 only, rewrites both URL and family identities, loads the face before guest evaluation, and exposes neither native identity. `local()`, network URLs, WOFF2, variations, color/SVG font tables, extra descriptors, and guest `FontFace`/`document.fonts` authority are denied. Rasterization is browser/OS-dependent.
-
-For live charts, select `CAPSULE_SVG_DOM_PROFILE` and use `document.createElementNS('http://www.w3.org/2000/svg', name)`. Only the reviewed element/attribute ledger and `getBBox()` copy are available; use explicit nodes and attributes rather than `innerHTML`, hrefs, styles, filters, masks, animation, or external resources.
-
-Resources v3 permits default imports of canonical `.wav` and `.webm` tokens. Select the matching media profile, assign only that token to an `<audio>` or `<video>` facade, and call `play()` synchronously inside a trusted click/key handler. Autoplay, network URLs, controls, streaming, DRM, capture, fullscreen, PiP, and remote playback are denied. Canvas 2D similarly requires its exact profile and exposes only bounded write/path/text/artifact-image operations; pixel readback and export APIs are absent.
-
-## Budgets
-
-Every finite resource has an explicit bound. `budgetCeiling` is the maximum host authority, `budgetDefaults` supplies omitted mount values, artifact budgets bound the guest request, and `mount({ budgets })` may narrow a specific instance.
-
-Effective budgets are component-wise minima. Zero is a valid deny value and must not be replaced by a truthy default. Start with network, GPU, streams, and assets at zero, then increase only the dimensions required by a selected profile.
-
-Inspect `handle.diagnostics().budgets` and the resource ledgers when tuning limits. A quota failure is a policy outcome, not a reason to disable the boundary.
-
-## Capabilities
-
-Application capabilities are deny-by-default. Effective operations are the exact intersection of:
-
-1. the artifact's capability request;
-2. the host runtime policy;
-3. the mount grant; and
-4. a live instance-bound provider binding.
-
-The descriptor identity includes capability id, exact version, contract hash, operations, schemas, quotas, and lifecycle behavior. Construct schemas through the supported schema entry, register them on the shared host, then register trusted descriptors and supply concrete bindings and grants per mount:
+Construct schemas through the supported schema entry, register them on the
+host, then register descriptors:
 
 ```ts
 import {
@@ -391,6 +528,7 @@ const counterSchema = await createCapsuleSchemaResource({
     required: ['amount'],
   },
 });
+
 const schemaRegistration = await host.registerSchema(counterSchema);
 const descriptorRegistration = host.registerCapabilityDescriptor({
   id: 'example.counter',
@@ -403,16 +541,22 @@ const descriptorRegistration = host.registerCapabilityDescriptor({
     outputSchema: counterSchema.reference,
   }],
 });
+
 const binding: CapsuleCapabilityBinding = {
   descriptor: descriptorRegistration.descriptor,
-  invoke(_context: CapsuleKernelCallContext, _operation, input) { return input; },
+  invoke(_context: CapsuleKernelCallContext, _operation, input) {
+    return input;
+  },
   dispose() {},
 };
 ```
 
-A registration is bounded and duplicate exact identities are rejected. `schemaRegistration.unregister()` returns false while a descriptor or any pending/live active, frozen, or parked mount may use it; unregister the descriptor and destroy dependent mounts before retrying. Host destroy terminally clears all registrations.
+The artifact must request the capability, the host must allow its identity,
+and the mount supplies the concrete binding and grant. Discovery alone grants
+nothing. Inputs and outputs validate at both sides of the bridge, and native
+provider objects never enter the guest.
 
-Guest source uses `@omnidraw/capsule/guest`:
+Guest SDK code uses the guest entry:
 
 ```ts
 import {
@@ -426,30 +570,28 @@ const selector = {
   contractHash: 'sha256:…',
 };
 
-const capability = discoverCapability(selector);
-if (capability !== null) {
+if (discoverCapability(selector) !== null) {
   const result = await callCapabilityAsync(
     selector,
     'increment',
     { amount: 1 },
     { timeoutMs: 1_000 },
   );
-  console.log(result);
 }
 ```
 
-Discovery does not grant authority. Inputs and outputs are validated against the registered schemas on both sides of the bridge. Provider objects, native objects, stacks, and mutable host state never cross into the guest.
+Schema registration is bounded. It cannot be removed while a descriptor or
+pending/live mount in any lifecycle state may still use it.
 
-## Props, themes, outputs, and local store
+## Guest channels
 
-Declare guest channels in the artifact build request and register their exact schemas before mounting, either through host construction or `await host.registerSchema(resource)`. Supply initial values at mount:
+Declare channel schemas in the build request and register the corresponding
+schema resources before mount. Supply initial values at mount:
 
 ```ts
 const handle = await host.mount({
   artifact: signedArtifactBytes,
   container,
-  capabilityBindings: [],
-  grants: [],
   guestChannels: {
     props: { schema: propsSchemaReference, initial: { count: 0 } },
     theme: { schema: themeSchemaReference, initial: { mode: 'dark' } },
@@ -464,21 +606,23 @@ const handle = await host.mount({
 
 handle.setProps({ count: 1 });
 handle.setTheme({ mode: 'light' });
-const unsubscribe = handle.onOutput((value) => console.log(value));
+const stopOutput = handle.onOutput((value) => console.log(value));
 ```
 
-Guest code reads and subscribes through the guest entrypoint. Values use Capsule's bounded structured-value format; functions, accessors, cycles, host objects, and unsupported prototypes are rejected.
+Values use Capsule's bounded structured-value format. Functions, accessors,
+cycles, host objects, and unsupported prototypes are rejected.
 
-Subscriptions do not replay previous events. Call the returned unsubscribe function when the listener is no longer needed.
+## Lifecycle, viewport, and observation
 
-## Lifecycle and viewport
-
-After `ready()`, a handle supports:
+After `ready()`:
 
 ```ts
 await handle.setSchedulingMode('throttled');
 await handle.freeze('tab-hidden');
-await handle.resume({ reason: 'tab-visible', schedulingMode: 'active' });
+await handle.resume({
+  reason: 'tab-visible',
+  schedulingMode: 'active',
+});
 
 handle.setViewport({
   width: 800,
@@ -491,9 +635,12 @@ handle.setViewport({
 });
 ```
 
-`freeze()` stops runnable work. `snapshot()` captures a parkable guest without parking it. `park()` captures and releases its runtime. `resume()` reconstructs a parked runtime and may accept a compatible replacement artifact. These operations require an artifact with an explicit parkability/snapshot contract.
+`snapshot()` captures a parkable guest. `park()` captures and releases the
+runtime. Resuming a parked handle builds a fresh generation and may accept a
+compatible replacement artifact. These operations require an explicit signed
+parkability and snapshot contract.
 
-Use `onLifecycle`, `onError`, and `onMetrics` for bounded observation:
+Use bounded observation:
 
 ```ts
 const stopErrors = handle.onError((event) => {
@@ -504,7 +651,33 @@ const stopMetrics = handle.onMetrics((event) => {
 });
 ```
 
-Listener exceptions are contained and reported through the configured host telemetry sink. Error records contain normalized bounded data, not guest/provider stacks or host objects.
+Listener failures are contained. Error records contain normalized bounded
+data, not guest/provider stacks or host objects.
+
+## Diagnostics
+
+Public group diagnostics are immutable:
+
+```ts
+const diagnostics = handle.diagnostics();
+console.log({
+  format: diagnostics.apiContract.format,
+  bundleDigest: diagnostics.apiContract.bundleDigest,
+  requested: diagnostics.apiContract.requestedApis,
+  effective: diagnostics.apiContract.effectiveApis,
+  legacy: diagnostics.apiContract.legacy,
+  resourceFamilies: diagnostics.apiContract.resourceFamilies,
+  budgets: diagnostics.budgets,
+});
+```
+
+The same snapshot includes the exact private target for compatibility audit,
+plus lifecycle, viewport, capability, VM, DOM, queue, resource-ledger, and
+teardown counters. Ordinary callers diagnose with groups; they do not copy the
+private target back into a construction request.
+
+After successful destroy, every live instance-owned and subscription counter
+must be zero. Historical peaks and cumulative traffic may remain visible.
 
 ## Testkit
 
@@ -525,8 +698,6 @@ const automation = createCapsuleTestAutomation({
 const handle = await host.mount({
   artifact: signedArtifactBytes,
   container,
-  capabilityBindings: [],
-  grants: [],
   testAutomation: automation.attachment,
 });
 
@@ -535,70 +706,175 @@ const button = locateCapsuleTestTarget(automation, {
   name: 'Save',
   maxResults: 2,
 });
-console.log(button.target, button.geometry.centerX, button.geometry.centerY);
 ```
 
-Pass the returned viewport coordinates to the external browser driver when an interaction is required. Testkit itself is read-only: it returns opaque target snapshots and geometry, never the closed `ShadowRoot` or a DOM node, and does not bypass profile or capability policy. Do not attach it in production.
+Use the returned geometry with browser automation for trusted input. Testkit
+returns no ShadowRoot or DOM node, does not enter the VM, and cannot bypass
+group, capability, or activation policy. Never attach it in production.
 
 ## WebGL and WebGPU adapters
 
-`createDefaultCapsuleBrowserPlatform()` probes and constructs the reviewed native adapters automatically. Use the `webgl` and `webgpu` subpaths only when implementing a custom trusted browser platform or inspecting exact facade limits.
+`createDefaultCapsuleBrowserPlatform()` constructs the reviewed adapters.
+Use `/webgl` or `/webgpu` only to implement a custom trusted platform or
+inspect fixed facade limits.
 
-The guest receives the bounded facade selected by its signed profile. Native contexts, devices, buffers, textures, and queues remain host-owned. GPU bytes, object counts, submission rates, and teardown are independently accounted. `canvas-webgl-v1` is the exact reviewed WebGL2 ledger used by the pinned Three.js r185 probe, not ambient WebGL or a claim that arbitrary Three.js scenes are supported.
+Those subpaths expose adapter types, fixed limits, and public group identity.
+They do not expose a general private-profile assembler. Native contexts,
+devices, buffers, textures, queues, and other browser objects remain
+host-owned.
 
-## Errors and diagnostics
+`WEBGL` is the bounded WebGL2 ledger used by the pinned Three.js r185 probe,
+not ambient WebGL or a promise that arbitrary scenes work. `WEBGPU` is the
+bounded visible-canvas subset, not compute or unrestricted WebGPU.
 
-Expected boundary failures use normalized error classes and stable codes:
+## Lazy loading and population
 
-- `CapsuleHostError` for host/mount failures;
-- `CapsuleBuildError` for build input, transform, and limit failures;
-- `CapsuleNpmProjectBuildError` for native npm authority, install, normalization, cancellation, and cleanup failures;
-- `CapsuleGuestBridgeError` inside guest code.
+Load the browser host at the first widget/route admission boundary:
 
-Log the stable code and bounded message. Do not depend on stack text. For a live instance, `handle.diagnostics()` returns an immutable snapshot of target, authority, budgets, lifecycle state, viewport, queues, resource ledgers, and retained counters. After successful destroy, all live instance-owned counters should be zero.
+```ts
+const { createCapsuleHost, createDefaultCapsuleBrowserPlatform } =
+  await import('@omnidraw/capsule');
+```
 
-## Production checklist
+The QuickJS release distribution loads only when the first VM is constructed.
+Keep `build`, `sign`, and `testkit` out of production browser imports.
 
-- Pin the exact `@omnidraw/capsule` version and lockfile.
-- Build from a closed serialized source/dependency snapshot.
-- Sign artifacts in a trusted release environment.
-- Require the expected public keys and reject untrusted signatures.
-- Keep host capability policy empty until a capability is intentionally integrated.
-- Grant capabilities and feature profiles separately per mount.
-- Default network, GPU, files, clipboard, audio, and dialogs to denied.
-- Set finite budgets and narrower per-mount values.
-- Virtualize high-population canvases and stay within the 24-live-runtime aggregate policy unless new capacity evidence justifies a different bound.
-- Use the default browser platform unless a custom adapter has been reviewed.
-- Never attach testkit in production.
-- Subscribe to normalized errors and terminal cleanup metrics.
-- Destroy every handle and host during application teardown.
-- Treat automated construction checks separately from human browser/compatibility acceptance.
+Do not allocate one live runtime per persisted or offscreen record. The
+repository's conservative construction policy admits at most 24 aggregate
+live runtimes, including at most two GPU runtimes, and retains at most 64
+eligible parked envelopes. A deployment may narrow those values from its own
+evidence and must not widen them without a new capacity report.
 
-## Troubleshooting
+Run `bun run benchmark:loading` and `bun run benchmark:capacity` in the
+repository for the exact procedures and current machine-bound evidence. A
+short construction run is not a long-term physical-memory claim.
 
-`ERR_PACKAGE_PATH_NOT_EXPORTED` means the code imported an unsupported deep path. Use the root or one of the nine supported subpaths.
+## Migration from 0.9.4
 
-`capsule:bridge` cannot be resolved means the guest entrypoint was imported by ordinary host code. Include it only in guest source processed by Capsule.
+0.10.0 intentionally removes the ordinary source-level profile assembler.
 
-An unsupported target/profile error means the artifact, host target, browser probe, or feature grant does not match exactly. Compare all four rather than widening policy.
+Replace:
 
-A signature-policy failure means the artifact has too few valid trusted signatures, is missing a required key id, or carries a rejected untrusted signature.
+| 0.9.4 source input | 0.10.0 source input |
+| --- | --- |
+| build `target.runtimeAbi`, `target.domProfile`, `target.featureProfiles` | build `apis` |
+| build `requestedBudgets` plus complete policy budget records | optional partial build `budgets` and partial `policy.budgetCeilings` |
+| build/host/mount `fetchAuthority` | `CapsuleNetworkPolicy` |
+| host `runtimePolicy.target` | host `allowedApis` |
+| host complete `budgetCeiling`/`budgetDefaults` | optional partial host `limits` |
+| mount `featureGrants` and repeated empty arrays | simple mount, with optional `allowedApis`/`limits` narrowing |
+| caller-selected artifact resource profile | inference from explicit `cssRoots`/`resourceBindings` |
 
-A quota error means one effective budget was exhausted. Read the immutable diagnostics, identify the exact dimension, and adjust the smallest relevant bound.
+For example:
 
-A container-ownership error means another pending or live mount owns that element. Destroy the prior handle and await its cleanup before reuse.
+```ts
+// 0.9.4
+buildCapsuleGuest({
+  input,
+  target: { runtimeAbi, domProfile, featureProfiles, language: 'js' },
+  capabilityRequests: [],
+  parkability: { parkable: false },
+  requestedBudgets: completeBudgets,
+  policy: legacyPolicy,
+});
 
-## Versioning and upgrades
+// 0.10.0
+buildCapsuleGuest({
+  input,
+  apis: ['DOM', 'NETWORK'],
+  networkPolicy,
+  parkability: { parkable: false },
+  budgets: { networkBytes: 1024 * 1024 },
+  policy: buildValidationPolicy,
+});
+```
 
-The npm version belongs only to `@omnidraw/capsule`. Runtime ABI, artifact schema, DOM profile, feature profiles, capability identities, and snapshot schemas are independent compatibility identifiers and do not change merely because the npm version changes.
+Rebuild and re-sign normal artifacts to obtain the signed
+`apiContract`/`resolvedTarget` form.
+
+The 0.10.0 host also retains a bounded artifact-only adapter for existing
+0.9.4 exact-target bytes. Admission succeeds only when the complete final
+target maps unambiguously to an accepted group expansion and the new host
+allows every mapped group. Diagnostics report
+`format: 'legacy-exact-target-0.9.4'` and `legacy: true`. Unknown,
+construction-only, ambiguous, incomplete, or disallowed targets fail closed;
+the adapter never invents authority and cannot narrow a legacy artifact by
+rewriting its signed target.
+
+The compatibility is one-way. A frozen 0.9.4 host does not understand the new
+group-artifact schema. It rejects the artifact during schema validation,
+before VM or guest execution, with `ARTIFACT_REJECTED` caused by
+`envelope_invalid`. The current 0.10 retained exact-target mode is different:
+its decoder understands the group schema, then rejects the artifact with
+`ARTIFACT_REJECTED` caused by `target_incompatible`.
+
+The artifact adapter is not a reason to preserve two source APIs. Remove all
+application imports and examples of public runtime/profile constants and
+feature grants during the upgrade.
+
+## Versioning
+
+The package version is `@omnidraw/capsule` 0.10.0. The group-contract format
+and bundle digest, artifact envelope, runtime ABI, private ledgers/profiles,
+capability identities, network-policy format, and snapshot schemas are
+independently versioned exact contracts.
 
 Before upgrading:
 
-1. read `CHANGELOG.md`;
-2. rebuild and sign guest artifacts with the new trusted toolchain;
-3. verify the host target still admits every artifact target;
-4. run package, construction, and application tests;
+1. read [`CHANGELOG.md`](../CHANGELOG.md);
+2. rebuild and sign normal guest artifacts;
+3. verify the host's `allowedApis`, network policy, and limits;
+4. run package, group-conformance, focused construction, and application
+   tests;
 5. verify snapshot migration declarations for parked instances; and
-6. obtain human acceptance for any browser/interaction claim.
+6. obtain human acceptance for every browser/interaction/hardware claim the
+   release makes.
 
-Unsupported identifiers fail before guest execution rather than being approximated.
+Unsupported exact identities fail before guest execution rather than being
+approximated.
+
+## Production checklist
+
+- Pin exact Capsule and application dependency versions and lockfiles.
+- Compile guests in application-owned isolation and ingest only a closed
+  distribution.
+- Select the smallest dependency-complete API group set.
+- Sign artifacts in a trusted release environment and require the expected
+  public keys.
+- Keep host groups, network policy, capability policy, and limits narrower
+  than or equal to signed requests.
+- Leave application capabilities absent until intentionally integrated.
+- Treat user activation, files, clipboard, dialogs, audio, and rendering as
+  explicit authority.
+- Use the default browser platform unless a custom adapter has been reviewed.
+- Never attach testkit in production.
+- Observe normalized errors and terminal cleanup counters.
+- Destroy every handle and host during application teardown.
+- Keep automated construction evidence separate from human compatibility
+  acceptance.
+
+## Troubleshooting
+
+`ERR_PACKAGE_PATH_NOT_EXPORTED` means code imported an unsupported deep path.
+Use the root or one of the eight supported subpaths.
+
+`capsule:bridge` cannot be resolved means the guest entry was imported by
+ordinary host code. Bundle it only into guest output.
+
+An API-contract or target-incompatible error means the artifact contract,
+bundle digest, host group ceiling, mount subset, resolved target, or platform
+does not agree. Compare public group diagnostics first; do not copy private
+profiles into a new request.
+
+A network denial means no rule survived artifact/host/mount policy
+intersection, the request exceeded a rule or quota, or `NETWORK` is absent.
+
+A signature failure means the artifact has too few valid trusted signatures,
+is missing a required key ID, or carries a forbidden untrusted signature.
+
+A quota error means one effective budget is exhausted. Read immutable
+diagnostics and adjust only the smallest relevant partial limit.
+
+A container error means the element is not empty/eligible or another pending
+or live mount owns it. Destroy the prior handle and await cleanup before
+reuse.

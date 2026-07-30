@@ -1,8 +1,10 @@
 # Cangine feature request: public pure serialized-command reducer
 
-- **Status:** Awaiting Cangine maintainer response
+- **Status:** Accepted; targeted for Cangine 0.4.0, release date uncommitted
 - **Consumer:** Vibecanvas
 - **Current Cangine version:** 0.3.0
+- **Vibecanvas follow-up:** Blocked migration task
+  [`S127`](../../tasks/s/S127.md)
 
 ## Summary
 
