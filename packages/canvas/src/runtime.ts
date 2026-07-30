@@ -21,6 +21,7 @@ import type {
   TCanvasRuntimeExtensionInstall,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
+import type { TRuntimeGridPresentation } from './services/fn.runtime-scene';
 import {
   createTracedCanvasDocumentTransport,
 } from './debug-trace/createTracedCanvasDocumentTransport';
@@ -58,6 +59,7 @@ export type TCanvasRuntime = Readonly<{
   engine(): IInfiniteCanvasEngine | null;
   document(): CanvasDocumentService | null;
   selectionStyles(): ISelectionStyleController | null;
+  setGridVisible(visible: boolean): boolean;
   openImagePicker(): void;
   setSelectedConnectorSegmentMode(mode: TPathSegmentMode): void;
   widgetContentFocused(): boolean;
@@ -431,11 +433,22 @@ export function buildRuntime(
   let documentService: CanvasDocumentService | null = null;
   let imageDropController: IImageDropController | null = null;
   let imageInput: HTMLInputElement | null = null;
-  let resizeObserver: ResizeObserver | null = null;
   let releaseTraceSubscriptions: (() => void) | null = null;
   let releaseTraceLifecycle: (() => void) | null = null;
   let releaseEarlyEngineTrace: (() => void) | null = null;
+  let releaseThemeChange: (() => void) | null = null;
+  let gridVisible = config.initialGridVisible ?? true;
   const installs: TCanvasRuntimeExtensionInstall[] = [];
+  const gridPresentation = (
+    visible = gridVisible,
+  ): TRuntimeGridPresentation => {
+    const colors = config.themeService.getTheme().colors;
+    return {
+      visible,
+      minorColor: colors.canvasGridMinor,
+      majorColor: colors.canvasGridMajor,
+    };
+  };
 
   return Object.freeze({
     async boot() {
@@ -468,6 +481,7 @@ export function buildRuntime(
         ),
         createCommandId: config.createId,
         image: config.image,
+        runtimeGridPresentation: gridPresentation(),
         observe: config.trace === undefined || config.trace === null
           ? undefined
           : (observation) => config.trace?.emit({
@@ -503,6 +517,12 @@ export function buildRuntime(
         },
       });
       await documentService.start(engine);
+      const syncRuntimeGridTheme = () =>
+        documentService?.setRuntimeGridPresentation(gridPresentation());
+      releaseThemeChange = config.themeService.hooks.change.tap(
+        syncRuntimeGridTheme,
+      );
+      syncRuntimeGridTheme();
       editorSession = createStandardEditorSession({
         engine,
         host: config.container,
@@ -632,9 +652,6 @@ export function buildRuntime(
         },
       });
       selectionStyleController.attach();
-      resizeObserver = new ResizeObserver(() => engine?.resize());
-      resizeObserver.observe(config.container);
-      engine.resize();
     },
     async shutdown() {
       const errors: unknown[] = [];
@@ -647,9 +664,6 @@ export function buildRuntime(
           errors.push(error);
         }
       };
-      const observer = resizeObserver;
-      resizeObserver = null;
-      await attempt(() => observer?.disconnect());
       const traceLifecycle = releaseTraceLifecycle;
       releaseTraceLifecycle = null;
       await attempt(() => traceLifecycle?.());
@@ -674,6 +688,9 @@ export function buildRuntime(
       const session = editorSession;
       editorSession = null;
       await attempt(() => session?.destroy());
+      const themeChange = releaseThemeChange;
+      releaseThemeChange = null;
+      await attempt(() => themeChange?.());
       const document = documentService;
       documentService = null;
       await attempt(() => document?.dispose());
@@ -690,6 +707,12 @@ export function buildRuntime(
     engine: () => engine,
     document: () => documentService,
     selectionStyles: () => selectionStyleController,
+    setGridVisible: (visible) => {
+      if (visible === gridVisible) return false;
+      documentService?.setRuntimeGridPresentation(gridPresentation(visible));
+      gridVisible = visible;
+      return true;
+    },
     openImagePicker: () => imageInput?.click(),
     setSelectedConnectorSegmentMode: (mode) => {
       const session = editorSession;

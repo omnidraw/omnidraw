@@ -8,6 +8,8 @@ import { validateSceneSnapshot } from "@omnidraw/cangine/testing";
 import {
   CANVAS_AUTHORING_EXTENSION_KEY,
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+  CANVAS_RUNTIME_GRID_NODE_ID,
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
@@ -24,6 +26,11 @@ const RUNTIME_ONLY_NODE_KINDS = new Set<TSceneNode["kind"]>([
   "background",
   "html-portal",
   "layer",
+]);
+const RESERVED_RUNTIME_NODE_IDS = new Set([
+  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
+  CANVAS_RUNTIME_GRID_NODE_ID,
+  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
 ]);
 
 const WIDGET_UI_KEYS = new Set([
@@ -400,11 +407,11 @@ export function fnValidateCanvasItems(
   const issues: TCanvasContractIssue[] = [];
   const imageDescriptors = new Map<string, TCanvasImageExtensionV1>();
   for (const [index, item] of items.entries()) {
-    if (item.id === CANVAS_SYNTHETIC_CONTENT_LAYER_ID) {
+    if (RESERVED_RUNTIME_NODE_IDS.has(item.id)) {
       issues.push(issue(
         "RESERVED_ITEM_ID",
         `/items/${index}/id`,
-        "The item ID is reserved for the runtime content layer.",
+        "The item ID is reserved for runtime canvas presentation.",
         item.id,
       ));
     }

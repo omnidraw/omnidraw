@@ -1,3 +1,7 @@
+import {
+  BUILTIN_THEMES,
+  type TThemeDefinition,
+} from '@vibecanvas/service-theme';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const runtimeState = vi.hoisted(() => ({
@@ -27,6 +31,10 @@ const runtimeState = vi.hoisted(() => ({
   styleConfig: null as unknown,
   styleController: null as unknown,
   styleDestroyError: null as Error | null,
+  runtimeGridPresentations: [] as unknown[],
+  documentStartHook: null as (() => void) | null,
+  themeColors: null as unknown as TThemeDefinition['colors'],
+  themeListener: null as ((theme: TThemeDefinition) => void) | null,
 }));
 
 vi.mock('@omnidraw/cangine', () => ({
@@ -138,25 +146,39 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
 
     async start(): Promise<void> {
       runtimeState.events.push('document:start');
+      runtimeState.documentStartHook?.();
     }
 
     async dispose(): Promise<void> {
       runtimeState.events.push('document:dispose');
+    }
+
+    setRuntimeGridPresentation(presentation: unknown): boolean {
+      runtimeState.runtimeGridPresentations.push(presentation);
+      runtimeState.events.push('grid:presentation');
+      return true;
     }
   },
 }));
 
 import { buildRuntime } from '../src/runtime';
 
-class TestResizeObserver {
-  observe(): void {
-    runtimeState.events.push('resize:observe');
-  }
-
-  disconnect(): void {
-    runtimeState.events.push('resize:disconnect');
-  }
-}
+const themeService = {
+  getTheme: () => ({
+    colors: { ...runtimeState.themeColors },
+  }),
+  hooks: {
+    change: {
+      tap(listener: NonNullable<typeof runtimeState.themeListener>) {
+        runtimeState.themeListener = listener;
+        return () => {
+          runtimeState.events.push('theme:release');
+          runtimeState.themeListener = null;
+        };
+      },
+    },
+  },
+} as never;
 
 describe('canvas runtime composition', () => {
   beforeEach(() => {
@@ -180,6 +202,10 @@ describe('canvas runtime composition', () => {
     runtimeState.styleConfig = null;
     runtimeState.styleController = null;
     runtimeState.styleDestroyError = null;
+    runtimeState.runtimeGridPresentations.length = 0;
+    runtimeState.documentStartHook = null;
+    runtimeState.themeColors = BUILTIN_THEMES[0]!.colors;
+    runtimeState.themeListener = null;
     runtimeState.engine = {
       scene: {
         get() {
@@ -229,14 +255,10 @@ describe('canvas runtime composition', () => {
           };
         },
       },
-      resize() {
-        runtimeState.events.push('engine:resize');
-      },
       async destroy() {
         runtimeState.events.push('engine:destroy');
       },
     };
-    vi.stubGlobal('ResizeObserver', TestResizeObserver);
   });
 
   afterEach(() => {
@@ -265,7 +287,7 @@ describe('canvas runtime composition', () => {
       transport: {} as never,
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
-      themeService: {} as never,
+      themeService,
       image,
       notification: {
         showError: vi.fn(),
@@ -297,6 +319,9 @@ describe('canvas runtime composition', () => {
       },
     ]);
 
+    runtimeState.documentStartHook = () => {
+      runtimeState.themeColors = BUILTIN_THEMES[3]!.colors;
+    };
     await runtime.boot();
 
     const engineConfig = runtimeState.engineConfig as Record<string, unknown>;
@@ -325,6 +350,30 @@ describe('canvas runtime composition', () => {
       onCallbackError(error: unknown): void;
     };
     expect(engineConfig).not.toHaveProperty('record');
+    expect(engineConfig.host).toBe(container);
+    expect(runtimeState.engine).not.toHaveProperty('resize');
+    expect(runtimeState.documentOptions).toMatchObject({
+      runtimeGridPresentation: {
+        visible: true,
+        minorColor: BUILTIN_THEMES[0]!.colors.canvasGridMinor,
+        majorColor: BUILTIN_THEMES[0]!.colors.canvasGridMajor,
+      },
+    });
+    expect(runtimeState.runtimeGridPresentations[0]).toMatchObject({
+      visible: true,
+      minorColor: BUILTIN_THEMES[3]!.colors.canvasGridMinor,
+      majorColor: BUILTIN_THEMES[3]!.colors.canvasGridMajor,
+    });
+    expect(runtime.setGridVisible(true)).toBe(false);
+    expect(runtime.setGridVisible(false)).toBe(true);
+    expect(runtimeState.runtimeGridPresentations).toHaveLength(2);
+    runtimeState.themeColors = BUILTIN_THEMES[2]!.colors;
+    runtimeState.themeListener?.(BUILTIN_THEMES[2]!);
+    expect(runtimeState.runtimeGridPresentations).toHaveLength(3);
+    expect(runtimeState.runtimeGridPresentations[2]).toMatchObject({
+      visible: false,
+      majorColor: BUILTIN_THEMES[2]!.colors.canvasGridMajor,
+    });
     expect(sessionConfig.editor.sceneMutationPort).toBe(
       runtimeState.documentInstance,
     );
@@ -379,6 +428,7 @@ describe('canvas runtime composition', () => {
       'image-drop:destroy',
       'selection-style:destroy',
       'editor:destroy',
+      'theme:release',
       'document:dispose',
       'engine:destroy',
     ]));
@@ -439,7 +489,7 @@ describe('canvas runtime composition', () => {
       transport: {} as never,
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
-      themeService: {} as never,
+      themeService,
       image: {
         uploadImage: vi.fn(),
         cloneImage: vi.fn(),
@@ -586,7 +636,7 @@ describe('canvas runtime composition', () => {
       transport: {} as never,
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
-      themeService: {} as never,
+      themeService,
     }, [{
       name: 'throwing',
       install() {
@@ -628,7 +678,7 @@ describe('canvas runtime composition', () => {
       transport: {} as never,
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
-      themeService: {} as never,
+      themeService,
       notification: {
         showError,
         showInfo: vi.fn(),
@@ -678,7 +728,7 @@ describe('canvas runtime composition', () => {
       transport: {} as never,
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
-      themeService: {} as never,
+      themeService,
     });
     await runtime.boot();
 
