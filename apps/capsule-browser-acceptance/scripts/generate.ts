@@ -56,9 +56,9 @@ const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widg
 const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.10.0',
+  packageVersion: '0.10.1',
   packageDigest:
-    'sha256:409a6680d581b0028180f108e0ed270c98dc73b0e466a60ffe60deabdbabc7c1' as const,
+    'sha256:2d0333e25c1af76df4131846f0afa10fac4023925f695c44b81fdcfd30d3534f' as const,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest:
     'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,
@@ -576,7 +576,7 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
       build: {
         write: false,
         target: browserDistributionConfiguration.target,
-        sourcemap: false,
+        sourcemap: 'hidden',
         minify: false,
         cssCodeSplit: false,
         rollupOptions: {
@@ -599,6 +599,7 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
         return value.output;
       });
     const files = outputs
+      .filter((output) => !output.fileName.endsWith('.map'))
       .map((output) => Object.freeze({
         path: output.fileName,
         bytes: output.type === 'chunk'
@@ -608,6 +609,14 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
             : new Uint8Array(output.source),
       }))
       .sort((left, right) => left.path.localeCompare(right.path));
+    const sourceMaps = outputs
+      .flatMap((output) => output.type === 'chunk' && output.map !== null
+        ? [Object.freeze({
+            module: output.fileName,
+            bytes: encoder.encode(output.map.toString()),
+          })]
+        : [])
+      .sort((left, right) => left.module.localeCompare(right.module));
     const cssRoots = files
       .map((file) => file.path)
       .filter((path) => path.endsWith('.css'));
@@ -615,6 +624,7 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
     return Object.freeze({
       kind: 'external-distribution',
       snapshot: Object.freeze({ files: Object.freeze(files) }),
+      ...(sourceMaps.length === 0 ? {} : { sourceMaps: Object.freeze(sourceMaps) }),
       entry: browserDistributionConfiguration.entry,
       ...(cssRoots.length === 0
         ? {}

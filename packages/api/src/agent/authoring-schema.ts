@@ -243,29 +243,47 @@ export const ZAgentWidgetDraftSummary: z.ZodType<TWidgetDraftSummary> =
 export const ZAgentWidgetDraftSummaries: z.ZodType<TWidgetDraftSummary[]> =
   z.array(ZAgentWidgetDraftSummary).max(10_000);
 
-const ZWidgetPreviewUiArtifact = z.object({
-  digestSha256: ZAgentRevisionDigest,
-  byteSize: z.number().int().min(1).max(WIDGET_ARTIFACT_MAX_BYTES),
-  bytesBase64: z.string()
-    .max(WIDGET_ARTIFACT_MAX_BASE64_LENGTH)
-    .regex(BASE64_PATTERN),
-  runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
-}).strict().superRefine((artifact, context) => {
+function validatePreviewArtifactBytes(
+  label: string,
+  artifact: Readonly<{ bytesBase64: string; byteSize: number }>,
+  context: z.RefinementCtx,
+): void {
   const decodedBytes = decodedBase64ByteLength(artifact.bytesBase64);
   if (decodedBytes > WIDGET_ARTIFACT_MAX_BYTES) {
     context.addIssue({
       code: 'custom',
-      message: 'Preview UI artifact exceeds the decoded byte limit.',
+      message: `Preview ${label} artifact exceeds the decoded byte limit.`,
       path: ['bytesBase64'],
     });
   }
   if (decodedBytes !== artifact.byteSize) {
     context.addIssue({
       code: 'custom',
-      message: 'Preview UI artifact byte size does not match its encoded bytes.',
+      message: `Preview ${label} artifact byte size does not match its encoded bytes.`,
       path: ['byteSize'],
     });
   }
+}
+
+const WIDGET_PREVIEW_ARTIFACT_BYTES_SHAPE = {
+  digestSha256: ZAgentRevisionDigest,
+  byteSize: z.number().int().min(1).max(WIDGET_ARTIFACT_MAX_BYTES),
+  bytesBase64: z.string()
+    .max(WIDGET_ARTIFACT_MAX_BASE64_LENGTH)
+    .regex(BASE64_PATTERN),
+};
+
+const ZWidgetPreviewUiArtifact = z.object({
+  ...WIDGET_PREVIEW_ARTIFACT_BYTES_SHAPE,
+  runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
+}).strict().superRefine((artifact, context) => {
+  validatePreviewArtifactBytes('UI', artifact, context);
+});
+
+const ZWidgetPreviewSourceMapArtifact = z.object({
+  ...WIDGET_PREVIEW_ARTIFACT_BYTES_SHAPE,
+}).strict().superRefine((artifact, context) => {
+  validatePreviewArtifactBytes('source-map', artifact, context);
 });
 
 const ZWidgetPreviewReady = z.object({
@@ -282,6 +300,7 @@ const ZWidgetPreviewReady = z.object({
   committedMutationId: z.string().min(1).max(1_024),
   manifest: ZWidgetManifestV3,
   uiArtifact: ZWidgetPreviewUiArtifact,
+  sourceMapArtifact: ZWidgetPreviewSourceMapArtifact.nullable(),
   contract: z.object({
     digestSha256: ZAgentRevisionDigest,
     functions: ZWidgetBrowserFunctionDescriptors,

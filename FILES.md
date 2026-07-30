@@ -21,6 +21,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -446,6 +447,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/capsule-vibecanvas/src/build/fn.build-error.ts](packages/capsule-vibecanvas/src/build/fn.build-error.ts) |  |
 | [packages/capsule-vibecanvas/src/build/fn.error.ts](packages/capsule-vibecanvas/src/build/fn.error.ts) |  |
 | [packages/capsule-vibecanvas/src/build/fn.policy.ts](packages/capsule-vibecanvas/src/build/fn.policy.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.source-map-artifact.ts](packages/capsule-vibecanvas/src/build/fn.source-map-artifact.ts) |  |
 | [packages/capsule-vibecanvas/src/build/index.ts](packages/capsule-vibecanvas/src/build/index.ts) |  |
 | [packages/capsule-vibecanvas/src/build/interface.ts](packages/capsule-vibecanvas/src/build/interface.ts) |  |
 | [packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts](packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts) |  |
@@ -461,8 +463,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/capsule-vibecanvas/src/capabilities/index.ts](packages/capsule-vibecanvas/src/capabilities/index.ts) |  |
 | [packages/capsule-vibecanvas/src/capabilities/types.ts](packages/capsule-vibecanvas/src/capabilities/types.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/CONSTANTS.ts](packages/capsule-vibecanvas/src/contract/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.apis.ts](packages/capsule-vibecanvas/src/contract/fn.apis.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/fn.budgets.ts](packages/capsule-vibecanvas/src/contract/fn.budgets.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/fn.target.ts](packages/capsule-vibecanvas/src/contract/fn.target.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/index.ts](packages/capsule-vibecanvas/src/contract/index.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/types.ts](packages/capsule-vibecanvas/src/contract/types.ts) |  |
 | [packages/capsule-vibecanvas/src/host/fn.error.ts](packages/capsule-vibecanvas/src/host/fn.error.ts) |  |
@@ -714,6 +716,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
 | [packages/service-db/src/migrations/003-agent-authoring.sql](packages/service-db/src/migrations/003-agent-authoring.sql) |  |
 | [packages/service-db/src/migrations/004-live-widget-preview.sql](packages/service-db/src/migrations/004-live-widget-preview.sql) |  |
+| [packages/service-db/src/migrations/005-capsule-api-groups.sql](packages/service-db/src/migrations/005-capsule-api-groups.sql) |  |
+| [packages/service-db/src/migrations/006-preview-source-maps.sql](packages/service-db/src/migrations/006-preview-source-maps.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
@@ -913,7 +917,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts](packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.runtime-diagnostic-source.ts](packages/ui-ai-chat/src/widget-runtime/fn.runtime-diagnostic-source.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts](packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-source-map-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-source-map-artifact.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/index.ts](packages/ui-ai-chat/src/widget-runtime/index.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/interface.ts](packages/ui-ai-chat/src/widget-runtime/interface.ts) |  |

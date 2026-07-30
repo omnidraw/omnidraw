@@ -50,7 +50,7 @@ const CAPSULE_API_CONTRACT = Object.freeze({
 const CAPSULE_BUDGETS = Object.freeze({});
 const CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.10.0',
+  packageVersion: '0.10.1',
   packageDigest: `sha256:${'a'.repeat(64)}` as const,
   buildApiVersion: 'capsule-build-v1',
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}` as const,
@@ -293,6 +293,7 @@ async function publish(
             sourceSnapshotId,
             sourceDigestSha256,
             sourceArtifactDigestSha256: sourceArtifact.digestSha256,
+            sourceMapArtifactDigestSha256: null,
             canonicalManifestDigestSha256:
               createHash('sha256').update(canonicalManifestJson).digest('hex'),
             functionDescriptorsDigestSha256,

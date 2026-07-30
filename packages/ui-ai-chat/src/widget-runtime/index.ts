@@ -7,6 +7,10 @@ export { createWidgetCapsuleCapabilityBindings } from './create-widget-capsule-c
 export { CapsuleWidgetHostCoordinator } from './CapsuleWidgetHostCoordinator';
 export { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
 export {
+  fxDecodeAndVerifySourceMapArtifact,
+} from './fx.decode-and-verify-source-map-artifact';
+export { fnRuntimeDiagnosticSource } from './fn.runtime-diagnostic-source';
+export {
   fnAssertWidgetCapsuleRuntimeCompatible,
   fnResolveWidgetCapsuleCapabilities,
   fnValidateWidgetCapsuleHostCatalog,

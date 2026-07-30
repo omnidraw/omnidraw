@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
+    "@jridgewell/trace-mapping": "0.3.31",
     "@omnidraw/cangine": "0.4.0",
     "@vibecanvas/capsule-vibecanvas": "workspace:*",
     "@vibecanvas/canvas": "workspace:*",

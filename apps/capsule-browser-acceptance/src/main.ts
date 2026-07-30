@@ -576,8 +576,10 @@ async function rejectedScenario(
   value: TBrowserArtifact,
   props: TMountProps = {},
   options: TMountOptions = {},
+  expectStartupFatal = false,
 ): Promise<unknown> {
   const runtime = createMountPort(catalog);
+  const fatalStart = fatalErrors.length;
   const outcome = await settleWithin(
     mount(runtime.port, name, value, props, options),
     5_000,
@@ -597,6 +599,15 @@ async function rejectedScenario(
   assert(afterDestroy.destroyed, `${name} coordinator did not terminate.`);
   assert(afterDestroy.handles === 0, `${name} retained handles after termination.`);
   assert(afterDestroy.hosts.length === 0, `${name} retained hosts after termination.`);
+  const startupFatals = fatalErrors.splice(fatalStart);
+  if (expectStartupFatal) {
+    assert(
+      startupFatals.length === 1 && startupFatals[0]!.startsWith(`${name}: `),
+      `${name} did not report exactly one mount-time fatal diagnostic.`,
+    );
+  } else {
+    fatalErrors.push(...startupFatals);
+  }
   return outcome.reason;
 }
 
@@ -981,6 +992,9 @@ await check('oversized Three.js PBR payload fails with bounded budget guidance',
     'three-pbr-message-budget',
     catalog,
     threePbrArtifact,
+    {},
+    {},
+    true,
   );
   assert(
     reason !== null
@@ -1003,6 +1017,9 @@ await check('unsupported Three.js Clock fails with actionable bounded guidance',
     'three-clock-performance-api',
     catalog,
     threeClockArtifact,
+    {},
+    {},
+    true,
   );
   assert(
     reason !== null
@@ -1025,6 +1042,9 @@ await check('Three.js without signed WebGL authority fails with actionable diagn
     'three-missing-authority',
     catalog,
     threeMissingAuthorityArtifact,
+    {},
+    {},
+    true,
   );
   assert(
     reason !== null

@@ -33,6 +33,7 @@ export type {
   CapsuleMountGuestChannels,
   CapsuleMountLifecycleEvent,
   CapsuleMountOptions,
+  CapsuleRuntimeLocation,
   CapsulePlatformSupport,
   CapsuleSchemaRegistration,
   CapsuleSubscription,

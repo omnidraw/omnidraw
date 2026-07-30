@@ -8,6 +8,7 @@ import type {
 import type {
   TVibecanvasDistributionBuild,
   TVibecanvasDistributionBuildRequest,
+  TVibecanvasDistributionSourceMap,
 } from '@vibecanvas/capsule-vibecanvas/builder';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -931,9 +932,13 @@ async function readPackageContract(root: string): Promise<Readonly<{
   });
 }
 
-async function captureDistribution(root: string): Promise<readonly CapsuleSnapshotFile[]> {
+async function captureDistribution(root: string): Promise<Readonly<{
+  files: readonly CapsuleSnapshotFile[];
+  sourceMaps: readonly TVibecanvasDistributionSourceMap[];
+}>> {
   const distributionRoot = join(root, DISTRIBUTION_DIRECTORY);
   const files: CapsuleSnapshotFile[] = [];
+  const sourceMaps: TVibecanvasDistributionSourceMap[] = [];
   const seen = new Set<string>();
   let totalBytes = 0;
 
@@ -971,12 +976,21 @@ async function captureDistribution(root: string): Promise<readonly CapsuleSnapsh
       }
       totalBytes += bytes.byteLength;
       if (
-        files.length + 1 > MAX_DISTRIBUTION_FILES
+        files.length + sourceMaps.length + 1 > MAX_DISTRIBUTION_FILES
         || totalBytes > MAX_DISTRIBUTION_TOTAL_BYTES
       ) {
         throw new Error('Widget distribution exceeds its file or byte limit.');
       }
-      files.push(Object.freeze({ path: posix.normalize(relativePath), bytes }));
+      const normalizedPath = posix.normalize(relativePath);
+      if (normalizedPath.endsWith('.map')) {
+        const module = normalizedPath.slice(0, -'.map'.length);
+        if (!/\.(?:[cm]?js)$/u.test(module)) {
+          throw new Error(`Widget distribution source map '${relativePath}' has no eligible module.`);
+        }
+        sourceMaps.push(Object.freeze({ module, bytes }));
+      } else {
+        files.push(Object.freeze({ path: normalizedPath, bytes }));
+      }
     }
   }
 
@@ -984,7 +998,14 @@ async function captureDistribution(root: string): Promise<readonly CapsuleSnapsh
   if (!files.some((file) => file.path === DISTRIBUTION_ENTRY)) {
     throw new Error(`Widget distribution must contain '${DISTRIBUTION_ENTRY}'.`);
   }
-  return Object.freeze(files);
+  const generatedModules = new Set(files.map((file) => file.path));
+  if (sourceMaps.some(({ module }) => !generatedModules.has(module))) {
+    throw new Error('Widget distribution source map does not match an emitted module.');
+  }
+  return Object.freeze({
+    files: Object.freeze(files),
+    sourceMaps: Object.freeze(sourceMaps),
+  });
 }
 
 function dependencyIdentity(files: readonly CapsuleSnapshotFile[]): string {
@@ -1123,13 +1144,17 @@ export function createWidgetNpmDistributionBuild(
       ...(request.signal === undefined ? {} : { signal: request.signal }),
     });
     assertActive(request.signal);
-    const files = await captureDistribution(root);
+    const distribution = await captureDistribution(root);
+    const files = distribution.files;
     const cssRoots = files
       .map((file) => file.path)
       .filter((path) => path.endsWith('.css'));
     return Object.freeze({
       kind: 'external-distribution',
       snapshot: Object.freeze({ files }),
+      ...(distribution.sourceMaps.length === 0
+        ? {}
+        : { sourceMaps: distribution.sourceMaps }),
       entry: DISTRIBUTION_ENTRY,
       ...(cssRoots.length > 0 ? { cssRoots: Object.freeze(cssRoots) } : {}),
       producer: Object.freeze({

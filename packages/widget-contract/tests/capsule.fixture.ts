@@ -32,7 +32,7 @@ export const CAPSULE_BUDGETS: TWidgetCapsuleBudgets = Object.freeze({
 
 export const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.10.0',
+  packageVersion: '0.10.1',
   packageDigest: CAPSULE_HASH_A,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: CAPSULE_HASH_B,

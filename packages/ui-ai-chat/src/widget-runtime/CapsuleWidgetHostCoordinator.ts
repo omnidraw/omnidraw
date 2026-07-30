@@ -1,4 +1,5 @@
 import {
+  CAPSULE_MOUNT_ERROR_FORMAT,
   CapsuleHostError,
   CapsuleMemoryArtifactCache,
   createCapsuleHost,
@@ -8,9 +9,11 @@ import {
   type CapsuleCapabilityBinding,
   type CapsuleHandle,
   type CapsuleHost,
+  type CapsuleMountErrorEvent,
   type CapsuleMountGuestChannels,
   type CapsuleViewport,
 } from '@vibecanvas/capsule-vibecanvas/host';
+import { originalPositionFor } from '@jridgewell/trace-mapping';
 import type {
   TVibecanvasCapsuleError,
 } from '@vibecanvas/capsule-vibecanvas/contract';
@@ -23,12 +26,15 @@ import {
   fnValidateWidgetCapsuleHostCatalog,
   fnValidateWidgetCapsuleMountCatalog,
 } from './fn.capsule-catalog';
+import { fnRuntimeDiagnosticSource } from './fn.runtime-diagnostic-source';
 import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
 import type {
+  TWidgetArtifactRuntimeIdentity,
   TWidgetCapsuleHostCatalog,
   TWidgetCapsuleHostFactory,
   TWidgetCapsuleMountCatalog,
   TWidgetUiRuntimeHandle,
+  TVerifiedWidgetSourceMapArtifact,
   TVerifiedWidgetUiArtifact,
 } from './interface';
 
@@ -45,8 +51,10 @@ type TCapsuleWidgetHostCoordinatorConfig = Readonly<{
 
 type TMountArgs = Readonly<{
   mode: 'preview' | 'published';
+  identity: TWidgetArtifactRuntimeIdentity;
   catalog: TWidgetCapsuleMountCatalog;
   artifact: TVerifiedWidgetUiArtifact;
+  sourceMapArtifact?: TVerifiedWidgetSourceMapArtifact;
   container: HTMLElement;
   capabilityBindings: readonly CapsuleCapabilityBinding[];
   guestChannels?: CapsuleMountGuestChannels;
@@ -151,6 +159,10 @@ function hostCapabilityPolicy(catalog: TWidgetCapsuleMountCatalog) {
 
 function idempotentHandle(
   handle: CapsuleHandle,
+  mapError: (
+    event: CapsuleMountErrorEvent,
+    lifecycleGeneration: number,
+  ) => TVibecanvasCapsuleError,
   onFatal: (error: unknown) => void,
   onDiagnostic: ((error: TVibecanvasCapsuleError) => void) | undefined,
   onDestroyed: () => void | Promise<void>,
@@ -159,7 +171,7 @@ function idempotentHandle(
   let destroyOperation: Promise<void> | undefined;
   const errorSubscription = handle.onError((event) => {
     if (destroyed) return;
-    const mapped = fnMapCapsuleMountError(event);
+    const mapped = mapError(event, handle.diagnostics().generation);
     if (!event.fatal) {
       try {
         onDiagnostic?.(mapped);
@@ -237,6 +249,69 @@ function idempotentHandle(
   });
 }
 
+function eventMapper(args: TMountArgs): (
+  event: CapsuleMountErrorEvent,
+  lifecycleGeneration?: number,
+) => TVibecanvasCapsuleError {
+  let runtimeGeneration: number | undefined;
+  return (event, lifecycleGeneration) => {
+    const mapped = fnMapCapsuleMountError(event);
+    if (
+      args.mode !== 'preview'
+      || !('kind' in args.identity)
+      || args.identity.kind !== 'draft_preview'
+      || event.format !== CAPSULE_MOUNT_ERROR_FORMAT
+      || event.category !== 'vm'
+      || event.artifactHash !== args.artifact.capsuleArtifactHash
+      || !Number.isSafeInteger(event.runtimeGeneration)
+      || event.runtimeGeneration < 1
+      || !Number.isSafeInteger(event.lifecycleGeneration)
+      || event.lifecycleGeneration < 1
+      || (
+        lifecycleGeneration !== undefined
+        && event.lifecycleGeneration !== lifecycleGeneration
+      )
+      || (
+        runtimeGeneration !== undefined
+        && event.runtimeGeneration !== runtimeGeneration
+      )
+    ) return mapped;
+    runtimeGeneration ??= event.runtimeGeneration;
+    const retained = args.sourceMapArtifact;
+    const location = event.location;
+    if (
+      retained === undefined
+      || retained.capsuleArtifactHash !== args.artifact.capsuleArtifactHash
+      || retained.sourceRevision !== args.identity.revision
+      || location === undefined
+    ) return mapped;
+    const sourceMap = retained.maps.find(({ module }) => module === location.module);
+    if (sourceMap === undefined) return mapped;
+    const authored = fnRuntimeDiagnosticSource({
+      generated: location,
+      authoredPaths: retained.authoredPaths,
+      trace(generated) {
+        try {
+          const original = originalPositionFor(
+            sourceMap.traceMap,
+            { line: generated.line, column: generated.column },
+          );
+          return Object.freeze({
+            source: original.source,
+            line: original.line,
+            column: original.column,
+          });
+        } catch {
+          return null;
+        }
+      },
+    });
+    return authored === null
+      ? mapped
+      : Object.freeze({ ...mapped, ...authored });
+  };
+}
+
 /**
  * Owns one generation-scoped pool of shared Capsule hosts keyed by exact
  * public API contract, signing authority, and locally derived capability
@@ -297,12 +372,23 @@ export class CapsuleWidgetHostCoordinator {
       );
       let rawHandle: CapsuleHandle | undefined;
       let logicalHandle: TCoordinatedWidgetUiRuntimeHandle | undefined;
+      const mapError = eventMapper(args);
+      const observeStartupError = (event: CapsuleMountErrorEvent): void => {
+        const mapped = mapError(event);
+        try {
+          if (event.fatal) args.onFatal(mapped);
+          else args.onDiagnostic?.(mapped);
+        } catch {
+          // Startup observers cannot affect Capsule's mount settlement.
+        }
+      };
       try {
         rawHandle = await state.host.mount({
           artifact: Uint8Array.from(args.artifact.bytes),
           container: args.container,
           capabilityBindings: args.capabilityBindings,
           grants,
+          onError: observeStartupError,
           ...(args.guestChannels === undefined
             ? {}
             : { guestChannels: args.guestChannels }),
@@ -330,6 +416,7 @@ export class CapsuleWidgetHostCoordinator {
         state.activeHandles += 1;
         const handle = idempotentHandle(
           rawHandle,
+          mapError,
           args.onFatal,
           args.onDiagnostic,
           () => {

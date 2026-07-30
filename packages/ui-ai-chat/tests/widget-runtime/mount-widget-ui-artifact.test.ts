@@ -13,6 +13,7 @@ import type {
   CreateCapsuleHostOptions,
 } from '@vibecanvas/capsule-vibecanvas/host';
 import { CapsuleHostError } from '@vibecanvas/capsule-vibecanvas/host';
+import { TraceMap } from '@jridgewell/trace-mapping';
 import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
 import { createVibecanvasGuestChannelContract } from '@vibecanvas/capsule-vibecanvas/capabilities';
 import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
@@ -21,6 +22,7 @@ import type {
   TWidgetCapsuleMountCatalog,
   TWidgetCollaborativeStateBridge,
   TWidgetFunctionHostBridge,
+  TVerifiedWidgetSourceMapArtifact,
   TVerifiedWidgetUiArtifact,
 } from '../../src/widget-runtime/interface';
 import {
@@ -252,6 +254,7 @@ function rawHandle(
     onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
     diagnostics: vi.fn(() => ({
       artifactHash,
+      generation: 1,
       apiContract: {
         format: 'capsule-api-groups-v1',
         bundleDigest: API_BUNDLE_DIGEST,
@@ -324,6 +327,146 @@ async function settleWithin<T>(
 }
 
 describe('Capsule widget mount boundary', () => {
+  test('binds startup and post-mount source locations to exact Preview provenance', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog('catalog-a', []);
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const revision = 'a'.repeat(64);
+    const sourceMapArtifact: TVerifiedWidgetSourceMapArtifact = {
+      digestSha256: 'e'.repeat(64),
+      sourceRevision: revision,
+      capsuleArtifactHash: HASH_A,
+      authoredPaths: ['src/App.tsx'],
+      maps: [{
+        module: 'main.js',
+        traceMap: new TraceMap({
+          version: 3,
+          sources: ['src/App.tsx'],
+          names: [],
+          mappings: 'AAAA',
+        }),
+      }],
+      retainedByteSize: 100,
+    };
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision,
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const onDiagnostic = vi.fn();
+    const handle = await mount.mount({
+      mode: 'preview',
+      root: document.createElement('div'),
+      identity: functionBridge.identity,
+      artifact: artifact('preview', []),
+      sourceMapArtifact,
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge,
+      collaborativeStateBridge: null,
+      onDiagnostic,
+      onFatal: vi.fn(),
+    });
+    const event = {
+      format: 'capsule-mount-error-v2',
+      sequence: 1,
+      timestamp: 1,
+      lifecycleGeneration: 1,
+      category: 'vm',
+      source: 'guest.module',
+      code: 'GUEST_EXCEPTION',
+      fatal: false,
+      artifactHash: HASH_A,
+      runtimeGeneration: 1,
+      location: { module: 'main.js', line: 1, column: 0 },
+    } satisfies CapsuleMountErrorEvent;
+    factory.created[0]!.mount.mock.calls[0]![0].onError?.(event);
+    factory.created[0]!.raw.emitError({ ...event, sequence: 2 });
+    factory.created[0]!.raw.emitError({
+      ...event,
+      sequence: 3,
+      runtimeGeneration: 2,
+    });
+    factory.created[0]!.raw.emitError({
+      ...event,
+      sequence: 4,
+      artifactHash: HASH_B,
+    });
+    factory.created[0]!.raw.emitError({
+      ...event,
+      sequence: 5,
+      lifecycleGeneration: 2,
+    });
+    expect(onDiagnostic.mock.calls[0]![0]).toMatchObject({
+      category: 'guest',
+      file: 'widget://src/App.tsx',
+      line: 1,
+      column: 1,
+    });
+    expect(onDiagnostic.mock.calls[1]![0]).toMatchObject({
+      file: 'widget://src/App.tsx',
+      line: 1,
+      column: 1,
+    });
+    expect(onDiagnostic.mock.calls[2]![0]).not.toHaveProperty('file');
+    expect(onDiagnostic.mock.calls[3]![0]).not.toHaveProperty('file');
+    expect(onDiagnostic.mock.calls[4]![0]).not.toHaveProperty('file');
+
+    await handle.destroy('test-complete');
+
+    const publishedBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        orgId: 'org-a',
+        canvasId: 'canvas-a',
+        elementId: 'element-a',
+        widgetInstanceId: 'instance-a',
+        definitionId: 'definition-a',
+        revisionId: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const publishedDiagnostic = vi.fn();
+    const publishedHandle = await mount.mount({
+      mode: 'published',
+      root: document.createElement('div'),
+      identity: publishedBridge.identity,
+      artifact: artifact('published', []),
+      sourceMapArtifact,
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge: publishedBridge,
+      collaborativeStateBridge: null,
+      onDiagnostic: publishedDiagnostic,
+      onFatal: vi.fn(),
+    });
+    factory.created[1]!.mount.mock.calls[0]![0].onError?.(event);
+    expect(publishedDiagnostic.mock.calls[0]![0]).not.toHaveProperty('file');
+
+    await publishedHandle.destroy('test-complete');
+    await coordinator.destroy();
+  });
+
   test('maps a retained Three.js context failure without exposing guest text', async () => {
     const guestFailure = Object.assign(
       new Error('Guest execution threw an exception.'),

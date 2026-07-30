@@ -18,6 +18,8 @@ import {
   INITIAL_MIGRATION_VERSION,
   LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
   LIVE_WIDGET_PREVIEW_MIGRATION_VERSION,
+  PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
+  PREVIEW_SOURCE_MAPS_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
 } from '../../../src/CONSTANTS';
@@ -27,6 +29,7 @@ import {
   FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
   LIVE_WIDGET_PREVIEW_MIGRATION,
+  PREVIEW_SOURCE_MAPS_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
 } from '../../../src/migrations/CONSTANTS';
 import {
@@ -42,7 +45,7 @@ import { txHealDatabaseCoordinator } from '../../../src/DbServiceTurso/tx.heal-d
 import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
 import { listEmbeddedMigrationFiles } from '../../../src/_embedded-migrations';
 import {
-  EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES,
+  EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLES,
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
 } from '../../../src/schema/expected-schema';
 import {
@@ -167,6 +170,11 @@ function syntheticPreflightArgs() {
         name: CAPSULE_API_GROUPS_MIGRATION_NAME,
         checksumSha256: 'f'.repeat(64),
       },
+      {
+        version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION,
+        name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
+        checksumSha256: '0'.repeat(64),
+      },
     ],
   } as const;
 }
@@ -196,6 +204,7 @@ async function registeredPreflightArgs() {
     AGENT_AUTHORING_MIGRATION,
     LIVE_WIDGET_PREVIEW_MIGRATION,
     CAPSULE_API_GROUPS_MIGRATION,
+    PREVIEW_SOURCE_MAPS_MIGRATION,
   ];
   return {
     expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
@@ -510,6 +519,11 @@ describe('ordered managed migration runner', () => {
         name: CAPSULE_API_GROUPS_MIGRATION_NAME,
         version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
       }),
+      expect.objectContaining({
+        type: 'sql',
+        name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
+        version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION,
+      }),
     ]);
     expect(listEmbeddedMigrationFiles()).toEqual([
       INITIAL_MIGRATION_NAME,
@@ -518,6 +532,7 @@ describe('ordered managed migration runner', () => {
       AGENT_AUTHORING_MIGRATION_NAME,
       LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
       CAPSULE_API_GROUPS_MIGRATION_NAME,
+      PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
     ]);
 
     const migrationDirectory = new URL('../../../src/migrations/', import.meta.url).pathname;
@@ -531,6 +546,7 @@ describe('ordered managed migration runner', () => {
       AGENT_AUTHORING_MIGRATION_NAME,
       LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
       CAPSULE_API_GROUPS_MIGRATION_NAME,
+      PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
     ]);
   });
 
@@ -592,6 +608,13 @@ describe('ordered managed migration runner', () => {
         applied_at_ms: 1_753_113_600_000,
         application_version: '1.2.3-test',
       },
+      {
+        version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION,
+        name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
+        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        applied_at_ms: 1_753_113_600_000,
+        application_version: '1.2.3-test',
+      },
     ]);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
       .find((column) => column.name === 'next_revision_number')).toMatchObject({
@@ -622,7 +645,7 @@ describe('ordered managed migration runner', () => {
         && !String(row.name).startsWith('__turso_internal_'))
       .sort((left, right) => String(left.name).localeCompare(String(right.name)));
     expect(tables.map((row) => row.name)).toEqual(
-      [...EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES].sort(),
+      [...EXPECTED_PREVIEW_SOURCE_MAP_APPLICATION_TABLES].sort(),
     );
     expect(tables.every((row) => row.strict === 1)).toBe(true);
   });
@@ -674,6 +697,7 @@ describe('ordered managed migration runner', () => {
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
       { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
       { version: CAPSULE_API_GROUPS_MIGRATION_VERSION, name: CAPSULE_API_GROUPS_MIGRATION_NAME },
+      { version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION, name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME },
     ]);
 
     const ledger = await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all();
@@ -706,7 +730,7 @@ describe('ordered managed migration runner', () => {
     `)).get(DEFAULT_OSS_ORGANIZATION_ID, V3_DRAFT_ID) as Record<string, unknown>;
 
     expect(await runMigrations(db)).toEqual({ applied: true });
-    expect(await pragma(db, 'user_version')).toBe(CAPSULE_API_GROUPS_MIGRATION_VERSION);
+    expect(await pragma(db, 'user_version')).toBe(PREVIEW_SOURCE_MAPS_MIGRATION_VERSION);
     expect(await pragma(db, 'foreign_keys')).toBe(1);
     expect(await (await db.prepare(`
       SELECT * FROM artifact_references WHERE org_id = ? AND id = ?
@@ -762,8 +786,8 @@ describe('ordered managed migration runner', () => {
       SELECT version, name FROM schema_migrations ORDER BY version
     `)).all();
     expect(ledger.at(-1)).toEqual({
-      version: CAPSULE_API_GROUPS_MIGRATION_VERSION,
-      name: CAPSULE_API_GROUPS_MIGRATION_NAME,
+      version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION,
+      name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
     });
     await closeDatabase(db);
 
@@ -1192,6 +1216,7 @@ describe('ordered managed migration runner', () => {
       { version: AGENT_AUTHORING_MIGRATION_VERSION, name: AGENT_AUTHORING_MIGRATION_NAME },
       { version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION, name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME },
       { version: CAPSULE_API_GROUPS_MIGRATION_VERSION, name: CAPSULE_API_GROUPS_MIGRATION_NAME },
+      { version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION, name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME },
     ]);
   });
 
@@ -1488,6 +1513,7 @@ describe('read-only startup preflight', () => {
         { name: AGENT_AUTHORING_MIGRATION_NAME, version: AGENT_AUTHORING_MIGRATION_VERSION },
         { name: LIVE_WIDGET_PREVIEW_MIGRATION_NAME, version: LIVE_WIDGET_PREVIEW_MIGRATION_VERSION },
         { name: CAPSULE_API_GROUPS_MIGRATION_NAME, version: CAPSULE_API_GROUPS_MIGRATION_VERSION },
+        { name: PREVIEW_SOURCE_MAPS_MIGRATION_NAME, version: PREVIEW_SOURCE_MAPS_MIGRATION_VERSION },
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);

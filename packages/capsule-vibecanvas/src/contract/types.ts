@@ -31,4 +31,7 @@ export type TVibecanvasCapsuleError = Readonly<{
   message: string;
   capability?: string;
   operation?: string;
+  file?: `widget://${string}`;
+  line?: number;
+  column?: number;
 }>;

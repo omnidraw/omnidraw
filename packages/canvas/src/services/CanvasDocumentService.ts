@@ -2069,6 +2069,7 @@ export class CanvasDocumentService
       });
     }
     owner.replace(claims);
+    void owner.preload().catch((error) => this.#reportError(error));
   }
 
   #localImageReachable(resourceId: string): boolean {

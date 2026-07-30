@@ -311,6 +311,7 @@ describe('agent authoring contract', () => {
         bytesBase64: 'Y2Fwc3VsZQ==',
         runtimeDescriptor,
       },
+      sourceMapArtifact: null,
       contract: {
         digestSha256: 'd'.repeat(64),
         functions: [],

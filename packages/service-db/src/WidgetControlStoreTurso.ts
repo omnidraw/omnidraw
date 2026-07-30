@@ -141,6 +141,13 @@ const DURABLE_ARTIFACT_REFERENCE_SQL = `
           AND preview_revision.server_artifact_kind = artifact_references.kind)
       )
   )
+  OR EXISTS (
+    SELECT 1
+    FROM agent_preview_source_maps AS preview_source_map
+    WHERE preview_source_map.org_id = artifact_references.org_id
+      AND preview_source_map.artifact_id = artifact_references.id
+      AND preview_source_map.artifact_kind = artifact_references.kind
+  )
 `;
 
 function widgetStoreError(code: string, message: string): Error {
@@ -1845,6 +1852,7 @@ export class WidgetControlStoreTurso implements
       identity.draftRevisionSha256,
       identity.sourceDigestSha256,
       identity.sourceArtifactDigestSha256,
+      identity.sourceMapArtifactDigestSha256,
       identity.canonicalManifestDigestSha256,
       identity.functionDescriptorsDigestSha256,
       identity.capabilityContractDigestSha256,

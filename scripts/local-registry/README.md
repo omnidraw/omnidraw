@@ -15,7 +15,7 @@ From any Vibecanvas worktree:
 ```sh
 bun run registry:bootstrap -- \
   --cangine /path/to/omnidraw-cangine-0.3.0.tgz \
-  --capsule /path/to/omnidraw-capsule-0.10.0.tgz
+  --capsule /path/to/omnidraw-capsule-0.10.1.tgz
 bun install --frozen-lockfile
 ```
 

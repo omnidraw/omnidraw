@@ -41,7 +41,7 @@ const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.10.0',
+  packageVersion: '0.10.1',
   packageDigest: `sha256:${'b'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,
@@ -220,6 +220,58 @@ function sourceFiles(requestValue: CapsuleApiGroupBuildRequest): readonly Readon
 }
 
 describe('WidgetArtifactBuilderCapsule trust boundary', () => {
+  test('retains hidden generated maps outside the exact Capsule input', async () => {
+    let captured: CapsuleApiGroupBuildRequest | undefined;
+    const sourceSnapshot = snapshot([
+      { path: 'src/App.tsx', value: 'export const App = () => <main />;' },
+    ]);
+    const widgetManifest = manifest({ entry: 'src/App.tsx' });
+    const mapBytes = encoder.encode(JSON.stringify({
+      version: 3,
+      sources: ['src/App.tsx'],
+      names: [],
+      mappings: 'AAAA',
+    }));
+    const artifactBuilder = builder({
+      tempRoot: join(tmpdir(), 'capsule-boundary-unused'),
+      distributionBuild: async (value) => ({
+        kind: 'external-distribution',
+        snapshot: {
+          files: [{ path: 'main.js', bytes: encoder.encode('export const App=()=>0;') }],
+        },
+        sourceMaps: [{ module: 'main.js', bytes: mapBytes }],
+        entry: 'main.js',
+        producer: {
+          name: 'test',
+          version: '1',
+          digest: `sha256:${'1'.repeat(64)}`,
+        },
+        sourceRevision: value.sourceRevision,
+        dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
+        buildConfigurationDigest: `sha256:${'3'.repeat(64)}`,
+      }),
+      capsuleBuild: async (value) => {
+        captured = value;
+        expect('sourceMaps' in value.input).toBe(false);
+        expect(value.input.snapshot.files.map(({ path }) => path)).toEqual(['main.js']);
+        return EMPTY_CAPSULE_OUTPUT;
+      },
+    });
+
+    const result = await artifactBuilder.build(
+      TENANT,
+      request(sourceSnapshot, widgetManifest),
+    );
+    expect(captured).toBeDefined();
+    expect(result.sourceMapArtifact).not.toBeNull();
+    expect(result.sourceMapArtifact?.kind).toBe('source_map');
+    expect(result.sourceMapArtifact?.digestSha256)
+      .toBe(sha256(result.sourceMapArtifact!.bytes));
+    expect(decoder.decode(result.sourceMapArtifact!.bytes)).not.toContain(
+      decoder.decode(result.uiArtifact.bytes),
+    );
+  });
+
   test('forwards hostile UI syntax unchanged only to the injected Capsule build port', async () => {
     let captured: CapsuleApiGroupBuildRequest | undefined;
     let bunBuildCalls = 0;

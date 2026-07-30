@@ -71,7 +71,7 @@ function viteConfig(): string {
     '    target: "es2022",',
     '    outDir: "dist",',
     '    emptyOutDir: true,',
-    '    sourcemap: false,',
+    "    sourcemap: 'hidden',",
     '    minify: false,',
     '    cssCodeSplit: false,',
     '    assetsInlineLimit: 0,',

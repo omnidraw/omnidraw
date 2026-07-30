@@ -170,6 +170,7 @@ function fakeEngine(): Readonly<{
   retain: ReturnType<typeof vi.fn>;
   release: ReturnType<typeof vi.fn>;
   replaceRegistrations: ReturnType<typeof vi.fn>;
+  preloadRegistrations: ReturnType<typeof vi.fn>;
   destroyRegistrations: ReturnType<typeof vi.fn>;
   seedResource(resourceId: string): void;
   rejectNextApply(): void;
@@ -223,6 +224,7 @@ function fakeEngine(): Readonly<{
     rejectRegistrationReplace = false;
     throw new Error('registration replacement failed');
   });
+  const preloadRegistrations = vi.fn(async () => undefined);
   const destroyRegistrations = vi.fn();
   const engine = {
     scene: {
@@ -244,7 +246,7 @@ function fakeEngine(): Readonly<{
         id: 'test-owner',
         replace: replaceRegistrations,
         clear: vi.fn(),
-        preload: vi.fn(async () => undefined),
+        preload: preloadRegistrations,
         destroy: destroyRegistrations,
       }),
       state: (resourceId: string) => (
@@ -261,6 +263,7 @@ function fakeEngine(): Readonly<{
     retain,
     release,
     replaceRegistrations,
+    preloadRegistrations,
     destroyRegistrations,
     seedResource: (resourceId) => resourceIds.add(resourceId),
     rejectNextApply: () => {
@@ -2634,6 +2637,7 @@ describe('CanvasDocumentService', () => {
         mimeType: 'image/png',
       },
     }]);
+    expect(fake.preloadRegistrations).toHaveBeenCalledTimes(1);
     await service.dispose();
     expect(fake.destroyRegistrations).toHaveBeenCalledTimes(1);
   });

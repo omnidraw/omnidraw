@@ -24,6 +24,16 @@ type TDiagnosticOrigin =
   | 'budget'
   | 'lifecycle';
 
+const WIDGET_DIAGNOSTIC_COORDINATE_MAXIMUM = 10_000_000;
+
+function safeCoordinate(value: unknown): number | undefined {
+  return Number.isSafeInteger(value)
+    && Number(value) >= 1
+    && Number(value) <= WIDGET_DIAGNOSTIC_COORDINATE_MAXIMUM
+    ? Number(value)
+    : undefined;
+}
+
 function record(error: unknown): Readonly<Record<string, unknown>> | null {
   return typeof error === 'object' && error !== null
     ? error as Readonly<Record<string, unknown>>
@@ -141,12 +151,21 @@ export async function fnNormalizePreviewDiagnostic(
   const buildId = args.previewRevisionId;
   const capability = safeDiagnosticId(error?.capability ?? error?.capabilityId);
   const operation = safeDiagnosticId(error?.operation);
+  const file = (
+    typeof error?.file === 'string'
+    && /^widget:\/\/[A-Za-z0-9@_+.,=/~-]{1,500}$/.test(error.file)
+  ) ? error.file : undefined;
+  const line = safeCoordinate(error?.line);
+  const column = line === undefined ? undefined : safeCoordinate(error?.column);
   const fingerprintSource = fnCanonicalizeWidgetDiagnosticFingerprint({
     origin,
     phase: args.phase,
     code,
     buildId,
     previewRevisionId: args.previewRevisionId,
+    ...(file === undefined ? {} : { file }),
+    ...(line === undefined ? {} : { line }),
+    ...(column === undefined ? {} : { column }),
     ...(capability === undefined ? {} : { capability }),
     ...(operation === undefined ? {} : { operation }),
   });
@@ -171,5 +190,8 @@ export async function fnNormalizePreviewDiagnostic(
     timestampMs: args.timestampMs,
     ...(capability === undefined ? {} : { capability }),
     ...(operation === undefined ? {} : { operation }),
+    ...(file === undefined ? {} : { file }),
+    ...(line === undefined ? {} : { line }),
+    ...(column === undefined ? {} : { column }),
   };
 }

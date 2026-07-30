@@ -191,6 +191,17 @@ implements
           retainUntilMs: null,
           createdAtMs: durable.nowMs,
         });
+        const sourceMapArtifact = construction.sourceMapArtifact === null
+          ? null
+          : await this.config.artifacts!.putArtifact(tenant, {
+              id: this.#createId(),
+              kind: 'source_map',
+              digestSha256: construction.sourceMapArtifact.digestSha256,
+              bytes: construction.sourceMapArtifact.bytes,
+              retentionState: 'pinned',
+              retainUntilMs: null,
+              createdAtMs: durable.nowMs,
+            });
         const unsignedUiArtifact = await this.config.artifacts!.putArtifact(tenant, {
           id: this.#createId(),
           kind: 'unsigned_ui',
@@ -233,6 +244,7 @@ implements
             sourceSnapshotId: validated.build.sourceSnapshotId,
             sourceDigestSha256: request.snapshot.digestSha256,
             sourceArtifact,
+            sourceMapArtifact,
             manifest,
             canonicalManifestJson,
             functionDescriptors: validated.build.functionDescriptors,
@@ -296,8 +308,11 @@ implements
   ): Promise<TWidgetArtifactConstructionResult | null> {
     const revision = await this.config.previewStore?.getPreviewRevision(tenant, request) ?? null;
     if (revision === null || this.config.readArtifactBytes === undefined) return null;
-    const [sourceBytes, unsignedBytes, serverBytes] = await Promise.all([
+    const [sourceBytes, sourceMapBytes, unsignedBytes, serverBytes] = await Promise.all([
       this.config.readArtifactBytes(tenant, revision.sourceArtifact),
+      revision.sourceMapArtifact === null
+        ? Promise.resolve(null)
+        : this.config.readArtifactBytes(tenant, revision.sourceMapArtifact),
       this.config.readArtifactBytes(tenant, revision.unsignedUiArtifact),
       revision.serverArtifact === null
         ? Promise.resolve(null)
@@ -305,9 +320,15 @@ implements
     ]);
     if (
       sourceBytes === null
+      || (revision.sourceMapArtifact !== null && sourceMapBytes === null)
       || unsignedBytes === null
       || (revision.serverArtifact !== null && serverBytes === null)
       || digest(sourceBytes) !== revision.sourceArtifact.digestSha256
+      || (
+        revision.sourceMapArtifact !== null
+        && sourceMapBytes !== null
+        && digest(sourceMapBytes) !== revision.sourceMapArtifact.digestSha256
+      )
       || digest(unsignedBytes) !== revision.unsignedUiArtifact.digestSha256
       || (
         revision.serverArtifact !== null
@@ -329,6 +350,13 @@ implements
         digestSha256: revision.sourceArtifact.digestSha256,
         bytes: sourceBytes,
       }),
+      sourceMapArtifact: revision.sourceMapArtifact === null || sourceMapBytes === null
+        ? null
+        : Object.freeze({
+            kind: 'source_map' as const,
+            digestSha256: revision.sourceMapArtifact.digestSha256,
+            bytes: sourceMapBytes,
+          }),
       builderIdentity: revision.builderIdentity,
       capsuleBuildIdentity: revision.capsuleBuildIdentity,
       buildPolicyId: revision.buildPolicyId,
@@ -514,6 +542,7 @@ implements
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId: request.buildPolicyId,
       uiArtifact: Object.freeze(build.uiArtifact),
+      sourceMapArtifact: build.sourceMapArtifact,
       functionDescriptors: build.functionDescriptors,
       functionDescriptorsDigestSha256: build.functionDescriptorsDigestSha256,
       capabilityContractDigestSha256: build.capabilityContractDigestSha256,
@@ -539,11 +568,22 @@ implements
         'Durable Preview byte storage is not configured.',
       );
     }
-    const bytes = await this.config.readArtifactBytes(tenant, revision.uiArtifact);
+    const [bytes, sourceMapBytes] = await Promise.all([
+      this.config.readArtifactBytes(tenant, revision.uiArtifact),
+      revision.sourceMapArtifact === null
+        ? Promise.resolve(null)
+        : this.config.readArtifactBytes(tenant, revision.sourceMapArtifact),
+    ]);
     if (
       bytes === null
       || bytes.byteLength !== revision.uiArtifact.byteSize
       || digest(bytes) !== revision.uiArtifact.digestSha256
+      || (revision.sourceMapArtifact !== null && sourceMapBytes === null)
+      || (
+        revision.sourceMapArtifact !== null
+        && sourceMapBytes !== null
+        && digest(sourceMapBytes) !== revision.sourceMapArtifact.digestSha256
+      )
     ) {
       throw previewError(
         'WIDGET_PREVIEW_ARTIFACT_INVALID',
@@ -568,6 +608,13 @@ implements
         builderIdentity: revision.builderIdentity,
         capsuleBuildIdentity: revision.capsuleBuildIdentity,
       }),
+      sourceMapArtifact: revision.sourceMapArtifact === null || sourceMapBytes === null
+        ? null
+        : Object.freeze({
+            kind: 'source_map' as const,
+            digestSha256: revision.sourceMapArtifact.digestSha256,
+            bytes: sourceMapBytes,
+          }),
       functionDescriptors: revision.functionDescriptors,
       functionDescriptorsDigestSha256: revision.functionDescriptorsDigestSha256,
       capabilityContractDigestSha256: revision.capabilityContractDigestSha256,

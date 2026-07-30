@@ -21,6 +21,7 @@ import type {
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetCapsuleTheme,
 } from '@vibecanvas/widget-contract';
+import type { TraceMap } from '@jridgewell/trace-mapping';
 
 type TApi = TOrpcSafeClient['api'];
 
@@ -146,6 +147,18 @@ export type TVerifiedWidgetUiArtifact = Readonly<{
   retainedByteSize: number;
 }>;
 
+export type TVerifiedWidgetSourceMapArtifact = Readonly<{
+  digestSha256: string;
+  sourceRevision: string;
+  capsuleArtifactHash: `sha256:${string}`;
+  authoredPaths: readonly string[];
+  maps: readonly Readonly<{
+    module: string;
+    traceMap: TraceMap;
+  }>[];
+  retainedByteSize: number;
+}>;
+
 export type TWidgetServerFunctionClientRequest = Readonly<{
   functionName: string;
   input: unknown;
@@ -216,6 +229,7 @@ export type TWidgetUiArtifactMountPort = Readonly<{
     root: HTMLDivElement;
     identity: TWidgetArtifactRuntimeIdentity;
     artifact: TVerifiedWidgetUiArtifact;
+    sourceMapArtifact?: TVerifiedWidgetSourceMapArtifact;
     functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
     browserFunctionDescriptorsDigestSha256: string;
     functionBridge: TWidgetFunctionHostBridge;

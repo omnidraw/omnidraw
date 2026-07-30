@@ -449,31 +449,37 @@ operator-trusted host or optional Docker build runner; and Preview server
 functions remain operator-trusted host execution. Its proposed AI sharing and
 repair controls were intentionally removed as premature.
 
-### 7.3 Capsule 0.9.4 runtime source-location blocker
+### 7.3 Capsule 0.10.1 runtime source locations
 
-Build tools and Capsule construction errors may already provide safe relative
-file, line, and column data. Verified locations for exceptions thrown after a
-guest mounts are not implemented and must not be inferred.
+Capsule 0.10.1 exposes the public, message-free
+`capsule-mount-error-v2` union. Guest runtime events identify the exact Capsule
+artifact and never-reused runtime generation and may include a verified
+artifact-relative generated JavaScript module, one-based line, and zero-based
+UTF-16 column. Initial module failures arrive through mount-time `onError`
+before a handle exists; later callback and job failures arrive through
+`handle.onError`.
 
-Capsule 0.9.4's public `CapsuleMountErrorEvent` is intentionally message-free
-and contains no generated module, line, or column. Its public mount API has no
-authoring diagnostic hook; DOM guest exceptions are caught inside Capsule and
-reduced to `guestCallbackFailures` plus `lastErrorCode: "GUEST_CALLBACK"`; and
-external-distribution JavaScript source-map references are rejected as
-`producer-denied`. Vibecanvas package-boundary tests also prohibit deep/private
-Capsule imports. Vibecanvas therefore cannot recover a verified runtime
-location through the public boundary without unsafe private imports,
-monkey-patching, or guest-controlled stack forwarding.
+Vibecanvas keeps source-map ownership outside Capsule. The npm build emits
+hidden maps, the distribution capture removes every `.map` before Capsule
+validation, and the builder stores a bounded `source_map` artifact beside the
+durable Preview revision. Its canonical envelope binds the authored source
+revision and Capsule artifact hash. Source maps are Preview-only trusted
+authoring metadata; publication does not send them to the guest or use them in
+published mounts.
 
-The smallest required upstream boundary is an explicit authoring-only event
-emitted inside Capsule before those exceptions are discarded. It must contain
-only a bounded stable code, phase, and verified artifact-relative generated
-module/line/column, with no raw message, stack, cause, host path, environment,
-or secret. Vibecanvas can then retain source maps as trusted build sidecars and
-map that generated location under the exact Preview revision. Production
-telemetry remains message-free. Until that upstream event exists, mounted
-runtime diagnostics omit file, line, and column rather than claiming source
-mapping.
+The browser verifies the source-map artifact digest, envelope, exact Preview
+revision, and Capsule hash before mounting. A generated location is mapped only
+when the v2 event also matches the mounted artifact, lifecycle generation, and
+runtime generation. The mapped source must resolve uniquely to an allowlisted
+authored path and may leave the trusted edge only as `widget://` plus bounded
+one-based line and column. Absolute paths, dependency sources, map contents,
+guest messages, stacks, malformed coordinates, stale revisions, and
+cross-artifact or cross-generation locations are rejected.
+
+Missing or rejected locations keep the existing safe diagnostic code and
+product-owned message without file, line, or column. Capability, channel,
+budget, lifecycle, build, and host failures remain visible and queryable but do
+not gain invented source fields.
 
 ## 8. Publication and immutable revisions
 

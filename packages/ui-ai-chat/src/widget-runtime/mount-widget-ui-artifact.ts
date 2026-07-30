@@ -371,8 +371,12 @@ export function createWidgetUiArtifactMountPort(
         });
         mounted = await config.coordinator.mount({
           mode: mountArgs.mode,
+          identity: mountArgs.identity,
           catalog,
           artifact: mountArgs.artifact,
+          ...(mountArgs.sourceMapArtifact === undefined
+            ? {}
+            : { sourceMapArtifact: mountArgs.sourceMapArtifact }),
           container: mountArgs.root,
           capabilityBindings: bindings,
           guestChannels: guestChannels(mountArgs, latestTheme, routeOutput),

@@ -15,6 +15,55 @@ const BASE_ARGS = Object.freeze({
 });
 
 describe('Preview diagnostic normalization', () => {
+  test('retains only normalized bounded authored source fields in the fingerprint', async () => {
+    const diagnostic = await fnNormalizePreviewDiagnostic({
+      ...BASE_ARGS,
+      error: {
+        category: 'guest',
+        capsuleCode: 'GUEST_EXCEPTION',
+        file: 'widget://src/App.tsx',
+        line: 4,
+        column: 7,
+        message: '/private/build/src/App.tsx must not cross the boundary',
+      },
+    });
+    expect(diagnostic).toMatchObject({
+      origin: 'guest',
+      file: 'widget://src/App.tsx',
+      line: 4,
+      column: 7,
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain('/private/build');
+  });
+
+  test('omits authored coordinates outside the product diagnostic ceiling', async () => {
+    const invalidLine = await fnNormalizePreviewDiagnostic({
+      ...BASE_ARGS,
+      error: {
+        file: 'widget://src/App.tsx',
+        line: 10_000_001,
+        column: 1,
+      },
+    });
+    expect(invalidLine).toMatchObject({ file: 'widget://src/App.tsx' });
+    expect(invalidLine).not.toHaveProperty('line');
+    expect(invalidLine).not.toHaveProperty('column');
+
+    const invalidColumn = await fnNormalizePreviewDiagnostic({
+      ...BASE_ARGS,
+      error: {
+        file: 'widget://src/App.tsx',
+        line: 1,
+        column: 10_000_001,
+      },
+    });
+    expect(invalidColumn).toMatchObject({
+      file: 'widget://src/App.tsx',
+      line: 1,
+    });
+    expect(invalidColumn).not.toHaveProperty('column');
+  });
+
   test('preserves the product-owned WebGL recovery message and stable code', async () => {
     const diagnostic = await fnNormalizePreviewDiagnostic({
       ...BASE_ARGS,
