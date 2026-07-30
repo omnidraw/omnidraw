@@ -1,4 +1,4 @@
-# `@omnidraw/cangine` Library Guide - 0.3.0
+# `@omnidraw/cangine` Library Guide — 0.4.0
 
 This is the consumer guide for the implemented `@omnidraw/cangine`
 library. It covers installation, ordinary application usage, every public
@@ -8,8 +8,9 @@ boundary between the engine and its host application.
 For normative edge-case behavior, consult [`spec.md`](spec.md). For
 implementation status and evidence, see [`FINAL.md`](FINAL.md) and
 [`tasks/PROGRESS.md`](tasks/PROGRESS.md). When this guide and the TypeScript
-declarations differ, the declarations describe the shipped API and the
-specification describes required behavior.
+declarations differ, the declarations describe the current checkout and the
+specification describes required behavior. The published artifact remains the
+authority for what an installed release contains.
 
 ## 1. What the library provides
 
@@ -38,13 +39,18 @@ business logic, permissions, or UI.
 
 ## 2. Package status and imports
 
-The library is versioned as `@omnidraw/cangine@0.2.2`. Registry
-publication is not part of the current release, but the repository produces a
-deterministic immutable tarball containing compiled ESM and declarations:
+The checked-in package and qualified artifact version is
+`@omnidraw/cangine@0.4.0`. It includes the renderer-free `/scene` entrypoint.
+The exact qualified artifact was subsequently published through the
+separately authorized local-registry release channel; installed `0.4.0`
+consumers can import `/scene`.
+
+The following is a previously verified immutable artifact example containing
+compiled ESM and declarations:
 
 ```text
-artifacts/omnidraw-cangine-0.1.0.tgz
-SHA-256 7ec90675650dbe65ea8989af297c4b6a297404c03180bd13e6e9cc3c34a643a8
+artifacts/omnidraw-cangine-0.4.0.tgz
+SHA-256 800c517e3705fddefd4c72bc572ee824310134be8ee7ace4eae727679337f130
 ```
 
 For a separate application, copy the tarball into a version-controlled vendor
@@ -52,14 +58,14 @@ directory and install that relative immutable file:
 
 ```bash
 mkdir -p vendor/cangine
-cp /trusted/download/omnidraw-cangine-0.1.0.tgz vendor/cangine/
-shasum -a 256 vendor/cangine/omnidraw-cangine-0.1.0.tgz
-bun add ./vendor/cangine/omnidraw-cangine-0.1.0.tgz
+cp /trusted/download/omnidraw-cangine-0.4.0.tgz vendor/cangine/
+shasum -a 256 vendor/cangine/omnidraw-cangine-0.4.0.tgz
+bun add ./vendor/cangine/omnidraw-cangine-0.4.0.tgz
 ```
 
-Do not commit an absolute `file:` dependency. Once a registry release is
-separately authorized, consumers can replace the relative tarball dependency
-with an immutable version or an appropriate semver range.
+Do not commit an absolute `file:` dependency. Consumers configured for the
+selected local registry can replace the relative tarball dependency with the
+immutable `0.4.0` version or an appropriate semver range.
 
 Inside this repository, use the workspace dependency so Vite follows the
 TypeScript source and preserves engine hot reload:
@@ -118,9 +124,16 @@ import {
   createCanvasEditor,
   createCanvasMenuController,
 } from "@omnidraw/cangine/editor";
+
+// Pure serialized-command reduction for controlled hosts
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+  sceneReductionStateSnapshot,
+} from "@omnidraw/cangine/scene";
 ```
 
-The public package entrypoints are exactly:
+The `0.4.0` package exposes these entrypoints:
 
 | Entrypoint | Intended use |
 |---|---|
@@ -128,16 +141,23 @@ The public package entrypoints are exactly:
 | `@omnidraw/cangine/types` | The same renderer-neutral type/runtime surface when an explicit type subpath is preferred |
 | `@omnidraw/cangine/geometry` | Pure bounds, matrix, order, and path helpers |
 | `@omnidraw/cangine/testing` | Deterministic clocks, fixtures, validation, replay, equality, and statistics |
+| `@omnidraw/cangine/scene` | Renderer-free serialized-command reduction over opaque immutable scene state |
 | `@omnidraw/cangine/editor` | Optional editor lifecycle, tools, commands, selection, menus, widget modes, clipboard import, and replaceable history |
 | `@omnidraw/cangine/integrations/capsule` | Optional duck-typed Capsule portal adapter; does not depend on `@omnidraw/capsule` |
 | `@omnidraw/cangine/backend` | Advanced renderer-backend contracts and the built-in WebGL2 factory |
 | `@omnidraw/cangine/package.json` | Release metadata in the packed artifact |
 
-The root does not re-export `/editor` or `/integrations/capsule`. A core-only/
-headless consumer never evaluates editor or Capsule-integration code. Editor
-and Capsule-integration code depend only on public renderer-neutral core
-contracts. React, another UI framework, CRDT/persistence, product services, and
-Capsule itself are not Cangine package dependencies.
+See [§11.2.1](#1121-public-pure-command-reduction) for the `/scene` consumer
+shape and ownership boundary.
+
+The root does not re-export `/scene`, `/editor`, or
+`/integrations/capsule`. A core-only/headless consumer never evaluates the
+public `/scene` handle layer, editor, or Capsule-integration entrypoint. The
+package-private immutable transition kernel is shared with the root engine's
+`SceneStore`; the optional entrypoints otherwise depend only on
+renderer-neutral core contracts. React, another UI framework,
+CRDT/persistence, product services, and Capsule itself are not Cangine package
+dependencies.
 
 Deep imports are unsupported. Normal consumers should use the root and
 geometry entrypoints. Testing utilities should stay in tests, and backend
@@ -715,6 +735,74 @@ engine.scene.apply([
   { type: "remove", nodeId: "obsolete", descendants: "remove" },
 ]);
 ```
+
+### 11.2.1 Public pure command reduction
+
+Version `0.4.0` provides an optional renderer-free
+`@omnidraw/cangine/scene` entrypoint for controlled hosts that need to apply
+Cangine's exact serialized-command semantics to immutable application
+projection state before sending the same batch to `engine.scene.apply()`.
+
+The API is:
+
+```ts
+import type { TSerializedSceneCommand } from "@omnidraw/cangine";
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+  sceneReductionStateSnapshot,
+  type TSceneReductionState,
+  type TSerializedSceneCommandReduction,
+} from "@omnidraw/cangine/scene";
+
+let reductionState = createSceneReductionState(authoritativeSnapshot);
+
+function reduceForDocument(
+  commands: readonly TSerializedSceneCommand[],
+): TSerializedSceneCommandReduction {
+  const reduction = reduceSerializedSceneCommands(reductionState, commands);
+
+  // The host applies reduction.changes to its document, then projects the
+  // unchanged command batch through engine.scene.apply().
+  reductionState = reduction.state;
+  return reduction;
+}
+
+const portableSnapshot = sceneReductionStateSnapshot(reductionState);
+```
+
+The public state is nominal, package-authenticated, observationally immutable,
+and indexed for small-update work avoidance. The handle is not structured
+cloneable or transferable. Send
+`sceneReductionStateSnapshot(state)` through the worker/message boundary and
+call `createSceneReductionState()` in the destination worker/runtime; the
+`/scene` module itself is renderer- and DOM-free.
+
+Each successful result contains deterministic net `changes` with exact
+`before` and `after` node images. Derive IDs with
+`reduction.changes.map(change => change.nodeId)`. A controlled host may assert
+that those IDs are a subset of the editor request's conservative
+`affectedNodeIds`; equality is not required because commands can cancel or be
+semantic no-ops.
+
+The host must pair the reduction state with the same document/projection basis
+as `request.basisSceneRevision`, reject stale requests before mutation, and
+advance the pair only after document acceptance and exact engine projection.
+The reducer does not own application revisions, history, persistence,
+collaboration, authorization, retries, resources, or rollback policy.
+
+No-op batches return the exact input state. Replacement mode is reported
+whenever a `replace-snapshot` command executes, even if later commands restore
+the original value. Full replacement and snapshot materialization may be
+`O(n)`; ordinary leaf changes remain proportional to their affected
+validation/index closure.
+
+The normative contract is [`spec.md` §45](spec.md#45-public-pure-serialized-command-reduction);
+the architecture and execution gate are
+[ADR-0019](tasks/decisions/0019-pure-serialized-command-reducer.md) and
+[A46](tasks/a/A46.md). The entrypoint is part of the `0.4.0` package artifact;
+the separately authorized local-registry workflow published that exact
+qualified artifact.
 
 ### 11.3 Snapshots
 
@@ -2752,7 +2840,24 @@ optional. Backend-native objects must remain private. This is an advanced
 extension contract, and custom backends should be accepted only after running
 the repository backend contract, browser, and visual parity suites.
 
-### 33.11 `/editor` exports
+### 33.11 `/scene` exports
+
+The renderer-free `/scene` entrypoint exports
+`createSceneReductionState(snapshot, options)`,
+`reduceSerializedSceneCommands(state, commands)`, and
+`sceneReductionStateSnapshot(state)`. Its reducer-specific exported types are
+`TSceneReductionOptions`, nominal `TSceneReductionState`,
+`TSceneNodeChange`, and `TSerializedSceneCommandReduction`; foundational node,
+snapshot, command, and limit types remain owned by the root and `/types`
+surfaces.
+
+The root does not re-export these values. A reduction-state handle contains
+package-private indexes and methods, so it is not structured cloneable or
+transferable. Transfer its frozen snapshot across a worker boundary and
+recreate the handle with `createSceneReductionState()` inside the destination
+runtime. This inventory describes the `0.4.0` package artifact.
+
+### 33.12 `/editor` exports
 
 This is the complete `/editor` export inventory. Factory functions create
 detached controllers unless their specific documentation says otherwise; call
