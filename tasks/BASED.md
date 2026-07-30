@@ -180,6 +180,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B67](b/B67.md) - AI widget authoring: make shared construction provenance exact and headlessly testable
 - [x]: [B68](b/B68.md) - db: self-heal stale Turso WAL coordination and remove actor-era startup warning
 - [x]: [B69](b/B69.md) - AI widget authoring: request and diagnose Capsule WebGL authority
+- [ ]: [B70](b/B70.md) - AI widgets: one authoritative exact-revision readiness state
+- [ ]: [B71](b/B71.md) - Preview: actionable Capsule guest runtime diagnostics
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -282,6 +284,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A100](a/A100.md) - canvas: developer reproduction trace recorder
 - [x]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
 - [x]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
+- [ ]: [A103](a/A103.md) - AI chat: await and test the exact live Preview revision
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -412,6 +415,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S126](s/S126.md) - canvas: delete the CSS grid and use Cangine background rendering
 - [x]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
 - [ ]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
+- [ ]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
