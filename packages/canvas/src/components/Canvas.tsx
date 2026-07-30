@@ -1,5 +1,8 @@
-import type { TSceneNode } from '@omnidraw/cangine';
-import type { IStandardCanvasEditor } from '@omnidraw/cangine/editor';
+import type {
+  IStandardCanvasEditor,
+  TSelectionStyleChange,
+  TSelectionStyleState,
+} from '@omnidraw/cangine/editor';
 import type { TCanvas } from '@vibecanvas/service-db/model';
 import type { ThemeService } from '@vibecanvas/service-theme';
 import {
@@ -26,15 +29,9 @@ import {
   SelectionStyleMenu,
 } from './SelectionStyleMenu';
 import {
-  fnCanShowSelectionStyleMenu,
-  fnLineShapeToSegmentMode,
-  fnSelectionStyleState,
-  type TSelectionLineShape,
-  type TSelectionStylePatch,
-} from './SelectionStyleMenu/fn.selection-style';
-import {
-  txApplySelectionStyle,
-} from './SelectionStyleMenu/tx.selection-style';
+  fnParseCssColor,
+  fnSelectionStyleMenuVisible,
+} from './SelectionStyleMenu/fn.selection-style-presentation';
 import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
 import { fnCanvasGridStyle } from './fn.canvas-grid';
 import {
@@ -70,6 +67,15 @@ type TCanvasSource = Readonly<{
   canvasId: string;
 }>;
 
+const DETACHED_SELECTION_STYLE_STATE = Object.freeze({
+  revision: 0,
+  status: 'detached',
+  selectedRootIds: Object.freeze([]),
+  controls: Object.freeze([]),
+  actions: Object.freeze([]),
+  unavailable: Object.freeze([]),
+}) satisfies TSelectionStyleState;
+
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -101,7 +107,7 @@ export function Canvas(props: CanvasPageProps) {
   let activeRuntime: TCanvasRuntime | null = null;
   let unsubscribeEditor: (() => void) | null = null;
   let unsubscribeCamera: (() => void) | null = null;
-  let unsubscribeScene: (() => void) | null = null;
+  let unsubscribeSelectionStyles: (() => void) | null = null;
   let spacePointerId: number | null = null;
   let spacePointerPosition: Readonly<{ x: number; y: number }> | null = null;
   const [containerReady, setContainerReady] = createSignal(false);
@@ -110,7 +116,11 @@ export function Canvas(props: CanvasPageProps) {
   const [editor, setEditor] = createSignal<IStandardCanvasEditor | null>(null);
   const [editorRevision, setEditorRevision] = createSignal(0);
   const [cameraRevision, setCameraRevision] = createSignal(0);
-  const [sceneRevision, setSceneRevision] = createSignal(0);
+  const [selectionStyleState, setSelectionStyleState] = createSignal<
+    TSelectionStyleState
+  >(
+    DETACHED_SELECTION_STYLE_STATE,
+  );
   const [gridVisible, setGridVisible] = createSignal(true);
   const [spaceHeld, setSpaceHeld] = createSignal(false);
   const [spaceDragging, setSpaceDragging] = createSignal(false);
@@ -140,8 +150,9 @@ export function Canvas(props: CanvasPageProps) {
       unsubscribeEditor = null;
       unsubscribeCamera?.();
       unsubscribeCamera = null;
-      unsubscribeScene?.();
-      unsubscribeScene = null;
+      unsubscribeSelectionStyles?.();
+      unsubscribeSelectionStyles = null;
+      setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
       setEditor(null);
       setBooting(true);
       setBootError(null);
@@ -154,20 +165,27 @@ export function Canvas(props: CanvasPageProps) {
         setEditorRevision(state.revision);
       }) ?? null;
       const nextCamera = activeRuntime?.engine()?.camera;
-      const nextScene = activeRuntime?.engine()?.scene;
       unsubscribeCamera = nextCamera?.subscribe(() => {
         setCameraRevision((revision) => revision + 1);
       }) ?? null;
-      unsubscribeScene = nextScene?.subscribe(() => {
-        setSceneRevision((revision) => revision + 1);
+      const runtime = activeRuntime;
+      const styles = runtime?.selectionStyles() ?? null;
+      setSelectionStyleState(styles?.state ?? DETACHED_SELECTION_STYLE_STATE);
+      unsubscribeSelectionStyles = styles?.subscribe((nextState) => {
+        if (
+          activeRuntime === runtime
+          && runtime?.selectionStyles() === styles
+        ) {
+          setSelectionStyleState(nextState);
+        }
       }) ?? null;
       setCameraRevision((revision) => revision + 1);
-      setSceneRevision((revision) => revision + 1);
       setBooting(false);
     },
     onBootError: (error) => {
       const message = error instanceof Error ? error.message : String(error);
       props.notification.showError('Failed to start canvas', message);
+      setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
       setBooting(false);
       setBootError(message);
     },
@@ -339,8 +357,9 @@ export function Canvas(props: CanvasPageProps) {
     unsubscribeEditor = null;
     unsubscribeCamera?.();
     unsubscribeCamera = null;
-    unsubscribeScene?.();
-    unsubscribeScene = null;
+    unsubscribeSelectionStyles?.();
+    unsubscribeSelectionStyles = null;
+    setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
     activeRuntime = null;
     void lifecycle.dispose();
   });
@@ -367,36 +386,24 @@ export function Canvas(props: CanvasPageProps) {
     });
   };
 
-  const selectedNodes = (): readonly Readonly<TSceneNode>[] => {
-    editorRevision();
-    sceneRevision();
-    const scene = activeRuntime?.engine()?.scene;
-    if (!scene) return [];
-    return (state()?.selectedNodeIds ?? [])
-      .map((nodeId) => scene.get(nodeId))
-      .filter((node): node is Readonly<TSceneNode> => node !== null);
-  };
+  const applySelectionStyle = (change: TSelectionStyleChange) =>
+    activeRuntime?.selectionStyles()?.apply(change) ?? false;
 
-  const applySelectionStyle = (patch: TSelectionStylePatch) => {
-    const currentEditor = editor();
-    if (!currentEditor) return;
-    txApplySelectionStyle(
-      { editor: currentEditor },
-      {
-        nodeIds: currentEditor.state.selectedNodeIds,
-        patch,
-      },
-    );
-    currentEditor.refreshSelectionOverlay();
-  };
-
-  const setSelectedConnectorLineShape = (
-    lineShape: TSelectionLineShape,
+  const applySelectionColor = (
+    propertyId: 'background' | 'foreground',
+    value: string,
   ) => {
-    activeRuntime?.setSelectedConnectorSegmentMode(
-      fnLineShapeToSegmentMode(lineShape),
-    );
+    const color = fnParseCssColor(value);
+    if (color !== null) applySelectionStyle({ propertyId, value: color });
   };
+
+  const beginOpacity = () =>
+    activeRuntime?.selectionStyles()?.beginContinuous('opacity');
+  const updateOpacity = (value: number) =>
+    activeRuntime?.selectionStyles()?.updateContinuous(
+      { propertyId: 'opacity', value },
+    );
+  const endOpacity = () => activeRuntime?.selectionStyles()?.endContinuous();
 
   return (
     <div
@@ -444,13 +451,16 @@ export function Canvas(props: CanvasPageProps) {
         onUndo={() => editor()?.history?.undo()}
         onRedo={() => editor()?.history?.redo()}
       />
-      <Show when={fnCanShowSelectionStyleMenu(selectedNodes())}>
+      <Show when={fnSelectionStyleMenuVisible(selectionStyleState())}>
         <SelectionStyleMenu
-          state={fnSelectionStyleState(selectedNodes())}
+          state={selectionStyleState()}
           palette={props.themeService.getThemeColorPickerPalette()}
           strokeWidths={props.themeService.getStrokeWidthOptions()}
           onApply={applySelectionStyle}
-          onSetLineShape={setSelectedConnectorLineShape}
+          onSetColor={applySelectionColor}
+          onBeginOpacity={beginOpacity}
+          onUpdateOpacity={updateOpacity}
+          onEndOpacity={endOpacity}
         />
       </Show>
       <Switch>

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const runtimeState = vi.hoisted(() => ({
-  activeToolIds: [] as string[],
   documentInstance: null as null | {
     history: object;
   },
@@ -10,10 +9,15 @@ const runtimeState = vi.hoisted(() => ({
   engine: null as unknown,
   engineConfig: null as unknown,
   events: [] as string[],
-  segmentModes: [] as string[],
-  selectedNode: null as unknown,
-  selectedNodeIds: [] as string[],
+  fontPreloads: [] as string[],
+  fontRegistrations: [] as Array<{
+    descriptor: Record<string, unknown>;
+    source: Record<string, unknown>;
+  }>,
   sessionConfig: null as unknown,
+  styleConfig: null as unknown,
+  styleController: null as unknown,
+  styleDestroyError: null as Error | null,
 }));
 
 vi.mock('@omnidraw/cangine', () => ({
@@ -34,6 +38,30 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       },
     };
   },
+  createSelectionStyleController: (config: unknown) => {
+    runtimeState.styleConfig = config;
+    runtimeState.events.push('selection-style:create');
+    const controller = {
+      state: {
+        revision: 1,
+        status: 'attached',
+        selectedRootIds: [],
+        controls: [],
+        actions: [],
+        unavailable: [],
+      },
+      attach() {
+        runtimeState.events.push('selection-style:attach');
+      },
+      destroy() {
+        runtimeState.events.push('selection-style:destroy');
+        if (runtimeState.styleDestroyError) throw runtimeState.styleDestroyError;
+      },
+      subscribe: () => () => undefined,
+    };
+    runtimeState.styleController = controller;
+    return controller;
+  },
   createStandardEditorSession: (config: {
     engine: unknown;
   }) => {
@@ -44,12 +72,8 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       state: {
         activeToolId: 'line',
         contentNodeId: null,
-        selectedNodeIds: runtimeState.selectedNodeIds,
+        selectedNodeIds: [],
         status: 'detached',
-      },
-      setActiveTool(toolId: string) {
-        editor.state.activeToolId = toolId;
-        runtimeState.activeToolIds.push(toolId);
       },
       subscribe: () => () => undefined,
     };
@@ -57,11 +81,6 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       editor,
       widgets: {
         state: { contentNodeId: null },
-      },
-      paths: {
-        setSegmentMode(mode: string) {
-          runtimeState.segmentModes.push(mode);
-        },
       },
       attach() {
         editor.state.status = 'attached';
@@ -109,20 +128,28 @@ class TestResizeObserver {
 
 describe('canvas runtime composition', () => {
   beforeEach(() => {
-    runtimeState.activeToolIds.length = 0;
     runtimeState.documentInstance = null;
     runtimeState.documentOptions = null;
     runtimeState.dropConfig = null;
     runtimeState.engineConfig = null;
     runtimeState.events.length = 0;
-    runtimeState.segmentModes.length = 0;
-    runtimeState.selectedNode = null;
-    runtimeState.selectedNodeIds.length = 0;
+    runtimeState.fontPreloads.length = 0;
+    runtimeState.fontRegistrations.length = 0;
     runtimeState.sessionConfig = null;
+    runtimeState.styleConfig = null;
+    runtimeState.styleController = null;
+    runtimeState.styleDestroyError = null;
     runtimeState.engine = {
-      scene: {
-        get() {
-          return runtimeState.selectedNode;
+      resources: {
+        register(
+          descriptor: Record<string, unknown>,
+          source: Record<string, unknown>,
+        ) {
+          runtimeState.fontRegistrations.push({ descriptor, source });
+        },
+        async preload(resourceIds: string[]) {
+          runtimeState.fontPreloads.push(...resourceIds);
+          runtimeState.events.push('fonts:preload');
         },
       },
       resize() {
@@ -163,6 +190,11 @@ describe('canvas runtime composition', () => {
       onToggleSidebar: () => undefined,
       themeService: {} as never,
       image,
+      notification: {
+        showError: vi.fn(),
+        showInfo: vi.fn(),
+        showSuccess: vi.fn(),
+      },
     }, [
       {
         name: 'first',
@@ -193,6 +225,7 @@ describe('canvas runtime composition', () => {
     const engineConfig = runtimeState.engineConfig as Record<string, unknown>;
     const sessionConfig = runtimeState.sessionConfig as {
       editor: {
+        creation: { textFontFamilies: string[] };
         history: { adapter: unknown };
         sceneMutationPort: unknown;
       };
@@ -205,6 +238,15 @@ describe('canvas runtime composition', () => {
       fileInput: HTMLInputElement;
       imageImportPort: unknown;
     };
+    const styleConfig = runtimeState.styleConfig as {
+      editor: unknown;
+      fontFamilies: string[][];
+      continuousClock: {
+        requestFrame(callback: FrameRequestCallback): number;
+        cancelFrame(handle: number): void;
+      };
+      onCallbackError(error: unknown): void;
+    };
     expect(engineConfig).not.toHaveProperty('record');
     expect(sessionConfig.editor.sceneMutationPort).toBe(
       runtimeState.documentInstance,
@@ -212,6 +254,8 @@ describe('canvas runtime composition', () => {
     expect(sessionConfig.editor.history.adapter).toBe(
       runtimeState.documentInstance?.history,
     );
+    expect(sessionConfig.editor.creation.textFontFamilies)
+      .toEqual(['Inter', 'sans-serif']);
     expect(sessionConfig.clipboardImage.imageImportPort).toBe(
       runtimeState.documentInstance,
     );
@@ -220,6 +264,35 @@ describe('canvas runtime composition', () => {
     expect(dropConfig.fileInput.accept).toBe(
       'image/jpeg,image/png,image/gif,image/webp',
     );
+    expect(styleConfig.editor).toBe(runtime.editor());
+    expect(styleConfig.fontFamilies).toEqual([
+      ['Inter', 'sans-serif'],
+      ['Fraunces', 'serif'],
+      ['JetBrains Mono', 'monospace'],
+    ]);
+    expect(runtimeState.fontRegistrations).toHaveLength(12);
+    expect(runtimeState.fontRegistrations.map(({ descriptor, source }) => ({
+      family: descriptor.family,
+      mimeType: descriptor.mimeType,
+      url: source.url,
+      weight: descriptor.weight,
+    }))).toEqual([
+      ...['Inter', 'Fraunces', 'JetBrains Mono'].flatMap((family) => (
+        [400, 500, 600, 700].map((weight) => expect.objectContaining({
+          family,
+          url: expect.stringMatching(/^\/fonts\/.+\.(ttf|woff2)$/),
+          weight,
+        }))
+      )),
+    ]);
+    expect(runtimeState.fontPreloads).toHaveLength(12);
+    expect(runtimeState.events.indexOf('fonts:preload')).toBeLessThan(
+      runtimeState.events.indexOf('document:start'),
+    );
+    expect(runtime.selectionStyles()).toBe(runtimeState.styleController);
+    expect(runtimeState.events.indexOf('selection-style:attach')).toBeGreaterThan(
+      runtimeState.events.indexOf('editor:attach'),
+    );
 
     await runtime.shutdown();
 
@@ -227,6 +300,7 @@ describe('canvas runtime composition', () => {
       'extension:second:dispose',
       'extension:first:dispose',
       'image-drop:destroy',
+      'selection-style:destroy',
       'editor:destroy',
       'document:dispose',
       'engine:destroy',
@@ -239,11 +313,13 @@ describe('canvas runtime composition', () => {
       'extension:second:dispose',
       'extension:first:dispose',
       'image-drop:destroy',
+      'selection-style:destroy',
       'editor:destroy',
       'document:dispose',
       'engine:destroy',
     ]);
     expect(container.childNodes).toHaveLength(0);
+    expect(runtime.selectionStyles()).toBeNull();
   });
 
   test('continues core teardown when an extension disposer throws', async () => {
@@ -287,9 +363,10 @@ describe('canvas runtime composition', () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
-  test('exposes only supported selected connector segment changes', async () => {
+  test('reports style callbacks and clears ownership before failed teardown', async () => {
     const container = document.createElement('div');
     document.body.append(container);
+    const showError = vi.fn();
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
       tenant: {
@@ -304,68 +381,36 @@ describe('canvas runtime composition', () => {
       createId: () => 'id-a',
       onToggleSidebar: () => undefined,
       themeService: {} as never,
+      notification: {
+        showError,
+        showInfo: vi.fn(),
+        showSuccess: vi.fn(),
+      },
     });
     await runtime.boot();
 
-    runtimeState.selectedNodeIds.push('connector-a');
-    runtimeState.selectedNode = {
-      id: 'connector-a',
-      kind: 'connector',
-      routing: { type: 'straight' },
+    const styleConfig = runtimeState.styleConfig as {
+      onCallbackError(error: unknown): void;
     };
-    runtime.setSelectedConnectorSegmentMode('straight');
-    runtime.setSelectedConnectorSegmentMode('smooth');
-    runtime.setSelectedConnectorSegmentMode('elbow');
+    styleConfig.onCallbackError(new Error('style callback failed'));
+    expect(showError).toHaveBeenCalledWith(
+      'Selection style failed',
+      'style callback failed',
+    );
 
-    expect(runtimeState.segmentModes).toEqual([
-      'smooth',
-      'elbow',
-    ]);
-    expect(runtimeState.activeToolIds).toEqual(['select']);
+    runtimeState.styleDestroyError = new Error('style teardown failed');
+    await expect(runtime.shutdown()).rejects.toThrow('style teardown failed');
+    expect(runtime.selectionStyles()).toBeNull();
+    expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'selection-style:destroy',
+      'editor:destroy',
+      'document:dispose',
+      'engine:destroy',
+    ]));
 
-    const bezierRouting = {
-      type: 'bezier',
-      control1: { x: 20, y: 30 },
-      control2: { x: 80, y: 70 },
-    };
-    runtimeState.selectedNode = {
-      id: 'connector-a',
-      kind: 'connector',
-      routing: bezierRouting,
-    };
-    runtime.setSelectedConnectorSegmentMode('smooth');
-    expect(runtimeState.selectedNode).toMatchObject({
-      routing: bezierRouting,
-    });
-
-    const orthogonalRouting = {
-      type: 'orthogonal',
-      cornerRadius: 12,
-      obstaclePadding: 8,
-      preferredAxis: 'horizontal',
-    };
-    runtimeState.selectedNode = {
-      id: 'connector-a',
-      kind: 'connector',
-      routing: orthogonalRouting,
-    };
-    runtime.setSelectedConnectorSegmentMode('elbow');
-    expect(runtimeState.selectedNode).toMatchObject({
-      routing: orthogonalRouting,
-    });
-
-    runtimeState.selectedNode = {
-      id: 'connector-a',
-      kind: 'connector',
-      routing: { type: 'manual', path: { commands: [] } },
-    };
-    runtime.setSelectedConnectorSegmentMode('straight');
-    runtimeState.selectedNode = { id: 'path-a', kind: 'path' };
-    runtime.setSelectedConnectorSegmentMode('smooth');
-    runtimeState.selectedNodeIds.push('path-a');
-    runtime.setSelectedConnectorSegmentMode('elbow');
-
-    expect(runtimeState.segmentModes).toEqual(['smooth', 'elbow']);
     await runtime.shutdown();
+    expect(runtimeState.events.filter(
+      (event) => event === 'selection-style:destroy',
+    )).toHaveLength(1);
   });
 });

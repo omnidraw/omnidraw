@@ -87,5 +87,8 @@
     "@lastolivegames/becsy": "^0.15.5",
     "handlebars": "^4.7.9",
     "pixi.js": "^8.19.0"
+  },
+  "patchedDependencies": {
+    "@omnidraw/cangine@0.3.0": "patches/@omnidraw%2Fcangine@0.3.0.patch"
   }
 }
