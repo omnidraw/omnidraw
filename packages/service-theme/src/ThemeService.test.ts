@@ -1,8 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { ThemeService } from "./ThemeService";
+import { BUILTIN_THEMES } from "./builtins";
+import { fxGetThemeCssVariables } from "./dom";
 import { getThemeColorValueMap, isThemeColorToken } from "./styles";
 
 describe("ThemeService", () => {
+  it("keeps the Cangine-owned canvas surface out of DOM theme variables", () => {
+    expect(Object.keys(fxGetThemeCssVariables(BUILTIN_THEMES[0]!)))
+      .not.toContain(["--vc", "canvas", "background"].join("-"));
+  });
+
   it("supports @base full-range color tokens", () => {
     const theme = new ThemeService();
 

@@ -27,7 +27,6 @@
   --border: #d6d3d1;
   --input: #d6d3d1;
   --ring: #f59e0b;
-  --vc-canvas-background: rgba(168, 162, 158, 0.1);
   --vc-canvas-selection-fill: rgba(59, 130, 246, 0.12);
   --vc-canvas-selection-stroke: #3b82f6;
   --vc-canvas-group-boundary: #1e1e1e;
@@ -58,7 +57,6 @@
   --warning-foreground: #0c0a09;
   --border: #292524;
   --input: #292524;
-  --vc-canvas-background: rgba(12, 10, 9, 0.92);
   --vc-canvas-selection-fill: rgba(96, 165, 250, 0.18);
   --vc-canvas-selection-stroke: #60a5fa;
   --vc-canvas-group-boundary: #e7e5e4;

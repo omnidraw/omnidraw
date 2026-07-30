@@ -1,6 +1,7 @@
 import {
   createInfiniteCanvas,
   type IInfiniteCanvasEngine,
+  type IRetainedProjectionOwner,
   type TConnectorRouting,
   type TInputEvent,
   type TTransformGestureEvent,
@@ -21,7 +22,9 @@ import type {
   TCanvasRuntimeExtensionInstall,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
-import type { TRuntimeGridPresentation } from './services/fn.runtime-scene';
+import {
+  fnCanvasBackgroundProjection,
+} from './fn.canvas-background-projection';
 import {
   createTracedCanvasDocumentTransport,
 } from './debug-trace/createTracedCanvasDocumentTransport';
@@ -437,18 +440,14 @@ export function buildRuntime(
   let releaseTraceLifecycle: (() => void) | null = null;
   let releaseEarlyEngineTrace: (() => void) | null = null;
   let releaseThemeChange: (() => void) | null = null;
+  let canvasBackgroundProjection: IRetainedProjectionOwner | null = null;
   let gridVisible = config.initialGridVisible ?? true;
   const installs: TCanvasRuntimeExtensionInstall[] = [];
-  const gridPresentation = (
-    visible = gridVisible,
-  ): TRuntimeGridPresentation => {
-    const colors = config.themeService.getTheme().colors;
-    return {
-      visible,
-      minorColor: colors.canvasGridMinor,
-      majorColor: colors.canvasGridMajor,
-    };
-  };
+  const syncCanvasBackgroundProjection = (nextGridVisible: boolean) =>
+    canvasBackgroundProjection?.replace(fnCanvasBackgroundProjection({
+      colors: config.themeService.getTheme().colors,
+      gridVisible: nextGridVisible,
+    }));
 
   return Object.freeze({
     async boot() {
@@ -463,6 +462,18 @@ export function buildRuntime(
           antialias: true,
         },
       });
+      canvasBackgroundProjection = engine.projections.createOwner(
+        'vibecanvas:canvas-background',
+        {
+          band: 'background',
+          orderKey: '1000000000000000',
+          hitTest: 'none',
+        },
+      );
+      syncCanvasBackgroundProjection(gridVisible);
+      releaseThemeChange = config.themeService.hooks.change.tap(
+        () => syncCanvasBackgroundProjection(gridVisible),
+      );
       if (config.trace !== undefined && config.trace !== null) {
         releaseEarlyEngineTrace = installEarlyEngineTraceSubscriptions(
           config.trace,
@@ -481,7 +492,6 @@ export function buildRuntime(
         ),
         createCommandId: config.createId,
         image: config.image,
-        runtimeGridPresentation: gridPresentation(),
         observe: config.trace === undefined || config.trace === null
           ? undefined
           : (observation) => config.trace?.emit({
@@ -517,12 +527,6 @@ export function buildRuntime(
         },
       });
       await documentService.start(engine);
-      const syncRuntimeGridTheme = () =>
-        documentService?.setRuntimeGridPresentation(gridPresentation());
-      releaseThemeChange = config.themeService.hooks.change.tap(
-        syncRuntimeGridTheme,
-      );
-      syncRuntimeGridTheme();
       editorSession = createStandardEditorSession({
         engine,
         host: config.container,
@@ -673,6 +677,11 @@ export function buildRuntime(
       const earlyEngineTrace = releaseEarlyEngineTrace;
       releaseEarlyEngineTrace = null;
       await attempt(() => earlyEngineTrace?.());
+      const backgroundProjection = canvasBackgroundProjection;
+      canvasBackgroundProjection = null;
+      const themeChange = releaseThemeChange;
+      releaseThemeChange = null;
+      await attempt(() => themeChange?.());
       for (const install of installs.splice(0).reverse()) {
         await attempt(() => install.dispose?.());
       }
@@ -688,9 +697,7 @@ export function buildRuntime(
       const session = editorSession;
       editorSession = null;
       await attempt(() => session?.destroy());
-      const themeChange = releaseThemeChange;
-      releaseThemeChange = null;
-      await attempt(() => themeChange?.());
+      await attempt(() => backgroundProjection?.dispose());
       const document = documentService;
       documentService = null;
       await attempt(() => document?.dispose());
@@ -709,7 +716,7 @@ export function buildRuntime(
     selectionStyles: () => selectionStyleController,
     setGridVisible: (visible) => {
       if (visible === gridVisible) return false;
-      documentService?.setRuntimeGridPresentation(gridPresentation(visible));
+      syncCanvasBackgroundProjection(visible);
       gridVisible = visible;
       return true;
     },

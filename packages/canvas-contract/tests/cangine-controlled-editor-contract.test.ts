@@ -7,7 +7,7 @@ import type {
 } from "@omnidraw/cangine/editor";
 
 describe("Cangine controlled-editor consumer contract", () => {
-  test("resolves the packed 0.4.0 editor and scene entrypoints", async () => {
+  test("resolves the packed 0.5.1 editor and scene entrypoints", async () => {
     const editorEntrypoint = Bun.resolveSync(
       "@omnidraw/cangine/editor",
       import.meta.dir,
@@ -26,16 +26,16 @@ describe("Cangine controlled-editor consumer contract", () => {
     };
 
     expect(editorEntrypoint).toContain(
-      "node_modules/.bun/@omnidraw+cangine@0.4.0/",
+      "node_modules/.bun/@omnidraw+cangine@0.5.1/",
     );
     expect(editorEntrypoint).toEndWith("/dist/editor/index.js");
     expect(sceneEntrypoint).toContain(
-      "node_modules/.bun/@omnidraw+cangine@0.4.0/",
+      "node_modules/.bun/@omnidraw+cangine@0.5.1/",
     );
     expect(sceneEntrypoint).toEndWith("/dist/scene/index.js");
     expect(manifest).toMatchObject({
       name: "@omnidraw/cangine",
-      version: "0.4.0",
+      version: "0.5.1",
     });
   });
 

@@ -31,7 +31,10 @@ const runtimeState = vi.hoisted(() => ({
   styleConfig: null as unknown,
   styleController: null as unknown,
   styleDestroyError: null as Error | null,
-  runtimeGridPresentations: [] as unknown[],
+  projectionCreateArgs: null as unknown,
+  projectionSnapshots: [] as unknown[],
+  projectionDisposed: false,
+  projectionReplaceError: null as Error | null,
   documentStartHook: null as (() => void) | null,
   themeColors: null as unknown as TThemeDefinition['colors'],
   themeListener: null as ((theme: TThemeDefinition) => void) | null,
@@ -153,15 +156,13 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
       runtimeState.events.push('document:dispose');
     }
 
-    setRuntimeGridPresentation(presentation: unknown): boolean {
-      runtimeState.runtimeGridPresentations.push(presentation);
-      runtimeState.events.push('grid:presentation');
-      return true;
-    }
   },
 }));
 
 import { buildRuntime } from '../src/runtime';
+import {
+  fnCanvasBackgroundProjection,
+} from '../src/fn.canvas-background-projection';
 
 const themeService = {
   getTheme: () => ({
@@ -202,7 +203,10 @@ describe('canvas runtime composition', () => {
     runtimeState.styleConfig = null;
     runtimeState.styleController = null;
     runtimeState.styleDestroyError = null;
-    runtimeState.runtimeGridPresentations.length = 0;
+    runtimeState.projectionCreateArgs = null;
+    runtimeState.projectionSnapshots.length = 0;
+    runtimeState.projectionDisposed = false;
+    runtimeState.projectionReplaceError = null;
     runtimeState.documentStartHook = null;
     runtimeState.themeColors = BUILTIN_THEMES[0]!.colors;
     runtimeState.themeListener = null;
@@ -216,6 +220,40 @@ describe('canvas runtime composition', () => {
         },
         subscribe() {
           return () => runtimeState.events.push('trace:scene:release');
+        },
+      },
+      projections: {
+        createOwner(ownerId: string, options: unknown) {
+          runtimeState.projectionCreateArgs = { ownerId, options };
+          runtimeState.events.push('projection:create');
+          return {
+            id: ownerId,
+            band: 'background',
+            orderKey: '1000000000000000',
+            hitTest: 'none',
+            get revision() {
+              return runtimeState.projectionSnapshots.length;
+            },
+            get status() {
+              return runtimeState.projectionDisposed ? 'disposed' : 'active';
+            },
+            replace(snapshot: unknown) {
+              if (runtimeState.projectionReplaceError !== null) {
+                throw runtimeState.projectionReplaceError;
+              }
+              if (
+                JSON.stringify(snapshot)
+                === JSON.stringify(runtimeState.projectionSnapshots.at(-1))
+              ) return false;
+              runtimeState.projectionSnapshots.push(snapshot);
+              runtimeState.events.push('projection:replace');
+              return true;
+            },
+            dispose() {
+              runtimeState.projectionDisposed = true;
+              runtimeState.events.push('projection:dispose');
+            },
+          };
         },
       },
       resources: {
@@ -321,6 +359,7 @@ describe('canvas runtime composition', () => {
 
     runtimeState.documentStartHook = () => {
       runtimeState.themeColors = BUILTIN_THEMES[3]!.colors;
+      runtimeState.themeListener?.(BUILTIN_THEMES[3]!);
     };
     await runtime.boot();
 
@@ -352,28 +391,45 @@ describe('canvas runtime composition', () => {
     expect(engineConfig).not.toHaveProperty('record');
     expect(engineConfig.host).toBe(container);
     expect(runtimeState.engine).not.toHaveProperty('resize');
-    expect(runtimeState.documentOptions).toMatchObject({
-      runtimeGridPresentation: {
-        visible: true,
-        minorColor: BUILTIN_THEMES[0]!.colors.canvasGridMinor,
-        majorColor: BUILTIN_THEMES[0]!.colors.canvasGridMajor,
+    expect(runtimeState.projectionCreateArgs).toEqual({
+      ownerId: 'vibecanvas:canvas-background',
+      options: {
+        band: 'background',
+        orderKey: '1000000000000000',
+        hitTest: 'none',
       },
     });
-    expect(runtimeState.runtimeGridPresentations[0]).toMatchObject({
-      visible: true,
-      minorColor: BUILTIN_THEMES[3]!.colors.canvasGridMinor,
-      majorColor: BUILTIN_THEMES[3]!.colors.canvasGridMajor,
-    });
+    expect(runtimeState.events.indexOf('projection:replace')).toBeLessThan(
+      runtimeState.events.indexOf('document:start'),
+    );
+    expect(runtimeState.projectionSnapshots).toEqual([
+      fnCanvasBackgroundProjection({
+        colors: BUILTIN_THEMES[0]!.colors,
+        gridVisible: true,
+      }),
+      fnCanvasBackgroundProjection({
+        colors: BUILTIN_THEMES[3]!.colors,
+        gridVisible: true,
+      }),
+    ]);
     expect(runtime.setGridVisible(true)).toBe(false);
+    runtimeState.projectionReplaceError = new Error('projection failed');
+    expect(() => runtime.setGridVisible(false)).toThrow('projection failed');
+    runtimeState.projectionReplaceError = null;
     expect(runtime.setGridVisible(false)).toBe(true);
-    expect(runtimeState.runtimeGridPresentations).toHaveLength(2);
+    expect(runtimeState.projectionSnapshots).toHaveLength(3);
     runtimeState.themeColors = BUILTIN_THEMES[2]!.colors;
     runtimeState.themeListener?.(BUILTIN_THEMES[2]!);
-    expect(runtimeState.runtimeGridPresentations).toHaveLength(3);
-    expect(runtimeState.runtimeGridPresentations[2]).toMatchObject({
-      visible: false,
-      majorColor: BUILTIN_THEMES[2]!.colors.canvasGridMajor,
-    });
+    expect(runtimeState.projectionSnapshots).toHaveLength(4);
+    expect(runtime.engine()?.scene.revision).toBe(1);
+    expect(runtimeState.projectionSnapshots[3]).toEqual(
+      fnCanvasBackgroundProjection({
+        colors: BUILTIN_THEMES[2]!.colors,
+        gridVisible: false,
+      }),
+    );
+    runtimeState.themeListener?.(BUILTIN_THEMES[2]!);
+    expect(runtimeState.projectionSnapshots).toHaveLength(4);
     expect(sessionConfig.editor.sceneMutationPort).toBe(
       runtimeState.documentInstance,
     );
@@ -420,6 +476,7 @@ describe('canvas runtime composition', () => {
       runtimeState.events.indexOf('editor:attach'),
     );
 
+    const lateThemeChange = runtimeState.themeListener;
     await runtime.shutdown();
 
     expect(runtimeState.events).toEqual(expect.arrayContaining([
@@ -429,6 +486,7 @@ describe('canvas runtime composition', () => {
       'selection-style:destroy',
       'editor:destroy',
       'theme:release',
+      'projection:dispose',
       'document:dispose',
       'engine:destroy',
     ]));
@@ -442,11 +500,17 @@ describe('canvas runtime composition', () => {
       'image-drop:destroy',
       'selection-style:destroy',
       'editor:destroy',
+      'projection:dispose',
       'document:dispose',
       'engine:destroy',
     ]);
     expect(container.childNodes).toHaveLength(0);
     expect(runtime.selectionStyles()).toBeNull();
+    expect(runtimeState.projectionDisposed).toBe(true);
+    expect(runtimeState.themeListener).toBeNull();
+    runtimeState.themeColors = BUILTIN_THEMES[1]!.colors;
+    lateThemeChange?.(BUILTIN_THEMES[1]!);
+    expect(runtimeState.projectionSnapshots).toHaveLength(4);
   });
 
   test('installs normalized input before recording and releases active trace subscriptions', async () => {
@@ -459,7 +523,7 @@ describe('canvas runtime composition', () => {
         applicationVersion: 'test',
         buildMode: 'test',
         canvasId: 'canvas-a',
-        cangineVersion: '0.4.0',
+        cangineVersion: '0.5.1',
         browser: 'test',
         platform: 'test',
         viewport: { width: 1_000, height: 800 },

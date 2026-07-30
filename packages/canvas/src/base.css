@@ -54,7 +54,6 @@
   --border: #d6d3d1;
   --input: #d6d3d1;
   --ring: #f59e0b;
-  --vc-canvas-background: rgba(168, 162, 158, 0.1);
 }
 
 .dark {
@@ -78,7 +77,6 @@
   --warning-foreground: #0c0a09;
   --border: #292524;
   --input: #292524;
-  --vc-canvas-background: rgba(12, 10, 9, 0.92);
 }
 
 html {

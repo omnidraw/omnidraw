@@ -24,7 +24,6 @@ const CSS_VARIABLE_ENTRIES = [
   ["--border", "border"],
   ["--input", "input"],
   ["--ring", "ring"],
-  ["--vc-canvas-background", "canvasBackground"],
   ["--vc-canvas-selection-fill", "canvasSelectionFill"],
   ["--vc-canvas-selection-stroke", "canvasSelectionStroke"],
   ["--vc-canvas-group-boundary", "canvasGroupBoundary"],

@@ -6,7 +6,7 @@ export {
   THEME_ID_GRAPHITE,
   THEME_ID_LIGHT,
   THEME_ID_SEPIA,
-  type TCanvasGridThemeColor,
+  type TCanvasThemeColor,
   type ThemeId,
   type TThemeColors,
   type TThemeDefinition,

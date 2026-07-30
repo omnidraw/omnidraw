@@ -1,13 +1,13 @@
-# `@omnidraw/cangine` Library Guide — 0.5.0
+# `@omnidraw/cangine` Library Guide — 0.5.1
 
 This is the consumer guide for the implemented `@omnidraw/cangine`
 library. It covers installation, ordinary application usage, every public
 engine service and package entrypoint, lifecycle rules, and the ownership
 boundary between the engine and its host application.
 
-> **Release note:** Version `0.5.0` adds application-owned retained runtime
-> projections. The qualified artifact described here has not been published to
-> a registry.
+> **Release note:** Version `0.5.1` adds configurable copied font-family
+> defaults for text nodes created by the standard editor. Font registration
+> and preloading remain application responsibilities.
 
 For normative edge-case behavior, consult [`spec.md`](spec.md). For
 implementation status and evidence, see [`FINAL.md`](FINAL.md) and
@@ -44,18 +44,19 @@ business logic, permissions, or UI.
 
 ## 2. Package status and imports
 
-The checked-in package and qualified artifact version is
-`@omnidraw/cangine@0.5.0`. It includes retained projections and the
-renderer-free `/scene` entrypoint. The prior immutable `0.4.0` artifact remains
-available through its separately authorized local-registry release channel;
-the `0.5.0` artifact has not been published.
+The checked-in qualified package version is `@omnidraw/cangine@0.5.1`. It adds
+configurable standard-editor text defaults and includes the retained
+projections and renderer-free `/scene` entrypoint from `0.5.0`. The immutable
+`0.4.0` and `0.5.0` artifacts remain available through their separately
+authorized local-registry release channel; `0.5.1` is now also published to
+the selected local registry. Official publication has not occurred.
 
-The following is a previously verified immutable artifact example containing
+The qualified immutable artifact contains
 compiled ESM and declarations:
 
 ```text
-artifacts/omnidraw-cangine-0.5.0.tgz
-SHA-256 d14a96266ba7548a6b1ba6ad8a3713f08582b2094948baeadcc1b0ab9b118d9b
+artifacts/omnidraw-cangine-0.5.1.tgz
+SHA-256 fe04385e30cb8427b691795bbe803e52332a2cbb91a4d0e3ed7f7ef211ae98e0
 ```
 
 For a separate application, copy the tarball into a version-controlled vendor
@@ -63,14 +64,14 @@ directory and install that relative immutable file:
 
 ```bash
 mkdir -p vendor/cangine
-cp /trusted/download/omnidraw-cangine-0.5.0.tgz vendor/cangine/
-shasum -a 256 vendor/cangine/omnidraw-cangine-0.5.0.tgz
-bun add ./vendor/cangine/omnidraw-cangine-0.5.0.tgz
+cp /trusted/download/omnidraw-cangine-0.5.1.tgz vendor/cangine/
+shasum -a 256 vendor/cangine/omnidraw-cangine-0.5.1.tgz
+bun add ./vendor/cangine/omnidraw-cangine-0.5.1.tgz
 ```
 
 Do not commit an absolute `file:` dependency. Consumers configured for the
-selected registry can replace the relative tarball dependency after `0.5.0`
-is explicitly published.
+selected local registry can replace the relative tarball dependency with exact
+version `0.5.1`.
 
 Inside this repository, use the workspace dependency so Vite follows the
 TypeScript source and preserves engine hot reload:
@@ -2578,6 +2579,9 @@ const editor = createStandardCanvasEditor({
   contentParentId: "content",
   initialToolId: "select",
   history: { kind: "linear", capacity: 100 },
+  creation: {
+    textFontFamilies: ["Inter", "sans-serif"],
+  },
 });
 
 const menu = createCanvasMenuController({ engine, overlayHost: host });
@@ -2625,6 +2629,12 @@ textEditor.attach();
 paths.attach();
 editor.attach();
 ```
+
+`creation.textFontFamilies` affects only text nodes newly created through the
+standard editor. Cangine copies the supplied stack into each node; later
+mutation of the caller's array cannot restyle it. Omission uses
+`["system-ui", "sans-serif"]`, while an explicit empty array remains empty.
+Existing/imported text and font registration or preloading are unchanged.
 
 Linear history requires an engine created with `record`; it is disabled by
 default. You can register/replace tools and commands or supply a custom history

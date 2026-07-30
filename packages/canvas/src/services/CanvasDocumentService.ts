@@ -23,9 +23,8 @@ import type {
 } from '@omnidraw/cangine/editor';
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
-  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
-  CANVAS_RUNTIME_GRID_NODE_ID,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+  fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasImageExtension,
   type TCanvasCommand,
   type TCanvasEvent,
@@ -36,7 +35,6 @@ import {
   type TCanvasPrecondition,
   type TCanvasSnapshot,
 } from '@vibecanvas/canvas-contract';
-import { BUILTIN_THEMES } from '@vibecanvas/service-theme';
 import type {
   TCanvasImagePort,
   TImageUploadFormat,
@@ -53,15 +51,9 @@ import {
   fnSceneChangeImages,
   type TSceneNodeImage,
 } from './fn.scene-reduction';
-import {
-  fnRuntimeGridNode,
-  fnRuntimeSceneSnapshot,
-  type TRuntimeGridPresentation,
-} from './fn.runtime-scene';
 
 const SERVER_SCENE_SOURCE = 'vibecanvas:server';
 const SNAPSHOT_SCENE_SOURCE = 'vibecanvas:snapshot';
-const RUNTIME_GRID_SCENE_SOURCE = 'vibecanvas:runtime-grid';
 const UNDO_SCENE_SOURCE = 'vibecanvas:undo';
 const REDO_SCENE_SOURCE = 'vibecanvas:redo';
 const IMAGE_PROMOTION_SOURCE = 'vibecanvas:image-promotion';
@@ -74,12 +66,6 @@ const SUPPORTED_IMAGE_MIME_TYPES = new Set<TImageUploadFormat>([
   'image/gif',
   'image/webp',
 ]);
-const RESERVED_RUNTIME_NODE_IDS = new Set([
-  CANVAS_RUNTIME_BACKGROUND_LAYER_ID,
-  CANVAS_RUNTIME_GRID_NODE_ID,
-  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-]);
-
 export type TCanvasDocumentTransport = Readonly<{
   getSnapshot(args: Readonly<{ canvasId: string }>): Promise<TCanvasSnapshot>;
   execute(command: TCanvasCommand): Promise<TCanvasItemsChangedEvent>;
@@ -94,7 +80,6 @@ export type TCanvasDocumentServiceOptions = Readonly<{
   transport: TCanvasDocumentTransport;
   createCommandId(): string;
   image?: TCanvasImagePort;
-  runtimeGridPresentation?: TRuntimeGridPresentation;
   onError?(error: unknown): void;
   observe?(observation: TCanvasDocumentObservation): void;
 }>;
@@ -444,19 +429,11 @@ export class CanvasDocumentService
   #commandTail: Promise<void> = Promise.resolve();
   #recoveryTask: Promise<void> | null = null;
   #eventIterator: AsyncIterator<TCanvasEvent> | null = null;
-  #runtimeGridPresentation: TRuntimeGridPresentation;
-
   constructor(options: TCanvasDocumentServiceOptions) {
     this.#canvasId = options.canvasId;
     this.#transport = options.transport;
     this.#createCommandId = options.createCommandId;
     this.#image = options.image ?? null;
-    this.#runtimeGridPresentation = options.runtimeGridPresentation
-      ?? {
-        visible: true,
-        minorColor: BUILTIN_THEMES[0]!.colors.canvasGridMinor,
-        majorColor: BUILTIN_THEMES[0]!.colors.canvasGridMajor,
-      };
     this.#onError = options.onError ?? (() => undefined);
     this.#observeDocument = options.observe ?? null;
     this.#history = new CanvasDocumentHistory(
@@ -518,43 +495,6 @@ export class CanvasDocumentService
     }
     const generation = ++this.#generation;
     void this.#consumeEvents(generation);
-  }
-
-  setRuntimeGridPresentation(
-    presentation: TRuntimeGridPresentation,
-  ): boolean {
-    if (this.#disposed) {
-      throw new RangeError('Canvas document service is disposed.');
-    }
-    const engine = this.#engine;
-    if (engine === null) {
-      throw new RangeError('Canvas document service is not started.');
-    }
-    if (this.#committing) {
-      throw new RangeError('Canvas document reconciliation is in progress.');
-    }
-    const nextGridNode = fnRuntimeGridNode({ grid: presentation });
-    if (this.#recoveryPending || this.#reloading) {
-      const changed = !fnSceneNodesEqual(
-        fnRuntimeGridNode({ grid: this.#runtimeGridPresentation }),
-        nextGridNode,
-      );
-      this.#runtimeGridPresentation = presentation;
-      return changed;
-    }
-    if (fnSceneNodesEqual(
-      this.#optimisticNodes.get(CANVAS_RUNTIME_GRID_NODE_ID) ?? null,
-      nextGridNode,
-    )) {
-      this.#runtimeGridPresentation = presentation;
-      return false;
-    }
-    this.#projectSceneCommands(
-      [{ type: 'upsert', node: nextGridNode }],
-      RUNTIME_GRID_SCENE_SOURCE,
-    );
-    this.#runtimeGridPresentation = presentation;
-    return true;
   }
 
   commit(
@@ -1774,7 +1714,6 @@ export class CanvasDocumentService
       try {
         await this.#reload(true);
         this.#recoveryPending = false;
-        this.setRuntimeGridPresentation(this.#runtimeGridPresentation);
         this.#observe({ phase: 'recovery-completed', priority: 'critical' });
         return;
       } catch (error) {
@@ -1835,12 +1774,10 @@ export class CanvasDocumentService
       const acceptedItems = new Map(
         snapshot.items.map((item) => [item.id, item]),
       );
-      const projectedSnapshot = fnRuntimeSceneSnapshot({
-        authoredNodes: snapshot.items.map((item) => item.item),
-        grid: this.#runtimeGridPresentation,
-      });
       const reductionState = createSceneReductionState(
-        projectedSnapshot,
+        fnMaterializeCanvasValidationSnapshot(
+          snapshot.items.map((item) => fnRuntimeCanvasNode(item.item)),
+        ),
       );
       const admittedSnapshot = sceneReductionStateSnapshot(reductionState);
       const optimisticNodes = new Map(
@@ -2237,17 +2174,11 @@ export class CanvasDocumentService
   }
 
   #assertAuthoredMutation(request: TEditorSceneMutationRequest): void {
-    const hasRuntimeParent = request.commands.some((command) => {
-      const parentId = command.type === 'upsert'
-        ? command.node.parentId
-        : command.type === 'reparent' ? command.parentId : null;
-      return parentId === CANVAS_RUNTIME_BACKGROUND_LAYER_ID
-        || parentId === CANVAS_RUNTIME_GRID_NODE_ID;
-    });
     if (
-      hasRuntimeParent
-      || request.affectedNodeIds.some((id) => RESERVED_RUNTIME_NODE_IDS.has(id))
-    ) throw new RangeError('Editor mutations cannot target runtime canvas nodes.');
+      request.affectedNodeIds.includes(CANVAS_SYNTHETIC_CONTENT_LAYER_ID)
+    ) {
+      throw new RangeError('Editor mutations cannot target runtime canvas nodes.');
+    }
   }
 }
 

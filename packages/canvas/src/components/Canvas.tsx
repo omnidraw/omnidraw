@@ -671,7 +671,6 @@ export function Canvas(props: CanvasPageProps) {
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        background: 'var(--vc-canvas-background, rgba(168, 162, 158, 0.10))',
       }}
     >
       <div

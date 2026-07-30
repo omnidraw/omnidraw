@@ -426,10 +426,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/debug-trace/typed.ts](packages/canvas/src/debug-trace/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
 | [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
+| [packages/canvas/src/fn.canvas-background-projection.ts](packages/canvas/src/fn.canvas-background-projection.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
-| [packages/canvas/src/services/fn.runtime-scene.ts](packages/canvas/src/services/fn.runtime-scene.ts) |  |
 | [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
 | [packages/canvas/src/services/fn.scene-reduction.ts](packages/canvas/src/services/fn.scene-reduction.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
@@ -461,8 +461,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/capsule-vibecanvas/src/capabilities/index.ts](packages/capsule-vibecanvas/src/capabilities/index.ts) |  |
 | [packages/capsule-vibecanvas/src/capabilities/types.ts](packages/capsule-vibecanvas/src/capabilities/types.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/CONSTANTS.ts](packages/capsule-vibecanvas/src/contract/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.apis.ts](packages/capsule-vibecanvas/src/contract/fn.apis.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/fn.budgets.ts](packages/capsule-vibecanvas/src/contract/fn.budgets.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/fn.target.ts](packages/capsule-vibecanvas/src/contract/fn.target.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/index.ts](packages/capsule-vibecanvas/src/contract/index.ts) |  |
 | [packages/capsule-vibecanvas/src/contract/types.ts](packages/capsule-vibecanvas/src/contract/types.ts) |  |
 | [packages/capsule-vibecanvas/src/host/fn.error.ts](packages/capsule-vibecanvas/src/host/fn.error.ts) |  |
@@ -714,6 +714,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
 | [packages/service-db/src/migrations/003-agent-authoring.sql](packages/service-db/src/migrations/003-agent-authoring.sql) |  |
 | [packages/service-db/src/migrations/004-live-widget-preview.sql](packages/service-db/src/migrations/004-live-widget-preview.sql) |  |
+| [packages/service-db/src/migrations/005-capsule-api-groups.sql](packages/service-db/src/migrations/005-capsule-api-groups.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
