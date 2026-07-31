@@ -50,6 +50,7 @@
     "verify:turso-native-encryption:host": "bun run scripts/build.ts --verify-native-encryption-host-only",
     "publish:npm": "bun run scripts/publish-npm.ts",
     "registry:start": "node scripts/local-registry.mjs start",
+    "registry:start:foreground": "node scripts/local-registry.mjs start-foreground",
     "registry:ensure": "node scripts/local-registry.mjs ensure",
     "registry:status": "node scripts/local-registry.mjs status",
     "registry:stop": "node scripts/local-registry.mjs stop",

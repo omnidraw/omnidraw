@@ -5,6 +5,7 @@ import {
   closeSync,
   constants,
   openSync,
+  rmSync,
 } from 'node:fs';
 import {
   access,
@@ -432,6 +433,95 @@ async function startRegistry(config) {
   }
 }
 
+async function startRegistryForeground(config) {
+  await writeHostConfiguration(config);
+  await acquireStartLock(config);
+  let child;
+  let childExit;
+  try {
+    const current = await registryStatus(config);
+    if (current.state !== 'stopped') {
+      throw new Error(
+        `Cannot start the local registry in the foreground: ${config.registryUrl} is ${current.state}. `
+        + `Stop the existing registry or inspect the process using port ${config.port}.`,
+      );
+    }
+    const verdaccioVersion = await installRuntime(config);
+    child = spawn(process.execPath, [
+      config.verdaccioBin,
+      '--config',
+      config.configPath,
+      '--listen',
+      config.registryUrl,
+    ], {
+      cwd: config.stateDirectory,
+      env: {
+        ...process.env,
+        VERDACCIO_HANDLE_KILL_SIGNALS: 'true',
+      },
+      stdio: 'inherit',
+    });
+    childExit = new Promise((resolvePromise, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => {
+        resolvePromise(Object.freeze({ code, signal }));
+      });
+    });
+    const processStartedAtMsValue = await waitFor(
+      config,
+      async () => (await processStartedAtMs(child.pid)) !== null,
+      2_000,
+    )
+      ? await processStartedAtMs(child.pid)
+      : null;
+    if (processStartedAtMsValue === null) {
+      throw new Error('Could not record the foreground Verdaccio process start identity.');
+    }
+    await atomicWrite(config.pidPath, `${JSON.stringify({
+      pid: child.pid,
+      processStartedAtMs: processStartedAtMsValue,
+      registryUrl: config.registryUrl,
+      configPath: config.configPath,
+      verdaccioBin: config.verdaccioBin,
+      verdaccioVersion,
+      startedAt: new Date().toISOString(),
+    }, null, 2)}\n`);
+    const started = await waitFor(
+      config,
+      () => registryHealth(config),
+      START_TIMEOUT_MS,
+    );
+    if (!started) {
+      if (child.exitCode === null) child.kill('SIGTERM');
+      throw new Error(
+        `Foreground Verdaccio did not become healthy. Inspect its terminal output.`,
+      );
+    }
+  } finally {
+    await rm(config.startLockPath, { recursive: true, force: true });
+  }
+
+  const forwardSignal = (signal) => {
+    rmSync(config.pidPath, { force: true });
+    if (child.exitCode === null) child.kill(signal);
+  };
+  const onSigint = () => forwardSignal('SIGINT');
+  const onSigterm = () => forwardSignal('SIGTERM');
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
+  try {
+    const result = await childExit;
+    const owner = await readOwner(config);
+    if (owner?.pid === child.pid && await isOwnedProcess(config, owner) === false) {
+      await rm(config.pidPath, { force: true });
+    }
+    return result;
+  } finally {
+    process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
+  }
+}
+
 async function stopRegistry(config) {
   const owner = await readOwner(config);
   if (!await isOwnedProcess(config, owner)) {
@@ -557,6 +647,11 @@ async function main() {
     console.log(JSON.stringify(await startRegistry(config), null, 2));
     return;
   }
+  if (command === 'start-foreground') {
+    const result = await startRegistryForeground(config);
+    if (result.code !== 0 && result.code !== null) process.exitCode = result.code;
+    return;
+  }
   if (command === 'stop') {
     console.log(JSON.stringify(await stopRegistry(config), null, 2));
     return;
@@ -584,7 +679,7 @@ async function main() {
     return;
   }
   throw new Error(
-    `Unknown command '${command}'. Use start, ensure, status, stop, publish, `
+    `Unknown command '${command}'. Use start, start-foreground, ensure, status, stop, publish, `
     + 'or bootstrap.',
   );
 }

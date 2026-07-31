@@ -1,20 +1,12 @@
-# `@omnidraw/cangine` Library Guide — 0.5.1
+# `@omnidraw/cangine` Library Guide — 0.5.3
 
-This is the consumer guide for the implemented `@omnidraw/cangine`
-library. It covers installation, ordinary application usage, every public
-engine service and package entrypoint, lifecycle rules, and the ownership
-boundary between the engine and its host application.
+This is the consumer guide for `@omnidraw/cangine`. It covers installation,
+ordinary application usage, every public engine service and package
+entrypoint, lifecycle rules, and the ownership boundary between the engine
+and its host application.
 
-> **Release note:** Version `0.5.1` adds configurable copied font-family
-> defaults for text nodes created by the standard editor. Font registration
-> and preloading remain application responsibilities.
-
-For normative edge-case behavior, consult [`spec.md`](spec.md). For
-implementation status and evidence, see [`FINAL.md`](FINAL.md) and
-[`tasks/PROGRESS.md`](tasks/PROGRESS.md). When this guide and the TypeScript
-declarations differ, the declarations describe the current checkout and the
-specification describes required behavior. The published artifact remains the
-authority for what an installed release contains.
+The TypeScript declarations distributed with the installed package are the
+authoritative API inventory for that release.
 
 ## 1. What the library provides
 
@@ -42,52 +34,15 @@ explicit local linear-history adapter. Renderer core still does **not** own
 application persistence, collaboration, product history policy, widget
 business logic, permissions, or UI.
 
-## 2. Package status and imports
+## 2. Installation and imports
 
-The checked-in qualified package version is `@omnidraw/cangine@0.5.1`. It adds
-configurable standard-editor text defaults and includes the retained
-projections and renderer-free `/scene` entrypoint from `0.5.0`. The immutable
-`0.4.0` and `0.5.0` artifacts remain available through their separately
-authorized local-registry release channel; `0.5.1` is now also published to
-the selected local registry. Official publication has not occurred.
-
-The qualified immutable artifact contains
-compiled ESM and declarations:
-
-```text
-artifacts/omnidraw-cangine-0.5.1.tgz
-SHA-256 fe04385e30cb8427b691795bbe803e52332a2cbb91a4d0e3ed7f7ef211ae98e0
-```
-
-For a separate application, copy the tarball into a version-controlled vendor
-directory and install that relative immutable file:
+Install the package from npm:
 
 ```bash
-mkdir -p vendor/cangine
-cp /trusted/download/omnidraw-cangine-0.5.1.tgz vendor/cangine/
-shasum -a 256 vendor/cangine/omnidraw-cangine-0.5.1.tgz
-bun add ./vendor/cangine/omnidraw-cangine-0.5.1.tgz
+npm install @omnidraw/cangine@0.5.3
+# or
+bun add @omnidraw/cangine@0.5.3
 ```
-
-Do not commit an absolute `file:` dependency. Consumers configured for the
-selected local registry can replace the relative tarball dependency with exact
-version `0.5.1`.
-
-Inside this repository, use the workspace dependency so Vite follows the
-TypeScript source and preserves engine hot reload:
-
-```json
-{
-  "dependencies": {
-    "@omnidraw/cangine": "workspace:*"
-  }
-}
-```
-
-The checked-in workspace manifest intentionally points exports at `src/`.
-The packed manifest points the same public specifiers at compiled `dist/`.
-Consumer code must therefore use package specifiers and behave identically in
-both modes.
 
 Public entrypoints:
 
@@ -139,7 +94,7 @@ import {
 } from "@omnidraw/cangine/scene";
 ```
 
-The `0.5.0` package exposes these entrypoints:
+The package exposes these entrypoints:
 
 | Entrypoint | Intended use |
 |---|---|
@@ -149,33 +104,28 @@ The `0.5.0` package exposes these entrypoints:
 | `@omnidraw/cangine/testing` | Deterministic clocks, fixtures, validation, replay, equality, and statistics |
 | `@omnidraw/cangine/scene` | Renderer-free serialized-command reduction over opaque immutable scene state |
 | `@omnidraw/cangine/editor` | Optional editor lifecycle, tools, commands, selection, menus, widget modes, clipboard import, and replaceable history |
-| `@omnidraw/cangine/integrations/capsule` | Optional duck-typed Capsule portal adapter; does not depend on `@omnidraw/capsule` |
 | `@omnidraw/cangine/backend` | Advanced renderer-backend contracts and the built-in WebGL2 factory |
-| `@omnidraw/cangine/package.json` | Release metadata in the packed artifact |
+| `@omnidraw/cangine/package.json` | Installed package metadata |
 
-See [§11.2.1](#1121-public-pure-command-reduction) for the `/scene` consumer
-shape and ownership boundary.
+Section 11.2.1 describes the `/scene` consumer shape and ownership boundary.
 
-The root does not re-export `/scene`, `/editor`, or
-`/integrations/capsule`. A core-only/headless consumer never evaluates the
-public `/scene` handle layer, editor, or Capsule-integration entrypoint. The
-package-private immutable transition kernel is shared with the root engine's
-`SceneStore`; the optional entrypoints otherwise depend only on
-renderer-neutral core contracts. React, another UI framework,
-CRDT/persistence, product services, and Capsule itself are not Cangine package
-dependencies.
+The root does not re-export `/scene` or `/editor`. A core-only/headless
+consumer never evaluates the public `/scene` handle layer or editor. The
+optional entrypoints depend only on renderer-neutral core contracts. React,
+another UI framework, CRDT/persistence, product services, and application
+content runtimes are not Cangine package dependencies.
 
 Deep imports are unsupported. Normal consumers should use the root and
 geometry entrypoints. Testing utilities should stay in tests, and backend
 imports should be reserved for authors implementing or explicitly constructing
 a render backend.
 
-### 2.1 Current implementation support
+### 2.1 Runtime support
 
-The shipped production path is:
+The supported production path is:
 
-- standards-compliant ESM with TypeScript declarations, verified with Bun
-  `1.3.14+` and native Node `20.19.0+`;
+- standards-compliant ESM with TypeScript declarations for Bun `1.3.14+` and
+  Node `20.19.0+`;
 - browser execution on Chromium, Firefox, and WebKit;
 - WebGL2 retained 2D rendering;
 - optional Three.js-backed WebGL2 embedded 3D;
@@ -186,9 +136,6 @@ The shipped production path is:
 WebGPU rendering, active render-worker execution, and live SVG rendering remain
 capability-reported but unavailable production paths. Always inspect
 `engine.capabilities`; requesting a feature is not proof that it initialized.
-The immutable package is verified through Bun and native Node imports of every
-public entrypoint, Vitest 4 default dependency externalization, strict
-TypeScript 7, Vite 8 production build, and Chromium render/destroy smoke tests.
 
 ## 3. Host setup
 
@@ -326,7 +273,8 @@ Runtime values are registered through services:
 
 ### 5.2 IDs are the boundary
 
-Application code should store IDs and plain scene data. Do not retain internal backend objects or attempt to mutate returned nodes.
+Application code should store IDs and plain scene data. Do not retain backend
+objects or attempt to mutate returned nodes.
 
 ### 5.3 The scene is retained and incremental
 
@@ -393,7 +341,9 @@ const engine = await createInfiniteCanvas({
 });
 ```
 
-The implemented production renderer is WebGL2-first. Render-worker activation, a production WebGPU renderer, and live SVG are deferred. Use capability reporting instead of assuming a requested optional backend was enabled.
+The production renderer is WebGL2-first. Render-worker activation, a
+production WebGPU renderer, and live SVG are unavailable. Use capability
+reporting instead of assuming a requested optional backend was enabled.
 
 ## 7. Capabilities and fallback
 
@@ -746,8 +696,8 @@ engine.scene.apply([
 
 ### 11.2.1 Public pure command reduction
 
-Version `0.4.0` provides an optional renderer-free
-`@omnidraw/cangine/scene` entrypoint for controlled hosts that need to apply
+The optional renderer-free `@omnidraw/cangine/scene` entrypoint supports
+controlled hosts that need to apply
 Cangine's exact serialized-command semantics to immutable application
 projection state before sending the same batch to `engine.scene.apply()`.
 
@@ -804,13 +754,6 @@ whenever a `replace-snapshot` command executes, even if later commands restore
 the original value. Full replacement and snapshot materialization may be
 `O(n)`; ordinary leaf changes remain proportional to their affected
 validation/index closure.
-
-The normative contract is [`spec.md` §45](spec.md#45-public-pure-serialized-command-reduction);
-the architecture and execution gate are
-[ADR-0019](tasks/decisions/0019-pure-serialized-command-reducer.md) and
-[A46](tasks/a/A46.md). The entrypoint is part of the `0.4.0` package artifact;
-the separately authorized local-registry workflow published that exact
-qualified artifact.
 
 ### 11.3 Snapshots
 
@@ -1004,8 +947,8 @@ cloneOwner.destroy();
 
 The helper is pure: it does not publish, retain resources, record, mount
 portals, or schedule a frame. It normalizes nested roots, preserves world
-appearance, remaps internal references, omits application metadata, and returns
-the durable-to-transient ID map. The application still owns ID allocation,
+appearance, remaps references within the cloned subtree, omits application
+metadata, and returns the durable-to-transient ID map. The application still owns ID allocation,
 gesture state, product cloning, commit/history policy, and the final
 `owner.replace()` lifecycle. Pass `replaceOwnerId` when re-preparing a ghost
 that the same owner will publish next.
@@ -1018,9 +961,6 @@ Unlike a transient preview, a projection owner has local node IDs, survives
 every durable scene replacement, and can paint in a `background`,
 `world-overlay`, or `screen-overlay` band. Owners in one band sort by
 `(orderKey, ownerId)`; nodes inside one owner sort by `(orderKey, nodeId)`.
-
-The examples in this section require `@omnidraw/cangine@0.5.0` or the matching
-workspace checkout. They do not work with `0.4.0`.
 
 #### Customer grid
 
@@ -1115,7 +1055,7 @@ presence.replace({
 
 const hit = engine.input.hitTestWorld({ x: 840, y: 460 })[0] ?? null;
 if (hit?.projectionOwnerId === presence.id) {
-  showPresenceCard(hit.nodeId); // "peer-ada:cursor", never a private ID
+  showPresenceCard(hit.nodeId); // Public owner-local ID: "peer-ada:cursor"
 }
 ```
 
@@ -1257,8 +1197,8 @@ claims.
   `/scene` reduction, history, SVG export, accessibility, portals, and 3D.
   Keep the application’s desired projection inputs separately if they must be
   reconstructed after a new engine is created.
-- Owner-local geometry has no ambiguous public `engine.geometry` overload in
-  A47. Use owner reads plus application-known coordinates, or owner-qualified
+- Owner-local geometry has no ambiguous public `engine.geometry` overload.
+  Use owner reads plus application-known coordinates, or owner-qualified
   input hits, instead of passing a local projection ID to durable geometry
   methods.
 
@@ -1608,7 +1548,19 @@ Each `TInteractionSample` retains `pointerType`, world/viewport/client coordinat
 - `"pen"` preserves real hardware pressure from every sample.
 - `"mouse"` and `"touch"` omit their commonly constant or unavailable pressure channel and use velocity-based simulation.
 
-`DEFAULT_PEN_OUTLINE_OPTIONS` is a five-unit pen (with thinning, smoothing, streamlining, and capped ends) at zoom `1`, where one world unit equals one viewport CSS pixel. Stroke capture filters samples in viewport space, so commit with `penOutlineOptionsAtZoom(zoom)` — otherwise low zoom stretches world sample spacing far past a fixed world `size` and velocity simulation collapses into a uniformly thin ribbon. Empty input returns no outline, and mixed-pointer batches are rejected. `strokeOutlineToPath()` produces a closed fill contour; render it with `fill`, not as a stroked centerline. `strokeOutlineToPolygonPoints()` provides alternating x/y coordinates for renderers that consume flat polygon buffers. The interaction overlay remains a generic fixed-width preview; the committed outline is pressure-aware. These helpers keep the underlying outline library private to the engine package.
+`DEFAULT_PEN_OUTLINE_OPTIONS` is a five-unit pen with thinning, smoothing,
+streamlining, and capped ends at zoom `1`, where one world unit equals one
+viewport CSS pixel. Stroke capture filters samples in viewport space, so
+commit with `penOutlineOptionsAtZoom(zoom)`. Otherwise, low zoom stretches
+world sample spacing far past a fixed world `size`, and velocity simulation
+collapses into a uniformly thin ribbon. Empty input returns no outline, and
+mixed-pointer batches are rejected. `strokeOutlineToPath()` produces a closed
+fill contour; render it with `fill`, not as a stroked centerline.
+`strokeOutlineToPolygonPoints()` provides alternating x/y coordinates for
+renderers that consume flat polygon buffers. The interaction overlay remains
+a generic fixed-width preview; the committed outline is pressure-aware.
+Consumers need only these public helpers and do not need a separate
+outline-library API.
 
 Ordering contract: the marquee yields to the selection transform overlay. When `beginMarquee` is called for a press that starts on an enabled handle or the move region of the current selection (the regions `engine.transforms` would activate as a default action), the marquee is a silent no-op — no pointer capture, no session, and no begin/update/commit/cancel callbacks — so the transform gesture solely owns that press and resize/rotate handles drawn over empty canvas space (pen strokes, arrow connectors, rounded-rect corners, the rotate handle) stay operable for apps that begin a marquee on every empty press. A marquee begun outside the overlay, or with no selection set, captures and commits exactly as before; creation, stroke, and connector sessions never consult the overlay.
 
@@ -1723,7 +1675,8 @@ engine.resources.register(
 await engine.resources.preload(["inter-regular"]);
 ```
 
-Use the authored family in text styles; private generation aliases never enter scene data.
+Use the authored family in text styles; generated fallback aliases never enter
+scene data.
 
 ### 17.3 Custom loader
 
@@ -1952,7 +1905,7 @@ The browser WebGL2 pass does not also paint that widget's retained chrome;
 portal-disabled, headless, SVG, and non-portal widgets keep native rendering.
 The application interprets widget descriptors, renders content inside the
 host, serializes its own asynchronous content updates, rejects stale
-application work, and owns internal HTML focus targets, browser fullscreen,
+application work, and owns HTML focus targets, browser fullscreen,
 backend services, and product menu effects. The optional editor may supply
 standard widget frame/content focus, canvas-maximized presentation, and the
 shared top-layer DOM menu without taking ownership of widget business logic.
@@ -1979,42 +1932,43 @@ Call the registration disposer when removing the runtime definition:
 unregisterPortal();
 ```
 
-Portal cleanup may return `void` or `Promise<void>` (ADR-0014). The manager
+Portal cleanup may return `void` or `Promise<void>`. The manager
 detaches the engine-owned host and input surface synchronously, then starts
 cleanup without awaiting guest work on scene transactions. Pending
 asynchronous cleanups are bounded and isolated.
 
-## 19.1 Capsule widget content
+## 19.1 Application-owned embedded runtimes
 
-`@omnidraw/capsule` applications mount through the optional
-`@omnidraw/cangine/integrations/capsule` adapter. Capsule stays out of Cangine
-core dependencies and out of durable scene data: the scene stores only a
-`portalId`, and the application resolves that ID to artifacts, grants, budgets,
-and admission policy.
+An application may mount any embedded or sandboxed content runtime through the
+generic portal registration contract. Cangine stores only the `portalId` and
+placement data. Runtime handles, executable artifacts, grants, budgets,
+admission policy, scheduling, and host objects stay in application state.
 
 ```ts
-import { createCapsulePortalRegistration } from "@omnidraw/cangine/integrations/capsule";
-
-engine.portals.register(createCapsulePortalRegistration({
+const unregisterRuntime = engine.portals.register({
   portalId: "sandbox-app",
-  capsuleHost, // shared host; do not destroy it when one widget unmounts
-  resolveMount: () => ({
-    artifact: signedBytes,
-    capabilityBindings: [],
-    grants: [],
-  }),
-}));
+  async mount({ host }) {
+    // `applicationRuntimeHost` and the returned handle are application-owned.
+    const handle = await applicationRuntimeHost.mount({ host });
+    return async () => {
+      await handle.destroy();
+    };
+  },
+  onGeometryChange(geometry) {
+    applicationRuntimeHost.updateViewport({
+      width: geometry.viewportBounds.maxX - geometry.viewportBounds.minX,
+      height: geometry.viewportBounds.maxY - geometry.viewportBounds.minY,
+      devicePixelRatio: geometry.devicePixelRatio,
+    });
+  },
+});
 ```
 
-The adapter mounts only into the engine-owned content host inside the S5
-widget shell. Title bar, traffic lights, stacking, and clipping remain
-engine-owned. Viewport width/height are intrinsic content CSS pixels; `scale`
-is the portal device-pixel ratio, not camera zoom. Returning `null` from
-`resolveMount` soft-defers live Capsule creation without failing the portal;
-a later visibility/geometry update can admit a runtime. Admission decisions
-are serialized, and `destroy` releases the Capsule handle while keeping the
-engine host for remount. See
-[`examples/capsule-widget/README.md`](examples/capsule-widget/README.md).
+The application decides whether and when to admit, freeze, resume, park, or
+destroy its runtime. The portal manager detaches DOM and input synchronously,
+then awaits no application work; a returned asynchronous cleanup is bounded,
+rejection-isolated, and generation-safe. Call `unregisterRuntime()` when the
+application no longer exposes that runtime registration.
 
 ## 20. Animation
 
@@ -2488,7 +2442,7 @@ Recommended application test layers:
 2. Test application command/history behavior against scene IDs and transactions.
 3. Run browser contract tests for the selected render profile.
 4. Use fixed DPR, fonts, resources, and clocks for visual tests.
-5. Measure public camera/transaction/render paths, not private implementation helpers.
+5. Measure camera, transaction, and rendering behavior through public APIs.
 6. Exercise context loss, resource failure, portal cleanup, and application teardown.
 
 ## 28. Pure geometry helpers
@@ -2505,22 +2459,28 @@ These functions reject invalid or non-finite results rather than silently return
 
 ## 29. Advanced custom backends
 
-The `@omnidraw/cangine/backend` entrypoint exports backend contracts and the built-in WebGL2 backend. A custom backend must implement the full lifecycle, capability, resize, scene-change, render, warning/error, cleanup, and context-loss contracts and must keep backend-native values private.
+The `@omnidraw/cangine/backend` entrypoint exports backend contracts and the
+built-in WebGL2 backend. A custom backend must implement the full lifecycle,
+capability, resize, scene-change, render, warning/error, cleanup, and
+context-loss contracts and must not expose backend-native values through
+public APIs.
 
 To render projections, a custom retained pass also implements
 `applyProjectionChanges(change)`. The change contains the
 public owner ID, band, owner order, hit policy, revision/status, an owner-local
 snapshot, and owner-local affected IDs. The engine never gives a custom pass
-its merged private effective identities. Existing custom backends that do not
+its engine-owned effective identities. Existing custom backends that do not
 support the optional method remain valid until an application publishes a
 projection they would need to render; that publication fails recoverably
-instead of leaking private state or silently omitting content.
+instead of exposing engine-managed state or silently omitting content.
 
-Use a custom factory only when you can run the repository’s backend contract and visual parity suites. Ordinary applications should select the built-in WebGL2 profile.
+Use a custom factory only when you can maintain backend contract and visual
+parity coverage. Ordinary applications should select the built-in WebGL2
+profile.
 
 ## 30. Deliberately unsupported or application-owned behavior
 
-Do not expect these from the completed package:
+Do not expect these from the library:
 
 - Konva compatibility;
 - application document migration;
@@ -2853,12 +2813,11 @@ compatible leaves in one atomic mutation, and keeps opacity on semantic roots.
 Widget frames and widget-containing groups never expose opacity. The supplied
 snapshot contains semantic state and typed intents only. It has no camera,
 viewport, position, visibility, focus, DOM, or layout contract. The host
-decides whether and how to render it—for example, the repository whiteboard
-uses a fixed top window panel that does not move with canvas panning. That
-React application also owns its per-element eligibility predicate and does not
-mount the panel when any directly selected node is a `widget-frame`; another
-application can choose a different presentation policy without changing the
-headless controller.
+decides whether and how to render it. For example, it can use a fixed top
+window panel that does not move with canvas panning, apply its own per-element
+eligibility predicate, and hide the panel when a directly selected node is a
+`widget-frame`. These presentation choices do not change the headless
+controller.
 
 Foreground is the visible ink slot: connector stroke, ordinary shape border,
 text glyph fill, or standard freehand fill. Background is ordinary shape fill.
@@ -3013,8 +2972,7 @@ these types contain declarative data only, never callbacks.
 Transient `replace()` publishes a complete owner forest, never a partial
 command list. Retained-projection `replace()` also publishes a complete forest,
 but returns whether a semantic change occurred and uses owner-local identity;
-`clear()` keeps the owner reserved while `dispose()` releases it. The retained
-projection surfaces in this row were added in `0.5.0`.
+`clear()` keeps the owner reserved while `dispose()` releases it.
 Their data contracts are `TRetainedProjectionOwnerId`,
 `TRetainedProjectionBand`, `TRetainedProjectionHitTestMode`,
 `TRetainedProjectionOwnerOptions`, `TRetainedProjectionOwnerStatus`,
@@ -3071,11 +3029,11 @@ not serialized and does not alter durable sibling order.
 
 Portal registration returns the unregister function. Cleanup may return
 `void | Promise<void>`; the manager detaches DOM synchronously and isolates
-async reclaim. Capsule mounts use
-`@omnidraw/cangine/integrations/capsule` rather than root exports. Resource
-`retain` and `release` use a matching application owner string. Scene
-references also retain resources automatically; manual ownership is only for
-application runtime use outside scene references.
+async reclaim. Embedded runtime adapters belong to the application and use
+this generic registration contract. Resource `retain` and `release` use a
+matching application owner string. Scene references also retain resources
+automatically; manual ownership is only for application runtime use outside
+scene references.
 
 ### 33.7 3D, SVG, metrics, logging, and events
 
@@ -3129,17 +3087,16 @@ non-finite public geometry. A singular matrix inversion returns `null`.
 The backend entrypoint exports `IRenderBackendFactory`,
 `IRenderPassBackend`, their lifecycle/init/resize/frame/result context types,
 `TFrameScheduleState`, `TInvalidationReason`, `WebGl2BackendFactory`, and
-`WebGl2VectorBackend`. Version `0.5.0` additionally exports
-`TBackendProjectionChange` and the optional scoped
+`WebGl2VectorBackend`, `TBackendProjectionChange`, and the optional scoped
 `IRenderPassBackend.applyProjectionChanges()` hook.
 
 `IRenderBackendFactory.supports()` probes a complete engine configuration and
 `create()` returns one or more ordered render-pass backends. Each pass must
 implement initialize, capability reporting, resize, effective scene changes,
 frame preparation, rendering, and destruction; context-loss hooks are
-optional. Backend-native objects must remain private. This is an advanced
-extension contract, and custom backends should be accepted only after running
-the repository backend contract, browser, and visual parity suites.
+optional. Backend-native objects must not cross public API boundaries. This is
+an advanced extension contract, and custom backends should be accepted only
+after running backend contract, browser, and visual parity suites.
 
 ### 33.11 `/scene` exports
 
@@ -3152,11 +3109,10 @@ The renderer-free `/scene` entrypoint exports
 snapshot, command, and limit types remain owned by the root and `/types`
 surfaces.
 
-The root does not re-export these values. A reduction-state handle contains
-package-private indexes and methods, so it is not structured cloneable or
-transferable. Transfer its frozen snapshot across a worker boundary and
-recreate the handle with `createSceneReductionState()` inside the destination
-runtime. This inventory describes the `0.5.0` package artifact.
+The root does not re-export these values. A reduction-state handle is a runtime
+object and is not structured cloneable or transferable. Transfer its frozen
+snapshot across a worker boundary and recreate the handle with
+`createSceneReductionState()` inside the destination runtime.
 
 ### 33.12 `/editor` exports
 
@@ -3213,7 +3169,7 @@ portal registration is stripped, `html-portal` nodes get a fresh `portalId`,
 and in-clone connector endpoints/labels/avoid lists plus node clips are
 remapped (external connector endpoints stay attached to their original
 neighbors). Node-clipboard copy/paste serializes a JSON envelope that is a
-Cangine-internal format, not for cross-application interop. Keyboard nudge
+Cangine-specific format, not for cross-application interop. Keyboard nudge
 (arrow keys, `Shift` = 10x distance) coalesces repeated key-repeat presses
 into one undo step via `editor.history.beginCoalescing`/`endCoalescing`,
 ending on `keyup`. `createSnapToGridAdjuster(gridSize)` returns a

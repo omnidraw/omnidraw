@@ -24,4 +24,5 @@ The producer repositories remain responsible for building, verifying, and
 packing those two tarballs. Bootstrap publishes them, builds and packs the
 Omnidraw SDK closure, and rejects a name/version whose stored integrity
 differs. Lifecycle commands are `registry:start`, `registry:ensure`,
-`registry:status`, and `registry:stop`.
+`registry:status`, and `registry:stop`. Use `registry:start:foreground` to keep
+Verdaccio attached to the current terminal and stop it with Ctrl+C.
