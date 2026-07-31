@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.10.1",
+    "@omnidraw/capsule": "0.10.2",
     "@omnidraw/widget-contract": "0.5.0"
   },
   "devDependencies": {

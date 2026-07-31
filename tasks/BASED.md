@@ -417,6 +417,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
 - [/]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
 - [x]: [S130](s/S130.md) - remove marketing/docs website and GitHub Pages publishing
+- [x]: [S131](s/S131.md) - canvas: use Cangine 0.5.3 and own the Capsule portal bridge
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

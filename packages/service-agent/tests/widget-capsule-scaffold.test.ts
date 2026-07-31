@@ -49,6 +49,9 @@ describe('Capsule widget authoring scaffold', () => {
         '@omnidraw/sdk': '0.1.0',
         zod: '4.4.3',
       },
+      overrides: {
+        '@omnidraw/capsule': '0.10.1',
+      },
       devDependencies: {
         typescript: '5.9.3',
         vite: '8.1.4',

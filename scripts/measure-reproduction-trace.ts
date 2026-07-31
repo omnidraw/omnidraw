@@ -73,7 +73,7 @@ function measure(totalNodes: number, recording: boolean) {
       applicationVersion: 'measurement',
       buildMode: 'development',
       canvasId: 'measurement',
-      cangineVersion: '0.5.1',
+      cangineVersion: '0.5.3',
       browser: 'bun',
       platform: process.platform,
       viewport: { width: 1_000, height: 800 },

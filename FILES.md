@@ -887,6 +887,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts](packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-source-map-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-source-map-artifact.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fx.portal-content-css-size.ts](packages/ui-ai-chat/src/widget-runtime/fx.portal-content-css-size.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/index.ts](packages/ui-ai-chat/src/widget-runtime/index.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/interface.ts](packages/ui-ai-chat/src/widget-runtime/interface.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts) |  |

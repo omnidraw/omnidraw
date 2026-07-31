@@ -7,15 +7,16 @@ import type {
 } from "@omnidraw/cangine/editor";
 
 describe("Cangine controlled-editor consumer contract", () => {
-  test("resolves the packed 0.5.1 editor and scene entrypoints", async () => {
-    const editorEntrypoint = Bun.resolveSync(
-      "@omnidraw/cangine/editor",
-      import.meta.dir,
-    );
-    const sceneEntrypoint = Bun.resolveSync(
-      "@omnidraw/cangine/scene",
-      import.meta.dir,
-    );
+  test("resolves the packed 0.5.3 public entrypoints", async () => {
+    const publicEntrypoints = new Map([
+      ["@omnidraw/cangine", "/dist/index.js"],
+      ["@omnidraw/cangine/types", "/dist/types.js"],
+      ["@omnidraw/cangine/geometry", "/dist/geometry/index.js"],
+      ["@omnidraw/cangine/scene", "/dist/scene/index.js"],
+      ["@omnidraw/cangine/testing", "/dist/testing/index.js"],
+      ["@omnidraw/cangine/backend", "/dist/backend/index.js"],
+      ["@omnidraw/cangine/editor", "/dist/editor/index.js"],
+    ] as const);
     const manifestPath = Bun.resolveSync(
       "@omnidraw/cangine/package.json",
       import.meta.dir,
@@ -23,20 +24,25 @@ describe("Cangine controlled-editor consumer contract", () => {
     const manifest = await Bun.file(manifestPath).json() as {
       name: string;
       version: string;
+      exports: Readonly<Record<string, unknown>>;
     };
 
-    expect(editorEntrypoint).toContain(
-      "node_modules/.bun/@omnidraw+cangine@0.5.1/",
-    );
-    expect(editorEntrypoint).toEndWith("/dist/editor/index.js");
-    expect(sceneEntrypoint).toContain(
-      "node_modules/.bun/@omnidraw+cangine@0.5.1/",
-    );
-    expect(sceneEntrypoint).toEndWith("/dist/scene/index.js");
+    for (const [specifier, suffix] of publicEntrypoints) {
+      const resolved = Bun.resolveSync(specifier, import.meta.dir);
+      expect(resolved).toContain(
+        "node_modules/.bun/@omnidraw+cangine@0.5.3/",
+      );
+      expect(resolved).toEndWith(suffix);
+    }
     expect(manifest).toMatchObject({
       name: "@omnidraw/cangine",
-      version: "0.5.1",
+      version: "0.5.3",
     });
+    expect(manifest.exports).not.toHaveProperty("./integrations/capsule");
+    expect(() => Bun.resolveSync(
+      "@omnidraw/cangine/integrations/capsule",
+      import.meta.dir,
+    )).toThrow();
   });
 
   test("imports the scene reducer without touching renderer globals", () => {

@@ -17,7 +17,9 @@ import { TraceMap } from '@jridgewell/trace-mapping';
 import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
 import { createOmnidrawGuestChannelContract } from '@omnidraw/capsule-omnidraw/capabilities';
 import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
-import { createWidgetUiArtifactMountPort } from '../../src/widget-runtime/mount-widget-ui-artifact';
+import {
+  createWidgetUiArtifactMountPort as createWidgetUiArtifactMountPortBase,
+} from '../../src/widget-runtime/mount-widget-ui-artifact';
 import type {
   TWidgetCapsuleMountCatalog,
   TWidgetCollaborativeStateBridge,
@@ -100,6 +102,21 @@ const THEME = Object.freeze({
     border: '#444',
   }),
 });
+
+function createWidgetUiArtifactMountPort(
+  args: Omit<
+    Parameters<typeof createWidgetUiArtifactMountPortBase>[0],
+    'portalContentSize'
+  >,
+): ReturnType<typeof createWidgetUiArtifactMountPortBase> {
+  return createWidgetUiArtifactMountPortBase({
+    ...args,
+    portalContentSize: {
+      readClientWidth: (host) => host.clientWidth,
+      readClientHeight: (host) => host.clientHeight,
+    },
+  });
+}
 
 const schema = {
   reference: { format: 'capsule-schema-v1', hash: SCHEMA_HASH },

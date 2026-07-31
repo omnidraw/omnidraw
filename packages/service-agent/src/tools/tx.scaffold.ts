@@ -48,6 +48,9 @@ function packageJson(
       } : {}),
       zod: WIDGET_ZOD_VERSION,
     },
+    overrides: {
+      '@omnidraw/capsule': capsuleDependency,
+    },
     devDependencies: {
       ...(react ? {
         '@types/react': WIDGET_REACT_TYPES_VERSION,

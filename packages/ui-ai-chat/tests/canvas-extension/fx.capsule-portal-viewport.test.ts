@@ -1,8 +1,4 @@
 import type { TPortalGeometry } from '@omnidraw/cangine';
-import {
-  portalGeometryToCapsuleViewport,
-  readPortalContentCssSize,
-} from '@omnidraw/cangine/integrations/capsule';
 import { describe, expect, test } from 'vitest';
 import {
   fxWidgetCapsuleViewport,
@@ -53,8 +49,8 @@ describe('fxWidgetCapsuleViewport', () => {
     const host = document.createElement('div');
     hostSize(host, 552, 874);
     const portal = {
-      portalGeometryToCapsuleViewport,
-      readPortalContentCssSize,
+      readClientWidth: (element: HTMLElement) => element.clientWidth,
+      readClientHeight: (element: HTMLElement) => element.clientHeight,
     };
 
     const zoomedOut = fxWidgetCapsuleViewport(portal, {
@@ -85,6 +81,27 @@ describe('fxWidgetCapsuleViewport', () => {
       width: 720,
       height: 480,
       scale: 2,
+    });
+  });
+
+  test('maps visibility and tolerates mount ordering without host or geometry', () => {
+    const portal = {
+      readClientWidth: (element: HTMLElement) => element.clientWidth,
+      readClientHeight: (element: HTMLElement) => element.clientHeight,
+    };
+
+    expect(fxWidgetCapsuleViewport(portal, {
+      host: null,
+      geometry: null,
+      visible: false,
+    })).toEqual({
+      width: 0,
+      height: 0,
+      scale: 1,
+      visibility: 'hidden',
+      distance: 0,
+      priority: 0,
+      occlusion: 0,
     });
   });
 });

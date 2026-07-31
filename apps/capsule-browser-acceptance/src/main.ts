@@ -465,6 +465,10 @@ function createMountPort(catalog: TWidgetCapsuleHostCatalog) {
         .join('');
     },
     nowMs: () => performance.now(),
+    portalContentSize: {
+      readClientWidth: (host) => host.clientWidth,
+      readClientHeight: (host) => host.clientHeight,
+    },
     theme,
     output: {
       notification(output) {

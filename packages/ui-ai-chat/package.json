@@ -17,7 +17,7 @@
   "dependencies": {
     "@kobalte/core": "catalog:",
     "@jridgewell/trace-mapping": "0.3.31",
-    "@omnidraw/cangine": "0.5.1",
+    "@omnidraw/cangine": "0.5.3",
     "@omnidraw/capsule-omnidraw": "workspace:*",
     "@omnidraw/canvas": "workspace:*",
     "@omnidraw/canvas-contract": "workspace:*",

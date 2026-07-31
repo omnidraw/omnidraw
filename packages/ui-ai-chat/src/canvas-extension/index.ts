@@ -6,10 +6,6 @@ import {
   type TSerializedSceneCommand,
   type TWidgetFrameNode,
 } from '@omnidraw/cangine';
-import {
-  portalGeometryToCapsuleViewport,
-  readPortalContentCssSize,
-} from '@omnidraw/cangine/integrations/capsule';
 import type { IWidgetInteractionController } from '@omnidraw/cangine/editor';
 import type { ICanvasRuntimeExtension } from '@omnidraw/canvas';
 import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
@@ -280,11 +276,16 @@ export function createAiChatCanvasExtension(
         document: args.widgetBrowser.document,
         catalog: args.widgetCapsuleHostCatalog,
       });
+      const capsuleViewportPortal = {
+        readClientWidth: (host: HTMLElement) => host.clientWidth,
+        readClientHeight: (host: HTMLElement) => host.clientHeight,
+      };
       const widgetMount = createWidgetUiArtifactMountPort({
         coordinator: capsuleHost,
         createStreamId: args.widgetBrowser.createId,
         digestSha256: args.widgetBrowser.digestSha256,
         nowMs: args.widgetBrowser.now,
+        portalContentSize: capsuleViewportPortal,
         theme: args.widgetCapsuleTheme,
         output: args.widgetCapsuleOutput,
       });
@@ -328,11 +329,6 @@ export function createAiChatCanvasExtension(
             && fnWidgetRuntimeLocalTargetMatchesElement(target, node);
         },
       });
-      const capsuleViewportPortal = {
-        portalGeometryToCapsuleViewport,
-        readPortalContentCssSize,
-      };
-
       const actionHandlers = new Map<string, Map<string, () => void>>();
       const registrations = new Map<string, TPortalRegistration>();
       const previewRuntimes = new Map<string, TPreviewPortalRuntime>();

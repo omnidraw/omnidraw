@@ -1,6 +1,3 @@
-import {
-  readPortalContentCssSize,
-} from '@omnidraw/cangine/integrations/capsule';
 import type {
   CapsuleCapabilityBinding,
   CapsuleMountGuestChannels,
@@ -38,12 +35,17 @@ import {
   WIDGET_UI_OUTPUT_RATE_WINDOW_MS,
 } from './CONSTANTS';
 import { fnWidgetCapsuleViewport } from './fn.capsule-viewport';
+import {
+  fxPortalContentCssSize,
+  type TPortal as TPortalContentCssSize,
+} from './fx.portal-content-css-size';
 
 type TCreateWidgetUiArtifactMountPortArgs = Readonly<{
   coordinator: CapsuleWidgetHostCoordinator;
   createStreamId(): string;
   digestSha256(bytes: Uint8Array): Promise<string>;
   nowMs(): number;
+  portalContentSize: TPortalContentCssSize;
   theme: TWidgetCapsuleThemeSource;
   output: TWidgetCapsuleOutputSink;
 }>;
@@ -388,7 +390,9 @@ export function createWidgetUiArtifactMountPort(
         if (themeRevision !== initialThemeRevision) {
           mounted.setTheme(latestTheme);
         }
-        const size = readPortalContentCssSize(mountArgs.root);
+        const size = fxPortalContentCssSize(config.portalContentSize, {
+          host: mountArgs.root,
+        });
         mounted.setViewport(fnWidgetCapsuleViewport({
           width: size.width,
           height: size.height,

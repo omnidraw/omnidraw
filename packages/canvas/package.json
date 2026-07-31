@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.5.1",
+    "@omnidraw/cangine": "0.5.3",
     "@omnidraw/canvas-contract": "workspace:*",
     "@omnidraw/service-db": "workspace:*",
     "@omnidraw/service-theme": "workspace:*",

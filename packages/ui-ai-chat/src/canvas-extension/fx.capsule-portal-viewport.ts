@@ -4,23 +4,15 @@ import type {
 import type {
   CapsuleViewport,
 } from '@omnidraw/capsule-omnidraw/host';
+import {
+  fnWidgetCapsuleViewport,
+} from '../widget-runtime/fn.capsule-viewport';
+import {
+  fxPortalContentCssSize,
+  type TPortal as TPortalContentCssSize,
+} from '../widget-runtime/fx.portal-content-css-size';
 
-export type TPortal = Readonly<{
-  readPortalContentCssSize(
-    host: HTMLElement,
-  ): Readonly<{ width: number; height: number }>;
-  portalGeometryToCapsuleViewport(
-    input: Readonly<{
-      contentWidth: number;
-      contentHeight: number;
-      geometry: Readonly<TPortalGeometry> | null;
-      visible: boolean;
-      distance?: number;
-      priority?: number;
-      occlusion?: number;
-    }>,
-  ): CapsuleViewport;
-}>;
+export type TPortal = TPortalContentCssSize;
 
 export type TArgs = Readonly<{
   host: HTMLElement | null;
@@ -34,12 +26,12 @@ export function fxWidgetCapsuleViewport(
 ): CapsuleViewport {
   const size = args.host === null
     ? { width: 0, height: 0 }
-    : portal.readPortalContentCssSize(args.host);
-  return portal.portalGeometryToCapsuleViewport({
-    contentWidth: size.width,
-    contentHeight: size.height,
-    geometry: args.geometry,
-    visible: args.visible,
+    : fxPortalContentCssSize(portal, { host: args.host });
+  return fnWidgetCapsuleViewport({
+    width: size.width,
+    height: size.height,
+    scale: args.geometry?.devicePixelRatio ?? 1,
+    visibility: args.visible ? 'visible' : 'hidden',
     distance: 0,
     priority: args.visible ? 100 : 0,
     occlusion: 0,
