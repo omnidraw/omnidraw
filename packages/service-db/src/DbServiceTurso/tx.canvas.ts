@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import type { TTenantContext } from "@vibecanvas/tenant-core"
+import type { TTenantContext } from "@omnidraw/tenant-core"
 import type { TCanvas } from "../model"
 import { txRunDatabaseTransaction } from "../tx.run-database-transaction"
 import { fxCanvasCanEdit, fxCanvasFindById, fxCanvasHasOwnerRole } from "./fx.canvas"

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ResourceError } from '@vibecanvas/resource-runtime';
+import { ResourceError } from '@omnidraw/resource-runtime';
 import { withResourceApiError } from './api.resource-error';
 import {
   resourceContract,

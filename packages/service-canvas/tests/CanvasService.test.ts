@@ -2,15 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import {
   fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   TCanvasCommand,
   TCanvasItemPage,
   TCanvasItemQuery,
   TCanvasItemSnapshot,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/canvas-contract';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   CanvasService,
   CanvasServiceError,
@@ -85,7 +85,7 @@ function image(
     resourceId,
     size: { width: 80, height: 60 },
     extensions: {
-      'vibecanvas:image': {
+      'omnidraw:image': {
         schemaVersion: 1,
         url,
         mimeType: 'image/png',
@@ -103,7 +103,7 @@ function widget(id: string, instanceId: string): TSceneNode {
     transform,
     size: { width: 320, height: 240 },
     extensions: {
-      'vibecanvas:widget': {
+      'omnidraw:widget': {
         schemaVersion: 1,
         type: 'widget-instance',
         instanceId,

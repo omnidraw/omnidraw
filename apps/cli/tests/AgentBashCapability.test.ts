@@ -41,7 +41,7 @@ function createCapturingPortal(terminals: Bun.Terminal[]): TAgentBashProcessPort
 }
 
 async function createWorkspace(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'vibecanvas-agent-bash-'));
+  const root = await mkdtemp(join(tmpdir(), 'omnidraw-agent-bash-'));
   roots.push(root);
   const workspace = join(root, 'workspace with spaces');
   await mkdir(workspace);

@@ -5,21 +5,21 @@
 **Authoritative migration requirements:**
 [`llm.capsule-migration.md`](./llm.capsule-migration.md)
 
-This document records the widget surface Vibecanvas supports after the
+This document records the widget surface Omnidraw supports after the
 Capsule-only cutover. It is a product compatibility profile, not a claim that
 Capsule implements every browser or npm API.
 
 ## Supported artifact model
 
 - Widget manifests use only version `3`.
-- UI artifacts are canonical Capsule artifact bytes; there is no Vibecanvas UI
+- UI artifacts are canonical Capsule artifact bytes; there is no Omnidraw UI
   envelope around them.
 - Preview and release artifacts are signed over the exact artifact bytes with
   separate persistent Ed25519 keys.
 - The browser receives only the selected artifact descriptor, trusted public
   keys, exact target policy, and instance-bound grants.
 - Browser code imports only supported public `@omnidraw/capsule` entries
-  through `@vibecanvas/capsule-vibecanvas`.
+  through `@omnidraw/capsule-omnidraw`.
 - The recorded Capsule consumer package is `@omnidraw/capsule@0.9.4`, source
   revision `fd2e4eddf1f4d07b2e9e9e473f7c95cb5496f64d`, package digest
   `sha256:0d39b40a978fc0ce483c64c40f83eb25fd77f6f970d361feb5a4875de6758189`,
@@ -74,7 +74,7 @@ The first release supports:
 - frozen and resumable;
 - destroyed with idempotent terminal cleanup.
 
-Parking is deliberately not supported. Vibecanvas owns viewport geometry and
+Parking is deliberately not supported. Omnidraw owns viewport geometry and
 population admission, while Capsule owns each mounted guest handle and its
 runtime enforcement. The population policy admits at most 24 live handles,
 including at most 16 active, 8 throttled, 8 heavy, and 2 GPU handles. Offscreen
@@ -83,7 +83,7 @@ seconds; 10,000 owners therefore do not imply 10,000 live guests.
 
 ## Host source build boundary
 
-Vibecanvas runs frozen `npm ci` and the guest-controlled `npm run build` as the
+Omnidraw runs frozen `npm ci` and the guest-controlled `npm run build` as the
 server account, captures a bounded regular-file `dist/`, and gives only those
 bytes to Capsule's external-distribution validator. Package lifecycle and build
 scripts therefore have the server account's host authority; this risk is

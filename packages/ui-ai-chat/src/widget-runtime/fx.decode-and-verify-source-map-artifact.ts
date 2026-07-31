@@ -53,7 +53,7 @@ export async function fxDecodeAndVerifySourceMapArtifact(
   const authoredPaths = payload.authoredPaths;
   const maps = payload.maps;
   if (
-    payload.format !== 'vibecanvas.widget-source-maps.v1'
+    payload.format !== 'omnidraw.widget-source-maps.v1'
     || payload.sourceRevision !== args.expectedSourceRevision
     || payload.capsuleArtifactHash !== args.expectedCapsuleArtifactHash
     || !SHA256.test(args.expectedSourceRevision)

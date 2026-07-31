@@ -46,7 +46,7 @@ const ZRuntimeDescriptorTail = {
 
 export const ZWidgetCapsuleRuntimeDescriptor: z.ZodType<TWidgetCapsuleRuntimeDescriptor> =
   z.object({
-    format: z.literal('vibecanvas.capsule-runtime.v2'),
+    format: z.literal('omnidraw.capsule-runtime.v2'),
     ...ZRuntimeDescriptorHead,
     apiContract: z.object({
       format: z.literal('capsule-api-groups-v1'),

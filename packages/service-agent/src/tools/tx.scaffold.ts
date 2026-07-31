@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import {
   WIDGET_REACT_DOM_TYPES_VERSION,
   WIDGET_REACT_TYPES_VERSION,
@@ -41,7 +41,7 @@ function packageJson(
     },
     dependencies: {
       '@omnidraw/capsule': capsuleDependency,
-      '@vibecanvas/sdk': sdkDependency,
+      '@omnidraw/sdk': sdkDependency,
       ...(react ? {
         react: WIDGET_REACT_VERSION,
         'react-dom': WIDGET_REACT_VERSION,
@@ -64,7 +64,7 @@ function viteConfig(): string {
     'import { readFileSync } from "node:fs";',
     'import { defineConfig } from "vite";',
     '',
-    'const manifest = JSON.parse(readFileSync(new URL("./vibecanvas.json", import.meta.url), "utf8"));',
+    'const manifest = JSON.parse(readFileSync(new URL("./omnidraw.json", import.meta.url), "utf8"));',
     '',
     'export default defineConfig({',
     '  build: {',
@@ -112,7 +112,7 @@ function plainUiSource(): string {
     'import "./styles.css";',
     '',
     'const root = document.createElement("section");',
-    'root.className = "vibecanvas-widget";',
+    'root.className = "omnidraw-widget";',
     '',
     'const message = document.createElement("p");',
     'message.textContent = "Widget under construction";',
@@ -147,7 +147,7 @@ function reactUiSource(): string {
     'function App() {',
     '  const [count, setCount] = useState(0);',
     '  return (',
-    '    <section className="vibecanvas-widget">',
+    '    <section className="omnidraw-widget">',
     '      <p>Widget under construction</p>',
     '      <output aria-live="polite">Local count: {count}</output>',
     '      <button type="button" onClick={() => setCount((value) => value + 1)}>',
@@ -158,7 +158,7 @@ function reactUiSource(): string {
     '}',
     '',
     'const root = document.createElement("div");',
-    'root.className = "vibecanvas-widget-root";',
+    'root.className = "omnidraw-widget-root";',
     'document.body.append(root);',
     'createRoot(root).render(<App />);',
     '',
@@ -167,7 +167,7 @@ function reactUiSource(): string {
 
 function serverSource(): string {
   return [
-    'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+    'import { defineServerFunction } from "@omnidraw/sdk/server";',
     'import { z } from "zod";',
     '',
     'export const run = defineServerFunction({',
@@ -182,7 +182,7 @@ function serverSource(): string {
 export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promise<string[]> {
   const uiEntry = args.template === 'react' ? 'ui/main.tsx' : 'ui/main.ts';
   const changedFiles = [
-    'vibecanvas.json',
+    'omnidraw.json',
     'package.json',
     'vite.config.mjs',
     'tsconfig.json',
@@ -196,7 +196,7 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
   // because an empty directory contributes no source artifact files.
   await portal.mkdir(portal.join(args.cwd, 'server'), { recursive: true });
   await portal.writeFile(
-    portal.join(args.cwd, 'vibecanvas.json'),
+    portal.join(args.cwd, 'omnidraw.json'),
     `${JSON.stringify(args.manifest, null, 2)}\n`,
     'utf8',
   );
@@ -213,7 +213,7 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
     'utf8',
   );
   await portal.writeFile(portal.join(args.cwd, 'ui', 'styles.css'), [
-    '.vibecanvas-widget {',
+    '.omnidraw-widget {',
     '  box-sizing: border-box;',
     '  display: grid;',
     '  min-height: 100%;',
@@ -225,10 +225,10 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
     '  font: 14px/1.5 system-ui, sans-serif;',
     '}',
     '',
-    '.vibecanvas-widget p,',
-    '.vibecanvas-widget output { margin: 0; }',
+    '.omnidraw-widget p,',
+    '.omnidraw-widget output { margin: 0; }',
     '',
-    '.vibecanvas-widget button {',
+    '.omnidraw-widget button {',
     '  padding: 6px 12px;',
     '  border: 1px solid;',
     '  border-radius: 6px;',

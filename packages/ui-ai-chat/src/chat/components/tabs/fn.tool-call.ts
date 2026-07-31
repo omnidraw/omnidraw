@@ -101,7 +101,7 @@ export function fnGetToolResultResource(message: unknown): TChatResourceLink | u
 
 export function fnGetWidgetCreateDraftReference(message: unknown): TChatWidgetDraftReference | undefined {
   const object = getObject(message)
-  if (object?.role !== "toolResult" || object.toolName !== "vc_widget_create" || object.isError === true) {
+  if (object?.role !== "toolResult" || object.toolName !== "od_widget_create" || object.isError === true) {
     return undefined
   }
 
@@ -138,7 +138,7 @@ export function fnFindApprovalResourceId(
 
 export function fnGetToolNameLabel(toolName: string) {
   const label = toolName
-    .replace(/^vc_/, "")
+    .replace(/^od_/, "")
     .replaceAll("_", " ")
     .trim()
 

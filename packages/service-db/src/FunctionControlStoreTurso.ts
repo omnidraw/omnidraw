@@ -5,7 +5,7 @@ import {
   FUNCTION_PLATFORM_PRE_GUEST_MAX_ATTEMPTS,
   fnFunctionAttemptShouldRetry,
   fnFunctionRetryDelayMs,
-} from '@vibecanvas/function-runtime';
+} from '@omnidraw/function-runtime';
 import type {
   IFunctionControlStore,
   IScheduler,
@@ -38,7 +38,7 @@ import type {
   TUsageMetrics,
   TUsageOutboxRecord,
   TUsageOutboxState,
-} from '@vibecanvas/function-runtime';
+} from '@omnidraw/function-runtime';
 import type {
   TCommittedResourceWrite,
   IResourceWritePermitCoordinator,
@@ -46,15 +46,15 @@ import type {
   TResourceWritePermitRecoveryCandidate,
   TResourceWritePermitRecoveryResult,
   TResourceWritePermitScope,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
   fnValidateWidgetServerFunctionDescriptors,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { fnFunctionCanonicalJson } from './FunctionControlStoreTurso/fn.function-json';
 import {
   fnFunctionControlStoreAttempt,

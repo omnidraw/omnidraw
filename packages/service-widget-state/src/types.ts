@@ -1,4 +1,4 @@
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 export type TWidgetStateJson =
   | null

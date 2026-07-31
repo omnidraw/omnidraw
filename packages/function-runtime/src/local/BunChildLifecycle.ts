@@ -63,7 +63,7 @@ export async function createBunChildCage(tempRoot: string): Promise<TBunChildCag
   if (!root.isDirectory() || root.isSymbolicLink()) {
     throw new Error('Function child temp root must be a real directory.');
   }
-  const path = await mkdtemp(join(resolve(tempRoot), 'vibecanvas-function-'));
+  const path = await mkdtemp(join(resolve(tempRoot), 'omnidraw-function-'));
   const created = await lstat(path);
   if (!created.isDirectory() || created.isSymbolicLink()) {
     // The path no longer names the directory returned by mkdtemp. Retain an

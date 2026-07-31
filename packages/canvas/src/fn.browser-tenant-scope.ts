@@ -1,4 +1,4 @@
-import { fnScopedKey } from '@vibecanvas/tenant-core/fn.scoped-key';
+import { fnScopedKey } from '@omnidraw/tenant-core/fn.scoped-key';
 
 export type TBrowserTenantScope = Readonly<{
   accountId: string;
@@ -24,8 +24,8 @@ export function fnBrowserTenantStorageKeys(scope: TBrowserTenantScope): Readonly
 }> {
   const scopeKey = fnBrowserTenantScopeKey(scope);
   return Object.freeze({
-    cameraViewports: `vibecanvas:camera:viewports:${scopeKey}`,
-    frontendStore: `vibecanvas:frontend:${scopeKey}`,
+    cameraViewports: `omnidraw:camera:viewports:${scopeKey}`,
+    frontendStore: `omnidraw:frontend:${scopeKey}`,
   });
 }
 

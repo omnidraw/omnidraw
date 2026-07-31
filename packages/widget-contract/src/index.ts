@@ -33,7 +33,7 @@ export {
   LUCIDE_STATIC_ICON_KEYS,
   LUCIDE_STATIC_ICON_KEY_SET,
   RECOMMENDED_LUCIDE_STATIC_ICON_KEYS,
-  ZVibecanvasToolIcon,
+  ZOmnidrawToolIcon,
   isLucideStaticIconKey,
 } from './tool-icon';
 export {

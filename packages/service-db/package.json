@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/service-db",
+  "name": "@omnidraw/service-db",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,14 +11,14 @@
   "dependencies": {
     "@tursodatabase/database": "catalog:",
     "@tursodatabase/database-common": "0.6.1",
-    "@vibecanvas/canvas-contract": "workspace:*",
-    "@vibecanvas/function-runtime": "workspace:*",
-    "@vibecanvas/resource-runtime": "workspace:*",
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/shared-functions": "workspace:*",
-    "@vibecanvas/service-widget-state": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*",
+    "@omnidraw/canvas-contract": "workspace:*",
+    "@omnidraw/function-runtime": "workspace:*",
+    "@omnidraw/resource-runtime": "workspace:*",
+    "@omnidraw/runtime": "workspace:*",
+    "@omnidraw/shared-functions": "workspace:*",
+    "@omnidraw/service-widget-state": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*",
+    "@omnidraw/widget-contract": "workspace:*",
     "zod": "catalog:"
   }
 }

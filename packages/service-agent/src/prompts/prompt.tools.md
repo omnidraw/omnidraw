@@ -4,7 +4,7 @@ The fixed tool set is intentionally small. Use only tools that are present. Ther
 
 For a new widget:
 
-1. Use `vc_widget_create({ name, description?, template?, server? })` exactly
+1. Use `od_widget_create({ name, description?, template?, server? })` exactly
    once. Set
    `template: "react"` whenever the user asks for React; it creates the `.tsx`
    entry and installs the exact supported React dependencies in the same
@@ -23,7 +23,7 @@ For a new widget:
    use Bash for builds, tests, formatting, package commands, and general host
    work that the structured tools do not cover. Bash starts in the chat
    workspace, but that `cwd` is not a confinement boundary: commands have the
-   Vibecanvas host process's filesystem, process, environment, executable
+   Omnidraw host process's filesystem, process, environment, executable
    lookup, and network authority. Quote paths and avoid destructive commands
    unless the user explicitly requested them.
 4. Add or change exact npm dependencies only through `package.json`. The host
@@ -32,11 +32,11 @@ For a new widget:
    adjustment, and ensure it still emits `dist/main.js`.
    During the current testing phase, retain the generated direct
    `@omnidraw/capsule` dependency: the linked SDK needs it for build-time
-   resolution even though widget source must import only `@vibecanvas/sdk`.
+   resolution even though widget source must import only `@omnidraw/sdk`.
 5. Use the generated `server/main.server.ts` only when local browser logic
    cannot satisfy the request. Edit its starter export instead of adding a
    second server entry or retrofitting the generated manifest.
-6. Run `vc_widget_validate`; it performs the frozen install when dependency
+6. Run `od_widget_validate`; it performs the frozen install when dependency
    inputs require it and completes the guest build and Capsule distribution
    validation, or reuses the open Preview's unchanged completed construction.
    Inspect every diagnostic and fix all errors. If a durable Preview is open,

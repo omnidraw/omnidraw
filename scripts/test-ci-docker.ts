@@ -12,7 +12,7 @@ import { join, resolve } from 'node:path';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const DOCKERFILE = 'scripts/docker/final-acceptance.Dockerfile';
-const requestedPlatform = process.env.VIBECANVAS_DOCKER_PLATFORM?.trim() || undefined;
+const requestedPlatform = process.env.OMNIDRAW_DOCKER_PLATFORM?.trim() || undefined;
 const REQUIRED_TRACKED_FILES = [
   DOCKERFILE,
   'scripts/test-ci-docker.ts',
@@ -21,7 +21,7 @@ const REQUIRED_TRACKED_FILES = [
 
 if (requestedPlatform && !/^linux\/(?:amd64|arm64)$/.test(requestedPlatform)) {
   throw new Error(
-    `VIBECANVAS_DOCKER_PLATFORM must be linux/amd64 or linux/arm64, received ${requestedPlatform}`,
+    `OMNIDRAW_DOCKER_PLATFORM must be linux/amd64 or linux/arm64, received ${requestedPlatform}`,
   );
 }
 
@@ -67,10 +67,10 @@ for (const path of REQUIRED_TRACKED_FILES) {
   }
 }
 
-const temporaryRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-ci-docker-'));
+const temporaryRoot = await mkdtemp(join(tmpdir(), 'omnidraw-ci-docker-'));
 const archivePath = join(temporaryRoot, 'tracked-source.tar');
 const contextPath = join(temporaryRoot, 'context');
-const imageTag = `vibecanvas-final-acceptance:${revision.slice(0, 12)}`;
+const imageTag = `omnidraw-final-acceptance:${revision.slice(0, 12)}`;
 
 try {
   console.log(`[ci-docker] platform ${requestedPlatform ?? 'daemon-native'}`);
@@ -103,9 +103,9 @@ try {
     '--env',
     'CI=1',
     '--env',
-    'VIBECANVAS_CLEAN_TRACKED_SNAPSHOT=1',
+    'OMNIDRAW_CLEAN_TRACKED_SNAPSHOT=1',
     '--env',
-    'VIBECANVAS_REQUIRE_FD_INSPECTION=1',
+    'OMNIDRAW_REQUIRE_FD_INSPECTION=1',
     imageTag,
   ]);
 } finally {

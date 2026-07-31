@@ -1,5 +1,5 @@
-import { AsyncSeriesHook, AsyncWaterfallHook, SyncExitHook, SyncHook } from '@vibecanvas/tapable';
-import type { IPluginContext, IServiceMap } from '@vibecanvas/runtime';
+import { AsyncSeriesHook, AsyncWaterfallHook, SyncExitHook, SyncHook } from '@omnidraw/tapable';
+import type { IPluginContext, IServiceMap } from '@omnidraw/runtime';
 import type { ICliConfig } from './config';
 
 export type THttpRequestHookPayload = {

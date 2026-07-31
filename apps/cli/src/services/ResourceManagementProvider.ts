@@ -1,8 +1,8 @@
 import {
   ResourceError,
   type IResourceWritePermitGuard,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   ILocalResourceProvider,
   TLocalResourceCommittedOperation,
@@ -11,7 +11,7 @@ import type {
   TLocalResolvedResourceCall,
   TLocalResource,
   TLocalResourceRequirement,
-} from '@vibecanvas/resource-runtime/local';
+} from '@omnidraw/resource-runtime/local';
 import { RESOURCE_MANAGEMENT_OPERATION } from './CONSTANTS';
 
 type TResourceManagementEnvelope = Readonly<{

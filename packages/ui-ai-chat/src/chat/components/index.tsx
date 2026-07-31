@@ -61,7 +61,7 @@ function findAgentMessageIndex(messages: readonly unknown[], message: unknown) {
 }
 
 function withAgentMessageFinished(message: unknown, finished: boolean) {
-  return isAgentMessageRecord(message) ? { ...message, __vibecanvasMessageFinished: finished } : message
+  return isAgentMessageRecord(message) ? { ...message, __omnidrawMessageFinished: finished } : message
 }
 
 export function AiChat(props: IProps) {

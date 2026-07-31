@@ -2,7 +2,7 @@
 /**
  * @file Builds two signed local binaries and exercises transactional upgrades against a loopback release server.
  *
- * macOS arm64 only. The test never reads or writes the user's real Vibecanvas installation.
+ * macOS arm64 only. The test never reads or writes the user's real Omnidraw installation.
  * Pass --keep-temp to retain fixtures for inspection.
  */
 
@@ -12,21 +12,21 @@ import { createHash } from "crypto"
 import { tmpdir } from "os"
 
 const rootDir = path.join(path.dirname(new URL(import.meta.url).pathname), "..")
-const entitlementsPath = path.join(rootDir, "scripts/vibecanvas.entitlements.plist")
-const packageName = "vibecanvas-darwin-arm64"
+const entitlementsPath = path.join(rootDir, "scripts/omnidraw.entitlements.plist")
+const packageName = "omnidraw-darwin-arm64"
 const archiveName = `${packageName}.tar.gz`
 const checksumName = `${packageName}.sha256`
 const keepTemp = process.argv.includes("--keep-temp")
-const testRoot = mkdtempSync(path.join(tmpdir(), "vibecanvas-local-upgrade-"))
+const testRoot = mkdtempSync(path.join(tmpdir(), "omnidraw-local-upgrade-"))
 
 type TCommandResult = { exitCode: number; stdout: string; stderr: string }
 type TReleaseFixture = { archivePath: string; checksumPath: string }
 
 async function resolveTestVersions(): Promise<{ versionA: string; versionB: string }> {
-  const packageJson = await Bun.file(path.join(rootDir, "apps/vibecanvas/package.json")).json() as { version?: string }
+  const packageJson = await Bun.file(path.join(rootDir, "apps/omnidraw/package.json")).json() as { version?: string }
   const versionA = packageJson.version
   const match = versionA?.match(/^(\d+)\.(\d+)\.(\d+)$/)
-  if (!versionA || !match) throw new Error(`Expected a stable semantic version in apps/vibecanvas/package.json, received ${versionA ?? "<missing>"}`)
+  if (!versionA || !match) throw new Error(`Expected a stable semantic version in apps/omnidraw/package.json, received ${versionA ?? "<missing>"}`)
   return { versionA, versionB: `${match[1]}.${match[2]}.${Number(match[3]) + 1}` }
 }
 
@@ -67,13 +67,13 @@ async function buildVersion(version: string, releaseBase: string, destination: s
   if (reuseAssets) args.push("--reuse-assets")
   await runChecked(args, {
     env: {
-      VIBECANVAS_BUILD_VERSION: version,
-      VIBECANVAS_BUILD_RELEASE_DOWNLOAD_BASE: releaseBase,
+      OMNIDRAW_BUILD_VERSION: version,
+      OMNIDRAW_BUILD_RELEASE_DOWNLOAD_BASE: releaseBase,
     },
     timeoutMs: 10 * 60_000,
   })
   const builtPackage = path.join(rootDir, "dist", packageName)
-  if (!existsSync(path.join(builtPackage, "bin/vibecanvas"))) throw new Error(`Build ${version} did not produce ${packageName}`)
+  if (!existsSync(path.join(builtPackage, "bin/omnidraw"))) throw new Error(`Build ${version} did not produce ${packageName}`)
   cpSync(builtPackage, destination, { recursive: true })
 }
 
@@ -82,8 +82,8 @@ async function packageFixture(packageDir: string, fixtureDir: string, checksumOv
   const archivePath = path.join(fixtureDir, archiveName)
   const checksumPath = path.join(fixtureDir, checksumName)
   await runChecked(["tar", "-czf", archivePath, "-C", packageDir, "bin", "native"])
-  const binaryPath = path.join(packageDir, "bin/vibecanvas")
-  await Bun.write(checksumPath, `${checksumOverride ?? sha256(binaryPath)}  vibecanvas\n`)
+  const binaryPath = path.join(packageDir, "bin/omnidraw")
+  await Bun.write(checksumPath, `${checksumOverride ?? sha256(binaryPath)}  omnidraw\n`)
   return { archivePath, checksumPath }
 }
 
@@ -92,7 +92,7 @@ async function buildHangingFixture(nativeSource: string, fixtureDir: string): Pr
   const sourcePath = path.join(testRoot, "hanging-candidate.ts")
   mkdirSync(path.join(packageDir, "bin"), { recursive: true })
   await Bun.write(sourcePath, "setInterval(() => {}, 1_000); await new Promise(() => {});\n")
-  const outputPath = path.join(packageDir, "bin/vibecanvas")
+  const outputPath = path.join(packageDir, "bin/omnidraw")
   const result = await Bun.build({ entrypoints: [sourcePath], compile: { target: "bun-darwin-arm64", outfile: outputPath } })
   if (!result.success) throw new Error(`Failed to compile hanging fixture: ${result.logs.join("\n")}`)
   await runChecked(["codesign", "--force", "--options", "runtime", "--entitlements", entitlementsPath, "--sign", "-", outputPath])
@@ -102,11 +102,11 @@ async function buildHangingFixture(nativeSource: string, fixtureDir: string): Pr
 }
 
 function installVersion(packageDir: string, homeDir: string): { binaryPath: string; nativeDir: string } {
-  const binaryPath = path.join(homeDir, ".vibecanvas/bin/vibecanvas")
-  const nativeDir = path.join(homeDir, ".vibecanvas/native")
+  const binaryPath = path.join(homeDir, ".omnidraw/bin/omnidraw")
+  const nativeDir = path.join(homeDir, ".omnidraw/native")
   mkdirSync(path.dirname(binaryPath), { recursive: true })
   rmSync(nativeDir, { recursive: true, force: true })
-  copyFileSync(path.join(packageDir, "bin/vibecanvas"), binaryPath)
+  copyFileSync(path.join(packageDir, "bin/omnidraw"), binaryPath)
   chmodSync(binaryPath, 0o755)
   cpSync(path.join(packageDir, "native"), nativeDir, { recursive: true })
   return { binaryPath, nativeDir }
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
     const homeDir = path.join(testRoot, "home")
     const childEnv = {
       HOME: homeDir,
-      VIBECANVAS_HOME: path.join(testRoot, "vibecanvas-home"),
+      OMNIDRAW_HOME: path.join(testRoot, "omnidraw-home"),
     }
 
     console.log("[local-upgrade] Scenario 1/3: validated A -> B replacement")
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
     activeFixture = validFixture
     const success = await run([installed.binaryPath, "upgrade", "--target-version", versionB], { env: childEnv, timeoutMs: 30_000 })
     if (success.exitCode !== 0) throw new Error(`Successful upgrade exited ${success.exitCode}\n${success.stdout}\n${success.stderr}`)
-    assertEqual(sha256(installed.binaryPath), sha256(path.join(packageB, "bin/vibecanvas")), "Installed binary does not match B")
+    assertEqual(sha256(installed.binaryPath), sha256(path.join(packageB, "bin/omnidraw")), "Installed binary does not match B")
     assertEqual(directoryHashes(installed.nativeDir).join("\n"), directoryHashes(path.join(packageB, "native")).join("\n"), "Installed native addons do not match B")
     const reported = await runChecked([installed.binaryPath, "--version"], { env: childEnv, timeoutMs: 10_000 })
     assertEqual(reported.stdout.trim(), versionB, "Installed binary reports the wrong version")

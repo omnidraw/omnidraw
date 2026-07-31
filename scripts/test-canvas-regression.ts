@@ -49,7 +49,7 @@ async function runSuite(suite: TRegressionSuite): Promise<void> {
     cwd: suite.cwd,
     env: {
       ...process.env,
-      VIBECANVAS_SILENT_DB_MIGRATIONS: "1",
+      OMNIDRAW_SILENT_DB_MIGRATIONS: "1",
     },
     stdin: "inherit",
     stdout: "inherit",

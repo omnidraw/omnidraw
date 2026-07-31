@@ -50,9 +50,9 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
 
 function refusal(reason: string): Error {
   return new Error(
-    `Refusing to open Vibecanvas database: ${reason} `
+    `Refusing to open Omnidraw database: ${reason} `
       + 'The database was inspected read-only and was not modified. '
-      + 'Unknown databases are not migrated; select a fresh Vibecanvas home.',
+      + 'Unknown databases are not migrated; select a fresh Omnidraw home.',
   );
 }
 

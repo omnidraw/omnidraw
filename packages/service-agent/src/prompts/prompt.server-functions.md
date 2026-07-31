@@ -3,7 +3,7 @@
 Add server code only for protected resources or work that cannot safely run in the browser. Put direct named exports in `server/main.server.ts`, set that exact file as `server.entry`, and use `defineServerFunction` with Zod runtime schemas. The entry is the function module itself; never re-export functions through an index.
 
 ```ts
-import { defineServerFunction } from "@vibecanvas/sdk/server";
+import { defineServerFunction } from "@omnidraw/sdk/server";
 import { z } from "zod";
 
 export const calculate = defineServerFunction({

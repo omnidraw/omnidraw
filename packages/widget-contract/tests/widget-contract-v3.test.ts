@@ -35,14 +35,14 @@ function contract(overrides: Record<string, unknown> = {}): string {
     budgets: CAPSULE_BUDGETS,
     capabilityContractDigestSha256: RAW_DIGEST_A,
     channelContractDigestSha256: RAW_DIGEST_B,
-    signatureKeyIds: ['vibecanvas-release-v1'],
+    signatureKeyIds: ['omnidraw-release-v1'],
     serverDigestSha256: null,
     serverRuntimeAbi: null,
     functionDescriptorsDigestSha256: RAW_DIGEST_A,
     sourceDigestSha256: RAW_DIGEST_B,
     builderIdentity: 'capsule-builder-v1',
     capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-    buildPolicyId: 'vibecanvas-capsule-widget-v1',
+    buildPolicyId: 'omnidraw-capsule-widget-v1',
     ...overrides,
   }));
 }
@@ -134,7 +134,7 @@ describe('Capsule widget contract v4', () => {
       { channelContractDigestSha256: RAW_DIGEST_A },
       { signatureKeyIds: ['another-release-key'] },
       { serverDigestSha256: RAW_DIGEST_B },
-      { serverRuntimeAbi: 'vibecanvas-function-v2' },
+      { serverRuntimeAbi: 'omnidraw-function-v2' },
       { functionDescriptorsDigestSha256: RAW_DIGEST_B },
       { sourceDigestSha256: RAW_DIGEST_A },
       { builderIdentity: 'different-builder' },
@@ -164,10 +164,10 @@ describe('Capsule widget contract v4', () => {
 
   test('canonicalizes capability and channel contracts', () => {
     expect(fnCanonicalizeWidgetCapsuleCapabilityRequests([])).toContain(
-      'vibecanvas.capsule-capability-contract.v1',
+      'omnidraw.capsule-capability-contract.v1',
     );
     expect(fnCanonicalizeWidgetCapsuleChannelContract(null)).toContain(
-      'vibecanvas.capsule-channel-contract.v1',
+      'omnidraw.capsule-channel-contract.v1',
     );
   });
 
@@ -239,13 +239,13 @@ describe('Capsule widget contract v4', () => {
       }],
       serverModuleSpecifier: './src/server.ts',
       capabilitySelector: {
-        id: `vibecanvas.widget.functions.h${RAW_DIGEST_A}`,
+        id: `omnidraw.widget.functions.h${RAW_DIGEST_A}`,
         versionRange: '1.0.0',
         contractHash: CAPSULE_HASH_A,
       },
     });
-    expect(source).toContain(`vibecanvas.widget.functions.h${RAW_DIGEST_A}`);
+    expect(source).toContain(`omnidraw.widget.functions.h${RAW_DIGEST_A}`);
     expect(source).toContain(CAPSULE_HASH_A);
-    expect(source).toContain('__vibecanvasCreateProxy("save"');
+    expect(source).toContain('__omnidrawCreateProxy("save"');
   });
 });

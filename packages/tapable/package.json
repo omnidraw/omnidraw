@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/tapable",
+  "name": "@omnidraw/tapable",
   "private": true,
   "type": "module",
   "exports": {

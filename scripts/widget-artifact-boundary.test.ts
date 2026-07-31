@@ -132,7 +132,7 @@ describe('M5 immutable widget artifact boundaries', () => {
     for (const source of await sources(existingFiles)) {
       violations.push(...linesMatching(
         source,
-        /@vibecanvas\/service-actor|(?:^|[^A-Za-z])ActorService(?:[^A-Za-z]|$)/,
+        /@omnidraw\/service-actor|(?:^|[^A-Za-z])ActorService(?:[^A-Za-z]|$)/,
         'widget publication depends on a retired resident runtime',
       ));
     }

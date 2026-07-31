@@ -1,5 +1,5 @@
 import type { TRetainedProjectionSnapshot } from '@omnidraw/cangine';
-import type { TThemeColors } from '@vibecanvas/service-theme';
+import type { TThemeColors } from '@omnidraw/service-theme';
 
 type TArgs = Readonly<{
   colors: TThemeColors;

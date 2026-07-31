@@ -1,4 +1,4 @@
-import type { TToolGroup as TDbToolGroup } from "@vibecanvas/service-db/model";
+import type { TToolGroup as TDbToolGroup } from "@omnidraw/service-db/model";
 import { ZToolGroup, type TToolGroup } from "./CONSTANTS";
 
 type TArgs = {

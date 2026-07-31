@@ -1,6 +1,6 @@
 import * as AlertDialog from "@kobalte/core/alert-dialog"
 import { Button } from "@kobalte/core/button"
-import type { TWidgetDetail } from "@vibecanvas/orpc-client"
+import type { TWidgetDetail } from "@omnidraw/orpc-client"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, untrack, type Component } from "solid-js"
 import {
   fnIsExactPublicationDraftDetail,

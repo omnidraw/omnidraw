@@ -1,5 +1,5 @@
 import { batch } from 'solid-js';
-import type { TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 import { switchFrontendStoreTenant } from '../store';
 import { activateBrowserTenantScope } from './tenant';
 

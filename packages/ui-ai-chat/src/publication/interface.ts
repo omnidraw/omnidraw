@@ -1,4 +1,4 @@
-import type { TOrpcSafeClient, TWidgetDetail } from "@vibecanvas/orpc-client"
+import type { TOrpcSafeClient, TWidgetDetail } from "@omnidraw/orpc-client"
 
 type TAgentApi = TOrpcSafeClient["api"]["agent"]
 

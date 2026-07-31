@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { TFunctionDefinition, TFunctionInvocationEnvelope } from '@vibecanvas/function-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TFunctionDefinition, TFunctionInvocationEnvelope } from '@omnidraw/function-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { FunctionResourceGatewayFactory } from '../src/services/FunctionResourceGatewayFactory';
 
 const tenant: TTenantContext = Object.freeze({
@@ -16,7 +16,7 @@ const definition = {
   contractDigestSha256: 'b'.repeat(64),
   serverArtifactId: 'artifact-a',
   artifactDigestSha256: 'a'.repeat(64),
-  runtimeAbi: 'vibecanvas:test',
+  runtimeAbi: 'omnidraw:test',
 } as TFunctionDefinition;
 
 describe('FunctionResourceGatewayFactory', () => {

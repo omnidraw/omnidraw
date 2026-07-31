@@ -1,4 +1,4 @@
-import type { ThemeService } from '@vibecanvas/service-theme';
+import type { ThemeService } from '@omnidraw/service-theme';
 import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 import type { TCanvasDocumentTransport } from './services/CanvasDocumentService';
 import type {

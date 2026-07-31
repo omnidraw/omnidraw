@@ -1,9 +1,9 @@
-Monorepo Vibecanvas:
+Monorepo Omnidraw:
 
 apps/frontend -> solidjs spa, renders webpage
 apps/web -> github pages, marketing website
 apps/server -> bun server
-apps/vibecanvas -> installable binary for npm package
+apps/omnidraw -> installable binary for npm package
 apps/widget-debug-tools -> use when you need to debug local widgets
 
 packages/api -> consolidated oRPC contracts and handlers by domain
@@ -21,7 +21,7 @@ packages/service-event-publisher -> runtime event publication to API subscriptio
 packages/service-kv -> reserved persistent key-value service for planned future use
 packages/service-widget-state -> centralized versioned widget JSON state
 packages/service-theme -> built-in themes and runtime theme synchronization
-packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
+packages/shared-functions -> shared functional helpers and Omnidraw config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives
 packages/tenant-core -> public tenant context, placement, and scoped-key contracts
 packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations

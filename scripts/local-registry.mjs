@@ -9,9 +9,7 @@ import {
 import {
   access,
   mkdir,
-  mkdtemp,
   readFile,
-  readdir,
   rename,
   rm,
   stat,
@@ -35,13 +33,7 @@ const RUNTIME_LOCK_PATH = join(
   'local-registry',
   'package-lock.json',
 );
-const OWNED_SCOPES = Object.freeze(['@omnidraw/', '@vibecanvas/']);
-const VIBECANVAS_PACKAGES = Object.freeze([
-  'packages/tenant-core',
-  'packages/resource-runtime',
-  'packages/widget-contract',
-  'packages/sdk',
-]);
+const OWNED_SCOPES = Object.freeze(['@omnidraw/']);
 const START_TIMEOUT_MS = 20_000;
 const STOP_TIMEOUT_MS = 8_000;
 
@@ -52,14 +44,14 @@ function sleep(milliseconds) {
 function settings() {
   const homeDirectory = homedir();
   const stateDirectory = resolve(
-    process.env.VIBECANVAS_REGISTRY_STATE_DIR
-      ?? join(homeDirectory, '.local', 'share', 'vibecanvas', 'registry'),
+    process.env.LOCAL_NPM_REGISTRY_STATE_DIR
+      ?? join(homeDirectory, '.local', 'share', 'verdaccio'),
   );
   if (dirname(stateDirectory) === stateDirectory || stateDirectory === resolve(homeDirectory)) {
-    throw new Error('VIBECANVAS_REGISTRY_STATE_DIR must not be a filesystem or home root.');
+    throw new Error('LOCAL_NPM_REGISTRY_STATE_DIR must not be a filesystem or home root.');
   }
   const registryUrl = new URL(
-    process.env.VIBECANVAS_REGISTRY_URL ?? 'http://127.0.0.1:4873/',
+    process.env.LOCAL_NPM_REGISTRY_URL ?? 'http://127.0.0.1:4873/',
   );
   if (
     registryUrl.protocol !== 'http:'
@@ -69,7 +61,7 @@ function settings() {
     || (registryUrl.pathname !== '/' && registryUrl.pathname !== '')
   ) {
     throw new Error(
-      'VIBECANVAS_REGISTRY_URL must be an unauthenticated loopback URL such as '
+      'LOCAL_NPM_REGISTRY_URL must be an unauthenticated loopback URL such as '
       + 'http://127.0.0.1:4873/.',
     );
   }
@@ -87,6 +79,7 @@ function settings() {
     pidPath: join(stateDirectory, 'owner.json'),
     logPath: join(stateDirectory, 'logs', 'verdaccio.log'),
     npmUserConfigPath: join(stateDirectory, 'npmrc'),
+    widgetNpmUserConfigPath: join(stateDirectory, 'npmjs.npmrc'),
     startLockPath: join(stateDirectory, 'start.lock'),
     toolDirectory,
     toolManifestPath: join(toolDirectory, 'package.json'),
@@ -129,8 +122,12 @@ async function writeHostConfiguration(config) {
     atomicWrite(config.npmUserConfigPath, [
       'registry=https://registry.npmjs.org/',
       `@omnidraw:registry=${config.registryUrl}`,
-      `@vibecanvas:registry=${config.registryUrl}`,
-      `${registryAuthKey}:_authToken=vibecanvas-local-development`,
+      `${registryAuthKey}:_authToken=omnidraw-local-development`,
+      '',
+    ].join('\n')),
+    atomicWrite(config.widgetNpmUserConfigPath, [
+      'registry=https://registry.npmjs.org/',
+      '@omnidraw:registry=https://registry.npmjs.org/',
       '',
     ].join('\n')),
     atomicWrite(config.configPath, `${JSON.stringify({
@@ -149,11 +146,6 @@ async function writeHostConfiguration(config) {
       },
       packages: {
         '@omnidraw/*': {
-          access: '$all',
-          publish: '$all',
-          unpublish: '$authenticated',
-        },
-        '@vibecanvas/*': {
           access: '$all',
           publish: '$all',
           unpublish: '$authenticated',
@@ -333,6 +325,7 @@ async function registryStatus(config) {
     registryUrl: config.registryUrl,
     stateDirectory: config.stateDirectory,
     npmUserConfigPath: config.npmUserConfigPath,
+    widgetNpmUserConfigPath: config.widgetNpmUserConfigPath,
     pid: owned ? owner.pid : null,
     healthy,
   });
@@ -545,30 +538,6 @@ async function publishTarball(config, requestedTarball) {
   });
 }
 
-async function packVibecanvasPackages(config) {
-  await run('bun', ['run', '--filter', '@vibecanvas/sdk', 'build']);
-  const packDirectory = await mkdtemp(join(config.stateDirectory, 'packs-'));
-  const tarballs = [];
-  try {
-    for (const packageDirectory of VIBECANVAS_PACKAGES) {
-      const packageRoot = join(REPOSITORY_ROOT, packageDirectory);
-      const before = new Set(await readdir(packDirectory));
-      await run('bun', ['pm', 'pack', '--destination', packDirectory, '--quiet'], {
-        cwd: packageRoot,
-      });
-      const after = await readdir(packDirectory);
-      const created = after.find((entry) => !before.has(entry));
-      if (!created) throw new Error(`Packing ${packageDirectory} produced no tarball.`);
-      tarballs.push(join(packDirectory, created));
-    }
-    const results = [];
-    for (const tarball of tarballs) results.push(await publishTarball(config, tarball));
-    return results;
-  } finally {
-    await rm(packDirectory, { recursive: true, force: true });
-  }
-}
-
 function flagValue(args, flag) {
   const index = args.indexOf(flag);
   if (index === -1) return undefined;
@@ -600,11 +569,6 @@ async function main() {
     console.log(JSON.stringify(results, null, 2));
     return;
   }
-  if (command === 'publish-vibecanvas') {
-    await startRegistry(config);
-    console.log(JSON.stringify(await packVibecanvasPackages(config), null, 2));
-    return;
-  }
   if (command === 'bootstrap') {
     const cangine = flagValue(args, '--cangine');
     const capsule = flagValue(args, '--capsule');
@@ -615,14 +579,13 @@ async function main() {
     const results = [
       await publishTarball(config, cangine),
       await publishTarball(config, capsule),
-      ...await packVibecanvasPackages(config),
     ];
     console.log(JSON.stringify(results, null, 2));
     return;
   }
   throw new Error(
     `Unknown command '${command}'. Use start, ensure, status, stop, publish, `
-    + 'publish-vibecanvas, or bootstrap.',
+    + 'or bootstrap.',
   );
 }
 

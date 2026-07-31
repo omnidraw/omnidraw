@@ -2,9 +2,9 @@ import type {
   TWidgetCapsuleApiGroup,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetManifestV3,
-} from '@vibecanvas/widget-contract';
-import type { TVibecanvasDistributionBuild } from '@vibecanvas/capsule-vibecanvas/builder';
-import { VIBECANVAS_CAPSULE_API_BUNDLE_DIGEST } from '@vibecanvas/capsule-vibecanvas/contract';
+} from '@omnidraw/widget-contract';
+import type { TOmnidrawDistributionBuild } from '@omnidraw/capsule-omnidraw/builder';
+import { OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST } from '@omnidraw/capsule-omnidraw/contract';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
   WIDGET_CAPSULE_BUILD_POLICY_ID,
@@ -15,7 +15,7 @@ export const CAPSULE_PUBLICATION_IDENTITY = Object.freeze({
   buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
 });
 
-export const testWidgetDistributionBuild: TVibecanvasDistributionBuild = async (request) => {
+export const testWidgetDistributionBuild: TOmnidrawDistributionBuild = async (request) => {
   const invalid = request.files.find((file) => (
     new TextDecoder().decode(file.bytes).includes('broken: =')
   ));
@@ -41,7 +41,7 @@ export const testWidgetDistributionBuild: TVibecanvasDistributionBuild = async (
     entry: 'main.js',
     ...(hasCss ? { cssRoots: ['style.css'] } : {}),
     producer: {
-      name: 'vibecanvas-test-build',
+      name: 'omnidraw-test-build',
       version: '1',
       digest: `sha256:${'1'.repeat(64)}`,
     },
@@ -65,15 +65,15 @@ export function capsuleUi(
 export function capsuleRuntimeDescriptor(
   manifest: TWidgetManifestV3,
   capsuleArtifactHash: `sha256:${string}`,
-  signatureKeyId = 'vibecanvas-release-v1',
+  signatureKeyId = 'omnidraw-release-v1',
 ): TWidgetCapsuleRuntimeDescriptor {
   return {
-    format: 'vibecanvas.capsule-runtime.v2',
+    format: 'omnidraw.capsule-runtime.v2',
     capsuleArtifactHash,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: manifest.ui.apis,
-      bundleDigest: VIBECANVAS_CAPSULE_API_BUNDLE_DIGEST,
+      bundleDigest: OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST,
     },
     budgets: {},
     capabilityRequests: [],

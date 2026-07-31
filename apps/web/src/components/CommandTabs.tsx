@@ -6,11 +6,11 @@ type TCommand = {
 };
 
 const commands: TCommand[] = [
-  { label: "curl", value: "curl -fsSL https://vibecanvas.dev/install | bash" },
-  { label: "bun", value: "bun add -g vibecanvas" },
-  { label: "npm", value: "npm i -g vibecanvas" },
-  { label: "pnpm", value: "pnpm add -g vibecanvas" },
-  { label: "yarn", value: "yarn global add vibecanvas" },
+  { label: "curl", value: "curl -fsSL https://omnidraw.dev/install | bash" },
+  { label: "bun", value: "bun add -g omnidraw" },
+  { label: "npm", value: "npm i -g omnidraw" },
+  { label: "pnpm", value: "pnpm add -g omnidraw" },
+  { label: "yarn", value: "yarn global add omnidraw" },
 ];
 
 export default function CommandTabs() {

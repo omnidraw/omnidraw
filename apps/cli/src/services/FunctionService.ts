@@ -3,16 +3,16 @@ import type {
   IFunctionInvocationApiCapability,
   TFunctionInputs,
   TFunctionInvocationView,
-} from '@vibecanvas/api/function';
+} from '@omnidraw/api/function';
 import type {
   IFunctionControlStore,
   TInvocationCreateResult,
   TInvocationRecord,
-} from '@vibecanvas/function-runtime';
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { LocalFunctionDispatcher } from '@vibecanvas/function-runtime/local';
+} from '@omnidraw/function-runtime';
+import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
+import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import type { LocalFunctionDispatcher } from '@omnidraw/function-runtime/local';
 import {
   FUNCTION_IDEMPOTENCY_TTL_DEFAULT_MS,
   FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS,

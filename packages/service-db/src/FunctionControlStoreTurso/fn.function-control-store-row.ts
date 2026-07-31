@@ -7,8 +7,8 @@ import type {
   TResourceWritePermit,
   TUsageMetrics,
   TUsageOutboxRecord,
-} from '@vibecanvas/function-runtime';
-import type { TWidgetServerFunctionResourceAccess } from '@vibecanvas/widget-contract';
+} from '@omnidraw/function-runtime';
+import type { TWidgetServerFunctionResourceAccess } from '@omnidraw/widget-contract';
 
 function safeInteger(value: unknown, label: string): number {
   const parsed = Number(value);

@@ -1,5 +1,5 @@
-import type { TAgentResourceService } from '@vibecanvas/service-agent';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TAgentResourceService } from '@omnidraw/service-agent';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { ResourceService } from './ResourceService';
 
 type TCompleteAgentResourceService = {

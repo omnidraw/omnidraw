@@ -1,7 +1,7 @@
 # Cangine feature request: application-owned retained runtime projections
 
 - **Status:** Proposed for discussion
-- **Consumer:** Vibecanvas
+- **Consumer:** Omnidraw
 - **Current Cangine version:** 0.3.0
 - **Motivating migration:** [`S126`](../../tasks/s/S126.md)
 
@@ -24,7 +24,7 @@ A retained runtime projection should:
   persistence; and
 - optionally participate in hit testing through explicit policy.
 
-This is not a request for a Vibecanvas grid API. Grid visibility, theme
+This is not a request for a Omnidraw grid API. Grid visibility, theme
 selection, persistence policy, and product controls remain application
 responsibilities.
 
@@ -40,7 +40,7 @@ Cangine already owns the difficult parts of infinite-grid rendering:
 - scheduling; and
 - backend-specific drawing.
 
-Vibecanvas only needs to supply two theme colors and a visibility preference.
+Omnidraw only needs to supply two theme colors and a visibility preference.
 However, Cangine 0.3.0 exposes background nodes only through the single
 retained `engine.scene`.
 
@@ -61,7 +61,7 @@ Therefore an application that has runtime-only retained presentation must
 merge it into every durable snapshot replacement and coordinate its updates
 with the durable scene revision.
 
-For S126, Vibecanvas had to add:
+For S126, Omnidraw had to add:
 
 - stable runtime layer/grid IDs;
 - a runtime scene composer;
@@ -166,11 +166,11 @@ interface IInfiniteCanvasEngine {
 }
 ```
 
-A Vibecanvas grid would then be ordinary Cangine data:
+A Omnidraw grid would then be ordinary Cangine data:
 
 ```ts
 const gridProjection = engine.projections.createOwner(
-  "vibecanvas:grid",
+  "omnidraw:grid",
   {
     band: "background",
     hitTest: "none",
@@ -345,7 +345,7 @@ The proposed service should remain policy-free.
 ## What we are not requesting
 
 - A `setGridVisible()` or `setGridTheme()` Cangine API.
-- Vibecanvas-specific IDs, themes, commands, or persistence rules.
+- Omnidraw-specific IDs, themes, commands, or persistence rules.
 - Automatic CanvasService integration.
 - A second application document model.
 - Background nodes hidden inside engine configuration.
@@ -390,9 +390,9 @@ That creates a second retained-scene writer and breaks document revision
 coordination. It also still leaves runtime nodes vulnerable to the next
 `scene.replace()`.
 
-## Expected Vibecanvas migration
+## Expected Omnidraw migration
 
-Once this capability exists, Vibecanvas can:
+Once this capability exists, Omnidraw can:
 
 1. create one background projection owner during runtime boot;
 2. replace it with the background layer and grid node;

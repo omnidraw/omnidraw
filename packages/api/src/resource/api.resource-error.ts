@@ -1,5 +1,5 @@
 import { ORPCError } from '@orpc/contract';
-import { toSafeResourceError } from '@vibecanvas/resource-runtime';
+import { toSafeResourceError } from '@omnidraw/resource-runtime';
 
 export async function withResourceApiError<T>(operation: () => T): Promise<Awaited<T>> {
   try {

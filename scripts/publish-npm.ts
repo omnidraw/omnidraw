@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Publishes built vibecanvas platform packages and the wrapper package to npm.
+ * @file Publishes built omnidraw platform packages and the wrapper package to npm.
  *
  * Behavior:
  * - Auth supports either:
@@ -14,10 +14,10 @@
  * - Safe to retry: already-published versions are skipped.
  *
  * Tag notes:
- * - --tag latest  -> default stable channel used by `npm i vibecanvas`
- * - --tag beta    -> opt-in channel used by `npm i vibecanvas@beta`
- * - --tag nightly -> opt-in channel used by `npm i vibecanvas@nightly`
- * - if --tag is omitted, it is inferred from apps/vibecanvas/package.json version
+ * - --tag latest  -> default stable channel used by `npm i omnidraw`
+ * - --tag beta    -> opt-in channel used by `npm i omnidraw@beta`
+ * - --tag nightly -> opt-in channel used by `npm i omnidraw@nightly`
+ * - if --tag is omitted, it is inferred from apps/omnidraw/package.json version
  *
  * Usage examples:
  * - NPM_TOKEN=xxxx bun run scripts/publish-npm.ts
@@ -309,7 +309,7 @@ async function loadTasks(rootDir: string, includeWrapper: boolean): Promise<TPac
   tasks.sort((a, b) => a.name.localeCompare(b.name))
 
   if (includeWrapper) {
-    const wrapperDir = path.join(distDir, "vibecanvas")
+    const wrapperDir = path.join(distDir, "omnidraw")
     const wrapperPkgPath = path.join(wrapperDir, "package.json")
     const wrapperPkgFile = Bun.file(wrapperPkgPath)
 
@@ -349,8 +349,8 @@ async function main() {
 
   let finished = 0
   const total = tasks.length
-  const platformTasks = tasks.filter((task) => task.name !== "vibecanvas")
-  const wrapperTasks = tasks.filter((task) => task.name === "vibecanvas")
+  const platformTasks = tasks.filter((task) => task.name !== "omnidraw")
+  const wrapperTasks = tasks.filter((task) => task.name === "omnidraw")
 
   const publishTask = async (task: TPackageTask): Promise<TPackageResult> => {
     console.log(`\n[publish:start] ${task.name}@${task.version}`)

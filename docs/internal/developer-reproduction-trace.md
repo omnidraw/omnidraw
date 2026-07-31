@@ -1,7 +1,7 @@
 # Developer reproduction trace
 
 The developer reproduction trace is an author-only diagnostic tool for following
-canvas interaction failures across Vibecanvas-owned boundaries. It is available
+canvas interaction failures across Omnidraw-owned boundaries. It is available
 only when the frontend composes `Canvas` with development diagnostics enabled.
 It does not record video, guest widget business events, chat content, arbitrary
 network calls, DOM text, or product analytics.

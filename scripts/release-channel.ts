@@ -21,10 +21,10 @@ export function inferNpmTagFromVersion(version: string): string {
 }
 
 export async function readWrapperVersion(rootDir: string): Promise<string> {
-  const pkg = await Bun.file(path.join(rootDir, "apps/vibecanvas/package.json")).json() as { version?: string }
+  const pkg = await Bun.file(path.join(rootDir, "apps/omnidraw/package.json")).json() as { version?: string }
   const version = pkg.version?.trim()
   if (!version) {
-    throw new Error("Failed to read apps/vibecanvas/package.json version")
+    throw new Error("Failed to read apps/omnidraw/package.json version")
   }
   return version
 }

@@ -39,7 +39,7 @@ describe("fnGetChatMessageParts", () => {
   it("renders unfinished thinking parts as thinking ellipsis", () => {
     expect(fnGetChatMessageParts({
       role: "assistant",
-      __vibecanvasMessageFinished: false,
+      __omnidrawMessageFinished: false,
       content: [{ type: "thinking", thinking: "", thinkingSignature: "signature" }],
     })).toEqual([{ kind: "text", text: "thinking..." }])
   })
@@ -47,7 +47,7 @@ describe("fnGetChatMessageParts", () => {
   it("skips finished thinking parts from loaded history", () => {
     expect(fnGetChatMessageParts({
       role: "assistant",
-      __vibecanvasMessageFinished: true,
+      __omnidrawMessageFinished: true,
       content: [{ type: "thinking", thinking: "", thinkingSignature: "signature" }],
     })).toEqual([])
   })
@@ -55,7 +55,7 @@ describe("fnGetChatMessageParts", () => {
   it("filters stringified thinking blocks while preserving visible text", () => {
     expect(fnGetChatMessageParts({
       role: "assistant",
-      __vibecanvasMessageFinished: true,
+      __omnidrawMessageFinished: true,
       content: [
         JSON.stringify({ type: "thinking", thinking: "", thinkingSignature: "signature" }, null, 2),
         "Final answer",

@@ -2,8 +2,8 @@
  * @file Event publication capability consumed by services and transport adapters.
  */
 
-import type { IService } from '@vibecanvas/runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IService } from '@omnidraw/runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TAgentEvent,
   TDbEvent,

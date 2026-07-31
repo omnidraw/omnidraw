@@ -4,7 +4,7 @@ Capsule: iframe-free sandboxed UI runtime
 
 > Superseded for the standalone repository and consumer boundary by
 > [`llm.capsule-repository.md`](./llm.capsule-repository.md) and
-> [`llm.capsule-vibecanvas-integration.md`](./llm.capsule-vibecanvas-integration.md).
+> [`llm.capsule-omnidraw-integration.md`](./llm.capsule-omnidraw-integration.md).
 > This document remains the detailed record of the original DOM/framework compatibility proposal.
 
 **Intended audience:** Runtime, browser-platform, security, framework-compatibility, and test-infrastructure engineers

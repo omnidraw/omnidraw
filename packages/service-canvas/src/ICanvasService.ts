@@ -7,9 +7,9 @@ import type {
   TCanvasItemSnapshot,
   TCanvasItemsChangedEvent,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
-import type { IService } from '@vibecanvas/runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/canvas-contract';
+import type { IService } from '@omnidraw/runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 export type TCanvasAccess = 'read' | 'write';
 

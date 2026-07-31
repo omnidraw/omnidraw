@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/service-kv",
+  "name": "@omnidraw/service-kv",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,8 +11,8 @@
     "test": "bun test --pass-with-no-tests"
   },
   "dependencies": {
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/service-db": "workspace:*",
+    "@omnidraw/runtime": "workspace:*",
+    "@omnidraw/service-db": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

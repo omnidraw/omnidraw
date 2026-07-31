@@ -1,4 +1,4 @@
-import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
+import type { CapsuleViewport } from '@omnidraw/capsule-omnidraw/host';
 import {
   WIDGET_UI_FAR_OFFSCREEN_DESTROY_MS,
   WIDGET_UI_GPU_APIS,

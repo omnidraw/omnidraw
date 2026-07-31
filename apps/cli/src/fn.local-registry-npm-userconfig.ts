@@ -13,8 +13,7 @@ export function fnLocalRegistryNpmUserConfig(args: TArgs): string {
     args.homeDirectory,
     '.local',
     'share',
-    'vibecanvas',
-    'registry',
+    'verdaccio',
   );
-  return args.join(stateDirectory, 'npmrc');
+  return args.join(stateDirectory, 'npmjs.npmrc');
 }

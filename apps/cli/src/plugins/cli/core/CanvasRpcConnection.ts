@@ -1,7 +1,7 @@
 import { createORPCClient, createSafeClient } from '@orpc/client';
 import { RPCLink } from '@orpc/client/websocket';
 import type { ContractRouterClient } from '@orpc/contract';
-import type { apiContract } from '@vibecanvas/api/contract';
+import type { apiContract } from '@omnidraw/api/contract';
 import type {
   ICanvasCliApi,
   ICanvasRpcConnection,

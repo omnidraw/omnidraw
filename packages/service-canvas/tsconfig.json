@@ -4,9 +4,9 @@
     "noEmit": true,
     "types": ["bun-types"],
     "paths": {
-      "@vibecanvas/canvas-contract": ["../canvas-contract/src/index.ts"],
-      "@vibecanvas/runtime": ["../runtime/src/index.ts"],
-      "@vibecanvas/tenant-core": ["../tenant-core/src/index.ts"]
+      "@omnidraw/canvas-contract": ["../canvas-contract/src/index.ts"],
+      "@omnidraw/runtime": ["../runtime/src/index.ts"],
+      "@omnidraw/tenant-core": ["../tenant-core/src/index.ts"]
     }
   },
   "include": [

@@ -20,8 +20,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      VIBECANVAS_LEGACY_ACTOR_ENABLED: "0"
-      VIBECANVAS_REQUIRE_FD_INSPECTION: "1"
+      OMNIDRAW_LEGACY_ACTOR_ENABLED: "0"
+      OMNIDRAW_REQUIRE_FD_INSPECTION: "1"
       VITEST_MAX_WORKERS: "2"
     steps:
       - name: Checkout
@@ -82,7 +82,7 @@ jobs:
       - name: Load native addon and verify AEGIS-256 export
         run: bun run verify:turso-native-encryption:host
         env:
-          VIBECANVAS_EXPECTED_NATIVE_TARGET: ${{ matrix.target }}
+          OMNIDRAW_EXPECTED_NATIVE_TARGET: ${{ matrix.target }}
 
   test-binary:
     runs-on: ubuntu-latest
@@ -104,5 +104,5 @@ jobs:
 
       - name: Test Linux binary
         run: |
-          chmod +x dist/vibecanvas-linux-x64/bin/vibecanvas
+          chmod +x dist/omnidraw-linux-x64/bin/omnidraw
           bun run scripts/test-binary.ts --port 3339

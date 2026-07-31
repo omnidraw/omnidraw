@@ -1,9 +1,9 @@
-import type { IResourceWritePermitAuthority } from '@vibecanvas/function-runtime';
+import type { IResourceWritePermitAuthority } from '@omnidraw/function-runtime';
 import {
   InvocationResourceGateway,
   type IInvocationResourceGatewayFactory,
   type IResourceWriteCapabilityIssuer,
-} from '@vibecanvas/function-runtime/local';
+} from '@omnidraw/function-runtime/local';
 import type { ResourceServicePool } from './ResourceServicePool';
 import type { TWidgetServerArtifactCapability } from './WidgetServicePool';
 

@@ -1,7 +1,7 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import type { TFileFormat } from '@vibecanvas/service-db/model';
+import type { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import type { TFileFormat } from '@omnidraw/service-db/model';
 import type { ICliConfig } from '../../config';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TEmbeddedAssetsModule = {
   getEmbeddedAsset(pathname: string): string | null;
@@ -129,7 +129,7 @@ async function handleHttpRequest(
   if (req.method === 'GET' && url.pathname === '/health') {
     return Response.json({
       ok: true,
-      service: 'vibecanvas',
+      service: 'omnidraw',
       version: config.version,
       compiled: config.compiled,
     });

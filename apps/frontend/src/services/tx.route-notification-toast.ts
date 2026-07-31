@@ -1,4 +1,4 @@
-import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
+import type { TNotificationEvent } from '@omnidraw/api/notification/contract';
 
 type TPortal = {
   showError: (title: string, description?: string) => unknown;

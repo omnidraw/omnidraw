@@ -4,25 +4,25 @@ import {
 import type {
   CapsuleCapabilityBinding,
   CapsuleMountGuestChannels,
-} from '@vibecanvas/capsule-vibecanvas/host';
+} from '@omnidraw/capsule-omnidraw/host';
 import type {
   CapsuleStructuredValue,
-  TVibecanvasCapsuleCapabilityContract,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
+  TOmnidrawCapsuleCapabilityContract,
+} from '@omnidraw/capsule-omnidraw/capabilities';
 import {
-  createVibecanvasCollaborativeStateCapabilityContract,
-  createVibecanvasGuestChannelContract,
-  createVibecanvasServerFunctionCapabilityContract,
-  fnVibecanvasWidgetNotificationOutput,
-  VIBECANVAS_COLLABORATIVE_STATE_CAPABILITY_ID,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
+  createOmnidrawCollaborativeStateCapabilityContract,
+  createOmnidrawGuestChannelContract,
+  createOmnidrawServerFunctionCapabilityContract,
+  fnOmnidrawWidgetNotificationOutput,
+  OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
+} from '@omnidraw/capsule-omnidraw/capabilities';
 import {
   ZWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetCapsuleCapabilityRequest,
   type TWidgetCapsuleTheme,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { CapsuleWidgetHostCoordinator } from './CapsuleWidgetHostCoordinator';
 import { createWidgetCapsuleCapabilityBindings } from './create-widget-capsule-capability-bindings';
 import type {
@@ -64,7 +64,7 @@ function canonicalJson(value: unknown): string {
 }
 
 function requestsMatch(
-  derived: TVibecanvasCapsuleCapabilityContract['request'],
+  derived: TOmnidrawCapsuleCapabilityContract['request'],
   signed: TWidgetCapsuleCapabilityRequest,
 ): boolean {
   return canonicalJson({
@@ -77,7 +77,7 @@ function requestsMatch(
 }
 
 function assertDerivedRequest(
-  contract: TVibecanvasCapsuleCapabilityContract,
+  contract: TOmnidrawCapsuleCapabilityContract,
   request: TWidgetCapsuleCapabilityRequest,
 ): void {
   if (!requestsMatch(contract.request, request)) {
@@ -120,10 +120,10 @@ async function verifyBrowserFunctionDescriptors(
 
 function deduplicateSchemas(
   contracts: readonly Readonly<{
-    schemas: TVibecanvasCapsuleCapabilityContract['schemas'];
+    schemas: TOmnidrawCapsuleCapabilityContract['schemas'];
   }>[],
 ) {
-  const schemas = new Map<string, TVibecanvasCapsuleCapabilityContract['schemas'][number]>();
+  const schemas = new Map<string, TOmnidrawCapsuleCapabilityContract['schemas'][number]>();
   for (const contract of contracts) {
     for (const schema of contract.schemas) {
       schemas.set(schema.reference.hash, schema);
@@ -140,10 +140,10 @@ async function createMountCatalog(
 ): Promise<TWidgetCapsuleMountCatalog> {
   const requests = args.artifact.runtimeDescriptor.capabilityRequests;
   const collaborativeRequest = requests.find(
-    (request) => request.id === VIBECANVAS_COLLABORATIVE_STATE_CAPABILITY_ID,
+    (request) => request.id === OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
   );
   const functionRequests = requests.filter(
-    (request) => request.id !== VIBECANVAS_COLLABORATIVE_STATE_CAPABILITY_ID,
+    (request) => request.id !== OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
   );
   if (
     functionRequests.length !== (args.functionDescriptors.length === 0 ? 0 : 1)
@@ -165,7 +165,7 @@ async function createMountCatalog(
   }
   const functionContract = signedFunctionDigestSha256 === null
     ? null
-    : await createVibecanvasServerFunctionCapabilityContract({
+    : await createOmnidrawServerFunctionCapabilityContract({
         descriptorDigestSha256: signedFunctionDigestSha256,
         functions: args.functionDescriptors,
       });
@@ -175,14 +175,14 @@ async function createMountCatalog(
 
   const collaborativeContract = collaborativeRequest === undefined
     ? null
-    : await createVibecanvasCollaborativeStateCapabilityContract();
+    : await createOmnidrawCollaborativeStateCapabilityContract();
   if (collaborativeContract !== null) {
     assertDerivedRequest(collaborativeContract, collaborativeRequest!);
   }
 
   const channels = args.artifact.runtimeDescriptor.channels === null
     ? null
-    : await createVibecanvasGuestChannelContract({
+    : await createOmnidrawGuestChannelContract({
         localStore: args.artifact.runtimeDescriptor.channels.store === undefined
           ? 'none'
           : 'ephemeral',
@@ -196,7 +196,7 @@ async function createMountCatalog(
   }
 
   const capabilityContracts = [functionContract, collaborativeContract].filter(
-    (contract): contract is TVibecanvasCapsuleCapabilityContract => contract !== null,
+    (contract): contract is TOmnidrawCapsuleCapabilityContract => contract !== null,
   );
   return Object.freeze({
     ...base,
@@ -331,7 +331,7 @@ export function createWidgetUiArtifactMountPort(
       };
       const routeOutput = (value: CapsuleStructuredValue): void => {
         if (!channelsActive) return;
-        const output = fnVibecanvasWidgetNotificationOutput(value);
+        const output = fnOmnidrawWidgetNotificationOutput(value);
         const now = config.nowMs();
         if (!Number.isFinite(now)) return;
         if (

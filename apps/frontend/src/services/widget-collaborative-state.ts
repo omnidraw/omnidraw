@@ -3,7 +3,7 @@ import {
   type TWidgetCollaborativeStateIdentity,
   type TWidgetCollaborativeStateTransportPort,
   type TWidgetCollaborativeStateTransportSnapshot,
-} from '@vibecanvas/ui-ai-chat/widget-runtime';
+} from '@omnidraw/ui-ai-chat/widget-runtime';
 import { orpcWebsocketService } from './orpc-websocket';
 import {
   getBrowserTenantActivation,

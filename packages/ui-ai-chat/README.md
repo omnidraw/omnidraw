@@ -1,10 +1,10 @@
-# `@vibecanvas/ui-ai-chat`
+# `@omnidraw/ui-ai-chat`
 
 This package owns the AI Chat surface, direct Cangine canvas widget adapters,
 published-widget discovery, workspace Sidebar, widget catalog/detail UI, and
 ToolIconPicker.
 
-Canvas remains the drawing runtime. Integration is one-way: the frontend creates `createAiChatCanvasExtension(...)` and passes it to `Canvas`; `@vibecanvas/canvas` does not import this package.
+Canvas remains the drawing runtime. Integration is one-way: the frontend creates `createAiChatCanvasExtension(...)` and passes it to `Canvas`; `@omnidraw/canvas` does not import this package.
 
 ## Public composition
 
@@ -24,4 +24,4 @@ reverse install order.
 
 ## Tests
 
-Run `bun --filter @vibecanvas/ui-ai-chat test`. Tests use jsdom and in-memory ports; they require neither the frontend singleton graph nor a server. `tests/canvas-extension` covers canvas composition and teardown, while `tests/boundaries` enforces the dependency and global-effect boundaries.
+Run `bun --filter @omnidraw/ui-ai-chat test`. Tests use jsdom and in-memory ports; they require neither the frontend singleton graph nor a server. `tests/canvas-extension` covers canvas composition and teardown, while `tests/boundaries` enforces the dependency and global-effect boundaries.

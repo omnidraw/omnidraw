@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from '../types';
 import { fnLintManifestShape } from './fn.manifest-shape';
 

@@ -5,15 +5,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   buildCapsuleGuest,
-} from '@vibecanvas/capsule-vibecanvas/build';
-import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
-import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+} from '@omnidraw/capsule-omnidraw/build';
+import { BunChildFunctionDescriptorExtractor } from '@omnidraw/function-runtime/local';
+import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
-import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
+} from '@omnidraw/service-db/CONSTANTS';
+import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
+import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
@@ -26,11 +26,11 @@ import {
   type TWidgetDistributionBuildProvenance,
   type TWidgetManifestV3,
   type TWidgetRevisionDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   LocalWidgetArtifactStore,
   WidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract/local';
+} from '@omnidraw/widget-contract/local';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
@@ -72,9 +72,9 @@ const OTHER_ACCOUNT_TENANT = fnFreezeTenantContext({
   requestId: 'widget-service-other-account',
 });
 
-const BUILDER_IDENTITY = 'vibecanvas-widget-test/bun';
+const BUILDER_IDENTITY = 'omnidraw-widget-test/bun';
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@vibecanvas/sdk/server',
+  '@omnidraw/sdk/server',
   'zod',
 ]);
 
@@ -156,7 +156,7 @@ async function insertPreviewFrame(
       parentId: null,
       orderKey: 'preview-frame',
       extensions: {
-        'vibecanvas:widget': {
+        'omnidraw:widget': {
           schemaVersion: 1,
           type: 'ui-widget',
           kind: 'preview',
@@ -195,7 +195,7 @@ async function insertAiChatFrame(
       parentId: null,
       orderKey: 'ai-chat-frame',
       extensions: {
-        'vibecanvas:widget': {
+        'omnidraw:widget': {
           schemaVersion: 1,
           type: 'ui-widget',
           kind: 'ai',
@@ -248,7 +248,7 @@ describe('production widget service', () => {
   beforeEach(async () => {
     capsuleBuildCount = 0;
     distributionBuildCount = 0;
-    root = await mkdtemp(join(tmpdir(), 'vibecanvas-widget-service-'));
+    root = await mkdtemp(join(tmpdir(), 'omnidraw-widget-service-'));
     artifactsRoot = join(root, 'organization', 'artifacts');
     await mkdir(artifactsRoot, { recursive: true });
     database = new DbServiceTurso({
@@ -476,7 +476,7 @@ describe('production widget service', () => {
         name: 'Invalid server',
         slug: 'invalid-server',
         ui: capsuleUi('src/ui.ts'),
-        server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
+        server: { entry: 'src/server.server.ts', runtimeAbi: 'omnidraw:test-1' },
       },
     });
 
@@ -494,7 +494,7 @@ describe('production widget service', () => {
     await writeSource(sourceRoot, {
       'ui/main.ts': 'document.body.append(document.createElement("main"));\n',
       'server/main.server.ts': [
-        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
         'import { z } from "zod";',
         '',
         'export const calculate = defineServerFunction({',
@@ -518,7 +518,7 @@ describe('production widget service', () => {
         ui: capsuleUi('ui/main.ts'),
         server: {
           entry: 'server/main.server.ts',
-          runtimeAbi: 'vibecanvas-function-v1',
+          runtimeAbi: 'omnidraw-function-v1',
         },
       },
     });
@@ -654,14 +654,14 @@ describe('production widget service', () => {
     expect(bytes).toHaveLength(artifact.byteSize);
     expect(Buffer.from(bytes!).subarray(0, 1).toString('utf8')).not.toBe('{');
     expect(published.revision.uiRuntime).toMatchObject({
-      format: 'vibecanvas.capsule-runtime.v2',
+      format: 'omnidraw.capsule-runtime.v2',
       capsuleArtifactHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       apiContract: {
         format: 'capsule-api-groups-v1',
         groups: ['DOM'],
         bundleDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       },
-      signatureKeyIds: ['vibecanvas-release-v1'],
+      signatureKeyIds: ['omnidraw-release-v1'],
     });
     await expect(service.readArtifact(TENANT, {
       ...request,
@@ -766,7 +766,7 @@ describe('production widget service', () => {
         'document.body.append(root);',
       ].join('\n'),
       'server/main.server.ts': [
-        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
         'import { z } from "zod";',
         '',
         'export const calculate = defineServerFunction({',
@@ -789,7 +789,7 @@ describe('production widget service', () => {
       ui: capsuleUi('src/ui.ts'),
       server: {
         entry: 'server/main.server.ts',
-        runtimeAbi: 'vibecanvas-function-v1',
+        runtimeAbi: 'omnidraw-function-v1',
       },
     };
     await expect(service.authoringStore.compareAndSetDraft(previewTenant, {
@@ -872,7 +872,7 @@ describe('production widget service', () => {
     const preview = await service.buildPreview(previewTenant, previewBuild);
 
     expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
-      'vibecanvas-preview-v1',
+      'omnidraw-preview-v1',
     ]);
     expect(preview.functionDescriptors).toHaveLength(1);
     expect(capsuleBuildCount).toBe(1);
@@ -953,10 +953,10 @@ describe('production widget service', () => {
       reviewed.uiRuntime.capsuleArtifactHash,
     );
     expect(published.revision.uiRuntime.signatureKeyIds).toEqual([
-      'vibecanvas-release-v1',
+      'omnidraw-release-v1',
     ]);
     expect(reviewed.uiRuntime.signatureKeyIds).toEqual([
-      'vibecanvas-preview-v1',
+      'omnidraw-preview-v1',
     ]);
     expect(published.revision.uiArtifact.digestSha256).not.toBe(
       reviewed.uiArtifact.digestSha256,
@@ -1046,7 +1046,7 @@ describe('production widget service', () => {
         'document.body.append(root);',
       ].join('\n'),
       'server/main.server.ts': [
-        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
         'import { z } from "zod";',
         'export const calculate = defineServerFunction({',
         '  effect: "fn",',
@@ -1157,7 +1157,7 @@ describe('production widget service', () => {
       ui: capsuleUi('src/ui.ts'),
       server: {
         entry: 'src/server.server.ts',
-        runtimeAbi: 'vibecanvas:function-preview-test',
+        runtimeAbi: 'omnidraw:function-preview-test',
       },
       resources: [{
         slot: 'notes',
@@ -1281,7 +1281,7 @@ describe('production widget service', () => {
     const uiRuntime = capsuleRuntimeDescriptor(
       manifest,
       `sha256:${unsignedUiArtifact.digestSha256}`,
-      'vibecanvas-preview-v1',
+      'omnidraw-preview-v1',
     );
     const capabilityContractDigestSha256 = sha256(
       fnCanonicalizeWidgetCapsuleCapabilityRequests(uiRuntime.capabilityRequests),
@@ -1474,7 +1474,7 @@ describe('production widget service', () => {
     const sourceRoot = join(root, 'react-capsule-source');
     await writeSource(sourceRoot, {
       'ui/main.tsx': [
-        'import { getWidgetProps, getWidgetTheme } from "@vibecanvas/sdk/widget";',
+        'import { getWidgetProps, getWidgetTheme } from "@omnidraw/sdk/widget";',
         'import { useState } from "react";',
         'import { createRoot } from "react-dom/client";',
         'import "./styles.css";',
@@ -1524,7 +1524,7 @@ describe('production widget service', () => {
     expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
     expect(preview.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
-      'vibecanvas-preview-v1',
+      'omnidraw-preview-v1',
     ]);
 
     const published = await service.publish(TENANT, {
@@ -1541,7 +1541,7 @@ describe('production widget service', () => {
     expect(published.status).toBe('committed');
     if (published.status !== 'committed') throw new Error('Expected React publication to commit.');
     expect(published.revision.uiRuntime.signatureKeyIds).toEqual([
-      'vibecanvas-release-v1',
+      'omnidraw-release-v1',
     ]);
     expect(published.revision.uiRuntime.capsuleArtifactHash).toBe(
       preview.uiArtifact.capsuleArtifactHash,
@@ -1555,7 +1555,7 @@ describe('production widget service', () => {
     const sourceRoot = join(root, 'react-theme-widget-source');
     await writeSource(sourceRoot, {
       'ui/main.tsx': [
-        'import { getWidgetTheme, subscribeWidgetTheme } from "@vibecanvas/sdk/widget";',
+        'import { getWidgetTheme, subscribeWidgetTheme } from "@omnidraw/sdk/widget";',
         'import { useEffect, useState } from "react";',
         'import { createRoot } from "react-dom/client";',
         'import "./styles.css";',
@@ -1625,7 +1625,7 @@ describe('production widget service', () => {
         '.hello-world-widget p { margin: 0; }',
         '',
       ].join('\n'),
-      'vibecanvas.json': `${JSON.stringify({
+      'omnidraw.json': `${JSON.stringify({
         schemaVersion: 3,
         name: 'Hello World',
         slug: 'hello-world',
@@ -1638,7 +1638,7 @@ describe('production widget service', () => {
         private: true,
         type: 'module',
         dependencies: {
-          '@vibecanvas/sdk': 'file:/trusted/widget-sdk',
+          '@omnidraw/sdk': 'file:/trusted/widget-sdk',
           react: '19.2.7',
           'react-dom': '19.2.7',
           zod: '4.4.3',
@@ -1692,7 +1692,7 @@ describe('production widget service', () => {
     });
     expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
     expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
-      'vibecanvas-preview-v1',
+      'omnidraw-preview-v1',
     ]);
   }, 20_000);
 
@@ -1790,7 +1790,7 @@ describe('production widget service', () => {
         'export const invokeServerMarker = (value: string) => serverMarker({ value });',
       ].join('\n'),
       'src/server.server.ts': [
-        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
         'import { z } from "zod";',
         'const Input = z.object({ value: z.string() });',
         'const Output = z.object({ value: z.string() });',
@@ -1805,7 +1805,7 @@ describe('production widget service', () => {
     });
     const secondManifest: TWidgetManifestV3 = {
       ...firstManifest,
-      server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
+      server: { entry: 'src/server.server.ts', runtimeAbi: 'omnidraw:test-1' },
     };
     const second = await service.publish(TENANT, {
       definitionId: first.definition.id,
@@ -1915,7 +1915,7 @@ describe('production widget service', () => {
       name: 'Broken server widget',
       slug: 'broken-server-widget',
       ui: capsuleUi('src/ui.ts'),
-      server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
+      server: { entry: 'src/server.server.ts', runtimeAbi: 'omnidraw:test-1' },
     };
     await expect(service.publish(TENANT, {
       definitionId: uuid(812),
@@ -1938,7 +1938,7 @@ describe('production widget service', () => {
   test('production composition publishes and places immutable revisions', async () => {
     const compositionRoot = join(root, 'production-composition');
     await mkdir(compositionRoot, { recursive: true });
-    const home = fnResolveVibecanvasHome({ join, resolve }, {
+    const home = fnResolveOmnidrawHome({ join, resolve }, {
       cwd: compositionRoot,
       dataDir: compositionRoot,
       env: {},

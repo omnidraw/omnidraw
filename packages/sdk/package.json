@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/sdk",
+  "name": "@omnidraw/sdk",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@omnidraw/capsule": "0.10.1",
-    "@vibecanvas/widget-contract": "0.1.0"
+    "@omnidraw/widget-contract": "0.1.0"
   },
   "devDependencies": {
     "typescript": "catalog:"

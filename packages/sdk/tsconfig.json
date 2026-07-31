@@ -8,10 +8,10 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "paths": {
-      "@vibecanvas/sdk/widget": ["./src/widget.ts"],
-      "@vibecanvas/sdk/server": ["./src/server.ts"],
-      "@vibecanvas/sdk/function-client": ["./src/function-client.ts"],
-      "@vibecanvas/canvas/*": ["../canvas/src/*"],
+      "@omnidraw/sdk/widget": ["./src/widget.ts"],
+      "@omnidraw/sdk/server": ["./src/server.ts"],
+      "@omnidraw/sdk/function-client": ["./src/function-client.ts"],
+      "@omnidraw/canvas/*": ["../canvas/src/*"],
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

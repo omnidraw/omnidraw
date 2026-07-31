@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { webcrypto } from 'node:crypto';
-import { ZWidgetCapsuleHostConfiguration } from '@vibecanvas/api/widget/contract';
+import { ZWidgetCapsuleHostConfiguration } from '@omnidraw/api/widget/contract';
 import {
   chmod,
   mkdtemp,
@@ -25,7 +25,7 @@ const roots: string[] = [];
 const MESSAGE = new TextEncoder().encode('capsule-signing-store-test');
 
 async function root(): Promise<string> {
-  const value = await mkdtemp(join(tmpdir(), 'vibecanvas-capsule-keys-'));
+  const value = await mkdtemp(join(tmpdir(), 'omnidraw-capsule-keys-'));
   roots.push(value);
   return value;
 }
@@ -48,11 +48,11 @@ describe('WidgetCapsuleSigningKeyStore', () => {
 
     expect(previewKeys).toHaveLength(1);
     expect(releaseKeys).toHaveLength(1);
-    expect(previewKeys[0]!.keyId).toBe('vibecanvas-preview-v1');
-    expect(releaseKeys[0]!.keyId).toBe('vibecanvas-release-v1');
+    expect(previewKeys[0]!.keyId).toBe('omnidraw-preview-v1');
+    expect(releaseKeys[0]!.keyId).toBe('omnidraw-release-v1');
     expect(publicKeys.map(({ keyId }) => keyId)).toEqual([
-      'vibecanvas-preview-v1',
-      'vibecanvas-release-v1',
+      'omnidraw-preview-v1',
+      'omnidraw-release-v1',
     ]);
     expect(JSON.stringify(publicKeys)).not.toContain('private');
 

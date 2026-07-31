@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
@@ -12,7 +12,7 @@ import {
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnWidgetPreviewBindingPlanDigest,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type {
   IWidgetArtifactMutationCoordinator,
   IWidgetControlStore,
@@ -23,7 +23,7 @@ import type {
   TWidgetPublicationCommitResult,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { AgentAuthoringStoreTurso } from '../AgentAuthoringStoreTurso';
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
@@ -115,7 +115,7 @@ function manifest(
       entry: 'src/ui.tsx',
       apis: ['DOM'],
     },
-    ...(args.server ? { server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' } } : {}),
+    ...(args.server ? { server: { entry: 'src/server.ts', runtimeAbi: 'omnidraw:1' } } : {}),
     ...(args.resources ? { resources: args.resources } : {}),
   };
 }
@@ -181,14 +181,14 @@ async function publish(
     buildConfigurationDigest: `sha256:${'e'.repeat(64)}`,
   };
   const uiRuntime = args.uiRuntime ?? {
-    format: 'vibecanvas.capsule-runtime.v2',
+    format: 'omnidraw.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${uiArtifact.digestSha256}`,
     apiContract: CAPSULE_API_CONTRACT,
     budgets: CAPSULE_BUDGETS,
     capabilityRequests: [],
     channels: null,
     parkability: { parkable: false },
-    signatureKeyIds: ['vibecanvas-release-v1'],
+    signatureKeyIds: ['omnidraw-release-v1'],
   };
   const functionDescriptors = args.functionDescriptors ?? (value.server ? [{
     schemaVersion: 1 as const,
@@ -236,7 +236,7 @@ async function publish(
       sourceDigestSha256,
       builderIdentity,
       capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-      buildPolicyId: 'vibecanvas-release-v1',
+      buildPolicyId: 'omnidraw-release-v1',
     }))
     .digest('hex');
   const bindings = args.bindings ?? [];
@@ -259,7 +259,7 @@ async function publish(
       serverArtifact,
       serverRuntimeAbi: value.server?.runtimeAbi ?? null,
       capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-      buildPolicyId: 'vibecanvas-release-v1',
+      buildPolicyId: 'omnidraw-release-v1',
       createdAtMs: nowMs,
     },
     source: {
@@ -308,7 +308,7 @@ async function publish(
               serverArtifact?.digestSha256 ?? null,
             builderIdentity,
             capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-            buildPolicyId: 'vibecanvas-release-v1',
+            buildPolicyId: 'omnidraw-release-v1',
           },
         }),
     nowMs,
@@ -358,7 +358,7 @@ describe('WidgetControlStoreTurso', () => {
   let store: IWidgetControlStore & IWidgetArtifactMutationCoordinator;
 
   beforeEach(async () => {
-    serviceRoot = await mkdtemp(path.join(tmpdir(), 'vibecanvas-widget-control-store-'));
+    serviceRoot = await mkdtemp(path.join(tmpdir(), 'omnidraw-widget-control-store-'));
     databasePath = path.join(serviceRoot, 'main.db');
     service = new DbServiceTurso({
       databasePath,
@@ -402,11 +402,11 @@ describe('WidgetControlStoreTurso', () => {
       serverArtifact: null,
       uiArtifact: { id: uuid(412), kind: 'ui', retentionState: 'pinned' },
       uiRuntime: {
-        format: 'vibecanvas.capsule-runtime.v2',
-        signatureKeyIds: ['vibecanvas-release-v1'],
+        format: 'omnidraw.capsule-runtime.v2',
+        signatureKeyIds: ['omnidraw-release-v1'],
       },
       capsuleBuildIdentity: { packageName: '@omnidraw/capsule' },
-      buildPolicyId: 'vibecanvas-release-v1',
+      buildPolicyId: 'omnidraw-release-v1',
     });
     expect(first.status === 'committed' && first.definition).toMatchObject({
       id: DEFINITION_A,
@@ -471,7 +471,7 @@ describe('WidgetControlStoreTurso', () => {
         apiContract: CAPSULE_API_CONTRACT,
       },
       serverArtifact: { id: uuid(415), kind: 'server', digestSha256: digest(2) },
-      serverRuntimeAbi: 'vibecanvas:1',
+      serverRuntimeAbi: 'omnidraw:1',
     });
     expect(await (await service.db.prepare(`
       SELECT capsule_artifact_hash, capability_contract_digest_sha256,
@@ -497,7 +497,7 @@ describe('WidgetControlStoreTurso', () => {
       definition_revision: 2,
       artifact_digest_sha256: digest(2),
       contract_digest_sha256: secondRevision.contractDigestSha256,
-      runtime_abi: 'vibecanvas:1',
+      runtime_abi: 'omnidraw:1',
     });
     expect(await rowCount(service, 'artifact_references')).toBe(4);
     expect(await store.getActiveRevision(TENANT_A, DEFINITION_A)).toMatchObject({ id: uuid(413) });

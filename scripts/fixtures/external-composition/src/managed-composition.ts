@@ -5,29 +5,29 @@ import type {
   TFunctionDispatchRequest,
   TFunctionInvocationEnvelope,
   TInvocationRecord,
-} from '@vibecanvas/function-runtime'
-import type { IResourceGateway } from '@vibecanvas/resource-runtime'
+} from '@omnidraw/function-runtime'
+import type { IResourceGateway } from '@omnidraw/resource-runtime'
 import {
   createRuntime,
   createServiceRegistry,
   type IPlugin,
   type IService,
-} from '@vibecanvas/runtime'
+} from '@omnidraw/runtime'
 import type {
   IIdentityProvider,
   IPlacementDirectory,
   TTenantContext,
-} from '@vibecanvas/tenant-core'
+} from '@omnidraw/tenant-core'
 import type {
   IWidgetCapsuleHostConfigurationReader,
   IWidgetArtifactStore,
   TWidgetCapsuleHostConfiguration,
   TWidgetArtifactDescriptor,
-} from '@vibecanvas/widget-contract'
+} from '@omnidraw/widget-contract'
 
 type TManagedService<TCapability> = TCapability & IService
 
-declare module '@vibecanvas/runtime' {
+declare module '@omnidraw/runtime' {
   interface IServiceMap {
     managedIdentity: TManagedService<IIdentityProvider>
     managedPlacement: TManagedService<IPlacementDirectory>
@@ -87,7 +87,7 @@ function invocationRecord(
       definitionRevision: 1,
       artifactDigestSha256: 'a'.repeat(64),
       contractDigestSha256: 'b'.repeat(64),
-      runtimeAbi: 'vibecanvas-function-v1',
+      runtimeAbi: 'omnidraw-function-v1',
       input: request.input,
       inputDigestSha256: 'c'.repeat(64),
       idempotencyKey: request.idempotencyKey,
@@ -319,7 +319,7 @@ export function createManagedCompositionFixture() {
   services.provide('managedUsage', 80, usage)
 
   const compositionProbe: IPlugin<Pick<
-    import('@vibecanvas/runtime').IServiceMap,
+    import('@omnidraw/runtime').IServiceMap,
     typeof MANAGED_SERVICE_NAMES[number]
   >> = {
     name: 'managed-composition-probe',

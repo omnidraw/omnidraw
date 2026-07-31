@@ -3,7 +3,7 @@ import {
   hitTestWidgetFramePart,
   resolveWidgetFrameLayout,
 } from '@omnidraw/cangine/geometry';
-import { CANVAS_WIDGET_EXTENSION_KEY } from "@vibecanvas/canvas-contract/CONSTANTS";
+import { CANVAS_WIDGET_EXTENSION_KEY } from "@omnidraw/canvas-contract/CONSTANTS";
 import {
   fnAiWidgetPayloadEquals,
   fnAiWidgetPayload,
@@ -34,7 +34,7 @@ describe("direct Cangine widget nodes", () => {
     });
 
     expect(node.kind).toBe("widget-frame");
-    expect(node.portal.portalId).toBe("vibecanvas:widget:node-1");
+    expect(node.portal.portalId).toBe("omnidraw:widget:node-1");
     expect(fnCanvasWidgetExtension(node)).toEqual({
       schemaVersion: 1,
       type: "widget-instance",
@@ -90,7 +90,7 @@ describe("direct Cangine widget nodes", () => {
       kind: "widget-frame",
       title: "Weather Preview",
       portal: {
-        portalId: "vibecanvas:widget:node-1",
+        portalId: "omnidraw:widget:node-1",
         interactive: true,
       },
       headerItems: [{

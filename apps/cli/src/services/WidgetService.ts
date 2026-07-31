@@ -3,13 +3,13 @@ import { createHash } from 'node:crypto';
 import {
   WidgetArtifactBuilderCapsule,
   type CapsuleArtifactSigningKey,
-  type TVibecanvasCapsuleBuild,
-  type TVibecanvasDistributionBuild,
-} from '@vibecanvas/capsule-vibecanvas/builder';
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
-import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+  type TOmnidrawCapsuleBuild,
+  type TOmnidrawDistributionBuild,
+} from '@omnidraw/capsule-omnidraw/builder';
+import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
+import { AgentAuthoringStoreTurso } from '@omnidraw/service-db/AgentAuthoringStoreTurso';
+import { WidgetControlStoreTurso } from '@omnidraw/service-db/WidgetControlStoreTurso';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IWidgetArtifactGarbageCollector,
   IWidgetArtifactConstructionBuilder,
@@ -57,7 +57,7 @@ import type {
   TWidgetRevisionSourceSnapshotReadRequest,
   TWidgetRollbackInput,
   TWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
@@ -66,7 +66,7 @@ import {
   fnWidgetBuildIntegrityDiagnostic,
   fnWidgetPreviewBindingPlanDigest,
   fnWidgetPreviewWorkspaceKey,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   LocalWidgetArtifactStore,
   WidgetArtifactConstructionCache,
@@ -78,7 +78,7 @@ import {
   WidgetPublicationService,
   WidgetSourceSnapshot,
   type TCapturedWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract/local';
+} from '@omnidraw/widget-contract/local';
 
 type TWidgetServicePlacement = TTenantContext;
 
@@ -100,8 +100,8 @@ type TWidgetServiceConfig = Readonly<{
   resolveTrustedPackageImport: (specifier: string) => string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
   buildPolicyId: string;
-  capsuleBuild: TVibecanvasCapsuleBuild;
-  distributionBuild: TVibecanvasDistributionBuild;
+  capsuleBuild: TOmnidrawCapsuleBuild;
+  distributionBuild: TOmnidrawDistributionBuild;
   loadCapsuleSigningKeys(
     purpose: 'preview' | 'release',
   ): Promise<readonly CapsuleArtifactSigningKey[]>;

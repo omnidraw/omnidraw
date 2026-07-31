@@ -5,7 +5,7 @@
  * These represent the source of truth from the server.
  */
 
-import type { TCanvas } from "@vibecanvas/service-db/model";
+import type { TCanvas } from "@omnidraw/service-db/model";
 
 // Canvas ID type used throughout the app
 export type TCanvasId = string;

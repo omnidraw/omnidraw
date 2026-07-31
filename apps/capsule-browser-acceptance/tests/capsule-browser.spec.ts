@@ -67,8 +67,8 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
   } finally {
     await page.evaluate(() => {
       (window as Window & {
-        __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
-      }).__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?.();
+        __OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
+      }).__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?.();
     });
   }
 
@@ -90,15 +90,15 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
 
   const published = await page.evaluate(() => {
     return (window as Window & {
-      __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__?: TPublishedResult;
-    }).__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__ ?? null;
+      __OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE__?: TPublishedResult;
+    }).__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE__ ?? null;
   });
   const detail = JSON.stringify(published, null, 2);
 
   expect(pageErrors, detail).toEqual([]);
   expect(published, detail).not.toBeNull();
   expect(published, detail).toMatchObject({
-    format: 'vibecanvas.capsule-browser-acceptance-result.v1',
+    format: 'omnidraw.capsule-browser-acceptance-result.v1',
     state: 'passed',
     failed: 0,
     fatalErrors: [],

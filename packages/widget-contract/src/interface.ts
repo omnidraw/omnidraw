@@ -2,7 +2,7 @@
  * @file Narrow public capabilities for widget build, publication, artifact access, and GC.
  */
 
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TWidgetActiveRevisionCasResult,
   TWidgetArtifactDeleteRequest,
@@ -111,7 +111,7 @@ export interface IWidgetArtifactConstructionSigner {
 export interface IWidgetArtifactConstructionBuilder
   extends IWidgetArtifactBuilder, IWidgetArtifactConstructor, IWidgetArtifactConstructionSigner {}
 
-/** Trusted build port; implementations map Vibecanvas inputs to public Capsule build APIs. */
+/** Trusted build port; implementations map Omnidraw inputs to public Capsule build APIs. */
 export interface IWidgetCapsuleUiArtifactBuilder {
   buildCapsuleUiArtifact(
     tenant: TTenantContext,

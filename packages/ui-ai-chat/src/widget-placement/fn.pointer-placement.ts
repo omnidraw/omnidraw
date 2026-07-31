@@ -1,4 +1,4 @@
-import type { TWidgetFrameBounds } from '@vibecanvas/widget-contract';
+import type { TWidgetFrameBounds } from '@omnidraw/widget-contract';
 
 export type TWidgetPlacementPoint = Readonly<{ x: number; y: number }>;
 

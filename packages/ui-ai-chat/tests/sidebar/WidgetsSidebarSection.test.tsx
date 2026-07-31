@@ -1,4 +1,4 @@
-import type { TWidgetCatalog, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalog, TWidgetVariantSummary } from '@omnidraw/orpc-client';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';

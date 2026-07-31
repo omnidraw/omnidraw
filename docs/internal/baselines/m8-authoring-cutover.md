@@ -73,10 +73,10 @@ flowchart LR
 
 | Check | Result |
 | --- | --- |
-| Agent authoring | `@vibecanvas/service-agent` passed 145 tests / 751 assertions; restart materialization and exact Preview-close regressions passed 35 tests |
-| Browser authoring | `@vibecanvas/ui-ai-chat` passed 53 files / 336 tests, including response-loss placement and exact publication identity |
-| Neutral API | `@vibecanvas/api` passed 62 tests / 333 assertions, including strict authoring and Preview contracts |
-| Durable stores | `@vibecanvas/service-db` passed 167 tests / 1,461 assertions, including account-qualified authoring lifecycle and publication seeding |
+| Agent authoring | `@omnidraw/service-agent` passed 145 tests / 751 assertions; restart materialization and exact Preview-close regressions passed 35 tests |
+| Browser authoring | `@omnidraw/ui-ai-chat` passed 53 files / 336 tests, including response-loss placement and exact publication identity |
+| Neutral API | `@omnidraw/api` passed 62 tests / 333 assertions, including strict authoring and Preview contracts |
+| Durable stores | `@omnidraw/service-db` passed 167 tests / 1,461 assertions, including account-qualified authoring lifecycle and publication seeding |
 | Semantic validator | Validator and `WidgetService` suites passed 18 tests / 142 assertions, including bounded termination, declaration drift, and compiled-binary isolation |
 | Permanent gates | `bun run test:widget-artifacts`, `bun run test:function-runtime`, and `bun run test:isolation` passed every suite |
 | Common repository gate | Complete sequential root tests, affected typechecks, functional-core lint, and `git diff --check` passed |

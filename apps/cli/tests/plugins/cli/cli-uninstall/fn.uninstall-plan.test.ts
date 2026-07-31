@@ -5,20 +5,20 @@ import { fnBuildUninstallPlan } from '../../../../src/plugins/cli/core/fn.uninst
 const portal = { dirname, join, resolve };
 
 describe('fnBuildUninstallPlan', () => {
-  test('selects curl install files and the unified Vibecanvas home', () => {
+  test('selects curl install files and the unified Omnidraw home', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {},
-      execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
-      vibecanvasHomeDir: '/home/tester/.vibecanvas',
+      execPath: '/home/tester/.omnidraw/bin/omnidraw',
+      omnidrawHomeDir: '/home/tester/.omnidraw',
     });
 
     expect(plan.removeTargets.map((target) => [target.kind, target.path])).toEqual([
-      ['binary', '/home/tester/.vibecanvas/bin/vibecanvas'],
-      ['native-dir', '/home/tester/.vibecanvas/native'],
-      ['migrations-dir', '/home/tester/.vibecanvas/database-migrations'],
-      ['install-dir', '/home/tester/.vibecanvas/bin'],
-      ['home-dir', '/home/tester/.vibecanvas'],
+      ['binary', '/home/tester/.omnidraw/bin/omnidraw'],
+      ['native-dir', '/home/tester/.omnidraw/native'],
+      ['migrations-dir', '/home/tester/.omnidraw/database-migrations'],
+      ['install-dir', '/home/tester/.omnidraw/bin'],
+      ['home-dir', '/home/tester/.omnidraw'],
     ]);
     expect(plan.skippedTargets).toEqual([]);
   });
@@ -28,7 +28,7 @@ describe('fnBuildUninstallPlan', () => {
       homedir: '/home/tester',
       env: {},
       execPath: '/usr/local/bin/node',
-      vibecanvasHomeDir: '/projects/demo',
+      omnidrawHomeDir: '/projects/demo',
     });
 
     expect(plan.removeTargets.some((target) => target.path === '/projects/demo')).toBe(false);
@@ -41,32 +41,32 @@ describe('fnBuildUninstallPlan', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {
-        VIBECANVAS_INSTALL_DIR: '/opt/vibecanvas/bin',
-        VIBECANVAS_NATIVE_DIR: '/opt/vibecanvas/native-addons',
-        VIBECANVAS_MIGRATIONS_DIR: '/opt/vibecanvas/migrations',
+        OMNIDRAW_INSTALL_DIR: '/opt/omnidraw/bin',
+        OMNIDRAW_NATIVE_DIR: '/opt/omnidraw/native-addons',
+        OMNIDRAW_MIGRATIONS_DIR: '/opt/omnidraw/migrations',
       },
-      execPath: '/opt/vibecanvas/bin/vibecanvas',
-      vibecanvasHomeDir: '/home/tester/.vibecanvas',
+      execPath: '/opt/omnidraw/bin/omnidraw',
+      omnidrawHomeDir: '/home/tester/.omnidraw',
     });
 
     expect(plan.removeTargets).toEqual(expect.arrayContaining([
-      { kind: 'binary', path: '/opt/vibecanvas/bin/vibecanvas', missingOk: true },
-      { kind: 'native-dir', path: '/opt/vibecanvas/native-addons', missingOk: true },
-      { kind: 'migrations-dir', path: '/opt/vibecanvas/migrations', missingOk: true },
-      { kind: 'home-dir', path: '/home/tester/.vibecanvas', missingOk: true },
+      { kind: 'binary', path: '/opt/omnidraw/bin/omnidraw', missingOk: true },
+      { kind: 'native-dir', path: '/opt/omnidraw/native-addons', missingOk: true },
+      { kind: 'migrations-dir', path: '/opt/omnidraw/migrations', missingOk: true },
+      { kind: 'home-dir', path: '/home/tester/.omnidraw', missingOk: true },
     ]));
   });
 
-  test('accepts an explicitly named Vibecanvas home outside the user home', () => {
+  test('accepts an explicitly named Omnidraw home outside the user home', () => {
     const plan = fnBuildUninstallPlan(portal, {
       homedir: '/home/tester',
       env: {},
-      execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
-      vibecanvasHomeDir: '/projects/custom/vibecanvas',
+      execPath: '/home/tester/.omnidraw/bin/omnidraw',
+      omnidrawHomeDir: '/projects/custom/omnidraw',
     });
 
     expect(plan.removeTargets).toEqual(expect.arrayContaining([
-      { kind: 'home-dir', path: '/projects/custom/vibecanvas', missingOk: true },
+      { kind: 'home-dir', path: '/projects/custom/omnidraw', missingOk: true },
     ]));
   });
 });

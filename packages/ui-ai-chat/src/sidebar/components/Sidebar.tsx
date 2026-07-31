@@ -134,7 +134,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
       <aside class={sidebarClass()} aria-label="Canvas navigation">
         <div class={styles.header}>
           <div class={styles.brandLockup}>
-            <h1 class={styles.brand}>VIBECANVAS</h1>
+            <h1 class={styles.brand}>OMNIDRAW</h1>
           </div>
           <Button
             class={styles.sidebarToggle}

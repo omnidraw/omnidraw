@@ -1,4 +1,4 @@
-import type { TWidgetCatalog } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalog } from '@omnidraw/orpc-client';
 import { createContext, createSignal, onCleanup, onMount, useContext, type Accessor, type ParentComponent } from 'solid-js';
 import type { TSidebarController } from '../ports';
 

@@ -9,11 +9,11 @@ import type {
 } from './function-client';
 import type {
   TUnsubscribe,
-  TVibecanvasJsonValue,
+  TOmnidrawJsonValue,
 } from './shared';
 
 export type TCollaborativeStateSnapshot<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 > = Readonly<{
   version: number;
   value: TValue;
@@ -26,7 +26,7 @@ export type TCollaborativeStateSubscriptionOptions = Readonly<{
 }>;
 
 export type TCollaborativeStateClient<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 > = Readonly<{
   get(options?: TWidgetCapabilityCallOptions): Promise<TValue>;
   change(
@@ -55,7 +55,7 @@ const COLLABORATIVE_STATE_OPERATIONS = Object.freeze({
 });
 
 const COLLABORATIVE_STATE_CAPABILITY = Object.freeze({
-  id: 'vibecanvas.widget.collaborative_state',
+  id: 'omnidraw.widget.collaborative_state',
   versionRange: '1.0.0',
   contractHash:
     'sha256:4f1fb60c04cf513e111bae5840faf4233e47077215a32ceadf58e9d2232b18dc',
@@ -121,7 +121,7 @@ function createAbortRelay(source: AbortSignal | undefined): TAbortRelay {
   });
 }
 
-function assertSnapshot<TValue extends TVibecanvasJsonValue>(
+function assertSnapshot<TValue extends TOmnidrawJsonValue>(
   value: unknown,
   afterVersion?: number,
 ): TCollaborativeStateSnapshot<TValue> {
@@ -159,7 +159,7 @@ function copyCapabilitySelector(
 }
 
 export async function getCollaborativeState<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(
   options: TWidgetCapabilityCallOptions = {},
 ): Promise<TValue> {
@@ -173,7 +173,7 @@ export async function getCollaborativeState<
 }
 
 export async function changeCollaborativeState<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(
   value: TValue,
   options: TWidgetCapabilityCallOptions = {},
@@ -188,7 +188,7 @@ export async function changeCollaborativeState<
 }
 
 function startCollaborativeStateSubscription<
-  TValue extends TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue,
 >(
   selector: TWidgetCapabilitySelector,
   listener: (value: TValue) => void,
@@ -266,7 +266,7 @@ function startCollaborativeStateSubscription<
 }
 
 export function subscribeCollaborativeState<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(
   listener: (value: TValue) => void,
   options: TCollaborativeStateSubscriptionOptions = {},
@@ -284,7 +284,7 @@ export function subscribeCollaborativeState<
  * every stream and every still-pending get/change call made by that client.
  */
 export function createCollaborativeStateClient<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(): TCollaborativeStateClient<TValue> {
   const capability = COLLABORATIVE_STATE_CAPABILITY;
   const pendingCalls = new Set<TAbortRelay>();

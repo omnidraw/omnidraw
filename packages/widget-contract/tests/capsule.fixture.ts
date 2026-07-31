@@ -39,14 +39,14 @@ export const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze
 });
 
 export const CAPSULE_RUNTIME_DESCRIPTOR: TWidgetNativeCapsuleRuntimeDescriptor = Object.freeze({
-  format: 'vibecanvas.capsule-runtime.v2',
+  format: 'omnidraw.capsule-runtime.v2',
   capsuleArtifactHash: CAPSULE_HASH_A,
   apiContract: CAPSULE_API_CONTRACT,
   budgets: Object.freeze({}),
   capabilityRequests: Object.freeze([]),
   channels: null,
   parkability: Object.freeze({ parkable: false }),
-  signatureKeyIds: Object.freeze(['vibecanvas-preview-v1']),
+  signatureKeyIds: Object.freeze(['omnidraw-preview-v1']),
 });
 
 export const CAPSULE_MANIFEST: TWidgetManifestV3 = Object.freeze({

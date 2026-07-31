@@ -1,5 +1,5 @@
-import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
-import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+import type { IService, IStartableService, IStoppableService } from "@omnidraw/runtime";
+import { fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 import type { Dirent } from 'node:fs';
 import path from "node:path";
 import * as fs from 'node:fs/promises';
@@ -41,7 +41,7 @@ import type {
   TMigrationChecksum,
 } from './migration-types';
 
-declare const VIBECANVAS_VERSION: string | undefined;
+declare const OMNIDRAW_VERSION: string | undefined;
 
 type TCanvasCreateArgs = Pick<TCanvas, "id" | "name">;
 type TFileCreateArgs = Omit<TMediaFile, "created_at">
@@ -116,8 +116,8 @@ function isExistingPathError(error: unknown): boolean {
 
 function migrationApplicationVersion(): string {
   return (
-    (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION)
-    || process.env.VIBECANVAS_VERSION
+    (typeof OMNIDRAW_VERSION !== 'undefined' && OMNIDRAW_VERSION)
+    || process.env.OMNIDRAW_VERSION
     || MIGRATION_APPLICATION_VERSION_FALLBACK
   );
 }
@@ -167,7 +167,7 @@ async function healDbServiceDatabaseCoordinator(args: {
       experimental: [...TURSO_EXPERIMENTAL_FEATURES],
     }),
     rename: fs.rename,
-    validateBeforeQuarantine: (preflight) => validateVibecanvasHomeLayout(
+    validateBeforeQuarantine: (preflight) => validateOmnidrawHomeLayout(
       args.homeDir,
       args.databasePath,
       preflight.status === 'empty',
@@ -212,7 +212,7 @@ async function validateOrganizationsDirectory(
   }
 }
 
-async function validateVibecanvasHomeLayout(
+async function validateOmnidrawHomeLayout(
   homeDir: string,
   databasePath: string,
   fresh: boolean,
@@ -221,7 +221,7 @@ async function validateVibecanvasHomeLayout(
   try {
     const rootStat = await fs.lstat(homeDir);
     if (!rootStat.isDirectory()) {
-      throw new Error(`Vibecanvas home is not a directory: ${homeDir}`);
+      throw new Error(`Omnidraw home is not a directory: ${homeDir}`);
     }
     rootEntries = await fs.readdir(homeDir, { withFileTypes: true });
   } catch (error) {
@@ -324,12 +324,12 @@ export async function preflightDbServiceDatabase(
     databaseStat = await fs.lstat(args.databasePath);
   } catch (error) {
     if (!isMissingPathError(error)) throw error;
-    await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, true);
+    await validateOmnidrawHomeLayout(args.homeDir, args.databasePath, true);
     return { status: 'empty' };
   }
 
   if (!databaseStat.isFile()) {
-    throw new Error(`Refusing Vibecanvas database path because it is not a regular file: ${args.databasePath}`);
+    throw new Error(`Refusing Omnidraw database path because it is not a regular file: ${args.databasePath}`);
   }
 
   const migrations = await readMigrationChecksums();
@@ -353,7 +353,7 @@ export async function preflightDbServiceDatabase(
       },
     );
     inspectionCompleted = true;
-    await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
+    await validateOmnidrawHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
     return result;
   } catch (error) {
     preflightError = error;
@@ -380,13 +380,13 @@ export async function preflightDbServiceDatabase(
 
   if (
     preflightError instanceof Error
-    && preflightError.message.startsWith('Refusing to open Vibecanvas database:')
+    && preflightError.message.startsWith('Refusing to open Omnidraw database:')
   ) {
     throw preflightError;
   }
   const reason = preflightError instanceof Error ? preflightError.message : String(preflightError);
   throw new Error(
-    `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
+    `Refusing to open Omnidraw database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
     { cause: preflightError },
   );
 }

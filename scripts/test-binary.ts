@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Verifies a built vibecanvas binary serves assets, websockets, and expected database paths.
+ * @file Verifies a built omnidraw binary serves assets, websockets, and expected database paths.
  */
 
 import path from "path"
@@ -13,6 +13,7 @@ import { tmpdir } from "node:os"
 import { Glob } from "bun"
 import {
   AGENT_AUTHORING_MIGRATION_NAME,
+  CAPSULE_API_GROUPS_MIGRATION_NAME,
   DATABASE_APPLICATION_ID,
   DATABASE_SCHEMA_VERSION,
   DEFAULT_OSS_ACCOUNT_DISPLAY_NAME,
@@ -21,6 +22,7 @@ import {
   FUNCTION_RUNTIME_MIGRATION_NAME,
   INITIAL_MIGRATION_NAME,
   LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+  PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
 } from "../packages/service-db/src/CONSTANTS"
 import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
@@ -86,6 +88,8 @@ const EXPECTED_MIGRATION_NAMES = Object.freeze([
   FUNCTION_RUNTIME_MIGRATION_NAME,
   AGENT_AUTHORING_MIGRATION_NAME,
   LIVE_WIDGET_PREVIEW_MIGRATION_NAME,
+  CAPSULE_API_GROUPS_MIGRATION_NAME,
+  PREVIEW_SOURCE_MAPS_MIGRATION_NAME,
 ])
 
 function parseArgs(): TArgs {
@@ -124,13 +128,13 @@ async function resolveBinaryPath(inputPath?: string): Promise<string> {
     throw new Error(`Unsupported platform for auto-detect: ${process.platform}-${process.arch}`)
   }
 
-  const pattern = `dist/vibecanvas-${os}-${arch}/bin/vibecanvas${process.platform === "win32" ? ".exe" : ""}`
+  const pattern = `dist/omnidraw-${os}-${arch}/bin/omnidraw${process.platform === "win32" ? ".exe" : ""}`
   const fullPath = path.join(rootDir, pattern)
   if (await Bun.file(fullPath).exists()) {
     return fullPath
   }
 
-  const fallbackGlob = new Glob(`dist/vibecanvas-${os}-${arch}*/bin/vibecanvas${process.platform === "win32" ? ".exe" : ""}`)
+  const fallbackGlob = new Glob(`dist/omnidraw-${os}-${arch}*/bin/omnidraw${process.platform === "win32" ? ".exe" : ""}`)
   for await (const match of fallbackGlob.scan(rootDir)) {
     return path.join(rootDir, match)
   }
@@ -243,7 +247,7 @@ async function assertHealthDiagnostics(
   }
 
   const health = await response.json() as Record<string, unknown>
-  if (health.ok !== true || health.service !== "vibecanvas") {
+  if (health.ok !== true || health.service !== "omnidraw") {
     throw new Error(`GET /health returned an invalid service status: ${JSON.stringify(health)}`)
   }
 }
@@ -534,7 +538,7 @@ async function assertManagedSchema(
 async function assertFileForeignKeyIntegrity(
   databasePath: string,
 ): Promise<TManagedDatabaseSnapshot> {
-  const verificationRoot = await mkdtemp(path.join(tmpdir(), "vibecanvas-binary-fk-"))
+  const verificationRoot = await mkdtemp(path.join(tmpdir(), "omnidraw-binary-fk-"))
   try {
     const databaseDirectory = path.dirname(databasePath)
     const databaseName = path.basename(databasePath)
@@ -611,7 +615,7 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
     env: {
       ...process.env,
       PATH: args.executablePath,
-      VIBECANVAS_HOME: args.homePath,
+      OMNIDRAW_HOME: args.homePath,
     },
   })
   const stdoutPromise = new Response(proc.stdout).text()
@@ -659,7 +663,7 @@ async function assertLegacyMarkerIgnoredBinaryScenario(args: {
   port: number
   timeoutMs: number
 }): Promise<void> {
-  const actorEraDatabasePath = path.join(args.homePath, "vibecanvas.turso")
+  const actorEraDatabasePath = path.join(args.homePath, "omnidraw.turso")
   const originalContents = "actor-era-database-marker\n"
   await mkdir(args.homePath, { recursive: true })
   await Bun.write(actorEraDatabasePath, originalContents)
@@ -670,7 +674,7 @@ async function assertLegacyMarkerIgnoredBinaryScenario(args: {
     stderr: "pipe",
     env: {
       ...process.env,
-      VIBECANVAS_HOME: args.homePath,
+      OMNIDRAW_HOME: args.homePath,
     },
   })
   const stdoutPromise = new Response(proc.stdout).text()
@@ -938,7 +942,7 @@ async function main() {
     port: args.port,
     cmd: ["serve", "--port", String(args.port)],
     env: {
-      VIBECANVAS_HOME: envHome,
+      OMNIDRAW_HOME: envHome,
     },
     expectedDbPath: path.join(envHome, "main.db"),
     verifyForeignKeysAfterShutdown: true,
@@ -951,7 +955,7 @@ async function main() {
     port: args.port,
     cmd: ["serve", "--port", String(args.port)],
     env: {
-      VIBECANVAS_HOME: envHome,
+      OMNIDRAW_HOME: envHome,
     },
     expectedDbPath: path.join(envHome, "main.db"),
     verifyForeignKeysAfterShutdown: true,
@@ -965,7 +969,7 @@ async function main() {
     port: args.port + 1,
     cmd: ["serve", "--port", String(args.port + 1), "--data-dir", explicitHome],
     env: {
-      VIBECANVAS_HOME: ignoredEnvHome,
+      OMNIDRAW_HOME: ignoredEnvHome,
     },
     expectedDbPath: path.join(explicitHome, "main.db"),
     expectedAbsentPaths: [ignoredEnvHome],
@@ -980,7 +984,7 @@ async function main() {
       port: defaultCompiledPort + 1,
       cmd: [],
       env: {
-        VIBECANVAS_HOME: compiledHome,
+        OMNIDRAW_HOME: compiledHome,
       },
       expectedDbPath: path.join(compiledHome, "main.db"),
       cleanupPaths: [compiledHome],

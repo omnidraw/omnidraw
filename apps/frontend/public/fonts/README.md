@@ -1,6 +1,6 @@
-# Vibecanvas canvas fonts
+# Omnidraw canvas fonts
 
-These fonts are bundled with the frontend and served from the same Vibecanvas
+These fonts are bundled with the frontend and served from the same Omnidraw
 origin under `/fonts/`. The application does not fetch fonts from a CDN at
 runtime.
 

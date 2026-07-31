@@ -5,7 +5,7 @@ type TArgs = Readonly<{
 
 export function fnWidgetCapsuleBuilderIdentity(args: TArgs): string {
   return [
-    'vibecanvas-build-adapter/v2',
+    'omnidraw-build-adapter/v2',
     `host-npm/${args.npmVersion}`,
     `server-bun/${args.serverBunVersion}`,
   ].join(';');

@@ -6,7 +6,7 @@ import {
 
 describe('fnRedactBuildOutput', () => {
   test('removes injected host workspace paths while retaining useful relative context', () => {
-    const root = '/private/tmp/vibecanvas-build/npm-distribution-123';
+    const root = '/private/tmp/omnidraw-build/npm-distribution-123';
     const output = [
       `at build (file://${root}/node_modules/vite/dist/node.js:10:2)`,
       'ui/main.ts:4:12: error: Expected expression',

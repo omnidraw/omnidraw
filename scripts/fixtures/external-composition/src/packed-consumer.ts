@@ -1,11 +1,11 @@
-import { fnFunctionArtifactAdmission } from '@vibecanvas/function-runtime/local'
+import { fnFunctionArtifactAdmission } from '@omnidraw/function-runtime/local'
 import {
   fnResourceKeyValueParse,
   fnResourceKeyValueSerialize,
-} from '@vibecanvas/resource-runtime/local'
-import { fnScopedKey } from '@vibecanvas/tenant-core/fn.scoped-key'
-import { ZWidgetCapsuleRuntimeDescriptor } from '@vibecanvas/widget-contract/browser'
-import { fnNormalizeWidgetFrame } from '@vibecanvas/widget-contract/fn.widget-frame'
+} from '@omnidraw/resource-runtime/local'
+import { fnScopedKey } from '@omnidraw/tenant-core/fn.scoped-key'
+import { ZWidgetCapsuleRuntimeDescriptor } from '@omnidraw/widget-contract/browser'
+import { fnNormalizeWidgetFrame } from '@omnidraw/widget-contract/fn.widget-frame'
 import { MANAGED_TENANT, createManagedCompositionFixture } from './managed-composition'
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -31,7 +31,7 @@ export async function runPackedPublicComposition(): Promise<void> {
   const frame = fnNormalizeWidgetFrame()
   assert(frame.width === 360 && frame.height === 320, 'The packed widget frame subpath changed defaults.')
   const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse({
-    format: 'vibecanvas.capsule-runtime.v2',
+    format: 'omnidraw.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${'a'.repeat(64)}`,
     apiContract: {
       format: 'capsule-api-groups-v1',
@@ -56,7 +56,7 @@ export async function runPackedPublicComposition(): Promise<void> {
     signatureKeyIds: ['managed-release-v1'],
   })
   assert(
-    runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2'
+    runtimeDescriptor.format === 'omnidraw.capsule-runtime.v2'
       && runtimeDescriptor.apiContract.groups[0] === 'DOM',
     'The packed browser subpath failed to decode trusted Capsule runtime metadata.',
   )

@@ -42,7 +42,7 @@ const databases: Database[] = [];
 const digest = (character: string) => character.repeat(64);
 
 async function openBaseline() {
-  const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-constraints-"));
+  const root = await mkdtemp(path.join(tmpdir(), "omnidraw-baseline-constraints-"));
   const db = await connect(path.join(root, "main.db"), {
     experimental: ["custom_types", "generated_columns"] as never,
   });
@@ -120,7 +120,7 @@ async function seedWidget(db: Database) {
   );
   await run(
     db,
-    "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 1, ?, ?, ?, ?, ?, ?, 'vibecanvas:1', 3)",
+    "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 1, ?, ?, ?, ?, ?, ?, 'omnidraw:1', 3)",
     ORG_A,
     REVISION_A,
     DEFINITION_A,
@@ -129,7 +129,7 @@ async function seedWidget(db: Database) {
     widgetManifestV3Json({
       name: "Weather",
       slug: "weather",
-      serverRuntimeAbi: "vibecanvas:1",
+      serverRuntimeAbi: "omnidraw:1",
     }),
     digest("c"),
     WIDGET_CAPSULE_V1_RUNTIME_JSON,

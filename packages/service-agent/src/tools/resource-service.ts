@@ -3,12 +3,12 @@ import type {
   TDbInspection,
   TDbLiveSqlResult,
   TResourceJson,
-} from '@vibecanvas/resource-runtime';
+} from '@omnidraw/resource-runtime';
 import type {
   TResourceCatalogRecord,
   TResourceDataMutationResult,
   TResourceDataPage,
-} from '@vibecanvas/resource-runtime/local';
+} from '@omnidraw/resource-runtime/local';
 
 export type TAgentResource = TResourceCatalogRecord;
 

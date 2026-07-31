@@ -1065,7 +1065,7 @@ function artifactBody(
         `${entry.rule}[${entry.relatedSequences.join(',')}]`
       )).join(' ');
   return [
-    'Vibecanvas developer trace: host-owned causal boundaries, not replay.',
+    'Omnidraw developer trace: host-owned causal boundaries, not replay.',
     `meta canvas=${header.environment.canvasId} mode=${header.mode} build=${header.environment.buildMode} app=${header.environment.applicationVersion} engine=${header.environment.cangineVersion} viewport=${header.environment.viewport.width}x${header.environment.viewport.height}@${header.environment.devicePixelRatio}`,
     `capture duration=${summary.durationMs}ms facts=${summary.omissions.retained}/${summary.omissions.captured} rows=${timelineLines.length} coalesced=${summary.omissions.coalesced} omitted=${summary.omissions.omitted} redacted=${summary.omissions.redacted} mark=${summary.markedSequence ?? 'none'}`,
     `anomalies ${anomalyLine}`,

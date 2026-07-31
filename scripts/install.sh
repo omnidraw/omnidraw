@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # /**
-#  * @file Installs the latest or selected vibecanvas binary release on the local machine.
+#  * @file Installs the latest or selected omnidraw binary release on the local machine.
 #  */
 
 set -euo pipefail
 
-APP=vibecanvas
-REPO="vibecanvas/vibecanvas"
+APP=omnidraw
+REPO="omnidraw/omnidraw"
 
 # Colors
 RED='\033[0;31m'
@@ -16,7 +16,7 @@ NC='\033[0m'
 
 usage() {
     cat <<EOF
-Vibecanvas Installer
+Omnidraw Installer
 
 Usage: install.sh [options]
 
@@ -28,10 +28,10 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://vibecanvas.dev/install | bash
-    curl -fsSL https://vibecanvas.dev/install | bash -s -- --version 0.0.1
-    curl -fsSL https://vibecanvas.dev/install | bash -s -- --channel beta
-    ./scripts/install.sh --binary /path/to/vibecanvas
+    curl -fsSL https://omnidraw.dev/install | bash
+    curl -fsSL https://omnidraw.dev/install | bash -s -- --version 0.0.1
+    curl -fsSL https://omnidraw.dev/install | bash -s -- --channel beta
+    ./scripts/install.sh --binary /path/to/omnidraw
 EOF
 }
 
@@ -134,10 +134,10 @@ verify_binary_checksum() {
     return 0
 }
 
-INSTALL_DIR="${VIBECANVAS_INSTALL_DIR:-$HOME/.vibecanvas/bin}"
-VIBECANVAS_HOME="$(dirname "$INSTALL_DIR")"
-NATIVE_DIR="${VIBECANVAS_NATIVE_DIR:-$VIBECANVAS_HOME/native}"
-MIGRATIONS_DIR="${VIBECANVAS_MIGRATIONS_DIR:-$VIBECANVAS_HOME/database-migrations}"
+INSTALL_DIR="${OMNIDRAW_INSTALL_DIR:-$HOME/.omnidraw/bin}"
+OMNIDRAW_HOME="$(dirname "$INSTALL_DIR")"
+NATIVE_DIR="${OMNIDRAW_NATIVE_DIR:-$OMNIDRAW_HOME/native}"
+MIGRATIONS_DIR="${OMNIDRAW_MIGRATIONS_DIR:-$OMNIDRAW_HOME/database-migrations}"
 mkdir -p "$INSTALL_DIR"
 
 validate_candidate() {
@@ -154,8 +154,8 @@ validate_candidate() {
 
     local output_file="$tmp_dir/candidate-version.txt"
     local error_file="$tmp_dir/candidate-error.txt"
-    VIBECANVAS_DISABLE_AUTOUPDATE=1 \
-      VIBECANVAS_HOME="$tmp_dir/vibecanvas-home" \
+    OMNIDRAW_DISABLE_AUTOUPDATE=1 \
+      OMNIDRAW_HOME="$tmp_dir/omnidraw-home" \
       "$candidate" --version >"$output_file" 2>"$error_file" &
     local candidate_pid=$!
     local elapsed=0
@@ -183,11 +183,11 @@ validate_candidate() {
 install_candidate_unit() {
     local candidate_binary=$1
     local candidate_native=${2:-}
-    local installed_binary="$INSTALL_DIR/vibecanvas"
-    local backup_binary="$INSTALL_DIR/.vibecanvas.upgrade-backup"
-    local backup_native="$VIBECANVAS_HOME/.native.upgrade-backup"
-    local staged_binary="$INSTALL_DIR/.vibecanvas.upgrade-new"
-    local staged_native="$VIBECANVAS_HOME/.native.upgrade-new"
+    local installed_binary="$INSTALL_DIR/omnidraw"
+    local backup_binary="$INSTALL_DIR/.omnidraw.upgrade-backup"
+    local backup_native="$OMNIDRAW_HOME/.native.upgrade-backup"
+    local staged_binary="$INSTALL_DIR/.omnidraw.upgrade-new"
+    local staged_native="$OMNIDRAW_HOME/.native.upgrade-new"
 
     rm -f "$backup_binary" "$staged_binary"
     rm -rf "$backup_native" "$staged_native"
@@ -237,7 +237,7 @@ else
         Darwin*) os="darwin" ;;
         Linux*) os="linux" ;;
         MINGW*|MSYS*|CYGWIN*)
-            echo -e "${RED}Unsupported OS: Windows builds are not published for Vibecanvas.${NC}"
+            echo -e "${RED}Unsupported OS: Windows builds are not published for Omnidraw.${NC}"
             exit 1
             ;;
         *)
@@ -313,10 +313,10 @@ else
         releases_json=$(curl -s "https://api.github.com/repos/$REPO/releases?per_page=50")
         if [[ "$channel" == "stable" ]]; then
             echo -e "${MUTED}Fetching latest stable version...${NC}"
-            release_tag=$(printf '%s' "$releases_json" | grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"vibecanvas-v[0-9]+\.[0-9]+\.[0-9]+"' | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"omnidraw-v[0-9]+\.[0-9]+\.[0-9]+"' | sed -n '1s/.*"\(omnidraw-v[^" ]*\)"/\1/p')
         else
             echo -e "${MUTED}Fetching latest ${channel} version...${NC}"
-            release_tag=$(printf '%s' "$releases_json" | grep -Eo "\"tag_name\"[[:space:]]*:[[:space:]]*\"vibecanvas-v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -Eo "\"tag_name\"[[:space:]]*:[[:space:]]*\"omnidraw-v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"\(omnidraw-v[^" ]*\)"/\1/p')
         fi
 
         if [[ -z "${release_tag:-}" ]]; then
@@ -324,13 +324,13 @@ else
             echo -e "${MUTED}Check: https://github.com/$REPO/releases${NC}"
             exit 1
         fi
-        specific_version="${release_tag#vibecanvas-v}"
+        specific_version="${release_tag#omnidraw-v}"
         url="https://github.com/$REPO/releases/download/${release_tag}/$filename"
     else
-        requested_version="${requested_version#vibecanvas-v}"
+        requested_version="${requested_version#omnidraw-v}"
         requested_version="${requested_version#v}"
         specific_version="$requested_version"
-        release_tag="vibecanvas-v${requested_version}"
+        release_tag="omnidraw-v${requested_version}"
 
         # Verify release exists
         http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/$REPO/releases/tag/${release_tag}")
@@ -343,8 +343,8 @@ else
     fi
 
     # Check if already installed with same version
-    if command -v vibecanvas >/dev/null 2>&1; then
-        installed_version=$(vibecanvas --version 2>/dev/null || echo "")
+    if command -v omnidraw >/dev/null 2>&1; then
+        installed_version=$(omnidraw --version 2>/dev/null || echo "")
         if [[ "$installed_version" == "$specific_version" ]]; then
             echo -e "${MUTED}Version ${NC}$specific_version${MUTED} already installed${NC}"
             exit 0
@@ -358,15 +358,15 @@ fi
 # Install
 if [[ -n "$binary_path" ]]; then
     echo -e "\n${MUTED}Installing from: ${NC}$binary_path"
-    tmp_dir="${TMPDIR:-/tmp}/vibecanvas_install_$$"
+    tmp_dir="${TMPDIR:-/tmp}/omnidraw_install_$$"
     mkdir -p "$tmp_dir"
     trap "rm -rf '$tmp_dir'" EXIT
     validate_candidate "$binary_path" "local"
     install_candidate_unit "$binary_path" ""
 else
-    echo -e "\n${MUTED}Installing vibecanvas ${NC}$specific_version${MUTED} for ${NC}$target"
+    echo -e "\n${MUTED}Installing omnidraw ${NC}$specific_version${MUTED} for ${NC}$target"
 
-    tmp_dir="${TMPDIR:-/tmp}/vibecanvas_install_$$"
+    tmp_dir="${TMPDIR:-/tmp}/omnidraw_install_$$"
     mkdir -p "$tmp_dir"
     trap "rm -rf '$tmp_dir'" EXIT
 
@@ -382,25 +382,25 @@ else
 
     # Find the binary (might be in root or in bin/)
     binary_candidate=""
-    if [[ -f "$tmp_dir/vibecanvas" ]]; then
-        binary_candidate="$tmp_dir/vibecanvas"
-    elif [[ -f "$tmp_dir/bin/vibecanvas" ]]; then
-        binary_candidate="$tmp_dir/bin/vibecanvas"
-    elif [[ -f "$tmp_dir/vibecanvas.exe" ]]; then
-        binary_candidate="$tmp_dir/vibecanvas.exe"
-    elif [[ -f "$tmp_dir/bin/vibecanvas.exe" ]]; then
-        binary_candidate="$tmp_dir/bin/vibecanvas.exe"
+    if [[ -f "$tmp_dir/omnidraw" ]]; then
+        binary_candidate="$tmp_dir/omnidraw"
+    elif [[ -f "$tmp_dir/bin/omnidraw" ]]; then
+        binary_candidate="$tmp_dir/bin/omnidraw"
+    elif [[ -f "$tmp_dir/omnidraw.exe" ]]; then
+        binary_candidate="$tmp_dir/omnidraw.exe"
+    elif [[ -f "$tmp_dir/bin/omnidraw.exe" ]]; then
+        binary_candidate="$tmp_dir/bin/omnidraw.exe"
     else
-        echo -e "${RED}Could not find vibecanvas binary in archive${NC}"
+        echo -e "${RED}Could not find omnidraw binary in archive${NC}"
         exit 1
     fi
 
     checksum_verified=false
     for checksum_candidate in \
-        "$tmp_dir/vibecanvas.sha256" \
-        "$tmp_dir/bin/vibecanvas.sha256" \
-        "$tmp_dir/vibecanvas.exe.sha256" \
-        "$tmp_dir/bin/vibecanvas.exe.sha256"
+        "$tmp_dir/omnidraw.sha256" \
+        "$tmp_dir/bin/omnidraw.sha256" \
+        "$tmp_dir/omnidraw.exe.sha256" \
+        "$tmp_dir/bin/omnidraw.exe.sha256"
     do
         if verify_binary_checksum "$binary_candidate" "$checksum_candidate"; then
             checksum_verified=true
@@ -409,7 +409,7 @@ else
     done
 
     if [[ "$checksum_verified" != "true" ]]; then
-        checksum_url="https://github.com/$REPO/releases/download/vibecanvas-v${specific_version}/${package_name}.sha256"
+        checksum_url="https://github.com/$REPO/releases/download/omnidraw-v${specific_version}/${package_name}.sha256"
         echo -e "${MUTED}Downloading checksum...${NC}"
         if curl -fsSL -o "$tmp_dir/${package_name}.sha256" "$checksum_url"; then
             verify_binary_checksum "$binary_candidate" "$tmp_dir/${package_name}.sha256"
@@ -462,7 +462,7 @@ else
     fi
 fi
 
-chmod 755 "$INSTALL_DIR/vibecanvas"
+chmod 755 "$INSTALL_DIR/omnidraw"
 
 # PATH configuration
 add_to_path() {
@@ -475,7 +475,7 @@ add_to_path() {
 
     if [[ -w "$config_file" ]]; then
         echo "" >> "$config_file"
-        echo "# vibecanvas" >> "$config_file"
+        echo "# omnidraw" >> "$config_file"
         echo "$command" >> "$config_file"
         echo -e "${MUTED}Added to PATH in ${NC}$config_file"
         return 0
@@ -519,10 +519,10 @@ if [[ "$no_modify_path" != "true" ]] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; t
 
     if [[ "$path_added" != "true" ]]; then
         echo ""
-        echo -e "${MUTED}Add vibecanvas to your PATH:${NC}"
+        echo -e "${MUTED}Add omnidraw to your PATH:${NC}"
         echo ""
         echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
-        echo "" Reload your shell and call vibecanvas
+        echo "" Reload your shell and call omnidraw
         echo ""
     fi
 fi
@@ -534,11 +534,11 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" ]] && [[ -n "${GITHUB_PATH:-}" ]]; then
 fi
 
 echo ""
-echo -e "${GREEN}vibecanvas installed successfully!${NC}"
+echo -e "${GREEN}omnidraw installed successfully!${NC}"
 echo ""
 echo -e "${MUTED}To start:${NC}"
 echo "  cd <your-project>"
-echo "  vibecanvas"
+echo "  omnidraw"
 echo ""
-echo -e "${MUTED}Documentation: ${NC}https://vibecanvas.dev/docs"
+echo -e "${MUTED}Documentation: ${NC}https://omnidraw.dev/docs"
 echo ""

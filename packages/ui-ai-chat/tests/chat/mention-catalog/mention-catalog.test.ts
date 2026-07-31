@@ -1,4 +1,4 @@
-import type { TWidgetCatalog } from "@vibecanvas/orpc-client"
+import type { TWidgetCatalog } from "@omnidraw/orpc-client"
 import { describe, expect, it, vi } from "vitest"
 import { refreshMentionCatalog, subscribeMentionCatalog } from "../../../src/chat/mention-catalog"
 

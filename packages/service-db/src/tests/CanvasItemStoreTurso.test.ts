@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { connect, type Database } from "@tursodatabase/database";
-import type { TCanvasItemSnapshot } from "@vibecanvas/canvas-contract";
+import type { TCanvasItemSnapshot } from "@omnidraw/canvas-contract";
 import {
   CanvasItemStoreError,
   CanvasItemStoreTurso,
@@ -100,7 +100,7 @@ function image(
     resourceId,
     size: { width: 100, height: 60 },
     extensions: {
-      "vibecanvas:image": {
+      "omnidraw:image": {
         schemaVersion: 1,
         url,
         mimeType: "image/png",
@@ -125,7 +125,7 @@ function widget(
     transform,
     size: { width: 320, height: 240 },
     extensions: {
-      "vibecanvas:widget": {
+      "omnidraw:widget": {
         schemaVersion: 1,
         type: "widget-instance",
         instanceId,
@@ -683,7 +683,7 @@ describe("CanvasItemStoreTurso", () => {
       itemRevision: 1,
       item: {
         extensions: {
-          "vibecanvas:widget": {
+          "omnidraw:widget": {
             instanceId: "instance-a",
             definitionId: "definition-b",
             revisionId: "revision-b",
@@ -824,7 +824,7 @@ describe("CanvasItemStoreTurso", () => {
       JSON.stringify({
         ...widget("incomplete-widget", null, "A"),
         extensions: {
-          "vibecanvas:widget": {
+          "omnidraw:widget": {
             schemaVersion: 1,
             type: "widget-instance",
             instanceId: "incomplete",
@@ -843,7 +843,7 @@ describe("CanvasItemStoreTurso", () => {
       JSON.stringify({
         ...widget("missing-widget-identity", null, "A"),
         extensions: {
-          "vibecanvas:widget": {
+          "omnidraw:widget": {
             schemaVersion: 1,
             type: "widget-instance",
           },

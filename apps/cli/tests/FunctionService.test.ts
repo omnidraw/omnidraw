@@ -3,9 +3,9 @@ import type { Database } from '@tursodatabase/database';
 import type {
   IFunctionControlStore,
   TInvocationRecord,
-} from '@vibecanvas/function-runtime';
-import type { LocalFunctionDispatcher } from '@vibecanvas/function-runtime/local';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/function-runtime';
+import type { LocalFunctionDispatcher } from '@omnidraw/function-runtime/local';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { FunctionService } from '../src/services/FunctionService';
 import {
   createFunctionInvocationCapability,
@@ -69,7 +69,7 @@ function record(
       definitionRevision: 1,
       artifactDigestSha256: 'a'.repeat(64),
       contractDigestSha256: 'b'.repeat(64),
-      runtimeAbi: 'vibecanvas.bun.v1',
+      runtimeAbi: 'omnidraw.bun.v1',
       input: { value: 1 },
       inputDigestSha256: 'c'.repeat(64),
       idempotencyKey: 'request-key',

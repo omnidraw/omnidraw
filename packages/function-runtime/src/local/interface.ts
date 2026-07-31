@@ -1,7 +1,7 @@
 /** @file Local function executor adapter seams. */
 
-import type { IResourceGateway } from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IResourceGateway } from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TFunctionAttempt,
   TFunctionDefinition,

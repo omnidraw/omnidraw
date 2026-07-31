@@ -1,4 +1,4 @@
-import { createRuntime } from '@vibecanvas/runtime';
+import { createRuntime } from '@omnidraw/runtime';
 import { execFile } from 'node:child_process';
 import { buildCliConfig } from './build-config';
 import type { ICliConfig } from './config';
@@ -42,7 +42,7 @@ export async function runCliMain() {
 
   if (config.command === 'serve' && !config.helpRequested) {
     const { preflightDbServiceDatabase } = await import(
-      '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso'
+      '@omnidraw/service-db/DbServiceTurso/DbServiceTurso'
     );
     try {
       await preflightDbServiceDatabase({
@@ -53,11 +53,11 @@ export async function runCliMain() {
       fnPrintCommandError(fnBuildHomePreflightError({ homeDir: config.home.homeDir, error }), wantsJson);
       return;
     }
-    const [{ mkdirSync }, { txEnsureVibecanvasHome }] = await Promise.all([
+    const [{ mkdirSync }, { txEnsureOmnidrawHome }] = await Promise.all([
       import('node:fs'),
-      import('@vibecanvas/shared-functions/vibecanvas-config/tx.ensure-vibecanvas-home'),
+      import('@omnidraw/shared-functions/omnidraw-config/tx.ensure-omnidraw-home'),
     ]);
-    txEnsureVibecanvasHome({ mkdirSync }, { home: config.home });
+    txEnsureOmnidrawHome({ mkdirSync }, { home: config.home });
   }
 
   const { setupServices } = await import('./setup-services');

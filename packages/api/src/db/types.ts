@@ -1,10 +1,10 @@
-import type { TCanvas } from '@vibecanvas/service-db/model';
+import type { TCanvas } from '@omnidraw/service-db/model';
 import type {
   TDbEvent as TServiceDbEvent,
   TEventSubscriptionOptions,
   TSequencedEvent,
-} from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-event-publisher/IEventPublisherService';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TDbEvent = TServiceDbEvent;
 

@@ -19,9 +19,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import {
   ZWidgetManifestV3,
   type TWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract';
-import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
-import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
+} from '@omnidraw/widget-contract';
+import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@omnidraw/widget-contract/local';
+import { fnChatStorageSegments } from '@omnidraw/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
 import { fnNormalizeWidgetName } from './fn.names';
@@ -252,7 +252,7 @@ export class WidgetWorkspace {
         }
         if (manifest.data.name !== name) {
           throw new Error(
-            `INVALID_MANIFEST: Published widget identity is '${name}', but vibecanvas.json declares '${manifest.data.name}'.`,
+            `INVALID_MANIFEST: Published widget identity is '${name}', but omnidraw.json declares '${manifest.data.name}'.`,
           );
         }
         await this.#writeDraftMaterializationMarker(marker);
@@ -291,11 +291,11 @@ export class WidgetWorkspace {
       if (currentRevision.value !== expectedRevision) {
         throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
       }
-      const manifestPath = join(draftPath, 'vibecanvas.json');
+      const manifestPath = join(draftPath, 'omnidraw.json');
       const entry = await lstat(manifestPath).catch(() => null);
-      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: vibecanvas.json is not a regular file.');
+      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: omnidraw.json is not a regular file.');
       const manifest = update(JSON.parse(await readFile(manifestPath, 'utf8')));
-      const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
+      const temporary = join(draftPath, `.omnidraw.json.edit-${this.#safeId()}.tmp`);
       try {
         await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
         await rename(temporary, manifestPath);
@@ -330,12 +330,12 @@ export class WidgetWorkspace {
         }
       }
 
-      const manifestPath = join(draftPath, 'vibecanvas.json');
+      const manifestPath = join(draftPath, 'omnidraw.json');
       const entry = await lstat(manifestPath).catch(() => null);
-      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: vibecanvas.json is not a regular file.');
+      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: omnidraw.json is not a regular file.');
       const previousManifestText = await readFile(manifestPath, 'utf8');
       const manifest = update(JSON.parse(previousManifestText));
-      const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
+      const temporary = join(draftPath, `.omnidraw.json.edit-${this.#safeId()}.tmp`);
       let renamed = false;
       let manifestReplaced = false;
       let rollbackMounts: (() => Promise<void>) | null = null;
@@ -360,7 +360,7 @@ export class WidgetWorkspace {
           await rename(nextDraftPath, draftPath).catch(() => undefined);
         }
         if (manifestReplaced) {
-          await writeFile(join(draftPath, 'vibecanvas.json'), previousManifestText, 'utf8').catch(() => undefined);
+          await writeFile(join(draftPath, 'omnidraw.json'), previousManifestText, 'utf8').catch(() => undefined);
         }
         throw error;
       }
@@ -1225,8 +1225,8 @@ export class WidgetWorkspace {
         if (rel.split(sep).some((part) => (
           part === 'node_modules'
           || part === '.git'
-          || part === '.vibecanvas-wizard'
-          || part === '.vibecanvas-validate.tsconfig.json'
+          || part === '.omnidraw-wizard'
+          || part === '.omnidraw-validate.tsconfig.json'
         ))) return false;
         if ((await lstat(candidate)).isSymbolicLink()) {
           throw Object.assign(
@@ -1242,7 +1242,7 @@ export class WidgetWorkspace {
   async #readDraftRevision(root: string): Promise<{ value: string; updatedAtMs: number }> {
     const hash = createHash('sha256');
     let updatedAtMicros = 0;
-    const excluded = new Set(['node_modules', '.git', '.vibecanvas-wizard', '.vibecanvas-validate.tsconfig.json']);
+    const excluded = new Set(['node_modules', '.git', '.omnidraw-wizard', '.omnidraw-validate.tsconfig.json']);
     const updatePath = (kind: 'directory' | 'file' | 'symlink', absolutePath: string) => {
       const normalized = relative(root, absolutePath).split(sep).join('/');
       hash.update(kind);
@@ -1287,7 +1287,7 @@ export class WidgetWorkspace {
 
   async #readManifest(root: string): Promise<Record<string, unknown> | null> {
     try {
-      const value: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const value: unknown = JSON.parse(await readFile(join(root, 'omnidraw.json'), 'utf8'));
       return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
     } catch {
       return null;

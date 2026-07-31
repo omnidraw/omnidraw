@@ -15,8 +15,8 @@ import {
   type TWidgetPreviewRevisionDescriptor,
   type TWidgetPreviewRevisionGetRequest,
   type TWidgetResourceBindingInput,
-} from '@vibecanvas/widget-contract';
-import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/widget-contract';
+import { fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 import {
   TenantServicePool,
   type TTenantServicePoolOptions,

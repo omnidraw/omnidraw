@@ -9,7 +9,7 @@ and other static presentation in `ui/styles.css`.
 ## Use the theme channel
 
 ```ts
-import { getWidgetTheme, subscribeWidgetTheme } from "@vibecanvas/sdk/widget";
+import { getWidgetTheme, subscribeWidgetTheme } from "@omnidraw/sdk/widget";
 import "./styles.css";
 
 const root = document.createElement("section");

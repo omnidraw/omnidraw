@@ -8,7 +8,7 @@ import {
   type TResourceCatalogRecord,
 } from '../src/local';
 import type { IResourceStore, TResolvedResourceCall } from '../src';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 const tenant = {
   orgId: 'org-a',

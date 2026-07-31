@@ -10,9 +10,9 @@ describe("DbServiceTurso tool groups", () => {
   let db: TTenantTestDb;
 
   beforeEach(async () => {
-    tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-db-tool-groups-"));
+    tempRoot = await mkdtemp(join(tmpdir(), "omnidraw-db-tool-groups-"));
     const service = new DbServiceTurso({
-      databasePath: join(tempRoot, "vibecanvas.turso"),
+      databasePath: join(tempRoot, "omnidraw.turso"),
       dataDir: tempRoot,
       cacheDir: tempRoot,
     });

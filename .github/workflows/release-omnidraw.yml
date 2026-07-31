@@ -1,0 +1,332 @@
+name: Release Omnidraw
+
+on:
+  push:
+    tags:
+      - 'omnidraw-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release, e.g. omnidraw-v0.3.2'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release_notes: ${{ steps.version.outputs.release_notes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate omnidraw tag, app version, and npm availability
+        id: version
+        env:
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$TAG_NAME" != omnidraw-v* ]]; then
+            echo "Invalid omnidraw release tag: '$TAG_NAME'. Expected format: omnidraw-vX.Y.Z" >&2
+            exit 1
+          fi
+
+          TAG_VERSION="${TAG_NAME#omnidraw-v}"
+          APP_VERSION=$(bun -e 'const pkg = await Bun.file("apps/omnidraw/package.json").json(); process.stdout.write(pkg.version ?? "")')
+
+          if [ -z "$APP_VERSION" ]; then
+            echo "Failed to read version from apps/omnidraw/package.json" >&2
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "Version mismatch: tag is '$TAG_NAME' but apps/omnidraw/package.json is '$APP_VERSION'." >&2
+            exit 1
+          fi
+
+          PACKAGES=(
+            "omnidraw"
+            "omnidraw-darwin-arm64"
+            "omnidraw-darwin-x64"
+            "omnidraw-linux-arm64"
+            "omnidraw-linux-x64"
+            "omnidraw-linux-x64-baseline"
+            "omnidraw-linux-arm64-musl"
+            "omnidraw-linux-x64-musl"
+          )
+
+          for PACKAGE in "${PACKAGES[@]}"; do
+            if bun pm view "$PACKAGE@$APP_VERSION" version >/dev/null 2>&1; then
+              echo "npm package already exists and will be skipped during publish: $PACKAGE@$APP_VERSION"
+            fi
+          done
+
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          VERSION="$APP_VERSION" NOTES_FILE="$NOTES_FILE" bun run - <<'EOF'
+          const version = process.env.VERSION
+          const notesFile = process.env.NOTES_FILE
+
+          if (!version || !notesFile) {
+            throw new Error("Missing VERSION or NOTES_FILE environment variable")
+          }
+
+          const text = await Bun.file("CHANGELOG.md").text()
+          const lines = text.split(/\r?\n/)
+          const heading = `## ${version}`
+          const start = lines.findIndex((line) => line.trim() === heading)
+
+          if (start === -1) {
+            console.error(`Missing release notes in CHANGELOG.md for version ${version}. Expected a section headed exactly: ${heading}`)
+            process.exit(1)
+          }
+
+          let end = lines.length
+          for (let index = start + 1; index < lines.length; index += 1) {
+            if (/^##\s+/.test(lines[index])) {
+              end = index
+              break
+            }
+          }
+
+          const section = lines.slice(start + 1, end).join("\n").trim()
+          if (!section) {
+            console.error(`CHANGELOG.md section ${heading} exists but is empty.`)
+            process.exit(1)
+          }
+
+          await Bun.write(notesFile, `${section}\n`)
+          EOF
+
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          {
+            echo "release_notes<<EOF"
+            cat "$NOTES_FILE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated omnidraw release $TAG_NAME"
+
+  test:
+    runs-on: ubuntu-latest
+    needs:
+      - check-version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun run test
+
+  build-linux-release-artifacts:
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - check-version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Linux release artifacts
+        run: bun run scripts/build.ts --platform=linux
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist-linux
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  build-darwin-release-artifacts:
+    runs-on: macos-14
+    needs:
+      - test
+      - check-version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build, sign, verify, and smoke-test Darwin arm64 artifact
+        run: |
+          bun run scripts/build.ts --platform=darwin --skip-wrapper
+          codesign --verify --deep --strict --verbose=4 dist/omnidraw-darwin-arm64/bin/omnidraw
+          test "$(dist/omnidraw-darwin-arm64/bin/omnidraw --version)" = "${{ needs.check-version.outputs.version }}"
+          bun run scripts/test-binary.ts --binary "$PWD/dist/omnidraw-darwin-arm64/bin/omnidraw" --port 3339
+      - name: Upload Darwin dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist-darwin
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  test-linux-binary:
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux-release-artifacts
+      - check-version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist-linux
+          path: dist
+
+      - name: Test Linux x64 binary
+        run: |
+          chmod +x dist/omnidraw-linux-x64/bin/omnidraw
+          bun run scripts/test-binary.ts --binary "$PWD/dist/omnidraw-linux-x64/bin/omnidraw" --port 3339
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - check-version
+      - build-linux-release-artifacts
+      - build-darwin-release-artifacts
+      - test-linux-binary
+    environment:
+      name: production
+    env:
+      GH_TOKEN: ${{ github.token }}
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Linux dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist-linux
+          path: dist-linux
+
+      - name: Download Darwin dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist-darwin
+          path: dist-darwin
+
+      - name: Merge native release artifacts
+        run: |
+          rm -rf dist
+          cp -R dist-linux dist
+          cp -R dist-darwin/omnidraw-darwin-arm64 dist/
+          LINUX_MANIFEST=dist-linux/release-manifest.json DARWIN_MANIFEST=dist-darwin/release-manifest.json bun -e '
+            const linux = await Bun.file(process.env.LINUX_MANIFEST).json();
+            const darwin = await Bun.file(process.env.DARWIN_MANIFEST).json();
+            linux.targets = { ...linux.targets, ...darwin.targets };
+            await Bun.write("dist/release-manifest.json", JSON.stringify(linux, null, 2));
+          '
+
+      - name: Re-check npm availability before publishing
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PACKAGES=(
+            "omnidraw"
+            "omnidraw-darwin-arm64"
+            "omnidraw-darwin-x64"
+            "omnidraw-linux-arm64"
+            "omnidraw-linux-x64"
+            "omnidraw-linux-x64-baseline"
+            "omnidraw-linux-arm64-musl"
+            "omnidraw-linux-x64-musl"
+          )
+          for PACKAGE in "${PACKAGES[@]}"; do
+            if bun pm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
+              echo "npm package already exists and will be skipped during publish: $PACKAGE@$VERSION"
+            fi
+          done
+
+      - name: Publish npm packages
+        run: bun run scripts/publish-npm.ts
+
+      - name: Publish GitHub release
+        env:
+          TAG: ${{ needs.check-version.outputs.tag }}
+          RELEASE_NOTES: ${{ needs.check-version.outputs.release_notes }}
+        run: |
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          printf '%s\n' "$RELEASE_NOTES" > "$NOTES_FILE"
+          bun run scripts/release.ts --tag "$TAG" --notes-file "$NOTES_FILE" --fail-if-exists
+
+      - name: Print release summary
+        env:
+          TAG: ${{ needs.check-version.outputs.tag }}
+        run: echo "Published release $TAG"

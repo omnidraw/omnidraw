@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { implement } from '@orpc/server';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { apiContract } from './contract';
 import type { TApiContext } from './context';
 import { router } from './router';

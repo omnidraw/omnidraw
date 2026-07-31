@@ -48,7 +48,7 @@ const allowCommit = { assertCanCommit: async () => undefined };
 
 describe('durable function resource operation receipts', () => {
   test('fault matrix: resource service restart/retry replays its receipt and a stale permit rolls back', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-kv-receipt-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-kv-receipt-'));
     roots.push(root);
     const databaseFactory: TResourceKeyValueDatabaseFactory = (path, options) => new Database(
       path,
@@ -139,7 +139,7 @@ describe('durable function resource operation receipts', () => {
   });
 
   test('keeps secret write receipts encrypted and replays metadata without plaintext output', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-secret-receipt-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-secret-receipt-'));
     roots.push(root);
     const databaseFactory: TResourceKeyValueDatabaseFactory = (path, options) => new Database(
       path,
@@ -201,7 +201,7 @@ describe('durable function resource operation receipts', () => {
   });
 
   test('deduplicates DB writes inside the same transaction as their receipt', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-db-receipt-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-db-receipt-'));
     roots.push(root);
     const databaseFactory: TDatabaseFactory = (path, options) => new Database(path, options);
     const provider = new DbResource({

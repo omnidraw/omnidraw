@@ -101,7 +101,7 @@ function validateWidgetExtension(
     return [issue(
       "INVALID_WIDGET_EXTENSION",
       path,
-      "The Vibecanvas widget extension must be an object.",
+      "The Omnidraw widget extension must be an object.",
       node.id,
     )];
   }
@@ -109,7 +109,7 @@ function validateWidgetExtension(
     return [issue(
       "WIDGET_EXTENSION_NODE_KIND",
       path,
-      "The Vibecanvas widget extension is allowed only on widget-frame nodes.",
+      "The Omnidraw widget extension is allowed only on widget-frame nodes.",
       node.id,
     )];
   }
@@ -117,7 +117,7 @@ function validateWidgetExtension(
     return [issue(
       "WIDGET_EXTENSION_VERSION",
       `${path}/schemaVersion`,
-      "The Vibecanvas widget extension schemaVersion must be 1.",
+      "The Omnidraw widget extension schemaVersion must be 1.",
       node.id,
     )];
   }
@@ -166,7 +166,7 @@ function validateWidgetExtension(
   return [issue(
     "WIDGET_EXTENSION_TYPE",
     `${path}/type`,
-    "The Vibecanvas widget extension has an unsupported type.",
+    "The Omnidraw widget extension has an unsupported type.",
     node.id,
   )];
 }
@@ -180,7 +180,7 @@ function validateAuthoringExtension(
     return [issue(
       "INVALID_AUTHORING_EXTENSION",
       path,
-      "The Vibecanvas authoring extension must be an object.",
+      "The Omnidraw authoring extension must be an object.",
       node.id,
     )];
   }
@@ -189,7 +189,7 @@ function validateAuthoringExtension(
     issues.push(issue(
       "AUTHORING_EXTENSION_FIELDS",
       path,
-      "The Vibecanvas authoring extension contains unsupported fields.",
+      "The Omnidraw authoring extension contains unsupported fields.",
       node.id,
     ));
   }
@@ -197,7 +197,7 @@ function validateAuthoringExtension(
     issues.push(issue(
       "AUTHORING_EXTENSION_VERSION",
       `${path}/schemaVersion`,
-      "The Vibecanvas authoring extension schemaVersion must be 1.",
+      "The Omnidraw authoring extension schemaVersion must be 1.",
       node.id,
     ));
   }
@@ -279,7 +279,7 @@ function validateImageExtension(
     return [issue(
       "INVALID_IMAGE_EXTENSION",
       path,
-      "The Vibecanvas image extension must be an object.",
+      "The Omnidraw image extension must be an object.",
       node.id,
     )];
   }
@@ -287,7 +287,7 @@ function validateImageExtension(
     return [issue(
       "IMAGE_EXTENSION_NODE_KIND",
       path,
-      "The Vibecanvas image extension is allowed only on image nodes.",
+      "The Omnidraw image extension is allowed only on image nodes.",
       node.id,
     )];
   }
@@ -296,7 +296,7 @@ function validateImageExtension(
     issues.push(issue(
       "IMAGE_EXTENSION_FIELDS",
       path,
-      "The Vibecanvas image extension contains unsupported fields.",
+      "The Omnidraw image extension contains unsupported fields.",
       node.id,
     ));
   }
@@ -304,7 +304,7 @@ function validateImageExtension(
     issues.push(issue(
       "IMAGE_EXTENSION_VERSION",
       `${path}/schemaVersion`,
-      "The Vibecanvas image extension schemaVersion must be 1.",
+      "The Omnidraw image extension schemaVersion must be 1.",
       node.id,
     ));
   }
@@ -312,7 +312,7 @@ function validateImageExtension(
     issues.push(issue(
       "IMAGE_EXTENSION_URL",
       `${path}/url`,
-      "The Vibecanvas image URL must be a non-empty string.",
+      "The Omnidraw image URL must be a non-empty string.",
       node.id,
     ));
   }
@@ -320,7 +320,7 @@ function validateImageExtension(
     issues.push(issue(
       "IMAGE_EXTENSION_MIME_TYPE",
       `${path}/mimeType`,
-      "The Vibecanvas image MIME type is unsupported.",
+      "The Omnidraw image MIME type is unsupported.",
       node.id,
     ));
   }
@@ -352,7 +352,7 @@ export function fnValidateCanvasItemExtensions(
     issues.push(issue(
       "IMAGE_EXTENSION_REQUIRED",
       `/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
-      "Persisted image nodes require a durable Vibecanvas image extension.",
+      "Persisted image nodes require a durable Omnidraw image extension.",
       node.id,
     ));
   } else if (image !== undefined) {

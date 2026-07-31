@@ -112,10 +112,10 @@ If a functional-core file only needs a runtime class/value import for `instanceo
 Runtime value imports are also allowed when the local imported binding name is UPPER_CASE / underscore style, for example:
 
 ```ts
-import { THEME_STROKE_WIDTH_VALUE_MAP } from "@vibecanvas/service-theme";
-import DEFAULT_THEME from "@vibecanvas/service-theme";
-import * as THEME_VALUES from "@vibecanvas/service-theme";
-import { themeMap as THEME_MAP } from "@vibecanvas/service-theme";
+import { THEME_STROKE_WIDTH_VALUE_MAP } from "@omnidraw/service-theme";
+import DEFAULT_THEME from "@omnidraw/service-theme";
+import * as THEME_VALUES from "@omnidraw/service-theme";
+import { themeMap as THEME_MAP } from "@omnidraw/service-theme";
 ```
 
 The allowed binding-name pattern is `^[A-Z0-9_]+$`.

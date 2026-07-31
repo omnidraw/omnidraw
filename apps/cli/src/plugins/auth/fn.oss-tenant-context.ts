@@ -1,8 +1,8 @@
 import {
   fnFreezeTenantContext,
   fnTenantContextMatchesPlacement,
-} from '@vibecanvas/tenant-core/fn.tenant-context';
-import type { TTenantContext, TTenantContextRequest } from '@vibecanvas/tenant-core';
+} from '@omnidraw/tenant-core/fn.tenant-context';
+import type { TTenantContext, TTenantContextRequest } from '@omnidraw/tenant-core';
 import { OSS_FAKE_SESSION, OSS_TENANT_PLACEMENT } from './CONSTANTS';
 import type { TOssFakeSession } from './types';
 

@@ -25,7 +25,7 @@ extracts it into a temporary build context, and supplies no caller
 `node_modules`, untracked file, dirty-worktree byte, or writable bind mount. The
 image refuses a pre-existing `node_modules`, installs from the frozen lockfile,
 and runs the permanent final-acceptance script with a brand-new empty
-`VIBECANVAS_HOME`.
+`OMNIDRAW_HOME`.
 
 The wrapper defaults to the daemon-native Linux architecture and accepts only
 an explicit `linux/amd64` or `linux/arm64` override. The accepted ARM run still
@@ -46,7 +46,7 @@ The terminal acceptance result was:
 | Step | Required procedure | Accepted evidence |
 | --- | --- | --- |
 | 1 | Start from a clean checkout/build environment | Docker received only an immutable archive of `73014e08`; the context contained neither `.git` state nor dependencies from the caller. |
-| 2 | Use a brand-new temporary `VIBECANVAS_HOME` | `test-final-acceptance.ts` created a new temporary directory, asserted it was empty, passed it to every suite, and removed it afterward. |
+| 2 | Use a brand-new temporary `OMNIDRAW_HOME` | `test-final-acceptance.ts` created a new temporary directory, asserted it was empty, passed it to every suite, and removed it afterward. |
 | 3 | Install dependencies with the lockfile | The image ran `bun install --frozen-lockfile` and retained both required postinstall patches. |
 | 4 | Run every permanent command in Section 3.4 | All eleven documented durable commands ran in order and passed. |
 | 5 | Run common, binary, and Docker/CI gates | Functional-core lint, the complete sequential product suite, release build, compiled-binary acceptance, host `git diff --check`, and the immutable Docker wrapper passed. |
@@ -57,7 +57,7 @@ The terminal acceptance result was:
 | 10 | Kill/restart server, executor, and Resource Store at fault points | The compiled server was killed with `SIGKILL`, which also terminates its embedded local executor and Resource Store. Targeted function claim/recovery, sandbox interruption, resource receipt replay, Resource Service restart, WAL recovery, and close/reopen suites exercised each service's independent fault boundaries. |
 | 11 | Back up and restore control, artifacts, and resource data | Recovery copied the complete home, including `main.db` and sidecars, immutable artifact bytes, encryption material, and representative resource `data.db`, then reopened it through production services. |
 | 12 | Revalidate restored schema, integrity, and isolation | The restored-root test directly compared the schema fingerprint, migration identity, representative rows, header PRAGMAs, integrity, foreign keys, artifact digest, and resource rows, then proved an owner read succeeds and the same known foreign resource ID is denied. |
-| 13 | Boot with legacy actors disabled | Docker and the final runner forced `VIBECANVAS_LEGACY_ACTOR_ENABLED=0`; the joined flow, complete product suite, health checks, and compiled binary remained operational. |
+| 13 | Boot with legacy actors disabled | Docker and the final runner forced `OMNIDRAW_LEGACY_ACTOR_ENABLED=0`; the joined flow, complete product suite, health checks, and compiled binary remained operational. |
 | 14 | Build the external composition fixture | Both the source fixture and five packed public packages installed, typechecked, and ran from clean consumer directories using only documented public exports. |
 
 ## Durable and common gates
@@ -112,7 +112,7 @@ The terminal acceptance result was:
 | Fresh storage | Schema, recovery, and compiled-binary gates create `main.db` from the embedded immutable migration sequence and verify exact header, ledger, schema, and seed state. |
 | Strict schema | Every application table is checked against the strict manifest; connection PRAGMAs and invalid tenant/type/state mutations are asserted through pinned Turso. |
 | No old compatibility | Read-only preflight refuses actor-era, partial, view-only, virtual/shadow, unknown, and newer databases without repair or mutation. |
-| API consolidation | Architecture and route-equivalence tests prove `@vibecanvas/api` is the sole API package and implements the complete router. |
+| API consolidation | Architecture and route-equivalence tests prove `@omnidraw/api` is the sole API package and implements the complete router. |
 | UI naming | Architecture and full package tests prove `ui-ai-chat` and `ui-actor-legacy` names, exports, imports, and builds. |
 | Canvas preservation | The four M0 protected regression suites remain green, including the unchanged renderer and widget-frame behavior. |
 | Browser-only cost | Both 10,000-widget paths report zero actor rows/processes and zero function starts/calls with bounded UI admission. |

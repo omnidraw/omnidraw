@@ -1,6 +1,6 @@
 import * as Lucid from 'lucide-static'
 import { z } from 'zod'
-import type { TLucidStaticIconKey, TVibecanvasToolIcon } from './types'
+import type { TLucidStaticIconKey, TOmnidrawToolIcon } from './types'
 
 export const LUCIDE_STATIC_ICON_KEYS = Object.keys(Lucid).sort()
 export const LUCIDE_STATIC_ICON_KEY_SET = new Set<string>(LUCIDE_STATIC_ICON_KEYS)
@@ -28,7 +28,7 @@ export function isLucideStaticIconKey(value: unknown): value is TLucidStaticIcon
   return typeof value === 'string' && LUCIDE_STATIC_ICON_KEY_SET.has(value)
 }
 
-export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
+export const ZOmnidrawToolIcon: z.ZodType<TOmnidrawToolIcon> = z.object({
   lucidIcon: z.custom<string>(
     isLucideStaticIconKey,
     `expected one of: ${LUCIDE_STATIC_ICON_KEYS.join(', ')}`,

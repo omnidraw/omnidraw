@@ -1,17 +1,17 @@
 import { describe, expect, test } from 'bun:test';
-import type { IResourceUseCoordinator } from '@vibecanvas/resource-runtime';
+import type { IResourceUseCoordinator } from '@omnidraw/resource-runtime';
 import type {
   ILocalResourceProvider,
   TDatabaseFactory,
-} from '@vibecanvas/resource-runtime/local';
+} from '@omnidraw/resource-runtime/local';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
-import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-db/CONSTANTS';
+import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import { Database } from '@omnidraw/service-db/DbServiceTurso/turso-native';
+import { ResourceControlStoreTurso } from '@omnidraw/service-db/ResourceControlStoreTurso';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -120,7 +120,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('drains a queued management write before provider shutdown and restart', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-lifecycle-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-lifecycle-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
@@ -217,7 +217,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('serializes API writes in the Resource Store lane before provider dispatch', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-write-lane-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-write-lane-'));
     const dbService = new DbServiceTurso({ databasePath: ':memory:', dataDir: root, cacheDir: root });
     let releaseFirst!: () => void;
     let markFirstStarted!: () => void;
@@ -289,7 +289,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('fences every data, lifecycle, apply, restore, and delete operation on stale placement', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-stale-management-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-stale-management-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
@@ -384,7 +384,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('keeps apply and restore status reads observable while active uses drain', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-migration-status-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-migration-status-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
@@ -454,7 +454,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('preserves request authority across accounts and guards plaintext before provider access', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-request-authority-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-request-authority-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
@@ -557,7 +557,7 @@ describe('ResourceService lifecycle', () => {
   });
 
   test('retains failed provider cleanup and retries it on the next stop', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-close-failure-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-close-failure-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { TWidgetCatalog, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalog, TWidgetVariantSummary } from '@omnidraw/orpc-client';
 import { fnFindWidgetSelectionGroup, fnProjectWidgetCatalog, fnWidgetSelection } from '../../src/sidebar/widgets/fn.widget-catalog';
 
 function variant(source: 'published' | 'draft', group: string | null): TWidgetVariantSummary {

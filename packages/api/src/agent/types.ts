@@ -189,13 +189,13 @@ export type TAgentApiCapability = {
 };
 
 export type TAgentEventCapability = {
-  publishAgentEvent(tenant: import('@vibecanvas/tenant-core').TTenantContext, event: TAgentEvent): number;
-  subscribeAgentEvents(tenant: import('@vibecanvas/tenant-core').TTenantContext): AsyncIterable<TAgentEvent>;
+  publishAgentEvent(tenant: import('@omnidraw/tenant-core').TTenantContext, event: TAgentEvent): number;
+  subscribeAgentEvents(tenant: import('@omnidraw/tenant-core').TTenantContext): AsyncIterable<TAgentEvent>;
 };
 
 export type TAgentApiContext = {
   db: TToolGroupDatabaseCapability;
   eventPublisher: TAgentEventCapability;
   agent: TAgentApiCapability;
-  tenant: import('@vibecanvas/tenant-core').TTenantContext;
+  tenant: import('@omnidraw/tenant-core').TTenantContext;
 };

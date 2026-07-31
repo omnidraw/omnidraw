@@ -54,7 +54,7 @@ type TDirectoryStamp = Readonly<{
 }>;
 
 type TWidgetSourceArtifactEnvelope = Readonly<{
-  format: 'vibecanvas.widget-source.v1';
+  format: 'omnidraw.widget-source.v1';
   snapshotId: string;
   sourceDigestSha256: string;
   builderIdentity: string;
@@ -378,7 +378,7 @@ export class WidgetSourceSnapshot {
     }
     const byteSize = fnWidgetSourceSnapshotByteSize(files);
     const envelope: TWidgetSourceArtifactEnvelope = Object.freeze({
-      format: 'vibecanvas.widget-source.v1',
+      format: 'omnidraw.widget-source.v1',
       snapshotId,
       sourceDigestSha256,
       builderIdentity,
@@ -425,7 +425,7 @@ export class WidgetSourceSnapshot {
       'files',
     ])) throw sourceArtifactError('Widget source artifact envelope is malformed.');
     if (
-      envelope.format !== 'vibecanvas.widget-source.v1'
+      envelope.format !== 'omnidraw.widget-source.v1'
       || typeof envelope.snapshotId !== 'string'
       || typeof envelope.sourceDigestSha256 !== 'string'
       || typeof envelope.builderIdentity !== 'string'

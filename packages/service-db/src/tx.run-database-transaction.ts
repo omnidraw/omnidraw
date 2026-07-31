@@ -1,5 +1,5 @@
 import type { Database } from '@tursodatabase/database';
-import { txRunSerializedOperation } from '@vibecanvas/shared-functions/tx.run-serialized-operation';
+import { txRunSerializedOperation } from '@omnidraw/shared-functions/tx.run-serialized-operation';
 
 type TPortal = Readonly<{
   database: Database;

@@ -34,7 +34,7 @@ export function fnRedactSecretResourceWriteMessage(message: TAgentMessage): {
 
   const captured: TCapturedSensitiveToolArgs[] = [];
   const content = message.content.map((block) => {
-    if (block.type !== 'toolCall' || block.name !== 'vc_resource_data_write' || !containsSecretSet(block.arguments)) {
+    if (block.type !== 'toolCall' || block.name !== 'od_resource_data_write' || !containsSecretSet(block.arguments)) {
       return block;
     }
     captured.push({ toolCallId: block.id, args: block.arguments });

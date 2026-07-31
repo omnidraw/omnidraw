@@ -1,4 +1,4 @@
-import type { TTenantCapability, TTenantRole } from '@vibecanvas/tenant-core';
+import type { TTenantCapability, TTenantRole } from '@omnidraw/tenant-core';
 
 export type TOssFakeSession = Readonly<{
   accountId: string;

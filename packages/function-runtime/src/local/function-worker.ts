@@ -12,8 +12,8 @@ import {
   SourceTextModule,
   type Context,
 } from 'node:vm';
-import type { TResourceCall, TResourceCallResult } from '@vibecanvas/resource-runtime';
-import type { TWidgetServerFunctionDescriptor } from '@vibecanvas/widget-contract';
+import type { TResourceCall, TResourceCallResult } from '@omnidraw/resource-runtime';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
 import type { TFunctionFailure, TUsageMetrics } from '../types';
 import { fnFunctionArtifactAdmission } from './fn.artifact-admission';
 import type {
@@ -24,9 +24,9 @@ import type {
 } from './worker-types';
 
 type TGuestFunction = Readonly<{
-  __vibecanvasServerFunction: 'vibecanvas.server-function.v1';
-  __vibecanvasRegistration: TFunctionCanonicalRegistration;
-  __vibecanvasExecute(context: unknown, input: unknown): Promise<unknown>;
+  __omnidrawServerFunction: 'omnidraw.server-function.v1';
+  __omnidrawRegistration: TFunctionCanonicalRegistration;
+  __omnidrawExecute(context: unknown, input: unknown): Promise<unknown>;
 }>;
 
 type TGuestModule = Readonly<{
@@ -72,11 +72,11 @@ function platformFailure(code: string, message: string): TFunctionFailure {
 function guestFunction(value: unknown): value is TGuestFunction {
   if ((typeof value !== 'function' && (value === null || typeof value !== 'object'))) return false;
   const record = value as Record<string, unknown>;
-  const marker = Object.getOwnPropertyDescriptor(record, '__vibecanvasServerFunction');
-  const registration = Object.getOwnPropertyDescriptor(record, '__vibecanvasRegistration');
-  const execute = Object.getOwnPropertyDescriptor(record, '__vibecanvasExecute');
+  const marker = Object.getOwnPropertyDescriptor(record, '__omnidrawServerFunction');
+  const registration = Object.getOwnPropertyDescriptor(record, '__omnidrawRegistration');
+  const execute = Object.getOwnPropertyDescriptor(record, '__omnidrawExecute');
   return marker?.get === undefined
-    && marker?.value === 'vibecanvas.server-function.v1'
+    && marker?.value === 'omnidraw.server-function.v1'
     && registration?.get === undefined
     && registration?.value !== null
     && typeof registration?.value === 'object'
@@ -94,12 +94,12 @@ async function importGuest(sourceBase64: string, expectedDigest: string): Promis
     throw new Error(`Guest bundle uses unsupported runtime construct '${admission.token}'.`);
   }
   const context = createContext(Object.create(null), {
-    name: 'vibecanvas-function-guest',
+    name: 'omnidraw-function-guest',
     codeGeneration: { strings: false, wasm: false },
   });
   const guestModule = new SourceTextModule(source.toString('utf8'), {
     context,
-    identifier: 'vibecanvas:function-guest',
+    identifier: 'omnidraw:function-guest',
     importModuleDynamically: async () => {
       throw new Error('Function guest dynamic imports are unavailable.');
     },
@@ -122,7 +122,7 @@ function registrationDescriptors(namespace: Record<string, unknown>): readonly T
       throw new Error(`Server artifact export '${exportName}' is not a defined server function.`);
     }
     descriptors.push(Object.freeze({
-      ...(value.__vibecanvasRegistration as TFunctionCanonicalRegistration),
+      ...(value.__omnidrawRegistration as TFunctionCanonicalRegistration),
       exportName,
     }));
   }
@@ -200,9 +200,9 @@ function guestJsonValue(context: Context, value: unknown): unknown {
   if (text === undefined) throw new Error('Function input is not JSON serializable.');
   return withGuestBinding(
     context,
-    '__vibecanvasHostJson',
+    '__omnidrawHostJson',
     text,
-    'JSON.parse(__vibecanvasHostJson)',
+    'JSON.parse(__omnidrawHostJson)',
   );
 }
 
@@ -240,8 +240,8 @@ function runtimeContext(
   const widgetRevisionId = JSON.stringify(value.widgetRevisionId);
   const subject = JSON.stringify(value.subject);
   const attemptId = JSON.stringify(value.attemptId);
-  return withGuestBinding(guestContext, '__vibecanvasHostBridge', bridge, `(() => {
-    const bridge = __vibecanvasHostBridge;
+  return withGuestBinding(guestContext, '__omnidrawHostBridge', bridge, `(() => {
+    const bridge = __omnidrawHostBridge;
     let aborted = false;
     let abortReason;
     const listeners = new Set();
@@ -336,7 +336,7 @@ export function runFunctionWorker(): void {
           if (!guestFunction(selected)) {
             throw new Error(`Canonical function export '${message.exportName}' is missing or invalid.`);
           }
-          if (canonical(selected.__vibecanvasRegistration) !== canonical(message.canonicalRegistration)) {
+          if (canonical(selected.__omnidrawRegistration) !== canonical(message.canonicalRegistration)) {
             throw new Error(`Canonical function export '${message.exportName}' registration does not match publication metadata.`);
           }
           loaded = { context: guestModule.context, value: selected };
@@ -388,7 +388,7 @@ export function runFunctionWorker(): void {
     const cpuStarted = process.cpuUsage();
     let execution: Promise<unknown>;
     try {
-      execution = Promise.resolve(loaded.value.__vibecanvasExecute(
+      execution = Promise.resolve(loaded.value.__omnidrawExecute(
         guestRuntime.value,
         guestJsonValue(loaded.context, message.input),
       ));

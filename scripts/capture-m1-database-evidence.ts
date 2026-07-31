@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     throw new Error('--output requires a file path.');
   }
 
-  const temporaryRoot = await fs.mkdtemp(path.join(tmpdir(), 'vibecanvas-m1-evidence-'));
+  const temporaryRoot = await fs.mkdtemp(path.join(tmpdir(), 'omnidraw-m1-evidence-'));
   const databasePath = path.join(temporaryRoot, 'main.db');
   let database: Database | null = null;
   try {

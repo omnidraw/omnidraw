@@ -12,7 +12,7 @@ type TRunUninstallArgs = {
 };
 
 function printUninstallHelp(): void {
-  console.log(`Usage: vibecanvas uninstall [options]
+  console.log(`Usage: omnidraw uninstall [options]
 
 Options:
   --yes, -y            Skip confirmation
@@ -26,7 +26,7 @@ function formatKind(kind: string): string {
 }
 
 function printPlan(plan: TUninstallPlan, dryRun: boolean): void {
-  console.log(dryRun ? '[Uninstall] Dry-run, no files will be deleted.' : '[Uninstall] Vibecanvas will remove:');
+  console.log(dryRun ? '[Uninstall] Dry-run, no files will be deleted.' : '[Uninstall] Omnidraw will remove:');
   for (const target of plan.removeTargets) {
     console.log(`  - ${formatKind(target.kind)}: ${target.path}`);
   }
@@ -44,8 +44,8 @@ async function confirmUninstall(): Promise<boolean> {
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = await rl.question('Type "uninstall vibecanvas" to continue: ');
-    return answer.trim() === 'uninstall vibecanvas';
+    const answer = await rl.question('Type "uninstall omnidraw" to continue: ');
+    return answer.trim() === 'uninstall omnidraw';
   } finally {
     rl.close();
   }
@@ -84,7 +84,7 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
     homedir: homedir(),
     env: process.env,
     execPath: process.execPath,
-    vibecanvasHomeDir: args.config.home.homeDir,
+    omnidrawHomeDir: args.config.home.homeDir,
   });
 
   printPlan(plan, dryRun);
@@ -94,7 +94,7 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
   }
 
   if (!values.yes) {
-    console.log('[Uninstall] This deletes the local Vibecanvas home and installation files.');
+    console.log('[Uninstall] This deletes the local Omnidraw home and installation files.');
     const confirmed = await confirmUninstall();
     if (!confirmed) {
       console.error('[Uninstall] Cancelled. Pass --yes to run non-interactively.');

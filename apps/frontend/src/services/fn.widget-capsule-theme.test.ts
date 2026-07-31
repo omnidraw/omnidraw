@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ThemeService, THEME_ID_DARK } from '@vibecanvas/service-theme';
+import { ThemeService, THEME_ID_DARK } from '@omnidraw/service-theme';
 import { fnWidgetCapsuleTheme } from './fn.widget-capsule-theme';
 
 describe('widget Capsule theme projection', () => {
@@ -8,7 +8,7 @@ describe('widget Capsule theme projection', () => {
     const projected = fnWidgetCapsuleTheme(service.getTheme());
 
     expect(projected).toMatchObject({
-      format: 'vibecanvas.widget-theme.v1',
+      format: 'omnidraw.widget-theme.v1',
       appearance: 'dark',
       tokens: {
         background: service.getTheme().colors.background,

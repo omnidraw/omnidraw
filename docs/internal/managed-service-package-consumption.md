@@ -1,6 +1,6 @@
 # Managed service package consumption
 
-The private managed monorepo composes Vibecanvas through versioned public packages. It does not copy OSS source, patch application code, or add managed branches to API handlers.
+The private managed monorepo composes Omnidraw through versioned public packages. It does not copy OSS source, patch application code, or add managed branches to API handlers.
 
 ## Release dependencies
 
@@ -9,12 +9,12 @@ Production releases pin one exact, reviewed package set:
 ```json
 {
   "dependencies": {
-    "@vibecanvas/function-runtime": "0.1.0",
-    "@vibecanvas/canvas-contract": "0.1.0",
-    "@vibecanvas/resource-runtime": "0.1.0",
-    "@vibecanvas/runtime": "0.1.0",
-    "@vibecanvas/tenant-core": "0.1.0",
-    "@vibecanvas/widget-contract": "0.1.0"
+    "@omnidraw/function-runtime": "0.1.0",
+    "@omnidraw/canvas-contract": "0.1.0",
+    "@omnidraw/resource-runtime": "0.1.0",
+    "@omnidraw/runtime": "0.1.0",
+    "@omnidraw/tenant-core": "0.1.0",
+    "@omnidraw/widget-contract": "0.1.0"
   }
 }
 ```
@@ -25,12 +25,12 @@ The public ownership is:
 
 | Package | Managed implementation seam |
 | --- | --- |
-| `@vibecanvas/canvas-contract` | Cangine canvas items, commands, queries, and revision events |
-| `@vibecanvas/tenant-core` | `IIdentityProvider`, `IPlacementDirectory`, immutable tenant context |
-| `@vibecanvas/widget-contract` | `IWidgetArtifactStore`, immutable widget/artifact contracts, neutral frame/tool metadata |
-| `@vibecanvas/function-runtime` | `IFunctionDispatcher`, `IFunctionExecutor`, stores, scheduler, sandbox, and `IUsageSink` |
-| `@vibecanvas/resource-runtime` | `IResourceGateway`, Resource Store/provider contracts |
-| `@vibecanvas/runtime` | Service registry and plugin lifecycle |
+| `@omnidraw/canvas-contract` | Cangine canvas items, commands, queries, and revision events |
+| `@omnidraw/tenant-core` | `IIdentityProvider`, `IPlacementDirectory`, immutable tenant context |
+| `@omnidraw/widget-contract` | `IWidgetArtifactStore`, immutable widget/artifact contracts, neutral frame/tool metadata |
+| `@omnidraw/function-runtime` | `IFunctionDispatcher`, `IFunctionExecutor`, stores, scheduler, sandbox, and `IUsageSink` |
+| `@omnidraw/resource-runtime` | `IResourceGateway`, Resource Store/provider contracts |
+| `@omnidraw/runtime` | Service registry and plugin lifecycle |
 
 Concrete local Turso, canvas authority, widget-state, Bun child-process,
 event-publisher, and actor packages are OSS adapters. They are not dependencies

@@ -31,11 +31,11 @@ const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'scripts', 'fixtures', 'external-composition')
 const PUBLIC_VERSION = '0.1.0'
 const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
-  { name: '@vibecanvas/tenant-core', directory: 'packages/tenant-core' },
-  { name: '@vibecanvas/resource-runtime', directory: 'packages/resource-runtime' },
-  { name: '@vibecanvas/widget-contract', directory: 'packages/widget-contract' },
-  { name: '@vibecanvas/function-runtime', directory: 'packages/function-runtime' },
-  { name: '@vibecanvas/runtime', directory: 'packages/runtime' },
+  { name: '@omnidraw/tenant-core', directory: 'packages/tenant-core' },
+  { name: '@omnidraw/resource-runtime', directory: 'packages/resource-runtime' },
+  { name: '@omnidraw/widget-contract', directory: 'packages/widget-contract' },
+  { name: '@omnidraw/function-runtime', directory: 'packages/function-runtime' },
+  { name: '@omnidraw/runtime', directory: 'packages/runtime' },
 ])
 const PUBLIC_PACKAGE_NAMES = new Set(PUBLIC_PACKAGES.map((entry) => entry.name))
 const SOURCE_MODULE_EXTENSION = /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/
@@ -188,7 +188,7 @@ async function assertInstalledPackagesAreExternal(
 }
 
 async function main(): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-packed-public-composition-'))
+  const testRoot = await mkdtemp(join(tmpdir(), 'omnidraw-packed-public-composition-'))
   const packRoot = join(testRoot, 'packs')
   const consumerRoot = join(testRoot, 'consumer')
   const installCache = join(testRoot, 'install-cache')
@@ -207,12 +207,12 @@ async function main(): Promise<void> {
       `file:${tarball}`,
     ]))
     await writeFile(join(consumerRoot, 'package.json'), `${JSON.stringify({
-      name: '@vibecanvas-fixtures/packed-public-consumer',
+      name: '@omnidraw-fixtures/packed-public-consumer',
       version: '0.0.0',
       private: true,
       type: 'module',
       dependencies,
-      // Exact transitive @vibecanvas dependencies normally resolve from npm.
+      // Exact transitive @omnidraw dependencies normally resolve from npm.
       // The isolated acceptance consumer substitutes only the five tarballs it
       // just packed; no workspace link or source directory participates.
       overrides: dependencies,
@@ -251,12 +251,12 @@ async function main(): Promise<void> {
     if (lockText.includes(REPOSITORY_ROOT) || lockText.includes('workspace:')) {
       throw new Error('The packed consumer lockfile retained workspace source resolution.')
     }
-    const installedScope = await readdir(join(consumerRoot, 'node_modules', '@vibecanvas'))
+    const installedScope = await readdir(join(consumerRoot, 'node_modules', '@omnidraw'))
     if (installedScope.sort().join(',') !== PUBLIC_PACKAGES
       .map((entry) => entry.name.split('/')[1]!)
       .sort()
       .join(',')) {
-      throw new Error('The packed consumer installed an unexpected @vibecanvas package set.')
+      throw new Error('The packed consumer installed an unexpected @omnidraw package set.')
     }
 
     await runCommand([

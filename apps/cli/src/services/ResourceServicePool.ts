@@ -1,8 +1,8 @@
 import type {
   IHumanResourceSecretService,
   TResourceApiCapability,
-} from '@vibecanvas/api/resource/types';
-import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/api/resource/types';
+import { fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 import { ResourceService } from './ResourceService';
 import {
   TenantServicePool,
@@ -64,7 +64,7 @@ implements TResourceApiCapability, IHumanResourceSecretService {
   setResourceDataEntry: TResourceApiCapability['setResourceDataEntry'] = (tenant, input) => (
     this.#delegate(tenant, (service) => service.setResourceDataEntry(tenant, {
       ...input,
-      value: input.value as import('@vibecanvas/resource-runtime').TResourceJson,
+      value: input.value as import('@omnidraw/resource-runtime').TResourceJson,
     }))
   );
 

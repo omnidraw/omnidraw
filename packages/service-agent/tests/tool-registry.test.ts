@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ZWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import { ZWidgetManifestV3 } from '@omnidraw/widget-contract';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
@@ -30,8 +30,8 @@ describe('AI Chat tool registry', () => {
     });
     expect(registry.toolNames).toEqual([...AI_CHAT_TOOL_NAMES]);
     expect(registry.customTools.map((tool) => tool.name)).toEqual([...AI_CHAT_TOOL_NAMES]);
-    expect(registry.toolNames).not.toContain('vc_publish_widget');
-    expect(registry.toolNames).not.toContain('vc_approve_actor_candidate');
+    expect(registry.toolNames).not.toContain('od_publish_widget');
+    expect(registry.toolNames).not.toContain('od_approve_actor_candidate');
     expect(registry.toolNames).toContain('bash');
     expect(registry.toolNames).not.toContain('write');
     expect(registry.toolNames).toHaveLength(16);
@@ -100,7 +100,7 @@ describe('AI Chat tool registry', () => {
       async ({ cwd }) => {
         await mkdir(join(cwd, 'ui'), { recursive: true });
         await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("canvas"));\n', 'utf8');
-        await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+        await writeFile(join(cwd, 'omnidraw.json'), `${JSON.stringify({
           schemaVersion: 3,
           name: 'Migrated WebGL',
           slug: 'migrated-webgl',
@@ -118,12 +118,12 @@ describe('AI Chat tool registry', () => {
             },
           },
         }, null, 2)}\n`, 'utf8');
-        return ['vibecanvas.json', 'ui/main.ts'];
+        return ['omnidraw.json', 'ui/main.ts'];
       },
     );
 
     const manifest = JSON.parse(await readFile(
-      join(created.mount.targetPath, 'vibecanvas.json'),
+      join(created.mount.targetPath, 'omnidraw.json'),
       'utf8',
     ));
     expect(manifest.ui).toHaveProperty('target');
@@ -143,7 +143,7 @@ describe('AI Chat tool registry', () => {
     await workspace.createDraft('chat-a', { name: 'Bash Clock' }, async ({ cwd: draftCwd }) => {
       await mkdir(join(draftCwd, 'ui'), { recursive: true });
       await writeFile(
-        join(draftCwd, 'vibecanvas.json'),
+        join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
           schemaVersion: 3,
           name: 'Bash Clock',
@@ -153,12 +153,12 @@ describe('AI Chat tool registry', () => {
         'utf8',
       );
       await writeFile(join(draftCwd, 'ui', 'main.ts'), 'export const first = 1;\n', 'utf8');
-      return ['vibecanvas.json', 'ui/main.ts'];
+      return ['omnidraw.json', 'ui/main.ts'];
     });
     await workspace.createDraft('chat-a', { name: 'Second Clock' }, async ({ cwd: draftCwd }) => {
       await mkdir(join(draftCwd, 'ui'), { recursive: true });
       await writeFile(
-        join(draftCwd, 'vibecanvas.json'),
+        join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
           schemaVersion: 3,
           name: 'Second Clock',
@@ -168,7 +168,7 @@ describe('AI Chat tool registry', () => {
         'utf8',
       );
       await writeFile(join(draftCwd, 'ui', 'main.ts'), 'export const second = 1;\n', 'utf8');
-      return ['vibecanvas.json', 'ui/main.ts'];
+      return ['omnidraw.json', 'ui/main.ts'];
     });
 
     const changes: unknown[] = [];

@@ -1,6 +1,6 @@
 import type { Database } from '@tursodatabase/database';
 import { createHash } from 'node:crypto';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetDiagnostic,
@@ -16,7 +16,7 @@ import {
   fnValidateWidgetResourceBindings,
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetPreviewBindingPlanDigest,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type {
   IWidgetArtifactMutationCoordinator,
   IWidgetPreviewStore,
@@ -36,7 +36,7 @@ import type {
   TWidgetPreviewRevisionDescriptor,
   TWidgetPreviewRevisionGetRequest,
   TWidgetResourceBindingInput,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   fnWidgetControlStoreArtifact,
   fnWidgetControlStoreResourceCeiling,
@@ -889,27 +889,27 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
                 AND origin.kind = 'widget-frame'
                 AND json_extract(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".schemaVersion'
+                  '$.extensions."omnidraw:widget".schemaVersion'
                 ) = 1
                 AND json_extract(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".type'
+                  '$.extensions."omnidraw:widget".type'
                 ) = 'ui-widget'
                 AND json_extract(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".kind'
+                  '$.extensions."omnidraw:widget".kind'
                 ) = 'ai'
                 AND json_type(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".payload'
+                  '$.extensions."omnidraw:widget".payload'
                 ) = 'object'
                 AND json_type(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".payload.sessionId'
+                  '$.extensions."omnidraw:widget".payload.sessionId'
                 ) = 'text'
                 AND json_extract(
                   origin.item_json,
-                  '$.extensions."vibecanvas:widget".payload.sessionId'
+                  '$.extensions."omnidraw:widget".payload.sessionId'
                 ) = chat.external_session_key
             )
           )
@@ -1099,42 +1099,42 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         AND item.kind = 'widget-frame'
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".schemaVersion'
+          '$.extensions."omnidraw:widget".schemaVersion'
         ) = 1
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".type'
+          '$.extensions."omnidraw:widget".type'
         ) = 'ui-widget'
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".kind'
+          '$.extensions."omnidraw:widget".kind'
         ) = 'preview'
         AND json_type(
           item.item_json,
-          '$.extensions."vibecanvas:widget".payload'
+          '$.extensions."omnidraw:widget".payload'
         ) = 'object'
         AND (
           SELECT count(*)
           FROM json_each(
             item.item_json,
-            '$.extensions."vibecanvas:widget".payload'
+            '$.extensions."omnidraw:widget".payload'
           )
         ) = 4
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".payload.previewId'
+          '$.extensions."omnidraw:widget".payload.previewId'
         ) = ?
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".payload.draftId'
+          '$.extensions."omnidraw:widget".payload.draftId'
         ) = ?
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".payload.originChatId'
+          '$.extensions."omnidraw:widget".payload.originChatId'
         ) = ?
         AND json_extract(
           item.item_json,
-          '$.extensions."vibecanvas:widget".payload.role'
+          '$.extensions."omnidraw:widget".payload.role'
         ) = ?
       LIMIT 1
     `)).get(

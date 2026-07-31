@@ -1,7 +1,7 @@
-import { ZVibecanvasToolIcon } from "@vibecanvas/widget-contract";
+import { ZOmnidrawToolIcon } from "@omnidraw/widget-contract";
 import { z } from "zod";
 
-export const ZToolGroupJson = ZVibecanvasToolIcon.nullable();
+export const ZToolGroupJson = ZOmnidrawToolIcon.nullable();
 
 export const ZToolGroup = z.object({
   name: z.string().trim().min(1),

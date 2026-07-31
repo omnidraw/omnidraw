@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
 import { onCleanup, onMount } from "solid-js";
 import { Toaster } from "./components/ui/Toast";
-import { Sidebar, WidgetCatalogProvider } from "@vibecanvas/ui-ai-chat";
+import { Sidebar, WidgetCatalogProvider } from "@omnidraw/ui-ai-chat";
 import { setStore, store } from "./store";
 import styles from "./App.module.css";
 import { createFrontendSidebarController } from "./ai-chat-adapters";

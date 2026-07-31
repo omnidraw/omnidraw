@@ -39,13 +39,13 @@ const descriptorInspectionAvailable = await openFileNames(process.pid).then(
   () => true,
   () => false,
 );
-const descriptorInspectionRequired = process.env.VIBECANVAS_REQUIRE_FD_INSPECTION === '1';
+const descriptorInspectionRequired = process.env.OMNIDRAW_REQUIRE_FD_INSPECTION === '1';
 describe('M4 resource runtime boundaries', () => {
   test('provides file-descriptor inspection when final acceptance requires it', () => {
     if (!descriptorInspectionRequired) return;
     expect(
       descriptorInspectionAvailable,
-      'VIBECANVAS_REQUIRE_FD_INSPECTION=1 requires readable /proc/<pid>/fd or a working lsof command.',
+      'OMNIDRAW_REQUIRE_FD_INSPECTION=1 requires readable /proc/<pid>/fd or a working lsof command.',
     ).toBe(true);
   });
 
@@ -60,10 +60,10 @@ describe('M4 resource runtime boundaries', () => {
     for (const file of files) {
       const source = await readFile(file, 'utf8');
       const name = relative(REPO_ROOT, file);
-      if (file.includes(`${sep}resource-runtime${sep}`) && /@vibecanvas\/(?:service-db|api)/.test(source)) {
+      if (file.includes(`${sep}resource-runtime${sep}`) && /@omnidraw\/(?:service-db|api)/.test(source)) {
         violations.push(`${name}: resource runtime imports a database/API implementation`);
       }
-      if (file.includes(`${sep}api${sep}src${sep}resource${sep}`) && /@vibecanvas\/service-db/.test(source)) {
+      if (file.includes(`${sep}api${sep}src${sep}resource${sep}`) && /@omnidraw\/service-db/.test(source)) {
         violations.push(`${name}: neutral resource API imports a database implementation`);
       }
     }

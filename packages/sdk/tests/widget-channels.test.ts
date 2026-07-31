@@ -26,7 +26,7 @@ describe('Capsule guest channels', () => {
   test('reads channels, delivers updates, emits outputs, and disposes listeners', () => {
     capsuleGuestMock.props = { count: 1 };
     capsuleGuestMock.theme = {
-      format: 'vibecanvas.widget-theme.v1',
+      format: 'omnidraw.widget-theme.v1',
       appearance: 'dark',
       tokens: {
         background: '#000',

@@ -19,8 +19,8 @@ import {
 } from '../src/services/WidgetNpmDistributionBuild';
 import {
   buildCapsuleGuest,
-  fnVibecanvasCapsuleBuildPolicy,
-} from '@vibecanvas/capsule-vibecanvas/build';
+  fnOmnidrawCapsuleBuildPolicy,
+} from '@omnidraw/capsule-omnidraw/build';
 
 const encoder = new TextEncoder();
 
@@ -69,7 +69,7 @@ describe('WidgetNpmDistributionBuild', () => {
         apis: ['DOM'],
         capabilityRequests: [],
         parkability: { parkable: false },
-        policy: fnVibecanvasCapsuleBuildPolicy(),
+        policy: fnOmnidrawCapsuleBuildPolicy(),
       });
       expect(capsule.artifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(capsule.diagnostics).toContainEqual(expect.objectContaining({
@@ -100,11 +100,11 @@ describe('WidgetNpmDistributionBuild', () => {
           }
           if (args[0] === 'run') {
             expect(await readFile(join(options.cwd, 'ui', 'main.ts'), 'utf8')).toBe([
-              'import "../__vibecanvas_guest_bridge__.mjs";',
+              'import "../__omnidraw_guest_bridge__.mjs";',
               'document.body.textContent="source";',
             ].join('\n'));
             expect(await readFile(
-              join(options.cwd, '__vibecanvas_guest_bridge__.mjs'),
+              join(options.cwd, '__omnidraw_guest_bridge__.mjs'),
               'utf8',
             )).toContain('subscribeHostLifecycle(() => undefined).unsubscribe()');
             await mkdir(join(options.cwd, 'dist', 'assets'), { recursive: true });
@@ -146,7 +146,7 @@ describe('WidgetNpmDistributionBuild', () => {
         entry: 'main.js',
         cssRoots: ['assets/style.css'],
         producer: {
-          name: 'vibecanvas-npm-build',
+          name: 'omnidraw-npm-build',
           version: '1+runner.host-v1.npm.11.0.0',
           digest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
         },
@@ -459,7 +459,7 @@ describe('WidgetNpmDistributionBuild', () => {
   });
 
   test('redacts ambient credentials from failed guest process diagnostics', async () => {
-    const environmentName = 'VIBECANVAS_WIDGET_BUILD_TEST_TOKEN';
+    const environmentName = 'OMNIDRAW_WIDGET_BUILD_TEST_TOKEN';
     const secret = 'test-only-widget-build-secret-42';
     process.env[environmentName] = secret;
     try {
@@ -494,7 +494,7 @@ describe('WidgetNpmDistributionBuild', () => {
   test('runs the build port in bounded ephemeral Docker containers and records its identity', async () => {
     const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-docker-build-test-'));
     const npmUserConfigPath = join(scratchDirectory, 'npmrc');
-    const image = `registry.example/vibecanvas/widget-builder@sha256:${'a'.repeat(64)}`;
+    const image = `registry.example/omnidraw/widget-builder@sha256:${'a'.repeat(64)}`;
     const dockerCalls: Array<Readonly<{
       args: readonly string[];
       signal?: AbortSignal;
@@ -584,22 +584,22 @@ describe('WidgetNpmDistributionBuild', () => {
       ]));
       expect(install?.args).toContain(
         `type=bind,source=${npmUserConfigPath},`
-          + 'target=/run/vibecanvas-npmrc,readonly',
+          + 'target=/run/omnidraw-npmrc,readonly',
       );
       expect(install?.args.slice(-4)).toEqual([
         'npm',
         'ci',
         '--userconfig',
-        '/run/vibecanvas-npmrc',
+        '/run/omnidraw-npmrc',
       ]);
       const cleanupNames = dockerCalls
         .filter((call) => call.args[0] === 'rm')
         .map((call) => call.args[3]);
       expect(cleanupNames).toEqual([
-        'vibecanvas-widget-build-test-1',
-        'vibecanvas-widget-build-test-2',
-        'vibecanvas-widget-build-test-3',
-        'vibecanvas-widget-build-test-4',
+        'omnidraw-widget-build-test-1',
+        'omnidraw-widget-build-test-2',
+        'omnidraw-widget-build-test-3',
+        'omnidraw-widget-build-test-4',
       ]);
       await expect(runner.runProcess('sh', ['-c', 'echo unsafe'], {
         cwd: scratchDirectory,
@@ -615,7 +615,7 @@ describe('WidgetNpmDistributionBuild', () => {
   test('force-removes a Docker build container when the process is cancelled', async () => {
     const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-docker-cancel-test-'));
     const npmUserConfigPath = join(scratchDirectory, 'npmrc');
-    const image = `registry.example/vibecanvas/widget-builder@sha256:${'b'.repeat(64)}`;
+    const image = `registry.example/omnidraw/widget-builder@sha256:${'b'.repeat(64)}`;
     const controller = new AbortController();
     const calls: string[][] = [];
     let notifyStarted: (() => void) | undefined;
@@ -653,7 +653,7 @@ describe('WidgetNpmDistributionBuild', () => {
         'rm',
         '--force',
         '--volumes',
-        'vibecanvas-widget-build-cancelled',
+        'omnidraw-widget-build-cancelled',
       ]);
     } finally {
       await rm(scratchDirectory, { recursive: true, force: true });
@@ -663,7 +663,7 @@ describe('WidgetNpmDistributionBuild', () => {
   test('fails closed when Docker cannot confirm forced container removal', async () => {
     const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-docker-cleanup-test-'));
     const npmUserConfigPath = join(scratchDirectory, 'npmrc');
-    const image = `registry.example/vibecanvas/widget-builder@sha256:${'c'.repeat(64)}`;
+    const image = `registry.example/omnidraw/widget-builder@sha256:${'c'.repeat(64)}`;
     let cleanupAttempts = 0;
     try {
       await writeFile(npmUserConfigPath, '');
@@ -704,12 +704,12 @@ describe('WidgetNpmDistributionBuild', () => {
     });
     const docker = resolveWidgetNpmBuildRunner({
       env: {
-        VIBECANVAS_WIDGET_BUILD_RUNNER: 'docker',
-        VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE:
+        OMNIDRAW_WIDGET_BUILD_RUNNER: 'docker',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_IMAGE:
           `node@sha256:${'d'.repeat(64)}`,
-        VIBECANVAS_WIDGET_BUILD_DOCKER_CPUS: '1.25',
-        VIBECANVAS_WIDGET_BUILD_DOCKER_MEMORY_MB: '512',
-        VIBECANVAS_WIDGET_BUILD_DOCKER_PIDS_LIMIT: '32',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_CPUS: '1.25',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_MEMORY_MB: '512',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_PIDS_LIMIT: '32',
       },
       npmUserConfigPath: '/registry/npmrc',
       runProcess: injected,
@@ -718,26 +718,26 @@ describe('WidgetNpmDistributionBuild', () => {
     expect(docker.identity).toMatch(/^docker-v1\.sha256\.[0-9a-f]{64}$/);
 
     expect(() => resolveWidgetNpmBuildRunner({
-      env: { VIBECANVAS_WIDGET_BUILD_RUNNER: 'remote' },
+      env: { OMNIDRAW_WIDGET_BUILD_RUNNER: 'remote' },
       npmUserConfigPath: '/registry/npmrc',
     })).toThrow("must be 'host' or 'docker'");
     expect(() => resolveWidgetNpmBuildRunner({
-      env: { VIBECANVAS_WIDGET_BUILD_RUNNER: 'docker' },
+      env: { OMNIDRAW_WIDGET_BUILD_RUNNER: 'docker' },
       npmUserConfigPath: '/registry/npmrc',
-    })).toThrow('VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE is required');
+    })).toThrow('OMNIDRAW_WIDGET_BUILD_DOCKER_IMAGE is required');
     expect(() => resolveWidgetNpmBuildRunner({
       env: {
-        VIBECANVAS_WIDGET_BUILD_RUNNER: 'docker',
-        VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE: 'node:22',
+        OMNIDRAW_WIDGET_BUILD_RUNNER: 'docker',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_IMAGE: 'node:22',
       },
       npmUserConfigPath: '/registry/npmrc',
     })).toThrow('pinned by sha256');
     expect(() => resolveWidgetNpmBuildRunner({
       env: {
-        VIBECANVAS_WIDGET_BUILD_RUNNER: 'docker',
-        VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE:
+        OMNIDRAW_WIDGET_BUILD_RUNNER: 'docker',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_IMAGE:
           `node@sha256:${'c'.repeat(64)}`,
-        VIBECANVAS_WIDGET_BUILD_DOCKER_CPUS: '0.1',
+        OMNIDRAW_WIDGET_BUILD_DOCKER_CPUS: '0.1',
       },
       npmUserConfigPath: '/registry/npmrc',
     })).toThrow('CPU limit');
@@ -756,7 +756,7 @@ describe('WidgetNpmDistributionBuild', () => {
     const parsed = JSON.parse(identity) as Record<string, unknown>;
 
     expect(parsed).toMatchObject({
-      format: 'vibecanvas.widget-npm-build-environment.v1',
+      format: 'omnidraw.widget-npm-build-environment.v1',
       approvedTransformsDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       buildConfigurationDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       runnerIdentity: 'host-v1',

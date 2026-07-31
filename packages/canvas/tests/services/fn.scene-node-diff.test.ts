@@ -2,7 +2,7 @@ import type { TPathNode, TRectNode, TWidgetFrameNode } from '@omnidraw/cangine';
 import { describe, expect, test } from 'vitest';
 import {
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-} from '@vibecanvas/canvas-contract/CONSTANTS';
+} from '@omnidraw/canvas-contract/CONSTANTS';
 import {
   fnApplySceneNodePatches,
   fnAuthoredCanvasNode,
@@ -155,7 +155,7 @@ describe('scene node diff', () => {
 
     expect(runtime).toMatchObject({
       parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-      portal: { portalId: 'vibecanvas:widget:widget-a' },
+      portal: { portalId: 'omnidraw:widget:widget-a' },
     });
     expect(fnAuthoredCanvasNode(runtime)).toEqual(authored);
   });

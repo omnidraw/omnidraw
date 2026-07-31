@@ -32,7 +32,7 @@ export type * from './interface';
 export type {
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsulePublicSigningKey,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 export { createWidgetUiArtifactMountPort } from './mount-widget-ui-artifact';
 export { WidgetUiArtifactCache } from './WidgetUiArtifactCache';
 export { WidgetUiRuntime } from './WidgetUiRuntime';

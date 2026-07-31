@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/widget-contract",
+  "name": "@omnidraw/widget-contract",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -16,8 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/resource-runtime": "0.1.0",
-    "@vibecanvas/tenant-core": "0.1.0",
+    "@omnidraw/resource-runtime": "0.1.0",
+    "@omnidraw/tenant-core": "0.1.0",
     "lucide-static": "catalog:",
     "zod": "catalog:"
   }

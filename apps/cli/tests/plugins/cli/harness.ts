@@ -27,7 +27,7 @@ export type TCliTestContext = {
     env?: NodeJS.ProcessEnv;
     stdinText?: string;
   }): Promise<TProcessResult>;
-  runVibecanvasCli(args: readonly string[]): Promise<TProcessResult>;
+  runOmnidrawCli(args: readonly string[]): Promise<TProcessResult>;
 };
 
 function sanitizeEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
@@ -38,8 +38,8 @@ function sanitizeEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string>
 }
 
 export async function createCliTestContext(): Promise<TCliTestContext> {
-  const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-cli-'));
-  const homeDir = join(tempRoot, 'vibecanvas');
+  const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-cli-'));
+  const homeDir = join(tempRoot, 'omnidraw');
   const dbPath = join(homeDir, 'main.db');
   let cleanedUp = false;
 
@@ -94,10 +94,10 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
     dbPath,
     cleanup,
     runProcess,
-    runVibecanvasCli: (args) => runProcess({
+    runOmnidrawCli: (args) => runProcess({
       cmd: ['bun', 'run', 'apps/cli/src/main.ts', ...args],
       cwd: REPO_ROOT,
-      env: { ...process.env, VIBECANVAS_HOME: homeDir },
+      env: { ...process.env, OMNIDRAW_HOME: homeDir },
     }),
   };
 }

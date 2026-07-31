@@ -16,7 +16,7 @@ flowchart LR
   X --> Z["Zero guest processes"]
 ```
 
-- `@vibecanvas/sdk/server` defines strict `fn`, `fx`, and `tx` functions with
+- `@omnidraw/sdk/server` defines strict `fn`, `fx`, and `tx` functions with
   bounded JSON input/output schemas, declared logical resource effects, retry
   policy, and execution limits. Durable wait, schedule, continuation, ambient
   authority, runtime re-export, and undeclared-resource surfaces fail closed.

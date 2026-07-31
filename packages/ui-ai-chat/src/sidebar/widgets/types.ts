@@ -1,4 +1,4 @@
-import type { TWidgetCatalogProblem, TWidgetPlacementSummary, TWidgetSource, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalogProblem, TWidgetPlacementSummary, TWidgetSource, TWidgetVariantSummary } from '@omnidraw/orpc-client';
 
 export type TWidgetSidebarRow = {
   name: string;

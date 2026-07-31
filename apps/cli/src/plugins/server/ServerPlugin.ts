@@ -1,5 +1,5 @@
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { IPlugin } from '@vibecanvas/runtime';
+import type { IEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
+import type { IPlugin } from '@omnidraw/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import { checkForUpdateOnBoot } from './check-update';

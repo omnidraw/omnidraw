@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import type { TWidgetBrowserFunctionDescriptor } from '@vibecanvas/widget-contract';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/widget-contract';
 import { createWidgetFunctionHostBridge } from '../../src/widget-runtime/create-widget-function-host-bridge';
 import type {
   TWidgetRuntimeIdentity,

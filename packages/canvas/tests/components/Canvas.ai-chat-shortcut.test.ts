@@ -268,7 +268,7 @@ describe('Canvas AI Chat shortcut', () => {
 
     runtimeMocks.setActiveTool.mockClear();
     const widgetContent = document.createElement('div');
-    widgetContent.dataset.vibecanvasPortalId = 'widget-1';
+    widgetContent.dataset.omnidrawPortalId = 'widget-1';
     canvasSurface?.append(widgetContent);
     widgetContent.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
@@ -21,8 +21,8 @@ import {
   type TWidgetRevisionSourceDescriptor,
   type TWidgetServerFunctionDescriptor,
   type TWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract';
-import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
+} from '@omnidraw/widget-contract';
+import { WidgetSourceSnapshot } from '@omnidraw/widget-contract/local';
 import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
 import type {
   IAgentAuthoringStore,
@@ -33,7 +33,7 @@ import type {
 } from '../src/widget-drafts/types';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { TEST_TENANT, createTestTenantEvents } from './tenant.fixture';
-import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 
 function digest(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -47,7 +47,7 @@ export const TEST_CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.f
   runtimeBuildDigest: `sha256:${'b'.repeat(64)}`,
 });
 
-export const TEST_CAPSULE_BUILD_POLICY_ID = 'test-vibecanvas-capsule-widget-v2';
+export const TEST_CAPSULE_BUILD_POLICY_ID = 'test-omnidraw-capsule-widget-v2';
 
 const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,
@@ -592,7 +592,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       manifest: request.manifest,
       builderIdentity: request.builderIdentity,
       capsuleBuildIdentity: request.capsuleBuildIdentity,
-      signatureKeyId: 'vibecanvas-preview-v1',
+      signatureKeyId: 'omnidraw-preview-v1',
       nowMs: request.snapshot.createdAtMs,
     });
     const result: TWidgetPreviewBuildResult = {
@@ -717,7 +717,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       manifest: request.manifest,
       builderIdentity: request.builderIdentity,
       capsuleBuildIdentity: request.capsuleBuildIdentity,
-      signatureKeyId: 'vibecanvas-release-v1',
+      signatureKeyId: 'omnidraw-release-v1',
       nowMs: request.nowMs,
     });
     const revision: TWidgetRevisionDescriptor = {
@@ -861,7 +861,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
     ));
     const digestSha256 = digest(bytes);
     const runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor = {
-      format: 'vibecanvas.capsule-runtime.v2',
+      format: 'omnidraw.capsule-runtime.v2',
       capsuleArtifactHash: `sha256:${digestSha256}`,
       apiContract: {
         format: 'capsule-api-groups-v1',
@@ -872,7 +872,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       capabilityRequests: functionDescriptors.length === 0
         ? []
         : [{
-            id: `vibecanvas.widget.functions.h${browserFunctionDescriptorsDigestSha256}`,
+            id: `omnidraw.widget.functions.h${browserFunctionDescriptorsDigestSha256}`,
             versionRange: '1.0.0',
             contractHash: `sha256:${browserFunctionDescriptorsDigestSha256}`,
             required: true,
@@ -996,8 +996,8 @@ export async function createWidgetAuthoringHarness(
         },
         ...(server ? { server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' } } : {}),
       };
-      await writeFile(`${cwd}/vibecanvas.json`, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-      return ['vibecanvas.json', 'ui/main.ts'];
+      await writeFile(`${cwd}/omnidraw.json`, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+      return ['omnidraw.json', 'ui/main.ts'];
     });
     await controller.handleToolChange({
       name,

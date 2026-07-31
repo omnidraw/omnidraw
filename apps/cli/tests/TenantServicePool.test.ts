@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { TenantServicePool } from '../src/services/TenantServicePool';
 
 const tenant = (orgId: string, accountId = 'account'): TTenantContext => ({

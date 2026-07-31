@@ -1,5 +1,5 @@
-import type { CapsuleArtifactSigningKey } from '@vibecanvas/capsule-vibecanvas/builder';
-import type { TWidgetCapsulePublicSigningKey } from '@vibecanvas/widget-contract';
+import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule-omnidraw/builder';
+import type { TWidgetCapsulePublicSigningKey } from '@omnidraw/widget-contract';
 import { webcrypto, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
 import { link, lstat, mkdir, open, unlink, writeFile } from 'node:fs/promises';
@@ -9,10 +9,10 @@ import {
   WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
 } from './CONSTANTS';
 
-const KEY_FILE_FORMAT = 'vibecanvas.capsule-signing-keys.v1';
+const KEY_FILE_FORMAT = 'omnidraw.capsule-signing-keys.v1';
 const KEY_FILE_NAME = 'capsule-signing-keys.v1.json';
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-const PAIR_CHECK_BYTES = new TextEncoder().encode('vibecanvas-capsule-signing-key-pair-v1');
+const PAIR_CHECK_BYTES = new TextEncoder().encode('omnidraw-capsule-signing-key-pair-v1');
 const PAIR_CHECK_BUFFER = PAIR_CHECK_BYTES.buffer.slice(
   PAIR_CHECK_BYTES.byteOffset,
   PAIR_CHECK_BYTES.byteOffset + PAIR_CHECK_BYTES.byteLength,

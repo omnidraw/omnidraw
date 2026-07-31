@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { TResourceJson } from '@vibecanvas/resource-runtime';
-import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
+import type { TResourceJson } from '@omnidraw/resource-runtime';
+import { fnResourceNameKey } from '@omnidraw/service-db/core/fn.resource-name';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import type { TAgentResource, TAgentResourceService } from '../src/tools/resource-service';
 import { createResourceTools } from '../src/tools/tool.resources';
@@ -69,25 +69,25 @@ describe('resource tools', () => {
   test('publishes name-only model schemas with consistent read/write arrays', () => {
     const { byName } = tools(resolvingService([]));
     for (const toolName of [
-      'vc_resource_inspect',
-      'vc_resource_update',
-      'vc_resource_delete',
-      'vc_resource_data_read',
-      'vc_resource_data_write',
+      'od_resource_inspect',
+      'od_resource_update',
+      'od_resource_delete',
+      'od_resource_data_read',
+      'od_resource_data_write',
     ]) {
       expect(JSON.stringify(byName.get(toolName)!.parameters)).not.toContain('resourceId');
     }
-    expect((byName.get('vc_resource_inspect')!.parameters as any).properties).toHaveProperty('resourceName');
-    expect((byName.get('vc_resource_update')!.parameters as any).properties).toMatchObject({
+    expect((byName.get('od_resource_inspect')!.parameters as any).properties).toHaveProperty('resourceName');
+    expect((byName.get('od_resource_update')!.parameters as any).properties).toMatchObject({
       resourceName: expect.any(Object),
       newName: expect.any(Object),
     });
-    expect((byName.get('vc_resource_data_read')!.parameters as any).properties.queries.type).toBe('array');
-    expect((byName.get('vc_resource_data_write')!.parameters as any).properties.operations.type).toBe('array');
-    expect(JSON.stringify((byName.get('vc_resource_data_read')!.parameters as any).properties.queries)).not.toContain('"kind"');
-    expect(JSON.stringify((byName.get('vc_resource_data_read')!.parameters as any).properties.queries)).toContain('"search"');
-    expect(JSON.stringify((byName.get('vc_resource_data_read')!.parameters as any).properties.queries)).toContain('"schema"');
-    expect(JSON.stringify((byName.get('vc_resource_data_write')!.parameters as any).properties.operations)).not.toContain('"kind"');
+    expect((byName.get('od_resource_data_read')!.parameters as any).properties.queries.type).toBe('array');
+    expect((byName.get('od_resource_data_write')!.parameters as any).properties.operations.type).toBe('array');
+    expect(JSON.stringify((byName.get('od_resource_data_read')!.parameters as any).properties.queries)).not.toContain('"kind"');
+    expect(JSON.stringify((byName.get('od_resource_data_read')!.parameters as any).properties.queries)).toContain('"search"');
+    expect(JSON.stringify((byName.get('od_resource_data_read')!.parameters as any).properties.queries)).toContain('"schema"');
+    expect(JSON.stringify((byName.get('od_resource_data_write')!.parameters as any).properties.operations)).not.toContain('"kind"');
   });
 
   test('chains list, inspect, and ordered reads using names in provider-visible content', async () => {
@@ -124,7 +124,7 @@ describe('resource tools', () => {
     };
     const { byName } = tools(resourceService);
 
-    const firstPage = await executeTool(byName.get('vc_resource_list')!, { limit: 2 });
+    const firstPage = await executeTool(byName.get('od_resource_list')!, { limit: 2 });
     const firstData = providerModelData(firstPage);
     expect(firstData.resources).toEqual([
       { name: 'Credentials', kind: 'secretStore', status: 'ready' },
@@ -135,11 +135,11 @@ describe('resource tools', () => {
     expect(JSON.stringify(firstPage)).not.toContain('"id"');
 
     const removed = resources.splice(0, 1);
-    const stalePage = await executeTool(byName.get('vc_resource_list')!, { cursor: firstData.nextCursor, limit: 10 });
+    const stalePage = await executeTool(byName.get('od_resource_list')!, { cursor: firstData.nextCursor, limit: 10 });
     expect(providerModelData(stalePage)).toMatchObject({ error: { code: 'RESOURCE_CURSOR_INVALID' } });
     resources.unshift(...removed);
 
-    const secondPage = await executeTool(byName.get('vc_resource_list')!, { cursor: firstData.nextCursor, limit: 10 });
+    const secondPage = await executeTool(byName.get('od_resource_list')!, { cursor: firstData.nextCursor, limit: 10 });
     expect(providerModelData(secondPage)).toEqual({
       resources: [
         { name: 'User Preferences', kind: 'kv', status: 'ready' },
@@ -148,7 +148,7 @@ describe('resource tools', () => {
       nextCursor: null,
     });
 
-    const secretInspect = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: ' credentials ' });
+    const secretInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: ' credentials ' });
     expect(providerModelData(secretInspect)).toMatchObject({
       resource: { name: 'Credentials', kind: 'secretStore' },
       ready: true,
@@ -157,7 +157,7 @@ describe('resource tools', () => {
     expect(providerModelData(secretInspect).keys).not.toHaveProperty('entries');
     expect(JSON.stringify(secretInspect)).not.toContain('plaintext');
 
-    const dbInspect = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'Notes' });
+    const dbInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Notes' });
     expect(providerModelData(dbInspect)).toMatchObject({
       resource: { name: 'Notes', kind: 'db' },
       bindingCount: 1,
@@ -174,10 +174,10 @@ describe('resource tools', () => {
     });
     expect(JSON.stringify(dbInspect)).not.toContain('"rows"');
 
-    const nonReadyInspect = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'Warehouse' });
+    const nonReadyInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Warehouse' });
     expect(providerModelData(nonReadyInspect)).toMatchObject({ ready: false, capabilities: { read: false, write: false } });
 
-    const kvRead = await executeTool(byName.get('vc_resource_data_read')!, {
+    const kvRead = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: ' user PREFERENCES ',
       queries: [
         { operation: 'get', key: 'theme' },
@@ -199,7 +199,7 @@ describe('resource tools', () => {
     ]);
     expect(JSON.stringify(providerModelData(kvRead))).not.toContain('dark-value-must-not-be-listed');
 
-    const secretRead = await executeTool(byName.get('vc_resource_data_read')!, {
+    const secretRead = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'Credentials',
       queries: [
         { operation: 'get', key: 'TOKEN' },
@@ -218,7 +218,7 @@ describe('resource tools', () => {
       } },
     ]);
 
-    const dbRead = await executeTool(byName.get('vc_resource_data_read')!, {
+    const dbRead = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'Notes',
       queries: [
         { operation: 'schema', object: 'NOTES' },
@@ -267,7 +267,7 @@ describe('resource tools', () => {
     };
     const { byName } = tools(resourceService);
 
-    const inspected = providerModelData(await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'Warehouse' }));
+    const inspected = providerModelData(await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Warehouse' }));
     expect(inspected.schema.objects).toHaveLength(100);
     expect(inspected.schema.nextCursor).toStartWith('vds1.');
     expect(inspected.schema.nextCursor).not.toContain('table_100');
@@ -279,7 +279,7 @@ describe('resource tools', () => {
     });
     expect(inspected.schema.objects[0].indexes[0]).not.toHaveProperty('createSql');
 
-    const continued = providerModelData(await executeTool(byName.get('vc_resource_data_read')!, {
+    const continued = providerModelData(await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'Warehouse',
       queries: [{ operation: 'schema', cursor: inspected.schema.nextCursor, limit: 100 }],
     }));
@@ -301,7 +301,7 @@ describe('resource tools', () => {
     });
 
     objects.push({ ...objects[0]!, name: 'table_105' });
-    const stale = providerModelData(await executeTool(byName.get('vc_resource_data_read')!, {
+    const stale = providerModelData(await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'Warehouse',
       queries: [{ operation: 'schema', cursor: inspected.schema.nextCursor }],
     }));
@@ -351,16 +351,16 @@ describe('resource tools', () => {
     const approvals = new ApprovalCoordinator();
     const { byName } = tools(resourceService, approvals);
 
-    const create = executeTool(byName.get('vc_resource_create')!, { kind: 'kv', name: 'Team Preferences' });
+    const create = executeTool(byName.get('od_resource_create')!, { kind: 'kv', name: 'Team Preferences' });
     const createApproval = await pendingApproval(approvals);
     await approvals.resolve('chat-a', createApproval.id, 'approve', { accountId: 'user-a' });
     const createdName = providerModelData(await create).resource.name;
     expect(createdName).toBe('Team Preferences');
 
-    const inspected = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: createdName });
+    const inspected = await executeTool(byName.get('od_resource_inspect')!, { resourceName: createdName });
     expect(providerModelData(inspected)).toMatchObject({ resource: { name: createdName, kind: 'kv' }, ready: true });
 
-    const write = executeTool(byName.get('vc_resource_data_write')!, {
+    const write = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: createdName,
       operations: [{ operation: 'set', key: 'theme', value: 'dark' }],
     });
@@ -368,13 +368,13 @@ describe('resource tools', () => {
     await approvals.resolve('chat-a', writeApproval.id, 'approve', { accountId: 'user-a' });
     expect(providerModelData(await write).results).toMatchObject([{ index: 0, ok: true }]);
 
-    const read = await executeTool(byName.get('vc_resource_data_read')!, {
+    const read = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: ' team preferences ',
       queries: [{ operation: 'get', key: 'theme' }],
     });
     expect(providerModelData(read).results[0]).toMatchObject({ index: 0, ok: true, value: { value: 'dark' } });
 
-    const remove = executeTool(byName.get('vc_resource_delete')!, { resourceName: createdName });
+    const remove = executeTool(byName.get('od_resource_delete')!, { resourceName: createdName });
     const deleteApproval = await pendingApproval(approvals);
     await approvals.resolve('chat-a', deleteApproval.id, 'approve', { accountId: 'user-a' });
     const removed = await remove;
@@ -412,7 +412,7 @@ describe('resource tools', () => {
       { kind: 'db', name: ' Reports ', expectedName: 'Reports', engine: 'sqlite' },
     ]) {
       const { expectedName, ...params } = input;
-      const pending = executeTool(byName.get('vc_resource_create')!, params);
+      const pending = executeTool(byName.get('od_resource_create')!, params);
       const approval = await pendingApproval(approvals);
       expect(approval.toolCallId).toBe('tool-call');
       expect(JSON.stringify(approval)).not.toContain('resourceId');
@@ -420,7 +420,7 @@ describe('resource tools', () => {
       expect(providerModelData(await pending)).toEqual({ resource: { name: expectedName, kind: input.kind, status: 'ready' } });
     }
 
-    const update = executeTool(byName.get('vc_resource_update')!, { resourceName: 'Preferences', newName: 'Settings' });
+    const update = executeTool(byName.get('od_resource_update')!, { resourceName: 'Preferences', newName: 'Settings' });
     const updateApproval = await pendingApproval(approvals);
     resources[0] = { ...resources[0]!, name: 'Renamed Elsewhere' };
     await approvals.resolve('chat-a', updateApproval.id, 'approve', { accountId: 'user-a' });
@@ -428,7 +428,7 @@ describe('resource tools', () => {
     expect(providerModelData(updateResult)).toEqual({ resource: { name: 'Settings', kind: 'kv', status: 'ready' } });
     expect(JSON.stringify(updateResult)).not.toContain('kv-stable-id');
 
-    const remove = executeTool(byName.get('vc_resource_delete')!, { resourceName: 'Settings' });
+    const remove = executeTool(byName.get('od_resource_delete')!, { resourceName: 'Settings' });
     const deleteApproval = await pendingApproval(approvals);
     await expect(approvals.resolve('chat-a', deleteApproval.id, 'approve', { accountId: 'user-a' })).rejects.toThrow('still bound');
     const deleteResult = await remove;
@@ -473,7 +473,7 @@ describe('resource tools', () => {
       return stored;
     });
 
-    const secret = executeTool(byName.get('vc_resource_data_write')!, {
+    const secret = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: 'Credentials',
       operations: [{ operation: 'set', key: 'TOKEN', value: '[redacted]' }],
     });
@@ -488,7 +488,7 @@ describe('resource tools', () => {
       resourceName: 'Credentials',
       operations: [{ operation: 'set', key: 'LEAK', value: 'must-not-leak' }],
     };
-    const failedSecret = executeTool(byName.get('vc_resource_data_write')!, {
+    const failedSecret = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: 'Credentials', operations: [{ operation: 'set', key: 'LEAK', value: '[redacted]' }],
     });
     const failedApproval = await pendingApproval(approvals);
@@ -497,7 +497,7 @@ describe('resource tools', () => {
     expect(JSON.stringify(failedResult)).not.toContain('must-not-leak');
     expect(JSON.stringify(failedResult)).toContain('[redacted]');
 
-    const dbWrite = executeTool(byName.get('vc_resource_data_write')!, {
+    const dbWrite = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: 'Notes',
       operations: [
         { operation: 'sql', sql: 'INSERT INTO notes(id, title) VALUES (?, ?)', parameters: [{ type: 'integer', value: '7' }, 'Hello'] },
@@ -530,11 +530,11 @@ describe('resource tools', () => {
     ];
     const service = resolvingService(resources);
     const { byName } = tools(service);
-    const ambiguous = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'DUPLICATE' });
+    const ambiguous = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'DUPLICATE' });
     expect(providerModelData(ambiguous)).toMatchObject({ error: { code: 'RESOURCE_NAME_AMBIGUOUS', retryable: false } });
-    const missing = await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'Missing' });
+    const missing = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Missing' });
     expect(providerModelData(missing)).toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND', retryable: false } });
-    const notReady = await executeTool(byName.get('vc_resource_data_read')!, {
+    const notReady = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'pending',
       queries: [{ operation: 'get', key: 'value' }],
     });
@@ -543,7 +543,7 @@ describe('resource tools', () => {
     let calls = 0;
     service.listResources = async () => { calls += 1; return []; };
     const denied = tools(service, new ApprovalCoordinator(), async () => false);
-    const result = await executeTool(denied.byName.get('vc_resource_list')!, {});
+    const result = await executeTool(denied.byName.get('od_resource_list')!, {});
     expect(providerModelData(result)).toMatchObject({ error: { code: 'TOOL_NOT_AUTHORIZED' } });
     expect(calls).toBe(0);
   });

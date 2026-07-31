@@ -1,7 +1,7 @@
 import { createORPCClient, createSafeClient, type SafeClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import type { ContractRouterClient } from "@orpc/contract";
-import { apiContract, contract } from "@vibecanvas/api/contract";
+import { apiContract, contract } from "@omnidraw/api/contract";
 export type {
   TWidgetCatalog,
   TWidgetCatalogEntry,
@@ -24,8 +24,8 @@ export type {
   TWidgetCatalogPreviewSummary,
   TWidgetDraftSummary,
   TWidgetPreviewResult,
-} from "@vibecanvas/api/agent/contract";
-import type { TNotificationEvent } from "@vibecanvas/api/notification/contract";
+} from "@omnidraw/api/agent/contract";
+import type { TNotificationEvent } from "@omnidraw/api/notification/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 
 type TOrpcClient = ContractRouterClient<typeof apiContract>;

@@ -17,8 +17,8 @@ import type {
   TSafeResourceError,
   TUpdateResourcePlacementRequest,
   TUpdateResourceStateRequest,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { fnNormalizeResourceName, fnResourceNameKey } from './core/fn.resource-name';
 import {
   fnResourceControlStoreBinding,

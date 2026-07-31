@@ -1,15 +1,15 @@
-export type TVibecanvasJsonValue =
+export type TOmnidrawJsonValue =
   | string
   | number
   | boolean
   | null
-  | TVibecanvasJsonValue[]
-  | { [key: string]: TVibecanvasJsonValue | undefined };
+  | TOmnidrawJsonValue[]
+  | { [key: string]: TOmnidrawJsonValue | undefined };
 
 export type TUnsubscribe = () => void;
 
 export type TSdkError = {
   readonly code: string;
   readonly message: string;
-  readonly details?: TVibecanvasJsonValue;
+  readonly details?: TOmnidrawJsonValue;
 };

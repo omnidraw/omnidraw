@@ -2,8 +2,8 @@
  * @file Public registry, persistence, scheduling, sandbox, and usage SPIs.
  */
 
-import type { IResourceGateway } from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IResourceGateway } from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TExecutorCapacityLease,
   TExecutorCapacityRequest,

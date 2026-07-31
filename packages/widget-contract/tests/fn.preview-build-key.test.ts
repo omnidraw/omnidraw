@@ -14,9 +14,9 @@ const input: TWidgetPreviewBuildKeyInput = {
   sourceDigestSha256: '1'.repeat(64),
   canonicalManifestJson: '{"schemaVersion":3}',
   dependencyLockDigest: `sha256:${'2'.repeat(64)}`,
-  sdkContractIdentity: '@vibecanvas/sdk@1',
+  sdkContractIdentity: '@omnidraw/sdk@1',
   generatedContractDigest: `sha256:${'3'.repeat(64)}`,
-  builderIdentity: 'vibecanvas-build-adapter/v2',
+  builderIdentity: 'omnidraw-build-adapter/v2',
   capsuleBuildIdentity: {
     packageName: '@omnidraw/capsule',
     packageVersion: '0.9.4',
@@ -24,7 +24,7 @@ const input: TWidgetPreviewBuildKeyInput = {
     buildApiVersion: '0.1.0',
     runtimeBuildDigest: `sha256:${'5'.repeat(64)}`,
   },
-  buildPolicyId: 'vibecanvas-capsule-widget-v1',
+  buildPolicyId: 'omnidraw-capsule-widget-v1',
   approvedTransformsDigest: `sha256:${'6'.repeat(64)}`,
   buildConfigurationDigest: `sha256:${'7'.repeat(64)}`,
   environment: {
@@ -46,9 +46,9 @@ const constructionInput: TWidgetPreviewConstructionKeyInput = {
   },
   sourceDigestSha256: '1'.repeat(64),
   canonicalManifestJson: '{"schemaVersion":3}',
-  builderIdentity: 'vibecanvas-build-adapter/v2',
+  builderIdentity: 'omnidraw-build-adapter/v2',
   capsuleBuildIdentity: input.capsuleBuildIdentity,
-  buildPolicyId: 'vibecanvas-capsule-widget-v1',
+  buildPolicyId: 'omnidraw-capsule-widget-v1',
   environmentIdentity: '{"format":"test-environment-v1"}',
 };
 
@@ -73,9 +73,9 @@ describe('Preview build key', () => {
       { ...input, sourceDigestSha256: '8'.repeat(64) },
       { ...input, canonicalManifestJson: '{"schemaVersion":3,"name":"Changed"}' },
       { ...input, dependencyLockDigest: `sha256:${'8'.repeat(64)}` },
-      { ...input, sdkContractIdentity: '@vibecanvas/sdk@2' },
+      { ...input, sdkContractIdentity: '@omnidraw/sdk@2' },
       { ...input, generatedContractDigest: `sha256:${'8'.repeat(64)}` },
-      { ...input, builderIdentity: 'vibecanvas-build-adapter/v3' },
+      { ...input, builderIdentity: 'omnidraw-build-adapter/v3' },
       {
         ...input,
         capsuleBuildIdentity: {
@@ -83,7 +83,7 @@ describe('Preview build key', () => {
           runtimeBuildDigest: `sha256:${'8'.repeat(64)}`,
         },
       },
-      { ...input, buildPolicyId: 'vibecanvas-capsule-widget-v2' },
+      { ...input, buildPolicyId: 'omnidraw-capsule-widget-v2' },
       { ...input, approvedTransformsDigest: `sha256:${'8'.repeat(64)}` },
       { ...input, buildConfigurationDigest: `sha256:${'8'.repeat(64)}` },
       {
@@ -135,7 +135,7 @@ describe('Preview build key', () => {
         ...constructionInput,
         canonicalManifestJson: '{"schemaVersion":3,"name":"Changed"}',
       },
-      { ...constructionInput, builderIdentity: 'vibecanvas-build-adapter/v3' },
+      { ...constructionInput, builderIdentity: 'omnidraw-build-adapter/v3' },
       {
         ...constructionInput,
         capsuleBuildIdentity: {
@@ -143,7 +143,7 @@ describe('Preview build key', () => {
           packageVersion: '0.9.5',
         },
       },
-      { ...constructionInput, buildPolicyId: 'vibecanvas-capsule-widget-v2' },
+      { ...constructionInput, buildPolicyId: 'omnidraw-capsule-widget-v2' },
       {
         ...constructionInput,
         environmentIdentity: '{"format":"test-environment-v2"}',

@@ -12,14 +12,14 @@ import {
   type CapsuleMountErrorEvent,
   type CapsuleMountGuestChannels,
   type CapsuleViewport,
-} from '@vibecanvas/capsule-vibecanvas/host';
+} from '@omnidraw/capsule-omnidraw/host';
 import { originalPositionFor } from '@jridgewell/trace-mapping';
 import type {
-  TVibecanvasCapsuleError,
-} from '@vibecanvas/capsule-vibecanvas/contract';
+  TOmnidrawCapsuleError,
+} from '@omnidraw/capsule-omnidraw/contract';
 import type {
   CapsuleCapabilityGrant,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
+} from '@omnidraw/capsule-omnidraw/capabilities';
 import {
   fnAssertWidgetCapsuleRuntimeCompatible,
   fnResolveWidgetCapsuleCapabilities,
@@ -27,7 +27,7 @@ import {
   fnValidateWidgetCapsuleMountCatalog,
 } from './fn.capsule-catalog';
 import { fnRuntimeDiagnosticSource } from './fn.runtime-diagnostic-source';
-import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
+import type { TWidgetCapsuleApiGroup } from '@omnidraw/widget-contract';
 import type {
   TWidgetArtifactRuntimeIdentity,
   TWidgetCapsuleHostCatalog,
@@ -58,7 +58,7 @@ type TMountArgs = Readonly<{
   container: HTMLElement;
   capabilityBindings: readonly CapsuleCapabilityBinding[];
   guestChannels?: CapsuleMountGuestChannels;
-  onDiagnostic?(error: TVibecanvasCapsuleError): void;
+  onDiagnostic?(error: TOmnidrawCapsuleError): void;
   onFatal(error: unknown): void;
 }>;
 
@@ -162,9 +162,9 @@ function idempotentHandle(
   mapError: (
     event: CapsuleMountErrorEvent,
     lifecycleGeneration: number,
-  ) => TVibecanvasCapsuleError,
+  ) => TOmnidrawCapsuleError,
   onFatal: (error: unknown) => void,
-  onDiagnostic: ((error: TVibecanvasCapsuleError) => void) | undefined,
+  onDiagnostic: ((error: TOmnidrawCapsuleError) => void) | undefined,
   onDestroyed: () => void | Promise<void>,
 ): TCoordinatedWidgetUiRuntimeHandle {
   let destroyed = false;
@@ -252,7 +252,7 @@ function idempotentHandle(
 function eventMapper(args: TMountArgs): (
   event: CapsuleMountErrorEvent,
   lifecycleGeneration?: number,
-) => TVibecanvasCapsuleError {
+) => TOmnidrawCapsuleError {
   let runtimeGeneration: number | undefined;
   return (event, lifecycleGeneration) => {
     const mapped = fnMapCapsuleMountError(event);

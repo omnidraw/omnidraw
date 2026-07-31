@@ -44,7 +44,7 @@ coverage/
 /tests/artifacts/
 
 # Dev database
-.vibecanvas/
+.omnidraw/
 local-volume/
 
 # AI

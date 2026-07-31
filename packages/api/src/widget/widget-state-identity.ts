@@ -1,5 +1,5 @@
-import type { TWidgetStateInstanceIdentity } from '@vibecanvas/service-widget-state';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TWidgetStateInstanceIdentity } from '@omnidraw/service-widget-state';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TWidgetStateIdentityInput = Readonly<{
   canvasId: string;

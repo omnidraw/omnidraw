@@ -18,7 +18,7 @@ const temporaryRoots: string[] = [];
 const databases: Database[] = [];
 
 async function openBaseline() {
-  const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-schema-"));
+  const root = await mkdtemp(path.join(tmpdir(), "omnidraw-baseline-schema-"));
   const db = await connect(path.join(root, "main.db"), {
     experimental: ["custom_types", "generated_columns"] as never,
   });

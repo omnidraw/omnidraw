@@ -1,1 +1,1 @@
-export { router } from '@vibecanvas/api/router';
+export { router } from '@omnidraw/api/router';

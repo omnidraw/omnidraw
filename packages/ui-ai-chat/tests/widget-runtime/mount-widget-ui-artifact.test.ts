@@ -5,17 +5,17 @@ import type {
   CapsuleCapabilityDescriptor,
   CapsuleKernelHostStreamSink,
   CapsuleSchemaResource,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
+} from '@omnidraw/capsule-omnidraw/capabilities';
 import type {
   CapsuleHandle,
   CapsuleHost,
   CapsuleMountErrorEvent,
   CreateCapsuleHostOptions,
-} from '@vibecanvas/capsule-vibecanvas/host';
-import { CapsuleHostError } from '@vibecanvas/capsule-vibecanvas/host';
+} from '@omnidraw/capsule-omnidraw/host';
+import { CapsuleHostError } from '@omnidraw/capsule-omnidraw/host';
 import { TraceMap } from '@jridgewell/trace-mapping';
 import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
-import { createVibecanvasGuestChannelContract } from '@vibecanvas/capsule-vibecanvas/capabilities';
+import { createOmnidrawGuestChannelContract } from '@omnidraw/capsule-omnidraw/capabilities';
 import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
 import { createWidgetUiArtifactMountPort } from '../../src/widget-runtime/mount-widget-ui-artifact';
 import type {
@@ -30,7 +30,7 @@ import {
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetCapsuleApiGroup,
   type TWidgetCapsuleTheme,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 const functionMetadata = [{
   schemaVersion: 1 as const,
@@ -82,7 +82,7 @@ const BUDGETS = Object.freeze({
   lifecycleBytes: 256 * 1_024,
 });
 const THEME = Object.freeze({
-  format: 'vibecanvas.widget-theme.v1' as const,
+  format: 'omnidraw.widget-theme.v1' as const,
   appearance: 'dark' as const,
   tokens: Object.freeze({
     background: '#000',
@@ -126,17 +126,17 @@ function descriptor(
 }
 
 const functionDescriptor = descriptor(
-  `vibecanvas.widget.functions.h${FUNCTION_DESCRIPTOR_DIGEST}`,
+  `omnidraw.widget.functions.h${FUNCTION_DESCRIPTOR_DIGEST}`,
   HASH_A,
   [{ name: 'count', kind: 'call' }],
 );
 const alternateFunctionDescriptor = descriptor(
-  `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+  `omnidraw.widget.functions.h${'b'.repeat(64)}`,
   HASH_B,
   [{ name: 'count', kind: 'call' }],
 );
 const stateDescriptor = descriptor(
-  'vibecanvas.widget.collaborative_state',
+  'omnidraw.widget.collaborative_state',
   HASH_B,
   [
     { name: 'change', kind: 'call' },
@@ -187,7 +187,7 @@ function runtimeDescriptor(
   channels: TVerifiedWidgetUiArtifact['runtimeDescriptor']['channels'] = null,
 ) {
   return {
-    format: 'vibecanvas.capsule-runtime.v2' as const,
+    format: 'omnidraw.capsule-runtime.v2' as const,
     capsuleArtifactHash: HASH_A,
     apiContract: {
       format: 'capsule-api-groups-v1' as const,
@@ -526,7 +526,7 @@ describe('Capsule widget mount boundary', () => {
     expect(outcome).toEqual({
       status: 'rejected',
       reason: {
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'host',
         category: 'capability',
         capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
@@ -745,7 +745,7 @@ describe('Capsule widget mount boundary', () => {
       root: document.createElement('div'),
       identity: signedMismatchBridge.identity,
       artifact: artifact('published', [{
-        id: `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+        id: `omnidraw.widget.functions.h${'b'.repeat(64)}`,
         versionRange: '1.0.0',
         contractHash: HASH_B,
         required: true,
@@ -774,7 +774,7 @@ describe('Capsule widget mount boundary', () => {
       },
     );
     try {
-      const channelContract = await createVibecanvasGuestChannelContract({
+      const channelContract = await createOmnidrawGuestChannelContract({
         localStore: 'ephemeral',
       });
     const factory = fakeHostFactory();
@@ -1012,7 +1012,7 @@ describe('Capsule widget mount boundary', () => {
       });
 
       expect(onDiagnostic).toHaveBeenCalledWith({
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'runtime',
         category: 'capability',
         capsuleCode: 'PROVIDER_FAILED',
@@ -1140,7 +1140,7 @@ describe('Capsule widget mount boundary', () => {
       mode: 'published',
       catalog: currentCatalog,
       artifact: artifact('published', [{
-        id: 'vibecanvas.widget.unknown',
+        id: 'omnidraw.widget.unknown',
         versionRange: '1.0.0',
         contractHash: HASH_B,
         required: true,

@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/api",
+  "name": "@omnidraw/api",
   "private": true,
   "type": "module",
   "exports": {
@@ -35,15 +35,15 @@
   "dependencies": {
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
-    "@vibecanvas/canvas-contract": "workspace:*",
-    "@vibecanvas/resource-runtime": "workspace:*",
-    "@vibecanvas/service-agent": "workspace:*",
-    "@vibecanvas/service-canvas": "workspace:*",
-    "@vibecanvas/service-db": "workspace:*",
-    "@vibecanvas/service-event-publisher": "workspace:*",
-    "@vibecanvas/service-widget-state": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*",
+    "@omnidraw/canvas-contract": "workspace:*",
+    "@omnidraw/resource-runtime": "workspace:*",
+    "@omnidraw/service-agent": "workspace:*",
+    "@omnidraw/service-canvas": "workspace:*",
+    "@omnidraw/service-db": "workspace:*",
+    "@omnidraw/service-event-publisher": "workspace:*",
+    "@omnidraw/service-widget-state": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*",
+    "@omnidraw/widget-contract": "workspace:*",
     "zod": "catalog:"
   }
 }

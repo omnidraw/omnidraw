@@ -1,7 +1,7 @@
 import * as AlertDialog from '@kobalte/core/alert-dialog';
 import { Button } from '@kobalte/core/button';
 import * as Tabs from '@kobalte/core/tabs';
-import type { TWidgetDetail, TWidgetFileEntry, TWidgetFilePreview, TWidgetSource } from '@vibecanvas/orpc-client';
+import type { TWidgetDetail, TWidgetFileEntry, TWidgetFilePreview, TWidgetSource } from '@omnidraw/orpc-client';
 import File from 'lucide-solid/icons/file';
 import Folder from 'lucide-solid/icons/folder';
 import PanelLeft from 'lucide-solid/icons/panel-left';
@@ -350,7 +350,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         </div></Tabs.Content>
 
         <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
-          <section class={styles.panel}><h3>Widget configuration</h3><Show when={current().manifest} fallback={<p class={styles.validationError}>The manifest is invalid. Repair vibecanvas.json from the Files tab before editing structured configuration.</p>}><Show when={current().source === 'draft'} fallback={<><p class={styles.muted}>Published configuration is immutable. Create or reuse a draft to edit it.</p><Button class={styles.button} onClick={editAsDraft}>Edit as draft</Button></>}>
+          <section class={styles.panel}><h3>Widget configuration</h3><Show when={current().manifest} fallback={<p class={styles.validationError}>The manifest is invalid. Repair omnidraw.json from the Files tab before editing structured configuration.</p>}><Show when={current().source === 'draft'} fallback={<><p class={styles.muted}>Published configuration is immutable. Create or reuse a draft to edit it.</p><Button class={styles.button} onClick={editAsDraft}>Edit as draft</Button></>}>
             <div class={styles.formGrid}>
               <label>Name<input class={styles.input} value={metadataName()} onInput={(event) => setMetadataName(event.currentTarget.value)} maxlength={120} /><span class={styles.fieldHint}>Renaming a draft creates a new draft identity; an existing published widget keeps its current name.</span></label>
               <label class={styles.fullField}>Description<textarea class={`${styles.input} ${styles.textarea}`} value={description()} onInput={(event) => setDescription(event.currentTarget.value)} maxlength={4000} /></label>

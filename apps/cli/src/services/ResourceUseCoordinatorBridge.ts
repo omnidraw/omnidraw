@@ -8,8 +8,8 @@ import {
   type TResourceReleaseResult,
   type TResourceUse,
   type TResourceUseInspection,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 const DEFAULT_INSPECTION_TIMEOUT_MS = 5_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;

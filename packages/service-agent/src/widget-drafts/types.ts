@@ -1,4 +1,4 @@
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IWidgetDurablePreviewService,
   IWidgetPreviewPromotionService,
@@ -15,7 +15,7 @@ import type {
   TWidgetPreviewMountLeaseRenewRequest,
   TWidgetResourceBindingInput,
   TWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 export type TAgentAuthoringChatDescriptor = Readonly<{
   orgId: string;

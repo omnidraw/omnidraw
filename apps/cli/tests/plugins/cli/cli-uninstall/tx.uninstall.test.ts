@@ -9,7 +9,7 @@ const tempRoots = new Set<string>();
 const portal = { existsSync, lstatSync, readdirSync, rmSync, rmdirSync };
 
 async function createTempRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'vibecanvas-uninstall-test-'));
+  const root = await mkdtemp(join(tmpdir(), 'omnidraw-uninstall-test-'));
   tempRoots.add(root);
   return root;
 }
@@ -22,9 +22,9 @@ afterEach(async () => {
 describe('txRemoveUninstallTargets', () => {
   test('removes requested files and directories only', async () => {
     const root = await createTempRoot();
-    const ownedDir = join(root, 'vibecanvas');
+    const ownedDir = join(root, 'omnidraw');
     const keptDir = join(root, 'project');
-    const ownedFile = join(ownedDir, 'vibecanvas.turso');
+    const ownedFile = join(ownedDir, 'omnidraw.turso');
     const keptFile = join(keptDir, 'notes.txt');
 
     mkdirSync(ownedDir, { recursive: true });
@@ -42,9 +42,9 @@ describe('txRemoveUninstallTargets', () => {
 
   test('removes empty directories after target deletion', async () => {
     const root = await createTempRoot();
-    const installRoot = join(root, '.vibecanvas');
+    const installRoot = join(root, '.omnidraw');
     const binDir = join(installRoot, 'bin');
-    const binary = join(binDir, 'vibecanvas');
+    const binary = join(binDir, 'omnidraw');
 
     mkdirSync(binDir, { recursive: true });
     writeFileSync(binary, 'bin');
@@ -58,8 +58,8 @@ describe('txRemoveUninstallTargets', () => {
 
   test('continues removing safe targets after one target fails', async () => {
     const root = await createTempRoot();
-    const failingDir = join(root, 'failing', 'vibecanvas');
-    const removableDir = join(root, 'removable', 'vibecanvas');
+    const failingDir = join(root, 'failing', 'omnidraw');
+    const removableDir = join(root, 'removable', 'omnidraw');
     mkdirSync(failingDir, { recursive: true });
     mkdirSync(removableDir, { recursive: true });
     writeFileSync(join(failingDir, 'data.db'), 'keep');

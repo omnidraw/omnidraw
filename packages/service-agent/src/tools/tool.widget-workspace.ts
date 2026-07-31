@@ -26,7 +26,7 @@ import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 type TCreateWidgetWorkspaceToolsArgs = {
   workspace: WidgetWorkspace;
   chatId: string;
-  authorize: (toolName: 'vc_widget_list' | 'vc_widget_create' | 'vc_widget_validate') => Promise<boolean>;
+  authorize: (toolName: 'od_widget_list' | 'od_widget_create' | 'od_widget_validate') => Promise<boolean>;
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
   npmInstall?: TNpmInstall;
@@ -44,7 +44,7 @@ const WIDGET_CREATE_PARAMETERS = Type.Object({
 
 export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs): TToolDefinition[] {
   const list = defineTool({
-    name: 'vc_widget_list',
+    name: 'od_widget_list',
     label: 'List Widgets',
     description: 'List bounded safe metadata for every shared draft and published widget without reading source files. Each result reports hasDraft and hasPublished. File tools can access shared drafts; published-only entries require a user-controlled frontend workflow.',
     parameters: Type.Object({
@@ -52,7 +52,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_widget_list')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      if (!await args.authorize('od_widget_list')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         const widgets = fnSortAvailableWidgets(await args.workspace.listAvailableWidgets(args.chatId));
         const fingerprint = fnWidgetListFingerprint(widgets);
@@ -85,12 +85,12 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   }) as TToolDefinition;
 
   const create = defineTool({
-    name: 'vc_widget_create',
+    name: 'od_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create and mount one complete browser-first manifest-v3 Capsule widget draft. Choose template "react" for a ready React/TypeScript starter with dependencies already installed; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Read only files you need to change, edit them, then call vc_widget_validate.',
+    description: 'Create and mount one complete browser-first manifest-v3 Capsule widget draft. Choose template "react" for a ready React/TypeScript starter with dependencies already installed; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Read only files you need to change, edit them, then call od_widget_validate.',
     parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      if (!await args.authorize('od_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       if (!Check(WIDGET_CREATE_PARAMETERS, params)) {
         return fnToolError({
           code: 'WIDGET_CREATE_INPUT_INVALID',
@@ -179,24 +179,24 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   }) as TToolDefinition;
 
   const validate = defineTool({
-    name: 'vc_widget_validate',
+    name: 'od_widget_validate',
     label: 'Validate Widget',
     description: 'Validate one widget from the shared draft workspace with the trusted host compiler and SDK declarations. This never publishes.',
     parameters: Type.Object({
       name: Type.String({ minLength: 1, maxLength: 120 }),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_widget_validate')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      if (!await args.authorize('od_widget_validate')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         const mount = await args.workspace.findMountedWidget(args.chatId, params.name);
         return await args.workspace.withDraftAuthoringOperation(mount.name, async () => {
           const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
             cwd: mount.targetPath,
           });
-          const manifest = JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')) as { name?: unknown };
+          const manifest = JSON.parse(await readFile(join(mount.targetPath, 'omnidraw.json'), 'utf8')) as { name?: unknown };
           if (manifest.name !== mount.name) {
             validation.ok = false;
-            validation.errors.push(`Published identity is '${mount.name}', but vibecanvas.json declares '${String(manifest.name)}'. Create and publish a new widget to rename it.`);
+            validation.errors.push(`Published identity is '${mount.name}', but omnidraw.json declares '${String(manifest.name)}'. Create and publish a new widget to rename it.`);
           }
           const durable = await args.onDraftChanged?.({
             name: mount.name,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
 import {
   DbServiceTurso,
   type TTenantDb,

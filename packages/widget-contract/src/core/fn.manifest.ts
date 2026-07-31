@@ -8,7 +8,7 @@ import type {
   TResourceNamedOperation,
   TResourceOperationParameterDeclaration,
   TResourceRequirement,
-} from '@vibecanvas/resource-runtime';
+} from '@omnidraw/resource-runtime';
 import type {
   TWidgetManifestV3,
   TWidgetResourceBindingInput,

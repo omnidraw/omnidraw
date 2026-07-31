@@ -40,11 +40,11 @@ function fnGetContent(message: unknown) {
 function fnIsFinishedMessage(message: unknown) {
   const object = fnGetObject(message)
 
-  if (!object || !("__vibecanvasMessageFinished" in object)) {
+  if (!object || !("__omnidrawMessageFinished" in object)) {
     return true
   }
 
-  return object.__vibecanvasMessageFinished === true
+  return object.__omnidrawMessageFinished === true
 }
 
 function fnGetDataImageSrc(args: { data: unknown; mediaType: unknown }) {

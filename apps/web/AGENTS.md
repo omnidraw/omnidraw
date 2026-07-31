@@ -1,13 +1,13 @@
 # Web Docs App
 
-Astro static site for Vibecanvas docs and landing page.
+Astro static site for Omnidraw docs and landing page.
 
 ## Commands
 
 ```bash
-bun --filter @vibecanvas/web dev
-bun --filter @vibecanvas/web build
-bun --filter @vibecanvas/web preview
+bun --filter @omnidraw/web dev
+bun --filter @omnidraw/web build
+bun --filter @omnidraw/web preview
 ```
 
 ## Stack

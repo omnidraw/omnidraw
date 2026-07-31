@@ -4,7 +4,7 @@ import {
   fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItems,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   TCanvasCommand,
   TCanvasEvent,
@@ -16,9 +16,9 @@ import type {
   TCanvasItemsChangedEvent,
   TCanvasPrecondition,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
-import { fnScopedKey } from '@vibecanvas/tenant-core';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/canvas-contract';
+import { fnScopedKey } from '@omnidraw/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   ICanvasService,
   ICanvasStore,

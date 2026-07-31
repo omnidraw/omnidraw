@@ -41,7 +41,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Isolated actor and widget startup failures.
 - Added actor event-stream reconnection.
-- Expanded the Vibecanvas LLM style guide.
+- Expanded the Omnidraw LLM style guide.
 
 ### Fixed
 - Made CLI upgrades transactional and rollback-safe.
@@ -57,7 +57,7 @@ All notable changes to this project will be documented in this file.
 ## 0.4.3
 
 ### Added
-- Added `vibecanvas uninstall` with dry-run output, confirmation, and `--yes` for removing curl-installed binaries and local Vibecanvas data safely.
+- Added `omnidraw uninstall` with dry-run output, confirmation, and `--yes` for removing curl-installed binaries and local Omnidraw data safely.
 - Added a lightweight `web_fetch` agent tool for fetching HTTP(S) pages as raw text, normalized text, or markdown with timeout, byte-limit, and SPA/app-shell detection.
 
 ### Changed
@@ -73,14 +73,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed curl installer latest-release parsing for GitHub API `tag_name` JSON formatting.
-- Fixed curl-installed binaries failing to start by packaging Turso native addons in GitHub release archives and installing them into `~/.vibecanvas/native`.
+- Fixed curl-installed binaries failing to start by packaging Turso native addons in GitHub release archives and installing them into `~/.omnidraw/native`.
 
 ## 0.4.1
 
 ### Fixed
-- Fixed CLI upgrade release detection for `vibecanvas-v*` GitHub release tags so `vibecanvas upgrade --check` can find newer releases.
-- Fixed curl installer checksum fallback URLs to use `vibecanvas-v*` release tags.
-- Made Vibecanvas npm publishing safer to retry by skipping already-published package versions and publishing platform packages before the wrapper package.
+- Fixed CLI upgrade release detection for `omnidraw-v*` GitHub release tags so `omnidraw upgrade --check` can find newer releases.
+- Fixed curl installer checksum fallback URLs to use `omnidraw-v*` release tags.
+- Made Omnidraw npm publishing safer to retry by skipping already-published package versions and publishing platform packages before the wrapper package.
 
 ## 0.4.0
 
@@ -97,7 +97,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Migrated BunSqlite -> Turso
 - Reworked the widget system around actor-backed draft and published widget flows, including published-widget edit sessions, toolbar refresh after publish, and preview gating until an actor candidate is approved.
-- Persisted actor manifest paths relative to the Vibecanvas config so cloned/worktree environments can relocate actor projects more reliably.
+- Persisted actor manifest paths relative to the Omnidraw config so cloned/worktree environments can relocate actor projects more reliably.
 - Improved AI wizard layout and UX, including visible canvas sidebar behavior, settings/chat tab routing, composer overflow caps, and cleaner assistant markdown rendering.
 - Centralized and hardened canvas/service/plugin architecture with functional-core checks, fn/fx/tx linting, service boundary cleanup, and broader canvas service/test coverage.
 - Stored pasted/imported images as blobs instead of base64.
@@ -125,12 +125,12 @@ All notable changes to this project will be documented in this file.
 - Added a full canvas CLI workflow for creating, listing, querying, adding, patching, moving, reordering, grouping, ungrouping, and deleting canvas elements.
 - Introduced plugin system for apps/cli
 - Added PTY image upload API support for writing pasted clipboard images to remote temp storage and returning the absolute server path.
-- Added shared `@vibecanvas/orpc-client` package so frontend and canvas use the same ORPC websocket client and safe API types.
+- Added shared `@omnidraw/orpc-client` package so frontend and canvas use the same ORPC websocket client and safe API types.
 
 ### Changed
 - Replaces apps/server with apps/cli
 - Moved filetree ownership fully into the canvas document and removed the separate filetrees table/schema from the database.
-- Replaced canvas-side handwritten ORPC safe client mirror types with the shared `@vibecanvas/orpc-client` types.
+- Replaced canvas-side handwritten ORPC safe client mirror types with the shared `@omnidraw/orpc-client` types.
 - Renamed hosted widget transport wiring from `safeClient` to `apiService` across canvas/frontend integration for clearer ownership.
 
 ### Fixed

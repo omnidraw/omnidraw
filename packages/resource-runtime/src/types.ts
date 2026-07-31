@@ -6,7 +6,7 @@ import type {
   TCellId,
   TOrganizationId,
   TPlacementEpoch,
-} from '@vibecanvas/tenant-core';
+} from '@omnidraw/tenant-core';
 
 export type TResourceId = string;
 export type TResourceSlot = string;

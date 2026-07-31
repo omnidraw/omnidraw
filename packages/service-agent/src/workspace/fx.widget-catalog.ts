@@ -55,7 +55,7 @@ async function readManifest(
   root: string,
   name: string,
 ): Promise<Record<string, unknown> | null> {
-  const path = portal.join(root, name, 'vibecanvas.json');
+  const path = portal.join(root, name, 'omnidraw.json');
   const fileStat = await portal.lstat(path).catch(() => null);
   if (!fileStat?.isFile() || fileStat.isSymbolicLink() || fileStat.size > MANIFEST_MAX_BYTES) return null;
   try {

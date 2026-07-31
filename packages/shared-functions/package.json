@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/shared-functions",
+  "name": "@omnidraw/shared-functions",
   "private": true,
   "type": "module",
   "exports": {

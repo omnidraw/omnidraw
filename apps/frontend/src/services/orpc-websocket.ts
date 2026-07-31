@@ -1,5 +1,5 @@
-import { OrpcWebsocketService, type TOrpcSafeClient } from "@vibecanvas/orpc-client";
-import type { TBrowserTenantScope } from "@vibecanvas/canvas/fn.browser-tenant-scope";
+import { OrpcWebsocketService, type TOrpcSafeClient } from "@omnidraw/orpc-client";
+import type { TBrowserTenantScope } from "@omnidraw/canvas/fn.browser-tenant-scope";
 import { showErrorToast, showSuccessToast, showToast, showWarningToast } from "../components/ui/Toast";
 import { getBrowserTenantScope } from "./tenant";
 import { txRouteNotificationToast } from "./tx.route-notification-toast";

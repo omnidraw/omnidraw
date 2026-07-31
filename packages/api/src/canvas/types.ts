@@ -1,5 +1,5 @@
-import type { ICanvasService } from '@vibecanvas/service-canvas';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { ICanvasService } from '@omnidraw/service-canvas';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TCanvasDatabaseCapability } from '../interface';
 
 type TCanvasApiContext = {

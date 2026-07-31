@@ -41,12 +41,12 @@ function widget(extension: Record<string, unknown>): TWidgetFrameNode {
     transform,
     size: { width: 320, height: 240 },
     extensions: {
-      "vibecanvas:widget": extension as never,
+      "omnidraw:widget": extension as never,
     },
   };
 }
 
-describe("@vibecanvas/canvas-contract", () => {
+describe("@omnidraw/canvas-contract", () => {
   test("materializes top-level authored nodes beneath a synthetic content layer", () => {
     const snapshot = fnMaterializeCanvasValidationSnapshot([
       rect("root"),
@@ -142,7 +142,7 @@ describe("@vibecanvas/canvas-contract", () => {
   test("rejects malformed authoring samples and the synthetic content ID", () => {
     const malformed = rect(CANVAS_SYNTHETIC_CONTENT_LAYER_ID);
     malformed.extensions = {
-      "vibecanvas:authoring": {
+      "omnidraw:authoring": {
         schemaVersion: 1,
         penSource: {
           points: [{ x: 0, y: 0 }],

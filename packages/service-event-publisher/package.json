@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/service-event-publisher",
+  "name": "@omnidraw/service-event-publisher",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*"
+    "@omnidraw/runtime": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*"
   }
 }

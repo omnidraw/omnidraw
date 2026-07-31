@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { apiApprovalResolve } from './api.approval.resolve';
 import { apiChatApprovalResolve } from './api.chat.approval.resolve';
 import { apiChatConnect } from './api.chat.connect';

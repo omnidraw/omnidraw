@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/tenant-core",
+  "name": "@omnidraw/tenant-core",
   "version": "0.1.0",
   "type": "module",
   "exports": {

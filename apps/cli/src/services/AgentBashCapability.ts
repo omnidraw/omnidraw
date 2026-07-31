@@ -1,7 +1,7 @@
 import type {
   TAgentBashCapability,
   TAgentBashRunArgs,
-} from '@vibecanvas/service-agent';
+} from '@omnidraw/service-agent';
 
 const OUTPUT_HEAD_CHARACTER_LIMIT = 32 * 1_024;
 const OUTPUT_TAIL_CHARACTER_LIMIT = 32 * 1_024;

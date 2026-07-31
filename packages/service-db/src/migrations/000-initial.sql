@@ -146,11 +146,11 @@ CREATE TABLE canvas_items (
     CASE
       WHEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".type'
+        '$.extensions."omnidraw:widget".type'
       ) = 'widget-instance'
       THEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".instanceId'
+        '$.extensions."omnidraw:widget".instanceId'
       )
       ELSE NULL
     END
@@ -159,11 +159,11 @@ CREATE TABLE canvas_items (
     CASE
       WHEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".type'
+        '$.extensions."omnidraw:widget".type'
       ) = 'widget-instance'
       THEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".definitionId'
+        '$.extensions."omnidraw:widget".definitionId'
       )
       ELSE NULL
     END
@@ -172,11 +172,11 @@ CREATE TABLE canvas_items (
     CASE
       WHEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".type'
+        '$.extensions."omnidraw:widget".type'
       ) = 'widget-instance'
       THEN json_extract(
         item_json,
-        '$.extensions."vibecanvas:widget".revisionId'
+        '$.extensions."omnidraw:widget".revisionId'
       )
       ELSE NULL
     END
@@ -209,7 +209,7 @@ CREATE TABLE canvas_items (
   CHECK (
     json_extract(
       item_json,
-      '$.extensions."vibecanvas:widget".type'
+      '$.extensions."omnidraw:widget".type'
     ) IS NOT 'widget-instance'
     OR (
       widget_instance_id IS NOT NULL
@@ -217,15 +217,15 @@ CREATE TABLE canvas_items (
       AND revision_id IS NOT NULL
       AND json_type(
         item_json,
-        '$.extensions."vibecanvas:widget".instanceId'
+        '$.extensions."omnidraw:widget".instanceId'
       ) = 'text'
       AND json_type(
         item_json,
-        '$.extensions."vibecanvas:widget".definitionId'
+        '$.extensions."omnidraw:widget".definitionId'
       ) = 'text'
       AND json_type(
         item_json,
-        '$.extensions."vibecanvas:widget".revisionId'
+        '$.extensions."omnidraw:widget".revisionId'
       ) = 'text'
       AND length(trim(widget_instance_id)) > 0
       AND length(trim(definition_id)) > 0
@@ -289,17 +289,17 @@ CREATE TABLE widget_definition_revisions (
   contract_digest_sha256 sha256_hex NOT NULL,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   function_descriptors_json JSON NOT NULL
-    DEFAULT '{"format":"vibecanvas.server-functions.v1","functions":[]}'
+    DEFAULT '{"format":"omnidraw.server-functions.v1","functions":[]}'
     CHECK (
       json_type(function_descriptors_json) = 'object'
-      AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
+      AND json_extract(function_descriptors_json, '$.format') = 'omnidraw.server-functions.v1'
       AND json_type(function_descriptors_json, '$.functions') = 'array'
     ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL
     DEFAULT '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
   ui_runtime_json JSON NOT NULL CHECK (
     json_type(ui_runtime_json) = 'object'
-    AND json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v1'
+    AND json_extract(ui_runtime_json, '$.format') = 'omnidraw.capsule-runtime.v1'
     AND json_type(ui_runtime_json, '$.target') = 'object'
     AND json_type(ui_runtime_json, '$.budgets') = 'object'
     AND json_type(ui_runtime_json, '$.capabilityRequests') = 'array'

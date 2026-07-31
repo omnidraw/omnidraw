@@ -59,7 +59,7 @@ remote ESM endpoint, vendored minified runtime, or runtime package loader.
   keyboard access, and visible focus.
 - Import static CSS from UI source so Vite emits it into `dist/`. There is no
   runtime package installation or dynamic import.
-- Use `@vibecanvas/sdk/widget` for host-observed props, theme, lifecycle,
+- Use `@omnidraw/sdk/widget` for host-observed props, theme, lifecycle,
   output, bounded local state, collaborative state, and generated
   server-function clients. Do not import `@omnidraw/capsule/guest` directly.
 - `getWidgetTheme()` returns the fixed safe semantic theme projection. Emit
@@ -67,11 +67,11 @@ remote ESM endpoint, vendored minified runtime, or runtime package loader.
   `emitWidgetOutput({ type: "notification", tone: "info" | "success" | "error", message })`;
   no other output action is available.
 - Do not invent capability selectors, contract hashes, signing key ids,
-  instance ids, or resource ids. Vibecanvas build and host wiring own them.
+  instance ids, or resource ids. Omnidraw build and host wiring own them.
 - Do not access host files, internal APIs, ambient credentials, or direct
   network/resource authority. A requested API group is compatibility, not a
   grant.
-- Run `vc_widget_validate` after CSS changes and repair the exact Capsule
+- Run `od_widget_validate` after CSS changes and repair the exact Capsule
   diagnostic, including its code, path, line, and column when provided.
 - Preserve Capsule's first actionable guest failure and a `widget://`
   location only when Preview reports one through its verified retained source

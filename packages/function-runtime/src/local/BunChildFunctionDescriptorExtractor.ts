@@ -5,12 +5,12 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IWidgetServerFunctionDescriptorExtractor,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   createBunChildCage,
   defaultBunChildTempRoot,

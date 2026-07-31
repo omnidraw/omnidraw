@@ -1,4 +1,4 @@
-import { THEME_ID_DARK, THEME_ID_LIGHT, type ThemeId, type ThemeService } from "@vibecanvas/service-theme";
+import { THEME_ID_DARK, THEME_ID_LIGHT, type ThemeId, type ThemeService } from "@omnidraw/service-theme";
 
 export type TThemeAppearance = "light" | "dark";
 

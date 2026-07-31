@@ -1,13 +1,13 @@
-# @vibecanvas/web
+# @omnidraw/web
 
 Static documentation site built with Astro + Solid.
 
 ## Commands
 
 ```bash
-bun --filter @vibecanvas/web dev
-bun --filter @vibecanvas/web build
-bun --filter @vibecanvas/web preview
+bun --filter @omnidraw/web dev
+bun --filter @omnidraw/web build
+bun --filter @omnidraw/web preview
 ```
 
 ## Routes

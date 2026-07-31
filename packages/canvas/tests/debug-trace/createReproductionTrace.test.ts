@@ -128,7 +128,7 @@ describe('createReproductionTrace', () => {
     expect(test.clipboard).toHaveLength(1);
     expect(test.trace.download()).toBe(true);
     expect(test.downloads[0]?.filename).toMatch(
-      /^vibecanvas-trace-canvas-a-/,
+      /^omnidraw-trace-canvas-a-/,
     );
     expect(lifecycle).toEqual([false, true, false]);
 

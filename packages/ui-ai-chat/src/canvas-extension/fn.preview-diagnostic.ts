@@ -1,7 +1,7 @@
-import type { TWidgetDiagnostic } from '@vibecanvas/widget-contract';
+import type { TWidgetDiagnostic } from '@omnidraw/widget-contract';
 import {
   fnCanonicalizeWidgetDiagnosticFingerprint,
-} from '@vibecanvas/widget-contract/fn.diagnostic';
+} from '@omnidraw/widget-contract/fn.diagnostic';
 
 type TPreviewDiagnosticPhase = 'verifying' | 'mounting' | 'starting' | 'runtime';
 

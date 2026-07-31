@@ -1,4 +1,4 @@
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 
 export type TWidgetPlacementStartArgs = {
   reference: TWidgetPlacementRef;

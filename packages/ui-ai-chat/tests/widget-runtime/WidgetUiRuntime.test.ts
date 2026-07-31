@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { describe, expect, test, vi } from 'vitest';
 import type { TWidgetFrameNode } from '@omnidraw/cangine';
-import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract';
 import { WidgetUiArtifactCache } from '../../src/widget-runtime/WidgetUiArtifactCache';
 import { WidgetUiRuntime } from '../../src/widget-runtime/WidgetUiRuntime';
 import type {
@@ -174,7 +174,7 @@ function fixture(args: Readonly<{
       bytesBase64: Buffer.from(bytes).toString('base64'),
     },
     runtimeDescriptor: {
-      format: 'vibecanvas.capsule-runtime.v2' as const,
+      format: 'omnidraw.capsule-runtime.v2' as const,
       capsuleArtifactHash: CAPSULE_HASH,
       apiContract: {
         format: 'capsule-api-groups-v1' as const,
@@ -328,7 +328,7 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     const onFatal = current.mount.mock.calls[0]![0].onFatal;
 
     onFatal({
-      format: 'vibecanvas.capsule-error.v1',
+      format: 'omnidraw.capsule-error.v1',
       phase: 'runtime',
       category: 'guest',
       capsuleCode: 'CALL_FAILED',

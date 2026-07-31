@@ -3,7 +3,7 @@ import type {
   TCanvasItemPatch,
   TCanvasItemQueryCursor,
   TCanvasItemQueryFilter,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { fnCanvasCliError } from './fn.canvas-subcommand-inputs';
 import type {
   TCanvasNode,
@@ -53,7 +53,7 @@ function parseOptions(
       command,
       'CANVAS_ARGUMENT_INVALID',
       error instanceof Error ? error.message : String(error),
-      `Run 'vibecanvas ${command.replace('.', ' ')} --help' for accepted options.`,
+      `Run 'omnidraw ${command.replace('.', ' ')} --help' for accepted options.`,
     );
   }
 }

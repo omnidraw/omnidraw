@@ -15,7 +15,7 @@ import type {
 } from '../../src/debug-trace/typed';
 
 const header: TReproductionTraceHeader = {
-  kind: 'vibecanvas-developer-trace',
+  kind: 'omnidraw-developer-trace',
   schemaVersion: 1,
   mode: 'smart',
   startedAt: '2026-07-30T00:00:00.000Z',

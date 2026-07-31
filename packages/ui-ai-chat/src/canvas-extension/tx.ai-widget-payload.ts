@@ -21,7 +21,7 @@ export function txPersistAiWidgetPayload(
 ): void {
   if (fnAiWidgetPayloadEquals(args.node, args.payload)) return;
   portal.editor.commitSceneMutation({
-    source: 'vibecanvas:ai-chat',
+    source: 'omnidraw:ai-chat',
     commands: [{
       type: 'upsert',
       node: fnWithAiWidgetPayload(args.node, args.payload),

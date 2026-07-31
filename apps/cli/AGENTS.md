@@ -1,6 +1,6 @@
 # apps/cli
 
-`apps/cli` is the composition root for the Vibecanvas CLI and Bun server.
+`apps/cli` is the composition root for the Omnidraw CLI and Bun server.
 
 It owns:
 
@@ -25,7 +25,7 @@ The server registers `CanvasService` and `WidgetStateService`.
   open the application database directly.
 
 Canvas writes must use stable command IDs, item/path preconditions, and the
-shared `@vibecanvas/canvas-contract` command vocabulary. A successful command
+shared `@omnidraw/canvas-contract` command vocabulary. A successful command
 commits exactly one canvas revision before it is published.
 
 ## Bootstrap and shutdown

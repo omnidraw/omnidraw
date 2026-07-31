@@ -1,14 +1,14 @@
 import { ORPCError } from '@orpc/server';
-import { ZVibecanvasToolIcon, type TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
-import type { TJson } from '@vibecanvas/service-db/model';
-import type { TWidgetCatalog, TWidgetCatalogGroup } from '@vibecanvas/service-agent/widget-management/types';
+import { ZOmnidrawToolIcon, type TOmnidrawToolIcon } from '@omnidraw/widget-contract';
+import type { TJson } from '@omnidraw/service-db/model';
+import type { TWidgetCatalog, TWidgetCatalogGroup } from '@omnidraw/service-agent/widget-management/types';
 import { baseAgentOs } from './orpc';
 import type { TAgentApiContext } from './types';
 import { fnWidgetGroupMembers } from './fn.widget-groups';
 
 function toCatalogGroup(group: { name: string; json: TJson | null }): TWidgetCatalogGroup {
-  const icon = ZVibecanvasToolIcon.safeParse(group.json);
-  return { name: group.name, icon: icon.success ? icon.data as TVibecanvasToolIcon : null };
+  const icon = ZOmnidrawToolIcon.safeParse(group.json);
+  return { name: group.name, icon: icon.success ? icon.data as TOmnidrawToolIcon : null };
 }
 
 async function readCatalog(context: TAgentApiContext): Promise<TWidgetCatalog> {

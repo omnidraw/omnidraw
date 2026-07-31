@@ -1,5 +1,5 @@
 import { TextField } from "@kobalte/core/text-field";
-import type { TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
+import type { TOmnidrawToolIcon } from '@omnidraw/widget-contract';
 import DOMPurify from "dompurify";
 import * as Lucide from "lucide-static";
 import Code from "lucide-static/icons/code.svg?raw";
@@ -37,7 +37,7 @@ export function normalizeCustomToolIcon(value: string) {
   return SVG_PATTERN.test(trimmed) ? sanitizeSvg(trimmed) : firstGrapheme(trimmed);
 }
 
-export function resolveToolIconMarkup(icon: TVibecanvasToolIcon | null | undefined) {
+export function resolveToolIconMarkup(icon: TOmnidrawToolIcon | null | undefined) {
   if (icon?.svgIcon?.trim()) return icon.svgIcon.trim();
   return icon?.lucidIcon ? ICON_PRESETS.find((entry) => entry.id === icon.lucidIcon)?.icon : undefined;
 }
@@ -52,8 +52,8 @@ export function ToolIconGlyph(props: { icon?: string }) {
 }
 
 export function ToolIconPicker(props: {
-  value: TVibecanvasToolIcon | null;
-  onChange: (icon: TVibecanvasToolIcon | null) => void;
+  value: TOmnidrawToolIcon | null;
+  onChange: (icon: TOmnidrawToolIcon | null) => void;
 }) {
   const [open, setOpen] = createSignal(false);
   const [query, setQuery] = createSignal("");

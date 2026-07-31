@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { TBrowserTenantScope } from "@vibecanvas/canvas/fn.browser-tenant-scope";
+import type { TBrowserTenantScope } from "@omnidraw/canvas/fn.browser-tenant-scope";
 import type { TBackendCanvas } from "./types/backend.types";
 import { createStartupCanvasBootstrap, runStartupCanvasBootstrap } from "./startup-canvas";
 import {

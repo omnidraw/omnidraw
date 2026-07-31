@@ -1,4 +1,4 @@
-import type { TWidgetBrowserFunctionDescriptor } from '@vibecanvas/widget-contract';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/widget-contract';
 import type {
   TWidgetFunctionHostBridge,
   TWidgetRuntimeIdentity,

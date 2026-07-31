@@ -1,5 +1,5 @@
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
+import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
+import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
 import {
   ResourceError,
   fnResourceSecretRevealAllowed,
@@ -20,7 +20,7 @@ import {
   type TResourceKind,
   type TResourceRequirement,
   type TResourceStatus,
-} from '@vibecanvas/resource-runtime';
+} from '@omnidraw/resource-runtime';
 import {
   DbResource,
   DbResourceCoordinator,
@@ -42,12 +42,12 @@ import {
   type TResourceCatalogRecord,
   type TResourceDirectBinding,
   type TResourceManagerCall,
-} from '@vibecanvas/resource-runtime/local';
-import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
-import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetResourceBindingInput } from '@vibecanvas/widget-contract';
+} from '@omnidraw/resource-runtime/local';
+import type { TTenantDb } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import { Database } from '@omnidraw/service-db/DbServiceTurso/turso-native';
+import { fnResourceNameKey } from '@omnidraw/service-db/core/fn.resource-name';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import type { TWidgetResourceBindingInput } from '@omnidraw/widget-contract';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
   RESOURCE_MANAGEMENT_OPERATION,

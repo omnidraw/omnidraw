@@ -5,7 +5,7 @@ import type { TBackendCanvas } from "@/types/backend.types";
 import {
   Canvas,
   fnReproductionTraceDiagnostics,
-} from "@vibecanvas/canvas";
+} from "@omnidraw/canvas";
 import { useNavigate } from "@solidjs/router";
 import { type Component } from "solid-js";
 import { canvasImagePort, createFrontendAiChatExtension } from "../ai-chat-adapters";

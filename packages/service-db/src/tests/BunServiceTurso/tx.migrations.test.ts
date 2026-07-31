@@ -91,7 +91,7 @@ type TImmediateTransaction = (() => Promise<void>) & {
 };
 
 async function temporaryRoot(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(tmpdir(), 'vibecanvas-migration-runner-'));
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'omnidraw-migration-runner-'));
   temporaryRoots.push(root);
   return root;
 }
@@ -387,7 +387,7 @@ async function seedVersionThreeRebuildRows(db: Database): Promise<void> {
       cancel_requested_at_ms, started_at_ms, finished_at_ms, bodies_compacted_at_ms
     ) VALUES (
       ?, ?, ?, 'widget_instance', ?, ?, ?, ?,
-      'v3-run', 'run', 1, ?, ?, 'vibecanvas:1',
+      'v3-run', 'run', 1, ?, ?, 'omnidraw:1',
       '00000000-0000-4000-8000-000000000003', 1, 'v3-migration-request',
       '["owner"]', '["*"]', '{}', ?, 'v3-migration-key', 1, 7, 1000,
       'small', 1024, 1024, 'none', 1, 0, 0, 'queued', NULL, NULL, NULL,
@@ -1367,7 +1367,7 @@ describe('read-only startup preflight', () => {
     const homeDir = await temporaryRoot();
     await fs.mkdir(path.join(homeDir, 'bin'));
     await fs.mkdir(path.join(homeDir, 'native'));
-    await fs.writeFile(path.join(homeDir, 'bin', 'vibecanvas'), 'binary');
+    await fs.writeFile(path.join(homeDir, 'bin', 'omnidraw'), 'binary');
     await fs.writeFile(path.join(homeDir, 'native', 'turso.node'), 'native');
     const databasePath = path.join(homeDir, 'main.db');
 
@@ -1478,7 +1478,7 @@ describe('read-only startup preflight', () => {
 
   test('tolerates unknown home entries without creating or modifying main.db', async () => {
     const homeDir = await temporaryRoot();
-    const legacyPath = path.join(homeDir, 'vibecanvas.turso');
+    const legacyPath = path.join(homeDir, 'omnidraw.turso');
     const finderPath = path.join(homeDir, '.DS_Store');
     const updateStatePath = path.join(homeDir, 'autoupdate-state.json');
     await fs.writeFile(legacyPath, 'legacy-bytes');

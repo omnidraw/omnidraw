@@ -21,7 +21,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
-| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -39,10 +38,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -199,27 +196,19 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
 | [apps/frontend/vitest.config.ts](apps/frontend/vitest.config.ts) |  |
 
-## apps/vibecanvas
+## apps/omnidraw
 
 | path | jsdocs |
 |---|---|
-| [apps/vibecanvas/bin/vibecanvas](apps/vibecanvas/bin/vibecanvas) |  |
-| [apps/vibecanvas/install-instructions.mjs](apps/vibecanvas/install-instructions.mjs) |  |
-| [apps/vibecanvas/package.json](apps/vibecanvas/package.json) |  |
-| [apps/vibecanvas/postinstall.mjs](apps/vibecanvas/postinstall.mjs) |  |
+| [apps/omnidraw/bin/omnidraw](apps/omnidraw/bin/omnidraw) |  |
+| [apps/omnidraw/install-instructions.mjs](apps/omnidraw/install-instructions.mjs) |  |
+| [apps/omnidraw/package.json](apps/omnidraw/package.json) |  |
+| [apps/omnidraw/postinstall.mjs](apps/omnidraw/postinstall.mjs) |  |
 
 ## apps/web
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -230,8 +219,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -450,39 +437,39 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
 
-## packages/capsule-vibecanvas
+## packages/capsule-omnidraw
 
 | path | jsdocs |
 |---|---|
-| [packages/capsule-vibecanvas/package.json](packages/capsule-vibecanvas/package.json) |  |
-| [packages/capsule-vibecanvas/src/build/CONSTANTS.ts](packages/capsule-vibecanvas/src/build/CONSTANTS.ts) |  |
-| [packages/capsule-vibecanvas/src/build/fn.build-error.ts](packages/capsule-vibecanvas/src/build/fn.build-error.ts) |  |
-| [packages/capsule-vibecanvas/src/build/fn.error.ts](packages/capsule-vibecanvas/src/build/fn.error.ts) |  |
-| [packages/capsule-vibecanvas/src/build/fn.policy.ts](packages/capsule-vibecanvas/src/build/fn.policy.ts) |  |
-| [packages/capsule-vibecanvas/src/build/fn.source-map-artifact.ts](packages/capsule-vibecanvas/src/build/fn.source-map-artifact.ts) |  |
-| [packages/capsule-vibecanvas/src/build/index.ts](packages/capsule-vibecanvas/src/build/index.ts) |  |
-| [packages/capsule-vibecanvas/src/build/interface.ts](packages/capsule-vibecanvas/src/build/interface.ts) |  |
-| [packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts](packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts) |  |
-| [packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts](packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts) |  |
-| [packages/capsule-vibecanvas/src/builder/index.ts](packages/capsule-vibecanvas/src/builder/index.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts](packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts](packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/fn.capability.ts](packages/capsule-vibecanvas/src/capabilities/fn.capability.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/index.ts](packages/capsule-vibecanvas/src/capabilities/index.ts) |  |
-| [packages/capsule-vibecanvas/src/capabilities/types.ts](packages/capsule-vibecanvas/src/capabilities/types.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/CONSTANTS.ts](packages/capsule-vibecanvas/src/contract/CONSTANTS.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/fn.apis.ts](packages/capsule-vibecanvas/src/contract/fn.apis.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/fn.budgets.ts](packages/capsule-vibecanvas/src/contract/fn.budgets.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/index.ts](packages/capsule-vibecanvas/src/contract/index.ts) |  |
-| [packages/capsule-vibecanvas/src/contract/types.ts](packages/capsule-vibecanvas/src/contract/types.ts) |  |
-| [packages/capsule-vibecanvas/src/host/fn.error.ts](packages/capsule-vibecanvas/src/host/fn.error.ts) |  |
-| [packages/capsule-vibecanvas/src/host/index.ts](packages/capsule-vibecanvas/src/host/index.ts) |  |
-| [packages/capsule-vibecanvas/src/testkit/index.ts](packages/capsule-vibecanvas/src/testkit/index.ts) |  |
-| [packages/capsule-vibecanvas/tsconfig.json](packages/capsule-vibecanvas/tsconfig.json) |  |
+| [packages/capsule-omnidraw/package.json](packages/capsule-omnidraw/package.json) |  |
+| [packages/capsule-omnidraw/src/build/CONSTANTS.ts](packages/capsule-omnidraw/src/build/CONSTANTS.ts) |  |
+| [packages/capsule-omnidraw/src/build/fn.build-error.ts](packages/capsule-omnidraw/src/build/fn.build-error.ts) |  |
+| [packages/capsule-omnidraw/src/build/fn.error.ts](packages/capsule-omnidraw/src/build/fn.error.ts) |  |
+| [packages/capsule-omnidraw/src/build/fn.policy.ts](packages/capsule-omnidraw/src/build/fn.policy.ts) |  |
+| [packages/capsule-omnidraw/src/build/fn.source-map-artifact.ts](packages/capsule-omnidraw/src/build/fn.source-map-artifact.ts) |  |
+| [packages/capsule-omnidraw/src/build/index.ts](packages/capsule-omnidraw/src/build/index.ts) |  |
+| [packages/capsule-omnidraw/src/build/interface.ts](packages/capsule-omnidraw/src/build/interface.ts) |  |
+| [packages/capsule-omnidraw/src/build/tx.sign-capsule-artifact.ts](packages/capsule-omnidraw/src/build/tx.sign-capsule-artifact.ts) |  |
+| [packages/capsule-omnidraw/src/build/WidgetArtifactBuilderCapsule.ts](packages/capsule-omnidraw/src/build/WidgetArtifactBuilderCapsule.ts) |  |
+| [packages/capsule-omnidraw/src/builder/index.ts](packages/capsule-omnidraw/src/builder/index.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/CONSTANTS.ts](packages/capsule-omnidraw/src/capabilities/CONSTANTS.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/create-capability-contracts.ts](packages/capsule-omnidraw/src/capabilities/create-capability-contracts.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/fn.bounded-json-schema.ts](packages/capsule-omnidraw/src/capabilities/fn.bounded-json-schema.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/fn.capability.ts](packages/capsule-omnidraw/src/capabilities/fn.capability.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/fn.channel-schemas.ts](packages/capsule-omnidraw/src/capabilities/fn.channel-schemas.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/fn.channel-values.ts](packages/capsule-omnidraw/src/capabilities/fn.channel-values.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/fn.json-schema.ts](packages/capsule-omnidraw/src/capabilities/fn.json-schema.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/index.ts](packages/capsule-omnidraw/src/capabilities/index.ts) |  |
+| [packages/capsule-omnidraw/src/capabilities/types.ts](packages/capsule-omnidraw/src/capabilities/types.ts) |  |
+| [packages/capsule-omnidraw/src/contract/CONSTANTS.ts](packages/capsule-omnidraw/src/contract/CONSTANTS.ts) |  |
+| [packages/capsule-omnidraw/src/contract/fn.apis.ts](packages/capsule-omnidraw/src/contract/fn.apis.ts) |  |
+| [packages/capsule-omnidraw/src/contract/fn.budgets.ts](packages/capsule-omnidraw/src/contract/fn.budgets.ts) |  |
+| [packages/capsule-omnidraw/src/contract/index.ts](packages/capsule-omnidraw/src/contract/index.ts) |  |
+| [packages/capsule-omnidraw/src/contract/types.ts](packages/capsule-omnidraw/src/contract/types.ts) |  |
+| [packages/capsule-omnidraw/src/host/fn.error.ts](packages/capsule-omnidraw/src/host/fn.error.ts) |  |
+| [packages/capsule-omnidraw/src/host/index.ts](packages/capsule-omnidraw/src/host/index.ts) |  |
+| [packages/capsule-omnidraw/src/testkit/index.ts](packages/capsule-omnidraw/src/testkit/index.ts) |  |
+| [packages/capsule-omnidraw/tsconfig.json](packages/capsule-omnidraw/tsconfig.json) |  |
 
 ## packages/function-runtime
 
@@ -811,11 +798,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/shared-functions/src/functional/fn.memoize.ts](packages/shared-functions/src/functional/fn.memoize.ts) |  |
 | [packages/shared-functions/src/functional/fn.pipe.ts](packages/shared-functions/src/functional/fn.pipe.ts) |  |
 | [packages/shared-functions/src/functional/fn.throttle.ts](packages/shared-functions/src/functional/fn.throttle.ts) |  |
+| [packages/shared-functions/src/omnidraw-config/CONSTANTS.ts](packages/shared-functions/src/omnidraw-config/CONSTANTS.ts) |  |
+| [packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts) |  |
+| [packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts) |  |
 | [packages/shared-functions/src/serialized-operation/CONSTANTS.ts](packages/shared-functions/src/serialized-operation/CONSTANTS.ts) |  |
 | [packages/shared-functions/src/tx.run-serialized-operation.ts](packages/shared-functions/src/tx.run-serialized-operation.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts](packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts) |  |
 | [packages/shared-functions/tsconfig.json](packages/shared-functions/tsconfig.json) |  |
 
 ## packages/tapable
@@ -994,7 +981,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/build.ts](scripts/build.ts) | Builds omnidraw distribution packages, embedded assets, checksums, and release manifests. |
 | [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/docker/final-acceptance.Dockerfile](scripts/docker/final-acceptance.Dockerfile) |  |
@@ -1005,17 +992,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/external-composition/tsconfig.json](scripts/fixtures/external-composition/tsconfig.json) |  |
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
-| [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
+| [scripts/install.sh](scripts/install.sh) | Installs the latest or selected omnidraw binary release on the local machine. |
 | [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
 | [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded Cangine scene reduction plus trace capture cost independently of total canvas size. |
-| [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
+| [scripts/omnidraw.entitlements.plist](scripts/omnidraw.entitlements.plist) |  |
+| [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built omnidraw platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
-| [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
+| [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built omnidraw binary serves assets, websockets, and expected database paths. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for the authoritative canvas and widget-state runtime. |
 | [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
 | [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
@@ -1028,4 +1016,3 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable gate for canvas widget identity, state, and Capsule hosting. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
-| [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

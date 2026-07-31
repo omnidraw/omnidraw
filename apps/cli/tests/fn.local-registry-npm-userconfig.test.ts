@@ -4,19 +4,19 @@ import { fnLocalRegistryNpmUserConfig } from '../src/fn.local-registry-npm-userc
 const join = (...paths: string[]) => paths.join('/');
 
 describe('fnLocalRegistryNpmUserConfig', () => {
-  test('uses the stable host-owned default outside VIBECANVAS_HOME', () => {
+  test('uses the product-neutral host-owned public npm config', () => {
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
       join,
-    })).toBe('/Users/example/.local/share/vibecanvas/registry/npmrc');
+    })).toBe('/Users/example/.local/share/verdaccio/npmjs.npmrc');
   });
 
-  test('honors explicit state and user-config overrides', () => {
+  test('honors explicit state and public npm-config overrides', () => {
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
       stateDirectory: '/registry-state',
       join,
-    })).toBe('/registry-state/npmrc');
+    })).toBe('/registry-state/npmjs.npmrc');
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
       stateDirectory: '/registry-state',

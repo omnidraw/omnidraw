@@ -1,10 +1,10 @@
 import type {
-  TVibecanvasToolIcon,
+  TOmnidrawToolIcon,
   TWidgetBrowserFunctionDescriptor,
   TWidgetFrameBounds,
   TWidgetManifestV3,
   TWidgetPlacementRef,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
@@ -18,7 +18,7 @@ export type TWidgetCatalogProblem = {
 
 export type TWidgetCatalogGroup = {
   name: string;
-  icon: TVibecanvasToolIcon | null;
+  icon: TOmnidrawToolIcon | null;
 };
 
 export type TWidgetPlacementSummary = {
@@ -38,7 +38,7 @@ export type TWidgetVariantSummary = {
   updatedAt: string | null;
   tool: {
     label: string | null;
-    icon: TVibecanvasToolIcon | null;
+    icon: TOmnidrawToolIcon | null;
     group: string | null;
     priority: number | null;
     behaviorType: 'mode' | 'action' | 'modal' | null;
@@ -101,7 +101,7 @@ export type TWidgetFilePreview = {
 };
 
 export type TWidgetDraftToolPatch = {
-  icon?: TVibecanvasToolIcon | null;
+  icon?: TOmnidrawToolIcon | null;
   group?: string | null;
 };
 
@@ -110,7 +110,7 @@ export type TWidgetDraftMetadataPatch = {
   description?: string;
   tool?: {
     label?: string;
-    icon?: TVibecanvasToolIcon | null;
+    icon?: TOmnidrawToolIcon | null;
     group?: string | null;
     priority?: number | null;
   };

@@ -1,9 +1,9 @@
 /// <reference path="./assets.d.ts" />
 
 import {
-  VIBECANVAS_CAPSULE_ALLOWED_APIS,
-  VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
-} from '@vibecanvas/capsule-vibecanvas/contract';
+  OMNIDRAW_CAPSULE_ALLOWED_APIS,
+  OMNIDRAW_CAPSULE_TESTED_THREE_VERSION,
+} from '@omnidraw/capsule-omnidraw/contract';
 import capsulePrompt from './prompt.capsule.md' with { type: 'text' };
 import productAndManifestPrompt from './prompt.product-and-manifest.md' with { type: 'text' };
 import serverFunctionsPrompt from './prompt.server-functions.md' with { type: 'text' };
@@ -16,15 +16,15 @@ const capsuleAuthoringCapabilityPrompt = `
 # Capsule public API groups
 
 Supported public API groups are:
-${VIBECANVAS_CAPSULE_ALLOWED_APIS.map((api) => `- \`${api}\``).join('\n')}
+${OMNIDRAW_CAPSULE_ALLOWED_APIS.map((api) => `- \`${api}\``).join('\n')}
 
 Every widget must explicitly request \`DOM\`. Select no more than one of
 \`CANVAS_2D\`, \`WEBGL\`, and \`WEBGPU\`. Never write Capsule runtime ABIs,
 DOM profiles, feature-profile names, resolved targets, bundle digests, or host
-limits into \`vibecanvas.json\`.
+limits into \`omnidraw.json\`.
 
 For Three.js/WebGL widgets:
-- pin \`three\` to exactly \`${VIBECANVAS_CAPSULE_TESTED_THREE_VERSION}\`;
+- pin \`three\` to exactly \`${OMNIDRAW_CAPSULE_TESTED_THREE_VERSION}\`;
 - set \`ui.apis\` to \`["DOM", "WEBGL"]\` unless another public capability is
   independently required;
 - rely on the \`WEBGL\` group defaults. Add a partial \`ui.budgets\` override

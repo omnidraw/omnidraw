@@ -9,10 +9,10 @@ export const WIDGET_ARTIFACT_DIGEST_ALGORITHM = 'sha256';
 export const WIDGET_ARTIFACT_TEMP_SUFFIX = '.tmp';
 export const WIDGET_BUILD_DEFAULT_ALLOWED_UI_PACKAGE_IMPORTS: readonly string[] = Object.freeze([
   '@omnidraw/capsule/guest',
-  '@vibecanvas/sdk/function-client',
-  '@vibecanvas/sdk/widget',
+  '@omnidraw/sdk/function-client',
+  '@omnidraw/sdk/widget',
 ]);
 export const WIDGET_BUILD_DEFAULT_ALLOWED_SERVER_PACKAGE_IMPORTS: readonly string[] = Object.freeze([
-  '@vibecanvas/sdk/server',
+  '@omnidraw/sdk/server',
   'zod',
 ]);

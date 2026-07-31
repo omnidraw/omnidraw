@@ -16,12 +16,12 @@ import {
   type TSidebarController,
   type TWidgetBrowserPort,
   type TWidgetTransportPort,
-} from "@vibecanvas/ui-ai-chat";
+} from "@omnidraw/ui-ai-chat";
 import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsulePublicSigningKey,
-} from "@vibecanvas/ui-ai-chat/widget-runtime";
-import type { TCanvasImagePort } from "@vibecanvas/canvas";
+} from "@omnidraw/ui-ai-chat/widget-runtime";
+import type { TCanvasImagePort } from "@omnidraw/canvas";
 
 export const catalogInvalidation = createCatalogInvalidation();
 export const widgetPlacementCoordinator = createWidgetPlacementCoordinator();

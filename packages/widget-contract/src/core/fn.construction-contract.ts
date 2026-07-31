@@ -9,7 +9,7 @@ export function fnCanonicalizeWidgetConstructionContractPayload(
   input: TWidgetConstructionContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.widget-construction-contract.v3',
+    format: 'omnidraw.widget-construction-contract.v3',
     sourceSnapshotId: input.sourceSnapshotId,
     sourceDigestSha256: input.sourceDigestSha256,
     sourceArtifactDigestSha256: input.sourceArtifactDigestSha256,

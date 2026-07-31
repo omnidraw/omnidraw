@@ -1,4 +1,4 @@
-import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "@omnidraw/canvas/CONSTANTS";
 import type { TAiChatApplicationPort, TAiChatBrowserPort, TWidgetBrowserPort } from "../src/ports";
 
 export function ensureDom() {

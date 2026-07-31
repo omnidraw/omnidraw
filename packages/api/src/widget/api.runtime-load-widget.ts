@@ -3,7 +3,7 @@ import { ORPCError } from '@orpc/contract';
 import {
   fnReadCanvasWidgetExtension,
   type TCanvasItemSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
@@ -13,7 +13,7 @@ import {
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetRevisionDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
   WIDGET_RUNTIME_LOAD_CAPACITY_ERROR_CODE,

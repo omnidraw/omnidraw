@@ -11,7 +11,7 @@ describe('fnRedactSecretResourceWriteMessage', () => {
       content: [{
         type: 'toolCall',
         id: 'call-1',
-        name: 'vc_resource_data_write',
+        name: 'od_resource_data_write',
         arguments: {
           resourceName: 'Credentials',
           operations: [

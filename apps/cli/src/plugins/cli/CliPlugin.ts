@@ -1,5 +1,5 @@
-import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
-import type { IPlugin } from '@vibecanvas/runtime';
+import type { IRuntimeServices } from '@omnidraw/cli/setup-services';
+import type { IPlugin } from '@omnidraw/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import { DEFAULT_CANVAS_CLI_PORTAL, txCmdCanvas } from './cmds/cmd.canvas';
@@ -8,20 +8,20 @@ import { txCmdUpgrade } from './cmds/cmd.upgrade';
 import { fnBuildUnknownCommandError, fnPrintCommandError } from './core/fn.print-command-result';
 
 export function printHelp(): void {
-  console.log(`vibecanvas - Run your agents in an infinite canvas
+  console.log(`omnidraw - Run your agents in an infinite canvas
 
 Usage:
-  vibecanvas [command] [options]
+  omnidraw [command] [options]
 
 Commands:
-  serve     Start the vibecanvas runtime (default when no command given)
+  serve     Start the omnidraw runtime (default when no command given)
   canvas    Query and mutate a running canvas server
   upgrade   Check for and install updates
-  uninstall Remove the installed binary and local Vibecanvas data
+  uninstall Remove the installed binary and local Omnidraw data
 
 Options:
   --port <number>      Port for server/runtime (default: 3000 dev, 7496 compiled)
-  --data-dir <path>    Vibecanvas home (default: ~/.vibecanvas; env: VIBECANVAS_HOME)
+  --data-dir <path>    Omnidraw home (default: ~/.omnidraw; env: OMNIDRAW_HOME)
   --upgrade <version>  Upgrade to a specific version
   --yes               Skip uninstall confirmation
   --dry-run           Preview uninstall removals without deleting
@@ -29,17 +29,17 @@ Options:
   --help, -h           Show this help message
 
 Examples:
-  vibecanvas
-  vibecanvas serve --port 3001
-  vibecanvas serve --data-dir ./tmp/vibecanvas-home
-  vibecanvas canvas list --json
-  vibecanvas canvas query --canvas <id> --kind rect --json
-  vibecanvas upgrade
-  vibecanvas upgrade --check
-  vibecanvas uninstall --dry-run
-  vibecanvas uninstall --yes
-  vibecanvas --version
-  vibecanvas --help
+  omnidraw
+  omnidraw serve --port 3001
+  omnidraw serve --data-dir ./tmp/omnidraw-home
+  omnidraw canvas list --json
+  omnidraw canvas query --canvas <id> --kind rect --json
+  omnidraw upgrade
+  omnidraw upgrade --check
+  omnidraw uninstall --dry-run
+  omnidraw uninstall --yes
+  omnidraw --version
+  omnidraw --help
 `);
 }
 

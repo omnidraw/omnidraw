@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/function-runtime",
+  "name": "@omnidraw/function-runtime",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -12,9 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/resource-runtime": "0.1.0",
-    "@vibecanvas/tenant-core": "0.1.0",
-    "@vibecanvas/widget-contract": "0.1.0",
+    "@omnidraw/resource-runtime": "0.1.0",
+    "@omnidraw/tenant-core": "0.1.0",
+    "@omnidraw/widget-contract": "0.1.0",
     "ajv": "^8.20.0"
   }
 }

@@ -14,8 +14,8 @@ const IMMUTABLE_SYSTEM_SCOPE_ALLOWLIST = new Set([
   'packages/service-db/src/CONSTANTS.ts',
   'packages/service-db/src/DbServiceTurso/DbServiceTurso.ts',
   'packages/service-db/src/DbServiceTurso/tx.account.ts',
-  'packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts',
-  'packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts',
+  'packages/shared-functions/src/omnidraw-config/CONSTANTS.ts',
+  'packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts',
 ]);
 
 async function sourceFiles(): Promise<string[]> {

@@ -16,7 +16,7 @@ import {
   type IStandardEditorSession,
   type TPathSegmentMode,
 } from '@omnidraw/cangine/editor';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
+import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
 import type {
   ICanvasRuntimeExtension,
   TCanvasRuntimeExtensionInstall,
@@ -47,7 +47,7 @@ const FONT_FAMILIES = [
 const FONT_RESOURCES = FONT_FAMILIES.flatMap(([family, , slug, format]) => (
   FONT_WEIGHTS.map((weight) => ({
     descriptor: {
-      id: `vibecanvas-font:${slug}:${weight}`,
+      id: `omnidraw-font:${slug}:${weight}`,
       type: 'font' as const, family, weight,
       style: 'normal' as const, mimeType: `font/${format}`,
     },
@@ -463,7 +463,7 @@ export function buildRuntime(
         },
       });
       canvasBackgroundProjection = engine.projections.createOwner(
-        'vibecanvas:canvas-background',
+        'omnidraw:canvas-background',
         {
           band: 'background',
           orderKey: '1000000000000000',
@@ -590,7 +590,7 @@ export function buildRuntime(
       imageInput.accept = IMAGE_FILE_ACCEPT;
       imageInput.multiple = true;
       imageInput.hidden = true;
-      imageInput.dataset.vibecanvasImageInput = '';
+      imageInput.dataset.omnidrawImageInput = '';
       config.container.append(imageInput);
       imageDropController = createImageDropController({
         editor: editorSession.editor,

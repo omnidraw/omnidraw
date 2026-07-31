@@ -1,5 +1,5 @@
-import type { CapsuleMountDiagnostics, CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
-import type { TWidgetCapsuleProps } from '@vibecanvas/widget-contract';
+import type { CapsuleMountDiagnostics, CapsuleViewport } from '@omnidraw/capsule-omnidraw/host';
+import type { TWidgetCapsuleProps } from '@omnidraw/widget-contract';
 import type {
   TAiChatApiPort,
   TWidgetBrowserPort,

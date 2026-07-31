@@ -26,7 +26,7 @@ describe("fnSerializeChatMessagesAsMarkdown", () => {
       },
       {
         role: "custom",
-        customType: "vibecanvas.widgetMentions",
+        customType: "omnidraw.widgetMentions",
         display: false,
         content: "hidden widget identity",
       },

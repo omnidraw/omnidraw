@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { describe, expect, test, vi } from 'vitest';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
+import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
 import { createWidgetPlacementCoordinator } from '../../src/widget-placement/WidgetPlacementCoordinator';
 import {
   fnCanvasWidgetExtension,
@@ -112,7 +112,7 @@ function previewReady(
       byteSize: bytes.byteLength,
       bytesBase64: bytes.toString('base64'),
       runtimeDescriptor: {
-        format: 'vibecanvas.capsule-runtime.v2',
+        format: 'omnidraw.capsule-runtime.v2',
         capsuleArtifactHash: `sha256:${'b'.repeat(64)}`,
         apiContract: {
           format: 'capsule-api-groups-v1',

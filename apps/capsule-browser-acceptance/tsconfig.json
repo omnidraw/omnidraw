@@ -4,13 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "@vibecanvas/capsule-vibecanvas/*": [
-        "../../packages/capsule-vibecanvas/src/*/index.ts"
+      "@omnidraw/capsule-omnidraw/*": [
+        "../../packages/capsule-omnidraw/src/*/index.ts"
       ],
-      "@vibecanvas/ui-ai-chat/widget-runtime": [
+      "@omnidraw/ui-ai-chat/widget-runtime": [
         "../../packages/ui-ai-chat/src/widget-runtime/index.ts"
       ],
-      "@vibecanvas/widget-contract": [
+      "@omnidraw/widget-contract": [
         "../../packages/widget-contract/src/index.ts"
       ]
     },

@@ -1,4 +1,4 @@
-import type { TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 
 export type TPortalSwitchBrowserTenant = {
   activateClientState(scope: TBrowserTenantScope): void;

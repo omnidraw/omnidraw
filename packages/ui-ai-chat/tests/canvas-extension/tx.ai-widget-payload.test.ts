@@ -45,13 +45,13 @@ describe('AI widget payload transaction', () => {
 
     expect(commitSceneMutation).toHaveBeenCalledTimes(1);
     expect(commitSceneMutation).toHaveBeenCalledWith({
-      source: 'vibecanvas:ai-chat',
+      source: 'omnidraw:ai-chat',
       commands: [{
         type: 'upsert',
         node: expect.objectContaining({
           id: node.id,
           extensions: expect.objectContaining({
-            'vibecanvas:widget': expect.objectContaining({
+            'omnidraw:widget': expect.objectContaining({
               payload: {
                 sessionId: 'session-1',
                 thinkingLevel: 'high',

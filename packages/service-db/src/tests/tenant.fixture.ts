@@ -1,4 +1,4 @@
-import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,

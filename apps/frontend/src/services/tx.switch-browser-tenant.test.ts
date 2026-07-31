@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 import { createSerializedTenantSwitcher } from './tenant-switch-coordinator';
 import { txSwitchBrowserTenant } from './tx.switch-browser-tenant';
 

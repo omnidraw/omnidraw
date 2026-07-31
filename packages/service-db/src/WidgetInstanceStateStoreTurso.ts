@@ -1,7 +1,7 @@
 import type { Database } from '@tursodatabase/database';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetSerializableJsonValue } from '@vibecanvas/widget-contract';
-import type { IWidgetStateStore } from '@vibecanvas/service-widget-state';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import type { TWidgetSerializableJsonValue } from '@omnidraw/widget-contract';
+import type { IWidgetStateStore } from '@omnidraw/service-widget-state';
 import { txRunDatabaseTransaction } from './tx.run-database-transaction';
 
 export type TWidgetStateInstanceIdentity = Readonly<{

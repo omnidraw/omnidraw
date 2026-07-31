@@ -5,12 +5,12 @@
  * checkpoint from the directory-sync boundary, then parks before SQL commit.
  */
 
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import {
   LocalWidgetArtifactStore,
   WidgetArtifactGarbageCollector,
   WidgetArtifactOperationLane,
-} from '@vibecanvas/widget-contract/local';
+} from '@omnidraw/widget-contract/local';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,

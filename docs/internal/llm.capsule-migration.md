@@ -1,8 +1,8 @@
-# Vibecanvas Capsule migration plan
+# Omnidraw Capsule migration plan
 
 Status: implementation plan  
 Scope: replace the Arrow browser widget sandbox with Capsule  
-Capsule source: `/Users/omarezzat/Workspace/vibecanvas/capsule`  
+Capsule source: `/Users/omarezzat/Workspace/omnidraw/capsule`
 Capsule guide: `docs/library-guide.md` in that repository  
 Capsule package: `@omnidraw/capsule@0.9.4`
 
@@ -109,7 +109,7 @@ criteria are recorded there.
 
 - defines `TWidgetManifestV2`;
 - accepts only `ui.entry` for the browser target;
-- builds a custom `vibecanvas.widget-artifact.v1` JSON envelope;
+- builds a custom `omnidraw.widget-artifact.v1` JSON envelope;
 - stores bundled JS, CSS, JSON, WASM, and files as base64 outputs;
 - uses `WidgetArtifactBuilderBun`;
 - includes the custom UI envelope digest in the widget contract digest;
@@ -122,7 +122,7 @@ become the UI artifact.
 
 `packages/ui-ai-chat/src/widget-runtime` currently:
 
-- downloads and verifies the Vibecanvas envelope;
+- downloads and verifies the Omnidraw envelope;
 - creates host bridges for server functions and collaborative state;
 - injects those bridges through Arrow host modules and guest globals;
 - mounts through `@arrow-js/sandbox`;
@@ -130,17 +130,17 @@ become the UI artifact.
 - returns a synchronous cleanup function.
 
 Capsule must own the VM, DOM membrane, guest bridge, resource budgets,
-scheduling state, and terminal cleanup. Vibecanvas keeps artifact selection,
+scheduling state, and terminal cleanup. Omnidraw keeps artifact selection,
 tenant authority, application capabilities, canvas inputs, and user-facing
 errors.
 
 ### 4.3 Guest SDK
 
-`@vibecanvas/sdk/widget` currently exposes server-function and collaborative
+`@omnidraw/sdk/widget` currently exposes server-function and collaborative
 state clients that depend on injected globals.
 
 The new widget SDK must use `@omnidraw/capsule/guest`. Widget source should
-normally import only `@vibecanvas/sdk/widget`; the SDK hides Capsule's generic
+normally import only `@omnidraw/sdk/widget`; the SDK hides Capsule's generic
 bridge.
 
 ### 4.4 Authoring
@@ -160,7 +160,7 @@ Capsule profiles.
 
 ```mermaid
 flowchart LR
-  S["Immutable widget source snapshot"] --> B["Vibecanvas Capsule build adapter"]
+  S["Immutable widget source snapshot"] --> B["Omnidraw Capsule build adapter"]
   B --> C["Capsule deterministic builder"]
   C --> G["Unsigned Capsule artifact"]
   G --> X["Trusted artifact signer"]
@@ -169,7 +169,7 @@ flowchart LR
   P --> L["Runtime load API"]
   L --> H["Shared Capsule browser host"]
   H --> W["One Capsule handle per mounted widget"]
-  V["Vibecanvas capability providers"] --> H
+  V["Omnidraw capability providers"] --> H
   K["Canvas viewport and lifecycle"] --> W
   D["DOM / SVG / Canvas 2D / WebGL / WebGPU"] --> W
 ```
@@ -179,8 +179,8 @@ Ownership is:
 | Owner | Responsibilities |
 | --- | --- |
 | Capsule | Artifact format, builder, signature verification, VM, DOM, profiles, budgets, generic capabilities, channels, lifecycle, scheduling, testkit, diagnostics |
-| `packages/capsule-vibecanvas` | Capsule policy, build-request mapping, signing port, schema resources, app descriptors, host creation, provider bindings, error mapping |
-| `packages/widget-contract` | Vibecanvas manifest, revision, artifact metadata, build/publication interfaces, contract digest |
+| `packages/capsule-omnidraw` | Capsule policy, build-request mapping, signing port, schema resources, app descriptors, host creation, provider bindings, error mapping |
+| `packages/widget-contract` | Omnidraw manifest, revision, artifact metadata, build/publication interfaces, contract digest |
 | `packages/sdk` | Framework-neutral guest API over `@omnidraw/capsule/guest` |
 | `packages/ui-ai-chat` | Runtime loading, browser integration, preview, instance ownership, user-facing state |
 | `@omnidraw/cangine` | Fixed widget frame, local canvas-maximized presentation, and atomic portal-shell presentation |
@@ -189,7 +189,7 @@ Ownership is:
 | `packages/api` | Tenant-authorized runtime artifact delivery and function transport |
 | Server services | Functions, Automerge collaboration, resources, tenant authorization |
 
-Capsule must not import Vibecanvas packages. Vibecanvas may import only
+Capsule must not import Omnidraw packages. Omnidraw may import only
 Capsule's supported public package entries.
 
 ## 6. Fixed design decisions
@@ -212,7 +212,7 @@ Use the current public package entries only:
 During this migration, import Capsule through:
 
 ```json
-"@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule"
+"@omnidraw/capsule": "file:/Users/omarezzat/Workspace/omnidraw/capsule"
 ```
 
 Do not deep-import Capsule workspace packages or copy Capsule source into this
@@ -224,17 +224,17 @@ tree contains changes.
 
 ### 6.2 New adapter package
 
-Create `packages/capsule-vibecanvas`.
+Create `packages/capsule-omnidraw`.
 
 Use separate public subpaths so browser code cannot accidentally import build
 or signing tools:
 
 ```text
-@vibecanvas/capsule-vibecanvas/contract
-@vibecanvas/capsule-vibecanvas/build
-@vibecanvas/capsule-vibecanvas/host
-@vibecanvas/capsule-vibecanvas/capabilities
-@vibecanvas/capsule-vibecanvas/testkit
+@omnidraw/capsule-omnidraw/contract
+@omnidraw/capsule-omnidraw/build
+@omnidraw/capsule-omnidraw/host
+@omnidraw/capsule-omnidraw/capabilities
+@omnidraw/capsule-omnidraw/testkit
 ```
 
 The browser entry must not export `/build` or `/sign`
@@ -278,11 +278,11 @@ Destroy the host when the frontend runtime stops or tenant authority changes.
 
 ### 6.4 Exact signed bytes
 
-The UI artifact stored by Vibecanvas is the exact signed Capsule byte array.
+The UI artifact stored by Omnidraw is the exact signed Capsule byte array.
 
 Keep two identities:
 
-- `digestSha256`: digest of the exact stored signed bytes, used by Vibecanvas
+- `digestSha256`: digest of the exact stored signed bytes, used by Omnidraw
   blob storage and read capabilities;
 - `capsuleArtifactHash`: Capsule's validated artifact identity, used by Capsule
   diagnostics and artifact compatibility.
@@ -345,7 +345,7 @@ Remove:
 
 Add `TWidgetManifestV3` and `ZWidgetManifestV3`. Do not add a v2 union or alias.
 
-The UI section should express Vibecanvas product intent, not raw host authority:
+The UI section should express Omnidraw product intent, not raw host authority:
 
 ```ts
 type TWidgetUiManifest = Readonly<{
@@ -404,7 +404,7 @@ Add a serializable published runtime descriptor:
 
 ```ts
 type TWidgetCapsuleRuntimeDescriptor = Readonly<{
-  format: 'vibecanvas.capsule-runtime.v1';
+  format: 'omnidraw.capsule-runtime.v1';
   capsuleArtifactHash: string;
   target: TWidgetCapsuleTarget;
   budgets: TWidgetCapsuleBudgets;
@@ -452,7 +452,7 @@ Update `TWidgetBuildRequest` to carry:
 - immutable source snapshot;
 - manifest v3;
 - canonical manifest JSON;
-- Vibecanvas builder identity;
+- Omnidraw builder identity;
 - pinned Capsule package/build identity;
 - trusted build policy identifier.
 
@@ -473,8 +473,8 @@ or release key.
 
 ### 7.5 Contract digest
 
-Replace `vibecanvas.widget-contract.v2` with
-`vibecanvas.widget-contract.v3`.
+Replace `omnidraw.widget-contract.v2` with
+`omnidraw.widget-contract.v3`.
 
 The canonical payload must bind:
 
@@ -501,12 +501,12 @@ Delete:
 - `src/browser/fn.ui-artifact-envelope.ts`;
 - old browser envelope types;
 - `fnDecodeWidgetUiArtifactEnvelope`;
-- all `vibecanvas.widget-artifact.v1` handling.
+- all `omnidraw.widget-artifact.v1` handling.
 
 Do not create another decoder for Capsule bytes. Capsule validates its own
 artifact.
 
-The browser subpath may expose a strict decoder for the Vibecanvas runtime
+The browser subpath may expose a strict decoder for the Omnidraw runtime
 descriptor returned by the API, but it must treat artifact bytes as opaque.
 
 ### 7.7 Interfaces
@@ -552,8 +552,8 @@ Use `@omnidraw/capsule/build` only in tooling code and
 At the end of the contract milestone:
 
 ```bash
-bun --filter @vibecanvas/widget-contract typecheck
-bun --filter @vibecanvas/widget-contract test
+bun --filter @omnidraw/widget-contract typecheck
+bun --filter @omnidraw/widget-contract test
 bun run test:widget-artifacts
 bun run test:architecture
 ```
@@ -561,7 +561,7 @@ bun run test:architecture
 Also verify:
 
 ```bash
-rg "TWidgetManifestV2|ZWidgetManifestV2|vibecanvas\\.widget-artifact\\.v1|fnDecodeWidgetUiArtifactEnvelope" packages apps scripts
+rg "TWidgetManifestV2|ZWidgetManifestV2|omnidraw\\.widget-artifact\\.v1|fnDecodeWidgetUiArtifactEnvelope" packages apps scripts
 ```
 
 The search must return no live implementation references.
@@ -575,7 +575,7 @@ capability descriptor for the widget revision.
 
 Recommended model:
 
-- stable capability id such as `vibecanvas.widget.functions`;
+- stable capability id such as `omnidraw.widget.functions`;
 - exact semantic version;
 - contract hash derived from the canonical browser function descriptors;
 - one Capsule call operation per exported function;
@@ -629,7 +629,7 @@ Destroy:
 
 Use Capsule guest channels.
 
-Define fixed Vibecanvas schemas for:
+Define fixed Omnidraw schemas for:
 
 - widget props intentionally stored on the canvas element;
 - theme tokens safe for guest use;
@@ -646,7 +646,7 @@ Use the Capsule output channel for typed, bounded guest events.
 The host:
 
 - validates output schema;
-- maps allowed events to Vibecanvas UI actions;
+- maps allowed events to Omnidraw UI actions;
 - limits payload size and rate;
 - unsubscribes on destroy.
 
@@ -706,7 +706,7 @@ Cache exact signed bytes by:
 - exact-byte digest;
 - Capsule artifact hash.
 
-Capsule also has its own artifact cache. The Vibecanvas cache avoids repeated
+Capsule also has its own artifact cache. The Omnidraw cache avoids repeated
 transport and base64 decoding; Capsule's cache avoids repeated host artifact
 work. Keep ownership clear and bound both caches.
 
@@ -806,7 +806,7 @@ policy. Keep only a bounded transport/load queue before Capsule admission.
 
 ### 10.1 Widget SDK
 
-Rewrite `@vibecanvas/sdk/widget` over `@omnidraw/capsule/guest`.
+Rewrite `@omnidraw/sdk/widget` over `@omnidraw/capsule/guest`.
 
 Public features:
 
@@ -849,7 +849,7 @@ Replace the Arrow prompt with a Capsule widget prompt that explains:
 - normal UI-library choice;
 - supported browser profiles;
 - budgets;
-- use of `@vibecanvas/sdk/widget`;
+- use of `@omnidraw/sdk/widget`;
 - no direct host/network/resource access;
 - preview limitations;
 - collaborative-state and server-function patterns.
@@ -966,7 +966,7 @@ Goal: make the work reproducible before code changes.
 Actions:
 
 - create `CAPSULE-MIGRATION-PROGRESS.md`;
-- record Vibecanvas commit and dirty state;
+- record Omnidraw commit and dirty state;
 - record Capsule commit, dirty state, package name, version, and pack digest;
 - confirm current supported exports against the library guide and package
   export map;
@@ -993,7 +993,7 @@ Goal: establish package ownership without changing runtime behavior.
 
 Actions:
 
-- add `packages/capsule-vibecanvas`;
+- add `packages/capsule-omnidraw`;
 - add the Capsule file dependency there;
 - define browser-safe and tooling-only export subpaths;
 - add package-boundary tests that reject private Capsule imports;
@@ -1004,8 +1004,8 @@ Verification:
 
 ```bash
 bun install
-bun --filter @vibecanvas/capsule-vibecanvas typecheck
-bun --filter @vibecanvas/capsule-vibecanvas test
+bun --filter @omnidraw/capsule-omnidraw typecheck
+bun --filter @omnidraw/capsule-omnidraw test
 bun run test:architecture
 ```
 
@@ -1013,7 +1013,7 @@ Exit criteria:
 
 - supported Capsule entries resolve from a packed/file install;
 - browser imports cannot pull build/sign tools;
-- Capsule has no Vibecanvas dependency.
+- Capsule has no Omnidraw dependency.
 
 ### Milestone 2 — Replace `widget-contract` v2 with the Capsule contract
 
@@ -1033,16 +1033,16 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/widget-contract typecheck
-bun --filter @vibecanvas/widget-contract test
-bun --filter @vibecanvas/service-db test
+bun --filter @omnidraw/widget-contract typecheck
+bun --filter @omnidraw/widget-contract test
+bun --filter @omnidraw/service-db test
 bun run test:widget-artifacts
 bun run test:architecture
 ```
 
 Exit criteria:
 
-- manifest v2 and the Vibecanvas UI envelope no longer compile;
+- manifest v2 and the Omnidraw UI envelope no longer compile;
 - revision records can represent all required Capsule runtime metadata;
 - contract hashes change for every authority or runtime change.
 
@@ -1052,7 +1052,7 @@ Goal: make guest code Capsule-native and framework-neutral.
 
 Actions:
 
-- rewrite `@vibecanvas/sdk/widget` over Capsule guest APIs;
+- rewrite `@omnidraw/sdk/widget` over Capsule guest APIs;
 - define typed function, state, props, theme, and output APIs;
 - remove global transport setters;
 - remove Arrow from SDK dependencies and build externals;
@@ -1063,15 +1063,15 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/sdk build
-bun --filter @vibecanvas/sdk typecheck
-bun --filter @vibecanvas/sdk test
-bun --filter @vibecanvas/widget-contract test
+bun --filter @omnidraw/sdk build
+bun --filter @omnidraw/sdk typecheck
+bun --filter @omnidraw/sdk test
+bun --filter @omnidraw/widget-contract test
 ```
 
 Exit criteria:
 
-- guest fixture source imports the Vibecanvas widget SDK and normal UI
+- guest fixture source imports the Omnidraw widget SDK and normal UI
   dependencies only;
 - built guest modules contain no Arrow or injected global bridge;
 - SDK tests prove call, subscription, cancellation, and disposal behavior.
@@ -1096,8 +1096,8 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/widget-contract test
-bun --filter @vibecanvas/service-agent test
+bun --filter @omnidraw/widget-contract test
+bun --filter @omnidraw/service-agent test
 bun run test:widget-artifacts
 bun run test:architecture
 ```
@@ -1137,9 +1137,9 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/ui-ai-chat typecheck
-bun --filter @vibecanvas/ui-ai-chat test
-bun --filter @vibecanvas/service-agent test
+bun --filter @omnidraw/ui-ai-chat typecheck
+bun --filter @omnidraw/ui-ai-chat test
+bun --filter @omnidraw/service-agent test
 ```
 
 Browser checks:
@@ -1165,7 +1165,7 @@ Goal: run published widgets through the shared production Capsule host.
 Actions:
 
 - update runtime-load API response;
-- decode exact artifact bytes without parsing a Vibecanvas envelope;
+- decode exact artifact bytes without parsing a Omnidraw envelope;
 - create shared production host policy and trusted key set;
 - implement schema/descriptor registration ownership;
 - implement server-function provider binding;
@@ -1177,9 +1177,9 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/api test
-bun --filter @vibecanvas/ui-ai-chat typecheck
-bun --filter @vibecanvas/ui-ai-chat test
+bun --filter @omnidraw/api test
+bun --filter @omnidraw/ui-ai-chat typecheck
+bun --filter @omnidraw/ui-ai-chat test
 bun run test:widget-host
 bun run test:architecture
 ```
@@ -1220,8 +1220,8 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/canvas test
-bun --filter @vibecanvas/ui-ai-chat test
+bun --filter @omnidraw/canvas test
+bun --filter @omnidraw/ui-ai-chat test
 bun run test:canvas-regression
 bun run test:widget-host
 ```
@@ -1263,9 +1263,9 @@ Actions:
 Verification:
 
 ```bash
-bun --filter @vibecanvas/cli test
-bun --filter @vibecanvas/service-agent typecheck
-bun --filter @vibecanvas/service-agent test
+bun --filter @omnidraw/cli test
+bun --filter @omnidraw/service-agent typecheck
+bun --filter @omnidraw/service-agent test
 bun run test:external-composition
 bun run test:packed-public-composition
 ```
@@ -1292,7 +1292,7 @@ Actions:
 Verification:
 
 ```bash
-rg "@arrow-js/core|@arrow-js/sandbox|prompt\\.arrow-js|patch-arrow-sandbox|vibecanvas\\.widget-artifact\\.v1|WidgetUiArtifactEnvelope" .
+rg "@arrow-js/core|@arrow-js/sandbox|prompt\\.arrow-js|patch-arrow-sandbox|omnidraw\\.widget-artifact\\.v1|WidgetUiArtifactEnvelope" .
 bun install
 bun run lint:functional-core
 bun run test

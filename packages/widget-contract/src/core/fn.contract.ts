@@ -46,7 +46,7 @@ export function fnCanonicalizeWidgetContractPayload(
   input: TWidgetContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.widget-contract.v4',
+    format: 'omnidraw.widget-contract.v4',
     canonicalManifestJson: input.canonicalManifestJson,
     uiDigestSha256: input.uiDigestSha256,
     capsuleArtifactHash: input.capsuleArtifactHash,

@@ -7,8 +7,8 @@ import type {
   TDbResourceDraftChange,
   TResourceBindingReference,
   TResourceKind,
-} from '@vibecanvas/resource-runtime';
-import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
 import { ResourceControlStoreTurso } from '../ResourceControlStoreTurso';

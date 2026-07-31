@@ -6,10 +6,10 @@ import type {
   CapsuleHash,
 } from '@omnidraw/capsule/protocol';
 import type {
-  TVibecanvasDistributionBuild,
-  TVibecanvasDistributionBuildRequest,
-  TVibecanvasDistributionSourceMap,
-} from '@vibecanvas/capsule-vibecanvas/builder';
+  TOmnidrawDistributionBuild,
+  TOmnidrawDistributionBuildRequest,
+  TOmnidrawDistributionSourceMap,
+} from '@omnidraw/capsule-omnidraw/builder';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
@@ -43,7 +43,7 @@ const MAX_BUILD_OUTPUT_BYTES = 1024 * 1024;
 const MAX_DISTRIBUTION_FILES = 1_024;
 const MAX_DISTRIBUTION_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_DISTRIBUTION_TOTAL_BYTES = 32 * 1024 * 1024;
-const GUEST_BRIDGE_BOOTSTRAP = '__vibecanvas_guest_bridge__.mjs';
+const GUEST_BRIDGE_BOOTSTRAP = '__omnidraw_guest_bridge__.mjs';
 const GUEST_BRIDGE_BOOTSTRAP_SOURCE = [
   "import { subscribeHostLifecycle } from '@omnidraw/capsule/guest';",
   'subscribeHostLifecycle(() => undefined).unsubscribe();',
@@ -55,14 +55,14 @@ const DEPENDENCY_SECTIONS = Object.freeze([
   'optionalDependencies',
   'peerDependencies',
 ] as const);
-const PRODUCER_NAME = 'vibecanvas-npm-build';
+const PRODUCER_NAME = 'omnidraw-npm-build';
 const PRODUCER_VERSION = '1';
 const HOST_RUNNER_IDENTITY = 'host-v1';
 const DOCKER_RUNNER_VERSION = 'docker-v1';
 const DOCKER_WORKSPACE_PATH = '/workspace';
-const DOCKER_NPM_USER_CONFIG_PATH = '/run/vibecanvas-npmrc';
-const DOCKER_HOME_PATH = '/tmp/vibecanvas-home';
-const DOCKER_NPM_CACHE_PATH = '/tmp/vibecanvas-npm-cache';
+const DOCKER_NPM_USER_CONFIG_PATH = '/run/omnidraw-npmrc';
+const DOCKER_HOME_PATH = '/tmp/omnidraw-home';
+const DOCKER_NPM_CACHE_PATH = '/tmp/omnidraw-npm-cache';
 const DOCKER_TMPFS_BYTES = 512 * 1024 * 1024;
 const DOCKER_DEFAULT_CPUS = 2;
 const DOCKER_DEFAULT_MEMORY_MB = 2_048;
@@ -72,15 +72,15 @@ const DOCKER_CONTROL_OUTPUT_BYTES = 16 * 1024;
 const DOCKER_CLEANUP_ATTEMPTS = 3;
 const DOCKER_IMAGE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/:~-]*@sha256:[a-f0-9]{64}$/u;
 const RUNNER_IDENTITY_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*$/u;
-const WIDGET_BUILD_RUNNER_ENV = 'VIBECANVAS_WIDGET_BUILD_RUNNER';
-const WIDGET_BUILD_DOCKER_IMAGE_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_IMAGE';
-const WIDGET_BUILD_DOCKER_CPUS_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_CPUS';
-const WIDGET_BUILD_DOCKER_MEMORY_MB_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_MEMORY_MB';
-const WIDGET_BUILD_DOCKER_PIDS_LIMIT_ENV = 'VIBECANVAS_WIDGET_BUILD_DOCKER_PIDS_LIMIT';
+const WIDGET_BUILD_RUNNER_ENV = 'OMNIDRAW_WIDGET_BUILD_RUNNER';
+const WIDGET_BUILD_DOCKER_IMAGE_ENV = 'OMNIDRAW_WIDGET_BUILD_DOCKER_IMAGE';
+const WIDGET_BUILD_DOCKER_CPUS_ENV = 'OMNIDRAW_WIDGET_BUILD_DOCKER_CPUS';
+const WIDGET_BUILD_DOCKER_MEMORY_MB_ENV = 'OMNIDRAW_WIDGET_BUILD_DOCKER_MEMORY_MB';
+const WIDGET_BUILD_DOCKER_PIDS_LIMIT_ENV = 'OMNIDRAW_WIDGET_BUILD_DOCKER_PIDS_LIMIT';
 const NODE_ENVIRONMENT_EXPRESSION =
   'JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})';
 const BUILD_CONFIGURATION = Object.freeze({
-  format: 'vibecanvas-npm-distribution-build-v1',
+  format: 'omnidraw-npm-distribution-build-v1',
   install: Object.freeze(['npm', 'ci']),
   build: Object.freeze(['npm', 'run', 'build']),
   outputDirectory: DISTRIBUTION_DIRECTORY,
@@ -90,11 +90,11 @@ const BUILD_CONFIGURATION = Object.freeze({
 const WIDGET_UI_ENTRY_TRANSFORM_PROBES = Object.freeze([
   Object.freeze({
     source: 'export const probe = true;\n',
-    bootstrapSpecifier: './__vibecanvas_guest_bridge__.mjs',
+    bootstrapSpecifier: './__omnidraw_guest_bridge__.mjs',
   }),
   Object.freeze({
     source: '#!/usr/bin/env node\nexport const probe = true;\n',
-    bootstrapSpecifier: '../__vibecanvas_guest_bridge__.mjs',
+    bootstrapSpecifier: '../__omnidraw_guest_bridge__.mjs',
   }),
 ]);
 
@@ -160,7 +160,7 @@ type TWarmWorkspace = {
   closed: boolean;
 };
 
-export type TWidgetNpmDistributionBuild = TVibecanvasDistributionBuild & Readonly<{
+export type TWidgetNpmDistributionBuild = TOmnidrawDistributionBuild & Readonly<{
   closeWorkspace(workspaceKey: string): Promise<void>;
   close(): Promise<void>;
 }>;
@@ -194,7 +194,7 @@ export function fnWidgetNpmBuildEnvironmentIdentity(
     fnBootstrapWidgetUiEntry(probe.source, probe.bootstrapSpecifier)
   ));
   return JSON.stringify({
-    format: 'vibecanvas.widget-npm-build-environment.v1',
+    format: 'omnidraw.widget-npm-build-environment.v1',
     approvedTransformsDigest: hash(JSON.stringify({
       guestBridgeBootstrapSource: GUEST_BRIDGE_BOOTSTRAP_SOURCE,
       widgetUiEntryTransformOutputs: transformOutputs,
@@ -675,7 +675,7 @@ export function createWidgetDockerProcessAdapter(
     ) {
       throw new TypeError('Widget Docker runner container ID is invalid.');
     }
-    const containerName = `vibecanvas-widget-build-${id}`;
+    const containerName = `omnidraw-widget-build-${id}`;
     const dockerArgs = [
       'run',
       '--init',
@@ -909,7 +909,7 @@ async function readPackageContract(root: string): Promise<Readonly<{
           entry.resolved.startsWith('file:')
           || entry.resolved.startsWith('/')
           || /^[A-Za-z]:[\\/]/u.test(entry.resolved)
-          || entry.resolved.includes('.vibecanvas-links')
+          || entry.resolved.includes('.omnidraw-links')
         )
       )
     ) {
@@ -922,7 +922,7 @@ async function readPackageContract(root: string): Promise<Readonly<{
   if (
     lockSource.includes('"workspace:')
     || lockSource.includes('"file:')
-    || lockSource.includes('.vibecanvas-links')
+    || lockSource.includes('.omnidraw-links')
   ) {
     throw new Error('Widget package-lock.json contains a local dependency.');
   }
@@ -934,11 +934,11 @@ async function readPackageContract(root: string): Promise<Readonly<{
 
 async function captureDistribution(root: string): Promise<Readonly<{
   files: readonly CapsuleSnapshotFile[];
-  sourceMaps: readonly TVibecanvasDistributionSourceMap[];
+  sourceMaps: readonly TOmnidrawDistributionSourceMap[];
 }>> {
   const distributionRoot = join(root, DISTRIBUTION_DIRECTORY);
   const files: CapsuleSnapshotFile[] = [];
-  const sourceMaps: TVibecanvasDistributionSourceMap[] = [];
+  const sourceMaps: TOmnidrawDistributionSourceMap[] = [];
   const seen = new Set<string>();
   let totalBytes = 0;
 
@@ -1082,7 +1082,7 @@ export function createWidgetNpmDistributionBuild(
 
   const performBuild = async (
     root: string,
-    request: TVibecanvasDistributionBuildRequest,
+    request: TOmnidrawDistributionBuildRequest,
     installRequired: boolean,
     onInstallComplete?: () => void,
   ): Promise<CapsuleBuildInput> => {
@@ -1179,7 +1179,7 @@ export function createWidgetNpmDistributionBuild(
   };
 
   const build = async (
-    request: TVibecanvasDistributionBuildRequest,
+    request: TOmnidrawDistributionBuildRequest,
   ): Promise<CapsuleBuildInput> => {
     if (request.workspaceKey !== undefined) {
       assertWorkspaceKey(request.workspaceKey);

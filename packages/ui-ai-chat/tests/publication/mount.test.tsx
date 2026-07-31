@@ -1,4 +1,4 @@
-import type { TWidgetDetail } from "@vibecanvas/orpc-client"
+import type { TWidgetDetail } from "@omnidraw/orpc-client"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { mountWidgetPublicationDialog } from "../../src/publication/mount"
 import type { TWidgetPublicationPreviewSelection } from "../../src/publication/interface"

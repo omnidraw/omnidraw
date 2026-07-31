@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from '../types';
 
 export function fnNormalizeRelativeFilePath(path: string): string {
@@ -10,7 +10,7 @@ export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TW
   const warnings: string[] = [];
   const hasFile = (path: string) => args.files.includes(fnNormalizeRelativeFilePath(path));
 
-  if (!hasFile('vibecanvas.json')) errors.push('Missing vibecanvas.json');
+  if (!hasFile('omnidraw.json')) errors.push('Missing omnidraw.json');
 
   if (args.manifest) {
     const uiEntryPath = fnNormalizeRelativeFilePath(args.manifest.ui.entry);

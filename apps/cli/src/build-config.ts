@@ -1,4 +1,4 @@
-import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
+import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
 import type { ICliConfig } from './config';
 import type { TCliParsedArgv } from './parse-argv';
 import { join, resolve } from 'path';
@@ -11,14 +11,14 @@ function getDefaultPort(compiled: boolean): number {
 function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
   const cwd = process.cwd();
   const compiled =
-    (typeof VIBECANVAS_COMPILED !== 'undefined' && VIBECANVAS_COMPILED) ||
-    process.env.VIBECANVAS_COMPILED === 'true';
+    (typeof OMNIDRAW_COMPILED !== 'undefined' && OMNIDRAW_COMPILED) ||
+    process.env.OMNIDRAW_COMPILED === 'true';
   const dev = !compiled;
   const version =
-    (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION) ||
-    process.env.VIBECANVAS_VERSION ||
+    (typeof OMNIDRAW_VERSION !== 'undefined' && OMNIDRAW_VERSION) ||
+    process.env.OMNIDRAW_VERSION ||
     '0.0.0';
-  const home = fnResolveVibecanvasHome({ join, resolve }, {
+  const home = fnResolveOmnidrawHome({ join, resolve }, {
     cwd,
     dataDir: parsed.dataDir,
     env: process.env,

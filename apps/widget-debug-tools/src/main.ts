@@ -1,4 +1,4 @@
-import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
+import { buildCapsuleGuest } from '@omnidraw/capsule-omnidraw/build';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
   WIDGET_CAPSULE_BUILD_POLICY_ID,
@@ -15,23 +15,23 @@ import {
   WidgetServicePool,
 } from '../../cli/src/services/WidgetServicePool';
 import { fnWidgetCapsuleBuilderIdentity } from '../../cli/src/services/fn.widget-capsule-builder-identity';
-import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
-import { ApprovalCoordinator } from '@vibecanvas/service-agent/approval/ApprovalCoordinator';
-import { createResourceTools } from '@vibecanvas/service-agent/tools/tool.resources';
-import { createWidgetWorkspaceTools } from '@vibecanvas/service-agent/tools/tool.widget-workspace';
-import { createWorkspaceFileTools } from '@vibecanvas/service-agent/tools/tool.workspace-files';
-import { txTryNpmInstall } from '@vibecanvas/service-agent/tools/tx.npm-install';
-import type { TToolDefinition } from '@vibecanvas/service-agent/tools/types';
-import { WidgetDraftController } from '@vibecanvas/service-agent/widget-drafts/WidgetDraftController';
-import { WidgetWorkspace } from '@vibecanvas/service-agent/workspace/WidgetWorkspace';
+import { BunChildFunctionDescriptorExtractor } from '@omnidraw/function-runtime/local';
+import { ApprovalCoordinator } from '@omnidraw/service-agent/approval/ApprovalCoordinator';
+import { createResourceTools } from '@omnidraw/service-agent/tools/tool.resources';
+import { createWidgetWorkspaceTools } from '@omnidraw/service-agent/tools/tool.widget-workspace';
+import { createWorkspaceFileTools } from '@omnidraw/service-agent/tools/tool.workspace-files';
+import { txTryNpmInstall } from '@omnidraw/service-agent/tools/tx.npm-install';
+import type { TToolDefinition } from '@omnidraw/service-agent/tools/types';
+import { WidgetDraftController } from '@omnidraw/service-agent/widget-drafts/WidgetDraftController';
+import { WidgetWorkspace } from '@omnidraw/service-agent/workspace/WidgetWorkspace';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-db/CONSTANTS';
+import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdir } from 'node:fs/promises';
@@ -40,16 +40,16 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..');
-const DEFAULT_HOME = join(REPOSITORY_ROOT, '.vibecanvas');
+const DEFAULT_HOME = join(REPOSITORY_ROOT, '.omnidraw');
 const NPM_USER_CONFIG_PATH = fnLocalRegistryNpmUserConfig({
   homeDirectory: homedir(),
-  stateDirectory: process.env.VIBECANVAS_REGISTRY_STATE_DIR,
+  stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
   join,
 });
 const DEFAULT_CHAT_ID = 'widget-debug-tools';
 const ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@vibecanvas/sdk/server',
+  '@omnidraw/sdk/server',
   'zod',
 ]);
 
@@ -81,7 +81,7 @@ function usage(): string {
     '  bun run lab -- --home <isolated-path> [--chat-id <id>] session < operations.jsonl',
     '',
     'Session records:',
-    '  {"tool":"vc_widget_create","args":{"name":"Counter"}}',
+    '  {"tool":"od_widget_create","args":{"name":"Counter"}}',
     '  {"tool":"read","args":{"path":"widgets/Counter/ui/main.ts"}}',
     '  {"lab":"preview","args":{"name":"Counter"}}',
   ].join('\n');
@@ -124,7 +124,7 @@ function parseCommand(argv: readonly string[]): TCommand {
       chatId,
       session: false,
       operation: {
-        tool: command === 'create' ? 'vc_widget_create' : 'vc_widget_validate',
+        tool: command === 'create' ? 'od_widget_create' : 'od_widget_validate',
         args: { name },
       },
     };
@@ -145,7 +145,7 @@ function parseCommand(argv: readonly string[]): TCommand {
       home,
       chatId,
       session: false,
-      operation: { tool: 'vc_widget_list', args: {} },
+      operation: { tool: 'od_widget_list', args: {} },
     };
   }
   if (values.length > 1) {
@@ -270,7 +270,7 @@ async function run(): Promise<void> {
     databasePath: join(command.home, 'main.db'),
     dataDir: command.home,
     cacheDir: join(command.home, 'cache'),
-    silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
+    silentMigrations: process.env.OMNIDRAW_SILENT_DB_MIGRATIONS === '1',
   });
   const builderIdentity = fnWidgetCapsuleBuilderIdentity({
     npmVersion: process.versions.npm ?? 'external',
@@ -465,7 +465,7 @@ async function run(): Promise<void> {
         dependencyInstalls: telemetry.dependencyInstalls - before.dependencyInstalls,
       };
       record.durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
-      const buildRequested = 'lab' in operation || operation.tool === 'vc_widget_validate';
+      const buildRequested = 'lab' in operation || operation.tool === 'od_widget_validate';
       record.build = {
         disposition: !buildRequested
           ? 'not-requested'

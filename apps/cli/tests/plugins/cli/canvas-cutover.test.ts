@@ -5,7 +5,7 @@ import type {
   TCanvasItemQuery,
   TCanvasItemsChangedEvent,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { parseCanvasSubcommandArgs } from '../../../src/plugins/cli/cmds/canvas-argv';
 import { runCanvasAddCommand } from '../../../src/plugins/cli/cmds/cmd.add.canvas';
 import { runCanvasDeleteCommand } from '../../../src/plugins/cli/cmds/cmd.delete.canvas';

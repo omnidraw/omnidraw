@@ -2,9 +2,9 @@ import type {
   TCanvasItemPatch,
   TCanvasJsonPath,
   TCanvasPrecondition,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import type { TJsonValue, TSceneNode } from '@omnidraw/cangine';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract/CONSTANTS';
+import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract/CONSTANTS';
 
 type TCanvasNodeDiff = Readonly<{
   patches: readonly TCanvasItemPatch[];
@@ -186,7 +186,7 @@ export function fnRuntimeCanvasNode(node: TSceneNode): TSceneNode {
   return {
     ...runtimeNode,
     portal: {
-      portalId: `vibecanvas:widget:${runtimeNode.id}`,
+      portalId: `omnidraw:widget:${runtimeNode.id}`,
       interactive: true,
       scaleMode: 'world',
       suspendWhenOffscreen: true,

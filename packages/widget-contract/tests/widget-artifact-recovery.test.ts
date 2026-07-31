@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
@@ -105,7 +105,7 @@ function sha256(bytes: Uint8Array): string {
 }
 
 async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'vibecanvas-widget-recovery-'));
+  const root = await mkdtemp(join(tmpdir(), 'omnidraw-widget-recovery-'));
   roots.add(root);
   return root;
 }
@@ -391,7 +391,7 @@ function publishRequest(expectedActiveRevisionId: string | null = null) {
     bindings: Object.freeze([]),
     builderIdentity: 'recovery-builder-v1',
     capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-    buildPolicyId: 'vibecanvas-capsule-widget-v1',
+    buildPolicyId: 'omnidraw-capsule-widget-v1',
     nowMs: 1_000,
   });
 }

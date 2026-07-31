@@ -1,4 +1,4 @@
-# Vibecanvas Style Guide
+# Omnidraw Style Guide
 
 Terminal-like design system. No Tailwind.
 
@@ -6,7 +6,7 @@ Use plain CSS. Prefer local `*.module.css` files next to components.
 
 ## Source of truth
 
-Theme tokens come from `@vibecanvas/service-theme`.
+Theme tokens come from `@omnidraw/service-theme`.
 
 Main files:
 - `packages/service-theme/src/ThemeService.ts`
@@ -167,7 +167,7 @@ Do not add rounded corners unless design changes on purpose.
 
 ## Brand visual language
 
-Vibecanvas looks like a precise desktop tool built from terminal and early workstation UI ideas, not like a generic SaaS dashboard. The canvas is spacious and quiet; controls are compact, flat, typographic, and visibly constructed from lines and rectangular surfaces.
+Omnidraw looks like a precise desktop tool built from terminal and early workstation UI ideas, not like a generic SaaS dashboard. The canvas is spacious and quiet; controls are compact, flat, typographic, and visibly constructed from lines and rectangular surfaces.
 
 Reference screenshots show the intended light-theme character:
 
@@ -343,7 +343,7 @@ Canvas extensions must belong to the workspace while staying visually separate f
 
 ### Content inside extensions
 
-Extension-specific content may have a stronger personality, but the host chrome must remain Vibecanvas. For example, a generated flashcard can use bold amber and heavy black rules, while its surrounding window, tabs, focus behavior, spacing, and controls follow this guide.
+Extension-specific content may have a stronger personality, but the host chrome must remain Omnidraw. For example, a generated flashcard can use bold amber and heavy black rules, while its surrounding window, tabs, focus behavior, spacing, and controls follow this guide.
 
 Do not let generated extensions:
 
@@ -442,4 +442,4 @@ A generated UI is on-brand when the answer to these questions is yes:
 - Does the UI leave visual priority and physical space to the canvas?
 - Does it inherit all built-in themes without hardcoded light-only colors?
 
-If the design could be dropped unchanged into a generic rounded dashboard, it is not specific enough to Vibecanvas. Simplify it, square it, strengthen its rules and typography, and make its active state amber.
+If the design could be dropped unchanged into a generic rounded dashboard, it is not specific enough to Omnidraw. Simplify it, square it, strengthen its rules and typography, and make its active state amber.

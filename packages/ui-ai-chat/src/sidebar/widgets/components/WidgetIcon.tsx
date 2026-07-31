@@ -1,4 +1,4 @@
-import type { TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetVariantSummary } from '@omnidraw/orpc-client';
 import DOMPurify from 'dompurify';
 import Puzzle from 'lucide-solid/icons/puzzle';
 import * as LucideStatic from 'lucide-static';

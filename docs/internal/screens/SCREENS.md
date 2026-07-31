@@ -1,6 +1,6 @@
-# Vibecanvas screen atlas
+# Omnidraw screen atlas
 
-This is the desktop visual reference for Vibecanvas. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-07-20. The local product data shown here is illustrative and contains no real secrets.
+This is the desktop visual reference for Omnidraw. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-07-20. The local product data shown here is illustrative and contains no real secrets.
 
 All screenshots are optimized WebP files under [`assets/`](assets/). Capture a new image when a route, workspace, modal, or interaction state changes meaningfully; avoid adding cosmetic duplicates.
 
@@ -21,7 +21,7 @@ The root screen is the entry point for canvases, resources, and widgets. The two
 
 | Welcome | Create canvas |
 | --- | --- |
-| ![Vibecanvas welcome screen with the workspace sidebar](assets/01-app-welcome.webp) | ![Create Your Canvas dialog](assets/02-app-create-canvas.webp) |
+| ![Omnidraw welcome screen with the workspace sidebar](assets/01-app-welcome.webp) | ![Create Your Canvas dialog](assets/02-app-create-canvas.webp) |
 | **`/` — Welcome.** Empty workspace guidance with the persistent navigation sidebar. | **Canvas `+` — Create canvas.** Names a canvas before opening its workspace. |
 
 | Create resource |
@@ -45,7 +45,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | AI chat | AI settings |
 | --- | --- |
-| ![AI Chat window open over a Vibecanvas canvas](assets/14-canvas-ai-chat.webp) | ![AI Chat settings showing provider connections](assets/15-canvas-ai-settings.webp) |
+| ![AI Chat window open over a Omnidraw canvas](assets/14-canvas-ai-chat.webp) | ![AI Chat settings showing provider connections](assets/15-canvas-ai-settings.webp) |
 | **AI assistant — Chat.** Conversation history, model selector, prompt input, and canvas context. | **AI assistant — Settings.** Provider connection status and API-key actions. |
 
 | AI draft Preview |
@@ -125,7 +125,7 @@ The public site uses a separate light visual system. The documentation index and
 
 | Landing page | Documentation index |
 | --- | --- |
-| ![Vibecanvas public landing page](assets/50-web-landing.webp) | ![Vibecanvas documentation index](assets/51-web-docs-index.webp) |
+| ![Omnidraw public landing page](assets/50-web-landing.webp) | ![Omnidraw documentation index](assets/51-web-docs-index.webp) |
 | **`/`.** Product proposition, canvas preview, and top-level documentation/GitHub links. | **`/docs`.** Guide navigation and cards for each documentation section. |
 
 | Getting Started article |

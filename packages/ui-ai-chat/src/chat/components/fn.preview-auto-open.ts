@@ -11,8 +11,8 @@ const MAX_AUTO_OPENED_PREVIEW_DRAFT_IDS = 16;
 
 function messageFinished(message: unknown): boolean {
   if (typeof message !== 'object' || message === null) return true;
-  if (!('__vibecanvasMessageFinished' in message)) return true;
-  return message.__vibecanvasMessageFinished !== false;
+  if (!('__omnidrawMessageFinished' in message)) return true;
+  return message.__omnidrawMessageFinished !== false;
 }
 
 export function fnNormalizeAutoOpenedPreviewDraftIds(

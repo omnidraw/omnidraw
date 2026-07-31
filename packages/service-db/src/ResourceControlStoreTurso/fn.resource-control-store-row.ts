@@ -7,7 +7,7 @@ import type {
   TResourceDescriptor,
   TResourcePlacement,
   TSafeResourceError,
-} from '@vibecanvas/resource-runtime';
+} from '@omnidraw/resource-runtime';
 
 function numberFromSql(value: unknown, label: string): number {
   const number = Number(value);

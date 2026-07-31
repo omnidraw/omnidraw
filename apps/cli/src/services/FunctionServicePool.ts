@@ -1,6 +1,6 @@
-import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
-import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+import type { IFunctionInvocationApiCapability } from '@omnidraw/api/function';
+import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
+import { fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 import { FunctionService } from './FunctionService';
 import {
   TenantServicePool,

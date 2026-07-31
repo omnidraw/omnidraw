@@ -7,8 +7,8 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type {
   IResourceWriteCapabilityVerifier,
   TResourceWriteCapabilityClaims,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { IResourceWritePermitAuthority } from '../interface';
 import type { TResourceWritePermit } from '../types';
 
@@ -69,7 +69,7 @@ export class ResourceWriteCapabilityAuthority implements
     }
     this.#secret = config.secret.slice();
     this.#permits = config.permits;
-    this.#audience = config.audience ?? 'vibecanvas.resource-store';
+    this.#audience = config.audience ?? 'omnidraw.resource-store';
     this.#nowMs = config.nowMs ?? (() => Date.now());
     this.#createNonce = config.createNonce ?? randomUUID;
   }

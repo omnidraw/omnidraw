@@ -9,18 +9,18 @@ M2 replaces the nine transport packages with one consolidated API boundary, give
 
 ## Consolidated API contract
 
-- `@vibecanvas/api` owns the aggregate context, contract, handlers, router, and domain exports.
+- `@omnidraw/api` owns the aggregate context, contract, handlers, router, and domain exports.
 - The compatibility contract retains the exact ordered route keys `actors`, `agent`, `canvas`, `db`, `file`, `filesystem`, `notification`, `pty`, and `tool`.
 - A direct route fingerprint proves all 131 existing method/path pairs remain implemented.
 - Target-layout `collaboration` and `media` exports alias the current `db` and `file` compatibility domains; `function` is an explicit no-route placeholder until M6.
 - Context declarations use narrow structural capabilities. They contain no `ActorService`, `AgentService`, or `DbServiceTurso` types, and a fake-only composition test boots the complete router and executes a handler without constructing Turso or an actor.
-- `orpc-client`, CLI, frontend, tests, workspace dependencies, root filters, and live repository instructions now consume only `@vibecanvas/api` and its subpaths.
+- `orpc-client`, CLI, frontend, tests, workspace dependencies, root filters, and live repository instructions now consume only `@omnidraw/api` and its subpaths.
 - The nine `packages/api-*` directories were removed only after the required live-reference search returned empty.
 
 ## UI and host boundary
 
-- `packages/actor-ui` is now `packages/ui-actor-legacy` / `@vibecanvas/ui-actor-legacy`.
-- `packages/ai-chat` is now `packages/ui-ai-chat` / `@vibecanvas/ui-ai-chat`.
+- `packages/actor-ui` is now `packages/ui-actor-legacy` / `@omnidraw/ui-actor-legacy`.
+- `packages/ai-chat` is now `packages/ui-ai-chat` / `@omnidraw/ui-ai-chat`.
 - Twelve backend-neutral widget-host files (1,521 lines) moved to `packages/canvas/src/widget-host`; the former UI import paths are one- or two-line compatibility re-exports.
 - The widget-host boundary test rejects API, actor-service, and UI dependencies from the extracted host.
 - The four actor-view screenshot files retain byte-identical SHA-256 digests across the rename.

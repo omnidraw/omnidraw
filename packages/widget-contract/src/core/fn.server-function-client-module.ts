@@ -5,7 +5,7 @@ import type { TWidgetServerFunctionDescriptor } from '../types';
 const EXPORT_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
 const CAPSULE_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const FUNCTION_CAPABILITY_ID_PATTERN =
-  /^vibecanvas\.widget\.functions\.h[0-9a-f]{64}$/;
+  /^omnidraw\.widget\.functions\.h[0-9a-f]{64}$/;
 
 export function fnGenerateWidgetServerFunctionClientModule(
   args: Readonly<{
@@ -48,14 +48,14 @@ export function fnGenerateWidgetServerFunctionClientModule(
   const includeTypes = args.includeTypeBindings !== false;
   const selector = JSON.stringify(args.capabilitySelector);
   return [
-    'import { createServerFunctionProxy as __vibecanvasCreateProxy } from "@vibecanvas/sdk/function-client";',
+    'import { createServerFunctionProxy as __omnidrawCreateProxy } from "@omnidraw/sdk/function-client";',
     ...(includeTypes
-      ? ['import type { TServerFunctionClientOf as __VibecanvasClientOf } from "@vibecanvas/sdk/function-client";']
+      ? ['import type { TServerFunctionClientOf as __OmnidrawClientOf } from "@omnidraw/sdk/function-client";']
       : []),
     ...names.map((name) => (
       includeTypes
-        ? `export const ${name}: __VibecanvasClientOf<typeof import(${JSON.stringify(args.serverModuleSpecifier)})[${JSON.stringify(name)}]> = __vibecanvasCreateProxy(${JSON.stringify(name)}, ${selector});`
-        : `export const ${name} = __vibecanvasCreateProxy(${JSON.stringify(name)}, ${selector});`
+        ? `export const ${name}: __OmnidrawClientOf<typeof import(${JSON.stringify(args.serverModuleSpecifier)})[${JSON.stringify(name)}]> = __omnidrawCreateProxy(${JSON.stringify(name)}, ${selector});`
+        : `export const ${name} = __omnidrawCreateProxy(${JSON.stringify(name)}, ${selector});`
     )),
     '',
   ].join('\n');

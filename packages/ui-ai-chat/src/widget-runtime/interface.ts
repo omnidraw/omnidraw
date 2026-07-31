@@ -3,16 +3,16 @@ import type {
   CapsuleMountDiagnostics,
   CapsuleViewport,
   CreateCapsuleHostOptions,
-} from '@vibecanvas/capsule-vibecanvas/host';
+} from '@omnidraw/capsule-omnidraw/host';
 import type {
-  TVibecanvasCapsuleError,
-} from '@vibecanvas/capsule-vibecanvas/contract';
+  TOmnidrawCapsuleError,
+} from '@omnidraw/capsule-omnidraw/contract';
 import type { TWidgetFrameNode } from '@omnidraw/cangine';
 import type {
   CapsuleCapabilityDescriptor,
   CapsuleSchemaResource,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
-import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
+} from '@omnidraw/capsule-omnidraw/capabilities';
+import type { TOrpcSafeClient } from '@omnidraw/orpc-client';
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapsuleHostConfiguration,
@@ -20,7 +20,7 @@ import type {
   TWidgetCapsuleProps,
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetCapsuleTheme,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type { TraceMap } from '@jridgewell/trace-mapping';
 
 type TApi = TOrpcSafeClient['api'];
@@ -138,7 +138,7 @@ export type TWidgetArtifactCodecPort = Readonly<{
   digestSha256(value: Uint8Array): Promise<string>;
 }>;
 
-/** Exact signed Capsule bytes. The browser never parses a Vibecanvas envelope. */
+/** Exact signed Capsule bytes. The browser never parses a Omnidraw envelope. */
 export type TVerifiedWidgetUiArtifact = Readonly<{
   digestSha256: string;
   bytes: Uint8Array;
@@ -189,7 +189,7 @@ export type TWidgetCapsuleHostCatalog = Readonly<{
 }>;
 
 /**
- * Per-artifact policy derived locally through the public Vibecanvas adapter.
+ * Per-artifact policy derived locally through the public Omnidraw adapter.
  * It is bound to signed runtime requests before reaching the host coordinator.
  */
 export type TWidgetCapsuleMountCatalog = TWidgetCapsuleHostCatalog & Readonly<{
@@ -235,7 +235,7 @@ export type TWidgetUiArtifactMountPort = Readonly<{
     functionBridge: TWidgetFunctionHostBridge;
     collaborativeStateBridge: TWidgetCollaborativeStateBridge | null;
     props?: TWidgetCapsuleProps;
-    onDiagnostic?(error: TVibecanvasCapsuleError): void;
+    onDiagnostic?(error: TOmnidrawCapsuleError): void;
     onFatal(error: unknown): void;
   }>): Promise<TWidgetUiRuntimeHandle>;
   destroy(reason?: string): Promise<void>;

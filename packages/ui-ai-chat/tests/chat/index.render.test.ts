@@ -447,7 +447,7 @@ describe("AiChat shell", () => {
       editSession: null,
       messageHistory: [{
         role: "assistant",
-        content: [{ type: "toolCall", id: "tool-call-1", name: "vc_resource_create", arguments: { kind: "kv", name: "Cache" } }],
+        content: [{ type: "toolCall", id: "tool-call-1", name: "od_resource_create", arguments: { kind: "kv", name: "Cache" } }],
       }],
       vcJson: null,
     }];
@@ -497,7 +497,7 @@ describe("AiChat shell", () => {
         {
           role: "toolResult",
           toolCallId: "call-widget-create-1",
-          toolName: "vc_widget_create",
+          toolName: "od_widget_create",
           content: [{ type: "text", text: "Created Shared Timer." }],
           details: {
             draftId: firstDraftId,
@@ -509,7 +509,7 @@ describe("AiChat shell", () => {
         {
           role: "toolResult",
           toolCallId: "call-widget-create-2",
-          toolName: "vc_widget_create",
+          toolName: "od_widget_create",
           content: [{ type: "text", text: "Created Team Notes." }],
           details: {
             draftId: secondDraftId,
@@ -572,7 +572,7 @@ describe("AiChat shell", () => {
       messageHistory: [{
         role: "toolResult",
         toolCallId: "call-widget-create",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: "Created Shared Timer." }],
         details: { draftId, name: "Shared Timer", source: "draft", draft: true },
       }],
@@ -619,7 +619,7 @@ describe("AiChat shell", () => {
       messageHistory: [{
         role: "toolResult",
         toolCallId: "call-widget-create",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: "Created Shared Timer." }],
         details: { draftId, name: "Shared Timer", source: "draft", draft: true },
       }],

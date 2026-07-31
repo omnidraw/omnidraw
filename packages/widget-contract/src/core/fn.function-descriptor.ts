@@ -14,7 +14,7 @@ import type {
   TWidgetServerFunctionResourceAccess,
 } from '../types';
 
-const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'vibecanvas.widget.functions.';
+const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'omnidraw.widget.functions.';
 const SERVER_FUNCTION_CAPABILITY_ID_PREFIX = `${SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE}h`;
 const SERVER_FUNCTION_CAPABILITY_VERSION = '1.0.0';
 
@@ -79,7 +79,7 @@ export function fnCanonicalizeWidgetServerFunctionDescriptors(
   descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.server-functions.v1',
+    format: 'omnidraw.server-functions.v1',
     functions: fnNormalizeWidgetServerFunctionDescriptors(descriptors),
   });
 }
@@ -123,7 +123,7 @@ export function fnCanonicalizeWidgetBrowserFunctionDescriptors(
   descriptors: readonly TWidgetBrowserFunctionDescriptor[],
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.browser-server-functions.v1',
+    format: 'omnidraw.browser-server-functions.v1',
     functions: fnNormalizeWidgetBrowserFunctionDescriptors(descriptors),
   });
 }

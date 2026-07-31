@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetCapsuleRuntimeDescriptor,
@@ -24,8 +24,8 @@ import {
   type TWidgetPreviewBuildResult,
   type TWidgetPreviewMountLeaseDescriptor,
   type TWidgetSourceSnapshot,
-} from '@vibecanvas/widget-contract';
-import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+} from '@omnidraw/widget-contract';
+import type { ITenantEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
 import type { TValidationResult } from '../core/types';
 import type { TWidgetDraftChange } from '../tools/types';
@@ -1146,7 +1146,7 @@ export class WidgetDraftController {
           });
         }
         if (manifest.manifest.name !== draft.name) {
-          const message = `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`;
+          const message = `Draft identity is '${draft.name}', but omnidraw.json declares '${manifest.manifest.name}'.`;
           await markOwnerFailed(
             message,
             [message],
@@ -1428,7 +1428,7 @@ export class WidgetDraftController {
         const manifest = await this.#readManifest(captured.rootPath);
         if (!manifest.ok || manifest.manifest.name !== draft.name) {
           const message = manifest.ok
-            ? `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`
+            ? `Draft identity is '${draft.name}', but omnidraw.json declares '${manifest.manifest.name}'.`
             : manifest.message;
           return this.#publishFailure(draft.id, 'validation-failed', message, currentRevision, [message]);
         }
@@ -1799,7 +1799,7 @@ export class WidgetDraftController {
     if (manifest.ok && manifest.manifest.name !== draft.name) {
       validation.ok = false;
       validation.errors.push(
-        `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`,
+        `Draft identity is '${draft.name}', but omnidraw.json declares '${manifest.manifest.name}'.`,
       );
     }
     if (validation.ok && manifest.ok && options.skipTrustedBuild !== true) {
@@ -2219,7 +2219,7 @@ export class WidgetDraftController {
     root: string,
   ): Promise<{ ok: true; manifest: TWidgetManifestV3 } | { ok: false; message: string }> {
     try {
-      const source = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const source = JSON.parse(await readFile(join(root, 'omnidraw.json'), 'utf8'));
       const parsed = ZWidgetManifestV3.safeParse(source);
       if (!parsed.success) {
         return {

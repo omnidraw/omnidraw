@@ -17,12 +17,12 @@ import {
 } from '@omnidraw/capsule/guest';
 import type {
   TUnsubscribe,
-  TVibecanvasJsonValue,
+  TOmnidrawJsonValue,
 } from './shared';
 
-/** Fixed semantic theme projection exposed by the Vibecanvas host. */
+/** Fixed semantic theme projection exposed by the Omnidraw host. */
 export type TWidgetCapsuleTheme = Readonly<{
-  format: 'vibecanvas.widget-theme.v1';
+  format: 'omnidraw.widget-theme.v1';
   appearance: 'light' | 'dark';
   tokens: Readonly<{
     background: string;
@@ -63,13 +63,13 @@ function disposableSubscription(
 }
 
 export function getWidgetProps<
-  TProps extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TProps extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(): TProps {
   return getHostProps() as TProps;
 }
 
 export function subscribeWidgetProps<
-  TProps extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TProps extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(
   listener: (props: TProps) => void,
 ): TUnsubscribe {
@@ -103,13 +103,13 @@ export function emitWidgetOutput(
 }
 
 export function getWidgetLocalState<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(key: string): TValue | undefined {
   return getLocalStoreValue(key) as TValue | undefined;
 }
 
 export function setWidgetLocalState<
-  TValue extends TVibecanvasJsonValue = TVibecanvasJsonValue,
+  TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
 >(key: string, value: TValue): void {
   setLocalStoreValue(key, value);
 }

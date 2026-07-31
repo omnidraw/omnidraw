@@ -415,7 +415,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S126](s/S126.md) - canvas: delete the CSS grid and use Cangine background rendering
 - [x]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
 - [ ]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
-- [ ]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
+- [/]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

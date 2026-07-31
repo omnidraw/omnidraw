@@ -8,7 +8,7 @@ import type {
 import type {
   TThemeColorPickerPalette,
   TThemeStrokeWidthOption,
-} from '@vibecanvas/service-theme';
+} from '@omnidraw/service-theme';
 import { For, Show, createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import {
   fnCanvasColorToCss,

@@ -4,7 +4,7 @@ import type {
   ITransientSceneOwner,
   TTransientSceneProjection,
 } from '@omnidraw/cangine';
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 import type {
   TWidgetPlacementPort,
   TWidgetPlacementStartArgs,

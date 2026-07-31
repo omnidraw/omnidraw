@@ -1,9 +1,9 @@
 # Cangine feature request: public pure serialized-command reducer
 
 - **Status:** Accepted; targeted for Cangine 0.4.0, release date uncommitted
-- **Consumer:** Vibecanvas
+- **Consumer:** Omnidraw
 - **Current Cangine version:** 0.3.0
-- **Vibecanvas follow-up:** Blocked migration task
+- **Omnidraw follow-up:** Blocked migration task
   [`S127`](../../tasks/s/S127.md)
 
 ## Summary
@@ -22,7 +22,7 @@ Cangine's controlled editor integration correctly requires the host
 application to accept the exact mutation batch into its own document
 synchronously before projecting that batch into `engine.scene.apply()`.
 
-Vibecanvas is the durable document authority. Before writing to the Cangine
+Omnidraw is the durable document authority. Before writing to the Cangine
 scene, it must:
 
 1. apply the editor's serialized commands to its optimistic document;
@@ -34,7 +34,7 @@ scene, it must:
 
 Cangine 0.3.0 exposes `TSerializedSceneCommand` and the stateful
 `ISceneStore.apply()`, but it does not expose the underlying data reducer.
-Vibecanvas therefore duplicates Cangine command semantics in:
+Omnidraw therefore duplicates Cangine command semantics in:
 
 - `packages/canvas/src/services/fn.local-document.ts`: 351 lines
 - `packages/canvas/tests/services/fn.local-document.test.ts`: 289 lines
@@ -206,7 +206,7 @@ For a non-structural update to `k` nodes, the reducer should not require an
 `O(n)` scan or clone of all `n` scene nodes.
 
 A structural command may lazily build or update the hierarchy/reference
-indexes it actually requires. This is the same reason Vibecanvas currently
+indexes it actually requires. This is the same reason Omnidraw currently
 uses an overlay map and delays its child index until a structural command
 needs it.
 
@@ -256,9 +256,9 @@ support should be a type or test failure inside Cangine.
 7. A performance test proves a single non-structural node update does not scan
    or clone an unrelated large scene.
 
-## Vibecanvas migration if accepted
+## Omnidraw migration if accepted
 
-Once this is available, Vibecanvas will:
+Once this is available, Omnidraw will:
 
 - replace `fnReduceLocalDocument()` with the Cangine reducer;
 - delete its duplicate command interpreter and most of its semantic tests;
@@ -284,7 +284,7 @@ Please reply with:
    deterministic affected IDs?
 5. Should `replace-snapshot` be supported by the same function or a companion
    pure operation?
-6. If accepted, what release should Vibecanvas wait for?
+6. If accepted, what release should Omnidraw wait for?
 7. If declined, which supported Cangine primitive should a controlled
    document authority use to avoid reimplementing `ISceneStore.apply()`
    semantics?

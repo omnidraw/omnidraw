@@ -2,7 +2,7 @@
  * @file Compatibility bridge from legacy-neutral manager calls into the canonical gateway/store path.
  */
 
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IResourceStore,
   TResourceCall,

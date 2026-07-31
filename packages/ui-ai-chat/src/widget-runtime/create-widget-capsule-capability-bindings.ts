@@ -5,8 +5,8 @@ import type {
   CapsuleKernelHostStreamSink,
   CapsuleKernelStreamCancelReason,
   CapsuleKernelStreamContext,
-} from '@vibecanvas/capsule-vibecanvas/capabilities';
-import type { TWidgetBrowserFunctionDescriptor } from '@vibecanvas/widget-contract';
+} from '@omnidraw/capsule-omnidraw/capabilities';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/widget-contract';
 import { fnResolveWidgetCapsuleCapabilities } from './fn.capsule-catalog';
 import type {
   TWidgetCapsuleMountCatalog,

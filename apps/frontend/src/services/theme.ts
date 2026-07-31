@@ -1,4 +1,4 @@
-import { ThemeService, type ThemeId, txApplyThemeToElement } from "@vibecanvas/service-theme";
+import { ThemeService, type ThemeId, txApplyThemeToElement } from "@omnidraw/service-theme";
 import { setStore, store } from "@/store";
 import { fxGetRememberedThemeId, fxSyncThemeMemory, type TThemeAppearance, type TThemeMemory } from "./theme.memory";
 

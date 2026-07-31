@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import type { TVibecanvasJsonValue } from '../src/shared';
+import type { TOmnidrawJsonValue } from '../src/shared';
 import {
   capsuleGuestMock,
   loadWidgetSdk,
@@ -14,7 +14,7 @@ const {
 } = await loadWidgetSdk();
 
 const selector = Object.freeze({
-  id: 'vibecanvas.widget.collaborative_state',
+  id: 'omnidraw.widget.collaborative_state',
   versionRange: '1.0.0',
   contractHash:
     'sha256:4f1fb60c04cf513e111bae5840faf4233e47077215a32ceadf58e9d2232b18dc' as const,
@@ -22,7 +22,7 @@ const selector = Object.freeze({
 
 type TSnapshot = Readonly<{
   version: number;
-  value: TVibecanvasJsonValue;
+  value: TOmnidrawJsonValue;
 }>;
 
 class MemoryStateStream implements TFakeCapabilityStream {
@@ -86,7 +86,7 @@ class MemoryStateCapability {
         return this.snapshot;
       }
       if (operation === 'change') {
-        const value = (input as { value: TVibecanvasJsonValue }).value;
+        const value = (input as { value: TOmnidrawJsonValue }).value;
         this.snapshot = Object.freeze({
           version: this.snapshot.version + 1,
           value,
@@ -128,7 +128,7 @@ describe('Capsule collaborative-state client', () => {
     await expect(changeCollaborativeState({ count: 1 }))
       .resolves.toEqual({ count: 1 });
 
-    const observed: TVibecanvasJsonValue[] = [];
+    const observed: TOmnidrawJsonValue[] = [];
     const unsubscribe = subscribeCollaborativeState(
       (value) => observed.push(value),
     );
@@ -207,7 +207,7 @@ describe('Capsule collaborative-state client', () => {
       stream.queue.push({ version: 2, value: { stale: true } });
       return stream;
     };
-    const observed: TVibecanvasJsonValue[] = [];
+    const observed: TOmnidrawJsonValue[] = [];
     const errors: unknown[] = [];
 
     subscribeCollaborativeState(

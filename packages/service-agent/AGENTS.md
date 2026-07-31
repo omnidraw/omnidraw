@@ -1,10 +1,10 @@
 # AGENTS.md — packages/service-agent
 
-Service layer for Vibecanvas AI/Pi agent integration.
+Service layer for Omnidraw AI/Pi agent integration.
 
 ## Package role
 
-`@vibecanvas/service-agent` owns stateful agent behavior and Pi SDK integration. It should expose small service methods for the API layer, not UI concepts.
+`@omnidraw/service-agent` owns stateful agent behavior and Pi SDK integration. It should expose small service methods for the API layer, not UI concepts.
 
 Current service entrypoint:
 - `src/AgentService.ts`
@@ -72,24 +72,24 @@ Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` f
 
 Every conversation receives exactly these 16 tools for its complete lifecycle:
 
-- Widgets/files: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
-- Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
+- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Resources: `od_resource_list`, `od_resource_inspect`, `od_resource_create`, `od_resource_update`, `od_resource_delete`, `od_resource_data_read`, `od_resource_data_write`
 - General: `web_fetch`, `bash`
 
 There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there. Production supplies one stateless host-authority capability backed by a fresh short-lived Bun PTY per call. It streams and retains bounded output, forwards timeout/cancellation, reports exact process settlement metadata, and closes the PTY after the child settles. Higher-level host or OS isolation owns confinement.
 
 Chat filesystem ownership:
 
-- `chats/<UTC-date>/<sessionId>/` owns `chat.json`, Pi `history/`, and one `workspace/` for a dated Vibecanvas chat ID.
+- `chats/<UTC-date>/<sessionId>/` owns `chat.json`, Pi `history/`, and one `workspace/` for a dated Omnidraw chat ID.
 - `chats/legacy/<sessionId>/` provides the same layout for existing safe IDs whose creation date is not encoded.
-- Canvas/API field `sessionId` is the stable Vibecanvas chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
+- Canvas/API field `sessionId` is the stable Omnidraw chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
 - `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
 - `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
 - Build workspaces remain draft-private and warm while a Preview frame for that
   draft exists. Durable, content-addressed Preview revisions retain their exact
   source/UI/server artifacts and control metadata independently of that
   reconstructable workspace.
-- `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
+- `sdk` is the host-materialized `@omnidraw/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to the shared draft root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
 

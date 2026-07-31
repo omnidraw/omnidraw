@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { IResourceGateway } from '@vibecanvas/resource-runtime';
+import type { IResourceGateway } from '@omnidraw/resource-runtime';
 import type {
   IFunctionControlStore,
   ISandboxDriver,
@@ -59,9 +59,9 @@ function guestSource(extraExport = ''): string {
 const registration = Object.freeze(${JSON.stringify(registration)});
 const echo = async () => { throw new Error('use host entry'); };
 Object.defineProperties(echo, {
-  __vibecanvasServerFunction: { value: 'vibecanvas.server-function.v1', enumerable: false },
-  __vibecanvasRegistration: { value: registration, enumerable: false },
-  __vibecanvasExecute: { value: async (_context, input) => ({ echo: input.value }), enumerable: false },
+  __omnidrawServerFunction: { value: 'omnidraw.server-function.v1', enumerable: false },
+  __omnidrawRegistration: { value: registration, enumerable: false },
+  __omnidrawExecute: { value: async (_context, input) => ({ echo: input.value }), enumerable: false },
 });
 Object.freeze(echo);
 export { echo };
@@ -74,9 +74,9 @@ function subjectGuestSource(): string {
 const registration = Object.freeze(${JSON.stringify(registration)});
 const echo = async () => { throw new Error('use host entry'); };
 Object.defineProperties(echo, {
-  __vibecanvasServerFunction: { value: 'vibecanvas.server-function.v1', enumerable: false },
-  __vibecanvasRegistration: { value: registration, enumerable: false },
-  __vibecanvasExecute: {
+  __omnidrawServerFunction: { value: 'omnidraw.server-function.v1', enumerable: false },
+  __omnidrawRegistration: { value: registration, enumerable: false },
+  __omnidrawExecute: {
     value: async (context) => ({
       echo: context.subject.widgetInstanceId,
     }),
@@ -93,9 +93,9 @@ function computedEscapeGuestSource(): string {
 const registration = Object.freeze(${JSON.stringify(registration)});
 const echo = async () => { throw new Error('use host entry'); };
 Object.defineProperties(echo, {
-  __vibecanvasServerFunction: { value: 'vibecanvas.server-function.v1', enumerable: false },
-  __vibecanvasRegistration: { value: registration, enumerable: false },
-  __vibecanvasExecute: {
+  __omnidrawServerFunction: { value: 'omnidraw.server-function.v1', enumerable: false },
+  __omnidrawRegistration: { value: registration, enumerable: false },
+  __omnidrawExecute: {
     value: async () => {
       try {
         const AsyncConstructor = (async () => {}).constructor;
@@ -119,9 +119,9 @@ function ambientAuthorityGuestSource(): string {
 const registration = Object.freeze(${JSON.stringify(registration)});
 const echo = async () => { throw new Error('use host entry'); };
 Object.defineProperties(echo, {
-  __vibecanvasServerFunction: { value: 'vibecanvas.server-function.v1', enumerable: false },
-  __vibecanvasRegistration: { value: registration, enumerable: false },
-  __vibecanvasExecute: {
+  __omnidrawServerFunction: { value: 'omnidraw.server-function.v1', enumerable: false },
+  __omnidrawRegistration: { value: registration, enumerable: false },
+  __omnidrawExecute: {
     value: async () => {
       const failureName = async (run) => {
         try {
@@ -137,7 +137,7 @@ Object.defineProperties(echo, {
         await failureName(() => globalThis[['B', 'un'].join('')].spawn(['sh'])),
         await failureName(() => eval('1 + 1')),
         await failureName(() => Function('return this')()),
-        typeof __vibecanvasHostBridge,
+        typeof __omnidrawHostBridge,
         typeof fetch,
       ].join('|') };
     },
@@ -161,7 +161,7 @@ function artifact(sourceText = guestSource()) {
   const source = Buffer.from(sourceText);
   const sourceDigest = createHash('sha256').update(source).digest('hex');
   const bytes = Buffer.from(JSON.stringify({
-    format: 'vibecanvas.server-artifact.v1',
+    format: 'omnidraw.server-artifact.v1',
     kind: 'server',
     entry: 'server.ts',
     sourceDigestSha256: 'a'.repeat(64),
@@ -437,7 +437,7 @@ async function runDriverFault(
     memoryLimitBytes?: number;
   }> = {},
 ): Promise<TSandboxExecutionResult> {
-  const tempRoot = await mkdtemp(join(tmpdir(), `vibecanvas-driver-${mode}-`));
+  const tempRoot = await mkdtemp(join(tmpdir(), `omnidraw-driver-${mode}-`));
   roots.push(tempRoot);
   const built = artifact();
   const baseDefinition = definition(built.buildArtifact.digestSha256);
@@ -681,11 +681,11 @@ describe('local short-lived function runtime', () => {
       text: Buffer.from(built.buildArtifact.bytes).toString('utf8'),
       expectedRuntimeAbi: 'bun-test-v1',
     });
-    expect(envelope.format).toBe('vibecanvas.server-artifact.v1');
+    expect(envelope.format).toBe('omnidraw.server-artifact.v1');
 
     const unsupported = {
       ...JSON.parse(Buffer.from(built.buildArtifact.bytes).toString('utf8')),
-      format: 'vibecanvas.server-artifact.v0',
+      format: 'omnidraw.server-artifact.v0',
     };
     expect(() => fnParseServerArtifactEnvelope({
       text: JSON.stringify(unsupported),
@@ -883,7 +883,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('extracts only registered named exports inside a bounded child', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-extractor-test-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-extractor-test-'));
     roots.push(tempRoot);
     const valid = artifact();
     const extractor = new BunChildFunctionDescriptorExtractor({ tempRoot, timeoutMs: 2_000 });
@@ -911,7 +911,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('executes one exact revision and tears down to zero PID/RSS/cwd', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-test-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-test-'));
     roots.push(tempRoot);
     const built = artifact();
     const definitionValue = definition(built.buildArtifact.digestSha256);
@@ -944,7 +944,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('exposes the immutable widget instance subject inside the guest SDK context', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-widget-subject-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-widget-subject-'));
     roots.push(tempRoot);
     const built = artifact(subjectGuestSource());
     const definitionValue = {
@@ -978,7 +978,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('guest VM blocks a computed constructor escape to ambient Bun authority', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-vm-escape-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-vm-escape-'));
     roots.push(tempRoot);
     const built = artifact(computedEscapeGuestSource());
     const definitionValue = definition(built.buildArtifact.digestSha256);
@@ -1008,7 +1008,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('guest VM removes direct ambient authority and disables string code generation', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-vm-authority-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-vm-authority-'));
     roots.push(tempRoot);
     const built = artifact(ambientAuthorityGuestSource());
     const definitionValue = definition(built.buildArtifact.digestSha256);
@@ -1043,7 +1043,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('memory watchdog rejects top-level allocation during module evaluation and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-load-memory-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-load-memory-'));
     roots.push(tempRoot);
     let evaluating = false;
     let killCalls = 0;
@@ -1080,7 +1080,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('publishes host-accounted metrics while guest module evaluation is pending', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-startup-metrics-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-startup-metrics-'));
     roots.push(tempRoot);
     const built = artifact();
     const definitionValue = definition(built.buildArtifact.digestSha256);
@@ -1146,7 +1146,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('descriptor extraction bounds top-level allocation and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-extractor-load-memory-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-extractor-load-memory-'));
     roots.push(tempRoot);
     let evaluating = false;
     let killCalls = 0;
@@ -1180,7 +1180,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('guest-entry marker failure tears down without sending module bytes', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-entry-marker-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-entry-marker-'));
     roots.push(tempRoot);
     let loadCalls = 0;
     let killCalls = 0;
@@ -1218,7 +1218,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('a legal 1ms startup deadline is bounded and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-deadline-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-deadline-'));
     roots.push(tempRoot);
     let nowMs = 100;
     let guestEntryCalls = 0;
@@ -1268,7 +1268,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('awaits verified removal of a cage created after the startup timeout', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-late-cage-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-late-cage-'));
     roots.push(tempRoot);
     let releaseCageCreation!: () => void;
     const cageCreationGate = new Promise<void>((resolve) => { releaseCageCreation = resolve; });
@@ -1328,7 +1328,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('loaded IPC at the exact startup boundary loses and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-loaded-deadline-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-loaded-deadline-'));
     roots.push(tempRoot);
     let nowMs = 100;
     let guestEntryCalls = 0;
@@ -1376,7 +1376,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('a guest marker resolving at the exact boundary sends no module bytes', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-marker-deadline-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-marker-deadline-'));
     roots.push(tempRoot);
     let nowMs = 100;
     let loadCalls = 0;
@@ -1416,7 +1416,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('exact descriptor inspection deadline wins over synchronous success and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-extractor-deadline-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-extractor-deadline-'));
     roots.push(tempRoot);
     let nowMs = 100;
     let inspectCalls = 0;
@@ -1456,7 +1456,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('destroy escalates to the detached process group when a descendant survives TERM', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-descendant-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-descendant-'));
     roots.push(tempRoot);
     const signals: NodeJS.Signals[] = [];
     let groupAlive = true;
@@ -1492,7 +1492,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('surviving process groups remain visible after destroy rejects', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-teardown-failure-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-teardown-failure-'));
     roots.push(tempRoot);
     const processGroups: TBunChildProcessGroupController = {
       signal: () => undefined,
@@ -1525,7 +1525,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('ignores spoofed child bytes, metrics, and failure ownership', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-spoof-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-spoof-'));
     roots.push(tempRoot);
     let spawnCount = 0;
     const spawn = ((_command: unknown, options: { ipc(message: unknown): void }) => {
@@ -1653,7 +1653,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('drops a late resource result after destroy without an unhandled send rejection', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-late-resource-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-late-resource-'));
     roots.push(tempRoot);
     const built = artifact();
     const definitionValue = definition(built.buildArtifact.digestSha256);
@@ -1725,7 +1725,7 @@ describe('local short-lived function runtime', () => {
   });
 
   test('fault matrix: worker crash before start is platform-owned and leaves zero guests', async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-crash-start-'));
+    const tempRoot = await mkdtemp(join(tmpdir(), 'omnidraw-driver-crash-start-'));
     roots.push(tempRoot);
     const built = artifact();
     const definitionValue = definition(built.buildArtifact.digestSha256);

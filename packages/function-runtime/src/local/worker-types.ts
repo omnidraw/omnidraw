@@ -1,7 +1,7 @@
 /** @file Private serializable protocol between the Bun host driver and one child. */
 
-import type { TResourceCall, TResourceCallResult } from '@vibecanvas/resource-runtime';
-import type { TWidgetServerFunctionDescriptor } from '@vibecanvas/widget-contract';
+import type { TResourceCall, TResourceCallResult } from '@omnidraw/resource-runtime';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
 import type { TFunctionFailure, TFunctionInvocationSubject, TUsageMetrics } from '../types';
 
 export type TFunctionCanonicalRegistration = Omit<

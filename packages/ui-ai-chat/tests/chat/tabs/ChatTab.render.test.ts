@@ -224,7 +224,7 @@ describe("ChatTab rendered message history", () => {
   it("does not render hidden custom context messages", () => {
     const root = renderChatTab(undefined, [{
       role: "custom",
-      customType: "vibecanvas.widgetMentions",
+      customType: "omnidraw.widgetMentions",
       display: false,
       content: "hidden widget identity",
     }])
@@ -328,7 +328,7 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab(undefined, [{
       role: "toolResult",
       toolCallId: "call-widget-create",
-      toolName: "vc_widget_create",
+      toolName: "od_widget_create",
       content: [{ type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" }],
       details: {
         draftId,
@@ -336,7 +336,7 @@ describe("ChatTab rendered message history", () => {
         mountPath: "widgets/Shared Timer",
         source: "draft",
         draft: true,
-        files: ["vibecanvas.json", "widget/main.ts"],
+        files: ["omnidraw.json", "widget/main.ts"],
       },
     }], { onOpenWidgetPreview })
     const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
@@ -384,43 +384,43 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab(undefined, [
       {
         role: "toolResult",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         isError: true,
         content: [{ type: "text", text: "failed" }],
         details: trustedDetails,
       },
       {
         role: "toolResult",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: "created" }],
         details: { ...trustedDetails, name: "../Shared Timer" },
       },
       {
         role: "toolResult",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: "created" }],
         details: { ...trustedDetails, draftId: "draft-preview-v1-forged" },
       },
       {
         role: "toolResult",
-        toolName: "vc_widget_create_preview",
+        toolName: "od_widget_create_preview",
         content: [{ type: "text", text: "created" }],
         details: trustedDetails,
       },
       {
         role: "toolResult",
-        toolName: "vc_resource_create",
+        toolName: "od_resource_create",
         content: [{ type: "text", text: "created" }],
         details: trustedDetails,
       },
       {
         role: "toolResult",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: JSON.stringify(trustedDetails) }],
       },
       {
         role: "assistant",
-        toolName: "vc_widget_create",
+        toolName: "od_widget_create",
         content: [{ type: "text", text: "Created Shared Timer" }],
         details: trustedDetails,
       },
@@ -434,7 +434,7 @@ describe("ChatTab rendered message history", () => {
     const onResolveApproval = vi.fn(async () => {})
     const root = renderChatTab(undefined, [{
       role: "assistant",
-      content: [{ type: "toolCall", id: "tool-call-1", name: "vc_resource_data_write", arguments: {} }],
+      content: [{ type: "toolCall", id: "tool-call-1", name: "od_resource_data_write", arguments: {} }],
     }], {
       approvals: [{
         id: "approval-1",
@@ -469,7 +469,7 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab(undefined, [{
       role: "toolResult",
       toolCallId: "call-create",
-      toolName: "vc_resource_create",
+      toolName: "od_resource_create",
       content: [{ type: "text", text: "Created resource 'Cache'." }],
       details: { resource: { id: "kv-1", kind: "kv", name: "Cache" } },
       isError: false,

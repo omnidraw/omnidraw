@@ -58,7 +58,7 @@ for (const suite of suites) {
     cwd: suite.cwd ?? REPO_ROOT,
     env: {
       ...process.env,
-      VIBECANVAS_SILENT_DB_MIGRATIONS: "1",
+      OMNIDRAW_SILENT_DB_MIGRATIONS: "1",
     },
     stdin: "inherit",
     stdout: "inherit",

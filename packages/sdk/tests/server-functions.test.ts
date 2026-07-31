@@ -12,7 +12,7 @@ import {
 
 const { createServerFunctionProxy } = await loadWidgetSdk();
 const selector = Object.freeze({
-  id: 'vibecanvas.widget.functions',
+  id: 'omnidraw.widget.functions',
   versionRange: '^1.0.0',
   contractHash: `sha256:${'a'.repeat(64)}` as const,
 });
@@ -82,7 +82,7 @@ afterEach(() => {
   capsuleGuestMock.reset();
 });
 
-describe('@vibecanvas/sdk/server', () => {
+describe('@omnidraw/sdk/server', () => {
   test('emits canonical descriptors and validates input and output at execution', async () => {
     const count = defineServerFunction({
       effect: 'fn',
@@ -104,7 +104,7 @@ describe('@vibecanvas/sdk/server', () => {
       limits: { timeoutMs: 2_000, memoryTier: 'small' },
       retry: { mode: 'none', maxAttempts: 1 },
     }]);
-    await expect(count.__vibecanvasExecute(context, { text: 'hello' }))
+    await expect(count.__omnidrawExecute(context, { text: 'hello' }))
       .resolves.toEqual({ length: 5 });
     const instanceIdentity = defineServerFunction({
       effect: 'fn',
@@ -113,16 +113,16 @@ describe('@vibecanvas/sdk/server', () => {
     }, async (serverContext) => ({
       length: serverContext.subject.widgetInstanceId.length,
     }));
-    await expect(instanceIdentity.__vibecanvasExecute(context, { text: 'hello' }))
+    await expect(instanceIdentity.__omnidrawExecute(context, { text: 'hello' }))
       .resolves.toEqual({ length: 'instance-a'.length });
-    await expect(count.__vibecanvasExecute(context, { text: '' })).rejects.toThrow('text');
+    await expect(count.__omnidrawExecute(context, { text: '' })).rejects.toThrow('text');
 
     const invalidOutput = defineServerFunction({
       effect: 'fn',
       input: inputSchema,
       output: outputSchema,
     }, () => ({ invalid: true }) as never);
-    await expect(invalidOutput.__vibecanvasExecute(context, { text: 'hello' }))
+    await expect(invalidOutput.__omnidrawExecute(context, { text: 'hello' }))
       .rejects.toThrow('length');
     await expect(count({ text: 'hello' })).rejects.toThrow('generated widget client proxy');
   });

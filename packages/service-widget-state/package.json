@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/service-widget-state",
+  "name": "@omnidraw/service-widget-state",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*"
+    "@omnidraw/runtime": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*"
   }
 }

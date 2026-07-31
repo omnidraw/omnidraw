@@ -3,7 +3,7 @@ import type {
 } from '@omnidraw/cangine';
 import type {
   CapsuleViewport,
-} from '@vibecanvas/capsule-vibecanvas/host';
+} from '@omnidraw/capsule-omnidraw/host';
 
 export type TPortal = Readonly<{
   readPortalContentCssSize(

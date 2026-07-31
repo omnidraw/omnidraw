@@ -1,10 +1,10 @@
 import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
-import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
-import type { TAgentApiCapability } from '@vibecanvas/api/agent/types';
-import type { TApiContext } from '@vibecanvas/api/context';
-import type { IPlugin } from '@vibecanvas/runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IRuntimeServices } from '@omnidraw/cli/setup-services';
+import type { TAgentApiCapability } from '@omnidraw/api/agent/types';
+import type { TApiContext } from '@omnidraw/api/context';
+import type { IPlugin } from '@omnidraw/runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import { createLazyTenantServiceCapability } from '../../services/LazyTenantServiceCapability';

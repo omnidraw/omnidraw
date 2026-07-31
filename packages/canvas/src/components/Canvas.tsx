@@ -3,8 +3,8 @@ import type {
   TSelectionStyleChange,
   TSelectionStyleState,
 } from '@omnidraw/cangine/editor';
-import type { TCanvas } from '@vibecanvas/service-db/model';
-import type { ThemeService } from '@vibecanvas/service-theme';
+import type { TCanvas } from '@omnidraw/service-db/model';
+import type { ThemeService } from '@omnidraw/service-theme';
 import {
   Match,
   Show,
@@ -109,7 +109,7 @@ function isNativeSpaceControl(target: EventTarget | null): boolean {
 function isWidgetContentTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element
-    && target.closest('[data-vibecanvas-portal-id]') !== null
+    && target.closest('[data-omnidraw-portal-id]') !== null
   );
 }
 
@@ -120,13 +120,13 @@ function semanticTraceTarget(
     return { kind: target === null ? 'none' : 'event-target', role: null };
   }
   const semantic = target.closest<HTMLElement>(
-    '[data-vibecanvas-portal-id], [data-vibecanvas-widget-id], [data-canvas-node-id], [role]',
+    '[data-omnidraw-portal-id], [data-omnidraw-widget-id], [data-canvas-node-id], [role]',
   ) ?? target;
   return {
     kind: semantic.tagName.toLowerCase(),
     role: semantic.getAttribute('role'),
-    portalId: semantic.getAttribute('data-vibecanvas-portal-id'),
-    widgetId: semantic.getAttribute('data-vibecanvas-widget-id'),
+    portalId: semantic.getAttribute('data-omnidraw-portal-id'),
+    widgetId: semantic.getAttribute('data-omnidraw-widget-id'),
     nodeId: semantic.getAttribute('data-canvas-node-id'),
   };
 }

@@ -1,7 +1,7 @@
 import type {
   TCanvasCommand,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { fnCanvasCliError } from './fn.canvas-subcommand-inputs';
 import type {
   ICanvasCliApi,
@@ -50,7 +50,7 @@ export async function resolveCanvasId(
       command,
       'CANVAS_NOT_FOUND',
       `No canvas name contains '${selector.canvasNameQuery}'.`,
-      'Run vibecanvas canvas list to inspect accessible canvases.',
+      'Run omnidraw canvas list to inspect accessible canvases.',
     );
   }
   if (matches.length > 1) {

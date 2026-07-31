@@ -7,7 +7,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import type { IResourceGateway } from '@vibecanvas/resource-runtime';
+import type { IResourceGateway } from '@omnidraw/resource-runtime';
 import type { ISandboxDriver } from '../interface';
 import type {
   TFunctionAttempt,

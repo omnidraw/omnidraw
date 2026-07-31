@@ -18,7 +18,7 @@ flowchart LR
   T --> A
 ```
 
-- `@vibecanvas/widget-contract` owns strict manifest schema v2. A UI entry is
+- `@omnidraw/widget-contract` owns strict manifest schema v2. A UI entry is
   required, a server entry is optional, resources are logical requirements,
   and actor/v1 fields are rejected rather than retained as a union branch.
 - The browser-safe package root exports contracts, schemas, and pure

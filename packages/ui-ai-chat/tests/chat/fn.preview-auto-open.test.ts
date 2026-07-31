@@ -13,7 +13,7 @@ function widgetCreateResult(id: string, name: string) {
   return {
     role: 'toolResult',
     toolCallId: `create-${id}`,
-    toolName: 'vc_widget_create',
+    toolName: 'od_widget_create',
     content: [{ type: 'text', text: `Created ${name}.` }],
     details: {
       draftId: id,

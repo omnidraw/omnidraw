@@ -8,7 +8,7 @@ const temporaryRoots: string[] = [];
 const databases: Database[] = [];
 
 async function openTemporaryDatabase() {
-  const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-turso-feature-probe-"));
+  const root = await mkdtemp(path.join(tmpdir(), "omnidraw-turso-feature-probe-"));
   const db = await connect(path.join(root, "probe.db"), {
     experimental: ["custom_types", "generated_columns"] as never,
   });

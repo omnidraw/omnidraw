@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
+import type { TNotificationEvent } from '@omnidraw/api/notification/contract';
 import { txCheckWidgetPrerequisites } from '../src/widget-prerequisites/tx.check-widget-prerequisites';
 import type { TExecFile } from '../src/widget-prerequisites/interface';
 

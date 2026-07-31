@@ -44,7 +44,7 @@ describe('fxWalkFiles', () => {
         directory('dist'),
         directory('.cache'),
         directory('ui'),
-        file('vibecanvas.json'),
+        file('omnidraw.json'),
         file('package.json'),
       ],
       '/widget/node_modules': dependencyFiles,
@@ -61,11 +61,11 @@ describe('fxWalkFiles', () => {
     };
 
     await expect(fxWalkFiles(portal(tree), { root: '/widget' })).resolves.toEqual([
+      'omnidraw.json',
       'package.json',
       'ui/build/authored-entry.ts',
       'ui/main.ts',
       'ui/styles.css',
-      'vibecanvas.json',
     ]);
   });
 });

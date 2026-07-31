@@ -1,5 +1,5 @@
-import type { IExactFunctionArtifactReader } from '@vibecanvas/function-runtime/local';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IExactFunctionArtifactReader } from '@omnidraw/function-runtime/local';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TWidgetServerArtifactCapability } from './WidgetServicePool';
 
 type TWidgetFunctionArtifactReaderConfig = Readonly<{

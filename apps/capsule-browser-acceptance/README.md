@@ -2,7 +2,7 @@
 
 This isolated app builds fresh source-authoritative widget artifacts, signs
 their exact Capsule bytes with ephemeral Ed25519 preview and release keys, and
-exercises the production Vibecanvas browser coordinator and mount port.
+exercises the production Omnidraw browser coordinator and mount port.
 
 ```sh
 bun run --cwd packages/sdk build
@@ -18,7 +18,7 @@ process and are never written to browser output. `generated/`, `.tmp/`, and
 Vite output rather than relying on development-module behavior.
 
 The page publishes its machine-readable result at
-`window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__` and on the
+`window.__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE__` and on the
 `data-capsule-acceptance` document attribute. It covers:
 
 - plain DOM with live SDK props, theme, and bounded notification output;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { TFunctionInvocationEnvelope } from '@vibecanvas/function-runtime'
+import type { TFunctionInvocationEnvelope } from '@omnidraw/function-runtime'
 import { MANAGED_TENANT, createManagedCompositionFixture } from './src/managed-composition'
 
 describe('external private-style managed composition', () => {

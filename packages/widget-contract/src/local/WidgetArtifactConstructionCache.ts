@@ -3,7 +3,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { fnWidgetPreviewConstructionKey } from '../core/fn.preview-build-key';
 import type {
   IWidgetArtifactConstructionBuilder,

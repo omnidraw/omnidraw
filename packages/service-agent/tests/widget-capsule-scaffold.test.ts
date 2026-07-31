@@ -36,7 +36,7 @@ describe('Capsule widget authoring scaffold', () => {
       },
     });
     expect(changed).toEqual([
-      'vibecanvas.json',
+      'omnidraw.json',
       'package.json',
       'vite.config.mjs',
       'tsconfig.json',
@@ -46,7 +46,7 @@ describe('Capsule widget authoring scaffold', () => {
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
       dependencies: {
         '@omnidraw/capsule': '0.10.1',
-        '@vibecanvas/sdk': '0.1.0',
+        '@omnidraw/sdk': '0.1.0',
         zod: '4.4.3',
       },
       devDependencies: {
@@ -130,7 +130,7 @@ describe('Capsule widget authoring scaffold', () => {
 
     expect(manifest.server).toEqual({
       entry: 'server/main.server.ts',
-      runtimeAbi: 'vibecanvas-function-v1',
+      runtimeAbi: 'omnidraw-function-v1',
     });
     expect(changed).toContain('server/main.server.ts');
     expect(files.get('/draft/server/main.server.ts')).toContain(

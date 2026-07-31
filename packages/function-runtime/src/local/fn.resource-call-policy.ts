@@ -2,7 +2,7 @@
  * @file Pure per-function resource ceiling enforcement.
  */
 
-import type { TResourceCall, TResourceEffect } from '@vibecanvas/resource-runtime';
+import type { TResourceCall, TResourceEffect } from '@omnidraw/resource-runtime';
 
 export type TFunctionResourceAccess = Readonly<{
   slot: string;

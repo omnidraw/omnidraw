@@ -80,7 +80,7 @@ afterEach(async () => {
 
 describe('local DbResource WAL recovery', () => {
   test('recovers committed frames and discards a killed transaction after restart', async () => {
-    const dataRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-wal-'));
+    const dataRoot = await mkdtemp(join(tmpdir(), 'omnidraw-resource-wal-'));
     temporaryRoots.push(dataRoot);
     const fixturePath = join(import.meta.dir, 'fixtures', 'db-resource-wal-interrupted-writer.ts');
     const bunExecutable = Bun.which('bun') ?? process.execPath;

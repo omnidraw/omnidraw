@@ -1,6 +1,6 @@
-import { createServiceRegistry } from '@vibecanvas/runtime';
+import { createServiceRegistry } from '@omnidraw/runtime';
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
+import type { IFunctionInvocationApiCapability } from '@omnidraw/api/function';
 import {
   BunChildFunctionDescriptorExtractor,
   BunChildSandboxDriver,
@@ -8,44 +8,44 @@ import {
   JsonSchemaFunctionValidator,
   LocalFunctionDispatcher,
   ResourceWriteCapabilityAuthority,
-} from '@vibecanvas/function-runtime/local';
+} from '@omnidraw/function-runtime/local';
 import {
-  type TVibecanvasCapsuleBuild,
-  type TVibecanvasDistributionBuild,
-} from '@vibecanvas/capsule-vibecanvas/builder';
-import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
+  type TOmnidrawCapsuleBuild,
+  type TOmnidrawDistributionBuild,
+} from '@omnidraw/capsule-omnidraw/builder';
+import { buildCapsuleGuest } from '@omnidraw/capsule-omnidraw/build';
 import {
   AgentService,
   PreviewBuildAdmission,
-} from '@vibecanvas/service-agent';
+} from '@omnidraw/service-agent';
 import {
   CanvasService,
   CanvasServiceError,
   type ICanvasService,
-} from '@vibecanvas/service-canvas';
+} from '@omnidraw/service-canvas';
 import {
   planImplicitResourceSelections,
   planSelectedResourceBindings,
-} from '@vibecanvas/service-agent/tools/resource-bindings';
-import { CanvasItemStoreTurso } from '@vibecanvas/service-db/CanvasItemStoreTurso';
-import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { FunctionControlStoreTurso } from '@vibecanvas/service-db/FunctionControlStoreTurso';
-import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
-import { WidgetInstanceStateStoreTurso } from '@vibecanvas/service-db/WidgetInstanceStateStoreTurso';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+} from '@omnidraw/service-agent/tools/resource-bindings';
+import { CanvasItemStoreTurso } from '@omnidraw/service-db/CanvasItemStoreTurso';
+import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import { FunctionControlStoreTurso } from '@omnidraw/service-db/FunctionControlStoreTurso';
+import { ResourceControlStoreTurso } from '@omnidraw/service-db/ResourceControlStoreTurso';
+import { WidgetInstanceStateStoreTurso } from '@omnidraw/service-db/WidgetInstanceStateStoreTurso';
+import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
+import type { IEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import {
   WidgetStateService,
   type IWidgetStateService,
-} from '@vibecanvas/service-widget-state';
+} from '@omnidraw/service-widget-state';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'path';
-import { fnScopedKey } from '@vibecanvas/tenant-core';
+import { fnScopedKey } from '@omnidraw/tenant-core';
 import type {
   IHumanResourceSecretService,
   TResourceApiCapability,
-} from '@vibecanvas/api/resource/types';
+} from '@omnidraw/api/resource/types';
 import type { ICliConfig } from './config';
 import { fnLocalRegistryNpmUserConfig } from './fn.local-registry-npm-userconfig';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
@@ -99,19 +99,19 @@ const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
   requestId: 'function-runtime-placement-bootstrap',
 });
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@vibecanvas/sdk/server',
+  '@omnidraw/sdk/server',
   'zod',
 ]);
 
 function widgetPreviewBuildGlobalConcurrency(): number {
-  const configured = process.env.VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY;
+  const configured = process.env.OMNIDRAW_WIDGET_PREVIEW_BUILD_CONCURRENCY;
   if (configured === undefined) {
     return DEFAULT_WIDGET_PREVIEW_BUILD_GLOBAL_CONCURRENCY;
   }
   const value = Number(configured);
   if (!Number.isSafeInteger(value) || value < 1 || value > 64) {
     throw new Error(
-      'VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY must be an integer from 1 to 64.',
+      'OMNIDRAW_WIDGET_PREVIEW_BUILD_CONCURRENCY must be an integer from 1 to 64.',
     );
   }
   return value;
@@ -146,13 +146,13 @@ export interface IRuntimeServices {
   agent: TenantServicePool<AgentService>;
 }
 
-declare module '@vibecanvas/runtime' {
+declare module '@omnidraw/runtime' {
   interface IServiceMap extends IRuntimeServices { }
 }
 
 type TSetupServicesOptions = Readonly<{
-  capsuleBuild?: TVibecanvasCapsuleBuild;
-  distributionBuild?: TVibecanvasDistributionBuild;
+  capsuleBuild?: TOmnidrawCapsuleBuild;
+  distributionBuild?: TOmnidrawDistributionBuild;
   distributionBuildEnvironmentIdentity?: string;
   createFunctionSandboxDriver?: (args: Readonly<{
     compiledExecutable: boolean;
@@ -169,7 +169,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   const eventPublisher = new EventPublisherService();
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
     homeDirectory: homedir(),
-    stateDirectory: process.env.VIBECANVAS_REGISTRY_STATE_DIR,
+    stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
     join,
   });
   services.provide('eventPublisher', 10, eventPublisher);
@@ -186,7 +186,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     const injected = options.distributionBuild;
     if (injected !== undefined) {
       return {
-        create: (_scratchDirectory: string): TVibecanvasDistributionBuild => injected,
+        create: (_scratchDirectory: string): TOmnidrawDistributionBuild => injected,
         environmentIdentity: options.distributionBuildEnvironmentIdentity
           ?? fnWidgetNpmBuildEnvironmentIdentity({
             runnerIdentity: 'injected-v1',
@@ -210,7 +210,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     });
     const toolchainPinnedByRunner = runner.kind === 'docker';
     return {
-      create: (scratchDirectory: string): TVibecanvasDistributionBuild => (
+      create: (scratchDirectory: string): TOmnidrawDistributionBuild => (
         createWidgetNpmDistributionBuild({
           scratchDirectory,
           npmUserConfigPath,
@@ -234,7 +234,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     databasePath: config.home.mainDbPath,
     dataDir: config.home.homeDir,
     cacheDir: config.home.cacheRoot,
-    silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
+    silentMigrations: process.env.OMNIDRAW_SILENT_DB_MIGRATIONS === '1',
   });
   const widgetBuilderIdentity = fnWidgetCapsuleBuilderIdentity({
     npmVersion: process.versions.npm ?? 'external',

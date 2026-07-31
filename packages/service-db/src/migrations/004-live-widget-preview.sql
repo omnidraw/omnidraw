@@ -51,17 +51,17 @@ CREATE TABLE widget_definition_revisions (
   contract_digest_sha256 sha256_hex NOT NULL,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   function_descriptors_json JSON NOT NULL
-    DEFAULT '{"format":"vibecanvas.server-functions.v1","functions":[]}'
+    DEFAULT '{"format":"omnidraw.server-functions.v1","functions":[]}'
     CHECK (
       json_type(function_descriptors_json) = 'object'
-      AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
+      AND json_extract(function_descriptors_json, '$.format') = 'omnidraw.server-functions.v1'
       AND json_type(function_descriptors_json, '$.functions') = 'array'
     ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL
     DEFAULT '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
   ui_runtime_json JSON NOT NULL CHECK (
     json_type(ui_runtime_json) = 'object'
-    AND json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v1'
+    AND json_extract(ui_runtime_json, '$.format') = 'omnidraw.capsule-runtime.v1'
     AND json_type(ui_runtime_json, '$.target') = 'object'
     AND json_type(ui_runtime_json, '$.budgets') = 'object'
     AND json_type(ui_runtime_json, '$.capabilityRequests') = 'array'
@@ -568,7 +568,7 @@ CREATE TABLE agent_preview_revisions (
   manifest_json JSON NOT NULL CHECK (json_type(manifest_json) = 'object'),
   function_descriptors_json JSON NOT NULL CHECK (
     json_type(function_descriptors_json) = 'object'
-    AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
+    AND json_extract(function_descriptors_json, '$.format') = 'omnidraw.server-functions.v1'
     AND json_type(function_descriptors_json, '$.functions') = 'array'
   ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL,
@@ -594,7 +594,7 @@ CREATE TABLE agent_preview_revisions (
   ui_artifact_digest_sha256 sha256_hex NOT NULL,
   ui_runtime_json JSON NOT NULL CHECK (
     json_type(ui_runtime_json) = 'object'
-    AND json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v1'
+    AND json_extract(ui_runtime_json, '$.format') = 'omnidraw.capsule-runtime.v1'
   ),
   capsule_artifact_hash TEXT NOT NULL CHECK (
     length(capsule_artifact_hash) = 71

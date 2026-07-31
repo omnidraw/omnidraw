@@ -2,7 +2,7 @@ import type {
   TWidgetArtifactCodecPort,
   TVerifiedWidgetUiArtifact,
 } from './interface';
-import type { TWidgetCapsuleRuntimeDescriptor } from '@vibecanvas/widget-contract';
+import type { TWidgetCapsuleRuntimeDescriptor } from '@omnidraw/widget-contract';
 
 export type TPortal = Readonly<{
   codec: TWidgetArtifactCodecPort;

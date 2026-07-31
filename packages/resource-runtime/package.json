@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/resource-runtime",
+  "name": "@omnidraw/resource-runtime",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/tenant-core": "0.1.0"
+    "@omnidraw/tenant-core": "0.1.0"
   },
   "peerDependencies": {
     "@tursodatabase/database": "0.6.1"

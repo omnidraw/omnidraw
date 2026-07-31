@@ -6,7 +6,7 @@ import type {
   TCanvasJsonPath,
   TCanvasOperation,
   TCanvasPrecondition,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 
 type TSceneNode = TCanvasItemSnapshot['item'];
 type TJsonValue = Extract<TCanvasItemPatch, { type: 'set' }>['value'];

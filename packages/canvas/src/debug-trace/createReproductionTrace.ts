@@ -357,7 +357,7 @@ export function createReproductionTrace(
       status = 'recording';
       const environment = options.environment();
       header = Object.freeze({
-        kind: 'vibecanvas-developer-trace',
+        kind: 'omnidraw-developer-trace',
         schemaVersion: REPRODUCTION_TRACE_SCHEMA_VERSION,
         mode: captureMode,
         startedAt: options.wallClockNow().toISOString(),
@@ -446,7 +446,7 @@ export function createReproductionTrace(
         revokeObjectUrl: options.revokeObjectUrl,
         clickDownload: options.download,
       }, {
-        filename: `vibecanvas-trace-${header.environment.canvasId}-${date}.jsonl`,
+        filename: `omnidraw-trace-${header.environment.canvasId}-${date}.jsonl`,
         text: artifact.text,
       });
       return true;

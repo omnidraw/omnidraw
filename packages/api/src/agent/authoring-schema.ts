@@ -4,14 +4,14 @@ import type {
   TWidgetPreviewResult,
   TWidgetPreviewRuntimeDiagnosticRecord,
   TWidgetPublishResult,
-} from '@vibecanvas/service-agent/widget-drafts/types';
+} from '@omnidraw/service-agent/widget-drafts/types';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetDiagnostic,
   ZWidgetManifestV3,
   type TWidgetPreviewMountLeaseDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { z } from 'zod';
 
 const WIDGET_ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;

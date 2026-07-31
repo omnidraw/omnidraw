@@ -27,23 +27,23 @@ describe('CLI test harness', () => {
     expect(parseJsonStdout<{ ok: boolean; value: number }>(result)).toEqual({ ok: true, value: 7 });
   });
 
-  test('runs the real vibecanvas CLI help entry point end to end', async () => {
+  test('runs the real omnidraw CLI help entry point end to end', async () => {
     const context = await createContext();
-    const result = await context.runVibecanvasCli(['--help']);
+    const result = await context.runOmnidrawCli(['--help']);
 
     expectExitCode(result, 0);
     expectNoStderr(result);
     expect(result.stdout).toContain('Usage:');
     expect(result.stdout).toContain('Commands:');
-    expect(result.stdout).toContain('serve     Start the vibecanvas runtime');
+    expect(result.stdout).toContain('serve     Start the omnidraw runtime');
     expect(result.stdout).toContain('canvas    Query and mutate a running canvas server');
     expect(result.stdout).toContain('upgrade   Check for and install updates');
     expect(result.stdout).toContain('uninstall Remove the installed binary');
     expect(result.stdout).toContain('--data-dir <path>');
-    expect(result.stdout).toContain('VIBECANVAS_HOME');
+    expect(result.stdout).toContain('OMNIDRAW_HOME');
     expect(result.stdout).not.toContain('--db');
     expect(result.stdout).not.toContain('Canvas subcommands:');
-    expect(result.stdout).toContain('vibecanvas canvas list --json');
+    expect(result.stdout).toContain('omnidraw canvas list --json');
     expect(existsSync(context.homeDir)).toBe(false);
   }, 15_000);
 
@@ -51,7 +51,7 @@ describe('CLI test harness', () => {
     const context = await createContext();
     const result = await context.runProcess({
       cmd: [process.execPath, 'run', 'apps/cli/src/main.ts', '--help'],
-      env: { ...process.env, PATH: '', VIBECANVAS_HOME: context.homeDir },
+      env: { ...process.env, PATH: '', OMNIDRAW_HOME: context.homeDir },
     });
 
     expectExitCode(result, 0);
@@ -63,7 +63,7 @@ describe('CLI test harness', () => {
   test('suggests nearest remaining commands for unknown root commands', async () => {
     const context = await createContext();
 
-    const rootUnknown = await context.runVibecanvasCli(['upgarde', '--json']);
+    const rootUnknown = await context.runOmnidrawCli(['upgarde', '--json']);
     expectExitCode(rootUnknown, 1);
     expect(rootUnknown.stdout).toBe('');
     expect(JSON.parse(rootUnknown.stderr)).toMatchObject({
@@ -71,22 +71,22 @@ describe('CLI test harness', () => {
       command: 'cli',
       code: 'CLI_COMMAND_UNKNOWN',
       hint: "Did you mean 'upgrade'?",
-      next: 'Try: vibecanvas upgrade --help',
+      next: 'Try: omnidraw upgrade --help',
       suggestions: ['upgrade'],
     });
 
-    const uninstallUnknown = await context.runVibecanvasCli(['uninstal', '--json']);
+    const uninstallUnknown = await context.runOmnidrawCli(['uninstal', '--json']);
     expectExitCode(uninstallUnknown, 1);
     expect(JSON.parse(uninstallUnknown.stderr)).toMatchObject({
       hint: "Did you mean 'uninstall'?",
-      next: 'Try: vibecanvas uninstall --help',
+      next: 'Try: omnidraw uninstall --help',
       suggestions: ['uninstall'],
     });
   }, 15_000);
 
   test('runs uninstall dry-run without deleting test config', async () => {
     const context = await createContext();
-    const result = await context.runVibecanvasCli(['uninstall', '--dry-run']);
+    const result = await context.runOmnidrawCli(['uninstall', '--dry-run']);
 
     expectExitCode(result, 0);
     expectNoStderr(result);

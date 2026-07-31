@@ -22,7 +22,7 @@ describe('downloadFile', () => {
         },
       }), { headers: { 'content-length': '11' } }),
     });
-    const root = mkdtempSync(join(tmpdir(), 'vibecanvas-download-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'omnidraw-download-test-'));
     roots.push(root);
     const progress: Array<{ downloadedBytes: number; totalBytes?: number }> = [];
     try {
@@ -44,7 +44,7 @@ describe('downloadFile', () => {
         },
       })),
     });
-    const root = mkdtempSync(join(tmpdir(), 'vibecanvas-download-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'omnidraw-download-test-'));
     roots.push(root);
     const progress: Array<{ downloadedBytes: number; totalBytes?: number }> = [];
     try {
@@ -60,7 +60,7 @@ describe('downloadFile', () => {
       port: 0,
       fetch: () => new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1])); } })),
     });
-    const root = mkdtempSync(join(tmpdir(), 'vibecanvas-download-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'omnidraw-download-test-'));
     roots.push(root);
     const destination = join(root, 'asset');
     try {
@@ -78,7 +78,7 @@ describe('downloadFile', () => {
           setTimeout(() => controller.error(new Error('connection lost')), 1);
         },
       }));
-    const root = mkdtempSync(join(tmpdir(), 'vibecanvas-download-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'omnidraw-download-test-'));
     roots.push(root);
     const destination = join(root, 'asset');
     await expect(downloadFile('https://example.test/asset', destination, { fetchImpl })).rejects.toThrow('connection lost');
@@ -87,7 +87,7 @@ describe('downloadFile', () => {
 
   test('rejects HTTP errors without creating a file', async () => {
     const server = Bun.serve({ port: 0, fetch: () => new Response('missing', { status: 404 }) });
-    const root = mkdtempSync(join(tmpdir(), 'vibecanvas-download-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'omnidraw-download-test-'));
     roots.push(root);
     const destination = join(root, 'asset');
     try {

@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/canvas-contract",
+  "name": "@omnidraw/canvas-contract",
   "version": "0.1.0",
   "type": "module",
   "exports": {

@@ -22,7 +22,7 @@ flowchart LR
 ```
 
 - Legacy actors are disabled by default. The composition root reads the strict
-  `VIBECANVAS_LEGACY_ACTOR_ENABLED` boolean, dynamically imports the backend
+  `OMNIDRAW_LEGACY_ACTOR_ENABLED` boolean, dynamically imports the backend
   plugin only for an exact enabled value, and otherwise does not register an
   actor service.
 - `LegacyActorPlugin` is the only CLI composition module that imports and
@@ -56,7 +56,7 @@ flowchart LR
 - The service package has an explicit seven-entry export map and no wildcard
   export. Shared frame bounds, placement keys, and tool-icon contracts are
   owned by `widget-contract`; non-legacy consumers import that neutral package.
-- `@vibecanvas/api/actor` contains only compatibility definition, event, and
+- `@omnidraw/api/actor` contains only compatibility definition, event, and
   instance routes. Resource contracts and handlers expose neutral `ZResource*`
   schemas and `ResourceError` mapping, with no actor resource route aliases.
 - The Resource Store remains authoritative for V2 physical resource I/O, while
@@ -119,7 +119,7 @@ flowchart LR
 | Legacy lifecycle | `service-actor` passed 99 tests / 528 assertions and `service-agent` passed 145 tests / 760 assertions, including delayed exit, SIGKILL escalation, retryable fail-closed cleanup, exact PID/count, and zero post-shutdown children |
 | Two-mode product matrix | `bun run test:legacy-matrix` passed the complete product suite first with legacy disabled and then enabled; the matrix also passed the 10,000 UI-only widget zero-actor cost fixture in both modes |
 | Common repository gate | `git diff --check` and `bun run lint:functional-core` passed; the complete sequential root suite passed twice inside the final two-mode matrix |
-| Release build | `bun run build` bundled the SPA and produced `vibecanvas-darwin-arm64`, `vibecanvas-linux-arm64`, `vibecanvas-linux-x64`, `vibecanvas-linux-x64-baseline`, the release manifest, and wrapper package |
+| Release build | `bun run build` bundled the SPA and produced `omnidraw-darwin-arm64`, `omnidraw-linux-arm64`, `omnidraw-linux-x64`, `omnidraw-linux-x64-baseline`, the release manifest, and wrapper package |
 | Compiled binary | `bun run test:binary` passed disabled and enabled fresh-home health diagnostics, embedded assets, API/Automerge WebSockets, actor IPC, pinned native addon, managed schema, path precedence, preflight refusal, and port fallback |
 | Independent review | Final requirement-by-requirement audit found no P0, P1, or P2 M9 implementation blocker across plugin/UI optionality, exact teardown diagnostics, organization placement, actor/resource/API ownership, v2 publication, and external composition |
 

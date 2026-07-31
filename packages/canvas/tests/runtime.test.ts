@@ -1,7 +1,7 @@
 import {
   BUILTIN_THEMES,
   type TThemeDefinition,
-} from '@vibecanvas/service-theme';
+} from '@omnidraw/service-theme';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const runtimeState = vi.hoisted(() => ({
@@ -392,7 +392,7 @@ describe('canvas runtime composition', () => {
     expect(engineConfig.host).toBe(container);
     expect(runtimeState.engine).not.toHaveProperty('resize');
     expect(runtimeState.projectionCreateArgs).toEqual({
-      ownerId: 'vibecanvas:canvas-background',
+      ownerId: 'omnidraw:canvas-background',
       options: {
         band: 'background',
         orderKey: '1000000000000000',

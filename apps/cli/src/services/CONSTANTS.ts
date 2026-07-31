@@ -1,6 +1,6 @@
-import type { TWidgetCapsuleBuildIdentity } from '@vibecanvas/widget-contract';
+import type { TWidgetCapsuleBuildIdentity } from '@omnidraw/widget-contract';
 
-export const RESOURCE_MANAGEMENT_OPERATION = 'vibecanvas.resource.management';
+export const RESOURCE_MANAGEMENT_OPERATION = 'omnidraw.resource.management';
 
 export const FUNCTION_IDEMPOTENCY_TTL_DEFAULT_MS = 30 * 24 * 60 * 60 * 1_000;
 export const FUNCTION_IDEMPOTENCY_TTL_MINIMUM_MS = 60 * 1_000;
@@ -14,9 +14,9 @@ export const WIDGET_CAPSULE_BUILD_IDENTITY = Object.freeze({
   runtimeBuildDigest: 'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146',
 }) satisfies TWidgetCapsuleBuildIdentity;
 
-export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v2';
-export const WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID = 'vibecanvas-preview-v1';
-export const WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID = 'vibecanvas-release-v1';
+export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'omnidraw-capsule-widget-v2';
+export const WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID = 'omnidraw-preview-v1';
+export const WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID = 'omnidraw-release-v1';
 
 export const RESOURCE_MANAGEMENT_EFFECTS = {
   kv: {

@@ -1,5 +1,5 @@
-import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
-import type { TDbInspection, TDbObject } from '@vibecanvas/resource-runtime';
+import { fnResourceNameKey } from '@omnidraw/service-db/core/fn.resource-name';
+import type { TDbInspection, TDbObject } from '@omnidraw/resource-runtime';
 import type { TAgentResource } from './resource-service';
 
 type TResourceKind = TAgentResource['kind'];

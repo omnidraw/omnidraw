@@ -1,6 +1,6 @@
 import type { InferContractRouterInputs, InferContractRouterOutputs } from '@orpc/contract';
-import type { IHumanResourceSecretService as IRuntimeHumanResourceSecretService } from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IHumanResourceSecretService as IRuntimeHumanResourceSecretService } from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { resourceContract } from './contract';
 
 type TResourceInputs = InferContractRouterInputs<typeof resourceContract>;

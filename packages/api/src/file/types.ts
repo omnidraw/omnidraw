@@ -1,5 +1,5 @@
 import type { TFileDatabaseCapability } from '../interface';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TFileApiContext = {
   db: TFileDatabaseCapability;

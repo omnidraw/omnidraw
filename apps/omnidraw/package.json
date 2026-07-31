@@ -1,0 +1,38 @@
+{
+  "name": "omnidraw",
+  "version": "0.4.7",
+  "description": "Run your agents in an infinite canvas",
+  "license": "MIT",
+  "bin": {
+    "omnidraw": "./bin/omnidraw"
+  },
+  "files": [
+    "bin",
+    "postinstall.mjs",
+    "install-instructions.mjs"
+  ],
+  "scripts": {
+    "postinstall": "node postinstall.mjs"
+  },
+  "optionalDependencies": {
+    "omnidraw-darwin-arm64": "0.4.7",
+    "omnidraw-linux-arm64": "0.4.7",
+    "omnidraw-linux-x64": "0.4.7",
+    "omnidraw-linux-x64-baseline": "0.4.7"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnidraw/omnidraw"
+  },
+  "homepage": "https://omnidraw.dev",
+  "keywords": [
+    "bun",
+    "devtools",
+    "visual",
+    "canvas",
+    "cli"
+  ]
+}

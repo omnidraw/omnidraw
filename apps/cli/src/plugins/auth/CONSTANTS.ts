@@ -2,8 +2,8 @@ import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import type { TTenantPlacement } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-db/CONSTANTS';
+import type { TTenantPlacement } from '@omnidraw/tenant-core';
 import type { TOssFakeSession } from './types';
 
 export const OSS_FAKE_SESSION = Object.freeze({

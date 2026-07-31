@@ -35,7 +35,7 @@ const result = await Bun.build({
   ],
   target: "browser",
   format: "esm",
-  external: ["@omnidraw/capsule/guest", "@vibecanvas/widget-contract"],
+  external: ["@omnidraw/capsule/guest", "@omnidraw/widget-contract"],
   outdir: distDir,
 })
 

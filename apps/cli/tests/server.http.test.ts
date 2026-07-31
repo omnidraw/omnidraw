@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import {
   createFileResponse,
   createPublicAssetLookup,
@@ -48,7 +48,7 @@ describe('server http helpers', () => {
       );
       expect(await response.json()).toEqual({
         ok: true,
-        service: 'vibecanvas',
+        service: 'omnidraw',
         version: 'test',
         compiled: false,
       });

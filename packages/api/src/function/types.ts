@@ -1,5 +1,5 @@
 import type { InferContractRouterInputs, InferContractRouterOutputs } from '@orpc/contract';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { functionContract } from './contract';
 
 export type TFunctionInputs = InferContractRouterInputs<typeof functionContract>;

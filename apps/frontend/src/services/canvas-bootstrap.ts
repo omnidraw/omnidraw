@@ -1,4 +1,4 @@
-import { fnBrowserTenantScopesMatch, type TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-scope';
+import { fnBrowserTenantScopesMatch, type TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 import { showErrorToast } from '../components/ui/Toast';
 import { runStartupCanvasBootstrap } from '../startup-canvas';
 import { setStore } from '../store';

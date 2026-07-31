@@ -7,12 +7,12 @@ export const WIDGET_FILE_TEXT_PREVIEW_MAX_BYTES = 512 * 1024;
 export const WIDGET_PRIVATE_DIRECTORY_NAMES = new Set([
   'node_modules',
   '.git',
-  '.vibecanvas-wizard',
-  '.vibecanvas-preview',
+  '.omnidraw-wizard',
+  '.omnidraw-preview',
 ]);
 
 export const WIDGET_PRIVATE_FILE_NAMES = new Set([
-  '.vibecanvas-validate.tsconfig.json',
+  '.omnidraw-validate.tsconfig.json',
 ]);
 
 export const WIDGET_TRANSIENT_PREFIXES = [

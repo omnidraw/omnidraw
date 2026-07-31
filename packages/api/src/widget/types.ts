@@ -1,6 +1,6 @@
-import type { ICanvasService } from '@vibecanvas/service-canvas';
-import type { IWidgetStateService } from '@vibecanvas/service-widget-state';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { ICanvasService } from '@omnidraw/service-canvas';
+import type { IWidgetStateService } from '@omnidraw/service-widget-state';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IWidgetArtifactReader,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
@@ -8,7 +8,7 @@ import type {
   IWidgetRevisionReader,
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsulePublicSigningKey,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 type TWidgetCapsuleHostConfigurationCapability =
   IWidgetCapsuleHostConfigurationReader;

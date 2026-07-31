@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from './types';
 import { fxWalkFiles } from './fx.walk-files';
 import { fnLintRequiredWidgetFiles } from './lint/fn.required-widget-files';
@@ -39,10 +39,10 @@ export async function txValidateWidgetFiles(
   const hasFile = (path: string): boolean => files.includes(path);
 
   let manifest: TWidgetManifestV3 | null = null;
-  if (hasFile('vibecanvas.json')) {
+  if (hasFile('omnidraw.json')) {
     try {
       const candidate: unknown = JSON.parse(
-        await portal.readFile(portal.join(args.cwd, 'vibecanvas.json'), 'utf8'),
+        await portal.readFile(portal.join(args.cwd, 'omnidraw.json'), 'utf8'),
       );
       manifest = candidate as TWidgetManifestV3;
       const manifestValidation = fnValidateManifest(manifest);
@@ -50,7 +50,7 @@ export async function txValidateWidgetFiles(
       warnings.push(...manifestValidation.warnings);
       if (!manifestValidation.ok) manifest = null;
     } catch (error) {
-      errors.push(`Could not parse vibecanvas.json: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`Could not parse omnidraw.json: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

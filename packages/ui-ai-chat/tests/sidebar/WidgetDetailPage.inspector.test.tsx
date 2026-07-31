@@ -2,8 +2,8 @@ import type {
   TWidgetCatalog,
   TWidgetDetail,
   TWidgetVariantSummary,
-} from '@vibecanvas/orpc-client';
-import type { TWidgetBrowserFunctionDescriptor } from '@vibecanvas/widget-contract';
+} from '@omnidraw/orpc-client';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/widget-contract';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -76,7 +76,7 @@ const widgetDetail: TWidgetDetail = {
       entry: 'ui/main.ts',
       apis: ['DOM'],
     },
-    server: { entry: 'server/main.ts', runtimeAbi: 'vibecanvas:1' },
+    server: { entry: 'server/main.ts', runtimeAbi: 'omnidraw:1' },
     resources: [{
       slot: 'notes',
       kind: 'db',
@@ -188,7 +188,7 @@ describe('WidgetDetailPage inspector tabs', () => {
 
     await vi.waitFor(() => {
       expect(host.textContent).toContain('server/main.ts');
-      expect(host.textContent).toContain('vibecanvas:1');
+      expect(host.textContent).toContain('omnidraw:1');
       expect(host.textContent).toContain('lookupNotes');
       expect(host.textContent).toContain('notes (read)');
     });

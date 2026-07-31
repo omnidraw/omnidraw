@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
@@ -116,7 +116,7 @@ function request(draftRevisionSha256 = snapshot.digestSha256) {
     manifest: CAPSULE_MANIFEST,
     builderIdentity: 'preview-builder-v1',
     capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
-    buildPolicyId: 'vibecanvas-capsule-widget-v1',
+    buildPolicyId: 'omnidraw-capsule-widget-v1',
   };
 }
 
@@ -128,7 +128,7 @@ describe('stateless Capsule widget preview', () => {
     expect(new TextDecoder().decode(result.uiArtifact.bytes))
       .toBe(`ui:${snapshot.digestSha256}`);
     expect(result.uiArtifact.runtimeDescriptor.signatureKeyIds)
-      .toEqual(['vibecanvas-preview-v1']);
+      .toEqual(['omnidraw-preview-v1']);
   });
 
   test('rejects a mismatched current-draft digest before building', async () => {

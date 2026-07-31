@@ -1,6 +1,6 @@
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
+import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
+import type { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 
 interface IPublicMethods {
 }

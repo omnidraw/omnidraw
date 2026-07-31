@@ -39,7 +39,7 @@ function getNativePlatformKey(): TNativePlatformKey {
     return key as TNativePlatformKey;
   }
 
-  throw new Error(`Unsupported Turso native platform for vibecanvas binary: ${key}`);
+  throw new Error(`Unsupported Turso native platform for omnidraw binary: ${key}`);
 }
 
 function getCompiledNativeAddonPath(fileName: string): string {
@@ -58,8 +58,8 @@ function getSourceNativeAddonPath(packageName: string, fileName: string): string
 
 function isCompiledRuntime(): boolean {
   return (
-    (typeof VIBECANVAS_COMPILED !== "undefined" && VIBECANVAS_COMPILED) ||
-    process.env.VIBECANVAS_COMPILED === "true"
+    (typeof OMNIDRAW_COMPILED !== "undefined" && OMNIDRAW_COMPILED) ||
+    process.env.OMNIDRAW_COMPILED === "true"
   );
 }
 
@@ -114,4 +114,4 @@ export class Database extends DatabasePromise {
     super(new nativeBinding.Database(databasePath, nativeOpts));
   }
 }
-declare const VIBECANVAS_COMPILED: boolean | undefined;
+declare const OMNIDRAW_COMPILED: boolean | undefined;

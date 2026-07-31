@@ -5,12 +5,12 @@ import {
   type TWidgetFunctionHostBridge,
   type TWidgetUiRuntimeHandle,
   type TVerifiedWidgetUiArtifact,
-} from '@vibecanvas/ui-ai-chat/widget-runtime';
+} from '@omnidraw/ui-ai-chat/widget-runtime';
 import {
   createCapsuleHost,
   createDefaultCapsuleBrowserPlatform,
-} from '@vibecanvas/capsule-vibecanvas/host';
-import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
+} from '@omnidraw/capsule-omnidraw/host';
+import type { TWidgetCapsuleApiGroup } from '@omnidraw/widget-contract';
 import fixture from '../generated/fixtures.json';
 
 type TResult = Readonly<{
@@ -38,7 +38,7 @@ type TBrowserArtifact = TVerifiedWidgetUiArtifact & Readonly<{
 }>;
 
 type TPublishedResult = Readonly<{
-  format: 'vibecanvas.capsule-browser-acceptance-result.v1';
+  format: 'omnidraw.capsule-browser-acceptance-result.v1';
   state: 'running' | 'passed' | 'failed';
   passed: number;
   failed: number;
@@ -50,8 +50,8 @@ type TPublishedResult = Readonly<{
 
 declare global {
   interface Window {
-    __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__?: TPublishedResult;
-    __VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
+    __OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE__?: TPublishedResult;
+    __OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__?: () => void;
   }
 }
 
@@ -94,7 +94,7 @@ function publish(state: TPublishedResult['state']): void {
   const passed = results.filter((result) => result.pass).length;
   const failed = results.length - passed;
   const value: TPublishedResult = Object.freeze({
-    format: 'vibecanvas.capsule-browser-acceptance-result.v1',
+    format: 'omnidraw.capsule-browser-acceptance-result.v1',
     state,
     passed,
     failed,
@@ -114,7 +114,7 @@ function publish(state: TPublishedResult['state']): void {
     return item;
   }));
   diagnostics.textContent = JSON.stringify(value, null, 2);
-  window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE__ = value;
+  window.__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE__ = value;
 }
 
 async function check(name: string, operation: () => void | Promise<void>): Promise<boolean> {
@@ -201,7 +201,7 @@ function surface(name: string): HTMLDivElement {
   root.className = 'surface';
   root.dataset.surface = name;
   if (name === 'react') {
-    root.style.setProperty('--vibecanvas-inherited-accent', '#123456');
+    root.style.setProperty('--omnidraw-inherited-accent', '#123456');
   }
   surfaces.append(root);
   return root;
@@ -365,7 +365,7 @@ const publishedCollaborativeBridge: NonNullable<TCollaborativeStateBridge> =
   });
 
 const darkTheme = Object.freeze({
-  format: 'vibecanvas.widget-theme.v1' as const,
+  format: 'omnidraw.widget-theme.v1' as const,
   appearance: 'dark' as const,
   tokens: Object.freeze({
     background: '#09090b',
@@ -650,7 +650,7 @@ const publishedFunctionDescriptors =
 
 function artifactApis(value: TBrowserArtifact): readonly string[] {
   assert(
-    value.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2',
+    value.runtimeDescriptor.format === 'omnidraw.capsule-runtime.v2',
     'Generated acceptance artifact is not native Capsule 0.10.',
   );
   return value.runtimeDescriptor.apiContract.groups;
@@ -672,7 +672,7 @@ await check('generated artifacts bind signed public API contracts', () => {
     threeClockArtifact,
   ]) {
     assert(
-      value.runtimeDescriptor.format === 'vibecanvas.capsule-runtime.v2',
+      value.runtimeDescriptor.format === 'omnidraw.capsule-runtime.v2',
       'Three.js fixture is not native Capsule 0.10.',
     );
     assert(
@@ -719,7 +719,7 @@ await check('generated artifacts bind signed public API contracts', () => {
   );
   assert(
     fixture.artifacts.published.serverArtifact?.runtimeAbi
-      === 'vibecanvas-function-v1',
+      === 'omnidraw-function-v1',
     'Published artifact lacks its exact server runtime identity.',
   );
 });
@@ -773,9 +773,9 @@ await check('Three.js r185 renders through WEBGL group defaults', async () => {
   document.documentElement.dataset.capsuleThreeReady = 'true';
   if (new URLSearchParams(window.location.search).has('pixelHandshake')) {
     await new Promise<void>((resolve) => {
-      window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__ = resolve;
+      window.__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__ = resolve;
     });
-    delete window.__VIBECANVAS_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__;
+    delete window.__OMNIDRAW_CAPSULE_BROWSER_ACCEPTANCE_ACK_THREE_PIXELS__;
   }
 });
 

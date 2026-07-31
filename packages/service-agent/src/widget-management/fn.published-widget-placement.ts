@@ -3,8 +3,8 @@ import {
   WIDGET_FRAME_MAX_WIDTH,
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
-} from '@vibecanvas/widget-contract/CONSTANTS';
-import type { TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract/CONSTANTS';
+import type { TWidgetPlacementRef } from '@omnidraw/widget-contract';
 import type {
   TPublishedWidgetPlacementIdentity,
   TPublishedWidgetPlacementTarget,

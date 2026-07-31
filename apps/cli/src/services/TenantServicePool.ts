@@ -1,6 +1,6 @@
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import { fnFreezeTenantContext, fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
+import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
+import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
+import { fnFreezeTenantContext, fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 
 type TTenantChildService = Partial<IStartableService<object, object> & IStoppableService>;
 type TTenantServiceFactory<TService extends TTenantChildService> = (

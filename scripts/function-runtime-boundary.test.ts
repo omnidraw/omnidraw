@@ -21,7 +21,7 @@ describe('M6 short-lived function runtime boundaries', () => {
     const violations: string[] = [];
     for (const file of await sourceFiles(root)) {
       const source = await readFile(file, 'utf8');
-      if (/@vibecanvas\/(?:api|service-db)/.test(source)) {
+      if (/@omnidraw\/(?:api|service-db)/.test(source)) {
         violations.push(relative(REPO_ROOT, file));
       }
     }

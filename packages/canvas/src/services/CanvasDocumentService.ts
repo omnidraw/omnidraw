@@ -34,7 +34,7 @@ import {
   type TCanvasOperation,
   type TCanvasPrecondition,
   type TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   TCanvasImagePort,
   TImageUploadFormat,
@@ -52,14 +52,14 @@ import {
   type TSceneNodeImage,
 } from './fn.scene-reduction';
 
-const SERVER_SCENE_SOURCE = 'vibecanvas:server';
-const SNAPSHOT_SCENE_SOURCE = 'vibecanvas:snapshot';
-const UNDO_SCENE_SOURCE = 'vibecanvas:undo';
-const REDO_SCENE_SOURCE = 'vibecanvas:redo';
-const IMAGE_PROMOTION_SOURCE = 'vibecanvas:image-promotion';
+const SERVER_SCENE_SOURCE = 'omnidraw:server';
+const SNAPSHOT_SCENE_SOURCE = 'omnidraw:snapshot';
+const UNDO_SCENE_SOURCE = 'omnidraw:undo';
+const REDO_SCENE_SOURCE = 'omnidraw:redo';
+const IMAGE_PROMOTION_SOURCE = 'omnidraw:image-promotion';
 const LOCAL_HISTORY_CAPACITY = 100;
-const DOCUMENT_IMAGE_RESOURCE_OWNER = 'vibecanvas:document-images';
-const DOCUMENT_IMAGE_REGISTRATION_OWNER = 'vibecanvas:document-image-urls';
+const DOCUMENT_IMAGE_RESOURCE_OWNER = 'omnidraw:document-images';
+const DOCUMENT_IMAGE_REGISTRATION_OWNER = 'omnidraw:document-image-urls';
 const SUPPORTED_IMAGE_MIME_TYPES = new Set<TImageUploadFormat>([
   'image/jpeg',
   'image/png',
@@ -913,7 +913,7 @@ export class CanvasDocumentService
         ));
       if (coveredByPreparedImport || coveredByPendingImport) continue;
       throw new RangeError(
-        `Image node '${node.id}' has no durable Vibecanvas image descriptor.`,
+        `Image node '${node.id}' has no durable Omnidraw image descriptor.`,
       );
     }
   }

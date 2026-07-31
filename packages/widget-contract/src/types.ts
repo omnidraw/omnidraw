@@ -7,8 +7,8 @@ import type {
   TResourceId,
   TResourceKind,
   TResourceRequirement,
-} from '@vibecanvas/resource-runtime';
-import type { TOrganizationId } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TOrganizationId } from '@omnidraw/tenant-core';
 import type { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
 import type { TWidgetDiagnostic } from './diagnostic-schema';
 
@@ -33,7 +33,7 @@ export type TWidgetPlacementRef =
 
 export type TLucidStaticIconKey = string;
 
-export type TVibecanvasToolIcon = Readonly<{
+export type TOmnidrawToolIcon = Readonly<{
   lucidIcon?: TLucidStaticIconKey;
   svgIcon?: string;
 }>;
@@ -126,7 +126,7 @@ export type TWidgetCapsuleProps = TWidgetSerializableJsonObject;
 
 /** Minimal semantic theme projection exposed to untrusted widget code. */
 export type TWidgetCapsuleTheme = Readonly<{
-  format: 'vibecanvas.widget-theme.v1';
+  format: 'omnidraw.widget-theme.v1';
   appearance: 'light' | 'dark';
   tokens: Readonly<{
     background: string;
@@ -304,7 +304,7 @@ export type TWidgetCapsuleBuildIdentity = Readonly<{
 
 /** Trusted, serializable metadata inspected from exact signed Capsule bytes. */
 export type TWidgetCapsuleRuntimeDescriptor = Readonly<{
-  format: 'vibecanvas.capsule-runtime.v2';
+  format: 'omnidraw.capsule-runtime.v2';
   capsuleArtifactHash: TWidgetCapsuleHash;
   apiContract: TWidgetCapsuleApiContract;
   budgets: TWidgetCapsuleBudgetRequest;

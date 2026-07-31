@@ -3,9 +3,9 @@ import {
   WIDGET_FRAME_MAX_WIDTH,
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
-} from '@vibecanvas/widget-contract/CONSTANTS';
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
-import type { TWidgetPlacementResolveResult } from '@vibecanvas/orpc-client';
+} from '@omnidraw/widget-contract/CONSTANTS';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
+import type { TWidgetPlacementResolveResult } from '@omnidraw/orpc-client';
 
 type TWidgetPlacementDescriptor = Extract<
   TWidgetPlacementResolveResult,

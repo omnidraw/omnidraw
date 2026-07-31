@@ -60,7 +60,7 @@ export function fnBuildUnknownCommandError(scope: 'root', input: string | undefi
     code: 'CLI_COMMAND_UNKNOWN',
     message: `Unknown command '${input ?? ''}'.`,
     hint: suggestion ? `Did you mean '${suggestion}'?` : `Available commands: ${candidates.join(', ')}.`,
-    next: suggestion ? `Try: vibecanvas ${suggestion} --help` : 'Try: vibecanvas --help',
+    next: suggestion ? `Try: omnidraw ${suggestion} --help` : 'Try: omnidraw --help',
     suggestions: suggestion ? [suggestion] : [],
   };
 }
@@ -76,8 +76,8 @@ export function fnBuildUnknownCanvasCommandError(input: string | undefined): TCl
     message: `Unknown canvas command '${input ?? ''}'.`,
     hint: suggestion ? `Did you mean '${suggestion}'?` : `Available commands: ${candidates.join(', ')}.`,
     next: suggestion
-      ? `Try: vibecanvas canvas ${suggestion} --help`
-      : 'Try: vibecanvas canvas --help',
+      ? `Try: omnidraw canvas ${suggestion} --help`
+      : 'Try: omnidraw canvas --help',
     suggestions: suggestion ? [suggestion] : [],
   };
 }
@@ -99,8 +99,8 @@ function fnNormalizeCommandError(error: unknown): TCliErrorPayload {
   };
 
   if (!normalized.hint && normalized.code === 'DATA_DIR_FLAG_MISSING_VALUE') {
-    normalized.hint = 'Pass one Vibecanvas home path right after --data-dir.';
-    normalized.next = 'Try: vibecanvas serve --data-dir ./tmp/vibecanvas-home';
+    normalized.hint = 'Pass one Omnidraw home path right after --data-dir.';
+    normalized.next = 'Try: omnidraw serve --data-dir ./tmp/omnidraw-home';
   }
 
   return normalized;

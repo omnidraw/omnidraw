@@ -14,7 +14,7 @@ const publishedRevisionId = '00000000-0000-4000-8000-000000000003';
 const revision = 'a'.repeat(64);
 const apis = ['DOM'] as const;
 const runtimeDescriptor = {
-  format: 'vibecanvas.capsule-runtime.v2',
+  format: 'omnidraw.capsule-runtime.v2',
   capsuleArtifactHash: `sha256:${'b'.repeat(64)}`,
   apiContract: {
     format: 'capsule-api-groups-v1',
@@ -36,7 +36,7 @@ const runtimeDescriptor = {
   capabilityRequests: [],
   channels: null,
   parkability: { parkable: false },
-  signatureKeyIds: ['vibecanvas-preview-v1'],
+  signatureKeyIds: ['omnidraw-preview-v1'],
 };
 const manifest = {
   schemaVersion: 3,

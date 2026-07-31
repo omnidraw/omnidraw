@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   WIDGET_FRAME_FALLBACK,
-  ZVibecanvasToolIcon,
+  ZOmnidrawToolIcon,
   fnNormalizeWidgetFrame,
   fnWidgetPlacementRefKey,
   fnWidgetPlacementToolId,
@@ -20,8 +20,8 @@ describe('neutral widget frame and tool contract', () => {
   })
 
   test('validates neutral tool icons through the public schema', () => {
-    expect(ZVibecanvasToolIcon.parse({ lucidIcon: 'Cloud' })).toEqual({ lucidIcon: 'Cloud' })
-    expect(ZVibecanvasToolIcon.safeParse({}).success).toBe(false)
-    expect(ZVibecanvasToolIcon.safeParse({ lucidIcon: 'not-a-real-icon' }).success).toBe(false)
+    expect(ZOmnidrawToolIcon.parse({ lucidIcon: 'Cloud' })).toEqual({ lucidIcon: 'Cloud' })
+    expect(ZOmnidrawToolIcon.safeParse({}).success).toBe(false)
+    expect(ZOmnidrawToolIcon.safeParse({ lucidIcon: 'not-a-real-icon' }).success).toBe(false)
   })
 })

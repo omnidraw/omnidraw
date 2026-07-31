@@ -1,6 +1,6 @@
 import type {
   TWidgetCapsuleNotificationOutput,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 type TPortal = Readonly<{
   showError(title: string, description?: string): unknown;

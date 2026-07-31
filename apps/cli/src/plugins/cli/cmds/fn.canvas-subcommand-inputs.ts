@@ -5,7 +5,7 @@ import type {
   TCanvasOperation,
   TCanvasPrecondition,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { CANVAS_GROUP_TRANSFORM } from './CONSTANTS';
 import type {
   TCanvasAddInput,

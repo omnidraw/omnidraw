@@ -1,4 +1,4 @@
-# Vibecanvas widget system
+# Omnidraw widget system
 
 **Status:** Current Capsule-based architecture
 
@@ -9,7 +9,7 @@ This document describes the widget system after the Capsule-only cutover.
 Code and tests are authoritative. The detailed Capsule integration and
 compatibility constraints live in:
 
-- [`llm.capsule-vibecanvas-integration.md`](./llm.capsule-vibecanvas-integration.md)
+- [`llm.capsule-omnidraw-integration.md`](./llm.capsule-omnidraw-integration.md)
 - [`llm.capsule-widget-compatibility.md`](./llm.capsule-widget-compatibility.md)
 - [`llm.capsule-migration.md`](./llm.capsule-migration.md)
 
@@ -39,7 +39,7 @@ These domains are not interchangeable. In particular:
 flowchart LR
   A["AI chat and widget tools"] --> D["Mutable draft"]
   D --> S["Immutable source snapshot"]
-  S --> B["Vibecanvas build orchestration"]
+  S --> B["Omnidraw build orchestration"]
   B --> N["Host or optional Docker runner; guest scripts allowed"]
   N --> O["Capsule external dist validation"]
   B --> F["Separate server-function build"]
@@ -60,7 +60,7 @@ flowchart LR
 | --- | --- |
 | `@omnidraw/capsule` | Artifact format, deterministic UI builder, signature verification, QuickJS VM, DOM membrane, public API groups, budgets, capabilities, channels, lifecycle, and diagnostics |
 | `@omnidraw/cangine` | Fixed widget chrome, traffic lights, header hit regions, frame/content interaction mode, local canvas-maximized presentation, transform affordances, normalized pointer cancellation, atomic DOM portal-shell presentation, and shared menu presentation |
-| `packages/capsule-vibecanvas` | Vibecanvas API-group and budget policy, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
+| `packages/capsule-omnidraw` | Omnidraw API-group and budget policy, external-distribution composition, signing, schemas, capability descriptors, host imports, and error mapping |
 | `packages/widget-contract` | Manifest v3, build and revision contracts, artifact metadata, runtime descriptor, canonical digests, publication services, and artifact authority |
 | `packages/service-agent` | Draft ownership, workspace mounts, scaffolding, validation, preview/publish orchestration, edit-as-draft, and authoring guidance |
 | `apps/cli` | Production service composition, application-owned npm distribution builds, persistent signing keys, host configuration, artifact storage, and server-function tooling |
@@ -71,7 +71,7 @@ flowchart LR
 | `packages/canvas` | Authoritative canvas document client, Cangine projection, semantic selection, product tools and command routing, durable collapse, portal-content reconciliation, and lifecycle signals |
 | Server services | `CanvasService` commands/snapshots/queries/events, `WidgetStateService` versioned widget-instance state, durable function execution, resource access, tenancy, and database records |
 
-Capsule has no Vibecanvas dependency. Vibecanvas imports Capsule only through
+Capsule has no Omnidraw dependency. Omnidraw imports Capsule only through
 its public package entries.
 
 ## 3. Drafts and authoring workspaces
@@ -85,7 +85,7 @@ chats/<date>/<chat-id>/
   workspace/widgets/<name> -> shared draft
 
 widgets/drafts/<name>/
-  vibecanvas.json
+  omnidraw.json
   package.json
   tsconfig.json
   ui/
@@ -93,7 +93,7 @@ widgets/drafts/<name>/
   shared/                 # optional
 
 draft-state/              # atomic publication materialization markers
-sdk/                      # host-materialized @vibecanvas/sdk package
+sdk/                      # host-materialized @omnidraw/sdk package
 ```
 
 One shared draft directory is the mutable source authority. Chat workspaces
@@ -111,7 +111,7 @@ tests, formatting, package commands, and general host work. Each call starts
 `bash -lc` in the exact conversation workspace using one short-lived Bun PTY.
 The workspace is an initial `cwd`, not a confinement boundary: traversal,
 absolute paths, subprocesses, inherited executable lookup, environment access,
-and host networking retain the Vibecanvas process's authority. Output updates
+and host networking retain the Omnidraw process's authority. Output updates
 and the final head/tail result are bounded; exit code, signal, timeout,
 cancellation, duration, and truncation remain model-visible. The child is
 awaited and its PTY closed before the call returns. Higher-level deployment or
@@ -123,8 +123,8 @@ repair used by structured authoring, including non-zero, timed-out, cancelled,
 and truncated-output outcomes. Shell access does not create protected resource,
 approval, Preview, or publication authority.
 
-`vc_widget_create` creates a manifest-v3, plain-DOM scaffold. Widget source
-imports `@vibecanvas/sdk/widget`; it does not import Capsule directly. The
+`od_widget_create` creates a manifest-v3, plain-DOM scaffold. Widget source
+imports `@omnidraw/sdk/widget`; it does not import Capsule directly. The
 authoring prompt permits only UI stacks that the trusted build has explicitly
 pinned and projected. Plain DOM is the default and React is the currently
 supported component-library path.
@@ -234,7 +234,7 @@ workspace-local `HOME`; ambient service credentials are not inherited. This
 reduces accidental secret exposure but does not isolate host filesystem or
 network authority.
 Operators may select the implemented Docker runner with
-`VIBECANVAS_WIDGET_BUILD_RUNNER=docker` and an immutable image digest. It uses
+`OMNIDRAW_WIDGET_BUILD_RUNNER=docker` and an immutable image digest. It uses
 a read-only container root, drops all capabilities, enables
 `no-new-privileges`, bounds CPU, memory, PIDs, file descriptors, output, and
 wall time, mounts only the draft-private workspace plus a read-only npm config,
@@ -247,7 +247,7 @@ or server functions. The Docker runner hardens that build boundary but is
 operator-selected, permits package networking, and is not a release gate or a
 claim that arbitrary build scripts are harmless.
 
-Vibecanvas must retain end-to-end provenance across this boundary. One build
+Omnidraw must retain end-to-end provenance across this boundary. One build
 identity binds the exact source snapshot, `package.json`, lockfile, dependency
 workspace inputs, Node/package-manager/platform identities, build command and
 configuration, complete `dist/` bytes, Capsule version/validation policy, and
@@ -279,7 +279,7 @@ The immutable source project contains:
 - the normalized public APIs, partial budgets, channels, and capability requests;
 - the pinned builder identity, Capsule package identity, and build policy.
 
-Vibecanvas gives trusted validation and Preview the same draft-private warm
+Omnidraw gives trusted validation and Preview the same draft-private warm
 workspace identity. It runs install only when package/lock inputs change, invokes the
 project build command, and reuses its incremental graph for source edits. It
 captures a bounded regular-file `dist/` tree, rejects symlinks and special
@@ -404,7 +404,7 @@ The implemented authoring loop is:
    produces one content-addressed construction for validation, Preview, and
    publication. A shared admission layer permits one active build per draft,
    two per tenant, and a deployment-wide ceiling configured with
-   `VIBECANVAS_WIDGET_PREVIEW_BUILD_CONCURRENCY` (default `4`).
+   `OMNIDRAW_WIDGET_PREVIEW_BUILD_CONCURRENCY` (default `4`).
 3. Progress is streamed as `queued`, `installing`, `building`, `validating`,
    `ready`, `failed`, or `superseded`. These phases describe state; the local
    latency targets in A96 have not yet been measured.
@@ -459,7 +459,7 @@ UTF-16 column. Initial module failures arrive through mount-time `onError`
 before a handle exists; later callback and job failures arrive through
 `handle.onError`.
 
-Vibecanvas keeps source-map ownership outside Capsule. The npm build emits
+Omnidraw keeps source-map ownership outside Capsule. The npm build emits
 hidden maps, the distribution capture removes every `.map` before Capsule
 validation, and the builder stores a bounded `source_map` artifact beside the
 durable Preview revision. Its canonical envelope binds the authored source
@@ -568,10 +568,10 @@ CanvasService canvas_items -> authoritative document client -> Cangine scene
 
 Cangine's optional `/editor` entrypoint supplies the replaceable editor kernel,
 fixed widget-frame controller, context-menu controller, shared menu, standard
-transform-policy resolver, and transform hover state. Vibecanvas does not use
+transform-policy resolver, and transform hover state. Omnidraw does not use
 Cangine's linear history or standard scene-mutating tools. Undo, redo, deletion,
 collapse, resize, and every other durable product effect return through
-Vibecanvas commands to `CanvasService`.
+Omnidraw commands to `CanvasService`.
 
 A projected widget frame contains only fixed-frame data: size, title,
 title-bar color, bounded declarative header items, portal ID, collapsed state,
@@ -647,7 +647,7 @@ With the DOM API group, the widget frame is one atomic shell: fixed chrome
 and application content share one transform, clipping context, opacity,
 visibility, and scene z-index. The WebGL2 pass does not paint a second retained
 copy of the chrome. Cangine alone writes portal placement, transform, clip,
-visibility, z-index, and input gating. Vibecanvas's portal bridge owns content
+visibility, z-index, and input gating. Omnidraw's portal bridge owns content
 identity, serialized asynchronous updates, generation rejection, viewport
 publication, Capsule mounting, and cleanup; widget content does not emulate
 frame-edge resize hit regions.
@@ -657,7 +657,7 @@ rate-limits them to five events per ten seconds per mount.
 
 ## 12. Guest SDK
 
-Widget source uses `@vibecanvas/sdk/widget`.
+Widget source uses `@omnidraw/sdk/widget`.
 
 Supported APIs include:
 
@@ -897,7 +897,7 @@ bun run lab -- [--home <path>] [--chat-id <id>] preview <name>
 bun run lab -- --home <isolated-path> [--chat-id <id>] session < scenario.jsonl
 ```
 
-`--home` defaults to the repository `.vibecanvas` directory. The lab uses the
+`--home` defaults to the repository `.omnidraw` directory. The lab uses the
 default OSS tenant, opens Turso against that home, and wires the production
 widget path: `WidgetWorkspace`, `WidgetDraftController`, `WidgetServicePool`,
 signing keys, Capsule guest build, and application-owned npm distribution
@@ -914,22 +914,22 @@ disposition, guest/distribution/install deltas and totals. Optional `expect`
 objects perform recursive subset assertions; a failed operation or assertion
 sets a non-zero exit code.
 
-### Inspecting `.vibecanvas/main.db`
+### Inspecting `.omnidraw/main.db`
 
 Dev and the lab share the repo-local home. The durable control database is:
 
 ```text
-.vibecanvas/main.db
+.omnidraw/main.db
 ```
 
-On-disk Vibecanvas opens that file with Turso's experimental
+On-disk Omnidraw opens that file with Turso's experimental
 `multiprocess_wal` coordinator. Agents debugging widget, draft, revision,
 instance, or authoring-store problems should read it with the `tursodb` CLI
 using the same feature; ordinary SQLite tools and a plain `tursodb` open will
 fail or disagree with the live WAL.
 
 ```sh
-tursodb --experimental-multiprocess-wal --readonly .vibecanvas/main.db
+tursodb --experimental-multiprocess-wal --readonly .omnidraw/main.db
 ```
 
 Use read-only queries against widget and authoring tables (for example
@@ -941,14 +941,14 @@ file open. Broader Turso CLI notes live in
 
 It registers the same agent tool factories chat uses:
 
-- widget: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`
+- widget: `od_widget_list`, `od_widget_create`, `od_widget_validate`
 - files: `read`, `edit`, `patch`, `grep`
-- resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`,
-  `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`,
-  `vc_resource_data_write`
+- resources: `od_resource_list`, `od_resource_inspect`, `od_resource_create`,
+  `od_resource_update`, `od_resource_delete`, `od_resource_data_read`,
+  `od_resource_data_write`
 
-Convenience aliases map to the widget tools: `create` → `vc_widget_create`,
-`validate` → `vc_widget_validate`, `list` → `vc_widget_list`. Any other
+Convenience aliases map to the widget tools: `create` → `od_widget_create`,
+`validate` → `od_widget_validate`, `list` → `od_widget_list`. Any other
 registered tool name may be invoked directly with one JSON argument object.
 Authorization always succeeds in the lab. Single-command output remains
 pretty-printed JSON for compatibility.
@@ -956,7 +956,7 @@ pretty-printed JSON for compatibility.
 Typical persistent loop:
 
 ```sh
-bun run lab -- --home /tmp/vibecanvas-lab session \
+bun run lab -- --home /tmp/omnidraw-lab session \
   < apps/widget-debug-tools/scenarios/b67-counter.jsonl
 ```
 
@@ -974,7 +974,7 @@ Contracts and build:
 - [`packages/widget-contract/src/core/fn.diagnostic.ts`](../../packages/widget-contract/src/core/fn.diagnostic.ts)
 - [`packages/widget-contract/src/core/fn.preview-build-key.ts`](../../packages/widget-contract/src/core/fn.preview-build-key.ts)
 - [`packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts`](../../packages/widget-contract/src/local/WidgetArtifactConstructionCache.ts)
-- [`packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts`](../../packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts)
+- [`packages/capsule-omnidraw/src/build/WidgetArtifactBuilderCapsule.ts`](../../packages/capsule-omnidraw/src/build/WidgetArtifactBuilderCapsule.ts)
 - [`apps/cli/src/services/WidgetNpmDistributionBuild.ts`](../../apps/cli/src/services/WidgetNpmDistributionBuild.ts)
 - [`apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts`](../../apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts)
 

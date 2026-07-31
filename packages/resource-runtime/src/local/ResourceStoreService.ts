@@ -2,7 +2,7 @@
  * @file Local Resource Store and location-transparent gateway.
  */
 
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ResourceError,
   fnResourceBindingDecision,

@@ -1,4 +1,4 @@
-import type { TWidgetCatalog } from "@vibecanvas/orpc-client"
+import type { TWidgetCatalog } from "@omnidraw/orpc-client"
 import type { TAiChatApiPort } from "../../ports"
 import type { TChatComposerMention } from "../components/ChatComposer/interface"
 import { fnProjectMentionCatalog, type TMentionCatalogResource } from "./fn.mention-catalog"

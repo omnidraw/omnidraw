@@ -1,5 +1,5 @@
 import { ORPCError } from '@orpc/contract';
-import { fnResourceSecretRevealAllowed } from '@vibecanvas/resource-runtime';
+import { fnResourceSecretRevealAllowed } from '@omnidraw/resource-runtime';
 import { withResourceApiError } from './api.resource-error';
 import { baseResourceOs } from './orpc';
 

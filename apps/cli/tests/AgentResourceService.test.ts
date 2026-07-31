@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import type { TResourceJson } from '@vibecanvas/resource-runtime';
-import type { TResourceCatalogRecord } from '@vibecanvas/resource-runtime/local';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TResourceJson } from '@omnidraw/resource-runtime';
+import type { TResourceCatalogRecord } from '@omnidraw/resource-runtime/local';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { createAgentResourceService } from '../src/services/AgentResourceService';
 import type { ResourceService } from '../src/services/ResourceService';
 

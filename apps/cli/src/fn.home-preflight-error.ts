@@ -6,7 +6,7 @@ type TArgs = {
 type THomePreflightError = {
   ok: false;
   command: 'serve';
-  code: 'VIBECANVAS_HOME_PREFLIGHT_FAILED';
+  code: 'OMNIDRAW_HOME_PREFLIGHT_FAILED';
   message: string;
   hint: string;
   next: string;
@@ -81,7 +81,7 @@ function fnBuildHomePreflightError(args: TArgs): THomePreflightError {
   const guidance = isDatabaseLock
     ? {
         hint: 'The database is already open or locked by another process. The selected home was not modified.',
-        next: 'Stop the other process using this Vibecanvas home, or retry with --data-dir <separate-path>.',
+        next: 'Stop the other process using this Omnidraw home, or retry with --data-dir <separate-path>.',
       }
     : isSchemaOrLayoutRefusal
       ? {
@@ -96,8 +96,8 @@ function fnBuildHomePreflightError(args: TArgs): THomePreflightError {
   return {
     ok: false,
     command: 'serve',
-    code: 'VIBECANVAS_HOME_PREFLIGHT_FAILED',
-    message: `Refusing selected Vibecanvas home '${args.homeDir}': ${reason}`,
+    code: 'OMNIDRAW_HOME_PREFLIGHT_FAILED',
+    message: `Refusing selected Omnidraw home '${args.homeDir}': ${reason}`,
     ...guidance,
   };
 }

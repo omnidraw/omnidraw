@@ -1,8 +1,8 @@
-import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
+import type { CapsuleViewport } from '@omnidraw/capsule-omnidraw/host';
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapsuleProps,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   WIDGET_UI_MAX_ACTIVE_RUNTIMES,
   WIDGET_UI_MAX_CONCURRENT_LOADS,
@@ -158,7 +158,7 @@ function errorMessage(error: unknown): string {
     error !== null
     && typeof error === 'object'
     && 'format' in error
-    && error.format === 'vibecanvas.capsule-error.v1'
+    && error.format === 'omnidraw.capsule-error.v1'
     && 'capsuleCode' in error
     && typeof error.capsuleCode === 'string'
     && error.capsuleCode.trim().length > 0

@@ -136,14 +136,14 @@ export const DB_RESOURCE_DEFAULT_MAX_OPEN_HANDLES = 32;
 export const DB_RESOURCE_DEFAULT_IDLE_HANDLE_TIMEOUT_MS = 60_000;
 
 const APPLY_MARKER_SQL = `
-CREATE TABLE IF NOT EXISTS \`_vibecanvas_apply_markers\` (
+CREATE TABLE IF NOT EXISTS \`_omnidraw_apply_markers\` (
   \`apply_id\` TEXT PRIMARY KEY NOT NULL,
   \`applied_at\` TEXT NOT NULL DEFAULT (datetime('now'))
 ) STRICT;
 `;
 
 const DRAFT_CHANGE_EVIDENCE_SQL = `
-CREATE TABLE IF NOT EXISTS \`_vibecanvas_draft_change_evidence\` (
+CREATE TABLE IF NOT EXISTS \`_omnidraw_draft_change_evidence\` (
   \`sequence\` INTEGER PRIMARY KEY NOT NULL CHECK (\`sequence\` >= 1),
   \`kind\` TEXT NOT NULL CHECK (\`kind\` IN ('structure', 'sql')),
   \`sql\` TEXT NOT NULL CHECK (length(trim(\`sql\`)) > 0)
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS \`_vibecanvas_draft_change_evidence\` (
 `;
 
 const FUNCTION_OPERATION_RECEIPTS_SQL = `
-CREATE TABLE IF NOT EXISTS \`_vibecanvas_function_operation_receipts\` (
+CREATE TABLE IF NOT EXISTS \`_omnidraw_function_operation_receipts\` (
   \`invocation_id\` TEXT NOT NULL,
   \`operation_id\` TEXT NOT NULL,
   \`attempt_id\` TEXT NOT NULL,
@@ -227,7 +227,7 @@ function quoteIdentifier(value: string): string {
 function isInternalObject(name: string): boolean {
   const lower = name.toLowerCase();
   return lower.startsWith('sqlite_')
-    || lower.startsWith('_vibecanvas_')
+    || lower.startsWith('_omnidraw_')
     || lower.startsWith('libsql_')
     || lower.startsWith('_turso_')
     || lower.startsWith('_litestream_');
@@ -701,7 +701,7 @@ export class DbResource implements ILocalResourceProvider {
       const database = await this.#open(resourceId, false);
       await database.exec(APPLY_MARKER_SQL);
       await database.exec(FUNCTION_OPERATION_RECEIPTS_SQL);
-      await database.exec('DROP TABLE IF EXISTS `_vibecanvas_migrations`;');
+      await database.exec('DROP TABLE IF EXISTS `_omnidraw_migrations`;');
       await this.#closeHandle(resourceId);
       await this.#verifyDatabaseFile(this.#databasePath(resourceId), new Set());
     } catch (error) {
@@ -780,7 +780,7 @@ export class DbResource implements ILocalResourceProvider {
       const transaction = database.transaction(async (): Promise<TLocalResourceDispatchReceipt> => {
         const statement = await database.prepare(`
           SELECT operation_name, operation_fingerprint_sha256, output_json
-          FROM _vibecanvas_function_operation_receipts
+          FROM _omnidraw_function_operation_receipts
           WHERE invocation_id = ? AND operation_id = ?
         `);
         let prior: TNativeRow | undefined;
@@ -813,7 +813,7 @@ export class DbResource implements ILocalResourceProvider {
         const outputJson = JSON.stringify(encodeReceiptValue(output));
         await guard.assertCanCommit();
         const insert = await database.prepare(`
-          INSERT INTO _vibecanvas_function_operation_receipts (
+          INSERT INTO _omnidraw_function_operation_receipts (
             invocation_id, operation_id, attempt_id, operation_name,
             operation_fingerprint_sha256, output_json
           ) VALUES (?, ?, ?, ?, ?, ?)
@@ -854,7 +854,7 @@ export class DbResource implements ILocalResourceProvider {
       const statement = await database.prepare(`
         SELECT invocation_id, operation_id, attempt_id, operation_name,
           operation_fingerprint_sha256, output_json
-        FROM _vibecanvas_function_operation_receipts
+        FROM _omnidraw_function_operation_receipts
         WHERE invocation_id = ? AND operation_id = ?
       `);
       let row: TNativeRow | undefined;
@@ -896,7 +896,7 @@ export class DbResource implements ILocalResourceProvider {
       const database = await this.#open(resourceId, true);
       await database.exec(APPLY_MARKER_SQL);
       await database.exec(FUNCTION_OPERATION_RECEIPTS_SQL);
-      await database.exec('DROP TABLE IF EXISTS `_vibecanvas_migrations`;');
+      await database.exec('DROP TABLE IF EXISTS `_omnidraw_migrations`;');
       await this.#removeDatabaseFiles(`${this.#databasePath(resourceId)}.pre-migration`);
       return { status: 'ready' as const };
     } catch {
@@ -938,8 +938,8 @@ export class DbResource implements ILocalResourceProvider {
       };
       const blobMetadata = visibleColumns.map((column, index) => ({
         column,
-        lengthAlias: nextAlias(`__vibecanvas_blob_length_${index}`),
-        previewAlias: nextAlias(`__vibecanvas_blob_preview_${index}`),
+        lengthAlias: nextAlias(`__omnidraw_blob_length_${index}`),
+        previewAlias: nextAlias(`__omnidraw_blob_preview_${index}`),
       }));
       const selectColumns = blobMetadata.flatMap(({ column, lengthAlias, previewAlias }) => {
         const quoted = quoteIdentifier(column);
@@ -952,11 +952,11 @@ export class DbResource implements ILocalResourceProvider {
       let rowidAlias: string | null = null;
       const identityAliases = new Map<string, string>();
       if (object.identity?.kind === 'rowid') {
-        rowidAlias = nextAlias('__vibecanvas_rowid_value');
+        rowidAlias = nextAlias('__omnidraw_rowid_value');
         selectColumns.push(`rowid AS ${quoteIdentifier(rowidAlias)}`);
       } else if (object.identity?.kind === 'primaryKey') {
         for (const [index, column] of object.identity.columns.entries()) {
-          const alias = nextAlias(`__vibecanvas_identity_${index}`);
+          const alias = nextAlias(`__omnidraw_identity_${index}`);
           identityAliases.set(column, alias);
           selectColumns.push(`${quoteIdentifier(column)} AS ${quoteIdentifier(alias)}`);
         }
@@ -1174,16 +1174,16 @@ export class DbResource implements ILocalResourceProvider {
     return this.#withDatabase(path, false, async (database) => {
       const sql = prepared.sql;
       const baselineForeignKeys = await this.#foreignKeyViolations(database);
-      const rebuild = sql.includes('__vibecanvas_rebuild');
+      const rebuild = sql.includes('__omnidraw_rebuild');
       if (rebuild) await database.exec('PRAGMA foreign_keys = OFF;');
       const apply = database.transaction(async (): Promise<TDbDraftChangeEvidence> => {
         await database.exec(DRAFT_CHANGE_EVIDENCE_SQL, { queryTimeout: QUERY_TIMEOUT_MS });
-        const rows = await this.#queryNative(database, 'SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_vibecanvas_draft_change_evidence`', []);
+        const rows = await this.#queryNative(database, 'SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_omnidraw_draft_change_evidence`', []);
         const rawSequence = rows[0]?.next_sequence;
         const sequence = typeof rawSequence === 'bigint' ? Number(rawSequence) : rawSequence;
         if (!Number.isSafeInteger(sequence) || Number(sequence) < 1) throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence sequence is invalid.');
         await database.exec(sql, { queryTimeout: QUERY_TIMEOUT_MS });
-        await this.#runNative(database, 'INSERT INTO `_vibecanvas_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)', [Number(sequence), 'structure', sql]);
+        await this.#runNative(database, 'INSERT INTO `_omnidraw_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)', [Number(sequence), 'structure', sql]);
         await this.#verifyDatabase(database, baselineForeignKeys);
         return { sequence: Number(sequence), kind: 'structure', sql };
       });
@@ -1209,16 +1209,16 @@ export class DbResource implements ILocalResourceProvider {
       let evidence: TDbDraftChangeEvidence | null = null;
       try {
         database.exec(RESOURCE_PRAGMAS_SQL);
-        const rebuild = sql.includes('__vibecanvas_rebuild');
+        const rebuild = sql.includes('__omnidraw_rebuild');
         if (rebuild) database.exec('PRAGMA foreign_keys = OFF;');
         const apply = database.transaction(() => {
           database.exec(DRAFT_CHANGE_EVIDENCE_SQL);
-          const row = database.query('SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_vibecanvas_draft_change_evidence`').get() as { next_sequence?: number | bigint } | null;
+          const row = database.query('SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_omnidraw_draft_change_evidence`').get() as { next_sequence?: number | bigint } | null;
           const rawSequence = row?.next_sequence;
           const sequence = typeof rawSequence === 'bigint' ? Number(rawSequence) : rawSequence;
           if (!Number.isSafeInteger(sequence) || Number(sequence) < 1) throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence sequence is invalid.');
           database.exec(sql);
-          database.query('INSERT INTO `_vibecanvas_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)').run(Number(sequence), 'structure', sql);
+          database.query('INSERT INTO `_omnidraw_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)').run(Number(sequence), 'structure', sql);
           evidence = { sequence: Number(sequence), kind: 'structure', sql };
         });
         apply();
@@ -1257,7 +1257,7 @@ export class DbResource implements ILocalResourceProvider {
       const baselineForeignKeys = await this.#foreignKeyViolations(database);
       const apply = database.transaction(async (): Promise<TDbDraftChangeEvidence> => {
         await database.exec(DRAFT_CHANGE_EVIDENCE_SQL, { queryTimeout: QUERY_TIMEOUT_MS });
-        const rows = await this.#queryNative(database, 'SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_vibecanvas_draft_change_evidence`', []);
+        const rows = await this.#queryNative(database, 'SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_omnidraw_draft_change_evidence`', []);
         const rawSequence = rows[0]?.next_sequence;
         const sequence = typeof rawSequence === 'bigint' ? Number(rawSequence) : rawSequence;
         if (!Number.isSafeInteger(sequence) || Number(sequence) < 1) throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence sequence is invalid.');
@@ -1266,7 +1266,7 @@ export class DbResource implements ILocalResourceProvider {
         } else {
           await this.#runNative(database, sql, parameters);
         }
-        await this.#runNative(database, 'INSERT INTO `_vibecanvas_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)', [Number(sequence), 'sql', sql]);
+        await this.#runNative(database, 'INSERT INTO `_omnidraw_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)', [Number(sequence), 'sql', sql]);
         await this.#verifyDatabase(database, baselineForeignKeys);
         return { sequence: Number(sequence), kind: 'sql', sql };
       });
@@ -1281,7 +1281,7 @@ export class DbResource implements ILocalResourceProvider {
   async listDraftChangeEvidence(draftIdValue: string): Promise<TDbDraftChangeEvidence[]> {
     const draftId = validateHostId(draftIdValue, 'DbResource draft');
     return this.#withDatabase(this.#draftDatabasePath(draftId), true, async (database) => {
-      const rows = await this.#queryNative(database, 'SELECT `sequence`, `kind`, `sql` FROM `_vibecanvas_draft_change_evidence` ORDER BY `sequence`', []);
+      const rows = await this.#queryNative(database, 'SELECT `sequence`, `kind`, `sql` FROM `_omnidraw_draft_change_evidence` ORDER BY `sequence`', []);
       return rows.map((row): TDbDraftChangeEvidence => {
         const sequence = typeof row.sequence === 'bigint' ? Number(row.sequence) : row.sequence;
         if (!Number.isSafeInteger(sequence) || Number(sequence) < 1 || (row.kind !== 'structure' && row.kind !== 'sql') || typeof row.sql !== 'string') {
@@ -1312,7 +1312,7 @@ export class DbResource implements ILocalResourceProvider {
         await this.#verifyDatabaseFile(backupPath, baselineForeignKeys);
         backupReady = true;
         try {
-          const rebuild = args.changes.some((change) => change.sql.includes('__vibecanvas_rebuild'));
+          const rebuild = args.changes.some((change) => change.sql.includes('__omnidraw_rebuild'));
           const orderedChanges = [...args.changes].sort((a, b) => a.sequence - b.sequence);
           if (orderedChanges.some((change) => requiresCombinedTableOptionsCompatibility(change.sql))) {
             this.#applyChangesWithSqlite(livePath, orderedChanges, applyId, rebuild);
@@ -1327,7 +1327,7 @@ export class DbResource implements ILocalResourceProvider {
                 else await this.#runNative(database, sql, parameters);
               }
               await database.exec(APPLY_MARKER_SQL);
-              await database.run('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
+              await database.run('INSERT INTO `_omnidraw_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
             });
             try {
               await transaction();
@@ -1337,7 +1337,7 @@ export class DbResource implements ILocalResourceProvider {
           }
           const database = await this.#open(resourceId, true);
           await this.#verifyDatabase(database, baselineForeignKeys);
-          const marker = await this.#queryNative(database, 'SELECT `apply_id` FROM `_vibecanvas_apply_markers` WHERE `apply_id` = ?', [applyId]);
+          const marker = await this.#queryNative(database, 'SELECT `apply_id` FROM `_omnidraw_apply_markers` WHERE `apply_id` = ?', [applyId]);
           if (marker.length !== 1) throw new ResourceError('DB_RESOURCE_APPLY_FAILED', 'Committed apply marker is missing.');
           return { outcome: 'succeeded' as const, backupRetained: true, error: null };
         } catch {
@@ -1379,7 +1379,7 @@ export class DbResource implements ILocalResourceProvider {
           }
         }
         database.exec(APPLY_MARKER_SQL);
-        database.query('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)').run(applyId);
+        database.query('INSERT INTO `_omnidraw_apply_markers` (`apply_id`) VALUES (?)').run(applyId);
       });
       apply();
       if (rebuild) database.exec('PRAGMA foreign_keys = ON;');
@@ -1404,7 +1404,7 @@ export class DbResource implements ILocalResourceProvider {
         const database = await this.#open(resourceId, true);
         const markRestore = database.transaction(async () => {
           await database.exec(APPLY_MARKER_SQL);
-          await database.run('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', restoreId, { queryTimeout: QUERY_TIMEOUT_MS });
+          await database.run('INSERT INTO `_omnidraw_apply_markers` (`apply_id`) VALUES (?)', restoreId, { queryTimeout: QUERY_TIMEOUT_MS });
         });
         await markRestore();
       });
@@ -1427,7 +1427,7 @@ export class DbResource implements ILocalResourceProvider {
     try {
       const rows = await this.#withDatabase(this.#databasePath(resourceId), true, (database) => this.#queryNative(
         database,
-        'SELECT `apply_id` FROM `_vibecanvas_apply_markers` WHERE `apply_id` = ?',
+        'SELECT `apply_id` FROM `_omnidraw_apply_markers` WHERE `apply_id` = ?',
         [applyId],
       ));
       return rows.length === 1;
@@ -1519,7 +1519,7 @@ export class DbResource implements ILocalResourceProvider {
               const database = await this.#open(resourceId, true);
               const markRestore = database.transaction(async () => {
                 await database.exec(APPLY_MARKER_SQL);
-                await database.run('INSERT OR IGNORE INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
+                await database.run('INSERT OR IGNORE INTO `_omnidraw_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
               });
               await markRestore();
             }
@@ -1824,7 +1824,7 @@ export class DbResource implements ILocalResourceProvider {
       FROM sqlite_schema
       WHERE type IN ('table', 'view')
         AND lower(name) NOT GLOB 'sqlite_*'
-        AND lower(name) NOT GLOB '_vibecanvas_*'
+        AND lower(name) NOT GLOB '_omnidraw_*'
         AND lower(name) NOT GLOB 'libsql_*'
         AND lower(name) NOT GLOB '_turso_*'
         AND lower(name) NOT GLOB '_litestream_*'
@@ -1927,7 +1927,7 @@ export class DbResource implements ILocalResourceProvider {
   }
 
   #rowIdentity(object: TDbObject, row: TNativeRow): TDbRowIdentity | null {
-    if (object.identity?.kind === 'rowid') return { kind: 'rowid', value: toWireInteger(row.__vibecanvas_rowid_value) };
+    if (object.identity?.kind === 'rowid') return { kind: 'rowid', value: toWireInteger(row.__omnidraw_rowid_value) };
     if (object.identity?.kind === 'primaryKey') {
       const values: Record<string, TDbCellValue> = {};
       for (const name of object.identity.columns) values[name] = toWireValue(row[name]);
@@ -2099,7 +2099,7 @@ export class DbResource implements ILocalResourceProvider {
         : '';
       definitions.push(`FOREIGN KEY (${foreign.columns.map(quoteIdentifier).join(', ')}) REFERENCES ${quoteIdentifier(foreign.referencedTable)}${referencedColumns} ON UPDATE ${referentialAction(foreign.onUpdate)} ON DELETE ${referentialAction(foreign.onDelete)}`);
     }
-    const temporary = '__vibecanvas_rebuild';
+    const temporary = '__omnidraw_rebuild';
     const targets = columns.map((column) => column.name);
     const indexes = object.indexes.filter((index) => index.createSql).map((index) => `${index.createSql};`).join('\n');
     const triggers = object.triggers.map((trigger) => `${trigger.createSql};`).join('\n');

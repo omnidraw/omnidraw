@@ -1,4 +1,4 @@
-import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
+import type { CapsuleViewport } from '@omnidraw/capsule-omnidraw/host';
 
 type TArgs = CapsuleViewport;
 

@@ -1,4 +1,4 @@
-import type { TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
+import type { TWidgetSourceSnapshot } from '@omnidraw/widget-contract';
 import {
   WIDGET_FILE_READ_MAX_BYTES,
   WIDGET_FILE_TEXT_PREVIEW_MAX_BYTES,

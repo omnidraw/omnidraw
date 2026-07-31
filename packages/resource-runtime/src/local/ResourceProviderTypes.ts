@@ -8,7 +8,7 @@ import type {
   TResourceOperationId,
   TResourceStatus,
 } from '../types';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 export type TLocalResource = Readonly<{
   id: string;

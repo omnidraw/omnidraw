@@ -1,11 +1,11 @@
 import type {
   CapsuleCapabilityGrant,
   CapsuleHash,
-} from '@vibecanvas/capsule-vibecanvas/contract';
+} from '@omnidraw/capsule-omnidraw/contract';
 import type {
   TWidgetCapsuleCapabilityRequest,
   TWidgetCapsuleRuntimeDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type {
   TWidgetCapsuleCapabilityCatalogEntry,
   TWidgetCapsuleHostCatalog,

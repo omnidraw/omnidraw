@@ -6,7 +6,7 @@ import type {
   TCanvasItemQueryFilter,
   TCanvasItemsChangedEvent,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 
 export type TCanvasCliSubcommand =
   | 'list'

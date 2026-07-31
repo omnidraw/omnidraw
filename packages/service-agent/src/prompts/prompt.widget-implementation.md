@@ -3,14 +3,14 @@
 Prefer the smallest complete browser implementation. UI-only widgets start no backend process and should remain fully useful while offline when their feature allows it.
 
 For shared published-instance state, use the build-wired collaborative-state
-client from `@vibecanvas/sdk/widget`. Preview supplies a separate authoring
+client from `@omnidraw/sdk/widget`. Preview supplies a separate authoring
 state session; publication supplies the instance-bound host collaboration
 session. Preview state is not copied into a published instance. Treat state as
 bounded JSON and handle the first atomic snapshot. Do not invent or expose a
 capability selector.
 
 ```ts
-import { createCollaborativeStateClient } from "@vibecanvas/sdk/widget";
+import { createCollaborativeStateClient } from "@omnidraw/sdk/widget";
 
 const shared = createCollaborativeStateClient<{ count: number }>();
 const unsubscribe = shared.subscribe((value) => {

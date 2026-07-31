@@ -1,11 +1,11 @@
 import type {
   IWidgetCapsuleHostConfigurationReader,
   TWidgetCapsuleHostConfiguration,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
-  VIBECANVAS_CAPSULE_ALLOWED_APIS,
-  VIBECANVAS_CAPSULE_HOST_LIMITS,
-} from '@vibecanvas/capsule-vibecanvas/builder';
+  OMNIDRAW_CAPSULE_ALLOWED_APIS,
+  OMNIDRAW_CAPSULE_HOST_LIMITS,
+} from '@omnidraw/capsule-omnidraw/builder';
 import { createHash } from 'node:crypto';
 import {
   WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID,
@@ -34,8 +34,8 @@ implements IWidgetCapsuleHostConfigurationReader {
       ...await this.signingKeys.publicSigningKeys(),
     ].sort((left, right) => left.keyId.localeCompare(right.keyId)));
     const policy = Object.freeze({
-      allowedApis: VIBECANVAS_CAPSULE_ALLOWED_APIS,
-      limits: VIBECANVAS_CAPSULE_HOST_LIMITS,
+      allowedApis: OMNIDRAW_CAPSULE_ALLOWED_APIS,
+      limits: OMNIDRAW_CAPSULE_HOST_LIMITS,
       previewSigningKeyId: WIDGET_CAPSULE_PREVIEW_SIGNING_KEY_ID,
       releaseSigningKeyId: WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
       signingKeys,

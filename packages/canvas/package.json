@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/canvas",
+  "name": "@omnidraw/canvas",
   "private": true,
   "type": "module",
   "exports": {
@@ -25,10 +25,10 @@
   },
   "dependencies": {
     "@omnidraw/cangine": "0.5.1",
-    "@vibecanvas/canvas-contract": "workspace:*",
-    "@vibecanvas/service-db": "workspace:*",
-    "@vibecanvas/service-theme": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*",
+    "@omnidraw/canvas-contract": "workspace:*",
+    "@omnidraw/service-db": "workspace:*",
+    "@omnidraw/service-theme": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*",
     "lucide-solid": "catalog:",
     "solid-js": "catalog:"
   }

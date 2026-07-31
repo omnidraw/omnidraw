@@ -74,7 +74,7 @@ PRAGMA temp_store = 2;
 `;
 
 const RESOURCE_METADATA_SCHEMA_SQL = `
-CREATE TABLE \`_vibecanvas_resource_metadata\` (
+CREATE TABLE \`_omnidraw_resource_metadata\` (
   \`singleton\` INTEGER PRIMARY KEY CHECK (\`singleton\` = 1),
   \`resource_id\` TEXT NOT NULL,
   \`resource_kind\` TEXT NOT NULL CHECK (\`resource_kind\` IN ('kv', 'secretStore')),
@@ -109,7 +109,7 @@ END
 `;
 
 const RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL = `
-CREATE TABLE \`_vibecanvas_function_operation_receipts\` (
+CREATE TABLE \`_omnidraw_function_operation_receipts\` (
   \`invocation_id\` TEXT NOT NULL,
   \`operation_id\` TEXT NOT NULL,
   \`attempt_id\` TEXT NOT NULL,
@@ -312,7 +312,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
         await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
         await database.exec(RESOURCE_SCHEMA_SQL, { queryTimeout: this.#queryTimeoutMs });
         await (await database.prepare(`
-          INSERT INTO _vibecanvas_resource_metadata (singleton, resource_id, resource_kind, format_version)
+          INSERT INTO _omnidraw_resource_metadata (singleton, resource_id, resource_kind, format_version)
           VALUES (1, ?, ?, ?)
         `)).run(resourceId, this.#kind, this.#formatVersion());
       } finally {
@@ -564,7 +564,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       try {
         const prior = await (await database.prepare(`
           SELECT operation_name, operation_fingerprint_sha256, output_json
-          FROM _vibecanvas_function_operation_receipts
+          FROM _omnidraw_function_operation_receipts
           WHERE invocation_id = ? AND operation_id = ?
         `)).get(request.invocationId, request.operationId) as Record<string, unknown> | null | undefined;
         if (prior) {
@@ -628,7 +628,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
         const outputJson = fnResourceKeyValueSerialize(output);
         await guard.assertCanCommit();
         await (await database.prepare(`
-          INSERT INTO _vibecanvas_function_operation_receipts (
+          INSERT INTO _omnidraw_function_operation_receipts (
             invocation_id, operation_id, attempt_id, operation_name,
             operation_fingerprint_sha256, output_json
           ) VALUES (?, ?, ?, ?, ?, ?)
@@ -662,7 +662,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       const row = await (await database.prepare(`
         SELECT invocation_id, operation_id, attempt_id, operation_name,
           operation_fingerprint_sha256, output_json
-        FROM _vibecanvas_function_operation_receipts
+        FROM _omnidraw_function_operation_receipts
         WHERE invocation_id = ? AND operation_id = ?
       `)).get(args.invocationId, args.operationId) as Record<string, unknown> | null | undefined;
       if (!row) return null;
@@ -740,7 +740,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     }
     const metadata = await (await database.prepare(`
       SELECT singleton, resource_id, resource_kind, format_version
-      FROM _vibecanvas_resource_metadata
+      FROM _omnidraw_resource_metadata
       ORDER BY singleton
     `)).all() as TMetadataRow[];
     const row = metadata[0];
@@ -761,12 +761,12 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     await (await database.prepare(`
       SELECT invocation_id, operation_id, attempt_id, operation_name,
         operation_fingerprint_sha256, output_json, committed_at
-      FROM _vibecanvas_function_operation_receipts
+      FROM _omnidraw_function_operation_receipts
       LIMIT 0
     `)).all();
-    const metadataColumns = await (await database.prepare('PRAGMA table_info(_vibecanvas_resource_metadata);')).all() as TTableInfoRow[];
+    const metadataColumns = await (await database.prepare('PRAGMA table_info(_omnidraw_resource_metadata);')).all() as TTableInfoRow[];
     const entryColumns = await (await database.prepare('PRAGMA table_info(resource_entries);')).all() as TTableInfoRow[];
-    const receiptColumns = await (await database.prepare('PRAGMA table_info(_vibecanvas_function_operation_receipts);')).all() as TTableInfoRow[];
+    const receiptColumns = await (await database.prepare('PRAGMA table_info(_omnidraw_function_operation_receipts);')).all() as TTableInfoRow[];
     const columnsMatch = (actual: readonly TTableInfoRow[], expected: readonly (readonly [string, string, number, number])[]) => (
       actual.length === expected.length
       && expected.every(([name, type, notnull, pk], index) => (
@@ -800,9 +800,9 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     }
     const tableList = await (await database.prepare('PRAGMA table_list;')).all() as TTableListRow[];
     for (const tableName of [
-      '_vibecanvas_resource_metadata',
+      '_omnidraw_resource_metadata',
       'resource_entries',
-      '_vibecanvas_function_operation_receipts',
+      '_omnidraw_function_operation_receipts',
     ]) {
       const table = tableList.find((candidate) => candidate.name === tableName);
       if (Number(table?.strict) !== 1 || Number(table?.wr) !== 0) {
@@ -816,8 +816,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       ORDER BY type, name
     `)).all() as TSchemaObjectRow[];
     const expectedSchemaObjects = [
-      ['table', '_vibecanvas_function_operation_receipts', '_vibecanvas_function_operation_receipts', RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL],
-      ['table', '_vibecanvas_resource_metadata', '_vibecanvas_resource_metadata', RESOURCE_METADATA_SCHEMA_SQL],
+      ['table', '_omnidraw_function_operation_receipts', '_omnidraw_function_operation_receipts', RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL],
+      ['table', '_omnidraw_resource_metadata', '_omnidraw_resource_metadata', RESOURCE_METADATA_SCHEMA_SQL],
       ['table', 'resource_entries', 'resource_entries', RESOURCE_ENTRIES_SCHEMA_SQL],
       ['trigger', 'resource_entries_updated_at_after_update', 'resource_entries', RESOURCE_UPDATED_AT_TRIGGER_SQL],
     ] as const;
@@ -913,7 +913,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
         await destination.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
         await destination.exec(RESOURCE_SCHEMA_SQL, { queryTimeout: this.#queryTimeoutMs });
         await (await destination.prepare(`
-          INSERT INTO _vibecanvas_resource_metadata (singleton, resource_id, resource_kind, format_version)
+          INSERT INTO _omnidraw_resource_metadata (singleton, resource_id, resource_kind, format_version)
           VALUES (1, ?, 'secretStore', ?)
         `)).run(resourceId, SECRET_STORE_FORMAT_VERSION);
         await this.#conversionCheckpoint('temporary-created', resourceId);
@@ -1125,7 +1125,7 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
         await database.connect();
         await (await database.prepare(`
           SELECT resource_id
-          FROM _vibecanvas_resource_metadata
+          FROM _omnidraw_resource_metadata
           WHERE singleton = 1 AND resource_id = ?
         `)).get(resourceId);
       } catch {

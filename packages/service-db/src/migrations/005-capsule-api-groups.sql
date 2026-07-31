@@ -23,10 +23,10 @@ CREATE TABLE widget_definition_revisions (
   contract_digest_sha256 sha256_hex NOT NULL,
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   function_descriptors_json JSON NOT NULL
-    DEFAULT '{"format":"vibecanvas.server-functions.v1","functions":[]}'
+    DEFAULT '{"format":"omnidraw.server-functions.v1","functions":[]}'
     CHECK (
       json_type(function_descriptors_json) = 'object'
-      AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
+      AND json_extract(function_descriptors_json, '$.format') = 'omnidraw.server-functions.v1'
       AND json_type(function_descriptors_json, '$.functions') = 'array'
     ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL
@@ -35,12 +35,12 @@ CREATE TABLE widget_definition_revisions (
     json_type(ui_runtime_json) = 'object'
     AND (
       (
-        json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v1'
+        json_extract(ui_runtime_json, '$.format') = 'omnidraw.capsule-runtime.v1'
         AND json_type(ui_runtime_json, '$.target') = 'object'
         AND json_type(ui_runtime_json, '$.apiContract') IS NULL
       )
       OR (
-        json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v2'
+        json_extract(ui_runtime_json, '$.format') = 'omnidraw.capsule-runtime.v2'
         AND json_type(ui_runtime_json, '$.target') IS NULL
         AND json_type(ui_runtime_json, '$.apiContract') = 'object'
         AND json_extract(ui_runtime_json, '$.apiContract.format') = 'capsule-api-groups-v1'
@@ -159,7 +159,7 @@ CREATE TABLE agent_preview_revisions (
   manifest_json JSON NOT NULL CHECK (json_type(manifest_json) = 'object'),
   function_descriptors_json JSON NOT NULL CHECK (
     json_type(function_descriptors_json) = 'object'
-    AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
+    AND json_extract(function_descriptors_json, '$.format') = 'omnidraw.server-functions.v1'
     AND json_type(function_descriptors_json, '$.functions') = 'array'
   ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL,
@@ -186,8 +186,8 @@ CREATE TABLE agent_preview_revisions (
   ui_runtime_json JSON NOT NULL CHECK (
     json_type(ui_runtime_json) = 'object'
     AND json_extract(ui_runtime_json, '$.format') IN (
-      'vibecanvas.capsule-runtime.v1',
-      'vibecanvas.capsule-runtime.v2'
+      'omnidraw.capsule-runtime.v1',
+      'omnidraw.capsule-runtime.v2'
     )
   ),
   capsule_artifact_hash TEXT NOT NULL CHECK (

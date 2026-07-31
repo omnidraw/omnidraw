@@ -9,7 +9,7 @@ import type {
 import type {
   TWidgetCapsuleBudgetRequest,
   TWidgetCapsuleRuntimeDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 const BUDGETS: TWidgetCapsuleBudgetRequest = Object.freeze({
   cpuMs: 0.5,
@@ -56,7 +56,7 @@ function descriptor(
   budgets: TWidgetCapsuleBudgetRequest = BUDGETS,
 ): TWidgetCapsuleRuntimeDescriptor {
   return Object.freeze({
-    format: 'vibecanvas.capsule-runtime.v2',
+    format: 'omnidraw.capsule-runtime.v2',
     capsuleArtifactHash: `sha256:${'a'.repeat(64)}`,
     apiContract: Object.freeze({
       format: 'capsule-api-groups-v1',

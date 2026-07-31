@@ -155,7 +155,7 @@ async function runCase(
   await assertStructuredResult(acceptanceCase, reportPath);
 }
 
-const reportRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-m10-load-reports-'));
+const reportRoot = await mkdtemp(join(tmpdir(), 'omnidraw-m10-load-reports-'));
 try {
   for (const [index, acceptanceCase] of cases.entries()) {
     await runCase(

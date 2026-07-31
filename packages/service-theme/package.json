@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/service-theme",
+  "name": "@omnidraw/service-theme",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/tapable": "workspace:*"
+    "@omnidraw/runtime": "workspace:*",
+    "@omnidraw/tapable": "workspace:*"
   }
 }

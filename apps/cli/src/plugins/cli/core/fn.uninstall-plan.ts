@@ -35,7 +35,7 @@ type TArgs = {
   homedir: string;
   env: Record<string, string | undefined>;
   execPath: string;
-  vibecanvasHomeDir: string;
+  omnidrawHomeDir: string;
 };
 
 function fnNormalizePath(portal: TPortal, path: string): string {
@@ -46,8 +46,8 @@ function fnIsWithin(parent: string, child: string): boolean {
   return child === parent || child.startsWith(`${parent}/`);
 }
 
-function fnIsVibecanvasOwnedDir(path: string): boolean {
-  return /(^|[/\\])vibecanvas($|[/\\])/.test(path) || /(^|[/\\])\.vibecanvas($|[/\\])/.test(path);
+function fnIsOmnidrawOwnedDir(path: string): boolean {
+  return /(^|[/\\])omnidraw($|[/\\])/.test(path) || /(^|[/\\])\.omnidraw($|[/\\])/.test(path);
 }
 
 function fnPushUniqueTarget(targets: TUninstallRemoveTarget[], target: TUninstallRemoveTarget): void {
@@ -61,11 +61,11 @@ function fnPushUniqueSkip(targets: TUninstallSkippedTarget[], target: TUninstall
 }
 
 function fnBuildUninstallPlan(portal: TPortal, args: TArgs): TUninstallPlan {
-  const installDir = fnNormalizePath(portal, args.env.VIBECANVAS_INSTALL_DIR ?? portal.join(args.homedir, '.vibecanvas', 'bin'));
+  const installDir = fnNormalizePath(portal, args.env.OMNIDRAW_INSTALL_DIR ?? portal.join(args.homedir, '.omnidraw', 'bin'));
   const installRoot = fnNormalizePath(portal, portal.dirname(installDir));
-  const nativeDir = fnNormalizePath(portal, args.env.VIBECANVAS_NATIVE_DIR ?? portal.join(installRoot, 'native'));
-  const migrationsDir = fnNormalizePath(portal, args.env.VIBECANVAS_MIGRATIONS_DIR ?? portal.join(installRoot, 'database-migrations'));
-  const binaryPath = portal.join(installDir, 'vibecanvas');
+  const nativeDir = fnNormalizePath(portal, args.env.OMNIDRAW_NATIVE_DIR ?? portal.join(installRoot, 'native'));
+  const migrationsDir = fnNormalizePath(portal, args.env.OMNIDRAW_MIGRATIONS_DIR ?? portal.join(installRoot, 'database-migrations'));
+  const binaryPath = portal.join(installDir, 'omnidraw');
   const execPath = fnNormalizePath(portal, args.execPath);
   const removeTargets: TUninstallRemoveTarget[] = [];
   const skippedTargets: TUninstallSkippedTarget[] = [];
@@ -84,14 +84,14 @@ function fnBuildUninstallPlan(portal: TPortal, args: TArgs): TUninstallPlan {
     });
   }
 
-  const vibecanvasHomeDir = fnNormalizePath(portal, args.vibecanvasHomeDir);
-  if (fnIsVibecanvasOwnedDir(vibecanvasHomeDir)) {
-    fnPushUniqueTarget(removeTargets, { kind: 'home-dir', path: vibecanvasHomeDir, missingOk: true });
+  const omnidrawHomeDir = fnNormalizePath(portal, args.omnidrawHomeDir);
+  if (fnIsOmnidrawOwnedDir(omnidrawHomeDir)) {
+    fnPushUniqueTarget(removeTargets, { kind: 'home-dir', path: omnidrawHomeDir, missingOk: true });
   } else {
     fnPushUniqueSkip(skippedTargets, {
       kind: 'home-dir',
-      path: vibecanvasHomeDir,
-      reason: 'path does not look Vibecanvas-owned',
+      path: omnidrawHomeDir,
+      reason: 'path does not look Omnidraw-owned',
     });
   }
 

@@ -87,10 +87,10 @@ type TDryRunResult = {
 };
 
 const ANSI_RESET = '\x1b[0m';
-const RELEASES_API = 'https://api.github.com/repos/vibecanvas/vibecanvas/releases' as const;
+const RELEASES_API = 'https://api.github.com/repos/omnidraw/omnidraw/releases' as const;
 const RELEASE_DOWNLOAD_BASE =
-  (typeof VIBECANVAS_RELEASE_DOWNLOAD_BASE !== 'undefined' && VIBECANVAS_RELEASE_DOWNLOAD_BASE) ||
-  'https://github.com/vibecanvas/vibecanvas/releases/download';
+  (typeof OMNIDRAW_RELEASE_DOWNLOAD_BASE !== 'undefined' && OMNIDRAW_RELEASE_DOWNLOAD_BASE) ||
+  'https://github.com/omnidraw/omnidraw/releases/download';
 const UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const;
 const DOWNLOAD_PROGRESS_START = 85;
 const DOWNLOAD_PROGRESS_END = 91;
@@ -98,7 +98,7 @@ const DOWNLOAD_INACTIVITY_TIMEOUT_MS = 30_000;
 const CANDIDATE_TIMEOUT_MS = 8_000;
 
 function printUpgradeHelp(): void {
-  console.log(`Usage: vibecanvas upgrade [options]
+  console.log(`Usage: omnidraw upgrade [options]
 
 Options:
   --check              Check for updates without installing
@@ -115,8 +115,8 @@ function getServerVersion(config: ICliConfig): string {
 
 function getUpdateChannel(): (typeof UPDATE_CHANNELS)[number] {
   const channel =
-    (typeof VIBECANVAS_CHANNEL !== 'undefined' && VIBECANVAS_CHANNEL) ||
-    process.env.VIBECANVAS_CHANNEL;
+    (typeof OMNIDRAW_CHANNEL !== 'undefined' && OMNIDRAW_CHANNEL) ||
+    process.env.OMNIDRAW_CHANNEL;
   if (channel === 'stable' || channel === 'beta' || channel === 'nightly') {
     return channel;
   }
@@ -130,7 +130,7 @@ function getExecPath(): string {
 function detectInstallMethod(): TInstallMethod {
   const execPath = getExecPath().toLowerCase();
 
-  if (execPath.includes('.vibecanvas/bin') || execPath.includes('.vibecanvas\\bin')) {
+  if (execPath.includes('.omnidraw/bin') || execPath.includes('.omnidraw\\bin')) {
     return 'curl';
   }
 
@@ -158,7 +158,7 @@ function resolveUpdatePolicy(config: ICliConfig, method: TInstallMethod): TUpdat
   const [policy] = fnCliUpdateResolvePolicy({
     method,
     configAutoupdate: readConfigAutoupdate(config),
-    envDisable: process.env.VIBECANVAS_DISABLE_AUTOUPDATE,
+    envDisable: process.env.OMNIDRAW_DISABLE_AUTOUPDATE,
   });
 
   return policy ?? { mode: 'notify', reason: 'default' };
@@ -187,11 +187,11 @@ async function writeFailedUpgrade(config: ICliConfig, failure: TFailedUpgrade | 
 }
 
 function extractVersionFromTag(tag: string): string {
-  return tag.replace(/^vibecanvas-v/i, '').replace(/^v/i, '');
+  return tag.replace(/^omnidraw-v/i, '').replace(/^v/i, '');
 }
 
 function isStableReleaseTag(tag: string): boolean {
-  return /^vibecanvas-v\d+\.\d+\.\d+$/i.test(tag);
+  return /^omnidraw-v\d+\.\d+\.\d+$/i.test(tag);
 }
 
 async function fetchLatestVersion(targetVersionOverride?: string): Promise<TLatestVersion | null> {
@@ -283,7 +283,7 @@ function createUpgradeProgressRenderer() {
 }
 
 function commandForMethod(method: TInstallMethod, version: string): string | undefined {
-  if (method === 'npm') return `npm install -g vibecanvas@${version}`;
+  if (method === 'npm') return `npm install -g omnidraw@${version}`;
   return undefined;
 }
 
@@ -358,7 +358,7 @@ async function buildReleaseAssetDescriptor(): Promise<TReleaseAssetDescriptor> {
     throw new Error(`Unsupported platform for upgrade dry-run: ${process.platform}-${process.arch}`);
   }
 
-  const parts = ['vibecanvas', os, arch];
+  const parts = ['omnidraw', os, arch];
   if (await detectNeedsBaselineBinary()) {
     parts.push('baseline');
   }
@@ -370,7 +370,7 @@ async function buildReleaseAssetDescriptor(): Promise<TReleaseAssetDescriptor> {
   const isWindows = process.platform === 'win32';
   const archiveName = `${packageName}${isWindows ? '.zip' : '.tar.gz'}`;
   const checksumName = `${packageName}.sha256`;
-  const binaryName = `vibecanvas${isWindows ? '.exe' : ''}`;
+  const binaryName = `omnidraw${isWindows ? '.exe' : ''}`;
 
   return { packageName, archiveName, checksumName, binaryName, isWindows };
 }
@@ -385,7 +385,7 @@ async function downloadFile(url: string, destinationPath: string, options: TDown
   const controller = new AbortController();
   const response = await (options.fetchImpl ?? fetch)(url, {
     headers: {
-      'user-agent': 'vibecanvas-upgrade',
+      'user-agent': 'omnidraw-upgrade',
     },
     redirect: 'follow',
     signal: controller.signal,
@@ -510,8 +510,8 @@ async function executeCandidateBinary(binaryPath: string, tempConfigDir: string)
     stderr: 'pipe',
     env: {
       ...process.env,
-      VIBECANVAS_HOME: tempConfigDir,
-      VIBECANVAS_DISABLE_AUTOUPDATE: '1',
+      OMNIDRAW_HOME: tempConfigDir,
+      OMNIDRAW_DISABLE_AUTOUPDATE: '1',
     },
   });
 
@@ -550,12 +550,12 @@ async function validateCandidateBinary(binaryPath: string, tempConfigDir: string
 
 async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: string; onProgress?: (event: TUpgradeProgressEvent) => void }): Promise<TDryRunResult> {
   const releaseAsset = await buildReleaseAssetDescriptor();
-  const tempRoot = mkdtempSync(join(tmpdir(), 'vibecanvas-upgrade-dry-run-'));
+  const tempRoot = mkdtempSync(join(tmpdir(), 'omnidraw-upgrade-dry-run-'));
   const archivePath = join(tempRoot, releaseAsset.archiveName);
   const checksumPath = join(tempRoot, releaseAsset.checksumName);
   const extractDir = join(tempRoot, 'extract');
   const tempConfigDir = join(tempRoot, 'config');
-  const releaseTag = `vibecanvas-v${extractVersionFromTag(args.version)}`;
+  const releaseTag = `omnidraw-v${extractVersionFromTag(args.version)}`;
 
   try {
     await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.checksumName}`, checksumPath, {
@@ -601,10 +601,10 @@ async function applyUpgrade(args: TApplyUpgradeArgs): Promise<TApplyUpgradeResul
     return { ok: false, command, message: 'Auto-install is only enabled for curl installs' };
   }
 
-  const tempRoot = mkdtempSync(join(tmpdir(), 'vibecanvas-upgrade-'));
+  const tempRoot = mkdtempSync(join(tmpdir(), 'omnidraw-upgrade-'));
   try {
     const asset = await buildReleaseAssetDescriptor();
-    const tag = `vibecanvas-v${extractVersionFromTag(args.version)}`;
+    const tag = `omnidraw-v${extractVersionFromTag(args.version)}`;
     const archivePath = join(tempRoot, asset.archiveName);
     const checksumPath = join(tempRoot, asset.checksumName);
     const extractDir = join(tempRoot, 'extract');

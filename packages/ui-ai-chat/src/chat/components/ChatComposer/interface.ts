@@ -1,4 +1,4 @@
-import type { TWidgetSource, TWidgetVariantSummary } from "@vibecanvas/orpc-client"
+import type { TWidgetSource, TWidgetVariantSummary } from "@omnidraw/orpc-client"
 
 export type TChatComposerMentionTarget =
   | { type: "resource"; resourceId: string }

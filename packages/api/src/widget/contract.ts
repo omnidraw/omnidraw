@@ -4,14 +4,14 @@ import type {
   TWidgetStateGetResult,
   TWidgetStateJson,
   TWidgetStateSubscriptionEvent,
-} from '@vibecanvas/service-widget-state';
+} from '@omnidraw/service-widget-state';
 import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetCapsuleAllowedApis,
   ZWidgetCapsuleBudgetRequest,
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetManifestV3,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { z } from 'zod';
 import type {
   TWidgetCapsuleHostConfiguration,

@@ -3,8 +3,8 @@ import type {
   TSceneNode,
   TWidgetFrameNode,
 } from '@omnidraw/cangine';
-import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract/CONSTANTS';
-import type { TCanvasWidgetExtensionV1 } from '@vibecanvas/canvas-contract/types';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';
+import type { TCanvasWidgetExtensionV1 } from '@omnidraw/canvas-contract/types';
 
 export type TAiWidgetPayload = Readonly<{
   sessionId: string;
@@ -122,7 +122,7 @@ function fnBaseWidgetNode(args: TArgsNodeBase): Omit<
 }
 
 export function fnCanvasWidgetPortalId(nodeId: string): string {
-  return `vibecanvas:widget:${nodeId}`;
+  return `omnidraw:widget:${nodeId}`;
 }
 
 export function fnCreateAiWidgetNode(args: TArgsAiNode): TWidgetFrameNode {

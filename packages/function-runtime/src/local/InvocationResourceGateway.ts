@@ -9,8 +9,8 @@ import type {
   IResourceGateway,
   TResourceCall,
   TResourceCallResult,
-} from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { IResourceWritePermitAuthority } from '../interface';
 import type {
   TFunctionAttempt,

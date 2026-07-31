@@ -61,7 +61,7 @@ jobs:
           fi
 
           if [ "$SDK_PRIVATE" = "true" ]; then
-            echo "packages/sdk/package.json is private. Remove private:true before publishing @vibecanvas/sdk." >&2
+            echo "packages/sdk/package.json is private. Remove private:true before publishing @omnidraw/sdk." >&2
             exit 1
           fi
 
@@ -70,8 +70,8 @@ jobs:
             exit 1
           fi
 
-          if bun pm view "@vibecanvas/sdk@$SDK_VERSION" version >/dev/null 2>&1; then
-            echo "npm package already exists: @vibecanvas/sdk@$SDK_VERSION" >&2
+          if bun pm view "@omnidraw/sdk@$SDK_VERSION" version >/dev/null 2>&1; then
+            echo "npm package already exists: @omnidraw/sdk@$SDK_VERSION" >&2
             echo "Refusing to publish. Bump packages/sdk/package.json version or remove the package version from npm first." >&2
             exit 1
           fi
@@ -112,10 +112,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test SDK
-        run: bun run --filter @vibecanvas/sdk test
+        run: bun run --filter @omnidraw/sdk test
 
       - name: Build SDK
-        run: bun run --filter @vibecanvas/sdk build
+        run: bun run --filter @omnidraw/sdk build
 
       - name: Upload SDK dist artifact
         uses: actions/upload-artifact@v4
@@ -166,8 +166,8 @@ jobs:
           VERSION: ${{ needs.check-version.outputs.version }}
         run: |
           set -euo pipefail
-          if bun pm view "@vibecanvas/sdk@$VERSION" version >/dev/null 2>&1; then
-            echo "npm package already exists: @vibecanvas/sdk@$VERSION" >&2
+          if bun pm view "@omnidraw/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "npm package already exists: @omnidraw/sdk@$VERSION" >&2
             echo "Refusing to publish. Bump packages/sdk/package.json version or remove the package version from npm first." >&2
             exit 1
           fi

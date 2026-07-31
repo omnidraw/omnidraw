@@ -1,11 +1,11 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import { ZVibecanvasToolIcon, type TWidgetManifestV3 } from '@vibecanvas/widget-contract';
-import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { ZOmnidrawToolIcon, type TWidgetManifestV3 } from '@omnidraw/widget-contract';
+import type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import type {
   TWidgetDraftSummary,
   TWidgetPreviewResult,
-} from '@vibecanvas/service-agent/widget-drafts/types';
-import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetPlacementResolveResult, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
+} from '@omnidraw/service-agent/widget-drafts/types';
+import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetPlacementResolveResult, TWidgetVariantSummary } from '@omnidraw/service-agent/widget-management/types';
 import { z } from 'zod';
 import {
   ZAgentOpaqueId,
@@ -96,9 +96,9 @@ const ZWidgetPlacementRef = z.object({
   name: ZWidgetName,
   revision: z.string().min(1).max(256),
 })
-const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZVibecanvasToolIcon.nullable() })
+const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZOmnidrawToolIcon.nullable() })
 const ZWidgetDraftToolPatch = z.object({
-  icon: ZVibecanvasToolIcon.nullable().optional(),
+  icon: ZOmnidrawToolIcon.nullable().optional(),
   group: z.string().trim().min(1).max(120).nullable().optional(),
 }).strict().refine((patch) => Object.prototype.hasOwnProperty.call(patch, 'icon') || Object.prototype.hasOwnProperty.call(patch, 'group'), 'At least one tool field is required')
 const ZWidgetDraftMetadataPatch = z.object({
@@ -106,7 +106,7 @@ const ZWidgetDraftMetadataPatch = z.object({
   description: z.string().max(4_000).optional(),
   tool: z.object({
     label: z.string().min(1).max(120).optional(),
-    icon: ZVibecanvasToolIcon.nullable().optional(),
+    icon: ZOmnidrawToolIcon.nullable().optional(),
     group: z.string().trim().min(1).max(120).nullable().optional(),
     priority: z.number().finite().nullable().optional(),
   }).strict().optional(),
@@ -165,11 +165,11 @@ const ZAgentApproval = z.object({
   expiresAt: z.string(),
 })
 
-export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+export type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
 export type {
   TWidgetDraftSummary,
   TWidgetPreviewResult,
-} from '@vibecanvas/service-agent/widget-drafts/types';
+} from '@omnidraw/service-agent/widget-drafts/types';
 export type {
   TWidgetCatalog,
   TWidgetCatalogEntry,
@@ -188,8 +188,8 @@ export type {
   TWidgetPlacementResolveResult,
   TWidgetPlacementSummary,
   TWidgetCatalogPreviewSummary,
-} from '@vibecanvas/service-agent/widget-management/types';
-export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+} from '@omnidraw/service-agent/widget-management/types';
+export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 
 export type TAgentChatConnect = {
   vcJson: TWidgetManifestV3 | null;

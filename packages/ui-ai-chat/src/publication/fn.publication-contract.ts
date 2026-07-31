@@ -1,4 +1,4 @@
-import type { TWidgetDetail } from "@vibecanvas/orpc-client"
+import type { TWidgetDetail } from "@omnidraw/orpc-client"
 
 export type TPublicationContract = {
   displayName: string

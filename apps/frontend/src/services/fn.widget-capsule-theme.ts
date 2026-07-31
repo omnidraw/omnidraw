@@ -1,12 +1,12 @@
-import type { TThemeDefinition } from '@vibecanvas/service-theme';
-import type { TWidgetCapsuleTheme } from '@vibecanvas/widget-contract';
+import type { TThemeDefinition } from '@omnidraw/service-theme';
+import type { TWidgetCapsuleTheme } from '@omnidraw/widget-contract';
 
 /** Projects only fixed semantic presentation tokens into the guest channel. */
 export function fnWidgetCapsuleTheme(
   theme: TThemeDefinition,
 ): TWidgetCapsuleTheme {
   return Object.freeze({
-    format: 'vibecanvas.widget-theme.v1',
+    format: 'omnidraw.widget-theme.v1',
     appearance: theme.appearance,
     tokens: Object.freeze({
       background: theme.colors.background,

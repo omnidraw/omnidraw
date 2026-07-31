@@ -1,8 +1,8 @@
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
+} from '@omnidraw/service-db/CONSTANTS';
+import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
 import type {
   ITenantEventPublisherService,
   TAgentEvent,
@@ -10,7 +10,7 @@ import type {
   TEventSubscriptionOptions,
   TNotificationEvent,
   TSequencedEvent,
-} from '@vibecanvas/service-event-publisher/IEventPublisherService';
+} from '@omnidraw/service-event-publisher/IEventPublisherService';
 
 export const TEST_TENANT = Object.freeze({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,

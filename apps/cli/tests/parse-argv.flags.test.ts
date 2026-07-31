@@ -10,13 +10,13 @@ describe('parseCliArgv flag parsing', () => {
       '--port',
       '3001',
       '--data-dir',
-      './tmp/vibecanvas-home',
+      './tmp/omnidraw-home',
       '--upgrade',
       '1.2.3',
     ]);
 
     expect(parsed.port).toBe(3001);
-    expect(parsed.dataDir).toBe('./tmp/vibecanvas-home');
+    expect(parsed.dataDir).toBe('./tmp/omnidraw-home');
     expect(parsed.upgradeTarget).toBe('1.2.3');
   });
 

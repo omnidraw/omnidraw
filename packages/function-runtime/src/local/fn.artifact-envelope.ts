@@ -11,7 +11,7 @@ export type TServerArtifactOutput = Readonly<{
 }>;
 
 export type TServerArtifactEnvelope = Readonly<{
-  format: 'vibecanvas.server-artifact.v1';
+  format: 'omnidraw.server-artifact.v1';
   kind: 'server';
   entry: string;
   sourceDigestSha256: string;
@@ -58,7 +58,7 @@ export function fnParseServerArtifactEnvelope(args: TArgs): TServerArtifactEnvel
     throw new Error('Function server artifact is not valid JSON.');
   }
   if (!isRecord(value)) throw new Error('Function server artifact envelope is invalid.');
-  if (value.format !== 'vibecanvas.server-artifact.v1' || value.kind !== 'server') {
+  if (value.format !== 'omnidraw.server-artifact.v1' || value.kind !== 'server') {
     throw new Error('Function execution requires a dedicated version 1 server artifact.');
   }
   if (
@@ -82,7 +82,7 @@ export function fnParseServerArtifactEnvelope(args: TArgs): TServerArtifactEnvel
     throw new Error('Function server artifact must contain exactly one JavaScript entry point.');
   }
   return Object.freeze({
-    format: 'vibecanvas.server-artifact.v1',
+    format: 'omnidraw.server-artifact.v1',
     kind: 'server',
     entry: value.entry,
     sourceDigestSha256: value.sourceDigestSha256,

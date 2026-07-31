@@ -8,8 +8,8 @@ type TProps = {
   schema?: unknown;
 };
 
-const { title, description, imageAlt = "Vibecanvas infinite canvas preview", schema } = Astro.props;
-const siteUrl = Astro.site ?? new URL("https://vibecanvas.dev");
+const { title, description, imageAlt = "Omnidraw infinite canvas preview", schema } = Astro.props;
+const siteUrl = Astro.site ?? new URL("https://omnidraw.dev");
 const canonicalUrl = new URL(Astro.url.pathname, siteUrl).toString();
 const seoImageUrl = new URL("seo.png", siteUrl).toString();
 const schemaJson = schema ? JSON.stringify(schema) : undefined;
@@ -28,7 +28,7 @@ const schemaJson = schema ? JSON.stringify(schema) : undefined;
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="sitemap" href="/sitemap.xml" type="application/xml" />
 
-    <meta property="og:site_name" content="Vibecanvas" />
+    <meta property="og:site_name" content="Omnidraw" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
@@ -42,7 +42,7 @@ const schemaJson = schema ? JSON.stringify(schema) : undefined;
     <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@vibecanvas" />
+    <meta name="twitter:site" content="@omnidraw" />
     <meta name="twitter:url" content={canonicalUrl} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />

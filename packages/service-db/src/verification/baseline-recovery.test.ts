@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DbResource, ResourceStoreService } from '@vibecanvas/resource-runtime/local';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetArtifactDescriptor } from '@vibecanvas/widget-contract';
-import { LocalWidgetArtifactStore } from '@vibecanvas/widget-contract/local';
+import { DbResource, ResourceStoreService } from '@omnidraw/resource-runtime/local';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import type { TWidgetArtifactDescriptor } from '@omnidraw/widget-contract';
+import { LocalWidgetArtifactStore } from '@omnidraw/widget-contract/local';
 import {
   DATABASE_APPLICATION_ID,
   DATABASE_SCHEMA_VERSION,
@@ -48,7 +48,7 @@ const FOREIGN_TENANT: TTenantContext = Object.freeze({
 });
 
 async function temporaryRoot(label: string): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), `vibecanvas-${label}-`));
+  const root = await mkdtemp(path.join(tmpdir(), `omnidraw-${label}-`));
   temporaryRoots.push(root);
   return root;
 }

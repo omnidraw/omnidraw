@@ -56,13 +56,13 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('`localStore` is `none`, `ephemeral`, or `snapshot`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description?, template?, server? })');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('od_widget_create({ name, description?, template?, server? })');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`template: "react"`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`server: true`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read only files you need to change');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not call `bash`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not a confinement boundary');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain("Vibecanvas host process's filesystem");
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain("Omnidraw host process's filesystem");
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Shell access does not manufacture approval');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
@@ -101,7 +101,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`; it performs the frozen install');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_validate`; it performs the frozen install');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
@@ -109,7 +109,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('means published');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/\barrow(?:js)?\b/i);
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_create({ name, kind');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('od_widget_create({ name, kind');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('choose `widget` or `actor-widget`');
   });
 
@@ -282,7 +282,7 @@ describe('AgentService.promptChat', () => {
     expect(prompts).toEqual(['Update @Weather']);
     expect(customMessages).toEqual([{
       message: {
-        customType: 'vibecanvas.widgetMentions',
+        customType: 'omnidraw.widgetMentions',
         content: expect.stringContaining('"name":"Weather"'),
         display: false,
         details: { widgets: [{ name: 'Weather', source: 'draft', displayName: 'Weather dashboard', revision: 'rev-2' }] },
@@ -339,9 +339,10 @@ describe('AgentService.promptChat', () => {
     await service.connectChat(widgetId, sessionId);
 
     const expectedTools = [
-      'bash', 'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
-      'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
-      'vc_resource_update', 'vc_widget_create', 'vc_widget_list', 'vc_widget_validate', 'web_fetch',
+      'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
+      'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
+      'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_validate', 'patch', 'read',
+      'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
 
@@ -371,7 +372,7 @@ describe('AgentService.promptChat', () => {
     const sessionId = 'session-reuse';
     await service.connectChat(widgetId, sessionId);
     const originalEntry = service.sessionMap[widgetId][sessionId];
-    const createTool = originalEntry.session.getToolDefinition('vc_resource_create');
+    const createTool = originalEntry.session.getToolDefinition('od_resource_create');
     if (!createTool) throw new Error('Resource create tool was not registered.');
 
     const toolResult = createTool.execute('tool-reuse', { kind: 'kv', name: 'Preferences' }, undefined, undefined, {} as never);
@@ -415,7 +416,7 @@ describe('AgentService.promptChat', () => {
     const sessionId = 'session-replace';
     await service.connectChat(widgetId, sessionId);
     const originalEntry = service.sessionMap[widgetId][sessionId];
-    const createTool = originalEntry.session.getToolDefinition('vc_resource_create');
+    const createTool = originalEntry.session.getToolDefinition('od_resource_create');
     if (!createTool) throw new Error('Resource create tool was not registered.');
 
     const toolResult = createTool.execute('tool-replace', { kind: 'kv', name: 'Cache' }, undefined, undefined, {} as never);
@@ -468,7 +469,7 @@ describe('AgentService.promptChat', () => {
     expect(JSON.stringify(initialConnect)).not.toContain('request-1');
     await service.connectChat(widgetId, sessionId, { accountId: 'account-1', requestId: 'request-2' });
 
-    const createTool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('vc_resource_create');
+    const createTool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('od_resource_create');
     if (!createTool) throw new Error('Resource create tool was not registered.');
     const toolResult = createTool.execute('tool-authorization', { kind: 'kv', name: 'Preferences' }, undefined, undefined, {} as never);
     const approval = await waitForChatApproval(service, widgetId, sessionId);
@@ -476,7 +477,7 @@ describe('AgentService.promptChat', () => {
     expect(JSON.stringify(service.listChatApprovals(widgetId, sessionId))).not.toContain('account-1');
     expect(JSON.stringify(service.listChatApprovals(widgetId, sessionId))).not.toContain('request-2');
     expect(authorizationChecks).toContainEqual({
-      toolName: 'vc_resource_create',
+      toolName: 'od_resource_create',
       accountId: 'account-1',
       requestId: 'request-2',
     });
@@ -525,7 +526,7 @@ describe('AgentService.promptChat', () => {
     const widgetId = 'widget-new-chat';
     const sessionId = 'session-new-chat';
     await service.connectChat(widgetId, sessionId);
-    const createTool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('vc_resource_create');
+    const createTool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('od_resource_create');
     if (!createTool) throw new Error('Resource create tool was not registered.');
     const toolResult = createTool.execute('tool-new-chat', { kind: 'kv', name: 'Temporary' }, undefined, undefined, {} as never);
     await waitForChatApproval(service, widgetId, sessionId);

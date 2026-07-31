@@ -147,10 +147,10 @@ export function fnWidgetBuildPackageImportAllowedForTarget(args: Readonly<{
   allowedPackageImports: readonly string[];
 }>): boolean {
   if (!args.allowedPackageImports.includes(args.specifier)) return false;
-  if (args.specifier === '@vibecanvas/sdk/server') return args.kind === 'server';
+  if (args.specifier === '@omnidraw/sdk/server') return args.kind === 'server';
   if (
-    args.specifier === '@vibecanvas/sdk/widget'
-    || args.specifier === '@vibecanvas/sdk/function-client'
+    args.specifier === '@omnidraw/sdk/widget'
+    || args.specifier === '@omnidraw/sdk/function-client'
   ) return args.kind === 'ui';
   return true;
 }

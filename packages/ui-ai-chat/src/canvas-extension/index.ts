@@ -11,11 +11,11 @@ import {
   readPortalContentCssSize,
 } from '@omnidraw/cangine/integrations/capsule';
 import type { IWidgetInteractionController } from '@omnidraw/cangine/editor';
-import type { ICanvasRuntimeExtension } from '@vibecanvas/canvas';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@vibecanvas/canvas-contract';
-import type { TWidgetDraftSummary } from '@vibecanvas/orpc-client';
-import { fnCreateChatId } from '@vibecanvas/shared-functions/chat/fn.chat-id';
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
+import type { ICanvasRuntimeExtension } from '@omnidraw/canvas';
+import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
+import type { TWidgetDraftSummary } from '@omnidraw/orpc-client';
+import { fnCreateChatId } from '@omnidraw/shared-functions/chat/fn.chat-id';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 import { render } from 'solid-js/web';
 import { AiChat } from '../chat/components';
 import type { TChatWidgetDraftReference } from '../chat/components/tabs/fn.tool-call';
@@ -212,7 +212,7 @@ function createTitleBarPortal(
       }
       if (
         state.content !== undefined
-        && button.closest('[data-vibecanvas-widget-titlebar]') !== null
+        && button.closest('[data-omnidraw-widget-titlebar]') !== null
       ) {
         button.textContent = state.content;
       }
@@ -739,7 +739,7 @@ export function createAiChatCanvasExtension(
             draftId: draft.draftId,
             originChatId: draft.chatId,
             role: 'companion',
-          }), 'vibecanvas:preview-open');
+          }), 'omnidraw:preview-open');
         };
         const queued = companionOperation.then(open, open);
         companionOperation = queued.then(
@@ -1515,7 +1515,7 @@ export function createAiChatCanvasExtension(
           instanceId: args.widgetBrowser.createId(),
           definitionId: validated.descriptor.definitionId,
           revisionId: validated.descriptor.revisionId,
-        }), 'vibecanvas:widget-placement');
+        }), 'omnidraw:widget-placement');
         context.config.notification?.showSuccess(`${label} added to canvas`);
       };
 
@@ -1580,7 +1580,7 @@ export function createAiChatCanvasExtension(
           draftId: draft.draftId,
           originChatId: draft.chatId,
           role: 'placed',
-        }), 'vibecanvas:preview-placement');
+        }), 'omnidraw:preview-placement');
         context.config.notification?.showSuccess(
           `${draft.displayName} Preview added to canvas`,
         );
@@ -1626,7 +1626,7 @@ export function createAiChatCanvasExtension(
         },
       }, {
         dragThreshold: 6,
-        ownerId: `vibecanvas:widget-placement:${context.config.canvasId}`,
+        ownerId: `omnidraw:widget-placement:${context.config.canvasId}`,
       });
       const unregisterPlacement = placementCoordinator.register(placement);
       const unsubscribeScene = context.engine.scene.subscribe(reconcilePortals);
@@ -1664,7 +1664,7 @@ export function createAiChatCanvasExtension(
             && activation.control === 'close'
           ) {
             context.editor.commitSceneMutation({
-              source: 'vibecanvas:widget-close',
+              source: 'omnidraw:widget-close',
               commands: [{
                 type: 'remove',
                 nodeId: activation.widgetId,

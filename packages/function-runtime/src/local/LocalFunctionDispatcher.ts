@@ -3,7 +3,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IFunctionControlStore,
   IFunctionDispatcher,

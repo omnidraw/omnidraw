@@ -8,14 +8,14 @@ import type {
   TFunctionInvocationEnvelope,
   TInvocationCreateRequest,
   TUsageMetrics,
-} from '@vibecanvas/function-runtime';
-import { FUNCTION_PLATFORM_PRE_GUEST_MAX_ATTEMPTS } from '@vibecanvas/function-runtime';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/function-runtime';
+import { FUNCTION_PLATFORM_PRE_GUEST_MAX_ATTEMPTS } from '@omnidraw/function-runtime';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
-} from '@vibecanvas/widget-contract';
-import type { TWidgetServerFunctionDescriptor } from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
@@ -184,7 +184,7 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       entry: 'ui.js',
       apis: ['DOM'],
     },
-    server: { entry: 'server.js', runtimeAbi: 'vibecanvas:1' },
+    server: { entry: 'server.js', runtimeAbi: 'omnidraw:1' },
     resources: [{ slot: 'preferences', kind: 'kv', effect: 'write', required: true }],
   });
   await (await database.prepare(`
@@ -227,7 +227,7 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       contract_format_version
     ) VALUES (
       ?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 2, ?, ?,
-      ?, ?, ?, ?, ?, ?, 'vibecanvas:1', 3
+      ?, ?, ?, ?, ?, ?, 'omnidraw:1', 3
     )
   `)).run(
     DEFAULT_OSS_ORGANIZATION_ID,
@@ -254,7 +254,7 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       runtime_abi, input_schema_json, output_schema_json, resources_json,
       timeout_ms, memory_tier, output_byte_limit, log_byte_limit, retry_mode,
       max_attempts, initial_backoff_ms, max_backoff_ms, created_at_ms
-    ) VALUES (?, ?, ?, ?, ?, 'tx', 1, ?, 'server', ?, ?, ?, 'vibecanvas:1',
+    ) VALUES (?, ?, ?, ?, ?, 'tx', 1, ?, 'server', ?, ?, ?, 'omnidraw:1',
       ?, ?, ?, 1000, 'small', 1024, 1024, 'idempotent', 3, 10, 100, 2)
   `)).run(
     DEFAULT_OSS_ORGANIZATION_ID,
@@ -392,7 +392,7 @@ async function seedPreviewControlPlane(database: TDatabase): Promise<void> {
       ?, 'source', ?, ?, ?, ?, ?, ?, ?, ?,
       'preview-function-test', ?, ?, ?,
       ?, 'unsigned_ui', ?, ?, 'ui', ?, ?, ?,
-      ?, 'server', ?, 'vibecanvas:1', 0, ?, 7, '[]', 7
+      ?, 'server', ?, 'omnidraw:1', 0, ?, 7, '[]', 7
     )
   `)).run(
     TENANT.orgId,
@@ -470,7 +470,7 @@ function envelope(id: string, input: unknown, key = `key-${id}`): TFunctionInvoc
     definitionRevision: 1,
     artifactDigestSha256: SERVER_DIGEST,
     contractDigestSha256: CONTRACT_DIGEST,
-    runtimeAbi: 'vibecanvas:1',
+    runtimeAbi: 'omnidraw:1',
     input,
     inputDigestSha256: sha256(fnFunctionCanonicalJson(input)),
     idempotencyKey: key,
@@ -550,7 +550,7 @@ describe('FunctionControlStoreTurso', () => {
       serverArtifactId: SERVER_ARTIFACT_ID,
       artifactDigestSha256: SERVER_DIGEST,
       contractDigestSha256: CONTRACT_DIGEST,
-      runtimeAbi: 'vibecanvas:1',
+      runtimeAbi: 'omnidraw:1',
       functions: [DESCRIPTOR],
       createdAtMs: 2,
     })).resolves.toEqual([
@@ -563,7 +563,7 @@ describe('FunctionControlStoreTurso', () => {
       serverArtifactId: SERVER_ARTIFACT_ID,
       artifactDigestSha256: SERVER_DIGEST,
       contractDigestSha256: CONTRACT_DIGEST,
-      runtimeAbi: 'vibecanvas:1',
+      runtimeAbi: 'omnidraw:1',
       functions: [{ ...DESCRIPTOR, limits: { ...DESCRIPTOR.limits, timeoutMs: 999 } }],
       createdAtMs: 2,
     })).rejects.toMatchObject({ code: 'FUNCTION_REVISION_REGISTRATION_CONFLICT' });
@@ -592,7 +592,7 @@ describe('FunctionControlStoreTurso', () => {
       serverArtifactId: SERVER_ARTIFACT_ID,
       artifactDigestSha256: SERVER_DIGEST,
       contractDigestSha256: PREVIEW_CONTRACT_DIGEST,
-      runtimeAbi: 'vibecanvas:1',
+      runtimeAbi: 'omnidraw:1',
       resources: DESCRIPTOR.resources,
     });
 
@@ -1794,7 +1794,7 @@ describe('FunctionControlStoreTurso', () => {
 
 describe('FunctionControlStoreTurso crash recovery', () => {
   test('recovers a durably claimed invocation after SIGKILL', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-function-crash-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-function-crash-'));
     const databasePath = join(root, 'main.db');
     const invocationId = uuid(770);
     const attemptId = uuid(771);

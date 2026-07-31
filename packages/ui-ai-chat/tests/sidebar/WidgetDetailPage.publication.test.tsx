@@ -1,4 +1,4 @@
-import type { TWidgetCatalog, TWidgetDetail, TWidgetVariantSummary } from "@vibecanvas/orpc-client"
+import type { TWidgetCatalog, TWidgetDetail, TWidgetVariantSummary } from "@omnidraw/orpc-client"
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createCatalogInvalidation } from "../../src/sidebar/ports"

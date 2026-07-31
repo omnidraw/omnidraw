@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "vibecanvas",
+      "name": "omnidraw",
       "dependencies": {
         "@lastolivegames/becsy": "^0.15.5",
         "handlebars": "^4.7.9",
@@ -17,12 +17,12 @@
       },
     },
     "apps/capsule-browser-acceptance": {
-      "name": "@vibecanvas/capsule-browser-acceptance",
+      "name": "@omnidraw/capsule-browser-acceptance",
       "dependencies": {
-        "@vibecanvas/capsule-vibecanvas": "workspace:*",
-        "@vibecanvas/sdk": "workspace:*",
-        "@vibecanvas/ui-ai-chat": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/sdk": "workspace:*",
+        "@omnidraw/ui-ai-chat": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "three": "0.185.1",
@@ -35,31 +35,31 @@
       },
     },
     "apps/cli": {
-      "name": "@vibecanvas/cli",
+      "name": "@omnidraw/cli",
       "dependencies": {
+        "@omnidraw/api": "workspace:*",
+        "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/capsule": "0.10.1",
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/function-runtime": "workspace:*",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/sdk": "workspace:*",
+        "@omnidraw/service-agent": "workspace:*",
+        "@omnidraw/service-canvas": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-event-publisher": "workspace:*",
+        "@omnidraw/service-widget-state": "workspace:*",
+        "@omnidraw/shared-functions": "workspace:*",
+        "@omnidraw/tapable": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
         "@tursodatabase/database": "catalog:",
         "@types/react": "19.2.17",
         "@types/react-dom": "19.2.3",
-        "@vibecanvas/api": "workspace:*",
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/capsule-vibecanvas": "workspace:*",
-        "@vibecanvas/function-runtime": "workspace:*",
-        "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/sdk": "workspace:*",
-        "@vibecanvas/service-agent": "workspace:*",
-        "@vibecanvas/service-canvas": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-event-publisher": "workspace:*",
-        "@vibecanvas/service-widget-state": "workspace:*",
-        "@vibecanvas/shared-functions": "workspace:*",
-        "@vibecanvas/tapable": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
         "csstype": "3.2.3",
         "react": "19.2.7",
         "react-dom": "19.2.7",
@@ -68,20 +68,20 @@
       },
     },
     "apps/frontend": {
-      "name": "@vibecanvas/frontend",
+      "name": "@omnidraw/frontend",
       "dependencies": {
         "@kobalte/core": "catalog:",
+        "@omnidraw/api": "workspace:*",
+        "@omnidraw/canvas": "workspace:*",
+        "@omnidraw/orpc-client": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-theme": "workspace:*",
+        "@omnidraw/ui-ai-chat": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@solid-primitives/scheduled": "^1.5.3",
         "@solidjs/router": "^0.15.4",
-        "@vibecanvas/api": "workspace:*",
-        "@vibecanvas/canvas": "workspace:*",
-        "@vibecanvas/orpc-client": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-theme": "workspace:*",
-        "@vibecanvas/ui-ai-chat": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
         "dompurify": "^3.3.3",
         "lucide-solid": "catalog:",
         "lucide-static": "catalog:",
@@ -101,21 +101,21 @@
         "vitest": "^4.1.10",
       },
     },
-    "apps/vibecanvas": {
-      "name": "vibecanvas",
+    "apps/omnidraw": {
+      "name": "omnidraw",
       "version": "0.4.7",
       "bin": {
-        "vibecanvas": "./bin/vibecanvas",
+        "omnidraw": "./bin/omnidraw",
       },
       "optionalDependencies": {
-        "vibecanvas-darwin-arm64": "0.4.7",
-        "vibecanvas-linux-arm64": "0.4.7",
-        "vibecanvas-linux-x64": "0.4.7",
-        "vibecanvas-linux-x64-baseline": "0.4.7",
+        "omnidraw-darwin-arm64": "0.4.7",
+        "omnidraw-linux-arm64": "0.4.7",
+        "omnidraw-linux-x64": "0.4.7",
+        "omnidraw-linux-x64-baseline": "0.4.7",
       },
     },
     "apps/web": {
-      "name": "@vibecanvas/web",
+      "name": "@omnidraw/web",
       "dependencies": {
         "@astrojs/mdx": "^7.0.2",
         "@astrojs/solid-js": "^7.0.1",
@@ -124,15 +124,15 @@
       },
     },
     "apps/widget-debug-tools": {
-      "name": "@vibecanvas/widget-debug-tools",
+      "name": "@omnidraw/widget-debug-tools",
       "dependencies": {
-        "@vibecanvas/capsule-vibecanvas": "workspace:*",
-        "@vibecanvas/function-runtime": "workspace:*",
-        "@vibecanvas/sdk": "workspace:*",
-        "@vibecanvas/service-agent": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-event-publisher": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/function-runtime": "workspace:*",
+        "@omnidraw/sdk": "workspace:*",
+        "@omnidraw/service-agent": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-event-publisher": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -140,30 +140,30 @@
       },
     },
     "packages/api": {
-      "name": "@vibecanvas/api",
+      "name": "@omnidraw/api",
       "dependencies": {
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/service-agent": "workspace:*",
+        "@omnidraw/service-canvas": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-event-publisher": "workspace:*",
+        "@omnidraw/service-widget-state": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/service-agent": "workspace:*",
-        "@vibecanvas/service-canvas": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-event-publisher": "workspace:*",
-        "@vibecanvas/service-widget-state": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
         "zod": "catalog:",
       },
     },
     "packages/canvas": {
-      "name": "@vibecanvas/canvas",
+      "name": "@omnidraw/canvas",
       "dependencies": {
         "@omnidraw/cangine": "0.5.1",
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-theme": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-theme": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
         "lucide-solid": "catalog:",
         "solid-js": "catalog:",
       },
@@ -176,7 +176,7 @@
       },
     },
     "packages/canvas-contract": {
-      "name": "@vibecanvas/canvas-contract",
+      "name": "@omnidraw/canvas-contract",
       "version": "0.1.0",
       "dependencies": {
         "@omnidraw/cangine": "0.5.1",
@@ -185,39 +185,39 @@
         "typescript": "catalog:",
       },
     },
-    "packages/capsule-vibecanvas": {
-      "name": "@vibecanvas/capsule-vibecanvas",
+    "packages/capsule-omnidraw": {
+      "name": "@omnidraw/capsule-omnidraw",
       "version": "0.1.0",
       "dependencies": {
         "@omnidraw/capsule": "0.10.1",
-        "@vibecanvas/tenant-core": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
       },
     },
     "packages/function-runtime": {
-      "name": "@vibecanvas/function-runtime",
+      "name": "@omnidraw/function-runtime",
       "version": "0.1.0",
       "dependencies": {
-        "@vibecanvas/resource-runtime": "0.1.0",
-        "@vibecanvas/tenant-core": "0.1.0",
-        "@vibecanvas/widget-contract": "0.1.0",
+        "@omnidraw/resource-runtime": "0.1.0",
+        "@omnidraw/tenant-core": "0.1.0",
+        "@omnidraw/widget-contract": "0.1.0",
         "ajv": "^8.20.0",
       },
     },
     "packages/orpc-client": {
-      "name": "@vibecanvas/orpc-client",
+      "name": "@omnidraw/orpc-client",
       "dependencies": {
+        "@omnidraw/api": "workspace:*",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
-        "@vibecanvas/api": "workspace:*",
         "partysocket": "^1.3.0",
       },
     },
     "packages/resource-runtime": {
-      "name": "@vibecanvas/resource-runtime",
+      "name": "@omnidraw/resource-runtime",
       "version": "0.1.0",
       "dependencies": {
-        "@vibecanvas/tenant-core": "0.1.0",
+        "@omnidraw/tenant-core": "0.1.0",
       },
       "devDependencies": {
         "@tursodatabase/database": "catalog:",
@@ -227,32 +227,32 @@
       },
     },
     "packages/runtime": {
-      "name": "@vibecanvas/runtime",
+      "name": "@omnidraw/runtime",
       "version": "0.1.0",
     },
     "packages/sdk": {
-      "name": "@vibecanvas/sdk",
+      "name": "@omnidraw/sdk",
       "version": "0.1.0",
       "dependencies": {
         "@omnidraw/capsule": "0.10.1",
-        "@vibecanvas/widget-contract": "0.1.0",
+        "@omnidraw/widget-contract": "0.1.0",
       },
       "devDependencies": {
         "typescript": "catalog:",
       },
     },
     "packages/service-agent": {
-      "name": "@vibecanvas/service-agent",
+      "name": "@omnidraw/service-agent",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
-        "@vibecanvas/capsule-vibecanvas": "workspace:*",
-        "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-event-publisher": "workspace:*",
-        "@vibecanvas/shared-functions": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/service-event-publisher": "workspace:*",
+        "@omnidraw/shared-functions": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
         "typebox": "^1.3.6",
@@ -263,45 +263,45 @@
       },
     },
     "packages/service-canvas": {
-      "name": "@vibecanvas/service-canvas",
+      "name": "@omnidraw/service-canvas",
       "dependencies": {
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
       },
       "devDependencies": {
         "typescript": "catalog:",
       },
     },
     "packages/service-db": {
-      "name": "@vibecanvas/service-db",
+      "name": "@omnidraw/service-db",
       "dependencies": {
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/function-runtime": "workspace:*",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/service-widget-state": "workspace:*",
+        "@omnidraw/shared-functions": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "@tursodatabase/database": "catalog:",
         "@tursodatabase/database-common": "0.6.1",
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/function-runtime": "workspace:*",
-        "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-widget-state": "workspace:*",
-        "@vibecanvas/shared-functions": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
         "zod": "catalog:",
       },
     },
     "packages/service-event-publisher": {
-      "name": "@vibecanvas/service-event-publisher",
+      "name": "@omnidraw/service-event-publisher",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
       },
     },
     "packages/service-kv": {
-      "name": "@vibecanvas/service-kv",
+      "name": "@omnidraw/service-kv",
       "dependencies": {
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -309,42 +309,42 @@
       },
     },
     "packages/service-theme": {
-      "name": "@vibecanvas/service-theme",
+      "name": "@omnidraw/service-theme",
       "dependencies": {
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/tapable": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/tapable": "workspace:*",
       },
     },
     "packages/service-widget-state": {
-      "name": "@vibecanvas/service-widget-state",
+      "name": "@omnidraw/service-widget-state",
       "dependencies": {
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@omnidraw/runtime": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
       },
     },
     "packages/shared-functions": {
-      "name": "@vibecanvas/shared-functions",
+      "name": "@omnidraw/shared-functions",
     },
     "packages/tapable": {
-      "name": "@vibecanvas/tapable",
+      "name": "@omnidraw/tapable",
     },
     "packages/tenant-core": {
-      "name": "@vibecanvas/tenant-core",
+      "name": "@omnidraw/tenant-core",
       "version": "0.1.0",
     },
     "packages/ui-ai-chat": {
-      "name": "@vibecanvas/ui-ai-chat",
+      "name": "@omnidraw/ui-ai-chat",
       "dependencies": {
         "@jridgewell/trace-mapping": "0.3.31",
         "@kobalte/core": "catalog:",
         "@omnidraw/cangine": "0.5.1",
-        "@vibecanvas/canvas": "workspace:*",
-        "@vibecanvas/canvas-contract": "workspace:*",
-        "@vibecanvas/capsule-vibecanvas": "workspace:*",
-        "@vibecanvas/orpc-client": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/shared-functions": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
+        "@omnidraw/canvas": "workspace:*",
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/orpc-client": "workspace:*",
+        "@omnidraw/service-db": "workspace:*",
+        "@omnidraw/shared-functions": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "dompurify": "^3.4.11",
         "lucide-solid": "catalog:",
         "lucide-static": "catalog:",
@@ -367,24 +367,24 @@
       },
     },
     "packages/widget-contract": {
-      "name": "@vibecanvas/widget-contract",
+      "name": "@omnidraw/widget-contract",
       "version": "0.1.0",
       "dependencies": {
-        "@vibecanvas/resource-runtime": "0.1.0",
-        "@vibecanvas/tenant-core": "0.1.0",
+        "@omnidraw/resource-runtime": "0.1.0",
+        "@omnidraw/tenant-core": "0.1.0",
         "lucide-static": "catalog:",
         "zod": "catalog:",
       },
     },
     "scripts/fixtures/external-composition": {
-      "name": "@vibecanvas-fixtures/private-managed-composition",
+      "name": "@omnidraw-fixtures/private-managed-composition",
       "version": "0.0.0",
       "dependencies": {
-        "@vibecanvas/function-runtime": "0.1.0",
-        "@vibecanvas/resource-runtime": "0.1.0",
-        "@vibecanvas/runtime": "0.1.0",
-        "@vibecanvas/tenant-core": "0.1.0",
-        "@vibecanvas/widget-contract": "0.1.0",
+        "@omnidraw/function-runtime": "0.1.0",
+        "@omnidraw/resource-runtime": "0.1.0",
+        "@omnidraw/runtime": "0.1.0",
+        "@omnidraw/tenant-core": "0.1.0",
+        "@omnidraw/widget-contract": "0.1.0",
       },
     },
   },
@@ -794,9 +794,63 @@
 
     "@nothing-but/utils": ["@nothing-but/utils@0.17.0", "", {}, "sha512-TuCHcHLOqDL0SnaAxACfuRHBNRgNJcNn9X0GiH5H3YSDBVquCr3qEIG3FOQAuMyZCbu9w8nk2CHhOsn7IvhIwQ=="],
 
+    "@omnidraw-fixtures/private-managed-composition": ["@omnidraw-fixtures/private-managed-composition@workspace:scripts/fixtures/external-composition"],
+
+    "@omnidraw/api": ["@omnidraw/api@workspace:packages/api"],
+
     "@omnidraw/cangine": ["@omnidraw/cangine@0.5.1", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.5.1.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-GH1aChUThl7XE1lZt9RUgUEcf7yuysb6F5NJazUyPdyNYwKa8z/PZTS/S8o05cE2llcyTr/3xn8aFgFIX1pS2A=="],
 
+    "@omnidraw/canvas": ["@omnidraw/canvas@workspace:packages/canvas"],
+
+    "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
+
     "@omnidraw/capsule": ["@omnidraw/capsule@0.10.1", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.1.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-+dX5eKV6+igf6XmTJR4b+6+8MLScG36OnfjWzTVU9fms94CpxKLeBSGM7zTuD5cHR7vHuM+iv+Ai5VnTkCNS4g=="],
+
+    "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
+
+    "@omnidraw/capsule-omnidraw": ["@omnidraw/capsule-omnidraw@workspace:packages/capsule-omnidraw"],
+
+    "@omnidraw/cli": ["@omnidraw/cli@workspace:apps/cli"],
+
+    "@omnidraw/frontend": ["@omnidraw/frontend@workspace:apps/frontend"],
+
+    "@omnidraw/function-runtime": ["@omnidraw/function-runtime@workspace:packages/function-runtime"],
+
+    "@omnidraw/orpc-client": ["@omnidraw/orpc-client@workspace:packages/orpc-client"],
+
+    "@omnidraw/resource-runtime": ["@omnidraw/resource-runtime@workspace:packages/resource-runtime"],
+
+    "@omnidraw/runtime": ["@omnidraw/runtime@workspace:packages/runtime"],
+
+    "@omnidraw/sdk": ["@omnidraw/sdk@workspace:packages/sdk"],
+
+    "@omnidraw/service-agent": ["@omnidraw/service-agent@workspace:packages/service-agent"],
+
+    "@omnidraw/service-canvas": ["@omnidraw/service-canvas@workspace:packages/service-canvas"],
+
+    "@omnidraw/service-db": ["@omnidraw/service-db@workspace:packages/service-db"],
+
+    "@omnidraw/service-event-publisher": ["@omnidraw/service-event-publisher@workspace:packages/service-event-publisher"],
+
+    "@omnidraw/service-kv": ["@omnidraw/service-kv@workspace:packages/service-kv"],
+
+    "@omnidraw/service-theme": ["@omnidraw/service-theme@workspace:packages/service-theme"],
+
+    "@omnidraw/service-widget-state": ["@omnidraw/service-widget-state@workspace:packages/service-widget-state"],
+
+    "@omnidraw/shared-functions": ["@omnidraw/shared-functions@workspace:packages/shared-functions"],
+
+    "@omnidraw/tapable": ["@omnidraw/tapable@workspace:packages/tapable"],
+
+    "@omnidraw/tenant-core": ["@omnidraw/tenant-core@workspace:packages/tenant-core"],
+
+    "@omnidraw/ui-ai-chat": ["@omnidraw/ui-ai-chat@workspace:packages/ui-ai-chat"],
+
+    "@omnidraw/web": ["@omnidraw/web@workspace:apps/web"],
+
+    "@omnidraw/widget-contract": ["@omnidraw/widget-contract@workspace:packages/widget-contract"],
+
+    "@omnidraw/widget-debug-tools": ["@omnidraw/widget-debug-tools@workspace:apps/widget-debug-tools"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
@@ -1159,60 +1213,6 @@
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.3", "", {}, "sha512-60YRaenCQcVjYEKOcG824+DRGGIQ3VKErcBoAEDJZz5bKIs2ZG+X/H9Nk+Q6EVkwJk5QNApxbrc5QtBSwtrXAg=="],
-
-    "@vibecanvas-fixtures/private-managed-composition": ["@vibecanvas-fixtures/private-managed-composition@workspace:scripts/fixtures/external-composition"],
-
-    "@vibecanvas/api": ["@vibecanvas/api@workspace:packages/api"],
-
-    "@vibecanvas/canvas": ["@vibecanvas/canvas@workspace:packages/canvas"],
-
-    "@vibecanvas/canvas-contract": ["@vibecanvas/canvas-contract@workspace:packages/canvas-contract"],
-
-    "@vibecanvas/capsule-browser-acceptance": ["@vibecanvas/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
-
-    "@vibecanvas/capsule-vibecanvas": ["@vibecanvas/capsule-vibecanvas@workspace:packages/capsule-vibecanvas"],
-
-    "@vibecanvas/cli": ["@vibecanvas/cli@workspace:apps/cli"],
-
-    "@vibecanvas/frontend": ["@vibecanvas/frontend@workspace:apps/frontend"],
-
-    "@vibecanvas/function-runtime": ["@vibecanvas/function-runtime@workspace:packages/function-runtime"],
-
-    "@vibecanvas/orpc-client": ["@vibecanvas/orpc-client@workspace:packages/orpc-client"],
-
-    "@vibecanvas/resource-runtime": ["@vibecanvas/resource-runtime@workspace:packages/resource-runtime"],
-
-    "@vibecanvas/runtime": ["@vibecanvas/runtime@workspace:packages/runtime"],
-
-    "@vibecanvas/sdk": ["@vibecanvas/sdk@workspace:packages/sdk"],
-
-    "@vibecanvas/service-agent": ["@vibecanvas/service-agent@workspace:packages/service-agent"],
-
-    "@vibecanvas/service-canvas": ["@vibecanvas/service-canvas@workspace:packages/service-canvas"],
-
-    "@vibecanvas/service-db": ["@vibecanvas/service-db@workspace:packages/service-db"],
-
-    "@vibecanvas/service-event-publisher": ["@vibecanvas/service-event-publisher@workspace:packages/service-event-publisher"],
-
-    "@vibecanvas/service-kv": ["@vibecanvas/service-kv@workspace:packages/service-kv"],
-
-    "@vibecanvas/service-theme": ["@vibecanvas/service-theme@workspace:packages/service-theme"],
-
-    "@vibecanvas/service-widget-state": ["@vibecanvas/service-widget-state@workspace:packages/service-widget-state"],
-
-    "@vibecanvas/shared-functions": ["@vibecanvas/shared-functions@workspace:packages/shared-functions"],
-
-    "@vibecanvas/tapable": ["@vibecanvas/tapable@workspace:packages/tapable"],
-
-    "@vibecanvas/tenant-core": ["@vibecanvas/tenant-core@workspace:packages/tenant-core"],
-
-    "@vibecanvas/ui-ai-chat": ["@vibecanvas/ui-ai-chat@workspace:packages/ui-ai-chat"],
-
-    "@vibecanvas/web": ["@vibecanvas/web@workspace:apps/web"],
-
-    "@vibecanvas/widget-contract": ["@vibecanvas/widget-contract@workspace:packages/widget-contract"],
-
-    "@vibecanvas/widget-debug-tools": ["@vibecanvas/widget-debug-tools@workspace:apps/widget-debug-tools"],
 
     "@vitest/expect": ["@vitest/expect@4.1.10", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "@types/chai": "^5.2.2", "@vitest/spy": "4.1.10", "@vitest/utils": "4.1.10", "chai": "^6.2.2", "tinyrainbow": "^3.1.0" } }, "sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA=="],
 
@@ -1808,6 +1808,8 @@
 
     "ohash": ["ohash@2.0.11", "", {}, "sha512-RdR9FQrFwNBNXAr4GixM8YaRZRJ5PUWbKYbE5eOsrwAjJW0q2REGcf79oYPsLyskQCZG1PLN+S/K1V00joZAoQ=="],
 
+    "omnidraw": ["omnidraw@workspace:apps/omnidraw"],
+
     "oniguruma-parser": ["oniguruma-parser@0.12.2", "", {}, "sha512-6HVa5oIrgMC6aA6WF6XyyqbhRPJrKR02L20+2+zpDtO5QAzGHAUGw5TKQvwi5vctNnRHkJYmjAhRVQF2EKdTQw=="],
 
     "oniguruma-to-es": ["oniguruma-to-es@4.3.6", "", { "dependencies": { "oniguruma-parser": "^0.12.2", "regex": "^6.1.0", "regex-recursion": "^6.0.2" } }, "sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA=="],
@@ -2125,16 +2127,6 @@
     "vfile-location": ["vfile-location@5.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "vfile": "^6.0.0" } }, "sha512-5yXvWDEgqeiYiBe1lbxYF7UMAIm/IcopxMHrMQDq3nvKcjPKIhZklUKL+AE7J7uApI4kwe2snsK+eI6UTj9EHg=="],
 
     "vfile-message": ["vfile-message@4.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "unist-util-stringify-position": "^4.0.0" } }, "sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw=="],
-
-    "vibecanvas": ["vibecanvas@workspace:apps/vibecanvas"],
-
-    "vibecanvas-darwin-arm64": ["vibecanvas-darwin-arm64@0.4.7", "", { "os": "darwin", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-H10hexxqXlSWN5NkrAn80fccUjo6ndcSmCeNVKnFgYiMffmrqFuBlSFeNKqwvud1r7x+/ZEzgvlnuMTvMyeR/w=="],
-
-    "vibecanvas-linux-arm64": ["vibecanvas-linux-arm64@0.4.7", "", { "os": "linux", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-u7+Bs6Ps1kmu3LOv+Lss2TNyTc3zILbjbpRQmOGIDm6tfjXu6NF8YCoeA4NxIUeptsz8lcb8eSh/TSx6qBbkMA=="],
-
-    "vibecanvas-linux-x64": ["vibecanvas-linux-x64@0.4.7", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-rAqOPV4K0DVLq7JHb++gI/uGPm22pWKkuHV/2b38zy90KrFjo2KEme5+6ICMqvgD5mriiM1qjgr0c4ctfeDVxQ=="],
-
-    "vibecanvas-linux-x64-baseline": ["vibecanvas-linux-x64-baseline@0.4.7", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-qVE8QeRl6Q2yDqY7NtgNo2PR9ndGX0LDb8WUuAVqxNZPzzRnVgR115mNsqLE1frTbg91nB2OmGqDRSL7X/RC3g=="],
 
     "vite": ["vite@8.1.4", "", { "dependencies": { "lightningcss": "^1.32.0", "picomatch": "^4.0.5", "postcss": "^8.5.16", "rolldown": "~1.1.4", "tinyglobby": "^0.2.17" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "@vitejs/devtools": "^0.3.0", "esbuild": "^0.27.0 || ^0.28.0", "jiti": ">=1.21.0", "less": "^4.0.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "@vitejs/devtools", "esbuild", "jiti", "less", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-bTT9PsdWO+MQMNG9ZXIP/qM9wGh37DFxTV/sPq9cFpHr3w4jkgef032PkAL9jAqhk3Nz8NQw3O8n6/xFkqO4QQ=="],
 

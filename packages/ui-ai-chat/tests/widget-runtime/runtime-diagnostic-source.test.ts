@@ -64,7 +64,7 @@ describe('trusted Preview source maps', () => {
       mappings: 'AAAA',
     });
     const envelope = Buffer.from(JSON.stringify({
-      format: 'vibecanvas.widget-source-maps.v1',
+      format: 'omnidraw.widget-source-maps.v1',
       sourceRevision: REVISION,
       capsuleArtifactHash: ARTIFACT_HASH,
       authoredPaths: ['src/App.tsx'],

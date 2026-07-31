@@ -23,7 +23,7 @@ flowchart LR
   X["Restricted executor"] -->|"logical call only"| G
 ```
 
-- `@vibecanvas/resource-runtime` is a browser-safe contract surface. Concrete
+- `@omnidraw/resource-runtime` is a browser-safe contract surface. Concrete
   local providers, lifecycle coordination, and gateway/store
   implementations are available only from its explicit `/local` subpath.
 - The CLI owns one `ResourceService` per organization, cell, and placement

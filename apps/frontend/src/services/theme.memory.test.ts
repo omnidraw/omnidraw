@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { ThemeService, THEME_ID_DARK, THEME_ID_GRAPHITE, THEME_ID_LIGHT, THEME_ID_SEPIA } from "@vibecanvas/service-theme";
+import { ThemeService, THEME_ID_DARK, THEME_ID_GRAPHITE, THEME_ID_LIGHT, THEME_ID_SEPIA } from "@omnidraw/service-theme";
 import { fxGetRememberedThemeId, fxSyncThemeMemory } from "./theme.memory";
 
 describe("theme memory", () => {

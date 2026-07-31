@@ -1,5 +1,5 @@
-import type { TEventSubscriptionOptions, TSequencedEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TEventSubscriptionOptions, TSequencedEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TNotificationEvent } from './contract';
 
 type TNotificationEventCapability = {

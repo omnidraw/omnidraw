@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
-import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
+import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
+import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
 import { apiDbEvents } from './api.db-events';
 
 const tenantOwner = fnFreezeTenantContext({

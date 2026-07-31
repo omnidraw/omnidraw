@@ -2,7 +2,7 @@
  * @file Public resource gateway, Resource Store, provider, management, and control-store SPIs.
  */
 
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TCreateResourceRequest,
   TDbResourceApplyRun,

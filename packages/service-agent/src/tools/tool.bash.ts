@@ -37,7 +37,7 @@ export type TAgentBashRunArgs = Readonly<{
 }>;
 
 /**
- * Host-provided command runner with the Vibecanvas host process's authority.
+ * Host-provided command runner with the Omnidraw host process's authority.
  *
  * `cwd` is only the command's starting directory. Implementations must preserve
  * normal Bash traversal, subprocess, environment, executable lookup, and

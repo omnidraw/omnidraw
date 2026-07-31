@@ -2,14 +2,14 @@
  * @file Public short-lived function definition, invocation, lease, sandbox, and usage types.
  */
 
-import type { TOrganizationId, TTenantContext } from '@vibecanvas/tenant-core';
+import type { TOrganizationId, TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TWidgetArtifactId,
   TWidgetDefinitionId,
   TWidgetRevisionId,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionResourceAccess,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 export type TFunctionId = string;
 export type TFunctionName = string;

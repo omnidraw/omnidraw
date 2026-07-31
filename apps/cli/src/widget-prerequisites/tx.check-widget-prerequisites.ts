@@ -1,4 +1,4 @@
-import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
+import type { TNotificationEvent } from '@omnidraw/api/notification/contract';
 import type { ICliConfig } from '../config';
 import { fxProbeWidgetNpm } from './fx.probe-widget-npm';
 import type { TWidgetPrerequisiteWarning } from './fn.widget-prerequisite-warning';

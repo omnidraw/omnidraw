@@ -1,4 +1,4 @@
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
+import type { TOrpcSafeClient } from "@omnidraw/orpc-client";
 
 type TApi = TOrpcSafeClient["api"];
 

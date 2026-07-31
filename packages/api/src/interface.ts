@@ -2,8 +2,8 @@ import type {
   TCanvas,
   TMediaFile,
   TToolGroup,
-} from '@vibecanvas/service-db/model';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-db/model';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 export type TCanvasDatabaseCapability = {
   canvas: {

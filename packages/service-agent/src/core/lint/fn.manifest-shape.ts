@@ -1,11 +1,11 @@
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from '../types';
-import { Z_VIBECANVAS_JSON } from '../../tools/CONSTANTS';
+import { Z_OMNIDRAW_JSON } from '../../tools/CONSTANTS';
 
 export function fnLintManifestShape(manifest: TWidgetManifestV3): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const zodResult = Z_VIBECANVAS_JSON.safeParse(manifest);
+  const zodResult = Z_OMNIDRAW_JSON.safeParse(manifest);
 
   if (!zodResult.success) {
     errors.push(...zodResult.error.issues.map((issue) => `${issue.path.join('.') || 'manifest'}: ${issue.message}`));

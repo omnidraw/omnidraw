@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`@vibecanvas/canvas` is the browser adapter for the authoritative server canvas
+`@omnidraw/canvas` is the browser adapter for the authoritative server canvas
 API. `CanvasDocumentService` owns the current-session optimistic document;
 `CanvasService` remains the only durable authority. Cangine plans immutable
 editor command batches and renders the accepted browser document, but is not a
@@ -23,8 +23,8 @@ document or persistence authority.
   helpers at the application-to-server edge.
 - `src/extension.ts` is the only optional runtime extension seam.
 
-Keep server concurrency rules in `@vibecanvas/service-canvas` and shared wire
-types in `@vibecanvas/canvas-contract`.
+Keep server concurrency rules in `@omnidraw/service-canvas` and shared wire
+types in `@omnidraw/canvas-contract`.
 
 ## Boundaries
 

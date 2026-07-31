@@ -11,7 +11,7 @@ import path from "path"
 const rootDir = path.resolve(import.meta.dir, "..")
 const cliDir = path.join(rootDir, "apps/cli")
 const frontendDir = path.join(rootDir, "apps/frontend")
-const lockRootDir = path.join(os.tmpdir(), "vibecanvas-dev-ports")
+const lockRootDir = path.join(os.tmpdir(), "omnidraw-dev-ports")
 const bunExec = process.execPath
 
 type TPortLease = {
@@ -247,8 +247,8 @@ async function stopProcesses(processes: TDevProcess[], exitCode: number): Promis
   process.exit(exitCode)
 }
 
-const backendPort = parsePortEnv("VIBECANVAS_BACKEND_PORT", 3000)
-const frontendPort = parsePortEnv("VIBECANVAS_FRONTEND_PORT", 3002)
+const backendPort = parsePortEnv("OMNIDRAW_BACKEND_PORT", 3000)
+const frontendPort = parsePortEnv("OMNIDRAW_FRONTEND_PORT", 3002)
 const leases: TPortLease[] = []
 const processes: TDevProcess[] = []
 let stopping = false
@@ -286,10 +286,10 @@ try {
     cmd: [bunExec, "run", "--watch", "./src/main.ts", "serve", "--port", String(backendLease.port)],
     env: {
       NODE_ENV: "development",
-      VIBECANVAS_CHANNEL: "dev",
-      VIBECANVAS_COMPILED: "false",
-      VIBECANVAS_HOME: path.join(rootDir, ".vibecanvas"),
-      VIBECANVAS_VERSION: "0.0.0",
+      OMNIDRAW_CHANNEL: "dev",
+      OMNIDRAW_COMPILED: "false",
+      OMNIDRAW_HOME: path.join(rootDir, ".omnidraw"),
+      OMNIDRAW_VERSION: "0.0.0",
     },
     output: "pipe",
   })
@@ -310,9 +310,9 @@ try {
     cwd: frontendDir,
     cmd: [bunExec, "run", "dev", "--", "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
     env: {
-      VIBECANVAS_BACKEND_HOST: "127.0.0.1",
-      VIBECANVAS_BACKEND_PORT: String(actualBackendPort),
-      VIBECANVAS_FRONTEND_PORT: String(frontendLease.port),
+      OMNIDRAW_BACKEND_HOST: "127.0.0.1",
+      OMNIDRAW_BACKEND_PORT: String(actualBackendPort),
+      OMNIDRAW_FRONTEND_PORT: String(frontendLease.port),
     },
   }))
 

@@ -6,14 +6,14 @@ import { extname, join, relative, resolve, sep } from 'node:path'
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
 const PUBLIC_PACKAGES = Object.freeze({
-  '@vibecanvas/function-runtime': 'packages/function-runtime',
-  '@vibecanvas/resource-runtime': 'packages/resource-runtime',
-  '@vibecanvas/runtime': 'packages/runtime',
-  '@vibecanvas/tenant-core': 'packages/tenant-core',
-  '@vibecanvas/widget-contract': 'packages/widget-contract',
+  '@omnidraw/function-runtime': 'packages/function-runtime',
+  '@omnidraw/resource-runtime': 'packages/resource-runtime',
+  '@omnidraw/runtime': 'packages/runtime',
+  '@omnidraw/tenant-core': 'packages/tenant-core',
+  '@omnidraw/widget-contract': 'packages/widget-contract',
 })
 const UI_PACKAGES = Object.freeze({
-  '@vibecanvas/ui-ai-chat': {
+  '@omnidraw/ui-ai-chat': {
     directory: 'packages/ui-ai-chat',
     exports: {
       '.': './src/index.ts',
@@ -177,7 +177,7 @@ function manifestDependencies(manifest: Awaited<ReturnType<typeof packageManifes
 }
 
 function publicPackageName(specifier: string): string | null {
-  if (!specifier.startsWith('@vibecanvas/')) return null
+  if (!specifier.startsWith('@omnidraw/')) return null
   return specifier.split('/').slice(0, 2).join('/')
 }
 
@@ -500,16 +500,16 @@ describe('managed composition architecture boundaries', () => {
     expect(oldApiFiles).toEqual([])
 
     const apiPackages = manifests
-      .filter(({ manifest }) => manifest.name === '@vibecanvas/api' || manifest.name?.startsWith('@vibecanvas/api-'))
+      .filter(({ manifest }) => manifest.name === '@omnidraw/api' || manifest.name?.startsWith('@omnidraw/api-'))
       .map(({ manifest }) => manifest.name)
       .sort()
-    expect(apiPackages).toEqual(['@vibecanvas/api'])
+    expect(apiPackages).toEqual(['@omnidraw/api'])
     expect(
-      manifests.find(({ manifest }) => manifest.name === '@vibecanvas/api')?.path,
+      manifests.find(({ manifest }) => manifest.name === '@omnidraw/api')?.path,
     ).toBe(join(ROOT, 'packages/api/package.json'))
     expect(manifests.flatMap(({ path, manifest }) => (
       manifestDependencies(manifest)
-        .filter((dependency) => dependency.startsWith('@vibecanvas/api-'))
+        .filter((dependency) => dependency.startsWith('@omnidraw/api-'))
         .map((dependency) => `${relative(ROOT, path)} depends on ${dependency}`)
     ))).toEqual([])
 
@@ -518,7 +518,7 @@ describe('managed composition architecture boundaries', () => {
       for (const file of await sourceFiles(join(ROOT, root))) {
         const source = await readFile(file, 'utf8')
         for (const specifier of moduleSpecifiers(source)) {
-          if (specifier.startsWith('@vibecanvas/api-')) {
+          if (specifier.startsWith('@omnidraw/api-')) {
             violations.push(`${relative(ROOT, file)} imports ${specifier}`)
           }
         }
@@ -535,11 +535,11 @@ describe('managed composition architecture boundaries', () => {
     expect(oldUiFiles).toEqual([])
 
     const packageNames = new Set(manifests.map(({ manifest }) => manifest.name).filter(Boolean))
-    expect(packageNames.has('@vibecanvas/ai-chat')).toBe(false)
-    expect(packageNames.has('@vibecanvas/actor-ui')).toBe(false)
+    expect(packageNames.has('@omnidraw/ai-chat')).toBe(false)
+    expect(packageNames.has('@omnidraw/actor-ui')).toBe(false)
     expect(manifests.flatMap(({ path, manifest }) => (
       manifestDependencies(manifest)
-        .filter((dependency) => dependency === '@vibecanvas/ai-chat' || dependency === '@vibecanvas/actor-ui')
+        .filter((dependency) => dependency === '@omnidraw/ai-chat' || dependency === '@omnidraw/actor-ui')
         .map((dependency) => `${relative(ROOT, path)} depends on ${dependency}`)
     ))).toEqual([])
 
@@ -558,10 +558,10 @@ describe('managed composition architecture boundaries', () => {
       for (const file of await sourceFiles(join(ROOT, root))) {
         const source = await readFile(file, 'utf8')
         for (const specifier of moduleSpecifiers(source)) {
-          if (specifier === '@vibecanvas/ai-chat' || specifier.startsWith('@vibecanvas/ai-chat/')) {
+          if (specifier === '@omnidraw/ai-chat' || specifier.startsWith('@omnidraw/ai-chat/')) {
             oldUiImports.push(`${relative(ROOT, file)} imports ${specifier}`)
           }
-          if (specifier === '@vibecanvas/actor-ui' || specifier.startsWith('@vibecanvas/actor-ui/')) {
+          if (specifier === '@omnidraw/actor-ui' || specifier.startsWith('@omnidraw/actor-ui/')) {
             oldUiImports.push(`${relative(ROOT, file)} imports ${specifier}`)
           }
         }
@@ -590,7 +590,7 @@ describe('managed composition architecture boundaries', () => {
     ]) {
       expect(isForbiddenManagedDependency(dependency), dependency).toBe(true)
     }
-    for (const dependency of ['@vibecanvas/runtime', 'sqlite', 'turso', '@libsql/client']) {
+    for (const dependency of ['@omnidraw/runtime', 'sqlite', 'turso', '@libsql/client']) {
       expect(isForbiddenManagedDependency(dependency), dependency).toBe(false)
     }
 
@@ -707,6 +707,7 @@ describe('managed composition architecture boundaries', () => {
         const path = relative(ROOT, file).split(sep).join('/')
         if (
           path.includes('/tests/')
+          || path.startsWith('apps/cli/public/assets/')
           || path.endsWith('.test.ts')
           || path.endsWith('.test.tsx')
         ) continue
@@ -787,19 +788,19 @@ describe('managed composition architecture boundaries', () => {
     expect(fixtureText).not.toMatch(/(?:^|["'\s])workspace:/m)
     expect(fixtureText).not.toMatch(/(?:^|["'\s])file:/m)
     expect(fixtureText).not.toMatch(/(?:^|["'\s])link:/m)
-    expect(fixtureText).not.toMatch(/@vibecanvas\/[^'"\s]+\/src\//)
+    expect(fixtureText).not.toMatch(/@omnidraw\/[^'"\s]+\/src\//)
     expect(fixtureText).not.toContain('../../packages')
     expect(fixtureText).not.toContain('apps/cli')
-    expect(fixtureText).not.toContain('@vibecanvas/api')
-    expect(fixtureText).not.toContain('@vibecanvas/service-')
+    expect(fixtureText).not.toContain('@omnidraw/api')
+    expect(fixtureText).not.toContain('@omnidraw/service-')
 
     const apiFiles = await sourceFiles(join(ROOT, 'packages/api/src'))
     const apiText = (await Promise.all(apiFiles.map((path) => readFile(path, 'utf8')))).join('\n')
     expect(apiText).not.toContain('external-composition')
-    expect(apiText).not.toContain('@vibecanvas-fixtures/private-managed-composition')
+    expect(apiText).not.toContain('@omnidraw-fixtures/private-managed-composition')
   })
 
-  test('keeps public contract packages free of private Vibecanvas dependencies', async () => {
+  test('keeps public contract packages free of private Omnidraw dependencies', async () => {
     const allowedPublicPackages = new Set(Object.keys(PUBLIC_PACKAGES))
     for (const directory of Object.values(PUBLIC_PACKAGES)) {
       for (const file of await sourceFiles(join(ROOT, directory, 'src'))) {

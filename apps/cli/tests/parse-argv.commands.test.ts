@@ -51,28 +51,28 @@ describe('parseCliArgv command resolution', () => {
   });
 
   test('carries parsed options into buildCliConfig', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/vibecanvas-home', '--json']);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/omnidraw-home', '--json']);
     const config = buildCliConfig(parsed);
 
     expect(config.command).toBe('serve');
     expect(config.subcommand).toBeUndefined();
-    expect(config.home.homeDir).toBe(resolve(process.cwd(), './tmp/vibecanvas-home'));
-    expect(config.home.mainDbPath).toBe(resolve(process.cwd(), './tmp/vibecanvas-home/main.db'));
+    expect(config.home.homeDir).toBe(resolve(process.cwd(), './tmp/omnidraw-home'));
+    expect(config.home.mainDbPath).toBe(resolve(process.cwd(), './tmp/omnidraw-home/main.db'));
     expect(config.subcommandOptions).toMatchObject({
       json: true,
     });
   });
 
   test('does not mistake a later positional for the top-level command', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/vibecanvas-home', 'query']);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/omnidraw-home', 'query']);
 
     expect(parsed.command).toBe('serve');
     expect(parsed.subcommand).toBeUndefined();
-    expect(parsed.dataDir).toBe('./tmp/vibecanvas-home');
+    expect(parsed.dataDir).toBe('./tmp/omnidraw-home');
   });
 
   test('configuration construction resolves paths without touching disk', () => {
-    const homeDir = join(tmpdir(), `vibecanvas-config-${crypto.randomUUID()}`);
+    const homeDir = join(tmpdir(), `omnidraw-config-${crypto.randomUUID()}`);
     const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', homeDir]);
 
     expect(existsSync(homeDir)).toBe(false);

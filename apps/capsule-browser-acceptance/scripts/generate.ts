@@ -9,25 +9,25 @@ import {
 import { dirname, join } from 'node:path';
 import { build as viteBuild, version as viteVersion } from 'vite';
 import {
-  VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
+  OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   WidgetArtifactBuilderCapsule,
   buildCapsuleGuest,
   type CapsuleArtifactSigningKey,
-} from '@vibecanvas/capsule-vibecanvas/build';
+} from '@omnidraw/capsule-omnidraw/build';
 import {
-  VIBECANVAS_CAPSULE_ALLOWED_APIS,
-  VIBECANVAS_CAPSULE_HOST_LIMITS,
-  VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
-  VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
-  VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
-} from '@vibecanvas/capsule-vibecanvas/contract';
+  OMNIDRAW_CAPSULE_ALLOWED_APIS,
+  OMNIDRAW_CAPSULE_HOST_LIMITS,
+  OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID,
+  OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID,
+  OMNIDRAW_CAPSULE_TESTED_THREE_VERSION,
+} from '@omnidraw/capsule-omnidraw/contract';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
   fnProjectWidgetBrowserFunctionDescriptors,
-} from '@vibecanvas/widget-contract';
-import type { TWidgetCapsuleApiGroup } from '@vibecanvas/widget-contract';
-import type { TVibecanvasDistributionBuild } from '@vibecanvas/capsule-vibecanvas/builder';
+} from '@omnidraw/widget-contract';
+import type { TWidgetCapsuleApiGroup } from '@omnidraw/widget-contract';
+import type { TOmnidrawDistributionBuild } from '@omnidraw/capsule-omnidraw/builder';
 
 type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[1];
 type TTenant = Parameters<WidgetArtifactBuilderCapsule['build']>[0];
@@ -53,7 +53,7 @@ const outputDirectory = join(import.meta.dir, '..', 'generated');
 const tempRoot = join(import.meta.dir, '..', '.tmp');
 const repositoryRoot = join(import.meta.dir, '..', '..', '..');
 const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widget.ts');
-const builderIdentity = 'vibecanvas-capsule-browser-acceptance-v1';
+const builderIdentity = 'omnidraw-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
   packageVersion: '0.10.1',
@@ -81,7 +81,7 @@ import {
   getWidgetTheme,
   subscribeWidgetProps,
   subscribeWidgetTheme,
-} from '@vibecanvas/sdk/widget';
+} from '@omnidraw/sdk/widget';
 
 const root = document.createElement('main');
 const status = document.createElement('output');
@@ -124,7 +124,7 @@ subscribeWidgetTheme((theme) => {
 });
 `.trim(),
   svg: `
-import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
 
 const namespace = 'http://www.w3.org/2000/svg';
 const svg = document.createElementNS(namespace, 'svg');
@@ -143,7 +143,7 @@ emitWidgetOutput({
 });
 `.trim(),
   canvas: `
-import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
 
 const canvas = document.createElement('canvas');
 canvas.width = 32;
@@ -161,7 +161,7 @@ emitWidgetOutput({
 `.trim(),
   three: `
 import * as THREE from 'three';
-import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
 
 if (THREE.REVISION !== '185') {
   throw new Error('Unexpected Three.js revision ' + THREE.REVISION);
@@ -320,7 +320,7 @@ if (clock.getDelta() < 0) throw new Error('unreachable');
   react: `
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { emitWidgetOutput } from '@vibecanvas/sdk/widget';
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
 import './react.css';
 
 function App() {
@@ -365,7 +365,7 @@ createRoot(root).render(<App />);
   inline-size: clamp(12rem, 60vi, 42rem);
   min-block-size: max(10rem, 30vb);
   padding-block: calc(0.75rem + 1vi);
-  color: var(--vibecanvas-inherited-accent, rgb(1 2 3));
+  color: var(--omnidraw-inherited-accent, rgb(1 2 3));
   background-color: var(--counter-surface);
   background-image: linear-gradient(135deg, transparent, rgb(255 255 255 / 0.8));
   font: 16px/1.4 system-ui, sans-serif;
@@ -422,7 +422,7 @@ import {
   getCollaborativeState,
   subscribeCollaborativeState,
   subscribeWidgetLifecycle,
-} from '@vibecanvas/sdk/widget';
+} from '@omnidraw/sdk/widget';
 
 type TCount = Readonly<{ count: number }>;
 
@@ -546,14 +546,14 @@ function capsuleHash(value: Uint8Array | string): `sha256:${string}` {
 }
 
 const browserDistributionConfiguration = Object.freeze({
-  format: 'vibecanvas-browser-acceptance-vite-v1',
+  format: 'omnidraw-browser-acceptance-vite-v1',
   viteVersion,
   target: 'es2022',
   entry: 'main.js',
   external: Object.freeze(['capsule:bridge']),
 });
 
-const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) => {
+const buildBrowserDistribution: TOmnidrawDistributionBuild = async (request) => {
   await mkdir(tempRoot, { recursive: true });
   const root = await mkdtemp(join(tempRoot, 'distribution-'));
   try {
@@ -570,7 +570,7 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
         // Acceptance fixtures compile the SDK source directly so this gate does
         // not depend on ignored/generated SDK dist files.
         alias: {
-          '@vibecanvas/sdk/widget': sdkWidgetSourcePath,
+          '@omnidraw/sdk/widget': sdkWidgetSourcePath,
         },
       },
       build: {
@@ -630,7 +630,7 @@ const buildBrowserDistribution: TVibecanvasDistributionBuild = async (request) =
         ? {}
         : { cssRoots: Object.freeze(cssRoots) }),
       producer: Object.freeze({
-        name: 'vibecanvas-browser-acceptance-vite',
+        name: 'omnidraw-browser-acceptance-vite',
         version: viteVersion,
         digest: capsuleHash(JSON.stringify(browserDistributionConfiguration)),
       }),
@@ -702,8 +702,8 @@ async function generateKey(keyId: string): Promise<Readonly<{
 }
 
 const [previewKey, releaseKey, wrongKey] = await Promise.all([
-  generateKey(VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID),
-  generateKey(VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID),
+  generateKey(OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID),
+  generateKey(OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID),
   generateKey('capsule-browser-acceptance-wrong-key'),
 ]);
 const keys = Object.freeze({
@@ -714,7 +714,7 @@ const builder = new WidgetArtifactBuilderCapsule({
   tempRoot,
   builderIdentity,
   capsuleBuildIdentity,
-  buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
+  buildPolicyId: OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   capsuleBuild: buildCapsuleGuest,
   distributionBuild: buildBrowserDistribution,
   functionDescriptorExtractor: Object.freeze({
@@ -739,7 +739,7 @@ async function construct(args: TFixtureBuild) {
     canonicalManifestJson: fnCanonicalizeWidgetManifest(widgetManifest),
     builderIdentity,
     capsuleBuildIdentity,
-    buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
+    buildPolicyId: OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   });
 }
 
@@ -752,8 +752,8 @@ async function sign(
     signingPurpose,
   });
   const expectedKeyId = signingPurpose === 'preview'
-    ? VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID
-    : VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID;
+    ? OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID
+    : OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID;
   if (
     result.uiArtifact.runtimeDescriptor.signatureKeyIds.length !== 1
     || result.uiArtifact.runtimeDescriptor.signatureKeyIds[0] !== expectedKeyId
@@ -872,28 +872,28 @@ const artifacts = Object.freeze({
     collaborative: true,
     server: Object.freeze({
       entry: 'server/index.ts',
-      runtimeAbi: 'vibecanvas-function-v1',
+      runtimeAbi: 'omnidraw-function-v1',
     }),
     signingPurpose: 'release',
   }),
 });
 
 const fixture = Object.freeze({
-  format: 'vibecanvas.capsule-browser-acceptance.v1',
+  format: 'omnidraw.capsule-browser-acceptance.v1',
   generatedFrom: Object.freeze({
     builderIdentity,
     capsuleBuildIdentity,
-    buildPolicyId: VIBECANVAS_CAPSULE_BUILD_POLICY_ID,
+    buildPolicyId: OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   }),
   publicKeys: Object.freeze({
     preview: Object.freeze({
-      keyId: VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
+      keyId: OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID,
       algorithm: 'Ed25519',
       format: 'raw',
       publicKeyBase64: previewKey.publicKeyBase64,
     }),
     release: Object.freeze({
-      keyId: VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
+      keyId: OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID,
       algorithm: 'Ed25519',
       format: 'raw',
       publicKeyBase64: releaseKey.publicKeyBase64,
@@ -907,14 +907,14 @@ const fixture = Object.freeze({
   }),
   host: Object.freeze({
     generation: 'capsule-browser-acceptance-v1',
-    allowedApis: VIBECANVAS_CAPSULE_ALLOWED_APIS,
-    limits: VIBECANVAS_CAPSULE_HOST_LIMITS,
-    previewSigningKeyId: VIBECANVAS_CAPSULE_PREVIEW_SIGNING_KEY_ID,
-    releaseSigningKeyId: VIBECANVAS_CAPSULE_RELEASE_SIGNING_KEY_ID,
+    allowedApis: OMNIDRAW_CAPSULE_ALLOWED_APIS,
+    limits: OMNIDRAW_CAPSULE_HOST_LIMITS,
+    previewSigningKeyId: OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID,
+    releaseSigningKeyId: OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID,
   }),
   artifacts,
   threeConstructionContractDigestSha256: threePair.constructionContractDigestSha256,
-  testedThreeVersion: VIBECANVAS_CAPSULE_TESTED_THREE_VERSION,
+  testedThreeVersion: OMNIDRAW_CAPSULE_TESTED_THREE_VERSION,
 });
 const serialized = `${JSON.stringify(fixture)}\n`;
 if (/private|pkcs8/i.test(serialized)) {

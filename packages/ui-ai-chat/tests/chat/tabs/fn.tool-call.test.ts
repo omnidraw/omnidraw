@@ -6,7 +6,7 @@ const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
 const TRUSTED_WIDGET_CREATE_RESULT = {
   role: "toolResult",
   toolCallId: "call-create",
-  toolName: "vc_widget_create",
+  toolName: "od_widget_create",
   content: [{ type: "text", text: "Created a widget draft." }],
   details: {
     draftId: DRAFT_ID,
@@ -14,7 +14,7 @@ const TRUSTED_WIDGET_CREATE_RESULT = {
     mountPath: "widgets/Shared Timer",
     source: "draft",
     draft: true,
-    files: ["vibecanvas.json", "widget/main.ts"],
+    files: ["omnidraw.json", "widget/main.ts"],
   },
 }
 
@@ -35,16 +35,16 @@ describe("widget-create tool-result extraction", () => {
   it.each([
     ["assistant prose", {
       role: "assistant",
-      content: [{ type: "text", text: "vc_widget_create created Shared Timer" }],
+      content: [{ type: "text", text: "od_widget_create created Shared Timer" }],
       details: TRUSTED_WIDGET_CREATE_RESULT.details,
-      toolName: "vc_widget_create",
+      toolName: "od_widget_create",
     }],
     ["model-visible JSON only", {
       role: "toolResult",
-      toolName: "vc_widget_create",
+      toolName: "od_widget_create",
       content: [{ type: "text", text: JSON.stringify(TRUSTED_WIDGET_CREATE_RESULT.details) }],
     }],
-    ["lookalike tool name", { ...TRUSTED_WIDGET_CREATE_RESULT, toolName: "vc_widget_create_preview" }],
+    ["lookalike tool name", { ...TRUSTED_WIDGET_CREATE_RESULT, toolName: "od_widget_create_preview" }],
     ["case-variant tool name", { ...TRUSTED_WIDGET_CREATE_RESULT, toolName: "VC_WIDGET_CREATE" }],
     ["failed create", { ...TRUSTED_WIDGET_CREATE_RESULT, isError: true }],
     ["missing details", { ...TRUSTED_WIDGET_CREATE_RESULT, details: undefined }],

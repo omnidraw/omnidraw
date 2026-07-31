@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 async function temporaryRoot(label: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), `vibecanvas-${label}-`));
+  const root = await mkdtemp(join(tmpdir(), `omnidraw-${label}-`));
   roots.push(root);
   return root;
 }

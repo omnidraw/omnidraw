@@ -64,7 +64,7 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
   const argv = [...rawArgv];
   const removedDbFlag = argv.find((value) => value === '--db' || value.startsWith('--db='));
   if (removedDbFlag !== undefined) {
-    throw new CliArgvError('CLI_FLAG_REMOVED', '--db is no longer supported. Use --data-dir to select the Vibecanvas home.');
+    throw new CliArgvError('CLI_FLAG_REMOVED', '--db is no longer supported. Use --data-dir to select the Omnidraw home.');
   }
   if (argv.at(-1) === '--data-dir') {
     throw new CliArgvError('DATA_DIR_FLAG_MISSING_VALUE', '--data-dir requires a path value.');

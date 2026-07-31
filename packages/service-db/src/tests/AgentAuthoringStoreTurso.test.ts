@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
@@ -12,7 +12,7 @@ import {
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnWidgetPreviewBindingPlanDigest,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type {
   TWidgetArtifactDescriptor,
   TWidgetCapsuleBuildIdentity,
@@ -20,7 +20,7 @@ import type {
   TWidgetDistributionBuildProvenance,
   TWidgetManifestV3,
   TWidgetPreviewRevisionCreate,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import {
   AgentAuthoringStoreTurso,
   type TWidgetPreviewRuntimeDiagnosticRecord,
@@ -128,7 +128,7 @@ function previewRevision(args: Readonly<{
     JSON.parse(WIDGET_CAPSULE_BUILD_IDENTITY_JSON) as TWidgetCapsuleBuildIdentity;
   const uiRuntime = {
     ...JSON.parse(WIDGET_CAPSULE_RUNTIME_JSON),
-    signatureKeyIds: ['vibecanvas-preview-v1'],
+    signatureKeyIds: ['omnidraw-preview-v1'],
   } as TWidgetCapsuleRuntimeDescriptor;
   const distributionProvenance: TWidgetDistributionBuildProvenance = {
     kind: 'external-distribution',
@@ -411,7 +411,7 @@ async function createPreviewContext(
       parentId: null,
       orderKey: 'ai-chat',
       extensions: {
-        'vibecanvas:widget': {
+        'omnidraw:widget': {
           schemaVersion: 1,
           type: 'ui-widget',
           kind: 'ai',
@@ -486,7 +486,7 @@ describe('AgentAuthoringStoreTurso', () => {
   let store: AgentAuthoringStoreTurso;
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), 'vibecanvas-agent-authoring-store-'));
+    root = await mkdtemp(path.join(tmpdir(), 'omnidraw-agent-authoring-store-'));
     service = new DbServiceTurso({
       databasePath: path.join(root, 'main.db'),
       dataDir: root,
@@ -795,7 +795,7 @@ describe('AgentAuthoringStoreTurso', () => {
       parentId: null,
       orderKey: 'ai-chat',
       extensions: {
-        'vibecanvas:widget': {
+        'omnidraw:widget': {
           schemaVersion: 1,
           type: 'ui-widget',
           kind: 'ai',
@@ -1377,7 +1377,7 @@ describe('AgentAuthoringStoreTurso', () => {
     });
     expect(await store.getPreview(TENANT, { previewId })).toMatchObject({
       id: revisionId,
-      uiRuntime: { signatureKeyIds: ['vibecanvas-preview-v1'] },
+      uiRuntime: { signatureKeyIds: ['omnidraw-preview-v1'] },
     });
     expect(await store.getPreviewBindings(TENANT, {
       previewId,

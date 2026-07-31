@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ZWidgetManifestV3, type TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import { ZWidgetManifestV3, type TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { WidgetDraftController } from '../widget-drafts/WidgetDraftController';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import {
@@ -102,7 +102,7 @@ export class WidgetManagement {
     };
   }
 
-  async resolvePlacementReference(reference: import('@vibecanvas/widget-contract').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
+  async resolvePlacementReference(reference: import('@omnidraw/widget-contract').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
     if (reference.source === 'published') {
       return { ok: false, code: 'NOT_FOUND', message: `Published widget '${reference.name}' is not available in draft storage.` };
     }
@@ -418,14 +418,14 @@ export class WidgetManagement {
 
   async #readManifest(root: string): Promise<{ manifest: TWidgetManagementManifest | null; problem: TWidgetCatalogProblem | null; groupReference: string | null }> {
     try {
-      const raw: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      const raw: unknown = JSON.parse(await readFile(join(root, 'omnidraw.json'), 'utf8'));
       const v3 = ZWidgetManifestV3.safeParse(raw);
       if (v3.success) {
         return { manifest: v3.data as TWidgetManifestV3, problem: null, groupReference: null };
       }
-      return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference: null };
+      return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'omnidraw.json is invalid. Open Config for validation details.'), groupReference: null };
     } catch {
-      return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is missing, unreadable, or invalid JSON.'), groupReference: null };
+      return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'omnidraw.json is missing, unreadable, or invalid JSON.'), groupReference: null };
     }
   }
 

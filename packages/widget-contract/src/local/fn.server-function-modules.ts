@@ -33,7 +33,7 @@ export function fnGenerateServerFunctionEntrySource(
   let index = 0;
   for (const module of modules) {
     for (const exportName of module.exportNames) {
-      const localName = `__vibecanvasFunction${index++}`;
+      const localName = `__omnidrawFunction${index++}`;
       lines.push(
         `import { ${exportName} as ${localName} } from ${JSON.stringify(`./${module.path}`)};`,
       );

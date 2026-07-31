@@ -1,5 +1,5 @@
-import { fnScopedKey } from '@vibecanvas/tenant-core';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import { fnScopedKey } from '@omnidraw/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IEventPublisherService,
   ITenantEventPublisherService,

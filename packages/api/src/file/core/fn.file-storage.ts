@@ -1,4 +1,4 @@
-import type { TFileFormat } from "@vibecanvas/service-db/model";
+import type { TFileFormat } from "@omnidraw/service-db/model";
 
 const mimeTypeToExtension = {
   "image/avif": "avif",

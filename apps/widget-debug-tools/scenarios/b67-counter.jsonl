@@ -1,17 +1,17 @@
-{"tool":"vc_widget_create","args":{"name":"B67 Counter","template":"react"},"expect":{"isError":false,"modelData":{"template":"react"}}}
+{"tool":"od_widget_create","args":{"name":"B67 Counter","template":"react"},"expect":{"isError":false,"modelData":{"template":"react"}}}
 {"tool":"read","args":{"path":"widgets/B67 Counter/ui/main.tsx"},"expect":{"isError":false,"textTruncated":false}}
 {"tool":"edit","args":{"path":"widgets/B67 Counter/ui/main.tsx","edits":[{"oldText":"      <p>Widget under construction</p>","newText":"      <p>Counter controls</p>"},{"oldText":"      <button type=\"button\" onClick={() => setCount((value) => value + 1)}>\n        Increment\n      </button>","newText":"      <button type=\"button\" onClick={() => setCount((value) => value + 1)}>\n        Increment\n      </button>\n      <button type=\"button\" onClick={() => setCount((value) => value - 1)}>\n        Decrement\n      </button>"}]},"expect":{"isError":false}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":1}}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":1}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}
 {"lab":"preview","args":{"name":"B67 Counter"},"expect":{"isError":false,"ready":true,"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}
 {"tool":"edit","args":{"path":"widgets/B67 Counter/ui/main.tsx","edits":[{"oldText":"        Increment","newText":"        Add one"}]},"expect":{"isError":false}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":0}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":0}}}
 {"lab":"preview","args":{"name":"B67 Counter"},"expect":{"isError":false,"ready":true,"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}
 {"tool":"edit","args":{"path":"widgets/B67 Counter/package.json","edits":[{"oldText":"\"zod\": \"4.4.3\"","newText":"\"zod\": \"^4.4.3\""}]},"expect":{"isError":false,"build":{"disposition":"not-requested","dependencyInstalls":1}}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":1}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"constructed","guestConstructions":1,"distributionBuilds":1,"dependencyInstalls":1}}}
 {"lab":"preview","args":{"name":"B67 Counter"},"expect":{"isError":false,"ready":true,"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}
 {"tool":"edit","args":{"path":"widgets/B67 Counter/ui/main.tsx","edits":[{"oldText":"setCount((value) => value - 1)","newText":"setCount((value) => value - )"}]},"expect":{"isError":false}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":false}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":false}}}
 {"tool":"edit","args":{"path":"widgets/B67 Counter/ui/main.tsx","edits":[{"oldText":"setCount((value) => value - )","newText":"setCount((value) => value - 1)"}]},"expect":{"isError":false}}
-{"tool":"vc_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"reused","dependencyInstalls":0}}}
+{"tool":"od_widget_validate","args":{"name":"B67 Counter"},"expect":{"isError":false,"modelData":{"ok":true},"build":{"disposition":"reused","dependencyInstalls":0}}}
 {"lab":"preview","args":{"name":"B67 Counter"},"expect":{"isError":false,"ready":true,"build":{"disposition":"reused","guestConstructions":0,"distributionBuilds":0,"dependencyInstalls":0}}}

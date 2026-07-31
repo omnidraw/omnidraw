@@ -152,7 +152,7 @@ export function fnNormalizeWidgetCapsuleRuntimeDescriptor(
   descriptor: TWidgetCapsuleRuntimeDescriptor,
 ): TWidgetCapsuleRuntimeDescriptor {
   return {
-    format: 'vibecanvas.capsule-runtime.v2',
+    format: 'omnidraw.capsule-runtime.v2',
     capsuleArtifactHash: descriptor.capsuleArtifactHash,
     apiContract: fnNormalizeWidgetCapsuleApiContract(descriptor.apiContract),
     budgets: fnNormalizeWidgetCapsuleBudgetRequest(descriptor.budgets),
@@ -164,7 +164,7 @@ export function fnCanonicalizeWidgetCapsuleCapabilityRequests(
   requests: readonly TWidgetCapsuleCapabilityRequest[],
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.capsule-capability-contract.v1',
+    format: 'omnidraw.capsule-capability-contract.v1',
     requests: fnNormalizeWidgetCapsuleCapabilityRequests(requests),
   });
 }
@@ -173,7 +173,7 @@ export function fnCanonicalizeWidgetCapsuleChannelContract(
   channels: TWidgetCapsuleChannelContract | null,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.capsule-channel-contract.v1',
+    format: 'omnidraw.capsule-channel-contract.v1',
     channels: fnNormalizeWidgetCapsuleChannelContract(channels),
   });
 }

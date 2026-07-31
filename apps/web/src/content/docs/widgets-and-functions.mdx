@@ -4,7 +4,7 @@ description: Learn how widgets combine collaborative state with bounded server f
 order: 2
 ---
 
-Vibecanvas widgets are generated app surfaces that run on the infinite canvas. A widget can be a chart, form, board, gallery, table, timer, or control panel.
+Omnidraw widgets are generated app surfaces that run on the infinite canvas. A widget can be a chart, form, board, gallery, table, timer, or control panel.
 
 Each published widget revision can contain:
 
@@ -17,7 +17,7 @@ Each published widget revision can contain:
 
 Each placed widget instance has its own centrally managed JSON state. Two instances of the same revision do not share mutable state unless the widget deliberately coordinates through an external resource.
 
-The UI reads and changes state through the Vibecanvas SDK. The host applies compare-and-swap updates and keeps the canvas item pinned to its immutable definition and revision identity.
+The UI reads and changes state through the Omnidraw SDK. The host applies compare-and-swap updates and keeps the canvas item pinned to its immutable definition and revision identity.
 
 ## Server functions
 
@@ -65,7 +65,7 @@ The practical rule is:
 - Put persistent instance state in collaborative state.
 - Put bounded backend work in server functions.
 - Access infrastructure only through declared resource slots.
-- Let Vibecanvas own placement, artifact verification, authorization, and runtime isolation.
+- Let Omnidraw own placement, artifact verification, authorization, and runtime isolation.
 
 ## Using secret stores
 

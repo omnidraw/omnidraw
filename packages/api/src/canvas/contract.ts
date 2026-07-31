@@ -6,8 +6,8 @@ import type {
   TCanvasItemQuery,
   TCanvasItemsChangedEvent,
   TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
-import { ZCanvas } from '@vibecanvas/service-db/model';
+} from '@omnidraw/canvas-contract';
+import { ZCanvas } from '@omnidraw/service-db/model';
 import { z } from 'zod';
 
 const getCanvasByIdResponseSchema = z.object({

@@ -24,7 +24,7 @@ import {
   type TCanvasItemSnapshot,
   type TCanvasItemsChangedEvent,
   type TCanvasSnapshot,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { describe, expect, test, vi } from 'vitest';
 import {
   CanvasDocumentService,
@@ -1635,7 +1635,7 @@ describe('CanvasDocumentService', () => {
       'source-less-image',
       [{ type: 'upsert', node }],
       [node.id],
-    ))).toThrow("Image node 'image-a' has no durable Vibecanvas image descriptor.");
+    ))).toThrow("Image node 'image-a' has no durable Omnidraw image descriptor.");
     expect(fake.apply).toHaveBeenCalledTimes(0);
     expect(transport.execute).not.toHaveBeenCalled();
     expect(service.pendingTransactionCount).toBe(0);
@@ -1947,7 +1947,7 @@ describe('CanvasDocumentService', () => {
     expect(receipt.projectedSceneRevision).toBe(2);
     expect(fake.retain).toHaveBeenCalledWith(
       'resource-a',
-      'vibecanvas:document-images',
+      'omnidraw:document-images',
     );
     expect(service.node(node.id)).not.toBeNull();
     expect(fake.apply).toHaveBeenCalledTimes(1);
@@ -1981,7 +1981,7 @@ describe('CanvasDocumentService', () => {
     await service.dispose();
     expect(fake.release).toHaveBeenCalledWith(
       'resource-a',
-      'vibecanvas:document-images',
+      'omnidraw:document-images',
     );
   });
 
@@ -2043,7 +2043,7 @@ describe('CanvasDocumentService', () => {
     expect(service.pendingTransactionCount).toBe(0);
     expect(fake.release).toHaveBeenCalledWith(
       'resource-a',
-      'vibecanvas:document-images',
+      'omnidraw:document-images',
     );
     expect(errors).toHaveLength(1);
 

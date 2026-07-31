@@ -3,18 +3,18 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { CANVAS_WIDGET_EXTENSION_KEY } from '@vibecanvas/canvas-contract';
-import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract';
+import { buildCapsuleGuest } from '@omnidraw/capsule-omnidraw/build';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
-import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
-import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+} from '@omnidraw/service-db/CONSTANTS';
+import { AgentAuthoringStoreTurso } from '@omnidraw/service-db/AgentAuthoringStoreTurso';
+import { WidgetControlStoreTurso } from '@omnidraw/service-db/WidgetControlStoreTurso';
+import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
@@ -58,9 +58,9 @@ afterEach(async () => {
 
 describe('production short-lived function composition', () => {
   test('executes exact published and durable Preview server revisions', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-function-composition-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-function-composition-'));
     roots.push(root);
-    const home = fnResolveVibecanvasHome({ join, resolve }, {
+    const home = fnResolveOmnidrawHome({ join, resolve }, {
       cwd: root,
       dataDir: root,
       env: {},
@@ -132,7 +132,7 @@ describe('production short-lived function composition', () => {
         ].join('\n'),
         'server/index.ts': 'import "./echo.server";',
         'server/echo.server.ts': [
-          'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+          'import { defineServerFunction } from "@omnidraw/sdk/server";',
           'import { z } from "zod";',
           'const Shape = z.object({ value: z.string() });',
           'export const echo = defineServerFunction({',
@@ -151,7 +151,7 @@ describe('production short-lived function composition', () => {
         name: 'Function composition',
         slug: 'function-composition',
         ui: capsuleUi('ui/main.ts'),
-        server: { entry: 'server/index.ts', runtimeAbi: 'vibecanvas:test-1' },
+        server: { entry: 'server/index.ts', runtimeAbi: 'omnidraw:test-1' },
       };
       const published = await widget.publish(tenant, {
         definitionId: uuid(964),

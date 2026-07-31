@@ -1,4 +1,4 @@
-import type { CapsuleViewport } from '@vibecanvas/capsule-vibecanvas/host';
+import type { CapsuleViewport } from '@omnidraw/capsule-omnidraw/host';
 import {
   fnWidgetCapsuleViewport,
 } from '../widget-runtime/fn.capsule-viewport';

@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 
 export const GET: APIRoute = ({ site }) => {
-  const siteUrl = site ?? new URL("https://vibecanvas.dev");
+  const siteUrl = site ?? new URL("https://omnidraw.dev");
   const sitemapUrl = new URL("sitemap.xml", siteUrl).toString();
 
   return new Response(

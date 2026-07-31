@@ -1,6 +1,6 @@
-# Vibecanvas manifest v3
+# Omnidraw manifest v3
 
-Build browser-first widgets. `vibecanvas.json` is the authoritative manifest
+Build browser-first widgets. `omnidraw.json` is the authoritative manifest
 and must use schema version 3:
 
 ```json
@@ -34,7 +34,7 @@ and must use schema version 3:
   widget-instance state; `localStore` is `none` or `ephemeral`.
 - Parking is unavailable in this release. Do not request it.
 - Omit `server` and `resources` for a UI-only widget. This is the default.
-- Add `server: { "entry": "server/main.server.ts", "runtimeAbi": "vibecanvas-function-v1" }` only when the request truly needs a short server function. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
+- Add `server: { "entry": "server/main.server.ts", "runtimeAbi": "omnidraw-function-v1" }` only when the request truly needs a short server function. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
 - `resources` is an optional array of host-bound requirements. Each requirement names a stable slot and declares kind, required status, read/write ceiling, and allowed operations. Never put a concrete resource id, path, handle, credential, or secret in the manifest.
 - Source paths are relative, normalized, and contained in the draft. Never use
   absolute paths, `..`, symlinks, dynamic imports, or runtime `require`.
@@ -55,7 +55,7 @@ Validation and an open Preview pin one immutable source snapshot and share its
 content-addressed construction. The draft-private warm workspace runs
 frozen `npm ci` when package or lock inputs change, then runs the
 guest-owned `npm run build`; source-only edits reuse the installed workspace.
-Vibecanvas captures only the bounded regular-file `dist/` tree and gives those
+Omnidraw captures only the bounded regular-file `dist/` tree and gives those
 exact bytes to Capsule for closed-distribution validation and artifact
 construction. Capsule does not install dependencies or compile source.
 

@@ -8,7 +8,7 @@ import type {
   TResourceEffect,
   TResourceRequirement,
 } from '../types';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TRequestedEffect = Exclude<TResourceEffect, 'read_write'>;
 

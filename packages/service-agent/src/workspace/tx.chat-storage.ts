@@ -1,4 +1,4 @@
-import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
+import { fnChatStorageSegments } from '@omnidraw/shared-functions/chat/fn.chat-id';
 import { fxReadChatMetadata } from './fx.chat-metadata';
 
 export type TChatMetadata = {

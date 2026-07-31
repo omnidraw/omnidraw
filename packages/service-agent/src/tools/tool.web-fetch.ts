@@ -23,7 +23,7 @@ const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_MAX_BYTES = 1_000_000;
 const MAX_TIMEOUT_MS = 60_000;
 const MAX_MAX_BYTES = 10_000_000;
-const BROWSER_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 VibecanvasWebFetch/1.0';
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 OmnidrawWebFetch/1.0';
 
 const WEB_FETCH_PARAMETER_SCHEMA = Type.Object({
   url: Type.String({

@@ -85,7 +85,7 @@ async function runSuite(suite: TWidgetArtifactSuite, index: number): Promise<voi
     cwd: REPO_ROOT,
     env: {
       ...process.env,
-      VIBECANVAS_SILENT_DB_MIGRATIONS: '1',
+      OMNIDRAW_SILENT_DB_MIGRATIONS: '1',
     },
     stdin: 'inherit',
     stdout: 'inherit',

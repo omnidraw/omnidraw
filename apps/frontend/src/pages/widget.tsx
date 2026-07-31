@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, useParams, useSearchParams } from '@solidjs/router';
-import type { TWidgetSource } from '@vibecanvas/orpc-client';
+import type { TWidgetSource } from '@omnidraw/orpc-client';
 import { type Component } from 'solid-js';
-import { WidgetDetailPage } from '@vibecanvas/ui-ai-chat';
+import { WidgetDetailPage } from '@omnidraw/ui-ai-chat';
 import { createFrontendSidebarController } from '@/ai-chat-adapters';
 
 const WidgetPage: Component = () => {

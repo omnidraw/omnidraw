@@ -16,14 +16,14 @@ function sourceFiles(root: string): string[] {
 describe("package boundaries", () => {
   it("keeps canvas independent from AI Chat", () => {
     const violations = sourceFiles(join(WORKSPACE_ROOT, "packages/canvas/src")).flatMap((path) => {
-      return readFileSync(path, "utf8").includes("@vibecanvas/ui-ai-chat") ? [path] : [];
+      return readFileSync(path, "utf8").includes("@omnidraw/ui-ai-chat") ? [path] : [];
     });
 
     expect(violations).toEqual([]);
   });
 
   it("keeps retired resident runtime ownership out of AI Chat", () => {
-    const forbiddenDependency = /@vibecanvas\/(?:service-actor|ui-actor-legacy)(?:[/'"]|$)/;
+    const forbiddenDependency = /@omnidraw\/(?:service-actor|ui-actor-legacy)(?:[/'"]|$)/;
     const forbiddenActorTransport = /\bapi\.actors\b|\bactors\s*:/;
     const packageSource = readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8");
     const violations = sourceFiles(join(PACKAGE_ROOT, "src")).flatMap((path) => {
@@ -60,15 +60,15 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("uses Capsule only through the Vibecanvas browser adapter and contains no Arrow runtime", () => {
+  it("uses Capsule only through the Omnidraw browser adapter and contains no Arrow runtime", () => {
     const source = sourceFiles(join(PACKAGE_ROOT, "src"))
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
     const packageSource = readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8");
 
     expect(source).not.toMatch(/from\s+["']@omnidraw\/capsule(?:[/'"]|$)/);
-    expect(source).not.toMatch(/@arrow-js|widget-artifact\.v1|__VIBECANVAS_.*TRANSPORT/);
+    expect(source).not.toMatch(/@arrow-js|widget-artifact\.v1|__OMNIDRAW_.*TRANSPORT/);
     expect(packageSource).not.toContain("@arrow-js/");
-    expect(packageSource).toContain("@vibecanvas/capsule-vibecanvas");
+    expect(packageSource).toContain("@omnidraw/capsule-omnidraw");
   });
 });

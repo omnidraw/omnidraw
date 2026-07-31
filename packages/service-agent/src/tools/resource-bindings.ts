@@ -1,5 +1,5 @@
-import type { TResourceEffect } from '@vibecanvas/resource-runtime';
-import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import type { TResourceEffect } from '@omnidraw/resource-runtime';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TWidgetResourceSelection } from './types';
 
 export type TResourceBindingPlan = {

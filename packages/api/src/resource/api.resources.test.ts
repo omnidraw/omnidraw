@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ResourceError } from '@vibecanvas/resource-runtime';
+import { ResourceError } from '@omnidraw/resource-runtime';
 import { apiRevealResourceSecret } from './api.resources';
 
 const tenant = {

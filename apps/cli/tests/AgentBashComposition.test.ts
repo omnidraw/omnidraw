@@ -6,9 +6,9 @@ import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
-import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+} from '@omnidraw/service-db/CONSTANTS';
+import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import type { TAgentBashProcessDetails } from '../src/services/AgentBashCapability';
@@ -21,9 +21,9 @@ afterEach(async () => {
 
 describe('production Agent Bash composition', () => {
   test('provides Bun PTY Bash through an actual compiled-mode AgentService registry', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-agent-bash-composition-'));
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-agent-bash-composition-'));
     roots.push(root);
-    const home = fnResolveVibecanvasHome({ join, resolve }, {
+    const home = fnResolveOmnidrawHome({ join, resolve }, {
       cwd: root,
       dataDir: root,
       env: {},
@@ -35,7 +35,7 @@ describe('production Agent Bash composition', () => {
       compiled: true,
       version: '0.0.0-test',
       command: 'serve',
-      rawArgv: ['vibecanvas', 'serve'],
+      rawArgv: ['omnidraw', 'serve'],
       argv: [],
       port: 0,
       home,

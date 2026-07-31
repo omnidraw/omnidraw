@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @file Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests.
+ * @file Builds omnidraw distribution packages, embedded assets, checksums, and release manifests.
  *
  * Creates standalone executables for supported platforms:
  * - macOS (arm64, x64)
@@ -10,9 +10,9 @@
  *   bun scripts/build.ts              # Build all platforms
  *   bun scripts/build.ts --single     # Build current platform only
  *   bun scripts/build.ts --channel beta
- *   VIBECANVAS_BUILD_VERSION=0.0.1 bun scripts/build.ts --single
+ *   OMNIDRAW_BUILD_VERSION=0.0.1 bun scripts/build.ts --single
  *
- * If --channel is omitted, the channel is inferred from apps/vibecanvas/package.json:
+ * If --channel is omitted, the channel is inferred from apps/omnidraw/package.json:
  * - *-beta* -> beta
  * - *-nightly* -> nightly
  * - everything else -> stable
@@ -35,12 +35,12 @@ const rootDir = path.join(__dirname, "..")
 const cliDir = path.join(rootDir, "apps/cli")
 const frontendDir = path.join(rootDir, "apps/frontend")
 const sdkDir = path.join(rootDir, "packages/sdk")
-const wrapperDir = path.join(rootDir, "apps/vibecanvas")
-const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
+const wrapperDir = path.join(rootDir, "apps/omnidraw")
+const wrapperBinPath = path.join(wrapperDir, "bin/omnidraw")
 const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/migrations")
 const forbiddenBinaryMarkers: readonly string[] = []
 const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
-const darwinEntitlementsPath = path.join(__dirname, "vibecanvas.entitlements.plist")
+const darwinEntitlementsPath = path.join(__dirname, "omnidraw.entitlements.plist")
 const require = createRequire(import.meta.url)
 
 // Platform targets
@@ -96,7 +96,7 @@ const tursoNativeAddonVersion = "0.6.1"
 
 function buildPackageName(target: Target): string {
   return [
-    "vibecanvas",
+    "omnidraw",
     target.os,
     target.arch,
     "avx2" in target && !target.avx2 ? "baseline" : undefined,
@@ -136,7 +136,7 @@ function resolveTursoNativeAddonSource(addon: TNativeAddonConfig): string {
 }
 
 async function fetchTursoNativeAddonSource(addon: TNativeAddonConfig): Promise<{ sourcePath: string; cleanupPath: string }> {
-  const cleanupPath = mkdtempSync(path.join(tmpdir(), "vibecanvas-turso-native-"))
+  const cleanupPath = mkdtempSync(path.join(tmpdir(), "omnidraw-turso-native-"))
   const packResult = await Bun.$`npm pack ${addon.packageName}@${tursoNativeAddonVersion} --json --pack-destination ${cleanupPath}`.quiet()
   if (packResult.exitCode !== 0) {
     rmSync(cleanupPath, { recursive: true, force: true })
@@ -224,7 +224,7 @@ async function assertAllTursoNativeAddonsSupportEncryption(): Promise<void> {
 
 async function assertHostTursoNativeAddonSupportsEncryption(): Promise<void> {
   const target = `${process.platform}-${process.arch}`
-  const expectedTarget = process.env.VIBECANVAS_EXPECTED_NATIVE_TARGET
+  const expectedTarget = process.env.OMNIDRAW_EXPECTED_NATIVE_TARGET
   if (expectedTarget && target !== expectedTarget) {
     throw new Error(`Native encryption verification expected ${expectedTarget} but is running on ${target}`)
   }
@@ -306,7 +306,7 @@ async function signAndVerifyDarwinBinary(binaryPath: string): Promise<void> {
   if (process.platform !== "darwin") {
     throw new Error("Darwin release binaries must be built and signed on macOS")
   }
-  const identity = process.env.VIBECANVAS_CODESIGN_IDENTITY || "-"
+  const identity = process.env.OMNIDRAW_CODESIGN_IDENTITY || "-"
   const sign = await Bun.$`codesign --force --options runtime --entitlements ${darwinEntitlementsPath} --sign ${identity} ${binaryPath}`.quiet()
   if (sign.exitCode !== 0) throw new Error(`codesign failed: ${sign.stderr.toString()}`)
   const verify = await Bun.$`codesign --verify --deep --strict --verbose=4 ${binaryPath}`.quiet()
@@ -319,7 +319,7 @@ async function signAndVerifyDarwinBinary(binaryPath: string): Promise<void> {
 
 async function buildSdkPackage(): Promise<void> {
   console.log("   Running SDK build...")
-  const sdkBuild = await Bun.$`bun run --filter @vibecanvas/sdk build`.quiet()
+  const sdkBuild = await Bun.$`bun run --filter @omnidraw/sdk build`.quiet()
   if (sdkBuild.exitCode !== 0) {
     console.error("SDK build failed:")
     console.error(sdkBuild.stderr.toString())
@@ -339,7 +339,7 @@ async function bundleSpaAssets(): Promise<string[]> {
 
   // Build frontend using Vite (SolidJS needs Vite's plugin system)
   console.log("   Running frontend build...")
-  const viteBuild = await Bun.$`bun run --filter @vibecanvas/frontend build`.quiet()
+  const viteBuild = await Bun.$`bun run --filter @omnidraw/frontend build`.quiet()
   if (viteBuild.exitCode !== 0) {
     console.error("Frontend build failed:")
     console.error(viteBuild.stderr.toString())
@@ -463,9 +463,9 @@ async function main() {
     description?: string
     license?: string
   }
-  const version = process.env.VIBECANVAS_BUILD_VERSION || await readWrapperVersion(rootDir)
-  const releaseDownloadBase = process.env.VIBECANVAS_BUILD_RELEASE_DOWNLOAD_BASE || "https://github.com/vibecanvas/vibecanvas/releases/download"
-  const description = wrapperSourcePkg.description ?? "Vibecanvas binary package"
+  const version = process.env.OMNIDRAW_BUILD_VERSION || await readWrapperVersion(rootDir)
+  const releaseDownloadBase = process.env.OMNIDRAW_BUILD_RELEASE_DOWNLOAD_BASE || "https://github.com/omnidraw/omnidraw/releases/download"
+  const description = wrapperSourcePkg.description ?? "Omnidraw binary package"
   const license = wrapperSourcePkg.license ?? "ISC"
 
   // Parse flags
@@ -476,9 +476,9 @@ async function main() {
   const inferredChannel = inferReleaseChannelFromVersion(version)
   const channel = parseChannelArg(process.argv, inferredChannel)
 
-  process.env.VIBECANVAS_VERSION = version
-  process.env.VIBECANVAS_COMPILED = "true"
-  process.env.VIBECANVAS_CHANNEL = channel
+  process.env.OMNIDRAW_VERSION = version
+  process.env.OMNIDRAW_COMPILED = "true"
+  process.env.OMNIDRAW_CHANNEL = channel
 
   // Filter targets
   const hostDefaultTargets = process.platform === "darwin"
@@ -500,7 +500,7 @@ async function main() {
     process.exit(1)
   }
 
-  console.log(`\nBuilding vibecanvas v${version}`)
+  console.log(`\nBuilding omnidraw v${version}`)
   console.log(`Channel: ${channel}`)
   console.log(`Targets: ${filteredTargets.length}\n`)
 
@@ -541,7 +541,7 @@ async function main() {
     const bunTarget = buildBunTarget(target)
 
     try {
-      const outputPath = `${distDir}/bin/vibecanvas`
+      const outputPath = `${distDir}/bin/omnidraw`
 
       // Compile cli with Bun using build-time constants via --define
       const result = await Bun.build({
@@ -552,10 +552,10 @@ async function main() {
         },
         minify: true,
         define: {
-          VIBECANVAS_VERSION: JSON.stringify(version),
-          VIBECANVAS_COMPILED: "true",
-          VIBECANVAS_CHANNEL: JSON.stringify(channel),
-          VIBECANVAS_RELEASE_DOWNLOAD_BASE: JSON.stringify(releaseDownloadBase),
+          OMNIDRAW_VERSION: JSON.stringify(version),
+          OMNIDRAW_COMPILED: "true",
+          OMNIDRAW_CHANNEL: JSON.stringify(channel),
+          OMNIDRAW_RELEASE_DOWNLOAD_BASE: JSON.stringify(releaseDownloadBase),
         },
       })
 
@@ -580,15 +580,15 @@ async function main() {
             os: [target.os],
             cpu: [target.arch],
             bin: {
-              vibecanvas: "./bin/vibecanvas",
+              omnidraw: "./bin/omnidraw",
             },
             description: `${description} (${target.os} ${target.arch})`,
             author: "Omar Ezzat",
             repository: {
               type: "git",
-              url: "https://github.com/vibecanvas/vibecanvas",
+              url: "https://github.com/omnidraw/omnidraw",
             },
-            homepage: "https://vibecanvas.dev",
+            homepage: "https://omnidraw.dev",
             license,
           },
           null,
@@ -643,10 +643,10 @@ async function main() {
       throw new Error(`Wrapper launcher not found at ${wrapperBinPath}`)
     }
 
-    await Bun.$`cp -r ${wrapperDir} ${rootDir}/dist/vibecanvas`
+    await Bun.$`cp -r ${wrapperDir} ${rootDir}/dist/omnidraw`
 
     // Update version in wrapper package.json
-    const wrapperPkgPath = `${rootDir}/dist/vibecanvas/package.json`
+    const wrapperPkgPath = `${rootDir}/dist/omnidraw/package.json`
     const wrapperPkg = await Bun.file(wrapperPkgPath).json()
     wrapperPkg.version = version
 
@@ -658,17 +658,17 @@ async function main() {
     }
 
     await Bun.write(wrapperPkgPath, JSON.stringify(wrapperPkg, null, 2))
-    chmodSync(path.join(rootDir, "dist/vibecanvas/bin/vibecanvas"), 0o755)
-    console.log(`   ✓ vibecanvas (wrapper)`)
+    chmodSync(path.join(rootDir, "dist/omnidraw/bin/omnidraw"), 0o755)
+    console.log(`   ✓ omnidraw (wrapper)`)
   }
 
   console.log(`\n✓ Build complete! Packages in dist/\n`)
   console.log(`To test locally:`)
   if (singleFlag && filteredTargets.length > 0) {
     const name = buildPackageName(filteredTargets[0])
-    console.log(`  ./dist/${name}/bin/vibecanvas`)
+    console.log(`  ./dist/${name}/bin/omnidraw`)
   } else {
-    console.log(`  ./dist/vibecanvas-darwin-arm64/bin/vibecanvas`)
+    console.log(`  ./dist/omnidraw-darwin-arm64/bin/omnidraw`)
   }
 }
 

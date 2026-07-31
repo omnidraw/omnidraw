@@ -1,4 +1,4 @@
-import { fnScopedKey } from '@vibecanvas/tenant-core';
+import { fnScopedKey } from '@omnidraw/tenant-core';
 import type { TSequencedEvent } from './IEventPublisherService';
 
 type TEventRecord<TEvent> = Readonly<{

@@ -1,7 +1,7 @@
 import type {
   TCanvasEvent,
   TCanvasItemsChangedEvent,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import { describe, expect, test, vi } from 'vitest';
 import {
   createTracedCanvasDocumentTransport,

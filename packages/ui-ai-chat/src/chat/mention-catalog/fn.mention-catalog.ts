@@ -1,4 +1,4 @@
-import type { TWidgetCatalog, TWidgetSource, TWidgetVariantSummary } from "@vibecanvas/orpc-client"
+import type { TWidgetCatalog, TWidgetSource, TWidgetVariantSummary } from "@omnidraw/orpc-client"
 import type { TChatComposerMention, TChatComposerMentionTarget } from "../components/ChatComposer/interface"
 
 export type TMentionCatalogResource = {

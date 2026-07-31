@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import { WidgetFunctionArtifactReader } from '../src/services/WidgetFunctionArtifactReader';
 
 const tenant: TTenantContext = Object.freeze({
@@ -10,7 +10,7 @@ const artifact = { id: 'artifact-a', kind: 'server', digestSha256: 'a'.repeat(64
 const request = {
   widgetDefinitionId: 'definition-a', widgetRevisionId: 'revision-a',
   artifactId: artifact.id, artifactDigestSha256: artifact.digestSha256,
-  contractDigestSha256: 'b'.repeat(64), runtimeAbi: 'vibecanvas:test',
+  contractDigestSha256: 'b'.repeat(64), runtimeAbi: 'omnidraw:test',
   invocationId: 'invocation-a',
   subject: { kind: 'widget_instance' as const, canvasId: 'canvas-a', widgetInstanceId: 'widget-a' },
 };

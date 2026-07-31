@@ -1,8 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { describe, expect, test, vi } from 'vitest';
-import type { TWidgetPreviewResult } from '@vibecanvas/orpc-client';
-import { fnCanonicalizeWidgetDiagnosticFingerprint } from '@vibecanvas/widget-contract';
+import type { TWidgetPreviewResult } from '@omnidraw/orpc-client';
+import { fnCanonicalizeWidgetDiagnosticFingerprint } from '@omnidraw/widget-contract';
 import { createPreviewPortalRuntime } from '../../src/canvas-extension/PreviewPortalRuntime';
 import type {
   TWidgetUiArtifactMountPort,
@@ -60,7 +60,7 @@ function ready(
       byteSize: bytes.byteLength,
       bytesBase64: bytes.toString('base64'),
       runtimeDescriptor: {
-        format: 'vibecanvas.capsule-runtime.v2',
+        format: 'omnidraw.capsule-runtime.v2',
         capsuleArtifactHash: `sha256:${'c'.repeat(64)}`,
         apiContract: {
           format: 'capsule-api-groups-v1',
@@ -1913,7 +1913,7 @@ describe('PreviewPortalRuntime', () => {
     await flushSwap(animation, runtime.refresh());
     await flushSwap(animation, runtime.refresh());
     const hostile = {
-      format: 'vibecanvas.capsule-error.v1',
+      format: 'omnidraw.capsule-error.v1',
       phase: 'runtime',
       category: 'budget',
       capsuleCode: 'RATE_LIMIT',
@@ -2002,13 +2002,13 @@ describe('PreviewPortalRuntime', () => {
       onError: vi.fn(),
     });
     const providerFailure = {
-      format: 'vibecanvas.capsule-error.v1' as const,
+      format: 'omnidraw.capsule-error.v1' as const,
       phase: 'runtime' as const,
       category: 'capability' as const,
       capsuleCode: 'PROVIDER_FAILED',
       fatal: false,
       message: 'A widget capability was denied or failed.',
-      capability: 'vibecanvas.widget.functions.habc',
+      capability: 'omnidraw.widget.functions.habc',
       operation: 'count',
     };
 

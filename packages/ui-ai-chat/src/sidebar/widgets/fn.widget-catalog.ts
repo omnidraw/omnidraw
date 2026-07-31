@@ -1,4 +1,4 @@
-import type { TWidgetCatalog, TWidgetSource, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalog, TWidgetSource, TWidgetVariantSummary } from '@omnidraw/orpc-client';
 import type { TWidgetSidebarProjection, TWidgetSidebarRow } from './types';
 
 export function fnWidgetSourceOrder(source: TWidgetSource): number {

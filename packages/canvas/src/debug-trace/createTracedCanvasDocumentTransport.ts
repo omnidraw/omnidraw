@@ -1,7 +1,7 @@
 import type {
   TCanvasCommand,
   TCanvasEvent,
-} from '@vibecanvas/canvas-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   TCanvasDocumentTransport,
 } from '../services/CanvasDocumentService';

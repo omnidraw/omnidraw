@@ -4,7 +4,7 @@ import solid from "@astrojs/solid-js";
 
 export default defineConfig({
   output: "static",
-  site: "https://vibecanvas.dev",
+  site: "https://omnidraw.dev",
   integrations: [mdx(), solid()],
   trailingSlash: "never",
 });

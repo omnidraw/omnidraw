@@ -1,4 +1,4 @@
-import type { TWidgetCatalog, TWidgetSource } from '@vibecanvas/service-agent/widget-management/types';
+import type { TWidgetCatalog, TWidgetSource } from '@omnidraw/service-agent/widget-management/types';
 
 export type TWidgetGroupMember = {
   name: string;

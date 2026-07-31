@@ -24,7 +24,7 @@ const unknownArguments = Bun.argv.slice(2).filter((argument) => argument !== '--
 if (unknownArguments.length > 0) {
   throw new Error(`Unknown final-acceptance arguments: ${unknownArguments.join(', ')}`);
 }
-if (cleanSnapshot && process.env.VIBECANVAS_CLEAN_TRACKED_SNAPSHOT !== '1') {
+if (cleanSnapshot && process.env.OMNIDRAW_CLEAN_TRACKED_SNAPSHOT !== '1') {
   throw new Error('--clean-snapshot is reserved for the immutable tracked Docker snapshot.');
 }
 
@@ -70,7 +70,7 @@ async function runSuite(suite: TAcceptanceSuite, env: NodeJS.ProcessEnv): Promis
   }
 }
 
-const acceptanceHome = await mkdtemp(join(tmpdir(), 'vibecanvas-final-acceptance-home-'));
+const acceptanceHome = await mkdtemp(join(tmpdir(), 'omnidraw-final-acceptance-home-'));
 try {
   if ((await readdir(acceptanceHome)).length !== 0) {
     throw new Error(`Final-acceptance home was not empty: ${acceptanceHome}`);
@@ -79,10 +79,10 @@ try {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CI: process.env.CI ?? '1',
-    VIBECANVAS_CLEAN_TRACKED_SNAPSHOT: cleanSnapshot ? '1' : process.env.VIBECANVAS_CLEAN_TRACKED_SNAPSHOT,
-    VIBECANVAS_HOME: acceptanceHome,
-    VIBECANVAS_REQUIRE_FD_INSPECTION: '1',
-    VIBECANVAS_SILENT_DB_MIGRATIONS: '1',
+    OMNIDRAW_CLEAN_TRACKED_SNAPSHOT: cleanSnapshot ? '1' : process.env.OMNIDRAW_CLEAN_TRACKED_SNAPSHOT,
+    OMNIDRAW_HOME: acceptanceHome,
+    OMNIDRAW_REQUIRE_FD_INSPECTION: '1',
+    OMNIDRAW_SILENT_DB_MIGRATIONS: '1',
     VITEST_MAX_WORKERS: process.env.VITEST_MAX_WORKERS ?? '2',
   };
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
-import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
+import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
+import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { ZNotificationEvent } from './contract';
 import { fxNotificationEvents } from './fx.notification-events';
 

@@ -1,12 +1,12 @@
-import type { IService } from '@vibecanvas/runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { IService } from '@omnidraw/runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
   WIDGET_RUNTIME_LOAD_CAPACITY_ERROR_CODE,
   WIDGET_RUNTIME_LOAD_TIMEOUT_ERROR_CODE,
   type TWidgetRuntimeLoadAdmissionCapability,
   type TWidgetRuntimeLoadCleanupRegistrar,
-} from '@vibecanvas/api/widget';
+} from '@omnidraw/api/widget';
 import { fnWidgetRuntimeLoadCanAdmit } from './fn.widget-runtime-load-admission';
 
 type TWidgetRuntimeLoadAdmissionOptions = Readonly<{

@@ -68,7 +68,7 @@ describe('Preview diagnostic normalization', () => {
     const diagnostic = await fnNormalizePreviewDiagnostic({
       ...BASE_ARGS,
       error: {
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'host',
         category: 'capability',
         capsuleCode: 'WEBGL_CONTEXT_UNAVAILABLE',
@@ -91,7 +91,7 @@ describe('Preview diagnostic normalization', () => {
     const diagnostic = await fnNormalizePreviewDiagnostic({
       ...BASE_ARGS,
       error: {
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'host',
         category: 'capability',
         capsuleCode: 'CANVAS_PROFILE_REQUIRED',
@@ -114,7 +114,7 @@ describe('Preview diagnostic normalization', () => {
     const diagnostic = await fnNormalizePreviewDiagnostic({
       ...BASE_ARGS,
       error: {
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'host',
         category: 'budget',
         capsuleCode: 'MESSAGE_BUDGET_EXCEEDED',
@@ -138,7 +138,7 @@ describe('Preview diagnostic normalization', () => {
     const diagnostic = await fnNormalizePreviewDiagnostic({
       ...BASE_ARGS,
       error: {
-        format: 'vibecanvas.capsule-error.v1',
+        format: 'omnidraw.capsule-error.v1',
         phase: 'host',
         category: 'capability',
         capsuleCode: 'PERFORMANCE_API_UNAVAILABLE',

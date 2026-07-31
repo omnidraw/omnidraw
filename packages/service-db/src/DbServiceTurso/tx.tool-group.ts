@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database";
-import type { TTenantContext } from "@vibecanvas/tenant-core";
+import type { TTenantContext } from "@omnidraw/tenant-core";
 import type { TJson, TToolGroup } from "../model";
 import { fxToolGroupGetByName } from "./fx.tool-group";
 

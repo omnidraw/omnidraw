@@ -72,7 +72,7 @@ export type TReproductionTraceEnvironment = Readonly<{
 }>;
 
 export type TReproductionTraceHeader = Readonly<{
-  kind: 'vibecanvas-developer-trace';
+  kind: 'omnidraw-developer-trace';
   schemaVersion: 1;
   mode: TReproductionTraceMode;
   startedAt: string;

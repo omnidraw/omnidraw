@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { TWidgetCatalog, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
+import type { TWidgetCatalog, TWidgetVariantSummary } from '@omnidraw/service-agent/widget-management/types';
 import { fnWidgetGroupMembers } from './fn.widget-groups';
 
 function variant(source: 'published' | 'draft', group: string | null): TWidgetVariantSummary {

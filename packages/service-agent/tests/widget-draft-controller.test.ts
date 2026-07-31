@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AgentSession } from '@earendil-works/pi-coding-agent';
-import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import { AgentService } from '../src/AgentService';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
 import {
@@ -1261,7 +1261,7 @@ describe('AgentService durable Preview owners', () => {
     await workspace.createDraft('orphan-chat', { name: 'Orphan Clock' }, async ({ cwd, name }) => {
       await mkdir(join(cwd, 'ui'), { recursive: true });
       await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("main"));\n', 'utf8');
-      await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+      await writeFile(join(cwd, 'omnidraw.json'), `${JSON.stringify({
         schemaVersion: 3,
         name,
         slug: 'orphan-clock',
@@ -1271,7 +1271,7 @@ describe('AgentService durable Preview owners', () => {
           apis: ['DOM'],
         },
       }, null, 2)}\n`, 'utf8');
-      return ['vibecanvas.json', 'ui/main.ts'];
+      return ['omnidraw.json', 'ui/main.ts'];
     });
     const management = new WidgetManagement({ workspace, drafts: controller });
 
@@ -1299,7 +1299,7 @@ describe('AgentService durable Preview owners', () => {
 
     expect(result.variant.description).toBe('A precise clock.');
     const manifest = JSON.parse(await readFile(
-      join(workspace.draftRoot, draft.name, 'vibecanvas.json'),
+      join(workspace.draftRoot, draft.name, 'omnidraw.json'),
       'utf8',
     ));
     expect(manifest.description).toBe('A precise clock.');
@@ -1351,7 +1351,7 @@ describe('AgentService durable Preview owners', () => {
       },
     });
     expect(await readFile(
-      join(workspace.draftRoot, 'Renamed Clock', 'vibecanvas.json'),
+      join(workspace.draftRoot, 'Renamed Clock', 'omnidraw.json'),
       'utf8',
     )).toContain('"name": "Renamed Clock"');
     await iterator.return?.();

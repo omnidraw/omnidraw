@@ -1,5 +1,5 @@
-import { fnBrowserTenantStorageKeys, type TBrowserTenantScope } from "@vibecanvas/canvas/fn.browser-tenant-scope";
-import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@vibecanvas/service-theme";
+import { fnBrowserTenantStorageKeys, type TBrowserTenantScope } from "@omnidraw/canvas/fn.browser-tenant-scope";
+import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@omnidraw/service-theme";
 import { createStore, reconcile, type SetStoreFunction } from "solid-js/store";
 import { getBrowserTenantScope } from "./services/tenant";
 import type { TBackendCanvas } from "./types/backend.types";

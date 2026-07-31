@@ -8,7 +8,7 @@
   "include": [
     "src",
     "../../global.d.ts",
-    "tests/fn.resolve-vibecanvas-home.test.ts",
-    "tests/tx.ensure-vibecanvas-home.test.ts"
+    "tests/fn.resolve-omnidraw-home.test.ts",
+    "tests/tx.ensure-omnidraw-home.test.ts"
   ]
 }

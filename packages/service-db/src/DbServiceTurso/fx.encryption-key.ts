@@ -1,5 +1,5 @@
 import type { Database } from '@tursodatabase/database';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TEncryptionKey } from '../model';
 import { fnTimestampFromMs } from './fn.legacy-row';
 

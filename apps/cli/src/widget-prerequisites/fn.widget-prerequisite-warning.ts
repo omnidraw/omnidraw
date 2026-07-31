@@ -1,4 +1,4 @@
-import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
+import type { TNotificationEvent } from '@omnidraw/api/notification/contract';
 import type { TWidgetPrerequisiteProbe } from './interface';
 
 export type TWidgetPrerequisiteWarning = {
@@ -20,7 +20,7 @@ export function fnWidgetPrerequisiteWarning(
     .map(unavailableLabel)
     .join(', ');
   const title = 'Widget tooling prerequisites unavailable';
-  const description = `Unavailable: ${unavailableSummary}. Widget creation, build, and validation require npm with lockfile-v3 and npm-ci support. Install npm on the server account and restart Vibecanvas.`;
+  const description = `Unavailable: ${unavailableSummary}. Widget creation, build, and validation require npm with lockfile-v3 and npm-ci support. Install npm on the server account and restart Omnidraw.`;
 
   return {
     cliMessage: `Warning: ${title}. ${description}`,

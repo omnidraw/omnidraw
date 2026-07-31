@@ -1,5 +1,5 @@
 {
-  "name": "@vibecanvas/capsule-browser-acceptance",
+  "name": "@omnidraw/capsule-browser-acceptance",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/capsule-vibecanvas": "workspace:*",
-    "@vibecanvas/sdk": "workspace:*",
-    "@vibecanvas/ui-ai-chat": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*",
+    "@omnidraw/capsule-omnidraw": "workspace:*",
+    "@omnidraw/sdk": "workspace:*",
+    "@omnidraw/ui-ai-chat": "workspace:*",
+    "@omnidraw/widget-contract": "workspace:*",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "three": "0.185.1"

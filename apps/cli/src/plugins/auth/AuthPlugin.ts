@@ -1,5 +1,5 @@
-import type { IPlugin } from '@vibecanvas/runtime';
-import type { ITenantContextProvider, TTenantContextRequest } from '@vibecanvas/tenant-core';
+import type { IPlugin } from '@omnidraw/runtime';
+import type { ITenantContextProvider, TTenantContextRequest } from '@omnidraw/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import type { IRuntimeServices } from '../../setup-services';

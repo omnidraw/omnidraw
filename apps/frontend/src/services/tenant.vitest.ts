@@ -1,6 +1,6 @@
 import { createComputed, createRoot, onCleanup } from 'solid-js';
 import { afterEach, describe, expect, test } from 'vitest';
-import type { TBrowserTenantScope } from '@vibecanvas/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 import {
   activateBrowserTenantScope,
   createBrowserTenantBoundary,

@@ -9,8 +9,8 @@ import {
   type TCanvasItemQueryCursor,
   type TCanvasItemSnapshot,
   type TCanvasSnapshot,
-} from "@vibecanvas/canvas-contract";
-import type { TTenantContext } from "@vibecanvas/tenant-core";
+} from "@omnidraw/canvas-contract";
+import type { TTenantContext } from "@omnidraw/tenant-core";
 import { txRunDatabaseTransaction } from "./tx.run-database-transaction";
 
 type TCanvasItem = TCanvasItemSnapshot["item"];
@@ -654,8 +654,8 @@ export class CanvasItemStoreTurso {
     }
 
     const resourcePath = "json_extract(item_json, '$.resourceId')";
-    const urlPath = "json_extract(item_json, '$.extensions.\"vibecanvas:image\".url')";
-    const mimeTypePath = "json_extract(item_json, '$.extensions.\"vibecanvas:image\".mimeType')";
+    const urlPath = "json_extract(item_json, '$.extensions.\"omnidraw:image\".url')";
+    const mimeTypePath = "json_extract(item_json, '$.extensions.\"omnidraw:image\".mimeType')";
     const parameters: Array<string | number> = [
       tenant.orgId,
       request.canvasId,

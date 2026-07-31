@@ -1,4 +1,4 @@
-import type { TResourceEffect, TResourceRequirement } from '@vibecanvas/resource-runtime';
+import type { TResourceEffect, TResourceRequirement } from '@omnidraw/resource-runtime';
 import type {
   TWidgetArtifactDescriptor,
   TWidgetCapsuleBuildIdentity,
@@ -8,7 +8,7 @@ import type {
   TWidgetManifestV3,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 export type TWidgetControlStoreArtifactRow = Readonly<{
   org_id: TWidgetArtifactDescriptor['orgId'];

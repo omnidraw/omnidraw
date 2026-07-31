@@ -1,5 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import type { TDbCellValue, TResourceJson } from '@vibecanvas/resource-runtime';
+import type { TDbCellValue, TResourceJson } from '@omnidraw/resource-runtime';
 import { Type } from 'typebox';
 import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
 import type { TToolAuthorizationContext } from '../approval/types';
@@ -307,16 +307,16 @@ function safeWriteApprovalDetails(resource: TAgentResource, operations: readonly
 
 export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefinition[] {
   const list = defineTool({
-    name: 'vc_resource_list',
+    name: 'od_resource_list',
     label: 'List Resources',
-    description: 'Discover resources by public name. Follow with vc_resource_inspect using resourceName; internal IDs are never returned.',
+    description: 'Discover resources by public name. Follow with od_resource_inspect using resourceName; internal IDs are never returned.',
     parameters: Type.Object({
       kind: Type.Optional(RESOURCE_KIND_SCHEMA),
       cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_list')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_list')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.listResources) return toolUnavailable('RESOURCE_LIST_UNAVAILABLE', 'Resource discovery is unavailable in this host.');
       try {
         const resources = fnSortResources(await args.resourceService.listResources(params.kind ? { kind: params.kind } : {}));
@@ -346,12 +346,12 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const inspect = defineTool({
-    name: 'vc_resource_inspect',
+    name: 'od_resource_inspect',
     label: 'Inspect Resource',
-    description: 'Inspect compact safe metadata by resourceName, including status, bindings, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with vc_resource_data_read.',
+    description: 'Inspect compact safe metadata by resourceName, including status, bindings, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with od_resource_data_read.',
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       let internalResourceId: string | undefined;
       try {
         const resource = await resolveResource(args.resourceService, params.resourceName, false);
@@ -396,16 +396,16 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const create = defineTool({
-    name: 'vc_resource_create',
+    name: 'od_resource_create',
     label: 'Create Resource',
-    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required; follow success with vc_resource_inspect using the returned name.',
+    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required; follow success with od_resource_inspect using the returned name.',
     parameters: Type.Union([
       Type.Object({ kind: Type.Literal('kv'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
       Type.Object({ kind: Type.Literal('secretStore'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
       Type.Object({ kind: Type.Literal('db'), name: RESOURCE_NAME_SCHEMA, engine: Type.Optional(Type.Literal('sqlite')) }, { additionalProperties: false }),
     ]),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_create')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_create')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.createResource) return toolUnavailable('RESOURCE_CREATE_UNAVAILABLE', 'Resource creation is unavailable in this host.');
       try {
         const resource = await args.approvals.request({
@@ -429,7 +429,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const update = defineTool({
-    name: 'vc_resource_update',
+    name: 'od_resource_update',
     label: 'Rename Resource',
     description: 'Rename a resource by its current public resourceName. The stable internal target is frozen before direct user approval; use newName for subsequent calls.',
     parameters: Type.Object({
@@ -437,7 +437,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       newName: RESOURCE_NAME_SCHEMA,
     }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_update')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_update')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.renameResource) return toolUnavailable('RESOURCE_UPDATE_UNAVAILABLE', 'Resource rename is unavailable in this host.');
       let internalResourceId: string | undefined;
       try {
@@ -464,12 +464,12 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const remove = defineTool({
-    name: 'vc_resource_delete',
+    name: 'od_resource_delete',
     label: 'Delete Resource',
     description: 'Request deletion by resourceName. The stable internal target is frozen before approval and binding safety is rechecked during execution.',
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_delete')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_delete')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.deleteResource) return toolUnavailable('RESOURCE_DELETE_UNAVAILABLE', 'Resource deletion is unavailable in this host.');
       let internalResourceId: string | undefined;
       try {
@@ -497,7 +497,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const dataRead = defineTool({
-    name: 'vc_resource_data_read',
+    name: 'od_resource_data_read',
     label: 'Read Resource Data',
     description: 'Run ordered reads against resourceName. KV/secret list supports prefix, substring search, pagination, and returns key metadata only; get reads one KV value. Database schema returns dense catalogs of up to 100 objects with cursor pagination or one detailed table/view definition, while sql runs a bounded read-only statement.',
     parameters: Type.Object({
@@ -505,7 +505,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       queries: Type.Array(DATA_READ_QUERY_SCHEMA, { minItems: 1, maxItems: 20 }),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_data_read')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_data_read')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       try {
         const resource = await resolveResource(args.resourceService, params.resourceName, true);
         const queries = params.queries as TResourceDataReadQuery[];
@@ -531,7 +531,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   }) as TToolDefinition;
 
   const dataWrite = defineTool({
-    name: 'vc_resource_data_write',
+    name: 'od_resource_data_write',
     label: 'Write Resource Data',
     description: 'Request an ordered array of writes against resourceName. The stable internal target and exact server-held arguments execute only after direct user approval.',
     parameters: Type.Object({
@@ -539,7 +539,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       operations: Type.Array(DATA_WRITE_OPERATION_SCHEMA, { minItems: 1, maxItems: 20 }),
     }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_data_write')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!await args.authorize('od_resource_data_write')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       let resource: TAgentResource | undefined;
       let operations: TResourceDataWriteOperation[] = [];
       try {

@@ -1,5 +1,5 @@
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
-import type { TCanvas } from "@vibecanvas/service-db/model";
+import type { TOrpcSafeClient } from "@omnidraw/orpc-client";
+import type { TCanvas } from "@omnidraw/service-db/model";
 import type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 
 type TApi = TOrpcSafeClient["api"];

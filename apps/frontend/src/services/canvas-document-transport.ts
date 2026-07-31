@@ -1,4 +1,4 @@
-import type { TCanvasDocumentTransport } from '@vibecanvas/canvas';
+import type { TCanvasDocumentTransport } from '@omnidraw/canvas';
 import { orpcWebsocketService } from './orpc-websocket';
 
 function transportError(error: unknown, fallback: string): Error {

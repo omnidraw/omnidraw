@@ -10,7 +10,7 @@ import type {
   TWidgetServerFunctionLimits,
   TWidgetServerFunctionResourceAccess,
   TWidgetServerFunctionRetry,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 
 export type TServerFunctionRuntimeSchema<TValue> = Readonly<{
   parse(value: unknown): TValue;
@@ -124,9 +124,9 @@ export type TDefinedServerFunction<
   TEffect extends TWidgetServerFunctionEffect = TWidgetServerFunctionEffect,
   TResources extends TServerFunctionResourceDeclaration = TServerFunctionResourceDeclaration,
 > = ((input: TInput) => Promise<TOutput>) & Readonly<{
-  __vibecanvasServerFunction: 'vibecanvas.server-function.v1';
-  __vibecanvasRegistration: TServerFunctionRegistration;
-  __vibecanvasExecute(
+  __omnidrawServerFunction: 'omnidraw.server-function.v1';
+  __omnidrawRegistration: TServerFunctionRegistration;
+  __omnidrawExecute(
     context: TServerFunctionContext<TEffect, TResources>,
     input: unknown,
   ): Promise<TOutput>;
@@ -283,15 +283,15 @@ export function defineServerFunction<
     TResources
   >;
   Object.defineProperties(callable, {
-    __vibecanvasServerFunction: {
+    __omnidrawServerFunction: {
       enumerable: false,
-      value: 'vibecanvas.server-function.v1',
+      value: 'omnidraw.server-function.v1',
     },
-    __vibecanvasRegistration: {
+    __omnidrawRegistration: {
       enumerable: false,
       value: registration,
     },
-    __vibecanvasExecute: {
+    __omnidrawExecute: {
       enumerable: false,
       value: async (context: TServerFunctionContext<TEffect, TResources>, input: unknown) => {
         const parsedInput = config.input.parse(input) as TSchemaValue<TInputSchema>;
@@ -307,8 +307,8 @@ export function isDefinedServerFunction(
   value: unknown,
 ): value is TDefinedServerFunction<unknown, unknown> {
   return typeof value === 'function'
-    && (value as Partial<TDefinedServerFunction<unknown, unknown>>).__vibecanvasServerFunction
-      === 'vibecanvas.server-function.v1';
+    && (value as Partial<TDefinedServerFunction<unknown, unknown>>).__omnidrawServerFunction
+      === 'omnidraw.server-function.v1';
 }
 
 /** Called only inside a registration sandbox after loading the built server entry. */
@@ -323,7 +323,7 @@ export function collectServerFunctionDescriptors(
         throw new TypeError(`Server export '${exportName}' is not a defined server function.`);
       }
       return Object.freeze({
-        ...value.__vibecanvasRegistration,
+        ...value.__omnidrawRegistration,
         exportName,
       });
     });

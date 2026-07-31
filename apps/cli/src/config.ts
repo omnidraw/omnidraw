@@ -1,5 +1,5 @@
 import type { TCliSubcommandOptions } from './parse-argv';
-import type { TVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
+import type { TOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
 
 export interface ICliConfig {
   cwd: string;
@@ -11,7 +11,7 @@ export interface ICliConfig {
   rawArgv: string[];
   argv: string[];
   port: number;
-  home: TVibecanvasHome;
+  home: TOmnidrawHome;
   helpRequested: boolean;
   versionRequested: boolean;
   upgradeTarget?: string;

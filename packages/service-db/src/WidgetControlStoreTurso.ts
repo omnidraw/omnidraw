@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { Database } from '@tursodatabase/database';
-import type { TResourceRequirement } from '@vibecanvas/resource-runtime';
-import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TResourceRequirement } from '@omnidraw/resource-runtime';
+import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ZWidgetCapsuleRuntimeDescriptor,
   ZWidgetManifestV3,
@@ -19,7 +19,7 @@ import {
   fnWidgetPreviewBindingPlanDigest,
   fnWidgetPreviewPublicationFingerprint,
   fnWidgetRevisionArtifactsMatchManifest,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import type {
   IWidgetControlStore,
   IWidgetArtifactMutationCoordinator,
@@ -53,7 +53,7 @@ import type {
   TWidgetRevisionPruneResult,
   TWidgetRollbackInput,
   TWidgetServerFunctionDescriptor,
-} from '@vibecanvas/widget-contract';
+} from '@omnidraw/widget-contract';
 import { fnFunctionCanonicalJson } from './FunctionControlStoreTurso/fn.function-json';
 import { fnFunctionId } from './FunctionControlStoreTurso/fn.function-id';
 import { fnFunctionControlStoreDefinition } from './FunctionControlStoreTurso/fn.function-control-store-row';

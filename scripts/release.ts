@@ -223,7 +223,7 @@ async function main() {
   await assertGhAuth(rootDir)
 
   const manifest = await Bun.file(manifestPath).json() as TReleaseManifest
-  const tag = args.tag ?? `v${manifest.version}`
+  const tag = args.tag ?? `omnidraw-v${manifest.version}`
 
   console.log(`[release] Preparing assets for ${tag}`)
   await packDist(rootDir, manifest)

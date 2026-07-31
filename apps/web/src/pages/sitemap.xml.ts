@@ -16,7 +16,7 @@ const escapeXml = (value: string) =>
     .replaceAll("'", "&apos;");
 
 export const GET: APIRoute = async ({ site }) => {
-  const siteUrl = site ?? new URL("https://vibecanvas.dev");
+  const siteUrl = site ?? new URL("https://omnidraw.dev");
   const docs = await getCollection("docs");
   const entries: TSitemapEntry[] = [
     { path: "/", changefreq: "weekly", priority: "1.0" },

@@ -8,7 +8,7 @@ export const WIDGET_CAPSULE_CHANNEL_DIGEST = hash('e');
 export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'test-capsule-policy-v2';
 
 export const WIDGET_CAPSULE_RUNTIME_JSON = JSON.stringify({
-  format: 'vibecanvas.capsule-runtime.v2',
+  format: 'omnidraw.capsule-runtime.v2',
   capsuleArtifactHash: WIDGET_CAPSULE_ARTIFACT_HASH,
   apiContract: {
     format: 'capsule-api-groups-v1',
@@ -19,12 +19,12 @@ export const WIDGET_CAPSULE_RUNTIME_JSON = JSON.stringify({
   capabilityRequests: [],
   channels: null,
   parkability: { parkable: false },
-  signatureKeyIds: ['vibecanvas-release-v1'],
+  signatureKeyIds: ['omnidraw-release-v1'],
 });
 
 /** Historical descriptor used only to exercise the consolidated v0 schema. */
 export const WIDGET_CAPSULE_V1_RUNTIME_JSON = JSON.stringify({
-  format: 'vibecanvas.capsule-runtime.v1',
+  format: 'omnidraw.capsule-runtime.v1',
   capsuleArtifactHash: WIDGET_CAPSULE_ARTIFACT_HASH,
   target: {
     runtimeAbi: 'quickjs-release-sync-v1',
@@ -46,7 +46,7 @@ export const WIDGET_CAPSULE_V1_RUNTIME_JSON = JSON.stringify({
   capabilityRequests: [],
   channels: null,
   parkability: { parkable: false },
-  signatureKeyIds: ['vibecanvas-release-v1'],
+  signatureKeyIds: ['omnidraw-release-v1'],
 });
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY_JSON = JSON.stringify({
