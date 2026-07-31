@@ -416,6 +416,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
 - [ ]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
 - [/]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
+- [x]: [S130](s/S130.md) - remove marketing/docs website and GitHub Pages publishing
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

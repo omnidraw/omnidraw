@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     "./widget": {
@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@omnidraw/capsule": "0.10.1",
-    "@omnidraw/widget-contract": "0.1.0"
+    "@omnidraw/widget-contract": "0.5.0"
   },
   "devDependencies": {
     "typescript": "catalog:"

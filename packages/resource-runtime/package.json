@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/resource-runtime",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/tenant-core": "0.1.0"
+    "@omnidraw/tenant-core": "0.5.0"
   },
   "peerDependencies": {
     "@tursodatabase/database": "0.6.1"

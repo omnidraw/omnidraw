@@ -28,9 +28,9 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://omnidraw.dev/install | bash
-    curl -fsSL https://omnidraw.dev/install | bash -s -- --version 0.0.1
-    curl -fsSL https://omnidraw.dev/install | bash -s -- --channel beta
+    curl -fsSL https://raw.githubusercontent.com/omnidraw/omnidraw/main/scripts/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/omnidraw/omnidraw/main/scripts/install.sh | bash -s -- --version 0.0.1
+    curl -fsSL https://raw.githubusercontent.com/omnidraw/omnidraw/main/scripts/install.sh | bash -s -- --channel beta
     ./scripts/install.sh --binary /path/to/omnidraw
 EOF
 }
@@ -540,5 +540,5 @@ echo -e "${MUTED}To start:${NC}"
 echo "  cd <your-project>"
 echo "  omnidraw"
 echo ""
-echo -e "${MUTED}Documentation: ${NC}https://omnidraw.dev/docs"
+echo -e "${MUTED}Repository: ${NC}https://github.com/omnidraw/omnidraw"
 echo ""

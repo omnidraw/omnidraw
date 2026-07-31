@@ -1,5 +1,0 @@
-dist/
-.astro/
-node_modules/
-public/install
-public/install.sh

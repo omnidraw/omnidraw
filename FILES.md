@@ -205,39 +205,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/omnidraw/package.json](apps/omnidraw/package.json) |  |
 | [apps/omnidraw/postinstall.mjs](apps/omnidraw/postinstall.mjs) |  |
 
-## apps/web
-
-| path | jsdocs |
-|---|---|
-| [apps/web/.gitignore](apps/web/.gitignore) |  |
-| [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
-| [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
-| [apps/web/package.json](apps/web/package.json) |  |
-| [apps/web/public/_redirects](apps/web/public/_redirects) |  |
-| [apps/web/public/CNAME](apps/web/public/CNAME) |  |
-| [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
-| [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/hero.png](apps/web/public/hero.png) |  |
-| [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/seo.png](apps/web/public/seo.png) |  |
-| [apps/web/README.md](apps/web/README.md) |  |
-| [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
-| [apps/web/src/content.config.ts](apps/web/src/content.config.ts) |  |
-| [apps/web/src/content/docs/faq.mdx](apps/web/src/content/docs/faq.mdx) |  |
-| [apps/web/src/content/docs/getting-started.mdx](apps/web/src/content/docs/getting-started.mdx) |  |
-| [apps/web/src/content/docs/installation.mdx](apps/web/src/content/docs/installation.mdx) |  |
-| [apps/web/src/content/docs/widgets-and-functions.mdx](apps/web/src/content/docs/widgets-and-functions.mdx) |  |
-| [apps/web/src/env.d.ts](apps/web/src/env.d.ts) |  |
-| [apps/web/src/layouts/BaseLayout.astro](apps/web/src/layouts/BaseLayout.astro) |  |
-| [apps/web/src/layouts/DocsLayout.astro](apps/web/src/layouts/DocsLayout.astro) |  |
-| [apps/web/src/pages/docs/[...slug].astro](apps/web/src/pages/docs/[...slug].astro) |  |
-| [apps/web/src/pages/docs/index.astro](apps/web/src/pages/docs/index.astro) |  |
-| [apps/web/src/pages/index.astro](apps/web/src/pages/index.astro) |  |
-| [apps/web/src/pages/robots.txt.ts](apps/web/src/pages/robots.txt.ts) |  |
-| [apps/web/src/pages/sitemap.xml.ts](apps/web/src/pages/sitemap.xml.ts) |  |
-| [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
-| [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
-
 ## apps/widget-debug-tools
 
 | path | jsdocs |

@@ -4,8 +4,6 @@ Run your agents in an infinite drawing canvas.
 
 Runs completly local. Reuses your llm subscriptions.
 
-![Omnidraw screenshot](./apps/web/public/seo.png)
-
 The project is organized as a monorepo and follows a **Functional Core / Imperative Shell** architecture.
 
 ## Features
@@ -48,10 +46,6 @@ You can edit the canvas from the UI, or from the CLI. Agents can use the same ca
 
 The Omnidraw skill for agents lives here:
 - https://github.com/omnidraw/skills
-
-For common setup/runtime questions, see the FAQ:
-
-- https://omnidraw.dev/docs/faq
 
 ### Upgrade omnidraw
 

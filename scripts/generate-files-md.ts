@@ -12,7 +12,6 @@ const ROOTS = ["scripts", "apps", "packages"] as const
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist", "assets", ".turbo", ".vite", "test", "tests"])
 const SKIPPED_FILENAMES = new Set([".DS_Store"])
 const TEXT_EXTENSIONS = new Set([
-  ".astro",
   ".css",
   ".cjs",
   ".html",

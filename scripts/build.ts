@@ -588,7 +588,7 @@ async function main() {
               type: "git",
               url: "https://github.com/omnidraw/omnidraw",
             },
-            homepage: "https://omnidraw.dev",
+            homepage: "https://github.com/omnidraw/omnidraw",
             license,
           },
           null,

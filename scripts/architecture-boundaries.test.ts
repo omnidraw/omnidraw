@@ -26,7 +26,6 @@ const UI_PACKAGES = Object.freeze({
   },
 })
 const SOURCE_EXTENSIONS = new Set([
-  '.astro',
   '.cjs',
   '.cts',
   '.js',
@@ -659,9 +658,9 @@ describe('managed composition architecture boundaries', () => {
     const fixturePackage = JSON.parse(await readFile(join(FIXTURE_ROOT, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>
     }
-    expect(fixturePackage.dependencies).toEqual(Object.fromEntries(
-      Object.keys(PUBLIC_PACKAGES).sort().map((name) => [name, '0.1.0']),
-    ))
+    expect(Object.keys(fixturePackage.dependencies).sort()).toEqual(
+      Object.keys(PUBLIC_PACKAGES).sort(),
+    )
 
     for (const [name, directory] of Object.entries(PUBLIC_PACKAGES)) {
       const packageJson = JSON.parse(await readFile(join(ROOT, directory, 'package.json'), 'utf8')) as {
@@ -677,7 +676,9 @@ describe('managed composition architecture boundaries', () => {
       expect(packageJson.exports?.['.']).toBeDefined()
       for (const [dependencyName, dependencyVersion] of Object.entries(packageJson.dependencies ?? {})) {
         if (!Object.hasOwn(PUBLIC_PACKAGES, dependencyName)) continue
-        expect(dependencyVersion, `${name} must pin ${dependencyName} exactly`).toBe('0.1.0')
+        expect(dependencyVersion, `${name} must pin ${dependencyName} exactly`).toBe(
+          fixturePackage.dependencies[dependencyName],
+        )
       }
     }
 

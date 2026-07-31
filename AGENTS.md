@@ -1,7 +1,6 @@
 Monorepo Omnidraw:
 
 apps/frontend -> solidjs spa, renders webpage
-apps/web -> github pages, marketing website
 apps/server -> bun server
 apps/omnidraw -> installable binary for npm package
 apps/widget-debug-tools -> use when you need to debug local widgets

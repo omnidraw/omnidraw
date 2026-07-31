@@ -1,5 +1,5 @@
 {
-  "name": "omnidraw",
+  "name": "omnidraw-workspace",
   "private": true,
   "description": "Run your agents in an infinite canvas",
   "packageManager": "bun@1.3.14",
@@ -23,7 +23,7 @@
   },
   "scripts": {
     "pretest": "bun run --filter '@omnidraw/sdk' build",
-    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/web' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/tenant-core' --filter '@omnidraw/widget-contract' test && bun run test:external-composition && bun run test:architecture",
+    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/tenant-core' --filter '@omnidraw/widget-contract' test && bun run test:external-composition && bun run test:architecture",
     "test:canvas-regression": "bun run scripts/test-canvas-regression.ts",
     "test:isolation": "bun run scripts/test-isolation.ts",
     "test:resource-runtime": "bun run scripts/test-resource-runtime.ts",
@@ -48,8 +48,6 @@
     "lab": "bun run apps/widget-debug-tools/src/main.ts",
     "verify:turso-native-encryption": "bun run scripts/build.ts --verify-native-encryption-only",
     "verify:turso-native-encryption:host": "bun run scripts/build.ts --verify-native-encryption-host-only",
-    "web:dev": "bun --filter @omnidraw/web dev",
-    "web:build": "bun --filter @omnidraw/web build",
     "publish:npm": "bun run scripts/publish-npm.ts",
     "registry:start": "node scripts/local-registry.mjs start",
     "registry:ensure": "node scripts/local-registry.mjs ensure",

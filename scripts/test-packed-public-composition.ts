@@ -29,7 +29,6 @@ type TCommandResult = Readonly<{
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'scripts', 'fixtures', 'external-composition')
-const PUBLIC_VERSION = '0.1.0'
 const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
   { name: '@omnidraw/tenant-core', directory: 'packages/tenant-core' },
   { name: '@omnidraw/resource-runtime', directory: 'packages/resource-runtime' },
@@ -37,7 +36,6 @@ const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
   { name: '@omnidraw/function-runtime', directory: 'packages/function-runtime' },
   { name: '@omnidraw/runtime', directory: 'packages/runtime' },
 ])
-const PUBLIC_PACKAGE_NAMES = new Set(PUBLIC_PACKAGES.map((entry) => entry.name))
 const SOURCE_MODULE_EXTENSION = /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/
 
 async function runCommand(
@@ -127,13 +125,18 @@ async function assertPackedSourceDependencies(
   }
 }
 
-function exactInternalDependencies(manifest: Record<string, unknown>, packageName: string): void {
+function exactInternalDependencies(
+  manifest: Record<string, unknown>,
+  packageName: string,
+  versions: ReadonlyMap<string, string>,
+): void {
   const dependencies = manifest.dependencies === undefined
     ? {}
     : manifest.dependencies as Record<string, unknown>
   for (const [dependency, version] of Object.entries(dependencies)) {
-    if (PUBLIC_PACKAGE_NAMES.has(dependency) && version !== PUBLIC_VERSION) {
-      throw new Error(`${packageName} does not pin ${dependency} to ${PUBLIC_VERSION}.`)
+    const expectedVersion = versions.get(dependency)
+    if (expectedVersion !== undefined && version !== expectedVersion) {
+      throw new Error(`${packageName} does not pin ${dependency} to ${expectedVersion}.`)
     }
   }
   const text = JSON.stringify(manifest)
@@ -145,6 +148,7 @@ function exactInternalDependencies(manifest: Record<string, unknown>, packageNam
 async function packPublicPackage(
   entry: TPublicPackage,
   packRoot: string,
+  versions: ReadonlyMap<string, string>,
 ): Promise<Readonly<{ entry: TPublicPackage; tarball: string }>> {
   const packageRoot = join(REPOSITORY_ROOT, entry.directory)
   const result = await runCommand(
@@ -158,16 +162,17 @@ async function packPublicPackage(
     throw new Error(`${entry.name} pack command escaped the isolated pack directory.`)
   }
   const manifest = await packedManifest(tarball)
-  if (manifest.name !== entry.name || manifest.version !== PUBLIC_VERSION) {
+  if (manifest.name !== entry.name || manifest.version !== versions.get(entry.name)) {
     throw new Error(`${entry.name} packed with an unexpected name or version.`)
   }
-  exactInternalDependencies(manifest, entry.name)
+  exactInternalDependencies(manifest, entry.name, versions)
   await assertPackedSourceDependencies(tarball, manifest, entry.name)
   return Object.freeze({ entry, tarball })
 }
 
 async function assertInstalledPackagesAreExternal(
   consumerRoot: string,
+  versions: ReadonlyMap<string, string>,
 ): Promise<void> {
   const canonicalConsumerRoot = await realpath(consumerRoot)
   for (const entry of PUBLIC_PACKAGES) {
@@ -181,13 +186,21 @@ async function assertInstalledPackagesAreExternal(
     const manifest = JSON.parse(
       await readFile(join(installedRoot, 'package.json'), 'utf8'),
     ) as Record<string, unknown>
-    if (manifest.name !== entry.name || manifest.version !== PUBLIC_VERSION) {
-      throw new Error(`${entry.name} did not install at ${PUBLIC_VERSION}.`)
+    const expectedVersion = versions.get(entry.name)
+    if (manifest.name !== entry.name || manifest.version !== expectedVersion) {
+      throw new Error(`${entry.name} did not install at ${expectedVersion}.`)
     }
   }
 }
 
 async function main(): Promise<void> {
+  const versions = new Map(await Promise.all(PUBLIC_PACKAGES.map(async (entry) => {
+    const manifest = JSON.parse(
+      await readFile(join(REPOSITORY_ROOT, entry.directory, 'package.json'), 'utf8'),
+    ) as { version?: string }
+    if (!manifest.version) throw new Error(`${entry.name} has no release version.`)
+    return [entry.name, manifest.version] as const
+  })))
   const testRoot = await mkdtemp(join(tmpdir(), 'omnidraw-packed-public-composition-'))
   const packRoot = join(testRoot, 'packs')
   const consumerRoot = join(testRoot, 'consumer')
@@ -200,7 +213,7 @@ async function main(): Promise<void> {
 
   try {
     const packed = await Promise.all(PUBLIC_PACKAGES.map((entry) => (
-      packPublicPackage(entry, packRoot)
+      packPublicPackage(entry, packRoot, versions)
     )))
     const dependencies = Object.fromEntries(packed.map(({ entry, tarball }) => [
       entry.name,
@@ -244,7 +257,7 @@ async function main(): Promise<void> {
       consumerRoot,
       installEnvironment,
     )
-    await assertInstalledPackagesAreExternal(consumerRoot)
+    await assertInstalledPackagesAreExternal(consumerRoot, versions)
 
     const lockPath = join(consumerRoot, 'bun.lock')
     const lockText = await readFile(lockPath, 'utf8')
@@ -278,7 +291,7 @@ async function main(): Promise<void> {
     const passingTests = `${tests.stdout}\n${tests.stderr}`.match(/\b2 pass\b/)
     if (!passingTests) throw new Error('The packed managed-composition tests did not report two passes.')
     console.log(
-      `[packed-public-composition] packed ${packed.length} packages at ${PUBLIC_VERSION}; clean install, typecheck, 2 tests, and runtime smoke passed`,
+      `[packed-public-composition] packed ${packed.length} independently versioned packages; clean install, typecheck, 2 tests, and runtime smoke passed`,
     )
   } finally {
     await rm(testRoot, { recursive: true, force: true })
