@@ -449,9 +449,9 @@ operator-trusted host or optional Docker build runner; and Preview server
 functions remain operator-trusted host execution. Its proposed AI sharing and
 repair controls were intentionally removed as premature.
 
-### 7.3 Capsule 0.10.1 runtime source locations
+### 7.3 Capsule 0.10.2 runtime source locations
 
-Capsule 0.10.1 exposes the public, message-free
+Capsule 0.10.2 exposes the public, message-free
 `capsule-mount-error-v2` union. Guest runtime events identify the exact Capsule
 artifact and never-reused runtime generation and may include a verified
 artifact-relative generated JavaScript module, one-based line, and zero-based

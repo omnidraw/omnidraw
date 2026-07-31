@@ -9,6 +9,7 @@
     "scripts/fixtures/external-composition"
   ],
   "catalog": {
+    "@omnidraw/capsule": "0.10.2",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",

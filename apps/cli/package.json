@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.10.1",
+    "@omnidraw/capsule": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",

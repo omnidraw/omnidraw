@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.10.1",
+    "@omnidraw/capsule": "catalog:",
     "@omnidraw/tenant-core": "workspace:*",
     "@omnidraw/widget-contract": "workspace:*"
   }

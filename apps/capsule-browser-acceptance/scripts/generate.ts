@@ -56,7 +56,7 @@ const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widg
 const builderIdentity = 'omnidraw-capsule-browser-acceptance-v1';
 const capsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.10.1',
+  packageVersion: '0.10.2',
   packageDigest:
     'sha256:2d0333e25c1af76df4131846f0afa10fac4023925f695c44b81fdcfd30d3534f' as const,
   buildApiVersion: '0.1.0',

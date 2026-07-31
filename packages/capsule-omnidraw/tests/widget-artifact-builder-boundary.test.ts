@@ -41,7 +41,7 @@ const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.10.1',
+  packageVersion: '0.10.2',
   packageDigest: `sha256:${'b'.repeat(64)}`,
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,

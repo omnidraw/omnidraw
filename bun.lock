@@ -39,7 +39,7 @@
       "dependencies": {
         "@omnidraw/api": "workspace:*",
         "@omnidraw/canvas-contract": "workspace:*",
-        "@omnidraw/capsule": "0.10.1",
+        "@omnidraw/capsule": "catalog:",
         "@omnidraw/capsule-omnidraw": "workspace:*",
         "@omnidraw/function-runtime": "workspace:*",
         "@omnidraw/resource-runtime": "workspace:*",
@@ -178,7 +178,7 @@
     "packages/capsule-omnidraw": {
       "name": "@omnidraw/capsule-omnidraw",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.1",
+        "@omnidraw/capsule": "catalog:",
         "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
       },
@@ -223,7 +223,7 @@
       "name": "@omnidraw/sdk",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.1",
+        "@omnidraw/capsule": "0.10.2",
         "@omnidraw/widget-contract": "0.5.0",
       },
       "devDependencies": {
@@ -388,6 +388,7 @@
   "catalog": {
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@kobalte/core": "^0.13.12",
+    "@omnidraw/capsule": "0.10.2",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",
@@ -731,7 +732,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.1", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.1.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-+dX5eKV6+igf6XmTJR4b+6+8MLScG36OnfjWzTVU9fms94CpxKLeBSGM7zTuD5cHR7vHuM+iv+Ai5VnTkCNS4g=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.2", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yBLMN+9PAVToxiHjUzwzvPvw9ShM+X5e7sSuqRfDiS9F/yvjQE+tdTI/Dv+8ya3gz51QhaQd/GwhN4ev4PhTow=="],
 
     "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
 

@@ -21,6 +21,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -38,8 +39,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -588,6 +591,22 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/fn.widget-list.ts](packages/service-agent/src/tools/fn.widget-list.ts) |  |
 | [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
 | [packages/service-agent/src/tools/resource-service.ts](packages/service-agent/src/tools/resource-service.ts) |  |
+| [packages/service-agent/src/tools/templates/assets.d.ts](packages/service-agent/src/tools/templates/assets.d.ts) |  |
+| [packages/service-agent/src/tools/templates/CONSTANTS.ts](packages/service-agent/src/tools/templates/CONSTANTS.ts) |  |
+| [packages/service-agent/src/tools/templates/plain/omnidraw.json.tpl](packages/service-agent/src/tools/templates/plain/omnidraw.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/package.json.tpl](packages/service-agent/src/tools/templates/plain/package.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/server/main.server.ts.tpl](packages/service-agent/src/tools/templates/plain/server/main.server.ts.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/tsconfig.json.tpl](packages/service-agent/src/tools/templates/plain/tsconfig.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/ui/main.ts.tpl](packages/service-agent/src/tools/templates/plain/ui/main.ts.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/ui/styles.css.tpl](packages/service-agent/src/tools/templates/plain/ui/styles.css.tpl) |  |
+| [packages/service-agent/src/tools/templates/plain/vite.config.mjs.tpl](packages/service-agent/src/tools/templates/plain/vite.config.mjs.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/omnidraw.json.tpl](packages/service-agent/src/tools/templates/react/omnidraw.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/package.json.tpl](packages/service-agent/src/tools/templates/react/package.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/server/main.server.ts.tpl](packages/service-agent/src/tools/templates/react/server/main.server.ts.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/tsconfig.json.tpl](packages/service-agent/src/tools/templates/react/tsconfig.json.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/ui/main.tsx.tpl](packages/service-agent/src/tools/templates/react/ui/main.tsx.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/ui/styles.css.tpl](packages/service-agent/src/tools/templates/react/ui/styles.css.tpl) |  |
+| [packages/service-agent/src/tools/templates/react/vite.config.mjs.tpl](packages/service-agent/src/tools/templates/react/vite.config.mjs.tpl) |  |
 | [packages/service-agent/src/tools/tool.bash.ts](packages/service-agent/src/tools/tool.bash.ts) |  |
 | [packages/service-agent/src/tools/tool.resources.ts](packages/service-agent/src/tools/tool.resources.ts) |  |
 | [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { parse } from '@typescript-eslint/parser'
 import { readdir, readFile } from 'node:fs/promises'
-import { extname, join, relative, resolve, sep } from 'node:path'
+import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
@@ -702,8 +702,10 @@ describe('managed composition architecture boundaries', () => {
 
     const rootPackage = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as {
       workspaces: string[]
+      catalog: Record<string, string>
     }
     expect(rootPackage.workspaces).toContain('scripts/fixtures/external-composition')
+    expect(rootPackage.catalog['@omnidraw/capsule']).toBe('0.10.2')
   })
 
   test('keeps Capsule private profile names out of production source', async () => {
@@ -749,8 +751,12 @@ describe('managed composition architecture boundaries', () => {
       if (capsuleVersion === undefined) continue
       expect(
         capsuleVersion,
-        `${relative(ROOT, path)} must pin the Capsule production cutover exactly`,
-      ).toBe('0.10.1')
+        `${relative(ROOT, path)} must use the shared Capsule catalog except when published to npm`,
+      ).toBe(
+        NPM_PUBLISHABLE_PACKAGE_DIRECTORIES.includes(relative(ROOT, dirname(path)))
+          ? '0.10.2'
+          : 'catalog:',
+      )
     }
   })
 

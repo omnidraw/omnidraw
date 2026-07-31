@@ -7,7 +7,7 @@ import {
   type CapsuleRuntimeLocation,
 } from '@omnidraw/capsule';
 
-describe('Capsule 0.10.1 runtime-location public contract', () => {
+describe('Capsule 0.10.2 runtime-location public contract', () => {
   test('exposes the exact v2 format and coordinate convention at the root', () => {
     const location: CapsuleRuntimeLocation = {
       module: 'main.js',

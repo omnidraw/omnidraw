@@ -7,7 +7,7 @@ describe('Capsule widget authoring scaffold', () => {
     const files = new Map<string, string>();
     const manifest = fnBuildWidgetCreateManifest({
       name: 'Focus Timer',
-      description: 'A focused timer',
+      description: 'A focused timer named __OMNIDRAW_SDK_DEPENDENCY__',
     });
     const changed = await txWriteWidgetScaffold({
       mkdir: async () => undefined,
@@ -19,7 +19,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.10.1',
+      capsuleDependency: '0.10.2',
       template: 'plain',
       server: false,
     });
@@ -28,7 +28,7 @@ describe('Capsule widget authoring scaffold', () => {
       schemaVersion: 3,
       name: 'Focus Timer',
       slug: 'focus-timer',
-      description: 'A focused timer',
+      description: 'A focused timer named __OMNIDRAW_SDK_DEPENDENCY__',
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
@@ -43,14 +43,17 @@ describe('Capsule widget authoring scaffold', () => {
       'ui/main.ts',
       'ui/styles.css',
     ]);
+    expect(files.get('/draft/omnidraw.json')).toContain('__OMNIDRAW_SDK_DEPENDENCY__');
+    expect([...files.entries()].filter(([path]) => path !== '/draft/omnidraw.json')
+      .every(([, content]) => !content.includes('__OMNIDRAW_'))).toBe(true);
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
       dependencies: {
-        '@omnidraw/capsule': '0.10.1',
+        '@omnidraw/capsule': '0.10.2',
         '@omnidraw/sdk': '0.1.0',
         zod: '4.4.3',
       },
       overrides: {
-        '@omnidraw/capsule': '0.10.1',
+        '@omnidraw/capsule': '0.10.2',
       },
       devDependencies: {
         typescript: '5.9.3',
@@ -86,7 +89,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.10.1',
+      capsuleDependency: '0.10.2',
       template: 'react',
       server: false,
     });
@@ -94,6 +97,8 @@ describe('Capsule widget authoring scaffold', () => {
     expect(manifest.ui.entry).toBe('ui/main.tsx');
     expect(changed).toContain('ui/main.tsx');
     expect(changed).not.toContain('ui/main.ts');
+    expect(changed).not.toContain('server/main.server.ts');
+    expect([...files.values()].every((content) => !content.includes('__OMNIDRAW_'))).toBe(true);
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
       dependencies: {
         react: '19.2.7',
@@ -126,7 +131,7 @@ describe('Capsule widget authoring scaffold', () => {
       cwd: '/draft',
       manifest,
       sdkDependency: '0.1.0',
-      capsuleDependency: '0.10.1',
+      capsuleDependency: '0.10.2',
       template: 'react',
       server: true,
     });
@@ -136,6 +141,7 @@ describe('Capsule widget authoring scaffold', () => {
       runtimeAbi: 'omnidraw-function-v1',
     });
     expect(changed).toContain('server/main.server.ts');
+    expect([...files.values()].every((content) => !content.includes('__OMNIDRAW_'))).toBe(true);
     expect(files.get('/draft/server/main.server.ts')).toContain(
       'export const run = defineServerFunction',
     );
