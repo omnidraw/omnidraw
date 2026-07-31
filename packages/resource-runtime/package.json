@@ -1,12 +1,21 @@
 {
   "name": "@omnidraw/resource-runtime",
   "version": "0.5.0",
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
+  "files": [
+    "src"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./local": "./src/local/index.ts"
   },
   "scripts": {
+    "prepublishOnly": "bun run typecheck && bun run test",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
@@ -17,6 +26,6 @@
     "@tursodatabase/database": "0.6.1"
   },
   "devDependencies": {
-    "@tursodatabase/database": "catalog:"
+    "@tursodatabase/database": "0.6.1"
   }
 }

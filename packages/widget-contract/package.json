@@ -1,7 +1,15 @@
 {
   "name": "@omnidraw/widget-contract",
   "version": "0.5.0",
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
+  "files": [
+    "src"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser/index.ts",
@@ -12,13 +20,14 @@
     "./local": "./src/local/index.ts"
   },
   "scripts": {
+    "prepublishOnly": "bun run typecheck && bun run test",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@omnidraw/resource-runtime": "0.5.0",
     "@omnidraw/tenant-core": "0.5.0",
-    "lucide-static": "catalog:",
-    "zod": "catalog:"
+    "lucide-static": "^1.24.0",
+    "zod": "4.4.3"
   }
 }

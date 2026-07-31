@@ -1,6 +1,11 @@
 {
   "name": "@omnidraw/sdk",
   "version": "0.5.0",
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "exports": {
     "./widget": {
@@ -24,6 +29,7 @@
   ],
   "scripts": {
     "build": "bun scripts/build.ts",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test --pass-with-no-tests",
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
@@ -32,6 +38,6 @@
     "@omnidraw/widget-contract": "0.5.0"
   },
   "devDependencies": {
-    "typescript": "catalog:"
+    "typescript": "7.0.2"
   }
 }

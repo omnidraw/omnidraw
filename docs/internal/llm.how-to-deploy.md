@@ -2,10 +2,10 @@
 
 Reference only:
 - `.github/workflows/release-omnidraw.yml`
-- `.github/workflows/release-sdk.yml`
 - `.github/workflows/test.yml`
 
-Merging to `main` does not publish npm packages. Package releases are tag-driven.
+Merging to `main` does not publish npm packages. The Omnidraw CLI release is
+tag-driven; standalone library packages are released only from a local machine.
 
 ## Omnidraw CLI and binary packages
 
@@ -30,13 +30,30 @@ Publishes `omnidraw` and generated macOS/Linux `omnidraw-*` platform packages. W
 3. Create and push an explicit tag: `git tag omnidraw-v0.3.0-nightly.20260409 && git push origin omnidraw-v0.3.0-nightly.20260409`.
 4. GitHub Actions publishes npm `nightly` and a GitHub prerelease.
 
-## SDK package
+## Standalone library packages
 
-Publishes only `@omnidraw/sdk`.
+The following packages are published locally and have independent versions:
 
-1. Update `packages/sdk/package.json` to the desired version.
-2. Commit and merge the version change.
-3. Create and push an explicit tag: `git tag sdk-v0.1.0 && git push origin sdk-v0.1.0`.
-4. GitHub Actions verifies `@omnidraw/sdk@0.1.0` does not already exist on npm, then publishes the SDK to npm. No GitHub release is created for SDK for now.
+- `@omnidraw/tenant-core`
+- `@omnidraw/function-runtime`
+- `@omnidraw/resource-runtime`
+- `@omnidraw/runtime`
+- `@omnidraw/widget-contract`
+- `@omnidraw/sdk`
 
-If npm already contains the exact package version, the workflow fails before publishing. Bump the package version or remove that version from npm first.
+There is no GitHub Actions release workflow and no release tag for these
+packages. Authenticate with npm locally, run the package tests and a publish
+dry-run, then publish from the package directory.
+
+For a full release at `0.5.0`, publish in dependency order:
+
+1. `packages/tenant-core`
+2. `packages/runtime`
+3. `packages/resource-runtime`
+4. `packages/widget-contract`
+5. `packages/function-runtime`
+6. Build and publish `packages/sdk`
+
+Run `npm publish --dry-run` and then `npm publish` from each package directory.
+Each manifest selects public npmjs publishing and runs its tests and typecheck
+automatically. SDK also builds its `dist` files automatically before publish.

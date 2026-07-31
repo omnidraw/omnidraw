@@ -1,12 +1,21 @@
 {
   "name": "@omnidraw/runtime",
   "version": "0.5.0",
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
+  "files": [
+    "src"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./*": "./src/*"
   },
   "scripts": {
+    "prepublishOnly": "bun run typecheck && bun run test",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   }

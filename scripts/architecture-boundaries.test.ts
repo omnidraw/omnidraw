@@ -12,6 +12,10 @@ const PUBLIC_PACKAGES = Object.freeze({
   '@omnidraw/tenant-core': 'packages/tenant-core',
   '@omnidraw/widget-contract': 'packages/widget-contract',
 })
+const NPM_PUBLISHABLE_PACKAGE_DIRECTORIES = Object.freeze([
+  ...Object.values(PUBLIC_PACKAGES),
+  'packages/sdk',
+])
 const UI_PACKAGES = Object.freeze({
   '@omnidraw/ui-ai-chat': {
     directory: 'packages/ui-ai-chat',
@@ -680,6 +684,20 @@ describe('managed composition architecture boundaries', () => {
           fixturePackage.dependencies[dependencyName],
         )
       }
+    }
+
+    for (const directory of NPM_PUBLISHABLE_PACKAGE_DIRECTORIES) {
+      const packageJson = JSON.parse(await readFile(join(ROOT, directory, 'package.json'), 'utf8')) as {
+        publishConfig?: { '@omnidraw:registry'?: string; access?: string; registry?: string }
+        scripts?: Record<string, string>
+      }
+      expect(packageJson.publishConfig).toEqual({
+        '@omnidraw:registry': 'https://registry.npmjs.org/',
+        access: 'public',
+        registry: 'https://registry.npmjs.org/',
+      })
+      expect(packageJson.scripts?.prepublishOnly).toBeDefined()
+      expect(JSON.stringify(packageJson)).not.toContain('catalog:')
     }
 
     const rootPackage = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as {
