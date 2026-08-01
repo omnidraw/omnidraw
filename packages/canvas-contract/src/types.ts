@@ -3,6 +3,10 @@ import type {
   TSceneNode,
   TVec2,
 } from "@omnidraw/cangine";
+import type {
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
+} from "@omnidraw/theme-contract";
 
 /** The canvas metadata required by the portable canvas kernel. */
 export type TCanvasDescriptor = Readonly<{
@@ -45,6 +49,13 @@ export type TCanvasImageExtensionV1 = Readonly<{
   schemaVersion: 1;
   url: string;
   mimeType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+}>;
+
+/** Viewer-theme-adaptive authoring intent with concrete Cangine paint fallback. */
+export type TCanvasSemanticStyleExtensionV1 = Readonly<{
+  schemaVersion: 1;
+  background?: TCanvasFillColorCode;
+  ink?: TCanvasInkColorCode;
 }>;
 
 /** One complete authored Cangine node and its database concurrency metadata. */

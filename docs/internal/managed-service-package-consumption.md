@@ -23,7 +23,7 @@ verified:
 ```json
 {
   "dependencies": {
-    "@omnidraw/cangine": "0.5.3",
+    "@omnidraw/cangine": "0.6.0",
     "@omnidraw/canvas": "0.5.0",
     "@omnidraw/canvas-contract": "0.5.0",
     "@omnidraw/service-theme": "0.5.0",

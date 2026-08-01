@@ -12,7 +12,7 @@ function fixture() {
       applicationVersion: 'test',
       buildMode: 'test',
       canvasId: 'canvas-a',
-      cangineVersion: '0.5.3',
+      cangineVersion: '0.6.0',
       browser: 'test',
       platform: 'test',
       viewport: { width: 1_000, height: 800 },

@@ -7,9 +7,11 @@ import type {
 } from "@omnidraw/cangine";
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasImageExtension,
+  fnReadCanvasSemanticStyleExtension,
   fnValidateCanvasItems,
 } from "../src";
 
@@ -254,6 +256,96 @@ describe("@omnidraw/canvas-contract", () => {
           itemId: "image-b",
         }),
       ],
+    });
+  });
+
+  test("validates and reads bounded semantic canvas style intent", () => {
+    const semantic = rect("semantic");
+    semantic.fill = {
+      type: "solid",
+      color: { space: "srgb", r: 0.1, g: 0.2, b: 0.3, a: 1 },
+    };
+    semantic.stroke = {
+      paint: {
+        type: "solid",
+        color: { space: "srgb", r: 0.8, g: 0.7, b: 0.6, a: 1 },
+      },
+      width: 2,
+    };
+    semantic.extensions = {
+      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        background: "green",
+        ink: "blue",
+      },
+    };
+
+    expect(fnValidateCanvasItems([semantic])).toEqual({ valid: true, issues: [] });
+    expect(fnReadCanvasSemanticStyleExtension(semantic)).toEqual({
+      schemaVersion: 1,
+      background: "green",
+      ink: "blue",
+    });
+
+    semantic.extensions[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
+      schemaVersion: 1,
+      background: "primary",
+      ink: "transparent",
+      extra: true,
+    } as never;
+    expect(fnValidateCanvasItems([semantic])).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: "SEMANTIC_STYLE_EXTENSION_FIELDS" }),
+        expect.objectContaining({ code: "SEMANTIC_STYLE_BACKGROUND_CODE" }),
+        expect.objectContaining({ code: "SEMANTIC_STYLE_INK_CODE" }),
+      ]),
+    });
+  });
+
+  test("supports widget title-bar background intent but rejects widget ink", () => {
+    const semanticWidget = widget({
+      schemaVersion: 1,
+      type: "ui-widget",
+      kind: "example",
+    });
+    semanticWidget.extensions![CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
+      schemaVersion: 1,
+      background: "neutral",
+    };
+    semanticWidget.titleBarColor = {
+      space: "srgb", r: 0.2, g: 0.3, b: 0.4, a: 1,
+    };
+    expect(fnValidateCanvasItems([semanticWidget]))
+      .toEqual({ valid: true, issues: [] });
+    semanticWidget.extensions![CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
+      schemaVersion: 1,
+      ink: "neutral",
+    };
+    expect(fnValidateCanvasItems([semanticWidget])).toMatchObject({
+      valid: false,
+      issues: [expect.objectContaining({
+        code: "SEMANTIC_STYLE_INK_NODE_KIND",
+      })],
+    });
+  });
+
+  test("requires concrete old-client paint fallbacks for semantic intent", () => {
+    const semantic = rect("semantic-without-fallback");
+    semantic.extensions = {
+      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        background: "green",
+        ink: "blue",
+      },
+    };
+
+    expect(fnValidateCanvasItems([semantic])).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: "SEMANTIC_STYLE_BACKGROUND_FALLBACK" }),
+        expect.objectContaining({ code: "SEMANTIC_STYLE_INK_FALLBACK" }),
+      ]),
     });
   });
 });

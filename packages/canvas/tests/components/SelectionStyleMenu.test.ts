@@ -49,14 +49,46 @@ afterEach(() => {
 });
 
 describe('SelectionStyleMenu controls', () => {
+  test('prefers semantic intent over equal legacy concrete swatches', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => SelectionStyleMenu({
+      palette: {
+        fillQuick: [
+          { code: 'neutral', label: 'Neutral', color: '#000000', value: BLACK },
+          { code: 'blue', label: 'Blue', color: '#000000', value: BLACK },
+        ],
+        strokeQuick: [],
+      },
+      semanticColors: { background: 'blue', ink: undefined },
+      state: state([{
+        id: 'background',
+        label: 'Background',
+        coverage: COVERAGE,
+        value: { status: 'shared', value: BLACK },
+      }]),
+      strokeWidths: [],
+      ...handlers(),
+    }), host);
+
+    expect(host.querySelector('[aria-label="BACKGROUND Neutral"]')
+      ?.getAttribute('aria-pressed')).toBe('false');
+    expect(host.querySelector('[aria-label="BACKGROUND Blue"]')
+      ?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   test('renders shape names and applies reusable choice sections', () => {
     const callbacks = handlers();
     const host = document.createElement('div');
     document.body.append(host);
     dispose = render(() => SelectionStyleMenu({
       palette: {
-        fillQuick: [{ label: 'Black', color: '#000000' }],
-        strokeQuick: [{ label: 'Black', color: '#000000' }],
+        fillQuick: [{
+          code: 'neutral', label: 'Black', color: '#000000', value: BLACK,
+        }],
+        strokeQuick: [{
+          code: 'neutral', label: 'Black', color: '#000000', value: BLACK,
+        }],
       } as never,
       state: state([
         {
@@ -108,7 +140,7 @@ describe('SelectionStyleMenu controls', () => {
     ]);
     expect(callbacks.onSetColor).toHaveBeenCalledWith(
       'background',
-      '#000000',
+      { code: 'neutral', label: 'Black', color: '#000000', value: BLACK },
     );
   });
 

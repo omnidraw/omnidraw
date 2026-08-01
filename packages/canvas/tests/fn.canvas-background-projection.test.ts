@@ -8,9 +8,9 @@ describe('canvas background projection', () => {
   test.each(BUILTIN_THEMES)(
     'projects the exact $label canvas colors',
     (theme) => {
-      const colors = theme.colors;
+      const viewport = theme.canvas.viewport;
       const snapshot = fnCanvasBackgroundProjection({
-        colors,
+        viewport,
         gridVisible: true,
       });
 
@@ -25,7 +25,7 @@ describe('canvas background projection', () => {
             type: 'solid',
             paint: {
               type: 'solid',
-              color: colors.canvasBackground,
+              color: viewport.background,
             },
           },
         }),
@@ -40,8 +40,8 @@ describe('canvas background projection', () => {
             type: 'grid',
             minorSize: 64,
             majorEvery: 4,
-            minorColor: colors.canvasGridMinor,
-            majorColor: colors.canvasGridMajor,
+            minorColor: viewport.gridMinor,
+            majorColor: viewport.gridMajor,
             lineWidth: 1,
           },
         }),
@@ -51,7 +51,7 @@ describe('canvas background projection', () => {
 
   test('hides the grid without removing it', () => {
     expect(fnCanvasBackgroundProjection({
-      colors: BUILTIN_THEMES[0]!.colors,
+      viewport: BUILTIN_THEMES[0]!.canvas.viewport,
       gridVisible: false,
     }).nodes[1]).toMatchObject({ id: 'grid', visibility: 'hidden' });
   });

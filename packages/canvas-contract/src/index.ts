@@ -4,6 +4,7 @@ export {
   CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_QUERY_DEFAULT_LIMIT,
   CANVAS_QUERY_MAX_LIMIT,
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
@@ -31,6 +32,7 @@ export type {
   TCanvasPrecondition,
   TCanvasResyncRequiredEvent,
   TCanvasRevision,
+  TCanvasSemanticStyleExtensionV1,
   TCanvasSnapshot,
   TCanvasWidgetExtensionV1,
 } from "./types.js";
@@ -39,6 +41,7 @@ export {
   fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasAuthoringExtension,
   fnReadCanvasImageExtension,
+  fnReadCanvasSemanticStyleExtension,
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItemExtensions,
   fnValidateCanvasItems,

@@ -99,13 +99,15 @@
 
 .vc-selection-style-choice:hover,
 .vc-selection-style-choice[aria-pressed='true'] {
-  background: var(--stone-200);
-  color: var(--foreground);
+  background: var(--hover);
+  color: var(--hover-foreground);
 }
 
-.vc-canvas-host[data-theme-appearance='dark'] .vc-selection-style-choice:hover,
-.vc-canvas-host[data-theme-appearance='dark'] .vc-selection-style-choice[aria-pressed='true'] {
-  background: var(--stone-800);
+.vc-selection-style-choice:focus-visible,
+.vc-style-color:focus-visible,
+.vc-selection-style-section input[type='range']:focus-visible {
+  outline: 2px solid var(--focus-visible);
+  outline-offset: 2px;
 }
 
 .vc-selection-style-section input[type='range'] {

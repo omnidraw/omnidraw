@@ -54,12 +54,16 @@ import {
   fnSceneChangeImages,
   type TSceneNodeImage,
 } from './fn.scene-reduction';
+import {
+  fnAuthoredSemanticCanvasNode,
+} from '../fn.semantic-canvas-style';
 
 const SERVER_SCENE_SOURCE = 'omnidraw:server';
 const SNAPSHOT_SCENE_SOURCE = 'omnidraw:snapshot';
 const UNDO_SCENE_SOURCE = 'omnidraw:undo';
 const REDO_SCENE_SOURCE = 'omnidraw:redo';
 const IMAGE_PROMOTION_SOURCE = 'omnidraw:image-promotion';
+const THEME_PROJECTION_SOURCE = 'omnidraw:theme-projection';
 const LOCAL_HISTORY_CAPACITY = 100;
 const DOCUMENT_IMAGE_RESOURCE_OWNER = 'omnidraw:document-images';
 const DOCUMENT_IMAGE_REGISTRATION_OWNER = 'omnidraw:document-image-urls';
@@ -75,6 +79,7 @@ export type TCanvasDocumentServiceOptions = Readonly<{
   createCommandId(): string;
   wait: TCanvasWaitPort;
   image?: TCanvasImagePort;
+  projectNode?(node: TSceneNode): TSceneNode;
   onError?(error: unknown): void;
   observe?(observation: TCanvasDocumentObservation): void;
 }>;
@@ -394,6 +399,7 @@ export class CanvasDocumentService
   readonly #createCommandId: () => string;
   readonly #wait: TCanvasWaitPort;
   readonly #image: TCanvasImagePort | null;
+  #projectNode: (node: TSceneNode) => TSceneNode;
   readonly #onError: (error: unknown) => void;
   readonly #observeDocument: ((observation: TCanvasDocumentObservation) => void) | null;
   readonly #acceptedItems = new Map<string, TCanvasItemSnapshot>();
@@ -413,6 +419,7 @@ export class CanvasDocumentService
     Map<string, TIndexedImageDescriptor>
   >();
   #optimisticNodes: ReadonlyMap<string, TSceneNode> = new Map();
+  #authoredNodes: ReadonlyMap<string, TSceneNode> = new Map();
   #projection: TSceneProjection | null = null;
   #engine: IInfiniteCanvasEngine | null = null;
   #resourceRegistrations: IResourceRegistrationOwner | null = null;
@@ -432,6 +439,7 @@ export class CanvasDocumentService
     this.#createCommandId = options.createCommandId;
     this.#wait = options.wait;
     this.#image = options.image ?? null;
+    this.#projectNode = options.projectNode ?? ((node) => node);
     this.#onError = options.onError ?? (() => undefined);
     this.#observeDocument = options.observe ?? null;
     this.#history = new CanvasDocumentHistory(
@@ -469,6 +477,48 @@ export class CanvasDocumentService
 
   node(nodeId: string): Readonly<TSceneNode> | null {
     return this.#optimisticNodes.get(nodeId) ?? null;
+  }
+
+  authoredNode(nodeId: string): Readonly<TSceneNode> | null {
+    return this.#authoredNodes.get(nodeId) ?? null;
+  }
+
+  /** Re-resolves semantic paint without changing the durable canvas revision. */
+  reproject(projectNode: (node: TSceneNode) => TSceneNode): boolean {
+    if (this.#disposed) {
+      throw new RangeError('Canvas document service is disposed.');
+    }
+    const previousProjectNode = this.#projectNode;
+    this.#projectNode = projectNode;
+    if (
+      this.#engine === null
+      || this.#projection === null
+      || this.#recoveryPending
+      || this.#reloading
+    ) {
+      return false;
+    }
+    try {
+      this.#assertReadyForCommit();
+      const commands = [...this.#authoredNodes.values()]
+        .map((node): TSerializedSceneCommand => ({
+          type: 'upsert',
+          node: projectNode(node),
+        }))
+        .filter((command) => (
+          command.type === 'upsert'
+          && !fnSceneNodesEqual(
+            this.#optimisticNodes.get(command.node.id) ?? null,
+            command.node,
+          )
+        ));
+      if (commands.length === 0) return false;
+      this.#projectSceneCommands(commands, THEME_PROJECTION_SOURCE);
+      return true;
+    } catch (error) {
+      this.#projectNode = previousProjectNode;
+      throw error;
+    }
   }
 
   async start(engine: IInfiniteCanvasEngine): Promise<void> {
@@ -695,6 +745,7 @@ export class CanvasDocumentService
     }
     this.#acceptedItems.clear();
     this.#optimisticNodes = new Map();
+    this.#authoredNodes = new Map();
     this.#projection = null;
     this.#imageNodeCounts.clear();
     this.#imageDescriptorCounts.clear();
@@ -778,15 +829,25 @@ export class CanvasDocumentService
       if (reduction.changes.length === 0) {
         throw new RangeError('Editor transaction has no local document change.');
       }
+      const authoredBefore = new Map<string, TSceneNodeImage>();
+      const authoredAfter = new Map<string, TSceneNodeImage>();
+      for (const nodeId of bounded.nodeIds) {
+        const previousAuthored = this.#authoredNodes.get(nodeId) ?? null;
+        authoredBefore.set(nodeId, previousAuthored);
+        authoredAfter.set(nodeId, fnAuthoredSemanticCanvasNode({
+          previousAuthored,
+          nextProjected: bounded.after.get(nodeId) ?? null,
+        }));
+      }
       this.#assertPersistableImages(
-        bounded.after,
+        authoredAfter,
         new Set(options.preparedImageResourceIds ?? []),
       );
       const imageIndexPatch = this.#stageImageIndexChanges(
-        bounded.before,
-        bounded.after,
+        authoredBefore,
+        authoredAfter,
       );
-      const plan = this.#planFromNodes(bounded.before, bounded.after);
+      const plan = this.#planFromNodes(authoredBefore, authoredAfter);
       if (plan.operations.length === 0) {
         throw new RangeError('Editor transaction has no durable canvas operation.');
       }
@@ -802,8 +863,8 @@ export class CanvasDocumentService
         },
       });
       const historyEntry: THistoryEntry = {
-        before: new Map(bounded.before),
-        after: new Map(bounded.after),
+        before: authoredBefore,
+        after: authoredAfter,
         ...(request.coalesceKey === undefined
           ? {}
           : { coalesceKey: request.coalesceKey }),
@@ -825,8 +886,8 @@ export class CanvasDocumentService
             : { coalesceKey: request.coalesceKey }),
           affectedNodeIds: bounded.nodeIds,
           commandId,
-          before: new Map(bounded.before),
-          after: new Map(bounded.after),
+          before: new Map(authoredBefore),
+          after: new Map(authoredAfter),
           plan,
           mediaGate: options.mediaGate ?? null,
           ownedImageResourceIds: Object.freeze([
@@ -844,6 +905,7 @@ export class CanvasDocumentService
           request.source,
           request.coalesceKey,
         );
+        this.#applyAuthoredNodeImages(authoredAfter);
       } catch (error) {
         this.#scheduleRecovery(error);
         throw error;
@@ -947,7 +1009,7 @@ export class CanvasDocumentService
     const affectedNodeIds: string[] = [];
     for (const nodeId of [...desired.keys()].sort(codePointCompare)) {
       const target = desired.get(nodeId) ?? null;
-      const current = this.#optimisticNodes.get(nodeId) ?? null;
+      const current = this.#authoredNodes.get(nodeId) ?? null;
       if (fnSceneNodesEqual(current, target)) continue;
       affectedNodeIds.push(nodeId);
       if (target === null) {
@@ -957,7 +1019,7 @@ export class CanvasDocumentService
           descendants: 'remove',
         });
       } else {
-        upserts.push({ type: 'upsert', node: target });
+        upserts.push({ type: 'upsert', node: this.#projectNode(target) });
       }
     }
     const commands = Object.freeze([...upserts, ...removals]);
@@ -977,14 +1039,14 @@ export class CanvasDocumentService
     const operations: TCanvasOperation[] = [];
     const preconditions: TCanvasPrecondition[] = [];
     for (const id of new Set([...before.keys(), ...after.keys()])) {
-      const previousRuntime = before.get(id) ?? null;
-      const nextRuntime = after.get(id) ?? null;
-      const previous = previousRuntime === null
+      const previousImage = before.get(id) ?? null;
+      const nextImage = after.get(id) ?? null;
+      const previous = previousImage === null
         ? null
-        : fnAuthoredCanvasNode(previousRuntime);
-      const next = nextRuntime === null
+        : fnAuthoredCanvasNode(previousImage);
+      const next = nextImage === null
         ? null
-        : fnAuthoredCanvasNode(nextRuntime);
+        : fnAuthoredCanvasNode(nextImage);
       if (fnSceneNodesEqual(previous, next)) continue;
       if (previous === null && next !== null) {
         operations.push({ type: 'insert', item: next });
@@ -1266,10 +1328,16 @@ export class CanvasDocumentService
     ) {
       throw new RangeError('Canvas scene projection is not synchronized.');
     }
+    const incomingAuthoredNodes = new Map(
+      event.changedItems.map((item) => {
+        const node = fnRuntimeCanvasNode(item.item);
+        return [node.id, node] as const;
+      }),
+    );
     const eventCommands: TSerializedSceneCommand[] = [
-      ...event.changedItems.map((item): TSerializedSceneCommand => ({
+      ...[...incomingAuthoredNodes.values()].map((node): TSerializedSceneCommand => ({
         type: 'upsert',
-        node: fnRuntimeCanvasNode(item.item),
+        node: this.#projectNode(node),
       })),
       ...event.deletedItemIds.map((itemId): TSerializedSceneCommand => ({
         type: 'remove',
@@ -1324,14 +1392,39 @@ export class CanvasDocumentService
       throw new RangeError('Canvas events cannot replace the retained scene.');
     }
     const bounded = fnSceneChangeImages(reduction.changes);
+    const authoredAfter = new Map<string, TSceneNodeImage>();
+    for (const command of commands) {
+      if (command.type === 'upsert') {
+        authoredAfter.set(
+          command.node.id,
+          incomingAuthoredNodes.get(command.node.id) ?? null,
+        );
+      } else if (command.type === 'remove') {
+        authoredAfter.set(command.nodeId, null);
+      }
+    }
+    for (const nodeId of bounded.nodeIds) {
+      if (authoredAfter.has(nodeId)) continue;
+      authoredAfter.set(nodeId, fnAuthoredSemanticCanvasNode({
+        previousAuthored: this.#authoredNodes.get(nodeId) ?? null,
+        nextProjected: bounded.after.get(nodeId) ?? null,
+      }));
+    }
+    const authoredBefore = new Map(
+      [...authoredAfter.keys()].map((nodeId) => [
+        nodeId,
+        this.#authoredNodes.get(nodeId) ?? null,
+      ]),
+    );
     const imageIndexPatch = this.#stageImageIndexChanges(
-      bounded.before,
-      bounded.after,
+      authoredBefore,
+      authoredAfter,
     );
 
     if (reduction.state !== projection.state) {
       this.#applySceneReduction(commands, reduction, SERVER_SCENE_SOURCE);
     }
+    this.#applyAuthoredNodeImages(authoredAfter);
 
     for (const item of event.changedItems) this.#acceptedItems.set(item.id, item);
     for (const itemId of event.deletedItemIds) this.#acceptedItems.delete(itemId);
@@ -1512,6 +1605,18 @@ export class CanvasDocumentService
           `Canvas reduction state disagrees for node '${change.nodeId}'.`,
         );
       }
+    }
+  }
+
+  #applyAuthoredNodeImages(
+    images: ReadonlyMap<string, TSceneNodeImage>,
+  ): void {
+    if (!(this.#authoredNodes instanceof Map)) {
+      throw new TypeError('Canvas authored document storage is not mutable.');
+    }
+    for (const [nodeId, node] of images) {
+      if (node === null) this.#authoredNodes.delete(nodeId);
+      else this.#authoredNodes.set(nodeId, node);
     }
   }
 
@@ -1773,20 +1878,29 @@ export class CanvasDocumentService
       const acceptedItems = new Map(
         snapshot.items.map((item) => [item.id, item]),
       );
-      const reductionState = createSceneReductionState(
+      const authoredReductionState = createSceneReductionState(
         fnMaterializeCanvasValidationSnapshot(
           snapshot.items.map((item) => fnRuntimeCanvasNode(item.item)),
         ),
       );
-      const admittedSnapshot = sceneReductionStateSnapshot(reductionState);
+      const authoredSnapshot = sceneReductionStateSnapshot(authoredReductionState);
+      const authoredNodes = new Map(
+        authoredSnapshot.nodes.map((node) => [node.id, node]),
+      );
+      const admittedSnapshot = {
+        ...authoredSnapshot,
+        nodes: authoredSnapshot.nodes.map((node) => this.#projectNode(node)),
+      };
+      const reductionState = createSceneReductionState(admittedSnapshot);
       const optimisticNodes = new Map(
         admittedSnapshot.nodes.map((node) => [node.id, node]),
       );
-      const nextImageIndex = this.#buildImageDocumentIndex(optimisticNodes);
+      const nextImageIndex = this.#buildImageDocumentIndex(authoredNodes);
 
       const previousRevision = this.#acceptedRevision;
       const previousItems = new Map(this.#acceptedItems);
       const previousNodes = this.#optimisticNodes;
+      const previousAuthoredNodes = this.#authoredNodes;
       const previousImageIndex: TImageDocumentIndex = {
         nodeCounts: this.#imageNodeCounts,
         descriptorCounts: this.#imageDescriptorCounts,
@@ -1797,6 +1911,7 @@ export class CanvasDocumentService
         this.#acceptedItems.clear();
         for (const [id, item] of acceptedItems) this.#acceptedItems.set(id, item);
         this.#optimisticNodes = optimisticNodes;
+        this.#authoredNodes = authoredNodes;
         this.#imageNodeCounts = nextImageIndex.nodeCounts;
         this.#imageDescriptorCounts = nextImageIndex.descriptorCounts;
         engine.scene.replace(admittedSnapshot, { source: SNAPSHOT_SCENE_SOURCE });
@@ -1809,6 +1924,7 @@ export class CanvasDocumentService
         this.#acceptedItems.clear();
         for (const [id, item] of previousItems) this.#acceptedItems.set(id, item);
         this.#optimisticNodes = previousNodes;
+        this.#authoredNodes = previousAuthoredNodes;
         this.#imageNodeCounts = previousImageIndex.nodeCounts;
         this.#imageDescriptorCounts = previousImageIndex.descriptorCounts;
         try {

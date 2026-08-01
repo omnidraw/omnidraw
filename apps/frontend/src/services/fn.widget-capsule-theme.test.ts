@@ -11,9 +11,9 @@ describe('widget Capsule theme projection', () => {
       format: 'omnidraw.widget-theme.v1',
       appearance: 'dark',
       tokens: {
-        background: service.getTheme().colors.background,
-        foreground: service.getTheme().colors.foreground,
-        surface: service.getTheme().colors.card,
+        background: service.getTheme().ui.background,
+        foreground: service.getTheme().ui.foreground,
+        surface: service.getTheme().ui.card,
       },
     });
     expect(Object.keys(projected).sort()).toEqual([

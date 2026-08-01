@@ -1,8 +1,8 @@
 import type { TRetainedProjectionSnapshot } from '@omnidraw/cangine';
-import type { TThemeColors } from '@omnidraw/service-theme';
+import type { TThemeCanvasViewport } from '@omnidraw/theme-contract';
 
 type TArgs = Readonly<{
-  colors: TThemeColors;
+  viewport: TThemeCanvasViewport;
   gridVisible: boolean;
 }>;
 
@@ -28,7 +28,7 @@ export function fnCanvasBackgroundProjection(
         type: 'solid',
         paint: {
           type: 'solid',
-          color: args.colors.canvasBackground,
+          color: args.viewport.background,
         },
       },
     }, {
@@ -43,8 +43,8 @@ export function fnCanvasBackgroundProjection(
         type: 'grid',
         minorSize: 64,
         majorEvery: 4,
-        minorColor: args.colors.canvasGridMinor,
-        majorColor: args.colors.canvasGridMajor,
+        minorColor: args.viewport.gridMinor,
+        majorColor: args.viewport.gridMajor,
         lineWidth: 1,
       },
     }],

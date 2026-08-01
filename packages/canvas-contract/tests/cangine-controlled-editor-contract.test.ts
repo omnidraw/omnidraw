@@ -7,7 +7,7 @@ import type {
 } from "@omnidraw/cangine/editor";
 
 describe("Cangine controlled-editor consumer contract", () => {
-  test("resolves the packed 0.5.3 public entrypoints", async () => {
+  test("resolves the packed 0.6.0 public entrypoints", async () => {
     const publicEntrypoints = new Map([
       ["@omnidraw/cangine", "/dist/index.js"],
       ["@omnidraw/cangine/types", "/dist/types.js"],
@@ -30,13 +30,13 @@ describe("Cangine controlled-editor consumer contract", () => {
     for (const [specifier, suffix] of publicEntrypoints) {
       const resolved = Bun.resolveSync(specifier, import.meta.dir);
       expect(resolved).toContain(
-        "node_modules/.bun/@omnidraw+cangine@0.5.3/",
+        "node_modules/.bun/@omnidraw+cangine@0.6.0/",
       );
       expect(resolved).toEndWith(suffix);
     }
     expect(manifest).toMatchObject({
       name: "@omnidraw/cangine",
-      version: "0.5.3",
+      version: "0.6.0",
     });
     expect(manifest.exports).not.toHaveProperty("./integrations/capsule");
     expect(() => Bun.resolveSync(

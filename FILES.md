@@ -389,7 +389,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts](packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts) |  |
 | [packages/canvas/src/debug-trace/typed.ts](packages/canvas/src/debug-trace/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
+| [packages/canvas/src/fn.cangine-theme-appearance.ts](packages/canvas/src/fn.cangine-theme-appearance.ts) | Pure projection from host theme tokens to Cangine appearance data. |
 | [packages/canvas/src/fn.canvas-background-projection.ts](packages/canvas/src/fn.canvas-background-projection.ts) |  |
+| [packages/canvas/src/fn.semantic-canvas-decoration.ts](packages/canvas/src/fn.semantic-canvas-decoration.ts) | Pure Cangine host-hook decoration for semantic canvas color intent. |
+| [packages/canvas/src/fn.semantic-canvas-style.ts](packages/canvas/src/fn.semantic-canvas-style.ts) | Pure projection of semantic canvas intent to concrete Cangine paint. |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/CanvasDocumentService.ts](packages/canvas/src/services/CanvasDocumentService.ts) |  |
@@ -742,18 +745,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-theme/package.json](packages/service-theme/package.json) |  |
 | [packages/service-theme/README.md](packages/service-theme/README.md) |  |
 | [packages/service-theme/scripts/build.ts](packages/service-theme/scripts/build.ts) |  |
-| [packages/service-theme/src/builtins.ts](packages/service-theme/src/builtins.ts) |  |
-| [packages/service-theme/src/dom.ts](packages/service-theme/src/dom.ts) |  |
-| [packages/service-theme/src/index.ts](packages/service-theme/src/index.ts) |  |
-| [packages/service-theme/src/interface.ts](packages/service-theme/src/interface.ts) |  |
-| [packages/service-theme/src/style.dark.ts](packages/service-theme/src/style.dark.ts) |  |
-| [packages/service-theme/src/style.graphite.ts](packages/service-theme/src/style.graphite.ts) |  |
-| [packages/service-theme/src/style.light.ts](packages/service-theme/src/style.light.ts) |  |
-| [packages/service-theme/src/style.sepia.ts](packages/service-theme/src/style.sepia.ts) |  |
+| [packages/service-theme/src/builtins.ts](packages/service-theme/src/builtins.ts) | Complete built-in theme registrations. |
+| [packages/service-theme/src/dom.ts](packages/service-theme/src/dom.ts) | ThemeService snapshot projection to DOM CSS variables. |
+| [packages/service-theme/src/index.ts](packages/service-theme/src/index.ts) | Public ThemeService surface. |
+| [packages/service-theme/src/interface.ts](packages/service-theme/src/interface.ts) | Stable host-consumable ThemeService capability. |
 | [packages/service-theme/src/style.shared.ts](packages/service-theme/src/style.shared.ts) |  |
-| [packages/service-theme/src/styles.ts](packages/service-theme/src/styles.ts) |  |
-| [packages/service-theme/src/ThemeService.ts](packages/service-theme/src/ThemeService.ts) |  |
-| [packages/service-theme/src/types.ts](packages/service-theme/src/types.ts) |  |
+| [packages/service-theme/src/styles.ts](packages/service-theme/src/styles.ts) | Pure role-aware canvas color resolution and picker presentation. |
+| [packages/service-theme/src/ThemeService.ts](packages/service-theme/src/ThemeService.ts) | Runtime authority for atomic theme registration, selection, and resolution. |
+| [packages/service-theme/src/types.ts](packages/service-theme/src/types.ts) | Theme-service presentation options and remembered authoring styles. |
 | [packages/service-theme/tsconfig.build.json](packages/service-theme/tsconfig.build.json) |  |
 | [packages/service-theme/tsconfig.json](packages/service-theme/tsconfig.json) |  |
 
@@ -817,6 +816,21 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/tenant-core/src/interface.ts](packages/tenant-core/src/interface.ts) | Narrow capabilities for deriving tenant context and resolving placement. |
 | [packages/tenant-core/src/types.ts](packages/tenant-core/src/types.ts) | Public tenant identity, scope, and placement value types. |
 | [packages/tenant-core/tsconfig.json](packages/tenant-core/tsconfig.json) |  |
+
+## packages/theme-contract
+
+| path | jsdocs |
+|---|---|
+| [packages/theme-contract/LICENSE](packages/theme-contract/LICENSE) |  |
+| [packages/theme-contract/package.json](packages/theme-contract/package.json) |  |
+| [packages/theme-contract/README.md](packages/theme-contract/README.md) |  |
+| [packages/theme-contract/scripts/build.ts](packages/theme-contract/scripts/build.ts) |  |
+| [packages/theme-contract/src/CONSTANTS.ts](packages/theme-contract/src/CONSTANTS.ts) | Stable theme and canvas-color vocabularies. |
+| [packages/theme-contract/src/fn.validation.ts](packages/theme-contract/src/fn.validation.ts) | Pure validation for complete theme registrations and canvas codes. |
+| [packages/theme-contract/src/index.ts](packages/theme-contract/src/index.ts) | Public state-free theme contract surface. |
+| [packages/theme-contract/src/types.ts](packages/theme-contract/src/types.ts) | Complete atomic theme and semantic canvas-color types. |
+| [packages/theme-contract/tsconfig.build.json](packages/theme-contract/tsconfig.build.json) |  |
+| [packages/theme-contract/tsconfig.json](packages/theme-contract/tsconfig.json) |  |
 
 ## packages/ui-ai-chat
 

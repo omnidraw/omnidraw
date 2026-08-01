@@ -300,8 +300,8 @@ export function createPreviewPortalRuntime(
   terminal.style.maxHeight = '38%';
   terminal.style.overflow = 'hidden';
   terminal.style.borderTop = '1px solid var(--border, #374151)';
-  terminal.style.background = 'var(--preview-terminal-background, #111827)';
-  terminal.style.color = 'var(--preview-terminal-foreground, #e5e7eb)';
+  terminal.style.background = 'var(--vc-terminal-background, #111827)';
+  terminal.style.color = 'var(--vc-terminal-foreground, #e5e7eb)';
   terminal.style.font = '11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   terminalHeader.style.display = 'flex';
   terminalHeader.style.alignItems = 'center';
@@ -474,17 +474,17 @@ export function createPreviewPortalRuntime(
         && entry.buildSequence !== null
         ? `[build #${String(entry.buildSequence)}]`
         : `[${entry.source}]`;
-      source.style.color = 'var(--preview-terminal-muted, #9ca3af)';
+      source.style.color = 'var(--vc-terminal-muted-foreground, #9ca3af)';
       message.textContent = entry.message;
       message.style.minWidth = '0';
       message.style.whiteSpace = 'pre-wrap';
       message.style.overflowWrap = 'anywhere';
       message.style.color = entry.level === 'error'
-        ? 'var(--preview-terminal-error, #fca5a5)'
+        ? 'var(--vc-terminal-error-foreground, #fca5a5)'
         : entry.level === 'warning'
-          ? 'var(--preview-terminal-warning, #fcd34d)'
+          ? 'var(--vc-terminal-warning-foreground, #fcd34d)'
           : entry.level === 'success'
-            ? 'var(--preview-terminal-success, #86efac)'
+            ? 'var(--vc-terminal-success-foreground, #86efac)'
             : 'inherit';
       if (entry.truncated) {
         message.title = 'This Preview log entry was truncated by the host.';

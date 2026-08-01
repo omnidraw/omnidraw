@@ -1,3 +1,5 @@
+/** @file Public ThemeService surface. */
+
 export { ThemeService, type TThemeServiceArgs } from "./ThemeService.js";
 export type {
   IThemeService,
@@ -12,19 +14,37 @@ export {
   THEME_ID_GRAPHITE,
   THEME_ID_LIGHT,
   THEME_ID_SEPIA,
-  type TCanvasThemeColor,
-  type ThemeId,
-  type TThemeColors,
-  type TThemeDefinition,
 } from "./builtins.js";
+export type {
+  ThemeId,
+  TCanvasColorCode,
+  TCanvasColorRole,
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
+  TThemeAppearance,
+  TThemeCanvasChrome,
+  TThemeCanvasColorPalette,
+  TThemeCanvasViewport,
+  TThemeDefinition,
+  TThemeDefinitionInheritance,
+  TThemePathAppearance,
+  TThemeRegistration,
+  TThemeSelectionAppearance,
+  TThemeSnapshot,
+  TThemeSrgbColor,
+  TThemeTerminalColors,
+  TThemeUiColorRole,
+  TThemeUiColors,
+} from "@omnidraw/theme-contract";
 export { fxGetThemeCssVariables, txApplyThemeToElement } from "./dom.js";
 export {
-  BUILTIN_THEME_STYLES,
   getThemeColorPickerPalette,
   getThemeColorValueMap,
   getThemeStyle,
   isThemeColorToken,
+  resolveThemeCanvasColor,
   resolveThemeColor,
+  themeSrgbColorToCss,
 } from "./styles.js";
 export {
   THEME_CORNER_RADIUS_OPTIONS,
@@ -39,8 +59,6 @@ export {
   THEME_VERTICAL_ALIGN_OPTIONS,
 } from "./style.shared.js";
 export {
-  THEME_COLOR_FAMILIES,
-  THEME_COLOR_STEPS,
   THEME_CORNER_RADIUS_NAMES,
   THEME_FONT_SIZE_NAMES,
   THEME_STROKE_STYLES,
@@ -51,15 +69,10 @@ export {
   type TCanvasThemeStyle,
   type TResolvedThemeCanvasStyle,
   type TThemeBuiltinStyleScopeId,
+  type TThemeCanvasColorSwatch,
+  type TThemeCanvasInkSwatch,
   type TThemeCanvasStyle,
-  type TThemeColorFamily,
-  type TThemeColorPalette,
-  type TThemeColorPaletteGroup,
   type TThemeColorPickerPalette,
-  type TThemeColorScale,
-  type TThemeColorStep,
-  type TThemeColorSwatch,
-  type TThemeColorToken,
   type TThemeColorValueMap,
   type TThemeCornerRadiusName,
   type TThemeCornerRadiusOption,

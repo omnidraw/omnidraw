@@ -1,6 +1,6 @@
 # Omnidraw screen atlas
 
-This is the desktop visual reference for Omnidraw. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-07-20. The local product data shown here is illustrative and contains no real secrets.
+This is the desktop visual reference for Omnidraw. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-08-01. The local product data shown here is illustrative and contains no real secrets.
 
 All screenshots are optimized WebP files under [`assets/`](assets/). Capture a new image when a route, workspace, modal, or interaction state changes meaningfully; avoid adding cosmetic duplicates.
 
@@ -35,8 +35,8 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | Populated canvas | Selection and style tools |
 | --- | --- |
-| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected line connector with Straight, Curved, and Elbow style controls](assets/11-canvas-selection-style.webp) |
-| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected connector.** Path handles and the contextual style panel expose line shape, stroke color, width, and opacity without changing connector meaning. |
+| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with compact semantic background and border color controls](assets/11-canvas-selection-style.webp) |
+| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected rectangle.** The contextual style panel exposes exactly six theme-relative background choices (transparent, neutral, red, yellow, green, blue), five non-transparent border choices, stroke, width, and opacity. Swatches retain keyboard focus, pressed-state, mixed-value, and transparent-checkerboard affordances. |
 
 | Widget actions | Widget canvas maximize |
 | --- | --- |

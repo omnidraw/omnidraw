@@ -6,6 +6,10 @@ import type {
   TSelectionStyleState,
 } from '@omnidraw/cangine/editor';
 import type {
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
+} from '@omnidraw/theme-contract';
+import type {
   TThemeColorPickerPalette,
   TThemeStrokeWidthOption,
 } from '@omnidraw/service-theme';
@@ -17,6 +21,8 @@ import {
 } from './fn.selection-style-presentation';
 
 type TChoice = string | number | readonly string[];
+type TColorSwatch = TThemeColorPickerPalette['fillQuick'][number]
+  | TThemeColorPickerPalette['strokeQuick'][number];
 type TChoicePropertyId = Extract<
   TSelectionStylePropertyId,
   'line-routing' | 'stroke-pattern' | 'stroke-width'
@@ -33,8 +39,15 @@ type TSelectionStyleMenuProps = Readonly<{
   palette: TThemeColorPickerPalette;
   state: TSelectionStyleState;
   strokeWidths: readonly TThemeStrokeWidthOption[];
+  semanticColors?: Readonly<{
+    background: TCanvasFillColorCode | null | undefined;
+    ink: TCanvasInkColorCode | null | undefined;
+  }>;
   onApply(change: TSelectionStyleChange): boolean;
-  onSetColor(propertyId: 'background' | 'foreground', color: string): void;
+  onSetColor(
+    propertyId: 'background' | 'foreground',
+    swatch: TColorSwatch,
+  ): void;
   onBeginOpacity(): void;
   onUpdateOpacity(opacity: number): void;
   onEndOpacity(): void;
@@ -97,8 +110,9 @@ function ChoiceSection(props: Readonly<{
 function ColorSection(props: Readonly<{
   label: string;
   value: string | null;
-  swatches: TThemeColorPickerPalette['fillQuick'];
-  onSelect(color: string): void;
+  semanticCode?: TCanvasFillColorCode | TCanvasInkColorCode | null;
+  swatches: readonly TColorSwatch[];
+  onSelect(swatch: TColorSwatch): void;
 }>) {
   return (
     <section class="vc-selection-style-section">
@@ -110,10 +124,12 @@ function ColorSection(props: Readonly<{
               type="button"
               class="vc-style-color"
               aria-label={`${props.label} ${swatch.label}`}
-              aria-pressed={props.value === swatch.color}
+              aria-pressed={props.semanticCode === undefined
+                ? props.value === swatch.color
+                : props.semanticCode === swatch.code}
               title={swatch.label}
               style={{ '--vc-style-color': swatch.color }}
-              onClick={() => props.onSelect(swatch.color)}
+              onClick={() => props.onSelect(swatch)}
             />
           )}
         </For>
@@ -234,8 +250,9 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
           <ColorSection
             label="BACKGROUND"
             value={selectedColor(entry())}
+            semanticCode={props.semanticColors?.background}
             swatches={props.palette.fillQuick}
-            onSelect={(color) => props.onSetColor('background', color)}
+            onSelect={(swatch) => props.onSetColor('background', swatch)}
           />
         )}
       </Show>
@@ -249,8 +266,9 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
                 : 'COLOR'
             }
             value={selectedColor(entry())}
+            semanticCode={props.semanticColors?.ink}
             swatches={props.palette.strokeQuick}
-            onSelect={(color) => props.onSetColor('foreground', color)}
+            onSelect={(swatch) => props.onSetColor('foreground', swatch)}
           />
         )}
       </Show>

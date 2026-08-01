@@ -18,6 +18,7 @@ import type {
 } from '@omnidraw/cangine/editor';
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   type TCanvasCommand,
   type TCanvasDocumentTransport,
@@ -26,7 +27,9 @@ import {
   type TCanvasItemsChangedEvent,
   type TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
+import { BUILTIN_THEMES } from '@omnidraw/service-theme';
 import { describe, expect, test, vi } from 'vitest';
+import { fnProjectSemanticCanvasNode } from '../../src/fn.semantic-canvas-style';
 import {
   CanvasDocumentService as CanvasDocumentServiceImplementation,
   type TCanvasDocumentObservation,
@@ -96,6 +99,20 @@ function group(id = 'group-a'): TGroupNode {
     transform,
     layout: { type: 'free' },
   };
+}
+
+function projectRectRed(red: number): (node: TSceneNode) => TSceneNode {
+  return (node) => (
+    node.kind === 'rect'
+      ? {
+          ...node,
+          fill: {
+            type: 'solid',
+            color: { space: 'srgb', r: red, g: 0, b: 0, a: 1 },
+          },
+        }
+      : node
+  );
 }
 
 function runtimeNode<T extends TSceneNode>(node: T): T {
@@ -367,6 +384,133 @@ function expectProjectionMatchesReadModel(
 }
 
 describe('CanvasDocumentService', () => {
+  test('retains the latest projector while the initial snapshot is loading', async () => {
+    const authored = rect('semantic');
+    const snapshotGate = deferred<TCanvasSnapshot>();
+    const queue = eventQueue();
+    const getSnapshot = vi.fn(async () => snapshotGate.promise);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      execute: vi.fn(async () => {
+        throw new Error('not used');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+      projectNode: projectRectRed(0.25),
+    });
+
+    const start = service.start(fake.engine);
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(1));
+    expect(service.reproject(projectRectRed(0.75))).toBe(false);
+    snapshotGate.resolve(snapshot([item(authored)]));
+    await start;
+
+    expect((service.node(authored.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: { space: 'srgb', r: 0.75, g: 0, b: 0, a: 1 },
+    });
+    expect((service.authoredNode(authored.id) as TRectNode).fill).toBeUndefined();
+
+    await service.dispose();
+  });
+
+  test('reprojects semantic paint without a durable edit and preserves authored fallback', async () => {
+    const semantic = rect('semantic');
+    semantic.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.1, g: 0.2, b: 0.3, a: 1 },
+    };
+    semantic.extensions = {
+      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        background: 'green',
+      },
+    };
+    const literal = rect('literal');
+    literal.orderKey = 'B';
+    literal.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.7, g: 0.2, b: 0.4, a: 1 },
+    };
+    const after = { ...semantic, transform: {
+      ...semantic.transform,
+      position: { x: 25, y: 0 },
+    } };
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(
+      snapshot([item(semantic), item(literal)]),
+      async () => acknowledgement.promise,
+    );
+    const fake = fakeEngine();
+    const project = (themeIndex: number) => (node: TSceneNode) => (
+      fnProjectSemanticCanvasNode({
+        node,
+        colors: BUILTIN_THEMES[themeIndex]!.canvas.colors,
+      })
+    );
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      projectNode: project(0),
+    });
+    await service.start(fake.engine);
+    const durableRevision = service.revision;
+    const literalPaint = fake.engine.scene.get(literal.id)?.kind === 'rect'
+      ? fake.engine.scene.get(literal.id).fill
+      : null;
+
+    expect(service.reproject(project(1))).toBe(true);
+    expect(service.revision).toBe(durableRevision);
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect((service.node(semantic.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: BUILTIN_THEMES[1]!.canvas.colors.green.fill,
+    });
+    expect((service.authoredNode(semantic.id) as TRectNode).fill)
+      .toEqual(semantic.fill);
+    expect((service.node(literal.id) as TRectNode).fill).toEqual(literalPaint);
+
+    const editedRuntime = {
+      ...(service.node(semantic.id) as TRectNode),
+      transform: runtimeNode(after).transform,
+    };
+    service.commit(mutation(
+      fake.engine,
+      'unrelated-edit',
+      [{ type: 'upsert', node: editedRuntime }],
+      [semantic.id],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    expect(transport.execute.mock.calls[0]?.[0].operations).toEqual([{
+      type: 'patch',
+      itemId: semantic.id,
+      patches: [{
+        type: 'set',
+        path: ['transform', 'position', 'x'],
+        value: 25,
+      }],
+    }]);
+    expect((service.authoredNode(semantic.id) as TRectNode).fill)
+      .toEqual(semantic.fill);
+    expect(service.reproject(project(2))).toBe(true);
+    expect(service.revision).toBe(durableRevision);
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    acknowledgement.resolve(event('command-a', 1, [item(after, 2)]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect((service.node(semantic.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: BUILTIN_THEMES[2]!.canvas.colors.green.fill,
+    });
+
+    await service.dispose();
+  });
+
   test('reports bounded lifecycle facts and isolates a throwing observer', async () => {
     const before = rect();
     const after = rect('rect-a', 25);
@@ -828,6 +972,69 @@ describe('CanvasDocumentService', () => {
     await service.dispose();
   });
 
+  test('undoes and redoes concrete paint with semantic intent through exact batches', async () => {
+    const before = rect('styled');
+    before.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.2, g: 0.3, b: 0.4, a: 1 },
+    };
+    const after: TRectNode = {
+      ...before,
+      fill: {
+        type: 'solid',
+        color: BUILTIN_THEMES[0]!.canvas.colors.green.fill,
+      },
+      extensions: {
+        [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+          schemaVersion: 1, background: 'green',
+        },
+      },
+    };
+    let durableRevision = 0;
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command: TCanvasCommand) => {
+        durableRevision += 1;
+        const durableNode = durableRevision === 2 ? before : after;
+        return event(
+          command.commandId,
+          durableRevision,
+          [item(durableNode, durableRevision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `semantic-command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'semantic-style',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(after));
+    expect(service.history.undo()).toBe(true);
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(before));
+    expect(service.authoredNode(after.id)
+      ?.extensions?.[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]).toBeUndefined();
+    expect(service.history.redo()).toBe(true);
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(after));
+    expect(fake.apply).toHaveBeenCalledTimes(3);
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(3);
+    await service.dispose();
+  });
+
   test('clears history when a remote descendant attaches to an undoable parent', async () => {
     const parent = group();
     const queue = eventQueue();
@@ -1236,6 +1443,7 @@ describe('CanvasDocumentService', () => {
       canvasId: 'canvas-a',
       transport,
       createCommandId: () => 'command-a',
+      projectNode: projectRectRed(0.25),
     });
     await service.start(fake.engine);
 
@@ -1247,6 +1455,8 @@ describe('CanvasDocumentService', () => {
     ));
     await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
 
+    expect(service.reproject(projectRectRed(0.75))).toBe(false);
+
     expect(() => service.commit(mutation(
       fake.engine,
       'transaction-during-recovery',
@@ -1257,6 +1467,10 @@ describe('CanvasDocumentService', () => {
     recoverySnapshot.resolve(snapshot([item(before)], 1));
     await vi.waitFor(() => expect(service.revision).toBe(1));
     expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect((service.node('rect-a') as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: { space: 'srgb', r: 0.75, g: 0, b: 0, a: 1 },
+    });
     expect(service.pendingTransactionCount).toBe(0);
     await service.dispose();
   });

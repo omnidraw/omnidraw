@@ -36,6 +36,7 @@ type TPackedPackage = Readonly<{
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'scripts/fixtures/canvas-kernel-consumer')
 const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
+  { name: '@omnidraw/theme-contract', directory: 'packages/theme-contract' },
   { name: '@omnidraw/canvas-contract', directory: 'packages/canvas-contract' },
   { name: '@omnidraw/service-theme', directory: 'packages/service-theme' },
   { name: '@omnidraw/canvas', directory: 'packages/canvas' },
@@ -45,6 +46,7 @@ const ALLOWED_INSTALLED_OMNIDRAW_PACKAGES = new Set([
   'canvas',
   'canvas-contract',
   'service-theme',
+  'theme-contract',
 ])
 const FORBIDDEN_PRIVATE_PACKAGES = Object.freeze([
   '@omnidraw/api',
@@ -250,7 +252,7 @@ async function packInstalledCangine(packRoot: string): Promise<string> {
   if (!outputPath) throw new Error('@omnidraw/cangine pack did not report a tarball.')
   const tarball = resolve(packageRoot, outputPath)
   if (dirname(tarball) !== packRoot) throw new Error('@omnidraw/cangine pack escaped its isolated directory.')
-  await assertPackedPackage(entry, tarball, '0.5.3')
+  await assertPackedPackage(entry, tarball, '0.6.0')
   return tarball
 }
 

@@ -20,6 +20,8 @@ const runtimeState = vi.hoisted(() => ({
   widgetActivationListener: null as ((event: unknown) => void) | null,
   activeToolIds: [] as string[],
   segmentModes: [] as string[],
+  selectionAppearances: [] as unknown[],
+  pathAppearances: [] as unknown[],
   selectedNode: null as unknown,
   selectedNodeIds: [] as string[],
   fontPreloads: [] as string[],
@@ -36,7 +38,7 @@ const runtimeState = vi.hoisted(() => ({
   projectionDisposed: false,
   projectionReplaceError: null as Error | null,
   documentStartHook: null as (() => void) | null,
-  themeColors: null as unknown as TThemeDefinition['colors'],
+  theme: null as unknown as TThemeDefinition,
   themeListener: null as ((theme: TThemeDefinition) => void) | null,
 }));
 
@@ -99,6 +101,9 @@ vi.mock('@omnidraw/cangine/editor', () => ({
         editor.state.activeToolId = toolId;
         runtimeState.activeToolIds.push(toolId);
       },
+      setSelectionAppearance(appearance: unknown) {
+        runtimeState.selectionAppearances.push(appearance);
+      },
       subscribe: () => () => undefined,
     };
     return {
@@ -121,6 +126,9 @@ vi.mock('@omnidraw/cangine/editor', () => ({
         },
       },
       paths: {
+        setAppearance(appearance: unknown) {
+          runtimeState.pathAppearances.push(appearance);
+        },
         setSegmentMode(mode: string) {
           runtimeState.segmentModes.push(mode);
         },
@@ -156,6 +164,11 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
       runtimeState.events.push('document:dispose');
     }
 
+    reproject(): boolean {
+      runtimeState.events.push('document:reproject');
+      return true;
+    }
+
   },
 }));
 
@@ -163,10 +176,18 @@ import { buildRuntime } from '../src/runtime';
 import {
   fnCanvasBackgroundProjection,
 } from '../src/fn.canvas-background-projection';
+import {
+  fnCanginePathAppearance,
+  fnCangineSelectionAppearance,
+} from '../src/fn.cangine-theme-appearance';
 
 const themeService = {
-  getTheme: () => ({
-    colors: { ...runtimeState.themeColors },
+  getTheme: () => runtimeState.theme,
+  getSnapshot: () => ({ revision: 1, definition: runtimeState.theme }),
+  getDefaultStyle: (scope: string) => ({
+    ...(scope === 'rect' || scope === 'ellipse'
+      ? { backgroundColor: 'neutral' }
+      : { strokeColor: 'neutral' }),
   }),
   subscribeThemeChange(listener: NonNullable<typeof runtimeState.themeListener>) {
     runtimeState.themeListener = listener;
@@ -198,6 +219,8 @@ describe('canvas runtime composition', () => {
     runtimeState.widgetActivationListener = null;
     runtimeState.activeToolIds.length = 0;
     runtimeState.segmentModes.length = 0;
+    runtimeState.selectionAppearances.length = 0;
+    runtimeState.pathAppearances.length = 0;
     runtimeState.selectedNode = null;
     runtimeState.selectedNodeIds.length = 0;
     runtimeState.fontPreloads.length = 0;
@@ -211,7 +234,7 @@ describe('canvas runtime composition', () => {
     runtimeState.projectionDisposed = false;
     runtimeState.projectionReplaceError = null;
     runtimeState.documentStartHook = null;
-    runtimeState.themeColors = BUILTIN_THEMES[0]!.colors;
+    runtimeState.theme = BUILTIN_THEMES[0]!;
     runtimeState.themeListener = null;
     runtimeState.engine = {
       scene: {
@@ -354,7 +377,7 @@ describe('canvas runtime composition', () => {
     ]);
 
     runtimeState.documentStartHook = () => {
-      runtimeState.themeColors = BUILTIN_THEMES[3]!.colors;
+      runtimeState.theme = BUILTIN_THEMES[3]!;
       runtimeState.themeListener?.(BUILTIN_THEMES[3]!);
     };
     await runtime.boot();
@@ -362,9 +385,13 @@ describe('canvas runtime composition', () => {
     const engineConfig = runtimeState.engineConfig as Record<string, unknown>;
     const sessionConfig = runtimeState.sessionConfig as {
       editor: {
-        creation: { textFontFamilies: string[] };
+        creation: {
+          textFontFamilies: string[];
+          decorate: (context: unknown, node: unknown) => unknown;
+        };
         history: { adapter: unknown };
         sceneMutationPort: unknown;
+        selectionAppearance: unknown;
       };
       clipboardImage: {
         imageImportPort: unknown;
@@ -382,6 +409,7 @@ describe('canvas runtime composition', () => {
         requestFrame(callback: FrameRequestCallback): number;
         cancelFrame(handle: number): void;
       };
+      decorateMutation(context: unknown): unknown;
       onCallbackError(error: unknown): void;
     };
     expect(engineConfig).not.toHaveProperty('record');
@@ -400,11 +428,11 @@ describe('canvas runtime composition', () => {
     );
     expect(runtimeState.projectionSnapshots).toEqual([
       fnCanvasBackgroundProjection({
-        colors: BUILTIN_THEMES[0]!.colors,
+        viewport: BUILTIN_THEMES[0]!.canvas.viewport,
         gridVisible: true,
       }),
       fnCanvasBackgroundProjection({
-        colors: BUILTIN_THEMES[3]!.colors,
+        viewport: BUILTIN_THEMES[3]!.canvas.viewport,
         gridVisible: true,
       }),
     ]);
@@ -414,13 +442,19 @@ describe('canvas runtime composition', () => {
     runtimeState.projectionReplaceError = null;
     expect(runtime.setGridVisible(false)).toBe(true);
     expect(runtimeState.projectionSnapshots).toHaveLength(3);
-    runtimeState.themeColors = BUILTIN_THEMES[2]!.colors;
+    runtimeState.theme = BUILTIN_THEMES[2]!;
     runtimeState.themeListener?.(BUILTIN_THEMES[2]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
+    expect(runtimeState.selectionAppearances.at(-1)).toEqual(
+      fnCangineSelectionAppearance(BUILTIN_THEMES[2]!.canvas.selection),
+    );
+    expect(runtimeState.pathAppearances.at(-1)).toEqual(
+      fnCanginePathAppearance(BUILTIN_THEMES[2]!.canvas.path),
+    );
     expect(runtime.engine()?.scene.revision).toBe(1);
     expect(runtimeState.projectionSnapshots[3]).toEqual(
       fnCanvasBackgroundProjection({
-        colors: BUILTIN_THEMES[2]!.colors,
+        viewport: BUILTIN_THEMES[2]!.canvas.viewport,
         gridVisible: false,
       }),
     );
@@ -434,6 +468,10 @@ describe('canvas runtime composition', () => {
     );
     expect(sessionConfig.editor.creation.textFontFamilies)
       .toEqual(['Inter', 'sans-serif']);
+    expect(sessionConfig.editor.creation.decorate).toEqual(expect.any(Function));
+    expect(sessionConfig.editor.selectionAppearance).toEqual(
+      fnCangineSelectionAppearance(BUILTIN_THEMES[3]!.canvas.selection),
+    );
     expect(sessionConfig.clipboardImage.imageImportPort).toBe(
       runtimeState.documentInstance,
     );
@@ -443,6 +481,7 @@ describe('canvas runtime composition', () => {
       'image/jpeg,image/png,image/gif,image/webp',
     );
     expect(styleConfig.editor).toBe(runtime.editor());
+    expect(styleConfig.decorateMutation).toEqual(expect.any(Function));
     expect(styleConfig.fontFamilies).toEqual([
       ['Inter', 'sans-serif'],
       ['Fraunces', 'serif'],
@@ -504,7 +543,7 @@ describe('canvas runtime composition', () => {
     expect(runtime.selectionStyles()).toBeNull();
     expect(runtimeState.projectionDisposed).toBe(true);
     expect(runtimeState.themeListener).toBeNull();
-    runtimeState.themeColors = BUILTIN_THEMES[1]!.colors;
+    runtimeState.theme = BUILTIN_THEMES[1]!;
     lateThemeChange?.(BUILTIN_THEMES[1]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
   });
@@ -519,7 +558,7 @@ describe('canvas runtime composition', () => {
         applicationVersion: 'test',
         buildMode: 'test',
         canvasId: 'canvas-a',
-        cangineVersion: '0.5.3',
+        cangineVersion: '0.6.0',
         browser: 'test',
         platform: 'test',
         viewport: { width: 1_000, height: 800 },

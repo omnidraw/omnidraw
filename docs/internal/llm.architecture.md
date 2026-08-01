@@ -43,6 +43,7 @@ flowchart TB
 
   subgraph Public["Portable contracts and public packages"]
     CanvasContract["canvas-contract"]
+    ThemeContract["theme-contract"]
     Theme["service-theme"]
     Tenant["tenant-core"]
     Resource["resource-runtime"]
@@ -69,6 +70,7 @@ flowchart TB
   Ui --> CapsuleBridge
   Canvas --> CanvasContract
   Canvas --> Theme
+  Canvas --> ThemeContract
   Canvas --> Cangine
 
   CLI --> API
@@ -108,6 +110,8 @@ flowchart TB
   CapsuleBridge --> Widget
   CapsuleBridge --> Capsule
   CanvasContract --> Cangine
+  CanvasContract --> ThemeContract
+  Theme --> ThemeContract
 
   Debug --> AgentService
   Acceptance --> Ui
@@ -135,7 +139,8 @@ flowchart TB
 | `widget-contract` | Widget manifests, artifacts, immutable revisions, runtime descriptors, and publication contracts. |
 | `function-runtime` | Short-lived function dispatch, execution, scheduling, storage, sandbox, and usage interfaces. |
 | `canvas-contract` | Portable Cangine item, command, snapshot, event, query, descriptor, and document-transport contracts. |
-| `service-theme` | Isolated theme capability, built-in themes, tokens, and DOM projection helpers. |
+| `theme-contract` | State-free detailed theme and six-code semantic canvas-color types, constants, and validation. |
+| `service-theme` | Atomic theme registry/selection authority, built-in themes, semantic lookup, immutable snapshots, and generated DOM projection. |
 | `canvas` | Public Solid canvas host, Cangine runtime projection, optimistic document client, extension seams, and scoped assets/styles. |
 | `runtime` | Plugin lifecycle, service registry, dependency ordering, and runtime startup/shutdown. |
 | `sdk` | Published widget/server/function-client authoring entry points built over Capsule and public widget contracts. |
@@ -185,7 +190,7 @@ flowchart TB
    requests and events. Durable decisions stay in services and portable rules
    stay in contract/runtime packages.
 5. **The canvas kernel is independently consumable.** After S132,
-   `canvas-contract`, `service-theme`, and `canvas` build and pack without the
+   `theme-contract`, `canvas-contract`, `service-theme`, and `canvas` build and pack without the
    OSS API, database, AI UI, or server. A host injects its transport, theme,
    IDs, waits, diagnostics, notifications, images, and optional extensions.
 

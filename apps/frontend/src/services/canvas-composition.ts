@@ -73,7 +73,7 @@ function createFrontendDiagnostics(
       applicationVersion: import.meta.env.VITE_APP_VERSION ?? 'unknown',
       buildMode: import.meta.env.MODE,
       canvasId,
-      cangineVersion: '0.5.3',
+      cangineVersion: '0.6.0',
       browser: browserNavigator.userAgent.slice(0, 256),
       platform: browserNavigator.platform || 'unknown',
       viewport: {

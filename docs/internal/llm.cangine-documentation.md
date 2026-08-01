@@ -1,4 +1,4 @@
-# `@omnidraw/cangine` Library Guide — 0.5.3
+# `@omnidraw/cangine` Library Guide — 0.6.0
 
 This is the consumer guide for `@omnidraw/cangine`. It covers installation,
 ordinary application usage, every public engine service and package
@@ -39,9 +39,9 @@ business logic, permissions, or UI.
 Install the package from npm:
 
 ```bash
-npm install @omnidraw/cangine@0.5.3
+npm install @omnidraw/cangine@0.6.0
 # or
-bun add @omnidraw/cangine@0.5.3
+bun add @omnidraw/cangine@0.6.0
 ```
 
 Public entrypoints:
@@ -2596,6 +2596,69 @@ mutation of the caller's array cannot restyle it. Omission uses
 `["system-ui", "sans-serif"]`, while an explicit empty array remains empty.
 Existing/imported text and font registration or preloading are unchanged.
 
+Applications may update editor-only appearance after mounting. Resolve product
+semantics to concrete Cangine values first; Cangine does not interpret theme
+tokens or CSS variables:
+
+```ts
+const resolved = themeService.resolveCanvasTheme();
+editor.setSelectionAppearance({
+  outline: resolved.selectionStroke,
+  handleFill: resolved.handleFill,
+  handleStroke: resolved.handleStroke,
+  handleSize: 10,
+  rotateHandleOffset: 28,
+  outlinePadding: 4,
+});
+paths.setAppearance({
+  outlineColor: resolved.pathOutline,
+  anchorFillColor: resolved.pathAnchor,
+});
+```
+
+These calls validate, copy, and retain the effective values. Visible idle
+overlays update immediately; an appearance change during a captured gesture is
+presented after that gesture commits or cancels. The calls preserve selection,
+focus, active tool, text/path/widget modes, history, recorder state, scene
+revision, and controlled mutation-port traffic. Repeating the same effective
+value is a semantic no-op.
+
+`creation.decorate` receives the standard primary node after Cangine has
+constructed its geometry, routing, freehand provenance, markers, hierarchy,
+ID, and final commit ordering. It can change only the documented appearance
+fields for that kind and non-reserved host extensions:
+
+```ts
+const editor = createStandardCanvasEditor({
+  engine,
+  contentParentId: "content",
+  creation: {
+    decorate(context, node) {
+      if (context.kind === "connector" || context.kind === "arrow") {
+        if (node.kind !== "connector") return node;
+        return {
+          ...node,
+          stroke: { ...node.stroke, paint: resolved.connectorPaint },
+          extensions: {
+            ...node.extensions,
+            "com.example.authored-style": { token: "connector.primary" },
+          },
+        };
+      }
+      return node;
+    },
+  },
+});
+```
+
+Rectangle, ellipse, pen, connector, arrow, and widget previews use decorated
+appearance; text is commit-only because its existing editing session inserts
+the durable placeholder immediately. Preview failures retain the last-good or
+default preview. A callback failure, invalid node, protected-field change, or
+change under `org.omnidraw.cangine.*` aborts a durable commit before the
+mutation port. The port always receives Cangine's already-finalized exact
+batch and must not inspect `source` to rewrite it.
+
 Linear history requires an engine created with `record`; it is disabled by
 default. You can register/replace tools and commands or supply a custom history
 adapter. `createCanvasEditor()` provides only the lower-level lifecycle,
@@ -2805,6 +2868,36 @@ styles.activate("bring-to-front");
 unsubscribe();
 styles.destroy();
 ```
+
+To atomically attach application intent to Cangine's concrete result, configure
+an extension-only decorator and pass opaque JSON with the operation:
+
+```ts
+const styles = createSelectionStyleController({
+  editor,
+  decorateMutation({ after, intent }) {
+    return {
+      ...after,
+      extensions: {
+        ...after.extensions,
+        "com.example.semantic-paint": intent ?? null,
+      },
+    };
+  },
+});
+
+styles.apply(
+  { propertyId: "foreground", value: resolved.primaryPaintColor },
+  { intent: { token: "primary", role: "foreground" } },
+);
+```
+
+The decorator runs once for every compatible target after the normal concrete
+result, including when that concrete result is already equal. It may add,
+update, or remove only non-reserved extensions. Any callback or validation
+failure aborts all targets before dispatch. Continuous operations retain the
+latest copied `{change, intent}` pair and preserve the controller's existing
+history-coalescing boundary.
 
 `state.controls` is already ordered and contains per-property
 shared/mixed/complex values plus selected/candidate/eligible coverage. It

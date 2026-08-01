@@ -1,89 +1,14 @@
+@import '@omnidraw/service-theme/canvas-default.css';
+
 .vc-canvas-host {
   color-scheme: light;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-display: var(--font-mono);
-  --text-muted: var(--muted-foreground, #57534e);
-
-  --stone-50: #fafaf9;
-  --stone-100: #f5f5f4;
-  --stone-200: #e7e5e4;
-  --stone-300: #d6d3d1;
-  --stone-400: #a8a29e;
-  --stone-500: #78716c;
-  --stone-600: #57534e;
-  --stone-700: #44403c;
-  --stone-800: #292524;
-  --stone-900: #1c1917;
-  --stone-950: #0c0a09;
-
-  --amber-100: #fef3c7;
-  --amber-200: #fde68a;
-  --amber-300: #fcd34d;
-  --amber-400: #fbbf24;
-  --amber-500: #f59e0b;
-  --amber-600: #d97706;
-  --amber-700: #b45309;
-
-  --red-500: #ef4444;
-  --red-600: #dc2626;
-  --red-700: #b91c1c;
-  --green-500: #22c55e;
-  --green-600: #16a34a;
-  --gray-400: #9ca3af;
-  --white: #ffffff;
-
-  /* Fallbacks are local to this canvas. IThemeService overwrites them. */
-  --background: #fafaf9;
-  --foreground: #1c1917;
-  --card: #f5f5f4;
-  --card-foreground: #1c1917;
-  --popover: #ffffff;
-  --popover-foreground: #1c1917;
-  --muted: #e7e5e4;
-  --muted-foreground: #57534e;
-  --primary: #f59e0b;
-  --primary-foreground: #0c0a09;
-  --secondary: #e7e5e4;
-  --secondary-foreground: #1c1917;
-  --accent: #fef3c7;
-  --accent-foreground: #78350f;
-  --destructive: #dc2626;
-  --destructive-foreground: #fafaf9;
-  --success: #16a34a;
-  --success-foreground: #fafaf9;
-  --warning: #d97706;
-  --warning-foreground: #0c0a09;
-  --border: #d6d3d1;
-  --input: #d6d3d1;
-  --ring: #f59e0b;
+  --text-muted: var(--muted-foreground);
 
   line-height: 1.5;
   tab-size: 4;
   -webkit-text-size-adjust: 100%;
-}
-
-.vc-canvas-host[data-theme-appearance='dark'] {
-  color-scheme: dark;
-  --background: #0c0a09;
-  --foreground: #fafaf9;
-  --card: #1c1917;
-  --card-foreground: #fafaf9;
-  --popover: #1c1917;
-  --popover-foreground: #fafaf9;
-  --muted: #292524;
-  --muted-foreground: #a8a29e;
-  --secondary: #292524;
-  --secondary-foreground: #fafaf9;
-  --accent: #44403c;
-  --accent-foreground: #fcd34d;
-  --destructive: #ef4444;
-  --destructive-foreground: #fafaf9;
-  --success: #22c55e;
-  --success-foreground: #0c0a09;
-  --warning: #fbbf24;
-  --warning-foreground: #0c0a09;
-  --border: #292524;
-  --input: #292524;
 }
 
 .vc-canvas-host,

@@ -15,12 +15,12 @@ describe('fnReproductionTraceDiagnostics', () => {
     expect(fnReproductionTraceDiagnostics({
       development: true,
       buildMode: 'development',
-      cangineVersion: '0.5.3',
+      cangineVersion: '0.6.0',
     })).toEqual({
       reproductionTrace: true,
       applicationVersion: 'unknown',
       buildMode: 'development',
-      cangineVersion: '0.5.3',
+      cangineVersion: '0.6.0',
     });
   });
 });

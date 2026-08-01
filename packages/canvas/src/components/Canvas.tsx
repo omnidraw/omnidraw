@@ -1,9 +1,16 @@
 import type {
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
+} from '@omnidraw/theme-contract';
+import type {
   IStandardCanvasEditor,
   TSelectionStyleChange,
   TSelectionStyleState,
 } from '@omnidraw/cangine/editor';
-import { txApplyThemeToElement } from '@omnidraw/service-theme';
+import {
+  txApplyThemeToElement,
+  type TThemeColorPickerPalette,
+} from '@omnidraw/service-theme';
 import {
   Match,
   Show,
@@ -16,6 +23,12 @@ import {
 import {
   REPRODUCTION_TRACE_PASSIVE_INPUT_SAMPLE_RATE,
 } from '../debug-trace/CONSTANTS';
+import type {
+  TCanvasSemanticColorMutationIntent,
+} from '../fn.semantic-canvas-decoration';
+import {
+  fnCanvasSemanticStyleIntent,
+} from '../fn.semantic-canvas-style';
 import { buildRuntime, type TCanvasRuntime } from '../runtime';
 import type {
   TCanvasProps,
@@ -29,7 +42,6 @@ import {
   SelectionStyleMenu,
 } from './SelectionStyleMenu';
 import {
-  fnParseCssColor,
   fnSelectionStyleMenuVisible,
 } from './SelectionStyleMenu/fn.selection-style-presentation';
 import { fnCanvasRuntimeActivation } from './fn.canvas-runtime-activation';
@@ -673,10 +685,44 @@ export function Canvas(props: TCanvasProps) {
 
   const applySelectionColor = (
     propertyId: 'background' | 'foreground',
-    value: string,
+    swatch: TThemeColorPickerPalette['fillQuick'][number]
+      | TThemeColorPickerPalette['strokeQuick'][number],
   ) => {
-    const color = fnParseCssColor(value);
-    if (color !== null) applySelectionStyle({ propertyId, value: color });
+    const intent = {
+      schemaVersion: 1,
+      role: propertyId === 'background' ? 'background' : 'ink',
+      code: swatch.code,
+    } satisfies TCanvasSemanticColorMutationIntent;
+    activeRuntime?.selectionStyles()?.apply(
+      { propertyId, value: swatch.value },
+      { intent },
+    );
+  };
+
+  const selectedSemanticColor = (
+    role: 'background' | 'ink',
+  ): TCanvasFillColorCode | TCanvasInkColorCode | null | undefined => {
+    const selectedRootIds = selectionStyleState().selectedRootIds;
+    const scene = activeRuntime?.engine()?.scene;
+    if (scene === undefined || selectedRootIds.length === 0) return undefined;
+    let semanticSeen = false;
+    let literalSeen = false;
+    let shared: TCanvasFillColorCode | TCanvasInkColorCode | undefined;
+    for (const id of selectedRootIds) {
+      const node = scene.get(id);
+      const code = node === null
+        ? undefined
+        : fnCanvasSemanticStyleIntent(node)?.[role];
+      if (code === undefined) {
+        literalSeen = true;
+        continue;
+      }
+      semanticSeen = true;
+      if (shared !== undefined && shared !== code) return null;
+      shared = code;
+    }
+    if (!semanticSeen) return undefined;
+    return literalSeen ? null : shared;
   };
 
   const beginOpacity = () =>
@@ -740,6 +786,10 @@ export function Canvas(props: TCanvasProps) {
         <SelectionStyleMenu
           state={selectionStyleState()}
           palette={themePalette()}
+          semanticColors={{
+            background: selectedSemanticColor('background') as TCanvasFillColorCode | null | undefined,
+            ink: selectedSemanticColor('ink') as TCanvasInkColorCode | null | undefined,
+          }}
           strokeWidths={themeStrokeWidths()}
           onApply={applySelectionStyle}
           onSetColor={applySelectionColor}

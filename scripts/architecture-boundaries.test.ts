@@ -14,17 +14,23 @@ const PUBLIC_PACKAGES = Object.freeze({
   '@omnidraw/widget-contract': 'packages/widget-contract',
 })
 const CANVAS_KERNEL_PACKAGES = Object.freeze({
+  '@omnidraw/theme-contract': 'packages/theme-contract',
   '@omnidraw/canvas-contract': 'packages/canvas-contract',
   '@omnidraw/service-theme': 'packages/service-theme',
   '@omnidraw/canvas': 'packages/canvas',
 })
 const CANVAS_KERNEL_ALLOWED_IMPORTS = Object.freeze({
-  '@omnidraw/canvas-contract': new Set(['@omnidraw/cangine']),
-  '@omnidraw/service-theme': new Set<string>(),
+  '@omnidraw/theme-contract': new Set<string>(),
+  '@omnidraw/canvas-contract': new Set([
+    '@omnidraw/cangine',
+    '@omnidraw/theme-contract',
+  ]),
+  '@omnidraw/service-theme': new Set(['@omnidraw/theme-contract']),
   '@omnidraw/canvas': new Set([
     '@omnidraw/cangine',
     '@omnidraw/canvas-contract',
     '@omnidraw/service-theme',
+    '@omnidraw/theme-contract',
   ]),
 })
 const NPM_PUBLISHABLE_PACKAGE_DIRECTORIES = Object.freeze([
@@ -730,7 +736,7 @@ describe('managed composition architecture boundaries', () => {
 
   test('keeps the canvas kernel versioned, public, built, and deliberately exported', async () => {
     const releaseVersions = new Map<string, string>([
-      ['@omnidraw/cangine', '0.5.3'],
+      ['@omnidraw/cangine', '0.6.0'],
       ...Object.keys(CANVAS_KERNEL_PACKAGES).map((name) => [name, '0.5.0'] as const),
     ])
 
@@ -872,10 +878,14 @@ describe('managed composition architecture boundaries', () => {
       join(ROOT, 'scripts/dev-frontend.ts'),
       'utf8',
     )
+    expect(frontendDevSource).toContain('packages/theme-contract')
     expect(frontendDevSource).toContain('packages/canvas-contract')
     expect(frontendDevSource).toContain('packages/service-theme')
     expect(frontendDevSource).toContain('packages/canvas')
 
+    const themeContractManifest = JSON.parse(
+      await readFile(join(ROOT, 'packages/theme-contract/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
     const contractManifest = JSON.parse(
       await readFile(join(ROOT, 'packages/canvas-contract/package.json'), 'utf8'),
     ) as { scripts?: Record<string, string> }
@@ -885,6 +895,7 @@ describe('managed composition architecture boundaries', () => {
     const canvasManifest = JSON.parse(
       await readFile(join(ROOT, 'packages/canvas/package.json'), 'utf8'),
     ) as { scripts?: Record<string, string> }
+    expect(themeContractManifest.scripts?.dev).toContain('--watch')
     expect(contractManifest.scripts?.dev).toContain('--watch')
     expect(themeManifest.scripts?.dev).toContain('--watch')
     expect(canvasManifest.scripts?.['dev:bundle']).toContain('--watch')

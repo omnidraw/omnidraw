@@ -4,6 +4,7 @@ import {
   type IRetainedProjectionOwner,
   type TConnectorRouting,
   type TInputEvent,
+  type TSceneNode,
   type TTransformGestureEvent,
 } from '@omnidraw/cangine';
 import {
@@ -25,6 +26,18 @@ import { CanvasDocumentService } from './services/CanvasDocumentService';
 import {
   fnCanvasBackgroundProjection,
 } from './fn.canvas-background-projection';
+import {
+  fnCanginePathAppearance,
+  fnCangineSelectionAppearance,
+} from './fn.cangine-theme-appearance';
+import {
+  fnProjectSemanticCanvasNode,
+} from './fn.semantic-canvas-style';
+import {
+  fnDecorateSemanticCanvasCreation,
+  fnDecorateSemanticCanvasStyleMutation,
+  fnThemeStyleScopeForCangineCreation,
+} from './fn.semantic-canvas-decoration';
 import {
   createTracedCanvasDocumentTransport,
 } from './debug-trace/createTracedCanvasDocumentTransport';
@@ -484,7 +497,7 @@ export function buildRuntime(
   const installs: TCanvasRuntimeExtensionInstall[] = [];
   const syncCanvasBackgroundProjection = (nextGridVisible: boolean) =>
     canvasBackgroundProjection?.replace(fnCanvasBackgroundProjection({
-      colors: config.themeService.getTheme().colors,
+      viewport: config.themeService.getSnapshot().definition.canvas.viewport,
       gridVisible: nextGridVisible,
     }));
 
@@ -511,7 +524,19 @@ export function buildRuntime(
       );
       syncCanvasBackgroundProjection(gridVisible);
       releaseThemeChange = config.themeService.subscribeThemeChange(
-        () => syncCanvasBackgroundProjection(gridVisible),
+        (theme) => {
+          syncCanvasBackgroundProjection(gridVisible);
+          editorSession?.editor.setSelectionAppearance(
+            fnCangineSelectionAppearance(theme.canvas.selection),
+          );
+          editorSession?.paths?.setAppearance(
+            fnCanginePathAppearance(theme.canvas.path),
+          );
+          documentService?.reproject((node) => fnProjectSemanticCanvasNode({
+            node,
+            colors: theme.canvas.colors,
+          }));
+        },
       );
       if (config.trace !== undefined && config.trace !== null) {
         releaseEarlyEngineTrace = installEarlyEngineTraceSubscriptions(
@@ -532,6 +557,10 @@ export function buildRuntime(
         createCommandId: config.createId,
         wait: config.wait,
         image: config.image,
+        projectNode: (node: TSceneNode) => fnProjectSemanticCanvasNode({
+          node,
+          colors: config.themeService.getSnapshot().definition.canvas.colors,
+        }),
         observe: config.trace === undefined || config.trace === null
           ? undefined
           : (observation) => config.trace?.emit({
@@ -572,11 +601,30 @@ export function buildRuntime(
         host: config.container,
         editor: {
           contentParentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+          selectionAppearance: fnCangineSelectionAppearance(
+            config.themeService.getSnapshot().definition.canvas.selection,
+          ),
           createNodeId: config.createId,
           sceneMutationPort: documentService,
           history: { kind: 'custom', adapter: documentService.history },
           creation: {
             textFontFamilies: [FONT_FAMILIES[0][0], FONT_FAMILIES[0][1]],
+            decorate: (context, node) => {
+              const style = config.themeService.getDefaultStyle(
+                fnThemeStyleScopeForCangineCreation(context.kind),
+              );
+              return fnDecorateSemanticCanvasCreation({
+                kind: context.kind,
+                node,
+                colors: config.themeService.getSnapshot().definition.canvas.colors,
+                ...(style.backgroundColor === undefined
+                  ? {}
+                  : { background: style.backgroundColor }),
+                ...(style.strokeColor === undefined
+                  ? {}
+                  : { ink: style.strokeColor }),
+              });
+            },
             ...(extensions.some(
               (extension) => extension.createWidgetNodes !== undefined,
             )
@@ -606,6 +654,11 @@ export function buildRuntime(
           },
         },
         navigationKeyTarget: config.container,
+        paths: {
+          appearance: fnCanginePathAppearance(
+            config.themeService.getSnapshot().definition.canvas.path,
+          ),
+        },
         clipboardImage: {
           parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
           imageImportPort: documentService,
@@ -687,6 +740,13 @@ export function buildRuntime(
           requestFrame: ownerWindow.requestAnimationFrame.bind(ownerWindow),
           cancelFrame: ownerWindow.cancelAnimationFrame.bind(ownerWindow),
         },
+        decorateMutation: ({ after, change, intent }) => (
+          fnDecorateSemanticCanvasStyleMutation({
+            node: after,
+            propertyId: change.propertyId,
+            intent,
+          })
+        ),
         onCallbackError: (error) => {
           reportTraceCallbackError(config.trace, 'selection-style', error);
           config.notification?.showError(

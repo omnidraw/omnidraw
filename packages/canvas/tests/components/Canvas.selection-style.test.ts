@@ -1,5 +1,8 @@
 import type { TSelectionStyleState } from '@omnidraw/cangine/editor';
-import type { TThemeDefinition } from '@omnidraw/service-theme';
+import {
+  BUILTIN_THEMES,
+  type TThemeDefinition,
+} from '@omnidraw/service-theme';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -110,12 +113,9 @@ describe('Canvas selection style binding', () => {
     const [canvas, setCanvas] = createSignal({ id: 'canvas-a' });
     let paletteLabel = 'Blue';
     let paletteColor = '#3b82f6';
+    let paletteCode = 'blue' as const;
     let themeListener: ((theme: TThemeDefinition) => void) | null = null;
-    const theme = {
-      id: 'test',
-      appearance: 'light',
-      colors: {},
-    } as unknown as TThemeDefinition;
+    const theme = BUILTIN_THEMES[0] as TThemeDefinition;
     const themeService = {
       getTheme: () => theme,
       subscribeThemeChange: (listener: (theme: TThemeDefinition) => void) => {
@@ -125,8 +125,18 @@ describe('Canvas selection style binding', () => {
         };
       },
       getThemeColorPickerPalette: () => ({
-        fillQuick: [{ label: paletteLabel, color: paletteColor }],
-        strokeQuick: [{ label: paletteLabel, color: paletteColor }],
+        fillQuick: [{
+          code: paletteCode,
+          label: paletteLabel,
+          color: paletteColor,
+          value: { space: 'srgb', r: 59 / 255, g: 130 / 255, b: 246 / 255, a: 1 },
+        }],
+        strokeQuick: [{
+          code: paletteCode,
+          label: paletteLabel,
+          color: paletteColor,
+          value: { space: 'srgb', r: 59 / 255, g: 130 / 255, b: 246 / 255, a: 1 },
+        }],
       }),
       getStrokeWidthOptions: () => [],
     } as never;
@@ -159,19 +169,29 @@ describe('Canvas selection style binding', () => {
     });
     host.querySelector<HTMLButtonElement>('[aria-label="BACKGROUND Blue"]')
       ?.click();
-    expect(runtimeMocks.instances[0]?.controller.apply).toHaveBeenCalledWith({
-      propertyId: 'background',
-      value: {
-        space: 'srgb',
-        r: 59 / 255,
-        g: 130 / 255,
-        b: 246 / 255,
-        a: 1,
+    expect(runtimeMocks.instances[0]?.controller.apply).toHaveBeenCalledWith(
+      {
+        propertyId: 'background',
+        value: {
+          space: 'srgb',
+          r: 59 / 255,
+          g: 130 / 255,
+          b: 246 / 255,
+          a: 1,
+        },
       },
-    });
+      {
+        intent: {
+          schemaVersion: 1,
+          role: 'background',
+          code: 'blue',
+        },
+      },
+    );
 
     paletteLabel = 'Red';
     paletteColor = '#ef4444';
+    paletteCode = 'blue';
     themeListener?.(theme);
     await vi.waitFor(() => {
       expect(host.querySelector<HTMLElement>(

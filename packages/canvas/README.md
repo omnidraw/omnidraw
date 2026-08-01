@@ -34,8 +34,22 @@ own.
 Package fonts and CSS assets are emitted below `dist/`; hosts do not need to
 copy files to `/fonts` or expose another workspace's source tree.
 
+Semantic authored paint is stored with a concrete old-client fallback. The
+runtime keeps that authored node image separate from its theme-projected
+Cangine node, so a viewer theme switch changes only the projected scene
+revision and never the durable canvas revision. Literal paint remains stable.
+Export/thumbnail/print callers use `fnCanvasDeterministicRenderInput` to bind a
+document revision to one immutable theme ID and revision.
+
+Cangine 0.6.0 receives only resolved concrete values. Mounted selection and
+path affordances update through its live appearance setters. Standard creation
+uses its guarded all-tool decorator, while compact-picker edits pass semantic
+intent to its extension-only selection mutation decorator. Cangine still plans
+the compatible targets and sends one finalized batch unchanged to
+`CanvasDocumentService`.
+
 The `0.5.0` release line uses `@omnidraw/canvas-contract@0.5.0`,
-`@omnidraw/service-theme@0.5.0`, and `@omnidraw/cangine@0.5.3`. The host must
+`@omnidraw/service-theme@0.5.0`, and `@omnidraw/cangine@0.6.0`. The host must
 provide one `solid-js` runtime compatible with `^1.9.14`.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) in the source repository for runtime

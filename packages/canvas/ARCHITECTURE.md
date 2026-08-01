@@ -41,7 +41,7 @@ The package has one local-document boundary:
 pointer / keyboard / product intent
   -> Cangine plans one immutable command batch
   -> CanvasDocumentService accepts the local document change synchronously
-     -> optimistic runtime-node map + custom history + pending ledger
+     -> authored fallback map + optimistic runtime-node map + custom history + pending ledger
      -> exactly one Cangine scene.apply projection
      -> immediate successor-revision receipt
   -> asynchronous CanvasService command
@@ -59,11 +59,12 @@ not the source of document truth.
 `CanvasDocumentService` keeps these states distinct:
 
 1. latest server-accepted item snapshots and canvas revision;
-2. the optimistic runtime-node map projected to Cangine;
-3. pending local transactions with command IDs, affected IDs, plans, and media
+2. the optimistic authored-node map used for durable diffs and fallback paint;
+3. the viewer-theme-projected runtime-node map projected to Cangine;
+4. pending local transactions with command IDs, affected IDs, plans, and media
    gates;
-4. bounded custom undo/redo history; and
-5. adopted image Blobs and durable-resource metadata.
+5. bounded custom undo/redo history; and
+6. adopted image Blobs and durable-resource metadata.
 
 The pure local reducer applies public serialized command semantics before any
 mutable publication and returns only affected before/after node images. The
@@ -87,12 +88,22 @@ selection-style controller, the document service, optional extensions, and
 host resize ownership. Style mutations still commit through the controlled
 editor port into `CanvasDocumentService`; the controller is not a second scene
 writer. Shutdown destroys it before the editor session.
+Theme changes update the mounted editor selection and path appearance through
+Cangine 0.6.0 setters without rebuilding that session. Cangine's creation
+decorator adds resolved concrete fallback plus semantic intent for every
+standard tool. Its extension-only style-mutation decorator adds or removes the
+same intent after Cangine has resolved compatible leaves, so the finalized
+concrete and extension changes stay in one exact batch.
 `CanvasRuntimeLifecycle` ensures two runtime instances never own the same host
 concurrently.
 
 Theme variables are applied to the individual `.vc-canvas-host` element from
 the injected `IThemeService`. Package CSS never resets the surrounding shell,
 and both CSS and Cangine resolve fonts from assets emitted with this package.
+Semantic paint is resolved from an immutable theme snapshot into concrete
+Cangine values. Theme reprojection updates only runtime nodes; stored concrete
+fallbacks, accepted CanvasService revision, pending plans, and history remain
+unchanged. Literal paint bypasses this projection.
 The host owns and disposes an injected diagnostics owner; canvas only installs
 temporary subscriptions while its runtime is active.
 

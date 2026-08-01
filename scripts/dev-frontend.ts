@@ -71,6 +71,11 @@ process.on("SIGTERM", () => {
 
 try {
   processes.push(spawnDevProcess({
+    name: "theme-contract",
+    cwd: path.join(rootDir, "packages/theme-contract"),
+    command: [bunExec, "run", "dev"],
+  }))
+  processes.push(spawnDevProcess({
     name: "canvas-contract",
     cwd: path.join(rootDir, "packages/canvas-contract"),
     command: [bunExec, "run", "dev"],

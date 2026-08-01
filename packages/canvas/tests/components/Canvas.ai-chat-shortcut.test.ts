@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  BUILTIN_THEMES,
   THEME_ID_DARK,
   ThemeService,
 } from '@omnidraw/service-theme';
@@ -48,11 +49,7 @@ let dispose: (() => void) | null = null;
 const traceOwners: Array<ReturnType<typeof createReproductionTrace>> = [];
 
 const themeService = {
-  getTheme: () => ({
-    id: 'test',
-    appearance: 'light',
-    colors: {},
-  }),
+  getTheme: () => BUILTIN_THEMES[0],
   getThemeColorPickerPalette: () => ({ fillQuick: [], strokeQuick: [] }),
   getStrokeWidthOptions: () => [],
   subscribeThemeChange: () => () => {},
@@ -495,7 +492,7 @@ describe('Canvas host contributions', () => {
     expect(canvasRoot.dataset.themeId).toBe(THEME_ID_DARK);
     expect(canvasRoot.dataset.themeAppearance).toBe('dark');
     expect(canvasRoot.style.getPropertyValue('--background')).toBe(
-      instanceTheme.getTheme().colors.background,
+      instanceTheme.getTheme().ui.background,
     );
     expect(shell.dataset.themeId).toBeUndefined();
     expect(shell.style.getPropertyValue('--background')).toBe('');

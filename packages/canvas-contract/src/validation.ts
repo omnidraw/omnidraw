@@ -6,8 +6,13 @@ import type {
 } from "@omnidraw/cangine";
 import { validateSceneSnapshot } from "@omnidraw/cangine/testing";
 import {
+  fnIsCanvasColorCode,
+  fnIsCanvasInkColorCode,
+} from "@omnidraw/theme-contract";
+import {
   CANVAS_AUTHORING_EXTENSION_KEY,
   CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
@@ -17,6 +22,7 @@ import type {
   TCanvasContractIssue,
   TCanvasContractValidation,
   TCanvasImageExtensionV1,
+  TCanvasSemanticStyleExtensionV1,
   TCanvasWidgetExtensionV1,
 } from "./types.js";
 
@@ -54,6 +60,26 @@ const IMAGE_KEYS = new Set([
   "url",
   "mimeType",
 ]);
+const SEMANTIC_STYLE_KEYS = new Set([
+  "schemaVersion",
+  "background",
+  "ink",
+]);
+const BACKGROUND_STYLE_NODE_KINDS = new Set<TSceneNode["kind"]>([
+  "rect",
+  "ellipse",
+  "polygon",
+  "path",
+  "widget-frame",
+]);
+const INK_STYLE_NODE_KINDS = new Set<TSceneNode["kind"]>([
+  "rect",
+  "ellipse",
+  "polygon",
+  "path",
+  "connector",
+  "text",
+]);
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -79,6 +105,43 @@ function hasOnlyKeys(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasSolidPaint(value: unknown): boolean {
+  return (
+    isRecord(value)
+    && value.type === "solid"
+    && isRecord(value.color)
+  );
+}
+
+function hasSemanticBackgroundFallback(node: TSceneNode): boolean {
+  if (node.kind === "widget-frame") {
+    return node.titleBarColor !== undefined;
+  }
+  return (
+    (node.kind === "rect"
+      || node.kind === "ellipse"
+      || node.kind === "polygon"
+      || node.kind === "path")
+    && hasSolidPaint(node.fill)
+  );
+}
+
+function hasSemanticInkFallback(node: TSceneNode): boolean {
+  if (node.kind === "text") return hasSolidPaint(node.style.fill);
+  if (node.kind === "path" && node.stroke === undefined) {
+    return hasSolidPaint(node.fill);
+  }
+  return (
+    (node.kind === "rect"
+      || node.kind === "ellipse"
+      || node.kind === "polygon"
+      || node.kind === "path"
+      || node.kind === "connector")
+    && node.stroke !== undefined
+    && hasSolidPaint(node.stroke.paint)
+  );
 }
 
 function issue(
@@ -327,6 +390,97 @@ function validateImageExtension(
   return issues;
 }
 
+function validateSemanticStyleExtension(
+  node: TSceneNode,
+  value: TJsonValue,
+  path: string,
+): TCanvasContractIssue[] {
+  if (!isRecord(value)) {
+    return [issue(
+      "INVALID_SEMANTIC_STYLE_EXTENSION",
+      path,
+      "The Omnidraw semantic style extension must be an object.",
+      node.id,
+    )];
+  }
+  const issues: TCanvasContractIssue[] = [];
+  if (!hasOnlyKeys(value, SEMANTIC_STYLE_KEYS)) {
+    issues.push(issue(
+      "SEMANTIC_STYLE_EXTENSION_FIELDS",
+      path,
+      "The semantic style extension contains unsupported fields.",
+      node.id,
+    ));
+  }
+  if (value.schemaVersion !== 1) {
+    issues.push(issue(
+      "SEMANTIC_STYLE_EXTENSION_VERSION",
+      `${path}/schemaVersion`,
+      "The semantic style extension schemaVersion must be 1.",
+      node.id,
+    ));
+  }
+  if (value.background === undefined && value.ink === undefined) {
+    issues.push(issue(
+      "SEMANTIC_STYLE_EXTENSION_EMPTY",
+      path,
+      "The semantic style extension must contain background or ink intent.",
+      node.id,
+    ));
+  }
+  if (value.background !== undefined) {
+    if (!fnIsCanvasColorCode(value.background)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_BACKGROUND_CODE",
+        `${path}/background`,
+        "background must be a supported canvas fill color code.",
+        node.id,
+      ));
+    }
+    if (!BACKGROUND_STYLE_NODE_KINDS.has(node.kind)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_BACKGROUND_NODE_KIND",
+        `${path}/background`,
+        `Node kind '${node.kind}' does not support semantic background intent.`,
+        node.id,
+      ));
+    } else if (!hasSemanticBackgroundFallback(node)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_BACKGROUND_FALLBACK",
+        "/fill",
+        "Semantic background intent requires a concrete Cangine fill or widget title-bar fallback.",
+        node.id,
+      ));
+    }
+  }
+  if (value.ink !== undefined) {
+    if (!fnIsCanvasInkColorCode(value.ink)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_INK_CODE",
+        `${path}/ink`,
+        "ink must be a supported non-transparent canvas color code.",
+        node.id,
+      ));
+    }
+    if (!INK_STYLE_NODE_KINDS.has(node.kind)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_INK_NODE_KIND",
+        `${path}/ink`,
+        `Node kind '${node.kind}' does not support semantic ink intent.`,
+        node.id,
+      ));
+    } else if (!hasSemanticInkFallback(node)) {
+      issues.push(issue(
+        "SEMANTIC_STYLE_INK_FALLBACK",
+        node.kind === "text" ? "/style/fill" : "/stroke/paint",
+        "Semantic ink intent requires a concrete solid Cangine paint fallback.",
+        node.id,
+      ));
+    }
+  }
+  return issues;
+}
+
 export function fnValidateCanvasItemExtensions(
   node: TSceneNode,
 ): TCanvasContractValidation {
@@ -360,6 +514,14 @@ export function fnValidateCanvasItemExtensions(
       node,
       image,
       `/extensions/${CANVAS_IMAGE_EXTENSION_KEY}`,
+    ));
+  }
+  const semanticStyle = node.extensions?.[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY];
+  if (semanticStyle !== undefined) {
+    issues.push(...validateSemanticStyleExtension(
+      node,
+      semanticStyle,
+      `/extensions/${CANVAS_SEMANTIC_STYLE_EXTENSION_KEY}`,
     ));
   }
   return { valid: issues.length === 0, issues };
@@ -522,4 +684,18 @@ export function fnReadCanvasImageExtension(
   );
   if (validation.length > 0) return null;
   return value as unknown as TCanvasImageExtensionV1;
+}
+
+export function fnReadCanvasSemanticStyleExtension(
+  node: TSceneNode,
+): TCanvasSemanticStyleExtensionV1 | null {
+  const value = node.extensions?.[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY];
+  if (value === undefined) return null;
+  const validation = validateSemanticStyleExtension(
+    node,
+    value,
+    `/extensions/${CANVAS_SEMANTIC_STYLE_EXTENSION_KEY}`,
+  );
+  if (validation.length > 0) return null;
+  return value as unknown as TCanvasSemanticStyleExtensionV1;
 }

@@ -9,7 +9,13 @@ import {
   createSelectionStyleController,
   type ICanvasEditor,
 } from '@omnidraw/cangine/editor';
+import {
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
+} from '@omnidraw/canvas-contract';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  fnDecorateSemanticCanvasStyleMutation,
+} from '../src/fn.semantic-canvas-decoration';
 
 const BLACK: TColor = { space: 'srgb', r: 0, g: 0, b: 0, a: 1 };
 const BLUE: TColor = { space: 'srgb', r: 0, g: 0.4, b: 1, a: 1 };
@@ -414,6 +420,61 @@ describe('Cangine selection style consumer boundary', () => {
       version: 2,
       profile: { size: 8 },
     });
+    controller.destroy();
+  });
+
+  test('commits concrete foreground and semantic intent in one Cangine batch', () => {
+    const harness = createHarness([
+      rect('rect'),
+      connector('line'),
+      textNode('text'),
+      freehand('pen'),
+    ]);
+    const controller = createSelectionStyleController({
+      editor: harness.editor,
+      decorateMutation: ({ after, change, intent }) => (
+        fnDecorateSemanticCanvasStyleMutation({
+          node: after,
+          propertyId: change.propertyId,
+          intent,
+        })
+      ),
+    });
+    controller.attach();
+    harness.select('rect', 'line', 'text', 'pen');
+
+    expect(controller.apply(
+      { propertyId: 'foreground', value: BLUE },
+      { intent: { schemaVersion: 1, role: 'ink', code: 'blue' } },
+    )).toBe(true);
+    const mutation = harness.mutations.at(-1);
+    expect(mutation?.commands).toHaveLength(4);
+    expect(mutation?.commands.every((command) => (
+      command.type === 'upsert'
+      && command.node.extensions?.[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]
+        !== undefined
+    ))).toBe(true);
+    expect(harness.nodes.get('rect')).toMatchObject({
+      stroke: { paint: { type: 'solid', color: BLUE } },
+      extensions: {
+        [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+          schemaVersion: 1, ink: 'blue',
+        },
+      },
+    });
+    expect(harness.nodes.get('line')).toMatchObject({
+      stroke: { paint: { type: 'solid', color: BLUE } },
+    });
+    expect(harness.nodes.get('text')).toMatchObject({
+      style: { fill: { type: 'solid', color: BLUE } },
+    });
+    expect(harness.nodes.get('pen')).toMatchObject({
+      fill: { type: 'solid', color: BLUE },
+    });
+
+    expect(controller.apply({ propertyId: 'foreground', value: RED })).toBe(true);
+    expect(harness.nodes.get('rect')?.extensions)
+      .not.toHaveProperty(CANVAS_SEMANTIC_STYLE_EXTENSION_KEY);
     controller.destroy();
   });
 

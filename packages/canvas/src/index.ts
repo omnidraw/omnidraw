@@ -3,3 +3,25 @@ export * from "./debug-trace";
 export * from "./extension";
 export * from "./services";
 export * from "./types";
+export {
+  fnCanginePathAppearance,
+  fnCangineSelectionAppearance,
+} from "./fn.cangine-theme-appearance";
+export {
+  fnAuthoredSemanticCanvasNode,
+  fnCanvasDeterministicRenderInput,
+  fnCanvasSemanticStyleIntent,
+  fnProjectSemanticCanvasNode,
+  fnProjectSemanticCanvasSnapshot,
+} from "./fn.semantic-canvas-style";
+export type {
+  TCanvasDeterministicRenderInput,
+} from "./fn.semantic-canvas-style";
+export {
+  fnDecorateSemanticCanvasCreation,
+  fnDecorateSemanticCanvasStyleMutation,
+  fnThemeStyleScopeForCangineCreation,
+} from "./fn.semantic-canvas-decoration";
+export type {
+  TCanvasSemanticColorMutationIntent,
+} from "./fn.semantic-canvas-decoration";

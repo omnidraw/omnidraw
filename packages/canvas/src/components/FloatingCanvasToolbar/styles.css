@@ -52,14 +52,8 @@
 .vc-toolbar-button:hover,
 .vc-canvas-toolbar-persistent-action:hover,
 .vc-canvas-toolbar-collapse:hover {
-  background: var(--stone-200);
-  color: var(--accent-foreground);
-}
-
-.vc-canvas-host[data-theme-appearance='dark'] .vc-toolbar-button:hover,
-.vc-canvas-host[data-theme-appearance='dark'] .vc-canvas-toolbar-persistent-action:hover,
-.vc-canvas-host[data-theme-appearance='dark'] .vc-canvas-toolbar-collapse:hover {
-  background: var(--stone-800);
+  background: var(--hover);
+  color: var(--hover-foreground);
 }
 
 .vc-toolbar-button:disabled {
@@ -111,8 +105,8 @@
 }
 
 .vc-toolbar-button--attention {
-  background: color-mix(in srgb, var(--amber-500) 20%, transparent);
-  color: var(--amber-700);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  color: var(--warning);
 }
 
 .vc-canvas-toolbar-hints {
@@ -144,12 +138,12 @@
 }
 
 .vc-trace-button--recording {
-  color: var(--red-600, #dc2626);
+  color: var(--destructive);
 }
 
 .vc-trace-button--marked {
-  background: color-mix(in srgb, var(--amber-500) 22%, transparent);
-  color: var(--amber-700);
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+  color: var(--warning);
 }
 
 .vc-trace-control {
@@ -206,11 +200,11 @@
 .vc-trace-status--recording,
 .vc-trace-status--marked {
   border-color: currentColor;
-  color: var(--red-600, #dc2626);
+  color: var(--destructive);
 }
 
 .vc-trace-status--marked {
-  color: var(--amber-700);
+  color: var(--warning);
 }
 
 .vc-trace-actions,
@@ -240,12 +234,7 @@
 
 .vc-trace-panel button:hover:not(:disabled),
 .vc-trace-panel button.active {
-  background: var(--stone-200);
-}
-
-.vc-canvas-host[data-theme-appearance='dark'] .vc-trace-panel button:hover:not(:disabled),
-.vc-canvas-host[data-theme-appearance='dark'] .vc-trace-panel button.active {
-  background: var(--stone-800);
+  background: var(--hover);
 }
 
 .vc-trace-panel button:disabled {
@@ -294,7 +283,7 @@
 
 .vc-trace-tail-note {
   flex: 1;
-  color: var(--amber-700);
+  color: var(--warning);
   line-height: 1.35;
   text-align: right;
 }

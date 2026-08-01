@@ -1,122 +1,88 @@
+/** @file Pure role-aware canvas color resolution and picker presentation. */
+
 import {
-  DEFAULT_THEME_ID,
-  type ThemeId,
-  type TThemeDefinition,
-} from "./builtins.js";
-import { STYLE_DARK } from "./style.dark.js";
-import { STYLE_GRAPHITE } from "./style.graphite.js";
-import { STYLE_LIGHT } from "./style.light.js";
-import { STYLE_SEPIA } from "./style.sepia.js";
-import {
-  THEME_COLOR_FAMILIES,
-  THEME_COLOR_STEPS,
-  type TCanvasThemeStyle,
-  type TThemeColorFamily,
-  type TThemeColorPickerPalette,
-  type TThemeColorPaletteGroup,
-  type TThemeColorSwatch,
-  type TThemeColorToken,
-  type TThemeColorValueMap,
+  CANVAS_COLOR_CODES,
+  CANVAS_INK_COLOR_CODES,
+  fnIsCanvasColorCode,
+} from "@omnidraw/theme-contract";
+import type {
+  TCanvasColorCode,
+  TCanvasColorRole,
+  TCanvasInkColorCode,
+  TThemeDefinition,
+  TThemeSrgbColor,
+} from "@omnidraw/theme-contract";
+import type {
+  TCanvasThemeStyle,
+  TThemeColorPickerPalette,
+  TThemeColorValueMap,
 } from "./types.js";
 
-export const BUILTIN_THEME_STYLES = [
-  STYLE_LIGHT,
-  STYLE_DARK,
-  STYLE_SEPIA,
-  STYLE_GRAPHITE,
-] as const satisfies readonly TCanvasThemeStyle[];
-
-const THEME_STYLE_MAP = new Map<ThemeId, TCanvasThemeStyle>(
-  BUILTIN_THEME_STYLES.map((style) => [style.id, style]),
-);
-
-function getFamilyLabel(family: TThemeColorFamily) {
-  return family.charAt(0).toUpperCase() + family.slice(1);
+function label(code: TCanvasColorCode): string {
+  return code.charAt(0).toUpperCase() + code.slice(1);
 }
 
-function getThemeId(value: ThemeId | TThemeDefinition) {
-  return typeof value === "string" ? value : value.id;
+export function themeSrgbColorToCss(color: TThemeSrgbColor): string {
+  const channels = [color.r, color.g, color.b].map((channel) => Math.round(channel * 255));
+  if (color.a === 0) return "transparent";
+  if (color.a < 1) return `rgba(${channels.join(", ")}, ${color.a})`;
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export function isThemeColorToken(value: string | undefined | null): value is TThemeColorToken {
-  if (!value || !value.startsWith("@")) {
-    return false;
+export function isThemeColorToken(value: string | undefined | null): value is TCanvasColorCode {
+  return fnIsCanvasColorCode(value);
+}
+
+export function getThemeStyle(theme: TThemeDefinition): TCanvasThemeStyle {
+  return { id: theme.id, ...theme.canvas };
+}
+
+export function resolveThemeCanvasColor(
+  theme: TThemeDefinition,
+  code: TCanvasColorCode,
+  role: TCanvasColorRole,
+): TThemeSrgbColor {
+  const resolution = theme.canvas.colors[code];
+  if (role === "fill") return resolution.fill;
+  if (code === "transparent") {
+    throw new RangeError("Transparent is valid only for canvas fill.");
   }
-
-  if (value === "@transparent") {
-    return true;
-  }
-
-  const [family, step] = value.slice(1).split("/");
-  return THEME_COLOR_FAMILIES.includes(family as TThemeColorFamily)
-    && THEME_COLOR_STEPS.includes(step as (typeof THEME_COLOR_STEPS)[number]);
-}
-
-export function getThemeStyle(value: ThemeId | TThemeDefinition) {
-  const themeId = getThemeId(value);
-  return THEME_STYLE_MAP.get(themeId)
-    ?? THEME_STYLE_MAP.get(DEFAULT_THEME_ID)
-    ?? BUILTIN_THEME_STYLES[0];
+  return theme.canvas.colors[code].ink;
 }
 
 export function resolveThemeColor(
-  theme: ThemeId | TThemeDefinition,
+  theme: TThemeDefinition,
   value: string | undefined,
   fallback?: string,
-) {
-  if (!value) {
-    return fallback;
-  }
-
-  if (!isThemeColorToken(value)) {
-    return value;
-  }
-
-  if (value === "@transparent") {
-    return "transparent";
-  }
-
-  const [family, step] = value.slice(1).split("/") as [TThemeColorFamily, (typeof THEME_COLOR_STEPS)[number]];
-  const style = getThemeStyle(theme);
-  return style.palette[family]?.[step] ?? fallback;
+  role: TCanvasColorRole = "fill",
+): string | undefined {
+  if (value === undefined) return fallback;
+  if (!fnIsCanvasColorCode(value)) return value;
+  return themeSrgbColorToCss(resolveThemeCanvasColor(theme, value, role));
 }
 
-export function getThemeColorValueMap(theme: ThemeId | TThemeDefinition): TThemeColorValueMap {
-  const style = getThemeStyle(theme);
-  const entries: Array<[TThemeColorToken, string]> = [["@transparent", "transparent"]];
-
-  THEME_COLOR_FAMILIES.forEach((family) => {
-    THEME_COLOR_STEPS.forEach((step) => {
-      entries.push([`@${family}/${step}`, style.palette[family][step]]);
-    });
-  });
-
-  return Object.fromEntries(entries) as TThemeColorValueMap;
-}
-
-export function getThemeColorPickerPalette(theme: ThemeId | TThemeDefinition): TThemeColorPickerPalette {
-  const style = getThemeStyle(theme);
-  const colorValueMap = getThemeColorValueMap(style.id);
-
-  const toSwatch = (token: TThemeColorToken): TThemeColorSwatch => {
-    return {
-      token,
-      label: token === "@transparent" ? "Transparent" : token.slice(1),
-      color: colorValueMap[token] ?? "transparent",
-    };
-  };
-
-  const groups: TThemeColorPaletteGroup[] = THEME_COLOR_FAMILIES.map((family) => {
-    return {
-      id: family,
-      label: getFamilyLabel(family),
-      swatches: THEME_COLOR_STEPS.map((step) => toSwatch(`@${family}/${step}`)),
-    };
-  });
-
+export function getThemeColorValueMap(theme: TThemeDefinition): TThemeColorValueMap {
   return {
-    fillQuick: style.fillQuick.map(toSwatch),
-    strokeQuick: style.strokeQuick.map(toSwatch),
-    groups,
+    fill: Object.fromEntries(CANVAS_COLOR_CODES.map((code) => [
+      code,
+      themeSrgbColorToCss(theme.canvas.colors[code].fill),
+    ])) as TThemeColorValueMap["fill"],
+    ink: Object.fromEntries(CANVAS_INK_COLOR_CODES.map((code) => [
+      code,
+      themeSrgbColorToCss(theme.canvas.colors[code].ink),
+    ])) as TThemeColorValueMap["ink"],
+  };
+}
+
+export function getThemeColorPickerPalette(theme: TThemeDefinition): TThemeColorPickerPalette {
+  const swatch = (code: TCanvasColorCode, role: TCanvasColorRole) => {
+    const value = resolveThemeCanvasColor(theme, code, role);
+    return { code, label: label(code), color: themeSrgbColorToCss(value), value };
+  };
+  return {
+    fillQuick: CANVAS_COLOR_CODES.map((code) => swatch(code, "fill")),
+    strokeQuick: CANVAS_INK_COLOR_CODES.map((code) => (
+      swatch(code, "ink") as ReturnType<typeof swatch> & { code: TCanvasInkColorCode }
+    )),
   };
 }

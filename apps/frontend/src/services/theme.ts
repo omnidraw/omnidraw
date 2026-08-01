@@ -2,9 +2,8 @@ import { ThemeService, type ThemeId, txApplyThemeToElement } from "@omnidraw/ser
 import { setStore, store } from "@/store";
 import { fxGetRememberedThemeId, fxSyncThemeMemory, type TThemeAppearance, type TThemeMemory } from "./theme.memory";
 
-export const themeService = new ThemeService({
-  initialThemeId: store.theme,
-});
+export const themeService = new ThemeService();
+if (themeService.hasTheme(store.theme)) themeService.setTheme(store.theme);
 
 function fxGetThemeMemory(): TThemeMemory {
   return {
