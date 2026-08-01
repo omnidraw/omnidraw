@@ -285,6 +285,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
 - [x]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
 - [ ]: [A103](a/A103.md) - AI chat: await and test the exact live Preview revision
+- [ ]: [A104](a/A104.md) - AI chat: configurable protected-operation approval policy
+- [ ]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
