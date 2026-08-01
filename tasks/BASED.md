@@ -280,7 +280,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A96](a/A96.md) - AI widgets: live Preview, exact promotion, and diagnostic repair loop
 - [x]: [A97](a/A97.md) - AI Preview: host-owned log terminal below widget content
 - [x]: [A98](a/A98.md) - canvas: add line shape controls to selection styles
-- [ ]: [A99](a/A99.md) - qualify recovered canvas and updated Capsule Preview diagnostics
+- [x]: [A99](a/A99.md) - qualify recovered canvas and updated Capsule Preview diagnostics
 - [x]: [A100](a/A100.md) - canvas: developer reproduction trace recorder
 - [x]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
 - [x]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
@@ -417,7 +417,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S125](s/S125.md) - canvas: remove duplicate host resize observer
 - [x]: [S126](s/S126.md) - canvas: delete the CSS grid and use Cangine background rendering
 - [x]: [S127](s/S127.md) - canvas: delete the local command reducer after Cangine 0.4.0
-- [ ]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
+- [x]: [S128](s/S128.md) - canvas: migrate the surface background and grid to Cangine 0.5 projections
 - [/]: [S129](s/S129.md) - rename: vibecanvas → omnidraw for 0.5.0 (hard reset)
 - [x]: [S130](s/S130.md) - remove marketing/docs website and GitHub Pages publishing
 - [x]: [S131](s/S131.md) - canvas: use Cangine 0.5.3 and own the Capsule portal bridge
@@ -466,6 +466,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [-]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
 - [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
 - [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
+- [ ]: [D5](d/D5.md) - packages: publish the managed-service dependency set
+
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.

@@ -26,6 +26,37 @@ packages/tenant-core -> public tenant context, placement, and scoped-key contrac
 packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
 packages/widget-contract -> public widget manifest, artifact, and revision contracts
 
+## Published Package Policy
+
+The `version` field in a package's own `package.json` is the release marker.
+Only packages that are intended to be released may have a package-level
+`version`. Packages without a version are workspace-private and must never be
+selected by package publishing scripts.
+
+Currently published on public npm at `0.5.0` as of 2026-08-01:
+
+- `@omnidraw/tenant-core`
+- `@omnidraw/runtime`
+- `@omnidraw/widget-contract`
+- `@omnidraw/resource-runtime`
+- `@omnidraw/function-runtime`
+- `@omnidraw/sdk`
+
+Versioned release packages awaiting their first public npm publication:
+
+- `@omnidraw/theme-contract`
+- `@omnidraw/canvas-contract`
+- `@omnidraw/service-theme`
+- `@omnidraw/canvas`
+
+`@omnidraw/service-canvas` and `@omnidraw/capsule-omnidraw` remain unversioned
+until their publishing work adds them to the release set.
+
+Any change under `src/` in a versioned package requires a version bump in that
+package's `package.json`. Apply semantic versioning, update exact internal
+dependency pins in dependent release packages, and regenerate the lockfile.
+Never reuse or overwrite a version that has already been published.
+
 We use @tasks/BASED.md to manage our work.
 When you are tasks to generate new task plans. Think if a mockup img is useful.
 When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
