@@ -1,4 +1,5 @@
 import type {
+  TCanvasDocumentTransport,
   TCanvasEvent,
   TCanvasItemsChangedEvent,
 } from '@omnidraw/canvas-contract';
@@ -9,9 +10,6 @@ import {
 import type {
   TReproductionTraceEventInput,
 } from '../../src/debug-trace/typed';
-import type {
-  TCanvasDocumentTransport,
-} from '../../src/services/CanvasDocumentService';
 
 function event(commandId = 'command-a'): TCanvasItemsChangedEvent {
   return {
@@ -126,5 +124,49 @@ describe('traced canvas document transport', () => {
         error: { name: 'Error', message: 'server rejected' },
       },
     });
+  });
+
+  test('forwards return while the underlying next call is pending', async () => {
+    const emitted: TReproductionTraceEventInput[] = [];
+    let closeCount = 0;
+    let settleNext!: (result: IteratorResult<TCanvasEvent>) => void;
+    const subscription: AsyncIterableIterator<TCanvasEvent> = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next() {
+        return new Promise((resolve) => {
+          settleNext = resolve;
+        });
+      },
+      async return() {
+        closeCount += 1;
+        const result = { done: true, value: undefined } as const;
+        settleNext(result);
+        return result;
+      },
+    };
+    const traced = createTracedCanvasDocumentTransport({
+      getSnapshot: vi.fn(),
+      execute: vi.fn(),
+      subscribe: () => subscription,
+    } as unknown as TCanvasDocumentTransport, {
+      emit: (entry) => emitted.push(entry),
+      elapsedMs: () => 1,
+      isRecording: () => true,
+    });
+    const iterator = traced.subscribe({
+      canvasId: 'canvas-a',
+      afterRevision: 1,
+    })[Symbol.asyncIterator]();
+    const pending = iterator.next();
+    await iterator.return?.();
+
+    expect(closeCount).toBe(1);
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(emitted.map((entry) => entry.type)).toEqual([
+      'events-subscribed',
+      'events-ended',
+    ]);
   });
 });

@@ -1,4 +1,10 @@
-export { ThemeService, type TThemeServiceArgs, type TThemeServiceHooks } from "./ThemeService";
+export { ThemeService, type TThemeServiceArgs } from "./ThemeService.js";
+export type {
+  IThemeService,
+  TThemeChangeListener,
+  TThemeRegistryChangeListener,
+  TThemeRememberedStyleChangeListener,
+} from "./interface.js";
 export {
   BUILTIN_THEMES,
   DEFAULT_THEME_ID,
@@ -10,8 +16,8 @@ export {
   type ThemeId,
   type TThemeColors,
   type TThemeDefinition,
-} from "./builtins";
-export { fxGetThemeCssVariables, txApplyThemeToElement } from "./dom";
+} from "./builtins.js";
+export { fxGetThemeCssVariables, txApplyThemeToElement } from "./dom.js";
 export {
   BUILTIN_THEME_STYLES,
   getThemeColorPickerPalette,
@@ -19,7 +25,7 @@ export {
   getThemeStyle,
   isThemeColorToken,
   resolveThemeColor,
-} from "./styles";
+} from "./styles.js";
 export {
   THEME_CORNER_RADIUS_OPTIONS,
   THEME_CORNER_RADIUS_VALUE_MAP,
@@ -31,7 +37,7 @@ export {
   THEME_STYLE_DEFAULTS_BY_SCOPE,
   THEME_TEXT_ALIGN_OPTIONS,
   THEME_VERTICAL_ALIGN_OPTIONS,
-} from "./style.shared";
+} from "./style.shared.js";
 export {
   THEME_COLOR_FAMILIES,
   THEME_COLOR_STEPS,
@@ -78,4 +84,4 @@ export {
   type TThemeTokenOption,
   type TThemeVerticalAlign,
   type TThemeVerticalAlignOption,
-} from "./types";
+} from "./types.js";

@@ -135,7 +135,10 @@ Do not guess. Use these rules.
 All files are indexed in `@FILES.md`. Read if you need overview.
 
 ## Refs (Only read when needed)
+Architecture overview: docs/internal/llm.architecture.md
+
 UI overview: docs/internal/screens/SCREENS.md
 
 docs/internal/llm.migrate-turso.md
 docs/internal/llm.widget-system.md
+docs/internal/llm.architecture.md

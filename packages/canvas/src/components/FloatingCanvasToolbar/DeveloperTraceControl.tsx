@@ -41,6 +41,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
+  let controlRef!: HTMLDivElement;
+  let timerWindow: Window | null = null;
   const [open, setOpen] = createSignal(false);
   const [advanced, setAdvanced] = createSignal(false);
   const [state, setState] = createSignal<TReproductionTraceState>(
@@ -54,13 +56,15 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
 
   onMount(() => {
     releaseTrace = props.trace.subscribe(setState);
-    elapsedTimer = window.setInterval(() => {
+    timerWindow = controlRef.ownerDocument.defaultView;
+    elapsedTimer = timerWindow?.setInterval(() => {
       if (props.trace.isRecording()) setState(props.trace.state());
-    }, 250);
+    }, 250) ?? null;
   });
   onCleanup(() => {
     releaseTrace?.();
-    if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
+    if (elapsedTimer !== null) timerWindow?.clearInterval(elapsedTimer);
+    timerWindow = null;
   });
 
   const toggleChannel = (channel: TReproductionTraceChannel) => {
@@ -88,7 +92,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
   return (
     <>
       <div class="vc-canvas-toolbar-divider" />
-      <div class="vc-trace-control">
+      <div ref={controlRef} class="vc-trace-control">
         <button
           type="button"
           class="vc-toolbar-button vc-trace-button"

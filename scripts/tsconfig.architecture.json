@@ -10,6 +10,7 @@
     "test-ci-docker.ts",
     "test-final-acceptance.ts",
     "test-m10-load.ts",
+    "test-packed-canvas-kernel.ts",
     "test-packed-public-composition.ts",
     "../global.d.ts"
   ]

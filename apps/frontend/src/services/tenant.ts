@@ -1,7 +1,7 @@
 import type { Accessor } from 'solid-js';
 import { createSignal, mapArray } from 'solid-js';
-import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
-import { LOCAL_BROWSER_TENANT_SCOPE } from '@omnidraw/canvas/CONSTANTS';
+import { LOCAL_BROWSER_TENANT_SCOPE } from './CONSTANTS';
+import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 
 type TBrowserTenantActivation = Readonly<{
   generation: number;

@@ -38,7 +38,7 @@
 }
 
 .vc-toolbar-button,
-.vc-canvas-toolbar-sidebar-toggle {
+.vc-canvas-toolbar-persistent-action {
   position: relative;
   display: flex;
   width: 2.125rem;
@@ -50,15 +50,15 @@
 }
 
 .vc-toolbar-button:hover,
-.vc-canvas-toolbar-sidebar-toggle:hover,
+.vc-canvas-toolbar-persistent-action:hover,
 .vc-canvas-toolbar-collapse:hover {
   background: var(--stone-200);
   color: var(--accent-foreground);
 }
 
-.dark .vc-toolbar-button:hover,
-.dark .vc-canvas-toolbar-sidebar-toggle:hover,
-.dark .vc-canvas-toolbar-collapse:hover {
+.vc-canvas-host[data-theme-appearance='dark'] .vc-toolbar-button:hover,
+.vc-canvas-host[data-theme-appearance='dark'] .vc-canvas-toolbar-persistent-action:hover,
+.vc-canvas-host[data-theme-appearance='dark'] .vc-canvas-toolbar-collapse:hover {
   background: var(--stone-800);
 }
 
@@ -106,21 +106,11 @@
   background: var(--border);
 }
 
-.vc-canvas-toolbar-sidebar-toggle {
+.vc-canvas-toolbar-persistent-action {
   border-top: 1px solid var(--border);
 }
 
-.vc-canvas-toolbar-sidebar-shortcut {
-  position: absolute;
-  right: 1px;
-  bottom: 1px;
-  font-family: var(--font-mono);
-  font-size: 6px;
-  line-height: 1;
-  opacity: 0.7;
-}
-
-.vc-canvas-toolbar-sidebar-toggle--alert {
+.vc-toolbar-button--attention {
   background: color-mix(in srgb, var(--amber-500) 20%, transparent);
   color: var(--amber-700);
 }
@@ -253,8 +243,8 @@
   background: var(--stone-200);
 }
 
-.dark .vc-trace-panel button:hover:not(:disabled),
-.dark .vc-trace-panel button.active {
+.vc-canvas-host[data-theme-appearance='dark'] .vc-trace-panel button:hover:not(:disabled),
+.vc-canvas-host[data-theme-appearance='dark'] .vc-trace-panel button.active {
   background: var(--stone-800);
 }
 
@@ -364,7 +354,7 @@
   }
 
   .vc-canvas-toolbar-collapse,
-  .vc-canvas-toolbar-sidebar-toggle {
+  .vc-canvas-toolbar-persistent-action {
     width: 100%;
   }
 }

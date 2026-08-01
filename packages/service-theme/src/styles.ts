@@ -2,11 +2,11 @@ import {
   DEFAULT_THEME_ID,
   type ThemeId,
   type TThemeDefinition,
-} from "./builtins";
-import { STYLE_DARK } from "./style.dark";
-import { STYLE_GRAPHITE } from "./style.graphite";
-import { STYLE_LIGHT } from "./style.light";
-import { STYLE_SEPIA } from "./style.sepia";
+} from "./builtins.js";
+import { STYLE_DARK } from "./style.dark.js";
+import { STYLE_GRAPHITE } from "./style.graphite.js";
+import { STYLE_LIGHT } from "./style.light.js";
+import { STYLE_SEPIA } from "./style.sepia.js";
 import {
   THEME_COLOR_FAMILIES,
   THEME_COLOR_STEPS,
@@ -17,7 +17,7 @@ import {
   type TThemeColorSwatch,
   type TThemeColorToken,
   type TThemeColorValueMap,
-} from "./types";
+} from "./types.js";
 
 export const BUILTIN_THEME_STYLES = [
   STYLE_LIGHT,

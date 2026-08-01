@@ -1,4 +1,4 @@
-import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 
 type TTenantSwitchPortal = {
   switchTenant(scope: TBrowserTenantScope): Promise<void>;

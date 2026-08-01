@@ -127,22 +127,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/index.html](apps/frontend/index.html) |  |
 | [apps/frontend/package.json](apps/frontend/package.json) |  |
 | [apps/frontend/public/favicon.png](apps/frontend/public/favicon.png) |  |
-| [apps/frontend/public/fonts/fraunces-400.ttf](apps/frontend/public/fonts/fraunces-400.ttf) |  |
-| [apps/frontend/public/fonts/fraunces-500.ttf](apps/frontend/public/fonts/fraunces-500.ttf) |  |
-| [apps/frontend/public/fonts/fraunces-600.ttf](apps/frontend/public/fonts/fraunces-600.ttf) |  |
-| [apps/frontend/public/fonts/fraunces-700.ttf](apps/frontend/public/fonts/fraunces-700.ttf) |  |
-| [apps/frontend/public/fonts/Fraunces-OFL.txt](apps/frontend/public/fonts/Fraunces-OFL.txt) |  |
-| [apps/frontend/public/fonts/inter-400.woff2](apps/frontend/public/fonts/inter-400.woff2) |  |
-| [apps/frontend/public/fonts/inter-500.woff2](apps/frontend/public/fonts/inter-500.woff2) |  |
-| [apps/frontend/public/fonts/inter-600.woff2](apps/frontend/public/fonts/inter-600.woff2) |  |
-| [apps/frontend/public/fonts/inter-700.woff2](apps/frontend/public/fonts/inter-700.woff2) |  |
-| [apps/frontend/public/fonts/Inter-OFL.txt](apps/frontend/public/fonts/Inter-OFL.txt) |  |
-| [apps/frontend/public/fonts/jetbrains-mono-400.woff2](apps/frontend/public/fonts/jetbrains-mono-400.woff2) |  |
-| [apps/frontend/public/fonts/jetbrains-mono-500.woff2](apps/frontend/public/fonts/jetbrains-mono-500.woff2) |  |
-| [apps/frontend/public/fonts/jetbrains-mono-600.woff2](apps/frontend/public/fonts/jetbrains-mono-600.woff2) |  |
-| [apps/frontend/public/fonts/jetbrains-mono-700.woff2](apps/frontend/public/fonts/jetbrains-mono-700.woff2) |  |
-| [apps/frontend/public/fonts/JetBrains-Mono-OFL.txt](apps/frontend/public/fonts/JetBrains-Mono-OFL.txt) |  |
-| [apps/frontend/public/fonts/README.md](apps/frontend/public/fonts/README.md) |  |
 | [apps/frontend/public/logo.png](apps/frontend/public/logo.png) |  |
 | [apps/frontend/src/ai-chat-adapters.ts](apps/frontend/src/ai-chat-adapters.ts) |  |
 | [apps/frontend/src/App.module.css](apps/frontend/src/App.module.css) |  |
@@ -175,7 +159,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
 | [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
 | [apps/frontend/src/services/canvas-bootstrap.ts](apps/frontend/src/services/canvas-bootstrap.ts) |  |
+| [apps/frontend/src/services/canvas-composition.ts](apps/frontend/src/services/canvas-composition.ts) |  |
+| [apps/frontend/src/services/canvas-document-transport-adapter.ts](apps/frontend/src/services/canvas-document-transport-adapter.ts) |  |
 | [apps/frontend/src/services/canvas-document-transport.ts](apps/frontend/src/services/canvas-document-transport.ts) |  |
+| [apps/frontend/src/services/canvas-runtime-retirement.ts](apps/frontend/src/services/canvas-runtime-retirement.ts) |  |
+| [apps/frontend/src/services/CONSTANTS.ts](apps/frontend/src/services/CONSTANTS.ts) |  |
+| [apps/frontend/src/services/fn.browser-tenant-scope.ts](apps/frontend/src/services/fn.browser-tenant-scope.ts) |  |
 | [apps/frontend/src/services/fn.widget-capsule-theme.ts](apps/frontend/src/services/fn.widget-capsule-theme.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
@@ -354,11 +343,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [packages/canvas-contract/LICENSE](packages/canvas-contract/LICENSE) |  |
 | [packages/canvas-contract/package.json](packages/canvas-contract/package.json) |  |
+| [packages/canvas-contract/README.md](packages/canvas-contract/README.md) |  |
+| [packages/canvas-contract/scripts/build.ts](packages/canvas-contract/scripts/build.ts) |  |
 | [packages/canvas-contract/src/CONSTANTS.ts](packages/canvas-contract/src/CONSTANTS.ts) |  |
 | [packages/canvas-contract/src/index.ts](packages/canvas-contract/src/index.ts) |  |
 | [packages/canvas-contract/src/types.ts](packages/canvas-contract/src/types.ts) |  |
 | [packages/canvas-contract/src/validation.ts](packages/canvas-contract/src/validation.ts) |  |
+| [packages/canvas-contract/tsconfig.build.json](packages/canvas-contract/tsconfig.build.json) |  |
 | [packages/canvas-contract/tsconfig.json](packages/canvas-contract/tsconfig.json) |  |
 
 ## packages/canvas
@@ -368,8 +361,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/.gitignore](packages/canvas/.gitignore) |  |
 | [packages/canvas/AGENTS.md](packages/canvas/AGENTS.md) |  |
 | [packages/canvas/ARCHITECTURE.md](packages/canvas/ARCHITECTURE.md) |  |
+| [packages/canvas/LICENSE](packages/canvas/LICENSE) |  |
 | [packages/canvas/package.json](packages/canvas/package.json) |  |
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
+| [packages/canvas/README.md](packages/canvas/README.md) |  |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
 | [packages/canvas/src/components/Canvas.css](packages/canvas/src/components/Canvas.css) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
@@ -385,7 +380,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/fn.selection-style-presentation.ts](packages/canvas/src/components/SelectionStyleMenu/fn.selection-style-presentation.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/index.tsx](packages/canvas/src/components/SelectionStyleMenu/index.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/styles.css](packages/canvas/src/components/SelectionStyleMenu/styles.css) |  |
-| [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
 | [packages/canvas/src/debug-trace/CONSTANTS.ts](packages/canvas/src/debug-trace/CONSTANTS.ts) |  |
 | [packages/canvas/src/debug-trace/createReproductionTrace.ts](packages/canvas/src/debug-trace/createReproductionTrace.ts) |  |
 | [packages/canvas/src/debug-trace/createTracedCanvasDocumentTransport.ts](packages/canvas/src/debug-trace/createTracedCanvasDocumentTransport.ts) |  |
@@ -395,7 +389,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts](packages/canvas/src/debug-trace/tx.reproduction-trace-export.ts) |  |
 | [packages/canvas/src/debug-trace/typed.ts](packages/canvas/src/debug-trace/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
-| [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
 | [packages/canvas/src/fn.canvas-background-projection.ts](packages/canvas/src/fn.canvas-background-projection.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
@@ -403,8 +396,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/fn.scene-node-diff.ts](packages/canvas/src/services/fn.scene-node-diff.ts) |  |
 | [packages/canvas/src/services/fn.scene-reduction.ts](packages/canvas/src/services/fn.scene-reduction.ts) |  |
 | [packages/canvas/src/services/index.ts](packages/canvas/src/services/index.ts) |  |
+| [packages/canvas/src/styles.css](packages/canvas/src/styles.css) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
+| [packages/canvas/tsconfig.build.json](packages/canvas/tsconfig.build.json) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
+| [packages/canvas/vite.config.ts](packages/canvas/vite.config.ts) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
 
 ## packages/capsule-omnidraw
@@ -742,10 +738,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [packages/service-theme/LICENSE](packages/service-theme/LICENSE) |  |
 | [packages/service-theme/package.json](packages/service-theme/package.json) |  |
+| [packages/service-theme/README.md](packages/service-theme/README.md) |  |
+| [packages/service-theme/scripts/build.ts](packages/service-theme/scripts/build.ts) |  |
 | [packages/service-theme/src/builtins.ts](packages/service-theme/src/builtins.ts) |  |
 | [packages/service-theme/src/dom.ts](packages/service-theme/src/dom.ts) |  |
 | [packages/service-theme/src/index.ts](packages/service-theme/src/index.ts) |  |
+| [packages/service-theme/src/interface.ts](packages/service-theme/src/interface.ts) |  |
 | [packages/service-theme/src/style.dark.ts](packages/service-theme/src/style.dark.ts) |  |
 | [packages/service-theme/src/style.graphite.ts](packages/service-theme/src/style.graphite.ts) |  |
 | [packages/service-theme/src/style.light.ts](packages/service-theme/src/style.light.ts) |  |
@@ -754,6 +754,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-theme/src/styles.ts](packages/service-theme/src/styles.ts) |  |
 | [packages/service-theme/src/ThemeService.ts](packages/service-theme/src/ThemeService.ts) |  |
 | [packages/service-theme/src/types.ts](packages/service-theme/src/types.ts) |  |
+| [packages/service-theme/tsconfig.build.json](packages/service-theme/tsconfig.build.json) |  |
 | [packages/service-theme/tsconfig.json](packages/service-theme/tsconfig.json) |  |
 
 ## packages/service-widget-state
@@ -970,9 +971,19 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds omnidraw distribution packages, embedded assets, checksums, and release manifests. |
 | [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
+| [scripts/dev-frontend.ts](scripts/dev-frontend.ts) | Runs the frontend together with live canvas-kernel package builds. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/docker/final-acceptance.Dockerfile](scripts/docker/final-acceptance.Dockerfile) |  |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
+| [scripts/fixtures/canvas-kernel-consumer/index.html](scripts/fixtures/canvas-kernel-consumer/index.html) |  |
+| [scripts/fixtures/canvas-kernel-consumer/package.json](scripts/fixtures/canvas-kernel-consumer/package.json) |  |
+| [scripts/fixtures/canvas-kernel-consumer/README.md](scripts/fixtures/canvas-kernel-consumer/README.md) |  |
+| [scripts/fixtures/canvas-kernel-consumer/src/app.css](scripts/fixtures/canvas-kernel-consumer/src/app.css) |  |
+| [scripts/fixtures/canvas-kernel-consumer/src/browser-smoke.ts](scripts/fixtures/canvas-kernel-consumer/src/browser-smoke.ts) |  |
+| [scripts/fixtures/canvas-kernel-consumer/src/main.tsx](scripts/fixtures/canvas-kernel-consumer/src/main.tsx) |  |
+| [scripts/fixtures/canvas-kernel-consumer/src/transports.ts](scripts/fixtures/canvas-kernel-consumer/src/transports.ts) |  |
+| [scripts/fixtures/canvas-kernel-consumer/tsconfig.json](scripts/fixtures/canvas-kernel-consumer/tsconfig.json) |  |
+| [scripts/fixtures/canvas-kernel-consumer/vite.config.ts](scripts/fixtures/canvas-kernel-consumer/vite.config.ts) |  |
 | [scripts/fixtures/external-composition/package.json](scripts/fixtures/external-composition/package.json) |  |
 | [scripts/fixtures/external-composition/src/managed-composition.ts](scripts/fixtures/external-composition/src/managed-composition.ts) |  |
 | [scripts/fixtures/external-composition/src/packed-consumer.ts](scripts/fixtures/external-composition/src/packed-consumer.ts) |  |
@@ -998,6 +1009,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
+| [scripts/test-packed-canvas-kernel.ts](scripts/test-packed-canvas-kernel.ts) | Packs the public canvas kernel and proves a clean external browser consumer. |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the local resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |

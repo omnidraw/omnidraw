@@ -1,11 +1,15 @@
-import type { IService } from "../../runtime/src/interface";
-import { SyncHook } from "../../tapable/src/SyncHook";
 import {
   BUILTIN_THEMES,
   DEFAULT_THEME_ID,
   type ThemeId,
   type TThemeDefinition,
-} from "./builtins";
+} from "./builtins.js";
+import type {
+  IThemeService,
+  TThemeChangeListener,
+  TThemeRegistryChangeListener,
+  TThemeRememberedStyleChangeListener,
+} from "./interface.js";
 import {
   THEME_CORNER_RADIUS_OPTIONS,
   THEME_CORNER_RADIUS_VALUE_MAP,
@@ -17,13 +21,13 @@ import {
   THEME_STYLE_DEFAULTS_BY_SCOPE,
   THEME_TEXT_ALIGN_OPTIONS,
   THEME_VERTICAL_ALIGN_OPTIONS,
-} from "./style.shared";
+} from "./style.shared.js";
 import {
   getThemeColorPickerPalette as getThemeColorPickerPaletteFromTheme,
   getThemeColorValueMap,
   getThemeStyle,
   resolveThemeColor as resolveThemeColorFromTheme,
-} from "./styles";
+} from "./styles.js";
 import type {
   TCanvasThemeStyle,
   TResolvedThemeCanvasStyle,
@@ -44,18 +48,12 @@ import type {
   TThemeStyleScopeId,
   TThemeTextAlignOption,
   TThemeVerticalAlignOption,
-} from "./types";
+} from "./types.js";
 
-export type TThemeServiceArgs = {
-  themes?: TThemeDefinition[];
+export type TThemeServiceArgs = Readonly<{
+  themes?: readonly TThemeDefinition[];
   initialThemeId?: ThemeId;
-};
-
-export type TThemeServiceHooks = {
-  change: SyncHook<[TThemeDefinition, ThemeId]>;
-  registryChange: SyncHook<[TThemeDefinition[]]>;
-  rememberedStyleChange: SyncHook<[TThemeStyleScopeId | null, Partial<TThemeRememberedStyle> | null]>;
-};
+}>;
 
 function parseNumericTokenValue(value: string | undefined, fallback: number) {
   if (!value) {
@@ -72,6 +70,10 @@ function cloneStyle(value: Partial<TThemeCanvasStyle> | null | undefined) {
 
 function cloneRememberedStyle(value: Partial<TThemeRememberedStyle> | null | undefined) {
   return structuredClone(value ?? {});
+}
+
+function cloneThemeDefinition(value: TThemeDefinition) {
+  return structuredClone(value);
 }
 
 function shallowStyleEqual(left: Partial<TThemeCanvasStyle>, right: Partial<TThemeCanvasStyle>) {
@@ -96,17 +98,15 @@ function shallowRememberedStyleEqual(left: Partial<TThemeRememberedStyle>, right
   return leftEntries.every(([key, value]) => right[key as keyof TThemeRememberedStyle] === value);
 }
 
-export class ThemeService implements IService<TThemeServiceHooks> {
+export class ThemeService implements IThemeService {
   readonly name = "theme";
-  readonly hooks: TThemeServiceHooks = {
-    change: new SyncHook(),
-    registryChange: new SyncHook(),
-    rememberedStyleChange: new SyncHook(),
-  };
 
   #themes = new Map<ThemeId, TThemeDefinition>();
   #themeId: ThemeId = DEFAULT_THEME_ID;
   #rememberedStyles = new Map<TThemeStyleScopeId, Partial<TThemeRememberedStyle>>();
+  #themeChangeListeners = new Set<TThemeChangeListener>();
+  #themeRegistryChangeListeners = new Set<TThemeRegistryChangeListener>();
+  #rememberedStyleChangeListeners = new Set<TThemeRememberedStyleChangeListener>();
 
   constructor(args: TThemeServiceArgs = {}) {
     this.addThemes(BUILTIN_THEMES);
@@ -272,6 +272,27 @@ export class ThemeService implements IService<TThemeServiceHooks> {
     return cloneRememberedStyle(this.#rememberedStyles.get(scope));
   }
 
+  subscribeThemeChange(listener: TThemeChangeListener) {
+    this.#themeChangeListeners.add(listener);
+    return () => {
+      this.#themeChangeListeners.delete(listener);
+    };
+  }
+
+  subscribeThemeRegistryChange(listener: TThemeRegistryChangeListener) {
+    this.#themeRegistryChangeListeners.add(listener);
+    return () => {
+      this.#themeRegistryChangeListeners.delete(listener);
+    };
+  }
+
+  subscribeRememberedStyleChange(listener: TThemeRememberedStyleChangeListener) {
+    this.#rememberedStyleChangeListeners.add(listener);
+    return () => {
+      this.#rememberedStyleChangeListeners.delete(listener);
+    };
+  }
+
   setRememberedStyle(scope: TThemeStyleScopeId, patch: Partial<TThemeRememberedStyle>) {
     const current = this.#rememberedStyles.get(scope) ?? {};
     const next = {
@@ -291,13 +312,13 @@ export class ThemeService implements IService<TThemeServiceHooks> {
 
     if (Object.keys(next).length === 0) {
       this.#rememberedStyles.delete(scope);
-      this.hooks.rememberedStyleChange.call(scope, null);
+      this.#emitRememberedStyleChange(scope, null);
       return {};
     }
 
     this.#rememberedStyles.set(scope, next);
     const clonedNext = cloneRememberedStyle(next);
-    this.hooks.rememberedStyleChange.call(scope, clonedNext);
+    this.#emitRememberedStyleChange(scope, clonedNext);
     return clonedNext;
   }
 
@@ -308,7 +329,7 @@ export class ThemeService implements IService<TThemeServiceHooks> {
       }
 
       this.#rememberedStyles.delete(scope);
-      this.hooks.rememberedStyleChange.call(scope, null);
+      this.#emitRememberedStyleChange(scope, null);
       return true;
     }
 
@@ -317,7 +338,7 @@ export class ThemeService implements IService<TThemeServiceHooks> {
     }
 
     this.#rememberedStyles.clear();
-    this.hooks.rememberedStyleChange.call(null, null);
+    this.#emitRememberedStyleChange(null, null);
     return true;
   }
 
@@ -333,33 +354,57 @@ export class ThemeService implements IService<TThemeServiceHooks> {
 
     this.#themeId = nextThemeId;
     const theme = this.getTheme();
-    this.hooks.change.call(theme, this.#themeId);
+    this.#emitThemeChange(theme, this.#themeId);
     return theme;
   }
 
   addTheme(theme: TThemeDefinition) {
-    this.#themes.set(theme.id, theme);
-    this.hooks.registryChange.call(this.getThemes());
+    const nextTheme = cloneThemeDefinition(theme);
+    this.#themes.set(nextTheme.id, nextTheme);
+    this.#emitThemeRegistryChange();
 
-    if (theme.id === this.#themeId) {
-      this.hooks.change.call(theme, this.#themeId);
+    if (nextTheme.id === this.#themeId) {
+      this.#emitThemeChange(nextTheme, this.#themeId);
     }
 
-    return theme;
+    return nextTheme;
   }
 
-  addThemes(themes: TThemeDefinition[]) {
+  addThemes(themes: readonly TThemeDefinition[]) {
     themes.forEach((theme) => {
-      this.#themes.set(theme.id, theme);
+      const nextTheme = cloneThemeDefinition(theme);
+      this.#themes.set(nextTheme.id, nextTheme);
     });
-    this.hooks.registryChange.call(this.getThemes());
+    this.#emitThemeRegistryChange();
 
     const activeTheme = this.#themes.get(this.#themeId);
     if (activeTheme) {
-      this.hooks.change.call(activeTheme, this.#themeId);
+      this.#emitThemeChange(activeTheme, this.#themeId);
     }
 
     return this.getThemes();
+  }
+
+  #emitThemeChange(theme: TThemeDefinition, themeId: ThemeId) {
+    [...this.#themeChangeListeners].forEach((listener) => {
+      listener(theme, themeId);
+    });
+  }
+
+  #emitThemeRegistryChange() {
+    const themes = this.getThemes();
+    [...this.#themeRegistryChangeListeners].forEach((listener) => {
+      listener(themes);
+    });
+  }
+
+  #emitRememberedStyleChange(
+    scope: TThemeStyleScopeId | null,
+    style: Partial<TThemeRememberedStyle> | null,
+  ) {
+    [...this.#rememberedStyleChangeListeners].forEach((listener) => {
+      listener(scope, style === null ? null : cloneRememberedStyle(style));
+    });
   }
 
   #resolveThemeId(themeId: ThemeId | undefined) {

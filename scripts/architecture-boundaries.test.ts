@@ -5,6 +5,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
+const CANVAS_KERNEL_FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/canvas-kernel-consumer')
 const PUBLIC_PACKAGES = Object.freeze({
   '@omnidraw/function-runtime': 'packages/function-runtime',
   '@omnidraw/resource-runtime': 'packages/resource-runtime',
@@ -12,8 +13,23 @@ const PUBLIC_PACKAGES = Object.freeze({
   '@omnidraw/tenant-core': 'packages/tenant-core',
   '@omnidraw/widget-contract': 'packages/widget-contract',
 })
+const CANVAS_KERNEL_PACKAGES = Object.freeze({
+  '@omnidraw/canvas-contract': 'packages/canvas-contract',
+  '@omnidraw/service-theme': 'packages/service-theme',
+  '@omnidraw/canvas': 'packages/canvas',
+})
+const CANVAS_KERNEL_ALLOWED_IMPORTS = Object.freeze({
+  '@omnidraw/canvas-contract': new Set(['@omnidraw/cangine']),
+  '@omnidraw/service-theme': new Set<string>(),
+  '@omnidraw/canvas': new Set([
+    '@omnidraw/cangine',
+    '@omnidraw/canvas-contract',
+    '@omnidraw/service-theme',
+  ]),
+})
 const NPM_PUBLISHABLE_PACKAGE_DIRECTORIES = Object.freeze([
   ...Object.values(PUBLIC_PACKAGES),
+  ...Object.values(CANVAS_KERNEL_PACKAGES),
   'packages/sdk',
 ])
 const UI_PACKAGES = Object.freeze({
@@ -182,6 +198,60 @@ function manifestDependencies(manifest: Awaited<ReturnType<typeof packageManifes
 function publicPackageName(specifier: string): string | null {
   if (!specifier.startsWith('@omnidraw/')) return null
   return specifier.split('/').slice(0, 2).join('/')
+}
+
+function exportedTargets(value: unknown): readonly string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(exportedTargets)
+  if (value === null || typeof value !== 'object') return []
+  return Object.values(value).flatMap(exportedTargets)
+}
+
+function splitCssSelectorList(value: string): readonly string[] {
+  const selectors: string[] = []
+  let current = ''
+  let parentheses = 0
+  let brackets = 0
+  let quote: "'" | '"' | null = null
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!
+    if (quote !== null) {
+      current += character
+      if (character === '\\') {
+        current += value[++index] ?? ''
+      } else if (character === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (character === "'" || character === '"') quote = character
+    else if (character === '(') parentheses += 1
+    else if (character === ')') parentheses -= 1
+    else if (character === '[') brackets += 1
+    else if (character === ']') brackets -= 1
+    else if (character === ',' && parentheses === 0 && brackets === 0) {
+      selectors.push(current)
+      current = ''
+      continue
+    }
+    current += character
+  }
+  selectors.push(current)
+  return selectors
+}
+
+function cssGlobalSelectorViolations(source: string): readonly string[] {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '')
+  const violations: string[] = []
+  for (const rule of withoutComments.matchAll(/(?:^|})\s*([^@{}][^{}]*)\{/g)) {
+    for (const rawSelector of splitCssSelectorList(rule[1] ?? '')) {
+      const selector = rawSelector.trim()
+      if (
+        /^(?::root\b|html\b|body\b|\.dark(?:\b|[\s.#:[>+~])|\*(?:$|[\s.#:[>+~])|(?:button|input|textarea|select|form|h[1-6]|ol|ul|li|img|picture|video)(?:\b|[\s.#:[>+~]))/.test(selector)
+      ) violations.push(selector)
+    }
+  }
+  return violations
 }
 
 async function sourceFiles(directory: string): Promise<string[]> {
@@ -658,6 +728,190 @@ describe('managed composition architecture boundaries', () => {
     expect(violations).toEqual([])
   })
 
+  test('keeps the canvas kernel versioned, public, built, and deliberately exported', async () => {
+    const releaseVersions = new Map<string, string>([
+      ['@omnidraw/cangine', '0.5.3'],
+      ...Object.keys(CANVAS_KERNEL_PACKAGES).map((name) => [name, '0.5.0'] as const),
+    ])
+
+    for (const [name, directory] of Object.entries(CANVAS_KERNEL_PACKAGES)) {
+      const manifest = JSON.parse(
+        await readFile(join(ROOT, directory, 'package.json'), 'utf8'),
+      ) as {
+        name?: string
+        version?: string
+        private?: boolean
+        license?: string
+        repository?: { directory?: string; type?: string; url?: string }
+        files?: readonly string[]
+        exports?: Record<string, unknown>
+        scripts?: Record<string, string>
+        dependencies?: Record<string, string>
+        optionalDependencies?: Record<string, string>
+        peerDependencies?: Record<string, string>
+        devDependencies?: Record<string, string>
+      }
+      expect(manifest.name).toBe(name)
+      expect(manifest.version).toBe('0.5.0')
+      expect(manifest.private).not.toBe(true)
+      expect(manifest.license).toBe('MIT')
+      expect(manifest.repository?.type).toBe('git')
+      expect(manifest.repository?.url).toContain('vibecanvas')
+      expect(manifest.repository?.directory).toBe(directory)
+      expect(manifest.files).toContain('dist')
+      expect(manifest.files).toContain('README.md')
+      expect(manifest.exports?.['.']).toBeDefined()
+      expect(Object.keys(manifest.exports ?? {}).some((key) => key.includes('*'))).toBe(false)
+      if (name === '@omnidraw/canvas') {
+        expect(manifest.exports?.['./styles.css']).toBeDefined()
+        expect(manifest.exports?.['./CONSTANTS']).toBeUndefined()
+        expect(manifest.exports?.['./fn.browser-tenant-scope']).toBeUndefined()
+      }
+      for (const [exportKey, exportValue] of Object.entries(manifest.exports ?? {})) {
+        const targets = exportedTargets(exportValue)
+        expect(targets.length, `${name} ${exportKey} has no export target`).toBeGreaterThan(0)
+        for (const target of targets) {
+          expect(
+            target.startsWith('./dist/'),
+            `${name} ${exportKey} exports workspace source`,
+          ).toBe(true)
+          expect(target, `${name} ${exportKey} exports workspace source`).not.toContain('/src/')
+          expect(target.slice(2), `${name} ${exportKey} exports a repository path`).not.toContain('..')
+        }
+        if (exportKey.endsWith('.css')) {
+          expect(targets.every((target) => target.endsWith('.css'))).toBe(true)
+          continue
+        }
+        expect(exportValue !== null && typeof exportValue === 'object').toBe(true)
+        const conditional = exportValue as { types?: unknown; default?: unknown }
+        expect(typeof conditional.types, `${name} ${exportKey} has no declaration export`).toBe('string')
+        expect(typeof conditional.default, `${name} ${exportKey} has no ESM export`).toBe('string')
+        expect((conditional.types as string).endsWith('.d.ts')).toBe(true)
+        expect((conditional.default as string).endsWith('.js')).toBe(true)
+      }
+      expect(manifest.scripts?.build).toBeDefined()
+      expect(manifest.scripts?.typecheck).toBeDefined()
+      expect(manifest.scripts?.test).toBeDefined()
+      expect(manifest.scripts?.prepublishOnly).toContain('build')
+      expect(manifest.scripts?.prepublishOnly).toContain('typecheck')
+      expect(manifest.scripts?.prepublishOnly).toContain('test')
+      expect(JSON.stringify(manifest)).not.toMatch(/(?:workspace|catalog|file|link):/)
+
+      const allowedImports = CANVAS_KERNEL_ALLOWED_IMPORTS[name as keyof typeof CANVAS_KERNEL_ALLOWED_IMPORTS]
+      for (const group of [
+        manifest.dependencies,
+        manifest.optionalDependencies,
+        manifest.peerDependencies,
+        manifest.devDependencies,
+      ]) {
+        for (const [dependency, version] of Object.entries(group ?? {})) {
+          if (!dependency.startsWith('@omnidraw/')) continue
+          expect(
+            allowedImports.has(dependency),
+            `${name} declares private Omnidraw dependency ${dependency}`,
+          ).toBe(true)
+          expect(releaseVersions.has(dependency)).toBe(true)
+          expect(version, `${name} must pin ${dependency} exactly`).toBe(releaseVersions.get(dependency)!)
+        }
+      }
+
+      if (name === '@omnidraw/canvas') {
+        expect(manifest.dependencies?.['solid-js']).toBeUndefined()
+        expect(manifest.optionalDependencies?.['solid-js']).toBeUndefined()
+        expect(manifest.peerDependencies?.['solid-js']).toBeDefined()
+        expect(manifest.devDependencies?.['solid-js']).toBe(manifest.peerDependencies?.['solid-js'])
+      }
+    }
+  })
+
+  test('keeps canvas-kernel source imports on the public dependency graph', async () => {
+    for (const [name, directory] of Object.entries(CANVAS_KERNEL_PACKAGES)) {
+      const packageRoot = join(ROOT, directory)
+      const allowedImports = CANVAS_KERNEL_ALLOWED_IMPORTS[name as keyof typeof CANVAS_KERNEL_ALLOWED_IMPORTS]
+      const violations: string[] = []
+      for (const file of await sourceFiles(join(packageRoot, 'src'))) {
+        const source = await readFile(file, 'utf8')
+        for (const specifier of moduleSpecifiers(source)) {
+          if (specifier.startsWith('.')) {
+            const target = resolve(dirname(file), specifier)
+            if (relative(packageRoot, target).startsWith('..')) {
+              violations.push(`${relative(ROOT, file)} imports sibling source ${specifier}`)
+            }
+            continue
+          }
+          const packageName = publicPackageName(specifier)
+          if (packageName !== null && !allowedImports.has(packageName)) {
+            violations.push(`${relative(ROOT, file)} imports private package ${specifier}`)
+          }
+          if (/@omnidraw\/[^/'"]+\/src(?:\/|$)/.test(specifier)) {
+            violations.push(`${relative(ROOT, file)} deep-imports package source ${specifier}`)
+          }
+          if (isForbiddenManagedDependency(specifier)) {
+            violations.push(`${relative(ROOT, file)} imports managed implementation ${specifier}`)
+          }
+        }
+      }
+      expect(violations).toEqual([])
+    }
+  })
+
+  test('keeps canvas-kernel output ready for every frontend build and development path', async () => {
+    const rootManifest = JSON.parse(
+      await readFile(join(ROOT, 'package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    expect(rootManifest.scripts?.prebuild).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.['prebuild:single']).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.predev).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.['preclient:dev']).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.['client:dev']).toContain('scripts/dev-frontend.ts')
+
+    const mainDevSource = await readFile(join(ROOT, 'scripts/dev.ts'), 'utf8')
+    expect(mainDevSource).toContain('scripts/dev-frontend.ts')
+
+    const frontendDevSource = await readFile(
+      join(ROOT, 'scripts/dev-frontend.ts'),
+      'utf8',
+    )
+    expect(frontendDevSource).toContain('packages/canvas-contract')
+    expect(frontendDevSource).toContain('packages/service-theme')
+    expect(frontendDevSource).toContain('packages/canvas')
+
+    const contractManifest = JSON.parse(
+      await readFile(join(ROOT, 'packages/canvas-contract/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    const themeManifest = JSON.parse(
+      await readFile(join(ROOT, 'packages/service-theme/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    const canvasManifest = JSON.parse(
+      await readFile(join(ROOT, 'packages/canvas/package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    expect(contractManifest.scripts?.dev).toContain('--watch')
+    expect(themeManifest.scripts?.dev).toContain('--watch')
+    expect(canvasManifest.scripts?.['dev:bundle']).toContain('--watch')
+    expect(canvasManifest.scripts?.['dev:types']).toContain('--watch')
+  })
+
+  test('keeps canvas styles scoped and package-relative', async () => {
+    const canvasRoot = join(ROOT, CANVAS_KERNEL_PACKAGES['@omnidraw/canvas'])
+    const sourcePaths = await listFiles(join(canvasRoot, 'src'))
+    const violations: string[] = []
+    for (const file of sourcePaths) {
+      const source = await readFile(file, 'utf8')
+      const path = relative(ROOT, file)
+      if (/(?:^|[('"\s])\/fonts\//m.test(source)) {
+        violations.push(`${path}: root-relative /fonts/ URL`)
+      }
+      if (extname(file) !== '.css') continue
+      for (const selector of cssGlobalSelectorViolations(source)) {
+        violations.push(`${path}: global selector ${selector}`)
+      }
+      for (const match of source.matchAll(/url\(\s*(['"]?)\/[^/]/g)) {
+        violations.push(`${path}: root-relative asset URL ${match[0]}`)
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
   test('keeps release dependencies exact while Bun links the same versions for local development', async () => {
     const fixturePackage = JSON.parse(await readFile(join(FIXTURE_ROOT, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>
@@ -691,7 +945,7 @@ describe('managed composition architecture boundaries', () => {
         publishConfig?: { '@omnidraw:registry'?: string; access?: string; registry?: string }
         scripts?: Record<string, string>
       }
-      expect(packageJson.publishConfig).toEqual({
+      expect(packageJson.publishConfig).toMatchObject({
         '@omnidraw:registry': 'https://registry.npmjs.org/',
         access: 'public',
         registry: 'https://registry.npmjs.org/',
@@ -823,6 +1077,90 @@ describe('managed composition architecture boundaries', () => {
     const apiText = (await Promise.all(apiFiles.map((path) => readFile(path, 'utf8')))).join('\n')
     expect(apiText).not.toContain('external-composition')
     expect(apiText).not.toContain('@omnidraw-fixtures/private-managed-composition')
+  })
+
+  test('keeps the canvas-kernel browser fixture standalone and on documented exports', async () => {
+    const manifest = JSON.parse(
+      await readFile(join(CANVAS_KERNEL_FIXTURE_ROOT, 'package.json'), 'utf8'),
+    ) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    expect(manifest.dependencies).toEqual({
+      '@omnidraw/canvas': '0.5.0',
+      '@omnidraw/canvas-contract': '0.5.0',
+      '@omnidraw/service-theme': '0.5.0',
+      'solid-js': '1.9.14',
+    })
+    expect(JSON.stringify(manifest)).not.toMatch(/(?:workspace|catalog|file|link):/)
+
+    const rootManifest = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as {
+      workspaces?: readonly string[]
+    }
+    expect(rootManifest.workspaces).not.toContain('scripts/fixtures/canvas-kernel-consumer')
+    const tsconfig = JSON.parse(
+      await readFile(join(CANVAS_KERNEL_FIXTURE_ROOT, 'tsconfig.json'), 'utf8'),
+    ) as { extends?: unknown; compilerOptions?: { paths?: unknown } }
+    expect(tsconfig.extends).toBeUndefined()
+    expect(tsconfig.compilerOptions?.paths).toBeUndefined()
+
+    const packageExports = new Map(await Promise.all(
+      Object.entries(CANVAS_KERNEL_PACKAGES).map(async ([name, directory]) => {
+        const packageManifest = JSON.parse(
+          await readFile(join(ROOT, directory, 'package.json'), 'utf8'),
+        ) as { exports?: Record<string, unknown> }
+        return [name, new Set(Object.keys(packageManifest.exports ?? {}))] as const
+      }),
+    ))
+    const allowedTooling = new Set([
+      'playwright',
+      'solid-js',
+      'vite',
+      'vite-plugin-solid',
+    ])
+    const violations: string[] = []
+    const fixtureFiles = await listFiles(CANVAS_KERNEL_FIXTURE_ROOT)
+    for (const file of fixtureFiles) {
+      const path = relative(ROOT, file)
+      if (['.diff', '.patch'].includes(extname(file)) || path.split(sep).includes('patches')) {
+        violations.push(`${path}: patch/source escape hatch`)
+      }
+      const source = await readFile(file, 'utf8')
+      if (source.includes('../../packages') || source.includes('@omnidraw/service-db')) {
+        violations.push(`${path}: repository/private implementation reference`)
+      }
+      if (!SOURCE_EXTENSIONS.has(extname(file))) continue
+      for (const specifier of moduleSpecifiers(source)) {
+        if (/^(?:bun|node):/.test(specifier)) continue
+        if (specifier.startsWith('.')) {
+          if (specifier.startsWith('..')) violations.push(`${path}: escapes fixture via ${specifier}`)
+          continue
+        }
+        const packageName = publicPackageName(specifier)
+        if (packageName === null) {
+          const dependency = dependencyPackageName(specifier)
+          if (!allowedTooling.has(dependency)) violations.push(`${path}: imports ${specifier}`)
+          continue
+        }
+        if (!Object.hasOwn(CANVAS_KERNEL_PACKAGES, packageName)) {
+          violations.push(`${path}: imports non-kernel ${specifier}`)
+          continue
+        }
+        const exportKey = specifier === packageName ? '.' : `.${specifier.slice(packageName.length)}`
+        if (!packageExports.get(packageName)?.has(exportKey)) {
+          violations.push(`${path}: imports undocumented ${specifier}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
+
+    const mainSource = await readFile(join(CANVAS_KERNEL_FIXTURE_ROOT, 'src/main.tsx'), 'utf8')
+    const canvasInvocation = mainSource.match(/<Canvas\s+([\s\S]*?)\/>/)?.[1]
+    expect(canvasInvocation).toBeDefined()
+    expect(canvasInvocation).not.toMatch(/\b(?:adapter|cell|managed|protocol)\s*=/i)
+    expect([...(canvasInvocation ?? '').matchAll(/\b([A-Za-z][A-Za-z0-9]*)=/g)]
+      .map((match) => match[1])
+      .sort()).toEqual(['canvas', 'dependencies', 'hostScopeKey'])
   })
 
   test('keeps public contract packages free of private Omnidraw dependencies', async () => {

@@ -1,35 +1,88 @@
 {
   "name": "@omnidraw/canvas",
-  "private": true,
+  "version": "0.5.0",
+  "description": "Portable Solid canvas host, Cangine runtime, and optimistic document client for Omnidraw.",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./CONSTANTS": "./src/CONSTANTS.ts",
-    "./debug-trace": "./src/debug-trace/index.ts",
-    "./extension": "./src/extension.ts",
-    "./fn.browser-tenant-scope": "./src/fn.browser-tenant-scope.ts",
-    "./runtime": "./src/runtime.ts",
-    "./services": "./src/services/index.ts",
-    "./types": "./src/types.ts"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/canvas"
   },
-  "devDependencies": {
-    "jsdom": "^29.1.1",
-    "typescript": "catalog:",
-    "vite": "^8.1.4",
-    "vite-plugin-solid": "^2.11.10",
-    "vitest": "^4.1.10"
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "ARCHITECTURE.md",
+    "LICENSE",
+    "README.md",
+    "src/assets/fonts/*OFL.txt",
+    "src/assets/fonts/README.md"
+  ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css",
+    "./debug-trace": {
+      "types": "./dist/debug-trace/index.d.ts",
+      "import": "./dist/debug-trace/index.js",
+      "default": "./dist/debug-trace/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "import": "./dist/extension.js",
+      "default": "./dist/extension.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js",
+      "default": "./dist/runtime.js"
+    },
+    "./services": {
+      "types": "./dist/services/index.d.ts",
+      "import": "./dist/services/index.js",
+      "default": "./dist/services/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    }
   },
   "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "dev:bundle": "vite build --watch --mode kernel-watch",
+    "dev:types": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@omnidraw/cangine": "0.5.3",
-    "@omnidraw/canvas-contract": "workspace:*",
-    "@omnidraw/service-db": "workspace:*",
-    "@omnidraw/service-theme": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
-    "lucide-solid": "catalog:",
-    "solid-js": "catalog:"
+    "@omnidraw/canvas-contract": "0.5.0",
+    "@omnidraw/service-theme": "0.5.0",
+    "lucide-solid": "^1.24.0"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.14"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "solid-js": "^1.9.14",
+    "typescript": "7.0.2",
+    "vite": "^8.1.4",
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^4.1.10"
   }
 }

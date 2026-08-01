@@ -1,5 +1,4 @@
 import ArrowRight from 'lucide-solid/icons/arrow-right';
-import Bot from 'lucide-solid/icons/bot';
 import Circle from 'lucide-solid/icons/circle';
 import Eraser from 'lucide-solid/icons/eraser';
 import Grid2x2 from 'lucide-solid/icons/grid-2x2';
@@ -7,7 +6,6 @@ import Hand from 'lucide-solid/icons/hand';
 import ImageIcon from 'lucide-solid/icons/image';
 import Minus from 'lucide-solid/icons/minus';
 import MousePointer2 from 'lucide-solid/icons/mouse-pointer-2';
-import PanelLeft from 'lucide-solid/icons/panel-left';
 import Pencil from 'lucide-solid/icons/pencil';
 import Redo2 from 'lucide-solid/icons/redo-2';
 import Square from 'lucide-solid/icons/square';
@@ -20,14 +18,20 @@ import type {
   TReproductionTraceOwner,
 } from '../../debug-trace/typed';
 import type {
+  TCanvasToolbarActionContribution,
+  TCanvasToolbarContribution,
   TCanvasToolDefinition,
-  TCanvasToolId,
 } from './toolbar.types';
-import './styles.css';
+import type { TEditorToolId } from '@omnidraw/cangine/editor';
+
+const HAND_TOOL = Object.freeze({
+  id: 'hand',
+  label: 'Hand',
+  shortcuts: ['H'],
+  Icon: Hand,
+}) satisfies TCanvasToolDefinition;
 
 const TOOLS: readonly TCanvasToolDefinition[] = Object.freeze([
-  { id: 'hand', label: 'Hand', shortcuts: ['H'], Icon: Hand },
-  { id: 'widget', label: 'AI Chat', shortcuts: ['C'], Icon: Bot },
   { id: 'select', label: 'Select', shortcuts: ['1', 'Esc'], Icon: MousePointer2 },
   { id: 'rect', label: 'Rectangle', shortcuts: ['2', 'R'], Icon: Square },
   { id: 'ellipse', label: 'Ellipse', shortcuts: ['3', 'O'], Icon: Circle },
@@ -42,21 +46,67 @@ type TFloatingCanvasToolbarProps = Readonly<{
   activeToolId: string | null;
   canRedo: boolean;
   canUndo: boolean;
+  contributions?: readonly TCanvasToolbarContribution[];
   gridVisible: boolean;
-  sidebarVisible: boolean;
   onRedo(): void;
   onImportImage(): void;
-  onSelectTool(toolId: TCanvasToolId): void;
+  onSelectTool(toolId: TEditorToolId): void;
   onToggleGrid(): void;
-  onToggleSidebar(): void;
   onUndo(): void;
   trace?: TReproductionTraceOwner | null;
   onTraceCopied?(): void;
   onTraceError?(error: unknown): void;
 }>;
 
+type TToolbarActionButtonProps = Readonly<{
+  contribution: TCanvasToolbarActionContribution;
+  persistent?: boolean;
+}>;
+
+function ToolbarActionButton(props: TToolbarActionButtonProps) {
+  return (
+    <button
+      type="button"
+      class="vc-toolbar-button"
+      classList={{
+        'vc-canvas-toolbar-persistent-action': props.persistent === true,
+        'vc-toolbar-button--active': props.contribution.active?.() ?? false,
+        'vc-toolbar-button--attention': props.contribution.attention?.() ?? false,
+      }}
+      aria-label={props.contribution.label}
+      aria-pressed={props.contribution.active?.()}
+      title={props.contribution.label}
+      onClick={props.contribution.onActivate}
+    >
+      <span class="vc-toolbar-button__icon">
+        <props.contribution.Icon size={14} />
+      </span>
+      <span class="vc-toolbar-button__shortcuts">
+        <For each={props.contribution.shortcuts}>
+          {(shortcut) => <span>{shortcut.label}</span>}
+        </For>
+      </span>
+    </button>
+  );
+}
+
 export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
   const [collapsed, setCollapsed] = createSignal(false);
+  const toolContributions = () => (props.contributions ?? []).filter(
+    (contribution) => contribution.kind === 'tool',
+  );
+  const toolActionContributions = () => (props.contributions ?? []).filter(
+    (contribution): contribution is TCanvasToolbarActionContribution => (
+      contribution.kind === 'action'
+      && contribution.placement !== 'persistent'
+    ),
+  );
+  const persistentContributions = () => (props.contributions ?? []).filter(
+    (contribution): contribution is TCanvasToolbarActionContribution => (
+      contribution.kind === 'action'
+      && contribution.placement === 'persistent'
+    ),
+  );
 
   return (
     <div
@@ -81,6 +131,26 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
         </button>
         <Show when={!collapsed()}>
           <div class="vc-canvas-toolbar-list">
+            <ToolButton
+              {...HAND_TOOL}
+              active={props.activeToolId === HAND_TOOL.id}
+              toolId={HAND_TOOL.id}
+              onSelect={props.onSelectTool}
+            />
+            <For each={toolContributions()}>
+              {(contribution) => (
+                <ToolButton
+                  Icon={contribution.Icon}
+                  active={props.activeToolId === contribution.toolId}
+                  label={contribution.label}
+                  shortcuts={contribution.shortcuts?.map(
+                    (shortcut) => shortcut.label,
+                  )}
+                  toolId={contribution.toolId}
+                  onSelect={props.onSelectTool}
+                />
+              )}
+            </For>
             <For each={TOOLS}>
               {(tool) => (
                 <ToolButton
@@ -114,6 +184,11 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
                 <span>G</span>
               </span>
             </button>
+            <For each={toolActionContributions()}>
+              {(contribution) => (
+                <ToolbarActionButton contribution={contribution} />
+              )}
+            </For>
             <div class="vc-canvas-toolbar-divider" />
             <button
               type="button"
@@ -146,17 +221,11 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
             </Show>
           </div>
         </Show>
-        <button
-          type="button"
-          class="vc-canvas-toolbar-sidebar-toggle"
-          classList={{ 'vc-canvas-toolbar-sidebar-toggle--alert': !props.sidebarVisible }}
-          aria-label="Toggle sidebar"
-          title="Toggle sidebar"
-          onClick={props.onToggleSidebar}
-        >
-          <PanelLeft size={14} />
-          <span class="vc-canvas-toolbar-sidebar-shortcut">Ctrl+B</span>
-        </button>
+        <For each={persistentContributions()}>
+          {(contribution) => (
+            <ToolbarActionButton contribution={contribution} persistent />
+          )}
+        </For>
       </div>
       <Show when={!collapsed()}>
         <div class="vc-canvas-toolbar-hints" aria-hidden="true">

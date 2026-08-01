@@ -1,13 +1,13 @@
+import type { TEditorToolId } from '@omnidraw/cangine/editor';
 import { For, type Component } from 'solid-js';
-import type { TCanvasToolId } from './toolbar.types';
 
 type TToolButtonProps = Readonly<{
   active: boolean;
   Icon: Component<Readonly<{ size?: number }>>;
   label: string;
   shortcuts?: readonly string[];
-  toolId: TCanvasToolId;
-  onSelect(toolId: TCanvasToolId): void;
+  toolId: TEditorToolId;
+  onSelect(toolId: TEditorToolId): void;
 }>;
 
 export function ToolButton(props: TToolButtonProps) {

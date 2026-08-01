@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 import {
   activateBrowserTenantScope,
   getBrowserTenantScope,

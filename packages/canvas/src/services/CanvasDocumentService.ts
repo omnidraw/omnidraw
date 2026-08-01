@@ -27,6 +27,7 @@ import {
   fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasImageExtension,
   type TCanvasCommand,
+  type TCanvasDocumentTransport,
   type TCanvasEvent,
   type TCanvasImageExtensionV1,
   type TCanvasItemSnapshot,
@@ -37,6 +38,8 @@ import {
 } from '@omnidraw/canvas-contract';
 import type {
   TCanvasImagePort,
+  TCanvasWaitHandle,
+  TCanvasWaitPort,
   TImageUploadFormat,
 } from '../types';
 import {
@@ -66,19 +69,11 @@ const SUPPORTED_IMAGE_MIME_TYPES = new Set<TImageUploadFormat>([
   'image/gif',
   'image/webp',
 ]);
-export type TCanvasDocumentTransport = Readonly<{
-  getSnapshot(args: Readonly<{ canvasId: string }>): Promise<TCanvasSnapshot>;
-  execute(command: TCanvasCommand): Promise<TCanvasItemsChangedEvent>;
-  subscribe(args: Readonly<{
-    canvasId: string;
-    afterRevision: number;
-  }>): AsyncIterable<TCanvasEvent>;
-}>;
-
 export type TCanvasDocumentServiceOptions = Readonly<{
   canvasId: string;
   transport: TCanvasDocumentTransport;
   createCommandId(): string;
+  wait: TCanvasWaitPort;
   image?: TCanvasImagePort;
   onError?(error: unknown): void;
   observe?(observation: TCanvasDocumentObservation): void;
@@ -397,6 +392,7 @@ export class CanvasDocumentService
   readonly #canvasId: string;
   readonly #transport: TCanvasDocumentTransport;
   readonly #createCommandId: () => string;
+  readonly #wait: TCanvasWaitPort;
   readonly #image: TCanvasImagePort | null;
   readonly #onError: (error: unknown) => void;
   readonly #observeDocument: ((observation: TCanvasDocumentObservation) => void) | null;
@@ -410,6 +406,7 @@ export class CanvasDocumentService
   readonly #activeImports = new Map<string, TPreparedImport>();
   readonly #inFlightTransactions = new Set<TPendingTransaction>();
   readonly #mediaTasks = new Set<Promise<void>>();
+  readonly #activeWaits = new Set<TCanvasWaitHandle>();
   #imageNodeCounts = new Map<string, number>();
   #imageDescriptorCounts = new Map<
     string,
@@ -433,6 +430,7 @@ export class CanvasDocumentService
     this.#canvasId = options.canvasId;
     this.#transport = options.transport;
     this.#createCommandId = options.createCommandId;
+    this.#wait = options.wait;
     this.#image = options.image ?? null;
     this.#onError = options.onError ?? (() => undefined);
     this.#observeDocument = options.observe ?? null;
@@ -678,11 +676,12 @@ export class CanvasDocumentService
     }
     const iterator = this.#eventIterator;
     this.#eventIterator = null;
+    for (const wait of [...this.#activeWaits]) wait.cancel();
     try {
       const closing = iterator?.return?.();
-      void closing?.catch(() => undefined);
+      await closing;
     } catch {
-      // A hostile iterator must not prevent bounded local teardown.
+      // Stream cancellation failures cannot prevent local teardown.
     }
     this.#history.destroy();
     try {
@@ -1727,7 +1726,7 @@ export class CanvasDocumentService
           },
         });
         this.#reportError(error);
-        await new Promise<void>((resolve) => setTimeout(resolve, 250));
+        await this.#waitBeforeRetry(250);
       }
     }
   }
@@ -2107,8 +2106,7 @@ export class CanvasDocumentService
         if (this.#eventIterator === iterator) this.#eventIterator = null;
         if (restartForRecovery && iterator !== null) {
           try {
-            const closing = iterator.return?.();
-            void closing?.catch(() => undefined);
+            await iterator.return?.();
           } catch {
             // Recovery proceeds from a fresh subscription even if close fails.
           }
@@ -2119,8 +2117,19 @@ export class CanvasDocumentService
           await (this.#recoveryTask ?? Promise.resolve());
           continue;
         }
-        await new Promise<void>((resolve) => setTimeout(resolve, 250));
+        await this.#waitBeforeRetry(250);
       }
+    }
+  }
+
+  async #waitBeforeRetry(delayMs: number): Promise<void> {
+    if (this.#disposed) return;
+    const wait = this.#wait.wait(delayMs);
+    this.#activeWaits.add(wait);
+    try {
+      await wait.promise;
+    } finally {
+      this.#activeWaits.delete(wait);
     }
   }
 

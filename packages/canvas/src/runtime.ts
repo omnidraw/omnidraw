@@ -40,18 +40,57 @@ import type { TCanvasRuntimeConfig } from './types';
 const IMAGE_FILE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
 const FONT_FAMILIES = [
-  ['Inter', 'sans-serif', 'inter', 'woff2'],
-  ['Fraunces', 'serif', 'fraunces', 'ttf'],
-  ['JetBrains Mono', 'monospace', 'jetbrains-mono', 'woff2'],
+  [
+    'Inter',
+    'sans-serif',
+    'inter',
+    'woff2',
+    [
+      new URL('./assets/fonts/inter-400.woff2', import.meta.url).href,
+      new URL('./assets/fonts/inter-500.woff2', import.meta.url).href,
+      new URL('./assets/fonts/inter-600.woff2', import.meta.url).href,
+      new URL('./assets/fonts/inter-700.woff2', import.meta.url).href,
+    ],
+  ],
+  [
+    'Fraunces',
+    'serif',
+    'fraunces',
+    'ttf',
+    [
+      new URL('./assets/fonts/fraunces-400.ttf', import.meta.url).href,
+      new URL('./assets/fonts/fraunces-500.ttf', import.meta.url).href,
+      new URL('./assets/fonts/fraunces-600.ttf', import.meta.url).href,
+      new URL('./assets/fonts/fraunces-700.ttf', import.meta.url).href,
+    ],
+  ],
+  [
+    'JetBrains Mono',
+    'monospace',
+    'jetbrains-mono',
+    'woff2',
+    [
+      new URL('./assets/fonts/jetbrains-mono-400.woff2', import.meta.url).href,
+      new URL('./assets/fonts/jetbrains-mono-500.woff2', import.meta.url).href,
+      new URL('./assets/fonts/jetbrains-mono-600.woff2', import.meta.url).href,
+      new URL('./assets/fonts/jetbrains-mono-700.woff2', import.meta.url).href,
+    ],
+  ],
 ] as const;
-const FONT_RESOURCES = FONT_FAMILIES.flatMap(([family, , slug, format]) => (
-  FONT_WEIGHTS.map((weight) => ({
+const FONT_RESOURCES = FONT_FAMILIES.flatMap(([
+  family,
+  ,
+  slug,
+  format,
+  urls,
+]) => (
+  FONT_WEIGHTS.map((weight, index) => ({
     descriptor: {
       id: `omnidraw-font:${slug}:${weight}`,
       type: 'font' as const, family, weight,
       style: 'normal' as const, mimeType: `font/${format}`,
     },
-    source: { type: 'url' as const, url: `/fonts/${slug}-${weight}.${format}` },
+    source: { type: 'url' as const, url: urls[index]! },
   }))
 ));
 
@@ -471,7 +510,7 @@ export function buildRuntime(
         },
       );
       syncCanvasBackgroundProjection(gridVisible);
-      releaseThemeChange = config.themeService.hooks.change.tap(
+      releaseThemeChange = config.themeService.subscribeThemeChange(
         () => syncCanvasBackgroundProjection(gridVisible),
       );
       if (config.trace !== undefined && config.trace !== null) {
@@ -491,6 +530,7 @@ export function buildRuntime(
           config.trace ?? null,
         ),
         createCommandId: config.createId,
+        wait: config.wait,
         image: config.image,
         observe: config.trace === undefined || config.trace === null
           ? undefined

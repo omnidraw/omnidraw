@@ -1,4 +1,4 @@
-import type { ThemeId, TThemeDefinition } from "./builtins";
+import type { ThemeId, TThemeDefinition } from "./builtins.js";
 
 export const THEME_COLOR_FAMILIES = [
   "base",

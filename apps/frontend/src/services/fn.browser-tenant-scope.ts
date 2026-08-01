@@ -18,7 +18,9 @@ export function fnBrowserTenantScopeKey(scope: TBrowserTenantScope): string {
   ]);
 }
 
-export function fnBrowserTenantStorageKeys(scope: TBrowserTenantScope): Readonly<{
+export function fnBrowserTenantStorageKeys(
+  scope: TBrowserTenantScope,
+): Readonly<{
   cameraViewports: string;
   frontendStore: string;
 }> {
@@ -33,5 +35,8 @@ export function fnBrowserTenantScopesMatch(
   left: TBrowserTenantScope | null,
   right: TBrowserTenantScope,
 ): boolean {
-  return left !== null && fnBrowserTenantScopeKey(left) === fnBrowserTenantScopeKey(right);
+  return (
+    left !== null
+    && fnBrowserTenantScopeKey(left) === fnBrowserTenantScopeKey(right)
+  );
 }

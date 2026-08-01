@@ -1,5 +1,5 @@
-import { THEME_ID_DARK } from "./builtins";
-import { createColorScale, createThemeStyle } from "./style.shared";
+import { THEME_ID_DARK } from "./builtins.js";
+import { createColorScale, createThemeStyle } from "./style.shared.js";
 
 export const STYLE_DARK = createThemeStyle({
   id: THEME_ID_DARK,

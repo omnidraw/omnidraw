@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe('FloatingCanvasToolbar', () => {
-  test('shows the dedicated AI Chat tool and selects Cangine widget creation', () => {
+  test('renders an ordered host tool contribution and selects its editor tool', () => {
     const onSelectTool = vi.fn();
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -23,12 +23,19 @@ describe('FloatingCanvasToolbar', () => {
       activeToolId: null,
       canRedo: false,
       canUndo: false,
+      contributions: [{
+        kind: 'tool',
+        id: 'ai-chat',
+        label: 'AI Chat',
+        Icon: () => null,
+        toolId: 'widget',
+        shortcuts: [{ key: 'c', label: 'C' }],
+      }],
       gridVisible: true,
-      sidebarVisible: true,
       onRedo: () => {},
+      onImportImage: () => {},
       onSelectTool,
       onToggleGrid: () => {},
-      onToggleSidebar: () => {},
       onUndo: () => {},
     }), host);
 
@@ -110,12 +117,10 @@ describe('FloatingCanvasToolbar', () => {
       canRedo: false,
       canUndo: false,
       gridVisible: true,
-      sidebarVisible: true,
       onRedo: () => {},
       onImportImage: () => {},
       onSelectTool: () => {},
       onToggleGrid: () => {},
-      onToggleSidebar: () => {},
       onUndo: () => {},
       trace,
     }), host);

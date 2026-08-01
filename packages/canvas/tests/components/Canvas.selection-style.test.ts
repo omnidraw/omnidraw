@@ -1,8 +1,8 @@
 import type { TSelectionStyleState } from '@omnidraw/cangine/editor';
+import type { TThemeDefinition } from '@omnidraw/service-theme';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { LOCAL_BROWSER_TENANT_SCOPE } from '../../src/CONSTANTS';
 
 const controllerState = (
   propertyId: 'background' | 'foreground',
@@ -108,31 +108,49 @@ afterEach(() => {
 describe('Canvas selection style binding', () => {
   test('routes UI intent to the current controller and rejects stale snapshots', async () => {
     const [canvas, setCanvas] = createSignal({ id: 'canvas-a' });
+    let paletteLabel = 'Blue';
+    let paletteColor = '#3b82f6';
+    let themeListener: ((theme: TThemeDefinition) => void) | null = null;
+    const theme = {
+      id: 'test',
+      appearance: 'light',
+      colors: {},
+    } as unknown as TThemeDefinition;
+    const themeService = {
+      getTheme: () => theme,
+      subscribeThemeChange: (listener: (theme: TThemeDefinition) => void) => {
+        themeListener = listener;
+        return () => {
+          themeListener = null;
+        };
+      },
+      getThemeColorPickerPalette: () => ({
+        fillQuick: [{ label: paletteLabel, color: paletteColor }],
+        strokeQuick: [{ label: paletteLabel, color: paletteColor }],
+      }),
+      getStrokeWidthOptions: () => [],
+    } as never;
     const host = document.createElement('div');
     document.body.append(host);
     const props = {
       get canvas() {
         return canvas() as never;
       },
-      tenant: LOCAL_BROWSER_TENANT_SCOPE,
-      transport: {} as never,
-      image: {} as never,
-      store: {
-        sidebarVisible: () => true,
-        onToggleSidebar: vi.fn(),
+      hostScopeKey: 'test-scope',
+      dependencies: {
+        transport: {} as never,
+        image: {} as never,
+        createId: () => 'test-id',
+        wait: {
+          wait: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+        },
+        notification: {
+          showError: vi.fn(),
+          showInfo: vi.fn(),
+          showSuccess: vi.fn(),
+        },
+        themeService,
       },
-      notification: {
-        showError: vi.fn(),
-        showInfo: vi.fn(),
-        showSuccess: vi.fn(),
-      },
-      themeService: {
-        getThemeColorPickerPalette: () => ({
-          fillQuick: [{ label: 'Blue', color: '#3b82f6' }],
-          strokeQuick: [{ label: 'Blue', color: '#3b82f6' }],
-        }),
-        getStrokeWidthOptions: () => [],
-      } as never,
     };
     dispose = render(() => Canvas(props), host);
 
@@ -150,6 +168,15 @@ describe('Canvas selection style binding', () => {
         b: 246 / 255,
         a: 1,
       },
+    });
+
+    paletteLabel = 'Red';
+    paletteColor = '#ef4444';
+    themeListener?.(theme);
+    await vi.waitFor(() => {
+      expect(host.querySelector<HTMLElement>(
+        '[aria-label="BACKGROUND Red"]',
+      )?.style.getPropertyValue('--vc-style-color')).toBe('#ef4444');
     });
 
     const oldController = runtimeMocks.instances[0]?.controller;

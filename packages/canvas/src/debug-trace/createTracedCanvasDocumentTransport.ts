@@ -1,10 +1,8 @@
 import type {
   TCanvasCommand,
+  TCanvasDocumentTransport,
   TCanvasEvent,
 } from '@omnidraw/canvas-contract';
-import type {
-  TCanvasDocumentTransport,
-} from '../services/CanvasDocumentService';
 import type { TReproductionTraceSink } from './typed';
 
 function eventFacts(event: TCanvasEvent): Readonly<Record<string, unknown>> {
@@ -134,7 +132,7 @@ export function createTracedCanvasDocumentTransport(
         throw error;
       }
     },
-    async *subscribe(args) {
+    subscribe(args) {
       const startedAt = trace.elapsedMs();
       trace.emit({
         channel: 'transport',
@@ -143,22 +141,11 @@ export function createTracedCanvasDocumentTransport(
         correlation: { canvasId: args.canvasId },
         data: { afterRevision: args.afterRevision },
       });
-      try {
-        for await (const event of transport.subscribe(args)) {
-          trace.emit({
-            channel: 'transport',
-            type: 'event-received',
-            priority: 'critical',
-            correlation: {
-              canvasId: args.canvasId,
-              ...(event.type === 'items-changed'
-                ? { commandId: event.commandId }
-                : {}),
-            },
-            data: eventFacts(event),
-          });
-          yield event;
-        }
+      const iterator = transport.subscribe(args)[Symbol.asyncIterator]();
+      let ended = false;
+      const emitEnded = (): void => {
+        if (ended) return;
+        ended = true;
         trace.emit({
           channel: 'transport',
           type: 'events-ended',
@@ -166,7 +153,10 @@ export function createTracedCanvasDocumentTransport(
           correlation: { canvasId: args.canvasId },
           data: { durationMs: trace.elapsedMs() - startedAt },
         });
-      } catch (error) {
+      };
+      const emitFailed = (error: unknown): void => {
+        if (ended) return;
+        ended = true;
         trace.emit({
           channel: 'transport',
           type: 'events-failed',
@@ -177,8 +167,51 @@ export function createTracedCanvasDocumentTransport(
             error: errorFacts(error),
           },
         });
-        throw error;
-      }
+      };
+      const tracedIterator: AsyncIterableIterator<TCanvasEvent> = {
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+        async next() {
+          try {
+            const result = await iterator.next();
+            if (result.done) {
+              emitEnded();
+              return result;
+            }
+            const event = result.value;
+            trace.emit({
+              channel: 'transport',
+              type: 'event-received',
+              priority: 'critical',
+              correlation: {
+                canvasId: args.canvasId,
+                ...(event.type === 'items-changed'
+                  ? { commandId: event.commandId }
+                  : {}),
+              },
+              data: eventFacts(event),
+            });
+            return result;
+          } catch (error) {
+            emitFailed(error);
+            throw error;
+          }
+        },
+        async return(value) {
+          try {
+            const result = iterator.return === undefined
+              ? { done: true, value }
+              : await iterator.return(value);
+            emitEnded();
+            return result;
+          } catch (error) {
+            emitFailed(error);
+            throw error;
+          }
+        },
+      };
+      return tracedIterator;
     },
   });
 }

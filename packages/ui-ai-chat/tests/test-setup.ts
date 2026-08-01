@@ -1,5 +1,6 @@
-import { LOCAL_BROWSER_TENANT_SCOPE } from "@omnidraw/canvas/CONSTANTS";
 import type { TAiChatApplicationPort, TAiChatBrowserPort, TWidgetBrowserPort } from "../src/ports";
+
+const TEST_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 
 export function ensureDom() {
   if (typeof document === "undefined" || typeof window === "undefined") {
@@ -63,7 +64,7 @@ export function createTestWidgetBrowser(): TWidgetBrowserPort {
   return {
     document,
     createId: () => "00000000-0000-4000-8000-000000000001",
-    organizationId: () => LOCAL_BROWSER_TENANT_SCOPE.orgId,
+    organizationId: () => TEST_ORGANIZATION_ID,
     tenantAuthorityKey: () => 'test-tenant-authority',
     now: () => 1,
     nowDate: () => new Date(1),

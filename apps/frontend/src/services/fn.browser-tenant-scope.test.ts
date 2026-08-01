@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'bun:test';
 import {
   fnBrowserTenantScopeKey,
   fnBrowserTenantScopesMatch,
   fnBrowserTenantStorageKeys,
   type TBrowserTenantScope,
-} from '../src/fn.browser-tenant-scope';
+} from './fn.browser-tenant-scope';
 
 const tenantA = Object.freeze({
   accountId: 'account-a',
@@ -15,7 +15,7 @@ const tenantA = Object.freeze({
 }) satisfies TBrowserTenantScope;
 
 describe('browser tenant storage isolation', () => {
-  test('qualifies every persistent cache by deployment, org, account, cell, and epoch', () => {
+  test('qualifies persistence by deployment, org, account, cell, and epoch', () => {
     const variants = [
       { ...tenantA, orgId: 'org-b' },
       { ...tenantA, accountId: 'account-b' },
@@ -24,7 +24,6 @@ describe('browser tenant storage isolation', () => {
       { ...tenantA, deploymentOrigin: 'https://other.example' },
     ];
     const keysA = fnBrowserTenantStorageKeys(tenantA);
-
     for (const variant of variants) {
       const keysB = fnBrowserTenantStorageKeys(variant);
       expect(keysB.cameraViewports).not.toBe(keysA.cameraViewports);
@@ -34,10 +33,22 @@ describe('browser tenant storage isolation', () => {
 
   test('forces cache teardown on an organization or placement switch', () => {
     expect(fnBrowserTenantScopesMatch(tenantA, tenantA)).toBe(true);
-    expect(fnBrowserTenantScopesMatch(tenantA, { ...tenantA, orgId: 'org-b' })).toBe(false);
-    expect(fnBrowserTenantScopesMatch(tenantA, { ...tenantA, placementEpoch: 5 })).toBe(false);
-    expect(fnBrowserTenantScopeKey({ ...tenantA, orgId: 'ab', accountId: 'c' })).not.toBe(
-      fnBrowserTenantScopeKey({ ...tenantA, orgId: 'a', accountId: 'bc' }),
-    );
+    expect(fnBrowserTenantScopesMatch(
+      tenantA,
+      { ...tenantA, orgId: 'org-b' },
+    )).toBe(false);
+    expect(fnBrowserTenantScopesMatch(
+      tenantA,
+      { ...tenantA, placementEpoch: 5 },
+    )).toBe(false);
+    expect(fnBrowserTenantScopeKey({
+      ...tenantA,
+      orgId: 'ab',
+      accountId: 'c',
+    })).not.toBe(fnBrowserTenantScopeKey({
+      ...tenantA,
+      orgId: 'a',
+      accountId: 'bc',
+    }));
   });
 });

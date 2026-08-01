@@ -1,4 +1,4 @@
-import type { TThemeDefinition } from "./builtins";
+import type { TThemeDefinition } from "./builtins.js";
 
 const CSS_VARIABLE_ENTRIES = [
   ["--background", "background"],

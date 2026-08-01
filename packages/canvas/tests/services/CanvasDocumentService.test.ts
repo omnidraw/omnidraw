@@ -20,6 +20,7 @@ import {
   CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   type TCanvasCommand,
+  type TCanvasDocumentTransport,
   type TCanvasEvent,
   type TCanvasItemSnapshot,
   type TCanvasItemsChangedEvent,
@@ -27,10 +28,42 @@ import {
 } from '@omnidraw/canvas-contract';
 import { describe, expect, test, vi } from 'vitest';
 import {
-  CanvasDocumentService,
+  CanvasDocumentService as CanvasDocumentServiceImplementation,
   type TCanvasDocumentObservation,
-  type TCanvasDocumentTransport,
+  type TCanvasDocumentServiceOptions,
 } from '../../src/services/CanvasDocumentService';
+
+const TEST_WAIT = Object.freeze({
+  wait(delayMs: number) {
+    let settled = false;
+    let resolve!: () => void;
+    const promise = new Promise<void>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    const timeout = setTimeout(() => {
+      settled = true;
+      resolve();
+    }, delayMs);
+    return Object.freeze({
+      promise,
+      cancel() {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      },
+    });
+  },
+});
+
+class CanvasDocumentService extends CanvasDocumentServiceImplementation {
+  constructor(
+    options: Omit<TCanvasDocumentServiceOptions, 'wait'>
+      & Partial<Pick<TCanvasDocumentServiceOptions, 'wait'>>,
+  ) {
+    super({ ...options, wait: options.wait ?? TEST_WAIT });
+  }
+}
 
 const transform = {
   position: { x: 0, y: 0 },
@@ -2563,5 +2596,35 @@ describe('CanvasDocumentService', () => {
     expect(fake.preloadRegistrations).toHaveBeenCalledTimes(1);
     await service.dispose();
     expect(fake.destroyRegistrations).toHaveBeenCalledTimes(1);
+  });
+
+  test('cancels an injected reconnect wait during disposal', async () => {
+    const delayed = deferred<void>();
+    const cancel = vi.fn(() => delayed.resolve());
+    const wait = {
+      wait: vi.fn(() => ({ promise: delayed.promise, cancel })),
+    };
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot: vi.fn(async () => snapshot([])),
+      execute: vi.fn(async () => event('unexpected', 1, [])),
+      subscribe: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: async () => ({ done: true, value: undefined }),
+        }),
+      }),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+      wait,
+    });
+
+    await service.start(fake.engine);
+    await vi.waitFor(() => expect(wait.wait).toHaveBeenCalledWith(250));
+    await service.dispose();
+
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });

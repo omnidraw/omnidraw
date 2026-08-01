@@ -1,5 +1,40 @@
 # Canvas Architecture
 
+## Public composition boundary
+
+The package receives one minimal descriptor (`{ id }`), one opaque stable host
+scope key, and one readonly dependency bundle:
+
+```text
+OSS shell or managed-style host
+  -> host scope + descriptor
+  -> document transport (snapshot / execute / async event stream)
+  -> theme, image, notification, ID, and cancelable wait ports
+  -> optional runtime retirement registration, diagnostics owner, extensions,
+     and toolbar contributions
+  -> Canvas
+       -> CanvasRuntimeLifecycle
+       -> CanvasDocumentService
+       -> Cangine
+```
+
+The host owns authentication, tenant authorization, protocol clients, browser
+export effects, shell state, and product tools. Canvas has no API, oRPC,
+database, frontend, AI, sidebar, or managed implementation dependency. A scope
+key or canvas-ID change replaces the runtime serially.
+
+When a host supplies the lifecycle-only runtime retirement port, Canvas
+registers its async lifecycle disposal. A tenant-aware host awaits every
+registration before disconnecting old tenant infrastructure or activating the
+next scope; this is a narrow lifecycle seam, not a service locator.
+
+The document transport contract lives in `@omnidraw/canvas-contract` so an OSS
+oRPC adapter, an in-memory host, and a managed Cell adapter compile against the
+same boundary. When canvas calls `AsyncIterator.return()`, an adapter must
+promptly close its underlying event stream. Disposal also cancels each active
+host wait; cancellation must settle the wait promise so recovery cannot remain
+parked after teardown.
+
 The package has one local-document boundary:
 
 ```text
@@ -55,8 +90,14 @@ writer. Shutdown destroys it before the editor session.
 `CanvasRuntimeLifecycle` ensures two runtime instances never own the same host
 concurrently.
 
+Theme variables are applied to the individual `.vc-canvas-host` element from
+the injected `IThemeService`. Package CSS never resets the surrounding shell,
+and both CSS and Cangine resolve fonts from assets emitted with this package.
+The host owns and disposes an injected diagnostics owner; canvas only installs
+temporary subscriptions while its runtime is active.
+
 Recorder output is not used for persistence or product history. Durable product
 writes go through `editor.commitSceneMutation()`; outside bootstrap/resync,
 `CanvasDocumentService` is the sole `engine.scene` writer. The package
-intentionally contains no transport store, feature-plugin graph, or second
-editor stack.
+intentionally contains no protocol client, transport store, feature-plugin
+graph, or second editor stack.

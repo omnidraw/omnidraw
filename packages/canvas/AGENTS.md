@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`@omnidraw/canvas` is the browser adapter for the authoritative server canvas
-API. `CanvasDocumentService` owns the current-session optimistic document;
-`CanvasService` remains the only durable authority. Cangine plans immutable
-editor command batches and renders the accepted browser document, but is not a
-document or persistence authority.
+`@omnidraw/canvas` is the public, protocol-neutral browser canvas kernel.
+`CanvasDocumentService` owns the current-session optimistic document;
+the host's durable canvas service remains the only durable authority. Cangine
+plans immutable editor command batches and renders the accepted browser
+document, but is not a document or persistence authority.
 
 ## Ownership
 
@@ -22,6 +22,11 @@ document or persistence authority.
 - `src/services/fn.scene-node-diff.ts` owns pure authored-node diff and patch
   helpers at the application-to-server edge.
 - `src/extension.ts` is the only optional runtime extension seam.
+- `TCanvasProps` and `TCanvasDependencies` are the only Solid composition
+  boundary. Hosts supply descriptor, opaque scope, transport, theme, media,
+  notifications, IDs, cancelable waits, diagnostics, extensions, and the
+  optional lifecycle-only runtime retirement registration port. Tenant-aware
+  hosts await registered runtime disposal before retiring tenant services.
 
 Keep server concurrency rules in `@omnidraw/service-canvas` and shared wire
 types in `@omnidraw/canvas-contract`.
@@ -48,6 +53,16 @@ types in `@omnidraw/canvas-contract`.
   media-gate server persistence until durable URL metadata is promoted.
 - Runtime replacement and disposal must remain serialized and idempotent.
 - Optional widget behavior belongs behind `ICanvasRuntimeExtension`.
+- Tenant identity, API/oRPC clients, database models, browser export effects,
+  sidebars, and product tool names belong in the host composition root.
+- Keep toolbar contributions narrow, ordered, and host-owned. Base canvas must
+  not name AI Chat or a shell sidebar.
+- Bind listeners and DOM work to the canvas container's `ownerDocument` and
+  `defaultView`; do not assume the ambient document realm.
+- Do not dispose injected diagnostics owners. The host constructs and owns
+  them; canvas only emits through the capability.
+- Keep CSS selectors below `.vc-canvas-host`. Package fonts and assets must use
+  distribution-relative URLs; never add a `/fonts` or host-root convention.
 
 ## Functional files
 
@@ -63,5 +78,6 @@ Run:
 ```sh
 bun run --cwd packages/canvas typecheck
 bun run --cwd packages/canvas test
+bun run --cwd packages/canvas build
 bun run .codex/hooks/functional-core-eslint.ts packages/canvas/src/services/fn.scene-reduction.ts packages/canvas/src/services/fn.scene-node-diff.ts
 ```

@@ -2,7 +2,7 @@ import {
   BUILTIN_THEMES,
   type ThemeId,
   type TThemeDefinition,
-} from "./builtins";
+} from "./builtins.js";
 import type {
   TCanvasThemeStyle,
   TThemeCanvasStyle,
@@ -20,7 +20,7 @@ import type {
   TThemeStyleDefaultsMap,
   TThemeTextAlignOption,
   TThemeVerticalAlignOption,
-} from "./types";
+} from "./types.js";
 
 const DEFAULT_FILL_QUICK = [
   "@transparent",

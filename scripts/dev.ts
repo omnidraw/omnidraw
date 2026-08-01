@@ -10,7 +10,7 @@ import path from "path"
 
 const rootDir = path.resolve(import.meta.dir, "..")
 const cliDir = path.join(rootDir, "apps/cli")
-const frontendDir = path.join(rootDir, "apps/frontend")
+const frontendDevScript = path.join(rootDir, "scripts/dev-frontend.ts")
 const lockRootDir = path.join(os.tmpdir(), "omnidraw-dev-ports")
 const bunExec = process.execPath
 
@@ -306,9 +306,9 @@ try {
   console.log(`[dev] Frontend proxy target: ${backendTarget}`)
 
   processes.push(spawnDevProcess({
-    name: "frontend",
-    cwd: frontendDir,
-    cmd: [bunExec, "run", "dev", "--", "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
+    name: "frontend-stack",
+    cwd: rootDir,
+    cmd: [bunExec, frontendDevScript, "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
     env: {
       OMNIDRAW_BACKEND_HOST: "127.0.0.1",
       OMNIDRAW_BACKEND_PORT: String(actualBackendPort),

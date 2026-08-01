@@ -168,18 +168,21 @@ const themeService = {
   getTheme: () => ({
     colors: { ...runtimeState.themeColors },
   }),
-  hooks: {
-    change: {
-      tap(listener: NonNullable<typeof runtimeState.themeListener>) {
-        runtimeState.themeListener = listener;
-        return () => {
-          runtimeState.events.push('theme:release');
-          runtimeState.themeListener = null;
-        };
-      },
-    },
+  subscribeThemeChange(listener: NonNullable<typeof runtimeState.themeListener>) {
+    runtimeState.themeListener = listener;
+    return () => {
+      runtimeState.events.push('theme:release');
+      runtimeState.themeListener = null;
+    };
   },
 } as never;
+
+const wait = Object.freeze({
+  wait: () => Object.freeze({
+    promise: Promise.resolve(),
+    cancel: () => undefined,
+  }),
+});
 
 describe('canvas runtime composition', () => {
   beforeEach(() => {
@@ -314,17 +317,10 @@ describe('canvas runtime composition', () => {
     };
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
-      tenant: {
-        accountId: 'account-a',
-        cellId: 'cell-a',
-        deploymentOrigin: 'https://example.test',
-        orgId: 'org-a',
-        placementEpoch: 1,
-      },
       container,
       transport: {} as never,
       createId: () => 'id-a',
-      onToggleSidebar: () => undefined,
+      wait,
       themeService,
       image,
       notification: {
@@ -462,7 +458,7 @@ describe('canvas runtime composition', () => {
       ...['Inter', 'Fraunces', 'JetBrains Mono'].flatMap((family) => (
         [400, 500, 600, 700].map((weight) => expect.objectContaining({
           family,
-          url: expect.stringMatching(/^\/fonts\/.+\.(ttf|woff2)$/),
+          url: expect.stringMatching(/\/assets\/fonts\/.+\.(ttf|woff2)$/),
           weight,
         }))
       )),
@@ -542,17 +538,10 @@ describe('canvas runtime composition', () => {
     document.body.append(container);
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
-      tenant: {
-        accountId: 'account-a',
-        cellId: 'cell-a',
-        deploymentOrigin: 'https://example.test',
-        orgId: 'org-a',
-        placementEpoch: 1,
-      },
       container,
       transport: {} as never,
       createId: () => 'id-a',
-      onToggleSidebar: () => undefined,
+      wait,
       themeService,
       image: {
         uploadImage: vi.fn(),
@@ -689,17 +678,10 @@ describe('canvas runtime composition', () => {
     document.body.append(container);
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
-      tenant: {
-        accountId: 'account-a',
-        cellId: 'cell-a',
-        deploymentOrigin: 'https://example.test',
-        orgId: 'org-a',
-        placementEpoch: 1,
-      },
       container,
       transport: {} as never,
       createId: () => 'id-a',
-      onToggleSidebar: () => undefined,
+      wait,
       themeService,
     }, [{
       name: 'throwing',
@@ -731,17 +713,10 @@ describe('canvas runtime composition', () => {
     const showError = vi.fn();
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
-      tenant: {
-        accountId: 'account-a',
-        cellId: 'cell-a',
-        deploymentOrigin: 'https://example.test',
-        orgId: 'org-a',
-        placementEpoch: 1,
-      },
       container,
       transport: {} as never,
       createId: () => 'id-a',
-      onToggleSidebar: () => undefined,
+      wait,
       themeService,
       notification: {
         showError,
@@ -781,17 +756,10 @@ describe('canvas runtime composition', () => {
     document.body.append(container);
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
-      tenant: {
-        accountId: 'account-a',
-        cellId: 'cell-a',
-        deploymentOrigin: 'https://example.test',
-        orgId: 'org-a',
-        placementEpoch: 1,
-      },
       container,
       transport: {} as never,
       createId: () => 'id-a',
-      onToggleSidebar: () => undefined,
+      wait,
       themeService,
     });
     await runtime.boot();

@@ -1,6 +1,11 @@
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { LOCAL_BROWSER_TENANT_SCOPE } from '../../src/CONSTANTS';
+import {
+  THEME_ID_DARK,
+  ThemeService,
+} from '@omnidraw/service-theme';
+import { createReproductionTrace } from '../../src/debug-trace/createReproductionTrace';
+import type { TCanvasDependencies } from '../../src/types';
 
 const runtimeMocks = vi.hoisted(() => {
   const setActiveTool = vi.fn();
@@ -40,6 +45,76 @@ vi.mock('../../src/runtime', () => ({
 import { Canvas } from '../../src/components/Canvas';
 
 let dispose: (() => void) | null = null;
+const traceOwners: Array<ReturnType<typeof createReproductionTrace>> = [];
+
+const themeService = {
+  getTheme: () => ({
+    id: 'test',
+    appearance: 'light',
+    colors: {},
+  }),
+  getThemeColorPickerPalette: () => ({ fillQuick: [], strokeQuick: [] }),
+  getStrokeWidthOptions: () => [],
+  subscribeThemeChange: () => () => {},
+} as never;
+
+function createTrace() {
+  const trace = createReproductionTrace({
+    environment: () => ({
+      applicationVersion: 'test',
+      buildMode: 'test',
+      canvasId: 'canvas-1',
+      cangineVersion: 'test',
+      browser: 'test',
+      platform: 'test',
+      viewport: { width: 1_000, height: 800 },
+      devicePixelRatio: 1,
+    }),
+    monotonicNow: () => 0,
+    wallClockNow: () => new Date(0),
+    defer: (callback) => queueMicrotask(callback),
+    schedule: () => () => {},
+    writeClipboard: async () => {},
+    createObjectUrl: () => 'blob:test',
+    revokeObjectUrl: () => {},
+    download: () => {},
+  });
+  traceOwners.push(trace);
+  return trace;
+}
+
+function dependencies(
+  overrides: Partial<TCanvasDependencies> = {},
+): TCanvasDependencies {
+  return {
+    transport: {} as never,
+    image: {
+      cloneImage: vi.fn(async () => ({ url: 'test://image-clone' })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+      uploadImage: vi.fn(async () => ({ url: 'test://image' })),
+    },
+    notification: {
+      showError: vi.fn(),
+      showInfo: vi.fn(),
+      showSuccess: vi.fn(),
+    },
+    themeService,
+    createId: () => 'test-id',
+    wait: {
+      wait: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+    },
+    ...overrides,
+  };
+}
+
+const AI_CHAT_TOOL = Object.freeze({
+  kind: 'tool',
+  id: 'ai-chat',
+  label: 'AI Chat',
+  Icon: () => null,
+  toolId: 'widget',
+  shortcuts: [{ key: 'c', label: 'C' }],
+}) satisfies NonNullable<TCanvasDependencies['toolbarContributions']>[number];
 
 function pointerEvent(
   type: string,
@@ -65,43 +140,50 @@ function pointerEvent(
 afterEach(() => {
   dispose?.();
   dispose = null;
+  for (const trace of traceOwners.splice(0)) trace.dispose();
   document.body.replaceChildren();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
-describe('Canvas AI Chat shortcut', () => {
+describe('Canvas host contributions', () => {
+  test('renders and uses core tools without product extensions', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+
+    expect(host.querySelector('[aria-label="AI Chat"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Toggle sidebar"]')).toBeNull();
+    const productKey = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'c',
+    });
+    document.dispatchEvent(productKey);
+    expect(productKey.defaultPrevented).toBe(false);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'r',
+    }));
+    expect(runtimeMocks.setActiveTool).toHaveBeenCalledWith('rect');
+  });
+
   test('keeps passive and active DOM motion out of Smart traces', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     dispose = render(() => Canvas({
-      canvas: { id: 'canvas-1' } as never,
-      tenant: LOCAL_BROWSER_TENANT_SCOPE,
-      transport: {} as never,
-      image: {
-        deleteImage: vi.fn(async () => ({ ok: true as const })),
-        uploadImage: vi.fn(async () => ({
-          url: 'test://image',
-          width: 1,
-          height: 1,
-        })),
-      },
-      store: {
-        sidebarVisible: () => true,
-        onToggleSidebar: vi.fn(),
-      },
-      notification: {
-        showError: vi.fn(),
-        showInfo: vi.fn(),
-        showSuccess: vi.fn(),
-      },
-      themeService: {} as never,
-      diagnostics: {
-        reproductionTrace: true,
-        applicationVersion: 'test',
-        buildMode: 'development',
-        cangineVersion: 'test',
-      },
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({ diagnostics: createTrace() }),
     }), host);
     await vi.waitFor(() => {
       expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
@@ -166,28 +248,9 @@ describe('Canvas AI Chat shortcut', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     dispose = render(() => Canvas({
-      canvas: { id: 'canvas-1' } as never,
-      tenant: LOCAL_BROWSER_TENANT_SCOPE,
-      transport: {} as never,
-      image: {
-        deleteImage: vi.fn(async () => ({ ok: true as const })),
-        uploadImage: vi.fn(async () => ({
-          url: 'test://image',
-          width: 1,
-          height: 1,
-        })),
-      },
-      store: {
-        sidebarVisible: () => true,
-        onToggleSidebar: vi.fn(),
-      },
-      notification: {
-        showError: vi.fn(),
-        showInfo: vi.fn(),
-        showSuccess: vi.fn(),
-      },
-      themeService: {} as never,
-      diagnostics: false,
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
     }), host);
     await vi.waitFor(() => {
       expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
@@ -210,27 +273,9 @@ describe('Canvas AI Chat shortcut', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     dispose = render(() => Canvas({
-      canvas: { id: 'canvas-1' } as never,
-      tenant: LOCAL_BROWSER_TENANT_SCOPE,
-      transport: {} as never,
-      image: {
-        deleteImage: vi.fn(async () => ({ ok: true as const })),
-        uploadImage: vi.fn(async () => ({
-          url: 'test://image',
-          width: 1,
-          height: 1,
-        })),
-      },
-      store: {
-        sidebarVisible: () => true,
-        onToggleSidebar: vi.fn(),
-      },
-      notification: {
-        showError: vi.fn(),
-        showInfo: vi.fn(),
-        showSuccess: vi.fn(),
-      },
-      themeService: {} as never,
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({ toolbarContributions: [AI_CHAT_TOOL] }),
     }), host);
     await vi.waitFor(() => {
       expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
@@ -277,5 +322,229 @@ describe('Canvas AI Chat shortcut', () => {
       key: 'c',
     }));
     expect(runtimeMocks.setActiveTool).not.toHaveBeenCalled();
+  });
+
+  test('runs a host action contribution through its primary shortcut', async () => {
+    const onActivate = vi.fn();
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({
+        toolbarContributions: [{
+          kind: 'action',
+          id: 'shell-panel',
+          label: 'Toggle shell panel',
+          Icon: () => null,
+          placement: 'persistent',
+          shortcuts: [{ key: 'b', label: 'Ctrl+B', primary: true }],
+          onActivate,
+        }],
+      }),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: 'b',
+    });
+    document.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onActivate).toHaveBeenCalledOnce();
+    host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Toggle shell panel"]',
+    )?.click();
+    expect(onActivate).toHaveBeenCalledTimes(2);
+  });
+
+  test('routes document shortcuts to only the active canvas root', async () => {
+    const activateA = vi.fn();
+    const activateB = vi.fn();
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    document.body.append(hostA, hostB);
+    const contribution = (id: string, onActivate: () => void) => ({
+      kind: 'action' as const,
+      id,
+      label: `Action ${id}`,
+      Icon: () => null,
+      shortcuts: [{ key: 'b', label: 'Ctrl+B', primary: true }],
+      onActivate,
+    });
+    const disposeA = render(() => Canvas({
+      canvas: { id: 'canvas-a' },
+      hostScopeKey: 'test-scope-a',
+      dependencies: dependencies({
+        toolbarContributions: [contribution('a', activateA)],
+      }),
+    }), hostA);
+    const disposeB = render(() => Canvas({
+      canvas: { id: 'canvas-b' },
+      hostScopeKey: 'test-scope-b',
+      dependencies: dependencies({
+        toolbarContributions: [contribution('b', activateB)],
+      }),
+    }), hostB);
+    dispose = () => {
+      disposeB();
+      disposeA();
+    };
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledTimes(2);
+    });
+
+    hostA.querySelector<HTMLElement>('.vc-canvas-host')?.dispatchEvent(
+      pointerEvent('pointerdown', 1, 10),
+    );
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: 'b',
+    }));
+    expect(activateA).toHaveBeenCalledOnce();
+    expect(activateB).not.toHaveBeenCalled();
+
+    hostB.querySelector<HTMLElement>('.vc-canvas-host')?.dispatchEvent(
+      pointerEvent('pointerdown', 1, 20),
+    );
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: 'b',
+    }));
+    expect(activateA).toHaveBeenCalledOnce();
+    expect(activateB).toHaveBeenCalledOnce();
+  });
+
+  test('binds keyboard and blur effects to the canvas owner realm', async () => {
+    const iframe = document.createElement('iframe');
+    document.body.append(iframe);
+    const ownerDocument = iframe.contentDocument!;
+    const ownerWindow = iframe.contentWindow!;
+    const host = ownerDocument.createElement('div');
+    ownerDocument.body.append(host);
+    const addDocumentListener = vi.spyOn(ownerDocument, 'addEventListener');
+    const addWindowListener = vi.spyOn(ownerWindow, 'addEventListener');
+    const removeDocumentListener = vi.spyOn(ownerDocument, 'removeEventListener');
+    const removeWindowListener = vi.spyOn(ownerWindow, 'removeEventListener');
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+
+    expect(addDocumentListener).toHaveBeenCalledWith(
+      'keydown',
+      expect.any(Function),
+      true,
+    );
+    expect(addWindowListener).toHaveBeenCalledWith(
+      'blur',
+      expect.any(Function),
+    );
+    runtimeMocks.runtime.setGridVisible.mockClear();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'g' }));
+    expect(runtimeMocks.runtime.setGridVisible).not.toHaveBeenCalled();
+    ownerDocument.dispatchEvent(new ownerWindow.KeyboardEvent(
+      'keydown',
+      { key: 'g' },
+    ));
+    expect(runtimeMocks.runtime.setGridVisible).toHaveBeenCalledWith(false);
+
+    dispose();
+    dispose = null;
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      'keydown',
+      expect.any(Function),
+      true,
+    );
+    expect(removeWindowListener).toHaveBeenCalledWith(
+      'blur',
+      expect.any(Function),
+    );
+  });
+
+  test('applies theme variables only to the owning canvas host', async () => {
+    const shell = document.createElement('div');
+    const host = document.createElement('div');
+    document.body.append(shell, host);
+    const instanceTheme = new ThemeService();
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({ themeService: instanceTheme }),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+    const canvasRoot = host.querySelector<HTMLElement>('.vc-canvas-host')!;
+
+    instanceTheme.setTheme(THEME_ID_DARK);
+
+    expect(canvasRoot.dataset.themeId).toBe(THEME_ID_DARK);
+    expect(canvasRoot.dataset.themeAppearance).toBe('dark');
+    expect(canvasRoot.style.getPropertyValue('--background')).toBe(
+      instanceTheme.getTheme().colors.background,
+    );
+    expect(shell.dataset.themeId).toBeUndefined();
+    expect(shell.style.getPropertyValue('--background')).toBe('');
+    expect(shell.classList.contains('dark')).toBe(false);
+  });
+
+  test('registers runtime retirement and lets the host await shutdown', async () => {
+    let retireRuntime!: () => Promise<void>;
+    let releaseShutdown!: () => void;
+    const shutdownBlocked = new Promise<void>((resolve) => {
+      releaseShutdown = resolve;
+    });
+    const unregister = vi.fn();
+    runtimeMocks.runtime.shutdown.mockImplementationOnce(() => shutdownBlocked);
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({
+        runtimeRetirement: {
+          register: (retire) => {
+            retireRuntime = retire;
+            return unregister;
+          },
+        },
+      }),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+
+    let retirementComplete = false;
+    const retiring = retireRuntime().then(() => {
+      retirementComplete = true;
+    });
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.shutdown).toHaveBeenCalledOnce();
+    });
+    expect(retirementComplete).toBe(false);
+
+    releaseShutdown();
+    await retiring;
+    expect(retirementComplete).toBe(true);
+
+    dispose();
+    dispose = null;
+    await vi.waitFor(() => {
+      expect(unregister).toHaveBeenCalledOnce();
+    });
   });
 });

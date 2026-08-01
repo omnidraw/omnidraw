@@ -4,6 +4,11 @@ import type {
   TVec2,
 } from "@omnidraw/cangine";
 
+/** The canvas metadata required by the portable canvas kernel. */
+export type TCanvasDescriptor = Readonly<{
+  id: string;
+}>;
+
 export type TCanvasItemId = TSceneNode["id"];
 export type TCanvasRevision = number;
 export type TCanvasItemRevision = number;
@@ -146,6 +151,24 @@ export type TCanvasResyncRequiredEvent = Readonly<{
 export type TCanvasEvent =
   | TCanvasItemsChangedEvent
   | TCanvasResyncRequiredEvent;
+
+/**
+ * Protocol-neutral access to one authoritative canvas document.
+ *
+ * Every async iterator produced by `subscribe` must implement prompt
+ * cancellation: calling `AsyncIterator.return()` closes its underlying
+ * stream and settles any pending `next()` call without waiting for another
+ * canvas event. Consumers call `return()` when replacing or disposing a
+ * document runtime.
+ */
+export type TCanvasDocumentTransport = Readonly<{
+  getSnapshot(args: Readonly<{ canvasId: string }>): Promise<TCanvasSnapshot>;
+  execute(command: TCanvasCommand): Promise<TCanvasItemsChangedEvent>;
+  subscribe(args: Readonly<{
+    canvasId: string;
+    afterRevision: number;
+  }>): AsyncIterable<TCanvasEvent>;
+}>;
 
 export type TCanvasItemQueryFilter =
   | Readonly<{ type: "all" }>

@@ -54,7 +54,7 @@ if (store.lastDarkThemeId !== initialThemeMemory.lastDarkThemeId) {
 
 txSyncThemeDom();
 
-themeService.hooks.change.tap((theme) => {
+themeService.subscribeThemeChange((theme) => {
   txSyncThemeDom();
 
   const nextThemeMemory = fxSyncThemeMemory({

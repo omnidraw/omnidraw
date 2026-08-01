@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { ThemeService } from "./ThemeService";
-import { BUILTIN_THEMES } from "./builtins";
+import {
+  BUILTIN_THEMES,
+  THEME_ID_DARK,
+  THEME_ID_LIGHT,
+  THEME_ID_SEPIA,
+} from "./builtins";
 import { fxGetThemeCssVariables } from "./dom";
+import type { IThemeService } from "./interface";
 import { getThemeColorValueMap, isThemeColorToken } from "./styles";
 
 describe("ThemeService", () => {
@@ -49,7 +55,7 @@ describe("ThemeService", () => {
     const theme = new ThemeService();
     const changes: Array<[string | null, Record<string, unknown> | null]> = [];
 
-    theme.hooks.rememberedStyleChange.tap((scope, style) => {
+    theme.subscribeRememberedStyleChange((scope, style) => {
       changes.push([scope, style ? { ...style } : null]);
     });
 
@@ -73,5 +79,48 @@ describe("ThemeService", () => {
       ["text", { fontSize: "@text/l" }],
       ["pen", null],
     ]);
+  });
+
+  it("keeps registry, selection, subscriptions, and remembered styles instance-local", () => {
+    const first: IThemeService = new ThemeService({ initialThemeId: THEME_ID_LIGHT });
+    const second: IThemeService = new ThemeService({ initialThemeId: THEME_ID_SEPIA });
+    const firstChanges: string[] = [];
+    const secondChanges: string[] = [];
+    const firstRegistryChanges: string[][] = [];
+    const releaseFirst = first.subscribeThemeChange((theme) => {
+      firstChanges.push(theme.id);
+    });
+    first.subscribeThemeRegistryChange((themes) => {
+      firstRegistryChanges.push(themes.map((theme) => theme.id));
+    });
+    second.subscribeThemeChange((theme) => {
+      secondChanges.push(theme.id);
+    });
+
+    first.getThemes().find((theme) => theme.id === THEME_ID_LIGHT)!.label = "First light";
+    expect(second.getThemes().find((theme) => theme.id === THEME_ID_LIGHT)?.label).toBe("Light");
+
+    const customTheme = structuredClone(BUILTIN_THEMES[0]!);
+    customTheme.id = "first-only";
+    customTheme.label = "First only";
+    first.addTheme(customTheme);
+    customTheme.label = "Mutated after registration";
+    first.setTheme(customTheme.id);
+    first.setRememberedStyle("pen", { strokeColor: "@blue/700" });
+
+    expect(first.getTheme()).toMatchObject({ id: "first-only", label: "First only" });
+    expect(first.hasTheme("first-only")).toBe(true);
+    expect(second.hasTheme("first-only")).toBe(false);
+    expect(second.getThemeId()).toBe(THEME_ID_SEPIA);
+    expect(second.getRememberedStyle("pen")).toEqual({});
+    expect(firstChanges).toEqual(["first-only"]);
+    expect(secondChanges).toEqual([]);
+    expect(firstRegistryChanges).toEqual([
+      expect.arrayContaining(["first-only"]),
+    ]);
+
+    releaseFirst();
+    first.setTheme(THEME_ID_DARK);
+    expect(firstChanges).toEqual(["first-only"]);
   });
 });

@@ -1,7 +1,7 @@
-import { fnBrowserTenantScopesMatch, type TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
 import { showErrorToast } from '../components/ui/Toast';
 import { runStartupCanvasBootstrap } from '../startup-canvas';
 import { setStore } from '../store';
+import { fnBrowserTenantScopesMatch, type TBrowserTenantScope } from './fn.browser-tenant-scope';
 import { orpcWebsocketService } from './orpc-websocket';
 import {
   getBrowserTenantActivation,

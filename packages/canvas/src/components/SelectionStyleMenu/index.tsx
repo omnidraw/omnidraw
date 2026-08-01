@@ -15,7 +15,6 @@ import {
   fnSelectionStyleControl,
   fnSelectionStyleSharedValue,
 } from './fn.selection-style-presentation';
-import './styles.css';
 
 type TChoice = string | number | readonly string[];
 type TChoicePropertyId = Extract<

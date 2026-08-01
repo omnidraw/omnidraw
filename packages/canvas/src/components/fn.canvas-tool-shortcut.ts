@@ -10,7 +10,6 @@ const TOOL_SHORTCUTS: Readonly<Record<string, TCanvasToolId>> = Object.freeze({
   '7': 'pen',
   '8': 'eraser',
   a: 'arrow',
-  c: 'widget',
   e: 'eraser',
   h: 'hand',
   l: 'connector',

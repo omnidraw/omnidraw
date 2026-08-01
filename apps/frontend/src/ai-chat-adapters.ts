@@ -181,7 +181,7 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
     widgetCapsuleTheme: {
       read: () => fnWidgetCapsuleTheme(themeService.getTheme()),
       subscribe(listener) {
-        return themeService.hooks.change.tap((theme) => {
+        return themeService.subscribeThemeChange((theme) => {
           listener(fnWidgetCapsuleTheme(theme));
         });
       },

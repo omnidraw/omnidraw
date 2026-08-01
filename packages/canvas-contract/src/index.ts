@@ -7,12 +7,14 @@ export {
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
-} from "./CONSTANTS";
+} from "./CONSTANTS.js";
 export type {
   TCanvasAuthoringExtensionV1,
   TCanvasCommand,
   TCanvasContractIssue,
   TCanvasContractValidation,
+  TCanvasDescriptor,
+  TCanvasDocumentTransport,
   TCanvasEvent,
   TCanvasItemId,
   TCanvasItemPage,
@@ -31,7 +33,7 @@ export type {
   TCanvasRevision,
   TCanvasSnapshot,
   TCanvasWidgetExtensionV1,
-} from "./types";
+} from "./types.js";
 export {
   fnAssertValidCanvasItems,
   fnMaterializeCanvasValidationSnapshot,
@@ -40,4 +42,4 @@ export {
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItemExtensions,
   fnValidateCanvasItems,
-} from "./validation";
+} from "./validation.js";

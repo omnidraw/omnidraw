@@ -1,5 +1,5 @@
-import { THEME_ID_GRAPHITE } from "./builtins";
-import { createColorScale, createThemeStyle } from "./style.shared";
+import { THEME_ID_GRAPHITE } from "./builtins.js";
+import { createColorScale, createThemeStyle } from "./style.shared.js";
 
 export const STYLE_GRAPHITE = createThemeStyle({
   id: THEME_ID_GRAPHITE,

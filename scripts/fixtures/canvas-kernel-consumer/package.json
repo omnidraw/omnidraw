@@ -1,0 +1,25 @@
+{
+  "name": "@omnidraw-fixtures/canvas-kernel-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "browser-smoke": "bun run src/browser-smoke.ts",
+    "test": "bun test transport.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@omnidraw/canvas": "0.5.0",
+    "@omnidraw/canvas-contract": "0.5.0",
+    "@omnidraw/service-theme": "0.5.0",
+    "solid-js": "1.9.14"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "playwright": "1.61.1",
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vite-plugin-solid": "2.11.13"
+  }
+}

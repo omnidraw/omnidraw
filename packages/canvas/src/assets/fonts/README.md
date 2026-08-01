@@ -1,8 +1,9 @@
 # Omnidraw canvas fonts
 
-These fonts are bundled with the frontend and served from the same Omnidraw
-origin under `/fonts/`. The application does not fetch fonts from a CDN at
-runtime.
+These fonts ship inside `@omnidraw/canvas`. The package build emits URLs beside
+the canvas distribution for both CSS and Cangine resource registration; hosts
+do not need to copy them to a root `/fonts` directory. The canvas does not
+fetch fonts from a CDN at runtime.
 
 | Family | Role | Bundled weights | Source | License |
 | --- | --- | --- | --- | --- |

@@ -11,14 +11,14 @@ import {
   CANVAS_SCENE_SCHEMA_VERSION,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   CANVAS_WIDGET_EXTENSION_KEY,
-} from "./CONSTANTS";
+} from "./CONSTANTS.js";
 import type {
   TCanvasAuthoringExtensionV1,
   TCanvasContractIssue,
   TCanvasContractValidation,
   TCanvasImageExtensionV1,
   TCanvasWidgetExtensionV1,
-} from "./types";
+} from "./types.js";
 
 const RUNTIME_ONLY_NODE_KINDS = new Set<TSceneNode["kind"]>([
   "background",

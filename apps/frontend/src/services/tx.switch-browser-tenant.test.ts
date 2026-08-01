@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { TBrowserTenantScope } from '@omnidraw/canvas/fn.browser-tenant-scope';
+import type { TBrowserTenantScope } from './fn.browser-tenant-scope';
 import { createSerializedTenantSwitcher } from './tenant-switch-coordinator';
 import { txSwitchBrowserTenant } from './tx.switch-browser-tenant';
 
@@ -15,6 +15,7 @@ describe('txSwitchBrowserTenant', () => {
   test('tears down every old tenant authority before activating the next scope', async () => {
     const calls: string[] = [];
     await txSwitchBrowserTenant({
+      retireCanvasRuntimes: async () => { calls.push('retire-canvas-runtimes'); },
       disconnect: async () => { calls.push('disconnect'); },
       activateClientState: (received) => { calls.push(`client-state:${received.orgId}`); },
       connect: (received) => { calls.push(`connect:${received.orgId}`); },
@@ -22,10 +23,49 @@ describe('txSwitchBrowserTenant', () => {
     }, { scope });
 
     expect(calls).toEqual([
+      'retire-canvas-runtimes',
       'disconnect',
       'client-state:org-b',
       'connect:org-b',
       'bootstrap:org-b',
+    ]);
+  });
+
+  test('waits for deferred canvas retirement before disconnecting or connecting', async () => {
+    let releaseRetirement!: () => void;
+    let markRetirementStarted!: () => void;
+    const retirementBlocked = new Promise<void>((resolve) => {
+      releaseRetirement = resolve;
+    });
+    const retirementStarted = new Promise<void>((resolve) => {
+      markRetirementStarted = resolve;
+    });
+    const calls: string[] = [];
+    const switching = txSwitchBrowserTenant({
+      retireCanvasRuntimes: async () => {
+        calls.push('retire:start');
+        markRetirementStarted();
+        await retirementBlocked;
+        calls.push('retire:complete');
+      },
+      disconnect: async () => { calls.push('disconnect'); },
+      activateClientState: () => { calls.push('client-state'); },
+      connect: () => { calls.push('connect'); },
+      bootstrap: async () => { calls.push('bootstrap'); },
+    }, { scope });
+
+    await retirementStarted;
+    expect(calls).toEqual(['retire:start']);
+
+    releaseRetirement();
+    await switching;
+    expect(calls).toEqual([
+      'retire:start',
+      'retire:complete',
+      'disconnect',
+      'client-state',
+      'connect',
+      'bootstrap',
     ]);
   });
 

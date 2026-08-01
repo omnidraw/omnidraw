@@ -45,6 +45,7 @@ const durableSuites: readonly TAcceptanceSuite[] = [
   { name: 'load and bounded-cost acceptance', command: ['bun', 'run', 'test:m10:load'] },
 ];
 const hostBoundarySuites: readonly TAcceptanceSuite[] = [
+  { name: 'packed canvas-kernel browser consumer', command: ['bun', 'run', 'test:packed-canvas-kernel'] },
   { name: 'Capsule browser sandbox', command: ['bun', 'run', 'test:capsule-browser'] },
   { name: 'Widget npm distribution build', command: ['bun', 'test', 'apps/cli/tests/WidgetNpmDistributionBuild.test.ts'] },
 ];

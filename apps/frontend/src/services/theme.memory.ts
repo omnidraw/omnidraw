@@ -1,4 +1,9 @@
-import { THEME_ID_DARK, THEME_ID_LIGHT, type ThemeId, type ThemeService } from "@omnidraw/service-theme";
+import {
+  THEME_ID_DARK,
+  THEME_ID_LIGHT,
+  type IThemeService,
+  type ThemeId,
+} from "@omnidraw/service-theme";
 
 export type TThemeAppearance = "light" | "dark";
 
@@ -15,7 +20,7 @@ export function fxGetDefaultThemeIdForAppearance(appearance: TThemeAppearance) {
 export function fxGetRememberedThemeId(args: {
   appearance: TThemeAppearance;
   memory: TThemeMemory;
-  themeService: ThemeService;
+  themeService: IThemeService;
 }) {
   const rememberedThemeId = args.appearance === "dark"
     ? args.memory.lastDarkThemeId
@@ -33,7 +38,7 @@ export function fxGetRememberedThemeId(args: {
 
 export function fxSyncThemeMemory(args: {
   memory: TThemeMemory;
-  themeService: ThemeService;
+  themeService: IThemeService;
   nextThemeId: ThemeId;
 }) {
   const nextTheme = args.themeService.getThemes().find((theme) => theme.id === args.nextThemeId);

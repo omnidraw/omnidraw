@@ -11,8 +11,14 @@ import type { CanvasDocumentService } from './services/CanvasDocumentService';
 import type { TCanvasRuntimeConfig } from './types';
 import type { TReproductionTraceSink } from './debug-trace/typed';
 
+/** Public runtime facts exposed to extensions; product services stay captured by the host. */
+export type TCanvasRuntimeExtensionConfig = Readonly<Pick<
+  TCanvasRuntimeConfig,
+  'canvasId' | 'container' | 'notification'
+>>;
+
 export type TCanvasRuntimeExtensionContext = Readonly<{
-  config: TCanvasRuntimeConfig;
+  config: TCanvasRuntimeExtensionConfig;
   document: CanvasDocumentService;
   editor: IStandardCanvasEditor;
   engine: IInfiniteCanvasEngine;
@@ -28,7 +34,7 @@ export interface ICanvasRuntimeExtension {
   readonly name: string;
   createWidgetNodes?(
     context: Readonly<{
-      config: TCanvasRuntimeConfig;
+      config: TCanvasRuntimeExtensionConfig;
       creation: TStandardNodeCreationContext;
       engine: IInfiniteCanvasEngine;
     }>,

@@ -1,43 +1,54 @@
-import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toast";
-import { themeService } from "@/services/theme";
-import { setStore, store } from "@/store";
-import type { TBackendCanvas } from "@/types/backend.types";
-import {
-  Canvas,
-  fnReproductionTraceDiagnostics,
-} from "@omnidraw/canvas";
-import { useNavigate } from "@solidjs/router";
-import { type Component } from "solid-js";
-import { canvasImagePort, createFrontendAiChatExtension } from "../ai-chat-adapters";
-import { createBrowserTenantBoundary } from "../services/tenant";
-import { canvasDocumentTransport } from "../services/canvas-document-transport";
+import '@omnidraw/canvas/styles.css';
+import { Canvas } from '@omnidraw/canvas';
+import { useNavigate } from '@solidjs/router';
+import { type Component, mapArray, onCleanup } from 'solid-js';
+import { createFrontendCanvasComposition } from '../services/canvas-composition';
+import { createBrowserTenantBoundary } from '../services/tenant';
+import type { TBrowserTenantScope } from '../services/fn.browser-tenant-scope';
+import type { TBackendCanvas } from '../types/backend.types';
 
-type CanvasPageProps = {
-  canvas: TBackendCanvas;
+type TComposedCanvasProps = Readonly<{
+  canvasId: string;
+  navigate(path: string): void;
+  tenant: TBrowserTenantScope;
+}>;
+
+const ComposedCanvas: Component<TComposedCanvasProps> = (props) => {
+  const keyedCanvas = mapArray(
+    () => [props.canvasId],
+    (canvasId) => {
+      const composition = createFrontendCanvasComposition({
+        canvasId,
+        navigate: props.navigate,
+        ownerDocument: document,
+        tenant: props.tenant,
+      });
+      onCleanup(composition.dispose);
+      return (
+        <Canvas
+          canvas={composition.canvas}
+          dependencies={composition.dependencies}
+          hostScopeKey={composition.hostScopeKey}
+        />
+      );
+    },
+  );
+  return <>{keyedCanvas()}</>;
 };
+
+type CanvasPageProps = Readonly<{
+  canvas: TBackendCanvas;
+}>;
 
 const CanvasPage: Component<CanvasPageProps> = (props) => {
   const navigate = useNavigate();
-  const aiChatExtension = createFrontendAiChatExtension({ navigate });
   const tenantCanvas = createBrowserTenantBoundary((tenant) => (
-    <Canvas
-      canvas={props.canvas}
-      diagnostics={fnReproductionTraceDiagnostics({
-        development: import.meta.env.DEV,
-        applicationVersion: import.meta.env.VITE_APP_VERSION,
-        buildMode: import.meta.env.MODE,
-        cangineVersion: "0.5.3",
-      })}
+    <ComposedCanvas
+      canvasId={props.canvas.id}
+      navigate={navigate}
       tenant={tenant}
-      transport={canvasDocumentTransport}
-      extensions={[aiChatExtension]}
-      image={canvasImagePort}
-      notification={{ showError: showErrorToast, showSuccess: showSuccessToast, showInfo: showToast }}
-      themeService={themeService}
-      store={{ sidebarVisible: () => store.sidebarVisible, onToggleSidebar: () => setStore('sidebarVisible', v => !v) }}
     />
   ));
-
   return <>{tenantCanvas()}</>;
 };
 
