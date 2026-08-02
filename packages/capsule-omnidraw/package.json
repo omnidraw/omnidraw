@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/capsule-omnidraw",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Omnidraw Capsule contracts, widget builds, capabilities, and browser hosting adapters.",
   "license": "MIT",
   "repository": {
