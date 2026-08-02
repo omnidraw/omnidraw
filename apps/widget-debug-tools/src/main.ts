@@ -44,6 +44,7 @@ const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..');
 const DEFAULT_HOME = join(REPOSITORY_ROOT, '.omnidraw');
 const NPM_USER_CONFIG_PATH = fnLocalRegistryNpmUserConfig({
   homeDirectory: homedir(),
+  localDevelopment: true,
   stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
   join,
 });

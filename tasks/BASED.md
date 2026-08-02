@@ -183,6 +183,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [B70](b/B70.md) - AI widgets: one authoritative exact-revision readiness state
 - [ ]: [B71](b/B71.md) - Preview: actionable Capsule guest runtime diagnostics
 - [ ]: [B72](b/B72.md) - db resources: migration can leave calls stuck on `RESOURCE_MIGRATING`
+- [x]: [B73](b/B73.md) - AI widget scaffold: resolve workspace dependency protocols before npm install
+- [x]: [B74](b/B74.md) - Preview: keep generated SDK and Capsule bridge versions aligned
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

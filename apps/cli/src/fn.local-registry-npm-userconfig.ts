@@ -1,5 +1,6 @@
 export type TArgs = Readonly<{
   homeDirectory: string;
+  localDevelopment: boolean;
   stateDirectory?: string;
   userConfigPath?: string;
   join: (...paths: string[]) => string;
@@ -15,5 +16,5 @@ export function fnLocalRegistryNpmUserConfig(args: TArgs): string {
     'share',
     'verdaccio',
   );
-  return args.join(stateDirectory, 'npmjs.npmrc');
+  return args.join(stateDirectory, args.localDevelopment ? 'npmrc' : 'npmjs.npmrc');
 }

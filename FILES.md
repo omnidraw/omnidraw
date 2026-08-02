@@ -634,6 +634,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/workspace/CONSTANTS.ts](packages/service-agent/src/workspace/CONSTANTS.ts) |  |
 | [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
 | [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
+| [packages/service-agent/src/workspace/fn.resolve-widget-dependency.ts](packages/service-agent/src/workspace/fn.resolve-widget-dependency.ts) |  |
 | [packages/service-agent/src/workspace/fn.safe-search-pattern.ts](packages/service-agent/src/workspace/fn.safe-search-pattern.ts) |  |
 | [packages/service-agent/src/workspace/fx.chat-metadata.ts](packages/service-agent/src/workspace/fx.chat-metadata.ts) |  |
 | [packages/service-agent/src/workspace/fx.widget-catalog.ts](packages/service-agent/src/workspace/fx.widget-catalog.ts) |  |

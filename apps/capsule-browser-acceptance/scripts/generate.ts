@@ -28,6 +28,9 @@ import {
 } from '@omnidraw/widget-contract';
 import type { TWidgetCapsuleApiGroup } from '@omnidraw/widget-contract';
 import type { TOmnidrawDistributionBuild } from '@omnidraw/capsule-omnidraw/builder';
+import {
+  WIDGET_CAPSULE_BUILD_IDENTITY as capsuleBuildIdentity,
+} from '../../cli/src/services/CONSTANTS';
 
 type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[1];
 type TTenant = Parameters<WidgetArtifactBuilderCapsule['build']>[0];
@@ -54,15 +57,6 @@ const tempRoot = join(import.meta.dir, '..', '.tmp');
 const repositoryRoot = join(import.meta.dir, '..', '..', '..');
 const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widget.ts');
 const builderIdentity = 'omnidraw-capsule-browser-acceptance-v1';
-const capsuleBuildIdentity = Object.freeze({
-  packageName: '@omnidraw/capsule' as const,
-  packageVersion: '0.10.2',
-  packageDigest:
-    'sha256:2d0333e25c1af76df4131846f0afa10fac4023925f695c44b81fdcfd30d3534f' as const,
-  buildApiVersion: '0.1.0',
-  runtimeBuildDigest:
-    'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146' as const,
-});
 const tenant = Object.freeze({
   orgId: 'capsule-browser-acceptance',
   accountId: 'capsule-browser-acceptance',

@@ -1,4 +1,4 @@
-# `@omnidraw/cangine` Library Guide — 0.6.0
+# `@omnidraw/cangine` Library Guide — 0.6.1
 
 This is the consumer guide for `@omnidraw/cangine`. It covers installation,
 ordinary application usage, every public engine service and package
@@ -7,6 +7,14 @@ and its host application.
 
 The TypeScript declarations distributed with the installed package are the
 authoritative API inventory for that release.
+
+Version `0.6.1` adds additive performance diagnostics and improves hot paths
+without changing document schemas or existing call signatures. Native
+coalesced pointer samples are processed in order with frame-bounded preview
+publication, the built-in WebGL2 renderer avoids redundant submission-state
+calls, and registered-font shaping loads its private `fontkit` implementation
+only on first use. System-font fallback remains synchronous; bidirectional
+text support remains eagerly available.
 
 ## 1. What the library provides
 
@@ -39,9 +47,9 @@ business logic, permissions, or UI.
 Install the package from npm:
 
 ```bash
-npm install @omnidraw/cangine@0.6.0
+npm install @omnidraw/cangine@0.6.1
 # or
-bun add @omnidraw/cangine@0.6.0
+bun add @omnidraw/cangine@0.6.1
 ```
 
 Public entrypoints:
@@ -1289,6 +1297,16 @@ const unsubscribeInput = engine.input.subscribe((event) => {
 
 Events carry named client, viewport, and world coordinates where applicable. Pointer events also include deltas and the current topmost hit.
 
+While `engine.interactions` owns an active stroke, a non-empty browser
+`pointermove.getCoalescedEvents()` sequence is normalized chronologically in
+place of its parent summary. Pointer moves outside stroke capture retain their
+ordinary one-event behavior. Unsupported, throwing, and empty implementations
+fall back to the ordinary event exactly once. During the stroke, public input
+subscribers receive every authoritative coalesced sample with per-sample
+coordinates, pressure, tilt, timestamp, and sequential deltas. Predicted
+samples are intentionally ignored and never enter interaction commits or
+replay data.
+
 Every normalized `pointer-cancel` includes a `cancelReason`. A captured,
 still-active pointer whose browser `lostpointercapture` reports `buttons: 0`
 gets a bounded 50 ms reconciliation window: a matching `pointer-up` remains an
@@ -1521,7 +1539,7 @@ onCommit(stroke) {
 
 Only `"native"` and `"lost-capture"` cancellation are recoverable. Blur, context loss, surface removal, engine destruction, dispatch failure, explicit cancellation, replacement, sample exhaustion, and query failure still cancel. Marquee and transform gestures are always cancel-only. Applications retain final policy: for example, they may discard a recovered creation whose `belowThreshold` flag is true.
 
-`beginMarquee`, `beginStroke`, and `beginConnector` otherwise share capture, cancellation, immutable samples, and engine-owned transient preview. Stroke begin/update callbacks receive only the newly accepted batch and total count, while commit receives the complete stroke once; its SVG preview is incrementally chunked and bounded. Connector previews draw the shared geometry service's resolved route. `constrainDraft` supplies app-owned aspect/center/snap bounds, while the root `filterStrokeSamplesByDistance()` helper filters imported samples in an explicit world or viewport space. Move transforms activate after three viewport CSS pixels and unchanged releases cancel, preventing selection clicks from producing mutations or history. The engine does not choose selection meaning, brush style, node kind, connector eligibility, or history.
+`beginMarquee`, `beginStroke`, and `beginConnector` otherwise share capture, cancellation, immutable samples, and engine-owned transient preview. Stroke begin/update callbacks receive only the newly accepted batch and total count, while commit receives the complete stroke once. Coalesced samples pass through the same viewport-distance filter and one aggregate `maxSamples` ceiling as ordinary moves. Accepted samples are never discarded for presentation performance: the SVG preview stays incrementally chunked and publishes its latest complete state at most once per engine frame, while pointer-up synchronously includes its final accepted sample and commits without waiting for another frame. Connector previews draw the shared geometry service's resolved route. `constrainDraft` supplies app-owned aspect/center/snap bounds, while the root `filterStrokeSamplesByDistance()` helper filters imported samples in an explicit world or viewport space. Move transforms activate after three viewport CSS pixels and unchanged releases cancel, preventing selection clicks from producing mutations or history. The engine does not choose selection meaning, brush style, node kind, connector eligibility, or history.
 
 For pressure-sensitive freehand output, convert the committed samples with the engine-owned outline pipeline:
 
@@ -2348,6 +2366,7 @@ Read metrics:
 ```ts
 const snapshot = engine.metrics.snapshot();
 const recent = engine.metrics.recentFrames(60);
+const frame = snapshot.latestFrame;
 
 console.log({
   frames: snapshot.frameCount,
@@ -2360,10 +2379,35 @@ console.log({
   projectionOwners: snapshot.projectionOwnerCount,
   projectionNodes: snapshot.projectionNodeCount,
   contextLosses: snapshot.contextLossCount,
+  structuralWork: frame?.structuralWork,
+  memory: frame?.memory,
 });
 ```
 
-A frame includes update, geometry, cull, prepare, render, portal, and picking timings plus draw/node counts and dirty/full-rebuild information.
+A frame includes update, geometry, cull, prepare, render, portal, and picking
+timings plus draw/node counts and dirty/full-rebuild information.
+
+When frame metrics are enabled, `structuralWork` reports deterministic work
+deltas for that frame under package-defined namespaced keys. The built-in
+backend includes counters for candidate nodes, draw calls, dirty bounds,
+portal synchronization, buffer uploads, texture uploads, and WebGL2 state
+submissions. Treat keys as diagnostic names rather than a fixed exhaustive
+enumeration, and compare the same key across equivalent workloads.
+
+`memory` contains exact-known, engine-owned gauges: encoded resource bytes,
+decoded image capacity in pixels, and backend-owned JavaScript/typed-array
+bytes. `backendGpuBytes` is included only when `collectGpuMetrics` is `true`.
+These values intentionally exclude browser heap, driver overhead, and storage
+whose byte layout is unknown, so they must not be interpreted as process-wide
+memory use. The legacy `cpuMemoryBytes` and optional `gpuMemoryBytes` fields
+remain available on each frame.
+
+Custom render-pass backends may implement the optional
+`performanceSnapshot()` contract from `@omnidraw/cangine/backend`. Return
+non-negative cumulative safe-integer counters with stable namespaced keys and
+exact backend-owned CPU/GPU byte gauges. Cangine converts accepted cumulative
+counters into per-frame deltas; malformed snapshots are isolated and omitted
+instead of making telemetry a rendering dependency.
 
 ## 26. Limits and untrusted data
 

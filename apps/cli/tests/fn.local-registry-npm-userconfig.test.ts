@@ -4,21 +4,27 @@ import { fnLocalRegistryNpmUserConfig } from '../src/fn.local-registry-npm-userc
 const join = (...paths: string[]) => paths.join('/');
 
 describe('fnLocalRegistryNpmUserConfig', () => {
-  test('uses the product-neutral host-owned public npm config', () => {
+  test('uses the local registry config during development', () => {
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
+      localDevelopment: true,
       join,
-    })).toBe('/Users/example/.local/share/verdaccio/npmjs.npmrc');
+    })).toBe('/Users/example/.local/share/verdaccio/npmrc');
   });
 
-  test('honors explicit state and public npm-config overrides', () => {
+  test('uses the public npm config outside local development', () => {
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
+      localDevelopment: false,
       stateDirectory: '/registry-state',
       join,
     })).toBe('/registry-state/npmjs.npmrc');
+  });
+
+  test('honors explicit state and npm-config overrides', () => {
     expect(fnLocalRegistryNpmUserConfig({
       homeDirectory: '/Users/example',
+      localDevelopment: false,
       stateDirectory: '/registry-state',
       userConfigPath: '/host/npmrc',
       join,

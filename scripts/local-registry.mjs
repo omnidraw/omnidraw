@@ -10,7 +10,9 @@ import {
 import {
   access,
   mkdir,
+  mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
@@ -610,6 +612,7 @@ async function publishTarball(config, requestedTarball) {
     '--userconfig',
     config.npmUserConfigPath,
     '--ignore-scripts',
+    '--provenance=false',
     '--json',
   ], {
     cwd: config.stateDirectory,
@@ -627,6 +630,29 @@ async function publishTarball(config, requestedTarball) {
     registryUrl: config.registryUrl,
     status: 'published',
   });
+}
+
+async function publishSdk(config) {
+  await run('bun', ['run', '--filter', '@omnidraw/sdk', 'build']);
+  const packDirectory = await mkdtemp(join(config.stateDirectory, 'sdk-pack-'));
+  try {
+    await run('npm', [
+      'pack',
+      join(REPOSITORY_ROOT, 'packages', 'sdk', 'dist'),
+      '--pack-destination',
+      packDirectory,
+      '--ignore-scripts',
+      '--json',
+    ]);
+    const tarballs = (await readdir(packDirectory))
+      .filter((entry) => entry.endsWith('.tgz'));
+    if (tarballs.length !== 1) {
+      throw new Error('Packing the staged @omnidraw/sdk package produced no unique tarball.');
+    }
+    return await publishTarball(config, join(packDirectory, tarballs[0]));
+  } finally {
+    await rm(packDirectory, { recursive: true, force: true });
+  }
 }
 
 function flagValue(args, flag) {
@@ -665,6 +691,11 @@ async function main() {
     console.log(JSON.stringify(results, null, 2));
     return;
   }
+  if (command === 'publish-sdk') {
+    await startRegistry(config);
+    console.log(JSON.stringify(await publishSdk(config), null, 2));
+    return;
+  }
   if (command === 'bootstrap') {
     const cangine = flagValue(args, '--cangine');
     const capsule = flagValue(args, '--capsule');
@@ -681,7 +712,7 @@ async function main() {
   }
   throw new Error(
     `Unknown command '${command}'. Use start, start-foreground, ensure, status, stop, publish, `
-    + 'or bootstrap.',
+    + 'publish-sdk, or bootstrap.',
   );
 }
 

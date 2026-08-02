@@ -169,6 +169,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   const eventPublisher = new EventPublisherService();
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
     homeDirectory: homedir(),
+    localDevelopment: config.dev && process.env.NODE_ENV !== 'production',
     stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
     join,
   });

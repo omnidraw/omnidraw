@@ -5,13 +5,10 @@
 **Audience:** Engineers working on widget authoring, builds, preview, publication,
 placement, browser execution, collaborative state, functions, or resources.
 
-This document describes the widget system after the Capsule-only cutover.
-Code and tests are authoritative. The detailed Capsule integration and
-compatibility constraints live in:
-
-- [`llm.capsule-omnidraw-integration.md`](./llm.capsule-omnidraw-integration.md)
-- [`llm.capsule-widget-compatibility.md`](./llm.capsule-widget-compatibility.md)
-- [`llm.capsule-migration.md`](./llm.capsule-migration.md)
+This document describes the widget system after the Capsule-only cutover and
+owns Omnidraw's integration and compatibility constraints. Code and tests are
+authoritative. Capsule's consumer contract lives in
+[`llm.capsule.md`](./llm.capsule.md).
 
 ## 1. System model
 

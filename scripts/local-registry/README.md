@@ -15,14 +15,17 @@ From any Omnidraw worktree:
 
 ```sh
 bun run registry:bootstrap -- \
-  --cangine /path/to/omnidraw-cangine-0.3.0.tgz \
-  --capsule /path/to/omnidraw-capsule-0.10.2.tgz
+  --cangine /path/to/omnidraw-cangine-0.6.1.tgz \
+  --capsule /path/to/omnidraw-capsule-0.11.0.tgz
+bun run registry:publish:sdk
 bun install --frozen-lockfile
 ```
 
 The producer repositories remain responsible for building, verifying, and
-packing those two tarballs. Bootstrap publishes them, builds and packs the
-Omnidraw SDK closure, and rejects a name/version whose stored integrity
-differs. Lifecycle commands are `registry:start`, `registry:ensure`,
-`registry:status`, and `registry:stop`. Use `registry:start:foreground` to keep
-Verdaccio attached to the current terminal and stop it with Ctrl+C.
+packing those two tarballs. Bootstrap publishes them. `registry:publish:sdk`
+builds, packs, and idempotently publishes the current staged Omnidraw SDK; it
+rejects a name/version whose stored integrity differs. Normal `bun run dev`
+does this SDK publish automatically. Lifecycle commands are `registry:start`,
+`registry:ensure`, `registry:status`, and `registry:stop`. Use
+`registry:start:foreground` to keep Verdaccio attached to the current terminal
+and stop it with Ctrl+C.
