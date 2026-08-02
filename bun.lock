@@ -271,7 +271,6 @@
     },
     "packages/service-db": {
       "name": "@omnidraw/service-db",
-      "version": "0.5.0",
       "dependencies": {
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/function-runtime": "workspace:*",

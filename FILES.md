@@ -664,7 +664,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/.gitignore](packages/service-db/.gitignore) |  |
 | [packages/service-db/package.json](packages/service-db/package.json) |  |
 | [packages/service-db/README.md](packages/service-db/README.md) |  |
-| [packages/service-db/scripts/build.ts](packages/service-db/scripts/build.ts) |  |
 | [packages/service-db/src/_embedded-migrations.ts](packages/service-db/src/_embedded-migrations.ts) |  |
 | [packages/service-db/src/AgentAuthoringStoreTurso.ts](packages/service-db/src/AgentAuthoringStoreTurso.ts) |  |
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
@@ -726,7 +725,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/WidgetControlStoreTurso.ts](packages/service-db/src/WidgetControlStoreTurso.ts) |  |
 | [packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts](packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts) |  |
 | [packages/service-db/src/WidgetInstanceStateStoreTurso.ts](packages/service-db/src/WidgetInstanceStateStoreTurso.ts) |  |
-| [packages/service-db/tsconfig.build.json](packages/service-db/tsconfig.build.json) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher

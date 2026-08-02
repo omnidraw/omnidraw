@@ -48,9 +48,11 @@ Versioned release packages awaiting their first public npm publication:
 - `@omnidraw/canvas-contract`
 - `@omnidraw/service-theme`
 - `@omnidraw/service-canvas`
-- `@omnidraw/service-db`
 - `@omnidraw/capsule-omnidraw`
 - `@omnidraw/canvas`
+
+`@omnidraw/service-db` is internal to this OSS workspace. It must remain
+`private`, unversioned, and excluded from all npm release tooling.
 
 Only changes to a versioned package's public/runtime code under `src/` justify
 and require a version bump in that package's workspace `package.json`. Apply

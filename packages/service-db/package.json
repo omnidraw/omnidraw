@@ -1,37 +1,11 @@
 {
   "name": "@omnidraw/service-db",
-  "version": "0.5.0",
-  "description": "Turso-backed persistence services and stores for Omnidraw.",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
-    "directory": "packages/service-db"
-  },
-  "publishConfig": {
-    "@omnidraw:registry": "https://registry.npmjs.org/",
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
-  "engines": {
-    "bun": ">=1.3.14"
-  },
+  "private": true,
   "type": "module",
   "exports": {
-    "./AgentAuthoringStoreTurso": "./src/AgentAuthoringStoreTurso.ts",
-    "./CanvasItemStoreTurso": "./src/CanvasItemStoreTurso.ts",
-    "./CONSTANTS": "./src/CONSTANTS.ts",
-    "./DbServiceTurso/DbServiceTurso": "./src/DbServiceTurso/DbServiceTurso.ts",
-    "./FunctionControlStoreTurso": "./src/FunctionControlStoreTurso.ts",
-    "./model": "./src/model.ts",
-    "./ResourceControlStoreTurso": "./src/ResourceControlStoreTurso.ts",
-    "./WidgetControlStoreTurso": "./src/WidgetControlStoreTurso.ts",
-    "./WidgetInstanceStateStoreTurso": "./src/WidgetInstanceStateStoreTurso.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "build": "bun run scripts/build.ts",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

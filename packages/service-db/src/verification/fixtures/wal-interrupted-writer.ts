@@ -8,7 +8,7 @@ if (!databasePath || !readyPath) {
 }
 
 const database = new Database(databasePath, {
-  // @ts-expect-error pinned native features are ahead of the public union.
+  // @ts-ignore pinned native features may be ahead of the installed public union.
   experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
 });
 type TImmediateTransaction = (() => Promise<void>) & { immediate: () => Promise<void> };
