@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/resource-runtime",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Portable resource capabilities, providers, and gateway contracts for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -31,9 +31,6 @@
     "@omnidraw/tenant-core": "workspace:*"
   },
   "peerDependencies": {
-    "@tursodatabase/database": "0.6.1"
-  },
-  "devDependencies": {
-    "@tursodatabase/database": "0.6.1"
+    "@tursodatabase/database": "catalog"
   }
 }

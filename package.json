@@ -20,7 +20,7 @@
     "lucide-solid": "^1.24.0",
     "lucide-static": "^1.24.0",
     "solid-js": "^1.9.14",
-    "@tursodatabase/database": "0.6.1"
+    "@tursodatabase/database": "0.7.2"
   },
   "scripts": {
     "pretest": "bun run --filter '@omnidraw/sdk' build && bun run build:canvas-kernel",
