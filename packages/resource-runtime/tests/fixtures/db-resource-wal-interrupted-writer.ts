@@ -64,7 +64,7 @@ await provider.dispatch(context, 'execute', {
 const databasePath = join(dataRoot, resourceId, 'data.db');
 const checkpoint = new Database(databasePath, {
   fileMustExist: true,
-  // @ts-expect-error Turso runtime features are ahead of its public union.
+  // @ts-ignore Turso runtime features may be ahead of the installed public union.
   experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid', 'multiprocess_wal'],
 });
 await checkpoint.connect();
@@ -85,7 +85,7 @@ if (committedWalBytes <= 32) {
 
 const interruptedWriter = new Database(databasePath, {
   fileMustExist: true,
-  // @ts-expect-error Turso runtime features are ahead of its public union.
+  // @ts-ignore Turso runtime features may be ahead of the installed public union.
   experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid', 'multiprocess_wal'],
 });
 await interruptedWriter.connect();

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  buildPackages,
   packageDecision,
   packageOrder,
   publishCommand,
@@ -74,6 +75,28 @@ describe('packageOrder', () => {
       '@omnidraw/tenant',
       '@omnidraw/widget',
       '@omnidraw/sdk',
+    ])
+  })
+})
+
+describe('buildPackages', () => {
+  test('builds every package sequentially in the supplied dependency order', async () => {
+    const packageEntry = (name: string): TWorkspacePackage => ({
+      directory: `/repo/packages/${name}`,
+      manifest: { name, version: '1.0.0' },
+      name,
+      version: '1.0.0',
+    })
+    const entries = [packageEntry('@omnidraw/base'), packageEntry('@omnidraw/service')]
+    const calls: string[] = []
+
+    await buildPackages(entries, async (entry, index, total) => {
+      calls.push(`${index + 1}/${total}:${entry.name}`)
+    })
+
+    expect(calls).toEqual([
+      '1/2:@omnidraw/base',
+      '2/2:@omnidraw/service',
     ])
   })
 })

@@ -31,6 +31,12 @@ export type TPackageDecision = Readonly<{
   explanation: string
 }>
 
+export type TPackageBuilder = (
+  entry: TWorkspacePackage,
+  index: number,
+  total: number,
+) => Promise<void>
+
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const PACKAGES_DIRECTORY = join(REPOSITORY_ROOT, 'packages')
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org'
@@ -99,6 +105,33 @@ export function packageOrder(packages: readonly TWorkspacePackage[]): readonly T
     }
   }
   return ordered
+}
+
+export async function buildPackages(
+  packages: readonly TWorkspacePackage[],
+  builder: TPackageBuilder,
+): Promise<void> {
+  for (const [index, entry] of packages.entries()) {
+    await builder(entry, index, packages.length)
+  }
+}
+
+async function buildWorkspacePackage(
+  entry: TWorkspacePackage,
+  index: number,
+  total: number,
+): Promise<void> {
+  console.log(`${paint(`[${index + 1}/${total}]`, 'cyan')} ${entry.name}@${entry.version}`)
+  const child = Bun.spawn(['bun', 'run', 'build'], {
+    cwd: entry.directory,
+    stdin: 'ignore',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const exitCode = await child.exited
+  if (exitCode !== 0) {
+    throw new Error(`Build failed for ${entry.name}@${entry.version} with exit code ${exitCode}.`)
+  }
 }
 
 function releaseTag(version: string): string {
@@ -251,6 +284,15 @@ function tagCommand(entry: TWorkspacePackage): string {
 async function main(): Promise<void> {
   const packages = await workspacePackages()
   if (packages.length === 0) throw new Error('No versioned packages were found under packages/.')
+
+  console.log('')
+  printHeading('BUILDING VERSIONED PACKAGES')
+  console.log(paint('Fresh dist artifacts are required before checking public deployment status.', 'dim'))
+  console.log('')
+  await buildPackages(packages, buildWorkspacePackage)
+  console.log('')
+  console.log(paint(`✓ Built ${packages.length} packages in dependency order.`, 'green'))
+
   const rootManifest = JSON.parse(await readFile(join(REPOSITORY_ROOT, 'package.json'), 'utf8')) as {
     catalog?: Record<string, string>
   }
