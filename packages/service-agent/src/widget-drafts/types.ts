@@ -185,6 +185,18 @@ export interface IWidgetPreviewOwnerStore {
       nowMs: number;
     }>,
   ): Promise<boolean>;
+  confirmedPreviewOwnerExecutionLeaseId(
+    tenant: TTenantContext,
+    request: Readonly<{
+      previewId: string;
+      previewRevisionId: string;
+      draftRevisionSha256: string;
+      committedMutationId: string;
+      bindingRevision: number;
+      mountLeaseId?: string;
+      nowMs: number;
+    }>,
+  ): Promise<string | null>;
 }
 
 /** Structural subset implemented by AgentAuthoringStoreTurso and managed adapters. */
@@ -321,6 +333,57 @@ export type TWidgetDraftSummary = Readonly<{
   validation: TWidgetDraftValidation;
   previewAvailable: boolean;
   publishReady: boolean;
+}>;
+
+export type TWidgetPreviewInteractionCheck =
+  | Readonly<{ type: 'fill'; label: string; value: string }>
+  | Readonly<{ type: 'click'; name: string }>
+  | Readonly<{ type: 'assert-text'; text: string }>
+  | Readonly<{ type: 'assert-status'; text: string }>
+  | Readonly<{ type: 'wait-for-text'; text: string; timeoutMs?: number }>;
+
+export type TWidgetPreviewInteractionResult = Readonly<{
+  index: number;
+  type: TWidgetPreviewInteractionCheck['type'];
+  passed: boolean;
+  evidence: string;
+}>;
+
+export type TWidgetPreviewTestResult = Readonly<{
+  outcome: 'passed' | 'failed' | 'closed' | 'superseded' | 'timeout' | 'canceled';
+  draftId: string;
+  previewId: string;
+  previewRevisionId: string;
+  revision: string;
+  committedMutationId: string;
+  checks: readonly TWidgetPreviewInteractionResult[];
+}>;
+
+export type TWidgetPreviewAgentStatus = Readonly<{
+  state: 'unavailable' | 'pending' | 'mounting' | 'ready' | 'failed' | 'closed';
+  draftId: string | null;
+  previewId: string | null;
+  canvasId: string | null;
+  frameNodeId: string | null;
+  attemptedRevision: string | null;
+  attemptedCommittedMutationId: string | null;
+  attemptedPreviewRevisionId: string | null;
+  displayedPreviewRevisionId: string | null;
+  displayedDraftRevision: string | null;
+  bindingRevision: number | null;
+  buildSequence: number | null;
+  ownerBuildSequence: number | null;
+  diagnostics: readonly Readonly<{
+    code: string;
+    message: string;
+    fingerprint?: string;
+  }>[];
+  message: string;
+}>;
+
+export type TWidgetPreviewWaitResult = Readonly<{
+  outcome: 'ready' | 'failed' | 'superseded' | 'closed' | 'timeout' | 'unavailable' | 'canceled';
+  status: TWidgetPreviewAgentStatus;
 }>;
 
 export type TWidgetPreviewReady = Readonly<{

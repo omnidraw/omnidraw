@@ -52,6 +52,8 @@ function api() {
 describe('agent authoring contract', () => {
   test('preserves the stateless build route and adds durable owner lifecycle routes', () => {
     const contract = api();
+    expect(contract.settings.approvalPolicy.update['~orpc'].route.path)
+      .toBe('/api/agent/settings/approvalPolicy/update');
     expect(contract.widgetPreview.build['~orpc'].route.path).toBe('/api/agent/widgetPreview/build');
     expect(contract.widgetPreview.cancel['~orpc'].route.path).toBe('/api/agent/widgetPreview/cancel');
     expect(contract.widgetPreview.mount.acquire['~orpc'].route.path)
@@ -76,11 +78,14 @@ describe('agent authoring contract', () => {
       .toBe('/api/agent/widgetPreview/diagnostics/retest');
     expect(contract.widgetPreview.diagnostics.resolve['~orpc'].route.path)
       .toBe('/api/agent/widgetPreview/diagnostics/resolve');
+    expect(contract.widgetPreview.test.report['~orpc'].route.path)
+      .toBe('/api/agent/widgetPreview/test/report');
     expect(Object.keys(agentHandlers.widgetPreview)).toEqual([
       'build',
       'cancel',
       'mount',
       'diagnostics',
+      'test',
       'owner',
     ]);
     expect(Object.keys(agentHandlers.widgetPreview.mount)).toEqual([
@@ -100,6 +105,51 @@ describe('agent authoring contract', () => {
       'retest',
       'resolve',
     ]);
+  });
+
+  test('accepts only the explicit three-mode approval policy contract', () => {
+    const schema = api().settings.approvalPolicy.update['~orpc'].inputSchema as {
+      safeParse: (input: unknown) => { success: boolean };
+    };
+    expect(schema.safeParse({ mode: 'manual' }).success).toBe(true);
+    expect(schema.safeParse({ mode: 'always-approve' }).success).toBe(true);
+    expect(schema.safeParse({
+      mode: 'ai-review',
+      reviewerModel: { provider: 'provider-a', modelId: 'model-a' },
+    }).success).toBe(true);
+    expect(schema.safeParse({ mode: 'ai-review' }).success).toBe(false);
+    expect(schema.safeParse({ mode: 'always-approve', bypassAuthorization: true }).success)
+      .toBe(false);
+  });
+
+  test('accepts only bounded exact Preview interaction reports', () => {
+    const schema = api().widgetPreview.test.report['~orpc'].inputSchema as {
+      safeParse: (input: unknown) => { success: boolean };
+    };
+    const report = {
+      requestId: crypto.randomUUID(),
+      draftId,
+      previewId: crypto.randomUUID(),
+      previewRevisionId: crypto.randomUUID(),
+      revision,
+      committedMutationId: 'mutation-a',
+      mountLeaseId: crypto.randomUUID(),
+      checks: [{
+        index: 0,
+        type: 'click',
+        passed: true,
+        evidence: 'Clicked button "Increment".',
+      }],
+    };
+    expect(schema.safeParse(report).success).toBe(true);
+    expect(schema.safeParse({
+      ...report,
+      script: 'document.body.remove()',
+    }).success).toBe(false);
+    expect(schema.safeParse({
+      ...report,
+      checks: [{ ...report.checks[0], evidence: 'x'.repeat(501) }],
+    }).success).toBe(false);
   });
 
   test('requires the exact pending Preview build fence for cancellation', () => {

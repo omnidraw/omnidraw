@@ -56,7 +56,9 @@ export type TAgentApprovalEvent = Readonly<{
     warnings: string[];
     details: unknown;
     createdAt: string;
-    expiresAt: string;
+    policyMode: 'always-approve' | 'ai-review' | 'manual';
+    decisionSource?: 'policy' | 'reviewer' | 'user';
+    reviewerReason?: string;
   }>;
   decision?: 'approve' | 'reject';
   reason?: string;
@@ -100,6 +102,27 @@ export type TAgentWidgetPreviewEvent =
         | 'ready'
         | 'failed'
         | 'superseded';
+    }>
+  | Readonly<{
+      kind: 'widget-preview-test';
+      type: 'requested';
+      requestId: string;
+      draftId: string;
+      previewId: string;
+      previewRevisionId: string;
+      canvasId: string;
+      frameNodeId: string;
+      revision: string;
+      committedMutationId: string;
+      mountLeaseId: string;
+      deadlineAtMs: number;
+      checks: readonly (
+        | Readonly<{ type: 'fill'; label: string; value: string }>
+        | Readonly<{ type: 'click'; name: string }>
+        | Readonly<{ type: 'assert-text'; text: string }>
+        | Readonly<{ type: 'assert-status'; text: string }>
+        | Readonly<{ type: 'wait-for-text'; text: string; timeoutMs?: number }>
+      )[];
     }>;
 
 export type TAgentWidgetPublishedEvent = Readonly<{

@@ -18,6 +18,9 @@ type TAgentPromptSelection = Pick<
 
 export type TAgentApiCapability = {
   settings(): Promise<TAgentOutputs['settings']['get']>;
+  updateApprovalPolicy(
+    policy: TAgentInputs['settings']['approvalPolicy']['update'],
+  ): Promise<TAgentOutputs['settings']['approvalPolicy']['update']>;
 
   connectChat(
     widgetId: TAgentInputs['chat']['connect']['widgetId'],
@@ -111,6 +114,9 @@ export type TAgentApiCapability = {
   resolveWidgetPreviewDiagnostic(
     request: TAgentInputs['widgetPreview']['diagnostics']['resolve'],
   ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['resolve']>;
+  reportWidgetPreviewTestResult(
+    request: TAgentInputs['widgetPreview']['test']['report'],
+  ): Promise<TAgentOutputs['widgetPreview']['test']['report']['accepted']>;
   ensureWidgetPreviewOwner(
     request: TAgentInputs['widgetPreview']['owner']['ensure'],
   ): Promise<TAgentOutputs['widgetPreview']['owner']['ensure']>;

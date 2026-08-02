@@ -71,6 +71,7 @@ import { txPersistAiWidgetPayload } from './tx.ai-widget-payload';
 import {
   createPreviewPortalRuntime,
   type TPreviewDraftFence,
+  type TPreviewInteractionCheck,
   type TPreviewPortalRuntime,
 } from './PreviewPortalRuntime';
 
@@ -82,6 +83,41 @@ type TLegacyDropdownPresentationController = IWidgetInteractionController & {
     presentation: Readonly<Record<string, TWidgetDropdownItemPresentation>>,
   ): void;
 };
+
+function isPreviewInteractionChecks(
+  value: unknown,
+): value is readonly TPreviewInteractionCheck[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 12) return false;
+  return value.every((check) => {
+    if (check === null || typeof check !== 'object' || !('type' in check)) return false;
+    if (check.type === 'fill') {
+      return 'label' in check && typeof check.label === 'string'
+        && check.label.length > 0 && check.label.length <= 500
+        && 'value' in check && typeof check.value === 'string'
+        && check.value.length <= 2_000;
+    }
+    if (check.type === 'click') {
+      return 'name' in check && typeof check.name === 'string'
+        && check.name.length > 0 && check.name.length <= 500;
+    }
+    if (
+      check.type === 'assert-text'
+      || check.type === 'assert-status'
+      || check.type === 'wait-for-text'
+    ) {
+      return 'text' in check && typeof check.text === 'string'
+        && check.text.length > 0 && check.text.length <= 500
+        && (check.type !== 'wait-for-text'
+          || !('timeoutMs' in check)
+          || check.timeoutMs === undefined
+          || (typeof check.timeoutMs === 'number'
+            && Number.isSafeInteger(check.timeoutMs)
+            && check.timeoutMs >= 50
+            && check.timeoutMs <= 5_000));
+    }
+    return false;
+  });
+}
 
 function clearDropdownItemPresentation(
   widgets: IWidgetInteractionController,
@@ -1282,6 +1318,64 @@ export function createAiChatCanvasExtension(
       };
 
       const handlePreviewEvent = (event: unknown): void => {
+        if (
+          event !== null
+          && typeof event === 'object'
+          && 'kind' in event
+          && event.kind === 'widget-preview-test'
+          && 'type' in event
+          && event.type === 'requested'
+          && 'requestId' in event && typeof event.requestId === 'string'
+          && 'draftId' in event && typeof event.draftId === 'string'
+          && 'previewId' in event && typeof event.previewId === 'string'
+          && 'previewRevisionId' in event && typeof event.previewRevisionId === 'string'
+          && 'canvasId' in event && typeof event.canvasId === 'string'
+          && event.canvasId === context.config.canvasId
+          && 'frameNodeId' in event && typeof event.frameNodeId === 'string'
+          && 'revision' in event && typeof event.revision === 'string'
+          && 'committedMutationId' in event && typeof event.committedMutationId === 'string'
+          && 'mountLeaseId' in event && typeof event.mountLeaseId === 'string'
+          && 'deadlineAtMs' in event && typeof event.deadlineAtMs === 'number'
+          && Number.isSafeInteger(event.deadlineAtMs)
+          && 'checks' in event && isPreviewInteractionChecks(event.checks)
+        ) {
+          const payload = previewOwnerSnapshot.get(event.frameNodeId);
+          const runtime = previewRuntimes.get(event.frameNodeId);
+          if (
+            payload === undefined
+            || runtime === undefined
+            || payload.previewId !== event.previewId
+            || payload.draftId !== event.draftId
+          ) return;
+          const request = {
+            requestId: event.requestId,
+            draftId: event.draftId,
+            previewId: event.previewId,
+            previewRevisionId: event.previewRevisionId,
+            revision: event.revision,
+            committedMutationId: event.committedMutationId,
+            mountLeaseId: event.mountLeaseId,
+            deadlineAtMs: event.deadlineAtMs,
+            checks: event.checks,
+          } as const;
+          void runtime.test(request).then(async (checks) => {
+            if (checks === null) return;
+            const [reportError, result] = await args.chatApi.api.agent.widgetPreview.test.report({
+              requestId: request.requestId,
+              draftId: request.draftId,
+              previewId: request.previewId,
+              previewRevisionId: request.previewRevisionId,
+              revision: request.revision,
+              committedMutationId: request.committedMutationId,
+              mountLeaseId: request.mountLeaseId,
+              checks: [...checks],
+            });
+            if (reportError || !result?.accepted) {
+              throw new Error('The exact Preview interaction result was not accepted.');
+            }
+          }).catch((error) => args.application.logError(error));
+          return;
+        }
         if (
           event !== null
           && typeof event === 'object'

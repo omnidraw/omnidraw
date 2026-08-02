@@ -10,6 +10,23 @@ import type {
 import type { CanvasDocumentService } from './services/CanvasDocumentService';
 import type { TCanvasRuntimeConfig } from './types';
 import type { TReproductionTraceSink } from './debug-trace/typed';
+import type {
+  TCanvasOverlayOwnership,
+  TCanvasShellState,
+} from './fn.canvas-shell';
+
+export type TCanvasShellProjectionPort = Readonly<{
+  state(): TCanvasShellState;
+  owns(ownership: TCanvasOverlayOwnership): boolean;
+  subscribe(listener: (state: TCanvasShellState) => void): () => void;
+  registerOverlay(contribution: TCanvasOverlayContribution): () => void;
+}>;
+
+/** An extension must unmount or mount its host overlay when this callback changes. */
+export type TCanvasOverlayContribution = Readonly<{
+  ownership: TCanvasOverlayOwnership;
+  setMounted(mounted: boolean): void;
+}>;
 
 /** Public runtime facts exposed to extensions; product services stay captured by the host. */
 export type TCanvasRuntimeExtensionConfig = Readonly<Pick<
@@ -24,6 +41,7 @@ export type TCanvasRuntimeExtensionContext = Readonly<{
   engine: IInfiniteCanvasEngine;
   trace: TReproductionTraceSink | null;
   widgets: IWidgetInteractionController;
+  shell: TCanvasShellProjectionPort;
 }>;
 
 export type TCanvasRuntimeExtensionInstall = Readonly<{

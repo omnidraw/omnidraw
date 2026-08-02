@@ -107,6 +107,7 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
   getDraftFailuresRemaining = 0;
   conflictRenameDraft = false;
   throwRenameDraftError = false;
+  confirmedPreviewOwnerExecution = false;
   beforeRenameDraft: (() => Promise<void>) | null = null;
   conflictDiscardDraft = false;
   throwDiscardDraftError = false;
@@ -334,6 +335,17 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
     _request: Parameters<IAgentAuthoringStore['hasConfirmedPreviewExecution']>[1],
   ): ReturnType<IAgentAuthoringStore['hasConfirmedPreviewExecution']> {
     return false;
+  }
+
+  async confirmedPreviewOwnerExecutionLeaseId(
+    _tenant: TTenantContext,
+    request: Parameters<IAgentAuthoringStore['confirmedPreviewOwnerExecutionLeaseId']>[1],
+  ): ReturnType<IAgentAuthoringStore['confirmedPreviewOwnerExecutionLeaseId']> {
+    const leaseId = 'confirmed-preview-mount-lease';
+    return this.confirmedPreviewOwnerExecution
+      && (request.mountLeaseId === undefined || request.mountLeaseId === leaseId)
+      ? leaseId
+      : null;
   }
 
   async getChatByExternalSessionKey(

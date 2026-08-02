@@ -51,6 +51,7 @@ import {
 } from './fn.space-pan';
 import { fnCanvasToolShortcut } from './fn.canvas-tool-shortcut';
 import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
+import type { TCanvasShellState } from '../fn.canvas-shell';
 
 type TCanvasSource = Readonly<{
   key: string;
@@ -98,6 +99,28 @@ function isWidgetContentTarget(target: EventTarget | null): boolean {
   return (
     eventTargetElement(target)?.closest('[data-omnidraw-portal-id]') ?? null
   ) !== null;
+}
+
+function isWidgetEscapeConsumer(event: KeyboardEvent): boolean {
+  return event.composedPath().some((target) => {
+    const element = eventTargetElement(target);
+    if (element === null) return false;
+    const role = element.getAttribute('role');
+    return (
+      role === 'dialog'
+      || role === 'alertdialog'
+      || role === 'menu'
+      || element.getAttribute('aria-modal') === 'true'
+    );
+  });
+}
+
+function isOpenNativeDialogTarget(event: KeyboardEvent): boolean {
+  return event.composedPath().some((target) => {
+    const element = eventTargetElement(target);
+    return element?.tagName.toLowerCase() === 'dialog'
+      && element.hasAttribute('open');
+  });
 }
 
 function semanticTraceTarget(
@@ -170,6 +193,8 @@ export function Canvas(props: TCanvasProps) {
   let activeRuntime: TCanvasRuntime | null = null;
   let unsubscribeEditor: (() => void) | null = null;
   let unsubscribeSelectionStyles: (() => void) | null = null;
+  let unsubscribeShell: (() => void) | null = null;
+  const handledMaximizedEscapes = new WeakSet<KeyboardEvent>();
   let spacePointerId: number | null = null;
   let spacePointerPosition: Readonly<{ x: number; y: number }> | null = null;
   const pointerGestureIds = new Map<number, string>();
@@ -189,6 +214,10 @@ export function Canvas(props: TCanvasProps) {
   const [spaceHeld, setSpaceHeld] = createSignal(false);
   const [spaceDragging, setSpaceDragging] = createSignal(false);
   const [themeRevision, setThemeRevision] = createSignal(0);
+  const [shellState, setShellState] = createSignal<TCanvasShellState>({
+    kind: 'canvas',
+    widgetId: null,
+  });
 
   const source = (): TCanvasSource => ({
     key: JSON.stringify([props.hostScopeKey, props.canvas.id]),
@@ -221,6 +250,9 @@ export function Canvas(props: TCanvasProps) {
       unsubscribeEditor = null;
       unsubscribeSelectionStyles?.();
       unsubscribeSelectionStyles = null;
+      unsubscribeShell?.();
+      unsubscribeShell = null;
+      setShellState({ kind: 'canvas', widgetId: null });
       setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
       setEditor(null);
       setBooting(true);
@@ -243,6 +275,10 @@ export function Canvas(props: TCanvasProps) {
         ) {
           setSelectionStyleState(nextState);
         }
+      }) ?? null;
+      setShellState(runtime?.shell() ?? { kind: 'canvas', widgetId: null });
+      unsubscribeShell = runtime?.subscribeShell((nextState) => {
+        if (activeRuntime === runtime) setShellState(nextState);
       }) ?? null;
       setBooting(false);
       trace()?.emit({
@@ -332,6 +368,7 @@ export function Canvas(props: TCanvasProps) {
       });
     }
     if (event.repeat) return;
+    if (shellState().kind === 'maximized-widget') return;
     if (
       (
         activeRuntime?.widgetContentFocused() === true
@@ -382,6 +419,47 @@ export function Canvas(props: TCanvasProps) {
     event.preventDefault();
     event.stopPropagation();
     editor()?.setActiveTool(toolId);
+  };
+
+  const handleMaximizedEscape = (event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented
+      || event.repeat
+      || event.key !== 'Escape'
+      || shellState().kind !== 'maximized-widget'
+      || !ownsKeyboardEvent(event)
+      || isOpenNativeDialogTarget(event)
+    ) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handledMaximizedEscapes.add(event);
+    activeRuntime?.restoreMaximizedWidget();
+  };
+
+  const scheduleMaximizedEscapeFallback = (event: KeyboardEvent) => {
+    if (
+      event.repeat
+      || event.key !== 'Escape'
+      || shellState().kind !== 'maximized-widget'
+      || !ownsKeyboardEvent(event)
+    ) return;
+    const widgetOverlayOwnsEscape = isWidgetEscapeConsumer(event);
+    const nativeDialogOwnsEscape = isOpenNativeDialogTarget(event);
+    queueMicrotask(() => {
+      if (
+        handledMaximizedEscapes.has(event)
+        || nativeDialogOwnsEscape
+        || (event.defaultPrevented && widgetOverlayOwnsEscape)
+        || shellState().kind !== 'maximized-widget'
+      ) return;
+      activeRuntime?.restoreMaximizedWidget();
+    });
+  };
+
+  const suppressMaximizedCanvasDrop = (event: DragEvent) => {
+    if (shellState().kind !== 'maximized-widget') return;
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   const finishSpacePan = (pointerId?: number) => {
@@ -630,9 +708,13 @@ export function Canvas(props: TCanvasProps) {
     keyboardDocument = canvasRootRef.ownerDocument;
     keyboardWindow = keyboardDocument.defaultView;
     keyboardDocument.addEventListener('keydown', handleKeyboardShortcut, true);
+    keyboardDocument.addEventListener('keydown', scheduleMaximizedEscapeFallback, true);
+    keyboardDocument.addEventListener('keydown', handleMaximizedEscape);
     keyboardDocument.addEventListener('keyup', handleKeyboardRelease, true);
     keyboardDocument.addEventListener('pointerdown', updateKeyboardActivity, true);
     keyboardDocument.addEventListener('focusin', updateKeyboardActivity, true);
+    canvasRootRef.addEventListener('dragover', suppressMaximizedCanvasDrop, true);
+    canvasRootRef.addEventListener('drop', suppressMaximizedCanvasDrop, true);
     keyboardWindow?.addEventListener('blur', handleWindowBlur);
     canvasRootRef.addEventListener('pointerdown', beginSpacePan, true);
     canvasRootRef.addEventListener('pointermove', moveSpacePan, true);
@@ -642,9 +724,13 @@ export function Canvas(props: TCanvasProps) {
   });
   onCleanup(() => {
     keyboardDocument?.removeEventListener('keydown', handleKeyboardShortcut, true);
+    keyboardDocument?.removeEventListener('keydown', scheduleMaximizedEscapeFallback, true);
+    keyboardDocument?.removeEventListener('keydown', handleMaximizedEscape);
     keyboardDocument?.removeEventListener('keyup', handleKeyboardRelease, true);
     keyboardDocument?.removeEventListener('pointerdown', updateKeyboardActivity, true);
     keyboardDocument?.removeEventListener('focusin', updateKeyboardActivity, true);
+    canvasRootRef.removeEventListener('dragover', suppressMaximizedCanvasDrop, true);
+    canvasRootRef.removeEventListener('drop', suppressMaximizedCanvasDrop, true);
     keyboardWindow?.removeEventListener('blur', handleWindowBlur);
     keyboardActive = false;
     keyboardDocument = null;
@@ -662,6 +748,9 @@ export function Canvas(props: TCanvasProps) {
     unsubscribeEditor = null;
     unsubscribeSelectionStyles?.();
     unsubscribeSelectionStyles = null;
+    unsubscribeShell?.();
+    unsubscribeShell = null;
+    setShellState({ kind: 'canvas', widgetId: null });
     setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
     activeRuntime = null;
     void lifecycle.dispose().then(
@@ -761,6 +850,7 @@ export function Canvas(props: TCanvasProps) {
         class="vc-canvas-engine-host"
         style={{ position: 'absolute', inset: '0' }}
       />
+      <Show when={shellState().kind !== 'maximized-widget'}>
       <FloatingCanvasToolbar
         activeToolId={state()?.activeToolId ?? null}
         canRedo={state()?.canRedo ?? false}
@@ -782,7 +872,8 @@ export function Canvas(props: TCanvasProps) {
           error instanceof Error ? error.message : String(error),
         )}
       />
-      <Show when={fnSelectionStyleMenuVisible(selectionStyleState())}>
+      </Show>
+      <Show when={shellState().kind !== 'maximized-widget' && fnSelectionStyleMenuVisible(selectionStyleState())}>
         <SelectionStyleMenu
           state={selectionStyleState()}
           palette={themePalette()}

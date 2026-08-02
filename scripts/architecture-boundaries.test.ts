@@ -758,7 +758,9 @@ describe('managed composition architecture boundaries', () => {
         devDependencies?: Record<string, string>
       }
       expect(manifest.name).toBe(name)
-      expect(manifest.version).toBe('0.5.0')
+      expect(manifest.version).toBe(
+        name === '@omnidraw/canvas' ? '0.5.1' : '0.5.0',
+      )
       expect(manifest.private).not.toBe(true)
       expect(manifest.license).toBe('MIT')
       expect(manifest.repository?.type).toBe('git')
@@ -1098,7 +1100,7 @@ describe('managed composition architecture boundaries', () => {
       devDependencies?: Record<string, string>
     }
     expect(manifest.dependencies).toEqual({
-      '@omnidraw/canvas': '0.5.0',
+      '@omnidraw/canvas': '0.5.1',
       '@omnidraw/canvas-contract': '0.5.0',
       '@omnidraw/service-theme': '0.5.0',
       'solid-js': '1.9.14',

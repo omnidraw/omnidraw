@@ -2007,6 +2007,68 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     return row !== undefined;
   }
 
+  async confirmedPreviewOwnerExecutionLeaseId(
+    tenant: TTenantContext,
+    request: Readonly<{
+      previewId: string;
+      previewRevisionId: string;
+      draftRevisionSha256: string;
+      committedMutationId: string;
+      bindingRevision: number;
+      mountLeaseId?: string;
+      nowMs: number;
+    }>,
+  ): Promise<string | null> {
+    this.#boundedText(request.previewId, 300, 'Preview ID');
+    this.#boundedText(request.previewRevisionId, 300, 'Preview revision ID');
+    this.#sha256Digest(request.draftRevisionSha256, 'Preview draft revision');
+    this.#boundedText(request.committedMutationId, 1_024, 'Preview mutation ID');
+    if (request.mountLeaseId !== undefined) {
+      this.#boundedText(request.mountLeaseId, 300, 'Preview mount lease ID');
+    }
+    this.#timestamp(request.nowMs, 'Preview execution lookup timestamp');
+    const row = await (await this.database.prepare(`
+      SELECT lease.id
+      FROM agent_preview_mount_leases AS lease
+      JOIN agent_previews AS preview
+        ON preview.org_id = lease.org_id
+       AND preview.account_id = lease.account_id
+       AND preview.id = lease.preview_id
+      JOIN agent_preview_revisions AS revision
+        ON revision.org_id = lease.org_id
+       AND revision.preview_id = lease.preview_id
+       AND revision.id = lease.preview_revision_id
+      WHERE lease.org_id = ? AND lease.account_id = ?
+        AND lease.preview_id = ? AND lease.preview_revision_id = ?
+        AND preview.status = 'ready'
+        AND preview.active_revision_id = revision.id
+        AND preview.binding_revision = ?
+        AND preview.source_digest_sha256 = ?
+        AND preview.committed_mutation_id = ?
+        AND revision.draft_revision_sha256 = ?
+        AND revision.committed_mutation_id = ?
+        AND (? IS NULL OR lease.id = ?)
+        AND lease.renewed_at_ms > lease.acquired_at_ms
+        AND lease.expires_at_ms > ?
+      ORDER BY lease.renewed_at_ms DESC, lease.id ASC
+      LIMIT 1
+    `)).get(
+      tenant.orgId,
+      tenant.accountId,
+      request.previewId,
+      request.previewRevisionId,
+      request.bindingRevision,
+      request.draftRevisionSha256,
+      request.committedMutationId,
+      request.draftRevisionSha256,
+      request.committedMutationId,
+      request.mountLeaseId ?? null,
+      request.mountLeaseId ?? null,
+      request.nowMs,
+    );
+    return row === undefined ? null : String(row.id);
+  }
+
   async resolvePreviewArtifact(
     tenant: TTenantContext,
     request: TWidgetPreviewArtifactResolutionRequest,

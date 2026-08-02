@@ -19,6 +19,7 @@ import { BunChildFunctionDescriptorExtractor } from '@omnidraw/function-runtime/
 import { ApprovalCoordinator } from '@omnidraw/service-agent/approval/ApprovalCoordinator';
 import { createResourceTools } from '@omnidraw/service-agent/tools/tool.resources';
 import { createWidgetWorkspaceTools } from '@omnidraw/service-agent/tools/tool.widget-workspace';
+import { createWidgetPreviewTools } from '@omnidraw/service-agent/tools/tool.widget-preview';
 import { createWorkspaceFileTools } from '@omnidraw/service-agent/tools/tool.workspace-files';
 import { txTryNpmInstall } from '@omnidraw/service-agent/tools/tx.npm-install';
 import type { TToolDefinition } from '@omnidraw/service-agent/tools/types';
@@ -381,6 +382,11 @@ async function run(): Promise<void> {
         onDraftChanged,
         npmInstall: trackedNpmInstall,
       }),
+      ...createWidgetPreviewTools({
+        chatId: command.chatId,
+        preview: draftController,
+        authorize,
+      }),
       ...createWorkspaceFileTools({
         workspace,
         chatId: command.chatId,
@@ -475,13 +481,21 @@ async function run(): Promise<void> {
         ...delta,
         totals: { ...telemetry },
       };
-      if (operation.expect !== undefined && !matchesExpected(record, operation.expect)) {
+      const assertionPassed = operation.expect === undefined
+        ? null
+        : matchesExpected(record, operation.expect);
+      if (assertionPassed === false) {
         record.isError = true;
         record.assertion = { passed: false };
-      } else if (operation.expect !== undefined) {
+      } else if (assertionPassed === true) {
         record.assertion = { passed: true };
       }
-      if (record.isError === true) process.exitCode = 1;
+      const expectedError = assertionPassed === true
+        && operation.expect !== null
+        && typeof operation.expect === 'object'
+        && !Array.isArray(operation.expect)
+        && (operation.expect as Record<string, unknown>).isError === true;
+      if (record.isError === true && !expectedError) process.exitCode = 1;
       return record;
     };
 

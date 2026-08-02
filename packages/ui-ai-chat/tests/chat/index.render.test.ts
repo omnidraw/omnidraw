@@ -71,7 +71,11 @@ function createApiService() {
             models: [],
             providers: [],
             providersWithCredentials: ["test-provider"],
+            approvalPolicy: { mode: "manual" },
           }],
+          approvalPolicy: {
+            update: async (policy: unknown) => [undefined, policy],
+          },
         },
         chat: {
           connect: async () => [undefined, {
@@ -124,6 +128,7 @@ describe("AiChat shell", () => {
       models: [],
       providers: ["test-provider"],
       providersWithCredentials: ["test-provider"],
+      approvalPolicy: { mode: "manual" },
     }]
     apiService.api.agent.auth = {
       apiKey: {
@@ -170,6 +175,79 @@ describe("AiChat shell", () => {
       widgetId: "surface-1",
       mode: "replace",
     })
+  })
+
+  it("persists all approval modes and an explicitly selected configured reviewer model", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const updateApprovalPolicy = vi.fn(async (policy: unknown) => [undefined, policy])
+    apiService.api.agent.settings.get = async () => [undefined, {
+      defaultThinkingLevel: "minimal",
+      models: [
+        { id: "reviewer-1", provider: "test-provider", name: "Reviewer One", input: ["text"] },
+        { id: "reviewer-2", provider: "test-provider", name: "Reviewer Two", input: ["text"] },
+      ],
+      providers: ["test-provider"],
+      providersWithCredentials: ["test-provider"],
+      approvalPolicy: { mode: "manual" },
+    }]
+    apiService.api.agent.settings.approvalPolicy.update = updateApprovalPolicy
+    let settingsAction: (() => void) | undefined
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-policy",
+      titleBar: {
+        onAction: (id, handler) => {
+          if (id === "settings") settingsAction = handler
+          return () => {}
+        },
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-policy-2",
+      sessionId: "conversation-policy-1",
+    }), container)
+
+    await vi.waitFor(() => expect(settingsAction).toBeTypeOf("function"))
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-tab--chat")).not.toBeNull())
+    settingsAction?.()
+    const policySelect = await vi.waitFor(() => {
+      const select = container?.querySelector<HTMLSelectElement>(
+        'select[aria-label="Protected operation approval policy"]',
+      )
+      expect(select).not.toBeNull()
+      return select!
+    })
+    expect(container.textContent).toContain("Requests remain pending without a timer")
+
+    policySelect.value = "ai-review"
+    policySelect.dispatchEvent(new Event("change", { bubbles: true }))
+    await vi.waitFor(() => expect(updateApprovalPolicy).toHaveBeenCalledWith({
+      mode: "ai-review",
+      reviewerModel: { provider: "test-provider", modelId: "reviewer-1" },
+    }))
+    const reviewerSelect = await vi.waitFor(() => {
+      const select = container?.querySelector<HTMLSelectElement>(
+        'select[aria-label="Approval reviewer model"]',
+      )
+      expect(select).not.toBeNull()
+      return select!
+    })
+    reviewerSelect.value = JSON.stringify(["test-provider", "reviewer-2"])
+    reviewerSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    await vi.waitFor(() => expect(updateApprovalPolicy).toHaveBeenLastCalledWith({
+      mode: "ai-review",
+      reviewerModel: { provider: "test-provider", modelId: "reviewer-2" },
+    }))
+
+    policySelect.value = "always-approve"
+    policySelect.dispatchEvent(new Event("change", { bubbles: true }))
+    await vi.waitFor(() => expect(updateApprovalPolicy).toHaveBeenLastCalledWith({
+      mode: "always-approve",
+    }))
+    expect(container.textContent).toContain("current authorization is checked again")
   })
 
   it("ignores a stale connect completion and refreshes approvals only for the latest exact request", async () => {
@@ -441,7 +519,7 @@ describe("AiChat shell", () => {
       warnings: [],
       details: { kind: "kv", name: "Cache" },
       createdAt: new Date(0).toISOString(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      policyMode: "manual",
     }]];
     apiService.api.agent.chat.connect = async () => [undefined, {
       editSession: null,

@@ -37,13 +37,18 @@ import type {
   TWidgetAuthoringCapability,
   TWidgetDraftSummary,
   TWidgetPreviewCatalogState,
+  TWidgetPreviewAgentStatus,
   TWidgetPreviewFailureReason,
+  TWidgetPreviewInteractionCheck,
+  TWidgetPreviewInteractionResult,
   TWidgetPreviewOwnerDescriptor,
   TWidgetPreviewOwnerRole,
   TWidgetPreviewPublishSelection,
   TWidgetPreviewReady,
   TWidgetPreviewResult,
   TWidgetPreviewRuntimeDiagnosticRecord,
+  TWidgetPreviewTestResult,
+  TWidgetPreviewWaitResult,
   TWidgetPublishResult,
   TWidgetResourceBindingResolver,
 } from './types';
@@ -62,6 +67,8 @@ const WIDGET_PREVIEW_DIAGNOSTIC_MAX_COUNT = 20;
 const WIDGET_PREVIEW_DIAGNOSTIC_MAX_BYTES = 64 * 1_024;
 const WIDGET_PREVIEW_DIAGNOSTIC_RATE_WINDOW_MS = 10_000;
 const WIDGET_PREVIEW_DIAGNOSTIC_RATE_MAX_REPORTS = 32;
+const WIDGET_PREVIEW_TEST_MAX_CHECKS = 12;
+const WIDGET_PREVIEW_TEST_MAX_DURATION_MS = 15_000;
 
 type TValidationCacheEntry = TValidationResult & { revision: string };
 
@@ -70,6 +77,26 @@ type TCapturedDraft = Readonly<{
   rootPath: string;
   snapshot: TWidgetSourceSnapshot;
 }>;
+
+type TAgentPreviewSelection = Readonly<{
+  draft: TAgentAuthoringDraftDescriptor;
+  owner: TWidgetPreviewOwnerDescriptor;
+}>;
+
+type TPendingPreviewTest = {
+  requestId: string;
+  draftId: string;
+  previewId: string;
+  previewRevisionId: string;
+  revision: string;
+  committedMutationId: string;
+  mountLeaseId: string;
+  checks: readonly TWidgetPreviewInteractionCheck[];
+  timer: ReturnType<typeof setTimeout>;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+  resolve(result: TWidgetPreviewTestResult): void;
+};
 
 export type TWidgetDraftControllerConfig = Readonly<{
   tenant: TTenantContext;
@@ -125,6 +152,8 @@ export class WidgetDraftController {
     ownerBuildSequence: number;
     coordinatorBuildSequence: number;
   }>>();
+  readonly #previewStateListeners = new Set<() => void>();
+  readonly #pendingPreviewTests = new Map<string, TPendingPreviewTest>();
   #closing = false;
 
   constructor(config: TWidgetDraftControllerConfig) {
@@ -147,6 +176,10 @@ export class WidgetDraftController {
 
   async close(): Promise<void> {
     this.#closing = true;
+    this.#notifyPreviewStateChanged();
+    for (const pending of [...this.#pendingPreviewTests.values()]) {
+      this.#finishPreviewTest(pending, 'closed', []);
+    }
     this.#previewBuilds.close();
     this.#previewBuildKeysByDraft.clear();
     this.#previewBuildFencesByOwner.clear();
@@ -186,6 +219,7 @@ export class WidgetDraftController {
           return validated ? this.#summary(validated, captured.workspace) : null;
         }
         this.#validationByDraft.delete(synced.id);
+        this.#retirePreviewTestsForDraft(synced.id, 'superseded');
         this.#publishDraftEvent(change.type, synced);
         return this.#summary(synced, captured.workspace);
       });
@@ -210,6 +244,292 @@ export class WidgetDraftController {
   async getByName(name: string): Promise<TWidgetDraftSummary | null> {
     const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
     return draft && draft.status !== 'discarded' ? this.#refreshAndSummarize(draft) : null;
+  }
+
+  async previewStatus(
+    chatId: string,
+    draftId?: string,
+  ): Promise<TWidgetPreviewAgentStatus> {
+    const selection = await this.#agentPreviewSelection(chatId, draftId);
+    if (selection === null) {
+      return this.#unavailablePreviewStatus(
+        draftId ?? null,
+        'No open companion Preview exists for the authorized chat and draft.',
+      );
+    }
+    return this.#previewStatusFor(selection.draft, selection.owner);
+  }
+
+  async waitForPreview(request: Readonly<{
+    chatId: string;
+    draftId?: string;
+    expectedRevision: string;
+    expectedCommittedMutationId: string;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }>): Promise<TWidgetPreviewWaitResult> {
+    const selection = await this.#agentPreviewSelection(request.chatId, request.draftId);
+    if (selection === null) {
+      return {
+        outcome: 'unavailable',
+        status: this.#unavailablePreviewStatus(
+          request.draftId ?? null,
+          'No open companion Preview exists for the authorized chat and draft.',
+        ),
+      };
+    }
+    return new Promise<TWidgetPreviewWaitResult>((resolveWait) => {
+      let settled = false;
+      let evaluating = false;
+      let rerun = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const cleanup = () => {
+        this.#previewStateListeners.delete(onChanged);
+        if (timer !== null) clearTimeout(timer);
+        request.signal?.removeEventListener('abort', onAbort);
+      };
+      const finish = (result: TWidgetPreviewWaitResult) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolveWait(result);
+      };
+      const evaluate = async (): Promise<void> => {
+        if (settled) return;
+        if (evaluating) {
+          rerun = true;
+          return;
+        }
+        evaluating = true;
+        try {
+          const draft = await this.#config.authoringStore.getDraft(
+            this.#config.tenant,
+            selection.draft.id,
+          );
+          const owner = await this.#config.authoringStore.getPreviewOwner(
+            this.#config.tenant,
+            selection.owner.id,
+          );
+          const status = draft === null || owner === null
+            ? this.#unavailablePreviewStatus(selection.draft.id, 'The owning Preview closed.')
+            : await this.#previewStatusFor(draft, owner);
+          if (draft === null || owner === null || owner.status === 'closed' || this.#closing) {
+            finish({ outcome: 'closed', status: { ...status, state: 'closed' } });
+          } else if (
+            draft.sourceDigestSha256 !== request.expectedRevision
+            || draft.committedMutationId !== request.expectedCommittedMutationId
+          ) {
+            finish({ outcome: 'superseded', status });
+          } else if (status.state === 'ready') {
+            finish({ outcome: 'ready', status });
+          } else if (status.state === 'failed') {
+            finish({ outcome: 'failed', status });
+          }
+        } catch {
+          finish({
+            outcome: 'unavailable',
+            status: this.#unavailablePreviewStatus(
+              selection.draft.id,
+              'Preview status became unavailable while waiting.',
+            ),
+          });
+        } finally {
+          evaluating = false;
+          if (rerun && !settled) {
+            rerun = false;
+            void evaluate();
+          }
+        }
+      };
+      const onChanged = () => void evaluate();
+      const onAbort = () => finish({
+        outcome: 'canceled',
+        status: this.#unavailablePreviewStatus(selection.draft.id, 'Preview wait was canceled.'),
+      });
+      this.#previewStateListeners.add(onChanged);
+      request.signal?.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(() => {
+        void this.#previewStatusFor(selection.draft, selection.owner)
+          .then(
+            (status) => finish({ outcome: 'timeout', status }),
+            () => finish({
+              outcome: 'timeout',
+              status: this.#unavailablePreviewStatus(
+                selection.draft.id,
+                'Preview status was unavailable when the wait timed out.',
+              ),
+            }),
+          );
+      }, request.timeoutMs);
+      timer.unref?.();
+      if (request.signal?.aborted) onAbort();
+      else void evaluate();
+    });
+  }
+
+  async testPreview(request: Readonly<{
+    chatId: string;
+    draftId: string;
+    expectedRevision: string;
+    expectedCommittedMutationId: string;
+    expectedPreviewRevisionId: string;
+    checks: readonly TWidgetPreviewInteractionCheck[];
+    signal?: AbortSignal;
+  }>): Promise<TWidgetPreviewTestResult> {
+    if (request.checks.length < 1 || request.checks.length > WIDGET_PREVIEW_TEST_MAX_CHECKS) {
+      throw controllerError('WIDGET_PREVIEW_TEST_INPUT_INVALID', 'Preview tests require between 1 and 12 declared checks.');
+    }
+    const selection = await this.#agentPreviewSelection(request.chatId, request.draftId);
+    if (selection === null) {
+      throw controllerError('WIDGET_PREVIEW_UNAVAILABLE', 'No authorized companion Preview is open.');
+    }
+    const status = await this.#previewStatusFor(selection.draft, selection.owner);
+    if (
+      status.state !== 'ready'
+      || status.attemptedRevision !== request.expectedRevision
+      || status.attemptedCommittedMutationId !== request.expectedCommittedMutationId
+      || status.displayedPreviewRevisionId !== request.expectedPreviewRevisionId
+    ) {
+      throw controllerError('WIDGET_PREVIEW_TEST_STALE', 'Preview interaction checks require the exact live-ready revision.');
+    }
+    const mountLeaseId = await this.#config.authoringStore
+      .confirmedPreviewOwnerExecutionLeaseId(this.#config.tenant, {
+        previewId: selection.owner.id,
+        previewRevisionId: request.expectedPreviewRevisionId,
+        draftRevisionSha256: request.expectedRevision,
+        committedMutationId: request.expectedCommittedMutationId,
+        bindingRevision: selection.owner.bindingRevision,
+        nowMs: this.#now(),
+      });
+    if (mountLeaseId === null) {
+      throw controllerError('WIDGET_PREVIEW_TEST_STALE', 'Preview interaction checks require one confirmed live mount.');
+    }
+    const requestId = this.#config.createId();
+    return new Promise<TWidgetPreviewTestResult>((resolve) => {
+      const timer = setTimeout(() => {
+        const pending = this.#pendingPreviewTests.get(requestId);
+        if (pending) this.#finishPreviewTest(pending, 'timeout', []);
+      }, WIDGET_PREVIEW_TEST_MAX_DURATION_MS);
+      timer.unref?.();
+      const pending: TPendingPreviewTest = {
+        requestId,
+        draftId: request.draftId,
+        previewId: selection.owner.id,
+        previewRevisionId: request.expectedPreviewRevisionId,
+        revision: request.expectedRevision,
+        committedMutationId: request.expectedCommittedMutationId,
+        mountLeaseId,
+        checks: Object.freeze([...request.checks]),
+        timer,
+        signal: request.signal,
+        resolve,
+      };
+      if (request.signal) {
+        pending.onAbort = () =>
+          this.#finishPreviewTest(pending, 'canceled', []);
+        request.signal.addEventListener('abort', pending.onAbort!, { once: true });
+      }
+      this.#pendingPreviewTests.set(requestId, pending);
+      if (request.signal?.aborted) {
+        this.#finishPreviewTest(pending, 'canceled', []);
+        return;
+      }
+      try {
+        this.#config.eventPublisher.publishAgentEvent({
+          kind: 'widget-preview-test',
+          type: 'requested',
+          requestId,
+          draftId: request.draftId,
+          previewId: selection.owner.id,
+          previewRevisionId: request.expectedPreviewRevisionId,
+          canvasId: selection.owner.canvasId,
+          frameNodeId: selection.owner.frameNodeId,
+          revision: request.expectedRevision,
+          committedMutationId: request.expectedCommittedMutationId,
+          mountLeaseId,
+          deadlineAtMs: this.#now() + WIDGET_PREVIEW_TEST_MAX_DURATION_MS,
+          checks: request.checks,
+        });
+      } catch {
+        this.#finishPreviewTest(pending, 'closed', []);
+      }
+    });
+  }
+
+  async reportPreviewTestResult(request: Readonly<{
+    requestId: string;
+    draftId: string;
+    previewId: string;
+    previewRevisionId: string;
+    revision: string;
+    committedMutationId: string;
+    mountLeaseId: string;
+    checks: readonly TWidgetPreviewInteractionResult[];
+  }>): Promise<boolean> {
+    const pending = this.#pendingPreviewTests.get(request.requestId);
+    if (
+      pending === undefined
+      || pending.draftId !== request.draftId
+      || pending.previewId !== request.previewId
+      || pending.previewRevisionId !== request.previewRevisionId
+      || pending.revision !== request.revision
+      || pending.committedMutationId !== request.committedMutationId
+      || pending.mountLeaseId !== request.mountLeaseId
+      || request.checks.length > WIDGET_PREVIEW_TEST_MAX_CHECKS
+      || request.checks.some((check, index) => (
+        check.index !== index || check.type !== pending.checks[index]?.type
+      ))
+    ) return false;
+    const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, pending.draftId);
+    const owner = await this.#config.authoringStore.getPreviewOwner(this.#config.tenant, pending.previewId);
+    if (owner === null || owner.status === 'closed') {
+      this.#finishPreviewTest(pending, 'closed', []);
+      return false;
+    }
+    if (
+      draft?.sourceDigestSha256 !== pending.revision
+      || draft.committedMutationId !== pending.committedMutationId
+      || owner.activeRevisionId !== pending.previewRevisionId
+    ) {
+      this.#finishPreviewTest(pending, 'superseded', []);
+      return false;
+    }
+    const confirmedMountLeaseId = await this.#config.authoringStore
+      .confirmedPreviewOwnerExecutionLeaseId(this.#config.tenant, {
+        previewId: pending.previewId,
+        previewRevisionId: pending.previewRevisionId,
+        draftRevisionSha256: pending.revision,
+        committedMutationId: pending.committedMutationId,
+        bindingRevision: owner.bindingRevision,
+        mountLeaseId: pending.mountLeaseId,
+        nowMs: this.#now(),
+      });
+    if (confirmedMountLeaseId !== pending.mountLeaseId) {
+      this.#finishPreviewTest(pending, 'superseded', []);
+      return false;
+    }
+    const status = await this.#previewStatusFor(draft, owner);
+    if (
+      status.state !== 'ready'
+      || status.displayedPreviewRevisionId !== pending.previewRevisionId
+    ) {
+      this.#finishPreviewTest(pending, 'superseded', []);
+      return false;
+    }
+    const checks = request.checks.slice(0, WIDGET_PREVIEW_TEST_MAX_CHECKS).map((check) => ({
+      index: check.index,
+      type: check.type,
+      passed: check.passed === true,
+      evidence: check.evidence.slice(0, 500),
+    }));
+    this.#finishPreviewTest(
+      pending,
+      checks.length === pending.checks.length && checks.every((check) => check.passed)
+        ? 'passed'
+        : 'failed',
+      checks,
+    );
+    return true;
   }
 
   async ensurePreviewOwner(request: Readonly<{
@@ -282,6 +602,8 @@ export class WidgetDraftController {
       nowMs: this.#now(),
     });
     if (!closed) return false;
+    this.#retirePreviewTestsForOwner(owner.id, 'closed');
+    this.#notifyPreviewStateChanged();
     this.#previewDiagnosticRateByOwner.delete(owner.id);
     this.#forgetPreviewBuildKey(owner.draftId, owner.id);
     this.#previewBuildFencesByOwner.delete(owner.id);
@@ -409,11 +731,13 @@ export class WidgetDraftController {
     frameNodeId: string;
   }>): Promise<TWidgetPreviewMountLeaseDescriptor | null> {
     if (this.#closing) return null;
-    return this.#config.authoringStore.acquirePreviewMountLease(this.#config.tenant, {
+    const lease = await this.#config.authoringStore.acquirePreviewMountLease(this.#config.tenant, {
       ...request,
       nowMs: this.#now(),
       ttlMs: WIDGET_PREVIEW_MOUNT_LEASE_TTL_MS,
     });
+    this.#notifyPreviewStateChanged();
+    return lease;
   }
 
   async renewPreviewMountLease(request: Readonly<{
@@ -424,24 +748,28 @@ export class WidgetDraftController {
     frameNodeId: string;
   }>): Promise<TWidgetPreviewMountLeaseDescriptor | null> {
     if (this.#closing) return null;
-    return this.#config.authoringStore.renewPreviewMountLease(this.#config.tenant, {
+    const lease = await this.#config.authoringStore.renewPreviewMountLease(this.#config.tenant, {
       ...request,
       nowMs: this.#now(),
       ttlMs: WIDGET_PREVIEW_MOUNT_LEASE_TTL_MS,
     });
+    this.#notifyPreviewStateChanged();
+    return lease;
   }
 
-  releasePreviewMountLease(request: Readonly<{
+  async releasePreviewMountLease(request: Readonly<{
     leaseId: string;
     previewId: string;
     previewRevisionId: string;
     canvasId: string;
     frameNodeId: string;
   }>): Promise<boolean> {
-    return this.#config.authoringStore.releasePreviewMountLease(this.#config.tenant, {
+    const released = await this.#config.authoringStore.releasePreviewMountLease(this.#config.tenant, {
       ...request,
       nowMs: this.#now(),
     });
+    this.#notifyPreviewStateChanged();
+    return released;
   }
 
   async reportPreviewDiagnostic(request: Readonly<{
@@ -551,6 +879,7 @@ export class WidgetDraftController {
         'Preview changed before its diagnostic could be recorded.',
       );
     }
+    this.#notifyPreviewStateChanged();
     return Object.freeze({
       deduplicated,
       diagnostic: Object.freeze(storedDiagnostic),
@@ -2331,6 +2660,7 @@ export class WidgetDraftController {
     type: 'created' | 'changed' | 'validated',
     draft: TAgentAuthoringDraftDescriptor,
   ): void {
+    this.#notifyPreviewStateChanged();
     if (
       draft.sourceDigestSha256 === null
       || draft.committedMutationId === null
@@ -2559,6 +2889,7 @@ export class WidgetDraftController {
     buildId: string;
     phase: TPreviewBuildProgressPhase;
   }>): void {
+    this.#notifyPreviewStateChanged();
     if (
       args.owner.sourceDigestSha256 === null
       || args.owner.committedMutationId === null
@@ -2578,6 +2909,214 @@ export class WidgetDraftController {
         phase: args.phase,
       });
     } catch {}
+  }
+
+  async #agentPreviewSelection(
+    chatId: string,
+    draftId?: string,
+  ): Promise<TAgentPreviewSelection | null> {
+    const drafts = draftId === undefined
+      ? (await this.#config.authoringStore.listDrafts(this.#config.tenant)).filter((draft) => (
+          draft.chatId === chatId && draft.status !== 'discarded'
+        ))
+      : [await this.#config.authoringStore.getDraft(this.#config.tenant, draftId)]
+          .filter((draft): draft is TAgentAuthoringDraftDescriptor => (
+            draft !== null && draft.chatId === chatId && draft.status !== 'discarded'
+          ));
+    if (drafts.length !== 1) return null;
+    const draft = drafts[0]!;
+    const owners = (await this.#config.authoringStore.listPreviewOwners(
+      this.#config.tenant,
+      { draftId: draft.id },
+    )).filter((owner) => (
+      owner.originChatId === chatId
+      && owner.role === 'companion'
+      && owner.status !== 'closed'
+      && (this.#config.tenant.canvasId === undefined
+        || owner.canvasId === this.#config.tenant.canvasId)
+    ));
+    return owners.length === 1 ? { draft, owner: owners[0]! } : null;
+  }
+
+  async #previewStatusFor(
+    draft: TAgentAuthoringDraftDescriptor,
+    owner: TWidgetPreviewOwnerDescriptor,
+  ): Promise<TWidgetPreviewAgentStatus> {
+    const displayed = owner.activeRevisionId === null
+      ? null
+      : await this.#config.widgets.loadPreview(this.#config.tenant, {
+          previewId: owner.id,
+        }).catch(() => null);
+    const exactDisplayed = displayed !== null
+      && displayed.previewRevisionId === owner.activeRevisionId
+      ? displayed
+      : null;
+    const mounted = exactDisplayed !== null
+      && exactDisplayed.previewRevisionId !== null
+      && owner.status === 'ready'
+      && owner.sourceDigestSha256 !== null
+      && owner.committedMutationId !== null
+      && await this.#config.authoringStore.confirmedPreviewOwnerExecutionLeaseId(
+        this.#config.tenant,
+        {
+          previewId: owner.id,
+          previewRevisionId: exactDisplayed.previewRevisionId,
+          draftRevisionSha256: owner.sourceDigestSha256,
+          committedMutationId: owner.committedMutationId,
+          bindingRevision: owner.bindingRevision,
+          nowMs: this.#now(),
+        },
+      ) !== null;
+    const diagnostics = this.#previewStatusDiagnostics(owner);
+    const failedAttemptId = typeof owner.lastError?.buildId === 'string'
+      ? owner.lastError.buildId
+      : typeof owner.lastError?.previewRevisionId === 'string'
+        ? owner.lastError.previewRevisionId
+        : null;
+    const state: TWidgetPreviewAgentStatus['state'] = owner.status === 'closed'
+      ? 'closed'
+      : owner.status === 'failed'
+        ? 'failed'
+        : owner.status === 'ready'
+          ? mounted ? 'ready' : 'mounting'
+          : 'pending';
+    const message = state === 'ready'
+      ? 'The exact Preview revision is live and mount-confirmed.'
+      : state === 'mounting'
+        ? 'Preview built successfully and is waiting for an exact browser mount confirmation.'
+        : state === 'failed'
+          ? diagnostics[0]?.message ?? 'The attempted Preview revision failed.'
+          : state === 'closed'
+            ? 'The companion Preview is closed.'
+            : owner.status === 'building'
+              ? 'The exact Preview revision is building.'
+              : 'The exact Preview revision is queued.';
+    return Object.freeze({
+      state,
+      draftId: draft.id,
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+      attemptedRevision: owner.sourceDigestSha256,
+      attemptedCommittedMutationId: owner.committedMutationId,
+      attemptedPreviewRevisionId: owner.pendingBuildId ?? failedAttemptId ?? (
+        owner.sourceDigestSha256 === exactDisplayed?.draftRevisionSha256
+          ? owner.activeRevisionId
+          : null
+      ),
+      displayedPreviewRevisionId: exactDisplayed?.previewRevisionId ?? null,
+      displayedDraftRevision: exactDisplayed?.draftRevisionSha256 ?? null,
+      bindingRevision: owner.bindingRevision,
+      buildSequence: draft.buildSequence,
+      ownerBuildSequence: owner.buildSequence,
+      diagnostics,
+      message,
+    });
+  }
+
+  #previewStatusDiagnostics(
+    owner: TWidgetPreviewOwnerDescriptor,
+  ): TWidgetPreviewAgentStatus['diagnostics'] {
+    const fromRuntime = owner.runtimeDiagnostics.slice(-12).map(({ diagnostic }) => ({
+      code: diagnostic.code.slice(0, 120),
+      message: diagnostic.message.slice(0, 1_000),
+      fingerprint: diagnostic.fingerprint.slice(0, 200),
+    }));
+    const rawDiagnostics = Array.isArray(owner.lastError?.diagnostics)
+      ? owner.lastError.diagnostics
+      : [];
+    const fromBuild = rawDiagnostics.slice(0, 12).flatMap((value) => {
+      if (typeof value === 'string') {
+        return [{ code: 'WIDGET_PREVIEW_FAILED', message: value.slice(0, 1_000) }];
+      }
+      if (value === null || typeof value !== 'object') return [];
+      const record = value as Record<string, unknown>;
+      return [{
+        code: typeof record.code === 'string'
+          ? record.code.slice(0, 120)
+          : 'WIDGET_PREVIEW_FAILED',
+        message: typeof record.message === 'string'
+          ? record.message.slice(0, 1_000)
+          : 'Preview execution failed.',
+        ...(typeof record.fingerprint === 'string'
+          ? { fingerprint: record.fingerprint.slice(0, 200) }
+          : {}),
+      }];
+    });
+    if (fromRuntime.length + fromBuild.length > 0) {
+      return Object.freeze([...fromBuild, ...fromRuntime].slice(0, 20));
+    }
+    const message = typeof owner.lastError?.message === 'string'
+      ? owner.lastError.message.slice(0, 1_000)
+      : null;
+    return message === null
+      ? Object.freeze([])
+      : Object.freeze([{ code: 'WIDGET_PREVIEW_FAILED', message }]);
+  }
+
+  #unavailablePreviewStatus(
+    draftId: string | null,
+    message: string,
+  ): TWidgetPreviewAgentStatus {
+    return Object.freeze({
+      state: this.#closing ? 'closed' : 'unavailable',
+      draftId,
+      previewId: null,
+      canvasId: null,
+      frameNodeId: null,
+      attemptedRevision: null,
+      attemptedCommittedMutationId: null,
+      attemptedPreviewRevisionId: null,
+      displayedPreviewRevisionId: null,
+      displayedDraftRevision: null,
+      bindingRevision: null,
+      buildSequence: null,
+      ownerBuildSequence: null,
+      diagnostics: Object.freeze([]),
+      message,
+    });
+  }
+
+  #notifyPreviewStateChanged(): void {
+    for (const listener of [...this.#previewStateListeners]) listener();
+  }
+
+  #finishPreviewTest(
+    pending: TPendingPreviewTest,
+    outcome: TWidgetPreviewTestResult['outcome'],
+    checks: readonly TWidgetPreviewInteractionResult[],
+  ): void {
+    if (this.#pendingPreviewTests.get(pending.requestId) !== pending) return;
+    this.#pendingPreviewTests.delete(pending.requestId);
+    clearTimeout(pending.timer);
+    if (pending.onAbort) pending.signal?.removeEventListener('abort', pending.onAbort);
+    pending.resolve(Object.freeze({
+      outcome,
+      draftId: pending.draftId,
+      previewId: pending.previewId,
+      previewRevisionId: pending.previewRevisionId,
+      revision: pending.revision,
+      committedMutationId: pending.committedMutationId,
+      checks: Object.freeze([...checks]),
+    }));
+  }
+
+  #retirePreviewTestsForDraft(
+    draftId: string,
+    outcome: Extract<TWidgetPreviewTestResult['outcome'], 'closed' | 'superseded'>,
+  ): void {
+    for (const pending of [...this.#pendingPreviewTests.values()]) {
+      if (pending.draftId === draftId) this.#finishPreviewTest(pending, outcome, []);
+    }
+  }
+
+  #retirePreviewTestsForOwner(
+    previewId: string,
+    outcome: Extract<TWidgetPreviewTestResult['outcome'], 'closed' | 'superseded'>,
+  ): void {
+    for (const pending of [...this.#pendingPreviewTests.values()]) {
+      if (pending.previewId === previewId) this.#finishPreviewTest(pending, outcome, []);
+    }
   }
 
   #now(): number {

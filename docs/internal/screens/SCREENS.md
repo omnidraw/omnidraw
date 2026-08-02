@@ -41,7 +41,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Widget actions | Widget canvas maximize |
 | --- | --- |
 | ![Canvas widget fixed-frame actions](assets/12-canvas-widget-actions.webp) | ![AI Chat widget canvas-maximized with fixed traffic-light chrome](assets/13-canvas-widget-fullscreen.webp) |
-| **Fixed frame.** Cangine traffic lights provide close, minimize, and local canvas maximize; the shared header menu exposes bounded product actions. | **Canvas maximize.** The hosted widget locally fills the canvas while preserving its durable world geometry; restore returns to the unchanged contained frame. |
+| **Fixed frame.** Cangine traffic lights provide close, minimize, and local canvas maximize; the shared header menu exposes bounded product actions. | **Exclusive canvas maximize.** The hosted widget becomes the content-first shell while canvas tools, selection UI, imports, shortcuts, and sibling projections are unmounted or inert. Its own title actions and menus remain available; restore or unconsumed Escape returns to a clean contained frame without changing durable world geometry. |
 
 | AI chat | AI settings |
 | --- | --- |

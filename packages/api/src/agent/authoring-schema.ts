@@ -86,6 +86,28 @@ export const ZAgentWidgetPreviewDiagnosticReportResult = z.object({
   deduplicated: z.boolean(),
 }).strict();
 
+export const ZAgentWidgetPreviewInteractionResult = z.object({
+  index: z.number().int().nonnegative().max(11),
+  type: z.enum(['fill', 'click', 'assert-text', 'assert-status', 'wait-for-text']),
+  passed: z.boolean(),
+  evidence: z.string().max(500),
+}).strict();
+
+export const ZAgentWidgetPreviewTestReportInput = z.object({
+  requestId: ZAgentOpaqueId,
+  draftId: ZAgentOpaqueId,
+  previewId: ZAgentOpaqueId,
+  previewRevisionId: ZAgentPreviewOwnerBoundedIdentifier,
+  revision: ZAgentRevisionDigest,
+  committedMutationId: z.string().min(1).max(1_024),
+  mountLeaseId: ZAgentOpaqueId,
+  checks: z.array(ZAgentWidgetPreviewInteractionResult).max(12),
+}).strict();
+
+export const ZAgentWidgetPreviewTestReportResult = z.object({
+  accepted: z.boolean(),
+}).strict();
+
 export const ZAgentWidgetPreviewRuntimeDiagnosticRecord:
   z.ZodType<TWidgetPreviewRuntimeDiagnosticRecord> = z.object({
     diagnostic: ZWidgetDiagnostic,

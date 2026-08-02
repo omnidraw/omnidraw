@@ -19,6 +19,7 @@ import {
   apiWidgetPreviewOwnerList,
 } from './api.widgetPreview.owner';
 import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
+import { apiWidgetPreviewTestReport } from './api.widgetPreview.test';
 
 describe('agent Preview forwarding', () => {
   test('forwards stateless and frame-qualified build identities', async () => {
@@ -68,6 +69,31 @@ describe('agent Preview forwarding', () => {
 
     await expect(apiWidgetPreviewCancel.callable({ context })(input))
       .resolves.toBe(true);
+    expect(calls).toEqual([input]);
+  });
+
+  test('forwards an exact bounded Preview interaction result', async () => {
+    const calls: unknown[] = [];
+    const input = {
+      requestId: crypto.randomUUID(),
+      draftId: crypto.randomUUID(),
+      previewId: crypto.randomUUID(),
+      previewRevisionId: crypto.randomUUID(),
+      revision: 'a'.repeat(64),
+      committedMutationId: 'mutation-a',
+      mountLeaseId: crypto.randomUUID(),
+      checks: [{ index: 0, type: 'click' as const, passed: true, evidence: 'Clicked.' }],
+    };
+    const context = {
+      agent: {
+        async reportWidgetPreviewTestResult(request: unknown) {
+          calls.push(request);
+          return true;
+        },
+      },
+    } as never;
+    await expect(apiWidgetPreviewTestReport.callable({ context })(input))
+      .resolves.toEqual({ accepted: true });
     expect(calls).toEqual([input]);
   });
 

@@ -446,7 +446,7 @@ describe("ChatTab rendered message history", () => {
         warnings: ["This changes shared data."],
         details: { resource: "Production", value: "must-not-render", operation: "set" },
         createdAt: new Date(0).toISOString(),
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        policyMode: "manual",
         status: "pending",
       }],
       onResolveApproval,

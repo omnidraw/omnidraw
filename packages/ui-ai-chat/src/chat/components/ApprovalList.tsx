@@ -40,8 +40,17 @@ function ApprovalCard(props: {
       </header>
       <div class="ai-chat-approval__meta">
         <span>Risk: {props.approval.risk}</span>
-        <span>Expires {props.browser.formatTime(props.approval.expiresAt)}</span>
+        <span>{props.approval.decisionSource
+          ? `Decision: ${props.approval.decisionSource}`
+          : props.approval.policyMode === "manual"
+            ? "Waiting for you"
+            : props.approval.policyMode === "ai-review"
+              ? "Independent AI review"
+              : "Automatic policy"}</span>
       </div>
+      <Show when={props.approval.reviewerReason}>
+        <p class="ai-chat-approval__message">Reviewer: {props.approval.reviewerReason}</p>
+      </Show>
       <Show when={props.approval.warnings.length > 0}>
         <ul><For each={props.approval.warnings}>{(warning) => <li>{warning}</li>}</For></ul>
       </Show>

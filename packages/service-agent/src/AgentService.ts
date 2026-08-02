@@ -21,7 +21,20 @@ import { txNormalizeSessionCwd } from './core/tx.session-cwd';
 import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
-import type { TApprovalDecision, TApprovalView, TToolAuthorizationContext, TToolAuthorizer } from './approval/types';
+import { ApprovalPolicyStore } from './approval/ApprovalPolicyStore';
+import {
+  fnNormalizeApprovalPolicy,
+  fnNormalizeApprovalReviewDecision,
+} from './approval/fn.approval-policy';
+import type {
+  TApprovalDecision,
+  TApprovalPolicy,
+  TApprovalReviewer,
+  TApprovalReviewInput,
+  TApprovalView,
+  TToolAuthorizationContext,
+  TToolAuthorizer,
+} from './approval/types';
 import { createToolRegistry } from './tools/ToolRegistry';
 import type { TAgentResourceService } from './tools/resource-service';
 import type { TAgentBashCapability } from './tools/tool.bash';
@@ -95,7 +108,11 @@ export interface IAgentServiceConfig {
     target: TPublishedWidgetPlacementIdentity,
   ) => Promise<TPublishedWidgetPlacementTarget | null>;
   authorizeToolCall?: TToolAuthorizer;
-  approvalTimeoutMs?: number;
+  approvalReviewer?: TApprovalReviewer;
+  approvalPolicyStore?: Readonly<{
+    load(): Promise<TApprovalPolicy>;
+    save(policy: TApprovalPolicy): Promise<TApprovalPolicy>;
+  }>;
 }
 
 type TWidgetId = string;
@@ -183,6 +200,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #widgetDrafts: WidgetDraftController;
   #widgetManagement: WidgetManagement;
   #approvals: ApprovalCoordinator;
+  #approvalPolicy: TApprovalPolicy = Object.freeze({ mode: 'manual' });
+  #approvalPolicyStore: NonNullable<IAgentServiceConfig['approvalPolicyStore']>;
   #chatWidgetIds = new Map<TOmnidrawChatId, TWidgetId>();
   #chatConnectionGenerations = new Map<TOmnidrawChatId, number>();
   #chatConnectionLanes = new Map<TOmnidrawChatId, Promise<void>>();
@@ -233,9 +252,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       workspace: this.#workspace,
       drafts: this.#widgetDrafts,
     })
+    this.#approvalPolicyStore = config.approvalPolicyStore
+      ?? new ApprovalPolicyStore(join(this.#piAgentDir, 'approval-policy.json'))
     this.#approvals = new ApprovalCoordinator({
-      timeoutMs: config.approvalTimeoutMs,
       authorize: config.authorizeToolCall,
+      policy: () => this.#approvalPolicy,
+      reviewer: config.approvalReviewer ?? {
+        review: (input, signal) => this.#reviewProtectedOperation(input, signal),
+      },
       onChanged: (event) => {
         const widgetId = this.#chatWidgetIds.get(event.approval.chatId)
         if (!widgetId) return
@@ -260,6 +284,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       authPath: join(this.#piAgentDir, 'auth.json'),
       modelsPath: join(this.#piAgentDir, 'models.json'),
     })
+    this.#approvalPolicy = fnNormalizeApprovalPolicy(
+      await this.#approvalPolicyStore.load(),
+    )
     await this.#workspace.init()
     console.log('start', this.name)
   }
@@ -647,6 +674,24 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetDrafts.resolvePreviewDiagnostic(request)
   }
 
+  async reportWidgetPreviewTestResult(request: Readonly<{
+    requestId: string;
+    draftId: string;
+    previewId: string;
+    previewRevisionId: string;
+    revision: string;
+    committedMutationId: string;
+    mountLeaseId: string;
+    checks: readonly Readonly<{
+      index: number;
+      type: 'fill' | 'click' | 'assert-text' | 'assert-status' | 'wait-for-text';
+      passed: boolean;
+      evidence: string;
+    }>[];
+  }>): Promise<boolean> {
+    return this.#widgetDrafts.reportPreviewTestResult(request)
+  }
+
   async buildWidgetPreview(
     draftId: string,
     ownerRef?: Readonly<{
@@ -1029,7 +1074,77 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       defaultThinkingLevel,
       providersWithCredentials,
       providers,
-      models
+      models,
+      approvalPolicy: this.#approvalPolicy,
+    }
+  }
+
+  async updateApprovalPolicy(policy: TApprovalPolicy): Promise<TApprovalPolicy> {
+    const normalized = fnNormalizeApprovalPolicy(policy)
+    if (normalized.mode === 'ai-review') {
+      const model = this.modelRuntime.getModel(
+        normalized.reviewerModel.provider,
+        normalized.reviewerModel.modelId,
+      )
+      if (!model) throw new Error('The selected approval reviewer model is unavailable.')
+    }
+    this.#approvalPolicy = await this.#approvalPolicyStore.save(normalized)
+    return this.#approvalPolicy
+  }
+
+  async #reviewProtectedOperation(
+    input: TApprovalReviewInput,
+    signal?: AbortSignal,
+  ) {
+    const model = this.modelRuntime.getModel(input.model.provider, input.model.modelId)
+    if (!model || !this.modelRuntime.hasConfiguredAuth(input.model.provider)) {
+      throw new Error('The configured approval reviewer model is unavailable or unauthenticated.')
+    }
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    const timeout = setTimeout(abort, 30_000)
+    timeout.unref?.()
+    try {
+      const message = await this.modelRuntime.completeSimple(model, {
+        systemPrompt: [
+          'You are an independent security reviewer for one protected operation.',
+          'Use only the supplied redacted record. Return exactly one JSON object',
+          'with decision equal to approve or reject and a concise reason.',
+          'Reject when the stated intent, scope, or risk is unclear.',
+        ].join(' '),
+        messages: [{
+          role: 'user',
+          content: JSON.stringify({
+            kind: input.kind,
+            summary: input.summary,
+            risk: input.risk,
+            warnings: input.warnings,
+            details: input.details,
+          }),
+          timestamp: Date.now(),
+        }],
+      }, {
+        signal: controller.signal,
+        maxTokens: 160,
+        reasoning: 'low',
+        timeoutMs: 30_000,
+        maxRetries: 0,
+      })
+      if (message.stopReason !== 'stop') {
+        throw new Error(message.errorMessage ?? 'Approval reviewer did not complete.')
+      }
+      const text = message.content
+        .flatMap((part) => part.type === 'text' ? [part.text] : [])
+        .join('')
+        .trim()
+      const parsed = JSON.parse(text) as unknown
+      const decision = fnNormalizeApprovalReviewDecision(parsed)
+      if (decision === null) throw new Error('Approval reviewer returned malformed output.')
+      return decision
+    } finally {
+      clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
     }
   }
 
@@ -1303,6 +1418,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       authorize: this.#config.authorizeToolCall,
       workspace: this.#workspace,
       approvals: this.#approvals,
+      preview: this.#widgetDrafts,
       resourceService: this.#config.resourceService,
       bashCapability: this.#config.bashCapability,
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
@@ -1517,6 +1633,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       list: async () => [],
       get: async () => null,
       getByName: async () => null,
+      previewStatus: async () => unavailable(),
+      waitForPreview: async () => unavailable(),
+      testPreview: async () => unavailable(),
+      reportPreviewTestResult: async () => false,
       ensurePreviewOwner: async () => unavailable(),
       getPreviewOwner: async () => null,
       listPreviewOwners: async () => [],

@@ -234,10 +234,22 @@ export function AiChat(props: IProps) {
             }
             setApprovals((current) => [...current.filter((approval) => approval.id !== incoming.id), incoming])
           } else if (event.type === "resolved") {
-            setApprovalStatus(event.approval.id, event.decision === "approve" ? "executed" : "rejected")
+            const status = event.decision === "approve" ? "executed" : "rejected"
+            setApprovals((current) => [{
+              ...event.approval,
+              resourceId: fnGetApprovalResourceId(event.approval.details),
+              status,
+              statusMessage: event.approval.reviewerReason,
+            }, ...current.filter((approval) => approval.id !== event.approval.id)])
             if (event.decision === "approve") void refreshResourceCatalog(event.approval.id)
           } else {
-            setApprovalStatus(event.approval.id, event.reason === "execution-failed" ? "failed" : "stale", event.reason)
+            const status = event.reason === "execution-failed" ? "failed" : "stale"
+            setApprovals((current) => [{
+              ...event.approval,
+              resourceId: fnGetApprovalResourceId(event.approval.details),
+              status,
+              statusMessage: event.reason,
+            }, ...current.filter((approval) => approval.id !== event.approval.id)])
           }
           continue
         }

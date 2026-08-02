@@ -1790,6 +1790,56 @@ describe('AgentAuthoringStoreTurso', () => {
       draftRevisionSha256: sourceDigestSha256,
       nowMs: 19,
     })).toBe(true);
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId,
+      bindingRevision: 0,
+      nowMs: 19,
+    })).toBe(activeLeaseId);
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId,
+      bindingRevision: 0,
+      mountLeaseId: activeLeaseId,
+      nowMs: 19,
+    })).toBe(activeLeaseId);
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId,
+      bindingRevision: 0,
+      mountLeaseId: secondLeaseId,
+      nowMs: 19,
+    })).toBeNull();
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId: 'stale-mutation',
+      bindingRevision: 0,
+      nowMs: 19,
+    })).toBeNull();
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId,
+      bindingRevision: 1,
+      nowMs: 19,
+    })).toBeNull();
+    expect(await store.confirmedPreviewOwnerExecutionLeaseId(OTHER_ACCOUNT_TENANT, {
+      previewId,
+      previewRevisionId: secondRevisionId,
+      draftRevisionSha256: sourceDigestSha256,
+      committedMutationId,
+      bindingRevision: 0,
+      nowMs: 19,
+    })).toBeNull();
     expect(await store.releasePreviewMountLease(TENANT, {
       leaseId: secondLeaseId,
       previewId,

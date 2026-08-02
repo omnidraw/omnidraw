@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@omnidraw/canvas": "0.5.0",
+    "@omnidraw/canvas": "0.5.1",
     "@omnidraw/canvas-contract": "0.5.0",
     "@omnidraw/service-theme": "0.5.0",
     "solid-js": "1.9.14"

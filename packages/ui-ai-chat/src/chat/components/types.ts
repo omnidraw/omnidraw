@@ -17,7 +17,9 @@ export type TAiChatApproval = {
   warnings: string[]
   details: unknown
   createdAt: string
-  expiresAt: string
+  policyMode: "always-approve" | "ai-review" | "manual"
+  decisionSource?: "policy" | "reviewer" | "user"
+  reviewerReason?: string
   status: TAiChatApprovalStatus
   statusMessage?: string
   resourceId?: string

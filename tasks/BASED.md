@@ -182,6 +182,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B69](b/B69.md) - AI widget authoring: request and diagnose Capsule WebGL authority
 - [ ]: [B70](b/B70.md) - AI widgets: one authoritative exact-revision readiness state
 - [ ]: [B71](b/B71.md) - Preview: actionable Capsule guest runtime diagnostics
+- [ ]: [B72](b/B72.md) - db resources: migration can leave calls stuck on `RESOURCE_MIGRATING`
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -284,9 +285,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A100](a/A100.md) - canvas: developer reproduction trace recorder
 - [x]: [A101](a/A101.md) - canvas: move selection-style logic to Cangine headless controller
 - [x]: [A102](a/A102.md) - Capsule 0.10: migrate Three.js widgets to public WEBGL API groups
-- [ ]: [A103](a/A103.md) - AI chat: await and test the exact live Preview revision
-- [ ]: [A104](a/A104.md) - AI chat: configurable protected-operation approval policy
-- [ ]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
+- [x]: [A103](a/A103.md) - AI chat: await and test the exact live Preview revision
+- [x]: [A104](a/A104.md) - AI chat: configurable protected-operation approval policy
+- [x]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 - [x]: [A106](a/A106.md) - theme: authoritative CSS variables and compact canvas colors
 
 ## S ubtractions

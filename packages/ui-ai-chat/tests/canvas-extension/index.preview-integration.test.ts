@@ -219,7 +219,9 @@ function fixture() {
   mockedArtifactMount.mount.mockReset();
   mockedArtifactMount.destroy.mockClear();
   mockedArtifactMount.mount.mockImplementation(async (mountArgs) => {
-    mountArgs.root.textContent = 'Mounted Preview';
+    const content = mountArgs.root.ownerDocument.createElement('span');
+    content.textContent = 'Mounted Preview';
+    mountArgs.root.replaceChildren(content);
     return {
       ready: vi.fn(async () => undefined),
       setProps: vi.fn(),
@@ -347,6 +349,7 @@ function fixture() {
   const getPreviewDiagnostics = vi.fn(async () => [undefined, []] as const);
   const resolvePreviewDiagnostic = vi.fn(async () => [undefined, null] as const);
   const retestPreviewDiagnostic = vi.fn(async () => [undefined, null] as const);
+  const reportPreviewTest = vi.fn(async () => [undefined, { accepted: true }] as const);
   const acquirePreviewMountLease = vi.fn(async (input: {
     canvasId: string;
     frameNodeId: string;
@@ -478,6 +481,9 @@ function fixture() {
               report: reportPreviewDiagnostic,
               resolve: resolvePreviewDiagnostic,
               retest: retestPreviewDiagnostic,
+            },
+            test: {
+              report: reportPreviewTest,
             },
             mount: {
               acquire: acquirePreviewMountLease,
@@ -675,6 +681,7 @@ function fixture() {
     resolvePlacement,
     publishPreview,
     reportPreviewDiagnostic,
+    reportPreviewTest,
     requestAgentEvents,
     releasePreviewMountLease,
     renewPreviewMountLease,
@@ -1285,6 +1292,46 @@ describe('current Cangine Preview integration', () => {
     current.emitManageAction(companions[0]!.id, 'retry');
     await vi.waitFor(() => expect(current.buildPreview).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(mockedArtifactMount.mount).toHaveBeenCalledTimes(2));
+    const previewTestRequest = {
+      kind: 'widget-preview-test' as const,
+      type: 'requested' as const,
+      draftId: DRAFT_ID,
+      previewId: '60000000-0000-4000-8000-000000000006',
+      previewRevisionId: 'd0000000-0000-4000-8000-00000000000d',
+      canvasId: 'canvas-1',
+      frameNodeId: '50000000-0000-4000-8000-000000000005',
+      revision: 'new-draft-revision',
+      committedMutationId: 'mutation-new-draft-revision',
+      deadlineAtMs: 10_000,
+      checks: [{ type: 'assert-text' as const, text: 'Mounted Preview' }],
+    };
+    current.emitAgentEvent({
+      ...previewTestRequest,
+      requestId: 'preview-test-wrong-mount',
+      mountLeaseId: '70000000-0000-4000-8000-000000000007',
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(current.reportPreviewTest).not.toHaveBeenCalled();
+    current.emitAgentEvent({
+      ...previewTestRequest,
+      requestId: 'preview-test-active-mount',
+      mountLeaseId: '80000000-0000-4000-8000-000000000008',
+    });
+    await vi.waitFor(() => expect(current.reportPreviewTest).toHaveBeenCalledWith({
+      requestId: 'preview-test-active-mount',
+      draftId: DRAFT_ID,
+      previewId: '60000000-0000-4000-8000-000000000006',
+      previewRevisionId: 'd0000000-0000-4000-8000-00000000000d',
+      revision: 'new-draft-revision',
+      committedMutationId: 'mutation-new-draft-revision',
+      mountLeaseId: '80000000-0000-4000-8000-000000000008',
+      checks: [{
+        index: 0,
+        type: 'assert-text',
+        passed: true,
+        evidence: 'Found visible text "Mounted Preview".',
+      }],
+    }));
     current.emitManageAction(companions[0]!.id, 'live-updates');
     expect(
       current.dropdownPresentation(companions[0]!.id)?.['live-updates'],

@@ -124,6 +124,30 @@ export type TPreviewPortalControlState = Readonly<{
   publishable: boolean;
 }>;
 
+export type TPreviewInteractionCheck =
+  | Readonly<{ type: 'fill'; label: string; value: string }>
+  | Readonly<{ type: 'click'; name: string }>
+  | Readonly<{ type: 'assert-text'; text: string }>
+  | Readonly<{ type: 'assert-status'; text: string }>
+  | Readonly<{ type: 'wait-for-text'; text: string; timeoutMs?: number }>;
+
+export type TPreviewInteractionResult = Readonly<{
+  index: number;
+  type: TPreviewInteractionCheck['type'];
+  passed: boolean;
+  evidence: string;
+}>;
+
+export type TPreviewInteractionRequest = Readonly<{
+  previewId: string;
+  previewRevisionId: string;
+  revision: string;
+  committedMutationId: string;
+  mountLeaseId: string;
+  deadlineAtMs: number;
+  checks: readonly TPreviewInteractionCheck[];
+}>;
+
 type TPreviewOwner = NonNullable<
   Awaited<
     ReturnType<
@@ -171,6 +195,7 @@ export type TPreviewPortalRuntime = Readonly<{
   freeze(reason?: string): Promise<void>;
   resume(reason?: string): Promise<void>;
   diagnostics(): CapsuleMountDiagnostics | null;
+  test(request: TPreviewInteractionRequest): Promise<readonly TPreviewInteractionResult[] | null>;
   destroy(reason?: string): Promise<void>;
 }>;
 
@@ -182,6 +207,7 @@ export type TCreatePreviewPortalRuntimeArgs = Readonly<{
   api: Pick<
     TAiChatApiPort['api']['agent']['widgetPreview'],
     'build' | 'cancel' | 'diagnostics' | 'mount' | 'owner'
+    | 'test'
   >;
   publishApi: Pick<TAiChatApiPort['api']['agent']['widgetPublish'], 'publish'>;
   codec: Pick<TWidgetBrowserPort, 'decodeBase64' | 'digestSha256'>;
@@ -224,6 +250,8 @@ export function createPreviewPortalRuntime(
   args: TCreatePreviewPortalRuntimeArgs,
 ): TPreviewPortalRuntime {
   const dom = args.root.ownerDocument;
+  const view = dom.defaultView;
+  if (view === null) throw new Error('Preview requires a browser DOM owner.');
   const shell = dom.createElement('section');
   const layers = dom.createElement('div');
   const status = dom.createElement('div');
@@ -534,6 +562,265 @@ export function createPreviewPortalRuntime(
   };
 
   const shortRevision = (revision: string): string => revision.slice(0, 8);
+
+  const normalizeAccessibleText = (value: string | null | undefined): string => (
+    (value ?? '').replace(/\s+/g, ' ').trim()
+  );
+
+  const elementsInGuestRoot = (root: ParentNode): Element[] => {
+    const elements = Array.from(root.querySelectorAll('*'));
+    return elements.flatMap((element) => [
+      element,
+      ...(element.shadowRoot === null ? [] : elementsInGuestRoot(element.shadowRoot)),
+    ]);
+  };
+
+  const mutationRootsInGuestRoot = (root: ParentNode): ParentNode[] => [
+    root,
+    ...Array.from(root.querySelectorAll('*')).flatMap((element) => (
+      element.shadowRoot === null
+        ? []
+        : mutationRootsInGuestRoot(element.shadowRoot)
+    )),
+  ];
+
+  const nextGuestParent = (element: Element): Element | null => {
+    if (element.parentElement !== null) return element.parentElement;
+    const root = element.getRootNode();
+    return root instanceof view.ShadowRoot ? root.host : null;
+  };
+
+  const isGuestElementVisible = (element: Element, guestRoot: HTMLElement): boolean => {
+    for (
+      let cursor: Element | null = element;
+      cursor !== null;
+      cursor = nextGuestParent(cursor)
+    ) {
+      if (
+        cursor instanceof view.HTMLElement
+      ) {
+        const style = view.getComputedStyle(cursor);
+        if (
+          cursor.hidden
+          || style.display === 'none'
+          || style.visibility === 'hidden'
+          || style.visibility === 'collapse'
+          || style.opacity === '0'
+          || style.contentVisibility === 'hidden'
+        ) return false;
+      }
+      if (cursor.getAttribute('aria-hidden') === 'true') return false;
+      if (cursor === guestRoot) break;
+    }
+    return true;
+  };
+
+  const accessibleName = (element: Element, guestRoot: HTMLElement): string => {
+    const ariaLabel = normalizeAccessibleText(element.getAttribute('aria-label'));
+    if (ariaLabel) return ariaLabel;
+    const labelledBy = normalizeAccessibleText(element.getAttribute('aria-labelledby'));
+    if (labelledBy) {
+      const ids = new Set(labelledBy.split(' '));
+      const text = normalizeAccessibleText(elementsInGuestRoot(guestRoot)
+        .filter((candidate) => ids.has(candidate.id))
+        .map((candidate) => candidate.textContent ?? '')
+        .join(' '));
+      if (text) return text;
+    }
+    if (
+      element instanceof view.HTMLInputElement
+      || element instanceof view.HTMLTextAreaElement
+      || element instanceof view.HTMLSelectElement
+    ) {
+      const labels = Array.from(element.labels ?? []);
+      const text = normalizeAccessibleText(labels.map((label) => label.textContent ?? '').join(' '));
+      if (text) return text;
+      const placeholder = normalizeAccessibleText(element.getAttribute('placeholder'));
+      if (placeholder) return placeholder;
+    }
+    if (element instanceof view.HTMLInputElement) {
+      return normalizeAccessibleText(element.value);
+    }
+    return normalizeAccessibleText(element.textContent);
+  };
+
+  const findGuestControl = (
+    guestRoot: HTMLElement,
+    label: string,
+  ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null => {
+    const expected = normalizeAccessibleText(label);
+    return elementsInGuestRoot(guestRoot).find((element): element is (
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    ) => (
+      (
+        element instanceof view.HTMLInputElement
+        || element instanceof view.HTMLTextAreaElement
+        || element instanceof view.HTMLSelectElement
+      )
+      && isGuestElementVisible(element, guestRoot)
+      && accessibleName(element, guestRoot) === expected
+    )) ?? null;
+  };
+
+  const findGuestButton = (guestRoot: HTMLElement, name: string): HTMLElement | null => {
+    const expected = normalizeAccessibleText(name);
+    return elementsInGuestRoot(guestRoot).find((element): element is HTMLElement => (
+      element instanceof view.HTMLElement
+      && (
+        element instanceof view.HTMLButtonElement
+        || (element instanceof view.HTMLInputElement
+          && ['button', 'submit', 'reset'].includes(element.type))
+        || element.getAttribute('role') === 'button'
+      )
+      && isGuestElementVisible(element, guestRoot)
+      && accessibleName(element, guestRoot) === expected
+    )) ?? null;
+  };
+
+  const guestHasVisibleText = (
+    guestRoot: HTMLElement,
+    text: string,
+    statusOnly: boolean,
+  ): boolean => {
+    const expected = normalizeAccessibleText(text);
+    const candidates = statusOnly
+      ? elementsInGuestRoot(guestRoot).filter((element) => (
+          element.getAttribute('role') === 'status'
+          || element.getAttribute('role') === 'alert'
+          || element.hasAttribute('aria-live')
+        ))
+      : elementsInGuestRoot(guestRoot);
+    return candidates.some((element) => (
+      isGuestElementVisible(element, guestRoot)
+      && normalizeAccessibleText(element.textContent).includes(expected)
+    ));
+  };
+
+  const waitForGuestText = (
+    mounted: TMountedPreview,
+    text: string,
+    timeoutMs: number,
+  ): Promise<boolean> => new Promise((resolve) => {
+    if (guestHasVisibleText(mounted.container, text, false)) {
+      resolve(true);
+      return;
+    }
+    let settled = false;
+    let timer: unknown;
+    let observer: MutationObserver;
+    const finish = (result: boolean): void => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      if (timer !== undefined) args.functions.cancelTimeout(timer);
+      resolve(result);
+    };
+    observer = new view.MutationObserver(() => {
+      if (current !== mounted || !mounted.active) finish(false);
+      else if (guestHasVisibleText(mounted.container, text, false)) finish(true);
+    });
+    for (const root of mutationRootsInGuestRoot(mounted.container)) {
+      observer.observe(root, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+    }
+    timer = args.functions.scheduleTimeout(() => finish(false), timeoutMs);
+  });
+
+  const test = async (
+    request: TPreviewInteractionRequest,
+  ): Promise<readonly TPreviewInteractionResult[] | null> => {
+    const mounted = current;
+    if (
+      disposed
+      || mounted === null
+      || !mounted.active
+      || mounted.previewId !== request.previewId
+      || mounted.previewRevisionId !== request.previewRevisionId
+      || mounted.revision !== request.revision
+      || mounted.committedMutationId !== request.committedMutationId
+      || mounted.lease.leaseId !== request.mountLeaseId
+      || request.checks.length < 1
+      || request.checks.length > 12
+      || request.deadlineAtMs <= args.nowMs()
+    ) return null;
+    const results: TPreviewInteractionResult[] = [];
+    for (const [index, check] of request.checks.entries()) {
+      if (current !== mounted || !mounted.active || args.nowMs() >= request.deadlineAtMs) break;
+      let passed = false;
+      let evidence = '';
+      if (check.type === 'fill') {
+        const control = findGuestControl(mounted.container, check.label);
+        if (control === null || control.disabled) {
+          evidence = `No enabled control named ${JSON.stringify(check.label)} was found.`;
+        } else {
+          if (control instanceof view.HTMLSelectElement) {
+            const option = Array.from(control.options).find((candidate) => (
+              candidate.value === check.value
+              || normalizeAccessibleText(candidate.textContent) === normalizeAccessibleText(check.value)
+            ));
+            if (option) {
+              control.value = option.value;
+              passed = true;
+            } else {
+              evidence = `No select option matched ${JSON.stringify(check.value)}.`;
+            }
+          } else {
+            control.value = check.value;
+            passed = control.value === check.value;
+          }
+          if (!evidence) {
+            control.dispatchEvent(new view.Event('input', { bubbles: true, composed: true }));
+            control.dispatchEvent(new view.Event('change', { bubbles: true, composed: true }));
+            evidence = passed
+              ? `Filled control ${JSON.stringify(check.label)}.`
+              : `Control ${JSON.stringify(check.label)} rejected the requested value.`;
+          }
+        }
+      } else if (check.type === 'click') {
+        const button = findGuestButton(mounted.container, check.name);
+        const disabled = button instanceof view.HTMLButtonElement
+          || button instanceof view.HTMLInputElement
+          ? button.disabled
+          : button?.getAttribute('aria-disabled') === 'true';
+        if (button === null || disabled) {
+          evidence = `No enabled button named ${JSON.stringify(check.name)} was found.`;
+        } else {
+          button.click();
+          passed = true;
+          evidence = `Clicked button ${JSON.stringify(check.name)}.`;
+        }
+      } else if (check.type === 'assert-text' || check.type === 'assert-status') {
+        passed = guestHasVisibleText(
+          mounted.container,
+          check.text,
+          check.type === 'assert-status',
+        );
+        evidence = passed
+          ? `Found visible ${check.type === 'assert-status' ? 'status ' : ''}text ${JSON.stringify(check.text)}.`
+          : `Visible ${check.type === 'assert-status' ? 'status ' : ''}text ${JSON.stringify(check.text)} was not found.`;
+      } else {
+        const remainingMs = Math.max(0, request.deadlineAtMs - args.nowMs());
+        const timeoutMs = Math.min(check.timeoutMs ?? 2_000, remainingMs, 5_000);
+        passed = timeoutMs > 0
+          && await waitForGuestText(mounted, check.text, timeoutMs);
+        evidence = passed
+          ? `Observed visible text ${JSON.stringify(check.text)}.`
+          : `Did not observe visible text ${JSON.stringify(check.text)} before the bounded deadline.`;
+      }
+      results.push(Object.freeze({
+        index,
+        type: check.type,
+        passed,
+        evidence: evidence.slice(0, 500),
+      }));
+      if (!passed) break;
+    }
+    return Object.freeze(results);
+  };
 
   const displayedStatus = (selected: TMountedPreview): string => (
     `Showing ${shortRevision(selected.revision)} • bindings #${selected.bindingRevision}`
@@ -1774,6 +2061,7 @@ export function createPreviewPortalRuntime(
       ]);
     },
     diagnostics: () => current?.handle?.diagnostics() ?? null,
+    test,
     destroy(reason = 'preview-unmounted'): Promise<void> {
       if (destroyOperation !== undefined) return destroyOperation;
       const operation = (async (): Promise<void> => {

@@ -30,6 +30,32 @@ async function harness(eventPublisher?: ITenantEventPublisherService) {
   return { root, ...await createWidgetAuthoringHarness(root, eventPublisher) };
 }
 
+async function liveCompanion(
+  name: string,
+  previewId: string,
+  eventPublisher?: ITenantEventPublisherService,
+) {
+  const result = await harness(eventPublisher);
+  const draft = await result.createDraft(name);
+  const owner = await result.controller.ensurePreviewOwner({
+    previewId,
+    canvasId: `canvas-${previewId}`,
+    frameNodeId: `frame-${previewId}`,
+    draftId: draft.draftId,
+    originChatId: draft.chatId,
+    role: 'companion',
+  });
+  const preview = await result.controller.buildPreview(draft.draftId, {
+    previewId: owner.id,
+    canvasId: owner.canvasId,
+    frameNodeId: owner.frameNodeId,
+  });
+  if (!preview.ready || preview.previewRevisionId === null) {
+    throw new Error('Expected a live durable Preview fixture.');
+  }
+  return { ...result, draft, owner, preview };
+}
+
 describe('WidgetDraftController stateless Preview', () => {
   test('persists a created draft before publishing its sidebar refresh event', async () => {
     const events = createTestTenantEvents();
@@ -232,6 +258,276 @@ describe('WidgetDraftController stateless Preview', () => {
 });
 
 describe('WidgetDraftController durable Preview owners', () => {
+  test('projects exact mounting, ready, failed, and authorization-scoped status', async () => {
+    const { controller, draft, owner, preview, store } = await liveCompanion(
+      'Agent Status Clock',
+      '00000000-0000-4000-8000-000000000201',
+    );
+    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+      state: 'mounting',
+      draftId: draft.draftId,
+      previewId: owner.id,
+      attemptedRevision: draft.revision,
+      attemptedCommittedMutationId: draft.committedMutationId,
+      displayedPreviewRevisionId: preview.previewRevisionId,
+      bindingRevision: preview.bindingRevision,
+      buildSequence: draft.buildSequence,
+    });
+    store.confirmedPreviewOwnerExecution = true;
+    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+      state: 'ready',
+      displayedPreviewRevisionId: preview.previewRevisionId,
+    });
+    await expect(controller.previewStatus('another-chat', draft.draftId)).resolves.toMatchObject({
+      state: 'unavailable',
+      previewId: null,
+    });
+
+    const current = await store.getPreviewOwner(TEST_TENANT, owner.id);
+    if (current === null) throw new Error('Expected Preview owner.');
+    if (current.status === 'closed') throw new Error('Expected an active Preview owner.');
+    await store.compareAndSetPreviewOwner(TEST_TENANT, {
+      previewId: owner.id,
+      expectedBuildSequence: current.buildSequence,
+      expectedStatus: current.status,
+      expectedPendingBuildId: current.pendingBuildId,
+      nextBuildSequence: current.buildSequence,
+      status: 'failed',
+      activeRevisionId: current.activeRevisionId,
+      pendingBuildId: null,
+      lastError: {
+        message: 'Guest render failed.',
+        diagnostics: [{ code: 'WIDGET_GUEST_RUNTIME_FAILED', message: 'Guest render failed.' }],
+      },
+      nowMs: current.updatedAtMs + 1,
+    });
+    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+      state: 'failed',
+      diagnostics: [expect.objectContaining({
+        code: 'WIDGET_GUEST_RUNTIME_FAILED',
+        message: 'Guest render failed.',
+      })],
+    });
+  });
+
+  test('waits from host state changes and returns ready, superseded, timeout, closed, and canceled', async () => {
+    const first = await liveCompanion(
+      'Agent Wait Clock',
+      '00000000-0000-4000-8000-000000000202',
+    );
+    const ready = first.controller.waitForPreview({
+      chatId: first.draft.chatId,
+      draftId: first.draft.draftId,
+      expectedRevision: first.draft.revision,
+      expectedCommittedMutationId: first.draft.committedMutationId!,
+      timeoutMs: 1_000,
+    });
+    first.store.confirmedPreviewOwnerExecution = true;
+    await first.controller.renewPreviewMountLease({
+      leaseId: crypto.randomUUID(),
+      previewId: first.owner.id,
+      previewRevisionId: first.preview.previewRevisionId!,
+      canvasId: first.owner.canvasId,
+      frameNodeId: first.owner.frameNodeId,
+    });
+    await expect(ready).resolves.toMatchObject({ outcome: 'ready', status: { state: 'ready' } });
+    await expect(first.controller.waitForPreview({
+      chatId: first.draft.chatId,
+      draftId: first.draft.draftId,
+      expectedRevision: 'f'.repeat(64),
+      expectedCommittedMutationId: first.draft.committedMutationId!,
+      timeoutMs: 1_000,
+    })).resolves.toMatchObject({ outcome: 'superseded' });
+
+    first.store.confirmedPreviewOwnerExecution = false;
+    await expect(first.controller.waitForPreview({
+      chatId: first.draft.chatId,
+      draftId: first.draft.draftId,
+      expectedRevision: first.draft.revision,
+      expectedCommittedMutationId: first.draft.committedMutationId!,
+      timeoutMs: 1,
+    })).resolves.toMatchObject({ outcome: 'timeout', status: { state: 'mounting' } });
+
+    const canceledController = new AbortController();
+    const canceled = first.controller.waitForPreview({
+      chatId: first.draft.chatId,
+      draftId: first.draft.draftId,
+      expectedRevision: first.draft.revision,
+      expectedCommittedMutationId: first.draft.committedMutationId!,
+      timeoutMs: 1_000,
+      signal: canceledController.signal,
+    });
+    canceledController.abort();
+    await expect(canceled).resolves.toMatchObject({ outcome: 'canceled' });
+
+    const closed = first.controller.waitForPreview({
+      chatId: first.draft.chatId,
+      draftId: first.draft.draftId,
+      expectedRevision: first.draft.revision,
+      expectedCommittedMutationId: first.draft.committedMutationId!,
+      timeoutMs: 1_000,
+    });
+    await first.controller.closePreviewOwner({
+      previewId: first.owner.id,
+      canvasId: first.owner.canvasId,
+      frameNodeId: first.owner.frameNodeId,
+    });
+    await expect(closed).resolves.toMatchObject({ outcome: 'closed' });
+
+    const failed = await liveCompanion(
+      'Agent Failed Wait Clock',
+      '00000000-0000-4000-8000-000000000205',
+    );
+    const failedOwner = await failed.store.getPreviewOwner(TEST_TENANT, failed.owner.id);
+    if (failedOwner === null) throw new Error('Expected failed Preview owner.');
+    if (failedOwner.status === 'closed') throw new Error('Expected an active Preview owner.');
+    await failed.store.compareAndSetPreviewOwner(TEST_TENANT, {
+      previewId: failedOwner.id,
+      expectedBuildSequence: failedOwner.buildSequence,
+      expectedStatus: failedOwner.status,
+      expectedPendingBuildId: failedOwner.pendingBuildId,
+      nextBuildSequence: failedOwner.buildSequence,
+      status: 'failed',
+      activeRevisionId: failedOwner.activeRevisionId,
+      pendingBuildId: null,
+      lastError: { message: 'Live guest failed after construction validation.' },
+      nowMs: failedOwner.updatedAtMs + 1,
+    });
+    await expect(failed.controller.waitForPreview({
+      chatId: failed.draft.chatId,
+      draftId: failed.draft.draftId,
+      expectedRevision: failed.draft.revision,
+      expectedCommittedMutationId: failed.draft.committedMutationId!,
+      timeoutMs: 1_000,
+    })).resolves.toMatchObject({
+      outcome: 'failed',
+      status: { state: 'failed', message: 'Live guest failed after construction validation.' },
+    });
+  });
+
+  test('settles a Preview wait when the readiness store fails', async () => {
+    const live = await liveCompanion(
+      'Agent Unavailable Wait Clock',
+      '00000000-0000-4000-8000-000000000206',
+    );
+    live.store.confirmedPreviewOwnerExecution = true;
+    live.store.confirmedPreviewOwnerExecutionLeaseId = async () => {
+      throw new Error('readiness database unavailable');
+    };
+
+    await expect(live.controller.waitForPreview({
+      chatId: live.draft.chatId,
+      draftId: live.draft.draftId,
+      expectedRevision: live.draft.revision,
+      expectedCommittedMutationId: live.draft.committedMutationId!,
+      timeoutMs: 10,
+    })).resolves.toMatchObject({
+      outcome: 'unavailable',
+      status: { state: 'unavailable' },
+    });
+  });
+
+  test('runs only exact live-ready declarative interaction requests and rejects stale reports', async () => {
+    const events = createTestTenantEvents();
+    const exact = await liveCompanion(
+      'Agent Test Clock Events',
+      '00000000-0000-4000-8000-000000000203',
+      events,
+    );
+    exact.store.confirmedPreviewOwnerExecution = true;
+    const iterator = events.subscribeAgentEvents()[Symbol.asyncIterator]();
+    const nextEvent = iterator.next();
+    const testResult = exact.controller.testPreview({
+      chatId: exact.draft.chatId,
+      draftId: exact.draft.draftId,
+      expectedRevision: exact.draft.revision,
+      expectedCommittedMutationId: exact.draft.committedMutationId!,
+      expectedPreviewRevisionId: exact.preview.previewRevisionId!,
+      checks: [
+        { type: 'click', name: 'Increment' },
+        { type: 'assert-status', text: 'Count: 1' },
+      ],
+    });
+    const requested = await nextEvent;
+    expect(requested.done).toBe(false);
+    if (
+      requested.done
+      || !('kind' in requested.value)
+      || requested.value.kind !== 'widget-preview-test'
+    ) throw new Error('Expected Preview test request event.');
+    const accepted = await exact.controller.reportPreviewTestResult({
+      requestId: requested.value.requestId,
+      draftId: exact.draft.draftId,
+      previewId: exact.owner.id,
+      previewRevisionId: exact.preview.previewRevisionId!,
+      revision: exact.draft.revision,
+      committedMutationId: exact.draft.committedMutationId!,
+      mountLeaseId: requested.value.mountLeaseId,
+      checks: [
+        { index: 0, type: 'click', passed: true, evidence: 'Clicked Increment.' },
+        { index: 1, type: 'assert-status', passed: true, evidence: 'Found Count: 1.' },
+      ],
+    });
+    expect(accepted).toBe(true);
+    await expect(testResult).resolves.toMatchObject({
+      outcome: 'passed',
+      checks: [
+        { index: 0, type: 'click', passed: true },
+        { index: 1, type: 'assert-status', passed: true },
+      ],
+    });
+    await expect(exact.controller.testPreview({
+      chatId: exact.draft.chatId,
+      draftId: exact.draft.draftId,
+      expectedRevision: exact.draft.revision,
+      expectedCommittedMutationId: exact.draft.committedMutationId!,
+      expectedPreviewRevisionId: 'stale-preview-revision',
+      checks: [{ type: 'click', name: 'Increment' }],
+    })).rejects.toThrow('exact live-ready revision');
+
+    const lostLeaseEvent = iterator.next();
+    const lostLeaseResult = exact.controller.testPreview({
+      chatId: exact.draft.chatId,
+      draftId: exact.draft.draftId,
+      expectedRevision: exact.draft.revision,
+      expectedCommittedMutationId: exact.draft.committedMutationId!,
+      expectedPreviewRevisionId: exact.preview.previewRevisionId!,
+      checks: [{ type: 'click', name: 'Increment' }],
+    });
+    const lostLeaseRequested = await lostLeaseEvent;
+    if (
+      lostLeaseRequested.done
+      || !('kind' in lostLeaseRequested.value)
+      || lostLeaseRequested.value.kind !== 'widget-preview-test'
+    ) throw new Error('Expected Preview test request event.');
+    exact.store.confirmedPreviewOwnerExecution = false;
+    await expect(exact.controller.reportPreviewTestResult({
+      requestId: lostLeaseRequested.value.requestId,
+      draftId: exact.draft.draftId,
+      previewId: exact.owner.id,
+      previewRevisionId: exact.preview.previewRevisionId!,
+      revision: exact.draft.revision,
+      committedMutationId: exact.draft.committedMutationId!,
+      mountLeaseId: lostLeaseRequested.value.mountLeaseId,
+      checks: [{ index: 0, type: 'click', passed: true, evidence: 'Clicked Increment.' }],
+    })).resolves.toBe(false);
+    await expect(lostLeaseResult).resolves.toMatchObject({ outcome: 'superseded' });
+
+    exact.store.confirmedPreviewOwnerExecution = true;
+    const canceled = new AbortController();
+    canceled.abort();
+    await expect(exact.controller.testPreview({
+      chatId: exact.draft.chatId,
+      draftId: exact.draft.draftId,
+      expectedRevision: exact.draft.revision,
+      expectedCommittedMutationId: exact.draft.committedMutationId!,
+      expectedPreviewRevisionId: exact.preview.previewRevisionId!,
+      checks: [{ type: 'click', name: 'Increment' }],
+      signal: canceled.signal,
+    })).resolves.toMatchObject({ outcome: 'canceled' });
+    await iterator.return?.();
+  });
+
   test('activates a durable revision and publishes that exact mounted Preview without another trusted build', async () => {
     const { controller, createDraft, store, widgets } = await harness();
     const draft = await createDraft('Promoted Clock');

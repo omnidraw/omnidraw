@@ -22,6 +22,8 @@ import {
   ZAgentWidgetPreviewDiagnosticRetestInput,
   ZAgentWidgetPreviewDiagnosticSelectionInput,
   ZAgentWidgetPreviewRuntimeDiagnosticRecords,
+  ZAgentWidgetPreviewTestReportInput,
+  ZAgentWidgetPreviewTestReportResult,
   ZAgentWidgetPreviewMountLeaseDescriptor,
   ZAgentWidgetPreviewMountLeaseInput,
   ZAgentWidgetPreviewOwnerEnsureInput,
@@ -34,6 +36,18 @@ import {
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
+const ZApprovalPolicy = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('always-approve') }).strict(),
+  z.object({ mode: z.literal('manual') }).strict(),
+  z.object({
+    mode: z.literal('ai-review'),
+    reviewerModel: z.object({
+      provider: z.string().min(1).max(200),
+      modelId: z.string().min(1).max(300),
+    }).strict(),
+  }).strict(),
+]);
+
 const ZAgentSettings = z.object({
   defaultModel: z.string().optional(),
   defaultProvider: z.string().optional(),
@@ -45,7 +59,8 @@ const ZAgentSettings = z.object({
     input: z.enum(['text', 'image']).array(),
     provider: z.string(),
     name: z.string()
-  }).array()
+  }).array(),
+  approvalPolicy: ZApprovalPolicy,
 });
 
 const ZAgentLogin = z.object({
@@ -162,7 +177,9 @@ const ZAgentApproval = z.object({
   warnings: z.string().array(),
   details: z.unknown(),
   createdAt: z.string(),
-  expiresAt: z.string(),
+  policyMode: z.enum(['always-approve', 'ai-review', 'manual']),
+  decisionSource: z.enum(['policy', 'reviewer', 'user']).optional(),
+  reviewerReason: z.string().max(500).optional(),
 })
 
 export type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
@@ -203,6 +220,9 @@ export const agentContract = oc.router({
   settings: {
     get: oc
       .output(ZAgentSettings),
+    approvalPolicy: {
+      update: oc.input(ZApprovalPolicy).output(ZApprovalPolicy),
+    },
   },
   chat: {
     connect: oc.input(ZAgentChatConnectInput).output(orpcType<TAgentChatConnect>()),
@@ -223,7 +243,11 @@ export const agentContract = oc.router({
       resolve: oc.input(ZAgentChatScope.extend({
         approvalId: z.string().min(1),
         decision: z.enum(['approve', 'reject']),
-      })).output(z.object({ resolved: z.literal(true), decision: z.enum(['approve', 'reject']) })),
+      })).output(z.object({
+        resolved: z.literal(true),
+        decision: z.enum(['approve', 'reject']),
+        decisionSource: z.literal('user'),
+      })),
     },
     cancel: oc.input(ZAgentChatScope).output(ZAgentChatCancel),
     newSession: oc.input(ZAgentChatScope),
@@ -260,6 +284,11 @@ export const agentContract = oc.router({
           resolve: oc
             .input(ZAgentWidgetPreviewDiagnosticSelectionInput)
             .output(ZAgentWidgetPreviewOwnerDescriptor),
+        },
+        test: {
+          report: oc
+            .input(ZAgentWidgetPreviewTestReportInput)
+            .output(ZAgentWidgetPreviewTestReportResult),
         },
     owner: {
       ensure: oc
@@ -323,7 +352,11 @@ export const agentContract = oc.router({
     resolve: oc.input(ZAgentChatScope.extend({
       approvalId: z.string().min(1),
       decision: z.enum(['approve', 'reject']),
-    })).output(z.object({ resolved: z.literal(true), decision: z.enum(['approve', 'reject']) })),
+    })).output(z.object({
+      resolved: z.literal(true),
+      decision: z.enum(['approve', 'reject']),
+      decisionSource: z.literal('user'),
+    })),
   },
   auth: {
     login: oc

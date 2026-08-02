@@ -102,6 +102,9 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_validate`; it performs the frozen install');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('call `vc_widget_preview_wait` once');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('use `vc_widget_preview_test`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('live execution was not tested');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
@@ -342,6 +345,7 @@ describe('AgentService.promptChat', () => {
       'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
       'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
       'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_validate', 'patch', 'read',
+      'vc_widget_preview_status', 'vc_widget_preview_test', 'vc_widget_preview_wait',
       'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);

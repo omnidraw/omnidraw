@@ -70,9 +70,9 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 16 tools for its complete lifecycle:
+Every conversation receives exactly these 19 tools for its complete lifecycle:
 
-- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `vc_widget_preview_status`, `vc_widget_preview_wait`, `vc_widget_preview_test`, `read`, `edit`, `patch`, `grep`
 - Resources: `od_resource_list`, `od_resource_inspect`, `od_resource_create`, `od_resource_update`, `od_resource_delete`, `od_resource_data_read`, `od_resource_data_write`
 - General: `web_fetch`, `bash`
 

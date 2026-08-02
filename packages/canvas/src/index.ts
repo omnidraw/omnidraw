@@ -1,6 +1,16 @@
 export * from "./components/Canvas";
 export * from "./debug-trace";
 export * from "./extension";
+export {
+  fnCanvasShellOwnsOverlay,
+  fnCanvasShellProjection,
+  fnCanvasWidgetShellAvailable,
+} from "./fn.canvas-shell";
+export type {
+  TCanvasOverlayOwnership,
+  TCanvasShellState,
+  TCanvasWidgetShellNode,
+} from "./fn.canvas-shell";
 export * from "./services";
 export * from "./types";
 export {

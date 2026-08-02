@@ -11,6 +11,7 @@ export type TAiChatApiPort = {
           TApi["agent"]["widgetPreview"]["diagnostics"],
           "get" | "report" | "resolve" | "retest"
         >;
+        test: Pick<TApi["agent"]["widgetPreview"]["test"], "report">;
         mount: Pick<TApi["agent"]["widgetPreview"]["mount"], "acquire" | "renew" | "release">;
         owner: Pick<
           TApi["agent"]["widgetPreview"]["owner"],

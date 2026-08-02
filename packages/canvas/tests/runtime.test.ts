@@ -18,6 +18,8 @@ const runtimeState = vi.hoisted(() => ({
   hoverListener: null as ((event: unknown) => void) | null,
   widgetListener: null as ((event: unknown) => void) | null,
   widgetActivationListener: null as ((event: unknown) => void) | null,
+  widgetController: null as unknown,
+  editorController: null as unknown,
   activeToolIds: [] as string[],
   segmentModes: [] as string[],
   selectionAppearances: [] as unknown[],
@@ -94,6 +96,7 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       state: {
         activeToolId: 'line',
         contentNodeId: null,
+        focusedNodeId: null,
         selectedNodeIds: runtimeState.selectedNodeIds,
         status: 'detached',
       },
@@ -104,27 +107,44 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       setSelectionAppearance(appearance: unknown) {
         runtimeState.selectionAppearances.push(appearance);
       },
+      suppressSelectionOverlay: vi.fn(),
+      restoreSelectionOverlay: vi.fn(),
       subscribe: () => () => undefined,
     };
+    const widgets = {
+      state: {
+        revision: 0,
+        frameNodeId: null as string | null,
+        contentNodeId: null as string | null,
+        maximizedNodeId: null as string | null,
+        hovered: null,
+        pressed: null,
+        cursor: null,
+      },
+      enterContentMode: vi.fn(() => true),
+      enterFrameMode: vi.fn(),
+      clearContentFocus: vi.fn(),
+      restore: vi.fn(() => true),
+      subscribe(listener: (event: unknown) => void) {
+        runtimeState.widgetListener = listener;
+        return () => {
+          runtimeState.events.push('trace:widget:release');
+          runtimeState.widgetListener = null;
+        };
+      },
+      subscribeActivation(listener: (event: unknown) => void) {
+        runtimeState.widgetActivationListener = listener;
+        return () => {
+          runtimeState.events.push('trace:widget-activation:release');
+          runtimeState.widgetActivationListener = null;
+        };
+      },
+    };
+    runtimeState.editorController = editor;
+    runtimeState.widgetController = widgets;
     return {
       editor,
-      widgets: {
-        state: { contentNodeId: null },
-        subscribe(listener: (event: unknown) => void) {
-          runtimeState.widgetListener = listener;
-          return () => {
-            runtimeState.events.push('trace:widget:release');
-            runtimeState.widgetListener = null;
-          };
-        },
-        subscribeActivation(listener: (event: unknown) => void) {
-          runtimeState.widgetActivationListener = listener;
-          return () => {
-            runtimeState.events.push('trace:widget-activation:release');
-            runtimeState.widgetActivationListener = null;
-          };
-        },
-      },
+      widgets,
       paths: {
         setAppearance(appearance: unknown) {
           runtimeState.pathAppearances.push(appearance);
@@ -217,6 +237,8 @@ describe('canvas runtime composition', () => {
     runtimeState.hoverListener = null;
     runtimeState.widgetListener = null;
     runtimeState.widgetActivationListener = null;
+    runtimeState.widgetController = null;
+    runtimeState.editorController = null;
     runtimeState.activeToolIds.length = 0;
     runtimeState.segmentModes.length = 0;
     runtimeState.selectionAppearances.length = 0;
@@ -546,6 +568,133 @@ describe('canvas runtime composition', () => {
     runtimeState.theme = BUILTIN_THEMES[1]!;
     lateThemeChange?.(BUILTIN_THEMES[1]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
+  });
+
+  test('projects one exclusive widget shell and centrally mounts only owned overlays', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const canvasOverlayStates: boolean[] = [];
+    const activeWidgetOverlayStates: boolean[] = [];
+    const siblingWidgetOverlayStates: boolean[] = [];
+    const runtime = buildRuntime({
+      canvasId: 'canvas-shell',
+      container,
+      transport: {} as never,
+      createId: () => 'id-shell',
+      wait,
+      themeService,
+    }, [{
+      name: 'shell-overlays',
+      install(context) {
+        context.shell.registerOverlay({
+          ownership: { kind: 'canvas-shell' },
+          setMounted: (mounted) => canvasOverlayStates.push(mounted),
+        });
+        context.shell.registerOverlay({
+          ownership: { kind: 'widget-shell', widgetId: 'widget-active' },
+          setMounted: (mounted) => activeWidgetOverlayStates.push(mounted),
+        });
+        context.shell.registerOverlay({
+          ownership: { kind: 'widget-shell', widgetId: 'widget-sibling' },
+          setMounted: (mounted) => siblingWidgetOverlayStates.push(mounted),
+        });
+        return {};
+      },
+    }]);
+    await runtime.boot();
+
+    const widgets = runtimeState.widgetController as {
+      state: {
+        frameNodeId: string | null;
+        contentNodeId: string | null;
+        maximizedNodeId: string | null;
+      };
+      enterContentMode: ReturnType<typeof vi.fn>;
+      enterFrameMode: ReturnType<typeof vi.fn>;
+      clearContentFocus: ReturnType<typeof vi.fn>;
+      restore: ReturnType<typeof vi.fn>;
+    };
+    const editor = runtimeState.editorController as {
+      suppressSelectionOverlay: ReturnType<typeof vi.fn>;
+      restoreSelectionOverlay: ReturnType<typeof vi.fn>;
+    };
+    widgets.enterContentMode.mockImplementation((widgetId: string) => {
+      widgets.state.frameNodeId = null;
+      widgets.state.contentNodeId = widgetId;
+      return true;
+    });
+    widgets.enterFrameMode.mockImplementation((widgetId: string) => {
+      widgets.state.frameNodeId = widgetId;
+      widgets.state.contentNodeId = null;
+    });
+    widgets.clearContentFocus.mockImplementation(() => {
+      widgets.state.contentNodeId = null;
+    });
+    widgets.restore.mockImplementation(() => {
+      widgets.state.maximizedNodeId = null;
+      return true;
+    });
+    runtimeState.selectedNode = {
+      id: 'widget-active',
+      kind: 'widget-frame',
+      collapsed: false,
+      visibility: 'visible',
+    };
+
+    widgets.state.frameNodeId = 'widget-active';
+    widgets.state.maximizedNodeId = 'widget-active';
+    runtimeState.widgetListener?.({});
+    expect(widgets.enterContentMode).not.toHaveBeenCalled();
+    expect(runtime.shell()).toEqual({
+      kind: 'maximized-widget',
+      widgetId: 'widget-active',
+    });
+    expect(canvasOverlayStates.at(-1)).toBe(false);
+    expect(activeWidgetOverlayStates.at(-1)).toBe(true);
+    expect(siblingWidgetOverlayStates.at(-1)).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('[data-omnidraw-image-input]')?.disabled)
+      .toBe(true);
+    expect(editor.suppressSelectionOverlay).toHaveBeenCalledOnce();
+
+    widgets.state.maximizedNodeId = null;
+    runtimeState.widgetListener?.({});
+    expect(widgets.clearContentFocus).not.toHaveBeenCalled();
+    expect(widgets.enterFrameMode).toHaveBeenCalledWith('widget-active');
+    expect(runtime.shell()).toEqual({
+      kind: 'contained-widget',
+      widgetId: 'widget-active',
+    });
+    expect(canvasOverlayStates.at(-1)).toBe(true);
+    expect(activeWidgetOverlayStates.at(-1)).toBe(true);
+    expect(siblingWidgetOverlayStates.at(-1)).toBe(true);
+    expect(editor.restoreSelectionOverlay).toHaveBeenCalledOnce();
+
+    widgets.state.frameNodeId = null;
+    widgets.state.contentNodeId = 'widget-active';
+    widgets.state.maximizedNodeId = 'widget-active';
+    const contentEntryCalls = widgets.enterContentMode.mock.calls.length;
+    const contentClearCalls = widgets.clearContentFocus.mock.calls.length;
+    runtimeState.widgetListener?.({});
+    expect(widgets.enterContentMode).toHaveBeenCalledTimes(contentEntryCalls);
+    expect(widgets.clearContentFocus).toHaveBeenCalledTimes(contentClearCalls + 1);
+    expect(widgets.state.contentNodeId).toBeNull();
+    expect(runtime.shell().kind).toBe('maximized-widget');
+
+    runtimeState.selectedNode = {
+      id: 'widget-active',
+      kind: 'widget-frame',
+      collapsed: true,
+      visibility: 'visible',
+    };
+    runtimeState.widgetListener?.({});
+    expect(widgets.restore).toHaveBeenCalledWith('widget-active');
+    expect(runtime.shell()).toEqual({ kind: 'canvas', widgetId: null });
+
+    await runtime.shutdown();
+    expect(canvasOverlayStates.at(-1)).toBe(false);
+    expect(activeWidgetOverlayStates.at(-1)).toBe(false);
+    expect(siblingWidgetOverlayStates.at(-1)).toBe(false);
+    expect(runtime.shell()).toEqual({ kind: 'canvas', widgetId: null });
   });
 
   test('installs normalized input before recording and releases active trace subscriptions', async () => {

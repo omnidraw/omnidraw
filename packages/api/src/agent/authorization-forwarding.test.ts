@@ -47,7 +47,11 @@ describe('agent API authorization forwarding', () => {
       agent: {
         async resolveChatApproval(...args: unknown[]) {
           calls.push(args);
-          return { resolved: true as const, decision: args[3] };
+          return {
+            resolved: true as const,
+            decision: args[3],
+            decisionSource: 'user' as const,
+          };
         },
       },
     } as never;

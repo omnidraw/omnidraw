@@ -20,6 +20,7 @@ import {
 import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
 import type {
   ICanvasRuntimeExtension,
+  TCanvasOverlayContribution,
   TCanvasRuntimeExtensionInstall,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
@@ -49,6 +50,13 @@ import type {
   TReproductionTraceSink,
 } from './debug-trace/typed';
 import type { TCanvasRuntimeConfig } from './types';
+import {
+  fnCanvasShellOwnsOverlay,
+  fnCanvasShellProjection,
+  fnCanvasWidgetShellAvailable,
+  type TCanvasOverlayOwnership,
+  type TCanvasShellState,
+} from './fn.canvas-shell';
 
 const IMAGE_FILE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
@@ -118,6 +126,9 @@ export type TCanvasRuntime = Readonly<{
   openImagePicker(): void;
   setSelectedConnectorSegmentMode(mode: TPathSegmentMode): void;
   widgetContentFocused(): boolean;
+  shell(): TCanvasShellState;
+  subscribeShell(listener: (state: TCanvasShellState) => void): () => void;
+  restoreMaximizedWidget(): boolean;
 }>;
 
 function connectorSegmentMode(
@@ -492,8 +503,42 @@ export function buildRuntime(
   let releaseTraceLifecycle: (() => void) | null = null;
   let releaseEarlyEngineTrace: (() => void) | null = null;
   let releaseThemeChange: (() => void) | null = null;
+  let releaseWidgetShell: (() => void) | null = null;
+  let releaseEditorShell: (() => void) | null = null;
   let canvasBackgroundProjection: IRetainedProjectionOwner | null = null;
   let gridVisible = config.initialGridVisible ?? true;
+  let shellState: TCanvasShellState = Object.freeze({
+    kind: 'canvas',
+    widgetId: null,
+  });
+  let lastMaximizedWidgetId: string | null = null;
+  let normalizingWidgetShell = false;
+  let selectionOverlaySuppressed = false;
+  const shellSelectionOverlayOwner = Object.freeze({});
+  const shellListeners = new Set<(state: TCanvasShellState) => void>();
+  const shellOverlays = new Set<TCanvasOverlayContribution>();
+  const setOverlayMounted = (
+    contribution: TCanvasOverlayContribution,
+    mounted: boolean,
+  ): void => {
+    try {
+      contribution.setMounted(mounted);
+    } catch (error) {
+      reportTraceCallbackError(config.trace, 'shell-overlay', error);
+      config.notification?.showError(
+        'Canvas overlay failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+  const syncShellOverlays = (): void => {
+    for (const contribution of shellOverlays) {
+      setOverlayMounted(
+        contribution,
+        fnCanvasShellOwnsOverlay(shellState, contribution.ownership),
+      );
+    }
+  };
   const installs: TCanvasRuntimeExtensionInstall[] = [];
   const syncCanvasBackgroundProjection = (nextGridVisible: boolean) =>
     canvasBackgroundProjection?.replace(fnCanvasBackgroundProjection({
@@ -678,11 +723,121 @@ export function buildRuntime(
           );
         },
       });
+      const projectShell = (): void => {
+        const session = editorSession;
+        if (session === null || engine === null) return;
+        const widgetState = session.widgets.state;
+        const focusedNode = session.editor.state.focusedNodeId === null
+          ? null
+          : engine.scene.get(session.editor.state.focusedNodeId);
+        const focusedWidgetNodeId = focusedNode !== null
+          && fnCanvasWidgetShellAvailable(focusedNode)
+          ? focusedNode.id
+          : null;
+        const previousMaximizedWidgetId = lastMaximizedWidgetId;
+        lastMaximizedWidgetId = widgetState.maximizedNodeId;
+
+        if (
+          widgetState.maximizedNodeId !== null
+          && !fnCanvasWidgetShellAvailable(
+            engine.scene.get(widgetState.maximizedNodeId),
+          )
+          && !normalizingWidgetShell
+        ) {
+          normalizingWidgetShell = true;
+          try {
+            session.widgets.restore(widgetState.maximizedNodeId);
+          } finally {
+            normalizingWidgetShell = false;
+          }
+          if (session.widgets.state.maximizedNodeId !== widgetState.maximizedNodeId) {
+            return projectShell();
+          }
+        }
+
+        if (!normalizingWidgetShell) {
+          if (
+            widgetState.maximizedNodeId !== null
+            && widgetState.contentNodeId === widgetState.maximizedNodeId
+          ) {
+            const previousContentNodeId = widgetState.contentNodeId;
+            normalizingWidgetShell = true;
+            try {
+              session.widgets.clearContentFocus();
+            } finally {
+              normalizingWidgetShell = false;
+            }
+            if (
+              session.widgets.state.contentNodeId !== previousContentNodeId
+            ) return projectShell();
+          }
+          if (
+            previousMaximizedWidgetId !== null
+            && widgetState.maximizedNodeId === null
+          ) {
+            const previousContentNodeId = widgetState.contentNodeId;
+            const previousFrameNodeId = widgetState.frameNodeId;
+            normalizingWidgetShell = true;
+            try {
+              if (widgetState.contentNodeId !== null) {
+                session.widgets.clearContentFocus();
+              }
+              if (fnCanvasWidgetShellAvailable(engine.scene.get(previousMaximizedWidgetId))) {
+                session.widgets.enterFrameMode(previousMaximizedWidgetId);
+              }
+            } finally {
+              normalizingWidgetShell = false;
+            }
+            if (
+              session.widgets.state.contentNodeId !== previousContentNodeId
+              || session.widgets.state.frameNodeId !== previousFrameNodeId
+            ) return projectShell();
+          }
+        }
+
+        const next = fnCanvasShellProjection({
+          maximizedNodeId: widgetState.maximizedNodeId,
+          contentNodeId: fnCanvasWidgetShellAvailable(
+            widgetState.contentNodeId === null
+              ? null
+              : engine.scene.get(widgetState.contentNodeId),
+          ) ? widgetState.contentNodeId : null,
+          frameNodeId: fnCanvasWidgetShellAvailable(
+            widgetState.frameNodeId === null
+              ? null
+              : engine.scene.get(widgetState.frameNodeId),
+          ) ? widgetState.frameNodeId : null,
+          focusedWidgetNodeId,
+        });
+        if (
+          next.kind === shellState.kind
+          && next.widgetId === shellState.widgetId
+        ) return;
+        shellState = next;
+        const shouldSuppressSelectionOverlay = shellState.kind === 'maximized-widget';
+        if (shouldSuppressSelectionOverlay !== selectionOverlaySuppressed) {
+          selectionOverlaySuppressed = shouldSuppressSelectionOverlay;
+          if (shouldSuppressSelectionOverlay) {
+            session.editor.suppressSelectionOverlay(shellSelectionOverlayOwner);
+          } else {
+            session.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
+          }
+        }
+        if (imageInput !== null) {
+          imageInput.disabled = shellState.kind === 'maximized-widget';
+        }
+        syncShellOverlays();
+        for (const listener of [...shellListeners]) listener(shellState);
+      };
+      releaseWidgetShell = editorSession.widgets.subscribe(projectShell);
+      releaseEditorShell = editorSession.editor.subscribe(projectShell);
+      projectShell();
       imageInput = config.container.ownerDocument.createElement('input');
       imageInput.type = 'file';
       imageInput.accept = IMAGE_FILE_ACCEPT;
       imageInput.multiple = true;
       imageInput.hidden = true;
+      imageInput.disabled = shellState.kind === 'maximized-widget';
       imageInput.dataset.omnidrawImageInput = '';
       config.container.append(imageInput);
       imageDropController = createImageDropController({
@@ -707,6 +862,26 @@ export function buildRuntime(
           engine,
           trace: config.trace ?? null,
           widgets: editorSession.widgets,
+          shell: Object.freeze({
+            state: () => shellState,
+            owns: (ownership: TCanvasOverlayOwnership) =>
+              fnCanvasShellOwnsOverlay(shellState, ownership),
+            subscribe(listener: (state: TCanvasShellState) => void) {
+              shellListeners.add(listener);
+              return () => { shellListeners.delete(listener); };
+            },
+            registerOverlay(contribution: TCanvasOverlayContribution) {
+              shellOverlays.add(contribution);
+              setOverlayMounted(
+                contribution,
+                fnCanvasShellOwnsOverlay(shellState, contribution.ownership),
+              );
+              return () => {
+                if (!shellOverlays.delete(contribution)) return;
+                setOverlayMounted(contribution, false);
+              };
+            },
+          }),
         }));
       }
       editorSession.attach();
@@ -777,6 +952,26 @@ export function buildRuntime(
       const earlyEngineTrace = releaseEarlyEngineTrace;
       releaseEarlyEngineTrace = null;
       await attempt(() => earlyEngineTrace?.());
+      const widgetShell = releaseWidgetShell;
+      releaseWidgetShell = null;
+      await attempt(() => widgetShell?.());
+      const editorShell = releaseEditorShell;
+      releaseEditorShell = null;
+      await attempt(() => editorShell?.());
+      lastMaximizedWidgetId = null;
+      normalizingWidgetShell = false;
+      if (selectionOverlaySuppressed) {
+        selectionOverlaySuppressed = false;
+        editorSession?.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
+      }
+      for (const contribution of shellOverlays) {
+        setOverlayMounted(contribution, false);
+      }
+      shellOverlays.clear();
+      if (shellState.kind !== 'canvas') {
+        shellState = Object.freeze({ kind: 'canvas', widgetId: null });
+        for (const listener of [...shellListeners]) listener(shellState);
+      }
       const backgroundProjection = canvasBackgroundProjection;
       canvasBackgroundProjection = null;
       const themeChange = releaseThemeChange;
@@ -820,7 +1015,9 @@ export function buildRuntime(
       gridVisible = visible;
       return true;
     },
-    openImagePicker: () => imageInput?.click(),
+    openImagePicker: () => {
+      if (shellState.kind !== 'maximized-widget') imageInput?.click();
+    },
     setSelectedConnectorSegmentMode: (mode) => {
       const session = editorSession;
       if (session === null || session.paths === null) return;
@@ -841,5 +1038,11 @@ export function buildRuntime(
       const contentNodeId = editorSession?.widgets.state.contentNodeId;
       return contentNodeId !== null && contentNodeId !== undefined;
     },
+    shell: () => shellState,
+    subscribeShell: (listener) => {
+      shellListeners.add(listener);
+      return () => { shellListeners.delete(listener); };
+    },
+    restoreMaximizedWidget: () => editorSession?.widgets.restore() ?? false,
   });
 }

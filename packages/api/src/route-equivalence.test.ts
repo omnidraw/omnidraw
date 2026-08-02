@@ -35,7 +35,7 @@ describe('unified API route equivalence', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(113);
+    expect(contractProcedures).toHaveLength(115);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

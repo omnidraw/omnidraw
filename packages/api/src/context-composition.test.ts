@@ -66,6 +66,7 @@ const fakeAgentCapability = {
   renewWidgetPreviewMountLease: unusedCapability,
   releaseWidgetPreviewMountLease: unusedCapability,
   reportWidgetPreviewDiagnostic: unusedCapability,
+  reportWidgetPreviewTestResult: unusedCapability,
   getWidgetPreviewDiagnostics: unusedCapability,
   retestWidgetPreviewDiagnostic: unusedCapability,
   resolveWidgetPreviewDiagnostic: unusedCapability,
@@ -101,6 +102,7 @@ const fakeAgentCapability = {
   resolveWidgetPlacement: unusedCapability,
   setApiKey: unusedCapability,
   settings: unusedCapability,
+  updateApprovalPolicy: unusedCapability,
   validateWidgetDraft: unusedCapability,
 } satisfies TApiContext['agent'];
 

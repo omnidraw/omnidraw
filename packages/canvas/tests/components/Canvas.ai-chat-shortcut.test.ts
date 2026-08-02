@@ -9,6 +9,10 @@ import { createReproductionTrace } from '../../src/debug-trace/createReproductio
 import type { TCanvasDependencies } from '../../src/types';
 
 const runtimeMocks = vi.hoisted(() => {
+  let shell = { kind: 'canvas' as const, widgetId: null } as
+    | { kind: 'canvas'; widgetId: null }
+    | { kind: 'maximized-widget'; widgetId: string };
+  let shellListener: ((state: typeof shell) => void) | null = null;
   const setActiveTool = vi.fn();
   const editor = {
     history: {
@@ -31,12 +35,30 @@ const runtimeMocks = vi.hoisted(() => {
     editor: vi.fn(() => editor),
     engine: vi.fn(() => null),
     gridVisible: vi.fn(() => true),
+    openImagePicker: vi.fn(),
+    restoreMaximizedWidget: vi.fn(() => true),
     selectionStyles: vi.fn(() => null),
+    shell: vi.fn(() => shell),
+    subscribeShell: vi.fn((listener: (state: typeof shell) => void) => {
+      shellListener = listener;
+      return () => { shellListener = null; };
+    }),
     setGridVisible: vi.fn(() => true),
     shutdown: vi.fn(async () => {}),
     widgetContentFocused: vi.fn(() => false),
   };
-  return { runtime, setActiveTool };
+  return {
+    runtime,
+    setActiveTool,
+    setShell(next: typeof shell) {
+      shell = next;
+      shellListener?.(next);
+    },
+    resetShell() {
+      shell = { kind: 'canvas', widgetId: null };
+      shellListener = null;
+    },
+  };
 });
 
 vi.mock('../../src/runtime', () => ({
@@ -141,9 +163,99 @@ afterEach(() => {
   document.body.replaceChildren();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  runtimeMocks.resetShell();
 });
 
 describe('Canvas host contributions', () => {
+  test('unmounts canvas overlays and restores by Escape for the exclusive widget shell', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
+    }), host);
+    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).not.toBeNull());
+
+    runtimeMocks.setShell({ kind: 'maximized-widget', widgetId: 'widget-1' });
+    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).toBeNull());
+    expect(host.querySelector('.vc-selection-style-menu')).toBeNull();
+
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    host.querySelector('.vc-canvas-host')?.dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'r',
+    }));
+    expect(runtimeMocks.setActiveTool).not.toHaveBeenCalledWith('rect');
+
+    const escape = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Escape',
+    });
+    document.dispatchEvent(escape);
+    expect(runtimeMocks.runtime.restoreMaximizedWidget).toHaveBeenCalledOnce();
+
+    runtimeMocks.runtime.restoreMaximizedWidget.mockClear();
+    const widgetContent = document.createElement('button');
+    widgetContent.dataset.omnidrawPortalId = 'widget-1';
+    widgetContent.addEventListener('keydown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    host.querySelector('.vc-canvas-engine-host')?.append(widgetContent);
+    widgetContent.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: 'Escape',
+    }));
+    await Promise.resolve();
+    expect(runtimeMocks.runtime.restoreMaximizedWidget).toHaveBeenCalledOnce();
+
+    runtimeMocks.runtime.restoreMaximizedWidget.mockClear();
+    const widgetModalRoot = document.createElement('div');
+    widgetModalRoot.setAttribute('role', 'dialog');
+    const widgetModal = document.createElement('button');
+    widgetModalRoot.dataset.omnidrawPortalId = 'widget-1';
+    widgetModalRoot.append(widgetModal);
+    widgetModal.addEventListener('keydown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    host.querySelector('.vc-canvas-engine-host')?.append(widgetModalRoot);
+    widgetModal.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: 'Escape',
+    }));
+    await Promise.resolve();
+    expect(runtimeMocks.runtime.restoreMaximizedWidget).not.toHaveBeenCalled();
+
+    const nativeDialog = document.createElement('dialog');
+    nativeDialog.open = true;
+    nativeDialog.dataset.omnidrawPortalId = 'widget-1';
+    const nativeDialogButton = document.createElement('button');
+    nativeDialog.append(nativeDialogButton);
+    host.querySelector('.vc-canvas-engine-host')?.append(nativeDialog);
+    nativeDialogButton.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: 'Escape',
+    }));
+    await Promise.resolve();
+    expect(runtimeMocks.runtime.restoreMaximizedWidget).not.toHaveBeenCalled();
+
+    runtimeMocks.setShell({ kind: 'canvas', widgetId: null });
+    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).not.toBeNull());
+  });
+
   test('renders and uses core tools without product extensions', async () => {
     const host = document.createElement('div');
     document.body.append(host);

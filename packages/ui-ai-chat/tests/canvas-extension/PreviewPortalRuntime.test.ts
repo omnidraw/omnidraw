@@ -223,6 +223,9 @@ function runtimeApi(
         resolve: resolveDiagnostic as never,
         retest: retestDiagnostic as never,
       },
+      test: {
+        report: vi.fn(async () => [undefined, { accepted: true }] as const) as never,
+      },
       mount: {
         acquire: acquire as never,
         renew: renew as never,
@@ -620,6 +623,141 @@ describe('PreviewPortalRuntime', () => {
       priority: 100,
       occlusion: 0,
     });
+    await runtime.destroy();
+  });
+
+  test('runs declared accessible checks only inside the exact live guest root', async () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    const outside = document.createElement('button');
+    outside.textContent = 'Outside action';
+    let outsideClicks = 0;
+    let hiddenClicks = 0;
+    outside.addEventListener('click', () => { outsideClicks += 1; });
+    document.body.append(outside);
+    const animation = manualAnimationFrames();
+    const mounted = runtimeHandle();
+    let guestInput: HTMLInputElement | null = null;
+    const runtime = createPreviewPortalRuntime({
+      root,
+      payload: {
+        previewId: PREVIEW_ONE,
+        draftId: DRAFT_ID,
+        originChatId: 'chat-1',
+        role: 'companion',
+      },
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      api: runtimeApi(vi.fn().mockResolvedValue([
+        undefined,
+        ready(REVISION_ONE),
+      ]), PREVIEW_ONE).api,
+      publishApi: publishApi(),
+      codec: {
+        decodeBase64: (value) => Buffer.from(value, 'base64'),
+        digestSha256: async (value) => digest(value),
+      },
+      mount: {
+        mount: vi.fn(async (request: Parameters<TWidgetUiArtifactMountPort['mount']>[0]) => {
+          request.root.innerHTML = [
+            '<style>.concealed { display: none; }</style>',
+            '<label>Name <input /></label>',
+            '<button type="button">Save</button>',
+            '<button type="button" class="concealed">Hidden action</button>',
+            '<p class="concealed">Never visible</p>',
+          ].join('');
+          const shadowHost = document.createElement('div');
+          const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
+          const status = document.createElement('p');
+          status.setAttribute('role', 'status');
+          status.textContent = 'Idle';
+          shadowRoot.append(status);
+          request.root.append(shadowHost);
+          guestInput = request.root.querySelector('input');
+          request.root.querySelector('button')?.addEventListener('click', () => {
+            queueMicrotask(() => { status.textContent = 'Saved Ada'; });
+          });
+          Array.from(request.root.querySelectorAll('button'))
+            .find((button) => button.textContent === 'Hidden action')
+            ?.addEventListener('click', () => { hiddenClicks += 1; });
+          return mounted.handle;
+        }),
+        destroy: vi.fn(),
+      },
+      runtime: previewPopulationRuntime(),
+      requestFrame: animation.request,
+      cancelFrame: animation.cancel,
+      nowMs: () => 1,
+      functions: functionHost(),
+      onError: vi.fn(),
+    });
+    await flushSwap(animation, runtime.refresh());
+
+    await expect(runtime.test({
+      previewId: PREVIEW_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      revision: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      mountLeaseId: LEASE_ONE,
+      deadlineAtMs: 10_000,
+      checks: [
+        { type: 'fill', label: 'Name', value: 'Ada' },
+        { type: 'click', name: 'Save' },
+        { type: 'wait-for-text', text: 'Saved Ada', timeoutMs: 500 },
+        { type: 'assert-status', text: 'Saved Ada' },
+      ],
+    })).resolves.toEqual([
+      expect.objectContaining({ index: 0, type: 'fill', passed: true }),
+      expect.objectContaining({ index: 1, type: 'click', passed: true }),
+      expect.objectContaining({ index: 2, type: 'wait-for-text', passed: true }),
+      expect.objectContaining({ index: 3, type: 'assert-status', passed: true }),
+    ]);
+    expect(guestInput?.value).toBe('Ada');
+
+    await expect(runtime.test({
+      previewId: PREVIEW_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      revision: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      mountLeaseId: LEASE_ONE,
+      deadlineAtMs: 10_000,
+      checks: [{ type: 'assert-text', text: 'Never visible' }],
+    })).resolves.toEqual([
+      expect.objectContaining({ index: 0, type: 'assert-text', passed: false }),
+    ]);
+    await expect(runtime.test({
+      previewId: PREVIEW_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      revision: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      mountLeaseId: LEASE_ONE,
+      deadlineAtMs: 10_000,
+      checks: [{ type: 'click', name: 'Hidden action' }],
+    })).resolves.toEqual([
+      expect.objectContaining({ index: 0, type: 'click', passed: false }),
+    ]);
+    expect(hiddenClicks).toBe(0);
+
+    await expect(runtime.test({
+      previewId: PREVIEW_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      revision: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      mountLeaseId: LEASE_TWO,
+      deadlineAtMs: 10_000,
+      checks: [{ type: 'click', name: 'Save' }],
+    })).resolves.toBeNull();
+
+    await expect(runtime.test({
+      previewId: PREVIEW_TWO,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      revision: REVISION_ONE,
+      committedMutationId: `mutation-${REVISION_ONE}`,
+      mountLeaseId: LEASE_ONE,
+      deadlineAtMs: 10_000,
+      checks: [{ type: 'click', name: 'Outside action' }],
+    })).resolves.toBeNull();
+    expect(outsideClicks).toBe(0);
     await runtime.destroy();
   });
 

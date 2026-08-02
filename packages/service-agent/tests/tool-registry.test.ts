@@ -33,8 +33,11 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).not.toContain('od_publish_widget');
     expect(registry.toolNames).not.toContain('od_approve_actor_candidate');
     expect(registry.toolNames).toContain('bash');
+    expect(registry.toolNames).toContain('vc_widget_preview_status');
+    expect(registry.toolNames).toContain('vc_widget_preview_wait');
+    expect(registry.toolNames).toContain('vc_widget_preview_test');
     expect(registry.toolNames).not.toContain('write');
-    expect(registry.toolNames).toHaveLength(16);
+    expect(registry.toolNames).toHaveLength(19);
 
     const bash = registry.customTools.find((tool) => tool.name === 'bash')!;
     const unavailable = await executeTool(bash, { command: 'pwd' });
