@@ -10,7 +10,7 @@
         "pixi.js": "^8.19.0",
       },
       "devDependencies": {
-        "@omnidraw/cangine": "0.6.0",
+        "@omnidraw/cangine": "0.6.1",
         "@typescript-eslint/parser": "^8.63.0",
         "bun-types": "^1.3.14",
         "eslint": "^10.7.0",
@@ -153,10 +153,10 @@
       "name": "@omnidraw/canvas",
       "version": "0.5.1",
       "dependencies": {
-        "@omnidraw/cangine": "0.6.0",
-        "@omnidraw/canvas-contract": "0.5.0",
-        "@omnidraw/service-theme": "0.5.0",
-        "@omnidraw/theme-contract": "0.5.0",
+        "@omnidraw/cangine": "0.6.1",
+        "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/service-theme": "workspace:*",
+        "@omnidraw/theme-contract": "workspace:*",
         "lucide-solid": "^1.24.0",
       },
       "devDependencies": {
@@ -175,8 +175,8 @@
       "name": "@omnidraw/canvas-contract",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/cangine": "0.6.0",
-        "@omnidraw/theme-contract": "0.5.0",
+        "@omnidraw/cangine": "0.6.1",
+        "@omnidraw/theme-contract": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "1.3.14",
@@ -311,7 +311,7 @@
       "name": "@omnidraw/service-theme",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/theme-contract": "0.5.0",
+        "@omnidraw/theme-contract": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "1.3.14",
@@ -348,7 +348,7 @@
       "dependencies": {
         "@jridgewell/trace-mapping": "0.3.31",
         "@kobalte/core": "catalog:",
-        "@omnidraw/cangine": "0.6.0",
+        "@omnidraw/cangine": "0.6.1",
         "@omnidraw/canvas": "workspace:*",
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/capsule-omnidraw": "workspace:*",
@@ -748,13 +748,13 @@
 
     "@omnidraw/api": ["@omnidraw/api@workspace:packages/api"],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@0.6.0", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.6.0.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-j2c7N1QAOP39UuDnBRynqf6x0NeSLK82prHz8ltdtxiMNkq8zbfKusSCGQbxaC8UySY0O5U9iYYVztw/iS6WDw=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@0.6.1", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.6.1.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-xaa6hcLWy0pLJW6Gu+s96y9tulJBp3djl0da3ZYsVGWGqcSJMliCJIpcjBZFIVb3uTQkLO/8Xe/3dnWfaACOdA=="],
 
     "@omnidraw/canvas": ["@omnidraw/canvas@workspace:packages/canvas"],
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.2", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yBLMN+9PAVToxiHjUzwzvPvw9ShM+X5e7sSuqRfDiS9F/yvjQE+tdTI/Dv+8ya3gz51QhaQd/GwhN4ev4PhTow=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.10.2", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.10.2.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yBLMN+9PAVToxiHjUzwzvPvw9ShM+X5e7sSuqRfDiS9F/yvjQE+tdTI/Dv+8ya3gz51QhaQd/GwhN4ev4PhTow=="],
 
     "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
 

@@ -69,7 +69,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.6.0",
+    "@omnidraw/cangine": "0.6.1",
     "@omnidraw/canvas-contract": "workspace:*",
     "@omnidraw/service-theme": "workspace:*",
     "@omnidraw/theme-contract": "workspace:*",

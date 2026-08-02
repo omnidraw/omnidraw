@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   packageDecision,
   packageOrder,
+  publishCommand,
   type TRegistryPackage,
   type TWorkspacePackage,
 } from './list-package-deployments'
@@ -74,5 +75,21 @@ describe('packageOrder', () => {
       '@omnidraw/widget',
       '@omnidraw/sdk',
     ])
+  })
+})
+
+describe('publishCommand', () => {
+  test('prints one locally executable command forced to public npm without provenance', () => {
+    const command = publishCommand({
+      directory: '/repo/packages/theme-contract',
+      manifest: { name: '@omnidraw/theme-contract', version: '0.5.0' },
+      name: '@omnidraw/theme-contract',
+      version: '0.5.0',
+    })
+
+    expect(command).toStartWith("echo 'Publishing @omnidraw/theme-contract@0.5.0' && cd ")
+    expect(command.match(/--provenance=false/g)).toHaveLength(2)
+    expect(command.match(/--registry=https:\/\/registry\.npmjs\.org\//g)).toHaveLength(2)
+    expect(command.match(/'--@omnidraw:registry=https:\/\/registry\.npmjs\.org\/'/g)).toHaveLength(2)
   })
 })

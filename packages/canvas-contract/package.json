@@ -50,7 +50,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.6.0",
+    "@omnidraw/cangine": "0.6.1",
     "@omnidraw/theme-contract": "workspace:*"
   },
   "devDependencies": {

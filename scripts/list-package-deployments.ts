@@ -188,13 +188,18 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`
 }
 
-function publishCommand(entry: TWorkspacePackage): string {
+export function publishCommand(entry: TWorkspacePackage): string {
   const tag = releaseTag(entry.version)
+  const registryArguments = [
+    `--registry=${PUBLIC_REGISTRY}/`,
+    shellQuote(`--@omnidraw:registry=${PUBLIC_REGISTRY}/`),
+  ].join(' ')
   return [
+    `echo ${shellQuote(`Publishing ${entry.name}@${entry.version}`)}`,
     `cd ${shellQuote(relative(REPOSITORY_ROOT, entry.directory))}`,
     'bun run build',
-    `npm publish ./dist --dry-run --access public --tag ${tag}`,
-    `npm publish ./dist --access public --tag ${tag}`,
+    `npm publish ./dist --dry-run --access public --tag ${tag} --provenance=false ${registryArguments}`,
+    `npm publish ./dist --access public --tag ${tag} --provenance=false ${registryArguments}`,
   ].join(' && ')
 }
 
@@ -306,10 +311,7 @@ async function main(): Promise<void> {
     console.log('\nNo packages are currently safe and necessary to deploy.')
   } else {
     console.log('\nPackages safe to deploy now, in dependency order:')
-    for (const [index, entry] of deployable.entries()) {
-      console.log(`${index + 1}. ${entry.name}@${entry.version}`)
-      console.log(`   ${publishCommand(entry)}`)
-    }
+    for (const entry of deployable) console.log(publishCommand(entry))
     const combined = [
       'bun run verify:package-dists',
       ...deployable.map((entry) => `(${publishCommand(entry)})`),

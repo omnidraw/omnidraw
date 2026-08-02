@@ -79,7 +79,7 @@
   "keywords": [],
   "license": "MIT",
   "devDependencies": {
-    "@omnidraw/cangine": "0.6.0",
+    "@omnidraw/cangine": "0.6.1",
     "@typescript-eslint/parser": "^8.63.0",
     "bun-types": "^1.3.14",
     "eslint": "^10.7.0"

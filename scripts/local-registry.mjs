@@ -150,6 +150,7 @@ async function writeHostConfiguration(config) {
           access: '$all',
           publish: '$all',
           unpublish: '$authenticated',
+          proxy: 'npmjs',
         },
         '**': {
           access: '$all',
