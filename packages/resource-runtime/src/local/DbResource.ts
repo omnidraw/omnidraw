@@ -2349,7 +2349,6 @@ export class DbResource implements ILocalResourceProvider {
         readonly,
         fileMustExist: true,
         defaultQueryTimeout: QUERY_TIMEOUT_MS,
-        // @ts-expect-error Turso runtime features are ahead of its public union.
         experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid', 'multiprocess_wal'],
       });
     } catch (error) {
@@ -2436,7 +2435,6 @@ export class DbResource implements ILocalResourceProvider {
         const database = this.#databaseFactory(this.#databasePath(resourceId), {
           defaultQueryTimeout: QUERY_TIMEOUT_MS,
           fileMustExist,
-          // @ts-expect-error Turso runtime features are ahead of its public union.
           experimental: ['custom_types', 'triggers', 'index_method', 'strict', 'without_rowid', 'multiprocess_wal'],
         });
         try { await database.connect(); await database.exec(RESOURCE_PRAGMAS_SQL); return database; }

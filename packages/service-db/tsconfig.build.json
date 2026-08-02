@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "composite": false,
+    "declarationMap": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "paths": {
+      "@omnidraw/canvas-contract": ["../canvas-contract/dist/index.d.ts"],
+      "@omnidraw/function-runtime": ["../function-runtime/dist/index.d.ts"],
+      "@omnidraw/resource-runtime": ["../resource-runtime/dist/index.d.ts"],
+      "@omnidraw/runtime": ["../runtime/dist/index.d.ts"],
+      "@omnidraw/tenant-core": ["../tenant-core/dist/index.d.ts"],
+      "@omnidraw/widget-contract": ["../widget-contract/dist/index.d.ts"]
+    },
+    "rootDir": "src",
+    "sourceMap": false
+  },
+  "include": ["src"],
+  "exclude": ["src/tests", "src/verification", "src/**/*.test.ts"]
+}

@@ -16,8 +16,7 @@ if (!databasePath || !invocationId || !attemptId || !canvasId) {
 }
 
 const database = new Database(databasePath, {
-  // @ts-expect-error Pinned Turso experimental feature list is ahead of its public type.
-    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
+  experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
 });
 await database.connect();
 const tenant = fnFreezeTenantContext({

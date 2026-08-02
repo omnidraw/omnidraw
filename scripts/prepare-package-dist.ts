@@ -118,7 +118,11 @@ function exportedTargets(value: unknown): readonly string[] {
   return Object.values(value).flatMap(exportedTargets)
 }
 
-function resolveDependencySpec(
+function isCatalogSpecifier(specifier: string): boolean {
+  return specifier === 'catalog' || specifier === 'catalog:' || specifier.startsWith('catalog:')
+}
+
+export function resolveDependencySpec(
   dependency: string,
   specifier: string,
   rootCatalog: Readonly<Record<string, string>>,
@@ -129,7 +133,7 @@ function resolveDependencySpec(
     if (typeof workspace.version !== 'string') throw new Error(`${dependency} has an invalid workspace version.`)
     return workspace.version
   }
-  if (specifier === 'catalog:' || specifier.startsWith('catalog:')) {
+  if (isCatalogSpecifier(specifier)) {
     const catalogValue = rootCatalog[dependency]
     if (catalogValue === undefined) throw new Error(`${dependency} is absent from the root catalog.`)
     return catalogValue
@@ -272,4 +276,4 @@ async function main(): Promise<void> {
   console.log(`[package-dist] ${manifest.name}@${manifest.version} is ready at ${relative(REPOSITORY_ROOT, DIST_DIRECTORY)}`)
 }
 
-await main()
+if (import.meta.main) await main()

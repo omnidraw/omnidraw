@@ -24,7 +24,7 @@ type TManifest = Record<string, unknown> & {
   peerDependencies?: Record<string, string>
 }
 
-type TPackage = Readonly<{
+export type TPackage = Readonly<{
   directory: string
   manifest: TManifest
   name: string
@@ -108,6 +108,26 @@ function dependencyOrder(packages: readonly TPackage[]): readonly TPackage[] {
   return ordered
 }
 
+export function packageClosure(
+  packages: readonly TPackage[],
+  selectedNames: readonly string[],
+): readonly TPackage[] {
+  if (selectedNames.length === 0) return packages
+  const byName = new Map(packages.map((entry) => [entry.name, entry]))
+  const selected = new Map<string, TPackage>()
+  const visit = (name: string): void => {
+    if (selected.has(name)) return
+    const entry = byName.get(name)
+    if (entry === undefined) throw new Error(`Unknown versioned package selection: ${name}`)
+    selected.set(name, entry)
+    for (const dependency of dependencyNames(entry.manifest)) {
+      if (byName.has(dependency)) visit(dependency)
+    }
+  }
+  for (const name of selectedNames) visit(name)
+  return [...selected.values()]
+}
+
 function targets(value: unknown): readonly string[] {
   if (typeof value === 'string') return [value]
   if (Array.isArray(value)) return value.flatMap(targets)
@@ -155,6 +175,9 @@ async function assertStandaloneDist(entry: TPackage, versions: ReadonlyMap<strin
   }
   for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
     for (const [dependency, specifier] of Object.entries(manifest[field] ?? {})) {
+      if (/^(?:workspace|catalog|file|link)(?::|$)/.test(specifier)) {
+        throw new Error(`${entry.name} dist retains local dependency ${dependency}@${specifier}.`)
+      }
       const internalVersion = versions.get(dependency)
       if (internalVersion !== undefined && specifier !== internalVersion) {
         throw new Error(`${entry.name} dist pins ${dependency} to ${specifier}; expected ${internalVersion}.`)
@@ -261,7 +284,17 @@ async function assertCleanConsumer(packed: readonly TPacked[], temporaryRoot: st
   const bunSmoke = await run(['bun', basename(bunSmokePath)], consumer)
   if (!bunSmoke.includes('all Bun package imports passed')) throw new Error('Clean Bun package import smoke did not finish.')
 
-  const nodeImports = imports.filter((specifier) => !specifier.endsWith('/local'))
+  const bunOnlyPackages = new Set(packed.filter((entry) => {
+    const engines = entry.manifest.engines
+    return engines !== null
+      && typeof engines === 'object'
+      && typeof (engines as Record<string, unknown>).bun === 'string'
+      && typeof (engines as Record<string, unknown>).node !== 'string'
+  }).map((entry) => entry.name))
+  const nodeImports = imports.filter((specifier) => (
+    !specifier.endsWith('/local')
+    && ![...bunOnlyPackages].some((name) => specifier === name || specifier.startsWith(`${name}/`))
+  ))
   const nodeSmokePath = join(consumer, 'smoke-node.mjs')
   await writeFile(nodeSmokePath, `${nodeImports.map((specifier) => `await import(${JSON.stringify(specifier)})`).join('\n')}\nconsole.log('portable Node package imports passed')\n`)
   const nodeSmoke = await run(['node', basename(nodeSmokePath)], consumer)
@@ -274,9 +307,10 @@ async function assertCleanConsumer(packed: readonly TPacked[], temporaryRoot: st
 }
 
 async function main(): Promise<void> {
-  const packages = versionedPackages()
-  const ordered = dependencyOrder(await packages)
-  const versions = new Map(ordered.map((entry) => [entry.name, entry.version]))
+  const packages = await versionedPackages()
+  const selectedNames = process.argv.slice(2).filter((argument) => argument !== '--')
+  const ordered = dependencyOrder(packageClosure(packages, selectedNames))
+  const versions = new Map(packages.map((entry) => [entry.name, entry.version]))
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'omnidraw-package-dists-'))
   const packDirectory = join(temporaryRoot, 'packs')
   process.env.npm_config_cache = join(temporaryRoot, 'npm-cache')
@@ -296,4 +330,4 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+if (import.meta.main) await main()

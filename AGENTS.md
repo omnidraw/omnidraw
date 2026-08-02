@@ -48,6 +48,7 @@ Versioned release packages awaiting their first public npm publication:
 - `@omnidraw/canvas-contract`
 - `@omnidraw/service-theme`
 - `@omnidraw/service-canvas`
+- `@omnidraw/service-db`
 - `@omnidraw/capsule-omnidraw`
 - `@omnidraw/canvas`
 

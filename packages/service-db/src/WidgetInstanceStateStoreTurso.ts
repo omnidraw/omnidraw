@@ -1,7 +1,6 @@
 import type { Database } from '@tursodatabase/database';
 import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TWidgetSerializableJsonValue } from '@omnidraw/widget-contract';
-import type { IWidgetStateStore } from '@omnidraw/service-widget-state';
 import { txRunDatabaseTransaction } from './tx.run-database-transaction';
 
 export type TWidgetStateInstanceIdentity = Readonly<{
@@ -51,7 +50,7 @@ type TStoredStateRow = Readonly<{
  * Transactional widget-state persistence. Authorization, exact widget identity,
  * lazy initialization, and CAS all share the same immediate transaction.
  */
-export class WidgetInstanceStateStoreTurso implements IWidgetStateStore {
+export class WidgetInstanceStateStoreTurso {
   constructor(private readonly database: Database) {}
 
   getAuthorizedExactInstance(

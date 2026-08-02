@@ -66,7 +66,6 @@ async function openNative(databasePath: string, readonly = false): Promise<Datab
   const database = new Database(databasePath, {
     readonly,
     fileMustExist: readonly,
-    // @ts-expect-error pinned native features are ahead of the public union.
     experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
   });
   await database.connect();

@@ -34,6 +34,47 @@ export type TPackageDecision = Readonly<{
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const PACKAGES_DIRECTORY = join(REPOSITORY_ROOT, 'packages')
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org'
+const ANSI = Object.freeze({
+  bold: '\u001b[1m',
+  cyan: '\u001b[36m',
+  dim: '\u001b[2m',
+  green: '\u001b[32m',
+  red: '\u001b[31m',
+  reset: '\u001b[0m',
+  yellow: '\u001b[33m',
+})
+
+type TColor = keyof Omit<typeof ANSI, 'reset'>
+
+function colorEnabled(): boolean {
+  return process.stdout.isTTY === true && process.env.NO_COLOR === undefined
+}
+
+function paint(value: string, color: TColor): string {
+  return colorEnabled() ? `${ANSI[color]}${value}${ANSI.reset}` : value
+}
+
+function printHeading(value: string): void {
+  console.log(paint(value, 'bold'))
+}
+
+function printPackageGroup(
+  title: string,
+  entries: readonly Readonly<{
+    entry: TWorkspacePackage
+    explanation?: string
+  }>[],
+  color: TColor,
+  symbol: string,
+): void {
+  if (entries.length === 0) return
+  console.log('')
+  console.log(paint(`${title} (${entries.length})`, color))
+  for (const { entry, explanation } of entries) {
+    console.log(`  ${paint(symbol, color)} ${entry.name}@${entry.version}`)
+    if (explanation !== undefined) console.log(`    ${paint(explanation, 'dim')}`)
+  }
+}
 
 function dependencyNames(manifest: TPackageManifest): readonly string[] {
   return ['dependencies', 'optionalDependencies', 'peerDependencies']
@@ -240,29 +281,9 @@ async function main(): Promise<void> {
     packageDecision(entry, registry.get(entry.name)!),
   ]))
 
-  console.log(`Omnidraw library deployment plan (${PUBLIC_REGISTRY})`)
-  console.log('Apps and unversioned workspace packages are excluded.\n')
-  for (const entry of packages) {
-    const decision = decisions.get(entry.name)!
-    const label = decision.action === 'current'
-      ? 'CURRENT'
-      : decision.action === 'deploy'
-        ? 'DEPLOY '
-        : decision.action === 'fix-tag'
-          ? 'TAG    '
-          : 'BLOCK  '
-    console.log(`${label} ${entry.name}@${entry.version} — ${decision.explanation}`)
-  }
-
   const missingExternal = [...externalRequirements].filter(([dependency, version]) => (
     !registry.get(dependency)!.versions.has(version)
   ))
-  if (missingExternal.length > 0) {
-    console.log('\nMissing public prerequisites:')
-    for (const [dependency, version] of missingExternal) {
-      console.log(`- ${dependency}@${version}: publish it from its owning repository, then rerun this command`)
-    }
-  }
 
   const available = new Set(packages.filter((entry) => registry.get(entry.name)!.versions.has(entry.version))
     .map((entry) => entry.name))
@@ -294,31 +315,79 @@ async function main(): Promise<void> {
     available.add(entry.name)
   }
 
-  if (blockedDeployments.length > 0) {
-    console.log('\nDeployments waiting on prerequisites:')
-    for (const { entry, blockers } of blockedDeployments) {
-      console.log(`- ${entry.name}@${entry.version}: waiting for ${blockers.join(', ')}`)
+  const tagFixes = packages.filter((entry) => decisions.get(entry.name)!.action === 'fix-tag')
+  const localFixes = packages.filter((entry) => decisions.get(entry.name)!.action === 'fix-local')
+  const current = packages.filter((entry) => decisions.get(entry.name)!.action === 'current')
+
+  console.log('')
+  printHeading('OMNIDRAW PACKAGE DEPLOYMENTS')
+  console.log(paint(`Registry  ${PUBLIC_REGISTRY}`, 'dim'))
+  console.log(paint(`${packages.length} versioned libraries · apps and unversioned workspaces excluded`, 'dim'))
+
+  console.log('')
+  printHeading('SUMMARY')
+  console.log([
+    paint(`${current.length} current`, 'green'),
+    paint(`${deployable.length} ready`, 'cyan'),
+    paint(`${blockedDeployments.length} waiting`, 'yellow'),
+    paint(`${localFixes.length + tagFixes.length} need attention`, 'red'),
+  ].join(paint('  ·  ', 'dim')))
+
+  printPackageGroup('CURRENT', current.map((entry) => ({ entry })), 'green', '✓')
+  printPackageGroup('READY TO DEPLOY', deployable.map((entry) => ({
+    entry,
+    explanation: decisions.get(entry.name)!.explanation,
+  })), 'cyan', '↑')
+  printPackageGroup('WAITING', blockedDeployments.map(({ entry, blockers }) => ({
+    entry,
+    explanation: `Requires ${blockers.join(', ')}`,
+  })), 'yellow', '◷')
+  printPackageGroup('BLOCKED — FIX LOCAL VERSION', localFixes.map((entry) => ({
+    entry,
+    explanation: decisions.get(entry.name)!.explanation,
+  })), 'red', '×')
+  printPackageGroup('NEEDS DIST-TAG DECISION', tagFixes.map((entry) => ({
+    entry,
+    explanation: decisions.get(entry.name)!.explanation,
+  })), 'yellow', '!')
+
+  if (missingExternal.length > 0) {
+    console.log('')
+    console.log(paint(`MISSING PUBLIC PREREQUISITES (${missingExternal.length})`, 'yellow'))
+    for (const [dependency, version] of missingExternal) {
+      console.log(`  ${paint('!', 'yellow')} ${dependency}@${version}`)
+      console.log(`    ${paint('Publish it from its owning repository, then rerun this command.', 'dim')}`)
     }
   }
 
-  const tagFixes = packages.filter((entry) => decisions.get(entry.name)!.action === 'fix-tag')
   if (tagFixes.length > 0) {
-    console.log('\nExisting versions that need an intentional dist-tag decision:')
-    for (const entry of tagFixes) console.log(`- ${tagCommand(entry)}`)
+    console.log('')
+    printHeading('DIST-TAG COMMANDS')
+    for (const entry of tagFixes) console.log(`  ${tagCommand(entry)}`)
   }
 
   if (deployable.length === 0) {
-    console.log('\nNo packages are currently safe and necessary to deploy.')
+    console.log('')
+    console.log(paint('Nothing is currently safe and necessary to deploy.', 'dim'))
   } else {
-    console.log('\nPackages safe to deploy now, in dependency order:')
-    for (const entry of deployable) console.log(publishCommand(entry))
+    console.log('')
+    printHeading('DEPLOY COMMANDS — DEPENDENCY ORDER')
+    deployable.forEach((entry, index) => {
+      console.log('')
+      console.log(paint(`${index + 1}. ${entry.name}@${entry.version}`, 'cyan'))
+      console.log(publishCommand(entry))
+    })
     const combined = [
-      'bun run verify:package-dists',
+      `bun run verify:package-dists -- ${deployable.map((entry) => shellQuote(entry.name)).join(' ')}`,
       ...deployable.map((entry) => `(${publishCommand(entry)})`),
     ].join(' && ')
-    console.log('\nCopy/paste build, verify, and deploy command:')
+    console.log('')
+    printHeading('COPY/PASTE — VERIFY AND DEPLOY READY PACKAGES')
+    console.log('')
     console.log(combined)
   }
+
+  console.log('')
 
   const blocked = packages.some((entry) => decisions.get(entry.name)!.action === 'fix-local')
     || missingExternal.length > 0
