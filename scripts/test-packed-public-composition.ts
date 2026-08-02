@@ -151,13 +151,15 @@ async function packPublicPackage(
   versions: ReadonlyMap<string, string>,
 ): Promise<Readonly<{ entry: TPublicPackage; tarball: string }>> {
   const packageRoot = join(REPOSITORY_ROOT, entry.directory)
+  await runCommand([process.execPath, 'run', 'build'], packageRoot)
+  const releaseRoot = join(packageRoot, 'dist')
   const result = await runCommand(
     [process.execPath, 'pm', 'pack', '--destination', packRoot, '--quiet'],
-    packageRoot,
+    releaseRoot,
   )
   const outputPath = result.stdout.trim().split('\n').filter(Boolean).at(-1)
   if (!outputPath) throw new Error(`${entry.name} pack command did not report a tarball.`)
-  const tarball = resolve(packageRoot, outputPath)
+  const tarball = resolve(releaseRoot, outputPath)
   if (dirname(tarball) !== packRoot) {
     throw new Error(`${entry.name} pack command escaped the isolated pack directory.`)
   }

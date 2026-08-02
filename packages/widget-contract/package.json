@@ -1,6 +1,13 @@
 {
   "name": "@omnidraw/widget-contract",
   "version": "0.5.0",
+  "description": "Portable widget manifests, artifacts, diagnostics, and revision contracts for Omnidraw.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/widget-contract"
+  },
   "publishConfig": {
     "@omnidraw:registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -20,13 +27,14 @@
     "./local": "./src/local/index.ts"
   },
   "scripts": {
-    "prepublishOnly": "bun run typecheck && bun run test",
+    "build": "bun run ../../scripts/build-typescript-package.ts",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/resource-runtime": "0.5.0",
-    "@omnidraw/tenant-core": "0.5.0",
+    "@omnidraw/resource-runtime": "workspace:*",
+    "@omnidraw/tenant-core": "workspace:*",
     "lucide-static": "^1.24.0",
     "zod": "4.4.3"
   }

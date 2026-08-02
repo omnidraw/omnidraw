@@ -142,7 +142,7 @@ function declaredRuntimePackages(manifest: Record<string, unknown>): ReadonlySet
 async function assertPackedPackage(
   entry: TPublicPackage,
   tarball: string,
-  expectedVersion = '0.5.0',
+  expectedVersion: string,
 ): Promise<Record<string, unknown>> {
   const manifest = await packedManifest(tarball)
   if (manifest.name !== entry.name || manifest.version !== expectedVersion || manifest.private === true) {
@@ -201,7 +201,7 @@ async function assertPackedPackage(
   }
 
   if (entry.name === '@omnidraw/canvas') {
-    const cssPath = 'package/dist/styles.css'
+    const cssPath = 'package/styles.css'
     const css = await archiveText(tarball, cssPath)
     const assetUrls = [...css.matchAll(/url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/g)]
       .map((match) => match[2]!)
@@ -226,15 +226,20 @@ async function buildAndPack(
 ): Promise<TPackedPackage> {
   const packageRoot = join(REPOSITORY_ROOT, entry.directory)
   await runCommand([process.execPath, 'run', 'build'], packageRoot)
+  const releaseRoot = join(packageRoot, 'dist')
+  const expectedVersion = (JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as {
+    version?: string
+  }).version
+  if (expectedVersion === undefined) throw new Error(`${entry.name} has no release version.`)
   const result = await runCommand(
     [process.execPath, 'pm', 'pack', '--destination', packRoot, '--quiet'],
-    packageRoot,
+    releaseRoot,
   )
   const outputPath = result.stdout.trim().split('\n').filter(Boolean).at(-1)
   if (!outputPath) throw new Error(`${entry.name} pack did not report a tarball.`)
-  const tarball = resolve(packageRoot, outputPath)
+  const tarball = resolve(releaseRoot, outputPath)
   if (dirname(tarball) !== packRoot) throw new Error(`${entry.name} pack escaped its isolated directory.`)
-  const manifest = await assertPackedPackage(entry, tarball)
+  const manifest = await assertPackedPackage(entry, tarball, expectedVersion)
   return Object.freeze({ entry, manifest, tarball })
 }
 
@@ -259,6 +264,10 @@ async function packInstalledCangine(packRoot: string): Promise<string> {
 async function assertInstalledPackages(consumerRoot: string): Promise<void> {
   const canonicalConsumerRoot = await realpath(consumerRoot)
   for (const entry of PUBLIC_PACKAGES) {
+    const expectedVersion = (JSON.parse(await readFile(
+      join(REPOSITORY_ROOT, entry.directory, 'package.json'),
+      'utf8',
+    )) as { version?: string }).version
     const installedRoot = await realpath(join(consumerRoot, 'node_modules', ...entry.name.split('/')))
     if (
       relative(canonicalConsumerRoot, installedRoot).startsWith('..')
@@ -270,7 +279,7 @@ async function assertInstalledPackages(consumerRoot: string): Promise<void> {
       name?: string
       version?: string
     }
-    if (manifest.name !== entry.name || manifest.version !== '0.5.0') {
+    if (manifest.name !== entry.name || manifest.version !== expectedVersion) {
       throw new Error(`${entry.name} installed with an unexpected identity.`)
     }
   }

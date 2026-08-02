@@ -1,6 +1,13 @@
 {
   "name": "@omnidraw/tenant-core",
   "version": "0.5.0",
+  "description": "Tenant context, authority boundaries, and scoped-key contracts for Omnidraw services.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/tenant-core"
+  },
   "publishConfig": {
     "@omnidraw:registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -17,7 +24,8 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "prepublishOnly": "bun run typecheck && bun run test",
+    "build": "bun run ../../scripts/build-typescript-package.ts",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   }

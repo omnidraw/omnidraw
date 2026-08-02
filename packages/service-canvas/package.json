@@ -1,12 +1,25 @@
 {
   "name": "@omnidraw/service-canvas",
-  "private": true,
+  "version": "0.5.0",
+  "description": "Portable authoritative canvas service with injected persistence and tenant fencing.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/service-canvas"
+  },
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "bun run ../../scripts/build-typescript-package.ts",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test",
     "typecheck": "bun x tsc -p tsconfig.json --noEmit"
   },

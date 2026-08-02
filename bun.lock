@@ -185,6 +185,7 @@
     },
     "packages/capsule-omnidraw": {
       "name": "@omnidraw/capsule-omnidraw",
+      "version": "0.5.0",
       "dependencies": {
         "@omnidraw/capsule": "catalog:",
         "@omnidraw/tenant-core": "workspace:*",
@@ -195,9 +196,9 @@
       "name": "@omnidraw/function-runtime",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/resource-runtime": "0.5.0",
-        "@omnidraw/tenant-core": "0.5.0",
-        "@omnidraw/widget-contract": "0.5.0",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
         "ajv": "^8.20.0",
       },
     },
@@ -214,7 +215,7 @@
       "name": "@omnidraw/resource-runtime",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/tenant-core": "0.5.0",
+        "@omnidraw/tenant-core": "workspace:*",
       },
       "devDependencies": {
         "@tursodatabase/database": "0.6.1",
@@ -231,8 +232,8 @@
       "name": "@omnidraw/sdk",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/capsule": "0.10.2",
-        "@omnidraw/widget-contract": "0.5.0",
+        "@omnidraw/capsule": "catalog:",
+        "@omnidraw/widget-contract": "workspace:*",
       },
       "devDependencies": {
         "typescript": "7.0.2",
@@ -261,6 +262,7 @@
     },
     "packages/service-canvas": {
       "name": "@omnidraw/service-canvas",
+      "version": "0.5.0",
       "dependencies": {
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/runtime": "workspace:*",
@@ -379,8 +381,8 @@
       "name": "@omnidraw/widget-contract",
       "version": "0.5.0",
       "dependencies": {
-        "@omnidraw/resource-runtime": "0.5.0",
-        "@omnidraw/tenant-core": "0.5.0",
+        "@omnidraw/resource-runtime": "workspace:*",
+        "@omnidraw/tenant-core": "workspace:*",
         "lucide-static": "^1.24.0",
         "zod": "4.4.3",
       },
@@ -1697,14 +1699,6 @@
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 
     "@omnidraw/capsule/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
-
-    "@typescript-eslint/parser/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@typescript-eslint/project-service/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@typescript-eslint/tsconfig-utils/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@typescript-eslint/typescript-estree/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "babel-plugin-jsx-dom-expressions/@babel/helper-module-imports": ["@babel/helper-module-imports@7.18.6", "", { "dependencies": { "@babel/types": "^7.18.6" } }, "sha512-0NFvs3VkuSYbFi1x2Vd6tKrywq+z/cLeYC/RJNFrIX/30Bf5aiGYbtvGXolEktzJH8o5E5KJ3tT+nkxuuZFVlA=="],
 

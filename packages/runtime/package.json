@@ -1,6 +1,13 @@
 {
   "name": "@omnidraw/runtime",
   "version": "0.5.0",
+  "description": "Plugin lifecycle, service registry, and runtime orchestration primitives for Omnidraw.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/runtime"
+  },
   "publishConfig": {
     "@omnidraw:registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -15,7 +22,8 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "prepublishOnly": "bun run typecheck && bun run test",
+    "build": "bun run ../../scripts/build-typescript-package.ts",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   }

@@ -410,7 +410,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [packages/capsule-omnidraw/LICENSE](packages/capsule-omnidraw/LICENSE) |  |
 | [packages/capsule-omnidraw/package.json](packages/capsule-omnidraw/package.json) |  |
+| [packages/capsule-omnidraw/README.md](packages/capsule-omnidraw/README.md) |  |
 | [packages/capsule-omnidraw/src/build/CONSTANTS.ts](packages/capsule-omnidraw/src/build/CONSTANTS.ts) |  |
 | [packages/capsule-omnidraw/src/build/fn.build-error.ts](packages/capsule-omnidraw/src/build/fn.build-error.ts) |  |
 | [packages/capsule-omnidraw/src/build/fn.error.ts](packages/capsule-omnidraw/src/build/fn.error.ts) |  |
@@ -438,6 +440,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/capsule-omnidraw/src/host/fn.error.ts](packages/capsule-omnidraw/src/host/fn.error.ts) |  |
 | [packages/capsule-omnidraw/src/host/index.ts](packages/capsule-omnidraw/src/host/index.ts) |  |
 | [packages/capsule-omnidraw/src/testkit/index.ts](packages/capsule-omnidraw/src/testkit/index.ts) |  |
+| [packages/capsule-omnidraw/tsconfig.build.json](packages/capsule-omnidraw/tsconfig.build.json) |  |
 | [packages/capsule-omnidraw/tsconfig.json](packages/capsule-omnidraw/tsconfig.json) |  |
 
 ## packages/function-runtime
@@ -468,6 +471,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts](packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts) | HMAC capability bridge between the function lease store and Resource Store. |
 | [packages/function-runtime/src/local/worker-types.ts](packages/function-runtime/src/local/worker-types.ts) | Private serializable protocol between the Bun host driver and one child. |
 | [packages/function-runtime/src/types.ts](packages/function-runtime/src/types.ts) | Public short-lived function definition, invocation, lease, sandbox, and usage types. |
+| [packages/function-runtime/tsconfig.build.json](packages/function-runtime/tsconfig.build.json) |  |
 | [packages/function-runtime/tsconfig.json](packages/function-runtime/tsconfig.json) |  |
 
 ## packages/orpc-client
@@ -505,6 +509,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/resource-runtime/src/local/SecretStoreResource.ts](packages/resource-runtime/src/local/SecretStoreResource.ts) |  |
 | [packages/resource-runtime/src/ResourceError.ts](packages/resource-runtime/src/ResourceError.ts) | Stable resource-domain errors and safe serialization at transport boundaries. |
 | [packages/resource-runtime/src/types.ts](packages/resource-runtime/src/types.ts) | Resource catalog, capability, data, and lifecycle types. |
+| [packages/resource-runtime/tsconfig.build.json](packages/resource-runtime/tsconfig.build.json) |  |
 | [packages/resource-runtime/tsconfig.json](packages/resource-runtime/tsconfig.json) |  |
 
 ## packages/runtime
@@ -516,6 +521,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/runtime/src/create-runtime.ts](packages/runtime/src/create-runtime.ts) |  |
 | [packages/runtime/src/index.ts](packages/runtime/src/index.ts) |  |
 | [packages/runtime/src/interface.ts](packages/runtime/src/interface.ts) |  |
+| [packages/runtime/tsconfig.build.json](packages/runtime/tsconfig.build.json) |  |
 | [packages/runtime/tsconfig.json](packages/runtime/tsconfig.json) |  |
 
 ## packages/sdk
@@ -640,11 +646,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [packages/service-canvas/LICENSE](packages/service-canvas/LICENSE) |  |
 | [packages/service-canvas/package.json](packages/service-canvas/package.json) |  |
+| [packages/service-canvas/README.md](packages/service-canvas/README.md) |  |
 | [packages/service-canvas/src/CanvasService.ts](packages/service-canvas/src/CanvasService.ts) |  |
 | [packages/service-canvas/src/fn.command.ts](packages/service-canvas/src/fn.command.ts) |  |
 | [packages/service-canvas/src/ICanvasService.ts](packages/service-canvas/src/ICanvasService.ts) |  |
 | [packages/service-canvas/src/index.ts](packages/service-canvas/src/index.ts) |  |
+| [packages/service-canvas/tsconfig.build.json](packages/service-canvas/tsconfig.build.json) |  |
 | [packages/service-canvas/tsconfig.json](packages/service-canvas/tsconfig.json) |  |
 
 ## packages/service-db
@@ -815,6 +824,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/tenant-core/src/index.ts](packages/tenant-core/src/index.ts) | Public tenant context contract surface. |
 | [packages/tenant-core/src/interface.ts](packages/tenant-core/src/interface.ts) | Narrow capabilities for deriving tenant context and resolving placement. |
 | [packages/tenant-core/src/types.ts](packages/tenant-core/src/types.ts) | Public tenant identity, scope, and placement value types. |
+| [packages/tenant-core/tsconfig.build.json](packages/tenant-core/tsconfig.build.json) |  |
 | [packages/tenant-core/tsconfig.json](packages/tenant-core/tsconfig.json) |  |
 
 ## packages/theme-contract
@@ -977,12 +987,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/runtime-descriptor-schema.ts](packages/widget-contract/src/runtime-descriptor-schema.ts) | Strict browser-safe decoder for trusted Capsule runtime metadata. |
 | [packages/widget-contract/src/tool-icon.ts](packages/widget-contract/src/tool-icon.ts) |  |
 | [packages/widget-contract/src/types.ts](packages/widget-contract/src/types.ts) | Browser-safe widget manifest, immutable artifact, publication, and retention types. |
+| [packages/widget-contract/tsconfig.build.json](packages/widget-contract/tsconfig.build.json) |  |
 | [packages/widget-contract/tsconfig.json](packages/widget-contract/tsconfig.json) |  |
 
 ## scripts
 
 | path | jsdocs |
 |---|---|
+| [scripts/build-typescript-package.ts](scripts/build-typescript-package.ts) | Build one plain TypeScript library and finalize its standalone dist package. |
 | [scripts/build.ts](scripts/build.ts) | Builds omnidraw distribution packages, embedded assets, checksums, and release manifests. |
 | [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev-frontend.ts](scripts/dev-frontend.ts) | Runs the frontend together with live canvas-kernel package builds. |
@@ -1009,8 +1021,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
+| [scripts/list-package-deployments.test.ts](scripts/list-package-deployments.test.ts) |  |
+| [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded Cangine scene reduction plus trace capture cost independently of total canvas size. |
 | [scripts/omnidraw.entitlements.plist](scripts/omnidraw.entitlements.plist) |  |
+| [scripts/prepare-package-dist.ts](scripts/prepare-package-dist.ts) | Finalize one workspace library's dist directory as a standalone npm package. |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built omnidraw platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
@@ -1029,3 +1044,4 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable gate for canvas widget identity, state, and Capsule hosting. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
+| [scripts/verify-package-dists.ts](scripts/verify-package-dists.ts) | Build, inspect, pack, install, and import every versioned workspace library. |

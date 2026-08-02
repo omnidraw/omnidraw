@@ -47,15 +47,25 @@ Versioned release packages awaiting their first public npm publication:
 - `@omnidraw/theme-contract`
 - `@omnidraw/canvas-contract`
 - `@omnidraw/service-theme`
+- `@omnidraw/service-canvas`
+- `@omnidraw/capsule-omnidraw`
 - `@omnidraw/canvas`
 
-`@omnidraw/service-canvas` and `@omnidraw/capsule-omnidraw` remain unversioned
-until their publishing work adds them to the release set.
+Only changes to a versioned package's public/runtime code under `src/` justify
+and require a version bump in that package's workspace `package.json`. Apply
+semantic versioning and regenerate the lockfile. Changes only to scripts,
+tests, documentation, package metadata, build configuration, export staging,
+or repository tooling must not bump the package version. If packaging-only
+work improves a version that is already public, keep the local version equal
+to the public version and wait for a future `src/` release; never republish it.
 
-Any change under `src/` in a versioned package requires a version bump in that
-package's `package.json`. Apply semantic versioning, update exact internal
-dependency pins in dependent release packages, and regenerate the lockfile.
-Never reuse or overwrite a version that has already been published.
+Workspace manifests may use `workspace:*` and `catalog:` for linked
+development. `bun run build` must generate the standalone public package in
+`dist/`; its generated `package.json` must resolve every internal dependency to
+the exact package version and every catalog dependency to its public registry
+range. Publish only that staged directory with `npm publish ./dist`. Never
+publish the workspace package root, and never reuse or overwrite a version
+that has already been published.
 
 We use @tasks/BASED.md to manage our work.
 When you are tasks to generate new task plans. Think if a mockup img is useful.

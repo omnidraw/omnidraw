@@ -1,6 +1,13 @@
 {
   "name": "@omnidraw/sdk",
   "version": "0.5.0",
+  "description": "Public widget and function-client authoring SDK for Omnidraw.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "directory": "packages/sdk"
+  },
   "publishConfig": {
     "@omnidraw:registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -28,14 +35,14 @@
     "widget"
   ],
   "scripts": {
-    "build": "bun scripts/build.ts",
+    "build": "bun scripts/build.ts && bun run ../../scripts/prepare-package-dist.ts",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test": "bun test --pass-with-no-tests",
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.10.2",
-    "@omnidraw/widget-contract": "0.5.0"
+    "@omnidraw/capsule": "catalog:",
+    "@omnidraw/widget-contract": "workspace:*"
   },
   "devDependencies": {
     "typescript": "7.0.2"
