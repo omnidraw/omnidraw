@@ -57,7 +57,11 @@ const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
 
 type TOperation =
   | Readonly<{ tool: string; args: unknown; expect?: unknown }>
-  | Readonly<{ lab: 'preview'; args: unknown; expect?: unknown }>;
+  | Readonly<{
+      lab: 'preview' | 'inspect-preview-owner' | 'rebuild-preview-owner';
+      args: unknown;
+      expect?: unknown;
+    }>;
 
 type TCommand = Readonly<{
   home: string;
@@ -79,6 +83,8 @@ function usage(): string {
     '  bun run lab -- [--home <path>] [--chat-id <id>] create <name>',
     '  bun run lab -- [--home <path>] [--chat-id <id>] validate <name>',
     '  bun run lab -- [--home <path>] [--chat-id <id>] preview <name>',
+    '  bun run lab -- [--home <path>] [--chat-id <id>] inspect-preview-owner <draft-id>',
+    '  bun run lab -- [--home <path>] [--chat-id <id>] rebuild-preview-owner <draft-id>',
     '  bun run lab -- [--home <path>] [--chat-id <id>] list',
     '  bun run lab -- --home <isolated-path> [--chat-id <id>] session < operations.jsonl',
     '',
@@ -86,6 +92,8 @@ function usage(): string {
     '  {"tool":"od_widget_create","args":{"name":"Counter"}}',
     '  {"tool":"read","args":{"path":"widgets/Counter/ui/main.ts"}}',
     '  {"lab":"preview","args":{"name":"Counter"}}',
+    '  {"lab":"inspect-preview-owner","args":{"draftId":"..."}}',
+    '  {"lab":"rebuild-preview-owner","args":{"draftId":"..."}}',
   ].join('\n');
 }
 
@@ -139,6 +147,26 @@ function parseCommand(argv: readonly string[]): TCommand {
       chatId,
       session: false,
       operation: { lab: 'preview', args: { name } },
+    };
+  }
+  if (command === 'inspect-preview-owner') {
+    const draftId = values.join(' ').trim();
+    if (!draftId) throw new Error('inspect-preview-owner requires a draft ID.');
+    return {
+      home,
+      chatId,
+      session: false,
+      operation: { lab: 'inspect-preview-owner', args: { draftId } },
+    };
+  }
+  if (command === 'rebuild-preview-owner') {
+    const draftId = values.join(' ').trim();
+    if (!draftId) throw new Error('rebuild-preview-owner requires a draft ID.');
+    return {
+      home,
+      chatId,
+      session: false,
+      operation: { lab: 'rebuild-preview-owner', args: { draftId } },
     };
   }
   if (command === 'list') {
@@ -223,9 +251,16 @@ function operationFromJson(line: string): TOperation {
       ...(expect === undefined ? {} : { expect }),
     };
   }
-  if (record.lab === 'preview' && !('tool' in record)) {
+  if (
+    (
+      record.lab === 'preview'
+      || record.lab === 'inspect-preview-owner'
+      || record.lab === 'rebuild-preview-owner'
+    )
+    && !('tool' in record)
+  ) {
     return {
-      lab: 'preview',
+      lab: record.lab,
       args: record.args ?? {},
       ...(expect === undefined ? {} : { expect }),
     };
@@ -431,7 +466,7 @@ async function run(): Promise<void> {
           details: result.details ?? null,
           ...boundedResultText(result),
         };
-      } else {
+      } else if (operation.lab === 'preview') {
         const args = operation.args as { name?: unknown };
         if (typeof args.name !== 'string' || args.name.trim().length === 0) {
           throw new Error('Preview requires a widget name.');
@@ -465,6 +500,112 @@ async function run(): Promise<void> {
               message: preview.message,
               diagnostics: preview.diagnostics,
             };
+      } else if (operation.lab === 'inspect-preview-owner') {
+        const args = operation.args as { draftId?: unknown };
+        if (typeof args.draftId !== 'string' || args.draftId.trim().length === 0) {
+          throw new Error('Preview owner inspection requires a draft ID.');
+        }
+        const durableDraft = await owner.authoringStore.getDraft(
+          tenant,
+          args.draftId,
+        );
+        const durableChat = durableDraft === null
+          ? null
+          : await owner.authoringStore.getChat(tenant, durableDraft.chatId);
+        const owners = durableDraft === null
+          ? []
+          : await owner.authoringStore.listPreviewOwners(
+              tenant,
+              { draftId: durableDraft.id, includeClosed: true },
+            );
+        record = {
+          lab: 'inspect-preview-owner',
+          isError: durableDraft === null,
+          requestedExternalChatId: command.chatId,
+          draft: durableDraft === null
+            ? null
+            : {
+                id: durableDraft.id,
+                chatId: durableDraft.chatId,
+                sourceDigestSha256: durableDraft.sourceDigestSha256,
+                committedMutationId: durableDraft.committedMutationId,
+                buildSequence: durableDraft.buildSequence,
+                status: durableDraft.status,
+              },
+          chat: durableChat === null
+            ? null
+            : {
+                id: durableChat.id,
+                externalSessionKey: durableChat.externalSessionKey,
+                canvasId: durableChat.canvasId,
+                externalSessionMatches:
+                  durableChat.externalSessionKey === command.chatId,
+              },
+          owners: owners.map((previewOwner) => ({
+            id: previewOwner.id,
+            canvasId: previewOwner.canvasId,
+            frameNodeId: previewOwner.frameNodeId,
+            draftId: previewOwner.draftId,
+            originChatId: previewOwner.originChatId,
+            role: previewOwner.role,
+            status: previewOwner.status,
+            sourceDigestSha256: previewOwner.sourceDigestSha256,
+            committedMutationId: previewOwner.committedMutationId,
+            activeRevisionId: previewOwner.activeRevisionId,
+            pendingBuildId: previewOwner.pendingBuildId,
+            closedAtMs: previewOwner.closedAtMs,
+            durableChatMatches: previewOwner.originChatId === durableDraft?.chatId,
+            externalChatMatches: previewOwner.originChatId === command.chatId,
+          })),
+        };
+      } else {
+        const args = operation.args as { draftId?: unknown };
+        if (typeof args.draftId !== 'string' || args.draftId.trim().length === 0) {
+          throw new Error('Preview owner rebuild requires a draft ID.');
+        }
+        const durableDraft = await owner.authoringStore.getDraft(
+          tenant,
+          args.draftId,
+        );
+        if (durableDraft === null || durableDraft.status === 'discarded') {
+          throw new Error(`Active widget draft '${args.draftId}' was not found.`);
+        }
+        const candidates = (await owner.authoringStore.listPreviewOwners(
+          tenant,
+          { draftId: durableDraft.id },
+        )).filter((previewOwner) => (
+          previewOwner.status !== 'closed'
+          && previewOwner.role === 'companion'
+          && (tenant.canvasId === undefined || previewOwner.canvasId === tenant.canvasId)
+        ));
+        if (candidates.length !== 1) {
+          throw new Error(
+            `Expected exactly one open companion Preview owner; found ${candidates.length}.`,
+          );
+        }
+        const previewOwner = candidates[0]!;
+        const preview = await draftController.buildPreview(durableDraft.id, {
+          previewId: previewOwner.id,
+          canvasId: previewOwner.canvasId,
+          frameNodeId: previewOwner.frameNodeId,
+        });
+        record = {
+          lab: 'rebuild-preview-owner',
+          isError: !preview.ready,
+          preview: preview.ready
+            ? {
+                ready: true,
+                draftId: preview.draftId,
+                previewId: preview.previewId,
+                previewRevisionId: preview.previewRevisionId,
+                revision: preview.revision,
+                committedMutationId: preview.committedMutationId,
+                buildSequence: preview.buildSequence,
+                bindingRevision: preview.bindingRevision,
+                diagnostics: preview.diagnostics,
+              }
+            : preview,
+        };
       }
       const delta = {
         guestConstructions: telemetry.guestConstructions - before.guestConstructions,
@@ -472,7 +613,9 @@ async function run(): Promise<void> {
         dependencyInstalls: telemetry.dependencyInstalls - before.dependencyInstalls,
       };
       record.durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
-      const buildRequested = 'lab' in operation || operation.tool === 'od_widget_validate';
+      const buildRequested = 'lab' in operation
+        ? operation.lab === 'preview' || operation.lab === 'rebuild-preview-owner'
+        : operation.tool === 'od_widget_validate';
       record.build = {
         disposition: !buildRequested
           ? 'not-requested'

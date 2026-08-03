@@ -755,6 +755,30 @@ export type TWidgetPreviewPublicationIdentity = Readonly<{
   buildPolicyId: string;
 }>;
 
+/** Stable caller-owned scope used to replay a committed Preview publication. */
+export type TWidgetPreviewPublicationReplayRequest = Readonly<{
+  idempotencyKey: string;
+  draftId: string;
+  previewId: TWidgetPreviewId;
+  canvasId: string;
+  frameNodeId: string;
+}>;
+
+export type TWidgetPreviewPublicationReplayResult =
+  | Readonly<{ status: 'conflict' }>
+  | Readonly<{
+      status: 'replayed';
+      draftId: string;
+      previewId: TWidgetPreviewId;
+      canvasId: string;
+      frameNodeId: string;
+      definitionId: TWidgetDefinitionId;
+      publishedRevisionId: TWidgetRevisionId;
+      sourceDigestSha256: TWidgetArtifactDigest;
+      manifest: TWidgetManifestV3;
+      uiRuntime: TWidgetCapsuleRuntimeDescriptor;
+    }>;
+
 export type TWidgetPublicationCommitInput = Readonly<{
   expectedActiveRevisionId: TWidgetRevisionId | null;
   revision: TWidgetPublicationRevisionCreate;

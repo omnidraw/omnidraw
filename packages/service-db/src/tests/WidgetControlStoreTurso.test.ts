@@ -809,6 +809,25 @@ describe('WidgetControlStoreTurso', () => {
       revision: { id: publishedRevisionId },
     });
 
+    const stableReplayRequest = {
+      idempotencyKey: common.publicationIdempotencyKey,
+      draftId,
+      previewId,
+      canvasId: CANVAS_A,
+      frameNodeId: 'frame-publication-idempotency',
+    } as const;
+    await expect(store.replayPreviewPublication(TENANT_A, stableReplayRequest))
+      .resolves.toMatchObject({
+        status: 'replayed',
+        definitionId: DEFINITION_A,
+        publishedRevisionId,
+        sourceDigestSha256: common.sourceDigestSha256,
+      });
+    await expect(store.replayPreviewPublication(TENANT_A, {
+      ...stableReplayRequest,
+      frameNodeId: 'another-frame',
+    })).resolves.toEqual({ status: 'conflict' });
+
     await expect(authoringStore.closePreviewOwner(TENANT_A, {
       previewId,
       frameNodeId: 'frame-publication-idempotency',
@@ -818,12 +837,30 @@ describe('WidgetControlStoreTurso', () => {
       SELECT count(*) AS count
       FROM widget_preview_publication_idempotency
       WHERE org_id = ? AND account_id = ?
-    `)).get(TENANT_A.orgId, TENANT_A.accountId)).toMatchObject({ count: 0 });
+    `)).get(TENANT_A.orgId, TENANT_A.accountId)).toMatchObject({ count: 1 });
+    await expect(store.replayPreviewPublication(TENANT_A, stableReplayRequest))
+      .resolves.toMatchObject({
+        status: 'replayed',
+        publishedRevisionId,
+      });
     expect((await store.pruneInactiveRevisions(TENANT_A, {
       nowMs: 61,
       inactiveBeforeMs: 60,
       limit: 100,
+    })).prunedRevisionIds).toEqual([]);
+    const afterIdempotencyRetentionMs = 24 * 60 * 60 * 1_000 + 56;
+    expect((await store.pruneInactiveRevisions(TENANT_A, {
+      nowMs: afterIdempotencyRetentionMs,
+      inactiveBeforeMs: afterIdempotencyRetentionMs,
+      limit: 100,
     })).prunedRevisionIds).toEqual([publishedRevisionId]);
+    await expect(store.replayPreviewPublication(TENANT_A, stableReplayRequest))
+      .resolves.toBeNull();
+    expect(await (await service.db.prepare(`
+      SELECT count(*) AS count
+      FROM widget_preview_publication_idempotency
+      WHERE org_id = ? AND account_id = ?
+    `)).get(TENANT_A.orgId, TENANT_A.accountId)).toMatchObject({ count: 0 });
   });
 
   test('rolls back every publication write on CAS, binding, identity, and artifact-scope failures', async () => {

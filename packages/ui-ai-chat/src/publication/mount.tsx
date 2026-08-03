@@ -1,10 +1,11 @@
 import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import type { TWidgetTitleBarPortal } from "../widget/interface"
+import { fnPublicationPhaseLabel } from "./fn.publication-contract"
 import { WidgetPublicationDialog } from "./WidgetPublicationDialog"
 import type {
   TWidgetPublicationApi,
-  TWidgetPublicationPreviewSelection,
+  TWidgetPublicationTarget,
   TWidgetPublicationState,
   TWidgetPublicationSuccess,
 } from "./interface"
@@ -15,11 +16,9 @@ export type TMountWidgetPublicationDialogArgs = {
   draftId: string
   draftName: string
   createIdempotencyKey: () => string
-  getPinnedRevision: () => string
-  getPreviewSelection: () => TWidgetPublicationPreviewSelection | null
+  getPreviewSelection: () => TWidgetPublicationTarget | null
   titleBar: TWidgetTitleBarPortal
   onPublished: (success: TWidgetPublicationSuccess) => void | Promise<void>
-  onRequestPreviewRefresh: () => void | Promise<void>
 }
 
 export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialogArgs) {
@@ -31,12 +30,12 @@ export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialog
 
   const syncTitleAction = (state: TWidgetPublicationState) => {
     const label = state.publishing
-      ? `${state.actionLabel}ing…`
+      ? fnPublicationPhaseLabel(state.phase)
       : state.loading
         ? "Checking publication…"
         : state.previewSelected
           ? state.actionLabel
-          : "Preview not ready"
+          : "Preview unavailable"
     args.titleBar.setActionState("publish", {
       disabled: state.open || state.loading || state.publishing || !state.previewSelected,
       label,
@@ -48,6 +47,7 @@ export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialog
     publishing: false,
     previewAvailable: false,
     previewSelected: false,
+    phase: "idle",
     actionLabel: "Publish",
   })
 
@@ -60,7 +60,6 @@ export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialog
         draftId={args.draftId}
         draftName={args.draftName}
         createIdempotencyKey={args.createIdempotencyKey}
-        getPinnedRevision={args.getPinnedRevision}
         resolvePreviewSelections={() => {
           const selection = args.getPreviewSelection()
           return selection ? [selection] : []
@@ -69,7 +68,6 @@ export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialog
         onOpenChange={setDialogOpen}
         onStateChange={syncTitleAction}
         onPublished={args.onPublished}
-        onRequestPreviewRefresh={args.onRequestPreviewRefresh}
       />
     )
   }, host)

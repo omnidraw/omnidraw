@@ -293,6 +293,10 @@ function controlStoreHarness(overrides: Partial<IWidgetControlStore> = {}): Read
       calls.push('commitPublication');
       return { status: 'conflict', currentActiveRevisionId: null };
     },
+    async replayPreviewPublication() {
+      calls.push('replayPreviewPublication');
+      return null;
+    },
     async rollbackPublication() {
       calls.push('rollbackPublication');
       return { status: 'conflict', currentActiveRevisionId: null };

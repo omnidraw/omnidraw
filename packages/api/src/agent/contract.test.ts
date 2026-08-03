@@ -418,34 +418,29 @@ describe('agent authoring contract', () => {
     }).success).toBe(false);
   });
 
-  test('requires exact frame-owned Preview identity for publication requests', () => {
+  test('requires a stable frame-owned target for publication requests', () => {
     const request = {
       idempotencyKey: 'publish-mounted-preview',
       draftId,
-      expectedRevision: revision,
       previewId: '00000000-0000-4000-8000-000000000071',
-      previewRevisionId: '00000000-0000-4000-8000-000000000072',
       canvasId: 'canvas-published-preview',
       frameNodeId: 'frame-published-preview',
-      expectedBindingRevision: 2,
-      expectedBindingPlanDigestSha256: 'd'.repeat(64),
     };
     expect(ZAgentWidgetPublishInput.safeParse(request).success).toBe(true);
     expect(ZAgentWidgetPublishInput.safeParse({
       draftId,
+    }).success).toBe(false);
+    expect(ZAgentWidgetPublishInput.safeParse({
+      ...request,
+      previewId: undefined,
+    }).success).toBe(false);
+    expect(ZAgentWidgetPublishInput.safeParse({
+      ...request,
       expectedRevision: revision,
     }).success).toBe(false);
     expect(ZAgentWidgetPublishInput.safeParse({
       ...request,
-      previewRevisionId: undefined,
-    }).success).toBe(false);
-    expect(ZAgentWidgetPublishInput.safeParse({
-      ...request,
-      expectedBindingPlanDigestSha256: undefined,
-    }).success).toBe(false);
-    expect(ZAgentWidgetPublishInput.safeParse({
-      ...request,
-      expectedBindingPlanDigestSha256: 'not-a-digest',
+      previewRevisionId: 'removed-frozen-field',
     }).success).toBe(false);
   });
 });

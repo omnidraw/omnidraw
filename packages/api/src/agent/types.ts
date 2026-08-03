@@ -131,16 +131,11 @@ export type TAgentApiCapability = {
   ): Promise<TAgentOutputs['widgetPreview']['owner']['close']>;
   publishWidgetDraft(
     draftId: TAgentInputs['widgetPublish']['publish']['draftId'],
-    expectedRevision: TAgentInputs['widgetPublish']['publish']['expectedRevision'],
-    preview: Readonly<{
+    target: Readonly<{
       idempotencyKey: TAgentInputs['widgetPublish']['publish']['idempotencyKey'];
       previewId: TAgentInputs['widgetPublish']['publish']['previewId'];
-      previewRevisionId: TAgentInputs['widgetPublish']['publish']['previewRevisionId'];
       canvasId: TAgentInputs['widgetPublish']['publish']['canvasId'];
       frameNodeId: TAgentInputs['widgetPublish']['publish']['frameNodeId'];
-      expectedBindingRevision: TAgentInputs['widgetPublish']['publish']['expectedBindingRevision'];
-      expectedBindingPlanDigestSha256:
-        TAgentInputs['widgetPublish']['publish']['expectedBindingPlanDigestSha256'];
     }>,
   ): Promise<TAgentOutputs['widgetPublish']['publish']>;
 

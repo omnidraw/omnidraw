@@ -2,40 +2,25 @@ import * as AlertDialog from "@kobalte/core/alert-dialog"
 import { Button } from "@kobalte/core/button"
 import type { Component } from "solid-js"
 import { createSignal } from "solid-js"
+import { fnPublicationPhaseLabel } from "./fn.publication-contract"
 import type {
-  TPreviewPublicationSelection,
-} from "../canvas-extension/PreviewPortalRuntime"
+  TWidgetPublicationPhase,
+  TWidgetPublicationTarget,
+} from "./interface"
 import styles from "./WidgetPublicationDialog.module.css"
 
 export type TPreviewPublicationConfirmationDialogProps = Readonly<{
   widgetName: string
-  selection: TPreviewPublicationSelection
-  currentSelection(): TPreviewPublicationSelection | null
-  confirm(
-    selection: TPreviewPublicationSelection,
-  ): Promise<boolean>
+  target: TWidgetPublicationTarget
+  confirm(): Promise<boolean>
   onOpenChange(open: boolean): void
 }>
-
-function isSameSelection(
-  left: TPreviewPublicationSelection,
-  right: TPreviewPublicationSelection,
-): boolean {
-  return left.draftId === right.draftId
-    && left.expectedRevision === right.expectedRevision
-    && left.previewId === right.previewId
-    && left.previewRevisionId === right.previewRevisionId
-    && left.expectedBindingRevision === right.expectedBindingRevision
-    && left.expectedBindingPlanDigestSha256
-      === right.expectedBindingPlanDigestSha256
-    && left.canvasId === right.canvasId
-    && left.frameNodeId === right.frameNodeId
-    && left.buildSequence === right.buildSequence
-}
 
 export const PreviewPublicationConfirmationDialog:
 Component<TPreviewPublicationConfirmationDialogProps> = (props) => {
   const [publishing, setPublishing] = createSignal(false)
+  const [publicationPhase, setPublicationPhase] =
+    createSignal<TWidgetPublicationPhase>("idle")
   const [issue, setIssue] = createSignal("")
 
   const close = () => {
@@ -44,25 +29,22 @@ Component<TPreviewPublicationConfirmationDialogProps> = (props) => {
 
   const confirm = async () => {
     if (publishing()) return
-    const current = props.currentSelection()
-    if (current === null || !isSameSelection(props.selection, current)) {
-      setIssue(
-        "The Preview changed or is no longer ready. Close this confirmation, review the ready frame, and try again.",
-      )
-      return
-    }
     setPublishing(true)
+    setPublicationPhase("building")
     setIssue("")
     try {
-      const published = await props.confirm(props.selection)
+      const published = await props.confirm()
       if (!published) {
+        setPublicationPhase("failed")
         setIssue(
-          "Publication was rejected because this exact Preview is no longer ready or the server could not publish it.",
+          "The current draft could not be published. Review the Preview status and diagnostics, then try again.",
         )
         return
       }
+      setPublicationPhase("success")
       props.onOpenChange(false)
     } catch (error) {
+      setPublicationPhase("failed")
       setIssue(error instanceof Error ? error.message : String(error))
     } finally {
       setPublishing(false)
@@ -78,34 +60,22 @@ Component<TPreviewPublicationConfirmationDialogProps> = (props) => {
             Publish {props.widgetName}?
           </AlertDialog.Title>
           <AlertDialog.Description class={styles.description}>
-            Confirm the exact completed build currently shown in this Preview
-            frame. Publication will retain this artifact and binding revision.
+            Publish the current draft through this Preview frame. Omnidraw will
+            reuse its ready build or build the latest source before publishing.
           </AlertDialog.Description>
 
           <dl class={styles.previewDetails}>
-            <dt>Draft digest</dt>
-            <dd><code>{props.selection.expectedRevision.slice(0, 12)}</code></dd>
-            <dt>Build</dt>
-            <dd>#{props.selection.buildSequence} complete</dd>
-            <dt>Preview revision</dt>
-            <dd><code>{props.selection.previewRevisionId.slice(0, 12)}</code></dd>
-            <dt>Binding revision</dt>
-            <dd>{props.selection.expectedBindingRevision}</dd>
-            <dt>Binding plan</dt>
-            <dd>
-              <code>
-                {props.selection.expectedBindingPlanDigestSha256.slice(0, 12)}
-              </code>
-            </dd>
+            <dt>Source</dt>
+            <dd>Current source at Publish time</dd>
             <dt>Canvas</dt>
-            <dd><code>{props.selection.canvasId}</code></dd>
+            <dd><code>{props.target.canvasId}</code></dd>
             <dt>Frame</dt>
-            <dd><code>{props.selection.frameNodeId}</code></dd>
+            <dd><code>{props.target.frameNodeId}</code></dd>
           </dl>
 
           {issue() && (
             <div class={styles.status} data-tone="error" role="alert">
-              <strong>Preview changed before publication</strong>
+              <strong>Could not publish current draft</strong>
               <p>{issue()}</p>
             </div>
           )}
@@ -123,7 +93,9 @@ Component<TPreviewPublicationConfirmationDialogProps> = (props) => {
               aria-busy={publishing()}
               onClick={confirm}
             >
-              {publishing() ? "Publishing…" : "Publish"}
+              {publishing()
+                ? fnPublicationPhaseLabel(publicationPhase())
+                : fnPublicationPhaseLabel("idle")}
             </Button>
           </div>
         </AlertDialog.Content>

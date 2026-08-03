@@ -97,6 +97,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
 | [apps/cli/src/services/FunctionServicePool.ts](apps/cli/src/services/FunctionServicePool.ts) |  |
 | [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
+| [apps/cli/src/services/LocalWidgetPackageRegistrySync.ts](apps/cli/src/services/LocalWidgetPackageRegistrySync.ts) |  |
 | [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
 | [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
@@ -1027,6 +1028,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected omnidraw binary release on the local machine. |
 | [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
+| [scripts/local-registry.test.mjs](scripts/local-registry.test.mjs) | Verifies dependency-ordered local publication for generated widget packages. |
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |

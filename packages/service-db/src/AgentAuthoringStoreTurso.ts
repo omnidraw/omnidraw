@@ -820,11 +820,6 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         tenant.accountId,
         request.draftId,
       );
-      await (await this.database.prepare(`
-        DELETE FROM widget_preview_publication_idempotency
-        WHERE org_id = ? AND account_id = ?
-          AND json_extract(publication_identity_json, '$.draftId') = ?
-      `)).run(tenant.orgId, tenant.accountId, request.draftId);
       await this.#deleteExpiredPreviewMountLeases(tenant.orgId, request.nowMs);
       await this.#prunePreviewRevisions(tenant.orgId, request.nowMs);
       const draft = await this.getDraft(tenant, request.draftId);
@@ -1451,11 +1446,6 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
           request.previewId,
           request.frameNodeId,
         );
-        await (await this.database.prepare(`
-          DELETE FROM widget_preview_publication_idempotency
-          WHERE org_id = ? AND account_id = ?
-            AND json_extract(publication_identity_json, '$.previewId') = ?
-        `)).run(tenant.orgId, tenant.accountId, request.previewId);
         await this.#deleteExpiredPreviewMountLeases(tenant.orgId, request.nowMs);
         await this.#prunePreviewRevisions(
           tenant.orgId,
@@ -1486,11 +1476,6 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         request.frameNodeId,
       );
       if (result.changes === 1) {
-        await (await this.database.prepare(`
-          DELETE FROM widget_preview_publication_idempotency
-          WHERE org_id = ? AND account_id = ?
-            AND json_extract(publication_identity_json, '$.previewId') = ?
-        `)).run(tenant.orgId, tenant.accountId, request.previewId);
         await this.#deleteExpiredPreviewMountLeases(tenant.orgId, request.nowMs);
         await this.#prunePreviewRevisions(
           tenant.orgId,

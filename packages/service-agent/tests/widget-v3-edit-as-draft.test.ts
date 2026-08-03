@@ -41,15 +41,11 @@ describe('published v3 Edit as draft', () => {
       || originalPreview.previewRevisionId === null
       || originalPreview.bindingRevision === null
     ) throw new Error('Expected a ready frame-owned Preview before publication.');
-    const published = await controller.publish(original.draftId, original.revision, {
+    const published = await controller.publish(original.draftId, {
       idempotencyKey: 'publish-original-preview',
       previewId: originalOwner.id,
-      previewRevisionId: originalPreview.previewRevisionId,
       canvasId: originalOwner.canvasId,
       frameNodeId: originalOwner.frameNodeId,
-      expectedBindingRevision: originalPreview.bindingRevision,
-      expectedBindingPlanDigestSha256:
-        originalPreview.bindingPlanDigestSha256!,
     });
     expect(published.published).toBe(true);
     if (!published.published) return;
@@ -150,15 +146,11 @@ describe('published v3 Edit as draft', () => {
       || republishPreview.previewRevisionId === null
       || republishPreview.bindingRevision === null
     ) throw new Error('Expected a ready frame-owned Preview before republication.');
-    expect(await service.publishWidgetDraft(durable.id, source.sourceDigestSha256, {
+    expect(await service.publishWidgetDraft(durable.id, {
       idempotencyKey: 'republish-reviewed-preview',
       previewId: republishOwner.id,
-      previewRevisionId: republishPreview.previewRevisionId,
       canvasId: republishOwner.canvasId,
       frameNodeId: republishOwner.frameNodeId,
-      expectedBindingRevision: republishPreview.bindingRevision,
-      expectedBindingPlanDigestSha256:
-        republishPreview.bindingPlanDigestSha256!,
     })).toMatchObject({
       published: true,
       draftId: durable.id,

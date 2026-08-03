@@ -116,6 +116,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
               template: selectedTemplate,
               server: server === true,
             });
+            await args.workspace.prepareNpmDependencies();
             const installed = await (args.npmInstall
               ? args.npmInstall(cwd)
               : txTryNpmInstall({ access, execFile, join }, {

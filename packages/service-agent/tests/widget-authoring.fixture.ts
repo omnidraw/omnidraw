@@ -567,6 +567,17 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
   readonly previewResults = new Map<string, TWidgetPreviewBuildResult>();
   readonly activePreviewRevisions = new Map<string, string>();
   readonly previewSnapshots = new Map<string, TWidgetSourceSnapshot>();
+  readonly publicationReplays = new Map<string, Readonly<{
+    draftId: string;
+    previewId: string;
+    canvasId: string;
+    frameNodeId: string;
+    definitionId: string;
+    publishedRevisionId: string;
+    sourceDigestSha256: string;
+    manifest: TWidgetManifestV3;
+    uiRuntime: TWidgetCapsuleRuntimeDescriptor;
+  }>>();
   readonly closePreviewWorkspaceRequests: string[] = [];
   publishCount = 0;
   validateBuildCount = 0;
@@ -677,6 +688,19 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       this.previewResults.get(`${request.previewId}:${request.revisionId}`) ?? null
     );
 
+  replayPreviewPublication:
+    TWidgetAuthoringCapability['replayPreviewPublication'] = async (_tenant, request) => {
+      const replay = this.publicationReplays.get(request.idempotencyKey);
+      if (replay === undefined) return null;
+      if (
+        replay.draftId !== request.draftId
+        || replay.previewId !== request.previewId
+        || replay.canvasId !== request.canvasId
+        || replay.frameNodeId !== request.frameNodeId
+      ) return { status: 'conflict' };
+      return { status: 'replayed', ...replay };
+    };
+
   publishPreview: TWidgetAuthoringCapability['publishPreview'] = async (tenant, request) => {
     const key = `${request.previewId}:${request.previewRevisionId}`;
     const preview = this.previewResults.get(key);
@@ -695,7 +719,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
         'The selected Preview is no longer the current reviewed revision.',
       ), { code: 'WIDGET_PREVIEW_PROMOTION_STALE' });
     }
-    return this.publish(tenant, {
+    const result = await this.publish(tenant, {
       definitionId: request.definitionId,
       expectedActiveRevisionId: request.expectedActiveRevisionId,
       revisionId: request.revisionId,
@@ -707,6 +731,38 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       buildPolicyId: preview.buildPolicyId,
       nowMs: request.nowMs,
     });
+    if (
+      result.status === 'committed'
+      && this.previewOwnerStore instanceof MemoryAuthoringStore
+    ) {
+      const owner = this.previewOwnerStore.previewOwners.get(request.previewId);
+      if (owner !== undefined) {
+        this.previewOwnerStore.previewOwners.set(owner.id, {
+          ...owner,
+          publishedPreviewRevisionId: request.previewRevisionId,
+          publishedBindingRevision: request.expectedBindingRevision,
+          publishedBindingPlanDigestSha256:
+            request.expectedBindingPlanDigestSha256,
+          publishedWidgetRevisionId: result.revision.id,
+          publishedIdempotencyKey: request.idempotencyKey,
+          updatedAtMs: request.nowMs,
+        });
+      }
+    }
+    if (result.status === 'committed') {
+      this.publicationReplays.set(request.idempotencyKey, {
+        draftId: preview.draftId,
+        previewId: request.previewId,
+        canvasId: request.canvasId,
+        frameNodeId: request.frameNodeId,
+        definitionId: result.revision.definitionId,
+        publishedRevisionId: result.revision.id,
+        sourceDigestSha256: snapshot.digestSha256,
+        manifest: result.revision.manifest,
+        uiRuntime: result.revision.uiRuntime,
+      });
+    }
+    return result;
   };
 
   closePreviewWorkspace:

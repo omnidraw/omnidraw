@@ -944,7 +944,7 @@ describe('PreviewPortalRuntime', () => {
     await runtime.destroy();
   });
 
-  test('publishes only while the mounted revision matches the exact ordered draft fence', async () => {
+  test('keeps the stable publication target available while draft fences advance', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const build = vi.fn()
@@ -995,8 +995,14 @@ describe('PreviewPortalRuntime', () => {
       buildSequence: 1,
     });
     runtime.invalidateDraftFence();
-    expect(runtime.controlState().publishable).toBe(false);
-    expect(runtime.publicationSelection()).toBeNull();
+    expect(runtime.controlState().publishable).toBe(true);
+    expect(runtime.publicationTarget()).toEqual({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ONE,
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      label: `Canvas ${CANVAS_ID} · frame ${FRAME_ID}`,
+    });
 
     runtime.reportDraftFence({
       draftId: DRAFT_ID,
@@ -1005,7 +1011,7 @@ describe('PreviewPortalRuntime', () => {
       committedMutationId: `mutation-${REVISION_TWO}`,
       buildSequence: 1,
     });
-    expect(runtime.controlState().publishable).toBe(false);
+    expect(runtime.controlState().publishable).toBe(true);
 
     runtime.reportDraftFence({
       draftId: DRAFT_ID,
@@ -1023,7 +1029,7 @@ describe('PreviewPortalRuntime', () => {
       committedMutationId: `mutation-${REVISION_TWO}`,
       buildSequence: 2,
     });
-    expect(runtime.controlState().publishable).toBe(false);
+    expect(runtime.controlState().publishable).toBe(true);
     runtime.reportDraftFence({
       draftId: DRAFT_ID,
       revision: REVISION_ONE,
@@ -1031,14 +1037,54 @@ describe('PreviewPortalRuntime', () => {
       committedMutationId: `mutation-${REVISION_ONE}`,
       buildSequence: 1,
     });
-    expect(runtime.controlState().publishable).toBe(false);
+    expect(runtime.controlState().publishable).toBe(true);
 
     await flushSwap(animation, runtime.refresh());
-    expect(runtime.publicationSelection()).toMatchObject({
-      expectedRevision: REVISION_TWO,
-      buildSequence: 2,
-    });
+    expect(runtime.publicationTarget()?.draftId).toBe(DRAFT_ID);
     expect(runtime.controlState().publishable).toBe(true);
+    await runtime.destroy();
+  });
+
+  test('does not start publication when the Preview owner cannot be authorized', async () => {
+    const root = document.createElement('div');
+    const preview = runtimeApi(vi.fn(), PREVIEW_ONE);
+    preview.ensure.mockResolvedValueOnce([
+      { message: 'Preview owner is unavailable.' },
+      undefined,
+    ]);
+    const publish = vi.fn();
+    const onError = vi.fn();
+    const runtime = createPreviewPortalRuntime({
+      root,
+      payload: {
+        previewId: PREVIEW_ONE,
+        draftId: DRAFT_ID,
+        originChatId: 'chat-1',
+        role: 'companion',
+      },
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+      api: preview.api,
+      publishApi: publishApi(publish),
+      codec: {
+        decodeBase64: (value) => Buffer.from(value, 'base64'),
+        digestSha256: async (value) => digest(value),
+      },
+      mount: { mount: vi.fn(), destroy: vi.fn() },
+      runtime: previewPopulationRuntime(),
+      requestFrame: vi.fn(),
+      cancelFrame: vi.fn(),
+      nowMs: () => 1,
+      functions: functionHost(),
+      onError,
+    });
+
+    await expect(runtime.publish('ownerless-publication')).resolves.toBe(false);
+    expect(publish).not.toHaveBeenCalled();
+    expect(root.textContent).toContain(
+      'The Preview frame has no valid owner. Rebuild Preview before publishing.',
+    );
+    expect(onError).toHaveBeenCalledOnce();
     await runtime.destroy();
   });
 
@@ -1156,10 +1202,13 @@ describe('PreviewPortalRuntime', () => {
       );
     expect(handles[1]!.destroy).not.toHaveBeenCalled();
     await runtime.publish();
-    expect(publish).not.toHaveBeenCalled();
-    expect(root.textContent).toContain(
-      'Build the current draft successfully before publishing.',
-    );
+    expect(publish).toHaveBeenCalledWith({
+      idempotencyKey: 'function-call-1',
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ONE,
+      canvasId: CANVAS_ID,
+      frameNodeId: FRAME_ID,
+    });
 
     await runtime.destroy();
     expect(handles[1]!.destroy).toHaveBeenCalledWith('preview-unmounted');
@@ -1503,7 +1552,7 @@ describe('PreviewPortalRuntime', () => {
     await runtime.destroy();
   });
 
-  test('retries one exact publication key and disables the published selection', async () => {
+  test('retries one stable publication key without freezing build metadata', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const build = vi.fn()
@@ -1562,48 +1611,25 @@ describe('PreviewPortalRuntime', () => {
     });
 
     await flushSwap(animation, runtime.refresh());
-    const selection = runtime.publicationSelection();
-    expect(selection).toEqual({
+    expect(runtime.publicationTarget()).toEqual({
       draftId: DRAFT_ID,
-      expectedRevision: REVISION_ONE,
       previewId: PREVIEW_ONE,
-      previewRevisionId: PREVIEW_REVISION_ONE,
-      expectedBindingRevision: 0,
-      expectedBindingPlanDigestSha256: 'f'.repeat(64),
       canvasId: CANVAS_ID,
       frameNodeId: FRAME_ID,
-      buildSequence: 1,
+      label: `Canvas ${CANVAS_ID} · frame ${FRAME_ID}`,
     });
-    await expect(runtime.publish({
-      ...selection!,
-      expectedBindingPlanDigestSha256: 'e'.repeat(64),
-    }, 'publication-attempt-1')).resolves.toBe(false);
-    expect(publish).not.toHaveBeenCalled();
-    await expect(runtime.publish(
-      selection!,
-      'publication-attempt-1',
-    )).resolves.toBe(false);
-    expect(runtime.publicationSelection()).toEqual(selection);
+    await expect(runtime.publish('publication-attempt-1')).resolves.toBe(false);
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
     expect(runtime.controlState().publishable).toBe(true);
-    await expect(runtime.publish(
-      selection!,
-      'publication-attempt-1',
-    )).resolves.toBe(false);
-    expect(runtime.publicationSelection()).toEqual(selection);
+    await expect(runtime.publish('publication-attempt-1')).resolves.toBe(false);
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
     expect(runtime.controlState().publishable).toBe(true);
-    await expect(runtime.publish(
-      selection!,
-      'publication-attempt-1',
-    )).resolves.toBe(true);
+    await expect(runtime.publish('publication-attempt-1')).resolves.toBe(true);
 
     const expectedPublishRequest = {
       idempotencyKey: 'publication-attempt-1',
       draftId: DRAFT_ID,
-      expectedRevision: REVISION_ONE,
       previewId: PREVIEW_ONE,
-      previewRevisionId: PREVIEW_REVISION_ONE,
-      expectedBindingRevision: 0,
-      expectedBindingPlanDigestSha256: 'f'.repeat(64),
       canvasId: CANVAS_ID,
       frameNodeId: FRAME_ID,
     };
@@ -1611,27 +1637,15 @@ describe('PreviewPortalRuntime', () => {
     expect(publish).toHaveBeenNthCalledWith(1, expectedPublishRequest);
     expect(publish).toHaveBeenNthCalledWith(2, expectedPublishRequest);
     expect(publish).toHaveBeenNthCalledWith(3, expectedPublishRequest);
-    expect(runtime.publicationSelection()).toBeNull();
-    expect(runtime.controlState().publishable).toBe(false);
-    await expect(runtime.publish(
-      selection!,
-      'publication-attempt-2',
-    )).resolves.toBe(false);
-    expect(publish).toHaveBeenCalledTimes(3);
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
+    expect(runtime.controlState().publishable).toBe(true);
     await flushSwap(animation, runtime.refresh());
-    expect(runtime.publicationSelection()).toBeNull();
-    expect(runtime.controlState().publishable).toBe(false);
-    await flushSwap(animation, runtime.refresh());
-    expect(runtime.publicationSelection()).toMatchObject({
-      expectedRevision: REVISION_TWO,
-      previewRevisionId: PREVIEW_REVISION_TWO,
-      buildSequence: 2,
-    });
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
     expect(runtime.controlState().publishable).toBe(true);
     await runtime.destroy();
   });
 
-  test('keeps a durable publication marker after a newer failed build and re-enables on a new selection', async () => {
+  test('does not let a durable publication marker disable the stable target', async () => {
     const root = document.createElement('div');
     const animation = manualAnimationFrames();
     const build = vi.fn()
@@ -1704,16 +1718,11 @@ describe('PreviewPortalRuntime', () => {
     });
 
     await flushSwap(animation, runtime.refresh());
-    expect(runtime.publicationSelection()).toBeNull();
-    expect(runtime.controlState().publishable).toBe(false);
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
+    expect(runtime.controlState().publishable).toBe(true);
 
     await flushSwap(animation, runtime.refresh());
-    expect(runtime.publicationSelection()).toMatchObject({
-      expectedRevision: REVISION_ONE,
-      previewRevisionId: PREVIEW_REVISION_TWO,
-      expectedBindingRevision: 1,
-      buildSequence: 2,
-    });
+    expect(runtime.publicationTarget()?.previewId).toBe(PREVIEW_ONE);
     expect(runtime.controlState().publishable).toBe(true);
     await runtime.destroy();
   });

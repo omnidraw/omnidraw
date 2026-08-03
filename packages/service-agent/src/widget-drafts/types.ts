@@ -420,7 +420,9 @@ export type TWidgetPreviewReady = Readonly<{
 
 export type TWidgetPreviewFailureReason =
   | 'not-found'
+  | 'superseded'
   | 'validation-failed'
+  | 'resource-binding-invalid'
   | 'manifest-invalid'
   | 'artifact-unavailable'
   | 'build-failed';
@@ -439,14 +441,11 @@ export type TWidgetPreviewCatalogState =
   | Readonly<{ status: 'failed'; revision: string; message: string }>
   | Readonly<{ status: 'not-ready'; revision: string; message: string | null }>;
 
-export type TWidgetPreviewPublishSelection = Readonly<{
+export type TWidgetPublicationTarget = Readonly<{
   idempotencyKey: string;
   previewId: string;
-  previewRevisionId: string;
   canvasId: string;
   frameNodeId: string;
-  expectedBindingRevision: number;
-  expectedBindingPlanDigestSha256: string;
 }>;
 
 export type TWidgetPreviewDiagnosticReportResult = Readonly<{
@@ -469,9 +468,10 @@ export type TWidgetPublishResult =
       draftId: string;
       reason:
         | 'not-found'
-        | 'stale-revision'
+        | 'draft-still-changing'
         | 'validation-failed'
         | 'resource-binding-invalid'
+        | 'build-failed'
         | 'publication-conflict'
         | 'publication-failed';
       message: string;

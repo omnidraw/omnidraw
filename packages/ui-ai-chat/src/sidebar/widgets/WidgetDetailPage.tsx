@@ -12,8 +12,9 @@ import { WidgetIcon } from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
 import { WidgetPublicationDialog } from '../../publication/WidgetPublicationDialog';
+import { fnPublicationPhaseLabel } from '../../publication/fn.publication-contract';
 import type {
-  TWidgetPublicationPreviewSelection,
+  TWidgetPublicationTarget,
   TWidgetPublicationState,
 } from '../../publication/interface';
 
@@ -70,6 +71,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     publishing: false,
     previewAvailable: false,
     previewSelected: false,
+    phase: 'idle',
     actionLabel: 'Publish',
   });
   const [deleteOpen, setDeleteOpen] = createSignal(false);
@@ -226,7 +228,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   };
 
   const resolvePreviewSelections = async (): Promise<
-    readonly TWidgetPublicationPreviewSelection[]
+    readonly TWidgetPublicationTarget[]
   > => {
     const current = detail();
     if (
@@ -253,15 +255,10 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         .filter((owner) =>
           owner.draftId === current.variant.draftId
           && owner.canvasId === canvas.id
-          && owner.status === 'ready'
-          && owner.activeRevisionId !== null
-          && owner.bindingPlanDigestSha256 !== null
           && owner.closedAtMs === null)
-        .map((owner): TWidgetPublicationPreviewSelection => ({
+        .map((owner): TWidgetPublicationTarget => ({
+          draftId: owner.draftId,
           previewId: owner.id,
-          previewRevisionId: owner.activeRevisionId!,
-          expectedBindingRevision: owner.bindingRevision,
-          expectedBindingPlanDigestSha256: owner.bindingPlanDigestSha256!,
           canvasId: owner.canvasId,
           frameNodeId: owner.frameNodeId,
           label: `${canvas.name} · ${owner.role === 'companion' ? 'Companion' : 'Placed'} Preview · frame ${owner.frameNodeId.slice(0, 12)}`,
@@ -313,20 +310,20 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
               title={!current().variant.draftId
                 ? 'Validate this widget again from its owning AI chat before publishing.'
                 : !publicationState().loading && !publicationState().previewAvailable
-                  ? 'Open or place this draft on a canvas and wait for its Preview to become ready.'
+                  ? 'Open or place this draft on a canvas to choose its publication frame.'
                   : undefined}
               onClick={() => setPublishOpen(true)}
             >{!current().variant.draftId
               ? 'Needs validation'
               : publicationState().publishing
-                ? `${publicationState().actionLabel}ing…`
+                ? fnPublicationPhaseLabel(publicationState().phase)
                 : publicationState().loading
                   ? 'Checking…'
                   : publicationState().previewSelected
                     ? publicationState().actionLabel
                     : publicationState().previewAvailable
                       ? 'Choose Preview'
-                      : 'Needs Preview'}</Button></Show>
+                      : 'Needs Preview frame'}</Button></Show>
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>
@@ -341,7 +338,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           <Show when={current().source === 'draft' && !publicationState().loading && !publicationState().previewAvailable}>
             <section class={styles.panel}>
               <h3>Publication</h3>
-              <p class={styles.muted}>Publication requires an exact ready frame-owned Preview. Open or place this draft on a canvas, wait for the Preview to become ready, then publish from its title bar or return here.</p>
+              <p class={styles.muted}>Publication requires a frame-owned Preview target. Open or place this draft on a canvas, then publish from its title bar or return here. Omnidraw will build the current draft when you confirm.</p>
             </section>
           </Show>
           <Show when={current().source === 'draft'}><section class={styles.panel}><h3>Validation</h3><p class={styles.muted}>{current().variant.validation?.status ?? 'unknown'}</p><For each={current().variant.validation?.errors}>{(item) => <p class={styles.validationError}>{item}</p>}</For><For each={current().variant.validation?.warnings}>{(item) => <p class={styles.validationWarning}>{item}</p>}</For></section></Show>

@@ -425,6 +425,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S130](s/S130.md) - remove marketing/docs website and GitHub Pages publishing
 - [x]: [S131](s/S131.md) - canvas: use Cangine 0.5.3 and own the Capsule portal bridge
 - [x]: [S132](s/S132.md) - packages: make the canvas kernel workspace-split ready
+- [x]: [S133](s/S133.md) - widget publish: auto-heal changed drafts; Publish builds current source and promotes that exact build
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

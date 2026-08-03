@@ -1,13 +1,13 @@
-# Using the Capsule library — 0.11.0
+# Using the Capsule library — 0.12.0
 
-This is the consumer manual for `@omnidraw/capsule`. Capsule 0.11.0 uses
+This is the consumer manual for `@omnidraw/capsule`. Capsule 0.12.0 uses
 public browser API groups; runtime ABI, DOM profiles, feature profiles, and
 feature grants remain private enforcement details.
 
-The installed package declarations are the exact public export inventory. The
-Capsule producer repository owns the normative `CAPSULE.md` security contract
-and generated `capsule-api-groups-v1` group and bundle-digest index; those
-producer-only documents are not copied into this repository.
+For exact exports, see [`public-api.md`](./public-api.md). For the normative
+security contract, see [`CAPSULE.md`](./CAPSULE.md). The generated
+[`capsule-api-groups-v1` table](./api-groups-v1.generated.md) is the exact
+group and bundle-digest index.
 
 ## Install
 
@@ -699,6 +699,29 @@ runtime. Resuming a parked handle builds a fresh generation and may accept a
 compatible replacement artifact. These operations require an explicit signed
 parkability and snapshot contract.
 
+### Mount geometry and scrolling
+
+The guest document root (the guest's `document.body`) emulates a browser
+document viewport:
+
+- The internal `<capsule-instance>` shell fills your mount container's
+  content box by default (plain inline `height: 100%`). Your own CSS or
+  script on the shell, or a `setViewport()` call, overrides that default;
+  `setViewport()` writes explicit pixel sizes and wins. Capsule reserves
+  `display`, `contain`, and `overflow` on the shell — never override those.
+- The guest root fills the shell's content box and scrolls its own overflow
+  (`width`/`height` 100%, `box-sizing: border-box`, `overflow: auto`), so
+  guest CSS like `height: 100%` resolves exactly as it would against a
+  browser viewport, and content taller than the frame scrolls instead of
+  being silently clipped.
+- These are layered defaults, not a prison: ordinary guest rules through
+  the `html`/`body`/`:root` selector mapping (for example
+  `body { height: auto; overflow: visible }`) and guest inline styles
+  override them without `!important`. Guests keep owning their own inner
+  scrolling as before.
+- With an auto-height container and no `setViewport()` call, the chain
+  stays content-sized exactly as in earlier releases.
+
 Use bounded observation:
 
 ```ts
@@ -908,6 +931,27 @@ The artifact adapter is not a reason to preserve two source APIs. Remove all
 application imports and examples of public runtime/profile constants and
 feature grants during the upgrade.
 
+## Upgrading from 0.11.0
+
+Capsule 0.12.0 changes default mount geometry without any API change. The
+internal mount shell now fills its container's content box by default, and
+the guest document root fills the shell and scrolls its own overflow. Guest
+CSS using percentage heights now resolves against the root instead of
+collapsing to content size, and overflowing guest content scrolls rather
+than being silently clipped.
+
+- No mount, build, or signing changes are required; existing signed
+  artifacts work unchanged.
+- Review guests that depended on a content-sized document root (for
+  example, measuring `document.body.offsetHeight` to report an intrinsic
+  size). Such guests can restore the old behavior with an ordinary
+  `body { height: auto; overflow: visible }` rule.
+- If you size instances through `setViewport()`, nothing changes: it still
+  overrides the container-fill default.
+
+The group-contract format and bundle digest are unchanged; artifacts do not
+need to be rebuilt or re-signed for this release.
+
 ## Upgrading from 0.10.2
 
 Capsule 0.11.0 preserves the package's root and eight supported subpath
@@ -968,7 +1012,7 @@ digest into new manifests.
 
 ## Versioning
 
-The package version is `@omnidraw/capsule` 0.11.0. The group-contract format
+The package version is `@omnidraw/capsule` 0.12.0. The group-contract format
 and bundle digest, artifact envelope, runtime ABI, private ledgers/profiles,
 capability identities, network-policy format, and snapshot schemas are
 independently versioned exact contracts.

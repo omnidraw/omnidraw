@@ -430,11 +430,11 @@ export function createAiChatCanvasExtension(
         node: Readonly<TWidgetFrameNode>,
         runtime: TPreviewPortalRuntime,
       ): void => {
-        const selection = runtime.publicationSelection();
-        if (selection === null) {
+        const target = runtime.publicationTarget();
+        if (target === null) {
           context.config.notification?.showError(
-            'Preview is not ready to publish',
-            'Wait for the current build to complete, then review this frame before publishing.',
+            'Preview is unavailable to publish',
+            'Wait for this Preview frame to finish opening, then try again.',
           );
           return;
         }
@@ -461,13 +461,9 @@ export function createAiChatCanvasExtension(
           : widgetTitle;
         disposeDialog = render(() => PreviewPublicationConfirmationDialog({
           widgetName,
-          selection,
-          currentSelection: runtime.publicationSelection,
-          confirm: async (confirmedSelection) => {
-            const published = await runtime.publish(
-              confirmedSelection,
-              publicationIdempotencyKey,
-            );
+          target,
+          confirm: async () => {
+            const published = await runtime.publish(publicationIdempotencyKey);
             if (published) {
               context.config.notification?.showSuccess(
                 `${widgetName} published`,
@@ -1302,14 +1298,10 @@ export function createAiChatCanvasExtension(
             return;
           }
           if (owner.status === 'ready' && owner.activeRevisionId !== null) {
-            const selection = runtime.publicationSelection();
+            const draftFence = latestPreviewDraftFences.get(payload.draftId);
             if (
-              selection === null
-              || selection.previewRevisionId !== owner.activeRevisionId
-              || selection.buildSequence !== owner.buildSequence
-              || selection.expectedBindingRevision !== owner.bindingRevision
-              || selection.expectedBindingPlanDigestSha256
-                !== owner.bindingPlanDigestSha256
+              draftFence !== undefined
+              && runtime.currentRevision() !== draftFence.sourceDigestSha256
             ) {
               await runtime.autoRefresh();
             }

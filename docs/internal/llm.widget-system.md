@@ -26,7 +26,8 @@ A widget moves through four distinct ownership domains:
 These domains are not interchangeable. In particular:
 
 - a draft is not a publication;
-- a publication never reads mutable draft files;
+- publication captures the current mutable draft through a workspace revision
+  fence, then builds and commits only from that immutable snapshot;
 - a definition's active revision affects new placement and catalog reads, not
   already placed instances;
 - a widget instance never chooses its tenant, definition, revision, resources,
@@ -179,11 +180,11 @@ message bytes, stream bytes, assets, network, GPU memory, and lifecycle bytes.
 
 ## 5. Immutable source capture and validation
 
-Validation and Preview capture one coherent, content-addressed
-`TWidgetSourceSnapshot`. The supported product Publish path does not recapture
-or rebuild mutable source: it verifies that the active frame-owned Preview
-revision still matches the current draft and promotes that retained
-construction.
+Validation, Preview, and Publish capture one coherent, content-addressed
+`TWidgetSourceSnapshot`. Publish reuses a matching active frame-owned Preview
+construction as its fast path. If source or authorized bindings advanced, it
+captures and builds the current source through the same Preview build pipeline
+before promoting the exact resulting construction.
 
 The snapshot contains:
 
@@ -249,8 +250,10 @@ identity binds the exact source snapshot, `package.json`, lockfile, dependency
 workspace inputs, Node/package-manager/platform identities, build command and
 configuration, complete `dist/` bytes, Capsule version/validation policy, and
 final artifact bytes. Exact captured outputs are authoritative even when the
-guest build is not reproducible. Frame-qualified Preview publication reuses the
-same Preview revision and never rebuilds during Publish.
+guest build is not reproducible. Frame-qualified publication reuses the same
+Preview revision when it still matches current source and bindings; otherwise
+Publish invokes the existing Preview construction path and promotes its exact
+new result.
 
 `WidgetArtifactConstructionCache` single-flights unchanged construction keys.
 Validation and Preview await that construction; preview signing wraps its
@@ -382,9 +385,10 @@ The current Cangine adapter completes the frame-owned Preview path:
 container while the last known good handle stays interactive. A candidate may
 replace it only after acquiring its exact durable mount lease, `ready()`, and
 two host animation frames. The old lease remains active until the old handle is
-destroyed. Failure preserves the old handle, shows the failed build state, and
-disables Publish until the current draft has a successfully mounted active
-revision.
+destroyed. Failure preserves the old handle and shows the failed build state.
+Publish remains available while the durable frame target exists; confirmation
+asks the server to build and validate the current draft rather than publishing
+the displayed fallback.
 
 ### 7.2 Authoring loop and diagnostics
 
@@ -427,13 +431,16 @@ The implemented authoring loop is:
    runtime rechecks that owner/revision subject and resolves the matching
    server artifact and selected binding revision, so a last-good handle cannot
    drift onto a newer backend revision during a swap.
-8. Publish promotes the mounted Preview construction under release signing
-   after rechecking frame, draft, active revision, and resource-binding
-   preconditions. It does not rerun npm, the project build, or Capsule
-   construction. The owner durably records the exact published Preview
-   revision and binding selection. The same selection stays disabled after a
-   lost response or reconnect, while a newly successful Preview revision or
-   binding change becomes publishable. Same-key retries remain idempotent.
+8. Publish freezes the durable frame target and idempotency key, then reuses or
+   builds the current stable source through the existing Preview coordinator.
+   A matching retained construction performs no guest build. Final promotion
+   rechecks frame, source mutation, active Preview revision, authorized binding
+   plan, and definition CAS under the workspace fence before release signing.
+   The owner records the exact published construction and stable-scope replay
+   identity. Same-key retries within the 24-hour durable replay window return
+   the original result even after later edits; another target using that key
+   conflicts. Expired keys stop pinning inactive revisions during garbage
+   collection.
 
 The Preview revision is durable authoring authority, not a published widget
 revision. Its frame owns its lifetime, and only explicit Publish converts the
@@ -480,34 +487,45 @@ not gain invented source fields.
 
 ## 8. Publication and immutable revisions
 
-Product Publish is an explicit user action and requires the expected draft
-revision plus an exact ready frame-owned Preview selection.
+Product Publish is an explicit user action. Its public request freezes only the
+idempotency key and durable target: draft, Preview owner, canvas, and frame.
+Source, Preview revision, and binding identity are selected by the server.
 
 Before durable mutation, publication:
 
-1. parses and canonicalizes manifest v3;
-2. validates selected resource bindings against manifest ceilings;
-3. verifies the current frame-owned active Preview revision and draft CAS;
-4. validates the Preview source, function descriptors, provenance, selected
-   bindings, and complete build integrity contract;
-5. release-signs the Preview revision's canonical unsigned Capsule bytes
-   without executing the widget build again; and
-6. verifies the immutable source/UI/server artifacts to be committed.
+1. replays a committed result for the same idempotency key and stable target;
+2. verifies the persisted, non-closed frame owner for the draft and tenant;
+3. outside the final draft queue, reuses or builds the current source and
+   authorized binding plan through the Preview coordinator;
+4. parses manifest v3 and validates bindings, function descriptors,
+   provenance, artifacts, and the complete construction integrity contract;
+5. inside a short queue and workspace revision fence, rechecks source mutation,
+   owner, exact Preview revision, bindings, frame, and definition CAS; and
+6. release-signs and commits only that exact immutable construction.
 
-This path consumes the retained Preview construction. Preview and release
-signature envelopes differ, but the Capsule executable hash, source snapshot,
+The matching-ready fast path performs no npm command or Capsule construction
+run. If source or authorized bindings moved, the same request may run the guest
+construction pipeline before promotion. Preview and release signature
+envelopes differ, but the committed Capsule executable hash, source snapshot,
 server artifact, function descriptors, construction contract digest,
-distribution provenance, and selected binding revision are the reviewed
-values. Publication performs no npm command and no Capsule construction run.
+distribution provenance, and selected binding revision all come from the one
+server-selected result.
 
-The Preview title-bar action submits the exact mounted selection. The draft
-detail page lists ready frame-owned Previews available to the user. It shows
-the canvas/frame label, draft content digest, Preview revision, binding
-revision, and frame ID; multiple candidates are never auto-selected. The
-dialog refreshes the selected Preview immediately before submission, then sends
-its exact owner, revision, binding, canvas, and frame identity. It fails closed
-with **Ready Preview required** or **Preview changed before publication** when
-there is no retained selection or the selected frame advances.
+The Preview title-bar submits its stable frame target. The draft detail page
+lists persisted non-closed frame owners, including owners whose newest build is
+queued, building, or failed; multiple candidates are never auto-selected.
+Both dialogs say **Publish current draft** and submit only target identity. If
+no persisted target exists, they instruct the user to open or place a Preview.
+Readiness decides reuse versus build, not whether Publish may be clicked.
+
+Source or owner movement is retried for at most three total source attempts.
+Exhaustion returns `draft-still-changing`; validation, resource authorization,
+build, integrity, signing/storage, target removal, and definition CAS failures
+retain distinct terminal results and diagnostics. Same-key replay within the
+24-hour durable replay window returns the original revision even after later
+edits, while cross-target key reuse is a publication conflict. Garbage
+collection expires older keys before reclaiming otherwise-unreferenced inactive
+revisions.
 
 Inside one mutation fence it stores:
 
@@ -793,8 +811,8 @@ The main durable records are:
   and cleanup status;
 - `agent_preview_resource_bindings` and `agent_preview_mount_leases`: exact
   revision bindings and renewable mounted-handle roots;
-- `widget_preview_publication_idempotency`: retry-safe identity for one exact
-  reviewed Preview selection and its committed published revision;
+- `widget_preview_publication_idempotency`: exact committed construction
+  identity plus stable frame-target replay scope for its published revision;
 - authoring chats and draft descriptors.
 
 Database constraints enforce manifest contract version 3, Capsule runtime
@@ -811,9 +829,9 @@ Authoring and management:
 - `agent.widgetPreview.build`, `cancel`, `diagnostics.report`,
   `diagnostics.get`, `diagnostics.retest`, `diagnostics.resolve`,
   `mount.*`, and `owner.*`;
-- `agent.widgetPublish.publish`, requiring exact Preview owner, revision,
-  binding revision and binding-plan digest, canvas, frame, draft revision, and
-  a stable per-confirmation idempotency key;
+- `agent.widgetPublish.publish`, requiring a stable per-confirmation
+  idempotency key plus draft, Preview owner, canvas, and frame target; the
+  server selects the exact source, Preview revision, and binding plan;
 - `agent.widgets.catalog`, `detail`, `files`, `file`;
 - `agent.widgets.ensureDraft`, patch operations, deletion, and placement
   resolution.

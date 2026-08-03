@@ -22,6 +22,7 @@ import {
 import { createTestTenantEvents, TEST_TENANT } from './tenant.fixture';
 
 const roots: string[] = [];
+const TEST_EXTERNAL_CHAT_ID = 'external-chat';
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
 async function harness(eventPublisher?: ITenantEventPublisherService) {
@@ -217,6 +218,54 @@ describe('WidgetDraftController stateless Preview', () => {
     expect(first.ready && second.ready && second.revision).not.toBe(first.ready ? first.revision : '');
   });
 
+  test('commits captured source when Preview opens before its source change is recorded', async () => {
+    const { root, controller, createDraft, store } = await harness();
+    const draft = await createDraft('Racing Source Clock');
+    const owner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000208',
+      canvasId: 'canvas-racing-source-clock',
+      frameNodeId: 'frame-racing-source-clock',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'companion',
+    });
+    await writeFile(
+      join(root, 'pi', 'agent', 'widgets', 'drafts', draft.name, 'ui', 'main.ts'),
+      'document.body.append(document.createElement("meter"));\n',
+      'utf8',
+    );
+
+    const preview = await controller.buildPreview(draft.draftId, {
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    });
+
+    expect(preview).toMatchObject({
+      ready: true,
+      previewId: owner.id,
+      buildSequence: draft.buildSequence + 1,
+    });
+    if (!preview.ready) return;
+    expect(preview.revision).not.toBe(draft.revision);
+    expect(await store.getDraft(TEST_TENANT, draft.draftId)).toMatchObject({
+      sourceDigestSha256: preview.revision,
+      committedMutationId: preview.committedMutationId,
+      buildSequence: draft.buildSequence + 1,
+    });
+    expect(preview.committedMutationId).not.toBe(draft.committedMutationId);
+    await expect(controller.previewStatus(
+      TEST_EXTERNAL_CHAT_ID,
+      draft.draftId,
+    )).resolves.toMatchObject({
+      state: 'mounting',
+      previewId: owner.id,
+      attemptedRevision: preview.revision,
+      attemptedCommittedMutationId: preview.committedMutationId,
+      displayedPreviewRevisionId: preview.previewRevisionId,
+    });
+  });
+
   test('preserves bounded successful Capsule diagnostics in the Preview response', async () => {
     const { controller, createDraft, widgets } = await harness();
     const draft = await createDraft('Diagnostic Clock');
@@ -263,7 +312,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       'Agent Status Clock',
       '00000000-0000-4000-8000-000000000201',
     );
-    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+    await expect(controller.previewStatus(TEST_EXTERNAL_CHAT_ID, draft.draftId)).resolves.toMatchObject({
       state: 'mounting',
       draftId: draft.draftId,
       previewId: owner.id,
@@ -274,7 +323,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       buildSequence: draft.buildSequence,
     });
     store.confirmedPreviewOwnerExecution = true;
-    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+    await expect(controller.previewStatus(TEST_EXTERNAL_CHAT_ID, draft.draftId)).resolves.toMatchObject({
       state: 'ready',
       displayedPreviewRevisionId: preview.previewRevisionId,
     });
@@ -301,7 +350,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       },
       nowMs: current.updatedAtMs + 1,
     });
-    await expect(controller.previewStatus(draft.chatId, draft.draftId)).resolves.toMatchObject({
+    await expect(controller.previewStatus(TEST_EXTERNAL_CHAT_ID, draft.draftId)).resolves.toMatchObject({
       state: 'failed',
       diagnostics: [expect.objectContaining({
         code: 'WIDGET_GUEST_RUNTIME_FAILED',
@@ -316,7 +365,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       '00000000-0000-4000-8000-000000000202',
     );
     const ready = first.controller.waitForPreview({
-      chatId: first.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: first.draft.draftId,
       expectedRevision: first.draft.revision,
       expectedCommittedMutationId: first.draft.committedMutationId!,
@@ -332,7 +381,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     });
     await expect(ready).resolves.toMatchObject({ outcome: 'ready', status: { state: 'ready' } });
     await expect(first.controller.waitForPreview({
-      chatId: first.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: first.draft.draftId,
       expectedRevision: 'f'.repeat(64),
       expectedCommittedMutationId: first.draft.committedMutationId!,
@@ -341,7 +390,7 @@ describe('WidgetDraftController durable Preview owners', () => {
 
     first.store.confirmedPreviewOwnerExecution = false;
     await expect(first.controller.waitForPreview({
-      chatId: first.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: first.draft.draftId,
       expectedRevision: first.draft.revision,
       expectedCommittedMutationId: first.draft.committedMutationId!,
@@ -350,7 +399,7 @@ describe('WidgetDraftController durable Preview owners', () => {
 
     const canceledController = new AbortController();
     const canceled = first.controller.waitForPreview({
-      chatId: first.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: first.draft.draftId,
       expectedRevision: first.draft.revision,
       expectedCommittedMutationId: first.draft.committedMutationId!,
@@ -361,7 +410,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     await expect(canceled).resolves.toMatchObject({ outcome: 'canceled' });
 
     const closed = first.controller.waitForPreview({
-      chatId: first.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: first.draft.draftId,
       expectedRevision: first.draft.revision,
       expectedCommittedMutationId: first.draft.committedMutationId!,
@@ -394,7 +443,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       nowMs: failedOwner.updatedAtMs + 1,
     });
     await expect(failed.controller.waitForPreview({
-      chatId: failed.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: failed.draft.draftId,
       expectedRevision: failed.draft.revision,
       expectedCommittedMutationId: failed.draft.committedMutationId!,
@@ -416,7 +465,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     };
 
     await expect(live.controller.waitForPreview({
-      chatId: live.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: live.draft.draftId,
       expectedRevision: live.draft.revision,
       expectedCommittedMutationId: live.draft.committedMutationId!,
@@ -438,7 +487,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     const iterator = events.subscribeAgentEvents()[Symbol.asyncIterator]();
     const nextEvent = iterator.next();
     const testResult = exact.controller.testPreview({
-      chatId: exact.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: exact.draft.draftId,
       expectedRevision: exact.draft.revision,
       expectedCommittedMutationId: exact.draft.committedMutationId!,
@@ -477,7 +526,7 @@ describe('WidgetDraftController durable Preview owners', () => {
       ],
     });
     await expect(exact.controller.testPreview({
-      chatId: exact.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: exact.draft.draftId,
       expectedRevision: exact.draft.revision,
       expectedCommittedMutationId: exact.draft.committedMutationId!,
@@ -487,7 +536,7 @@ describe('WidgetDraftController durable Preview owners', () => {
 
     const lostLeaseEvent = iterator.next();
     const lostLeaseResult = exact.controller.testPreview({
-      chatId: exact.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: exact.draft.draftId,
       expectedRevision: exact.draft.revision,
       expectedCommittedMutationId: exact.draft.committedMutationId!,
@@ -517,7 +566,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     const canceled = new AbortController();
     canceled.abort();
     await expect(exact.controller.testPreview({
-      chatId: exact.draft.chatId,
+      chatId: TEST_EXTERNAL_CHAT_ID,
       draftId: exact.draft.draftId,
       expectedRevision: exact.draft.revision,
       expectedCommittedMutationId: exact.draft.committedMutationId!,
@@ -563,15 +612,11 @@ describe('WidgetDraftController durable Preview owners', () => {
 
     const publication = await controller.publish(
       draft.draftId,
-      draft.revision,
       {
         idempotencyKey: 'publish-reviewed-preview',
         previewId: owner.id,
-        previewRevisionId: preview.previewRevisionId,
         canvasId: owner.canvasId,
         frameNodeId: owner.frameNodeId,
-        expectedBindingRevision: preview.bindingRevision!,
-        expectedBindingPlanDigestSha256: preview.bindingPlanDigestSha256!,
       },
     );
 
@@ -582,6 +627,212 @@ describe('WidgetDraftController durable Preview owners', () => {
     });
     expect(widgets.publishCount).toBe(1);
     expect(widgets.validateBuildCount).toBe(0);
+  });
+
+  test('builds and publishes the current draft when the mounted Preview is older', async () => {
+    const { root, controller, createDraft, store, widgets } = await harness();
+    const draft = await createDraft('Current Source Clock');
+    const owner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000206',
+      canvasId: 'canvas-current-source-clock',
+      frameNodeId: 'frame-current-source-clock',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'companion',
+    });
+    const reviewed = await controller.buildPreview(draft.draftId, {
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    });
+    if (!reviewed.ready) throw new Error('Expected the initial Preview to be ready.');
+
+    await writeFile(
+      join(root, 'pi', 'agent', 'widgets', 'drafts', draft.name, 'ui', 'main.ts'),
+      'document.body.append(document.createElement("time"));\n',
+      'utf8',
+    );
+    const changed = await controller.handleToolChange({
+      name: draft.name,
+      type: 'changed',
+    });
+    if (!changed) throw new Error('Expected the edited draft to remain active.');
+    expect(changed.revision).not.toBe(reviewed.revision);
+
+    let buildAttempts = 0;
+    widgets.beforeBuildPreview = async () => { buildAttempts += 1; };
+    const publication = await controller.publish(draft.draftId, {
+      idempotencyKey: 'publish-current-source-clock',
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    });
+
+    expect(publication).toMatchObject({
+      published: true,
+      revision: changed.revision,
+    });
+    expect(buildAttempts).toBe(1);
+    expect(widgets.publishCount).toBe(1);
+    expect(await store.getPreviewOwner(TEST_TENANT, owner.id)).toMatchObject({
+      status: 'ready',
+      sourceDigestSha256: changed.revision,
+      publishedIdempotencyKey: 'publish-current-source-clock',
+    });
+  });
+
+  test('stabilizes within the same request after two structured build supersessions', async () => {
+    const { controller, createDraft, widgets } = await harness();
+    const draft = await createDraft('Stabilizing Clock');
+    const owner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000210',
+      canvasId: 'canvas-stabilizing-clock',
+      frameNodeId: 'frame-stabilizing-clock',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'companion',
+    });
+    let buildAttempts = 0;
+    widgets.beforeBuildPreview = async () => {
+      buildAttempts += 1;
+      if (buildAttempts < 3) {
+        throw Object.assign(new Error('A newer source attempt superseded this build.'), {
+          code: 'WIDGET_BUILD_SUPERSEDED',
+        });
+      }
+    };
+
+    await expect(controller.publish(draft.draftId, {
+      idempotencyKey: 'publish-stabilizing-clock',
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    })).resolves.toMatchObject({
+      published: true,
+      revision: draft.revision,
+    });
+    expect(buildAttempts).toBe(3);
+    expect(widgets.publishCount).toBe(1);
+  });
+
+  test('replays one publication key after later edits and rejects a different target', async () => {
+    const { root, controller, createDraft, widgets } = await harness();
+    const draft = await createDraft('Replay Clock');
+    const owner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000207',
+      canvasId: 'canvas-replay-clock',
+      frameNodeId: 'frame-replay-clock',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'companion',
+    });
+    const target = {
+      idempotencyKey: 'publish-replay-clock',
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    } as const;
+    const [first, concurrentReplay] = await Promise.all([
+      controller.publish(draft.draftId, target),
+      controller.publish(draft.draftId, target),
+    ]);
+    if (!first.published) throw new Error('Expected the first publication to commit.');
+    expect(concurrentReplay).toEqual(first);
+    expect(widgets.publishCount).toBe(1);
+
+    await writeFile(
+      join(root, 'pi', 'agent', 'widgets', 'drafts', draft.name, 'ui', 'main.ts'),
+      'document.body.append(document.createElement("meter"));\n',
+      'utf8',
+    );
+    await controller.handleToolChange({ name: draft.name, type: 'changed' });
+    let replayBuilds = 0;
+    widgets.beforeBuildPreview = async () => { replayBuilds += 1; };
+
+    const laterPublication = await controller.publish(draft.draftId, {
+      ...target,
+      idempotencyKey: 'publish-replay-clock-later',
+    });
+    expect(laterPublication).toMatchObject({ published: true });
+    if (!laterPublication.published) {
+      throw new Error('Expected the edited draft to publish under a new key.');
+    }
+    expect(laterPublication.revision).not.toBe(first.revision);
+    expect(replayBuilds).toBe(1);
+    expect(widgets.publishCount).toBe(2);
+
+    await expect(controller.publish(draft.draftId, target)).resolves.toEqual(first);
+    expect(replayBuilds).toBe(1);
+    expect(widgets.publishCount).toBe(2);
+
+    const otherOwner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000208',
+      canvasId: 'canvas-replay-clock',
+      frameNodeId: 'frame-replay-clock-other',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'placed',
+    });
+    await expect(controller.publish(draft.draftId, {
+      ...target,
+      previewId: otherOwner.id,
+      frameNodeId: otherOwner.frameNodeId,
+    })).resolves.toMatchObject({
+      published: false,
+      reason: 'publication-conflict',
+    });
+    expect(widgets.publishCount).toBe(2);
+  });
+
+  test('caps source-churn retries without deadlocking the draft queue', async () => {
+    const { root, controller, createDraft, widgets } = await harness();
+    const draft = await createDraft('Churning Clock');
+    const owner = await controller.ensurePreviewOwner({
+      previewId: '00000000-0000-4000-8000-000000000209',
+      canvasId: 'canvas-churning-clock',
+      frameNodeId: 'frame-churning-clock',
+      draftId: draft.draftId,
+      originChatId: draft.chatId,
+      role: 'companion',
+    });
+    const sourcePath = join(
+      root,
+      'pi',
+      'agent',
+      'widgets',
+      'drafts',
+      draft.name,
+      'ui',
+      'main.ts',
+    );
+    const mutations: Promise<unknown>[] = [];
+    let buildAttempts = 0;
+    widgets.beforeBuildPreview = async () => {
+      buildAttempts += 1;
+      await writeFile(
+        sourcePath,
+        `document.body.append(document.createElement("output-${buildAttempts}"));\n`,
+        'utf8',
+      );
+      mutations.push(controller.handleToolChange({
+        name: draft.name,
+        type: 'changed',
+      }));
+    };
+
+    await expect(controller.publish(draft.draftId, {
+      idempotencyKey: 'publish-churning-clock',
+      previewId: owner.id,
+      canvasId: owner.canvasId,
+      frameNodeId: owner.frameNodeId,
+    })).resolves.toMatchObject({
+      published: false,
+      reason: 'draft-still-changing',
+    });
+    await Promise.all(mutations);
+    expect(buildAttempts).toBeGreaterThanOrEqual(1);
+    expect(buildAttempts).toBeLessThanOrEqual(3);
+    expect(widgets.publishCount).toBe(0);
   });
 
   test('invalidates ready state when the selected binding plan changes', async () => {
@@ -626,32 +877,20 @@ describe('WidgetDraftController durable Preview owners', () => {
       bindingRevision: reviewed.bindingRevision + 1,
       bindingPlanDigestSha256: null,
     });
-    await expect(controller.publish(draft.draftId, draft.revision, {
+    await expect(controller.publish(draft.draftId, {
       idempotencyKey: 'publish-stale-binding-plan',
       previewId: owner.id,
-      previewRevisionId: reviewed.previewRevisionId,
       canvasId: owner.canvasId,
       frameNodeId: owner.frameNodeId,
-      expectedBindingRevision: reviewed.bindingRevision,
-      expectedBindingPlanDigestSha256: reviewed.bindingPlanDigestSha256,
     })).resolves.toMatchObject({
-      published: false,
-      reason: 'resource-binding-invalid',
+      published: true,
+      revision: draft.revision,
     });
 
-    const rebuilt = await controller.buildPreview(draft.draftId, {
-      previewId: owner.id,
-      canvasId: owner.canvasId,
-      frameNodeId: owner.frameNodeId,
-    });
-    expect(rebuilt).toMatchObject({
-      ready: true,
-      previewId: owner.id,
-    });
-    if (!rebuilt.ready) return;
-    expect(rebuilt.previewRevisionId).not.toBe(reviewed.previewRevisionId);
-    expect(rebuilt.bindingRevision).toBeGreaterThan(reviewed.bindingRevision);
-    expect(rebuilt.bindingPlanDigestSha256)
+    const healedOwner = await store.getPreviewOwner(TEST_TENANT, owner.id);
+    expect(healedOwner?.activeRevisionId).not.toBe(reviewed.previewRevisionId);
+    expect(healedOwner?.bindingRevision).toBeGreaterThan(reviewed.bindingRevision);
+    expect(healedOwner?.bindingPlanDigestSha256)
       .not.toBe(reviewed.bindingPlanDigestSha256);
   });
 
@@ -814,7 +1053,7 @@ describe('WidgetDraftController durable Preview owners', () => {
     }));
     await expect(replacement).resolves.toMatchObject({
       ready: false,
-      reason: 'build-failed',
+      reason: 'superseded',
     });
     await Promise.resolve();
     expect(await store.getPreviewOwner(TEST_TENANT, owner.id)).toMatchObject({
@@ -876,7 +1115,7 @@ describe('WidgetDraftController durable Preview owners', () => {
 
     await expect(obsolete).resolves.toMatchObject({
       ready: false,
-      reason: 'build-failed',
+      reason: 'superseded',
     });
     await expect(changed).resolves.toMatchObject({
       draftId: draft.draftId,

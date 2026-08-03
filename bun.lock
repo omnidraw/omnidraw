@@ -193,7 +193,7 @@
     },
     "packages/function-runtime": {
       "name": "@omnidraw/function-runtime",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
         "@omnidraw/tenant-core": "workspace:*",
@@ -376,7 +376,7 @@
     },
     "packages/widget-contract": {
       "name": "@omnidraw/widget-contract",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
         "@omnidraw/tenant-core": "workspace:*",
@@ -1704,7 +1704,11 @@
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 
+    "@omnidraw-fixtures/private-managed-composition/@omnidraw/function-runtime": ["@omnidraw/function-runtime@0.5.0", "http://127.0.0.1:4873/@omnidraw/function-runtime/-/function-runtime-0.5.0.tgz", { "dependencies": { "@omnidraw/resource-runtime": "0.5.0", "@omnidraw/tenant-core": "0.5.0", "@omnidraw/widget-contract": "0.5.0", "ajv": "^8.20.0" } }, "sha512-iOLZuOk4/E7yESYzhAWPnEBMOjiCbzQ3IvPnY07vRegjRDq8hzCFrEWNjp5udQEAkvF7dhvd8o2LeSgFgg7j6A=="],
+
     "@omnidraw-fixtures/private-managed-composition/@omnidraw/resource-runtime": ["@omnidraw/resource-runtime@0.5.0", "http://127.0.0.1:4873/@omnidraw/resource-runtime/-/resource-runtime-0.5.0.tgz", { "dependencies": { "@omnidraw/tenant-core": "0.5.0" }, "peerDependencies": { "@tursodatabase/database": "0.6.1" } }, "sha512-3FV15hxN8O8nWYw4KC33SsosW1WumTjgFARHpvH3WQ3jyqL9+Oz0XorYz73KJlAJqW936Tv6ZzckMkMiOG3mOw=="],
+
+    "@omnidraw-fixtures/private-managed-composition/@omnidraw/widget-contract": ["@omnidraw/widget-contract@0.5.0", "http://127.0.0.1:4873/@omnidraw/widget-contract/-/widget-contract-0.5.0.tgz", { "dependencies": { "@omnidraw/resource-runtime": "0.5.0", "@omnidraw/tenant-core": "0.5.0", "lucide-static": "^1.24.0", "zod": "4.4.3" } }, "sha512-pRWSAHoGcYkyjQYZYONmoEM+szDtU3GSUQRDiNM4Dg2TDMnAU0gYabIObHfQNFFFokleCAWeHEbHcmbwyfpYPA=="],
 
     "@omnidraw/capsule/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 

@@ -59,6 +59,8 @@ import type {
   TWidgetPreviewMountLeaseReleaseRequest,
   TWidgetPreviewMountLeaseRenewRequest,
   TWidgetPreviewPromotionRequest,
+  TWidgetPreviewPublicationReplayRequest,
+  TWidgetPreviewPublicationReplayResult,
   TWidgetPreviewRevisionDescriptor,
   TWidgetPreviewRevisionGetRequest,
   TWidgetPreviewWorkspaceCloseRequest,
@@ -319,6 +321,11 @@ export interface IWidgetPreviewConstructionReader {
 }
 
 export interface IWidgetPreviewPromotionService {
+  replayPreviewPublication(
+    tenant: TTenantContext,
+    request: TWidgetPreviewPublicationReplayRequest,
+  ): Promise<TWidgetPreviewPublicationReplayResult | null>;
+
   publishPreview(
     tenant: TTenantContext,
     request: TWidgetPreviewPromotionRequest,
@@ -367,6 +374,11 @@ export interface IWidgetControlStore extends IWidgetRevisionReader, IWidgetRevis
     tenant: TTenantContext,
     request: TWidgetPublicationCommitInput,
   ): Promise<TWidgetPublicationCommitResult>;
+
+  replayPreviewPublication(
+    tenant: TTenantContext,
+    request: TWidgetPreviewPublicationReplayRequest,
+  ): Promise<TWidgetPreviewPublicationReplayResult | null>;
 
   rollbackPublication(
     tenant: TTenantContext,

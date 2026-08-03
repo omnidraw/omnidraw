@@ -88,6 +88,9 @@ describe('WidgetNpmDistributionBuild', () => {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
         npmUserConfigPath: '/registry/npmrc',
+        prepareNpmDependencies: async () => {
+          calls.push('registry sync');
+        },
         runProcess: async (command, args, options) => {
           calls.push(`${command} ${args.join(' ')}`);
           if (command === 'npm' && args[0] === '--version') return '11.0.0';
@@ -138,6 +141,7 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(calls).toEqual([
         'npm --version',
         'node -p JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
+        'registry sync',
         'npm ci --userconfig /registry/npmrc',
         'npm run build',
       ]);

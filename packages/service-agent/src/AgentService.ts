@@ -88,6 +88,7 @@ export interface IAgentServiceConfig {
   cachePath: string;
   dataPath: string;
   npmUserConfigPath?: string;
+  prepareWidgetNpmDependencies?: () => Promise<void>;
   configPath: string;
   eventPublisherService: ITenantEventPublisherService,
   /** Required by the manifest-v3 Capsule authoring surface. */
@@ -214,6 +215,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#workspace = new WidgetWorkspace({
       dataPath: config.dataPath,
       npmUserConfigPath: config.npmUserConfigPath,
+      prepareNpmDependencies: config.prepareWidgetNpmDependencies,
     })
     this.#widgetDrafts = config.tenant
       && config.authoringStore
@@ -705,18 +707,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   publishWidgetDraft(
     draftId: string,
-    expectedRevision: string,
-    preview: Readonly<{
+    target: Readonly<{
       idempotencyKey: string;
       previewId: string;
-      previewRevisionId: string;
       canvasId: string;
       frameNodeId: string;
-      expectedBindingRevision: number;
-      expectedBindingPlanDigestSha256: string;
     }>,
   ) {
-    return this.#widgetDrafts.publish(draftId, expectedRevision, preview)
+    return this.#widgetDrafts.publish(draftId, target)
   }
 
   async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {

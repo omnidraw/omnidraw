@@ -116,6 +116,7 @@ type TConfig = Readonly<{
   installTimeoutMs?: number;
   buildTimeoutMs?: number;
   npmUserConfigPath: string;
+  prepareNpmDependencies?: () => Promise<void>;
   maxWarmWorkspaces?: number;
 }>;
 
@@ -1123,6 +1124,8 @@ export function createWidgetNpmDistributionBuild(
     assertActive(request.signal);
     if (installRequired) {
       request.reportProgress?.('installing');
+      await config.prepareNpmDependencies?.();
+      assertActive(request.signal);
       await execute('npm', [
         'ci',
         '--userconfig',

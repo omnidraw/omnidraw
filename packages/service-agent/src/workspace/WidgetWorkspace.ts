@@ -42,6 +42,7 @@ type TWidgetWorkspaceConfig = {
   createId?: () => string;
   copyDirectory?: typeof cp;
   npmUserConfigPath?: string;
+  prepareNpmDependencies?: () => Promise<void>;
 };
 
 type TTransientDraftSnapshot = {
@@ -91,6 +92,7 @@ export class WidgetWorkspace {
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
   readonly #copyDirectory: typeof cp;
+  readonly #prepareNpmDependencies?: () => Promise<void>;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #authoringQueues = new Map<string, Promise<unknown>>();
 
@@ -103,6 +105,11 @@ export class WidgetWorkspace {
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
     this.#copyDirectory = config.copyDirectory ?? cp;
+    this.#prepareNpmDependencies = config.prepareNpmDependencies;
+  }
+
+  prepareNpmDependencies(): Promise<void> {
+    return this.#prepareNpmDependencies?.() ?? Promise.resolve();
   }
 
   async init(): Promise<void> {

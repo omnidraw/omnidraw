@@ -40,7 +40,7 @@ import {
 } from '@omnidraw/service-widget-state';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fnScopedKey } from '@omnidraw/tenant-core';
 import type {
   IHumanResourceSecretService,
@@ -84,6 +84,7 @@ import { TenantServicePool } from './services/TenantServicePool';
 import { WidgetService } from './services/WidgetService';
 import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
+import { LocalWidgetPackageRegistrySync } from './services/LocalWidgetPackageRegistrySync';
 import {
   createWidgetAuthoringCapability,
   createWidgetServerArtifactCapability,
@@ -173,6 +174,14 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
     join,
   });
+  const localWidgetPackageRegistry = config.dev && process.env.NODE_ENV !== 'production'
+    ? new LocalWidgetPackageRegistrySync({
+        repositoryRoot: resolve(import.meta.dir, '..', '..', '..'),
+      })
+    : null;
+  const prepareWidgetNpmDependencies = localWidgetPackageRegistry === null
+    ? undefined
+    : () => localWidgetPackageRegistry.sync();
   services.provide('eventPublisher', 10, eventPublisher);
 
   const shouldSetupStatefulServices = !config.helpRequested
@@ -215,6 +224,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         createWidgetNpmDistributionBuild({
           scratchDirectory,
           npmUserConfigPath,
+          prepareNpmDependencies: prepareWidgetNpmDependencies,
           runProcess: runner.runProcess,
           runnerIdentity: runner.identity,
         })
@@ -399,6 +409,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       return new AgentService({
         dataPath: agentRoot,
         npmUserConfigPath,
+        prepareWidgetNpmDependencies,
         cachePath: cacheRoot,
         configPath: artifactsRoot,
         eventPublisherService: eventPublisher.forTenant(tenant),

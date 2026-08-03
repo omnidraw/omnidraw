@@ -4,6 +4,7 @@ import type {
   TAiChatApiPort,
   TWidgetBrowserPort,
 } from '../ports';
+import type { TWidgetPublicationTarget } from '../publication/interface';
 import { TraceMap } from '@jridgewell/trace-mapping';
 import { fxDecodeAndVerifyUiArtifact } from '../widget-runtime/fx.decode-and-verify-ui-artifact';
 import {
@@ -81,24 +82,7 @@ type TPreviewDiagnosticScope = Readonly<{
   committedMutationId: string;
 }>;
 
-type TPublishedPreviewSelection = Readonly<{
-  bindingPlanDigestSha256: string;
-  bindingRevision: number;
-  previewId: string;
-  previewRevisionId: string;
-}>;
-
-export type TPreviewPublicationSelection = Readonly<{
-  draftId: string;
-  expectedRevision: string;
-  previewId: string;
-  previewRevisionId: string;
-  expectedBindingRevision: number;
-  expectedBindingPlanDigestSha256: string;
-  canvasId: string;
-  frameNodeId: string;
-  buildSequence: number;
-}>;
+export type TPreviewPublicationTarget = TWidgetPublicationTarget;
 
 export type TPreviewPendingBuild = Readonly<{
   previewId: string;
@@ -164,11 +148,8 @@ export type TPreviewPortalRuntime = Readonly<{
   cancelBuild(): Promise<boolean>;
   controlState(): TPreviewPortalControlState;
   reset(): Promise<void>;
-  publish(
-    expectedSelection?: TPreviewPublicationSelection,
-    idempotencyKey?: string,
-  ): Promise<boolean>;
-  publicationSelection(): TPreviewPublicationSelection | null;
+  publish(idempotencyKey?: string): Promise<boolean>;
+  publicationTarget(): TPreviewPublicationTarget | null;
   reportOwnerState(owner: TPreviewOwner): void;
   invalidateDraftFence(): void;
   reportDraftFence(fence: TPreviewDraftFence): void;
@@ -274,19 +255,18 @@ export function createPreviewPortalRuntime(
   let focused = false;
   let focusOptions: FocusOptions | undefined;
   let frozen = false;
-  let publishSelectionValid = false;
   let latestBuildSequence = 0;
   let latestDraftFence: TPreviewDraftFence | null = null;
   let draftFenceReconciliationRequired = false;
   let liveUpdatesPaused = false;
   let automaticRefreshPending = false;
   let pendingBuild: TPreviewPendingBuild | null = null;
-  let publishedSelection: TPublishedPreviewSelection | null = null;
   let runtimeDiagnostics: TPreviewOwner['runtimeDiagnostics'] = [];
   let previewLogEntries: readonly TPreviewLogEntry[] = [];
   let previewLogSequence = 0;
   let stateOwner = createEphemeralPreviewStateOwner();
   let ownerPromise: Promise<TPreviewOwner> | null = null;
+  let previewOwnerAvailable = false;
   const pending = new Set<TMountedPreview>();
   const pendingFrames = new Map<number, () => void>();
   const pendingDiagnostics = new Set<string>();
@@ -385,39 +365,18 @@ export function createPreviewPortalRuntime(
   args.root.replaceChildren(shell);
   clearLogButton.disabled = true;
 
-  const currentMatchesDraftFence = (): boolean => (
-    !draftFenceReconciliationRequired
-    && current !== null
-    && (
-      latestDraftFence === null
-      || (
-        current.revision === latestDraftFence.revision
-        && current.committedMutationId === latestDraftFence.committedMutationId
-        && current.buildSequence === latestDraftFence.buildSequence
-      )
-    )
-  );
-
   const controlState = (): TPreviewPortalControlState => Object.freeze({
     liveUpdatesPaused,
     automaticRefreshPending,
     pendingBuild,
     publishable: (
       !disposed
-      && current !== null
-      && publishSelectionValid
-      && currentMatchesDraftFence()
+      && previewOwnerAvailable
     ),
   });
 
   const emitControlState = (): void => {
     args.onControlStateChange?.(controlState());
-  };
-
-  const setPublishSelectionValid = (valid: boolean): void => {
-    if (publishSelectionValid === valid) return;
-    publishSelectionValid = valid;
-    emitControlState();
   };
 
   const acceptDraftFence = (
@@ -457,9 +416,6 @@ export function createPreviewPortalRuntime(
     if (reconcilesStream && draftFenceReconciliationRequired) {
       draftFenceReconciliationRequired = false;
       emitControlState();
-    }
-    if (current !== null && !currentMatchesDraftFence()) {
-      setPublishSelectionValid(false);
     }
     return true;
   };
@@ -834,15 +790,21 @@ export function createPreviewPortalRuntime(
   );
 
   const applyOwnerState = (owner: TPreviewOwner): void => {
-    if (
+    const matchesTarget = (
       owner.id !== args.payload.previewId
       || owner.canvasId !== args.canvasId
       || owner.frameNodeId !== args.frameNodeId
       || owner.draftId !== args.payload.draftId
       || owner.originChatId !== args.payload.originChatId
       || owner.role !== args.payload.role
-      || owner.status === 'closed'
-    ) return;
+    ) === false;
+    if (!matchesTarget) return;
+    const nextOwnerAvailable = owner.status !== 'closed';
+    if (previewOwnerAvailable !== nextOwnerAvailable) {
+      previewOwnerAvailable = nextOwnerAvailable;
+      emitControlState();
+    }
+    if (!nextOwnerAvailable) return;
     runtimeDiagnostics = owner.runtimeDiagnostics
       .filter(
         (record) => (
@@ -887,33 +849,6 @@ export function createPreviewPortalRuntime(
         message: record.diagnostic.message,
         occurrenceCount: record.diagnostic.occurrenceCount,
       });
-    }
-    if (
-      owner.publishedPreviewRevisionId !== null
-      && owner.publishedBindingRevision !== null
-      && owner.publishedBindingPlanDigestSha256 !== null
-      && owner.publishedWidgetRevisionId !== null
-      && owner.publishedIdempotencyKey !== null
-      && owner.activeRevisionId === owner.publishedPreviewRevisionId
-      && owner.sourceDigestSha256 !== null
-    ) {
-      publishedSelection = Object.freeze({
-        bindingPlanDigestSha256: owner.publishedBindingPlanDigestSha256,
-        bindingRevision: owner.publishedBindingRevision,
-        previewId: owner.id,
-        previewRevisionId: owner.publishedPreviewRevisionId,
-      });
-    }
-    const selected = current;
-    if (selected !== null) {
-      setPublishSelectionValid(
-        publishedSelection === null
-        || publishedSelection.bindingPlanDigestSha256
-          !== selected.bindingPlanDigestSha256
-        || publishedSelection.bindingRevision !== selected.bindingRevision
-        || publishedSelection.previewId !== selected.previewId
-        || publishedSelection.previewRevisionId !== selected.previewRevisionId,
-      );
     }
   };
 
@@ -999,7 +934,6 @@ export function createPreviewPortalRuntime(
       pending.delete(mounted);
       if (current === mounted) {
         current = null;
-        setPublishSelectionValid(false);
       }
       if (mounted.lease.renewTimer !== undefined) {
         args.functions.cancelTimeout(mounted.lease.renewTimer);
@@ -1025,7 +959,6 @@ export function createPreviewPortalRuntime(
       mounted === current
       || mounted.refreshSequence === sequence
     ) {
-      setPublishSelectionValid(false);
       setStatus('error', withDisplayedStatus(errorMessage(
         error,
         'Preview mount authority expired.',
@@ -1276,7 +1209,6 @@ export function createPreviewPortalRuntime(
     refreshSequence: number,
     resetState: boolean,
   ): Promise<void> => {
-    setPublishSelectionValid(false);
     const candidateStateOwner = resetState
       ? createEphemeralPreviewStateOwner()
       : stateOwner;
@@ -1462,7 +1394,6 @@ export function createPreviewPortalRuntime(
           )
         ) return;
         mountedCandidate.runtimeFailureObserved = true;
-        setPublishSelectionValid(false);
         setStatus(
           'error',
           withDisplayedStatus(
@@ -1562,14 +1493,6 @@ export function createPreviewPortalRuntime(
         pendingBuild = null;
         emitControlState();
       }
-      setPublishSelectionValid(
-        publishedSelection === null
-        || publishedSelection.bindingPlanDigestSha256
-          !== candidate.bindingPlanDigestSha256
-        || publishedSelection.bindingRevision !== candidate.bindingRevision
-        || publishedSelection.previewId !== candidate.previewId
-        || publishedSelection.previewRevisionId !== candidate.previewRevisionId,
-      );
       stateOwner = candidateStateOwner;
       stateOwnerAdopted = true;
       candidate.container.style.opacity = '1';
@@ -1610,7 +1533,6 @@ export function createPreviewPortalRuntime(
       }
       functionBridge?.dispose();
       if (disposed || refreshSequence !== sequence) return;
-      setPublishSelectionValid(false);
       setStatus(
         'error',
         attemptedRevision === null
@@ -1694,7 +1616,6 @@ export function createPreviewPortalRuntime(
       pendingBuild = null;
       emitControlState();
     }
-    setPublishSelectionValid(false);
     if (
       pendingBuild === null
       && latestBuildSequence <= selected.buildSequence
@@ -1714,76 +1635,54 @@ export function createPreviewPortalRuntime(
     return true;
   };
   const reset = (): Promise<void> => explicitRefresh(true);
-  const publicationSelection = (): TPreviewPublicationSelection | null => {
-    const selected = current;
-    if (
-      disposed
-      || selected === null
-      || !publishSelectionValid
-      || !currentMatchesDraftFence()
-    ) return null;
+  const publicationTarget = (): TPreviewPublicationTarget | null => {
+    if (disposed || !previewOwnerAvailable) return null;
     return Object.freeze({
       draftId: args.payload.draftId,
-      expectedRevision: selected.revision,
-      previewId: selected.previewId,
-      previewRevisionId: selected.previewRevisionId,
-      expectedBindingRevision: selected.bindingRevision,
-      expectedBindingPlanDigestSha256: selected.bindingPlanDigestSha256,
+      previewId: args.payload.previewId,
       canvasId: args.canvasId,
       frameNodeId: args.frameNodeId,
-      buildSequence: selected.buildSequence,
+      label: `Canvas ${args.canvasId} · frame ${args.frameNodeId}`,
     });
   };
   const publish = async (
-    expectedSelection?: TPreviewPublicationSelection,
     idempotencyKey = args.functions.createIdempotencyKey(),
   ): Promise<boolean> => {
     if (disposed) return false;
-    const selected = current;
-    if (
-      selected === null
-      || !publishSelectionValid
-      || !currentMatchesDraftFence()
-    ) {
-      setStatus('error', 'Build the current draft successfully before publishing.');
+    let owner: TPreviewOwner;
+    try {
+      owner = await ensureOwner();
+    } catch (error) {
+      if (disposed) return false;
+      setStatus(
+        'error',
+        'The Preview frame has no valid owner. Rebuild Preview before publishing.',
+      );
+      args.onError(error);
       return false;
     }
     if (
-      expectedSelection !== undefined
-      && (
-        expectedSelection.draftId !== args.payload.draftId
-        || expectedSelection.expectedRevision !== selected.revision
-        || expectedSelection.previewId !== selected.previewId
-        || expectedSelection.previewRevisionId !== selected.previewRevisionId
-        || expectedSelection.expectedBindingRevision !== selected.bindingRevision
-        || expectedSelection.expectedBindingPlanDigestSha256
-          !== selected.bindingPlanDigestSha256
-        || expectedSelection.canvasId !== args.canvasId
-        || expectedSelection.frameNodeId !== args.frameNodeId
-        || expectedSelection.buildSequence !== selected.buildSequence
-      )
+      owner.status === 'closed'
+      || owner.draftId !== args.payload.draftId
+      || owner.id !== args.payload.previewId
+      || owner.canvasId !== args.canvasId
+      || owner.frameNodeId !== args.frameNodeId
     ) {
       setStatus(
         'error',
-        'Preview changed before publication. Review the ready frame again.',
+        'The Preview frame has no valid owner. Rebuild Preview before publishing.',
       );
       return false;
     }
-    const publicationSequence = sequence;
-    setPublishSelectionValid(false);
     setStatus(
       'building',
-      `Publishing exact Preview ${selected.revision.slice(0, 8)}…`,
+      'Building current draft if needed… Publishing…',
     );
     try {
       const [publishError, result] = await args.publishApi.publish({
         idempotencyKey,
         draftId: args.payload.draftId,
-        expectedRevision: selected.revision,
-        previewId: selected.previewId,
-        previewRevisionId: selected.previewRevisionId,
-        expectedBindingRevision: selected.bindingRevision,
-        expectedBindingPlanDigestSha256: selected.bindingPlanDigestSha256,
+        previewId: args.payload.previewId,
         canvasId: args.canvasId,
         frameNodeId: args.frameNodeId,
       });
@@ -1797,30 +1696,13 @@ export function createPreviewPortalRuntime(
       if (!result.published) {
         throw new Error(result.message || 'Preview publication failed.');
       }
-      if (
-        result.draftId !== args.payload.draftId
-        || result.revision !== selected.revision
-      ) {
-        throw new Error('Publication returned a different Preview source revision.');
+      if (result.draftId !== args.payload.draftId) {
+        throw new Error('Publication returned a different draft identity.');
       }
-      publishedSelection = Object.freeze({
-        bindingPlanDigestSha256: selected.bindingPlanDigestSha256,
-        bindingRevision: selected.bindingRevision,
-        previewId: selected.previewId,
-        previewRevisionId: selected.previewRevisionId,
-      });
-      setStatus('ready', `Published. ${displayedStatus(selected)}`);
+      setStatus('ready', `Published ${result.revision.slice(0, 8)}.`);
       return true;
     } catch (error) {
       if (disposed) return false;
-      if (
-        current === selected
-        && sequence === publicationSequence
-        && pendingBuild === null
-        && latestBuildSequence === selected.buildSequence
-      ) {
-        setPublishSelectionValid(true);
-      }
       setStatus(
         'error',
         withDisplayedStatus(errorMessage(error, 'Could not publish Preview.')),
@@ -1877,7 +1759,7 @@ export function createPreviewPortalRuntime(
     controlState,
     reset,
     publish,
-    publicationSelection,
+    publicationTarget,
     reportOwnerState(owner): void {
       if (disposed) return;
       applyOwnerState(owner);
@@ -1927,7 +1809,6 @@ export function createPreviewPortalRuntime(
         || progress.phase === 'building'
         || progress.phase === 'validating'
       ) {
-        setPublishSelectionValid(false);
         pendingBuild = Object.freeze({
           previewId: progress.previewId,
           revision: progress.revision,
@@ -1967,7 +1848,6 @@ export function createPreviewPortalRuntime(
         emitControlState();
       }
       if (progress.phase === 'ready') {
-        setPublishSelectionValid(false);
         setStatus(
           'building',
           withDisplayedStatus(
@@ -1984,7 +1864,6 @@ export function createPreviewPortalRuntime(
         return;
       }
       if (progress.phase === 'failed') {
-        setPublishSelectionValid(false);
         setStatus(
           'error',
           withDisplayedStatus(

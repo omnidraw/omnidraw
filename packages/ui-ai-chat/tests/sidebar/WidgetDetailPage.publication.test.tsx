@@ -132,7 +132,7 @@ describe("WidgetDetailPage publication", () => {
     expect(host.textContent).not.toContain("Checking…")
   })
 
-  test("fails closed and directs the user to a ready frame-owned Preview", async () => {
+  test("fails closed and directs the user to a frame-owned Preview target", async () => {
     const publish = vi.fn()
     const listPreviewOwners = vi.fn(async () => [undefined, []] as const)
     const controller = {
@@ -179,18 +179,18 @@ describe("WidgetDetailPage publication", () => {
 
     const needsPreview = await vi.waitFor(() => {
       const button = [...host.querySelectorAll<HTMLButtonElement>("button")]
-        .find((candidate) => candidate.textContent === "Needs Preview")
+        .find((candidate) => candidate.textContent === "Needs Preview frame")
       expect(button).toBeDefined()
       return button!
     })
     expect(needsPreview.disabled).toBe(false)
-    expect(needsPreview.title).toContain("wait for its Preview to become ready")
-    expect(host.textContent).toContain("Publication requires an exact ready frame-owned Preview")
+    expect(needsPreview.title).toContain("choose its publication frame")
+    expect(host.textContent).toContain("Publication requires a frame-owned Preview target")
 
     needsPreview.click()
-    await vi.waitFor(() => expect(document.body.textContent).toContain("Ready Preview required"))
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Preview frame required"))
     const unsafeSubmit = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
-      .find((candidate) => candidate.textContent === "Needs Preview")
+      .find((candidate) => candidate.textContent === "Needs Preview frame")
     expect(unsafeSubmit?.disabled).toBe(true)
     expect(publish).not.toHaveBeenCalled()
     expect(listPreviewOwners).toHaveBeenCalledWith({
@@ -314,19 +314,18 @@ describe("WidgetDetailPage publication", () => {
       return select!
     })
     const ambiguousSubmit = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
-      .find((candidate) => candidate.textContent === "Choose Preview")
+      .find((candidate) => candidate.textContent === "Choose frame")
     expect(ambiguousSubmit?.disabled).toBe(true)
     previewSelect.value =
-      `${PREVIEW_ID_TWO}:${PREVIEW_REVISION_ID_TWO}:9:${BINDING_PLAN_TWO}`
+      `${DRAFT_ID}:${PREVIEW_ID_TWO}:${CANVAS.id}:zeta-frame-two`
     previewSelect.dispatchEvent(new Event("change", { bubbles: true }))
     await vi.waitFor(() => {
-      expect(document.body.textContent).toContain("binding revision 9")
       expect(document.body.textContent).toContain("frame zeta-frame-two")
-      expect(document.body.textContent).toContain("Draft digest draft-finger")
+      expect(document.body.textContent).toContain("Current source at Publish time")
     })
     const confirm = await vi.waitFor(() => {
       const button = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
-        .find((candidate) => candidate.textContent === "Publish")
+        .find((candidate) => candidate.textContent === "Publish current draft")
       expect(button).toBeDefined()
       expect(button?.disabled).toBe(false)
       return button!
@@ -336,11 +335,7 @@ describe("WidgetDetailPage publication", () => {
     await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({
       idempotencyKey: "detail-publication-1",
       draftId: DRAFT_ID,
-      expectedRevision: "draft-revision",
       previewId: PREVIEW_ID_TWO,
-      previewRevisionId: PREVIEW_REVISION_ID_TWO,
-      expectedBindingRevision: 9,
-      expectedBindingPlanDigestSha256: BINDING_PLAN_TWO,
       canvasId: CANVAS.id,
       frameNodeId: "zeta-frame-two",
     }))

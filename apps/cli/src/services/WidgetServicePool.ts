@@ -143,6 +143,14 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     this.#delegate(tenant, (service) => service.publishPreview(tenant, request))
   );
 
+  replayPreviewPublication:
+    IWidgetPreviewPromotionService['replayPreviewPublication'] = (tenant, request) => (
+      this.#delegate(
+        tenant,
+        (service) => service.replayPreviewPublication(tenant, request),
+      )
+    );
+
   closePreviewWorkspace:
     IWidgetPreviewWorkspaceService['closePreviewWorkspace'] = (tenant, request) => (
       this.#delegate(tenant, (service) => service.closePreviewWorkspace(tenant, request))
@@ -278,6 +286,7 @@ function createWidgetAuthoringCapability(
     buildPreview: pool.buildPreview,
     loadPreview: pool.loadPreview,
     loadPreviewRevision: pool.loadPreviewRevision,
+    replayPreviewPublication: pool.replayPreviewPublication,
     publishPreview: pool.publishPreview,
     closePreviewWorkspace: pool.closePreviewWorkspace,
     getArtifact: pool.getArtifact,

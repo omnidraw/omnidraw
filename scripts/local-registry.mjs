@@ -37,6 +37,7 @@ const RUNTIME_LOCK_PATH = join(
   'package-lock.json',
 );
 const OWNED_SCOPES = Object.freeze(['@omnidraw/']);
+const WIDGET_PACKAGE_ROOT = '@omnidraw/sdk';
 const START_TIMEOUT_MS = 20_000;
 const STOP_TIMEOUT_MS = 8_000;
 
@@ -84,6 +85,7 @@ function settings() {
     npmUserConfigPath: join(stateDirectory, 'npmrc'),
     widgetNpmUserConfigPath: join(stateDirectory, 'npmjs.npmrc'),
     startLockPath: join(stateDirectory, 'start.lock'),
+    publishLockPath: join(stateDirectory, 'publish.lock'),
     toolDirectory,
     toolManifestPath: join(toolDirectory, 'package.json'),
     verdaccioBin: join(toolDirectory, 'node_modules', 'verdaccio', 'bin', 'verdaccio'),
@@ -359,6 +361,30 @@ async function acquireStartLock(config) {
   }
 }
 
+async function acquirePublishLock(config) {
+  const deadline = Date.now() + 5 * 60_000;
+  while (true) {
+    try {
+      await mkdir(config.publishLockPath, { mode: 0o700 });
+      await writeFile(join(config.publishLockPath, 'owner'), `${process.pid}\n`);
+      return;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      const age = Date.now() - await stat(config.publishLockPath)
+        .then((value) => value.mtimeMs)
+        .catch(() => Date.now());
+      if (age > 10 * 60_000) {
+        await rm(config.publishLockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for registry publication lock ${config.publishLockPath}.`);
+      }
+      await sleep(100);
+    }
+  }
+}
+
 async function waitFor(config, predicate, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -581,6 +607,22 @@ async function publishedIntegrity(config, name, version) {
   return metadata.versions?.[version]?.dist?.integrity ?? null;
 }
 
+async function publicIntegrity(name, version) {
+  const packageUrl = new URL(
+    `${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+    'https://registry.npmjs.org/',
+  );
+  try {
+    const response = await fetch(packageUrl);
+    if (response.status === 404) return null;
+    if (!response.ok) return undefined;
+    const metadata = await response.json();
+    return metadata.dist?.integrity ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
 async function publishTarball(config, requestedTarball) {
   const tarball = resolve(requestedTarball);
   await access(tarball);
@@ -632,13 +674,82 @@ async function publishTarball(config, requestedTarball) {
   });
 }
 
-async function publishSdk(config) {
-  await run('bun', ['run', '--filter', '@omnidraw/sdk', 'build']);
-  const packDirectory = await mkdtemp(join(config.stateDirectory, 'sdk-pack-'));
+function workspaceDependencyNames(entry, byName) {
+  return ['dependencies', 'optionalDependencies', 'peerDependencies']
+    .flatMap((field) => Object.keys(entry.manifest[field] ?? {}))
+    .filter((name) => byName.has(name));
+}
+
+async function versionedWorkspacePackages() {
+  const packagesDirectory = join(REPOSITORY_ROOT, 'packages');
+  const entries = await readdir(packagesDirectory, { withFileTypes: true });
+  const packages = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const directory = join(packagesDirectory, entry.name);
+    const manifest = await readFile(join(directory, 'package.json'), 'utf8')
+      .then((source) => JSON.parse(source))
+      .catch((error) => {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+      });
+    if (manifest === null || manifest.version === undefined) continue;
+    if (
+      typeof manifest.name !== 'string'
+      || typeof manifest.version !== 'string'
+      || manifest.private === true
+    ) {
+      throw new Error(`${directory}/package.json has an invalid public package identity.`);
+    }
+    packages.push(Object.freeze({
+      name: manifest.name,
+      version: manifest.version,
+      directory,
+      manifest,
+    }));
+  }
+  return packages;
+}
+
+export function widgetPackagePublishOrder(packages, rootName = WIDGET_PACKAGE_ROOT) {
+  const byName = new Map(packages.map((entry) => [entry.name, entry]));
+  if (!byName.has(rootName)) {
+    throw new Error(`Widget package root ${rootName} is not a versioned workspace package.`);
+  }
+  const closure = new Map();
+  const visit = (name) => {
+    if (closure.has(name)) return;
+    const entry = byName.get(name);
+    if (entry === undefined) return;
+    closure.set(name, entry);
+    for (const dependency of workspaceDependencyNames(entry, byName)) visit(dependency);
+  };
+  visit(rootName);
+
+  const remaining = new Map(closure);
+  const ordered = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining.values()].filter((entry) =>
+      workspaceDependencyNames(entry, byName).every((dependency) => !remaining.has(dependency)));
+    if (ready.length === 0) {
+      throw new Error(`Versioned widget package dependency cycle: ${[...remaining.keys()].join(', ')}.`);
+    }
+    ready.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of ready) {
+      remaining.delete(entry.name);
+      ordered.push(entry);
+    }
+  }
+  return Object.freeze(ordered);
+}
+
+async function packWorkspacePackage(config, entry) {
+  await run('bun', ['run', '--filter', entry.name, 'build']);
+  const packDirectory = await mkdtemp(join(config.stateDirectory, 'widget-package-pack-'));
   try {
     await run('npm', [
       'pack',
-      join(REPOSITORY_ROOT, 'packages', 'sdk', 'dist'),
+      join(entry.directory, 'dist'),
       '--pack-destination',
       packDirectory,
       '--ignore-scripts',
@@ -647,11 +758,49 @@ async function publishSdk(config) {
     const tarballs = (await readdir(packDirectory))
       .filter((entry) => entry.endsWith('.tgz'));
     if (tarballs.length !== 1) {
-      throw new Error('Packing the staged @omnidraw/sdk package produced no unique tarball.');
+      throw new Error(`Packing staged ${entry.name} produced no unique tarball.`);
     }
     return await publishTarball(config, join(packDirectory, tarballs[0]));
   } finally {
     await rm(packDirectory, { recursive: true, force: true });
+  }
+}
+
+export function widgetPackageSyncSource(registryIntegrity, npmIntegrity) {
+  if (registryIntegrity === null) return 'workspace';
+  if (npmIntegrity === registryIntegrity) return 'upstream';
+  if (npmIntegrity === undefined) return 'available';
+  return 'workspace';
+}
+
+async function syncWorkspacePackage(config, entry) {
+  const [registryIntegrity, npmIntegrity] = await Promise.all([
+    publishedIntegrity(config, entry.name, entry.version),
+    publicIntegrity(entry.name, entry.version),
+  ]);
+  const source = widgetPackageSyncSource(registryIntegrity, npmIntegrity);
+  if (source !== 'workspace') {
+    return Object.freeze({
+      name: entry.name,
+      version: entry.version,
+      integrity: registryIntegrity,
+      registryUrl: config.registryUrl,
+      status: source,
+    });
+  }
+  return packWorkspacePackage(config, entry);
+}
+
+async function publishWidgetPackages(config) {
+  await acquirePublishLock(config);
+  try {
+    const packages = await versionedWorkspacePackages();
+    const ordered = widgetPackagePublishOrder(packages);
+    const results = [];
+    for (const entry of ordered) results.push(await syncWorkspacePackage(config, entry));
+    return Object.freeze(results);
+  } finally {
+    await rm(config.publishLockPath, { recursive: true, force: true });
   }
 }
 
@@ -691,9 +840,9 @@ async function main() {
     console.log(JSON.stringify(results, null, 2));
     return;
   }
-  if (command === 'publish-sdk') {
+  if (command === 'publish-widget-packages' || command === 'publish-sdk') {
     await startRegistry(config);
-    console.log(JSON.stringify(await publishSdk(config), null, 2));
+    console.log(JSON.stringify(await publishWidgetPackages(config), null, 2));
     return;
   }
   if (command === 'bootstrap') {
@@ -712,11 +861,13 @@ async function main() {
   }
   throw new Error(
     `Unknown command '${command}'. Use start, start-foreground, ensure, status, stop, publish, `
-    + 'publish-sdk, or bootstrap.',
+    + 'publish-widget-packages, publish-sdk, or bootstrap.',
   );
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

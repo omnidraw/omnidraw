@@ -487,6 +487,13 @@ class WidgetService implements
     return this.#preview.loadPreviewRevision(tenant, request);
   }
 
+  replayPreviewPublication:
+    IWidgetPreviewPromotionService['replayPreviewPublication'] =
+      (tenant, request) => {
+        this.#assertPlacement(tenant);
+        return this.#controlStore.replayPreviewPublication(tenant, request);
+      };
+
   publishPreview(
     tenant: TTenantContext,
     request: TWidgetPreviewPromotionRequest,

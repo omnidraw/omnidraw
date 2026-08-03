@@ -98,19 +98,15 @@ describe('agent Preview forwarding', () => {
   });
 
 
-  test('forwards the exact mounted Preview revision for publication', async () => {
+  test('forwards the stable Preview frame target for publication', async () => {
     const calls: unknown[][] = [];
     const draftId = crypto.randomUUID();
     const input = {
       idempotencyKey: 'publish-mounted-preview',
       draftId,
-      expectedRevision: 'a'.repeat(64),
       previewId: crypto.randomUUID(),
-      previewRevisionId: crypto.randomUUID(),
       canvasId: 'canvas-published-preview',
       frameNodeId: 'frame-published-preview',
-      expectedBindingRevision: 3,
-      expectedBindingPlanDigestSha256: 'b'.repeat(64),
     };
     const expected = {
       published: false,
@@ -133,16 +129,11 @@ describe('agent Preview forwarding', () => {
       .resolves.toEqual(expected);
     expect(calls).toEqual([[
       draftId,
-      input.expectedRevision,
       {
         idempotencyKey: input.idempotencyKey,
         previewId: input.previewId,
-        previewRevisionId: input.previewRevisionId,
         canvasId: input.canvasId,
         frameNodeId: input.frameNodeId,
-        expectedBindingRevision: input.expectedBindingRevision,
-        expectedBindingPlanDigestSha256:
-          input.expectedBindingPlanDigestSha256,
       },
     ]]);
   });

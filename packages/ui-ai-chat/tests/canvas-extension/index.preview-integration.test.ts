@@ -390,12 +390,11 @@ function fixture() {
   ] as const);
   const publishPreview = vi.fn(async (input: {
     draftId: string;
-    expectedRevision: string;
   }) => [undefined, {
     published: true,
     draftId: input.draftId,
     definitionId: DEFINITION_ID,
-    revision: input.expectedRevision,
+    revision: 'new-draft-revision',
     publishedRevisionId: REVISION_ID,
     manifest: previewReady().manifest,
     uiRuntime: previewReady().uiArtifact.runtimeDescriptor,
@@ -799,7 +798,7 @@ describe('current Cangine Preview integration', () => {
     current.closeAgentEvents();
     await vi.waitFor(() => expect(
       current.dropdownPresentation(frameNodeId)?.publish,
-    ).toEqual({ disabled: true }));
+    ).toEqual({ disabled: false }));
 
     await vi.waitFor(
       () => expect(current.requestAgentEvents).toHaveBeenCalledTimes(2),
@@ -810,18 +809,19 @@ describe('current Cangine Preview integration', () => {
       canvasId: 'canvas-1',
       frameNodeId,
     }));
+    await vi.waitFor(() => expect(current.buildPreview).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(
       previewHost.querySelector('section')?.dataset.previewStatus,
     ).toBe('error'));
     expect(previewHost.textContent).toContain('The reconnect build failed.');
     expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
-      disabled: true,
+      disabled: false,
     });
     current.emitManageAction(frameNodeId, 'publish');
     expect(current.publishPreview).not.toHaveBeenCalled();
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${frameNodeId}"]`,
-    )).toBeNull();
+    )).not.toBeNull();
 
     reconnectedEvents.push({
       kind: 'widget-preview',
@@ -899,13 +899,13 @@ describe('current Cangine Preview integration', () => {
     }));
     expect(current.getPreviewOwner).not.toHaveBeenCalled();
     expect(current.dropdownPresentation(frameNodeId)?.publish).toEqual({
-      disabled: true,
+      disabled: false,
     });
     current.emitManageAction(frameNodeId, 'publish');
     expect(current.publishPreview).not.toHaveBeenCalled();
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${frameNodeId}"]`,
-    )).toBeNull();
+    )).not.toBeNull();
 
     await installed.dispose?.();
   });
@@ -1381,25 +1381,18 @@ describe('current Cangine Preview integration', () => {
       expect(dialog?.textContent).toContain('Publish Weather Board?');
       return dialog!;
     });
-    expect(publicationDialog.textContent).toContain('Draft digest');
-    expect(publicationDialog.textContent).toContain('new-draft-re');
-    expect(publicationDialog.textContent).toContain('#2 complete');
-    expect(publicationDialog.textContent).toContain('Binding revision');
+    expect(publicationDialog.textContent).toContain('Current source at Publish time');
     expect(publicationDialog.textContent).toContain('canvas-1');
     expect(publicationDialog.textContent).toContain(companions[0]!.id);
     expect(current.publishPreview).not.toHaveBeenCalled();
     const confirmPublication = [...publicationDialog.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === 'Publish');
+      .find((button) => button.textContent === 'Publish current draft');
     expect(confirmPublication).toBeDefined();
     confirmPublication!.click();
     await vi.waitFor(() => expect(current.publishPreview).toHaveBeenCalledWith({
       idempotencyKey: 'a0000000-0000-4000-8000-00000000000a',
       draftId: DRAFT_ID,
-      expectedRevision: 'new-draft-revision',
       previewId: '60000000-0000-4000-8000-000000000006',
-      previewRevisionId: 'd0000000-0000-4000-8000-00000000000d',
-      expectedBindingRevision: 0,
-      expectedBindingPlanDigestSha256: 'e'.repeat(64),
       canvasId: 'canvas-1',
       frameNodeId: '50000000-0000-4000-8000-000000000005',
     }));
@@ -1408,7 +1401,7 @@ describe('current Cangine Preview integration', () => {
     )).toBeNull());
     expect(
       current.dropdownPresentation(companions[0]!.id)?.publish,
-    ).toEqual({ disabled: true });
+    ).toEqual({ disabled: false });
 
     current.emitAgentEvent({
       kind: 'widget-preview',
@@ -1427,7 +1420,7 @@ describe('current Cangine Preview integration', () => {
     ).toBe('building'));
     expect(
       current.dropdownPresentation(companions[0]!.id)?.publish,
-    ).toEqual({ disabled: true });
+    ).toEqual({ disabled: false });
     expect(
       current.dropdownPresentation(companions[0]!.id)?.['cancel-build'],
     ).toEqual({ disabled: false });
@@ -1451,11 +1444,11 @@ describe('current Cangine Preview integration', () => {
     expect(current.context.config.notification.showInfo).not.toHaveBeenCalled();
     expect(
       current.dropdownPresentation(companions[0]!.id)?.publish,
-    ).toEqual({ disabled: true });
+    ).toEqual({ disabled: false });
     current.emitManageAction(companions[0]!.id, 'publish');
     expect(document.querySelector(
       `[data-preview-publication-dialog-for="${companions[0]!.id}"]`,
-    )).toBeNull();
+    )).not.toBeNull();
     expect(current.context.config.notification.showError).not.toHaveBeenCalledWith(
       'Preview is not ready to publish',
       expect.anything(),

@@ -157,13 +157,9 @@ export const ZAgentWidgetPreviewCancelInput =
 export const ZAgentWidgetPublishInput = z.object({
   idempotencyKey: z.string().min(1).max(200).regex(/^[A-Za-z0-9._~:+-]+$/),
   draftId: ZAgentOpaqueId,
-  expectedRevision: ZAgentRevisionDigest,
   previewId: ZAgentOpaqueId,
-  previewRevisionId: ZAgentPreviewOwnerBoundedIdentifier,
   canvasId: ZAgentPreviewOwnerBoundedIdentifier,
   frameNodeId: ZAgentPreviewOwnerBoundedIdentifier,
-  expectedBindingRevision: z.number().int().nonnegative(),
-  expectedBindingPlanDigestSha256: ZAgentRevisionDigest,
 }).strict();
 
 export const ZAgentWidgetPreviewOwnerDescriptor: z.ZodType<TWidgetPreviewOwnerDescriptor> =
@@ -337,7 +333,9 @@ const ZWidgetPreviewFailure = z.object({
   revision: ZAgentRevisionDigest.optional(),
   reason: z.enum([
     'not-found',
+    'superseded',
     'validation-failed',
+    'resource-binding-invalid',
     'manifest-invalid',
     'artifact-unavailable',
     'build-failed',
@@ -364,9 +362,10 @@ const ZWidgetPublishFailure = z.object({
   draftId: ZAgentOpaqueId,
   reason: z.enum([
     'not-found',
-    'stale-revision',
+    'draft-still-changing',
     'validation-failed',
     'resource-binding-invalid',
+    'build-failed',
     'publication-conflict',
     'publication-failed',
   ]),

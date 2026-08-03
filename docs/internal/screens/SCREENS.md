@@ -51,7 +51,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. Guest content occupies the flexible upper lane; a compact, keyboard-focusable host-owned log terminal is docked below it with bounded scrollback and a clear action. Revision/binding selection, queued/install/build/validation/failure/superseded/ready progress, and structured runtime diagnostics stay in this terminal rather than covering or entering guest content; the latest diagnostic retains its host-owned **Resolve** action. The durable frame survives restart, follows committed edits automatically, and keeps its last known good UI visible through failures. Its functions use the exact retained server artifact and real selected binding revision. The right-aligned **Manage** menu keeps the title lane draggable and contains live-update pause/resume, build cancellation, Retry, Reset, and Publish; transient menu labels and disabled states always follow the current Preview runtime, and Publish remains unavailable for stale or failed output. |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. Guest content occupies the flexible upper lane; a compact, keyboard-focusable host-owned log terminal is docked below it with bounded scrollback and a clear action. Revision/binding selection, queued/install/build/validation/failure/superseded/ready progress, and structured runtime diagnostics stay in this terminal rather than covering or entering guest content; the latest diagnostic retains its host-owned **Resolve** action. The durable frame survives restart, follows committed edits automatically, and keeps its last known good UI visible through failures. Its functions use the exact retained server artifact and real selected binding revision. The right-aligned **Manage** menu keeps the title lane draggable and contains live-update pause/resume, build cancellation, Retry, Reset, and **Publish current draft**. Publish stays available while the durable frame target exists; confirmation reuses a matching construction or builds and validates the newest stable source before exact promotion. |
 
 | Direct widget placement |
 | --- |
@@ -68,6 +68,11 @@ The widget route provides one tabbed workspace for published and draft widget de
 | **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** Immutable published configuration with the edit-as-draft entry point. |
 
 The current inspector tabs are **Overview**, **Config**, **Functions**, **Collaborative State**, **Runs**, **Logs**, **Resources**, and **Files**. Published configuration and source are read from the active immutable revision; draft configuration edits the mutable draft.
+
+Draft-header publication uses the same current-source contract as the Preview
+frame. With one target it is selected automatically; with several persisted
+Preview frames the user chooses the canvas/frame. Readiness and binding build
+details are server-owned and are not frozen into the confirmation request.
 
 | Files | Draft config |
 | --- | --- |

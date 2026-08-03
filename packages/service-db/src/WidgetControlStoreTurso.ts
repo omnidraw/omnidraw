@@ -46,6 +46,8 @@ import type {
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
   TWidgetPreviewPublicationIdentity,
+  TWidgetPreviewPublicationReplayRequest,
+  TWidgetPreviewPublicationReplayResult,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
@@ -97,6 +99,8 @@ type TPreviewPublicationMarkerRow = Readonly<{
   published_widget_revision_id: unknown;
   published_idempotency_key: unknown;
 }>;
+
+const WIDGET_PUBLICATION_IDEMPOTENCY_RETENTION_MS = 24 * 60 * 60 * 1_000;
 
 const CONTROL_STORE_MAX_BATCH = 500;
 
@@ -808,6 +812,76 @@ export class WidgetControlStoreTurso implements
     });
   }
 
+  async replayPreviewPublication(
+    tenant: TTenantContext,
+    request: TWidgetPreviewPublicationReplayRequest,
+  ): Promise<TWidgetPreviewPublicationReplayResult | null> {
+    const row = await (await this.database.prepare(`
+      SELECT publication_identity_json, definition_id, published_revision_id
+      FROM widget_preview_publication_idempotency
+      WHERE org_id = ? AND account_id = ? AND idempotency_key = ?
+    `)).get(
+      tenant.orgId,
+      tenant.accountId,
+      request.idempotencyKey,
+    ) as Record<string, unknown> | undefined;
+    if (row === undefined) return null;
+
+    let identity: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(String(row.publication_identity_json));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new TypeError('Publication identity must be an object.');
+      }
+      identity = parsed as Record<string, unknown>;
+    } catch {
+      throw widgetStoreError(
+        'WIDGET_PUBLICATION_IDEMPOTENCY_RESULT_INVALID',
+        'The durable publication replay identity failed integrity validation.',
+      );
+    }
+    if (
+      identity.draftId !== request.draftId
+      || identity.previewId !== request.previewId
+      || identity.canvasId !== request.canvasId
+      || identity.frameNodeId !== request.frameNodeId
+    ) return { status: 'conflict' };
+
+    const definitionId = String(row.definition_id);
+    const publishedRevisionId = String(row.published_revision_id);
+    const [revision, source] = await Promise.all([
+      this.getRevision(tenant, publishedRevisionId),
+      this.getRevisionSource(tenant, publishedRevisionId),
+    ]);
+    if (
+      revision === null
+      || source === null
+      || revision.id !== publishedRevisionId
+      || revision.definitionId !== definitionId
+      || source.revisionId !== revision.id
+      || source.definitionId !== revision.definitionId
+      || identity.definitionId !== revision.definitionId
+      || identity.sourceDigestSha256 !== source.sourceDigestSha256
+    ) {
+      throw widgetStoreError(
+        'WIDGET_PUBLICATION_IDEMPOTENCY_RESULT_INVALID',
+        'The durable publication replay result failed integrity validation.',
+      );
+    }
+    return {
+      status: 'replayed',
+      draftId: request.draftId,
+      previewId: request.previewId,
+      canvasId: request.canvasId,
+      frameNodeId: request.frameNodeId,
+      definitionId,
+      publishedRevisionId,
+      sourceDigestSha256: source.sourceDigestSha256,
+      manifest: revision.manifest,
+      uiRuntime: revision.uiRuntime,
+    };
+  }
+
   async rollbackPublication(
     tenant: TTenantContext,
     request: TWidgetRollbackInput,
@@ -938,6 +1012,33 @@ export class WidgetControlStoreTurso implements
           LIMIT ?
         )
       `)).run(tenant.orgId, tenant.orgId, nowMs, limit);
+      const idempotencyCutoff = Math.max(
+        0,
+        nowMs - WIDGET_PUBLICATION_IDEMPOTENCY_RETENTION_MS,
+      );
+      const expiredPublications = await (await this.database.prepare(`
+        SELECT account_id, idempotency_key
+        FROM widget_preview_publication_idempotency
+        WHERE org_id = ? AND created_at_ms <= ?
+        ORDER BY created_at_ms ASC, account_id ASC, idempotency_key ASC
+        LIMIT ?
+      `)).all(
+        tenant.orgId,
+        idempotencyCutoff,
+        limit,
+      ) as Array<{ account_id: string; idempotency_key: string }>;
+      for (const publication of expiredPublications) {
+        await (await this.database.prepare(`
+          DELETE FROM widget_preview_publication_idempotency
+          WHERE org_id = ? AND account_id = ? AND idempotency_key = ?
+            AND created_at_ms <= ?
+        `)).run(
+          tenant.orgId,
+          publication.account_id,
+          publication.idempotency_key,
+          idempotencyCutoff,
+        );
+      }
       const rows = await (await this.database.prepare(`
         SELECT revision.id
         FROM widget_definition_revisions AS revision
@@ -969,29 +1070,9 @@ export class WidgetControlStoreTurso implements
           AND NOT EXISTS (
             SELECT 1
             FROM widget_preview_publication_idempotency AS publication
-            JOIN agent_previews AS preview
-              ON preview.org_id = publication.org_id
-             AND preview.account_id = publication.account_id
-             AND preview.id = json_extract(
-               publication.publication_identity_json,
-               '$.previewId'
-             )
-             AND preview.canvas_id = json_extract(
-               publication.publication_identity_json,
-               '$.canvasId'
-             )
-             AND preview.frame_node_id = json_extract(
-               publication.publication_identity_json,
-               '$.frameNodeId'
-             )
-             AND preview.draft_id = json_extract(
-               publication.publication_identity_json,
-               '$.draftId'
-             )
             WHERE publication.org_id = revision.org_id
               AND publication.definition_id = revision.definition_id
               AND publication.published_revision_id = revision.id
-              AND preview.status <> 'closed'
           )
         ORDER BY definition.updated_at_ms ASC, revision.revision_number ASC, revision.id ASC
         LIMIT ?
@@ -1031,29 +1112,9 @@ export class WidgetControlStoreTurso implements
             AND NOT EXISTS (
               SELECT 1
               FROM widget_preview_publication_idempotency AS publication
-              JOIN agent_previews AS preview
-                ON preview.org_id = publication.org_id
-               AND preview.account_id = publication.account_id
-               AND preview.id = json_extract(
-                 publication.publication_identity_json,
-                 '$.previewId'
-               )
-               AND preview.canvas_id = json_extract(
-                 publication.publication_identity_json,
-                 '$.canvasId'
-               )
-               AND preview.frame_node_id = json_extract(
-                 publication.publication_identity_json,
-                 '$.frameNodeId'
-               )
-               AND preview.draft_id = json_extract(
-                 publication.publication_identity_json,
-                 '$.draftId'
-               )
               WHERE publication.org_id = revision.org_id
                 AND publication.definition_id = revision.definition_id
                 AND publication.published_revision_id = revision.id
-                AND preview.status <> 'closed'
             )
         `)).run(tenant.orgId, row.id, cutoff);
         if (result.changes === 1) {

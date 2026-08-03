@@ -876,6 +876,9 @@ describe('managed composition architecture boundaries', () => {
     expect(rootManifest.scripts?.prebuild).toContain('build:canvas-kernel')
     expect(rootManifest.scripts?.['prebuild:single']).toContain('build:canvas-kernel')
     expect(rootManifest.scripts?.predev).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.predev).toContain('publish-widget-packages')
+    expect(rootManifest.scripts?.['server:dev']).toContain('publish-widget-packages')
+    expect(rootManifest.scripts?.['registry:publish:widgets']).toContain('publish-widget-packages')
     expect(rootManifest.scripts?.['preclient:dev']).toContain('build:canvas-kernel')
     expect(rootManifest.scripts?.['client:dev']).toContain('scripts/dev-frontend.ts')
 
