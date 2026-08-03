@@ -16,6 +16,7 @@ bun.lockb
 .env
 .env.*
 !.env.example
+.npmrc
 
 # IDE
 .idea/
