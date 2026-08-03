@@ -139,7 +139,7 @@ describe('M5 immutable widget artifact boundaries', () => {
     expect(violations).toEqual([]);
   });
 
-  test('contains no durable Draft Preview records or writers', async () => {
+  test('keeps durable Preview writes inside the two authoritative stores', async () => {
     const writers = new Set<string>();
     for (const source of await sources(await sourceFiles('packages/service-db/src'))) {
       if (/\b(?:INSERT\s+INTO|UPDATE)\s+agent_previews\b/i.test(source.text)) {
@@ -147,13 +147,16 @@ describe('M5 immutable widget artifact boundaries', () => {
       }
     }
 
-    expect([...writers].sort()).toEqual([]);
+    expect([...writers].sort()).toEqual([
+      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
+      'packages/service-db/src/WidgetControlStoreTurso.ts',
+    ]);
     const authoringStore = await Bun.file(resolve(
       REPO_ROOT,
       'packages/service-db/src/AgentAuthoringStoreTurso.ts',
     )).text();
-    expect(authoringStore).not.toContain('IWidgetPreviewStore');
-    expect(authoringStore).not.toContain('agent_preview');
+    expect(authoringStore).toContain('IWidgetPreviewStore');
+    expect(authoringStore).toContain('agent_preview');
   });
 
   test('strictly rejects fields outside the current widget manifest', () => {
@@ -248,7 +251,7 @@ describe('M5 immutable widget artifact boundaries', () => {
     if (capabilitySource !== undefined) {
       const source = await Bun.file(resolve(REPO_ROOT, capabilitySource)).text();
       expect(source).toMatch(
-        /type\s+TWidgetServiceCapability\s*=\s*Omit<IWidgetPublicationService,\s*'archive'>/,
+        /type\s+TWidgetServiceCapability\s*=\s*Omit<\s*IWidgetPublicationService,\s*'archive'\s*\|\s*'publishConstruction'\s*>/,
       );
       expect(source).toMatch(/\bIWidgetArtifactReader\b/);
       expect(source).toMatch(/\bIWidgetBrowserUiArtifactReadCapabilityIssuer\b/);

@@ -1,56 +1,15 @@
-# How to release Omnidraw
+# How to publish Omnidraw libraries
 
 Reference only:
 
-- `.github/workflows/release-omnidraw.yml`
 - `.github/workflows/test.yml`
 - `tasks/d/D5.md`
 
-Merging to `main` does not publish npm packages. The Omnidraw CLI release is
-tag-driven. Standalone library packages are built and published manually from
-a maintainer machine.
+Merging to `main` does not publish npm packages. Versioned `@omnidraw/*`
+libraries are built and published manually from a maintainer machine. The app
+is not published, and CI verifies releases without publishing them.
 
-## Omnidraw CLI and binary packages
-
-This release publishes `omnidraw` and the generated macOS/Linux
-`omnidraw-*` platform packages. Windows builds are not published.
-
-The version in `apps/omnidraw/package.json` is authoritative. Never reuse a
-version that already exists on npm.
-
-### Stable
-
-1. Set `apps/omnidraw/package.json` to the intended stable version.
-2. Add the matching section to `CHANGELOG.md` when release notes need curation.
-3. Commit and merge the version change.
-4. Create and push `omnidraw-v<version>`.
-5. GitHub Actions verifies that the exact npm versions do not already exist,
-   publishes the `latest` packages, and creates a normal GitHub release.
-
-Example:
-
-```sh
-git tag omnidraw-v0.4.8
-git push origin omnidraw-v0.4.8
-```
-
-### Beta
-
-Use a semantic prerelease such as `0.4.8-beta.1`, then create and push the
-matching `omnidraw-v0.4.8-beta.1` tag. GitHub Actions publishes npm `beta` and
-a GitHub prerelease.
-
-### Nightly
-
-Use a dated prerelease such as `0.4.8-nightly.20260802`, then create and push
-the matching tag. GitHub Actions publishes npm `nightly` and a GitHub
-prerelease.
-
-## Standalone library packages
-
-Library publication is separate from the CLI/binary release. There is no
-library publishing workflow and no library release tag. Authenticate with npm
-locally and publish each package deliberately.
+## Library packages
 
 ### Source manifests versus public packages
 
@@ -60,8 +19,10 @@ while several packages are edited together.
 
 Never publish the workspace package root.
 
-`bun run build` creates the standalone npm package in the ignored `dist/`
-directory. The generated `dist/package.json`:
+Each versioned package's `build` script creates its standalone npm package in
+the ignored `dist/` directory. The root `bun run build` runs the canvas-kernel
+build first and then builds every workspace package that provides a build
+script. Each generated `dist/package.json`:
 
 - retains the package name and release version;
 - converts internal dependencies to exact package versions;
@@ -85,45 +46,28 @@ npm publish ./dist --access public
 Do not edit generated `dist` files by hand. Change the source manifest, build
 configuration, or source files and rebuild instead.
 
-### Release set prepared by D5
+### Release set
 
-The workspace package version is the release marker. Unversioned packages are
-private and must not be published.
-
-| Package | Prepared version |
-|---|---:|
-| `@omnidraw/tenant-core` | `0.5.0` |
-| `@omnidraw/runtime` | `0.5.0` |
-| `@omnidraw/resource-runtime` | `0.5.0` |
-| `@omnidraw/widget-contract` | `0.5.0` |
-| `@omnidraw/function-runtime` | `0.5.0` |
-| `@omnidraw/sdk` | `0.5.0` |
-| `@omnidraw/theme-contract` | `0.5.0` |
-| `@omnidraw/canvas-contract` | `0.5.0` |
-| `@omnidraw/service-theme` | `0.5.0` |
-| `@omnidraw/service-canvas` | `0.5.0` |
-| `@omnidraw/capsule-omnidraw` | `0.5.0` |
-| `@omnidraw/canvas` | `0.5.1` |
-
-Do not assume this table remains current after another source change. Read the
-version from each package manifest immediately before release. If the exact
-version already exists on npm, verify it and skip it; never overwrite or
-republish it.
+The workspace package version is the release marker. Unversioned packages and
+all apps are private and must not be published. Read each package manifest and
+run `bun run deploy:packages:list` immediately before a release; never rely on
+a copied version table. If an exact version already exists on npm, verify it
+and skip it. Never overwrite or republish a version.
 
 ### Prerequisites
 
 Before publishing the Omnidraw closure, exact external dependencies must be
 available from the public npm registry:
 
-- `@omnidraw/cangine@0.6.0`, published from its owning repository;
-- `@omnidraw/capsule@0.10.2`.
+- `@omnidraw/cangine@0.6.1`, published from its owning repository;
+- `@omnidraw/capsule@0.12.0`.
 
 Local Verdaccio packages and the repository lockfile do not satisfy this gate.
 Check the public registry explicitly:
 
 ```sh
-npm view @omnidraw/cangine@0.6.0 version dist.integrity --registry=https://registry.npmjs.org/
-npm view @omnidraw/capsule@0.10.2 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/cangine@0.6.1 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/capsule@0.12.0 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 Stop if either exact version cannot be resolved publicly.
@@ -191,6 +135,7 @@ the repository root:
 
 ```sh
 bun install --frozen-lockfile
+bun run build
 bun run verify:package-dists
 bun run test:packed-public-composition
 bun run test:packed-canvas-kernel

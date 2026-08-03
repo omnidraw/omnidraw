@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@omnidraw/function-runtime": "0.5.0",
-    "@omnidraw/resource-runtime": "0.5.0",
+    "@omnidraw/function-runtime": "0.5.1",
+    "@omnidraw/resource-runtime": "0.5.2",
     "@omnidraw/runtime": "0.5.0",
     "@omnidraw/tenant-core": "0.5.0",
-    "@omnidraw/widget-contract": "0.5.0"
+    "@omnidraw/widget-contract": "0.5.2"
   }
 }

@@ -11,13 +11,10 @@ describe('parseCliArgv flag parsing', () => {
       '3001',
       '--data-dir',
       './tmp/omnidraw-home',
-      '--upgrade',
-      '1.2.3',
     ]);
 
     expect(parsed.port).toBe(3001);
     expect(parsed.dataDir).toBe('./tmp/omnidraw-home');
-    expect(parsed.upgradeTarget).toBe('1.2.3');
   });
 
   test('reads help and version short flags', () => {

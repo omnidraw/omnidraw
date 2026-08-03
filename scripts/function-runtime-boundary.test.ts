@@ -34,9 +34,10 @@ describe('M6 short-lived function runtime boundaries', () => {
     expect(packageJson.exports?.['./local']).toBe('./src/local/index.ts');
   });
 
-  test('exposes no caller-selected tenant, revision, resource, or durable-wait authority', () => {
+  test('requires the exact widget revision without exposing tenant, resource, or durable-wait authority', () => {
     const base = {
       widgetInstanceId: 'widget-instance',
+      widgetRevisionId: 'widget-revision',
       functionName: 'updateSettings',
       input: { theme: 'dark' },
       idempotencyKey: 'stable-key',
@@ -46,7 +47,6 @@ describe('M6 short-lived function runtime boundaries', () => {
       { orgId: 'foreign-org' },
       { accountId: 'foreign-account' },
       { widgetDefinitionId: 'caller-definition' },
-      { widgetRevisionId: 'caller-revision' },
       { functionId: 'caller-function' },
       { resourceId: 'caller-resource' },
       { waitUntilMs: 1 },

@@ -257,7 +257,7 @@ async function packInstalledCangine(packRoot: string): Promise<string> {
   if (!outputPath) throw new Error('@omnidraw/cangine pack did not report a tarball.')
   const tarball = resolve(packageRoot, outputPath)
   if (dirname(tarball) !== packRoot) throw new Error('@omnidraw/cangine pack escaped its isolated directory.')
-  await assertPackedPackage(entry, tarball, '0.6.0')
+  await assertPackedPackage(entry, tarball, '0.6.1')
   return tarball
 }
 

@@ -18,7 +18,6 @@ flowchart TB
   subgraph Apps["Applications"]
     Frontend["apps/frontend<br/>Solid browser shell"]
     CLI["apps/cli<br/>Bun server and composition root"]
-    Npm["apps/omnidraw<br/>npm binary wrapper"]
     Debug["apps/widget-debug-tools<br/>local widget lab"]
     Acceptance["apps/capsule-browser-acceptance<br/>browser acceptance app"]
   end
@@ -115,7 +114,6 @@ flowchart TB
 
   Debug --> AgentService
   Acceptance --> Ui
-  Npm -. "installs a platform binary built from apps/cli" .-> CLI
 ```
 
 ## Applications
@@ -124,7 +122,6 @@ flowchart TB
 | --- | --- |
 | `apps/frontend` | Solid SPA and browser composition root. Owns routing, tenant switching, the oRPC canvas adapter, AI/sidebar contributions, and concrete canvas dependencies. |
 | `apps/cli` | Production Bun server and executable entry point. Builds the runtime registry, concrete services, API handlers, persistence, configuration, and static frontend delivery. |
-| `apps/omnidraw` | Small npm wrapper that installs and launches the correct prebuilt platform executable. |
 | `apps/widget-debug-tools` | Terminal-oriented local lab for exercising widget, file, resource, and agent flows without the full browser app. |
 | `apps/capsule-browser-acceptance` | Test application for real-browser Capsule, SDK, widget, and UI integration. It is not production composition. |
 

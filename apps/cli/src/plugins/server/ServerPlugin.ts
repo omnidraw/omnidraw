@@ -2,7 +2,6 @@ import type { IEventPublisherService } from '@omnidraw/service-event-publisher/I
 import type { IPlugin } from '@omnidraw/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
-import { checkForUpdateOnBoot } from './check-update';
 import { handleHttpRequest } from './http';
 import type { TOrpcWebSocketData } from '../orpc/OrpcPlugin';
 import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../auth/AuthPlugin';
@@ -107,13 +106,6 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
         if (!bunServer) return;
 
         console.log(`Server listening on http://localhost:${bunServer.port}`);
-
-        const eventPublisher = ctx.services.require('eventPublisher');
-        const tenant = await OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
-          requestId: crypto.randomUUID(),
-          session: OSS_FAKE_SESSION,
-        });
-        checkForUpdateOnBoot(ctx.config, eventPublisher.forTenant(tenant));
       });
 
       ctx.hooks.shutdown.tapPromise(async () => {

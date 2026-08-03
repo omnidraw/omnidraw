@@ -17,7 +17,7 @@ type TStaticAssetLookup = {
 type THttpAssetResolver = {
   getEmbeddedAsset(pathname: string): string | null;
   getSpaFallbackAsset(): string | null;
-  getPublicAssetPath(pathname: string): string | null;
+  getFrontendAssetPath(pathname: string): string | null;
 };
 
 let embeddedAssetsPromise: Promise<TEmbeddedAssetsModule | null> | null = null;
@@ -33,19 +33,24 @@ async function loadEmbeddedAssetsModule(): Promise<TEmbeddedAssetsModule | null>
   return embeddedAssetsPromise;
 }
 
-function createPublicAssetLookup(importMetaDir: string, portal?: Partial<TStaticAssetLookup>) {
+function createFrontendAssetLookup(importMetaDir: string, portal?: Partial<TStaticAssetLookup>) {
   const { existsSync } = portal?.existsSync ? { existsSync: portal.existsSync } : require('fs');
   const pathModule = portal?.normalize && portal?.join
     ? { normalize: portal.normalize, join: portal.join }
     : require('path');
 
-  const publicDir = pathModule.normalize(pathModule.join(importMetaDir, '..', '..', '..', 'public'));
+  const frontendDistDir = pathModule.normalize(
+    pathModule.join(importMetaDir, '..', '..', '..', '..', 'frontend', 'dist'),
+  );
 
   return {
-    getPublicAssetPath(pathname: string): string | null {
+    getFrontendAssetPath(pathname: string): string | null {
       const requestPath = pathname === '/' ? '/index.html' : pathname;
-      const absolutePath = pathModule.normalize(pathModule.join(publicDir, requestPath));
-      if (!absolutePath.startsWith(publicDir)) return null;
+      const absolutePath = pathModule.normalize(pathModule.join(frontendDistDir, requestPath));
+      const isInsideFrontendDist = absolutePath === frontendDistDir
+        || absolutePath.startsWith(`${frontendDistDir}/`)
+        || absolutePath.startsWith(`${frontendDistDir}\\`);
+      if (!isInsideFrontendDist) return null;
       return existsSync(absolutePath) ? absolutePath : null;
     },
   };
@@ -53,7 +58,7 @@ function createPublicAssetLookup(importMetaDir: string, portal?: Partial<TStatic
 
 async function createHttpAssetResolver(importMetaDir: string): Promise<THttpAssetResolver> {
   const embeddedAssets = await loadEmbeddedAssetsModule();
-  const { getPublicAssetPath } = createPublicAssetLookup(importMetaDir);
+  const { getFrontendAssetPath } = createFrontendAssetLookup(importMetaDir);
 
   return {
     getEmbeddedAsset(pathname: string) {
@@ -62,7 +67,7 @@ async function createHttpAssetResolver(importMetaDir: string): Promise<THttpAsse
     getSpaFallbackAsset() {
       return embeddedAssets?.getSpaFallbackAsset() ?? null;
     },
-    getPublicAssetPath,
+    getFrontendAssetPath,
   };
 }
 
@@ -144,18 +149,18 @@ async function handleHttpRequest(
   const embeddedAsset = assets.getEmbeddedAsset(url.pathname);
   if (embeddedAsset) return new Response(Bun.file(embeddedAsset));
 
-  const publicAsset = assets.getPublicAssetPath(url.pathname);
-  if (publicAsset) return new Response(Bun.file(publicAsset));
+  const frontendAsset = assets.getFrontendAssetPath(url.pathname);
+  if (frontendAsset) return new Response(Bun.file(frontendAsset));
 
   const spaFallbackAsset = assets.getSpaFallbackAsset();
   if (spaFallbackAsset) return new Response(Bun.file(spaFallbackAsset));
 
-  const publicSpaFallback = assets.getPublicAssetPath('/');
-  if (publicSpaFallback) return new Response(Bun.file(publicSpaFallback));
+  const frontendSpaFallback = assets.getFrontendAssetPath('/');
+  if (frontendSpaFallback) return new Response(Bun.file(frontendSpaFallback));
 
   if (config.compiled) return new Response('Not Found', { status: 404 });
   return new Response('Not Found', { status: 404 });
 }
 
-export { createFileResponse, createHttpAssetResolver, createPublicAssetLookup, handleHttpRequest };
+export { createFileResponse, createFrontendAssetLookup, createHttpAssetResolver, handleHttpRequest };
 export type { TEmbeddedAssetsModule, THttpAssetResolver, TStaticAssetLookup };

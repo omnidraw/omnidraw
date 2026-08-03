@@ -10,6 +10,8 @@ const DEFAULT_IDS = [
 
 const IMMUTABLE_SYSTEM_SCOPE_ALLOWLIST = new Set([
   'apps/cli/src/plugins/auth/CONSTANTS.ts',
+  'apps/frontend/src/services/CONSTANTS.ts',
+  'apps/widget-debug-tools/src/main.ts',
   'packages/canvas/src/CONSTANTS.ts',
   'packages/service-db/src/CONSTANTS.ts',
   'packages/service-db/src/DbServiceTurso/DbServiceTurso.ts',

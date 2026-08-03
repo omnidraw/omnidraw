@@ -37,8 +37,8 @@ describe('CLI test harness', () => {
     expect(result.stdout).toContain('Commands:');
     expect(result.stdout).toContain('serve     Start the omnidraw runtime');
     expect(result.stdout).toContain('canvas    Query and mutate a running canvas server');
-    expect(result.stdout).toContain('upgrade   Check for and install updates');
-    expect(result.stdout).toContain('uninstall Remove the installed binary');
+    expect(result.stdout).not.toContain('upgrade');
+    expect(result.stdout).not.toContain('uninstall');
     expect(result.stdout).toContain('--data-dir <path>');
     expect(result.stdout).toContain('OMNIDRAW_HOME');
     expect(result.stdout).not.toContain('--db');
@@ -63,35 +63,16 @@ describe('CLI test harness', () => {
   test('suggests nearest remaining commands for unknown root commands', async () => {
     const context = await createContext();
 
-    const rootUnknown = await context.runOmnidrawCli(['upgarde', '--json']);
+    const rootUnknown = await context.runOmnidrawCli(['canvs', '--json']);
     expectExitCode(rootUnknown, 1);
     expect(rootUnknown.stdout).toBe('');
     expect(JSON.parse(rootUnknown.stderr)).toMatchObject({
       ok: false,
       command: 'cli',
       code: 'CLI_COMMAND_UNKNOWN',
-      hint: "Did you mean 'upgrade'?",
-      next: 'Try: omnidraw upgrade --help',
-      suggestions: ['upgrade'],
+      hint: "Did you mean 'canvas'?",
+      next: 'Try: omnidraw canvas --help',
+      suggestions: ['canvas'],
     });
-
-    const uninstallUnknown = await context.runOmnidrawCli(['uninstal', '--json']);
-    expectExitCode(uninstallUnknown, 1);
-    expect(JSON.parse(uninstallUnknown.stderr)).toMatchObject({
-      hint: "Did you mean 'uninstall'?",
-      next: 'Try: omnidraw uninstall --help',
-      suggestions: ['uninstall'],
-    });
-  }, 15_000);
-
-  test('runs uninstall dry-run without deleting test config', async () => {
-    const context = await createContext();
-    const result = await context.runOmnidrawCli(['uninstall', '--dry-run']);
-
-    expectExitCode(result, 0);
-    expectNoStderr(result);
-    expect(result.stdout).toContain('[Uninstall] Dry-run');
-    expect(result.stdout).toContain('home dir');
-    expect(existsSync(context.homeDir)).toBe(false);
   }, 15_000);
 });

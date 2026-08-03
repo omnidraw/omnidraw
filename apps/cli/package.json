@@ -6,7 +6,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "dev": "NODE_ENV=development OMNIDRAW_VERSION=0.0.0 OMNIDRAW_COMPILED=false OMNIDRAW_CHANNEL=dev bun run --watch ./src/main.ts",
+    "dev": "NODE_ENV=development OMNIDRAW_VERSION=0.0.0 OMNIDRAW_COMPILED=false bun run --watch ./src/main.ts",
     "test": "bun test"
   },
   "dependencies": {

@@ -7,7 +7,9 @@ import { createRequire } from 'node:module'
 // toolchain is TypeScript 7. Resolve the parser through the private
 // scripts/eslint-tooling workspace so its `typescript` peer resolves to 6.x.
 const requireTooling = createRequire(resolve(import.meta.dir, 'eslint-tooling/package.json'))
-const { parse } = requireTooling('@typescript-eslint/parser') as typeof import('@typescript-eslint/parser')
+const { parse } = requireTooling('@typescript-eslint/parser') as {
+  parse(source: string, options: Record<string, unknown>): unknown
+}
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
@@ -742,8 +744,11 @@ describe('managed composition architecture boundaries', () => {
 
   test('keeps the canvas kernel versioned, public, built, and deliberately exported', async () => {
     const releaseVersions = new Map<string, string>([
-      ['@omnidraw/cangine', '0.6.0'],
-      ...Object.keys(CANVAS_KERNEL_PACKAGES).map((name) => [name, '0.5.0'] as const),
+      ['@omnidraw/cangine', '0.6.1'],
+      ['@omnidraw/theme-contract', '0.5.0'],
+      ['@omnidraw/canvas-contract', '0.5.0'],
+      ['@omnidraw/service-theme', '0.5.0'],
+      ['@omnidraw/canvas', '0.5.1'],
     ])
 
     for (const [name, directory] of Object.entries(CANVAS_KERNEL_PACKAGES)) {
@@ -763,10 +768,11 @@ describe('managed composition architecture boundaries', () => {
         peerDependencies?: Record<string, string>
         devDependencies?: Record<string, string>
       }
+      const stagedManifest = JSON.parse(
+        await readFile(join(ROOT, directory, 'dist/package.json'), 'utf8'),
+      ) as typeof manifest
       expect(manifest.name).toBe(name)
-      expect(manifest.version).toBe(
-        name === '@omnidraw/canvas' ? '0.5.1' : '0.5.0',
-      )
+      expect(manifest.version).toBe(releaseVersions.get(name))
       expect(manifest.private).not.toBe(true)
       expect(manifest.license).toBe('MIT')
       expect(manifest.repository?.type).toBe('git')
@@ -809,7 +815,7 @@ describe('managed composition architecture boundaries', () => {
       expect(manifest.scripts?.prepublishOnly).toContain('build')
       expect(manifest.scripts?.prepublishOnly).toContain('typecheck')
       expect(manifest.scripts?.prepublishOnly).toContain('test')
-      expect(JSON.stringify(manifest)).not.toMatch(/(?:workspace|catalog|file|link):/)
+      expect(JSON.stringify(stagedManifest)).not.toMatch(/(?:workspace|catalog|file|link):/)
 
       const allowedImports = CANVAS_KERNEL_ALLOWED_IMPORTS[name as keyof typeof CANVAS_KERNEL_ALLOWED_IMPORTS]
       for (const group of [
@@ -818,11 +824,25 @@ describe('managed composition architecture boundaries', () => {
         manifest.peerDependencies,
         manifest.devDependencies,
       ]) {
-        for (const [dependency, version] of Object.entries(group ?? {})) {
+        for (const dependency of Object.keys(group ?? {})) {
           if (!dependency.startsWith('@omnidraw/')) continue
           expect(
             allowedImports.has(dependency),
             `${name} declares private Omnidraw dependency ${dependency}`,
+          ).toBe(true)
+        }
+      }
+      for (const group of [
+        stagedManifest.dependencies,
+        stagedManifest.optionalDependencies,
+        stagedManifest.peerDependencies,
+        stagedManifest.devDependencies,
+      ]) {
+        for (const [dependency, version] of Object.entries(group ?? {})) {
+          if (!dependency.startsWith('@omnidraw/')) continue
+          expect(
+            allowedImports.has(dependency),
+            `${name} stages private Omnidraw dependency ${dependency}`,
           ).toBe(true)
           expect(releaseVersions.has(dependency)).toBe(true)
           expect(version, `${name} must pin ${dependency} exactly`).toBe(releaseVersions.get(dependency)!)
@@ -874,7 +894,8 @@ describe('managed composition architecture boundaries', () => {
       await readFile(join(ROOT, 'package.json'), 'utf8'),
     ) as { scripts?: Record<string, string> }
     expect(rootManifest.scripts?.prebuild).toContain('build:canvas-kernel')
-    expect(rootManifest.scripts?.['prebuild:single']).toContain('build:canvas-kernel')
+    expect(rootManifest.scripts?.build).toBe("bun run build:canvas-kernel && bun run --filter '*' build")
+    expect(rootManifest.scripts?.['prebuild:single']).toBeUndefined()
     expect(rootManifest.scripts?.predev).toContain('build:canvas-kernel')
     expect(rootManifest.scripts?.predev).toContain('publish-widget-packages')
     expect(rootManifest.scripts?.['server:dev']).toContain('publish-widget-packages')
@@ -956,9 +977,7 @@ describe('managed composition architecture boundaries', () => {
       expect(packageJson.exports?.['.']).toBeDefined()
       for (const [dependencyName, dependencyVersion] of Object.entries(packageJson.dependencies ?? {})) {
         if (!Object.hasOwn(PUBLIC_PACKAGES, dependencyName)) continue
-        expect(dependencyVersion, `${name} must pin ${dependencyName} exactly`).toBe(
-          fixturePackage.dependencies[dependencyName],
-        )
+        expect(dependencyVersion, `${name} must link ${dependencyName} through the workspace`).toBe('workspace:*')
       }
     }
 
@@ -973,7 +992,6 @@ describe('managed composition architecture boundaries', () => {
         registry: 'https://registry.npmjs.org/',
       })
       expect(packageJson.scripts?.prepublishOnly).toBeDefined()
-      expect(JSON.stringify(packageJson)).not.toContain('catalog:')
     }
 
     const rootPackage = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as {
@@ -981,7 +999,7 @@ describe('managed composition architecture boundaries', () => {
       catalog: Record<string, string>
     }
     expect(rootPackage.workspaces).toContain('scripts/fixtures/external-composition')
-    expect(rootPackage.catalog['@omnidraw/capsule']).toBe('0.10.2')
+    expect(rootPackage.catalog['@omnidraw/capsule']).toBe('0.12.0')
   })
 
   test('keeps Capsule private profile names out of production source', async () => {
@@ -1029,9 +1047,7 @@ describe('managed composition architecture boundaries', () => {
         capsuleVersion,
         `${relative(ROOT, path)} must use the shared Capsule catalog except when published to npm`,
       ).toBe(
-        NPM_PUBLISHABLE_PACKAGE_DIRECTORIES.includes(relative(ROOT, dirname(path)))
-          ? '0.10.2'
-          : 'catalog:',
+        'catalog:',
       )
     }
   })

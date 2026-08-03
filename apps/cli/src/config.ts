@@ -6,7 +6,7 @@ export interface ICliConfig {
   dev: boolean;
   compiled: boolean;
   version: string;
-  command: 'serve' | 'canvas' | 'upgrade' | 'uninstall' | 'unknown';
+  command: 'serve' | 'canvas' | 'unknown';
   subcommand?: string;
   rawArgv: string[];
   argv: string[];
@@ -14,6 +14,5 @@ export interface ICliConfig {
   home: TOmnidrawHome;
   helpRequested: boolean;
   versionRequested: boolean;
-  upgradeTarget?: string;
   subcommandOptions?: TCliSubcommandOptions;
 }

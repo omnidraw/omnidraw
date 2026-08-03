@@ -1,8 +1,6 @@
 declare global {
   const OMNIDRAW_COMPILED: boolean | undefined;
   const OMNIDRAW_VERSION: string | undefined;
-  const OMNIDRAW_CHANNEL: string | undefined;
-  const OMNIDRAW_RELEASE_DOWNLOAD_BASE: string | undefined;
 
   /**
    * Error code prefix indicating which layer the error originated from.

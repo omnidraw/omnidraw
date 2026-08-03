@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import {
   createFileResponse,
-  createPublicAssetLookup,
+  createFrontendAssetLookup,
   handleHttpRequest,
 } from '../src/plugins/server/http';
 import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../src/plugins/auth/AuthPlugin';
@@ -186,10 +186,13 @@ describe('server http helpers', () => {
     }
   });
 
-  test('resolves public assets and blocks path traversal', () => {
-    const existing = new Set(['/repo/apps/cli/public/index.html', '/repo/apps/cli/public/assets/app.js']);
+  test('resolves the built frontend assets and blocks path traversal', () => {
+    const existing = new Set([
+      '/repo/apps/frontend/dist/index.html',
+      '/repo/apps/frontend/dist/assets/app.js',
+    ]);
 
-    const { getPublicAssetPath } = createPublicAssetLookup('/repo/apps/cli/src/plugins/server', {
+    const { getFrontendAssetPath } = createFrontendAssetLookup('/repo/apps/cli/src/plugins/server', {
       existsSync(path: string) {
         return existing.has(path);
       },
@@ -212,9 +215,9 @@ describe('server http helpers', () => {
       },
     });
 
-    expect(getPublicAssetPath('/')).toBe('/repo/apps/cli/public/index.html');
-    expect(getPublicAssetPath('/assets/app.js')).toBe('/repo/apps/cli/public/assets/app.js');
-    expect(getPublicAssetPath('/../../etc/passwd')).toBeNull();
-    expect(getPublicAssetPath('/missing.js')).toBeNull();
+    expect(getFrontendAssetPath('/')).toBe('/repo/apps/frontend/dist/index.html');
+    expect(getFrontendAssetPath('/assets/app.js')).toBe('/repo/apps/frontend/dist/assets/app.js');
+    expect(getFrontendAssetPath('/../../etc/passwd')).toBeNull();
+    expect(getFrontendAssetPath('/missing.js')).toBeNull();
   });
 });

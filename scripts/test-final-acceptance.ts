@@ -40,7 +40,6 @@ const durableSuites: readonly TAcceptanceSuite[] = [
   { name: 'widget host', command: ['bun', 'run', 'test:widget-host'] },
   { name: 'external composition', command: ['bun', 'run', 'test:external-composition'] },
   { name: 'architecture boundaries', command: ['bun', 'run', 'test:architecture'] },
-  { name: 'Capsule manifest v3 joined flow', command: ['bun', 'run', 'test:managed-v3-joined'] },
   { name: 'packed public composition', command: ['bun', 'run', 'test:packed-public-composition'] },
   { name: 'load and bounded-cost acceptance', command: ['bun', 'run', 'test:m10:load'] },
 ];
@@ -52,8 +51,7 @@ const hostBoundarySuites: readonly TAcceptanceSuite[] = [
 const commonSuites: readonly TAcceptanceSuite[] = [
   { name: 'functional-core lint', command: ['bun', 'run', 'lint:functional-core'] },
   { name: 'complete product test', command: ['bun', 'run', 'test'] },
-  { name: 'release build', command: ['bun', 'run', 'build'] },
-  { name: 'binary acceptance', command: ['bun', 'run', 'test:binary'] },
+  { name: 'workspace build', command: ['bun', 'run', 'build'] },
 ];
 
 async function runSuite(suite: TAcceptanceSuite, env: NodeJS.ProcessEnv): Promise<void> {
@@ -108,4 +106,4 @@ try {
   await rm(acceptanceHome, { recursive: true, force: true });
 }
 
-console.log('\n[final-acceptance] all durable, common, build, and binary gates passed');
+console.log('\n[final-acceptance] all durable, common, and workspace build gates passed');

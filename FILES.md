@@ -67,23 +67,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/cli/cmds/cmd.query.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.query.canvas.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.reorder.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.reorder.canvas.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.ungroup.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.ungroup.canvas.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts](apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/CONSTANTS.ts](apps/cli/src/plugins/cli/cmds/CONSTANTS.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts](apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/fn.download-progress.ts](apps/cli/src/plugins/cli/cmds/fn.download-progress.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/interface.ts](apps/cli/src/plugins/cli/cmds/interface.ts) |  |
 | [apps/cli/src/plugins/cli/core/CanvasRpcConnection.ts](apps/cli/src/plugins/cli/core/CanvasRpcConnection.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.canvas-websocket-url.ts](apps/cli/src/plugins/cli/core/fn.canvas-websocket-url.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.print-command-result.ts](apps/cli/src/plugins/cli/core/fn.print-command-result.ts) |  |
-| [apps/cli/src/plugins/cli/core/fn.resolve-policy.ts](apps/cli/src/plugins/cli/core/fn.resolve-policy.ts) |  |
-| [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
-| [apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts](apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts) |  |
-| [apps/cli/src/plugins/cli/core/tx.uninstall.ts](apps/cli/src/plugins/cli/core/tx.uninstall.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/router.ts](apps/cli/src/plugins/orpc/router.ts) |  |
-| [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
 | [apps/cli/src/services/AgentBashCapability.ts](apps/cli/src/services/AgentBashCapability.ts) |  |
@@ -186,15 +178,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/tsconfig.json](apps/frontend/tsconfig.json) |  |
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
 | [apps/frontend/vitest.config.ts](apps/frontend/vitest.config.ts) |  |
-
-## apps/omnidraw
-
-| path | jsdocs |
-|---|---|
-| [apps/omnidraw/bin/omnidraw](apps/omnidraw/bin/omnidraw) |  |
-| [apps/omnidraw/install-instructions.mjs](apps/omnidraw/install-instructions.mjs) |  |
-| [apps/omnidraw/package.json](apps/omnidraw/package.json) |  |
-| [apps/omnidraw/postinstall.mjs](apps/omnidraw/postinstall.mjs) |  |
 
 ## apps/widget-debug-tools
 
@@ -1003,7 +986,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [scripts/build-typescript-package.ts](scripts/build-typescript-package.ts) | Build one plain TypeScript library and finalize its standalone dist package. |
-| [scripts/build.ts](scripts/build.ts) | Builds omnidraw distribution packages, embedded assets, checksums, and release manifests. |
 | [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev-frontend.ts](scripts/dev-frontend.ts) | Runs the frontend together with live canvas-kernel package builds. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
@@ -1025,27 +1007,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/external-composition/tsconfig.json](scripts/fixtures/external-composition/tsconfig.json) |  |
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
-| [scripts/install.sh](scripts/install.sh) | Installs the latest or selected omnidraw binary release on the local machine. |
 | [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
 | [scripts/local-registry.test.mjs](scripts/local-registry.test.mjs) | Verifies dependency-ordered local publication for generated widget packages. |
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
-| [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded Cangine scene reduction plus trace capture cost independently of total canvas size. |
-| [scripts/omnidraw.entitlements.plist](scripts/omnidraw.entitlements.plist) |  |
 | [scripts/prepare-package-dist.ts](scripts/prepare-package-dist.ts) | Finalize one workspace library's dist directory as a standalone npm package. |
-| [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built omnidraw platform packages and the wrapper package to npm. |
-| [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
-| [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
-| [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
-| [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built omnidraw binary serves assets, websockets, and expected database paths. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for the authoritative canvas and widget-state runtime. |
 | [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
 | [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
 | [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Durable M6 gate for typed, bounded, scale-to-zero server functions. |
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
-| [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
 | [scripts/test-packed-canvas-kernel.ts](scripts/test-packed-canvas-kernel.ts) | Packs the public canvas kernel and proves a clean external browser consumer. |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |

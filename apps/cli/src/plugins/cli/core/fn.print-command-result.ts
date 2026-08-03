@@ -13,7 +13,7 @@ type TCliErrorPayload = {
   [key: string]: unknown;
 };
 
-const ROOT_COMMANDS = ['serve', 'canvas', 'upgrade', 'uninstall'] as const;
+const ROOT_COMMANDS = ['serve', 'canvas'] as const;
 
 function fnLevenshteinDistance(left: string, right: string): number {
   const a = left.toLowerCase();

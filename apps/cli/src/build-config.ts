@@ -38,7 +38,6 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     home,
     helpRequested: parsed.helpRequested,
     versionRequested: parsed.versionRequested,
-    upgradeTarget: parsed.upgradeTarget,
     subcommandOptions: parsed.subcommandOptions,
   };
 }

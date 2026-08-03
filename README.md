@@ -13,84 +13,43 @@ The project is organized as a monorepo and follows a **Functional Core / Imperat
 - Agents can edit canvases too by calling the same CLI commands
 - Server-authoritative real-time canvas collaboration with atomic revisions
 - Unified WebSocket API endpoint for canvas events and app RPC (`/api`)
-- Native binary distribution for macOS, Linux, and Windows
-- Auto-update checks in the CLI/server runtime
 
 ## Quick Start
 
-### Install globally
+Omnidraw is currently run from source. Install Bun `1.3.14`, then run:
 
 ```bash
-# bun
-bun add -g omnidraw
-
-# npm
-npm i -g omnidraw
-
-# pnpm
-pnpm add -g omnidraw
-
-# yarn
-yarn global add omnidraw
+git clone https://github.com/omnidraw/omnidraw.git
+cd omnidraw
+bun install
+bun run dev
 ```
 
-Then run:
+Open the frontend URL printed by the development runner (by default
+[http://127.0.0.1:3002](http://127.0.0.1:3002)).
+
+For a production-style local run, build the workspace and start the single
+Bun server:
 
 ```bash
-omnidraw
+bun run server:prod
 ```
 
-Open [http://localhost:7496](http://localhost:7496) to use the app.
+This builds the frontend and serves its static SPA assets, API, WebSocket, and
+file routes together at [http://localhost:7496](http://localhost:7496).
 
 You can edit the canvas from the UI, or from the CLI. Agents can use the same canvas CLI surface for scripted canvas changes.
 
 The Omnidraw skill for agents lives here:
 - https://github.com/omnidraw/skills
 
-### Upgrade omnidraw
-
-Omnidraw includes a built-in upgrade command from the server CLI (`apps/server/src/main.ts`).
+Useful CLI commands during local development:
 
 ```bash
-# check for updates and install
-omnidraw upgrade
-
-# check only (no install)
-omnidraw upgrade --check
+bun run apps/cli/src/main.ts --version
+bun run apps/cli/src/main.ts --help
+bun run apps/cli/src/main.ts canvas --help
 ```
-
-Useful related commands:
-
-```bash
-omnidraw --version
-omnidraw --help
-omnidraw canvas --help
-```
-
-### Uninstall
-
-```bash
-# bun
-bun remove -g omnidraw
-
-# npm
-npm uninstall -g omnidraw
-
-# pnpm
-pnpm remove -g omnidraw
-
-# yarn
-yarn global remove omnidraw
-```
-
-To remove the curl-installed binary and local Omnidraw config/data/state/cache:
-
-```bash
-omnidraw uninstall --dry-run
-omnidraw uninstall --yes
-```
-
-Also remove any PATH line you added for `~/.omnidraw/bin` in your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.profile`, or fish config).
 
 ## Database
 
@@ -156,13 +115,10 @@ Recommended workflow:
 4. Open a pull request with a clear summary.
 
 For implementation conventions and deeper subsystem docs, read:
-- `CLAUDE.md`
-- `apps/spa/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/canvas/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/input-commands/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/managers/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/renderables/CLAUDE.md`
+- [`AGENTS.md`](AGENTS.md)
+- [`docs/internal/llm.architecture.md`](docs/internal/llm.architecture.md)
+- [`docs/internal/llm.widget-system.md`](docs/internal/llm.widget-system.md)
+- [`docs/internal/screens/SCREENS.md`](docs/internal/screens/SCREENS.md)
 
 ## License
 

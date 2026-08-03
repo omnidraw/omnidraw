@@ -286,7 +286,6 @@ try {
     cmd: [bunExec, "run", "--watch", "./src/main.ts", "serve", "--port", String(backendLease.port)],
     env: {
       NODE_ENV: "development",
-      OMNIDRAW_CHANNEL: "dev",
       OMNIDRAW_COMPILED: "false",
       OMNIDRAW_HOME: path.join(rootDir, ".omnidraw"),
       OMNIDRAW_VERSION: "0.0.0",

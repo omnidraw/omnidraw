@@ -49,7 +49,7 @@ the compatible targets and sends one finalized batch unchanged to
 `CanvasDocumentService`.
 
 The `0.5.0` release line uses `@omnidraw/canvas-contract@0.5.0`,
-`@omnidraw/service-theme@0.5.0`, and `@omnidraw/cangine@0.6.0`. The host must
+`@omnidraw/service-theme@0.5.0`, and `@omnidraw/cangine@0.6.1`. The host must
 provide one `solid-js` runtime compatible with `^1.9.14`.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) in the source repository for runtime

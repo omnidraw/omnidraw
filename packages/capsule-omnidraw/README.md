@@ -12,7 +12,7 @@ Omnidraw integration surfaces for Capsule widget builds and browser hosting.
 - `@omnidraw/capsule-omnidraw/testkit`: supported test-only fixtures and keys.
 
 Builder and signing operations run on a server runtime compatible with
-`@omnidraw/capsule@0.10.2`. Signing keys and cryptographic operations are
+`@omnidraw/capsule@0.12.0`. Signing keys and cryptographic operations are
 injected; no key material or registry configuration is embedded in the
 package. The `host` and `capabilities` entry points do not import the build
 or signing implementation and are safe to bundle for browsers.

@@ -2,7 +2,6 @@ Monorepo Omnidraw:
 
 apps/frontend -> solidjs spa, renders webpage
 apps/server -> bun server
-apps/omnidraw -> installable binary for npm package
 apps/widget-debug-tools -> use when you need to debug local widgets
 
 packages/api -> consolidated oRPC contracts and handlers by domain
@@ -183,6 +182,5 @@ Architecture overview: docs/internal/llm.architecture.md
 
 UI overview: docs/internal/screens/SCREENS.md
 
-docs/internal/llm.migrate-turso.md
 docs/internal/llm.widget-system.md
 docs/internal/llm.architecture.md
