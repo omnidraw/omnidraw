@@ -414,7 +414,7 @@
   "catalog": {
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@kobalte/core": "^0.13.12",
-    "@omnidraw/capsule": "0.11.0",
+    "@omnidraw/capsule": "0.12.0",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",
@@ -758,7 +758,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.11.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.11.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-gjyFkOw9K4RKQZ3kzeACJrmRoPj7shhKgg2Z15emrMxBAC/1Tn1/BsKQZ3EznwMar9Y7KdlYQTdBpRfmUAKxag=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.12.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.12.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-KM0Y9UFWxnRncLCjc2/LeDb0Ynn7owFey+sRI0IIXdGnnl2DTPcv0hFCF3eYTVnSvOBwzqztVCOk/QokCZxcTg=="],
 
     "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
 

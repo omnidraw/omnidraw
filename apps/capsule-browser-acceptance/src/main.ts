@@ -655,7 +655,7 @@ const publishedFunctionDescriptors =
 function artifactApis(value: TBrowserArtifact): readonly string[] {
   assert(
     value.runtimeDescriptor.format === 'omnidraw.capsule-runtime.v2',
-    'Generated acceptance artifact is not native Capsule 0.10.',
+    'Generated acceptance artifact does not use the native Capsule runtime descriptor.',
   );
   return value.runtimeDescriptor.apiContract.groups;
 }
@@ -677,7 +677,7 @@ await check('generated artifacts bind signed public API contracts', () => {
   ]) {
     assert(
       value.runtimeDescriptor.format === 'omnidraw.capsule-runtime.v2',
-      'Three.js fixture is not native Capsule 0.10.',
+      'Three.js fixture does not use the native Capsule runtime descriptor.',
     );
     assert(
       sameJson(artifactApis(value), ['DOM', 'WEBGL']),

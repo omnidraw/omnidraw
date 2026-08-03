@@ -8,8 +8,8 @@ export const FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS = 90 * 24 * 60 * 60 * 1_000;
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.11.0',
-  packageDigest: 'sha256:301935cd329f8722d293e5de27bcb4711920553dda79d073fb633e1092edcf2d',
+  packageVersion: '0.12.0',
+  packageDigest: 'sha256:d01c2ad66af0b54af8d88124a28b8efc2f32081ef3b73fdcc58826658c461f8f',
   buildApiVersion: '0.1.0',
   runtimeBuildDigest: 'sha256:e7c239a3853ff6918c22dc5cea4246e863a89938f75fccbab0dd8e76023c775d',
 }) satisfies TWidgetCapsuleBuildIdentity;
