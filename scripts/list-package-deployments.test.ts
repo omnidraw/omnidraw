@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildPackages,
+  dependencyManifestDrift,
   packageDecision,
   packageOrder,
   publishCommand,
@@ -55,6 +56,66 @@ describe('packageDecision', () => {
     )
     expect(decision.action).toBe('fix-local')
     expect(decision.explanation).toContain('update the local package version above 0.6.0')
+  })
+
+  test('requires a version bump when the built dist changed published dependency pins', () => {
+    const drift = dependencyManifestDrift(
+      {
+        dependencies: { '@omnidraw/resource-runtime': '0.5.2' },
+        peerDependencies: { '@tursodatabase/database': '0.7.2' },
+      },
+      {
+        dependencies: { '@omnidraw/resource-runtime': '0.5.0' },
+        peerDependencies: { '@tursodatabase/database': '0.6.1' },
+      },
+    )
+    const decision = packageDecision(
+      { name: '@omnidraw/function-runtime', version: '0.5.0' },
+      registry('0.5.0', ['0.5.0']),
+      drift,
+    )
+
+    expect(decision.action).toBe('bump-dependencies')
+    expect(decision.explanation).toContain('catalog mismatch')
+    expect(decision.explanation).toContain('npm uses @omnidraw/resource-runtime@0.5.0, but the new build uses @omnidraw/resource-runtime@0.5.2')
+    expect(decision.explanation).toContain('npm uses @tursodatabase/database@0.6.1, but the new build uses @tursodatabase/database@0.7.2')
+    expect(decision.explanation).toContain('update @omnidraw/function-runtime to 0.5.1 and build again')
+  })
+})
+
+describe('dependencyManifestDrift', () => {
+  test('reports changed, added, and removed dependency entries but ignores other manifest fields', () => {
+    expect(dependencyManifestDrift(
+      {
+        description: 'new description',
+        dependencies: { changed: '2.0.0', added: '1.0.0' },
+        peerDependencies: {},
+      },
+      {
+        description: 'old description',
+        dependencies: { changed: '1.0.0' },
+        peerDependencies: { removed: '1.0.0' },
+      },
+    )).toEqual([
+      {
+        dependency: 'added',
+        distSpecifier: '1.0.0',
+        field: 'dependencies',
+        publishedSpecifier: undefined,
+      },
+      {
+        dependency: 'changed',
+        distSpecifier: '2.0.0',
+        field: 'dependencies',
+        publishedSpecifier: '1.0.0',
+      },
+      {
+        dependency: 'removed',
+        distSpecifier: undefined,
+        field: 'peerDependencies',
+        publishedSpecifier: '1.0.0',
+      },
+    ])
   })
 })
 

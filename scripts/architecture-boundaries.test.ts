@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { parse } from '@typescript-eslint/parser'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { createRequire } from 'node:module'
+
+// typescript-eslint only supports the TypeScript 6 API while the workspace
+// toolchain is TypeScript 7. Resolve the parser through the private
+// scripts/eslint-tooling workspace so its `typescript` peer resolves to 6.x.
+const requireTooling = createRequire(resolve(import.meta.dir, 'eslint-tooling/package.json'))
+const { parse } = requireTooling('@typescript-eslint/parser') as typeof import('@typescript-eslint/parser')
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')

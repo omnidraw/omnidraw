@@ -39,10 +39,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -202,6 +200,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/widget-debug-tools/package.json](apps/widget-debug-tools/package.json) |  |
+| [apps/widget-debug-tools/scenarios/a103-preview-tools.jsonl](apps/widget-debug-tools/scenarios/a103-preview-tools.jsonl) |  |
 | [apps/widget-debug-tools/scenarios/b67-counter.jsonl](apps/widget-debug-tools/scenarios/b67-counter.jsonl) |  |
 | [apps/widget-debug-tools/src/main.ts](apps/widget-debug-tools/src/main.ts) |  |
 | [apps/widget-debug-tools/tsconfig.json](apps/widget-debug-tools/tsconfig.json) |  |
@@ -231,6 +230,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/agent/api.chat.prompt.ts](packages/api/src/agent/api.chat.prompt.ts) |  |
 | [packages/api/src/agent/api.chat.resourceBindings.clear.ts](packages/api/src/agent/api.chat.resourceBindings.clear.ts) |  |
 | [packages/api/src/agent/api.events.ts](packages/api/src/agent/api.events.ts) |  |
+| [packages/api/src/agent/api.setting.approvalPolicy.update.ts](packages/api/src/agent/api.setting.approvalPolicy.update.ts) |  |
 | [packages/api/src/agent/api.setting.get.ts](packages/api/src/agent/api.setting.get.ts) |  |
 | [packages/api/src/agent/api.widgetDraft.get.ts](packages/api/src/agent/api.widgetDraft.get.ts) |  |
 | [packages/api/src/agent/api.widgetDraft.list.ts](packages/api/src/agent/api.widgetDraft.list.ts) |  |
@@ -391,6 +391,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
 | [packages/canvas/src/fn.cangine-theme-appearance.ts](packages/canvas/src/fn.cangine-theme-appearance.ts) | Pure projection from host theme tokens to Cangine appearance data. |
 | [packages/canvas/src/fn.canvas-background-projection.ts](packages/canvas/src/fn.canvas-background-projection.ts) |  |
+| [packages/canvas/src/fn.canvas-shell.ts](packages/canvas/src/fn.canvas-shell.ts) | Pure canvas-shell projection and overlay ownership checks. |
 | [packages/canvas/src/fn.semantic-canvas-decoration.ts](packages/canvas/src/fn.semantic-canvas-decoration.ts) | Pure Cangine host-hook decoration for semantic canvas color intent. |
 | [packages/canvas/src/fn.semantic-canvas-style.ts](packages/canvas/src/fn.semantic-canvas-style.ts) | Pure projection of semantic canvas intent to concrete Cangine paint. |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
@@ -559,6 +560,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
 | [packages/service-agent/src/approval/ApprovalCoordinator.ts](packages/service-agent/src/approval/ApprovalCoordinator.ts) |  |
+| [packages/service-agent/src/approval/ApprovalPolicyStore.ts](packages/service-agent/src/approval/ApprovalPolicyStore.ts) |  |
+| [packages/service-agent/src/approval/fn.approval-policy.ts](packages/service-agent/src/approval/fn.approval-policy.ts) | Pure normalization for persisted protected-operation approval policy. |
 | [packages/service-agent/src/approval/types.ts](packages/service-agent/src/approval/types.ts) |  |
 | [packages/service-agent/src/core/CONSTANTS.ts](packages/service-agent/src/core/CONSTANTS.ts) |  |
 | [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
@@ -615,6 +618,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tool.bash.ts](packages/service-agent/src/tools/tool.bash.ts) |  |
 | [packages/service-agent/src/tools/tool.resources.ts](packages/service-agent/src/tools/tool.resources.ts) |  |
 | [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |
+| [packages/service-agent/src/tools/tool.widget-preview.ts](packages/service-agent/src/tools/tool.widget-preview.ts) |  |
 | [packages/service-agent/src/tools/tool.widget-workspace.ts](packages/service-agent/src/tools/tool.widget-workspace.ts) |  |
 | [packages/service-agent/src/tools/tool.workspace-files.ts](packages/service-agent/src/tools/tool.workspace-files.ts) |  |
 | [packages/service-agent/src/tools/ToolRegistry.ts](packages/service-agent/src/tools/ToolRegistry.ts) |  |
@@ -1004,6 +1008,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/docker/final-acceptance.Dockerfile](scripts/docker/final-acceptance.Dockerfile) |  |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
+| [scripts/eslint-tooling/package.json](scripts/eslint-tooling/package.json) |  |
 | [scripts/fixtures/canvas-kernel-consumer/index.html](scripts/fixtures/canvas-kernel-consumer/index.html) |  |
 | [scripts/fixtures/canvas-kernel-consumer/package.json](scripts/fixtures/canvas-kernel-consumer/package.json) |  |
 | [scripts/fixtures/canvas-kernel-consumer/README.md](scripts/fixtures/canvas-kernel-consumer/README.md) |  |
@@ -1020,12 +1025,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected omnidraw binary release on the local machine. |
+| [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
-| [scripts/list-package-deployments.test.ts](scripts/list-package-deployments.test.ts) |  |
-| [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/measure-reproduction-trace.ts](scripts/measure-reproduction-trace.ts) | Measures bounded Cangine scene reduction plus trace capture cost independently of total canvas size. |
 | [scripts/omnidraw.entitlements.plist](scripts/omnidraw.entitlements.plist) |  |
 | [scripts/prepare-package-dist.ts](scripts/prepare-package-dist.ts) | Finalize one workspace library's dist directory as a standalone npm package. |

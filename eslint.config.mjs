@@ -1,4 +1,13 @@
-import tsParser from "@typescript-eslint/parser";
+import { createRequire } from "node:module";
+
+// typescript-eslint only supports the TypeScript 6 API while the workspace
+// toolchain is TypeScript 7. Load the parser through the private
+// scripts/eslint-tooling workspace so its `typescript` peer resolves to 6.x
+// (side-by-side TS 6 API for linting, TS 7 for builds).
+const requireTooling = createRequire(
+  new URL("./scripts/eslint-tooling/package.json", import.meta.url),
+);
+const tsParser = requireTooling("@typescript-eslint/parser");
 import functionalCore from "./scripts/eslint-functional-core-plugin.mjs";
 
 const functionalCoreLanguageOptions = {

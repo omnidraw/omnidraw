@@ -27,8 +27,15 @@ export type TRegistryPackage = Readonly<{
 }>
 
 export type TPackageDecision = Readonly<{
-  action: 'current' | 'deploy' | 'fix-local' | 'fix-tag'
+  action: 'current' | 'deploy' | 'fix-local' | 'fix-tag' | 'bump-dependencies'
   explanation: string
+}>
+
+export type TDependencyManifestDrift = Readonly<{
+  dependency: string
+  distSpecifier?: string
+  field: 'dependencies' | 'optionalDependencies' | 'peerDependencies'
+  publishedSpecifier?: string
 }>
 
 export type TPackageBuilder = (
@@ -141,9 +148,16 @@ function releaseTag(version: string): string {
   return label === 'beta' || label === 'nightly' ? label : 'next'
 }
 
+function nextPatchVersion(version: string): string {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version)
+  if (match === null) throw new Error(`Cannot suggest the next patch version after ${version}.`)
+  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`
+}
+
 export function packageDecision(
   entry: Pick<TWorkspacePackage, 'name' | 'version'>,
   registry: TRegistryPackage,
+  dependencyDrift: readonly TDependencyManifestDrift[] = [],
 ): TPackageDecision {
   const localExists = registry.versions.has(entry.version)
   const tag = releaseTag(entry.version)
@@ -154,6 +168,21 @@ export function packageDecision(
     return {
       action: 'deploy',
       explanation: `public npm returned 404; publish ${entry.name}@${entry.version} with tag ${tag}`,
+    }
+  }
+  if (localExists && dependencyDrift.length > 0) {
+    const differences = dependencyDrift.map((drift) => {
+      if (drift.publishedSpecifier === undefined) {
+        return `npm has no ${drift.dependency}, but the new build uses ${drift.dependency}@${drift.distSpecifier}`
+      }
+      if (drift.distSpecifier === undefined) {
+        return `npm uses ${drift.dependency}@${drift.publishedSpecifier}, but the new build removes it`
+      }
+      return `npm uses ${drift.dependency}@${drift.publishedSpecifier}, but the new build uses ${drift.dependency}@${drift.distSpecifier}`
+    })
+    return {
+      action: 'bump-dependencies',
+      explanation: `catalog mismatch: ${differences.join('; ')}. With approval, update ${entry.name} to ${nextPatchVersion(entry.version)} and build again.`,
     }
   }
   if (localExists && taggedVersion === entry.version) {
@@ -200,6 +229,25 @@ export function packageDecision(
   }
 }
 
+export function dependencyManifestDrift(
+  distManifest: TPackageManifest,
+  publishedManifest: TPackageManifest,
+): readonly TDependencyManifestDrift[] {
+  const drift: TDependencyManifestDrift[] = []
+  for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
+    const distDependencies = distManifest[field] ?? {}
+    const publishedDependencies = publishedManifest[field] ?? {}
+    const names = new Set([...Object.keys(distDependencies), ...Object.keys(publishedDependencies)])
+    for (const dependency of [...names].sort()) {
+      const distSpecifier = distDependencies[dependency]
+      const publishedSpecifier = publishedDependencies[dependency]
+      if (distSpecifier === publishedSpecifier) continue
+      drift.push({ dependency, distSpecifier, field, publishedSpecifier })
+    }
+  }
+  return drift
+}
+
 async function workspacePackages(): Promise<readonly TWorkspacePackage[]> {
   const entries = await readdir(PACKAGES_DIRECTORY, { withFileTypes: true })
   const packages: TWorkspacePackage[] = []
@@ -242,6 +290,33 @@ async function registryPackage(name: string): Promise<TRegistryPackage> {
     exists: true,
     versions: new Set(Object.keys(body.versions ?? {})),
   }
+}
+
+async function registryManifest(name: string, version: string): Promise<TPackageManifest> {
+  const response = await fetch(
+    `${PUBLIC_REGISTRY}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+    { headers: { accept: 'application/json' }, redirect: 'error' },
+  )
+  if (!response.ok) {
+    throw new Error(
+      `Public npm manifest check failed for ${name}@${version}: HTTP ${response.status} ${response.statusText}`,
+    )
+  }
+  const manifest = await response.json() as TPackageManifest
+  if (manifest.name !== name || manifest.version !== version) {
+    throw new Error(`Public npm returned an invalid manifest for ${name}@${version}.`)
+  }
+  return manifest
+}
+
+async function distManifest(entry: TWorkspacePackage): Promise<TPackageManifest> {
+  const manifest = JSON.parse(
+    await readFile(join(entry.directory, 'dist', 'package.json'), 'utf8'),
+  ) as TPackageManifest
+  if (manifest.name !== entry.name || manifest.version !== entry.version) {
+    throw new Error(`${entry.name} dist/package.json does not match ${entry.name}@${entry.version}.`)
+  }
+  return manifest
 }
 
 function resolvedDependencyVersion(
@@ -318,9 +393,17 @@ async function main(): Promise<void> {
     await registryPackage(name),
   ] as const))
   const registry = new Map(registryEntries)
+  const existingPackages = packages.filter((entry) => registry.get(entry.name)!.versions.has(entry.version))
+  const manifestComparisons = new Map(await Promise.all(existingPackages.map(async (entry) => {
+    const [dist, published] = await Promise.all([
+      distManifest(entry),
+      registryManifest(entry.name, entry.version),
+    ])
+    return [entry.name, dependencyManifestDrift(dist, published)] as const
+  })))
   const decisions = new Map(packages.map((entry) => [
     entry.name,
-    packageDecision(entry, registry.get(entry.name)!),
+    packageDecision(entry, registry.get(entry.name)!, manifestComparisons.get(entry.name)),
   ]))
 
   const missingExternal = [...externalRequirements].filter(([dependency, version]) => (
@@ -359,6 +442,9 @@ async function main(): Promise<void> {
 
   const tagFixes = packages.filter((entry) => decisions.get(entry.name)!.action === 'fix-tag')
   const localFixes = packages.filter((entry) => decisions.get(entry.name)!.action === 'fix-local')
+  const dependencyBumps = packages.filter((entry) => (
+    decisions.get(entry.name)!.action === 'bump-dependencies'
+  ))
   const current = packages.filter((entry) => decisions.get(entry.name)!.action === 'current')
 
   console.log('')
@@ -372,7 +458,7 @@ async function main(): Promise<void> {
     paint(`${current.length} current`, 'green'),
     paint(`${deployable.length} ready`, 'cyan'),
     paint(`${blockedDeployments.length} waiting`, 'yellow'),
-    paint(`${localFixes.length + tagFixes.length} need attention`, 'red'),
+    paint(`${localFixes.length + dependencyBumps.length + tagFixes.length} need attention`, 'red'),
   ].join(paint('  ·  ', 'dim')))
 
   printPackageGroup('CURRENT', current.map((entry) => ({ entry })), 'green', '✓')
@@ -385,6 +471,10 @@ async function main(): Promise<void> {
     explanation: `Requires ${blockers.join(', ')}`,
   })), 'yellow', '◷')
   printPackageGroup('BLOCKED — FIX LOCAL VERSION', localFixes.map((entry) => ({
+    entry,
+    explanation: decisions.get(entry.name)!.explanation,
+  })), 'red', '×')
+  printPackageGroup('BLOCKED — CATALOG MISMATCH', dependencyBumps.map((entry) => ({
     entry,
     explanation: decisions.get(entry.name)!.explanation,
   })), 'red', '×')
@@ -419,19 +509,12 @@ async function main(): Promise<void> {
       console.log(paint(`${index + 1}. ${entry.name}@${entry.version}`, 'cyan'))
       console.log(publishCommand(entry))
     })
-    const combined = [
-      `bun run verify:package-dists -- ${deployable.map((entry) => shellQuote(entry.name)).join(' ')}`,
-      ...deployable.map((entry) => `(${publishCommand(entry)})`),
-    ].join(' && ')
-    console.log('')
-    printHeading('COPY/PASTE — VERIFY AND DEPLOY READY PACKAGES')
-    console.log('')
-    console.log(combined)
   }
 
   console.log('')
 
   const blocked = packages.some((entry) => decisions.get(entry.name)!.action === 'fix-local')
+    || dependencyBumps.length > 0
     || missingExternal.length > 0
     || blockedDeployments.length > 0
   if (blocked) process.exitCode = 2

@@ -1,0 +1,9 @@
+{
+  "name": "@omnidraw/eslint-tooling",
+  "private": true,
+  "description": "Pinned TypeScript 6 API resolution context for typescript-eslint (TS 7 is the workspace toolchain; typescript-eslint only supports the TS 6 API).",
+  "dependencies": {
+    "@typescript-eslint/parser": "8.65.0",
+    "typescript": "6.0.3"
+  }
+}

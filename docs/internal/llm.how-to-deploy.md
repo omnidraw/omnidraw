@@ -168,15 +168,16 @@ checks the public npm registry and reports:
 - `DEPLOY` when npm returns 404 or the local version is newer and unpublished;
 - `TAG` when the exact version already exists but the intended dist-tag points
   elsewhere, so the version must not be republished;
+- `CATALOG MISMATCH` when the staged `dist/package.json` dependency fields
+  differ from that exact version's package manifest on npm. The report names
+  the next patch version to use after approval and tells you to build again;
 - `BLOCK` when public `latest` is newer than the local version.
 
 It also checks exact external Omnidraw prerequisites, propagates missing
 dependencies through the local package graph, and prints:
 
 - individual build, dry-run, and publish commands;
-- the packages safe to publish now in dependency order;
-- one combined copy-paste command beginning with
-  `bun run verify:package-dists`.
+- the packages safe to publish now in dependency order.
 
 Exit code `0` means the registry check found no blocking mismatch. Exit code
 `2` means the report contains a missing prerequisite or local version problem;
@@ -218,6 +219,13 @@ future `src/` release.
 For a real `src/` change, never reuse a published version. Rebuild all
 dependents so their generated public manifests pin the new exact internal
 version, then regenerate `bun.lock`.
+
+The deployment report can also expose an older, already-published package whose
+staged dependency pins have drifted because a workspace or catalog dependency
+advanced. This is an exceptional dependency-only release: do not bump or
+publish it automatically. Obtain explicit publication approval for the named
+package, assign a new patch version, rebuild its dependents, and rerun the
+report.
 
 ### Recovery from a partial manual release
 
