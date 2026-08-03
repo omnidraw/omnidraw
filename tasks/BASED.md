@@ -426,6 +426,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S131](s/S131.md) - canvas: use Cangine 0.5.3 and own the Capsule portal bridge
 - [x]: [S132](s/S132.md) - packages: make the canvas kernel workspace-split ready
 - [x]: [S133](s/S133.md) - widget publish: auto-heal changed drafts; Publish builds current source and promotes that exact build
+- [ ]: [S134](s/S134.md) - release 0.5.0: remove binary distribution, normal build, docs and CI cleanup
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -483,17 +484,11 @@ early exit > if else
 Comment on complex parts.
 You change code, you change comments.
 
-pure fn > fn > static class > class
-
-fn with side effects should have suffix ...Fx
-
 locality of behavior, don't make me jump around
 
 minimize redirections
 
-dry is bad, make longer functions
-
-factor out logic only if repeated 5 times or more
+factor out logic only if repeated 3 times or more
 factor out only if really same logic
 
 move types if shared into local types.ts file
