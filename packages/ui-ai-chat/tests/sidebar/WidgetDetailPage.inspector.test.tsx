@@ -175,8 +175,6 @@ describe('WidgetDetailPage inspector tabs', () => {
       'Overview',
       'Config',
       'Functions',
-      'Collaborative State',
-      'Runs',
       'Logs',
       'Resources',
       'Files',
@@ -191,21 +189,6 @@ describe('WidgetDetailPage inspector tabs', () => {
       expect(host.textContent).toContain('omnidraw:1');
       expect(host.textContent).toContain('lookupNotes');
       expect(host.textContent).toContain('notes (read)');
-    });
-
-    selectTab('collaborative-state');
-    await vi.waitFor(() => {
-      expect(host.textContent).toContain('Instance-scoped collaborative state');
-      expect(host.textContent).toContain('centralized versioned JSON state');
-      expect(host.textContent).toContain('revision-7');
-      expect(host.textContent).toContain('420 × 320');
-    });
-
-    selectTab('runs');
-    await vi.waitFor(() => {
-      expect(host.textContent).toContain('Invocation-scoped runs');
-      expect(host.textContent).toContain('do not aggregate mutable runtime state');
-      expect(host.textContent).toContain('invocation ID');
     });
 
     selectTab('logs');

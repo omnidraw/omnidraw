@@ -29,8 +29,6 @@ type TTab =
   | 'overview'
   | 'config'
   | 'functions'
-  | 'collaborative-state'
-  | 'runs'
   | 'logs'
   | 'resources'
   | 'files';
@@ -44,8 +42,6 @@ const V2_TABS = Object.freeze([
   { value: 'overview', label: 'Overview' },
   { value: 'config', label: 'Config' },
   { value: 'functions', label: 'Functions' },
-  { value: 'collaborative-state', label: 'Collaborative State' },
-  { value: 'runs', label: 'Runs' },
   { value: 'logs', label: 'Logs' },
   { value: 'resources', label: 'Resources' },
   { value: 'files', label: 'Files' },
@@ -387,48 +383,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                 </article>}
               </For>
             </section>
-          </div></Tabs.Content>
-
-          <Tabs.Content class={styles.content} value="collaborative-state"><div class={styles.contentInner}>
-            <section class={styles.panel}>
-              <h3>Instance-scoped collaborative state</h3>
-              <p class={styles.messageIntro}>Each placed widget instance owns centralized versioned JSON state scoped to its organization, canvas, and exact instance identity. Definition revisions do not share mutable state.</p>
-              <dl class={styles.definitionList}>
-                <dt>Definition revision</dt><dd><code>{current().variant.revision}</code></dd>
-                <dt>Lifecycle</dt><dd>Created lazily and changed through compare-and-swap updates from the widget state service.</dd>
-                <dt>Manifest entry</dt><dd><code>{v2Manifest()?.ui.entry ?? 'Unavailable'}</code></dd>
-              </dl>
-            </section>
-            <section class={styles.panel}>
-              <h3>Placement</h3>
-              <Show when={current().variant.placement} fallback={<p class={styles.muted}>No placement descriptor is available for this revision.</p>}>
-                {(placement) => <dl class={styles.definitionList}>
-                  <dt>Source</dt><dd>{placement().reference.source}</dd>
-                  <dt>Reference</dt><dd><code>{placement().reference.name}</code></dd>
-                  <dt>Frame</dt><dd>{placement().bounds.width} × {placement().bounds.height}</dd>
-                </dl>}
-              </Show>
-            </section>
-          </div></Tabs.Content>
-
-          <Tabs.Content class={styles.content} value="runs"><div class={styles.contentInner}>
-            <section class={styles.panel}>
-              <h3>Invocation-scoped runs</h3>
-              <p class={styles.messageIntro}>Server functions run only when invoked and do not aggregate mutable runtime state across widget instances.</p>
-            </section>
-            <div class={styles.inspectorGrid}>
-              <For each={current().functions} fallback={<section class={styles.panel}><p class={styles.muted}>There are no server functions to run for this revision.</p></section>}>
-                {(descriptor) => <article class={`${styles.panel} ${styles.compactCard}`}>
-                  <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
-                  <dl class={styles.definitionList}>
-                    <dt>Deadline</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
-                    <dt>Memory tier</dt><dd>{descriptor.limits.memoryTier}</dd>
-                    <dt>Retry policy</dt><dd>{descriptor.retry.mode === 'none' ? 'No automatic retry' : `${descriptor.retry.maxAttempts} attempts maximum`}</dd>
-                  </dl>
-                </article>}
-              </For>
-            </div>
-            <section class={styles.panel}><h3>Run history</h3><p class={styles.muted}>No invocation is selected. Runs are addressed by the invocation ID returned by each function call, so status and output stay attached to that exact invocation.</p></section>
           </div></Tabs.Content>
 
           <Tabs.Content class={styles.content} value="logs"><div class={styles.contentInner}>

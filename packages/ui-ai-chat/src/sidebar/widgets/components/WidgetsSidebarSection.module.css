@@ -1,5 +1,5 @@
 .section { margin-top: .375rem; padding-top: .375rem; border-top: 1px solid var(--border); }
-.header { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .625rem; color: var(--muted-foreground); }
+.header { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .25rem; color: var(--muted-foreground); }
 .sectionToggle, .menuTrigger, .groupDisclosure, .groupMenuTrigger { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
 .sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .menuTrigger, .groupMenuTrigger { width: 1.75rem; height: 1.75rem; }
@@ -8,7 +8,7 @@
 .groupDisclosure:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
 .chevron, .groupChevron { transition: transform 150ms ease; }
 .sectionToggle[aria-expanded="true"] .chevron, .groupDisclosure[aria-expanded="true"] .groupChevron { transform: rotate(90deg); }
-.body { display: flex; flex-direction: column; padding-left: .375rem; }
+.body { display: flex; flex-direction: column; padding-left: .125rem; }
 .groupRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; min-height: 1.875rem; padding-left: .25rem; color: var(--foreground); }
 .groupRow:hover { background: var(--accent); }
 .groupDisclosure { display: grid; grid-template-columns: 1.5rem 1rem minmax(0, 1fr); justify-content: stretch; gap: .25rem; min-width: 0; padding: 0; text-align: left; }
@@ -16,7 +16,7 @@
 .groupName, .widgetName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; font-weight: 700; }
 .groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
 .widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
-.widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1.5rem; color: inherit; text-align: left; }
+.widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1rem; color: inherit; text-align: left; }
 .addButton { display: inline-flex; align-items: center; justify-content: center; padding: 0 .5rem; color: var(--muted-foreground); font-size: .625rem; font-weight: 700; white-space: nowrap; }
 .addButton:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
 .widgetRow:hover { background: var(--accent); }

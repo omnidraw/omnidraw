@@ -885,6 +885,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/sidebar/components/CreateResourceDialog.tsx](packages/ui-ai-chat/src/sidebar/components/CreateResourceDialog.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx](packages/ui-ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/components/index.ts](packages/ui-ai-chat/src/sidebar/components/index.ts) |  |
+| [packages/ui-ai-chat/src/sidebar/components/OmnidrawLogo.tsx](packages/ui-ai-chat/src/sidebar/components/OmnidrawLogo.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/components/RenameDialog.tsx](packages/ui-ai-chat/src/sidebar/components/RenameDialog.tsx) |  |
 | [packages/ui-ai-chat/src/sidebar/components/Sidebar.module.css](packages/ui-ai-chat/src/sidebar/components/Sidebar.module.css) |  |
 | [packages/ui-ai-chat/src/sidebar/components/Sidebar.tsx](packages/ui-ai-chat/src/sidebar/components/Sidebar.tsx) |  |

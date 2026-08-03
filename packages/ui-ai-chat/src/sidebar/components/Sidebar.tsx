@@ -12,6 +12,7 @@ import type { TSidebarCanvas, TSidebarController } from "../ports";
 import { CreateCanvasDialog } from "./CreateCanvasDialog";
 import { CreateResourceDialog } from "./CreateResourceDialog";
 import { DeleteCanvasDialog } from "./DeleteCanvasDialog";
+import { OmnidrawLogo } from "./OmnidrawLogo";
 import { RenameDialog } from "./RenameDialog";
 import SidebarItem from "./SidebarItem";
 import styles from "./Sidebar.module.css";
@@ -134,6 +135,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
       <aside class={sidebarClass()} aria-label="Canvas navigation">
         <div class={styles.header}>
           <div class={styles.brandLockup}>
+            <OmnidrawLogo class={styles.brandLogo} />
             <h1 class={styles.brand}>OMNIDRAW</h1>
           </div>
           <Button
