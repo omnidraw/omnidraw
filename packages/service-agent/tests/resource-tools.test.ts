@@ -459,6 +459,7 @@ describe('resource tools', () => {
         draftCalls.push({ type: 'confirm', draftId });
         return { id: 'apply-internal', resource_id: 'db-1', draft_id: draftId, source_apply_id: null, status: 'preparing', last_error: null, backup_retained: false, created_at: timestamp, completed_at: null };
       },
+      getDbApply: async () => ({ apply: { id: 'apply-internal', status: 'succeeded' } }),
       discardDbDraft: async (draftId) => { draftCalls.push({ type: 'discard', draftId }); },
     };
     let approvalId = 0;
@@ -508,10 +509,10 @@ describe('resource tools', () => {
     await approvals.resolve('chat-a', dbApproval.id, 'approve', { accountId: 'user-a' });
     const dbData = providerModelData(await dbWrite);
     expect(dbData.results).toEqual([
-      { index: 0, ok: true, value: { staged: true, applyStatus: 'preparing' } },
-      { index: 1, ok: true, value: { staged: true, applyStatus: 'preparing' } },
+      { index: 0, ok: true, value: { staged: true, applyStatus: 'succeeded' } },
+      { index: 1, ok: true, value: { staged: true, applyStatus: 'succeeded' } },
     ]);
-    expect(dbData.apply).toEqual({ status: 'preparing', warnings: ['Raw SQL'], warningsTruncated: false });
+    expect(dbData.apply).toEqual({ status: 'succeeded', warnings: ['Raw SQL'], warningsTruncated: false });
     expect(JSON.stringify(dbData)).not.toContain('apply-internal');
     expect(draftCalls).toEqual([
       { type: 'create', resourceId: 'db-1', name: 'AI Chat protected resource write' },
@@ -520,6 +521,38 @@ describe('resource tools', () => {
       { type: 'preview', draftId: 'draft-1' },
       { type: 'confirm', draftId: 'draft-1' },
     ]);
+  });
+
+  test('db writes report the terminal apply status, not the stale preparing snapshot', async () => {
+    const resources = [resource('db-1', 'db', 'Notes')];
+    for (const terminal of ['succeeded', 'failed'] as const) {
+      let storedStatus = 'preparing';
+      const resourceService: TAgentResourceService = {
+        ...resolvingService(resources),
+        createDbDraft: async () => ({ draft: { id: 'draft-1' } }),
+        executeDbDraftSql: async () => undefined,
+        previewDbApply: async () => ({ warnings: [] }),
+        confirmDbApply: async () => {
+          queueMicrotask(() => { storedStatus = terminal; });
+          return { id: 'apply-1', status: 'preparing' };
+        },
+        getDbApply: async () => ({ apply: { id: 'apply-1', status: storedStatus } }),
+        discardDbDraft: async () => undefined,
+      };
+      const approvals = new ApprovalCoordinator();
+      const { byName } = tools(resourceService, approvals);
+      const write = executeTool(byName.get('od_resource_data_write')!, {
+        resourceName: 'Notes',
+        operations: [{ operation: 'sql', sql: 'INSERT INTO notes(id) VALUES (1)' }],
+      });
+      const approval = await pendingApproval(approvals);
+      await approvals.resolve('chat-a', approval.id, 'approve', { accountId: 'user-a' });
+      const data = providerModelData(await write);
+      expect(data.results).toEqual([
+        { index: 0, ok: true, value: { staged: true, applyStatus: terminal } },
+      ]);
+      expect(data.apply).toMatchObject({ status: terminal });
+    }
   });
 
   test('returns stable name-resolution and authorization errors in model content', async () => {

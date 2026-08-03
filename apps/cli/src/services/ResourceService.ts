@@ -267,6 +267,7 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       useCoordinator: config.useCoordinator,
       dbResource: this.#dbResource,
       crypto: cryptoPortal,
+      onDiagnostic: (entry) => console.warn(`[resource] ${entry.code}: ${entry.message}`),
     });
     this.#providers = [
       new ResourceManagementProvider({

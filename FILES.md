@@ -21,7 +21,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
-| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -581,6 +580,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
 | [packages/service-agent/src/tools/fn.widget-create.ts](packages/service-agent/src/tools/fn.widget-create.ts) |  |
 | [packages/service-agent/src/tools/fn.widget-list.ts](packages/service-agent/src/tools/fn.widget-list.ts) |  |
+| [packages/service-agent/src/tools/fx.db-apply.ts](packages/service-agent/src/tools/fx.db-apply.ts) |  |
 | [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
 | [packages/service-agent/src/tools/resource-service.ts](packages/service-agent/src/tools/resource-service.ts) |  |
 | [packages/service-agent/src/tools/templates/assets.d.ts](packages/service-agent/src/tools/templates/assets.d.ts) |  |

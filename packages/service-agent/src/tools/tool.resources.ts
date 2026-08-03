@@ -19,6 +19,7 @@ import {
   fnSortResources,
 } from './fn.resource-tools';
 import { fnToolError, fnToolSuccess } from './fn.result';
+import { fxAwaitDbApplyTerminal } from './fx.db-apply';
 import type { TAgentResource, TAgentResourceService } from './resource-service';
 import type { TToolDefinition } from './types';
 
@@ -44,6 +45,8 @@ type TCreateResourceToolsArgs = {
 };
 
 const RESOURCE_BATCH_SERIALIZED_LIMIT = 2_000_000;
+const DB_APPLY_AWAIT_DEADLINE_MS = 5_000;
+const DB_APPLY_AWAIT_INTERVAL_MS = 25;
 const RESOURCE_NAME_SCHEMA = Type.String({ minLength: 1, maxLength: 120 });
 const RESOURCE_KIND_SCHEMA = Type.Union([Type.Literal('kv'), Type.Literal('secretStore'), Type.Literal('db')]);
 const DB_PARAMETER_SCHEMA = Type.Union([
@@ -266,8 +269,14 @@ async function executeDbWriteBatch(
       await resourceService.executeDbDraftSql(draftId, operation.sql, toWireParameters(operation.parameters));
     }
     const preview = await resourceService.previewDbApply(draftId);
-    const apply = await resourceService.confirmDbApply(draftId);
+    const confirmed = await resourceService.confirmDbApply(draftId);
     applyStarted = true;
+    const apply = resourceService.getDbApply
+      ? await fxAwaitDbApplyTerminal(
+        { getDbApply: resourceService.getDbApply, sleep: Bun.sleep, now: () => Date.now() },
+        { applyId: confirmed.id, fallback: confirmed, deadlineMs: DB_APPLY_AWAIT_DEADLINE_MS, intervalMs: DB_APPLY_AWAIT_INTERVAL_MS },
+      )
+      : confirmed;
     const warnings = preview.warnings.slice(0, 40);
     return {
       results: operations.map((_, index) => ({ index, ok: true, value: { staged: true, applyStatus: apply.status } })),

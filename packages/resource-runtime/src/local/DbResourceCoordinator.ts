@@ -11,6 +11,8 @@ import type {
 import type { DbResource } from './DbResource';
 
 const RESOURCE_DRAIN_TIMEOUT_MS = 2_000;
+const STALE_APPLY_GRACE_MS = 10_000;
+const STALE_APPLY_RECONCILE_RETRY_MS = 5_000;
 
 type TDbResourceDraftStatus = 'editing' | 'applying' | 'applied' | 'discarded' | 'error';
 type TDbResourceApplyStatus = 'preparing' | 'applying' | 'succeeded' | 'failed' | 'recovered';
@@ -186,6 +188,14 @@ export type TDbResourceCoordinatorConfig = {
   readonly useCoordinator: IResourceUseCoordinator;
   readonly dbResource: IDbResourceLifecycle;
   readonly crypto: Pick<Crypto, 'randomUUID'>;
+  readonly onDiagnostic?: (entry: TDbResourceCoordinatorDiagnostic) => void;
+  readonly staleApplyGraceMs?: number;
+};
+
+export type TDbResourceCoordinatorDiagnostic = {
+  readonly code: string;
+  readonly message: string;
+  readonly applyId: string;
 };
 
 export type TDbResourceStartupReconcileOptions = Readonly<{
@@ -221,9 +231,13 @@ export class DbResourceCoordinator {
   readonly #useCoordinator: IResourceUseCoordinator;
   readonly #dbResource: IDbResourceLifecycle;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
+  readonly #onDiagnostic: ((entry: TDbResourceCoordinatorDiagnostic) => void) | null;
+  readonly #staleApplyGraceMs: number;
   readonly #resourceTails = new Map<string, Promise<void>>();
   readonly #detachedTasks = new Set<Promise<void>>();
   readonly #drains = new Map<string, TResourceDrainLease>();
+  readonly #activeApplyIds = new Set<string>();
+  readonly #reconcileAttempts = new Map<string, number>();
   #closed = false;
 
   constructor(config: TDbResourceCoordinatorConfig) {
@@ -234,6 +248,8 @@ export class DbResourceCoordinator {
     this.#useCoordinator = config.useCoordinator;
     this.#dbResource = config.dbResource;
     this.#crypto = config.crypto;
+    this.#onDiagnostic = config.onDiagnostic ?? null;
+    this.#staleApplyGraceMs = config.staleApplyGraceMs ?? STALE_APPLY_GRACE_MS;
   }
 
   async impact(tenant: TTenantContext, resourceId: string): Promise<TDbResourceImpact>;
@@ -373,8 +389,12 @@ export class DbResourceCoordinator {
   }
 
   async getApply(applyId: string): Promise<TDbApplyDetails> {
-    const apply = await this.#db.dbResource.apply.get({ id: applyId });
+    let apply = await this.#db.dbResource.apply.get({ id: applyId });
     if (!apply) throw new ResourceError('RESOURCE_NOT_FOUND', 'DbResource apply was not found.');
+    if (this.#isStaleUnownedApply(apply)) {
+      await this.#reconcileStaleApply(apply);
+      apply = await this.#db.dbResource.apply.get({ id: applyId }) ?? apply;
+    }
     return { apply, drain: this.#drains.get(applyId) ?? null };
   }
 
@@ -479,6 +499,7 @@ export class DbResourceCoordinator {
 
   async #executeApply(tenant: TTenantContext, apply: TDbCoordinatorApplyRun): Promise<void> {
     if (!apply.draft_id) return;
+    this.#activeApplyIds.add(apply.id);
     let lease: TResourceDrainLease | null = null;
     try {
       const drained = await this.#useCoordinator.drain(tenant, {
@@ -518,15 +539,19 @@ export class DbResourceCoordinator {
           draftStatus: 'editing',
           lastError: failure,
           backupRetained: current.backup_retained,
-        }).catch(() => null);
+        }).catch((writeError: unknown) => {
+          this.#reportTerminalWriteFailure(apply.id, writeError);
+        });
       }
     } finally {
+      this.#activeApplyIds.delete(apply.id);
       this.#drains.delete(apply.id);
       if (lease) await this.#useCoordinator.release(tenant, lease, 'resume').catch(() => null);
     }
   }
 
   async #executeRestore(tenant: TTenantContext, restore: TDbCoordinatorApplyRun): Promise<void> {
+    this.#activeApplyIds.add(restore.id);
     let lease: TResourceDrainLease | null = null;
     try {
       if (!restore.source_apply_id) throw new ResourceError('DB_RESOURCE_BACKUP_NOT_FOUND', 'Restore source is missing.');
@@ -559,9 +584,12 @@ export class DbResourceCoordinator {
           expectedStatus: current.status,
           lastError: failure,
           backupRetained: false,
-        }).catch(() => null);
+        }).catch((writeError: unknown) => {
+          this.#reportTerminalWriteFailure(restore.id, writeError);
+        });
       }
     } finally {
+      this.#activeApplyIds.delete(restore.id);
       this.#drains.delete(restore.id);
       if (lease) await this.#useCoordinator.release(tenant, lease, 'resume').catch(() => null);
     }
@@ -649,8 +677,47 @@ export class DbResourceCoordinator {
   }
 
   async #requireNoActiveApply(resourceId: string): Promise<void> {
-    const active = (await this.#listAllApplies(resourceId)).find((apply) => apply.status === 'preparing' || apply.status === 'applying');
+    let active = (await this.#listAllApplies(resourceId)).find((apply) => apply.status === 'preparing' || apply.status === 'applying');
+    if (active && this.#isStaleUnownedApply(active)) {
+      await this.#reconcileStaleApply(active);
+      active = (await this.#listAllApplies(resourceId)).find((apply) => apply.status === 'preparing' || apply.status === 'applying');
+    }
     if (active) throw new ResourceError('DB_RESOURCE_APPLY_IN_PROGRESS', 'DbResource already has active database work.');
+  }
+
+  #isStaleUnownedApply(apply: TDbCoordinatorApplyRun): boolean {
+    if (apply.status !== 'preparing' && apply.status !== 'applying') return false;
+    if (this.#activeApplyIds.has(apply.id)) return false;
+    const createdMs = Date.parse(apply.created_at);
+    return Number.isFinite(createdMs) && Date.now() - createdMs > this.#staleApplyGraceMs;
+  }
+
+  async #reconcileStaleApply(apply: TDbCoordinatorApplyRun): Promise<void> {
+    if (this.#activeApplyIds.has(apply.id)) return;
+    const lastAttempt = this.#reconcileAttempts.get(apply.id);
+    if (lastAttempt !== undefined && Date.now() - lastAttempt < STALE_APPLY_RECONCILE_RETRY_MS) return;
+    this.#reconcileAttempts.set(apply.id, Date.now());
+    this.#activeApplyIds.add(apply.id);
+    try {
+      await this.#reconcileApply(this.#tenant, apply);
+      this.#reconcileAttempts.delete(apply.id);
+    } catch (error) {
+      this.#onDiagnostic?.({
+        code: 'DB_RESOURCE_APPLY_RECONCILE_FAILED',
+        message: `Stale database apply ${apply.id} could not be reconciled: ${error instanceof Error ? error.message : String(error)}`,
+        applyId: apply.id,
+      });
+    } finally {
+      this.#activeApplyIds.delete(apply.id);
+    }
+  }
+
+  #reportTerminalWriteFailure(applyId: string, error: unknown): void {
+    this.#onDiagnostic?.({
+      code: 'DB_RESOURCE_APPLY_STATUS_WRITE_FAILED',
+      message: `Terminal status write for database apply ${applyId} failed; the run stays reconcilable: ${error instanceof Error ? error.message : String(error)}`,
+      applyId,
+    });
   }
 
   async #listAllApplies(resourceId: string): Promise<TDbCoordinatorApplyRun[]> {

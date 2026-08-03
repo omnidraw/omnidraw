@@ -57,6 +57,7 @@ describe('createAgentResourceService', () => {
       'discardDbDraft',
       'executeDbDraftSql',
       'executeDbLiveSql',
+      'getDbApply',
       'getResource',
       'getResourceDataEntry',
       'inspectDbResource',
@@ -76,7 +77,9 @@ describe('createAgentResourceService', () => {
 
   test('forwards every operation with the exact bound tenant and unchanged arguments', async () => {
     const calls: TRecordedCall[] = [];
-    const capability = createAgentResourceService(recordingOwner(calls), tenant);
+    const capability = createAgentResourceService(recordingOwner(calls, {
+      getDbApply: { apply: { id: 'apply-a', status: 'applying' }, drain: null },
+    }), tenant);
     const filter = Object.freeze({ kind: 'kv' as const, status: 'ready' as const });
     const resolveOptions = Object.freeze({ requireReady: true, kind: 'kv' as const });
     const createRequest = Object.freeze({ kind: 'kv' as const, name: 'Notes' });
@@ -118,6 +121,7 @@ describe('createAgentResourceService', () => {
     await capability.discardDbDraft!('draft-a');
     await capability.previewDbApply!('draft-a');
     await capability.confirmDbApply!('draft-a');
+    await capability.getDbApply!('apply-a');
 
     expect(calls.map((call) => call.method)).toEqual([
       'listResources',
@@ -139,6 +143,7 @@ describe('createAgentResourceService', () => {
       'discardDbDraft',
       'previewDbApply',
       'confirmDbApply',
+      'getDbApply',
     ]);
     for (const call of calls) expect(call.args[0]).toBe(tenant);
     expect(calls.map((call) => call.args.slice(1))).toEqual([
@@ -161,6 +166,7 @@ describe('createAgentResourceService', () => {
       ['draft-a'],
       ['draft-a'],
       ['draft-a'],
+      ['apply-a'],
     ]);
   });
 
@@ -180,6 +186,7 @@ describe('createAgentResourceService', () => {
       executeDbDraftSql: { rowsAffected: 1 },
       previewDbApply: { warnings: ['table rebuild'] },
       confirmDbApply: { status: 'applying' },
+      getDbApply: { apply: { id: 'apply-a', status: 'succeeded' }, drain: null },
     });
     const capability = createAgentResourceService(recordingOwner([], results), tenant);
 
@@ -199,6 +206,9 @@ describe('createAgentResourceService', () => {
     });
     await expect(capability.confirmDbApply!(draft.draft.id)).resolves.toEqual({
       status: 'applying',
+    });
+    await expect(capability.getDbApply!('apply-a')).resolves.toEqual({
+      apply: { id: 'apply-a', status: 'succeeded' },
     });
   });
 });

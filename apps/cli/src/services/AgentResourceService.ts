@@ -85,6 +85,10 @@ function createAgentResourceService(
         TCompleteAgentResourceService['confirmDbApply']
       >
     ),
+    getDbApply: async (applyId) => {
+      const details = await owner.getDbApply(tenant, applyId);
+      return { apply: details.apply };
+    },
   } satisfies TCompleteAgentResourceService;
 
   return Object.freeze(capability);

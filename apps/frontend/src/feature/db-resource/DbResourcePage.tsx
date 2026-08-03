@@ -151,6 +151,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   const [operationRun, setOperationRun] = createSignal<TDbApplyDetails | null>(null);
   const [operationError, setOperationError] = createSignal("");
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let pollingApplyId: string | null = null;
   let inspectionRequestId = 0;
   let rowsRequestId = 0;
 
@@ -214,6 +215,10 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
       setDraftInspection(null);
     }
     setLoading(false);
+    const pendingRun = applyDetailsResponses
+      .map(({ run, response: [, details] }) => (details ?? { apply: run, drain: null }))
+      .find((details) => !fnApplyTerminal(details.apply.status));
+    if (pendingRun) void pollApply(pendingRun.apply.id);
   };
 
   const loadInspection = async () => {
@@ -519,14 +524,21 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   );
 
   const pollApply = async (applyId: string) => {
+    if (pollingApplyId === applyId) return;
+    pollingApplyId = applyId;
     const [pollError, run] = await fxApply(portal, { applyId });
     if (pollError || !run) {
+      pollingApplyId = null;
       setOperationError(pollError?.message ?? "Apply status response was empty.");
       return;
     }
     setOperationRun(run);
-    if (!fnApplyTerminal(run.apply.status)) pollTimer = setTimeout(() => void pollApply(applyId), 900);
-    else await loadMeta();
+    if (!fnApplyTerminal(run.apply.status)) {
+      pollTimer = setTimeout(() => { pollingApplyId = null; void pollApply(applyId); }, 900);
+    } else {
+      pollingApplyId = null;
+      await loadMeta();
+    }
   };
 
   const pollRestore = async (restoreId: string) => {
@@ -559,6 +571,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     setOperationDialogOpen(open);
     if (!open) {
       if (pollTimer) clearTimeout(pollTimer);
+      pollingApplyId = null;
       void loadMeta();
     }
   };

@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/resource-runtime",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Portable resource capabilities, providers, and gateway contracts for Omnidraw.",
   "license": "MIT",
   "repository": {

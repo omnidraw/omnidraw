@@ -87,4 +87,5 @@ export interface TAgentResourceService {
   discardDbDraft?(draftId: string): Promise<unknown>;
   previewDbApply?(draftId: string): Promise<Readonly<{ warnings: readonly string[] }>>;
   confirmDbApply?(draftId: string): Promise<Readonly<{ id: string; status: string }>>;
+  getDbApply?(applyId: string): Promise<Readonly<{ apply: Readonly<{ id: string; status: string }> }>>;
 }

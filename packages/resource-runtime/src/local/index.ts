@@ -28,6 +28,7 @@ export type {
   TDbCoordinatorResource,
   TDbDraftDetails,
   TDbResourceCoordinatorConfig,
+  TDbResourceCoordinatorDiagnostic,
   TDbResourceStartupReconcileOptions,
   TDbResourceImpact,
 } from './DbResourceCoordinator';

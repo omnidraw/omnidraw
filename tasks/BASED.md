@@ -185,7 +185,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [B72](b/B72.md) - db resources: migration can leave calls stuck on `RESOURCE_MIGRATING`
 - [x]: [B73](b/B73.md) - AI widget scaffold: resolve workspace dependency protocols before npm install
 - [x]: [B74](b/B74.md) - Preview: keep generated SDK and Capsule bridge versions aligned
-- [ ]: [B75](b/B75.md) - db resource tool: apply reported stuck in `preparing` though it succeeded
+ - [x]: [B75](b/B75.md) - db resource tool: apply reported stuck in `preparing` though it succeeded
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

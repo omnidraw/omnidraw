@@ -136,6 +136,10 @@ export function fnParseDbSchemaCursor(
   return Number.isSafeInteger(offset) && offset >= 0 ? { ok: true, offset } : { ok: false };
 }
 
+export function fnDbApplyTerminalStatus(status: string): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'recovered';
+}
+
 export function fnResourceCapabilities(resource: TAgentResource, bindingCount: number) {
   const ready = resource.status === 'ready';
   const lifecycleBusy = resource.status === 'provisioning'
