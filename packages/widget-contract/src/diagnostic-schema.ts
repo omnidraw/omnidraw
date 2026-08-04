@@ -44,6 +44,12 @@ export const ZWidgetDiagnostic = z.object({
   operation: z.string().regex(ID_PATTERN).optional(),
   budgetDimension: z.string().regex(ID_PATTERN).optional(),
   causeFingerprint: z.string().regex(SHA256_PATTERN).optional(),
+  remediation: z.enum([
+    'widget-source',
+    'generated-binding',
+    'platform',
+    'budget',
+  ]).optional(),
 }).strict().superRefine((diagnostic, context) => {
   if ((diagnostic.line !== undefined || diagnostic.column !== undefined) && diagnostic.file === undefined) {
     context.addIssue({

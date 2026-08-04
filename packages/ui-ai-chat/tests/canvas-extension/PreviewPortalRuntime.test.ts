@@ -1999,8 +1999,9 @@ describe('PreviewPortalRuntime', () => {
       buildId: PREVIEW_REVISION_TWO,
       buildSequence: 1,
       occurrenceCount: 1,
-      retryability: 'unknown',
+      retryability: 'retryable',
       timestampMs: 123,
+      remediation: 'budget',
     } as const;
     preview.getOwner.mockResolvedValue([undefined, {
       id: PREVIEW_ONE,

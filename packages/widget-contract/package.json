@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/widget-contract",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Portable widget manifests, artifacts, diagnostics, and revision contracts for Omnidraw.",
   "license": "MIT",
   "repository": {
