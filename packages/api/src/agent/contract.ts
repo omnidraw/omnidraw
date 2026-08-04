@@ -122,7 +122,7 @@ const ZAgentApproval = z.object({
   risk: z.enum(['medium', 'high']),
   warnings: z.string().array(),
   details: z.unknown(),
-  createdAt: z.string(),
+  createdAtSec: z.string(),
   policyMode: z.enum(['always-approve', 'ai-review', 'manual']),
   decisionSource: z.enum(['policy', 'reviewer', 'user']).optional(),
   reviewerReason: z.string().max(500).optional(),

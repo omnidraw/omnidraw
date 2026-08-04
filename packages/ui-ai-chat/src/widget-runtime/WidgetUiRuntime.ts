@@ -55,8 +55,6 @@ type TWidgetUiRuntimeConfig = Readonly<{
   transport: TWidgetRuntimeTransportPort;
   codec: TWidgetArtifactCodecPort;
   mount: TWidgetUiArtifactMountPort;
-  organizationId(): string;
-  tenantAuthorityKey(): string;
   nowMs(): number;
   wait(timeoutMs: number, signal?: AbortSignal): Promise<void>;
   scheduleTimeout(callback: () => void, timeoutMs: number): unknown;
@@ -245,8 +243,6 @@ export class WidgetUiRuntime {
       widgetInstanceId: target.widgetInstanceId,
       widgetKey: target.widgetKey,
     });
-    const organizationId = this.#readOrganizationId();
-    const tenantAuthorityKey = this.#readTenantAuthorityKey();
     const abortController = new AbortController();
     const order = this.#nextOwnerOrder;
     const populationId = String(order);
@@ -288,7 +284,6 @@ export class WidgetUiRuntime {
 
     const isCurrent = () => !disposed
       && !abortController.signal.aborted
-      && this.isTenantAuthorityCurrent(organizationId, tenantAuthorityKey)
       && (this.config.isTargetCurrent?.(target) ?? true);
     const fail = (error: unknown): void => {
       if (disposed) return;
@@ -333,8 +328,6 @@ export class WidgetUiRuntime {
       try {
         this.assertLoadActive(
           target,
-          organizationId,
-          tenantAuthorityKey,
           () => disposed,
           abortController.signal,
         );
@@ -415,8 +408,6 @@ export class WidgetUiRuntime {
         }
         this.assertLoadActive(
           target,
-          organizationId,
-          tenantAuthorityKey,
           () => disposed,
           abortController.signal,
         );
@@ -496,8 +487,6 @@ export class WidgetUiRuntime {
             loaded = await this.load(
               request,
               target,
-              organizationId,
-              tenantAuthorityKey,
               () => disposed,
               abortController.signal,
             );
@@ -1098,15 +1087,11 @@ export class WidgetUiRuntime {
   private async load(
     request: ReturnType<typeof fnWidgetRuntimeLoadRequest>,
     target: TWidgetRuntimeLocalTarget,
-    organizationId: string,
-    tenantAuthorityKey: string,
     isCancelled: () => boolean,
     signal: AbortSignal,
   ): Promise<TLoadedWidget> {
     this.assertLoadActive(
       target,
-      organizationId,
-      tenantAuthorityKey,
       isCancelled,
       signal,
     );
@@ -1124,8 +1109,6 @@ export class WidgetUiRuntime {
     }
     this.assertLoadActive(
       target,
-      organizationId,
-      tenantAuthorityKey,
       isCancelled,
       signal,
     );
@@ -1144,7 +1127,6 @@ export class WidgetUiRuntime {
     }
     const identity = Object.freeze({
       ...response.identity,
-      orgId: organizationId,
     });
     if (!fnWidgetRuntimeIdentityMatches(identity, request)) {
       throw new Error('Widget runtime returned a different pinned identity.');
@@ -1152,7 +1134,6 @@ export class WidgetUiRuntime {
 
     const cacheKey = fnWidgetUiArtifactCacheKey({
       identity,
-      tenantAuthorityKey,
       digestSha256: response.artifact.digestSha256,
       capsuleArtifactHash: response.runtimeDescriptor.capsuleArtifactHash,
     });
@@ -1177,8 +1158,6 @@ export class WidgetUiRuntime {
     }
     this.assertLoadActive(
       target,
-      organizationId,
-      tenantAuthorityKey,
       isCancelled,
       signal,
     );
@@ -1199,26 +1178,13 @@ export class WidgetUiRuntime {
     }
   }
 
-  private isTenantAuthorityCurrent(
-    organizationId: string,
-    tenantAuthorityKey: string,
-  ): boolean {
-    return this.#readOrganizationId() === organizationId
-      && this.#readTenantAuthorityKey() === tenantAuthorityKey;
-  }
-
   private assertLoadActive(
     target: TWidgetRuntimeLocalTarget,
-    organizationId: string,
-    tenantAuthorityKey: string,
     isCancelled: () => boolean,
     signal: AbortSignal,
   ): void {
     if (isCancelled() || signal.aborted) {
       throw new Error('Widget runtime load was cancelled.');
-    }
-    if (!this.isTenantAuthorityCurrent(organizationId, tenantAuthorityKey)) {
-      throw new Error('Widget runtime tenant scope changed.');
     }
     this.assertTargetCurrent(target);
   }
@@ -1231,27 +1197,4 @@ export class WidgetUiRuntime {
     return value;
   }
 
-  #readOrganizationId(): string {
-    const organizationId = this.config.organizationId();
-    if (
-      typeof organizationId !== 'string'
-      || organizationId.length < 1
-      || organizationId.length > 200
-    ) {
-      throw new Error('Widget runtime tenant scope is invalid.');
-    }
-    return organizationId;
-  }
-
-  #readTenantAuthorityKey(): string {
-    const tenantAuthorityKey = this.config.tenantAuthorityKey();
-    if (
-      typeof tenantAuthorityKey !== 'string'
-      || tenantAuthorityKey.length < 1
-      || tenantAuthorityKey.length > 1_000
-    ) {
-      throw new Error('Widget runtime tenant authority is invalid.');
-    }
-    return tenantAuthorityKey;
-  }
 }

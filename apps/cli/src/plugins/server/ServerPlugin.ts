@@ -4,7 +4,6 @@ import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import { handleHttpRequest } from './http';
 import type { TOrpcWebSocketData } from '../orpc/OrpcPlugin';
-import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../auth/AuthPlugin';
 
 function serveWithPortFallback<TSocketData>(serve: (port: number) => ReturnType<typeof Bun.serve<TSocketData>>, startPort: number): ReturnType<typeof Bun.serve<TSocketData>> {
   const maxAttempts = 100;
@@ -39,10 +38,6 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
             const url = new URL(req.url);
             const upgraded = ctx.hooks.wsUpgrade.call(req);
             const requestId = crypto.randomUUID();
-            const tenant = await OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
-              requestId,
-              session: OSS_FAKE_SESSION,
-            });
 
             if (upgraded) {
               if (server.upgrade(req, {
@@ -50,7 +45,6 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
                   path: url.pathname,
                   query: url.search,
                   requestId,
-                  tenant,
                 },
               })) {
                 return;
@@ -72,7 +66,7 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
             return handleHttpRequest(req, {
               compiled: ctx.config.compiled,
               version: ctx.config.version,
-            }, db, tenant, import.meta.dir);
+            }, db, import.meta.dir);
           },
           websocket: {
             data: {} as TOrpcWebSocketData,

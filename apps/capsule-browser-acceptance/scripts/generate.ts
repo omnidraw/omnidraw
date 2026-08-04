@@ -32,8 +32,7 @@ import {
   WIDGET_CAPSULE_BUILD_IDENTITY as capsuleBuildIdentity,
 } from '../../cli/src/services/CONSTANTS';
 
-type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[1];
-type TTenant = Parameters<WidgetArtifactBuilderCapsule['build']>[0];
+type TBuildRequest = Parameters<WidgetArtifactBuilderCapsule['build']>[0];
 type TManifest = TBuildRequest['manifest'];
 type TSnapshot = TBuildRequest['snapshot'];
 type TSourceFile = Readonly<{ path: string; source: string }>;
@@ -64,15 +63,6 @@ const sdkFunctionClientSourcePath = join(
   'function-client.ts',
 );
 const builderIdentity = 'omnidraw-capsule-browser-acceptance-v1';
-const tenant = Object.freeze({
-  orgId: 'capsule-browser-acceptance',
-  accountId: 'capsule-browser-acceptance',
-  cellId: 'local',
-  placementEpoch: 1,
-  roles: Object.freeze([]),
-  capabilities: Object.freeze([]),
-  requestId: 'capsule-browser-acceptance',
-}) satisfies TTenant;
 
 const sources = Object.freeze({
   plain: `
@@ -775,7 +765,7 @@ async function construct(args: TFixtureBuild) {
   console.log(
     `Constructing ${args.slug} (${args.entry}; apis=${apis.join(',')})…`,
   );
-  return await builder.construct(tenant, {
+  return await builder.construct({
     snapshot: snapshot(args.files),
     manifest: widgetManifest,
     canonicalManifestJson: fnCanonicalizeWidgetManifest(widgetManifest),
@@ -789,7 +779,7 @@ async function sign(
   construction: Awaited<ReturnType<typeof construct>>,
   signingPurpose: 'preview' | 'release',
 ) {
-  const result = await builder.signConstruction(tenant, {
+  const result = await builder.signConstruction({
     construction,
     signingPurpose,
   });

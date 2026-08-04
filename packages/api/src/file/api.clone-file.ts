@@ -7,22 +7,24 @@ const apiCloneFile = baseFileOs.clone.handler(async ({ input, context }) => {
     throw new Error('Invalid file url');
   }
 
-  const record = await context.db.file.getById(context.tenant, { id: fileMeta.id });
+  const record = await context.db.file.getById({ id: fileMeta.id });
 
   if (!record) {
     throw new Error('File not found');
   }
 
-  const extension = fnExtensionFromFormat(record.mime_type);
+  const extension = fnExtensionFromFormat(record.mimeType);
   if (!extension) {
     throw new Error('Unsupported image MIME type');
   }
 
   const clonedId = crypto.randomUUID();
-  await context.db.file.create(context.tenant, {
+  await context.db.file.create({
     id: clonedId,
+    canvasId: record.canvasId,
     hash: record.hash,
-    mime_type: record.mime_type,
+    digestSha256: record.digestSha256,
+    mimeType: record.mimeType,
     data: record.data,
   });
 

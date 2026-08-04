@@ -664,8 +664,8 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
               <div class={styles.content}>
                 <section class={styles.summary}>
                   <div class={styles.summaryItem}><span class={styles.label}>Status</span><span>{fnStatusLabel(current().status)}</span></div>
-                  <div class={styles.summaryItem}><span class={styles.label}>Created</span><span>{fnTimestamp(current().created_at)}</span></div>
-                  <div class={styles.summaryItem}><span class={styles.label}>Updated</span><span>{fnTimestamp(current().updated_at)}</span></div>
+                  <div class={styles.summaryItem}><span class={styles.label}>Created</span><span>{fnTimestamp(current().createdAtSec)}</span></div>
+                  <div class={styles.summaryItem}><span class={styles.label}>Updated</span><span>{fnTimestamp(current().updatedAtSec)}</span></div>
                   <div class={styles.summaryItem}><span class={styles.label}>Resource ID</span><code title={current().id}>{current().id}</code></div>
                 </section>
                 <div class={styles.twoColumn}>
@@ -703,7 +703,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                     <div class={styles.panelHeader}><h3>Recent apply runs</h3><span>{applyRuns().length}</span></div>
                     <For each={applyRuns()} fallback={<p class={styles.empty}>No coordinated applies yet.</p>}>{(details) => (
                       <div class={styles.applyRow}>
-                        <div><strong>{fnStatusLabel(details.apply.status)}</strong><small>{fnTimestamp(details.apply.created_at)}</small></div>
+                        <div><strong>{fnStatusLabel(details.apply.status)}</strong><small>{fnTimestamp(details.apply.createdAtSec)}</small></div>
                         <div><span>Database: {details.apply.status === "succeeded" ? "succeeded" : fnStatusLabel(details.apply.status)}</span><span>{details.drain ? `${details.drain.drainedUses.length} use(s) drained` : "No active drain lease"}</span></div>
                       </div>
                     )}</For>
@@ -711,7 +711,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                   <section class={styles.panel}>
                     <div class={styles.panelHeader}><h3>Latest retained backup</h3></div>
                     <Show when={backup()} fallback={<p class={styles.empty}>No retained backup.</p>}>
-                      {(retained) => <div class={styles.panelBody}><dl class={styles.definitionList}><div><dt>Apply</dt><dd>{retained().applyId}</dd></div><div><dt>Created</dt><dd>{fnTimestamp(retained().createdAt)}</dd></div></dl><p class={styles.warning}>Restore loses writes made after this backup.</p><div class={styles.actions}><Button class={`${styles.button} ${styles.danger}`} onClick={() => setConfirmState("backup")}>Discard</Button><Button class={`${styles.button} ${styles.primary}`} onClick={() => void openRestore()}>Preview restore</Button></div></div>}
+                      {(retained) => <div class={styles.panelBody}><dl class={styles.definitionList}><div><dt>Apply</dt><dd>{retained().applyId}</dd></div><div><dt>Created</dt><dd>{fnTimestamp(retained().createdAtSec)}</dd></div></dl><p class={styles.warning}>Restore loses writes made after this backup.</p><div class={styles.actions}><Button class={`${styles.button} ${styles.danger}`} onClick={() => setConfirmState("backup")}>Discard</Button><Button class={`${styles.button} ${styles.primary}`} onClick={() => void openRestore()}>Preview restore</Button></div></div>}
                     </Show>
                   </section>
                 </div>

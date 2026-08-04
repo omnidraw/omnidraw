@@ -251,8 +251,6 @@ export function createAiChatCanvasExtension(
           digestSha256: args.widgetBrowser.digestSha256,
         },
         mount: widgetMount,
-        organizationId: args.widgetBrowser.organizationId,
-        tenantAuthorityKey: args.widgetBrowser.tenantAuthorityKey,
         nowMs: args.widgetBrowser.now,
         scheduleTimeout: args.widgetBrowser.setTimeout,
         cancelTimeout: args.widgetBrowser.clearTimeout,

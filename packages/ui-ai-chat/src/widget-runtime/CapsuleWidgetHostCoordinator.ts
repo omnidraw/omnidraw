@@ -282,7 +282,6 @@ function eventMapper(args: TMountArgs): (
     if (
       retained === undefined
       || retained.capsuleArtifactHash !== args.artifact.capsuleArtifactHash
-      || retained.sourceRevision !== args.identity.revision
       || location === undefined
     ) return mapped;
     const sourceMap = retained.maps.find(({ module }) => module === location.module);

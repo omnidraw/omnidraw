@@ -1,13 +1,10 @@
 import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
 import type { IRuntimeServices } from '@omnidraw/cli/setup-services';
-import type { TAgentApiCapability } from '@omnidraw/api/agent/types';
 import type { TApiContext } from '@omnidraw/api/context';
 import type { IPlugin } from '@omnidraw/runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
-import { createLazyTenantServiceCapability } from '../../services/LazyTenantServiceCapability';
 import { baseOs } from './orpc.base';
 import { router } from './router';
 
@@ -15,10 +12,9 @@ type TOrpcWebSocketData = {
   path: string;
   query: string;
   requestId: string;
-  tenant: TTenantContext;
 };
 
-type TOrpcTenantContextServices = Pick<IRuntimeServices,
+type TOrpcContextServices = Pick<IRuntimeServices,
   | 'agent'
   | 'canvas'
   | 'db'
@@ -32,12 +28,11 @@ type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'widgetState'
 >;
 
-function createOrpcTenantContext(
-  tenant: TTenantContext,
-  services: TOrpcTenantContextServices,
+function createOrpcContext(
+  services: TOrpcContextServices,
 ): TApiContext {
   return {
-    tenant,
+    agent: services.agent,
     canvas: services.canvas,
     db: services.db,
     eventPublisher: services.eventPublisher,
@@ -48,9 +43,6 @@ function createOrpcTenantContext(
     widgetState: services.widgetState,
     widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
-    agent: createLazyTenantServiceCapability<TAgentApiCapability>(
-      () => services.agent.forTenant(tenant),
-    ),
   };
 }
 
@@ -91,26 +83,24 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         return wantsWebSocket && url.pathname === '/api';
       });
 
+      const context = createOrpcContext({
+        agent,
+        canvas,
+        db,
+        eventPublisher,
+        functionInvocation,
+        humanResourceSecret,
+        resource,
+        widgetCatalog,
+        widgetState,
+        widgetCapsuleHostConfiguration,
+        widgetRuntimeLoadAdmission,
+      });
       ctx.hooks.wsMessage.tap((ws, message) => {
         const socket = ws as WebSocket & { data?: TOrpcWebSocketData };
         if (socket.data?.path !== '/api') return;
 
-        const tenant = socket.data.tenant;
-        void handler.message(ws as never, message, {
-          context: createOrpcTenantContext(tenant, {
-            canvas,
-            db,
-            eventPublisher,
-            functionInvocation,
-            humanResourceSecret,
-            resource,
-            widgetCatalog,
-            widgetState,
-            widgetCapsuleHostConfiguration,
-            widgetRuntimeLoadAdmission,
-            agent,
-          }),
-        }).catch((error) => {
+        void handler.message(ws as never, message, { context }).catch((error) => {
           console.error(error);
         });
       });
@@ -125,5 +115,5 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   };
 }
 
-export { createOrpcPlugin, createOrpcTenantContext };
-export type { TOrpcTenantContextServices, TOrpcWebSocketData };
+export { createOrpcPlugin, createOrpcContext };
+export type { TOrpcContextServices, TOrpcWebSocketData };

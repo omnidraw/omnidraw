@@ -31,7 +31,6 @@
     "@omnidraw/sdk": "workspace:*",
     "@omnidraw/shared-functions": "workspace:*",
     "@omnidraw/tapable": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
     "@omnidraw/widget-contract": "workspace:*",
     "csstype": "3.2.3",
     "react": "19.2.7",

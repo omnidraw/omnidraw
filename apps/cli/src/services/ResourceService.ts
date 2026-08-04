@@ -2,7 +2,6 @@ import type { IService, IStartableService, IStoppableService } from '@omnidraw/r
 import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
 import {
   ResourceError,
-  fnResourceSecretRevealAllowed,
   type IResourceBindingResolver,
   type IResourceControlStore,
   type IResourceGateway,
@@ -15,8 +14,8 @@ import {
   type TDbRowDelete,
   type TDbRowIdentity,
   type TDbRowUpdate,
-  type TResourceJson,
   type TResourceDescriptor,
+  type TResourceJson,
   type TResourceKind,
   type TResourceRequirement,
   type TResourceStatus,
@@ -43,19 +42,23 @@ import {
   type TResourceDirectBinding,
   type TResourceManagerCall,
 } from '@omnidraw/resource-runtime/local';
-import type { TTenantDb } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
+import type { TDb } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@omnidraw/service-db/DbServiceTurso/turso-native';
 import { fnResourceNameKey } from '@omnidraw/service-db/core/fn.resource-name';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
   RESOURCE_MANAGEMENT_OPERATION,
 } from './CONSTANTS';
 import { ResourceManagementProvider } from './ResourceManagementProvider';
 
+type TResourcePlacementIdentity = Readonly<{
+  cellId: string;
+  placementEpoch: number;
+}>;
+
 type TResourceServiceConfig = Readonly<{
-  tenant: TTenantContext;
-  db: TTenantDb;
+  placement: TResourcePlacementIdentity;
+  db: TDb;
   controlStore: IResourceControlStore;
   dataRoot: string;
   useCoordinator: IResourceUseCoordinator;
@@ -88,67 +91,64 @@ function toCatalogResource(resource: TResourceDescriptor): TResourceCatalogRecor
     kind: resource.kind,
     name: resource.name,
     status: resource.status,
-    last_error: resource.lastError as TResourceJson | null,
-    created_at: new Date(resource.createdAtMs).toISOString(),
-    updated_at: new Date(resource.updatedAtMs).toISOString(),
+    lastError: resource.lastError as TResourceJson | null,
+    createdAtSec: resource.createdAtSec,
+    updatedAtSec: resource.updatedAtSec,
   };
 }
 
 function createResourceManagerStore(
-  tenant: TTenantContext,
+  placement: TResourcePlacementIdentity,
   control: IResourceControlStore,
-  db: TTenantDb,
+  db: TDb,
 ): IResourceManagerStore {
   return {
     catalog: {
-      list: async (filter) => (await control.listResources(tenant, filter)).map(toCatalogResource),
+      list: async (filter) => (await control.listResources(filter)).map(toCatalogResource),
       get: async (args) => {
-        const resource = await control.getResource(tenant, args.id);
+        const resource = await control.getResource(args.id);
         return resource ? toCatalogResource(resource) : null;
       },
-      findByNameKey: async (args) => (await control.listResources(tenant))
+      findByNameKey: async (args) => (await control.listResources())
         .filter((resource) => fnResourceNameKey(resource.name) === args.nameKey)
         .map(toCatalogResource),
-      create: async (args) => toCatalogResource(await control.createResource(tenant, {
+      create: async (args) => toCatalogResource(await control.createResource({
         id: args.id,
         kind: args.kind,
         name: args.name,
-        cellId: tenant.cellId,
-        placementEpoch: tenant.placementEpoch,
+        cellId: placement.cellId,
+        placementEpoch: placement.placementEpoch,
         storageKey: `${args.kind}/${args.id}`,
-        nowMs: Date.now(),
       })),
       rename: async (args) => {
-        const resource = await control.renameResource(tenant, {
-          resourceId: args.id, name: args.name, nowMs: Date.now(),
+        const resource = await control.renameResource({
+          resourceId: args.id, name: args.name,
         });
         return resource ? toCatalogResource(resource) : null;
       },
       updateProviderState: async (args) => {
-        const current = await control.getResource(tenant, args.id);
+        const current = await control.getResource(args.id);
         if (!current) return null;
-        const resource = await control.updateResourceState(tenant, {
+        const resource = await control.updateResourceState({
           resourceId: args.id,
           expectedStatus: args.expectedStatus ?? current.status,
           status: args.status,
           lastError: args.lastError as TResourceDescriptor['lastError'],
-          nowMs: Date.now(),
         });
         return resource ? toCatalogResource(resource) : null;
       },
       beginDelete: async (args) => {
-        const current = await control.getResource(tenant, args.id);
+        const current = await control.getResource(args.id);
         if (!current) return null;
-        const resource = await control.updateResourceState(tenant, {
+        const resource = await control.updateResourceState({
           resourceId: args.id,
           expectedStatus: current.status,
           status: 'deleting',
           lastError: null,
-          nowMs: Date.now(),
         });
         return resource ? toCatalogResource(resource) : null;
       },
-      delete: (args) => control.deleteResource(tenant, args.id),
+      delete: (args) => control.deleteResource(args.id),
     },
     migration: {
       hasActiveWork: async (resourceId) => {
@@ -170,7 +170,7 @@ function createResourceManagerStore(
  */
 class ResourceService implements IService, IStartableService<object, object>, IStoppableService {
   readonly name = 'resource-store';
-  readonly #tenant: TTenantContext;
+  readonly #placement: TResourcePlacementIdentity;
   readonly #dataRoot: string;
   readonly #controlStore: IResourceControlStore;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
@@ -192,7 +192,7 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   #started = false;
 
   constructor(config: TResourceServiceConfig) {
-    this.#tenant = config.tenant;
+    this.#placement = config.placement;
     this.#dataRoot = config.dataRoot;
     this.#controlStore = config.controlStore;
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
@@ -231,13 +231,12 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       this.#dbResource,
     ];
     this.#manager = new ResourceManager({
-      store: createResourceManagerStore(config.tenant, config.controlStore, config.db),
+      store: createResourceManagerStore(config.placement, config.controlStore, config.db),
       crypto: cryptoPortal,
       providers: logicalProviders,
       closeProviders: false,
     });
     this.#dbCoordinator = new DbResourceCoordinator({
-      tenant: config.tenant,
       controlStore: config.db as unknown as IDbResourceCoordinatorControlStore,
       resourceControlStore: config.controlStore,
       resourceManager: {
@@ -261,22 +260,22 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       new ResourceManagementProvider({
         provider: this.#kvResource,
         effects: RESOURCE_MANAGEMENT_EFFECTS.kv,
-        dispatch: (tenant, resource, action, args) => (
-          this.#dispatchKeyValueManagement(tenant, resource.id, 'kv', action, args)
+        dispatch: (resource, action, args) => (
+          this.#dispatchKeyValueManagement(resource.id, 'kv', action, args)
         ),
       }),
       new ResourceManagementProvider({
         provider: this.#secretStoreResource,
         effects: RESOURCE_MANAGEMENT_EFFECTS.secretStore,
-        dispatch: (tenant, resource, action, args) => (
-          this.#dispatchKeyValueManagement(tenant, resource.id, 'secretStore', action, args)
+        dispatch: (resource, action, args) => (
+          this.#dispatchKeyValueManagement(resource.id, 'secretStore', action, args)
         ),
       }),
       new ResourceManagementProvider({
         provider: this.#dbResource,
         effects: RESOURCE_MANAGEMENT_EFFECTS.db,
-        dispatch: (tenant, resource, action, args) => (
-          this.#dispatchDatabaseManagement(tenant, resource.id, action, args)
+        dispatch: (resource, action, args) => (
+          this.#dispatchDatabaseManagement(resource.id, action, args)
         ),
       }),
     ];
@@ -293,23 +292,21 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     const store = new ResourceStoreService({
       controlStore: this.#controlStore,
       providers: this.#providers,
+      placement: this.#placement,
       writeCapabilityVerifier: this.#writeCapabilityVerifier,
       writePermitCoordinator: this.#writePermitCoordinator,
       hostWriteCapability: this.#managementWriteCapability,
-      allowUnfencedWrites: false,
     });
     this.#store = store;
     try {
-      await store.reconcile(this.#tenant);
+      await store.reconcile();
       await this.#dbCoordinator.reconcileStartup({
-        tenant: this.#tenant,
         isPlacementOwned: async (resource) => {
-          const placement = await this.#controlStore.getPlacement(this.#tenant, resource.id);
+          const placement = await this.#controlStore.getPlacement(resource.id);
           return placement?.status === 'active'
-            && placement.orgId === this.#tenant.orgId
             && placement.resourceId === resource.id
-            && placement.cellId === this.#tenant.cellId
-            && placement.placementEpoch === this.#tenant.placementEpoch;
+            && placement.cellId === this.#placement.cellId
+            && placement.placementEpoch === this.#placement.placementEpoch;
         },
       });
       this.#gateway = new ResourceManagerGateway({
@@ -335,33 +332,26 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   async listResources(
-    tenant: TTenantContext,
     filter: { kind?: TResourceKind; status?: TResourceStatus } = {},
   ): Promise<readonly TResourceCatalogRecord[]> {
-    this.#assertTenantPlacement(tenant);
     return this.#manager.listResources(filter);
   }
 
-  getResource(tenant: TTenantContext, id: string) {
-    this.#assertTenantPlacement(tenant);
+  getResource(id: string) {
     return this.#manager.getResource(id);
   }
 
   resolveResourceByName(
-    tenant: TTenantContext,
     resourceName: string,
     options: { requireReady: boolean; kind?: TResourceKind },
   ) {
-    this.#assertTenantPlacement(tenant);
     return this.#manager.resolveResourceByName(resourceName, options);
   }
 
   async createResource(
-    tenant: TTenantContext,
     args: { kind: TResourceKind; name: string },
   ): Promise<TResourceCatalogRecord> {
-    this.#assertTenantPlacement(tenant);
-    const resource = await this.#requireStore().createResource(tenant, {
+    const resource = await this.#requireStore().createResource({
       id: this.#crypto.randomUUID(),
       kind: args.kind,
       name: args.name,
@@ -369,10 +359,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     return toCatalogResource(resource);
   }
 
-  async renameResource(tenant: TTenantContext, args: { id: string; name: string }) {
-    const resource = await this.#requireResource(tenant, args.id);
+  async renameResource(args: { id: string; name: string }) {
+    const resource = await this.#requireResource(args.id);
     return this.#managementCall<TResourceCatalogRecord>(
-      tenant,
       resource.id,
       resource.kind,
       'renameResource',
@@ -380,25 +369,21 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     );
   }
 
-  async deleteResource(tenant: TTenantContext, id: string): Promise<void> {
-    const resource = await this.#requireResource(tenant, id);
-    await this.#managementCall(tenant, resource.id, resource.kind, 'deleteResource', null);
+  async deleteResource(id: string): Promise<void> {
+    const resource = await this.#requireResource(id);
+    await this.#managementCall(resource.id, resource.kind, 'deleteResource', null);
   }
 
   callWithDirectBinding(
-    tenant: TTenantContext,
     call: TResourceManagerCall,
     binding: TResourceDirectBinding,
   ) {
-    this.#assertTenantPlacement(tenant);
-    return this.#requireGateway().callWithDirectBinding(tenant, call, binding);
+    return this.#requireGateway().callWithDirectBinding(call, binding);
   }
 
   createFunctionResourceGateway(
-    tenant: TTenantContext,
     request: TFunctionResourceGatewayRequest,
   ): TFunctionResourceGatewayAccess {
-    this.#assertTenantPlacement(tenant);
     const requirements = new Map<string, TResourceRequirement>();
     for (const requirement of request.requirements) {
       if (requirements.has(requirement.slot)) {
@@ -408,8 +393,7 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     }
     const retainedBindings = new Map(request.bindings.map((binding) => [binding.slot, binding]));
     const bindings: IResourceBindingResolver = Object.freeze({
-      resolveBinding: async (callTenant: TTenantContext, slot: string) => {
-        this.#assertTenantPlacement(callTenant);
+      resolveBinding: async (slot: string) => {
         const binding = retainedBindings.get(slot) ?? null;
         return binding === null ? null : {
           slot: binding.slot,
@@ -427,51 +411,35 @@ class ResourceService implements IService, IStartableService<object, object>, IS
         store: this.#requireStore(),
         bindings,
         requirements: {
-          resolveRequirement: async (callTenant, slot) => {
-            this.#assertTenantPlacement(callTenant);
-            return requirements.get(slot) ?? null;
-          },
+          resolveRequirement: async (slot: string) => requirements.get(slot) ?? null,
         },
       }),
     });
   }
 
   withReadyResource<T>(
-    tenant: TTenantContext,
     resourceId: string,
-    operation: (resource: TResourceDescriptor) => Promise<T>,
+    operation: (resource: TResourceCatalogRecord) => Promise<T>,
   ): Promise<T> {
-    this.#assertTenantPlacement(tenant);
-    return this.#manager.withReadyResource(resourceId, (resource) => operation({
-      orgId: this.#tenant.orgId,
-      id: resource.id,
-      kind: resource.kind,
-      name: resource.name,
-      status: resource.status,
-      lastError: resource.last_error as TResourceDescriptor['lastError'],
-      createdAtMs: Date.parse(resource.created_at),
-      updatedAtMs: Date.parse(resource.updated_at),
-    }));
+    return this.#manager.withReadyResource(resourceId, operation);
   }
 
   async countResourceData(
-    tenant: TTenantContext,
     args: { resourceId: string; prefix?: string; search?: string },
   ): Promise<number> {
-    const resource = await this.#requireDataResource(tenant, args.resourceId);
-    return this.#managementCall<number>(tenant, resource.id, resource.kind, 'countData', args);
+    const resource = await this.#requireDataResource(args.resourceId);
+    return this.#managementCall<number>(resource.id, resource.kind, 'countData', args);
   }
 
-  async listResourceData(tenant: TTenantContext, args: {
+  async listResourceData(args: {
     resourceId: string;
     prefix?: string;
     search?: string;
     cursor?: string;
     limit?: number;
   }) {
-    const resource = await this.#requireDataResource(tenant, args.resourceId);
+    const resource = await this.#requireDataResource(args.resourceId);
     return this.#managementCall<ReturnType<typeof fnResourceDataPage>>(
-      tenant,
       resource.id,
       resource.kind,
       'listData',
@@ -480,7 +448,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   async getResourceDataEntry(
-    tenant: TTenantContext,
     args: { resourceId: string; key: string },
   ): Promise<
     | {
@@ -488,31 +455,25 @@ class ResourceService implements IService, IStartableService<object, object>, IS
         key: string;
         value: TResourceJson;
         revision: number;
-        createdAt: string;
-        updatedAt: string;
+        createdAtSec: string;
+        updatedAtSec: string;
       }
     | {
         kind: 'secretStore';
         name: string;
         revision: number;
-        createdAt: string;
-        updatedAt: string;
+        createdAtSec: string;
+        updatedAtSec: string;
       }
     | null
   > {
-    const resource = await this.#requireDataResource(tenant, args.resourceId);
-    return this.#managementCall(tenant, resource.id, resource.kind, 'getData', args);
+    const resource = await this.#requireDataResource(args.resourceId);
+    return this.#managementCall(resource.id, resource.kind, 'getData', args);
   }
 
-  async revealSecret(tenant: TTenantContext, args: { resourceId: string; name: string }) {
-    if (!fnResourceSecretRevealAllowed(tenant)) {
-      throw new ResourceError(
-        'RESOURCE_READ_NOT_ALLOWED',
-        'Secret reveal requires an authorized human session.',
-      );
-    }
+  async revealSecret(args: { resourceId: string; name: string }) {
     try {
-      const resource = await this.#requireResource(tenant, args.resourceId);
+      const resource = await this.#requireResource(args.resourceId);
       if (resource.kind !== 'secretStore') {
         throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Resource is not a secret store.');
       }
@@ -521,7 +482,7 @@ class ResourceService implements IService, IStartableService<object, object>, IS
         name: string;
         value: string;
         revision: number;
-      }>(tenant, resource.id, resource.kind, 'revealSecret', args);
+      }>(resource.id, resource.kind, 'revealSecret', args);
     } catch (error) {
       if (
         error instanceof ResourceError
@@ -533,15 +494,14 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     }
   }
 
-  async setResourceDataEntry(tenant: TTenantContext, args: {
+  async setResourceDataEntry(args: {
     resourceId: string;
     key: string;
     expectedRevision: number | null;
     value: TResourceJson;
   }) {
-    const resource = await this.#requireDataResource(tenant, args.resourceId);
+    const resource = await this.#requireDataResource(args.resourceId);
     return this.#managementCall<ReturnType<typeof fnResourceDataMutationResult>>(
-      tenant,
       resource.id,
       resource.kind,
       'setData',
@@ -549,18 +509,17 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     );
   }
 
-  async deleteResourceDataEntry(tenant: TTenantContext, args: {
+  async deleteResourceDataEntry(args: {
     resourceId: string;
     key: string;
     expectedRevision: number;
   }): Promise<{ deleted: true }> {
-    const resource = await this.#requireDataResource(tenant, args.resourceId);
-    return this.#managementCall(tenant, resource.id, resource.kind, 'deleteData', args);
+    const resource = await this.#requireDataResource(args.resourceId);
+    return this.#managementCall(resource.id, resource.kind, 'deleteData', args);
   }
 
-  dbResourceImpact(tenant: TTenantContext, resourceId: string) {
+  dbResourceImpact(resourceId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['impact']>>>(
-      tenant,
       resourceId,
       'impact',
       { resourceId },
@@ -568,25 +527,22 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   inspectDbResource(
-    tenant: TTenantContext,
     args: { resourceId: string; target: 'live' | 'draft'; draftId?: string },
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['inspect']>> | null>(
-      tenant,
       args.resourceId,
       'inspect',
       args,
     );
   }
 
-  executeDbLiveSql(tenant: TTenantContext, args: {
+  executeDbLiveSql(args: {
     resourceId: string;
     sql: string;
     parameters?: readonly TDbCellValue[] | Readonly<Record<string, TDbCellValue>>;
     approved: boolean;
   }) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['executeLiveSql']>>>(
-      tenant,
       args.resourceId,
       'executeLiveSql',
       args,
@@ -594,11 +550,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   listDbRows(
-    tenant: TTenantContext,
     args: { resourceId: string; object: string; cursor?: TDbRowIdentity | null; limit?: number },
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['listRows']>>>(
-      tenant,
       args.resourceId,
       'listRows',
       args,
@@ -606,11 +560,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   getDbRow(
-    tenant: TTenantContext,
     args: { resourceId: string; object: string; identity: TDbRowIdentity; columns?: readonly string[] },
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['getRow']>>>(
-      tenant,
       args.resourceId,
       'getRow',
       args,
@@ -618,11 +570,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   createDbRow(
-    tenant: TTenantContext,
     args: { resourceId: string; object: string; values: TDbRowCreate['values'] },
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['createRow']>>>(
-      tenant,
       args.resourceId,
       'createRow',
       args,
@@ -630,11 +580,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   updateDbRow(
-    tenant: TTenantContext,
     args: { resourceId: string; object: string } & Omit<TDbRowUpdate, 'kind'>,
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['updateRow']>>>(
-      tenant,
       args.resourceId,
       'updateRow',
       args,
@@ -642,33 +590,29 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   deleteDbRow(
-    tenant: TTenantContext,
     args: { resourceId: string; object: string } & Omit<TDbRowDelete, 'kind'>,
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['deleteRow']>>>(
-      tenant,
       args.resourceId,
       'deleteRow',
       args,
     );
   }
 
-  bulkDbRows(tenant: TTenantContext, args: {
+  bulkDbRows(args: {
     resourceId: string;
     object: string;
     operations: readonly (TDbRowCreate | TDbRowUpdate | TDbRowDelete)[];
   }) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResource['bulkRows']>>>(
-      tenant,
       args.resourceId,
       'bulkRows',
       args,
     );
   }
 
-  createDbDraft(tenant: TTenantContext, resourceId: string, name: string) {
+  createDbDraft(resourceId: string, name: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['createDraft']>>>(
-      tenant,
       resourceId,
       'createDraft',
       { resourceId, name },
@@ -676,40 +620,35 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   listDbDrafts(
-    tenant: TTenantContext,
-    args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number },
+    args: { resourceId: string; before?: { createdAtSec: string; id: string }; limit?: number },
   ) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['listDrafts']>>>(
-      tenant,
       args.resourceId,
       'listDrafts',
       args,
     );
   }
 
-  async getDbDraft(tenant: TTenantContext, draftId: string) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+  async getDbDraft(draftId: string) {
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getDraft']>>>(
-      tenant,
       resourceId,
       'getDraft',
       { draftId },
     );
   }
 
-  getActiveDbDraft(tenant: TTenantContext, resourceId: string) {
+  getActiveDbDraft(resourceId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getActiveDraft']>>>(
-      tenant,
       resourceId,
       'getActiveDraft',
       { resourceId },
     );
   }
 
-  async changeDbDraft(tenant: TTenantContext, draftId: string, operation: TDbDraftOperation) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+  async changeDbDraft(draftId: string, operation: TDbDraftOperation) {
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['changeDraft']>>>(
-      tenant,
       resourceId,
       'changeDraft',
       { draftId, operation },
@@ -717,109 +656,98 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   async executeDbDraftSql(
-    tenant: TTenantContext,
     draftId: string,
     sql: string,
     parameters?: readonly TDbCellValue[],
   ) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['executeDraftSql']>>>(
-      tenant,
       resourceId,
       'executeDraftSql',
       { draftId, sql, parameters },
     );
   }
 
-  async discardDbDraft(tenant: TTenantContext, draftId: string) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+  async discardDbDraft(draftId: string) {
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['discardDraft']>>>(
-      tenant,
       resourceId,
       'discardDraft',
       { draftId },
     );
   }
 
-  async previewDbApply(tenant: TTenantContext, draftId: string) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+  async previewDbApply(draftId: string) {
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['previewApply']>>>(
-      tenant,
       resourceId,
       'previewApply',
       { draftId },
     );
   }
 
-  async confirmDbApply(tenant: TTenantContext, draftId: string) {
-    const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
+  async confirmDbApply(draftId: string) {
+    const resourceId = await this.#resolveDraftResourceId(draftId);
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['confirmApply']>>>(
-      tenant,
       resourceId,
       'confirmApply',
       { draftId },
     );
   }
 
-  async getDbApply(tenant: TTenantContext, applyId: string) {
-    const resourceId = await this.#resolveApplyResourceId(tenant, applyId);
-    await this.#requireOwnedDbLifecycleResource(tenant, resourceId);
+  async getDbApply(applyId: string) {
+    const resourceId = await this.#resolveApplyResourceId(applyId);
+    await this.#requirePlacedDbResource(resourceId);
     return this.#dbCoordinator.getApply(applyId);
   }
 
   listDbApplies(
-    tenant: TTenantContext,
-    args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number },
+    args: { resourceId: string; before?: { createdAtSec: string; id: string }; limit?: number },
   ) {
-    return this.#requireOwnedDbLifecycleResource(tenant, args.resourceId).then(() => (
+    return this.#requirePlacedDbResource(args.resourceId).then(() => (
       this.#dbCoordinator.listApplies(args)
     ));
   }
 
-  getDbBackup(tenant: TTenantContext, resourceId: string) {
+  getDbBackup(resourceId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getBackup']>>>(
-      tenant,
       resourceId,
       'getBackup',
       { resourceId },
     );
   }
 
-  discardDbBackup(tenant: TTenantContext, resourceId: string, applyId: string) {
+  discardDbBackup(resourceId: string, applyId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['discardBackup']>>>(
-      tenant,
       resourceId,
       'discardBackup',
       { resourceId, applyId },
     );
   }
 
-  previewDbBackupRestore(tenant: TTenantContext, resourceId: string, applyId: string) {
+  previewDbBackupRestore(resourceId: string, applyId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['previewRestore']>>>(
-      tenant,
       resourceId,
       'previewRestore',
       { resourceId, applyId },
     );
   }
 
-  restoreDbBackup(tenant: TTenantContext, resourceId: string, applyId: string) {
+  restoreDbBackup(resourceId: string, applyId: string) {
     return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['restore']>>>(
-      tenant,
       resourceId,
       'restore',
       { resourceId, applyId },
     );
   }
 
-  async getDbRestoreStatus(tenant: TTenantContext, restoreId: string) {
-    const resourceId = await this.#resolveApplyResourceId(tenant, restoreId);
-    await this.#requireOwnedDbLifecycleResource(tenant, resourceId);
+  async getDbRestoreStatus(restoreId: string) {
+    const resourceId = await this.#resolveApplyResourceId(restoreId);
+    await this.#requirePlacedDbResource(resourceId);
     return this.#dbCoordinator.restoreStatus(restoreId);
   }
 
   async #dispatchKeyValueManagement(
-    tenant: TTenantContext,
     resourceId: string,
     kind: 'kv' | 'secretStore',
     action: string,
@@ -854,8 +782,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
           kind,
           name: entry.key,
           revision: entry.revision,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
+          createdAtSec: entry.createdAtSec,
+          updatedAtSec: entry.updatedAtSec,
         } : null;
       }
       const entry = await this.#kvResource.getEntry({ resourceId, key: args.key });
@@ -864,19 +792,13 @@ class ResourceService implements IService, IStartableService<object, object>, IS
         key: entry.key,
         value: entry.value,
         revision: entry.revision,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
+        createdAtSec: entry.createdAtSec,
+        updatedAtSec: entry.updatedAtSec,
       } : null;
     }
     if (action === 'revealSecret') {
       if (kind !== 'secretStore') {
         throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Resource is not a secret store.');
-      }
-      if (!fnResourceSecretRevealAllowed(tenant)) {
-        throw new ResourceError(
-          'RESOURCE_READ_NOT_ALLOWED',
-          'Secret reveal requires an authorized human session.',
-        );
       }
       const args = rawArgs as { name: string };
       const entry = await this.#secretStoreResource.revealEntry({ resourceId, name: args.name });
@@ -941,7 +863,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   async #dispatchDatabaseManagement(
-    tenant: TTenantContext,
     resourceId: string,
     action: string,
     rawArgs: unknown,
@@ -954,14 +875,14 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       await this.#manager.deleteResource(resourceId);
       return undefined;
     }
-    if (action === 'impact') return this.#dbCoordinator.impact(tenant, resourceId);
+    if (action === 'impact') return this.#dbCoordinator.impact(resourceId);
     if (action === 'inspect') {
       const args = rawArgs as { target: 'live' | 'draft'; draftId?: string };
       if (args.target === 'draft') {
         const details = args.draftId
           ? await this.#dbCoordinator.getDraft(args.draftId)
           : await this.#dbCoordinator.getActiveDraft(resourceId);
-        if (!details || details.draft.resource_id !== resourceId) return null;
+        if (!details || details.draft.resourceId !== resourceId) return null;
         return this.#dbResource.inspect(resourceId, 'draft', details.draft.id);
       }
       return this.#dbResource.inspect(resourceId, 'live');
@@ -999,10 +920,10 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       return this.#dbCoordinator.discardDraft((rawArgs as { draftId: string }).draftId);
     }
     if (action === 'previewApply') {
-      return this.#dbCoordinator.previewApply(tenant, (rawArgs as { draftId: string }).draftId);
+      return this.#dbCoordinator.previewApply((rawArgs as { draftId: string }).draftId);
     }
     if (action === 'confirmApply') {
-      return this.#dbCoordinator.confirmApply(tenant, (rawArgs as { draftId: string }).draftId);
+      return this.#dbCoordinator.confirmApply((rawArgs as { draftId: string }).draftId);
     }
     if (action === 'getApply') {
       return this.#dbCoordinator.getApply((rawArgs as { applyId: string }).applyId);
@@ -1015,10 +936,10 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       return this.#dbCoordinator.discardBackup(resourceId, (rawArgs as { applyId: string }).applyId);
     }
     if (action === 'previewRestore') {
-      return this.#dbCoordinator.previewRestore(tenant, resourceId, (rawArgs as { applyId: string }).applyId);
+      return this.#dbCoordinator.previewRestore(resourceId, (rawArgs as { applyId: string }).applyId);
     }
     if (action === 'restore') {
-      return this.#dbCoordinator.restore(tenant, resourceId, (rawArgs as { applyId: string }).applyId);
+      return this.#dbCoordinator.restore(resourceId, (rawArgs as { applyId: string }).applyId);
     }
     if (action === 'restoreStatus') {
       return this.#dbCoordinator.restoreStatus((rawArgs as { restoreId: string }).restoreId);
@@ -1027,28 +948,25 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   #dbManagementCall<TOutput = unknown>(
-    tenant: TTenantContext,
     resourceId: string,
     action: string,
     args: unknown,
   ): Promise<TOutput> {
-    return this.#requireDbResource(tenant, resourceId).then(() => (
-      this.#managementCall<TOutput>(tenant, resourceId, 'db', action, args)
+    return this.#requireDbResource(resourceId).then(() => (
+      this.#managementCall<TOutput>(resourceId, 'db', action, args)
     ));
   }
 
   async #managementCall<TOutput = unknown>(
-    tenant: TTenantContext,
     resourceId: string,
     kind: TResourceKind,
     action: string,
     args: unknown,
   ): Promise<TOutput> {
-    this.#assertTenantPlacement(tenant);
     const effects = RESOURCE_MANAGEMENT_EFFECTS[kind] as Readonly<Record<string, 'read' | 'write'>>;
     const effect = effects[action];
     if (!effect) throw new ResourceError('RESOURCE_CALL_INVALID', 'Unknown resource management operation.');
-    return this.#requireGateway().callResource(tenant, {
+    return this.#requireGateway().callResource({
       resourceId,
       kind,
       effect,
@@ -1058,82 +976,55 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     }) as Promise<TOutput>;
   }
 
-  async #requireResource(tenant: TTenantContext, resourceId: string): Promise<TResourceCatalogRecord> {
-    this.#assertTenantPlacement(tenant);
+  async #requireResource(resourceId: string): Promise<TResourceCatalogRecord> {
     const resource = await this.#manager.getResource(resourceId);
     if (!resource) throw new ResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
     return resource;
   }
 
   async #requireDataResource(
-    tenant: TTenantContext,
     resourceId: string,
   ): Promise<TResourceCatalogRecord & { kind: 'kv' | 'secretStore' }> {
-    const resource = await this.#requireResource(tenant, resourceId);
+    const resource = await this.#requireResource(resourceId);
     if (resource.kind === 'db') {
       throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Database rows use the database resource data API.');
     }
     return resource as TResourceCatalogRecord & { kind: 'kv' | 'secretStore' };
   }
 
-  async #requireDbResource(tenant: TTenantContext, resourceId: string): Promise<TResourceCatalogRecord> {
-    const resource = await this.#requireResource(tenant, resourceId);
+  async #requireDbResource(resourceId: string): Promise<TResourceCatalogRecord> {
+    const resource = await this.#requireResource(resourceId);
     if (resource.kind !== 'db') {
       throw new ResourceError('RESOURCE_KIND_MISMATCH', `Resource '${resource.name}' is not a DbResource.`);
     }
     return resource;
   }
 
-  async #requireOwnedDbLifecycleResource(
-    tenant: TTenantContext,
-    resourceId: string,
-  ): Promise<TResourceCatalogRecord> {
-    this.#requireStore();
-    const resource = await this.#requireDbResource(tenant, resourceId);
-    const [ownedResource, placement] = await Promise.all([
-      this.#controlStore.getResource(tenant, resourceId),
-      this.#controlStore.getPlacement(tenant, resourceId),
-    ]);
-    if (!ownedResource || !placement) {
-      throw new ResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
-    }
+  async #requirePlacedDbResource(resourceId: string): Promise<TResourceCatalogRecord> {
+    const resource = await this.#requireDbResource(resourceId);
+    const placement = await this.#controlStore.getPlacement(resourceId);
     if (
-      ownedResource.orgId !== tenant.orgId
-      || ownedResource.id !== resourceId
-      || placement.orgId !== tenant.orgId
-      || placement.resourceId !== resourceId
-      || placement.status !== 'active'
-      || placement.cellId !== tenant.cellId
-      || placement.placementEpoch !== tenant.placementEpoch
+      !placement
+      || placement.cellId !== this.#placement.cellId
+      || placement.placementEpoch !== this.#placement.placementEpoch
+      || (placement.status !== 'active' && placement.status !== 'reserved')
     ) {
       throw new ResourceError(
         'RESOURCE_PLACEMENT_STALE',
-        'Resource catalog or placement identity is stale for this cell.',
+        'Resource placement identity is stale for this process.',
       );
     }
     return resource;
   }
 
-  async #resolveDraftResourceId(tenant: TTenantContext, draftId: string): Promise<string> {
-    this.#assertTenantPlacement(tenant);
+  async #resolveDraftResourceId(draftId: string): Promise<string> {
     const details = await this.#dbCoordinator.getDraft(draftId);
-    return details.draft.resource_id;
+    return details.draft.resourceId;
   }
 
-  async #resolveApplyResourceId(tenant: TTenantContext, applyId: string): Promise<string> {
-    this.#assertTenantPlacement(tenant);
+  async #resolveApplyResourceId(applyId: string): Promise<string> {
     const details = await this.#dbCoordinator.getApply(applyId);
-    return details.apply.resource_id;
-  }
-
-  #assertTenantPlacement(tenant: TTenantContext): void {
-    if (
-      tenant.orgId !== this.#tenant.orgId
-      || tenant.cellId !== this.#tenant.cellId
-      || tenant.placementEpoch !== this.#tenant.placementEpoch
-    ) {
-      throw new ResourceError('RESOURCE_PLACEMENT_STALE', 'Resource service placement is stale.');
-    }
+    return details.apply.resourceId;
   }
 
   #requireStore(): ResourceStoreService {
@@ -1169,5 +1060,6 @@ export { ResourceService };
 export type {
   TFunctionResourceGatewayAccess,
   TFunctionResourceGatewayRequest,
+  TResourcePlacementIdentity,
   TResourceServiceConfig,
 };

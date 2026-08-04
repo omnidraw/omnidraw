@@ -1,18 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import { apiInvokeFunction } from './api.invoke-function';
 import { functionContract, ZDirectFunctionResult, ZInvokeFunctionInput } from './contract';
 import type { IFunctionInvocationApiCapability, TFunctionApiContext } from './types';
-
-const tenant: TTenantContext = Object.freeze({
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: ['member'],
-  capabilities: [],
-  requestId: 'request-a',
-});
 
 const success = Object.freeze({
   status: 'succeeded' as const,
@@ -49,19 +38,18 @@ describe('direct function API contract', () => {
     expect(Object.keys(functionContract)).toEqual(['invoke']);
   });
 
-  test('forwards server tenant and live cancellation through the narrow capability', async () => {
-    const calls: Array<Readonly<{ tenant: TTenantContext; input: unknown; signal: AbortSignal | undefined }>> = [];
+  test('forwards the request and live cancellation through the narrow capability', async () => {
+    const calls: Array<Readonly<{ input: unknown; signal: AbortSignal | undefined }>> = [];
     const capability: IFunctionInvocationApiCapability = {
-      invokeFunction: async (receivedTenant, input, signal) => {
-        calls.push({ tenant: receivedTenant, input, signal });
+      invokeFunction: async (input, signal) => {
+        calls.push({ input, signal });
         return success;
       },
     };
-    const context: TFunctionApiContext = { tenant, functionInvocation: capability };
+    const context: TFunctionApiContext = { functionInvocation: capability };
     const invoke = apiInvokeFunction.callable({ context });
     await expect(invoke(request)).resolves.toEqual(success);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.tenant).toBe(tenant);
     expect(calls[0]?.input).toEqual(request);
   });
 
@@ -77,7 +65,6 @@ describe('direct function API contract', () => {
     for (const [domainCode, apiCode] of cases) {
       const secret = '/private/widgets/counter/server-dist/main.artifact';
       const context: TFunctionApiContext = {
-        tenant,
         functionInvocation: {
           invokeFunction: async () => {
             throw Object.assign(new Error(secret), { code: domainCode, path: secret });

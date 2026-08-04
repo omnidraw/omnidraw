@@ -1,28 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import type { TResourceJson } from '@omnidraw/resource-runtime';
 import type { TResourceCatalogRecord } from '@omnidraw/resource-runtime/local';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import { createAgentResourceService } from '../src/services/AgentResourceService';
 import type { ResourceService } from '../src/services/ResourceService';
-
-const tenant: TTenantContext = Object.freeze({
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 7,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'request-a',
-});
 
 const catalogResource: TResourceCatalogRecord = Object.freeze({
   id: 'resource-a',
   kind: 'kv',
   name: 'Notes',
   status: 'ready',
-  last_error: null,
-  created_at: '2026-07-22T00:00:00.000Z',
-  updated_at: '2026-07-22T00:00:00.000Z',
+  lastError: null,
+  createdAtSec: '2026-07-22 00:00:00',
+  updatedAtSec: '2026-07-22 00:00:00',
 });
 
 type TRecordedCall = Readonly<{
@@ -44,7 +33,7 @@ function recordingOwner(
 
 describe('createAgentResourceService', () => {
   test('exposes only the frozen agent resource capability', async () => {
-    const capability = createAgentResourceService(recordingOwner([]), tenant);
+    const capability = createAgentResourceService(recordingOwner([]));
 
     expect(Object.isFrozen(capability)).toBe(true);
     expect(Object.keys(capability).sort()).toEqual([
@@ -68,17 +57,15 @@ describe('createAgentResourceService', () => {
       'resolveResourceByName',
       'setResourceDataEntry',
     ]);
-    expect('attachConsumer' in capability).toBe(false);
-    expect('forTenant' in capability).toBe(false);
     expect('call' in capability).toBe(false);
     expect('bindResource' in capability).toBe(false);
   });
 
-  test('forwards every operation with the exact bound tenant and unchanged arguments', async () => {
+  test('forwards every operation with unchanged arguments', async () => {
     const calls: TRecordedCall[] = [];
     const capability = createAgentResourceService(recordingOwner(calls, {
       getDbApply: { apply: { id: 'apply-a', status: 'applying' }, drain: null },
-    }), tenant);
+    }));
     const filter = Object.freeze({ kind: 'kv' as const, status: 'ready' as const });
     const resolveOptions = Object.freeze({ requireReady: true, kind: 'kv' as const });
     const createRequest = Object.freeze({ kind: 'kv' as const, name: 'Notes' });
@@ -142,14 +129,12 @@ describe('createAgentResourceService', () => {
       'confirmDbApply',
       'getDbApply',
     ]);
-    for (const call of calls) expect(call.args[0]).toBe(tenant);
-    expect(calls.map((call) => call.args.slice(1))).toEqual([
+    expect(calls.map((call) => call.args)).toEqual([
       [filter],
       ['resource-a'],
       ['Notes', resolveOptions],
       [createRequest],
       [renameRequest],
-      ['resource-a'],
       ['resource-a'],
       [dataQuery],
       [dataPageQuery],
@@ -173,8 +158,8 @@ describe('createAgentResourceService', () => {
       key: 'note/1',
       value: { title: 'Hello' },
       revision: 1,
-      createdAt: '2026-07-22T00:00:00.000Z',
-      updatedAt: '2026-07-22T00:00:00.000Z',
+      createdAtSec: '2026-07-22 00:00:00',
+      updatedAtSec: '2026-07-22 00:00:00',
     });
     const results = Object.freeze({
       listResources: [catalogResource],
@@ -185,7 +170,7 @@ describe('createAgentResourceService', () => {
       confirmDbApply: { status: 'applying' },
       getDbApply: { apply: { id: 'apply-a', status: 'succeeded' }, drain: null },
     });
-    const capability = createAgentResourceService(recordingOwner([], results), tenant);
+    const capability = createAgentResourceService(recordingOwner([], results));
 
     await expect(capability.listResources!()).resolves.toEqual([catalogResource]);
     await expect(capability.getResourceDataEntry!({

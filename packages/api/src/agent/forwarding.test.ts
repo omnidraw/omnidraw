@@ -1,29 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { apiApprovalResolve } from './api.approval.resolve';
 import { apiChatApprovalResolve } from './api.chat.approval.resolve';
 import { apiChatConnect } from './api.chat.connect';
 
-const tenant = fnFreezeTenantContext({
-  orgId: 'org-agent-api',
-  accountId: 'account-agent-api',
-  cellId: 'cell-agent-api',
-  placementEpoch: 4,
-  roles: ['member'],
-  capabilities: ['agent:write'],
-  requestId: 'request-agent-api',
-});
-
-const expectedAuthorization = {
-  accountId: tenant.accountId,
-  requestId: tenant.requestId,
-};
-
-describe('agent API authorization forwarding', () => {
-  test('forwards the trusted account and request to chat connection entry points', async () => {
+describe('agent API forwarding', () => {
+  test('forwards chat connection arguments to the agent capability', async () => {
     const calls: unknown[][] = [];
     const context = {
-      tenant,
       agent: {
         async connectChat(...args: unknown[]) {
           calls.push(['connect', ...args]);
@@ -36,14 +19,13 @@ describe('agent API authorization forwarding', () => {
     await connect({ widgetId: 'widget-1', sessionId: 'session-1', mode: 'replace' });
 
     expect(calls).toEqual([
-      ['connect', 'widget-1', 'session-1', expectedAuthorization, 'replace'],
+      ['connect', 'widget-1', 'session-1', 'replace'],
     ]);
   });
 
-  test('forwards the trusted account and request through both approval routes', async () => {
+  test('forwards approval decisions through both approval routes', async () => {
     const calls: unknown[][] = [];
     const context = {
-      tenant,
       agent: {
         async resolveChatApproval(...args: unknown[]) {
           calls.push(args);
@@ -72,8 +54,8 @@ describe('agent API authorization forwarding', () => {
     });
 
     expect(calls).toEqual([
-      ['widget-1', 'session-1', 'approval-1', 'approve', expectedAuthorization],
-      ['widget-1', 'session-1', 'approval-2', 'reject', expectedAuthorization],
+      ['widget-1', 'session-1', 'approval-1', 'approve'],
+      ['widget-1', 'session-1', 'approval-2', 'reject'],
     ]);
   });
 });

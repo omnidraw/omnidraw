@@ -156,15 +156,11 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({
 }) => {
   try {
     return await context.widgetRuntimeLoadAdmission.run(
-      context.tenant,
       signal,
       async (lifetimeSignal) => {
-        if (context.tenant.canvasId !== undefined && context.tenant.canvasId !== input.canvasId) {
-          throw runtimeTargetNotFound();
-        }
         const readWidgetItem = async (): Promise<TCanvasItemSnapshot> => {
           const page = await runtimeLoadStep(lifetimeSignal, () => (
-            context.canvas.queryItems(context.tenant, {
+            context.canvas.queryItems({
               canvasId: input.canvasId,
               filter: {
                 type: 'widget-instance',

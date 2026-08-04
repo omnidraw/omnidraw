@@ -9,7 +9,6 @@ import {
   type TResourceUse,
   type TResourceUseInspection,
 } from '@omnidraw/resource-runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 
 const DEFAULT_INSPECTION_TIMEOUT_MS = 5_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -72,7 +71,7 @@ class ResourceUseCoordinatorBridge implements IResourceUseCoordinator {
     return () => this.#consumers.delete(consumer);
   }
 
-  inspect(_tenant: TTenantContext, resourceId: string): Promise<TResourceUseInspection> {
+  inspect(resourceId: string): Promise<TResourceUseInspection> {
     return this.#inspectConsumers(
       [...this.#consumers],
       resourceId,
@@ -82,7 +81,6 @@ class ResourceUseCoordinatorBridge implements IResourceUseCoordinator {
   }
 
   async drain(
-    _tenant: TTenantContext,
     request: TResourceDrainRequest,
   ): Promise<TResourceDrainResult> {
     this.#discardExpiredLease(request.resourceId);
@@ -164,7 +162,6 @@ class ResourceUseCoordinatorBridge implements IResourceUseCoordinator {
   }
 
   async release(
-    _tenant: TTenantContext,
     lease: TResourceDrainLease,
     mode: TResourceReleaseMode,
   ): Promise<TResourceReleaseResult> {

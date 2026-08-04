@@ -211,9 +211,7 @@ function functionBridge(name: string): TWidgetFunctionHostBridge {
   return Object.freeze({
     identity: Object.freeze({
       kind: 'draft_preview' as const,
-      draftId: `browser-${name}`,
-      definitionId: `browser-${name}`,
-      revision: '1',
+      widgetKey: `browser-${name}`,
     }),
     async invoke() {
       throw new Error('Browser acceptance artifacts request no server functions.');
@@ -223,12 +221,11 @@ function functionBridge(name: string): TWidgetFunctionHostBridge {
 }
 
 const publishedIdentity = Object.freeze({
-  orgId: 'capsule-browser-acceptance',
   canvasId: 'capsule-browser-acceptance',
   elementId: 'published-authority',
   widgetInstanceId: 'published-authority',
-  definitionId: 'published-authority',
-  revisionId: 'published-authority-v1',
+  widgetKey: 'published-authority',
+  catalogGeneration: 1,
 });
 const providerState = {
   functionCalls: [] as unknown[],
@@ -250,9 +247,7 @@ let previewFunctionProviderDisposed = false;
 const previewFunctionBridge: TWidgetFunctionHostBridge = Object.freeze({
   identity: Object.freeze({
     kind: 'draft_preview' as const,
-    draftId: 'browser-preview-functions',
-    definitionId: 'browser-preview-functions',
-    revision: '1',
+    widgetKey: 'browser-preview-functions',
   }),
   async invoke<TOutput>(
     request: Parameters<TWidgetFunctionHostBridge['invoke']>[0],

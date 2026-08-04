@@ -18,7 +18,6 @@ const PUBLIC_PACKAGES = Object.freeze({
   '@omnidraw/function-runtime': 'packages/function-runtime',
   '@omnidraw/resource-runtime': 'packages/resource-runtime',
   '@omnidraw/runtime': 'packages/runtime',
-  '@omnidraw/tenant-core': 'packages/tenant-core',
   '@omnidraw/widget-contract': 'packages/widget-contract',
 })
 const CANVAS_KERNEL_PACKAGES = Object.freeze({
@@ -785,7 +784,6 @@ describe('managed composition architecture boundaries', () => {
       if (name === '@omnidraw/canvas') {
         expect(manifest.exports?.['./styles.css']).toBeDefined()
         expect(manifest.exports?.['./CONSTANTS']).toBeUndefined()
-        expect(manifest.exports?.['./fn.browser-tenant-scope']).toBeUndefined()
       }
       for (const [exportKey, exportValue] of Object.entries(manifest.exports ?? {})) {
         const targets = exportedTargets(exportValue)

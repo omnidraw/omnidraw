@@ -1,7 +1,5 @@
 import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@omnidraw/service-theme";
-import { createStore, reconcile, type SetStoreFunction } from "solid-js/store";
-import { fnBrowserTenantStorageKeys, type TBrowserTenantScope } from "./services/fn.browser-tenant-scope";
-import { getBrowserTenantScope } from "./services/tenant";
+import { createStore, type SetStoreFunction } from "solid-js/store";
 import type { TBackendCanvas } from "./types/backend.types";
 
 type TGlobalStore = {
@@ -20,10 +18,6 @@ const DEFAULT_STORE: TGlobalStore = {
   canvases: [],
 };
 
-function storageKey(scope: TBrowserTenantScope): string {
-  return fnBrowserTenantStorageKeys(scope).frontendStore;
-}
-
 function readPersistedStore(key: string): TGlobalStore {
   try {
     const value = localStorage.getItem(key);
@@ -36,7 +30,7 @@ function readPersistedStore(key: string): TGlobalStore {
   }
 }
 
-let activeStorageKey = storageKey(getBrowserTenantScope());
+const activeStorageKey = 'omnidraw:frontend';
 const [store, setStoreBase] = createStore<TGlobalStore>(readPersistedStore(activeStorageKey));
 
 function persistStore(): void {
@@ -52,14 +46,9 @@ const setStore = ((...args: unknown[]) => {
   persistStore();
 }) as SetStoreFunction<TGlobalStore>;
 
-function switchFrontendStoreTenant(scope: TBrowserTenantScope): void {
-  activeStorageKey = storageKey(scope);
-  setStoreBase(reconcile(readPersistedStore(activeStorageKey)));
-}
-
 async function init(): Promise<void> {
   return undefined;
 }
 
-export { init, setStore, store, switchFrontendStoreTenant };
+export { init, setStore, store };
 export type { TGlobalStore };

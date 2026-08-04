@@ -24,9 +24,9 @@ describe('neutral resource contracts', () => {
       kind: 'secretStore',
       name: 'GitHub token',
       status: 'ready',
-      last_error: null,
-      created_at: '2026-07-11T00:00:00.000Z',
-      updated_at: '2026-07-11T00:00:00.000Z',
+      lastError: null,
+      createdAtSec: '2026-07-11 00:00:00',
+      updatedAtSec: '2026-07-11 00:00:00',
     })).toMatchObject({ id: 'resource-1', kind: 'secretStore', status: 'ready' });
   });
 
@@ -68,8 +68,8 @@ describe('neutral resource contracts', () => {
         valuePreview: '"dark"',
         valueTruncated: false,
         revision: 2,
-        createdAt: '2026-07-13T00:00:00.000Z',
-        updatedAt: '2026-07-13T00:01:00.000Z',
+        createdAtSec: '2026-07-13 00:00:00',
+        updatedAtSec: '2026-07-13 00:01:00',
       }],
       nextCursor: null,
     })).toMatchObject({ kind: 'kv', entries: [{ key: 'theme' }] });
@@ -79,8 +79,8 @@ describe('neutral resource contracts', () => {
         name: 'api-token',
         value: 'must-not-cross-the-api',
         revision: 1,
-        createdAt: '2026-07-13T00:00:00.000Z',
-        updatedAt: '2026-07-13T00:00:00.000Z',
+        createdAtSec: '2026-07-13 00:00:00',
+        updatedAtSec: '2026-07-13 00:00:00',
       }],
       nextCursor: null,
     }).success).toBe(false);
@@ -90,8 +90,8 @@ describe('neutral resource contracts', () => {
         name: 'api-token',
         value: 'must-not-cross-the-api',
         revision: 2,
-        createdAt: '2026-07-13T00:00:00.000Z',
-        updatedAt: '2026-07-13T00:01:00.000Z',
+        createdAtSec: '2026-07-13 00:00:00',
+        updatedAtSec: '2026-07-13 00:01:00',
       },
     }).success).toBe(false);
   });
@@ -114,7 +114,7 @@ describe('neutral resource contracts', () => {
       name: 'api-token',
       value: 'operator-only-secret',
       revision: 3,
-      createdAt: '2026-07-19T00:00:00.000Z',
+      createdAtSec: '2026-07-19 00:00:00',
     }).success).toBe(false);
     expect(ZResourceSecretReveal.safeParse({
       kind: 'kv',

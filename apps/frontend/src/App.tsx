@@ -6,7 +6,6 @@ import { setStore, store } from "./store";
 import styles from "./App.module.css";
 import { createFrontendSidebarController } from "./ai-chat-adapters";
 import { bootstrapFrontendCanvases, registerFrontendCanvasBootstrapHost } from "./services/canvas-bootstrap";
-import { getBrowserTenantScope } from "./services/tenant";
 
 const App = (props: RouteSectionProps) => {
   const location = useLocation();
@@ -24,7 +23,7 @@ const App = (props: RouteSectionProps) => {
   onCleanup(unregisterCanvasBootstrapHost);
 
   onMount(() => {
-    void bootstrapFrontendCanvases(getBrowserTenantScope()).catch(() => undefined);
+    void bootstrapFrontendCanvases().catch(() => undefined);
     document.addEventListener("wheel", (e) => {
       if (e.ctrlKey) {
         e.preventDefault();

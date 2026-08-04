@@ -19,8 +19,8 @@ import {
 } from "./fn.secret-reveal";
 
 export type TGenericResourcePageProps = { resource: TRouteResource };
-type TKvDataEntry = { key: string; valuePreview: string; valueTruncated: boolean; revision: number; createdAt: string; updatedAt: string };
-type TSecretDataEntry = { name: string; revision: number; createdAt: string; updatedAt: string };
+type TKvDataEntry = { key: string; valuePreview: string; valueTruncated: boolean; revision: number; createdAtSec: string; updatedAtSec: string };
+type TSecretDataEntry = { name: string; revision: number; createdAtSec: string; updatedAtSec: string };
 type TDataPage =
   | { kind: "kv"; entries: TKvDataEntry[]; nextCursor: string | null }
   | { kind: "secretStore"; entries: TSecretDataEntry[]; nextCursor: string | null };
@@ -408,7 +408,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
 
         <Tabs.Content value="overview" class={styles.tabContent}>
           <main class={styles.content}>
-            <section class={styles.summary}><div class={styles.summaryItem}><span class={styles.label}>Status</span><span class={styles.status}>{props.resource.status}</span></div><div class={styles.summaryItem}><span class={styles.label}>Type</span><span class={styles.value}>{props.resource.kind}</span></div><div class={styles.summaryItem}><span class={styles.label}>Created</span><span class={styles.value}>{props.resource.created_at}</span></div><div class={styles.summaryItem}><span class={styles.label}>ID</span><span class={styles.value} title={props.resource.id}>{props.resource.id}</span></div></section>
+            <section class={styles.summary}><div class={styles.summaryItem}><span class={styles.label}>Status</span><span class={styles.status}>{props.resource.status}</span></div><div class={styles.summaryItem}><span class={styles.label}>Type</span><span class={styles.value}>{props.resource.kind}</span></div><div class={styles.summaryItem}><span class={styles.label}>Created</span><span class={styles.value}>{props.resource.createdAtSec}</span></div><div class={styles.summaryItem}><span class={styles.label}>ID</span><span class={styles.value} title={props.resource.id}>{props.resource.id}</span></div></section>
             <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>Settings</h3></div><div class={styles.panelBody}><TextField.Root value={name()} onChange={setName}><TextField.Label class={styles.label}>Display name</TextField.Label><TextField.Input class={styles.input} /></TextField.Root><div class={styles.actions}><Button class={`${styles.button} ${styles.primary}`} disabled={busy() || !name().trim() || name().trim() === displayName()} onClick={rename}>Save name</Button></div></div></section>
           </main>
         </Tabs.Content>
@@ -426,7 +426,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
                 <Button class={styles.button} disabled={dataLoading() || (!prefix() && !appliedPrefix())} onClick={() => void clearSearch()}>Clear</Button>
                 <Show when={dataError()}><p class={styles.error} role="alert">{dataError()}</p></Show>
               </div>
-              <Show when={kvPage()}>{(page) => <div class={styles.tableScroll}><table class={styles.table}><thead><tr><th>Key</th><th>Value preview</th><th>Revision</th><th>Updated</th><th>Actions</th></tr></thead><tbody><For each={page().entries} fallback={<tr><td colSpan={5} class={styles.empty}>{dataLoading() ? "Loading values…" : "No matching values."}</td></tr>}>{(entry) => <tr><td><code>{entry.key}</code></td><td class={styles.valuePreview}><code>{entry.valuePreview}{entry.valueTruncated ? "…" : ""}</code></td><td>{entry.revision}</td><td>{entry.updatedAt}</td><td><div class={styles.rowActions}><Button class={styles.rowButton} onClick={() => openEditKvEntry(entry)}>Edit</Button><Button class={`${styles.rowButton} ${styles.danger}`} onClick={() => setEntryDelete({ key: entry.key, revision: entry.revision })}>Delete</Button></div></td></tr>}</For></tbody></table></div>}</Show>
+              <Show when={kvPage()}>{(page) => <div class={styles.tableScroll}><table class={styles.table}><thead><tr><th>Key</th><th>Value preview</th><th>Revision</th><th>Updated</th><th>Actions</th></tr></thead><tbody><For each={page().entries} fallback={<tr><td colSpan={5} class={styles.empty}>{dataLoading() ? "Loading values…" : "No matching values."}</td></tr>}>{(entry) => <tr><td><code>{entry.key}</code></td><td class={styles.valuePreview}><code>{entry.valuePreview}{entry.valueTruncated ? "…" : ""}</code></td><td>{entry.revision}</td><td>{entry.updatedAtSec}</td><td><div class={styles.rowActions}><Button class={styles.rowButton} onClick={() => openEditKvEntry(entry)}>Edit</Button><Button class={`${styles.rowButton} ${styles.danger}`} onClick={() => setEntryDelete({ key: entry.key, revision: entry.revision })}>Delete</Button></div></td></tr>}</For></tbody></table></div>}</Show>
               <Show when={secretPage()}>{(page) => (
                 <div class={styles.tableScroll}>
                   <table class={styles.table}>
@@ -455,8 +455,8 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
                               <Show when={revealFailedFor(entry)}><span class={styles.revealError} role="alert">Unable to reveal this secret.</span></Show>
                             </td>
                             <td>{entry.revision}</td>
-                            <td>{entry.createdAt}</td>
-                            <td>{entry.updatedAt}</td>
+                            <td>{entry.createdAtSec}</td>
+                            <td>{entry.updatedAtSec}</td>
                             <td>
                               <div class={styles.rowActions}>
                                 <Button

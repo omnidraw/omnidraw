@@ -42,7 +42,6 @@
     "@omnidraw/service-db": "workspace:*",
     "@omnidraw/service-event-publisher": "workspace:*",
     "@omnidraw/service-widget-state": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
     "@omnidraw/widget-contract": "workspace:*",
     "zod": "catalog:"
   }

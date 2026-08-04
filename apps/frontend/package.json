@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "bun test src && vitest --run"
+    "test": "bun test src"
   },
   "devDependencies": {
     "rollup": "^4.59.0",
@@ -14,7 +14,6 @@
     "vite": "^8.1.4",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
-    "vitest": "^4.1.10",
     "vite-plugin-solid": "^2.11.10",
     "solid-devtools": "^0.34.3"
   },
@@ -31,7 +30,6 @@
     "@omnidraw/orpc-client": "workspace:*",
     "@omnidraw/service-db": "workspace:*",
     "@omnidraw/service-theme": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
     "dompurify": "^3.3.3",
     "lucide-static": "catalog:",
     "partysocket": "^1.3.0",

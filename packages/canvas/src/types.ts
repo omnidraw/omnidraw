@@ -54,7 +54,7 @@ export type TCanvasRuntimeRetirement = () => Promise<void>;
 
 /**
  * Optional host lifecycle boundary used to await complete canvas shutdown
- * before the host retires tenant-scoped infrastructure.
+ * before the host retires runtime infrastructure.
  */
 export type TCanvasRuntimeRetirementPort = Readonly<{
   register(retire: TCanvasRuntimeRetirement): () => void;
@@ -80,7 +80,6 @@ export type TCanvasDependencies = Readonly<{
 /** Minimal public composition boundary for the Solid canvas host. */
 export type TCanvasProps = Readonly<{
   canvas: TCanvasDescriptor;
-  hostScopeKey: string;
   dependencies: TCanvasDependencies;
 }>;
 

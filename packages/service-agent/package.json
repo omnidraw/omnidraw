@@ -18,7 +18,6 @@
     "@omnidraw/shared-functions": "workspace:*",
     "@omnidraw/service-db": "workspace:*",
     "@omnidraw/service-event-publisher": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
     "@omnidraw/widget-contract": "workspace:*",
     "ajv": "^8.20.0",
     "typebox": "^1.3.6",

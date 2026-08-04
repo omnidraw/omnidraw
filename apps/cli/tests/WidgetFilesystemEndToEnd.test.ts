@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { connect, type Database } from '@tursodatabase/database';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TWidgetCapsuleRuntimeDescriptor,
   TWidgetManifestV4,
@@ -19,10 +18,6 @@ import { CanvasService } from '@omnidraw/service-canvas';
 import {
   CanvasItemStoreTurso,
 } from '@omnidraw/service-db/CanvasItemStoreTurso';
-import {
-  DEFAULT_OSS_ACCOUNT_ID,
-  DEFAULT_OSS_ORGANIZATION_ID,
-} from '@omnidraw/service-db/CONSTANTS';
 import {
   WidgetInstanceStateStoreTurso,
 } from '@omnidraw/service-db/WidgetInstanceStateStoreTurso';
@@ -58,16 +53,6 @@ const openDatabases: Database[] = [];
 const CANVAS_ID = '10000000-0000-4000-8000-000000000001';
 const ELEMENT_ID = '20000000-0000-4000-8000-000000000002';
 const INSTANCE_ID = '30000000-0000-4000-8000-000000000003';
-
-const tenant = Object.freeze({
-  orgId: DEFAULT_OSS_ORGANIZATION_ID,
-  accountId: DEFAULT_OSS_ACCOUNT_ID,
-  cellId: 'filesystem-e2e',
-  placementEpoch: 1,
-  roles: Object.freeze(['owner']),
-  capabilities: Object.freeze(['*']),
-  requestId: 'filesystem-e2e',
-}) satisfies TTenantContext;
 
 const releaseAttestation = Object.freeze({
   algorithm: 'Ed25519' as const,
@@ -182,27 +167,13 @@ async function openDatabase(path: string): Promise<Database> {
 
 async function seedCanvas(database: Database): Promise<void> {
   await (await database.prepare(`
-    INSERT INTO canvases (
-      org_id,
-      id,
-      name,
-      access_policy,
-      created_by_account_id,
-      created_at_ms,
-      updated_at_ms
-    ) VALUES (?, ?, 'Filesystem E2E', 'restricted', ?, 1, 1)
-  `)).run(tenant.orgId, CANVAS_ID, tenant.accountId);
-  await (await database.prepare(`
-    INSERT INTO canvas_members (
-      org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, 'owner', 1, 1)
-  `)).run(tenant.orgId, CANVAS_ID, tenant.accountId);
+    INSERT INTO canvases (id, name) VALUES (?, 'Filesystem E2E')
+  `)).run(CANVAS_ID);
 }
 
 function runtimeAdmission() {
   return {
     async run<TResult>(
-      _tenant: TTenantContext,
       requestSignal: AbortSignal | undefined,
       operation: (signal: AbortSignal, defer: (cleanup: () => Promise<void>) => void) => Promise<TResult>,
     ): Promise<TResult> {
@@ -243,13 +214,11 @@ describe('clean-home filesystem widget integration', () => {
     await catalog.start();
     const canvas = new CanvasService({
       store: new CanvasItemStoreTurso(database),
-      clock: { nowMs: () => Date.now() },
     });
     const widgetState = new WidgetStateService(
       new WidgetInstanceStateStoreTurso(database),
     );
     const context = {
-      tenant,
       canvas,
       widgetCatalog: catalog,
       widgetState,
@@ -279,7 +248,7 @@ describe('clean-home filesystem widget integration', () => {
       resourceBindings: placement.resourceBindings,
     });
     const { portal: _runtimePortal, ...element } = runtimeElement;
-    await canvas.execute(tenant, {
+    await canvas.execute({
       commandId: 'place-counter',
       canvasId: CANVAS_ID,
       baseRevision: 0,
@@ -292,7 +261,6 @@ describe('clean-home filesystem widget integration', () => {
     const loaded = await loadRuntime(target);
     const mountIdentity = Object.freeze({
       ...loaded.identity,
-      orgId: tenant.orgId,
     });
     expect(fnWidgetRuntimeIdentityMatches(mountIdentity, target)).toBe(true);
     const mountArtifact = await fxDecodeAndVerifyUiArtifact({
@@ -342,7 +310,6 @@ describe('clean-home filesystem widget integration', () => {
     openDatabases.push(reopened);
     const reopenedCanvas = new CanvasService({
       store: new CanvasItemStoreTurso(reopened),
-      clock: { nowMs: () => Date.now() },
     });
     const reopenedState = new WidgetStateService(
       new WidgetInstanceStateStoreTurso(reopened),

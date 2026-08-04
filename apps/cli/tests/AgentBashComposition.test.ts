@@ -2,13 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import {
-  DEFAULT_OSS_ACCOUNT_ID,
-  DEFAULT_OSS_CELL_ID,
-  DEFAULT_OSS_ORGANIZATION_ID,
-} from '@omnidraw/service-db/CONSTANTS';
 import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
-import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import type { TAgentBashProcessDetails } from '../src/services/AgentBashCapability';
@@ -42,15 +36,6 @@ describe('production Agent Bash composition', () => {
       helpRequested: false,
       versionRequested: false,
     };
-    const tenant = fnFreezeTenantContext({
-      orgId: DEFAULT_OSS_ORGANIZATION_ID,
-      accountId: DEFAULT_OSS_ACCOUNT_ID,
-      cellId: DEFAULT_OSS_CELL_ID,
-      placementEpoch: 1,
-      roles: ['owner'],
-      capabilities: ['*'],
-      requestId: 'agent-bash-composition',
-    });
     const { services } = setupServices(config);
     const database = services.require('db');
     const resourceOwner = services.require('resourceOwner');
@@ -58,10 +43,10 @@ describe('production Agent Bash composition', () => {
     const context = { config: {}, hooks: {} };
 
     await database.start();
-    resourceOwner.start(context);
-    agentOwner.start(context);
+    await resourceOwner.start(context);
+    await agentOwner.start(context);
     try {
-      const agent = await agentOwner.forTenant(tenant);
+      const agent = agentOwner;
       await agent.connectChat('widget-bash-composition', 'chat-bash-composition');
       const session = agent.sessionMap['widget-bash-composition']?.['chat-bash-composition']?.session;
       const bash = session?.getToolDefinition('bash');

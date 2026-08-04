@@ -26,7 +26,6 @@ import type { TraceMap } from '@jridgewell/trace-mapping';
 type TApi = TOrpcSafeClient['api'];
 
 export type TWidgetRuntimeIdentity = Readonly<{
-  orgId: string;
   canvasId: string;
   elementId: string;
   widgetInstanceId: string;
@@ -37,9 +36,7 @@ export type TWidgetRuntimeIdentity = Readonly<{
 /** Browser-local draft Preview identity; it carries no backend execution authority. */
 export type TWidgetPreviewRuntimeIdentity = Readonly<{
   kind: 'draft_preview';
-  draftId: string;
-  definitionId: string;
-  revision: string;
+  widgetKey: string;
 }>;
 
 export type TWidgetArtifactRuntimeIdentity =
@@ -64,7 +61,6 @@ export type TWidgetCollaborativeJsonValue =
   | Readonly<{ [key: string]: TWidgetCollaborativeJsonValue }>;
 
 export type TWidgetCollaborativeStateIdentity = Readonly<{
-  orgId: string;
   canvasId: string;
   elementId: string;
   widgetInstanceId: string;

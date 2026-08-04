@@ -25,8 +25,7 @@ export function fnWidgetRuntimeIdentityMatches(
   identity: TWidgetRuntimeIdentity,
   request: TWidgetRuntimeLoadRequest,
 ): boolean {
-  return identity.orgId.length > 0
-    && identity.canvasId === request.canvasId
+  return identity.canvasId === request.canvasId
     && identity.elementId === request.elementId
     && identity.widgetInstanceId === request.widgetInstanceId
     && identity.widgetKey === request.widgetKey

@@ -7,9 +7,9 @@ export type TResource = {
   kind: "kv" | "secretStore" | "db";
   name: string;
   status: "created" | "provisioning" | "ready" | "migrating" | "error" | "deleting";
-  last_error: unknown | null;
-  created_at: string;
-  updated_at: string;
+  lastError: unknown | null;
+  createdAtSec: string;
+  updatedAtSec: string;
 };
 
 export type TDbCellValue =
@@ -91,37 +91,37 @@ export type TDbImpact = { resource: TResource; bindings: TDbResourceBinding[]; u
 export type TDbImpactSlot = { definitionId: string; revisionId: string; slot: string; scope: TDbScope };
 
 export type TDbDraftChange = {
-  draft_id: string;
+  draftId: string;
   sequence: number;
   kind: "structure" | "sql";
   operation: unknown | null;
   sql: string;
-  created_at: string;
+  createdAtSec: string;
 };
 
 export type TDbDraft = {
   id: string;
-  resource_id: string;
+  resourceId: string;
   name: string;
   status: "editing" | "applying" | "applied" | "discarded" | "error";
-  last_error: unknown | null;
-  created_at: string;
-  updated_at: string;
-  applied_at: string | null;
+  lastError: unknown | null;
+  createdAtSec: string;
+  updatedAtSec: string;
+  appliedAtSec: string | null;
 };
 
 export type TDbDraftDetails = { draft: TDbDraft; changes: TDbDraftChange[] };
 
 export type TDbApplyRun = {
   id: string;
-  resource_id: string;
-  draft_id: string | null;
-  source_apply_id: string | null;
+  resourceId: string;
+  draftId: string | null;
+  sourceApplyId: string | null;
   status: "preparing" | "applying" | "succeeded" | "failed" | "recovered";
-  last_error: unknown | null;
-  backup_retained: boolean;
-  created_at: string;
-  completed_at: string | null;
+  lastError: unknown | null;
+  backupRetained: boolean;
+  createdAtSec: string;
+  completedAtSec: string | null;
 };
 
 export type TDbApplyDetails = { apply: TDbApplyRun; drain: null | { resourceId: string; leaseId: string; leaseEpoch: number; expiresAtMs: number; drainedUses: TDbResourceUse[] } };
@@ -132,7 +132,7 @@ export type TDbApplyPreview = TDbDraftDetails & {
   warnings: string[];
 };
 
-export type TDbBackupMetadata = { resourceId: string; applyId: string; createdAt: string };
+export type TDbBackupMetadata = { resourceId: string; applyId: string; createdAtSec: string };
 export type TDbBackup = TDbBackupMetadata | null;
 export type TDbRestorePreview = {
   backup: TDbBackupMetadata;

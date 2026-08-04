@@ -1,12 +1,7 @@
 import { showErrorToast } from '../components/ui/Toast';
 import { runStartupCanvasBootstrap } from '../startup-canvas';
 import { setStore } from '../store';
-import { fnBrowserTenantScopesMatch, type TBrowserTenantScope } from './fn.browser-tenant-scope';
 import { orpcWebsocketService } from './orpc-websocket';
-import {
-  getBrowserTenantActivation,
-  isBrowserTenantActivationCurrent,
-} from './tenant';
 
 type TCanvasBootstrapHost = Readonly<{
   navigate(path: string): void;
@@ -22,11 +17,8 @@ function registerFrontendCanvasBootstrapHost(host: TCanvasBootstrapHost): () => 
   };
 }
 
-async function bootstrapFrontendCanvases(scope: TBrowserTenantScope): Promise<void> {
-  const activation = getBrowserTenantActivation();
-  if (!fnBrowserTenantScopesMatch(activation.scope, scope)) return;
-
-  const isCurrent = () => isBrowserTenantActivationCurrent(activation);
+async function bootstrapFrontendCanvases(): Promise<void> {
+  const isCurrent = () => true;
   await runStartupCanvasBootstrap({
     createCanvas: (name) => orpcWebsocketService.apiService.api.canvas.create({ name }),
     isCurrent,

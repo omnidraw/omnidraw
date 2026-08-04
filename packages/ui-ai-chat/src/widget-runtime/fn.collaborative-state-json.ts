@@ -75,8 +75,7 @@ export function fnWidgetCollaborativeStateIdentitiesMatch(
   left: TWidgetCollaborativeStateIdentity,
   right: TWidgetCollaborativeStateIdentity,
 ): boolean {
-  return left.orgId === right.orgId
-    && left.canvasId === right.canvasId
+  return left.canvasId === right.canvasId
     && left.elementId === right.elementId
     && left.widgetInstanceId === right.widgetInstanceId;
 }

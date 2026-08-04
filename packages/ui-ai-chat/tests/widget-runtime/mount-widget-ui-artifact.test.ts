@@ -448,12 +448,11 @@ describe('Capsule widget mount boundary', () => {
 
     const publishedBridge: TWidgetFunctionHostBridge = {
       identity: {
-        orgId: 'org-a',
         canvasId: 'canvas-a',
         elementId: 'element-a',
         widgetInstanceId: 'instance-a',
-        definitionId: 'definition-a',
-        revisionId: 'revision-a',
+        widgetKey: 'widget-a',
+        catalogGeneration: 1,
       },
       invoke: vi.fn(),
       dispose: vi.fn(),

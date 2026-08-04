@@ -25,10 +25,9 @@
   },
   "scripts": {
     "pretest": "bun run --filter '@omnidraw/sdk' build && bun run build:canvas-kernel",
-    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/tenant-core' --filter '@omnidraw/theme-contract' --filter '@omnidraw/widget-contract' test && bun run test:external-composition && bun run test:architecture",
+    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/theme-contract' --filter '@omnidraw/widget-contract' test && bun run test:external-composition && bun run test:architecture",
     "pretest:canvas-regression": "bun run build:canvas-kernel",
     "test:canvas-regression": "bun run scripts/test-canvas-regression.ts",
-    "test:isolation": "bun run scripts/test-isolation.ts",
     "test:resource-runtime": "bun run scripts/test-resource-runtime.ts",
     "test:widget-artifacts": "bun run scripts/test-widget-artifacts.ts",
     "test:function-runtime": "bun run scripts/test-function-runtime.ts",

@@ -26,10 +26,12 @@ const apiPutFile = baseFileOs.put.handler(async ({ input, context }) => {
   const id = crypto.randomUUID();
   const fileName = `${id}.${extension}`;
 
-  await context.db.file.create(context.tenant, {
+  await context.db.file.create({
     id,
+    canvasId: null,
     hash,
-    mime_type: input.body.mime_type,
+    digestSha256: hash,
+    mimeType: input.body.mime_type,
     data: new Uint8Array(bytes),
   });
 

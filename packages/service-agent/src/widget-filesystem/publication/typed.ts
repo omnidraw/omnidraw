@@ -1,8 +1,8 @@
 /**
  * @file Self-contained contracts for crash-safe filesystem publication.
  *
- * The publication lane deliberately knows nothing about databases, tenants,
- * builders, or Capsule implementations. Upstream code supplies already-built
+ * The publication lane deliberately knows nothing about databases, identity
+ * scopes, builders, or Capsule implementations. Upstream code supplies already-built
  * bytes; injected ports supply every filesystem read and mutation.
  */
 

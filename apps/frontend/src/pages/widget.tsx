@@ -1,5 +1,4 @@
 import { useLocation, useNavigate, useParams, useSearchParams } from '@solidjs/router';
-import type { TWidgetSource } from '@omnidraw/orpc-client';
 import { type Component } from 'solid-js';
 import { WidgetDetailPage } from '@omnidraw/ui-ai-chat';
 import { createFrontendSidebarController } from '@/ai-chat-adapters';
@@ -10,7 +9,7 @@ const WidgetPage: Component = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const controller = createFrontendSidebarController({ pathname: () => location.pathname, navigate });
-  const source = (): TWidgetSource | null => params.source === 'published' || params.source === 'draft' ? params.source : null;
+  const source = (): 'published' | 'draft' | null => params.source === 'published' || params.source === 'draft' ? params.source : null;
   const name = () => {
     try { return decodeURIComponent(params.name); } catch { return null; }
   };

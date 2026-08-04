@@ -1,5 +1,4 @@
 import { ResourceError } from '@omnidraw/resource-runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   ILocalResourceProvider,
   TLocalResolvedResourceCall,
@@ -14,7 +13,6 @@ type TResourceManagementEnvelope = Readonly<{
 }>;
 
 type TResourceManagementDispatch = (
-  tenant: TTenantContext,
   resource: TLocalResource,
   action: string,
   args: unknown,
@@ -82,17 +80,11 @@ class ResourceManagementProvider implements ILocalResourceProvider {
     if (operation !== RESOURCE_MANAGEMENT_OPERATION) {
       return this.#provider.dispatch(context, operation, args);
     }
-    if (!context.tenant) {
-      throw new ResourceError(
-        'RESOURCE_CALL_INVALID',
-        'Resource management calls require an admitted tenant context.',
-      );
-    }
     const envelope = this.#envelope(args);
     if (!this.#effects[envelope.action]) {
       throw new ResourceError('RESOURCE_CALL_INVALID', 'Unknown resource management operation.');
     }
-    return this.#dispatchManagement(context.tenant, context.resource, envelope.action, envelope.args);
+    return this.#dispatchManagement(context.resource, envelope.action, envelope.args);
   }
 
   #envelope(value: unknown): TResourceManagementEnvelope {

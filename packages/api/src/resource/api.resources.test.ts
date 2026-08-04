@@ -2,25 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { ResourceError } from '@omnidraw/resource-runtime';
 import { apiRevealResourceSecret } from './api.resources';
 
-const tenant = {
-  orgId: 'org-1',
-  accountId: 'account-1',
-  cellId: 'cell-1',
-  placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'request-1',
-} as const;
-
 describe('resource reveal API', () => {
-  test('delegates one bounded secret reveal with tenant authority', async () => {
+  test('delegates one bounded secret reveal to the human secret service', async () => {
     const calls: unknown[] = [];
     const reveal = apiRevealResourceSecret.callable({
       context: {
-        tenant,
         humanResourceSecret: {
-          async revealSecret(receivedTenant: unknown, input: { resourceId: string; name: string }) {
-            calls.push({ tenant: receivedTenant, input });
+          async revealSecret(input: { resourceId: string; name: string }) {
+            calls.push({ input });
             return {
               kind: 'secretStore' as const,
               name: input.name,
@@ -39,7 +28,6 @@ describe('resource reveal API', () => {
       revision: 4,
     });
     expect(calls).toEqual([{
-      tenant,
       input: { resourceId: 'secret-resource-1', name: 'api-token' },
     }]);
   });
@@ -48,7 +36,6 @@ describe('resource reveal API', () => {
     let called = false;
     const reveal = apiRevealResourceSecret.callable({
       context: {
-        tenant,
         humanResourceSecret: {
           async revealSecret() {
             called = true;
@@ -63,72 +50,10 @@ describe('resource reveal API', () => {
     expect(called).toBe(false);
   });
 
-  test('rejects a service principal before the reveal capability is called', async () => {
-    let called = false;
-    const reveal = apiRevealResourceSecret.callable({
-      context: {
-        tenant: { ...tenant, roles: ['service'], capabilities: ['*'] },
-        humanResourceSecret: {
-          async revealSecret() {
-            called = true;
-            return { kind: 'secretStore' as const, name: 'unused', value: 'unused', revision: 1 };
-          },
-        },
-      } as never,
-    });
-
-    await expect(reveal({ resourceId: 'secret-resource-1', name: 'api-token' }))
-      .rejects.toMatchObject({ code: 'FORBIDDEN' });
-    expect(called).toBe(false);
-  });
-
-  test('rejects a mixed human and service identity before the reveal capability is called', async () => {
-    let called = false;
-    const reveal = apiRevealResourceSecret.callable({
-      context: {
-        tenant: {
-          ...tenant,
-          roles: ['owner', 'service'],
-          capabilities: ['resource:secret:reveal'],
-        },
-        humanResourceSecret: {
-          async revealSecret() {
-            called = true;
-            return { kind: 'secretStore' as const, name: 'unused', value: 'unused', revision: 1 };
-          },
-        },
-      } as never,
-    });
-
-    await expect(reveal({ resourceId: 'secret-resource-1', name: 'api-token' }))
-      .rejects.toMatchObject({ code: 'FORBIDDEN' });
-    expect(called).toBe(false);
-  });
-
-  test('requires an explicit reveal capability for a human tenant', async () => {
-    let called = false;
-    const reveal = apiRevealResourceSecret.callable({
-      context: {
-        tenant: { ...tenant, capabilities: [] },
-        humanResourceSecret: {
-          async revealSecret() {
-            called = true;
-            return { kind: 'secretStore' as const, name: 'unused', value: 'unused', revision: 1 };
-          },
-        },
-      } as never,
-    });
-
-    await expect(reveal({ resourceId: 'secret-resource-1', name: 'api-token' }))
-      .rejects.toMatchObject({ code: 'FORBIDDEN' });
-    expect(called).toBe(false);
-  });
-
   test('keeps native failure details and plaintext out of reveal errors', async () => {
     const sentinel = 'must-not-cross-reveal-errors';
     const reveal = apiRevealResourceSecret.callable({
       context: {
-        tenant,
         humanResourceSecret: {
           async revealSecret() {
             throw new ResourceError(

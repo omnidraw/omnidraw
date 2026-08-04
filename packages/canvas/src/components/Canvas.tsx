@@ -220,7 +220,7 @@ export function Canvas(props: TCanvasProps) {
   });
 
   const source = (): TCanvasSource => ({
-    key: JSON.stringify([props.hostScopeKey, props.canvas.id]),
+    key: props.canvas.id,
     canvasId: props.canvas.id,
   });
 

@@ -56,7 +56,7 @@ describe("database resource workbench functions", () => {
 
   test("normalizes revision bindings and active uses", () => {
     const impact: TDbImpact = {
-      resource: { id: "resource-1", kind: "db", name: "Notes DB", status: "ready", last_error: null, created_at: "now", updated_at: "now" },
+      resource: { id: "resource-1", kind: "db", name: "Notes DB", status: "ready", lastError: null, createdAtSec: "now", updatedAtSec: "now" },
       bindings: [{ definitionId: "definition-1", revisionId: "revision-1", slot: "database", allowRead: true, allowWrite: true }],
       uses: { resourceId: "resource-1", uses: [{ id: "invocation-1", kind: "function", state: "active" }] },
     };
@@ -66,7 +66,7 @@ describe("database resource workbench functions", () => {
   });
 
   test("selects only editing or applying drafts and uses applying UI wording", () => {
-    const draft = { id: "draft-1", resource_id: "resource-1", name: "Structure draft", status: "editing" as const, last_error: null, created_at: "now", updated_at: "now", applied_at: null };
+    const draft = { id: "draft-1", resourceId: "resource-1", name: "Structure draft", status: "editing" as const, lastError: null, createdAtSec: "now", updatedAtSec: "now", appliedAtSec: null };
     expect(fnActiveDraft([draft])?.id).toBe("draft-1");
     expect(fnStatusLabel("migrating")).toBe("applying");
     expect(fnStatusLabel("startFailed")).toBe("start failed");

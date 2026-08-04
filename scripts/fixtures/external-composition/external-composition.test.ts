@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { MANAGED_TENANT, createManagedCompositionFixture } from './src/managed-composition'
+import { createManagedCompositionFixture } from './src/managed-composition'
 
 describe('external private-style managed composition', () => {
   test('registers every managed capability through documented public contracts', async () => {
@@ -7,16 +7,10 @@ describe('external private-style managed composition', () => {
     await fixture.runtime.boot()
 
     expect(fixture.bootEvidence).toEqual([
-      'managed-identity',
-      'managed-placement',
       'managed-widget-capsule-host-configuration',
       'managed-functions',
       'managed-resources',
     ])
-    expect(await fixture.services.identity.resolveIdentity({ requestId: 'request', session: {} }))
-      .toMatchObject({ orgId: MANAGED_TENANT.orgId, accountId: MANAGED_TENANT.accountId })
-    expect(await fixture.services.placement.resolvePlacement(MANAGED_TENANT.orgId))
-      .toEqual({ orgId: MANAGED_TENANT.orgId, cellId: MANAGED_TENANT.cellId, epoch: 7 })
     expect(await fixture.services.widgetCapsuleHostConfiguration.read()).toMatchObject({
       generation: 'd'.repeat(64),
       previewSigningKeyId: 'managed-preview-v1',
@@ -64,7 +58,6 @@ describe('external private-style managed composition', () => {
     })
 
     await expect(fixture.services.functions.invoke({
-      tenant: MANAGED_TENANT,
       subject: {
         canvasId: 'canvas-managed',
         elementId: 'element-managed',
@@ -81,7 +74,6 @@ describe('external private-style managed composition', () => {
         artifactByteSize: 3,
         resource: {
           managed: true,
-          orgId: MANAGED_TENANT.orgId,
           operation: 'get',
         },
       },

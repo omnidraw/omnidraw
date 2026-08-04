@@ -10,25 +10,13 @@ import type {
 } from '@omnidraw/function-runtime';
 import { EphemeralResourceWritePermitAuthority } from '@omnidraw/function-runtime/local';
 import type { ICanvasService } from '@omnidraw/service-canvas';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
 import { FunctionService } from '../src/services/FunctionService';
 import type {
   TWidgetFilesystemRuntimeResolution,
   WidgetFilesystemRuntimeCatalog,
 } from '../src/services/WidgetFilesystemRuntimeCatalog';
-import type { ResourceServicePool } from '../src/services/ResourceServicePool';
-
-const tenant: TTenantContext = Object.freeze({
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  canvasId: 'canvas-a',
-  placementEpoch: 1,
-  roles: ['member'],
-  capabilities: [],
-  requestId: 'request-a',
-});
+import type { ResourceService } from '../src/services/ResourceService';
 
 const input = Object.freeze({
   canvasId: 'canvas-a',
@@ -150,7 +138,6 @@ function runtimeResolution(
 function directCall(request: TDirectFunctionInvocationRequest): TDirectFunctionCall {
   return Object.freeze({
     id: 'call-a',
-    tenant: request.tenant,
     subject: request.subject,
     definition: request.definition,
     input: request.input,
@@ -173,7 +160,7 @@ function harness(args: Readonly<{
   const item = canvasItem(args.binding);
   const canvasQueries: unknown[] = [];
   const canvas = {
-    queryItems: async (_tenant: TTenantContext, query: unknown) => {
+    queryItems: async (query: unknown) => {
       canvasQueries.push(query);
       return { items: [item], nextCursor: null };
     },
@@ -189,9 +176,9 @@ function harness(args: Readonly<{
   } as unknown as WidgetFilesystemRuntimeCatalog;
   const gatewayCalls: unknown[] = [];
   const gatewayRequests: unknown[] = [];
-  const resourceService = {
+  const resources = {
     getResource: async () => ({ id: 'resource-a', kind: 'kv', status: 'ready' }),
-    createFunctionResourceGateway: (_tenant: TTenantContext, request: {
+    createFunctionResourceGateway: (request: {
       requirements: readonly { slot: string; required?: boolean }[];
       bindings: readonly {
         slot: string;
@@ -205,20 +192,17 @@ function harness(args: Readonly<{
       const retained = new Map(request.bindings.map((binding) => [binding.slot, binding]));
       return {
         gateway: {
-          call: async (_callTenant: TTenantContext, call: unknown) => {
+          call: async (call: unknown) => {
             gatewayCalls.push(call);
             return { output: { value: 41 } };
           },
         },
         bindings: {
-          resolveBinding: async (_callTenant: TTenantContext, slot: string) => retained.get(slot) ?? null,
+          resolveBinding: async (slot: string) => retained.get(slot) ?? null,
         },
       };
     },
-  };
-  const resources = {
-    forTenant: async () => resourceService,
-  } as unknown as ResourceServicePool;
+  } as unknown as ResourceService;
   const writePermits = new EphemeralResourceWritePermitAuthority({
     secret: new Uint8Array(32).fill(7),
   });
@@ -245,7 +229,7 @@ describe('FunctionService direct filesystem invocation', () => {
       invoke: async (request) => {
         invocation = request;
         const resources = await request.createResources(directCall(request));
-        await expect(resources.call(request.tenant, {
+        await expect(resources.call({
           slot: 'store',
           operation: 'get',
           effect: 'read',
@@ -260,7 +244,7 @@ describe('FunctionService direct filesystem invocation', () => {
       executor,
     });
 
-    await expect(setup.service.invokeFunction(tenant, input)).resolves.toEqual(success);
+    await expect(setup.service.invokeFunction(input)).resolves.toEqual(success);
     expect(setup.canvasQueries).toEqual([
       {
         canvasId: input.canvasId,
@@ -310,7 +294,7 @@ describe('FunctionService direct filesystem invocation', () => {
     const executor: IDirectFunctionInvoker = {
       invoke: async (request) => {
         const resources = await request.createResources(directCall(request));
-        return resources.call(request.tenant, {
+        return resources.call({
           slot: 'store',
           operation: 'set',
           effect: 'write',
@@ -324,7 +308,7 @@ describe('FunctionService direct filesystem invocation', () => {
       executor,
     });
 
-    await expect(setup.service.invokeFunction(tenant, input)).rejects.toMatchObject({
+    await expect(setup.service.invokeFunction(input)).rejects.toMatchObject({
       code: 'RESOURCE_SCOPE_INVALID',
       message: 'Function resource call denied: fx_write.',
     });
@@ -360,7 +344,7 @@ describe('FunctionService direct filesystem invocation', () => {
     };
     const setup = harness({ functionDescriptor: descriptor('fn'), binding: null, executor });
     const controller = new AbortController();
-    const call = setup.service.invokeFunction(tenant, input, controller.signal);
+    const call = setup.service.invokeFunction(input, controller.signal);
     await started;
     expect(observedSignal).toBe(controller.signal);
     controller.abort();

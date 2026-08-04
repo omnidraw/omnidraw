@@ -5,21 +5,11 @@ import type {
   TResourceDrainResult,
   TResourceUse,
 } from '@omnidraw/resource-runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ResourceUseCoordinatorBridge,
   type TResourceUseConsumer,
 } from '../src/services/ResourceUseCoordinatorBridge';
 
-const TENANT: TTenantContext = {
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'request-a',
-};
 
 function lease(
   resourceId: string,
@@ -65,7 +55,7 @@ describe('ResourceUseCoordinatorBridge', () => {
   test('fences altered, overlapping, unknown, and double-released leases', async () => {
     const bridge = new ResourceUseCoordinatorBridge({ nowMs: () => 100 });
     bridge.attach(consumer({ id: 'a' }));
-    const drained = await bridge.drain(TENANT, {
+    const drained = await bridge.drain({
       resourceId: 'resource-a',
       reason: 'schema_apply',
       timeoutMs: 1_000,
@@ -73,32 +63,32 @@ describe('ResourceUseCoordinatorBridge', () => {
     expect(drained.ok).toBe(true);
     if (!drained.ok) throw new Error('Expected a drain lease.');
 
-    await expect(bridge.drain(TENANT, {
+    await expect(bridge.drain({
       resourceId: 'resource-a',
       reason: 'restore',
       timeoutMs: 1_000,
     })).rejects.toMatchObject({ code: 'RESOURCE_LIFECYCLE_CONFLICT' });
-    await expect(bridge.release(TENANT, {
+    await expect(bridge.release({
       ...drained.lease,
       resourceId: 'resource-b',
     }, 'resume')).rejects.toMatchObject({ code: 'RESOURCE_LIFECYCLE_CONFLICT' });
-    await expect(bridge.release(TENANT, {
+    await expect(bridge.release({
       ...drained.lease,
       leaseEpoch: drained.lease.leaseEpoch + 1,
     }, 'resume')).rejects.toMatchObject({ code: 'RESOURCE_LIFECYCLE_CONFLICT' });
-    await expect(bridge.release(TENANT, {
+    await expect(bridge.release({
       ...drained.lease,
       expiresAtMs: drained.lease.expiresAtMs - 1,
     }, 'resume')).rejects.toMatchObject({ code: 'RESOURCE_LIFECYCLE_CONFLICT' });
 
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).resolves.toMatchObject({
+    await expect(bridge.release(drained.lease, 'resume')).resolves.toMatchObject({
       resourceId: 'resource-a',
       released: true,
     });
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).rejects.toMatchObject({
+    await expect(bridge.release(drained.lease, 'resume')).rejects.toMatchObject({
       code: 'RESOURCE_LIFECYCLE_CONFLICT',
     });
-    await expect(bridge.release(TENANT, lease('resource-a', 'unknown'), 'resume')).rejects.toMatchObject({
+    await expect(bridge.release(lease('resource-a', 'unknown'), 'resume')).rejects.toMatchObject({
       code: 'RESOURCE_LIFECYCLE_CONFLICT',
     });
   });
@@ -115,7 +105,7 @@ describe('ResourceUseCoordinatorBridge', () => {
         return { resourceId: drainLease.resourceId, released: true, mode, resumedUseIds: [] };
       },
     }));
-    const drained = await bridge.drain(TENANT, {
+    const drained = await bridge.drain({
       resourceId: 'resource-a',
       reason: 'schema_apply',
       timeoutMs: 1_000,
@@ -124,7 +114,7 @@ describe('ResourceUseCoordinatorBridge', () => {
     if (!drained.ok) throw new Error('Expected a drain lease.');
 
     nowMs = 150;
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).rejects.toMatchObject({
+    await expect(bridge.release(drained.lease, 'resume')).rejects.toMatchObject({
       code: 'RESOURCE_LIFECYCLE_CONFLICT',
     });
     expect(releases).toBe(0);
@@ -145,7 +135,7 @@ describe('ResourceUseCoordinatorBridge', () => {
       drain: async () => { throw new Error('consumer failed'); },
     }));
 
-    await expect(bridge.drain(TENANT, {
+    await expect(bridge.drain({
       resourceId: 'resource-a',
       reason: 'restore',
       timeoutMs: 1_000,
@@ -169,7 +159,7 @@ describe('ResourceUseCoordinatorBridge', () => {
       },
     }));
 
-    await expect(bridge.drain(TENANT, {
+    await expect(bridge.drain({
       resourceId: 'resource-a',
       reason: 'restore',
       timeoutMs: 10,
@@ -193,7 +183,7 @@ describe('ResourceUseCoordinatorBridge', () => {
     bridge.attach(releasingConsumer('a'));
     bridge.attach(releasingConsumer('b', () => late));
 
-    const result = await bridge.drain(TENANT, {
+    const result = await bridge.drain({
       resourceId: 'resource-a',
       reason: 'schema_apply',
       timeoutMs: 5,
@@ -214,7 +204,7 @@ describe('ResourceUseCoordinatorBridge', () => {
       inspect: () => new Promise(() => undefined),
     }));
 
-    await expect(bridge.inspect(TENANT, 'resource-a')).rejects.toMatchObject({
+    await expect(bridge.inspect('resource-a')).rejects.toMatchObject({
       code: 'RESOURCE_DRAIN_TIMEOUT',
     });
   });
@@ -231,7 +221,7 @@ describe('ResourceUseCoordinatorBridge', () => {
       },
     }));
 
-    await expect(bridge.drain(TENANT, {
+    await expect(bridge.drain({
       resourceId: 'resource-a',
       reason: 'schema_apply',
       timeoutMs: 1_000,
@@ -249,7 +239,7 @@ describe('ResourceUseCoordinatorBridge', () => {
         return { resourceId: drainLease.resourceId, released: true, mode, resumedUseIds: [] };
       },
     }));
-    const drained = await bridge.drain(TENANT, {
+    const drained = await bridge.drain({
       resourceId: 'resource-a',
       reason: 'restore',
       timeoutMs: 1_000,
@@ -258,7 +248,7 @@ describe('ResourceUseCoordinatorBridge', () => {
     if (!drained.ok) throw new Error('Expected a drain lease.');
 
     detach();
-    await bridge.release(TENANT, drained.lease, 'resume');
+    await bridge.release(drained.lease, 'resume');
     expect(released).toEqual(['child-a:resume']);
   });
 
@@ -281,7 +271,7 @@ describe('ResourceUseCoordinatorBridge', () => {
     });
     bridge.attach(retryingConsumer('a', false));
     bridge.attach(retryingConsumer('b', true));
-    const drained = await bridge.drain(TENANT, {
+    const drained = await bridge.drain({
       resourceId: 'resource-a',
       reason: 'schema_apply',
       timeoutMs: 1_000,
@@ -289,23 +279,23 @@ describe('ResourceUseCoordinatorBridge', () => {
     expect(drained.ok).toBe(true);
     if (!drained.ok) throw new Error('Expected a drain lease.');
 
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).rejects.toMatchObject({
+    await expect(bridge.release(drained.lease, 'resume')).rejects.toMatchObject({
       code: 'RESOURCE_PROVIDER_UNAVAILABLE',
     });
     expect(Object.fromEntries(attempts)).toEqual({ a: 1, b: 1 });
-    await expect(bridge.release(TENANT, drained.lease, 'hold')).rejects.toMatchObject({
+    await expect(bridge.release(drained.lease, 'hold')).rejects.toMatchObject({
       code: 'RESOURCE_LIFECYCLE_CONFLICT',
     });
     expect(Object.fromEntries(attempts)).toEqual({ a: 1, b: 1 });
 
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).resolves.toEqual({
+    await expect(bridge.release(drained.lease, 'resume')).resolves.toEqual({
       resourceId: 'resource-a',
       released: true,
       mode: 'resume',
       resumedUseIds: ['a-resumed', 'b-resumed'],
     });
     expect(Object.fromEntries(attempts)).toEqual({ a: 1, b: 2 });
-    await expect(bridge.release(TENANT, drained.lease, 'resume')).rejects.toMatchObject({
+    await expect(bridge.release(drained.lease, 'resume')).rejects.toMatchObject({
       code: 'RESOURCE_LIFECYCLE_CONFLICT',
     });
   });

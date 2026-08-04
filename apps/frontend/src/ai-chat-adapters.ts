@@ -1,5 +1,4 @@
 import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toast";
-import { getBrowserTenantActivation, getBrowserTenantScope } from "@/services/tenant";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { themeService, txSetThemeAppearance } from "@/services/theme";
 import { widgetCollaborativeStatePort } from "@/services/widget-collaborative-state";
@@ -51,18 +50,6 @@ export const chatBrowserPort: TAiChatBrowserPort = {
 export const widgetBrowserPort: TWidgetBrowserPort = {
   document,
   createId: () => crypto.randomUUID(),
-  organizationId: () => getBrowserTenantScope().orgId,
-  tenantAuthorityKey: () => {
-    const activation = getBrowserTenantActivation();
-    return JSON.stringify([
-      activation.generation,
-      activation.scope.deploymentOrigin,
-      activation.scope.orgId,
-      activation.scope.accountId,
-      activation.scope.cellId,
-      activation.scope.placementEpoch,
-    ]);
-  },
   now: () => Date.now(),
   nowDate: () => new Date(),
   setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),

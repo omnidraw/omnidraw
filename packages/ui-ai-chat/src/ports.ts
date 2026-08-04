@@ -35,8 +35,6 @@ export type TAiChatBrowserPort = {
 export type TWidgetBrowserPort = {
   document: Document;
   createId(): string;
-  organizationId(): string;
-  tenantAuthorityKey(): string;
   now(): number;
   nowDate(): Date;
   setTimeout(callback: () => void, timeout: number): unknown;

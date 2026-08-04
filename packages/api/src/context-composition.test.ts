@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { implement } from '@orpc/server';
-import { fnFreezeTenantContext } from '@omnidraw/tenant-core';
 import { apiContract } from './contract';
 import type { TApiContext } from './context';
 import { router } from './router';
@@ -77,18 +76,7 @@ const fakeAgentCapability = {
   updateApprovalPolicy: unusedCapability,
 } satisfies TApiContext['agent'];
 
-const tenant = fnFreezeTenantContext({
-  orgId: 'fake-org',
-  accountId: 'fake-account',
-  cellId: 'fake-cell',
-  placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'fake-request',
-});
-
 const fakeContext = {
-  tenant,
   agent: fakeAgentCapability,
   canvas: fakeCapability<TApiContext['canvas']>(),
   db: {
@@ -109,7 +97,7 @@ const fakeContext = {
   widgetCapsuleHostConfiguration:
     fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),
   widgetRuntimeLoadAdmission: {
-    run: async (_tenant, signal, operation) => await operation(
+    run: (signal, operation) => operation(
       signal ?? new AbortController().signal,
       (cleanup) => {
         try {

@@ -105,7 +105,7 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
                   </For>
                 </div>
                 <p class={styles.statusLine}><i class={styles.statusDot} /> Database outcome: {fnStatusLabel(run().apply.status)}</p>
-                <Show when={run().apply.last_error}><pre class={styles.errorBox}>{JSON.stringify(run().apply.last_error, null, 2)}</pre></Show>
+                <Show when={run().apply.lastError}><pre class={styles.errorBox}>{JSON.stringify(run().apply.lastError, null, 2)}</pre></Show>
                 <Show when={run().drain}><p class={styles.statusLine}>Drain lease {run().drain?.leaseId} fenced {run().drain?.drainedUses.length ?? 0} active use(s).</p></Show>
               </div>
             )}

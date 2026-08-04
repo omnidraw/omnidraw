@@ -14,7 +14,6 @@ const ZJson: z.ZodType<unknown> = z.lazy(() => z.union([
   z.array(ZJson),
   z.record(z.string(), ZJson.optional()),
 ]));
-const ZSqlBoolean = z.union([z.boolean(), z.literal(0), z.literal(1)]).transform(Boolean);
 const ZDbResourceDraftStatus = z.enum(['editing', 'applying', 'applied', 'discarded', 'error']);
 const ZDbResourceApplyStatus = z.enum([
   'preparing',
@@ -25,32 +24,32 @@ const ZDbResourceApplyStatus = z.enum([
 ]);
 const ZDbResourceDraft = z.object({
   id: z.string(),
-  resource_id: z.string(),
+  resourceId: z.string(),
   name: z.string(),
   status: ZDbResourceDraftStatus,
-  last_error: ZJson.nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  applied_at: z.string().nullable(),
+  lastError: ZJson.nullable(),
+  createdAtSec: z.string(),
+  updatedAtSec: z.string(),
+  appliedAtSec: z.string().nullable(),
 });
 const ZDbResourceDraftChange = z.object({
-  draft_id: z.string(),
+  draftId: z.string(),
   sequence: z.number().int().positive(),
   kind: z.enum(['structure', 'sql']),
   operation: ZJson.nullable(),
   sql: z.string(),
-  created_at: z.string(),
+  createdAtSec: z.string(),
 });
 const ZDbResourceApplyRun = z.object({
   id: z.string(),
-  resource_id: z.string(),
-  draft_id: z.string().nullable(),
-  source_apply_id: z.string().nullable(),
+  resourceId: z.string(),
+  draftId: z.string().nullable(),
+  sourceApplyId: z.string().nullable(),
   status: ZDbResourceApplyStatus,
-  last_error: ZJson.nullable(),
-  backup_retained: ZSqlBoolean,
-  created_at: z.string(),
-  completed_at: z.string().nullable(),
+  lastError: ZJson.nullable(),
+  backupRetained: z.boolean(),
+  createdAtSec: z.string(),
+  completedAtSec: z.string().nullable(),
 });
 
 function isNonBlank(value: string): boolean {
@@ -156,9 +155,9 @@ export const ZResource = z.object({
   kind: ZResourceKind,
   name: z.string(),
   status: ZResourceStatus,
-  last_error: ZJson.nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
+  lastError: ZJson.nullable(),
+  createdAtSec: z.string(),
+  updatedAtSec: z.string(),
 });
 
 const ZResourceKvDataEntry = z.object({
@@ -166,14 +165,14 @@ const ZResourceKvDataEntry = z.object({
   valuePreview: z.string().max(4_096),
   valueTruncated: z.boolean(),
   revision: z.number().int().positive(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAtSec: z.string(),
+  updatedAtSec: z.string(),
 }).strict();
 const ZResourceSecretDataEntry = z.object({
   name: z.string().max(256),
   revision: z.number().int().positive(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAtSec: z.string(),
+  updatedAtSec: z.string(),
 }).strict();
 
 export const ZResourceDataPage = z.discriminatedUnion('kind', [
@@ -442,7 +441,7 @@ const ZDbApplyPreview = ZDbDraftDetails.extend({
   impact: ZDbImpact,
   warnings: z.array(z.string()),
 });
-const ZCursor = z.object({ createdAt: z.string(), id: z.string() });
+const ZCursor = z.object({ createdAtSec: z.string(), id: z.string() });
 
 export const resourceContract = oc.errors({
   RESOURCE_ERROR: {
@@ -564,10 +563,10 @@ export const resourceContract = oc.errors({
     list: oc.input(z.object({ resourceId: ZResourceId, before: ZCursor.optional(), limit: z.number().int().min(1).max(100).optional() })).output(z.array(ZDbResourceApplyRun)),
   },
   dbBackups: {
-    get: oc.input(z.object({ resourceId: ZResourceId })).output(z.object({ resourceId: z.string(), applyId: z.string(), createdAt: z.string() }).nullable()),
+    get: oc.input(z.object({ resourceId: ZResourceId })).output(z.object({ resourceId: z.string(), applyId: z.string(), createdAtSec: z.string() }).nullable()),
     discard: oc.input(z.object({ resourceId: ZResourceId, applyId: ZHostId })).route({ method: 'DELETE' }).output(z.object({ discarded: z.boolean() })),
     previewRestore: oc.input(z.object({ resourceId: ZResourceId, applyId: ZHostId })).output(z.object({
-      backup: z.object({ resourceId: z.string(), applyId: z.string(), createdAt: z.string() }),
+      backup: z.object({ resourceId: z.string(), applyId: z.string(), createdAtSec: z.string() }),
       impact: ZDbImpact,
       warning: z.string(),
     })),

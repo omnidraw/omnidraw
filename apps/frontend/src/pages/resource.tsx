@@ -11,9 +11,9 @@ export type TRouteResource = {
   kind: "kv" | "secretStore" | "db";
   name: string;
   status: string;
-  last_error?: unknown;
-  created_at: string;
-  updated_at: string;
+  lastError?: unknown;
+  createdAtSec: string;
+  updatedAtSec: string;
 };
 
 const ResourcePage: Component = () => {

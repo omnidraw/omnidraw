@@ -3,21 +3,15 @@ import {
   fnResourceKeyValueParse,
   fnResourceKeyValueSerialize,
 } from '@omnidraw/resource-runtime/local'
-import { fnScopedKey } from '@omnidraw/tenant-core/fn.scoped-key'
 import { ZWidgetCapsuleRuntimeDescriptor } from '@omnidraw/widget-contract/browser'
 import { fnNormalizeWidgetFrame } from '@omnidraw/widget-contract/fn.widget-frame'
-import { MANAGED_TENANT, createManagedCompositionFixture } from './managed-composition'
+import { createManagedCompositionFixture } from './managed-composition'
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
 }
 
 export async function runPackedPublicComposition(): Promise<void> {
-  assert(
-    fnScopedKey('packed', [MANAGED_TENANT.orgId])
-      === `6:packed|${MANAGED_TENANT.orgId.length}:${MANAGED_TENANT.orgId}`,
-    'The packed tenant-core subpath returned an unexpected scoped key.',
-  )
   assert(
     fnFunctionArtifactAdmission('export const run = () => 1;').allowed,
     'The packed function-runtime local subpath rejected a bounded artifact.',
@@ -64,21 +58,21 @@ export async function runPackedPublicComposition(): Promise<void> {
   const fixture = createManagedCompositionFixture()
   await fixture.runtime.boot()
   try {
-    assert(fixture.bootEvidence.length === 8, 'The packed managed composition did not boot every fake service.')
+    assert(fixture.bootEvidence.length === 3, 'The packed managed composition did not boot every fake service.')
     const hostConfiguration = await fixture.services.widgetCapsuleHostConfiguration.read()
     assert(
       hostConfiguration.signingKeys.every((key) => !('privateKey' in key)),
       'The packed managed host configuration exposed private signing material.',
     )
-    const resource = await fixture.services.resources.call(MANAGED_TENANT, {
+    const resource = await fixture.services.resources.call({
       slot: 'settings',
       effect: 'read',
       operation: 'get',
       input: { key: 'theme' },
     })
     assert(
-      (resource.output as { orgId?: string }).orgId === MANAGED_TENANT.orgId,
-      'The packed managed resource gateway returned the wrong tenant.',
+      (resource.output as { operation?: string }).operation === 'get',
+      'The packed managed resource gateway returned the wrong operation.',
     )
   } finally {
     await fixture.runtime.shutdown()

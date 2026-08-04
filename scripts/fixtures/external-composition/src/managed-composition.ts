@@ -10,11 +10,6 @@ import {
   type IService,
 } from '@omnidraw/runtime'
 import type {
-  IIdentityProvider,
-  IPlacementDirectory,
-  TTenantContext,
-} from '@omnidraw/tenant-core'
-import type {
   IWidgetCapsuleHostConfigurationReader,
   TWidgetCapsuleHostConfiguration,
 } from '@omnidraw/widget-contract'
@@ -23,8 +18,6 @@ type TManagedService<TCapability> = TCapability & IService
 
 declare module '@omnidraw/runtime' {
   interface IServiceMap {
-    managedIdentity: TManagedService<IIdentityProvider>
-    managedPlacement: TManagedService<IPlacementDirectory>
     managedWidgetCapsuleHostConfiguration:
       TManagedService<IWidgetCapsuleHostConfigurationReader>
     managedFunctions: TManagedService<IDirectFunctionInvoker>
@@ -32,19 +25,7 @@ declare module '@omnidraw/runtime' {
   }
 }
 
-export const MANAGED_TENANT: TTenantContext = Object.freeze({
-  orgId: 'org-managed-fixture',
-  accountId: 'account-managed-fixture',
-  cellId: 'cell-managed-fixture',
-  placementEpoch: 7,
-  roles: ['owner'],
-  capabilities: ['widget:publish', 'function:invoke'],
-  requestId: 'request-managed-fixture',
-})
-
 const MANAGED_SERVICE_NAMES = [
-  'managedIdentity',
-  'managedPlacement',
   'managedWidgetCapsuleHostConfiguration',
   'managedFunctions',
   'managedResources',
@@ -53,30 +34,6 @@ const MANAGED_SERVICE_NAMES = [
 export function createManagedCompositionFixture() {
   const invocationEvidence: TDirectFunctionInvocationRequest[] = []
   const bootEvidence: string[] = []
-
-  const identity: TManagedService<IIdentityProvider> = {
-    name: 'managed-identity',
-    async resolveIdentity() {
-      return {
-        orgId: MANAGED_TENANT.orgId,
-        accountId: MANAGED_TENANT.accountId,
-        roles: MANAGED_TENANT.roles,
-        capabilities: MANAGED_TENANT.capabilities,
-      }
-    },
-  }
-
-  const placement: TManagedService<IPlacementDirectory> = {
-    name: 'managed-placement',
-    async resolvePlacement(orgId) {
-      if (orgId !== MANAGED_TENANT.orgId) return null
-      return {
-        orgId,
-        cellId: MANAGED_TENANT.cellId,
-        epoch: MANAGED_TENANT.placementEpoch,
-      }
-    },
-  }
 
   const widgetCapsuleHostConfigurationValue: TWidgetCapsuleHostConfiguration =
     Object.freeze({
@@ -121,11 +78,10 @@ export function createManagedCompositionFixture() {
 
   const resources: TManagedService<IResourceGateway> = {
     name: 'managed-resources',
-    async call(tenant, call) {
+    async call(call) {
       return {
         output: {
           managed: true,
-          orgId: tenant.orgId,
           operation: call.operation,
         },
       }
@@ -138,14 +94,13 @@ export function createManagedCompositionFixture() {
       invocationEvidence.push(request)
       const call = Object.freeze({
         id: 'managed-call',
-        tenant: request.tenant,
         subject: request.subject,
         definition: request.definition,
         input: request.input,
         deadlineAtMs: 1_000,
       })
       const gateway = await request.createResources(call)
-      const resource = await gateway.call(request.tenant, {
+      const resource = await gateway.call({
         slot: 'settings',
         effect: 'read',
         operation: 'get',
@@ -169,8 +124,6 @@ export function createManagedCompositionFixture() {
   }
 
   const services = createServiceRegistry()
-  services.provide('managedIdentity', 10, identity)
-  services.provide('managedPlacement', 20, placement)
   services.provide(
     'managedWidgetCapsuleHostConfiguration',
     30,
@@ -201,8 +154,6 @@ export function createManagedCompositionFixture() {
   return {
     runtime,
     services: {
-      identity,
-      placement,
       widgetCapsuleHostConfiguration,
       functions,
       resources,

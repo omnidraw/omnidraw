@@ -5,19 +5,6 @@ import {
   type TWidgetCollaborativeStateTransportSnapshot,
 } from '@omnidraw/ui-ai-chat/widget-runtime';
 import { orpcWebsocketService } from './orpc-websocket';
-import {
-  getBrowserTenantActivation,
-  getBrowserTenantScope,
-  isBrowserTenantActivationCurrent,
-} from './tenant';
-
-function assertCurrentActivation(
-  activation: ReturnType<typeof getBrowserTenantActivation>,
-): void {
-  if (!isBrowserTenantActivationCurrent(activation)) {
-    throw new Error('Widget collaborative state tenant scope changed.');
-  }
-}
 
 function stateInput(identity: TWidgetCollaborativeStateIdentity) {
   return Object.freeze({
@@ -42,14 +29,10 @@ function transportSnapshot(
 }
 
 export const widgetCollaborativeStatePort = createWidgetCollaborativeStatePort({
-  isIdentityCurrent(identity) {
-    return getBrowserTenantScope().orgId === identity.orgId;
+  isIdentityCurrent() {
+    return true;
   },
-  openTransport({ identity }): TWidgetCollaborativeStateTransportPort {
-    const activation = getBrowserTenantActivation();
-    if (activation.scope.orgId !== identity.orgId) {
-      throw new Error('Widget collaborative state target is unavailable.');
-    }
+  openTransport(): TWidgetCollaborativeStateTransportPort {
     let disposed = false;
     const eventIterators = new Set<AsyncIterator<Readonly<{
       snapshot: TWidgetCollaborativeStateTransportSnapshot;
@@ -58,7 +41,6 @@ export const widgetCollaborativeStatePort = createWidgetCollaborativeStatePort({
       if (disposed) {
         throw new Error('Widget collaborative state transport is disposed.');
       }
-      assertCurrentActivation(activation);
     };
 
     return Object.freeze({

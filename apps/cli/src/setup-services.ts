@@ -40,12 +40,14 @@ import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'path';
+import { txEnsureOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/tx.ensure-omnidraw-home';
 import rootPackage from '../../../package.json';
 import sdkPackage from '../../../packages/sdk/package.json';
 import type {
   IHumanResourceSecretService,
   TResourceApiCapability,
 } from '@omnidraw/api/resource/types';
+import { DEFAULT_OSS_CELL_ID } from '@omnidraw/service-db/CONSTANTS';
 import type { ICliConfig } from './config';
 import { fnLocalRegistryNpmUserConfig } from './fn.local-registry-npm-userconfig';
 import { createBunAgentBashCapability } from './services/AgentBashCapability';
@@ -71,10 +73,8 @@ import { ResourceService } from './services/ResourceService';
 import { createAgentResourceService } from './services/AgentResourceService';
 import {
   createResourceServiceCapabilities,
-  ResourceServicePool,
-} from './services/ResourceServicePool';
+} from './services/ResourceServiceCapabilities';
 import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
-import { TenantServicePool } from './services/TenantServicePool';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import { WidgetFilesystemRuntimeCatalog } from './services/WidgetFilesystemRuntimeCatalog';
 import { WidgetReleaseAttestationService } from './services/WidgetReleaseAttestationService';
@@ -106,7 +106,7 @@ export interface IRuntimeServices {
   widgetState: IWidgetStateService;
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
-  resourceOwner: ResourceServicePool;
+  resourceOwner: ResourceService;
   resource: TResourceApiCapability;
   humanResourceSecret: IHumanResourceSecretService;
   widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
@@ -114,7 +114,7 @@ export interface IRuntimeServices {
   widgetCatalog: WidgetFilesystemRuntimeCatalog;
   functionOwner: FunctionService;
   functionInvocation: IFunctionInvocationApiCapability;
-  agent: TenantServicePool<AgentService>;
+  agent: AgentService;
 }
 
 declare module '@omnidraw/runtime' {
@@ -248,6 +248,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   );
   mkdirSync(widgetBuildTempRoot, { recursive: true, mode: 0o700 });
   mkdirSync(widgetDescriptorTempRoot, { recursive: true, mode: 0o700 });
+  txEnsureOmnidrawHome({ mkdirSync }, { home: config.home });
   const descriptorExtractor = new BunChildFunctionDescriptorExtractor({
     compiledExecutable: config.compiled,
     tempRoot: widgetDescriptorTempRoot,
@@ -258,9 +259,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
     buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
     functionDescriptorExtractor: descriptorExtractor,
-    filesystemFunctionDescriptorExtractor: (request) => (
-      descriptorExtractor.extractServerFunctionDescriptors(request)
-    ),
     resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
     loadSigningKeys: (purpose) => widgetCapsuleSigningKeys.loadSigningKeys(purpose),
     capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
@@ -335,47 +333,21 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   });
   services.provide('db', 20, dbService);
 
-  const resourceService = new ResourceServicePool({
-    create: async (tenant) => {
-      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
-      const resourcesRoot = join(organizationRoot, 'resources');
-      await mkdir(resourcesRoot, { recursive: true });
-      const useCoordinator = new ResourceUseCoordinatorBridge();
-      return new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
-        controlStore: new ResourceControlStoreTurso(dbService.db),
-        dataRoot: resourcesRoot,
-        useCoordinator,
-        writeCapabilityVerifier: writePermits,
-        writePermitCoordinator: writePermits,
-      });
-    },
+  const resourceService = new ResourceService({
+    placement: Object.freeze({
+      cellId: DEFAULT_OSS_CELL_ID,
+      placementEpoch: 1,
+    }),
+    db: dbService,
+    controlStore: new ResourceControlStoreTurso(dbService.db),
+    dataRoot: config.home.resourcesRoot,
+    useCoordinator: new ResourceUseCoordinatorBridge(),
+    writeCapabilityVerifier: writePermits,
+    writePermitCoordinator: writePermits,
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
   const canvasService = new CanvasService({
     store: new CanvasItemStoreTurso(dbService.db),
-    clock: { nowMs: () => Date.now() },
-    authorize: async (tenant, access) => {
-      const canvas = await dbService.canvas.findById(tenant, { id: access.canvasId });
-      if (canvas === null) {
-        throw new CanvasServiceError(
-          'FORBIDDEN',
-          `The tenant is not a member of canvas '${access.canvasId}'.`,
-        );
-      }
-      if (access.access === 'read') return;
-      const members = await dbService.canvas.listMembers(tenant, {
-        canvasId: access.canvasId,
-      });
-      const membership = members.find((member) => member.account_id === tenant.accountId);
-      if (membership?.role !== 'owner' && membership?.role !== 'editor') {
-        throw new CanvasServiceError(
-          'FORBIDDEN',
-          `The tenant cannot edit canvas '${access.canvasId}'.`,
-        );
-      }
-    },
   });
   const functionTempRoot = join(config.home.tempRoot, 'function-runtime');
   const functionDriver = options.createFunctionSandboxDriver?.({
@@ -396,32 +368,16 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     writePermits,
   });
   const agentBashCapability = createBunAgentBashCapability();
-  const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
-    create: async (tenant) => {
-      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
-      const artifactsRoot = join(organizationRoot, 'artifacts');
-      const agentRoot = join(organizationRoot, 'agent', tenant.accountId);
-      const cacheRoot = join(config.home.cacheRoot, 'tenants', tenant.orgId, tenant.accountId);
-      await Promise.all([
-        mkdir(artifactsRoot, { recursive: true }),
-        mkdir(agentRoot, { recursive: true }),
-        mkdir(cacheRoot, { recursive: true }),
-      ]);
-      const agentResources = createAgentResourceService(
-        await resourceService.forTenant(tenant),
-        tenant,
-      );
-      return new AgentService({
-        dataPath: agentRoot,
-        npmUserConfigPath,
-        prepareWidgetNpmDependencies,
-        cachePath: cacheRoot,
-        configPath: artifactsRoot,
-        eventPublisherService: eventPublisher.forTenant(tenant),
-        resourceService: agentResources,
-        bashCapability: agentBashCapability,
-      });
-    },
+  const agentRoot = config.home.agentRoot;
+  mkdirSync(agentRoot, { recursive: true });
+  const agentService = new AgentService({
+    dataPath: agentRoot,
+    npmUserConfigPath,
+    prepareWidgetNpmDependencies,
+    eventPublisherService: eventPublisher,
+    chats: dbService.chats,
+    resourceService: createAgentResourceService(resourceService),
+    bashCapability: agentBashCapability,
   });
   const widgetStateService = new WidgetStateService(
     new WidgetInstanceStateStoreTurso(dbService.db),

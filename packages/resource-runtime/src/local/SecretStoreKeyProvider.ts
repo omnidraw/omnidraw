@@ -7,8 +7,8 @@ import { ResourceError } from '../ResourceError';
 const DATABASE_KEY_BYTE_LENGTH = 32;
 const DATABASE_KEY_HEX_LENGTH = DATABASE_KEY_BYTE_LENGTH * 2;
 
-export const SECRET_STORE_DATABASE_KEY_PURPOSE = 'resource-secret-store';
-export const SECRET_STORE_DATABASE_KEY_ALGORITHM = 'aegis256';
+export const SECRET_STORE_DATABASE_KEY_PURPOSE = 'resource-data';
+export const SECRET_STORE_DATABASE_KEY_ALGORITHM = 'aegis-256';
 
 export interface ISecretStoreKeyProvider {
   getDatabaseHexKey(resourceId: string): Promise<string>;
@@ -19,8 +19,8 @@ export type TStoredEncryptionKey = {
   readonly id: string;
   readonly purpose: string;
   readonly algorithm: string;
-  readonly key_hex: string;
-  readonly created_at: string;
+  readonly keyHex: string;
+  readonly createdAtSec: string;
 };
 
 export interface IResourceEncryptionKeyStore {
@@ -52,12 +52,12 @@ function decodeStoredDatabaseKey(stored: TStoredEncryptionKey): string {
     stored.id.length === 0
     || stored.purpose !== SECRET_STORE_DATABASE_KEY_PURPOSE
     || stored.algorithm !== SECRET_STORE_DATABASE_KEY_ALGORITHM
-    || stored.key_hex.length !== DATABASE_KEY_HEX_LENGTH
-    || !/^[0-9a-f]{64}$/.test(stored.key_hex)
+    || stored.keyHex.length !== DATABASE_KEY_HEX_LENGTH
+    || !/^[0-9a-f]{64}$/.test(stored.keyHex)
   ) {
     throw keyUnavailable();
   }
-  return stored.key_hex;
+  return stored.keyHex;
 }
 
 export class SecretStoreDatabaseKeyProvider implements ISecretStoreKeyProvider {

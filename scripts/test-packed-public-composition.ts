@@ -30,7 +30,6 @@ type TCommandResult = Readonly<{
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'scripts', 'fixtures', 'external-composition')
 const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
-  { name: '@omnidraw/tenant-core', directory: 'packages/tenant-core' },
   { name: '@omnidraw/resource-runtime', directory: 'packages/resource-runtime' },
   { name: '@omnidraw/widget-contract', directory: 'packages/widget-contract' },
   { name: '@omnidraw/function-runtime', directory: 'packages/function-runtime' },

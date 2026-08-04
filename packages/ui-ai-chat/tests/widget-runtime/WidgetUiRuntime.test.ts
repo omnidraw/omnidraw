@@ -17,7 +17,6 @@ import type {
 const CAPSULE_HASH = `sha256:${'a'.repeat(64)}` as const;
 const CAPSULE_BUNDLE_DIGEST = `sha256:${'b'.repeat(64)}` as const;
 const identity: TWidgetRuntimeIdentity = Object.freeze({
-  orgId: 'org-a',
   canvasId: 'canvas-a',
   elementId: 'element-a',
   widgetInstanceId: 'instance-a',
@@ -131,8 +130,6 @@ function fixture(args: Readonly<{
   collaborativeState?: TWidgetCollaborativeStatePort;
   collaborativeStateEnabled?: boolean;
   apis?: readonly ('DOM' | 'CANVAS_2D' | 'WEBGL' | 'WEBGPU')[];
-  organizationId?: () => string;
-  tenantAuthorityKey?: () => string;
   isTargetCurrent?(target: TWidgetRuntimeLocalTarget): boolean;
   maxConcurrentLoads?: number;
   maxQueuedLoads?: number;
@@ -219,8 +216,6 @@ function fixture(args: Readonly<{
       digestSha256,
     },
     mount: { mount, destroy: destroyMount },
-    organizationId: args.organizationId ?? (() => identity.orgId),
-    tenantAuthorityKey: args.tenantAuthorityKey ?? (() => 'authority-a'),
     nowMs: clock.now,
     scheduleTimeout: clock.setTimeout,
     cancelTimeout: clock.clearTimeout,
@@ -385,19 +380,16 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     await current.runtime.destroy();
   });
 
-  test('does not reuse decoded artifact bytes across tenant-authority generations', async () => {
-    let authority = 'authority-a';
+  test('reuses decoded exact artifact bytes by digest and Capsule hash', async () => {
     const current = fixture({
       cache: new WidgetUiArtifactCache(),
-      tenantAuthorityKey: () => authority,
     });
     const first = await renderReady(current.runtime);
     first.cleanup();
     await vi.waitFor(() => expect(current.mounted.destroy).toHaveBeenCalledOnce());
-    authority = 'authority-b';
     const second = await renderReady(current.runtime);
 
-    expect(current.digestSha256).toHaveBeenCalledTimes(2);
+    expect(current.digestSha256).toHaveBeenCalledTimes(1);
     second.cleanup();
     await current.runtime.destroy();
   });
@@ -911,37 +903,12 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     await current.runtime.destroy();
   });
 
-  test('fences a tenant authority change while exact bytes are being verified', async () => {
-    let authority = 'authority-a';
-    let resolveDigest!: (value: string) => void;
-    const current = fixture({
-      tenantAuthorityKey: () => authority,
-      isTargetCurrent: () => true,
-      digestSha256: async () => await new Promise((resolve) => {
-        resolveDigest = resolve;
-      }),
-    });
-    const root = document.createElement('div');
-    current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    });
-    await vi.waitFor(() => expect(current.digestSha256).toHaveBeenCalledOnce());
-    authority = 'authority-b';
-    resolveDigest(current.response.artifact.digestSha256);
-    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('error'));
-    expect(root.textContent).toContain('tenant scope changed');
-    expect(current.mount).not.toHaveBeenCalled();
-    await current.runtime.destroy();
-  });
-
   test('destroys every handle and then the shared mount coordinator once', async () => {
     const current = fixture();
     await renderReady(current.runtime);
-    await current.runtime.destroy('tenant-authority-changed');
+    await current.runtime.destroy('runtime-retired');
     await current.runtime.destroy('again');
-    expect(current.mounted.destroy).toHaveBeenCalledWith('tenant-authority-changed');
+    expect(current.mounted.destroy).toHaveBeenCalledWith('runtime-retired');
     expect(current.destroyMount).toHaveBeenCalledOnce();
     expect(current.runtime.diagnostics()).toMatchObject({
       mountedOwnerCount: 0,

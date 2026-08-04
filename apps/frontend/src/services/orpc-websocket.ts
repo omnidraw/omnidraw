@@ -1,11 +1,9 @@
 import { OrpcWebsocketService, type TOrpcSafeClient } from "@omnidraw/orpc-client";
-import type { TBrowserTenantScope } from "./fn.browser-tenant-scope";
 import { showErrorToast, showSuccessToast, showToast, showWarningToast } from "../components/ui/Toast";
-import { getBrowserTenantScope } from "./tenant";
 import { txRouteNotificationToast } from "./tx.route-notification-toast";
 
-function websocketUrl(scope: TBrowserTenantScope): string {
-  const origin = new URL(scope.deploymentOrigin);
+function websocketUrl(): string {
+  const origin = new URL(globalThis.location?.origin ?? "http://localhost");
   origin.protocol = origin.protocol === "https:" ? "wss:" : "ws:";
   origin.pathname = "/api";
   origin.search = "";
@@ -37,17 +35,17 @@ class FrontendOrpcConnection {
   #notificationIterator: AsyncIterator<unknown> | null = null;
   #generation = 0;
 
-  constructor(scope: TBrowserTenantScope) {
+  constructor() {
     this.apiService = dynamicClient(() => {
-      if (!this.#service) throw new Error("The tenant connection is switching.");
+      if (!this.#service) throw new Error("The server connection is not active.");
       return this.#service.apiService;
     }) as TOrpcSafeClient;
-    this.connect(scope);
+    this.connect();
   }
 
-  connect(scope: TBrowserTenantScope): void {
-    if (this.#service) throw new Error("The tenant connection is already active.");
-    const service = new OrpcWebsocketService({ websocketUrl: websocketUrl(scope) });
+  connect(): void {
+    if (this.#service) throw new Error("The server connection is already active.");
+    const service = new OrpcWebsocketService({ websocketUrl: websocketUrl() });
     this.#service = service;
     const generation = ++this.#generation;
     void this.#consumeNotifications(service, generation);
@@ -98,4 +96,4 @@ class FrontendOrpcConnection {
   }
 }
 
-export const orpcWebsocketService = new FrontendOrpcConnection(getBrowserTenantScope());
+export const orpcWebsocketService = new FrontendOrpcConnection();

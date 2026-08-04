@@ -4,8 +4,8 @@ import { widgetStateIdentity } from './widget-state-identity';
 
 const apiRuntimeWidgetStateEvents = baseWidgetOs.runtime.state.events.handler(
   async function* ({ context, input }) {
-    const identity = widgetStateIdentity(context.tenant, input);
-    const result = await context.widgetState.subscribe(context.tenant, {
+    const identity = widgetStateIdentity(input);
+    const result = await context.widgetState.subscribe({
       identity,
       afterVersion: input.afterVersion,
     });

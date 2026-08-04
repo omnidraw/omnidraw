@@ -5,14 +5,11 @@ function encodePart(value: string): string {
 }
 
 export function fnWidgetUiArtifactCacheKey(args: Readonly<{
-  identity: Pick<TWidgetRuntimeIdentity, 'orgId' | 'widgetKey' | 'catalogGeneration'>;
-  tenantAuthorityKey: string;
+  identity: Pick<TWidgetRuntimeIdentity, 'widgetKey' | 'catalogGeneration'>;
   digestSha256: string;
   capsuleArtifactHash: string;
 }>): string {
   return [
-    args.identity.orgId,
-    args.tenantAuthorityKey,
     args.identity.widgetKey,
     String(args.identity.catalogGeneration),
     args.digestSha256,

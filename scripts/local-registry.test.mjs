@@ -29,18 +29,13 @@ describe('local widget package publication', () => {
       }),
       entry('@omnidraw/widget-contract', {
         '@omnidraw/resource-runtime': 'workspace:*',
-        '@omnidraw/tenant-core': 'workspace:*',
         zod: '4.4.3',
       }),
-      entry('@omnidraw/resource-runtime', {
-        '@omnidraw/tenant-core': 'workspace:*',
-      }),
-      entry('@omnidraw/tenant-core'),
+      entry('@omnidraw/resource-runtime'),
       entry('@omnidraw/unrelated'),
     ];
 
     expect(widgetPackagePublishOrder(packages).map(({ name }) => name)).toEqual([
-      '@omnidraw/tenant-core',
       '@omnidraw/resource-runtime',
       '@omnidraw/widget-contract',
       '@omnidraw/sdk',

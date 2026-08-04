@@ -1,31 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
-import { fnFreezeTenantContext, type TTenantContext } from '@omnidraw/tenant-core';
 import { apiDbEvents } from './api.db-events';
-
-const tenantOwner = fnFreezeTenantContext({
-  orgId: 'org-a',
-  accountId: 'account-owner',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'db-events-owner',
-});
-
-const tenantSameOrgNonmember = fnFreezeTenantContext({
-  ...tenantOwner,
-  accountId: 'account-nonmember',
-  roles: ['member'],
-  requestId: 'db-events-nonmember',
-});
-
-const tenantForeign = fnFreezeTenantContext({
-  ...tenantOwner,
-  orgId: 'org-b',
-  accountId: 'account-foreign',
-  requestId: 'db-events-foreign',
-});
 
 const CANVAS_ID = 'canvas-a';
 const UNKNOWN_CANVAS_ID = 'canvas-unknown';
@@ -36,25 +11,24 @@ function createFixture() {
   const publisher = new EventPublisherService();
   let subscriptionCount = 0;
   const portal = {
-    findCanvasById: async (tenant: TTenantContext, args: { id: string }) => (
-      tenant.orgId === tenantOwner.orgId
-        && tenant.accountId === tenantOwner.accountId
-        && args.id === CANVAS_ID
+    findCanvasById: async (args: { id: string }) => (
+      args.id === CANVAS_ID
         ? {
           id: CANVAS_ID,
           name: 'Owner canvas',
           revision: 0,
-          created_at: '2026-01-01T00:00:00.000Z',
+          createdAtSec: '2026-01-01 00:00:00',
+          updatedAtSec: '2026-01-01 00:00:00',
         }
         : null
     ),
-    subscribeDbEventRecords: (tenant: TTenantContext, canvasId: string, options?: { afterSequence?: number }) => {
+    subscribeDbEventRecords: (canvasId: string, options?: { afterSequence?: number }) => {
       subscriptionCount += 1;
-      return publisher.subscribeDbEventRecords(tenant, canvasId, options);
+      return publisher.subscribeDbEventRecords(canvasId, options);
     },
   };
   return {
-    context: (tenant: TTenantContext) => ({
+    context: () => ({
       db: {
         canvas: {
           findById: portal.findCanvasById,
@@ -63,15 +37,14 @@ function createFixture() {
       eventPublisher: {
         subscribeDbEventRecords: portal.subscribeDbEventRecords,
       },
-      tenant,
     }),
     publisher,
     subscriptionCount: () => subscriptionCount,
   };
 }
 
-async function rejectionSignature(fixture: TFixture, tenant: TTenantContext, canvasId: string) {
-  const subscribe = apiDbEvents.callable({ context: fixture.context(tenant) });
+async function rejectionSignature(fixture: TFixture, canvasId: string) {
+  const subscribe = apiDbEvents.callable({ context: fixture.context() });
   const events = await subscribe({ canvasId });
   try {
     await events.next();
@@ -84,32 +57,25 @@ async function rejectionSignature(fixture: TFixture, tenant: TTenantContext, can
   }
 }
 
-describe('database event API authorization and replay', () => {
-  test('authorizes canvas membership before opening the subscription', async () => {
+describe('database event API replay', () => {
+  test('rejects an unknown canvas before opening the subscription', async () => {
     const fixture = createFixture();
-    const sameOrgNonmember = await rejectionSignature(fixture, tenantSameOrgNonmember, CANVAS_ID);
-    const foreign = await rejectionSignature(fixture, tenantForeign, CANVAS_ID);
-    const unknown = await rejectionSignature(fixture, tenantOwner, UNKNOWN_CANVAS_ID);
+    const unknown = await rejectionSignature(fixture, UNKNOWN_CANVAS_ID);
 
-    expect(sameOrgNonmember).toEqual({ name: 'Error', message: 'Canvas not found' });
-    expect(foreign).toEqual(sameOrgNonmember);
-    expect(unknown).toEqual(sameOrgNonmember);
+    expect(unknown).toEqual({ name: 'Error', message: 'Canvas not found' });
     expect(fixture.subscriptionCount()).toBe(0);
   });
 
   test('returns a monotonic sequence and replays only events after the reconnect cursor', async () => {
     const fixture = createFixture();
-    const firstSequence = fixture.publisher.publishDbEvent(tenantOwner, CANVAS_ID, {
+    const firstSequence = fixture.publisher.publishDbEvent(CANVAS_ID, {
       data: { change: 'delete', table: 'widgets', id: 'already-delivered' },
     });
-    fixture.publisher.publishDbEvent(tenantForeign, CANVAS_ID, {
-      data: { change: 'delete', table: 'widgets', id: 'foreign' },
-    });
-    const secondSequence = fixture.publisher.publishDbEvent(tenantOwner, CANVAS_ID, {
+    const secondSequence = fixture.publisher.publishDbEvent(CANVAS_ID, {
       data: { change: 'delete', table: 'widgets', id: 'replay-me' },
     });
 
-    const subscribe = apiDbEvents.callable({ context: fixture.context(tenantOwner) });
+    const subscribe = apiDbEvents.callable({ context: fixture.context() });
     const events = await subscribe({
       afterSequence: firstSequence,
       canvasId: CANVAS_ID,

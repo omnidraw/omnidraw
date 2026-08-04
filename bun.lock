@@ -51,7 +51,6 @@
         "@omnidraw/service-widget-state": "workspace:*",
         "@omnidraw/shared-functions": "workspace:*",
         "@omnidraw/tapable": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
@@ -76,7 +75,6 @@
         "@omnidraw/orpc-client": "workspace:*",
         "@omnidraw/service-db": "workspace:*",
         "@omnidraw/service-theme": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/ui-ai-chat": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
         "@orpc/client": "catalog:",
@@ -99,7 +97,6 @@
         "vite-plugin-solid": "^2.11.10",
         "vite-plugin-top-level-await": "^1.6.0",
         "vite-plugin-wasm": "^3.5.0",
-        "vitest": "^4.1.10",
       },
     },
     "apps/widget-debug-tools": {
@@ -121,7 +118,6 @@
         "@omnidraw/service-db": "workspace:*",
         "@omnidraw/service-event-publisher": "workspace:*",
         "@omnidraw/service-widget-state": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
@@ -152,7 +148,7 @@
     },
     "packages/canvas-contract": {
       "name": "@omnidraw/canvas-contract",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@omnidraw/cangine": "0.6.1",
         "@omnidraw/theme-contract": "workspace:*",
@@ -164,19 +160,17 @@
     },
     "packages/capsule-omnidraw": {
       "name": "@omnidraw/capsule-omnidraw",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@omnidraw/capsule": "catalog:",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
       },
     },
     "packages/function-runtime": {
       "name": "@omnidraw/function-runtime",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
         "ajv": "^8.20.0",
       },
@@ -192,10 +186,7 @@
     },
     "packages/resource-runtime": {
       "name": "@omnidraw/resource-runtime",
-      "version": "0.7.0",
-      "dependencies": {
-        "@omnidraw/tenant-core": "workspace:*",
-      },
+      "version": "0.8.0",
       "peerDependencies": {
         "@tursodatabase/database": "catalog",
       },
@@ -206,7 +197,7 @@
     },
     "packages/sdk": {
       "name": "@omnidraw/sdk",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "dependencies": {
         "@omnidraw/capsule": "catalog:",
         "@omnidraw/widget-contract": "workspace:*",
@@ -225,7 +216,6 @@
         "@omnidraw/service-db": "workspace:*",
         "@omnidraw/service-event-publisher": "workspace:*",
         "@omnidraw/shared-functions": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
@@ -238,11 +228,10 @@
     },
     "packages/service-canvas": {
       "name": "@omnidraw/service-canvas",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -252,11 +241,8 @@
       "name": "@omnidraw/service-db",
       "dependencies": {
         "@omnidraw/canvas-contract": "workspace:*",
-        "@omnidraw/function-runtime": "workspace:*",
         "@omnidraw/resource-runtime": "workspace:*",
         "@omnidraw/runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
-        "@omnidraw/widget-contract": "workspace:*",
         "@tursodatabase/database": "catalog:",
         "@tursodatabase/database-common": "0.7.2",
         "zod": "catalog:",
@@ -270,7 +256,6 @@
       "dependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@omnidraw/runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
       },
     },
     "packages/service-kv": {
@@ -299,7 +284,6 @@
       "name": "@omnidraw/service-widget-state",
       "dependencies": {
         "@omnidraw/runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
       },
     },
     "packages/shared-functions": {
@@ -307,10 +291,6 @@
     },
     "packages/tapable": {
       "name": "@omnidraw/tapable",
-    },
-    "packages/tenant-core": {
-      "name": "@omnidraw/tenant-core",
-      "version": "0.5.0",
     },
     "packages/theme-contract": {
       "name": "@omnidraw/theme-contract",
@@ -356,10 +336,9 @@
     },
     "packages/widget-contract": {
       "name": "@omnidraw/widget-contract",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
-        "@omnidraw/tenant-core": "workspace:*",
         "lucide-static": "1.24.0",
         "zod": "4.4.3",
       },
@@ -375,11 +354,10 @@
       "name": "@omnidraw-fixtures/private-managed-composition",
       "version": "0.0.0",
       "dependencies": {
-        "@omnidraw/function-runtime": "0.7.0",
-        "@omnidraw/resource-runtime": "0.7.0",
+        "@omnidraw/function-runtime": "0.8.0",
+        "@omnidraw/resource-runtime": "0.8.0",
         "@omnidraw/runtime": "0.5.0",
-        "@omnidraw/tenant-core": "0.5.0",
-        "@omnidraw/widget-contract": "0.8.0",
+        "@omnidraw/widget-contract": "0.9.0",
       },
     },
   },
@@ -725,8 +703,6 @@
     "@omnidraw/shared-functions": ["@omnidraw/shared-functions@workspace:packages/shared-functions"],
 
     "@omnidraw/tapable": ["@omnidraw/tapable@workspace:packages/tapable"],
-
-    "@omnidraw/tenant-core": ["@omnidraw/tenant-core@workspace:packages/tenant-core"],
 
     "@omnidraw/theme-contract": ["@omnidraw/theme-contract@workspace:packages/theme-contract"],
 

@@ -18,23 +18,17 @@ import { canvasDocumentTransport } from './canvas-document-transport';
 import {
   frontendCanvasRuntimeRetirementCoordinator,
 } from './canvas-runtime-retirement';
-import {
-  fnBrowserTenantScopeKey,
-  type TBrowserTenantScope,
-} from './fn.browser-tenant-scope';
 import { themeService } from './theme';
 
 type TCreateFrontendCanvasCompositionArgs = Readonly<{
   canvasId: string;
   navigate(path: string): void;
   ownerDocument: Document;
-  tenant: TBrowserTenantScope;
 }>;
 
 export type TFrontendCanvasComposition = Readonly<{
   canvas: TCanvasDescriptor;
   dependencies: TCanvasDependencies;
-  hostScopeKey: string;
   dispose(): void;
 }>;
 
@@ -172,7 +166,6 @@ export function createFrontendCanvasComposition(
   return Object.freeze({
     canvas: Object.freeze({ id: args.canvasId }),
     dependencies,
-    hostScopeKey: fnBrowserTenantScopeKey(args.tenant),
     dispose: () => diagnostics?.dispose(),
   });
 }

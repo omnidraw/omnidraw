@@ -30,9 +30,25 @@ async function pragmaRow(database: Database, statement: string): Promise<TRow | 
 
 async function captureCatalog(database: Database) {
   const tables = await pragmaRows(database, 'PRAGMA table_list');
-  const applicationTables = tables
-    .filter((row) => row.schema === 'main' && row.type === 'table' && !String(row.name).startsWith('sqlite_'))
-    .sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  const isUserTable = (row: TRow) => (
+    row.schema === 'main'
+    && row.type === 'table'
+    && !String(row.name).startsWith('sqlite_')
+    && !String(row.name).startsWith('__turso_')
+  );
+  const byName = (left: TRow, right: TRow) => String(left.name).localeCompare(String(right.name));
+  const applicationTables = tables.filter(isUserTable).sort(byName);
+  const internalTypeTables = tables
+    .filter((row) => row.schema === 'main' && String(row.name).startsWith('__turso_'))
+    .sort(byName);
+  const applicationTableNames = applicationTables.map((row) => String(row.name));
+  const expectedTableNames = [...EXPECTED_APPLICATION_TABLES].sort();
+  if (JSON.stringify(applicationTableNames) !== JSON.stringify(expectedTableNames)) {
+    throw new Error(
+      `Application table drift: expected ${expectedTableNames.join(', ')}; `
+        + `found ${applicationTableNames.join(', ')}.`,
+    );
+  }
 
   const catalog: Record<string, unknown> = {};
   for (const table of EXPECTED_APPLICATION_TABLES) {
@@ -52,7 +68,7 @@ async function captureCatalog(database: Database) {
     };
   }
 
-  return { applicationTables, catalog };
+  return { applicationTables, internalTypeTables, catalog };
 }
 
 async function main(): Promise<void> {
@@ -86,11 +102,11 @@ async function main(): Promise<void> {
       expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
     });
 
-    const { applicationTables, catalog } = await captureCatalog(database);
+    const { applicationTables, internalTypeTables, catalog } = await captureCatalog(database);
     const evidence = {
       runtime: {
         bun: Bun.version,
-        databasePackage: '@tursodatabase/database@0.6.1',
+        databasePackage: '@tursodatabase/database@0.7.2',
       },
       lifecycle: {
         freshBootstrap: bootstrap,
@@ -108,6 +124,7 @@ async function main(): Promise<void> {
       },
       migrationLedger: await pragmaRows(database, 'SELECT * FROM schema_migrations ORDER BY version'),
       tableList: applicationTables,
+      internalTypeTables,
       catalog,
     };
     const serialized = `${JSON.stringify(evidence, null, 2)}\n`;

@@ -1,7 +1,6 @@
 import type { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import type { TFileFormat } from '@omnidraw/service-db/model';
 import type { ICliConfig } from '../../config';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TEmbeddedAssetsModule = {
   getEmbeddedAsset(pathname: string): string | null;
@@ -91,11 +90,11 @@ function fileMetaFromPathname(pathname: string): { id: string; format: TFileForm
   return { id: match[1], format };
 }
 
-async function createFileResponse(req: Request, db: DbServiceTurso, tenant: TTenantContext): Promise<Response> {
+async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Response> {
   const fileMeta = fileMetaFromPathname(new URL(req.url).pathname);
   if (!fileMeta) return new Response('Not Found', { status: 404 });
 
-  const record = await db.file.getById(tenant, { id: fileMeta.id });
+  const record = await db.file.getById({ id: fileMeta.id });
   if (!record) return new Response('Not Found', { status: 404 });
 
   const etag = `"${record.id}:${record.hash}"`;
@@ -115,7 +114,7 @@ async function createFileResponse(req: Request, db: DbServiceTurso, tenant: TTen
 
   return new Response(data, {
     headers: {
-      'Content-Type': record.mime_type,
+      'Content-Type': record.mimeType,
       'Cache-Control': 'private, no-store',
       ETag: etag,
     },
@@ -126,7 +125,6 @@ async function handleHttpRequest(
   req: Request,
   config: Pick<ICliConfig, 'compiled' | 'version'>,
   db: DbServiceTurso,
-  tenant: TTenantContext,
   importMetaDir: string,
 ): Promise<Response> {
   const url = new URL(req.url);
@@ -141,7 +139,7 @@ async function handleHttpRequest(
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
-    return await createFileResponse(req, db, tenant);
+    return await createFileResponse(req, db);
   }
 
   const assets = await createHttpAssetResolver(importMetaDir);

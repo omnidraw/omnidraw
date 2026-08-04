@@ -4,33 +4,24 @@ import type {
   ILocalResourceProvider,
   TDatabaseFactory,
 } from '@omnidraw/resource-runtime/local';
-import {
-  DEFAULT_OSS_ACCOUNT_ID,
-  DEFAULT_OSS_ORGANIZATION_ID,
-} from '@omnidraw/service-db/CONSTANTS';
+import { DEFAULT_OSS_CELL_ID } from '@omnidraw/service-db/CONSTANTS';
 import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@omnidraw/service-db/DbServiceTurso/turso-native';
 import { ResourceControlStoreTurso } from '@omnidraw/service-db/ResourceControlStoreTurso';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ResourceManagementProvider } from '../src/services/ResourceManagementProvider';
 import { ResourceService } from '../src/services/ResourceService';
 
-const tenant: TTenantContext = {
-  orgId: DEFAULT_OSS_ORGANIZATION_ID,
-  accountId: DEFAULT_OSS_ACCOUNT_ID,
-  cellId: '00000000-0000-4000-8000-0000000000c1',
+const placement = Object.freeze({
+  cellId: DEFAULT_OSS_CELL_ID,
   placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'resource-lifecycle-request',
-};
+});
 
 const useCoordinator: IResourceUseCoordinator = {
-  inspect: async (_tenant, resourceId) => ({ resourceId, uses: [] }),
-  drain: async (_tenant, request) => ({
+  inspect: async (resourceId) => ({ resourceId, uses: [] }),
+  drain: async (request) => ({
     ok: true,
     lease: {
       resourceId: request.resourceId,
@@ -40,7 +31,7 @@ const useCoordinator: IResourceUseCoordinator = {
       drainedUses: [],
     },
   }),
-  release: async (_tenant, lease, mode) => ({
+  release: async (lease, mode) => ({
     resourceId: lease.resourceId,
     released: true,
     mode,
@@ -69,7 +60,6 @@ describe('ResourceService lifecycle', () => {
     const resource = { id: 'resource-a', kind: 'kv' as const };
     const output = await adapter.dispatch(
       {
-        tenant,
         resource,
         requirement: { kind: 'kv', required: true, scope: ['write'] },
         canRead: false,
@@ -121,8 +111,8 @@ describe('ResourceService lifecycle', () => {
       await dbService.start();
       const controlStore = new ResourceControlStoreTurso(dbService.db);
       const createService = (factory?: TDatabaseFactory) => new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
+        placement,
+        db: dbService,
         controlStore,
         dataRoot: root,
         useCoordinator,
@@ -130,21 +120,21 @@ describe('ResourceService lifecycle', () => {
       });
       service = createService(databaseFactory);
       await service.start({ config: {}, hooks: {} });
-      const resource = await service.createResource(tenant, { kind: 'kv', name: 'Held write' });
-      await expect(controlStore.getPlacement(tenant, resource.id)).resolves.toMatchObject({
+      const resource = await service.createResource({ kind: 'kv', name: 'Held write' });
+      await expect(controlStore.getPlacement(resource.id)).resolves.toMatchObject({
         resourceId: resource.id,
-        cellId: tenant.cellId,
-        placementEpoch: tenant.placementEpoch,
+        cellId: placement.cellId,
+        placementEpoch: placement.placementEpoch,
         status: 'active',
       });
-      const write = service.setResourceDataEntry(tenant, {
+      const write = service.setResourceDataEntry({
         resourceId: resource.id,
         key: 'status',
         expectedRevision: null,
         value: 'committed-before-close',
       });
       await writeStarted;
-      const rename = service.renameResource(tenant, {
+      const rename = service.renameResource({
         id: resource.id,
         name: 'Renamed while queued',
       });
@@ -168,7 +158,7 @@ describe('ResourceService lifecycle', () => {
 
       successor = createService();
       await successor.start({ config: {}, hooks: {} });
-      await expect(successor.getResource(tenant, resource.id)).resolves.toMatchObject({
+      await expect(successor.getResource(resource.id)).resolves.toMatchObject({
         id: resource.id,
         name: 'Renamed while queued',
       });
@@ -216,23 +206,23 @@ describe('ResourceService lifecycle', () => {
     try {
       await dbService.start();
       service = new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
+        placement,
+        db: dbService,
         controlStore: new ResourceControlStoreTurso(dbService.db),
         dataRoot: root,
         useCoordinator,
         databaseFactory,
       });
       await service.start({ config: {}, hooks: {} });
-      const resource = await service.createResource(tenant, { kind: 'kv', name: 'Serialized writes' });
-      const first = service.setResourceDataEntry(tenant, {
+      const resource = await service.createResource({ kind: 'kv', name: 'Serialized writes' });
+      const first = service.setResourceDataEntry({
         resourceId: resource.id,
         key: 'status',
         expectedRevision: null,
         value: 'first',
       });
       await firstStarted;
-      const second = service.setResourceDataEntry(tenant, {
+      const second = service.setResourceDataEntry({
         resourceId: resource.id,
         key: 'status',
         expectedRevision: 1,
@@ -265,82 +255,80 @@ describe('ResourceService lifecycle', () => {
       await dbService.start();
       const controlStore = new ResourceControlStoreTurso(dbService.db);
       service = new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
+        placement,
+        db: dbService,
         controlStore,
         dataRoot: root,
         useCoordinator,
       });
       await service.start({ config: {}, hooks: {} });
-      const kv = await service.createResource(tenant, { kind: 'kv', name: 'Stale KV' });
-      const secrets = await service.createResource(tenant, { kind: 'secretStore', name: 'Stale secrets' });
-      const database = await service.createResource(tenant, { kind: 'db', name: 'Stale database' });
-      await service.setResourceDataEntry(tenant, {
+      const kv = await service.createResource({ kind: 'kv', name: 'Stale KV' });
+      const secrets = await service.createResource({ kind: 'secretStore', name: 'Stale secrets' });
+      const database = await service.createResource({ kind: 'db', name: 'Stale database' });
+      await service.setResourceDataEntry({
         resourceId: kv.id,
         key: 'theme',
         expectedRevision: null,
         value: 'dark',
       });
-      await service.setResourceDataEntry(tenant, {
+      await service.setResourceDataEntry({
         resourceId: secrets.id,
         key: 'token',
         expectedRevision: null,
         value: 'never-read-stale',
       });
-      const draft = await service.createDbDraft(tenant, database.id, 'Stale apply draft');
+      const draft = await service.createDbDraft(database.id, 'Stale apply draft');
 
       for (const resource of [kv, secrets, database]) {
-        const placement = await controlStore.getPlacement(tenant, resource.id);
-        expect(placement).not.toBeNull();
-        await controlStore.updatePlacement(tenant, {
+        const current = await controlStore.getPlacement(resource.id);
+        expect(current).not.toBeNull();
+        await controlStore.updatePlacement({
           resourceId: resource.id,
-          expectedEpoch: placement!.placementEpoch,
-          placementEpoch: placement!.placementEpoch,
-          cellId: placement!.cellId,
-          storageKey: placement!.storageKey,
-          status: 'reserved',
-          nowMs: Date.now(),
+          expectedEpoch: current!.placementEpoch,
+          placementEpoch: current!.placementEpoch + 1,
+          cellId: current!.cellId,
+          storageKey: current!.storageKey,
+          status: 'active',
         });
       }
 
-      await expect(service.listResourceData(tenant, { resourceId: kv.id }))
+      await expect(service.listResourceData({ resourceId: kv.id }))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.setResourceDataEntry(tenant, {
+      await expect(service.setResourceDataEntry({
         resourceId: kv.id,
         key: 'theme',
         expectedRevision: 1,
         value: 'light',
       })).rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.revealSecret(tenant, { resourceId: secrets.id, name: 'token' }))
+      await expect(service.revealSecret({ resourceId: secrets.id, name: 'token' }))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.inspectDbResource(tenant, { resourceId: database.id, target: 'live' }))
+      await expect(service.inspectDbResource({ resourceId: database.id, target: 'live' }))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.listDbApplies(tenant, { resourceId: database.id }))
+      await expect(service.listDbApplies({ resourceId: database.id }))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.confirmDbApply(tenant, draft.draft.id))
+      await expect(service.confirmDbApply(draft.draft.id))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.restoreDbBackup(tenant, database.id, 'missing-apply'))
+      await expect(service.restoreDbBackup(database.id, 'missing-apply'))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      await expect(service.deleteResource(tenant, kv.id))
+      await expect(service.deleteResource(kv.id))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
 
       for (const resource of [kv, secrets, database]) {
-        const placement = await controlStore.getPlacement(tenant, resource.id);
-        await controlStore.updatePlacement(tenant, {
+        const current = await controlStore.getPlacement(resource.id);
+        await controlStore.updatePlacement({
           resourceId: resource.id,
-          expectedEpoch: placement!.placementEpoch,
-          placementEpoch: placement!.placementEpoch,
-          cellId: placement!.cellId,
-          storageKey: placement!.storageKey,
+          expectedEpoch: current!.placementEpoch,
+          placementEpoch: placement.placementEpoch,
+          cellId: current!.cellId,
+          storageKey: current!.storageKey,
           status: 'active',
-          nowMs: Date.now(),
         });
       }
-      await expect(service.getResourceDataEntry(tenant, { resourceId: kv.id, key: 'theme' }))
+      await expect(service.getResourceDataEntry({ resourceId: kv.id, key: 'theme' }))
         .resolves.toMatchObject({ value: 'dark', revision: 1 });
-      await expect(service.getDbDraft(tenant, draft.draft.id))
+      await expect(service.getDbDraft(draft.draft.id))
         .resolves.toMatchObject({ draft: { status: 'editing' } });
-      await expect(service.getResource(tenant, kv.id)).resolves.toMatchObject({ id: kv.id });
+      await expect(service.getResource(kv.id)).resolves.toMatchObject({ id: kv.id });
     } finally {
       await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
@@ -361,10 +349,10 @@ describe('ResourceService lifecycle', () => {
     const drainStarted = new Promise<void>((resolve) => { markDrainStarted = resolve; });
     const blockingUseCoordinator: IResourceUseCoordinator = {
       inspect: useCoordinator.inspect,
-      drain: async (context, request) => {
+      drain: async (request) => {
         markDrainStarted();
         await drainGate;
-        return useCoordinator.drain(context, request);
+        return useCoordinator.drain(request);
       },
       release: useCoordinator.release,
     };
@@ -373,41 +361,41 @@ describe('ResourceService lifecycle', () => {
       await dbService.start();
       const controlStore = new ResourceControlStoreTurso(dbService.db);
       service = new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
+        placement,
+        db: dbService,
         controlStore,
         dataRoot: root,
         useCoordinator: blockingUseCoordinator,
       });
       await service.start({ config: {}, hooks: {} });
-      const database = await service.createResource(tenant, {
+      const database = await service.createResource({
         kind: 'db',
         name: 'Observable migration status',
       });
-      const draft = await service.createDbDraft(tenant, database.id, 'Observable apply');
-      const apply = await service.confirmDbApply(tenant, draft.draft.id);
+      const draft = await service.createDbDraft(database.id, 'Observable apply');
+      const apply = await service.confirmDbApply(draft.draft.id);
 
       await drainStarted;
-      await expect(controlStore.getResource(tenant, database.id)).resolves.toMatchObject({
+      await expect(controlStore.getResource(database.id)).resolves.toMatchObject({
         status: 'ready',
       });
-      await expect(service.getDbApply(tenant, apply.id)).resolves.toMatchObject({
+      await expect(service.getDbApply(apply.id)).resolves.toMatchObject({
         apply: { id: apply.id },
       });
-      await expect(service.listDbApplies(tenant, { resourceId: database.id })).resolves.toEqual(
+      await expect(service.listDbApplies({ resourceId: database.id })).resolves.toEqual(
         expect.arrayContaining([expect.objectContaining({ id: apply.id })]),
       );
-      await expect(service.getDbRestoreStatus(tenant, apply.id)).resolves.toMatchObject({
+      await expect(service.getDbRestoreStatus(apply.id)).resolves.toMatchObject({
         apply: { id: apply.id },
       });
 
       releaseDrain();
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        const status = (await service.getDbApply(tenant, apply.id)).apply.status;
+        const status = (await service.getDbApply(apply.id)).apply.status;
         if (['succeeded', 'failed', 'recovered'].includes(status)) break;
         await Bun.sleep(10);
       }
-      await expect(service.getDbApply(tenant, apply.id)).resolves.toMatchObject({
+      await expect(service.getDbApply(apply.id)).resolves.toMatchObject({
         apply: { status: 'succeeded' },
       });
     } finally {
@@ -418,102 +406,37 @@ describe('ResourceService lifecycle', () => {
     }
   });
 
-  test('preserves request authority across accounts and guards plaintext before provider access', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-request-authority-'));
+  test('reveals secrets only through the host management lane', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-resource-service-reveal-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: root,
       cacheDir: root,
     });
-    const seenTenants: TTenantContext[] = [];
-    let plaintextReads = 0;
-    const databaseFactory: TDatabaseFactory = (databasePath, options) => {
-      const database = new Database(databasePath, options);
-      const prepare = database.prepare.bind(database);
-      database.prepare = async (...args) => {
-        if (/SELECT\s+key,\s+value,\s+revision/i.test(String(args[0]))) plaintextReads += 1;
-        return prepare(...args);
-      };
-      return database;
-    };
-    const authorityCoordinator: IResourceUseCoordinator = {
-      inspect: async (context, resourceId) => {
-        seenTenants.push(context);
-        await Promise.resolve();
-        return { resourceId, uses: [] };
-      },
-      drain: useCoordinator.drain,
-      release: useCoordinator.release,
-    };
-    const accountB: TTenantContext = {
-      ...tenant,
-      accountId: '00000000-0000-4000-8000-0000000000b2',
-      roles: ['admin'],
-      capabilities: ['resource:secret:reveal'],
-      requestId: 'resource-lifecycle-request-b',
-    };
     let service: ResourceService | null = null;
     try {
       await dbService.start();
       service = new ResourceService({
-        tenant,
-        db: dbService.forTenant(tenant),
+        placement,
+        db: dbService,
         controlStore: new ResourceControlStoreTurso(dbService.db),
         dataRoot: root,
-        useCoordinator: authorityCoordinator,
-        databaseFactory,
+        useCoordinator,
       });
       await service.start({ config: {}, hooks: {} });
-      const database = await service.createResource(tenant, { kind: 'db', name: 'Authority database' });
-      const secrets = await service.createResource(tenant, { kind: 'secretStore', name: 'Authority secrets' });
-      await service.setResourceDataEntry(tenant, {
+      const secrets = await service.createResource({ kind: 'secretStore', name: 'Reveal secrets' });
+      const kv = await service.createResource({ kind: 'kv', name: 'Reveal KV' });
+      await service.setResourceDataEntry({
         resourceId: secrets.id,
         key: 'token',
         expectedRevision: null,
-        value: 'request-scoped-secret',
+        value: 'host-only-secret',
       });
 
-      await Promise.all([
-        service.dbResourceImpact(tenant, database.id),
-        service.dbResourceImpact(accountB, database.id),
-      ]);
-      expect(seenTenants.map((context) => ({
-        accountId: context.accountId,
-        capabilities: context.capabilities,
-        requestId: context.requestId,
-      }))).toEqual([
-        {
-          accountId: tenant.accountId,
-          capabilities: tenant.capabilities,
-          requestId: tenant.requestId,
-        },
-        {
-          accountId: accountB.accountId,
-          capabilities: accountB.capabilities,
-          requestId: accountB.requestId,
-        },
-      ]);
-
-      plaintextReads = 0;
-      const denied = [
-        { ...accountB, roles: ['service'], capabilities: ['*'], requestId: 'service-only' },
-        { ...accountB, roles: ['service', 'member'], capabilities: ['*'], requestId: 'mixed-service' },
-        { ...accountB, roles: ['member'], capabilities: [], requestId: 'missing-capability' },
-      ] satisfies TTenantContext[];
-      for (const context of denied) {
-        await expect(service.revealSecret(context, { resourceId: secrets.id, name: 'token' }))
-          .rejects.toMatchObject({ code: 'RESOURCE_READ_NOT_ALLOWED' });
-      }
-      expect(plaintextReads).toBe(0);
-      await expect(service.revealSecret(accountB, { resourceId: secrets.id, name: 'token' }))
-        .resolves.toMatchObject({ value: 'request-scoped-secret', revision: 1 });
-      expect(plaintextReads).toBeGreaterThan(0);
-
-      const wrongPlacement = { ...accountB, cellId: 'other-cell', placementEpoch: 2 };
-      const before = seenTenants.length;
-      await expect(service.dbResourceImpact(wrongPlacement, database.id))
-        .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-      expect(seenTenants).toHaveLength(before);
+      await expect(service.revealSecret({ resourceId: secrets.id, name: 'token' }))
+        .resolves.toMatchObject({ value: 'host-only-secret', revision: 1 });
+      await expect(service.revealSecret({ resourceId: kv.id, name: 'token' }))
+        .rejects.toMatchObject({ code: 'RESOURCE_KIND_MISMATCH' });
     } finally {
       await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
@@ -548,22 +471,19 @@ describe('ResourceService lifecycle', () => {
     try {
       await dbService.start();
       const controlStore = new ResourceControlStoreTurso(dbService.db);
-      const createService = (
-        serviceTenant: TTenantContext,
-        databaseFactory?: TDatabaseFactory,
-      ) => new ResourceService({
-        tenant: serviceTenant,
-        db: dbService.forTenant(serviceTenant),
+      const createService = (databaseFactory?: TDatabaseFactory) => new ResourceService({
+        placement,
+        db: dbService,
         controlStore,
         dataRoot: root,
         useCoordinator,
         ...(databaseFactory ? { databaseFactory } : {}),
       });
-      service = createService(tenant, failingFactory);
+      service = createService(failingFactory);
       await service.start({ config: {}, hooks: {} });
-      const resource = await service.createResource(tenant, { kind: 'kv', name: 'Close failure KV' });
+      const resource = await service.createResource({ kind: 'kv', name: 'Close failure KV' });
       failingResourceId = resource.id;
-      await service.setResourceDataEntry(tenant, {
+      await service.setResourceDataEntry({
         resourceId: resource.id,
         key: 'status',
         expectedRevision: null,
@@ -580,9 +500,9 @@ describe('ResourceService lifecycle', () => {
 
       failClose = false;
       await service.stop();
-      successor = createService(tenant);
+      successor = createService();
       await successor.start({ config: {}, hooks: {} });
-      await expect(successor.getResource(tenant, resource.id)).resolves.toMatchObject({
+      await expect(successor.getResource(resource.id)).resolves.toMatchObject({
         id: resource.id,
         status: 'ready',
       });

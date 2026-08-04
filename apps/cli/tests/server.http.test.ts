@@ -5,14 +5,8 @@ import {
   createFrontendAssetLookup,
   handleHttpRequest,
 } from '../src/plugins/server/http';
-import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../src/plugins/auth/AuthPlugin';
 
-type TFileSeed = Parameters<DbServiceTurso['file']['create']>[1];
-
-const tenant = await OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
-  requestId: 'server-http-test',
-  session: OSS_FAKE_SESSION,
-});
+type TFileSeed = Parameters<DbServiceTurso['file']['create']>[0];
 
 async function createDb(files: TFileSeed[] = []): Promise<DbServiceTurso> {
   const db = new DbServiceTurso({
@@ -25,7 +19,7 @@ async function createDb(files: TFileSeed[] = []): Promise<DbServiceTurso> {
   await db.start();
 
   for (const file of files) {
-    await db.file.create(tenant, file);
+    await db.file.create(file);
   }
 
   return db;
@@ -43,7 +37,6 @@ describe('server http helpers', () => {
         new Request('http://localhost/health'),
         { compiled: false, version: 'test' },
         db,
-        tenant,
         import.meta.dir,
       );
       expect(await response.json()).toEqual({
@@ -60,8 +53,10 @@ describe('server http helpers', () => {
   test('serves persisted file blobs with cache headers and etag', async () => {
     const db = await createDb([{
       id: '123e4567-e89b-12d3-a456-426614174000',
-      hash: 'abc123',
-      mime_type: 'image/png',
+      canvasId: null,
+      hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      digestSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      mimeType: 'image/png',
       data: new Uint8Array(Buffer.from('hello')),
     }]);
 
@@ -69,13 +64,12 @@ describe('server http helpers', () => {
       const response = await createFileResponse(
         new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png'),
         db,
-        tenant,
       );
 
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toBe('image/png');
       expect(response.headers.get('cache-control')).toBe('private, no-store');
-      expect(response.headers.get('etag')).toBe('"123e4567-e89b-12d3-a456-426614174000:abc123"');
+      expect(response.headers.get('etag')).toBe('"123e4567-e89b-12d3-a456-426614174000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"');
       expect(await response.text()).toBe('hello');
     } finally {
       await closeDb(db);
@@ -85,22 +79,23 @@ describe('server http helpers', () => {
   test('returns 304 when file etag matches', async () => {
     const db = await createDb([{
       id: '123e4567-e89b-12d3-a456-426614174000',
-      hash: 'abc123',
-      mime_type: 'image/png',
+      canvasId: null,
+      hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      digestSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      mimeType: 'image/png',
       data: new Uint8Array(Buffer.from('hello')),
     }]);
 
     try {
       const response = await createFileResponse(
         new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png', {
-          headers: { 'if-none-match': '"123e4567-e89b-12d3-a456-426614174000:abc123"' },
+          headers: { 'if-none-match': '"123e4567-e89b-12d3-a456-426614174000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' },
         }),
         db,
-        tenant,
       );
 
       expect(response.status).toBe(304);
-      expect(response.headers.get('etag')).toBe('"123e4567-e89b-12d3-a456-426614174000:abc123"');
+      expect(response.headers.get('etag')).toBe('"123e4567-e89b-12d3-a456-426614174000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"');
     } finally {
       await closeDb(db);
     }
@@ -110,79 +105,15 @@ describe('server http helpers', () => {
     const missingDb = await createDb();
 
     try {
-      expect((await createFileResponse(new Request('http://localhost/files/not-a-file'), missingDb, tenant)).status).toBe(404);
+      expect((await createFileResponse(new Request('http://localhost/files/not-a-file'), missingDb)).status).toBe(404);
       expect(
         (await createFileResponse(
           new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png'),
           missingDb,
-          tenant,
         )).status,
       ).toBe(404);
     } finally {
       await closeDb(missingDb);
-    }
-  });
-
-  test('returns the same 404 for a known foreign media id', async () => {
-    const db = await createDb();
-    const foreignOrgId = '00000000-0000-4000-8000-000000000011';
-    const fileId = '123e4567-e89b-12d3-a456-426614174099';
-    try {
-      await (await db.db.prepare(`
-        INSERT INTO organizations (id, slug, name, status, created_at_ms, updated_at_ms)
-        VALUES (?, 'foreign-http', 'Foreign HTTP', 'active', 0, 0)
-      `)).run(foreignOrgId);
-      await (await db.db.prepare(`
-        INSERT INTO media_files (
-          org_id, id, canvas_id, source_hash, digest_sha256, mime_type, byte_size, data, created_at_ms
-        ) VALUES (?, ?, NULL, 'foreign', NULL, 'image/png', 7, ?, 0)
-      `)).run(foreignOrgId, fileId, new Uint8Array(Buffer.from('foreign')));
-
-      const response = await createFileResponse(
-        new Request(`http://localhost/files/${fileId}.png`),
-        db,
-        tenant,
-      );
-      expect(response.status).toBe(404);
-      expect(await response.text()).toBe('Not Found');
-    } finally {
-      await closeDb(db);
-    }
-  });
-
-  test('does not treat a known foreign digest as media authority', async () => {
-    const db = await createDb();
-    const foreignOrgId = '00000000-0000-4000-8000-000000000011';
-    const foreignDigest = 'a'.repeat(64);
-    const unknownDigest = 'f'.repeat(64);
-    try {
-      await (await db.db.prepare(`
-        INSERT INTO organizations (id, slug, name, status, created_at_ms, updated_at_ms)
-        VALUES (?, 'foreign-digest', 'Foreign digest', 'active', 0, 0)
-      `)).run(foreignOrgId);
-      await (await db.db.prepare(`
-        INSERT INTO media_files (
-          org_id, id, canvas_id, source_hash, digest_sha256, mime_type, byte_size, data, created_at_ms
-        ) VALUES (?, '123e4567-e89b-12d3-a456-426614174098', NULL, 'foreign', ?, 'image/png', 7, ?, 0)
-      `)).run(foreignOrgId, foreignDigest, new Uint8Array(Buffer.from('foreign')));
-
-      const foreign = await createFileResponse(
-        new Request(`http://localhost/files/${foreignDigest}.png`),
-        db,
-        tenant,
-      );
-      const unknown = await createFileResponse(
-        new Request(`http://localhost/files/${unknownDigest}.png`),
-        db,
-        tenant,
-      );
-      expect({ status: foreign.status, body: await foreign.text() }).toEqual({
-        status: unknown.status,
-        body: await unknown.text(),
-      });
-      expect(foreign.status).toBe(404);
-    } finally {
-      await closeDb(db);
     }
   });
 

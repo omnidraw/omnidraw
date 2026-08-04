@@ -7,7 +7,6 @@ import type {
 } from '../../src/widget-runtime/interface';
 
 const identity: TWidgetRuntimeIdentity = Object.freeze({
-  orgId: 'org-a',
   canvasId: 'canvas-a',
   elementId: 'element-a',
   widgetInstanceId: 'instance-a',

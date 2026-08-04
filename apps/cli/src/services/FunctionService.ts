@@ -15,15 +15,14 @@ import {
 } from '@omnidraw/function-runtime/local';
 import type { IService } from '@omnidraw/runtime';
 import type { ICanvasService } from '@omnidraw/service-canvas';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TResourceRequirement } from '@omnidraw/resource-runtime';
 import type { WidgetFilesystemRuntimeCatalog } from './WidgetFilesystemRuntimeCatalog';
-import type { ResourceServicePool } from './ResourceServicePool';
+import type { ResourceService } from './ResourceService';
 
 type TFunctionServiceConfig = Readonly<{
   canvas: ICanvasService;
   catalog: WidgetFilesystemRuntimeCatalog;
-  resources: ResourceServicePool;
+  resources: ResourceService;
   executor: IDirectFunctionInvoker;
   writePermits: EphemeralResourceWritePermitAuthority;
 }>;
@@ -66,15 +65,11 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
   }
 
   async invokeFunction(
-    tenant: TTenantContext,
     input: TFunctionInputs['invoke'],
     signal?: AbortSignal,
   ): Promise<TDirectFunctionView> {
-    if (tenant.canvasId !== undefined && tenant.canvasId !== input.canvasId) {
-      throw functionServiceError('WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
-    }
     const readItem = async (): Promise<TCanvasItemSnapshot> => {
-      const page = await this.#config.canvas.queryItems(tenant, {
+      const page = await this.#config.canvas.queryItems({
         canvasId: input.canvasId,
         filter: { type: 'widget-instance', instanceId: input.widgetInstanceId },
         limit: 2,
@@ -107,15 +102,12 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
       || !this.#config.catalog.isRuntimeResolutionCurrent(resolution)
     ) throw functionServiceError('WIDGET_CATALOG_CHANGED', 'Function target changed before execution.');
 
-    const resourceService = await this.#config.resources.forTenant(tenant);
     const requirements = resolution.manifest.resources ?? [];
     const bindings = await this.#resolveBindings(
-      tenant,
-      resourceService,
       requirements,
       extension.resourceBindings ?? {},
     );
-    const access = resourceService.createFunctionResourceGateway(tenant, {
+    const access = this.#config.resources.createFunctionResourceGateway({
       requirements,
       bindings,
     });
@@ -127,7 +119,6 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
     }
 
     return this.#config.executor.invoke({
-      tenant,
       subject: {
         canvasId: input.canvasId,
         elementId: input.elementId,
@@ -144,7 +135,6 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
       input: input.input,
       signal,
       createResources: (call) => new DirectInvocationResourceGateway({
-        tenant,
         call,
         gateway: access.gateway,
         bindings: access.bindings,
@@ -154,8 +144,6 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
   }
 
   async #resolveBindings(
-    tenant: TTenantContext,
-    resourceService: Awaited<ReturnType<ResourceServicePool['forTenant']>>,
     requirements: readonly TResourceRequirement[],
     selections: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>,
   ): Promise<readonly Readonly<{
@@ -169,7 +157,7 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
     const result = await Promise.all(Object.keys(selections).sort().map(async (slot) => {
       const selection = selections[slot]!;
       const requirement = bySlot.get(slot);
-      const resource = await resourceService.getResource(tenant, selection.resourceId);
+      const resource = await this.#config.resources.getResource(selection.resourceId);
       if (
         requirement === undefined
         || resource === null

@@ -1,5 +1,4 @@
 import type { TAgentResourceService } from '@omnidraw/service-agent';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { ResourceService } from './ResourceService';
 
 type TCompleteAgentResourceService = {
@@ -7,85 +6,84 @@ type TCompleteAgentResourceService = {
 };
 
 /**
- * Binds one trusted tenant context to the narrow resource capability exposed to
- * agent tools. The physical resource service and its broader management surface
- * remain private to the CLI composition root.
+ * Binds the singleton resource service to the narrow capability exposed to
+ * agent tools. The broader management surface remains private to the CLI
+ * composition root.
  */
 function createAgentResourceService(
   owner: ResourceService,
-  tenant: TTenantContext,
 ): TAgentResourceService {
   const capability = {
     listResources: (filter) => (
-      owner.listResources(tenant, filter) as ReturnType<
+      owner.listResources(filter) as ReturnType<
         TCompleteAgentResourceService['listResources']
       >
     ),
-    getResource: (resourceId) => owner.getResource(tenant, resourceId),
+    getResource: (resourceId) => owner.getResource(resourceId),
     resolveResourceByName: (resourceName, options) => (
-      owner.resolveResourceByName(tenant, resourceName, options)
+      owner.resolveResourceByName(resourceName, options)
     ),
     createResource: (request) => (
-      owner.createResource(tenant, request) as ReturnType<
+      owner.createResource(request) as ReturnType<
         TCompleteAgentResourceService['createResource']
       >
     ),
     renameResource: (request) => (
-      owner.renameResource(tenant, request) as ReturnType<
+      owner.renameResource(request) as ReturnType<
         TCompleteAgentResourceService['renameResource']
       >
     ),
-    deleteResource: (resourceId) => owner.deleteResource(tenant, resourceId),
-    countResourceData: (request) => owner.countResourceData(tenant, request),
+    deleteResource: (resourceId) => owner.deleteResource(resourceId),
+    countResourceData: (request) => owner.countResourceData(request),
     listResourceData: (request) => (
-      owner.listResourceData(tenant, request) as ReturnType<
+      owner.listResourceData(request) as ReturnType<
         TCompleteAgentResourceService['listResourceData']
       >
     ),
-    getResourceDataEntry: (request) => owner.getResourceDataEntry(tenant, request),
+    getResourceDataEntry: (request) => owner.getResourceDataEntry(request),
     setResourceDataEntry: (request) => (
-      owner.setResourceDataEntry(tenant, request) as ReturnType<
+      owner.setResourceDataEntry(request) as ReturnType<
         TCompleteAgentResourceService['setResourceDataEntry']
       >
     ),
-    deleteResourceDataEntry: (request) => owner.deleteResourceDataEntry(tenant, request),
+    deleteResourceDataEntry: (request) => owner.deleteResourceDataEntry(request),
     inspectDbResource: (request) => (
-      owner.inspectDbResource(tenant, request) as ReturnType<
+      owner.inspectDbResource(request) as ReturnType<
         TCompleteAgentResourceService['inspectDbResource']
       >
     ),
     executeDbLiveSql: (request) => (
-      owner.executeDbLiveSql(tenant, request) as ReturnType<
+      owner.executeDbLiveSql(request) as ReturnType<
         TCompleteAgentResourceService['executeDbLiveSql']
       >
     ),
     createDbDraft: (resourceId, name) => (
-      owner.createDbDraft(tenant, resourceId, name) as ReturnType<
+      owner.createDbDraft(resourceId, name) as ReturnType<
         TCompleteAgentResourceService['createDbDraft']
       >
     ),
     executeDbDraftSql: (draftId, sql, parameters) => (
-      owner.executeDbDraftSql(tenant, draftId, sql, parameters) as ReturnType<
+      owner.executeDbDraftSql(draftId, sql, parameters) as ReturnType<
         TCompleteAgentResourceService['executeDbDraftSql']
       >
     ),
     discardDbDraft: (draftId) => (
-      owner.discardDbDraft(tenant, draftId) as ReturnType<
+      owner.discardDbDraft(draftId) as ReturnType<
         TCompleteAgentResourceService['discardDbDraft']
       >
     ),
     previewDbApply: (draftId) => (
-      owner.previewDbApply(tenant, draftId) as ReturnType<
+      owner.previewDbApply(draftId) as ReturnType<
         TCompleteAgentResourceService['previewDbApply']
       >
     ),
     confirmDbApply: (draftId) => (
-      owner.confirmDbApply(tenant, draftId) as ReturnType<
+      owner.confirmDbApply(draftId) as ReturnType<
         TCompleteAgentResourceService['confirmDbApply']
       >
     ),
     getDbApply: async (applyId) => {
-      const details = await owner.getDbApply(tenant, applyId);
+      const details = await owner.getDbApply(applyId);
       return { apply: details.apply };
     },
   } satisfies TCompleteAgentResourceService;

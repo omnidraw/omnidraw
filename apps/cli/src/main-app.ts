@@ -5,7 +5,6 @@ import type { ICliConfig } from './config';
 import { fnBuildHomePreflightError } from './fn.home-preflight-error';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
-import { createAuthPlugin, OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from './plugins/auth/AuthPlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
 import { createOrpcPlugin } from './plugins/orpc/OrpcPlugin';
@@ -64,23 +63,19 @@ export async function runCliMain() {
   const { services, eventPublisher } = setupServices(config);
 
   if (config.command === 'serve' && !config.helpRequested) {
-    void OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
-      requestId: crypto.randomUUID(),
-      session: OSS_FAKE_SESSION,
-    }).then((tenant) => txCheckWidgetPrerequisites({
-        execFile: (file, args, options, callback) => {
-          execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
-        },
-        warn: (message) => console.warn(message),
-        publishNotification: (event) => eventPublisher.publishNotification(tenant, event),
+    void txCheckWidgetPrerequisites({
+      execFile: (file, args, options, callback) => {
+        execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
+      },
+      warn: (message) => console.warn(message),
+      publishNotification: (event) => eventPublisher.publishNotification(event),
     }, {
       ...config,
-    }));
+    });
   }
 
   const runtime = createRuntime<any, ICliConfig>({
     plugins: [
-      createAuthPlugin(),
       createCliPlugin(),
       createOrpcPlugin(),
       createServerPlugin(),

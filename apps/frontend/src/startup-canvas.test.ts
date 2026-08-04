@@ -1,18 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
-import type { TBrowserTenantScope } from "./services/fn.browser-tenant-scope";
 import type { TBackendCanvas } from "./types/backend.types";
 import { createStartupCanvasBootstrap, runStartupCanvasBootstrap } from "./startup-canvas";
-import {
-  activateBrowserTenantScope,
-  getBrowserTenantActivation,
-  isBrowserTenantActivationCurrent,
-} from "./services/tenant";
 
 const canvas = (id: string): TBackendCanvas => ({
   id,
   name: `Canvas ${id}`,
   revision: 0,
-  created_at: "2026-01-01 00:00:00",
+  createdAtSec: "2026-01-01 00:00:00",
+  updatedAtSec: "2026-01-01 00:00:00",
 });
 
 function createHarness(options?: {
@@ -98,15 +93,8 @@ describe("startup canvas bootstrap", () => {
     expect(harness.navigate).not.toHaveBeenCalled();
   });
 
-  test("drops a deferred tenant response after an A-to-B-to-A activation change", async () => {
-    const scope = (orgId: string) => Object.freeze({
-      accountId: `account-${orgId}`,
-      cellId: `cell-${orgId}`,
-      deploymentOrigin: "https://cloud.example",
-      orgId,
-      placementEpoch: 1,
-    }) satisfies TBrowserTenantScope;
-    const scopeA = scope("org-a");
+  test("drops a deferred response after the bootstrap turns stale", async () => {
+    let current = true;
     let resolveList!: (result: readonly [null, TBackendCanvas[]]) => void;
     const deferredList = new Promise<readonly [null, TBackendCanvas[]]>((resolve) => {
       resolveList = resolve;
@@ -115,19 +103,16 @@ describe("startup canvas bootstrap", () => {
     const navigate = vi.fn();
     const onError = vi.fn();
 
-    activateBrowserTenantScope(scopeA);
-    const activationA = getBrowserTenantActivation();
     const pending = runStartupCanvasBootstrap({
       createCanvas: vi.fn(async () => [null, canvas("created-a")] as const),
-      isCurrent: () => isBrowserTenantActivationCurrent(activationA),
+      isCurrent: () => current,
       listCanvases: () => deferredList,
       navigate,
       onError,
       setCanvases,
     }, { pathname: "/c/shared" });
 
-    activateBrowserTenantScope(scope("org-b"));
-    activateBrowserTenantScope(scopeA);
+    current = false;
     resolveList([null, [canvas("shared")]]);
     await pending;
 
