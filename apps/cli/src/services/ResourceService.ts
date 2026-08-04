@@ -136,7 +136,7 @@ function createResourceManagerStore(
         if (!current) return null;
         const resource = await control.updateResourceState(tenant, {
           resourceId: args.id,
-          expectedStatus: current.status,
+          expectedStatus: args.expectedStatus ?? current.status,
           status: args.status,
           lastError: args.lastError as TResourceDescriptor['lastError'],
           nowMs: Date.now(),
@@ -262,6 +262,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
         drainResource: (resourceId) => this.#manager.drainResource(resourceId),
         coordinateResourceApply: (resourceId, operation) => (
           this.#manager.coordinateResourceMigration(resourceId, operation)
+        ),
+        settleResourceMigration: (resourceId, settlement) => (
+          this.#manager.settleResourceMigration(resourceId, settlement)
         ),
       },
       useCoordinator: config.useCoordinator,

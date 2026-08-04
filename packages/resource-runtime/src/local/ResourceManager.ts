@@ -124,6 +124,7 @@ export type IResourceManagerStore = Readonly<{
     updateProviderState(args: Readonly<{
       id: string;
       status: TResourceStatus;
+      expectedStatus?: TResourceStatus;
       lastError: TResourceJson | null;
     }>): Promise<TResourceCatalogRecord | null>;
     beginDelete(args: Readonly<{ id: string }>): Promise<TResourceCatalogRecord | null>;
@@ -996,6 +997,31 @@ export class ResourceManager {
     return this.#trackLifecycle(this.#coordinateResourceMigration(resourceId, operation));
   }
 
+  /**
+   * Settles a catalog row left in `migrating` after interrupted or stale db
+   * work was reconciled from durable apply and physical backup evidence.
+   * The transition is compare-and-set against `migrating`, so a newer
+   * admitted migration is never overwritten.
+   */
+  settleResourceMigration(
+    resourceId: string,
+    settlement: Readonly<{ status: 'ready' } | { status: 'error'; code: string; message: string }>,
+  ): Promise<void> {
+    this.#assertOpen();
+    return this.#trackLifecycle(this.#withResourceGate(resourceId, async () => {
+      const resource = await this.#readResource(resourceId);
+      if (!resource || resource.status !== 'migrating') return;
+      await this.#store.catalog.updateProviderState({
+        id: resourceId,
+        status: settlement.status,
+        expectedStatus: 'migrating',
+        lastError: settlement.status === 'error'
+          ? { code: settlement.code, message: settlement.message }
+          : null,
+      });
+    }));
+  }
+
   async #coordinateResourceMigration<T>(
     resourceId: string,
     operation: (resource: TResourceCatalogRecord) => Promise<T>,
@@ -1022,10 +1048,20 @@ export class ResourceManager {
           throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'DbResource catalog row disappeared before apply.');
         }
         try {
-          return await operation(migrating);
+          const result = await operation(migrating);
+          const ready = await this.#store.catalog.updateProviderState({
+            id: resourceId,
+            status: 'ready',
+            expectedStatus: 'migrating',
+            lastError: null,
+          });
+          if (!ready) {
+            throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'DbResource catalog state changed before the migration could be marked ready.');
+          }
+          return result;
         } catch (error) {
           const current = await this.#readResource(resourceId).catch(() => null);
-          if (current?.status === 'migrating') await this.#markResourceError(resourceId, error);
+          if (current?.status === 'migrating') await this.#markResourceError(resourceId, error, 'migrating');
           throw error;
         }
       } finally {
@@ -1268,9 +1304,9 @@ export class ResourceManager {
     if (this.#closed) throw new ResourceError('RESOURCE_PROVIDER_UNAVAILABLE', 'Resource manager is closed.');
   }
 
-  async #markResourceError(id: string, error: unknown): Promise<void> {
+  async #markResourceError(id: string, error: unknown, expectedStatus?: TResourceStatus): Promise<void> {
     try {
-      await this.#store.catalog.updateProviderState({ id, status: 'error', lastError: safeLifecycleError(error) });
+      await this.#store.catalog.updateProviderState({ id, status: 'error', expectedStatus, lastError: safeLifecycleError(error) });
     } catch {
       // Preserve the original safe provider failure if control-state persistence also fails.
     }

@@ -169,6 +169,7 @@ function createHarness(options: {
   applyDraft?: IDbResourceLifecycle['applyDraft'];
   reconcileApply?: IDbResourceLifecycle['reconcileApply'];
   onDiagnostic?: (entry: TDbResourceCoordinatorDiagnostic) => void;
+  resourceStatus?: 'ready' | 'migrating';
 } = {}) {
   const currentMs = Date.now();
   const now = () => Date.now();
@@ -177,11 +178,12 @@ function createHarness(options: {
     id: 'db-1',
     kind: 'db',
     name: 'Notes',
-    status: 'ready',
+    status: options.resourceStatus ?? 'ready',
     lastError: null,
     createdAtMs: currentMs,
     updatedAtMs: currentMs,
   } as TResourceDescriptor;
+  const settlements: { resourceId: string; settlement: unknown }[] = [];
   const dbResource: IDbResourceLifecycle = {
     createDraft: async () => undefined,
     discardDraft: async () => undefined,
@@ -212,6 +214,9 @@ function createHarness(options: {
         updated_at: new Date(currentMs).toISOString(),
       }),
       listResources: async () => [],
+      settleResourceMigration: async (resourceId, settlement) => {
+        settlements.push({ resourceId, settlement });
+      },
       withReadyResource: async (_resourceId, operation) => operation(await (async () => ({
         id: descriptor.id,
         kind: descriptor.kind,
@@ -242,6 +247,7 @@ function createHarness(options: {
     coordinator,
     memory,
     dbResource,
+    settlements,
     backdate: (applyId: string, ms: number) => {
       const apply = memory.applies.get(applyId);
       if (apply) memory.applies.set(applyId, { ...apply, created_at: new Date(Date.now() - ms).toISOString() });
@@ -302,6 +308,50 @@ describe('DbResourceCoordinator apply lifecycle', () => {
     await expect(coordinator.createDraft('db-1', 'blocked write')).rejects.toMatchObject({
       code: 'DB_RESOURCE_APPLY_IN_PROGRESS',
     });
+    await coordinator.close();
+  });
+
+  test('settles the catalog migration after reconciling an interrupted apply', async () => {
+    const { coordinator, memory, settlements, backdate } = createHarness({
+      staleApplyGraceMs: 0,
+      resourceStatus: 'migrating',
+    });
+    const wedged = await memory.store.dbResource.apply.create({
+      id: 'apply-interrupted',
+      resourceId: 'db-1',
+      draftId: null,
+      status: 'applying',
+    });
+    backdate(wedged.id, 1_000);
+    const details = await coordinator.getApply(wedged.id);
+    expect(details.apply.status).toBe('succeeded');
+    expect(settlements).toEqual([{ resourceId: 'db-1', settlement: { status: 'ready' } }]);
+    await coordinator.close();
+  });
+
+  test('settles the catalog to error when interrupted work cannot be recovered', async () => {
+    const { coordinator, memory, settlements, backdate } = createHarness({
+      staleApplyGraceMs: 0,
+      resourceStatus: 'migrating',
+      reconcileApply: async () => ({ outcome: 'unrecoverable' as const, retainedBackupApplyId: null }),
+    });
+    const wedged = await memory.store.dbResource.apply.create({
+      id: 'apply-doomed',
+      resourceId: 'db-1',
+      draftId: null,
+      status: 'applying',
+    });
+    backdate(wedged.id, 1_000);
+    const details = await coordinator.getApply(wedged.id);
+    expect(details.apply.status).toBe('failed');
+    expect(settlements).toEqual([{
+      resourceId: 'db-1',
+      settlement: {
+        status: 'error',
+        code: 'DB_RESOURCE_RECOVERY_FAILED',
+        message: 'Interrupted database work could not be recovered safely.',
+      },
+    }]);
     await coordinator.close();
   });
 
