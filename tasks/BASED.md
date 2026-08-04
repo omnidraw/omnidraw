@@ -295,9 +295,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 - [x]: [A106](a/A106.md) - theme: authoritative CSS variables and compact canvas colors
 - [ ]: [A107](a/A107.md) - sidebar: no hover color on section titles, compact "+ Add" widget button
-- [R]: [A108](a/A108.md) - widgets: manifest v4 and pure filesystem contracts
-- [R]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
-- [R]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
+- [x]: [A108](a/A108.md) - widgets: manifest v4 and pure filesystem contracts
+- [x]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
+- [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -434,9 +434,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S132](s/S132.md) - packages: make the canvas kernel workspace-split ready
 - [x]: [S133](s/S133.md) - widget publish: auto-heal changed drafts; Publish builds current source and promotes that exact build
 - [x]: [S134](s/S134.md) - release 0.5.0: remove binary distribution, normal build, docs and CI cleanup
-- [R]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
-- [R]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
-- [R]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
+- [~]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
+- [~]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
+- [~]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
 - [R]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
 
 ## E xplorations

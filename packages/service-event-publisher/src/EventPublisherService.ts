@@ -1,8 +1,5 @@
-import { fnScopedKey } from '@omnidraw/tenant-core';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IEventPublisherService,
-  ITenantEventPublisherService,
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
@@ -17,94 +14,61 @@ export class EventPublisherService implements IEventPublisherService {
   readonly #db = new EventBus<TDbEvent>();
   readonly #agent = new EventBus<TAgentEvent>();
   readonly #notification = new EventBus<TNotificationEvent>();
-  readonly #latestNotification = new Map<string, TNotificationEvent>();
+  #latestNotification: TNotificationEvent | null = null;
 
-  forTenant(tenant: TTenantContext): ITenantEventPublisherService {
-    return Object.freeze({
-      publishDbEvent: (canvasId: string, event: TDbEvent) => this.publishDbEvent(tenant, canvasId, event),
-      subscribeDbEvents: (canvasId: string, options?: TEventSubscriptionOptions) => this.subscribeDbEvents(tenant, canvasId, options),
-      subscribeDbEventRecords: (canvasId: string, options?: TEventSubscriptionOptions) => (
-        this.subscribeDbEventRecords(tenant, canvasId, options)
-      ),
-      getDbEventCursor: () => this.getDbEventCursor(tenant),
-      publishAgentEvent: (event: TAgentEvent) => this.publishAgentEvent(tenant, event),
-      subscribeAgentEvents: (options?: TEventSubscriptionOptions) => this.subscribeAgentEvents(tenant, options),
-      getAgentEventCursor: () => this.getAgentEventCursor(tenant),
-      publishNotification: (event: TNotificationEvent) => this.publishNotification(tenant, event),
-      subscribeNotifications: (options?: TEventSubscriptionOptions) => this.subscribeNotifications(tenant, options),
-      subscribeNotificationRecords: (options?: TEventSubscriptionOptions) => (
-        this.subscribeNotificationRecords(tenant, options)
-      ),
-      getNotificationEventCursor: () => this.getNotificationEventCursor(tenant),
-      getLatestNotification: () => this.getLatestNotification(tenant),
-    });
+  publishDbEvent(canvasId: string, event: TDbEvent): number {
+    return this.#db.publish(canvasId, event);
   }
 
-  publishDbEvent(tenant: TTenantContext, canvasId: string, event: TDbEvent): number {
-    return this.#db.publish(this.#orgScope(tenant, 'db'), canvasId, event);
-  }
-
-  subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent> {
-    return this.#db.subscribe(this.#orgScope(tenant, 'db'), canvasId, options);
+  subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent> {
+    return this.#db.subscribe(canvasId, options);
   }
 
   subscribeDbEventRecords(
-    tenant: TTenantContext,
     canvasId: string,
     options?: TEventSubscriptionOptions,
   ): AsyncIterable<TSequencedEvent<TDbEvent>> {
-    return this.#db.subscribeRecords(this.#orgScope(tenant, 'db'), canvasId, options);
+    return this.#db.subscribeRecords(canvasId, options);
   }
 
-  getDbEventCursor(tenant: TTenantContext): number {
-    return this.#db.cursor(this.#orgScope(tenant, 'db'));
+  getDbEventCursor(): number {
+    return this.#db.cursor();
   }
 
-  publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number {
-    return this.#agent.publish(this.#accountScope(tenant, 'agent'), 'global', event);
+  publishAgentEvent(event: TAgentEvent): number {
+    return this.#agent.publish('global', event);
   }
 
-  subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent> {
-    return this.#agent.subscribe(this.#accountScope(tenant, 'agent'), 'global', options);
+  subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent> {
+    return this.#agent.subscribe('global', options);
   }
 
-  getAgentEventCursor(tenant: TTenantContext): number {
-    return this.#agent.cursor(this.#accountScope(tenant, 'agent'));
+  getAgentEventCursor(): number {
+    return this.#agent.cursor();
   }
 
-  publishNotification(tenant: TTenantContext, event: TNotificationEvent): number {
-    const scope = this.#accountScope(tenant, 'notification');
-    this.#latestNotification.set(scope, event);
-    return this.#notification.publish(scope, 'global', event);
+  publishNotification(event: TNotificationEvent): number {
+    this.#latestNotification = event;
+    return this.#notification.publish('global', event);
   }
 
-  subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent> {
-    return this.#notification.subscribe(this.#accountScope(tenant, 'notification'), 'global', options);
+  subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent> {
+    return this.#notification.subscribe('global', options);
   }
 
   subscribeNotificationRecords(
-    tenant: TTenantContext,
     options?: TEventSubscriptionOptions,
   ): AsyncIterable<TSequencedEvent<TNotificationEvent>> {
-    const scope = this.#accountScope(tenant, 'notification');
-    const afterSequence = options?.afterSequence ?? Math.max(0, this.#notification.cursor(scope) - 1);
-    return this.#notification.subscribeRecords(scope, 'global', { afterSequence });
+    const afterSequence = options?.afterSequence ?? Math.max(0, this.#notification.cursor() - 1);
+    return this.#notification.subscribeRecords('global', { afterSequence });
   }
 
-  getNotificationEventCursor(tenant: TTenantContext): number {
-    return this.#notification.cursor(this.#accountScope(tenant, 'notification'));
+  getNotificationEventCursor(): number {
+    return this.#notification.cursor();
   }
 
-  getLatestNotification(tenant: TTenantContext): TNotificationEvent | null {
-    return this.#latestNotification.get(this.#accountScope(tenant, 'notification')) ?? null;
-  }
-
-  #orgScope(tenant: TTenantContext, namespace: string): string {
-    return fnScopedKey(namespace, [tenant.orgId]);
-  }
-
-  #accountScope(tenant: TTenantContext, namespace: string): string {
-    return fnScopedKey(namespace, [tenant.orgId, tenant.accountId]);
+  getLatestNotification(): TNotificationEvent | null {
+    return this.#latestNotification;
   }
 
 }

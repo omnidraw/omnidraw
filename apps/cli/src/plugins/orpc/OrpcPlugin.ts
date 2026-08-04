@@ -26,7 +26,7 @@ type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'functionInvocation'
   | 'humanResourceSecret'
   | 'resource'
-  | 'widget'
+  | 'widgetCatalog'
   | 'widgetCapsuleHostConfiguration'
   | 'widgetRuntimeLoadAdmission'
   | 'widgetState'
@@ -44,7 +44,7 @@ function createOrpcTenantContext(
     functionInvocation: services.functionInvocation,
     humanResourceSecret: services.humanResourceSecret,
     resource: services.resource,
-    widget: services.widget,
+    widgetCatalog: services.widgetCatalog,
     widgetState: services.widgetState,
     widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
@@ -68,13 +68,16 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const functionInvocation = ctx.services.require('functionInvocation');
       const humanResourceSecret = ctx.services.require('humanResourceSecret');
       const resource = ctx.services.require('resource');
-      const widget = ctx.services.require('widget');
+      const widgetCatalog = ctx.services.require('widgetCatalog');
       const widgetCapsuleHostConfiguration = ctx.services.require(
         'widgetCapsuleHostConfiguration',
       );
       const widgetRuntimeLoadAdmission = ctx.services.require('widgetRuntimeLoadAdmission');
       const widgetState = ctx.services.require('widgetState');
       const agent = ctx.services.require('agent');
+      ctx.hooks.boot.tapPromise(async () => {
+        await widgetCatalog.start();
+      });
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
           onError((error) => {
@@ -101,7 +104,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
             functionInvocation,
             humanResourceSecret,
             resource,
-            widget,
+            widgetCatalog,
             widgetState,
             widgetCapsuleHostConfiguration,
             widgetRuntimeLoadAdmission,

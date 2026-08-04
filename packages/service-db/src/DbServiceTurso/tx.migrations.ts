@@ -26,7 +26,6 @@ type TPortal = {
 
 type TArgs = {
   applicationVersion: string;
-  appliedAtMs: number;
   expectedSchemaContracts: readonly TExpectedDatabaseSchemaContract[];
 };
 
@@ -58,10 +57,6 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
   if (!args.applicationVersion.trim()) {
     throw new Error('Migration applicationVersion must not be empty.');
   }
-  if (!Number.isSafeInteger(args.appliedAtMs) || args.appliedAtMs < 0) {
-    throw new Error('Migration appliedAtMs must be a non-negative safe integer.');
-  }
-
   const migrations = await resolveMigrations(portal);
   for (const migration of migrations) {
     const transactionControl = fnFindTopLevelMigrationTransactionControl(migration.sql);
@@ -115,25 +110,19 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
         return false;
       }
 
-      const appliedCount = lockedState.status === 'empty'
-        ? 0
-        : lockedState.appliedMigrations.length;
-
-      for (const migration of migrations.slice(appliedCount)) {
+      for (const migration of migrations) {
         await portal.db.exec(migration.sql);
         await (await portal.db.prepare(`
           INSERT INTO schema_migrations (
             version,
             name,
             checksum_sha256,
-            applied_at_ms,
             application_version
-          ) VALUES (?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?)
         `)).run(
           migration.version,
           migration.name,
           migration.checksumSha256,
-          args.appliedAtMs,
           args.applicationVersion,
         );
       }

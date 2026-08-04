@@ -1,7 +1,17 @@
 export * from './api.runtime-config';
+export * from './api.catalog-events';
+export * from './api.catalog-get';
+export * from './api.catalog-refresh';
+export * from './api.catalog-files';
+export * from './api.config-save';
+export * from './api.publication';
+export * from './api.placement-resolve';
 export * from './api.runtime-load-widget';
 export * from './CONSTANTS';
 export * from './contract';
 export * from './handlers';
+export * from './fn.catalog-event';
+export * from './fn.catalog-public';
 export * from './orpc';
+export type * from './public-types';
 export * from './types';

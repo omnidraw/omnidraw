@@ -6,14 +6,12 @@ import type {
   TApprovalReviewer,
   TApprovalView,
   TProtectedApprovalKind,
-  TToolAuthorizationContext,
   TToolAuthorizer,
 } from './types';
 import { fnNormalizeApprovalReviewDecision } from './fn.approval-policy';
 
 type TPendingApproval = {
   view: TApprovalView;
-  authorization: TToolAuthorizationContext;
   status: 'pending' | 'reviewing' | 'authorizing' | 'executing';
   abortSignal?: AbortSignal;
   onAbort?: () => void;
@@ -42,7 +40,6 @@ type TRequestApprovalArgs<TArgs, TResult> = {
   chatId: string;
   toolCallId: string;
   kind: TProtectedApprovalKind;
-  authorization: TToolAuthorizationContext;
   exactArgs: TArgs;
   summary: string;
   risk: TApprovalView['risk'];
@@ -81,7 +78,7 @@ export class ApprovalCoordinator {
     return Array.from(this.#pending.values())
       .filter((pending) => pending.view.chatId === chatId && pending.status === 'pending')
       .map((pending) => structuredClone(pending.view))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      .sort((left, right) => left.createdAtSec.localeCompare(right.createdAtSec));
   }
 
   get(chatId: string, approvalId: string): TApprovalView | null {
@@ -108,14 +105,15 @@ export class ApprovalCoordinator {
       risk: args.risk,
       warnings: [...(args.warnings ?? [])],
       details: structuredClone(args.safeDetails),
-      createdAt: this.#now().toISOString(),
+      createdAtSec: new Date(
+        Math.floor(this.#now().getTime() / 1_000) * 1_000,
+      ).toISOString(),
       policyMode: policy.mode,
     });
 
     return new Promise<TResult>((resolve, reject) => {
       const pending: TPendingApproval = {
         view,
-        authorization: this.#deepFreeze(structuredClone(args.authorization)),
         status: policy.mode === 'manual'
           ? 'pending'
           : policy.mode === 'ai-review'
@@ -141,7 +139,6 @@ export class ApprovalCoordinator {
           pending,
           'approve',
           'policy',
-          pending.authorization,
         ));
         return;
       }
@@ -153,7 +150,6 @@ export class ApprovalCoordinator {
     chatId: string,
     approvalId: string,
     decision: TApprovalDecision,
-    authorization: TToolAuthorizationContext,
   ): Promise<{
     resolved: true;
     decision: TApprovalDecision;
@@ -167,7 +163,7 @@ export class ApprovalCoordinator {
       throw new Error('Approval request is already being resolved.');
     }
     pending.status = 'authorizing';
-    await this.#settleDecision(pending, decision, 'user', authorization);
+    await this.#settleDecision(pending, decision, 'user');
     return { resolved: true, decision, decisionSource: 'user' };
   }
 
@@ -207,7 +203,6 @@ export class ApprovalCoordinator {
         pending,
         result.decision,
         'reviewer',
-        pending.authorization,
         result.reason,
       );
     } catch {
@@ -225,7 +220,6 @@ export class ApprovalCoordinator {
     pending: TPendingApproval,
     decision: TApprovalDecision,
     decisionSource: TApprovalDecisionSource,
-    authorization: TToolAuthorizationContext,
     reviewerReason?: string,
   ): Promise<void> {
     if (this.#pending.get(pending.view.id) !== pending || pending.status !== 'authorizing') return;
@@ -248,7 +242,7 @@ export class ApprovalCoordinator {
 
     let authorized: boolean;
     try {
-      authorized = await this.#isAuthorized(pending.view.chatId, authorization);
+      authorized = await this.#isAuthorized(pending.view.chatId);
     } catch (error) {
       if (
         this.#pending.get(pending.view.id) !== pending
@@ -332,9 +326,9 @@ export class ApprovalCoordinator {
     });
   }
 
-  async #isAuthorized(chatId: string, context: TToolAuthorizationContext): Promise<boolean> {
+  async #isAuthorized(chatId: string): Promise<boolean> {
     if (!this.#authorize) return true;
-    return this.#authorize({ chatId, toolName: 'approval.resolve', context });
+    return this.#authorize({ chatId, toolName: 'approval.resolve' });
   }
 
   #deepFreeze<T>(value: T): T {

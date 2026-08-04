@@ -47,7 +47,6 @@ import type { TTenantDb } from '@omnidraw/service-db/DbServiceTurso/DbServiceTur
 import { Database } from '@omnidraw/service-db/DbServiceTurso/turso-native';
 import { fnResourceNameKey } from '@omnidraw/service-db/core/fn.resource-name';
 import type { TTenantContext } from '@omnidraw/tenant-core';
-import type { TWidgetResourceBindingInput } from '@omnidraw/widget-contract';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
   RESOURCE_MANAGEMENT_OPERATION,
@@ -68,11 +67,14 @@ type TResourceServiceConfig = Readonly<{
 }>;
 
 type TFunctionResourceGatewayRequest = Readonly<{
-  definitionId: string;
-  revisionId: string;
   requirements: readonly TResourceRequirement[];
-  /** Exact retained Preview bindings; omitted for published revision lookup. */
-  bindings?: readonly TWidgetResourceBindingInput[];
+  bindings: readonly Readonly<{
+    slot: string;
+    resourceId: string;
+    kind: TResourceKind;
+    allowRead: boolean;
+    allowWrite: boolean;
+  }>[];
 }>;
 
 type TFunctionResourceGatewayAccess = Readonly<{
@@ -97,15 +99,6 @@ function createResourceManagerStore(
   control: IResourceControlStore,
   db: TTenantDb,
 ): IResourceManagerStore {
-  const bindingRecord = (binding: Awaited<ReturnType<IResourceControlStore['listBindingsForResource']>>[number]) => ({
-    definition_name: binding.definitionId,
-    slot_name: binding.slot,
-    resource_id: binding.resourceId,
-    allow_read: binding.allowRead,
-    allow_write: binding.allowWrite,
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString(),
-  });
   return {
     catalog: {
       list: async (filter) => (await control.listResources(tenant, filter)).map(toCatalogResource),
@@ -156,13 +149,6 @@ function createResourceManagerStore(
         return resource ? toCatalogResource(resource) : null;
       },
       delete: (args) => control.deleteResource(tenant, args.id),
-      listBindingsForResource: async (args) => (
-        await control.listBindingsForResource(tenant, args.resourceId)
-      ).map(bindingRecord),
-      listBindingsForDefinition: async () => [],
-      upsertBinding: async () => { throw new ResourceError('RESOURCE_CALL_INVALID', 'Definition-name bindings were removed.'); },
-      removeBinding: async () => false,
-      replaceBindings: async () => { throw new ResourceError('RESOURCE_CALL_INVALID', 'Definition-name bindings were removed.'); },
     },
     migration: {
       hasActiveWork: async (resourceId) => {
@@ -247,7 +233,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     this.#manager = new ResourceManager({
       store: createResourceManagerStore(config.tenant, config.controlStore, config.db),
       crypto: cryptoPortal,
-      resolveRequirements: () => null,
       providers: logicalProviders,
       closeProviders: false,
     });
@@ -400,16 +385,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     await this.#managementCall(tenant, resource.id, resource.kind, 'deleteResource', null);
   }
 
-  async listResourceReferences(tenant: TTenantContext, resourceId: string) {
-    this.#assertTenantPlacement(tenant);
-    return this.#controlStore.listBindingsForResource(tenant, resourceId);
-  }
-
-  call(tenant: TTenantContext, call: TResourceManagerCall) {
-    this.#assertTenantPlacement(tenant);
-    return this.#requireGateway().call(tenant, call);
-  }
-
   callWithDirectBinding(
     tenant: TTenantContext,
     call: TResourceManagerCall,
@@ -431,27 +406,17 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       }
       requirements.set(requirement.slot, requirement);
     }
-    const retainedBindings = request.bindings === undefined
-      ? null
-      : new Map(request.bindings.map((binding) => [binding.slot, binding]));
+    const retainedBindings = new Map(request.bindings.map((binding) => [binding.slot, binding]));
     const bindings: IResourceBindingResolver = Object.freeze({
       resolveBinding: async (callTenant: TTenantContext, slot: string) => {
         this.#assertTenantPlacement(callTenant);
-        const binding = retainedBindings === null
-          ? await this.#controlStore.resolveBinding(callTenant, {
-              definitionId: request.definitionId,
-              revisionId: request.revisionId,
-              slot,
-            })
-          : retainedBindings.get(slot) ?? null;
+        const binding = retainedBindings.get(slot) ?? null;
         return binding === null ? null : {
           slot: binding.slot,
           resourceId: binding.resourceId,
           kind: binding.kind,
           allowRead: binding.allowRead,
           allowWrite: binding.allowWrite,
-          definitionId: request.definitionId,
-          revisionId: request.revisionId,
           required: requirements.get(slot)?.required ?? false,
         };
       },

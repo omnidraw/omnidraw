@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test'
-import type { TFunctionInvocationEnvelope } from '@omnidraw/function-runtime'
 import { MANAGED_TENANT, createManagedCompositionFixture } from './src/managed-composition'
 
 describe('external private-style managed composition', () => {
@@ -10,12 +9,9 @@ describe('external private-style managed composition', () => {
     expect(fixture.bootEvidence).toEqual([
       'managed-identity',
       'managed-placement',
-      'managed-artifacts',
       'managed-widget-capsule-host-configuration',
-      'managed-dispatcher',
-      'managed-executor',
+      'managed-functions',
       'managed-resources',
-      'managed-usage',
     ])
     expect(await fixture.services.identity.resolveIdentity({ requestId: 'request', session: {} }))
       .toMatchObject({ orgId: MANAGED_TENANT.orgId, accountId: MANAGED_TENANT.accountId })
@@ -42,76 +38,65 @@ describe('external private-style managed composition', () => {
     await fixture.runtime.shutdown()
   })
 
-  test('uses managed artifact, dispatcher/executor, resource, and usage fakes', async () => {
+  test('composes one direct call with exact bytes and no history/status surface', async () => {
     const fixture = createManagedCompositionFixture()
     await fixture.runtime.boot()
-
-    const descriptor = await fixture.services.artifacts.putArtifact(MANAGED_TENANT, {
-      id: 'artifact-managed',
-      kind: 'server',
-      digestSha256: 'a'.repeat(64),
-      bytes: new Uint8Array([1, 2, 3]),
-      retentionState: 'pinned',
-      retainUntilMs: null,
-      createdAtMs: 1,
+    const definition = Object.freeze({
+      widgetKey: 'managed-widget',
+      catalogGeneration: 9,
+      runtimeAbi: 'omnidraw.function.v1',
+      artifactDigestSha256: 'a'.repeat(64),
+      descriptor: Object.freeze({
+        schemaVersion: 1 as const,
+        exportName: 'readSettings',
+        modulePath: 'server/main.ts',
+        effect: 'fx' as const,
+        inputSchema: {},
+        outputSchema: {},
+        resources: Object.freeze([{ slot: 'settings', effect: 'read' as const }]),
+        limits: Object.freeze({
+          timeoutMs: 1_000,
+          memoryTier: 'small' as const,
+          outputByteLimit: 1_024,
+          logByteLimit: 1_024,
+        }),
+      }),
     })
-    const readRequest = {
-      artifactId: descriptor.id,
-      readCapability: `managed-read:${MANAGED_TENANT.orgId}:${descriptor.id}`,
-      purpose: 'server_execution' as const,
-    }
-    expect(await fixture.services.artifacts.readArtifact(MANAGED_TENANT, readRequest))
-      .toEqual(new Uint8Array([1, 2, 3]))
 
-    const dispatchRequest = {
-      widgetDefinitionId: 'definition-managed',
-      widgetRevisionId: 'revision-managed',
-      subject: { kind: 'widget_instance', canvasId: 'canvas-managed', widgetInstanceId: 'instance-managed' },
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'idempotency-managed',
-    } as const
-    const dispatch = await fixture.services.dispatcher.invoke(MANAGED_TENANT, dispatchRequest)
-    expect(dispatch).toMatchObject({
-      status: 'created',
-      invocation: {
-        envelope: {
-          id: 'managed-invocation:idempotency-managed',
-          tenant: MANAGED_TENANT,
-          widgetRevisionId: 'revision-managed',
-          functionName: 'run',
+    await expect(fixture.services.functions.invoke({
+      tenant: MANAGED_TENANT,
+      subject: {
+        canvasId: 'canvas-managed',
+        elementId: 'element-managed',
+        widgetInstanceId: 'instance-managed',
+      },
+      definition,
+      artifact: new Uint8Array([1, 2, 3]),
+      input: { key: 'theme' },
+      createResources: () => fixture.services.resources,
+    })).resolves.toEqual({
+      status: 'succeeded',
+      output: {
+        managed: true,
+        artifactByteSize: 3,
+        resource: {
+          managed: true,
+          orgId: MANAGED_TENANT.orgId,
+          operation: 'get',
         },
-        status: 'queued',
+      },
+      diagnostics: {
+        code: null,
+        message: null,
+        logByteSize: 0,
+        truncated: false,
       },
     })
-    expect(await fixture.services.dispatcher.invoke(MANAGED_TENANT, dispatchRequest))
-      .toMatchObject({ status: 'replayed' })
-    expect(await fixture.services.dispatcher.invoke(MANAGED_TENANT, {
-      ...dispatchRequest,
-      input: { changed: true },
-    })).toEqual({
-      status: 'conflict',
-      invocationId: 'managed-invocation:idempotency-managed',
-      reason: 'fingerprint_mismatch',
-    })
-    expect(fixture.dispatchEvidence).toHaveLength(3)
-    expect(await fixture.services.executor.execute({ id: 'invocation-managed' } as TFunctionInvocationEnvelope))
-      .toEqual({ status: 'not_claimed', reason: 'managed-fixture:invocation-managed' })
-
-    expect(await fixture.services.resources.call(MANAGED_TENANT, {
-      slot: 'settings',
-      effect: 'read',
-      operation: 'get',
-      input: { key: 'theme' },
-    })).toEqual({ output: { managed: true, orgId: MANAGED_TENANT.orgId, operation: 'get' } })
-
-    expect(await fixture.services.usage.listUsageOutbox(MANAGED_TENANT, { limit: 10 })).toEqual([])
-    expect(await fixture.services.usage.transitionUsageOutbox(MANAGED_TENANT, {
-      ids: ['usage-1'],
-      expected: 'pending',
-      next: 'importing',
-      nowMs: 1,
-    })).toBe(1)
+    expect(fixture.invocationEvidence).toHaveLength(1)
+    expect(fixture.invocationEvidence[0]?.definition).toBe(definition)
+    expect('get' in fixture.services.functions).toBe(false)
+    expect('cancel' in fixture.services.functions).toBe(false)
+    expect('listUsage' in fixture.services.functions).toBe(false)
 
     await fixture.runtime.shutdown()
   })

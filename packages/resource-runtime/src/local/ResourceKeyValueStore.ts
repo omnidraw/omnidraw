@@ -14,11 +14,7 @@ import type {
   TResourceKeyValueIdentity,
   TResourceKeyValueKind,
   TResourceKeyValuePage,
-  TResourceKeyValueCommittedOperation,
-  TResourceKeyValueReceiptMutationRequest,
-  TResourceKeyValueMutationReceipt,
 } from './ResourceKeyValuePersistence';
-import type { IResourceWritePermitGuard } from '../interface';
 import {
   fnResourceKeyValueEntry,
   fnResourceKeyValueEntryMetadata,
@@ -108,28 +104,10 @@ BEGIN
 END
 `;
 
-const RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL = `
-CREATE TABLE \`_omnidraw_function_operation_receipts\` (
-  \`invocation_id\` TEXT NOT NULL,
-  \`operation_id\` TEXT NOT NULL,
-  \`attempt_id\` TEXT NOT NULL,
-  \`operation_name\` TEXT NOT NULL CHECK (\`operation_name\` IN ('set', 'delete', 'compareAndSet')),
-  \`operation_fingerprint_sha256\` TEXT NOT NULL CHECK (
-    length(\`operation_fingerprint_sha256\`) = 64
-    AND \`operation_fingerprint_sha256\` = lower(\`operation_fingerprint_sha256\`)
-    AND \`operation_fingerprint_sha256\` NOT GLOB '*[^0-9a-f]*'
-  ),
-  \`output_json\` JSON NOT NULL,
-  \`committed_at\` TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  PRIMARY KEY (\`invocation_id\`, \`operation_id\`)
-) STRICT
-`;
-
 const RESOURCE_SCHEMA_SQL = `
 ${RESOURCE_METADATA_SCHEMA_SQL};
 ${RESOURCE_ENTRIES_SCHEMA_SQL};
 ${RESOURCE_UPDATED_AT_TRIGGER_SQL};
-${RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL};
 `;
 
 function normalizeSchemaSql(sql: string): string {
@@ -531,159 +509,6 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     });
   }
 
-  async mutateWithReceipt(
-    request: TResourceKeyValueReceiptMutationRequest,
-    guard: IResourceWritePermitGuard,
-  ): Promise<TResourceKeyValueMutationReceipt> {
-    const resourceId = this.#operationResourceId(request.resourceId);
-    if (
-      request.invocationId.length === 0
-      || request.attemptId.length === 0
-      || request.operationId.length === 0
-      || !/^[0-9a-f]{64}$/.test(request.operationFingerprintSha256)
-    ) {
-      throw new TypeError('Resource operation receipt identity is invalid.');
-    }
-    const mutation = request.mutation;
-    const serializedValue = mutation.operation === 'delete'
-      ? null
-      : fnResourceKeyValueSerialize(mutation.value);
-    if (
-      mutation.operation === 'delete'
-      && mutation.expectedRevision !== undefined
-      && (!Number.isInteger(mutation.expectedRevision) || mutation.expectedRevision < 1)
-    ) throw new RangeError('Expected revision must be a positive integer.');
-    if (
-      mutation.operation === 'compareAndSet'
-      && mutation.expectedRevision !== null
-      && (!Number.isInteger(mutation.expectedRevision) || mutation.expectedRevision < 1)
-    ) throw new RangeError('Expected revision must be null or a positive integer.');
-
-    return this.#scheduleWrite(resourceId, () => this.#withHandle(resourceId, async (database) => {
-      await database.exec('BEGIN IMMEDIATE;', { queryTimeout: this.#queryTimeoutMs });
-      try {
-        const prior = await (await database.prepare(`
-          SELECT operation_name, operation_fingerprint_sha256, output_json
-          FROM _omnidraw_function_operation_receipts
-          WHERE invocation_id = ? AND operation_id = ?
-        `)).get(request.invocationId, request.operationId) as Record<string, unknown> | null | undefined;
-        if (prior) {
-          if (
-            prior.operation_name !== mutation.operation
-            || prior.operation_fingerprint_sha256 !== request.operationFingerprintSha256
-          ) {
-            throw new Error('Resource operation receipt identity conflicts with its persisted mutation.');
-          }
-          const output = fnResourceKeyValueParse(prior.output_json);
-          await guard.assertCanCommit();
-          await database.exec('COMMIT;', { queryTimeout: this.#queryTimeoutMs });
-          return { output, committed: true, replayed: true };
-        }
-
-        let output: TJson;
-        if (mutation.operation === 'set') {
-          await (await database.prepare(`
-            INSERT INTO resource_entries (key, value)
-            VALUES (?, ?)
-            ON CONFLICT (key) DO UPDATE SET
-              value = excluded.value,
-              revision = resource_entries.revision + 1
-          `)).run(mutation.key, serializedValue);
-          const entry = await this.#getEntryFromDatabase(database, mutation.key);
-          if (!entry) throw new Error('Resource set succeeded without a persisted entry.');
-          output = this.#kind === 'kv'
-            ? { value: entry.value, revision: entry.revision }
-            : { name: entry.key, revision: entry.revision };
-        } else if (mutation.operation === 'delete') {
-          const result = await (await database.prepare(`
-            DELETE FROM resource_entries
-            WHERE key = ? AND (? IS NULL OR revision = ?)
-          `)).run(
-            mutation.key,
-            mutation.expectedRevision ?? null,
-            mutation.expectedRevision ?? null,
-          );
-          output = { deleted: result.changes > 0 };
-        } else {
-          const result = mutation.expectedRevision === null
-            ? await (await database.prepare(`
-                INSERT INTO resource_entries (key, value)
-                VALUES (?, ?)
-                ON CONFLICT (key) DO NOTHING
-              `)).run(mutation.key, serializedValue)
-            : await (await database.prepare(`
-                UPDATE resource_entries
-                SET value = ?, revision = revision + 1
-                WHERE key = ? AND revision = ?
-              `)).run(serializedValue, mutation.key, mutation.expectedRevision);
-          const current = await this.#getEntryFromDatabase(database, mutation.key);
-          output = result.changes === 0
-            ? { ok: false, currentRevision: current?.revision ?? null }
-            : current === null
-              ? (() => { throw new Error('Resource CAS succeeded without a persisted entry.'); })()
-              : this.#kind === 'kv'
-                ? { ok: true, entry: { value: current.value, revision: current.revision } }
-                : { ok: true, entry: { name: current.key, revision: current.revision } };
-        }
-        const outputJson = fnResourceKeyValueSerialize(output);
-        await guard.assertCanCommit();
-        await (await database.prepare(`
-          INSERT INTO _omnidraw_function_operation_receipts (
-            invocation_id, operation_id, attempt_id, operation_name,
-            operation_fingerprint_sha256, output_json
-          ) VALUES (?, ?, ?, ?, ?, ?)
-        `)).run(
-          request.invocationId,
-          request.operationId,
-          request.attemptId,
-          mutation.operation,
-          request.operationFingerprintSha256,
-          outputJson,
-        );
-        await database.exec('COMMIT;', { queryTimeout: this.#queryTimeoutMs });
-        return { output, committed: true, replayed: false };
-      } catch (error) {
-        await database.exec('ROLLBACK;', { queryTimeout: this.#queryTimeoutMs }).catch(() => undefined);
-        throw error;
-      }
-    }));
-  }
-
-  async readCommittedOperation(args: {
-    readonly resourceId: string;
-    readonly invocationId: string;
-    readonly operationId: string;
-  }): Promise<TResourceKeyValueCommittedOperation | null> {
-    const resourceId = this.#operationResourceId(args.resourceId);
-    if (args.invocationId.length === 0 || args.operationId.length === 0) {
-      throw new TypeError('Resource operation receipt identity is invalid.');
-    }
-    return this.#withHandle(resourceId, async (database) => {
-      const row = await (await database.prepare(`
-        SELECT invocation_id, operation_id, attempt_id, operation_name,
-          operation_fingerprint_sha256, output_json
-        FROM _omnidraw_function_operation_receipts
-        WHERE invocation_id = ? AND operation_id = ?
-      `)).get(args.invocationId, args.operationId) as Record<string, unknown> | null | undefined;
-      if (!row) return null;
-      if (
-        typeof row.invocation_id !== 'string'
-        || typeof row.operation_id !== 'string'
-        || typeof row.attempt_id !== 'string'
-        || typeof row.operation_name !== 'string'
-        || typeof row.operation_fingerprint_sha256 !== 'string'
-      ) throw new Error('Resource operation receipt is invalid.');
-      return {
-        invocationId: row.invocation_id,
-        operationId: row.operation_id,
-        attemptId: row.attempt_id,
-        operationName: row.operation_name,
-        operationFingerprintSha256: row.operation_fingerprint_sha256,
-        output: fnResourceKeyValueParse(row.output_json),
-      };
-    });
-  }
-
   close(): Promise<void> {
     if (this.#closePromise) return this.#closePromise;
     this.#closed = true;
@@ -758,15 +583,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       FROM resource_entries
       LIMIT 0
     `)).all();
-    await (await database.prepare(`
-      SELECT invocation_id, operation_id, attempt_id, operation_name,
-        operation_fingerprint_sha256, output_json, committed_at
-      FROM _omnidraw_function_operation_receipts
-      LIMIT 0
-    `)).all();
     const metadataColumns = await (await database.prepare('PRAGMA table_info(_omnidraw_resource_metadata);')).all() as TTableInfoRow[];
     const entryColumns = await (await database.prepare('PRAGMA table_info(resource_entries);')).all() as TTableInfoRow[];
-    const receiptColumns = await (await database.prepare('PRAGMA table_info(_omnidraw_function_operation_receipts);')).all() as TTableInfoRow[];
     const columnsMatch = (actual: readonly TTableInfoRow[], expected: readonly (readonly [string, string, number, number])[]) => (
       actual.length === expected.length
       && expected.every(([name, type, notnull, pk], index) => (
@@ -787,14 +605,6 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       ['revision', 'INTEGER', 1, 0],
       ['created_at', 'TEXT', 1, 0],
       ['updated_at', 'TEXT', 1, 0],
-    ]) || !columnsMatch(receiptColumns, [
-      ['invocation_id', 'TEXT', 1, 1],
-      ['operation_id', 'TEXT', 1, 1],
-      ['attempt_id', 'TEXT', 1, 0],
-      ['operation_name', 'TEXT', 1, 0],
-      ['operation_fingerprint_sha256', 'TEXT', 1, 0],
-      ['output_json', 'JSON', 1, 0],
-      ['committed_at', 'TEXT', 1, 0],
     ])) {
       throw new Error('Resource key-value physical columns are invalid.');
     }
@@ -802,7 +612,6 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     for (const tableName of [
       '_omnidraw_resource_metadata',
       'resource_entries',
-      '_omnidraw_function_operation_receipts',
     ]) {
       const table = tableList.find((candidate) => candidate.name === tableName);
       if (Number(table?.strict) !== 1 || Number(table?.wr) !== 0) {
@@ -816,7 +625,6 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
       ORDER BY type, name
     `)).all() as TSchemaObjectRow[];
     const expectedSchemaObjects = [
-      ['table', '_omnidraw_function_operation_receipts', '_omnidraw_function_operation_receipts', RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL],
       ['table', '_omnidraw_resource_metadata', '_omnidraw_resource_metadata', RESOURCE_METADATA_SCHEMA_SQL],
       ['table', 'resource_entries', 'resource_entries', RESOURCE_ENTRIES_SCHEMA_SQL],
       ['trigger', 'resource_entries_updated_at_after_update', 'resource_entries', RESOURCE_UPDATED_AT_TRIGGER_SQL],
@@ -981,8 +789,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
           row.key,
           row.serializedValue,
           row.revision,
-          row.createdAt,
-          row.updatedAt,
+          row.createdAtSec,
+          row.updatedAtSec,
         );
       }
       if (rows.length < COPY_PAGE_SIZE) return;
@@ -1003,8 +811,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
           || sourceRow.key !== destinationRow.key
           || sourceRow.serializedValue !== destinationRow.serializedValue
           || sourceRow.revision !== destinationRow.revision
-          || sourceRow.createdAt !== destinationRow.createdAt
-          || sourceRow.updatedAt !== destinationRow.updatedAt
+          || sourceRow.createdAtSec !== destinationRow.createdAtSec
+          || sourceRow.updatedAtSec !== destinationRow.updatedAtSec
         ) {
           throw this.#decryptionFailed();
         }
@@ -1037,8 +845,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
     readonly key: string;
     readonly serializedValue: string;
     readonly revision: number;
-    readonly createdAt: string;
-    readonly updatedAt: string;
+    readonly createdAtSec: string;
+    readonly updatedAtSec: string;
   }[]> {
     const rows = await (await database.prepare(`
       SELECT key, CAST(value AS TEXT) AS serialized_value, revision, created_at, updated_at
@@ -1062,8 +870,8 @@ export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
         key: row.key,
         serializedValue: row.serialized_value,
         revision: Number(row.revision),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createdAtSec: row.created_at,
+        updatedAtSec: row.updated_at,
       };
     });
   }

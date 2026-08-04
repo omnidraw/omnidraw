@@ -5,7 +5,6 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IWidgetServerFunctionDescriptorExtractor,
   TWidgetServerFunctionDescriptor,
@@ -116,7 +115,6 @@ export class BunChildFunctionDescriptorExtractor implements
   }
 
   async extractServerFunctionDescriptors(
-    _tenant: TTenantContext,
     request: TWidgetServerFunctionDescriptorExtractionRequest,
   ): Promise<readonly TWidgetServerFunctionDescriptor[]> {
     const deadlineAtMs = this.#nowMs() + this.#timeoutMs;

@@ -17,12 +17,6 @@ export const TEST_SERVER_FUNCTION_DESCRIPTOR: TWidgetServerFunctionDescriptor = 
     outputByteLimit: 262_144,
     logByteLimit: 65_536,
   }),
-  retry: Object.freeze({
-    mode: 'none',
-    maxAttempts: 1,
-    initialBackoffMs: 0,
-    maxBackoffMs: 0,
-  }),
 });
 
 export const TEST_FUNCTION_DESCRIPTOR_EXTRACTOR: IWidgetServerFunctionDescriptorExtractor =

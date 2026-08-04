@@ -8,20 +8,8 @@ import type {
   TResourceEffect,
   TResourceRequirement,
 } from '../types';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TRequestedEffect = Exclude<TResourceEffect, 'read_write'>;
-
-const HUMAN_RESOURCE_ROLES = new Set(['owner', 'admin', 'member']);
-const SECRET_REVEAL_CAPABILITY = 'resource:secret:reveal';
-
-export function fnResourceSecretRevealAllowed(context: TTenantContext): boolean {
-  if (context.roles.includes('service')) return false;
-  const human = context.roles.some((role) => HUMAN_RESOURCE_ROLES.has(role));
-  const allowed = context.capabilities.includes('*')
-    || context.capabilities.includes(SECRET_REVEAL_CAPABILITY);
-  return human && allowed;
-}
 
 export function fnResourceEffectAllows(
   declared: TResourceEffect,

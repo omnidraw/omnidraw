@@ -2,6 +2,7 @@
  * @file Hold a multiprocess WAL connection open for coordinator-healing tests.
  */
 import { writeFile } from 'node:fs/promises';
+import { TURSO_ON_DISK_EXPERIMENTAL_FEATURES } from '../../DbServiceTurso/DbServiceTurso';
 import { Database } from '../../DbServiceTurso/turso-native';
 
 const databasePath = Bun.argv[2];
@@ -12,13 +13,7 @@ if (!databasePath || !readyPath) {
 
 const database = new Database(databasePath, {
   fileMustExist: true,
-  experimental: [
-    'custom_types',
-    'triggers',
-    'index_method',
-    'generated_columns',
-    'multiprocess_wal',
-  ] as never,
+  experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
 });
 await database.connect();
 await writeFile(readyPath, 'ready');

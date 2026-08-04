@@ -56,16 +56,14 @@ const outputSchema = runtimeSchema((value) => {
 });
 
 const context: TServerFunctionContext<'fn', Record<never, never>> = {
-  identity: { orgId: 'org-a', accountId: 'account-a', roles: ['member'] },
   invocationId: 'invocation-a',
-  widgetRevisionId: 'revision-a',
+  widgetKey: 'counter',
+  catalogGeneration: 7,
   subject: {
-    kind: 'widget_instance',
     canvasId: 'canvas-a',
+    elementId: 'element-a',
     widgetInstanceId: 'instance-a',
   },
-  attemptId: 'attempt-a',
-  leaseEpoch: 1,
   deadlineAtMs: 10_000,
   signal: new AbortController().signal,
   resources: {},
@@ -102,7 +100,6 @@ describe('@omnidraw/sdk/server', () => {
       effect: 'fn',
       resources: [],
       limits: { timeoutMs: 2_000, memoryTier: 'small' },
-      retry: { mode: 'none', maxAttempts: 1 },
     }]);
     await expect(count.__omnidrawExecute(context, { text: 'hello' }))
       .resolves.toEqual({ length: 5 });

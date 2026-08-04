@@ -1,155 +1,137 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { connect, type Database } from "@tursodatabase/database";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import {
+  TURSO_EXPERIMENTAL_FEATURES,
+  TURSO_ON_DISK_EXPERIMENTAL_FEATURES,
+} from '../DbServiceTurso/DbServiceTurso';
+import { Database } from '../DbServiceTurso/turso-native';
 
 const temporaryRoots: string[] = [];
 const databases: Database[] = [];
 
-async function openTemporaryDatabase() {
-  const root = await mkdtemp(path.join(tmpdir(), "omnidraw-turso-feature-probe-"));
-  const db = await connect(path.join(root, "probe.db"), {
-    experimental: ["custom_types", "generated_columns"] as never,
+async function openTemporaryDatabase(): Promise<Database> {
+  const root = await mkdtemp(path.join(tmpdir(), 'omnidraw-turso-feature-probe-'));
+  const database = new Database(path.join(root, 'probe.db'), {
+    experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
   });
   temporaryRoots.push(root);
-  databases.push(db);
-  return db;
+  databases.push(database);
+  await database.connect();
+  await database.exec('PRAGMA foreign_keys = ON');
+  await database.exec('PRAGMA ignore_check_constraints = 0');
+  return database;
 }
 
 afterEach(async () => {
-  await Promise.all(databases.splice(0).map((db) => db.close()));
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(databases.splice(0).map((database) => database.close()));
+  await Promise.all(temporaryRoots.splice(0).map((root) => (
+    rm(root, { recursive: true, force: true })
+  )));
 });
 
-describe("pinned @tursodatabase/database feature probe", () => {
-  test("supports every SQL feature used by the managed-service baseline", async () => {
-    const db = await openTemporaryDatabase();
+describe('pinned @tursodatabase/database feature set', () => {
+  test('keeps one shared production feature authority for memory and on-disk databases', () => {
+    expect(TURSO_EXPERIMENTAL_FEATURES).toEqual([
+      'custom_types',
+      'triggers',
+      'index_method',
+      'generated_columns',
+    ]);
+    expect(TURSO_ON_DISK_EXPERIMENTAL_FEATURES).toEqual([
+      ...TURSO_EXPERIMENTAL_FEATURES,
+      'multiprocess_wal',
+    ]);
+    expect(new Set(TURSO_ON_DISK_EXPERIMENTAL_FEATURES).size)
+      .toBe(TURSO_ON_DISK_EXPERIMENTAL_FEATURES.length);
+  });
 
-    await db.exec("PRAGMA foreign_keys = ON");
-    await db.exec("PRAGMA ignore_check_constraints = 0");
-    await db.exec("PRAGMA synchronous = FULL");
-    await db.exec("PRAGMA busy_timeout = 5000");
-    await db.exec(`
-      CREATE DOMAIN probe_order_status AS text CHECK (
-        value IN ('queued', 'processing', 'completed', 'failed', 'cancelled')
+  test('supports the exact custom types, generated columns, strictness, and indexes used by 000', async () => {
+    const database = await openTemporaryDatabase();
+    await database.exec(`
+      CREATE DOMAIN probe_status AS TEXT CHECK (
+        value IN ('ready', 'failed')
       );
 
       CREATE TABLE probe_parents (
-        org_id TEXT NOT NULL,
-        id TEXT NOT NULL,
-        payload_json JSON NOT NULL CHECK (json_type(payload_json) = 'object'),
-        status probe_order_status NOT NULL,
-        enabled boolean NOT NULL,
-        created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-        PRIMARY KEY (org_id, id),
-        UNIQUE (org_id, payload_json)
+        id TEXT PRIMARY KEY NOT NULL,
+        payload_json JSONB NOT NULL,
+        status probe_status NOT NULL,
+        enabled BOOLEAN NOT NULL,
+        created_at_sec TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        kind TEXT GENERATED ALWAYS AS (
+          json_extract(payload_json, '$.kind')
+        ) VIRTUAL NOT NULL,
+        CHECK (json_type(payload_json, '$') = 'object')
       ) STRICT;
 
       CREATE TABLE probe_children (
-        org_id TEXT NOT NULL,
-        id TEXT NOT NULL,
-        parent_id TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state IN ('active', 'closed')),
-        PRIMARY KEY (org_id, id),
-        FOREIGN KEY (org_id, parent_id)
-          REFERENCES probe_parents (org_id, id)
-          ON DELETE CASCADE
-      ) STRICT;
-
-      CREATE UNIQUE INDEX probe_one_active_child
-        ON probe_children (org_id, parent_id)
-        WHERE state = 'active';
-
-      CREATE TABLE probe_jsonb_items (
         id TEXT PRIMARY KEY NOT NULL,
-        item_json JSONB NOT NULL,
-        kind TEXT GENERATED ALWAYS AS (
-          json_extract(item_json, '$.kind')
-        ) VIRTUAL NOT NULL
+        parent_id TEXT NOT NULL,
+        state_json JSONB NOT NULL,
+        FOREIGN KEY (parent_id) REFERENCES probe_parents (id) ON DELETE CASCADE
       ) STRICT;
 
-      CREATE INDEX probe_jsonb_kind
-        ON probe_jsonb_items (kind, id);
+      CREATE UNIQUE INDEX probe_ready_kind_idx
+        ON probe_parents (kind)
+        WHERE status = 'ready';
     `);
 
-    const insertParent = await db.prepare(
-      `INSERT INTO probe_parents
-        (org_id, id, payload_json, status, enabled, created_at_ms)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-    );
-    const insertChild = await db.prepare(
-      "INSERT INTO probe_children (org_id, id, parent_id, state) VALUES (?, ?, ?, ?)",
-    );
-    await insertParent.run("org-a", "parent-a", "{}", "queued", 1, 1_753_113_600_123);
-    await insertChild.run("org-a", "child-a", "parent-a", "active");
-    await (await db.prepare(`
-      INSERT INTO probe_jsonb_items (id, item_json)
-      VALUES (?, ?)
-    `)).run("item-a", '{"kind":"rect"}');
+    await (await database.prepare(`
+      INSERT INTO probe_parents (id, payload_json, status, enabled, created_at_sec)
+      VALUES (?, ?, 'ready', ?, ?)
+    `)).run('parent-a', '{"kind":"weather"}', true, '2026-08-04 12:34:56');
+    await (await database.prepare(`
+      INSERT INTO probe_children (id, parent_id, state_json)
+      VALUES (?, ?, ?)
+    `)).run('child-a', 'parent-a', '{"visible":true}');
 
-    await expect(insertChild.run("org-a", "child-b", "parent-a", "active")).rejects.toThrow();
-    await expect(insertChild.run("org-b", "child-c", "parent-a", "closed")).rejects.toThrow();
-    await expect(insertParent.run("org-a", "parent-json", "[]", "queued", 1, 1)).rejects.toThrow();
-    await expect(insertParent.run("org-a", "parent-status", '{"case":"status"}', "unknown", 1, 1)).rejects.toThrow();
-    await expect(insertParent.run("org-a", "parent-bool", '{"case":"bool"}', "queued", 2, 1)).rejects.toThrow();
-    await expect(insertParent.run("org-a", "parent-time", '{"case":"time"}', "queued", 1, -1)).rejects.toThrow();
-    await expect((await db.prepare(`
-      INSERT INTO probe_jsonb_items (id, item_json)
-      VALUES (?, jsonb(?))
-    `)).run("item-pre-encoded", '{"kind":"rect"}')).rejects.toThrow();
-
-    const transaction = db.transaction(async () => {
-      await insertParent.run("org-a", "rolled-back", '{"ok":true}', "processing", 1, 2);
-      throw new Error("intentional rollback");
+    expect(await (await database.prepare(`
+      SELECT id, kind, status, enabled, created_at_sec
+      FROM probe_parents
+    `)).get()).toMatchObject({
+      id: 'parent-a',
+      kind: 'weather',
+      status: 'ready',
+      enabled: 1,
+      created_at_sec: '2026-08-04 12:34:56',
     });
-    await expect(transaction()).rejects.toThrow("intentional rollback");
-    expect(
-      await (await db.prepare("SELECT count(*) AS count FROM probe_parents WHERE id = 'rolled-back'")).get(),
-    ).toEqual({ count: 0 });
-
-    expect(await (await db.prepare("PRAGMA foreign_keys")).get()).toEqual({ foreign_keys: 1 });
-    expect(await (await db.prepare("PRAGMA ignore_check_constraints")).get()).toEqual({
-      ignore_check_constraints: 0,
-    });
-    expect(await (await db.prepare("PRAGMA synchronous")).get()).toEqual({ synchronous: 2 });
-    expect(await (await db.prepare("PRAGMA busy_timeout")).get()).toEqual({ busy_timeout: 5000 });
-
-    const tables = await (await db.prepare("PRAGMA table_list")).all();
-    expect(tables).toEqual(
+    expect(await (await database.prepare('PRAGMA table_xinfo(probe_parents)')).all()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "probe_parents", strict: 1 }),
-        expect.objectContaining({ name: "probe_children", strict: 1 }),
+        expect.objectContaining({ name: 'payload_json', type: 'JSONB', hidden: 0, notnull: 1 }),
+        expect.objectContaining({ name: 'status', type: 'probe_status', hidden: 0, notnull: 1 }),
+        expect.objectContaining({ name: 'enabled', type: 'BOOLEAN', hidden: 0, notnull: 1 }),
+        expect.objectContaining({ name: 'created_at_sec', type: 'TIMESTAMP', hidden: 0, notnull: 1 }),
+        expect.objectContaining({ name: 'kind', type: 'TEXT', hidden: 2, notnull: 1 }),
       ]),
     );
-    expect(await (await db.prepare("PRAGMA table_info(probe_children)")).all()).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "org_id", notnull: 1, type: "TEXT" })]),
-    );
-    expect(await (await db.prepare("PRAGMA table_xinfo(probe_jsonb_items)")).all()).toEqual(
+    expect(await (await database.prepare('PRAGMA table_list')).all()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "item_json", hidden: 0, notnull: 1, type: "JSONB" }),
-        expect.objectContaining({ name: "kind", hidden: 2, notnull: 1, type: "TEXT" }),
+        expect.objectContaining({ name: 'probe_parents', strict: 1 }),
+        expect.objectContaining({ name: 'probe_children', strict: 1 }),
       ]),
     );
-    expect(await (await db.prepare(`
-      SELECT id, kind, item_json, typeof(item_json) AS decoded_type
-      FROM probe_jsonb_items
-      WHERE kind = 'rect'
-    `)).get()).toEqual({
-      id: "item-a",
-      kind: "rect",
-      item_json: '{"kind":"rect"}',
-      decoded_type: "text",
-    });
-    expect(await (await db.prepare("PRAGMA foreign_key_list(probe_children)")).all()).toHaveLength(2);
-    expect(await (await db.prepare("PRAGMA index_list(probe_children)")).all()).toEqual(
+    expect(await (await database.prepare('PRAGMA index_list(probe_parents)')).all()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "probe_one_active_child", partial: 1, unique: 1 }),
+        expect.objectContaining({ name: 'probe_ready_kind_idx', partial: 1, unique: 1 }),
       ]),
     );
-    expect(await (await db.prepare("PRAGMA index_info(probe_one_active_child)")).all()).toEqual([
-      expect.objectContaining({ name: "org_id" }),
-      expect.objectContaining({ name: "parent_id" }),
+    expect(await (await database.prepare('PRAGMA foreign_key_list(probe_children)')).all()).toEqual([
+      expect.objectContaining({ from: 'parent_id', table: 'probe_parents', to: 'id', on_delete: 'CASCADE' }),
     ]);
+
+    await expect((await database.prepare(`
+      INSERT INTO probe_parents (id, payload_json, status, enabled)
+      VALUES ('bad-domain', '{"kind":"other"}', 'unknown', TRUE)
+    `)).run()).rejects.toThrow();
+    await expect((await database.prepare(`
+      INSERT INTO probe_parents (id, payload_json, status, enabled)
+      VALUES ('bad-json', 'not-json', 'failed', TRUE)
+    `)).run()).rejects.toThrow();
+    await expect((await database.prepare(`
+      INSERT INTO probe_parents (id, payload_json, status, enabled)
+      VALUES ('bad-bool', '{"kind":"other"}', 'failed', 2)
+    `)).run()).rejects.toThrow();
   });
 });

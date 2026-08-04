@@ -3,9 +3,8 @@
 Portable authoritative canvas behavior for managed Omnidraw services.
 
 `CanvasService` is the only durable canvas authority. It validates commands,
-serializes mutations per canvas, fences every operation with a
-`TTenantContext`, publishes committed events, and reconstructs its transient
-cache from the injected store.
+serializes mutations per canvas, publishes committed events, and reconstructs
+its transient cache from the injected store.
 
 ## Installation
 
@@ -19,10 +18,10 @@ npm install @omnidraw/service-canvas
 import { CanvasService, type ICanvasStore } from '@omnidraw/service-canvas'
 ```
 
-Construct the service with an `ICanvasStore`, an injected clock, and an
-optional authorizer. The store implementation owns vendor-specific
-persistence and must atomically apply mutations with the canvas revision. It
-must scope every read and write to the supplied tenant context.
+Construct the service with an `ICanvasStore` and optional history and cache
+limits. The store implementation owns vendor-specific persistence and must
+atomically apply mutations with the canvas revision. Canvas identity is the
+complete durable scope for every read and write.
 
 The service exposes snapshot and paged-item reads, authoritative command
 execution, replayable subscriptions, per-canvas release, metrics, and

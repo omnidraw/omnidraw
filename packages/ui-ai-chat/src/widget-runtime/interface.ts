@@ -30,8 +30,8 @@ export type TWidgetRuntimeIdentity = Readonly<{
   canvasId: string;
   elementId: string;
   widgetInstanceId: string;
-  definitionId: string;
-  revisionId: string;
+  widgetKey: string;
+  catalogGeneration: number;
 }>;
 
 /** Browser-local draft Preview identity; it carries no backend execution authority. */
@@ -46,7 +46,12 @@ export type TWidgetArtifactRuntimeIdentity =
   | TWidgetRuntimeIdentity
   | TWidgetPreviewRuntimeIdentity;
 
-export type TWidgetRuntimeLoadRequest = Omit<TWidgetRuntimeIdentity, 'orgId'>;
+export type TWidgetRuntimeLoadRequest = Readonly<{
+  canvasId: string;
+  elementId: string;
+  widgetInstanceId: string;
+  widgetKey: string;
+}>;
 
 export type TWidgetRuntimeLocalTarget = TWidgetRuntimeLoadRequest;
 
@@ -58,7 +63,12 @@ export type TWidgetCollaborativeJsonValue =
   | readonly TWidgetCollaborativeJsonValue[]
   | Readonly<{ [key: string]: TWidgetCollaborativeJsonValue }>;
 
-export type TWidgetCollaborativeStateIdentity = TWidgetRuntimeIdentity;
+export type TWidgetCollaborativeStateIdentity = Readonly<{
+  orgId: string;
+  canvasId: string;
+  elementId: string;
+  widgetInstanceId: string;
+}>;
 
 export type TWidgetCollaborativeStateTransportSnapshot = Readonly<{
   identity: TWidgetCollaborativeStateIdentity;
@@ -129,7 +139,7 @@ export type TWidgetRuntimeTransportPort = Readonly<{
         load: TApi['widget']['runtime']['load'];
       }>;
     }>;
-    function: Pick<TApi['function'], 'invoke' | 'get'>;
+    function: Pick<TApi['function'], 'invoke'>;
   }>;
 }>;
 

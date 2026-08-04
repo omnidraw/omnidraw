@@ -4,13 +4,33 @@ import {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
 } from '@omnidraw/widget-contract/CONSTANTS';
+import type { TCanvasWidgetResourceBindingV1 } from '@omnidraw/canvas-contract';
 import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
-import type { TWidgetPlacementResolveResult } from '@omnidraw/orpc-client';
 
-type TWidgetPlacementDescriptor = Extract<
-  TWidgetPlacementResolveResult,
-  Readonly<{ ok: true }>
->['descriptor'];
+type TPublishedReference = Extract<
+  TWidgetPlacementRef,
+  Readonly<{ source: 'published' }>
+>;
+
+type TPublishedWidgetPlacementDescriptor = Readonly<{
+  kind: 'published';
+  reference: TPublishedReference;
+  widgetKey: string;
+  catalogGeneration: number;
+  bounds: TWidgetFrameBounds;
+  resourceBindings: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
+}>;
+
+type TPreviewWidgetPlacementDescriptor = Readonly<{
+  kind: 'preview';
+  reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'draft' }>>;
+  bounds: TWidgetFrameBounds;
+  draftId: string;
+}>;
+
+type TWidgetPlacementDescriptor =
+  | TPublishedWidgetPlacementDescriptor
+  | TPreviewWidgetPlacementDescriptor;
 
 type TArgsDescriptor = Readonly<{
   descriptor: unknown;
@@ -21,12 +41,7 @@ type TResultDescriptor =
   | Readonly<{ ok: true; descriptor: TWidgetPlacementDescriptor }>
   | Readonly<{ ok: false; message: string }>;
 
-type TDirectPublishedWidgetPlacementDescriptor = Readonly<{
-  reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'published' }>>;
-  bounds: TWidgetFrameBounds;
-  definitionId: string;
-  revisionId: string;
-}>;
+type TDirectPublishedWidgetPlacementDescriptor = TPublishedWidgetPlacementDescriptor;
 
 type TArgsDirectPublished = Readonly<{
   reference: unknown;
@@ -38,20 +53,19 @@ type TResultDirectPublished =
   | Readonly<{ kind: 'invalid'; message: string }>
   | Readonly<{ kind: 'valid'; descriptor: TDirectPublishedWidgetPlacementDescriptor }>;
 
-const PUBLISHED_REFERENCE_PREFIX = 'published:';
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const DESCRIPTOR_KEYS = Object.freeze([
+const REFERENCE_KEYS = Object.freeze(['catalogGeneration', 'source', 'widgetKey']);
+const PUBLISHED_DESCRIPTOR_KEYS = Object.freeze([
   'bounds',
-  'definitionId',
-  'definitionName',
-  'definitionSlug',
-  'draftId',
+  'catalogGeneration',
   'kind',
   'reference',
-  'revisionId',
+  'resourceBindings',
+  'widgetKey',
 ]);
-const REFERENCE_KEYS = Object.freeze(['name', 'revision', 'source']);
 const BOUNDS_KEYS = Object.freeze(['height', 'width']);
+const BINDING_KEYS = Object.freeze(['allowRead', 'allowWrite', 'resourceId']);
+const WIDGET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const RESOURCE_SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,12 +85,22 @@ function hasExactKeys(value: Record<string, unknown>, expected: readonly string[
     && keys.every((key, index) => key === expected[index]);
 }
 
+function isWidgetKey(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length <= 100
+    && WIDGET_KEY_PATTERN.test(value);
+}
+
+function isCatalogGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
 function isExactReference(value: unknown, expected: TWidgetPlacementRef): boolean {
   if (!isRecord(value)) return false;
   return hasExactKeys(value, REFERENCE_KEYS)
     && value.source === expected.source
-    && value.name === expected.name
-    && value.revision === expected.revision;
+    && value.widgetKey === expected.widgetKey
+    && value.catalogGeneration === expected.catalogGeneration;
 }
 
 function isCanonicalBounds(value: unknown): value is TWidgetFrameBounds {
@@ -86,99 +110,96 @@ function isCanonicalBounds(value: unknown): value is TWidgetFrameBounds {
     && isCanonicalDimension(value.height, WIDGET_FRAME_MIN_HEIGHT, WIDGET_FRAME_MAX_HEIGHT);
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+function isResourceBindings(
+  value: unknown,
+): value is Readonly<Record<string, TCanvasWidgetResourceBindingV1>> {
+  if (!isRecord(value) || Object.keys(value).length > 128) return false;
+  return Object.entries(value).every(([slot, binding]) => (
+    RESOURCE_SLOT_PATTERN.test(slot)
+    && isRecord(binding)
+    && hasExactKeys(binding, BINDING_KEYS)
+    && typeof binding.resourceId === 'string'
+    && binding.resourceId.length > 0
+    && binding.resourceId.length <= 200
+    && typeof binding.allowRead === 'boolean'
+    && typeof binding.allowWrite === 'boolean'
+    && (binding.allowRead || binding.allowWrite)
+  ));
 }
 
-export function fnValidateDirectPublishedWidgetPlacement(args: TArgsDirectPublished): TResultDirectPublished {
+export function fnValidateDirectPublishedWidgetPlacement(
+  args: TArgsDirectPublished,
+): TResultDirectPublished {
   const reference = args.reference;
-  if (
-    !isRecord(reference)
-    || reference.source !== 'published'
-    || typeof reference.name !== 'string'
-    || !reference.name.startsWith(PUBLISHED_REFERENCE_PREFIX)
-  ) {
+  if (!isRecord(reference) || reference.source !== 'published') {
     return { kind: 'not-published' };
   }
-  if (!hasExactKeys(reference, REFERENCE_KEYS) || typeof reference.revision !== 'string') {
+  if (
+    !hasExactKeys(reference, REFERENCE_KEYS)
+    || !isWidgetKey(reference.widgetKey)
+    || !isCatalogGeneration(reference.catalogGeneration)
+  ) {
     return { kind: 'invalid', message: 'The published catalog returned an invalid widget reference.' };
-  }
-  const definitionId = reference.name.slice(PUBLISHED_REFERENCE_PREFIX.length);
-  if (!UUID_PATTERN.test(definitionId) || !UUID_PATTERN.test(reference.revision)) {
-    return { kind: 'invalid', message: 'The published catalog returned an invalid widget identity.' };
   }
   if (!isCanonicalBounds(args.bounds)) {
     return { kind: 'invalid', message: 'The published catalog returned invalid widget bounds.' };
   }
+  const publishedReference: TPublishedReference = {
+    source: 'published',
+    widgetKey: reference.widgetKey,
+    catalogGeneration: reference.catalogGeneration,
+  };
   return {
     kind: 'valid',
     descriptor: {
-      reference: {
-        source: 'published',
-        name: reference.name,
-        revision: reference.revision,
-      },
-      bounds: {
-        width: args.bounds.width,
-        height: args.bounds.height,
-      },
-      definitionId,
-      revisionId: reference.revision,
+      kind: 'published',
+      reference: publishedReference,
+      widgetKey: publishedReference.widgetKey,
+      catalogGeneration: publishedReference.catalogGeneration,
+      bounds: { width: args.bounds.width, height: args.bounds.height },
+      resourceBindings: {},
     },
   };
 }
 
-export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TResultDescriptor {
+export function fnValidateWidgetPlacementDescriptor(
+  args: TArgsDescriptor,
+): TResultDescriptor {
   const descriptor = args.descriptor;
-  if (!isRecord(descriptor)) {
-    return { ok: false, message: 'The placement resolver returned an invalid widget descriptor.' };
-  }
-  if (!hasExactKeys(descriptor, DESCRIPTOR_KEYS)) {
-    return { ok: false, message: 'The placement resolver returned an invalid widget descriptor shape.' };
-  }
-  if (!isExactReference(descriptor.reference, args.expectedReference)) {
-    return { ok: false, message: 'The placement resolver returned a different widget revision.' };
+  if (!isRecord(descriptor) || !isExactReference(descriptor.reference, args.expectedReference)) {
+    return { ok: false, message: 'The placement resolver returned a different widget reference.' };
   }
   if (!isCanonicalBounds(descriptor.bounds)) {
     return { ok: false, message: 'The placement resolver returned invalid widget bounds.' };
   }
-
   if (descriptor.kind === 'published') {
-    const encodedDefinitionId = args.expectedReference.name.startsWith(PUBLISHED_REFERENCE_PREFIX)
-      ? args.expectedReference.name.slice(PUBLISHED_REFERENCE_PREFIX.length)
-      : null;
     if (
       args.expectedReference.source !== 'published'
-      || descriptor.draftId !== null
-      || typeof descriptor.definitionId !== 'string'
-      || !UUID_PATTERN.test(descriptor.definitionId)
-      || descriptor.definitionId !== encodedDefinitionId
-      || typeof descriptor.revisionId !== 'string'
-      || !UUID_PATTERN.test(descriptor.revisionId)
-      || descriptor.revisionId !== args.expectedReference.revision
-      || descriptor.definitionName !== null
-      || !isNonEmptyString(descriptor.definitionSlug)
+      || !hasExactKeys(descriptor, PUBLISHED_DESCRIPTOR_KEYS)
+      || descriptor.widgetKey !== args.expectedReference.widgetKey
+      || descriptor.catalogGeneration !== args.expectedReference.catalogGeneration
+      || !isResourceBindings(descriptor.resourceBindings)
     ) {
       return { ok: false, message: 'The placement resolver returned an invalid published widget identity.' };
     }
-    return { ok: true, descriptor: descriptor as TWidgetPlacementDescriptor };
+    return { ok: true, descriptor: descriptor as TPublishedWidgetPlacementDescriptor };
   }
-
-  if (descriptor.kind === 'preview') {
-    if (
-      args.expectedReference.source === 'published'
-      || typeof descriptor.draftId !== 'string'
-      || !UUID_PATTERN.test(descriptor.draftId)
-      || descriptor.definitionId !== null
-      || descriptor.revisionId !== null
-      || descriptor.definitionName !== null
-      || descriptor.definitionSlug !== null
-    ) {
-      return { ok: false, message: 'The placement resolver returned an invalid Preview identity.' };
-    }
-    return { ok: true, descriptor: descriptor as TWidgetPlacementDescriptor };
+  if (
+    descriptor.kind === 'preview'
+    && args.expectedReference.source === 'draft'
+    && typeof descriptor.draftId === 'string'
+    && descriptor.draftId.trim().length > 0
+  ) {
+    return {
+      ok: true,
+      descriptor: {
+        kind: 'preview',
+        reference: args.expectedReference,
+        bounds: descriptor.bounds,
+        draftId: descriptor.draftId,
+      },
+    };
   }
-
   return { ok: false, message: 'The placement resolver returned an unsupported widget kind.' };
 }
 

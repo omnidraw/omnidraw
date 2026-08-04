@@ -10,16 +10,14 @@ import type {
 export function fnWidgetRuntimeLoadRequest(args: Readonly<{
   canvasId: string;
   elementId: string;
-  definitionId: string;
-  revisionId: string;
   widgetInstanceId: string;
+  widgetKey: string;
 }>): TWidgetRuntimeLoadRequest {
   return {
     canvasId: args.canvasId,
     elementId: args.elementId,
     widgetInstanceId: args.widgetInstanceId,
-    definitionId: args.definitionId,
-    revisionId: args.revisionId,
+    widgetKey: args.widgetKey,
   };
 }
 
@@ -31,8 +29,9 @@ export function fnWidgetRuntimeIdentityMatches(
     && identity.canvasId === request.canvasId
     && identity.elementId === request.elementId
     && identity.widgetInstanceId === request.widgetInstanceId
-    && identity.definitionId === request.definitionId
-    && identity.revisionId === request.revisionId;
+    && identity.widgetKey === request.widgetKey
+    && Number.isSafeInteger(identity.catalogGeneration)
+    && identity.catalogGeneration > 0;
 }
 
 export function fnWidgetRuntimeLocalTarget(args: Readonly<{
@@ -47,8 +46,7 @@ export function fnWidgetRuntimeLocalTarget(args: Readonly<{
     canvasId: args.canvasId,
     elementId: args.element.id,
     widgetInstanceId: extension.instanceId,
-    definitionId: extension.definitionId,
-    revisionId: extension.revisionId,
+    widgetKey: extension.widgetKey,
   };
 }
 
@@ -62,8 +60,7 @@ export function fnWidgetRuntimeLocalTargetMatchesElement(
   return element?.id === target.elementId
     && extension?.type === 'widget-instance'
     && extension.instanceId === target.widgetInstanceId
-    && extension.definitionId === target.definitionId
-    && extension.revisionId === target.revisionId;
+    && extension.widgetKey === target.widgetKey;
 }
 
 export function fnWidgetRuntimeWidgetExtension(
@@ -78,8 +75,7 @@ export function fnWidgetRuntimeWidgetExtension(
   if (
     value.type === 'widget-instance'
     && typeof value.instanceId === 'string'
-    && typeof value.definitionId === 'string'
-    && typeof value.revisionId === 'string'
+    && typeof value.widgetKey === 'string'
   ) {
     return value as TCanvasWidgetExtensionV1;
   }

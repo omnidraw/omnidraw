@@ -1,7 +1,6 @@
 /**
  * @file Neutral contracts for independently persisted KV and secret-store entries.
  */
-import type { IResourceWritePermitGuard } from '../interface';
 export type TResourceJson =
   | null
   | boolean
@@ -21,8 +20,8 @@ export type TResourceKeyValueEntry = {
   readonly key: string;
   readonly value: TResourceJson;
   readonly revision: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly createdAtSec: string;
+  readonly updatedAtSec: string;
 };
 
 export type TResourceKeyValueEntryMetadata = Omit<TResourceKeyValueEntry, 'value'>;
@@ -43,48 +42,6 @@ export type TResourceKeyValueCompareAndSetResult =
     readonly expectedRevision: number | null;
     readonly currentRevision: number | null;
   };
-
-export type TResourceKeyValueReceiptMutation =
-  | Readonly<{
-      operation: 'set';
-      key: string;
-      value: TResourceJson;
-    }>
-  | Readonly<{
-      operation: 'delete';
-      key: string;
-      expectedRevision?: number;
-    }>
-  | Readonly<{
-      operation: 'compareAndSet';
-      key: string;
-      expectedRevision: number | null;
-      value: TResourceJson;
-    }>;
-
-export type TResourceKeyValueReceiptMutationRequest = Readonly<{
-  resourceId: string;
-  invocationId: string;
-  attemptId: string;
-  operationId: string;
-  operationFingerprintSha256: string;
-  mutation: TResourceKeyValueReceiptMutation;
-}>;
-
-export type TResourceKeyValueMutationReceipt = Readonly<{
-  output: unknown;
-  committed: true;
-  replayed: boolean;
-}>;
-
-export type TResourceKeyValueCommittedOperation = Readonly<{
-  invocationId: string;
-  operationId: string;
-  attemptId: string;
-  operationName: string;
-  operationFingerprintSha256: string;
-  output: unknown;
-}>;
 
 export interface IResourceKeyValuePersistence {
   provision(identity: TResourceKeyValueIdentity): Promise<void>;
@@ -131,14 +88,5 @@ export interface IResourceKeyValuePersistence {
     readonly expectedRevision: number | null;
     readonly value: TResourceJson;
   }): Promise<TResourceKeyValueCompareAndSetResult>;
-  mutateWithReceipt(
-    request: TResourceKeyValueReceiptMutationRequest,
-    guard: IResourceWritePermitGuard,
-  ): Promise<TResourceKeyValueMutationReceipt>;
-  readCommittedOperation(args: {
-    readonly resourceId: string;
-    readonly invocationId: string;
-    readonly operationId: string;
-  }): Promise<TResourceKeyValueCommittedOperation | null>;
   close(): Promise<void>;
 }

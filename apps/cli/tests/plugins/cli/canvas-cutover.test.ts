@@ -132,10 +132,8 @@ describe('canvas CLI A92 cutover', () => {
     expect(parseCanvasSubcommandArgs('query', [
       '--canvas',
       'canvas-a',
-      '--widget-definition',
+      '--widget-key',
       'clock',
-      '--revision',
-      'r2',
       '--limit',
       '25',
     ])).toEqual({
@@ -143,11 +141,31 @@ describe('canvas CLI A92 cutover', () => {
       input: {
         canvasId: 'canvas-a',
         filter: {
-          type: 'widget-definition',
-          definitionId: 'clock',
-          revisionId: 'r2',
+          type: 'widget-key',
+          widgetKey: 'clock',
         },
         limit: 25,
+      },
+    });
+
+    expect(parseCanvasSubcommandArgs('query', [
+      '--canvas',
+      'canvas-a',
+      '--widget-key',
+      'clock',
+      '--cursor',
+      JSON.stringify({
+        type: 'widget-identity',
+        instanceId: 'instance-a',
+        id: 'widget-a',
+      }),
+    ])).toMatchObject({
+      input: {
+        cursor: {
+          type: 'widget-identity',
+          instanceId: 'instance-a',
+          id: 'widget-a',
+        },
       },
     });
 

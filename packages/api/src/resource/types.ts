@@ -31,10 +31,6 @@ export type TResourceApiCapability = {
     tenant: TTenantContext,
     resourceId: TResourceInputs['resources']['delete']['resourceId'],
   ): Promise<void>;
-  listResourceReferences(
-    tenant: TTenantContext,
-    resourceId: TResourceInputs['resources']['references']['resourceId'],
-  ): Promise<TResourceOutputs['resources']['references']>;
   listResourceData(
     tenant: TTenantContext,
     input: TResourceInputs['resources']['data'],

@@ -39,6 +39,16 @@ function isMissingPathError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
+async function assertPathMissing(portal: TPortal, candidatePath: string): Promise<void> {
+  try {
+    await portal.lstat(candidatePath);
+  } catch (error) {
+    if (isMissingPathError(error)) return;
+    throw error;
+  }
+  throw new Error(`Refusing to overwrite database coordinator recovery file: ${candidatePath}`);
+}
+
 async function txHealDatabaseCoordinator(
   portal: TPortal,
   args: TArgs,
@@ -48,13 +58,14 @@ async function txHealDatabaseCoordinator(
     throw new Error(`Database coordinator is not a regular file: ${args.tshmPath}`);
   }
 
+  await assertPathMissing(portal, args.quarantinePath);
+
   const database = portal.openCanonicalDatabase();
   let connected = false;
   try {
-    // A write-capable legacy single-process open is the authority probe. The
-    // healing statements remain reads, but Turso now fails the open while a
-    // multiprocess or incompatible SQLite process still owns the DB. A
-    // readonly legacy open is advisory and is not sufficient protection.
+    // A write-capable legacy single-process open is the authority probe. It
+    // must succeed with the coordinator still in place before that file can be
+    // classified as stale rather than corrupt or actively owned.
     await database.connect();
     connected = true;
     const preflight = await fxPreflightMigrationState(
@@ -71,15 +82,8 @@ async function txHealDatabaseCoordinator(
           + `${checks.failureMessage ?? 'Unknown integrity failure'}`,
       );
     }
-
     await portal.validateBeforeQuarantine(preflight);
     await portal.mkdir(args.quarantineDirectory, { recursive: true });
-    try {
-      await portal.lstat(args.quarantinePath);
-      throw new Error(`Refusing to overwrite database coordinator recovery file: ${args.quarantinePath}`);
-    } catch (error) {
-      if (!isMissingPathError(error)) throw error;
-    }
     await portal.rename(args.tshmPath, args.quarantinePath);
     return { preflight, quarantinedPath: args.quarantinePath };
   } finally {

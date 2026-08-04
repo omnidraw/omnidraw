@@ -2,7 +2,7 @@ type TDatabaseSchemaObjectRow = Readonly<{
   name: string;
   sql: string | null;
   tableName: string;
-  type: 'index' | 'table' | 'trigger' | 'view';
+  type: 'domain' | 'index' | 'table' | 'trigger' | 'view';
 }>;
 
 const DATABASE_SCHEMA_FINGERPRINT_FORMAT_VERSION = 1;

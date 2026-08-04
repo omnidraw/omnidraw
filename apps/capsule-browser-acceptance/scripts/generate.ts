@@ -565,12 +565,6 @@ const SERVER_FUNCTION_DESCRIPTOR = Object.freeze({
     outputByteLimit: 4_096,
     logByteLimit: 0,
   }),
-  retry: Object.freeze({
-    mode: 'none' as const,
-    maxAttempts: 1,
-    initialBackoffMs: 0,
-    maxBackoffMs: 0,
-  }),
 });
 
 function snapshotDigest(

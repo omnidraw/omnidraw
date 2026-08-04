@@ -10,11 +10,7 @@ import type {
   TCanvasItemSnapshot,
   TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
-import type { TTenantContext } from '@omnidraw/tenant-core';
-import {
-  CanvasService,
-  CanvasServiceError,
-} from '../src/CanvasService';
+import { CanvasService } from '../src/CanvasService';
 import type {
   ICanvasStore,
   TCanvasStoreApplyArgs,
@@ -31,55 +27,22 @@ const transform = {
   origin: { x: 0, y: 0 },
 };
 
-const tenant = Object.freeze({
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: Object.freeze(['editor']),
-  capabilities: Object.freeze(['canvas:read', 'canvas:write']),
-  requestId: 'request-a',
-}) satisfies TTenantContext;
-
-function rect(
-  id: string,
-  parentId: string | null = null,
-  orderKey = id,
-): TSceneNode {
+function rect(id: string): TSceneNode {
   return {
     id,
-    parentId,
-    orderKey,
+    parentId: null,
+    orderKey: id,
     kind: 'rect',
     transform,
     size: { width: 100, height: 60 },
   };
 }
 
-function group(
-  id: string,
-  parentId: string | null = null,
-  orderKey = id,
-): TSceneNode {
-  return {
-    id,
-    parentId,
-    orderKey,
-    kind: 'group',
-    transform,
-  };
-}
-
-function image(
-  id: string,
-  resourceId: string,
-  url: string,
-  orderKey = id,
-): TSceneNode {
+function image(id: string, resourceId: string, url: string): TSceneNode {
   return {
     id,
     parentId: null,
-    orderKey,
+    orderKey: id,
     kind: 'image',
     transform,
     resourceId,
@@ -94,7 +57,7 @@ function image(
   };
 }
 
-function widget(id: string, instanceId: string): TSceneNode {
+function widget(id: string, instanceId: string, widgetKey = 'counter'): TSceneNode {
   return {
     id,
     parentId: null,
@@ -107,8 +70,7 @@ function widget(id: string, instanceId: string): TSceneNode {
         schemaVersion: 1,
         type: 'widget-instance',
         instanceId,
-        definitionId: 'definition-a',
-        revisionId: 'revision-a',
+        widgetKey,
       },
     },
   };
@@ -119,46 +81,34 @@ type TMemoryCanvas = {
   rows: Map<string, TCanvasItemSnapshot>;
 };
 
+const CREATED_AT_SEC = '2026-08-04T00:00:00Z';
+const UPDATED_AT_SEC = '2026-08-04T00:00:01Z';
+
 class MemoryCanvasStore implements ICanvasStore {
   readonly canvases = new Map<string, TMemoryCanvas>();
   readonly queryFilters: string[] = [];
-  snapshotReads = 0;
   failNextApply = false;
-  beforeApply:
-    | ((tenant: TTenantContext, args: TCanvasStoreApplyArgs) => Promise<void>)
-    | null = null;
 
-  createCanvas(
-    context: TTenantContext,
-    canvasId: string,
-    items: readonly TSceneNode[] = [],
-  ): void {
+  createCanvas(canvasId: string, items: readonly TSceneNode[] = []): void {
     const rows = new Map<string, TCanvasItemSnapshot>();
     for (const item of items) {
       rows.set(item.id, {
         id: item.id,
         item: structuredClone(item),
         itemRevision: 1,
-        createdAtMs: 0,
-        updatedAtMs: 0,
+        createdAtSec: CREATED_AT_SEC,
+        updatedAtSec: CREATED_AT_SEC,
       });
     }
-    this.canvases.set(this.key(context, canvasId), { revision: 0, rows });
+    this.canvases.set(canvasId, { revision: 0, rows });
   }
 
-  async getRevision(
-    context: TTenantContext,
-    args: Readonly<{ canvasId: string }>,
-  ): Promise<number | null> {
-    return this.canvases.get(this.key(context, args.canvasId))?.revision ?? null;
+  async getRevision(args: Readonly<{ canvasId: string }>): Promise<number | null> {
+    return this.canvases.get(args.canvasId)?.revision ?? null;
   }
 
-  async getSnapshot(
-    context: TTenantContext,
-    args: Readonly<{ canvasId: string }>,
-  ): Promise<TCanvasSnapshot | null> {
-    this.snapshotReads += 1;
-    const canvas = this.canvases.get(this.key(context, args.canvasId));
+  async getSnapshot(args: Readonly<{ canvasId: string }>): Promise<TCanvasSnapshot | null> {
+    const canvas = this.canvases.get(args.canvasId);
     if (canvas === undefined) return null;
     return {
       canvasId: args.canvasId,
@@ -167,20 +117,14 @@ class MemoryCanvasStore implements ICanvasStore {
     };
   }
 
-  async queryItems(
-    context: TTenantContext,
-    query: TCanvasItemQuery,
-  ): Promise<TCanvasItemPage> {
+  async queryItems(query: TCanvasItemQuery): Promise<TCanvasItemPage> {
     this.queryFilters.push(query.filter.type);
-    const canvas = this.canvases.get(this.key(context, query.canvasId));
+    const canvas = this.canvases.get(query.canvasId);
     if (canvas === undefined) return { items: [], nextCursor: null };
     let rows = [...canvas.rows.values()];
     if (query.filter.type === 'ids') {
       const ids = new Set(query.filter.ids);
       rows = rows.filter((row) => ids.has(row.id));
-    } else if (query.filter.type === 'kind') {
-      const filter = query.filter;
-      rows = rows.filter((row) => row.item.kind === filter.kind);
     } else if (query.filter.type === 'parent') {
       const filter = query.filter;
       rows = rows.filter((row) => row.item.parentId === filter.parentId);
@@ -191,125 +135,80 @@ class MemoryCanvasStore implements ICanvasStore {
         return extension?.type === 'widget-instance'
           && extension.instanceId === filter.instanceId;
       });
-    } else if (query.filter.type === 'widget-definition') {
+    } else if (query.filter.type === 'widget-key') {
       const filter = query.filter;
       rows = rows.filter((row) => {
         const extension = fnReadCanvasWidgetExtension(row.item);
         return extension?.type === 'widget-instance'
-          && extension.definitionId === filter.definitionId
-          && (
-            filter.revisionId === undefined
-            || extension.revisionId === filter.revisionId
-          );
+          && extension.widgetKey === filter.widgetKey;
       });
+    } else if (query.filter.type === 'kind') {
+      const filter = query.filter;
+      rows = rows.filter((row) => row.item.kind === filter.kind);
     }
-    rows.sort((left, right) => (
-      query.filter.type === 'parent'
-        ? left.item.orderKey.localeCompare(right.item.orderKey)
-          || left.id.localeCompare(right.id)
-        : left.id.localeCompare(right.id)
-    ));
+    rows.sort((left, right) => left.id.localeCompare(right.id));
     return {
       items: rows.map((entry) => structuredClone(entry)),
       nextCursor: null,
     };
   }
 
-  async queryImageResourceClaims(
-    context: TTenantContext,
-    args: Readonly<{
-      canvasId: string;
-      resourceIds: readonly string[];
-      excludeItemIds: readonly string[];
-      limit: number;
-    }>,
-  ) {
-    const canvas = this.canvases.get(this.key(context, args.canvasId));
+  async queryImageResourceClaims(args: Readonly<{
+    canvasId: string;
+    resourceIds: readonly string[];
+    excludeItemIds: readonly string[];
+    limit: number;
+  }>) {
+    const canvas = this.canvases.get(args.canvasId);
     if (canvas === undefined) return [];
     const resourceIds = new Set(args.resourceIds);
     const excluded = new Set(args.excludeItemIds);
-    const claims = new Map<string, {
-      resourceId: string;
-      url: string;
-      mimeType: string;
-    }>();
+    const claims = [];
     for (const row of canvas.rows.values()) {
-      if (
-        excluded.has(row.id)
-        || row.item.kind !== 'image'
-        || !resourceIds.has(row.item.resourceId)
-      ) continue;
+      if (excluded.has(row.id) || row.item.kind !== 'image') continue;
+      if (!resourceIds.has(row.item.resourceId)) continue;
       const descriptor = fnReadCanvasImageExtension(row.item);
       if (descriptor === null) continue;
-      const claim = {
+      claims.push({
         resourceId: row.item.resourceId,
         url: descriptor.url,
         mimeType: descriptor.mimeType,
-      };
-      claims.set(JSON.stringify(claim), claim);
-      if (claims.size >= args.limit) break;
+      });
+      if (claims.length >= args.limit) break;
     }
-    return [...claims.values()];
+    return claims;
   }
 
-  async applyMutations(
-    context: TTenantContext,
-    args: TCanvasStoreApplyArgs,
-  ): Promise<TCanvasStoreApplyResult> {
-    await this.beforeApply?.(context, args);
+  async applyMutations(args: TCanvasStoreApplyArgs): Promise<TCanvasStoreApplyResult> {
     if (this.failNextApply) {
       this.failNextApply = false;
       throw new Error('injected pre-commit failure');
     }
-    const canvas = this.canvases.get(this.key(context, args.canvasId));
+    const canvas = this.canvases.get(args.canvasId);
     if (canvas === undefined) return { status: 'revision-conflict', revision: null };
     if (canvas.revision !== args.expectedCanvasRevision) {
       return { status: 'revision-conflict', revision: canvas.revision };
     }
 
-    const nextRows = new Map(
-      [...canvas.rows].map(([id, row]) => [id, structuredClone(row)]),
-    );
     const changedItems: TCanvasItemSnapshot[] = [];
     const deletedItemIds: string[] = [];
     for (const mutation of args.mutations) {
-      if (mutation.type === 'insert') {
-        if (nextRows.has(mutation.item.id)) throw new Error('duplicate insert');
-        const snapshot: TCanvasItemSnapshot = {
-          id: mutation.item.id,
-          item: structuredClone(mutation.item),
-          itemRevision: 1,
-          createdAtMs: args.nowMs,
-          updatedAtMs: args.nowMs,
-        };
-        nextRows.set(snapshot.id, snapshot);
-        changedItems.push(structuredClone(snapshot));
-        continue;
-      }
       if (mutation.type === 'delete') {
-        const current = nextRows.get(mutation.itemId);
-        if (current?.itemRevision !== mutation.expectedItemRevision) {
-          throw new Error('item revision conflict');
-        }
-        nextRows.delete(mutation.itemId);
+        canvas.rows.delete(mutation.itemId);
         deletedItemIds.push(mutation.itemId);
         continue;
       }
-      const current = nextRows.get(mutation.item.id);
-      if (current?.itemRevision !== mutation.expectedItemRevision) {
-        throw new Error('item revision conflict');
-      }
+      const current = canvas.rows.get(mutation.item.id);
       const snapshot: TCanvasItemSnapshot = {
         id: mutation.item.id,
         item: structuredClone(mutation.item),
-        itemRevision: current.itemRevision + 1,
-        createdAtMs: current.createdAtMs,
-        updatedAtMs: args.nowMs,
+        itemRevision: current === undefined ? 1 : current.itemRevision + 1,
+        createdAtSec: current?.createdAtSec ?? CREATED_AT_SEC,
+        updatedAtSec: UPDATED_AT_SEC,
       };
-      nextRows.set(snapshot.id, snapshot);
+      canvas.rows.set(snapshot.id, snapshot);
       changedItems.push(structuredClone(snapshot));
     }
-    canvas.rows = nextRows;
     canvas.revision += 1;
     return {
       status: 'committed',
@@ -318,130 +217,10 @@ class MemoryCanvasStore implements ICanvasStore {
       deletedItemIds,
     };
   }
-
-  private key(context: TTenantContext, canvasId: string): string {
-    return `${context.orgId}:${canvasId}`;
-  }
 }
 
-class InstrumentedScaleStore implements ICanvasStore {
-  revision = 0;
-  row: TCanvasItemSnapshot;
-  readonly totalRows: number;
-  snapshotReads = 0;
-  rowsRead = 0;
-  rowsWritten = 0;
-  jsonBytesRead = 0;
-  jsonBytesWritten = 0;
-
-  constructor(totalRows: number) {
-    this.totalRows = totalRows;
-    this.row = {
-      id: 'target',
-      item: rect('target'),
-      itemRevision: 1,
-      createdAtMs: 0,
-      updatedAtMs: 0,
-    };
-  }
-
-  async getRevision(): Promise<number> {
-    return this.revision;
-  }
-
-  async getSnapshot(): Promise<TCanvasSnapshot> {
-    this.snapshotReads += 1;
-    return {
-      canvasId: 'canvas-scale',
-      revision: this.revision,
-      items: [structuredClone(this.row)],
-    };
-  }
-
-  async queryItems(
-    _context: TTenantContext,
-    query: TCanvasItemQuery,
-  ): Promise<TCanvasItemPage> {
-    if (query.filter.type !== 'ids') {
-      throw new Error(`Scale evidence requires an indexed ID query, got ${query.filter.type}.`);
-    }
-    this.rowsRead += query.filter.ids.length;
-    if (!query.filter.ids.includes(this.row.id)) return { items: [], nextCursor: null };
-    this.jsonBytesRead += JSON.stringify(this.row.item).length;
-    return { items: [structuredClone(this.row)], nextCursor: null };
-  }
-
-  async queryImageResourceClaims() {
-    return [];
-  }
-
-  async applyMutations(
-    _context: TTenantContext,
-    args: TCanvasStoreApplyArgs,
-  ): Promise<TCanvasStoreApplyResult> {
-    if (args.expectedCanvasRevision !== this.revision) {
-      return { status: 'revision-conflict', revision: this.revision };
-    }
-    if (args.mutations.length !== 1 || args.mutations[0]?.type !== 'replace') {
-      throw new Error('Scale evidence expects one bounded replacement.');
-    }
-    const mutation = args.mutations[0];
-    this.rowsWritten += 1;
-    this.jsonBytesWritten += JSON.stringify(mutation.item).length;
-    this.row = {
-      ...this.row,
-      item: structuredClone(mutation.item),
-      itemRevision: this.row.itemRevision + 1,
-      updatedAtMs: args.nowMs,
-    };
-    this.revision += 1;
-    return {
-      status: 'committed',
-      revision: this.revision,
-      changedItems: [structuredClone(this.row)],
-      deletedItemIds: [],
-    };
-  }
-}
-
-function service(
-  store: ICanvasStore,
-  options: ConstructorParameters<typeof CanvasService>[0]['options'] = {},
-): CanvasService {
-  let nowMs = 10;
-  return new CanvasService({
-    store,
-    clock: { nowMs: () => nowMs++ },
-    options,
-  });
-}
-
-function patchCommand(
-  commandId: string,
-  canvasId: string,
-  itemId: string,
-  baseRevision: number,
-  coordinate: 'x' | 'y',
-  expected: number,
-  value: number,
-): TCanvasCommand {
-  const path = ['transform', 'position', coordinate] as const;
-  return {
-    commandId,
-    canvasId,
-    baseRevision,
-    operations: [{
-      type: 'patch',
-      itemId,
-      patches: [{ type: 'set', path, value }],
-    }],
-    preconditions: [{
-      type: 'path-value',
-      itemId,
-      path,
-      value: expected,
-    }],
-  };
+function service(store: ICanvasStore, maxReplayEvents = 256): CanvasService {
+  return new CanvasService({ store, options: { maxReplayEvents } });
 }
 
 function insertCommand(
@@ -459,458 +238,113 @@ function insertCommand(
   };
 }
 
-describe('CanvasService authoritative commands', () => {
-  test('keeps one-item work constant at 5k, 50k, and 100k logical rows', async () => {
-    for (const totalRows of [5_000, 50_000, 100_000]) {
-      const store = new InstrumentedScaleStore(totalRows);
-      const canvas = service(store);
-      const startedAt = performance.now();
+function patchPosition(commandId: string, coordinate: 'x' | 'y', expected: number, value: number): TCanvasCommand {
+  const path = ['transform', 'position', coordinate] as const;
+  return {
+    commandId,
+    canvasId: 'canvas-a',
+    baseRevision: 0,
+    operations: [{
+      type: 'patch',
+      itemId: 'item-a',
+      patches: [{ type: 'set', path, value }],
+    }],
+    preconditions: [{
+      type: 'path-value',
+      itemId: 'item-a',
+      path,
+      value: expected,
+    }],
+  };
+}
 
-      const event = await canvas.execute(
-        tenant,
-        patchCommand(
-          `scale-${totalRows}`,
-          'canvas-scale',
-          'target',
-          0,
-          'x',
-          0,
-          1,
-        ),
-      );
-      const elapsedMs = performance.now() - startedAt;
-
-      expect(event.changedItems).toHaveLength(1);
-      expect(store.totalRows).toBe(totalRows);
-      expect(store.snapshotReads).toBe(0);
-      expect(store.rowsRead).toBe(1);
-      expect(store.rowsWritten).toBe(1);
-      expect(store.jsonBytesRead).toBeLessThan(1_024);
-      expect(store.jsonBytesWritten).toBeLessThan(1_024);
-      expect(elapsedMs).toBeLessThan(250);
-      await canvas.stop();
-    }
-  });
-
-  test('rejects source-less image rows at the durable authority boundary', async () => {
+describe('CanvasService', () => {
+  test('accepts disjoint stale paths and rejects a stale same-path command', async () => {
     const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a');
-    const canvas = service(store);
-    const sourceLessImage: TSceneNode = {
-      id: 'image-a',
-      parentId: null,
-      orderKey: 'A',
-      kind: 'image',
-      transform,
-      resourceId: 'resource-a',
-      size: { width: 80, height: 60 },
-    };
-
-    await expect(canvas.execute(
-      tenant,
-      insertCommand('insert-image-a', 'canvas-a', 0, sourceLessImage),
-    )).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).items)
-      .toEqual([]);
-  });
-
-  test('rejects conflicting descriptors for a shared durable image resource', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [
-      image(
-        'image-a',
-        'resource-a',
-        'https://media.test/image-a.png',
-      ),
-    ]);
+    store.createCanvas('canvas-a', [rect('item-a')]);
     const canvas = service(store);
 
-    await expect(canvas.execute(
-      tenant,
-      insertCommand(
-        'insert-conflicting-clone',
-        'canvas-a',
-        0,
-        image(
-          'image-b',
-          'resource-a',
-          'https://media.test/image-b.png',
-        ),
-      ),
-    )).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
-
-    const accepted = await canvas.execute(
-      tenant,
-      insertCommand(
-        'insert-matching-clone',
-        'canvas-a',
-        0,
-        image(
-          'image-b',
-          'resource-a',
-          'https://media.test/image-a.png',
-        ),
-      ),
-    );
-    expect(accepted.changedItems.map((entry) => entry.id)).toEqual(['image-b']);
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).items)
-      .toHaveLength(2);
-  });
-
-  test('accepts stale disjoint paths, rejects a same-path race, and stays sparse', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [rect('item-a')]);
-    const canvas = service(store);
-
-    const first = await canvas.execute(
-      tenant,
-      patchCommand('client-a:x', 'canvas-a', 'item-a', 0, 'x', 0, 10),
-    );
-    const disjointStale = await canvas.execute(
-      tenant,
-      patchCommand('client-b:y', 'canvas-a', 'item-a', 0, 'y', 0, 20),
-    );
-
-    expect(first.revision).toBe(1);
-    expect(disjointStale.revision).toBe(2);
-    expect(disjointStale.changedItems[0]?.item.transform.position).toEqual({
-      x: 10,
-      y: 20,
-    });
-    await expect(canvas.execute(
-      tenant,
-      patchCommand('client-b:x', 'canvas-a', 'item-a', 0, 'x', 0, 30),
-    )).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(store.snapshotReads).toBe(0);
+    expect((await canvas.execute(patchPosition('x', 'x', 0, 10))).revision).toBe(1);
+    const second = await canvas.execute(patchPosition('y', 'y', 0, 20));
+    expect(second.changedItems[0]?.item.transform.position).toEqual({ x: 10, y: 20 });
+    await expect(canvas.execute(patchPosition('stale-x', 'x', 0, 30)))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
     expect(store.queryFilters).toEqual(['ids']);
-    expect(canvas.getMetrics(tenant).cachedItems).toBe(1);
   });
 
-  test('makes delete beat a stale patch and rejects a duplicate retry', async () => {
+  test('keeps widget identity stable and unique on one canvas', async () => {
     const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [rect('item-a')]);
+    store.createCanvas('canvas-a', [widget('widget-a', 'instance-a')]);
     const canvas = service(store);
-    const deletion: TCanvasCommand = {
-      commandId: 'delete-a',
+
+    await expect(canvas.execute(insertCommand(
+      'duplicate',
+      'canvas-a',
+      0,
+      widget('widget-b', 'instance-a'),
+    ))).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    await expect(canvas.execute({
+      commandId: 'replace-key',
       canvasId: 'canvas-a',
       baseRevision: 0,
-      operations: [{ type: 'delete', itemId: 'item-a' }],
+      operations: [{
+        type: 'replace',
+        item: widget('widget-a', 'instance-a', 'different-widget'),
+      }],
       preconditions: [{
         type: 'item-revision',
-        itemId: 'item-a',
+        itemId: 'widget-a',
         itemRevision: 1,
       }],
-    };
-
-    const event = await canvas.execute(tenant, deletion);
-    expect(event.deletedItemIds).toEqual(['item-a']);
-    await expect(canvas.execute(
-      tenant,
-      patchCommand('stale-patch', 'canvas-a', 'item-a', 0, 'x', 0, 2),
-    )).rejects.toMatchObject({ code: 'CONFLICT' });
-    await expect(canvas.execute(tenant, deletion)).rejects.toMatchObject({
-      code: 'CONFLICT',
-    });
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).items)
-      .toEqual([]);
+    })).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
-  test('validates reparent, group delete, cycle, and reorder atomically', async () => {
+  test('rejects conflicting descriptors for one durable image resource', async () => {
     const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [
-      group('group-a'),
-      rect('child-a', 'group-a'),
-      group('group-b'),
+    store.createCanvas('canvas-a', [
+      image('image-a', 'resource-a', 'https://media.test/a.png'),
     ]);
     const canvas = service(store);
-    const cycle: TCanvasCommand = {
-      commandId: 'cycle',
-      canvasId: 'canvas-a',
-      baseRevision: 0,
-      operations: [{
-        type: 'reparent',
-        itemId: 'group-a',
-        parentId: 'child-a',
-      }],
-      preconditions: [{
-        type: 'item-revision',
-        itemId: 'group-a',
-        itemRevision: 1,
-      }],
-    };
-    await expect(canvas.execute(tenant, cycle)).rejects.toMatchObject({
-      code: 'INVALID_COMMAND',
-    });
 
-    const deleteGroup: TCanvasCommand = {
-      commandId: 'delete-group',
-      canvasId: 'canvas-a',
-      baseRevision: 0,
-      operations: [{ type: 'delete', itemId: 'group-a' }],
-      preconditions: [{
-        type: 'item-revision',
-        itemId: 'group-a',
-        itemRevision: 1,
-      }],
-    };
-    await expect(canvas.execute(tenant, deleteGroup)).rejects.toMatchObject({
-      code: 'CONFLICT',
-    });
-
-    const move: TCanvasCommand = {
-      commandId: 'move',
-      canvasId: 'canvas-a',
-      baseRevision: 0,
-      operations: [{
-        type: 'reparent',
-        itemId: 'child-a',
-        parentId: 'group-b',
-        orderKey: 'M',
-      }],
-      preconditions: [{
-        type: 'item-revision',
-        itemId: 'child-a',
-        itemRevision: 1,
-      }],
-    };
-    expect((await canvas.execute(tenant, move)).revision).toBe(1);
-
-    const reorder: TCanvasCommand = {
-      commandId: 'reorder',
-      canvasId: 'canvas-a',
-      baseRevision: 0,
-      operations: [{
-        type: 'reorder',
-        itemId: 'child-a',
-        orderKey: 'Z',
-      }],
-      preconditions: [{
-        type: 'item-revision',
-        itemId: 'child-a',
-        itemRevision: 2,
-      }],
-    };
-    const reordered = await canvas.execute(tenant, reorder);
-    expect(reordered.changedItems[0]?.item).toMatchObject({
-      parentId: 'group-b',
-      orderKey: 'Z',
-    });
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).revision)
-      .toBe(2);
+    await expect(canvas.execute(insertCommand(
+      'image-b',
+      'canvas-a',
+      0,
+      image('image-b', 'resource-a', 'https://media.test/b.png'),
+    ))).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
   });
 
-  test('enforces widget instance identity in the same transaction lane', async () => {
+  test('publishes committed events and resyncs when replay history has a gap', async () => {
     const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [widget('widget-a', 'instance-a')]);
-    const canvas = service(store);
-
-    await expect(canvas.execute(
-      tenant,
-      insertCommand(
-        'duplicate-widget',
-        'canvas-a',
-        0,
-        widget('widget-b', 'instance-a'),
-      ),
-    )).rejects.toMatchObject({ code: 'CONFLICT' });
-
-    const accepted = await canvas.execute(
-      tenant,
-      insertCommand(
-        'new-widget',
-        'canvas-a',
-        0,
-        widget('widget-b', 'instance-b'),
-      ),
-    );
-    expect(accepted.changedItems).toHaveLength(1);
-    expect(store.queryFilters).toContain('widget-instance');
-  });
-
-  test('publishes after commit, replays a contiguous tail, and requires resync after gaps', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a');
-    const canvas = service(store, { maxReplayEvents: 2 });
-
-    const live = canvas.subscribe(tenant, {
-      canvasId: 'canvas-a',
-      afterRevision: 0,
-    })[Symbol.asyncIterator]();
-    const liveNext = live.next();
-    const first = await canvas.execute(
-      tenant,
-      insertCommand('insert-a', 'canvas-a', 0, rect('item-a')),
-    );
-    expect(await liveNext).toEqual({ done: false, value: first });
-    const second = await canvas.execute(
-      tenant,
-      insertCommand('insert-b', 'canvas-a', 0, rect('item-b')),
-    );
+    store.createCanvas('canvas-a');
+    const canvas = service(store, 1);
+    const live = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    const next = live.next();
+    const first = await canvas.execute(insertCommand('a', 'canvas-a', 0, rect('a')));
+    expect(await next).toEqual({ done: false, value: first });
+    await canvas.execute(insertCommand('b', 'canvas-a', 0, rect('b')));
     await live.return?.();
 
-    const replay = canvas.subscribe(tenant, {
-      canvasId: 'canvas-a',
-      afterRevision: 0,
-    })[Symbol.asyncIterator]();
-    expect((await replay.next()).value).toEqual(first);
-    expect((await replay.next()).value).toEqual(second);
-    await replay.return?.();
-
-    await canvas.execute(
-      tenant,
-      insertCommand('insert-c', 'canvas-a', 0, rect('item-c')),
-    );
-    const overflow = canvas.subscribe(tenant, {
-      canvasId: 'canvas-a',
-      afterRevision: 0,
-    })[Symbol.asyncIterator]();
-    expect(await overflow.next()).toEqual({
+    const replay = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    expect(await replay.next()).toEqual({
       done: false,
-      value: {
-        type: 'resync-required',
-        canvasId: 'canvas-a',
-        revision: 3,
-      },
+      value: { type: 'resync-required', canvasId: 'canvas-a', revision: 2 },
     });
-    await overflow.return?.();
-
-    const restarted = service(store, { maxReplayEvents: 2 });
-    const reconnect = restarted.subscribe(tenant, {
-      canvasId: 'canvas-a',
-      afterRevision: 2,
-    })[Symbol.asyncIterator]();
-    expect((await reconnect.next()).value).toMatchObject({
-      type: 'resync-required',
-      revision: 3,
-    });
-    await reconnect.return?.();
-    await canvas.release(tenant, { canvasId: 'canvas-a' });
-    expect(canvas.getMetrics(tenant)).toEqual({
-      activeCanvases: 0,
-      cachedItems: 0,
-      replayEvents: 0,
-      subscribers: 0,
-      pendingCommands: 0,
-    });
-    await restarted.stop();
+    await replay.return?.();
   });
 
-  test('contains pre-commit failure and retries without publishing phantom state', async () => {
+  test('forces resync after an unclear store failure and admits a safe retry', async () => {
     const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a');
+    store.createCanvas('canvas-a');
     const canvas = service(store);
-    const command = insertCommand('insert-a', 'canvas-a', 0, rect('item-a'));
-    const subscription = canvas.subscribe(tenant, {
-      canvasId: 'canvas-a',
-      afterRevision: 0,
-    })[Symbol.asyncIterator]();
-    const nextEvent = subscription.next();
+    const command = insertCommand('a', 'canvas-a', 0, rect('a'));
     store.failNextApply = true;
 
-    await expect(canvas.execute(tenant, command)).rejects.toMatchObject({
-      code: 'STORE_CONFLICT',
-    });
-    expect(await nextEvent).toEqual({
-      done: false,
-      value: {
-        type: 'resync-required',
-        canvasId: 'canvas-a',
-        revision: 0,
-      },
-    });
-    expect(canvas.getMetrics(tenant)).toMatchObject({
-      cachedItems: 0,
-      replayEvents: 0,
-    });
-    expect((await canvas.execute(tenant, command)).revision).toBe(1);
-    await subscription.return?.();
-  });
-
-  test('serializes each canvas without blocking an unrelated canvas', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a');
-    store.createCanvas(tenant, 'canvas-b');
-    const canvas = service(store);
-    let entered!: () => void;
-    let unblock!: () => void;
-    const enteredApply = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const gate = new Promise<void>((resolve) => {
-      unblock = resolve;
-    });
-    store.beforeApply = async (_context, args) => {
-      if (args.canvasId !== 'canvas-a') return;
-      entered();
-      await gate;
-    };
-
-    const pendingA = canvas.execute(
-      tenant,
-      insertCommand('insert-a', 'canvas-a', 0, rect('item-a')),
-    );
-    await enteredApply;
-    const eventB = await canvas.execute(
-      tenant,
-      insertCommand('insert-b', 'canvas-b', 0, rect('item-b')),
-    );
-    expect(eventB.revision).toBe(1);
-    unblock();
-    expect((await pendingA).revision).toBe(1);
-  });
-
-  test('rechecks centralized authorization on every operation', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a');
-    let revoked = false;
-    const canvas = new CanvasService({
-      store,
-      clock: { nowMs: () => 1 },
-      authorize: () => {
-        if (revoked) {
-          throw new CanvasServiceError('FORBIDDEN', 'membership revoked');
-        }
-      },
-    });
-
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).revision)
-      .toBe(0);
-    revoked = true;
-    await expect(canvas.execute(
-      tenant,
-      insertCommand('insert-a', 'canvas-a', 0, rect('item-a')),
-    )).rejects.toMatchObject({ code: 'FORBIDDEN' });
-  });
-
-  test('rejects unguarded commands and bounded candidate-item overflow', async () => {
-    const store = new MemoryCanvasStore();
-    store.createCanvas(tenant, 'canvas-a', [rect('item-a')]);
-    const canvas = service(store, { maxItemBytes: 512 });
-    await expect(canvas.execute(tenant, {
-      commandId: 'unguarded',
-      canvasId: 'canvas-a',
-      baseRevision: 0,
-      operations: [{
-        type: 'patch',
-        itemId: 'item-a',
-        patches: [{
-          type: 'set',
-          path: ['metadata'],
-          value: { payload: 'small' },
-        }],
-      }],
-      preconditions: [],
-    })).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
-
-    const oversized = {
-      ...rect('large-item'),
-      metadata: { payload: 'x'.repeat(1_000) },
-    } as TSceneNode;
-    await expect(canvas.execute(
-      tenant,
-      insertCommand('oversized', 'canvas-a', 0, oversized),
-    )).rejects.toMatchObject({ code: 'LIMIT_EXCEEDED' });
-    expect((await canvas.getSnapshot(tenant, { canvasId: 'canvas-a' })).revision)
-      .toBe(0);
+    await expect(canvas.execute(command)).rejects.toMatchObject({ code: 'STORE_CONFLICT' });
+    expect((await canvas.execute(command)).revision).toBe(1);
+    expect((await canvas.getSnapshot({ canvasId: 'canvas-a' })).items).toHaveLength(1);
   });
 });

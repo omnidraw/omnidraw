@@ -103,7 +103,7 @@ export function fnResourceKeyValueEntryMetadata(row: unknown): TResourceKeyValue
   return {
     key: value.key,
     revision,
-    createdAt: value.created_at,
-    updatedAt: value.updated_at,
+    createdAtSec: value.created_at,
+    updatedAtSec: value.updated_at,
   };
 }

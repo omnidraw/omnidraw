@@ -1,119 +1,109 @@
 import type {
-  TWidgetCatalog,
-  TWidgetDetail,
-  TWidgetVariantSummary,
+  TWidgetPublicCatalog,
+  TWidgetPublicCatalogForm,
 } from '@omnidraw/orpc-client';
-import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/widget-contract';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createCatalogInvalidation } from '../../src/sidebar/ports';
 import { WidgetCatalogProvider } from '../../src/sidebar/widgets/WidgetCatalogProvider';
 import { WidgetDetailPage } from '../../src/sidebar/widgets/WidgetDetailPage';
+import {
+  publicCatalog,
+  publicEntry,
+  publicForm,
+} from '../widget-public-catalog.fixture';
 
 const cleanups: Array<() => void> = [];
 
-const functionDescriptor = Object.freeze({
-  schemaVersion: 1,
-  exportName: 'lookupNotes',
-  effect: 'fx',
-  inputSchema: Object.freeze({ type: 'object', additionalProperties: false }),
-  outputSchema: Object.freeze({ type: 'array', items: Object.freeze({ type: 'string' }) }),
-  resources: Object.freeze([{ slot: 'notes', effect: 'read' }]),
-  limits: Object.freeze({
-    timeoutMs: 5_000,
-    memoryTier: 'small',
-    outputByteLimit: 262_144,
-    logByteLimit: 4_096,
-  }),
-  retry: Object.freeze({
-    mode: 'idempotent',
-    maxAttempts: 3,
-    initialBackoffMs: 100,
-    maxBackoffMs: 1_000,
-  }),
-}) satisfies TWidgetBrowserFunctionDescriptor;
-
-function variant(kind: TWidgetVariantSummary['kind']): TWidgetVariantSummary {
+function detailedForm(source: 'draft' | 'published'): TWidgetPublicCatalogForm {
   return {
-    draftId: null,
-    source: 'published',
-    displayName: 'Notes Board',
-    kind,
-    slug: 'notes-board',
-    description: 'Inspector fixture.',
-    revision: 'revision-7',
-    contentFingerprint: 'a'.repeat(64),
-    updatedAt: '2026-07-22T00:00:00.000Z',
-    tool: {
-      label: 'Notes Board',
-      icon: null,
-      group: null,
-      priority: null,
-      behaviorType: 'mode',
-    },
-    validation: null,
-    placement: kind === 'widget' ? {
-      reference: { source: 'published', name: 'published:definition-7', revision: 'revision-7' },
-      bounds: { width: 420, height: 320 },
-    } : null,
-  };
-}
-
-const widgetDetail: TWidgetDetail = {
-  name: 'Notes Board',
-  source: 'published',
-  relation: 'published-only',
-  variant: variant('widget'),
-  sibling: null,
-  manifest: {
-    schemaVersion: 3,
-    name: 'Notes Board',
-    slug: 'notes-board',
-    description: 'Inspector fixture.',
-    ui: {
-      runtime: 'capsule',
-      entry: 'ui/main.ts',
-      apis: ['DOM'],
-    },
-    server: { entry: 'server/main.ts', runtimeAbi: 'omnidraw:1' },
+    ...publicForm(source, { name: 'Notes Board', group: 'writing' }),
     resources: [{
       slot: 'notes',
       kind: 'db',
       effect: 'read_write',
       required: true,
-      operations: {
-        listNotes: { effect: 'read', sql: 'SELECT title FROM notes', result: 'rows' },
+    }],
+    functions: [{
+      schemaVersion: 1,
+      exportName: 'lookupNotes',
+      effect: 'fx',
+      inputSchema: { type: 'object', additionalProperties: false },
+      outputSchema: { type: 'array', items: { type: 'string' } },
+      resources: [{ slot: 'notes', effect: 'read' }],
+      limits: {
+        timeoutMs: 5_000,
+        memoryTier: 'small',
+        outputByteLimit: 262_144,
+        logByteLimit: 4_096,
       },
     }],
-  },
-  functions: [functionDescriptor],
-  problem: null,
-};
-
-function mountDetail(detail: TWidgetDetail, initialTab = 'overview') {
-  const catalog: TWidgetCatalog = {
-    generation: 'inspector-test',
-    groups: [],
-    widgets: [{
-      name: detail.name,
-      relation: detail.relation,
-      published: detail.variant,
-      draft: null,
-      problem: null,
-    }],
   };
+}
+
+function catalog(): TWidgetPublicCatalog {
+  return publicCatalog([publicEntry('notes-board', {
+    draft: detailedForm('draft'),
+    published: detailedForm('published'),
+    status: 'presentation-changed',
+  })]);
+}
+
+function mountDetail(options: Readonly<{
+  source?: 'draft' | 'published';
+  initialTab?: string;
+  saveError?: Error;
+  metadataError?: Error;
+}> = {}) {
+  const source = options.source ?? 'draft';
+  const saveDraft = vi.fn(async () => options.saveError
+    ? [options.saveError, undefined]
+    : [undefined, {
+        widgetKey: 'notes-board',
+        generation: 2,
+        catalogDigestSha256: 'b'.repeat(64),
+      }]);
+  const publishMetadata = vi.fn(async () => options.metadataError
+    ? [options.metadataError, undefined]
+    : [undefined, {
+        widgetKey: 'notes-board',
+        generation: 2,
+        catalogDigestSha256: 'b'.repeat(64),
+      }]);
+  const buildAndPublish = vi.fn(async () => [undefined, {
+    widgetKey: 'notes-board',
+    generation: 2,
+    catalogDigestSha256: 'b'.repeat(64),
+  }]);
+  const getCatalog = vi.fn(async () => [undefined, catalog()] as const);
+  const notifyError = vi.fn();
+  const notifySuccess = vi.fn();
   const controller = {
     apiService: {
       api: {
-        agent: {
-          events: vi.fn(async () => [undefined, { async *[Symbol.asyncIterator]() {} }]),
-          widgets: {
-            catalog: vi.fn(async () => [undefined, catalog] as const),
-            detail: vi.fn(async () => [undefined, detail] as const),
-            files: vi.fn(async () => [undefined, []] as const),
-            file: vi.fn(async () => [undefined, null] as const),
+        widget: {
+          catalog: {
+            get: getCatalog,
+            events: vi.fn(async () => [undefined, {
+              async *[Symbol.asyncIterator]() { /* no live events in this fixture */ },
+            }]),
+            files: {
+              list: vi.fn(async () => [undefined, {
+                entries: [{ path: 'ui/main.ts', kind: 'file', byteSize: 12 }],
+                truncated: false,
+              }]),
+              read: vi.fn(async () => [undefined, {
+                path: 'ui/main.ts',
+                byteSize: 12,
+                binary: false,
+                truncated: false,
+                text: 'export {};\n',
+              }]),
+            },
           },
+          config: { saveDraft },
+          publication: { publishMetadata, buildAndPublish },
         },
       },
     },
@@ -123,10 +113,10 @@ function mountDetail(detail: TWidgetDetail, initialTab = 'overview') {
       clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
     },
     application: {
-      pathname: () => `/widgets/published/${encodeURIComponent(detail.name)}`,
+      pathname: () => `/widgets/${source}/notes-board`,
       navigate: vi.fn(),
-      notifySuccess: vi.fn(),
-      notifyError: vi.fn(),
+      notifySuccess,
+      notifyError,
       toggleSidebar: vi.fn(),
     },
   } as never;
@@ -134,12 +124,12 @@ function mountDetail(detail: TWidgetDetail, initialTab = 'overview') {
   document.body.appendChild(host);
   let selectTab: (value: string) => void = () => undefined;
   const dispose = render(() => {
-    const [tab, setTab] = createSignal(initialTab);
+    const [tab, setTab] = createSignal(options.initialTab ?? 'overview');
     selectTab = setTab;
     return <WidgetCatalogProvider controller={controller}>
       <WidgetDetailPage
-        source="published"
-        name={detail.name}
+        source={source}
+        name="notes-board"
         controller={controller}
         query={{
           tab,
@@ -149,8 +139,19 @@ function mountDetail(detail: TWidgetDetail, initialTab = 'overview') {
       />
     </WidgetCatalogProvider>;
   }, host);
-  cleanups.push(dispose);
-  return { host, selectTab };
+  cleanups.push(() => {
+    dispose();
+    host.remove();
+  });
+  return {
+    host,
+    selectTab,
+    saveDraft,
+    publishMetadata,
+    buildAndPublish,
+    notifyError,
+    notifySuccess,
+  };
 }
 
 async function tabLabels(host: HTMLElement): Promise<string[]> {
@@ -162,49 +163,117 @@ async function tabLabels(host: HTMLElement): Promise<string[]> {
   });
 }
 
+function button(host: HTMLElement, text: string): HTMLButtonElement {
+  const found = [...host.querySelectorAll<HTMLButtonElement>('button')]
+    .find((candidate) => candidate.textContent?.trim() === text);
+  expect(found).toBeDefined();
+  return found!;
+}
+
 afterEach(() => {
-  for (const dispose of cleanups.splice(0)) dispose();
+  for (const cleanup of cleanups.splice(0)) cleanup();
   document.body.replaceChildren();
 });
 
-describe('WidgetDetailPage inspector tabs', () => {
-  test('renders the published widget inspector tabs', async () => {
-    const { host } = mountDetail(widgetDetail);
+describe('WidgetDetailPage filesystem inspector', () => {
+  test('renders Config, browser-safe functions, resources, and files without Runs or Logs', async () => {
+    const { host, selectTab } = mountDetail();
 
     expect(await tabLabels(host)).toEqual([
       'Overview',
       'Config',
       'Functions',
-      'Logs',
       'Resources',
       'Files',
     ]);
-  });
-
-  test('renders meaningful revision, invocation, and resource data', async () => {
-    const { host, selectTab } = mountDetail(widgetDetail, 'functions');
-
+    selectTab('functions');
     await vi.waitFor(() => {
-      expect(host.textContent).toContain('server/main.ts');
-      expect(host.textContent).toContain('omnidraw:1');
+      expect(host.textContent).toContain('Browser-safe function descriptors');
       expect(host.textContent).toContain('lookupNotes');
       expect(host.textContent).toContain('notes (read)');
+      expect(host.textContent).not.toContain('modulePath');
     });
-
-    selectTab('logs');
-    await vi.waitFor(() => {
-      expect(host.textContent).toContain('Invocation logs');
-      expect(host.textContent).toContain('4096 bytes maximum');
-      expect(host.textContent).toContain('No invocation is selected');
-    });
-
     selectTab('resources');
     await vi.waitFor(() => {
-      expect(host.textContent).toContain('Manifest resource requirements');
-      expect(host.textContent).toContain('notes');
-      expect(host.textContent).toContain('read + write');
-      expect(host.textContent).toContain('listNotes');
-      expect(host.textContent).toContain('host-owned');
+      expect(host.textContent).toContain('Portable resource requirements');
+      expect(host.textContent).toContain('read_write');
     });
+    expect(host.textContent).not.toContain('Runs');
+    expect([...host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent))
+      .not.toContain('Logs');
+  });
+
+  test('saves strict draft Config with Ctrl/Command+S and the observed manifest digest', async () => {
+    const { host, saveDraft, notifySuccess } = mountDetail({ initialTab: 'config' });
+    const name = await vi.waitFor(() => {
+      const input = host.querySelector<HTMLInputElement>('input[maxlength="200"]');
+      expect(input?.value).toBe('Notes Board');
+      return input!;
+    });
+    name.value = 'Renamed Notes';
+    name.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    expect(button(host, 'Publish metadata').disabled).toBe(true);
+    expect(button(host, 'Build and Publish').disabled).toBe(true);
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 's',
+      ctrlKey: true,
+    });
+    name.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    expect(saveDraft).toHaveBeenCalledWith({
+      widgetKey: 'notes-board',
+      expectedManifestDigestSha256: 'a'.repeat(64),
+      config: {
+        name: 'Renamed Notes',
+        description: 'Filesystem widget fixture.',
+        tool: {
+          label: 'Notes Board',
+          icon: { lucidIcon: 'Camera' },
+          group: 'writing',
+          priority: 10,
+        },
+      },
+    });
+    await vi.waitFor(() => expect(notifySuccess)
+      .toHaveBeenCalledWith('Widget draft Config saved'));
+  });
+
+  test('shows stale Config failures inline and keeps the explicit publication actions separate', async () => {
+    const stale = new Error('Widget draft changed after this form was loaded.');
+    const {
+      host,
+      saveDraft,
+      publishMetadata,
+      buildAndPublish,
+      notifyError,
+    } = mountDetail({ initialTab: 'config', saveError: stale });
+    await vi.waitFor(() => expect(host.textContent).toContain('Widget Config'));
+    button(host, 'Save draft').click();
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(stale.message);
+    expect(notifyError).toHaveBeenCalledWith('Could not save widget Config', stale.message);
+
+    button(host, 'Publish metadata').click();
+    await vi.waitFor(() => expect(publishMetadata).toHaveBeenCalledOnce());
+    expect(publishMetadata).toHaveBeenCalledWith({
+      widgetKey: 'notes-board',
+      expectedManifestDigestSha256: 'a'.repeat(64),
+      expectedCatalogDigestSha256: 'a'.repeat(64),
+    });
+    button(host, 'Build and Publish').click();
+    await vi.waitFor(() => expect(buildAndPublish).toHaveBeenCalledOnce());
+  });
+
+  test('keeps published Config read-only and hides draft publication controls', async () => {
+    const { host } = mountDetail({ source: 'published', initialTab: 'config' });
+    await vi.waitFor(() => expect(host.textContent).toContain('Published Config is read-only'));
+    expect([...host.querySelectorAll('button')].map((value) => value.textContent?.trim()))
+      .not.toContain('Save draft');
+    expect(host.textContent).not.toContain('Publish metadata');
+    expect(host.textContent).not.toContain('Build and Publish');
   });
 });

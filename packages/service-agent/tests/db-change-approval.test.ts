@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { AgentService } from '../src/AgentService';
 import { txAppendWidgetDbChangeProposalRecord } from '../src/core/tx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
-import { createTestTenantEvents } from './tenant.fixture';
+import { createTestChats, createTestEvents } from './service.fixture';
 
 const proposal = {
   id: 'proposal-1',
@@ -16,10 +16,9 @@ const proposal = {
 
 function createService(resourceService: ConstructorParameters<typeof AgentService>[0]['resourceService']) {
   const service = new AgentService({
-    cachePath: '/tmp/cache',
     dataPath: '/tmp/data',
-    configPath: '/tmp/config',
-    eventPublisherService: createTestTenantEvents(),
+    eventPublisherService: createTestEvents(),
+    chats: createTestChats(),
     resourceService,
   });
   const sessionManager = createFakeSessionManager();
@@ -45,9 +44,8 @@ describe('AgentService database change approval', () => {
       confirmDbApply: async () => {
         calls.push('confirm');
         return {
-          id: 'apply-1', resource_id: 'db-1', draft_id: 'draft-1', source_apply_id: null,
-          status: 'applying', last_error: null, backup_retained: false,
-          created_at: '2026-01-01T00:00:00.000Z', completed_at: null,
+          id: 'apply-1',
+          status: 'applying',
         };
       },
     });
@@ -91,9 +89,8 @@ describe('AgentService database change approval', () => {
       confirmDbApply: async () => {
         calls.push('confirm');
         return {
-          id: 'apply-1', resource_id: 'db-1', draft_id: 'draft-1', source_apply_id: null,
-          status: 'applying', last_error: null, backup_retained: false,
-          created_at: '2026-01-01T00:00:00.000Z', completed_at: null,
+          id: 'apply-1',
+          status: 'applying',
         };
       },
     });

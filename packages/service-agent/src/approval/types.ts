@@ -26,7 +26,7 @@ export type TApprovalView = {
   risk: 'medium' | 'high';
   warnings: string[];
   details: unknown;
-  createdAt: string;
+  createdAtSec: string;
   policyMode: TApprovalMode;
   decisionSource?: TApprovalDecisionSource;
   reviewerReason?: string;
@@ -53,15 +53,9 @@ export type TApprovalReviewer = Readonly<{
   ): Promise<TApprovalReviewDecision>;
 }>;
 
-export type TToolAuthorizationContext = {
-  accountId?: string;
-  requestId?: string;
-};
-
 export type TToolAuthorizationRequest = {
   chatId: string;
   toolName: string;
-  context: TToolAuthorizationContext;
 };
 
 export type TToolAuthorizer = (request: TToolAuthorizationRequest) => boolean | Promise<boolean>;

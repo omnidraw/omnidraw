@@ -1,4 +1,3 @@
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import { ResourceError } from '../ResourceError';
 import type { IResourceControlStore, IResourceUseCoordinator } from '../interface';
 import type {
@@ -23,46 +22,45 @@ export type TDbCoordinatorResource = {
   readonly kind: TResourceKind;
   readonly name: string;
   readonly status: TResourceStatus;
-  readonly last_error: unknown | null;
-  readonly created_at: string;
-  readonly updated_at: string;
+  readonly lastError: unknown | null;
+  readonly createdAtSec: string;
+  readonly updatedAtSec: string;
 };
 
 export type TDbCoordinatorDraft = {
   readonly id: string;
-  readonly resource_id: string;
+  readonly resourceId: string;
   readonly name: string;
   readonly status: TDbResourceDraftStatus;
-  readonly last_error: unknown | null;
-  readonly created_at: string;
-  readonly updated_at: string;
-  readonly applied_at: string | null;
+  readonly lastError: unknown | null;
+  readonly createdAtSec: string;
+  readonly updatedAtSec: string;
+  readonly appliedAtSec: string | null;
 };
 
 export type TDbCoordinatorDraftChange = {
-  readonly draft_id: string;
+  readonly draftId: string;
   readonly sequence: number;
   readonly kind: 'structure' | 'sql';
   readonly operation: unknown | null;
   readonly sql: string;
-  readonly created_at: string;
+  readonly createdAtSec: string;
 };
 
 export type TDbCoordinatorApplyRun = {
   readonly id: string;
-  readonly resource_id: string;
-  readonly draft_id: string | null;
-  readonly source_apply_id: string | null;
+  readonly resourceId: string;
+  readonly draftId: string | null;
+  readonly sourceApplyId: string | null;
   readonly status: TDbResourceApplyStatus;
-  readonly last_error: unknown | null;
-  readonly backup_retained: boolean;
-  readonly created_at: string;
-  readonly completed_at: string | null;
+  readonly lastError: unknown | null;
+  readonly backupRetained: boolean;
+  readonly createdAtSec: string;
+  readonly completedAtSec: string | null;
 };
 
 export type TDbResourceImpact = {
   readonly resource: TDbCoordinatorResource;
-  readonly bindings: Awaited<ReturnType<IResourceControlStore['listBindingsForResource']>>;
   readonly uses: Awaited<ReturnType<IResourceUseCoordinator['inspect']>>;
 };
 
@@ -85,7 +83,7 @@ export type TDbApplyDetails = {
 export type TDbBackup = {
   readonly resourceId: string;
   readonly applyId: string;
-  readonly createdAt: string;
+  readonly createdAtSec: string;
 };
 
 export interface IDbResourceCoordinatorControlStore {
@@ -97,7 +95,7 @@ export interface IDbResourceCoordinatorControlStore {
       list(args: {
         resourceId: string;
         status?: TDbResourceDraftStatus;
-        before?: { createdAt: string; id: string };
+        before?: { createdAtSec: string; id: string };
         limit?: number;
       }): Promise<TDbCoordinatorDraft[]>;
       updateStatus(args: {
@@ -135,7 +133,7 @@ export interface IDbResourceCoordinatorControlStore {
       list(args: {
         resourceId: string;
         status?: TDbResourceApplyStatus;
-        before?: { createdAt: string; id: string };
+        before?: { createdAtSec: string; id: string };
         limit?: number;
       }): Promise<TDbCoordinatorApplyRun[]>;
       update(args: {
@@ -185,7 +183,6 @@ export type IDbResourceLifecycle = Pick<
 >;
 
 export type TDbResourceCoordinatorConfig = {
-  readonly tenant: TTenantContext;
   readonly controlStore: IDbResourceCoordinatorControlStore;
   readonly resourceControlStore: IResourceControlStore;
   readonly resourceManager: IDbResourceCoordinatorManager;
@@ -203,7 +200,6 @@ export type TDbResourceCoordinatorDiagnostic = {
 };
 
 export type TDbResourceStartupReconcileOptions = Readonly<{
-  tenant?: TTenantContext;
   isPlacementOwned?: (resource: TDbCoordinatorResource) => boolean | Promise<boolean>;
 }>;
 
@@ -228,7 +224,6 @@ function structuredWarnings(changes: TDbDraftDetails['changes']): string[] {
 }
 
 export class DbResourceCoordinator {
-  readonly #tenant: TTenantContext;
   readonly #db: IDbResourceCoordinatorControlStore;
   readonly #resourceControlStore: IResourceControlStore;
   readonly #resourceManager: IDbResourceCoordinatorManager;
@@ -245,7 +240,6 @@ export class DbResourceCoordinator {
   #closed = false;
 
   constructor(config: TDbResourceCoordinatorConfig) {
-    this.#tenant = config.tenant;
     this.#db = config.controlStore;
     this.#resourceControlStore = config.resourceControlStore;
     this.#resourceManager = config.resourceManager;
@@ -256,12 +250,10 @@ export class DbResourceCoordinator {
     this.#staleApplyGraceMs = config.staleApplyGraceMs ?? STALE_APPLY_GRACE_MS;
   }
 
-  async impact(tenant: TTenantContext, resourceId: string): Promise<TDbResourceImpact>;
   async impact(resourceId: string): Promise<TDbResourceImpact>;
-  async impact(tenantOrResourceId: TTenantContext | string, explicitResourceId?: string): Promise<TDbResourceImpact> {
+  async impact(resourceId: string): Promise<TDbResourceImpact> {
     this.#assertOpen();
-    const { tenant, identifier } = this.#requestAuthority(tenantOrResourceId, explicitResourceId);
-    const descriptor = await this.#resourceControlStore.getResource(tenant, identifier);
+    const descriptor = await this.#resourceControlStore.getResource(resourceId);
     if (!descriptor || descriptor.kind !== 'db') throw new ResourceError('RESOURCE_NOT_FOUND', 'DbResource was not found.');
     return {
       resource: {
@@ -269,12 +261,11 @@ export class DbResourceCoordinator {
         kind: descriptor.kind,
         name: descriptor.name,
         status: descriptor.status,
-        last_error: descriptor.lastError,
-        created_at: new Date(descriptor.createdAtMs).toISOString(),
-        updated_at: new Date(descriptor.updatedAtMs).toISOString(),
+        lastError: descriptor.lastError,
+        createdAtSec: descriptor.createdAtSec,
+        updatedAtSec: descriptor.updatedAtSec,
       },
-      bindings: await this.#resourceControlStore.listBindingsForResource(tenant, identifier),
-      uses: await this.#useCoordinator.inspect(tenant, identifier),
+      uses: await this.#useCoordinator.inspect(resourceId),
     };
   }
 
@@ -305,7 +296,7 @@ export class DbResourceCoordinator {
     }));
   }
 
-  listDrafts(args: { resourceId: string; status?: TDbResourceDraftStatus; before?: { createdAt: string; id: string }; limit?: number }) {
+  listDrafts(args: { resourceId: string; status?: TDbResourceDraftStatus; before?: { createdAtSec: string; id: string }; limit?: number }) {
     this.#assertOpen();
     return this.#db.dbResource.draft.list(args);
   }
@@ -313,7 +304,7 @@ export class DbResourceCoordinator {
   async getDraft(draftId: string): Promise<TDbDraftDetails> {
     this.#assertOpen();
     const draft = await this.#requireDraft(draftId);
-    return this.#withResourceLane(draft.resource_id, () => this.#validatedDraftDetails(draftId));
+    return this.#withResourceLane(draft.resourceId, () => this.#validatedDraftDetails(draftId));
   }
 
   async getActiveDraft(resourceId: string): Promise<TDbDraftDetails | null> {
@@ -324,7 +315,7 @@ export class DbResourceCoordinator {
 
   async changeDraft(draftId: string, operation: TDbDraftOperation) {
     const draft = await this.#requireEditingDraft(draftId);
-    return this.#resourceManager.withReadyResource(draft.resource_id, () => this.#withResourceLane(draft.resource_id, async () => {
+    return this.#resourceManager.withReadyResource(draft.resourceId, () => this.#withResourceLane(draft.resourceId, async () => {
       await this.#requireEditingDraft(draftId);
       const evidence = await this.#dbResource.applyDraftChange(draft.id, operation);
       return this.#db.dbResource.draft.change.append({
@@ -339,7 +330,7 @@ export class DbResourceCoordinator {
 
   async executeDraftSql(draftId: string, sql: string, parameters?: readonly TDbCellValue[]) {
     const draft = await this.#requireEditingDraft(draftId);
-    return this.#resourceManager.withReadyResource(draft.resource_id, () => this.#withResourceLane(draft.resource_id, async () => {
+    return this.#resourceManager.withReadyResource(draft.resourceId, () => this.#withResourceLane(draft.resourceId, async () => {
       await this.#requireEditingDraft(draftId);
       const evidence = await this.#dbResource.executeDraftSql(draft.id, sql, parameters);
       return this.#db.dbResource.draft.change.append({
@@ -354,7 +345,7 @@ export class DbResourceCoordinator {
 
   async discardDraft(draftId: string): Promise<TDbCoordinatorDraft> {
     const draft = await this.#requireDraft(draftId);
-    return this.#resourceManager.withReadyResource(draft.resource_id, () => this.#withResourceLane(draft.resource_id, async () => {
+    return this.#resourceManager.withReadyResource(draft.resourceId, () => this.#withResourceLane(draft.resourceId, async () => {
       if (draft.status !== 'editing' && draft.status !== 'error') {
         throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Only an editing or failed draft can be discarded.');
       }
@@ -365,30 +356,26 @@ export class DbResourceCoordinator {
     }));
   }
 
-  async previewApply(tenant: TTenantContext, draftId: string): Promise<TDbApplyPreview>;
   async previewApply(draftId: string): Promise<TDbApplyPreview>;
-  async previewApply(tenantOrDraftId: TTenantContext | string, explicitDraftId?: string): Promise<TDbApplyPreview> {
-    const { tenant, identifier } = this.#requestAuthority(tenantOrDraftId, explicitDraftId);
-    const details = await this.getDraft(identifier);
+  async previewApply(draftId: string): Promise<TDbApplyPreview> {
+    const details = await this.getDraft(draftId);
     if (details.draft.status !== 'editing') throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Only an editing draft can be reviewed.');
-    const impact = await this.impact(tenant, details.draft.resource_id);
+    const impact = await this.impact(details.draft.resourceId);
     return { ...details, resource: impact.resource, impact, warnings: structuredWarnings(details.changes) };
   }
 
-  async confirmApply(tenant: TTenantContext, draftId: string): Promise<TDbCoordinatorApplyRun>;
   async confirmApply(draftId: string): Promise<TDbCoordinatorApplyRun>;
-  async confirmApply(tenantOrDraftId: TTenantContext | string, explicitDraftId?: string): Promise<TDbCoordinatorApplyRun> {
-    const { tenant, identifier } = this.#requestAuthority(tenantOrDraftId, explicitDraftId);
-    const draft = await this.#requireEditingDraft(identifier);
-    const result = await this.#withResourceLane(draft.resource_id, async () => {
-      await this.#requireNoActiveApply(draft.resource_id);
+  async confirmApply(draftId: string): Promise<TDbCoordinatorApplyRun> {
+    const draft = await this.#requireEditingDraft(draftId);
+    const result = await this.#withResourceLane(draft.resourceId, async () => {
+      await this.#requireNoActiveApply(draft.resourceId);
       return this.#db.dbResource.apply.createFromDraft({
         id: this.#crypto.randomUUID(),
-        resourceId: draft.resource_id,
+        resourceId: draft.resourceId,
         draftId: draft.id,
       });
     });
-    this.#track(this.#executeApply(tenant, result.apply));
+    this.#track(this.#executeApply(result.apply));
     return result.apply;
   }
 
@@ -402,57 +389,49 @@ export class DbResourceCoordinator {
     return { apply, drain: this.#drains.get(applyId) ?? null };
   }
 
-  listApplies(args: { resourceId: string; status?: TDbResourceApplyStatus; before?: { createdAt: string; id: string }; limit?: number }) {
+  listApplies(args: { resourceId: string; status?: TDbResourceApplyStatus; before?: { createdAtSec: string; id: string }; limit?: number }) {
     this.#assertOpen();
     return this.#db.dbResource.apply.list(args);
   }
 
   async getBackup(resourceId: string): Promise<TDbBackup | null> {
     const applies = await this.#listAllApplies(resourceId);
-    const apply = applies.find((candidate) => candidate.backup_retained && candidate.status !== 'preparing' && candidate.status !== 'applying');
+    const apply = applies.find((candidate) => candidate.backupRetained && candidate.status !== 'preparing' && candidate.status !== 'applying');
     if (!apply || !await this.#dbResource.hasVerifiedBackup(resourceId, apply.id)) return null;
-    return { resourceId, applyId: apply.id, createdAt: apply.created_at };
+    return { resourceId, applyId: apply.id, createdAtSec: apply.createdAtSec };
   }
 
   async discardBackup(resourceId: string, applyId: string): Promise<void> {
     await this.#withResourceLane(resourceId, async () => {
       const apply = await this.#requireApply(applyId, resourceId);
-      if (!apply.backup_retained) return;
+      if (!apply.backupRetained) return;
       await this.#dbResource.discardBackup(resourceId, applyId);
       await this.#db.dbResource.apply.update({
         id: applyId,
         status: apply.status,
         expectedStatus: apply.status,
-        lastError: apply.last_error,
+        lastError: apply.lastError,
         backupRetained: false,
       });
     });
   }
 
-  async previewRestore(tenant: TTenantContext, resourceId: string, applyId: string): Promise<{ backup: TDbBackup; impact: TDbResourceImpact; warning: string }>;
   async previewRestore(resourceId: string, applyId: string): Promise<{ backup: TDbBackup; impact: TDbResourceImpact; warning: string }>;
-  async previewRestore(tenantOrResourceId: TTenantContext | string, resourceOrApplyId: string, explicitApplyId?: string) {
-    const tenant = typeof tenantOrResourceId === 'string' ? this.#tenant : tenantOrResourceId;
-    const resourceId = typeof tenantOrResourceId === 'string' ? tenantOrResourceId : resourceOrApplyId;
-    const applyId = typeof tenantOrResourceId === 'string' ? resourceOrApplyId : explicitApplyId!;
+  async previewRestore(resourceId: string, applyId: string) {
     const apply = await this.#requireApply(applyId, resourceId);
-    if (!apply.backup_retained || !await this.#dbResource.hasVerifiedBackup(resourceId, applyId)) {
+    if (!apply.backupRetained || !await this.#dbResource.hasVerifiedBackup(resourceId, applyId)) {
       throw new ResourceError('DB_RESOURCE_BACKUP_NOT_FOUND', 'Verified backup was not found.');
     }
     return {
-      backup: { resourceId, applyId, createdAt: apply.created_at },
-      impact: await this.impact(tenant, resourceId),
+      backup: { resourceId, applyId, createdAtSec: apply.createdAtSec },
+      impact: await this.impact(resourceId),
       warning: 'Restoring replaces the current live database with the selected verified backup.',
     };
   }
 
-  async restore(tenant: TTenantContext, resourceId: string, applyId: string): Promise<TDbCoordinatorApplyRun>;
   async restore(resourceId: string, applyId: string): Promise<TDbCoordinatorApplyRun>;
-  async restore(tenantOrResourceId: TTenantContext | string, resourceOrApplyId: string, explicitApplyId?: string) {
-    const tenant = typeof tenantOrResourceId === 'string' ? this.#tenant : tenantOrResourceId;
-    const resourceId = typeof tenantOrResourceId === 'string' ? tenantOrResourceId : resourceOrApplyId;
-    const applyId = typeof tenantOrResourceId === 'string' ? resourceOrApplyId : explicitApplyId!;
-    await this.previewRestore(tenant, resourceId, applyId);
+  async restore(resourceId: string, applyId: string) {
+    await this.previewRestore(resourceId, applyId);
     const restore = await this.#withResourceLane(resourceId, async () => {
       await this.#requireNoActiveApply(resourceId);
       return this.#db.dbResource.apply.create({
@@ -462,7 +441,7 @@ export class DbResourceCoordinator {
         status: 'preparing',
       });
     });
-    this.#track(this.#executeRestore(tenant, restore));
+    this.#track(this.#executeRestore(restore));
     return restore;
   }
 
@@ -472,17 +451,16 @@ export class DbResourceCoordinator {
 
   async reconcileStartup(options: TDbResourceStartupReconcileOptions = {}): Promise<void> {
     this.#assertOpen();
-    const tenant = options.tenant ?? this.#tenant;
     const resources = await this.#resourceManager.listResources({ kind: 'db' });
     for (const resource of resources) {
       if (options.isPlacementOwned && !await options.isPlacementOwned(resource)) continue;
       const applies = await this.#listAllApplies(resource.id);
       for (const apply of applies.filter((candidate) => candidate.status === 'preparing' || candidate.status === 'applying')) {
-        await this.#reconcileApply(tenant, apply);
+        await this.#reconcileApply(apply);
       }
       const activeDraft = await this.#db.dbResource.draft.getActive({ resourceId: resource.id });
       if (activeDraft?.status === 'applying') {
-        const hasApply = applies.some((apply) => apply.draft_id === activeDraft.id && (apply.status === 'preparing' || apply.status === 'applying'));
+        const hasApply = applies.some((apply) => apply.draftId === activeDraft.id && (apply.status === 'preparing' || apply.status === 'applying'));
         if (!hasApply) {
           await this.#db.dbResource.draft.updateStatus({
             id: activeDraft.id,
@@ -507,13 +485,13 @@ export class DbResourceCoordinator {
     await Promise.allSettled([...this.#detachedTasks, ...this.#resourceTails.values()]);
   }
 
-  async #executeApply(tenant: TTenantContext, apply: TDbCoordinatorApplyRun): Promise<void> {
-    if (!apply.draft_id) return;
+  async #executeApply(apply: TDbCoordinatorApplyRun): Promise<void> {
+    if (!apply.draftId) return;
     this.#activeApplyIds.add(apply.id);
     let lease: TResourceDrainLease | null = null;
     try {
-      const drained = await this.#useCoordinator.drain(tenant, {
-        resourceId: apply.resource_id,
+      const drained = await this.#useCoordinator.drain({
+        resourceId: apply.resourceId,
         reason: 'schema_apply',
         timeoutMs: RESOURCE_DRAIN_TIMEOUT_MS,
       });
@@ -521,16 +499,16 @@ export class DbResourceCoordinator {
       lease = drained.lease;
       this.#drains.set(apply.id, lease);
       await this.#db.dbResource.apply.update({ id: apply.id, status: 'applying', expectedStatus: 'preparing', lastError: null });
-      const details = await this.#validatedDraftDetails(apply.draft_id);
-      const result = await this.#resourceManager.coordinateResourceApply(apply.resource_id, () => this.#dbResource.applyDraft({
-        resourceId: apply.resource_id,
-        draftId: apply.draft_id!,
+      const details = await this.#validatedDraftDetails(apply.draftId);
+      const result = await this.#resourceManager.coordinateResourceApply(apply.resourceId, () => this.#dbResource.applyDraft({
+        resourceId: apply.resourceId,
+        draftId: apply.draftId!,
         applyId: apply.id,
         changes: details.changes,
       }));
       await this.#db.dbResource.apply.finishWithDraft({
         id: apply.id,
-        draftId: apply.draft_id,
+        draftId: apply.draftId,
         status: result.outcome,
         expectedStatus: 'applying',
         draftStatus: result.outcome === 'succeeded' ? 'applied' : 'editing',
@@ -543,12 +521,12 @@ export class DbResourceCoordinator {
       if (current && (current.status === 'preparing' || current.status === 'applying')) {
         await this.#db.dbResource.apply.finishWithDraft({
           id: apply.id,
-          draftId: apply.draft_id,
+          draftId: apply.draftId,
           status: 'failed',
           expectedStatus: current.status,
           draftStatus: 'editing',
           lastError: failure,
-          backupRetained: current.backup_retained,
+          backupRetained: current.backupRetained,
         }).catch((writeError: unknown) => {
           this.#reportTerminalWriteFailure(apply.id, writeError);
         });
@@ -556,17 +534,17 @@ export class DbResourceCoordinator {
     } finally {
       this.#activeApplyIds.delete(apply.id);
       this.#drains.delete(apply.id);
-      if (lease) await this.#useCoordinator.release(tenant, lease, 'resume').catch(() => null);
+      if (lease) await this.#useCoordinator.release(lease, 'resume').catch(() => null);
     }
   }
 
-  async #executeRestore(tenant: TTenantContext, restore: TDbCoordinatorApplyRun): Promise<void> {
+  async #executeRestore(restore: TDbCoordinatorApplyRun): Promise<void> {
     this.#activeApplyIds.add(restore.id);
     let lease: TResourceDrainLease | null = null;
     try {
-      if (!restore.source_apply_id) throw new ResourceError('DB_RESOURCE_BACKUP_NOT_FOUND', 'Restore source is missing.');
-      const drained = await this.#useCoordinator.drain(tenant, {
-        resourceId: restore.resource_id,
+      if (!restore.sourceApplyId) throw new ResourceError('DB_RESOURCE_BACKUP_NOT_FOUND', 'Restore source is missing.');
+      const drained = await this.#useCoordinator.drain({
+        resourceId: restore.resourceId,
         reason: 'restore',
         timeoutMs: RESOURCE_DRAIN_TIMEOUT_MS,
       });
@@ -574,8 +552,8 @@ export class DbResourceCoordinator {
       lease = drained.lease;
       this.#drains.set(restore.id, lease);
       await this.#db.dbResource.apply.update({ id: restore.id, status: 'applying', expectedStatus: 'preparing', lastError: null });
-      await this.#resourceManager.coordinateResourceApply(restore.resource_id, () => (
-        this.#dbResource.restoreBackup(restore.resource_id, restore.source_apply_id!, restore.id)
+      await this.#resourceManager.coordinateResourceApply(restore.resourceId, () => (
+        this.#dbResource.restoreBackup(restore.resourceId, restore.sourceApplyId!, restore.id)
       ));
       await this.#db.dbResource.apply.update({
         id: restore.id,
@@ -601,13 +579,13 @@ export class DbResourceCoordinator {
     } finally {
       this.#activeApplyIds.delete(restore.id);
       this.#drains.delete(restore.id);
-      if (lease) await this.#useCoordinator.release(tenant, lease, 'resume').catch(() => null);
+      if (lease) await this.#useCoordinator.release(lease, 'resume').catch(() => null);
     }
   }
 
-  async #reconcileApply(tenant: TTenantContext, apply: TDbCoordinatorApplyRun): Promise<void> {
-    const reconciliation = await this.#dbResource.reconcileApply(apply.resource_id, apply.id, {
-      restoreSourceApplyId: apply.source_apply_id ?? undefined,
+  async #reconcileApply(apply: TDbCoordinatorApplyRun): Promise<void> {
+    const reconciliation = await this.#dbResource.reconcileApply(apply.resourceId, apply.id, {
+      restoreSourceApplyId: apply.sourceApplyId ?? undefined,
     });
     const outcome = reconciliation.outcome === 'committed'
       ? 'succeeded'
@@ -620,10 +598,10 @@ export class DbResourceCoordinator {
         ? 'Interrupted database work was recovered from a verified backup.'
         : 'Interrupted database work could not be recovered safely.',
     };
-    if (apply.draft_id) {
+    if (apply.draftId) {
       await this.#db.dbResource.apply.finishWithDraft({
         id: apply.id,
-        draftId: apply.draft_id,
+        draftId: apply.draftId,
         status: outcome,
         expectedStatus: apply.status,
         draftStatus: outcome === 'succeeded' ? 'applied' : outcome === 'recovered' ? 'editing' : 'error',
@@ -639,17 +617,17 @@ export class DbResourceCoordinator {
         backupRetained: reconciliation.retainedBackupApplyId !== null,
       });
     }
-    const inspection = await this.#useCoordinator.inspect(tenant, apply.resource_id);
+    const inspection = await this.#useCoordinator.inspect(apply.resourceId);
     if (inspection.uses.some((use) => use.state === 'draining')) {
-      const retry = await this.#useCoordinator.drain(tenant, {
-        resourceId: apply.resource_id,
-        reason: apply.source_apply_id ? 'restore' : 'schema_apply',
+      const retry = await this.#useCoordinator.drain({
+        resourceId: apply.resourceId,
+        reason: apply.sourceApplyId ? 'restore' : 'schema_apply',
         timeoutMs: RESOURCE_DRAIN_TIMEOUT_MS,
       });
-      if (retry.ok) await this.#useCoordinator.release(tenant, retry.lease, 'resume');
+      if (retry.ok) await this.#useCoordinator.release(retry.lease, 'resume');
     }
     await this.#resourceManager.settleResourceMigration(
-      apply.resource_id,
+      apply.resourceId,
       outcome === 'failed'
         ? { status: 'error', code: error?.code ?? 'DB_RESOURCE_RECOVERY_FAILED', message: error?.message ?? 'Interrupted database work could not be recovered safely.' }
         : { status: 'ready' },
@@ -686,7 +664,7 @@ export class DbResourceCoordinator {
 
   async #requireApply(applyId: string, resourceId?: string): Promise<TDbCoordinatorApplyRun> {
     const apply = await this.#db.dbResource.apply.get({ id: applyId });
-    if (!apply || (resourceId && apply.resource_id !== resourceId)) {
+    if (!apply || (resourceId && apply.resourceId !== resourceId)) {
       throw new ResourceError('RESOURCE_NOT_FOUND', 'DbResource apply was not found.');
     }
     return apply;
@@ -704,7 +682,7 @@ export class DbResourceCoordinator {
   #isStaleUnownedApply(apply: TDbCoordinatorApplyRun): boolean {
     if (apply.status !== 'preparing' && apply.status !== 'applying') return false;
     if (this.#activeApplyIds.has(apply.id)) return false;
-    const createdMs = Date.parse(apply.created_at);
+    const createdMs = Date.parse(apply.createdAtSec);
     return Number.isFinite(createdMs) && Date.now() - createdMs > this.#staleApplyGraceMs;
   }
 
@@ -715,7 +693,7 @@ export class DbResourceCoordinator {
     this.#reconcileAttempts.set(apply.id, Date.now());
     this.#activeApplyIds.add(apply.id);
     try {
-      await this.#reconcileApply(this.#tenant, apply);
+      await this.#reconcileApply(apply);
       this.#reconcileAttempts.delete(apply.id);
     } catch (error) {
       this.#onDiagnostic?.({
@@ -738,21 +716,15 @@ export class DbResourceCoordinator {
 
   async #listAllApplies(resourceId: string): Promise<TDbCoordinatorApplyRun[]> {
     const result: TDbCoordinatorApplyRun[] = [];
-    let before: { createdAt: string; id: string } | undefined;
+    let before: { createdAtSec: string; id: string } | undefined;
     do {
       const page = await this.#db.dbResource.apply.list({ resourceId, before, limit: 100 });
       result.push(...page);
       const last = page.at(-1);
-      before = page.length === 100 && last ? { createdAt: last.created_at, id: last.id } : undefined;
+      before = page.length === 100 && last ? { createdAtSec: last.createdAtSec, id: last.id } : undefined;
       if (!before) break;
     } while (true);
     return result;
-  }
-
-  #requestAuthority(tenantOrId: TTenantContext | string, explicitId?: string) {
-    return typeof tenantOrId === 'string'
-      ? { tenant: this.#tenant, identifier: tenantOrId }
-      : { tenant: tenantOrId, identifier: explicitId! };
   }
 
   #withResourceLane<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {

@@ -23,7 +23,7 @@ const suites: readonly TResourceRuntimeSuite[] = [
     command: ['bun', 'test', 'packages/resource-runtime/tests', '--timeout=30000'],
   },
   {
-    name: 'catalog, placement, binding, lifecycle, and key custody',
+    name: 'catalog, placement, lifecycle, and key custody',
     command: ['bun', 'test', 'packages/service-db/src/tests/ResourceControlStoreTurso.test.ts'],
   },
   {

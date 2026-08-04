@@ -88,9 +88,7 @@ export function fnOmnidrawServerFunctionDescriptor(args: Readonly<{
         outputSchema,
         idempotency: item.effect === 'fn'
           ? 'read-only' as const
-          : item.retry.mode === 'idempotent'
-            ? 'idempotent' as const
-            : 'non-idempotent' as const,
+          : 'non-idempotent' as const,
         limits: Object.freeze({
           maxBytes: Math.min(item.limits.outputByteLimit, 1_048_576),
           maxInFlight: 1,

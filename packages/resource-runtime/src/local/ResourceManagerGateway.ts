@@ -1,8 +1,7 @@
 /**
- * @file Compatibility bridge from legacy-neutral manager calls into the canonical gateway/store path.
+ * @file Direct caller-selected resource bridge into the canonical gateway/store path.
  */
 
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   IResourceStore,
   TResourceCall,
@@ -50,27 +49,12 @@ export class ResourceManagerGateway {
     this.#store = config.store;
   }
 
-  async call(
-    tenant: TTenantContext,
-    call: TResourceManagerCall,
-    options: TResourceManagerGatewayCallOptions = {},
-  ): Promise<unknown> {
-    return this.#callResolved(
-      tenant,
-      call,
-      await this.#manager.resolveGatewayCall(call),
-      options,
-    );
-  }
-
   async callWithDirectBinding(
-    tenant: TTenantContext,
     call: TResourceManagerCall,
     direct: TResourceDirectBinding,
     options: TResourceManagerGatewayCallOptions = {},
   ): Promise<unknown> {
     return this.#callResolved(
-      tenant,
       call,
       await this.#manager.resolveGatewayCall(call, direct),
       options,
@@ -78,7 +62,6 @@ export class ResourceManagerGateway {
   }
 
   async callResource(
-    tenant: TTenantContext,
     call: TResourceManagerGatewayResourceCall,
   ): Promise<unknown> {
     const authorization = fnResourceExactGatewayAuthorization(call);
@@ -105,11 +88,10 @@ export class ResourceManagerGateway {
         effect: 'read',
         input: call.input,
       };
-    return (await gateway.call(tenant, logicalCall)).output;
+    return (await gateway.call(logicalCall)).output;
   }
 
   async #callResolved(
-    tenant: TTenantContext,
     call: TResourceManagerCall,
     authorization: TResourceGatewayAuthorization,
     options: TResourceManagerGatewayCallOptions,
@@ -137,6 +119,6 @@ export class ResourceManagerGateway {
         effect: 'read',
         input: call.args,
       };
-    return (await gateway.call(tenant, logicalCall)).output;
+    return (await gateway.call(logicalCall)).output;
   }
 }

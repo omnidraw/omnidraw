@@ -12,11 +12,7 @@ export type TSidebarApiPort = {
     resource: {
       resources: Pick<TApi["resource"]["resources"], "list" | "create">;
     };
-    agent: Pick<TApi["agent"], "events" | "widgets" | "widgetPublish"> & {
-      widgetPreview: {
-        owner: Pick<TApi["agent"]["widgetPreview"]["owner"], "list">;
-      };
-    };
+    widget: Pick<TApi["widget"], "catalog" | "config" | "publication">;
   };
 };
 

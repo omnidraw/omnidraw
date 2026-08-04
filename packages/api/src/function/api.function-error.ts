@@ -29,28 +29,23 @@ export async function withFunctionApiError<T>(operation: () => Promise<T>): Prom
     ) {
       throw new ORPCError('NOT_FOUND', { message: 'Function invocation target not found.' });
     }
-    if (code === 'IDEMPOTENCY_CONFLICT') {
-      throw new ORPCError('CONFLICT', {
-        message: 'Idempotency key was already used for a different invocation.',
+    if (code === 'RESOURCE_EXHAUSTED') {
+      throw new ORPCError('TOO_MANY_REQUESTS', {
+        message: 'Function execution concurrency is full.',
       });
-    }
-    if (
-      code === 'FUNCTION_CANCELLATION_CONFLICT'
-      || code === 'FUNCTION_ALREADY_TERMINAL'
-    ) {
-      throw new ORPCError('CONFLICT', { message: 'Function invocation cannot be cancelled.' });
     }
     if (
       code === 'FUNCTION_UNAVAILABLE'
       || code === 'FUNCTION_RUNTIME_UNAVAILABLE'
       || code === 'FUNCTION_RESOURCE_UNAVAILABLE'
+      || code === 'WIDGET_CATALOG_CHANGED'
     ) {
       throw new ORPCError('SERVICE_UNAVAILABLE', {
         message: 'Function execution is temporarily unavailable.',
       });
     }
     throw new ORPCError('INTERNAL_SERVER_ERROR', {
-      message: 'Function invocation operation failed.',
+      message: 'Function execution failed.',
     });
   }
 }

@@ -1,175 +1,131 @@
 import { describe, expect, test } from 'bun:test'
-import { router } from '../packages/api/src/router'
-import type {
-  IFunctionInvocationApiCapability,
-  TFunctionInvocationView,
-} from '../packages/api/src/function/types'
+import { apiInvokeFunction } from '../packages/api/src/function/api.invoke-function'
+import type { IFunctionInvocationApiCapability } from '../packages/api/src/function/types'
 import {
   MANAGED_TENANT,
   createManagedCompositionFixture,
 } from './fixtures/external-composition/src/managed-composition'
 
 type TManagedFixture = ReturnType<typeof createManagedCompositionFixture>
-type TManagedDispatcher = TManagedFixture['services']['dispatcher']
-type TManagedDispatchResult = Awaited<ReturnType<TManagedDispatcher['invoke']>>
-type TManagedInvocationRecord = Extract<
-  TManagedDispatchResult,
-  Readonly<{ status: 'created' | 'replayed' }>
->['invocation']
 
-const MANAGED_FUNCTION_TARGET = Object.freeze({
-  widgetDefinitionId: 'managed-definition',
-  widgetRevisionId: 'managed-revision',
-  canvasId: 'managed-canvas',
+const definition = Object.freeze({
+  widgetKey: 'managed-widget',
+  catalogGeneration: 9,
+  runtimeAbi: 'omnidraw.function.v1',
+  artifactDigestSha256: 'a'.repeat(64),
+  descriptor: Object.freeze({
+    schemaVersion: 1 as const,
+    exportName: 'readSettings',
+    modulePath: 'server/main.ts',
+    effect: 'fx' as const,
+    inputSchema: {},
+    outputSchema: {},
+    resources: Object.freeze([{ slot: 'settings', effect: 'read' as const }]),
+    limits: Object.freeze({
+      timeoutMs: 1_000,
+      memoryTier: 'small' as const,
+      outputByteLimit: 1_024,
+      logByteLimit: 1_024,
+    }),
+  }),
 })
 
-function invocationView(record: TManagedInvocationRecord): TFunctionInvocationView {
-  if (record.envelope.subject.kind !== 'widget_instance') {
-    throw new Error('The public function API exposes widget-instance invocations only.')
-  }
+function createManagedFunctionApiAdapter(
+  fixture: TManagedFixture,
+): IFunctionInvocationApiCapability {
   return Object.freeze({
-    id: record.envelope.id,
-    functionName: record.envelope.functionName,
-    widgetRevisionId: record.envelope.widgetRevisionId,
-    widgetInstanceId: record.envelope.subject.widgetInstanceId,
-    status: record.status,
-    output: record.output,
-    failure: record.failure,
-    createdAtMs: record.envelope.createdAtMs,
-    startedAtMs: record.startedAtMs,
-    finishedAtMs: record.finishedAtMs,
+    invokeFunction: (tenant, request, signal) => fixture.services.functions.invoke({
+      tenant,
+      subject: {
+        canvasId: request.canvasId,
+        elementId: request.elementId,
+        widgetInstanceId: request.widgetInstanceId,
+      },
+      definition,
+      artifact: new Uint8Array([1, 2, 3]),
+      input: request.input,
+      signal,
+      createResources: () => fixture.services.resources,
+    }),
   })
 }
 
-function createManagedFunctionApiAdapter(
-  dispatcher: TManagedDispatcher,
-): IFunctionInvocationApiCapability {
-  const views = new Map<string, TFunctionInvocationView>()
-  const adapter: IFunctionInvocationApiCapability = {
-    async invokeFunction(tenant, request) {
-      const result = await dispatcher.invoke(tenant, {
-        widgetDefinitionId: MANAGED_FUNCTION_TARGET.widgetDefinitionId,
-        widgetRevisionId: request.widgetRevisionId,
+describe('external managed composition through the direct OSS API handler', () => {
+  test('routes one exact request/response with no get, cancel, or history endpoint', async () => {
+    const fixture = createManagedCompositionFixture()
+    await fixture.runtime.boot()
+    try {
+      const context = {
+        tenant: MANAGED_TENANT,
+        functionInvocation: createManagedFunctionApiAdapter(fixture),
+      }
+      const functionRouter = { invoke: apiInvokeFunction } as Record<string, unknown>
+      expect(Object.keys(functionRouter)).toEqual(['invoke'])
+      const invoke = apiInvokeFunction.callable({ context })
+      const request = {
+        canvasId: 'managed-canvas',
+        elementId: 'managed-element',
+        widgetInstanceId: 'managed-instance',
+        widgetKey: definition.widgetKey,
+        catalogGeneration: definition.catalogGeneration,
+        functionName: definition.descriptor.exportName,
+        input: { key: 'theme' },
+      }
+
+      await expect(invoke(request)).resolves.toEqual({
+        status: 'succeeded',
+        output: {
+          managed: true,
+          artifactByteSize: 3,
+          resource: {
+            managed: true,
+            orgId: MANAGED_TENANT.orgId,
+            operation: 'get',
+          },
+        },
+        diagnostics: {
+          code: null,
+          message: null,
+          logByteSize: 0,
+          truncated: false,
+        },
+      })
+      expect(fixture.invocationEvidence).toHaveLength(1)
+      expect(fixture.invocationEvidence[0]).toMatchObject({
+        tenant: MANAGED_TENANT,
         subject: {
-          kind: 'widget_instance',
-          canvasId: MANAGED_FUNCTION_TARGET.canvasId,
+          canvasId: request.canvasId,
+          elementId: request.elementId,
           widgetInstanceId: request.widgetInstanceId,
         },
-        functionName: request.functionName,
+        definition,
         input: request.input,
-        idempotencyKey: request.idempotencyKey,
-      })
-      if (result.status === 'conflict') {
-        throw Object.assign(new Error('Managed dispatcher rejected the idempotency key.'), {
-          code: 'IDEMPOTENCY_CONFLICT',
-        })
-      }
-      const view = invocationView(result.invocation)
-      views.set(view.id, view)
-      return view
-    },
-    async getFunctionInvocation(_tenant, invocationId) {
-      return views.get(invocationId) ?? null
-    },
-    async cancelFunctionInvocation(_tenant, invocationId) {
-      const current = views.get(invocationId)
-      if (!current) return null
-      const cancelled: TFunctionInvocationView = Object.freeze({
-        ...current,
-        status: 'cancelled',
-        finishedAtMs: 2,
-      })
-      views.set(invocationId, cancelled)
-      return cancelled
-    },
-  }
-  return Object.freeze(adapter)
-}
-
-describe('external managed composition through unchanged OSS API handlers', () => {
-  test('routes function invoke, get, and cancel through the external dispatcher adapter', async () => {
-    const fixture = createManagedCompositionFixture()
-    await fixture.runtime.boot()
-    try {
-      const context = {
-        tenant: MANAGED_TENANT,
-        functionInvocation: createManagedFunctionApiAdapter(fixture.services.dispatcher),
-      }
-      const invoke = router.api.function.invoke.callable({ context })
-      const get = router.api.function.get.callable({ context })
-      const cancel = router.api.function.cancel.callable({ context })
-      const request = {
-        widgetInstanceId: 'managed-instance',
-        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
-        functionName: 'run',
-        input: { value: 7 },
-        idempotencyKey: 'managed-api-key',
-      }
-
-      const created = await invoke(request)
-      expect(created).toEqual({
-        id: 'managed-invocation:managed-api-key',
-        functionName: 'run',
-        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
-        widgetInstanceId: 'managed-instance',
-        status: 'queued',
-        output: null,
-        failure: null,
-        createdAtMs: 1,
-        startedAtMs: null,
-        finishedAtMs: null,
-      })
-      await expect(invoke(request)).resolves.toEqual(created)
-      await expect(get({ invocationId: created.id })).resolves.toEqual(created)
-      await expect(cancel({ invocationId: created.id })).resolves.toMatchObject({
-        id: created.id,
-        status: 'cancelled',
-        finishedAtMs: 2,
-      })
-
-      expect(fixture.dispatchEvidence).toHaveLength(2)
-      expect(fixture.dispatchEvidence[0]?.tenant).toBe(MANAGED_TENANT)
-      expect(fixture.dispatchEvidence[0]?.request).toEqual({
-        widgetDefinitionId: MANAGED_FUNCTION_TARGET.widgetDefinitionId,
-        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
-        subject: {
-          kind: 'widget_instance',
-          canvasId: MANAGED_FUNCTION_TARGET.canvasId,
-          widgetInstanceId: 'managed-instance',
-        },
-        functionName: 'run',
-        input: { value: 7 },
-        idempotencyKey: 'managed-api-key',
       })
     } finally {
       await fixture.runtime.shutdown()
     }
   })
 
-  test('preserves the unchanged handler error mapping for managed idempotency conflicts', async () => {
-    const fixture = createManagedCompositionFixture()
-    await fixture.runtime.boot()
-    try {
-      const context = {
-        tenant: MANAGED_TENANT,
-        functionInvocation: createManagedFunctionApiAdapter(fixture.services.dispatcher),
-      }
-      const invoke = router.api.function.invoke.callable({ context })
-      const request = {
-        widgetInstanceId: 'managed-instance',
-        widgetRevisionId: MANAGED_FUNCTION_TARGET.widgetRevisionId,
-        functionName: 'run',
-        input: { value: 7 },
-        idempotencyKey: 'managed-conflict-key',
-      }
-
-      await expect(invoke(request)).resolves.toMatchObject({ status: 'queued' })
-      await expect(invoke({ ...request, input: { value: 8 } })).rejects.toMatchObject({
-        code: 'CONFLICT',
-      })
-      expect(fixture.dispatchEvidence).toHaveLength(2)
-    } finally {
-      await fixture.runtime.shutdown()
+  test('preserves direct host error mapping without durable conflict semantics', async () => {
+    const context = {
+      tenant: MANAGED_TENANT,
+      functionInvocation: {
+        invokeFunction: async () => {
+          throw Object.assign(new Error('Direct capacity is full.'), {
+            code: 'RESOURCE_EXHAUSTED',
+          })
+        },
+      },
     }
+    const invoke = apiInvokeFunction.callable({ context })
+    await expect(invoke({
+      canvasId: 'managed-canvas',
+      elementId: 'managed-element',
+      widgetInstanceId: 'managed-instance',
+      widgetKey: definition.widgetKey,
+      catalogGeneration: definition.catalogGeneration,
+      functionName: definition.descriptor.exportName,
+      input: {},
+    })).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' })
   })
 })

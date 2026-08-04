@@ -1,18 +1,22 @@
-import { DEFAULT_OSS_ORGANIZATION_ID } from './CONSTANTS';
 import type { join, resolve } from 'path';
 
 type TOmnidrawHome = Readonly<{
   homeDir: string;
   mainDbPath: string;
   configFilePath: string;
-  organizationsDir: string;
-  defaultOrganizationRoot: string;
   agentRoot: string;
-  artifactsRoot: string;
   resourcesRoot: string;
   tempRoot: string;
   cacheRoot: string;
   logsRoot: string;
+  keysRoot: string;
+  widgetsRoot: string;
+  widgetDraftsRoot: string;
+  widgetPublishedRoot: string;
+  widgetStagingRoot: string;
+  widgetPreviewRoot: string;
+  widgetTrashRoot: string;
+  widgetQuarantineRoot: string;
 }>;
 
 type TPortalResolveOmnidrawHome = {
@@ -25,7 +29,6 @@ type TArgsResolveOmnidrawHome = {
   homedir: string;
   env: Readonly<Record<string, string | undefined>>;
   dataDir?: string;
-  organizationId?: string;
 };
 
 function fnValidateOverride(value: string, source: '--data-dir' | 'OMNIDRAW_HOME'): string {
@@ -36,19 +39,6 @@ function fnValidateOverride(value: string, source: '--data-dir' | 'OMNIDRAW_HOME
     throw new Error(`${source} does not expand '~'. Pass an absolute path or a path relative to the process working directory.`);
   }
   return value;
-}
-
-function fnValidateOrganizationId(organizationId: string): string {
-  if (
-    organizationId.length === 0
-    || organizationId === '.'
-    || organizationId === '..'
-    || organizationId.includes('/')
-    || organizationId.includes('\\')
-  ) {
-    throw new Error('organizationId must be one non-empty path segment.');
-  }
-  return organizationId;
 }
 
 function fnResolveOmnidrawHome(
@@ -62,22 +52,25 @@ function fnResolveOmnidrawHome(
       ? fnValidateOverride(envOverride, 'OMNIDRAW_HOME')
       : portal.join(args.homedir, '.omnidraw');
   const homeDir = portal.resolve(args.cwd, selectedHome);
-  const organizationsDir = portal.join(homeDir, 'organizations');
-  const organizationId = fnValidateOrganizationId(args.organizationId ?? DEFAULT_OSS_ORGANIZATION_ID);
-  const defaultOrganizationRoot = portal.join(organizationsDir, organizationId);
+  const widgetsRoot = portal.join(homeDir, 'widgets');
 
   return Object.freeze({
     homeDir,
     mainDbPath: portal.join(homeDir, 'main.db'),
     configFilePath: portal.join(homeDir, 'config.json'),
-    organizationsDir,
-    defaultOrganizationRoot,
-    agentRoot: portal.join(defaultOrganizationRoot, 'agent'),
-    artifactsRoot: portal.join(defaultOrganizationRoot, 'artifacts'),
-    resourcesRoot: portal.join(defaultOrganizationRoot, 'resources'),
-    tempRoot: portal.join(defaultOrganizationRoot, 'temp'),
+    agentRoot: portal.join(homeDir, 'agent'),
+    resourcesRoot: portal.join(homeDir, 'resources'),
+    tempRoot: portal.join(homeDir, 'temp'),
     cacheRoot: portal.join(homeDir, 'cache'),
     logsRoot: portal.join(homeDir, 'logs'),
+    keysRoot: portal.join(homeDir, 'keys'),
+    widgetsRoot,
+    widgetDraftsRoot: portal.join(widgetsRoot, 'drafts'),
+    widgetPublishedRoot: portal.join(widgetsRoot, 'published'),
+    widgetStagingRoot: portal.join(widgetsRoot, '.staging'),
+    widgetPreviewRoot: portal.join(widgetsRoot, '.preview'),
+    widgetTrashRoot: portal.join(widgetsRoot, '.trash'),
+    widgetQuarantineRoot: portal.join(widgetsRoot, '.quarantine'),
   });
 }
 

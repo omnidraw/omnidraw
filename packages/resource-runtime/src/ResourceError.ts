@@ -54,8 +54,7 @@ export function toResourceError(
   const coded = error as { code?: unknown; message?: unknown };
   if (
     (coded?.code === 'RESOURCE_NAME_INVALID'
-      || coded?.code === 'RESOURCE_NAME_CONFLICT'
-      || coded?.code === 'RESOURCE_BINDING_CONFLICT')
+      || coded?.code === 'RESOURCE_NAME_CONFLICT')
     && typeof coded.message === 'string'
   ) {
     return new ResourceError(coded.code, coded.message);

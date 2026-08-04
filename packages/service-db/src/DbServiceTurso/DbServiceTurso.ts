@@ -1,34 +1,42 @@
 import type { IService, IStartableService, IStoppableService } from "@omnidraw/runtime";
-import { fnScopedKey, type TTenantContext } from '@omnidraw/tenant-core';
 import type { Dirent } from 'node:fs';
 import path from "node:path";
 import * as fs from 'node:fs/promises';
 import {
-  DEFAULT_OSS_ORGANIZATION_ID,
-  MIGRATION_APPLICATION_VERSION_FALLBACK,
-} from '../CONSTANTS';
+  ChatStoreTurso,
+  type TChatCreateArgs,
+  type TChatListArgs,
+  type TChatUpdateArgs,
+} from '../ChatStoreTurso';
+import { MIGRATION_APPLICATION_VERSION_FALLBACK } from '../CONSTANTS';
 import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import type { IDbConfig } from "../interface";
-import type { TCanvas, TCanvasMember, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
+import type {
+  TCanvas,
+  TDbResourceApplyStatus,
+  TDbResourceDraftChangeKind,
+  TDbResourceDraftStatus,
+  TEncryptionKey,
+  TJson,
+  TKeyValue,
+  TMediaFile,
+} from "../model";
 import {
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
 } from '../schema/expected-schema';
-import { fxAccountGetDefaultOwner } from "./fx.account";
-import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
+import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll } from "./fx.canvas";
 import { fxDbResourceApplyGet, fxDbResourceApplyList, fxDbResourceDraftChangeList, fxDbResourceDraftGet, fxDbResourceDraftGetActive, fxDbResourceDraftList } from "./fx.db-resource";
 import { fxResourceEncryptionKeyGet } from "./fx.encryption-key";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxKeyValueGet } from "./fx.keyValue";
 import { fxReadMigrationFile } from './fx.migration-file';
 import { fxPreflightMigrationState } from './fx.migration-state';
-import { fxToolGroupGetByName, fxToolGroupListAll } from "./fx.tool-group";
-import { txAccountEnsureDefaultOwner } from "./tx.account";
+import { fxReadDatabaseChecks } from './fx.database-checks';
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txResourceEncryptionKeyGetOrCreate } from "./tx.encryption-key";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
-import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import {
   txHealDatabaseCoordinator,
   type TDatabaseCoordinatorHealing,
@@ -44,67 +52,32 @@ import type {
 declare const OMNIDRAW_VERSION: string | undefined;
 
 type TCanvasCreateArgs = Pick<TCanvas, "id" | "name">;
-type TFileCreateArgs = Omit<TMediaFile, "created_at">
+type TFileCreateArgs = Omit<TMediaFile, "createdAtSec">;
 
-const TURSO_EXPERIMENTAL_FEATURES = [
+export const TURSO_EXPERIMENTAL_FEATURES = Object.freeze([
   'custom_types',
   'triggers',
   'index_method',
   'generated_columns',
-];
-const TURSO_ON_DISK_EXPERIMENTAL_FEATURES = [
+] as const);
+export const TURSO_ON_DISK_EXPERIMENTAL_FEATURES = Object.freeze([
   ...TURSO_EXPERIMENTAL_FEATURES,
   'multiprocess_wal',
-];
-
-/**
- * Public customer-data repositories require a tenant context for every call.
- * System bootstrap operations are deliberately kept outside this surface.
- */
-interface IPublicMethods {
-  canvas: {
-    listAll(tenant: TTenantContext): Promise<TCanvas[]>;
-    findByName(tenant: TTenantContext, args: { name: string }): Promise<TCanvas | null>;
-    findById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas | null>;
-    create(tenant: TTenantContext, args: TCanvasCreateArgs): Promise<TCanvas>;
-    renameById(tenant: TTenantContext, args: { id: string, name: string}): Promise<TCanvas | null>;
-    deleteById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas[]>;
-    listMembers(tenant: TTenantContext, args: { canvasId: string }): Promise<TCanvasMember[]>;
-  };
-  file: {
-    listAll(tenant: TTenantContext): Promise<TMediaFile[]>;
-    create(tenant: TTenantContext, args: TFileCreateArgs): Promise<TMediaFile>;
-    getById(tenant: TTenantContext, args: { id: string }): Promise<TMediaFile | null>;
-    deleteById(tenant: TTenantContext, args: { id: string }): Promise<void>;
-  };
-  keyValue: {
-    add(tenant: TTenantContext, args: TKeyValue): Promise<TKeyValue>;
-    remove(tenant: TTenantContext, args: { name: string }): Promise<void>;
-    get(tenant: TTenantContext, args: { name: string }): Promise<TKeyValue | null>;
-  };
-  resourceEncryptionKey: {
-    get(tenant: TTenantContext, args: { resourceId: string }): Promise<TEncryptionKey | null>;
-    getOrCreate(tenant: TTenantContext, args: {
-      resourceId: string;
-      keyId: string;
-      purpose: string;
-      algorithm: string;
-      keyHex: string;
-    }): Promise<TEncryptionKey>;
-  };
-  toolGroup: {
-    listAll(tenant: TTenantContext): Promise<TToolGroup[]>;
-    getByName(tenant: TTenantContext, args: { name: string }): Promise<TToolGroup | null>;
-    create(tenant: TTenantContext, args: TToolGroup): Promise<TToolGroup>;
-    update(tenant: TTenantContext, args: TToolGroup & { currentName: string }): Promise<TToolGroup | null>;
-    remove(tenant: TTenantContext, args: { name: string }): Promise<TToolGroup | null>;
-  };
-}
+] as const);
 
 type TPreflightDbServiceDatabaseArgs = {
   databasePath: string;
   homeDir: string;
 };
+
+class DatabasePostConnectStartupError extends Error {
+  constructor(readonly startupCause: unknown) {
+    super(startupCause instanceof Error ? startupCause.message : String(startupCause), {
+      cause: startupCause,
+    });
+    this.name = 'DatabasePostConnectStartupError';
+  }
+}
 
 function isMissingPathError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -120,13 +93,6 @@ function migrationApplicationVersion(): string {
     || process.env.OMNIDRAW_VERSION
     || MIGRATION_APPLICATION_VERSION_FALLBACK
   );
-}
-
-async function assertEmptyDirectory(directory: string): Promise<void> {
-  const entries = await fs.readdir(directory);
-  if (entries.length !== 0) {
-    throw new Error(`Refusing non-empty pre-bootstrap directory: ${directory}`);
-  }
 }
 
 async function readMigrationChecksums(): Promise<readonly TMigrationChecksum[]> {
@@ -153,9 +119,10 @@ async function healDbServiceDatabaseCoordinator(args: {
   }
 
   const quarantineDirectory = path.join(args.cacheDir, 'database-recovery');
+  const recoveryToken = `stale-${Date.now()}-${process.pid}`;
   const quarantinePath = path.join(
     quarantineDirectory,
-    `${path.basename(tshmPath)}.stale-${Date.now()}-${process.pid}`,
+    `${path.basename(tshmPath)}.${recoveryToken}`,
   );
   return txHealDatabaseCoordinator({
     Bun,
@@ -163,7 +130,6 @@ async function healDbServiceDatabaseCoordinator(args: {
     mkdir: fs.mkdir,
     openCanonicalDatabase: () => new Database(args.databasePath, {
       fileMustExist: true,
-      // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
       experimental: [...TURSO_EXPERIMENTAL_FEATURES],
     }),
     rename: fs.rename,
@@ -179,37 +145,6 @@ async function healDbServiceDatabaseCoordinator(args: {
     quarantinePath,
     tshmPath,
   });
-}
-
-async function validateOrganizationsDirectory(
-  organizationsDir: string,
-  fresh: boolean,
-): Promise<void> {
-  const organizations = await fs.readdir(organizationsDir, { withFileTypes: true });
-  if (!fresh) {
-    if (organizations.some((entry) => !entry.isDirectory())) {
-      throw new Error(`Refusing non-directory organization entry in ${organizationsDir}.`);
-    }
-    return;
-  }
-
-  for (const organization of organizations) {
-    if (
-      organization.name !== DEFAULT_OSS_ORGANIZATION_ID
-      || !organization.isDirectory()
-    ) {
-      throw new Error(`Refusing unknown pre-bootstrap organization entry '${organization.name}'.`);
-    }
-    const organizationRoot = path.join(organizationsDir, organization.name);
-    const expectedLeaves = new Set(['agent', 'artifacts', 'resources', 'temp']);
-    const leaves = await fs.readdir(organizationRoot, { withFileTypes: true });
-    for (const leaf of leaves) {
-      if (!expectedLeaves.has(leaf.name) || !leaf.isDirectory()) {
-        throw new Error(`Refusing unknown pre-bootstrap organization path '${leaf.name}'.`);
-      }
-      await assertEmptyDirectory(path.join(organizationRoot, leaf.name));
-    }
-  }
 }
 
 async function validateOmnidrawHomeLayout(
@@ -230,75 +165,71 @@ async function validateOmnidrawHomeLayout(
   }
 
   const databaseName = path.dirname(databasePath) === homeDir ? path.basename(databasePath) : null;
+  const managedDirectoryNames = new Set([
+    'agent',
+    'bin',
+    'cache',
+    'keys',
+    'logs',
+    'native',
+    'resources',
+    'temp',
+    'widgets',
+  ]);
   for (const entry of rootEntries) {
-    if (entry.name === 'bin' || entry.name === 'native') {
+    if (managedDirectoryNames.has(entry.name)) {
       if (!entry.isDirectory()) {
-        throw new Error(`Refusing non-directory install entry '${entry.name}' in ${homeDir}.`);
+        throw new Error(`Refusing non-directory managed entry '${entry.name}' in ${homeDir}.`);
       }
       continue;
     }
 
     if (entry.name === 'database-migrations') {
-      if (!entry.isDirectory()) {
-        throw new Error(`Refusing non-directory legacy migration entry in ${homeDir}.`);
-      }
-      const migrationDir = path.join(homeDir, entry.name);
-      const entries = (await fs.readdir(migrationDir, { withFileTypes: true }))
-        .toSorted((left, right) => left.name.localeCompare(right.name));
-      if (entries.length === 0) continue;
-      const isContiguousKnownPrefix = entries.length <= MIGRATION_FILES.length
-        && entries.every((migrationEntry, index) => (
-          migrationEntry.isFile()
-          && migrationEntry.name === MIGRATION_FILES[index]?.name
-        ));
-      if (!isContiguousKnownPrefix) {
-        throw new Error(
-          `Refusing unknown database-migrations directory in ${homeDir}; `
-            + `expected a contiguous prefix of [${MIGRATION_FILES.map((migration) => migration.name).join(', ')}].`,
-        );
-      }
-
-      for (const [index, migrationEntry] of entries.entries()) {
-        const embedded = MIGRATION_FILES[index];
-        if (!embedded) throw new Error('Migration prefix validation lost its registered migration.');
-        const [installedMigration, embeddedMigration] = await Promise.all([
-          fxReadMigrationFile({ Bun, TextDecoder }, { path: path.join(migrationDir, migrationEntry.name) }),
-          fxReadMigrationFile({ Bun, TextDecoder }, { path: embedded.path }),
-        ]);
-        if (installedMigration.checksumSha256 !== embeddedMigration.checksumSha256) {
-          throw new Error(`Refusing database-migrations/${migrationEntry.name} with an unknown checksum.`);
-        }
-      }
-      continue;
-    }
-
-    if (entry.name === 'cache' || entry.name === 'logs') {
-      if (!entry.isDirectory()) {
-        throw new Error(`Refusing non-directory managed entry '${entry.name}' in ${homeDir}.`);
-      }
-      if (fresh) await assertEmptyDirectory(path.join(homeDir, entry.name));
-      continue;
+      throw new Error(
+        `Refusing legacy database-migrations entry in ${homeDir}. `
+          + 'Remove it with the explicit development cleanup before restarting Omnidraw; '
+          + 'the filesystem-first baseline never reads or rewrites legacy migrations.',
+      );
     }
 
     if (entry.name === 'organizations') {
-      if (!entry.isDirectory()) {
-        throw new Error(`Refusing non-directory organizations entry in ${homeDir}.`);
+      throw new Error(
+        `Refusing legacy organizations entry in ${homeDir}. `
+          + 'Remove it with the explicit development cleanup before restarting Omnidraw; '
+          + 'single-user storage uses direct home folders and never migrates organization data.',
+      );
+    }
+
+    if (entry.name === 'config.json') {
+      if (!entry.isFile()) {
+        throw new Error(`Refusing non-file config entry '${entry.name}' in ${homeDir}.`);
       }
-      await validateOrganizationsDirectory(path.join(homeDir, entry.name), fresh);
       continue;
     }
 
-    if (entry.name === 'config.json' && !fresh && entry.isFile()) continue;
+    if (databaseName !== null && entry.name === databaseName) {
+      if (!entry.isFile()) {
+        throw new Error(`Refusing non-file database entry '${entry.name}' in ${homeDir}.`);
+      }
+      continue;
+    }
 
     if (
       databaseName !== null
-      && (
-        entry.name === databaseName
-        || entry.name === `${databaseName}-wal`
-        || entry.name === `${databaseName}-tshm`
-      )
-      && entry.isFile()
+      && (entry.name === `${databaseName}-wal` || entry.name === `${databaseName}-tshm`)
     ) {
+      if (fresh) {
+        throw new Error(
+          `Refusing orphan database coordinator '${entry.name}' in ${homeDir}. `
+            + 'Remove it with the explicit development cleanup before starting the fresh baseline.',
+        );
+      }
+      if (!entry.isFile()) {
+        throw new Error(
+          `Refusing non-file database coordinator '${entry.name}' in ${homeDir}; `
+            + 'remove the incompatible entry before retrying.',
+        );
+      }
       continue;
     }
 
@@ -307,6 +238,12 @@ async function validateOmnidrawHomeLayout(
         throw new Error(
           `Refusing incompatible SQLite WAL coordinator '${entry.name}' in ${homeDir}; `
             + 'close the external database client before retrying.',
+        );
+      }
+      if (fresh) {
+        throw new Error(
+          `Refusing orphan database coordinator '${entry.name}' in ${homeDir}. `
+            + 'Remove it with the explicit development cleanup before starting the fresh baseline.',
         );
       }
       continue;
@@ -332,15 +269,21 @@ export async function preflightDbServiceDatabase(
     throw new Error(`Refusing Omnidraw database path because it is not a regular file: ${args.databasePath}`);
   }
 
+  // Reject legacy roots and known-fresh orphan coordinators before any driver
+  // open. A zero-byte Turso database has not committed application schema yet.
+  await validateOmnidrawHomeLayout(
+    args.homeDir,
+    args.databasePath,
+    databaseStat.size === 0,
+  );
+
   const migrations = await readMigrationChecksums();
   const database = new Database(args.databasePath, {
     readonly: true,
     fileMustExist: true,
-    // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
     experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
   });
   let connected = false;
-  let inspectionCompleted = false;
   let preflightError: unknown;
   try {
     await database.connect();
@@ -352,7 +295,15 @@ export async function preflightDbServiceDatabase(
         migrations,
       },
     );
-    inspectionCompleted = true;
+    const checks = await fxReadDatabaseChecks({ db: database }, {});
+    if (!checks.ok) {
+      throw new Error(
+        `Refusing to open Omnidraw database: integrity checks failed `
+          + `(${checks.failureMessage ?? 'unknown integrity failure'}). `
+          + 'The database was inspected read-only and was not modified; '
+          + 'run the explicit development database reset before restarting Omnidraw.',
+      );
+    }
     await validateOmnidrawHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
     return result;
   } catch (error) {
@@ -361,7 +312,14 @@ export async function preflightDbServiceDatabase(
     if (connected) await database.close();
   }
 
-  if (!inspectionCompleted) {
+  if (
+    preflightError instanceof Error
+    && preflightError.message.startsWith('Refusing to open Omnidraw database:')
+  ) {
+    throw preflightError;
+  }
+
+  if (!connected) {
     let healing: TDatabaseCoordinatorHealing | null = null;
     try {
       healing = await healDbServiceDatabaseCoordinator({
@@ -378,12 +336,6 @@ export async function preflightDbServiceDatabase(
     }
   }
 
-  if (
-    preflightError instanceof Error
-    && preflightError.message.startsWith('Refusing to open Omnidraw database:')
-  ) {
-    throw preflightError;
-  }
   const reason = preflightError instanceof Error ? preflightError.message : String(preflightError);
   throw new Error(
     `Refusing to open Omnidraw database after a read-only preflight failed: ${args.databasePath}: ${reason}`,
@@ -391,11 +343,11 @@ export async function preflightDbServiceDatabase(
   );
 }
 
-export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
+/** Single-user Turso service. Every public repository is rooted directly in one database. */
+export class DbServiceTurso implements IService, IStartableService, IStoppableService {
   name = 'DbServiceTurso'
   #database: Database
   #databasePortal: Database
-  #resourceWriteTails = new Map<string, Promise<void>>()
   #isConnected = false
 
   constructor(private config: IDbConfig) {
@@ -425,7 +377,6 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       : [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES];
 
     return new Database(this.config.databasePath, {
-      // @ts-expect-error experimental feature list is ahead of package typings
       experimental,
     })
   }
@@ -459,13 +410,12 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         TextDecoder,
       }, {
         applicationVersion: migrationApplicationVersion(),
-        appliedAtMs: Date.now(),
         expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
       })
     } catch (error) {
       await this.#database.close()
       this.#isConnected = false
-      throw error
+      throw new DatabasePostConnectStartupError(error)
     }
   }
 
@@ -482,11 +432,26 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   }
 
   async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
+    if (this.config.databasePath !== ':memory:') {
+      await preflightDbServiceDatabase({
+        databasePath: this.config.databasePath,
+        homeDir: this.config.dataDir,
+      });
+    }
     await this.#ensureSqliteShmSentinel();
     try {
       await this.#connectAndMigrate();
       return;
     } catch (startupError) {
+      if (startupError instanceof DatabasePostConnectStartupError) {
+        throw startupError.startupCause;
+      }
+      if (
+        startupError instanceof Error
+        && startupError.message.startsWith('Refusing to open Omnidraw database:')
+      ) {
+        throw startupError;
+      }
       let healed = false;
       try {
         healed = await this.#healCoordinatorAfterStartupFailure();
@@ -506,138 +471,131 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     this.#isConnected = false
   }
 
-  #serializeResourceWrite<T>(tenant: TTenantContext, write: () => Promise<T>): Promise<T> {
-    const key = fnScopedKey('db-resource-write', [tenant.orgId])
-    const previous = this.#resourceWriteTails.get(key) ?? Promise.resolve()
-    const run = () => this.#serializeDatabaseWrite(write)
-    const result = previous.then(run, run)
-    const tail = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    this.#resourceWriteTails.set(key, tail)
-    void tail.then(() => {
-      if (this.#resourceWriteTails.get(key) === tail) this.#resourceWriteTails.delete(key)
-    })
-
-    return result
-  }
-
   #serializeDatabaseWrite<T>(write: () => Promise<T>): Promise<T> {
     return txRunDatabaseWrite({ database: this.db }, { operation: write })
   }
 
-  account = {
-    getDefaultOwner: (tenant: TTenantContext) => fxAccountGetDefaultOwner(this, { tenant }),
-    ensureDefaultOwner: () => this.#serializeDatabaseWrite(() => txAccountEnsureDefaultOwner(this, {})),
-  };
-
   canvas = {
-    listAll: (tenant: TTenantContext) => fxCanvasListAll(this, { tenant }),
-    findByName: (tenant: TTenantContext, args: { name: string }) => fxCanvasFindByName(this, { tenant, ...args }),
-    findById: (tenant: TTenantContext, args: { id: string }) => fxCanvasFindById(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TCanvasCreateArgs) => this.#serializeDatabaseWrite(
-      () => txCanvasCreate(this, { tenant, ...args }),
+    listAll: () => fxCanvasListAll(this, {}),
+    findByName: (args: { name: string }) => fxCanvasFindByName(this, args),
+    findById: (args: { id: string }) => fxCanvasFindById(this, args),
+    create: (args: TCanvasCreateArgs) => this.#serializeDatabaseWrite(
+      () => txCanvasCreate(this, args),
     ),
-    renameById: (tenant: TTenantContext, args: { id: string, name: string }) => this.#serializeDatabaseWrite(
-      () => txCanvasRenameById(this, { tenant, ...args }),
+    renameById: (args: { id: string; name: string }) => this.#serializeDatabaseWrite(
+      () => txCanvasRenameById(this, args),
     ),
-    deleteById: (tenant: TTenantContext, args: { id: string }) => this.#serializeDatabaseWrite(
-      () => txCanvasDeleteById(this, { tenant, ...args }),
+    deleteById: (args: { id: string }) => this.#serializeDatabaseWrite(
+      () => txCanvasDeleteById(this, args),
     ),
-    listMembers: (tenant: TTenantContext, args: { canvasId: string }) => fxCanvasListMembers(this, { tenant, ...args }),
   };
 
   file = {
-    listAll: (tenant: TTenantContext) => fxFileListAll(this, { tenant }),
-    create: (tenant: TTenantContext, args: TFileCreateArgs) => this.#serializeDatabaseWrite(
-      () => txFileCreate(this, { tenant, ...args }),
+    listAll: () => fxFileListAll(this, {}),
+    create: (args: TFileCreateArgs) => this.#serializeDatabaseWrite(
+      () => txFileCreate(this, args),
     ),
-    getById: (tenant: TTenantContext, args: { id: string }) => fxFileGetById(this, { tenant, ...args }),
-    deleteById: (tenant: TTenantContext, args: { id: string }) => this.#serializeDatabaseWrite(
-      () => txFileDeleteById(this, { tenant, ...args }),
+    getById: (args: { id: string }) => fxFileGetById(this, args),
+    deleteById: (args: { id: string }) => this.#serializeDatabaseWrite(
+      () => txFileDeleteById(this, args),
     ),
   };
 
   keyValue = {
-    add: (tenant: TTenantContext, args: TKeyValue) => this.#serializeDatabaseWrite(
-      () => txKeyValueAdd(this, { tenant, ...args }),
+    add: (args: TKeyValue) => this.#serializeDatabaseWrite(
+      () => txKeyValueAdd(this, args),
     ),
-    remove: (tenant: TTenantContext, args: { name: string }) => this.#serializeDatabaseWrite(
-      () => txKeyValueRemove(this, { tenant, ...args }),
+    remove: (args: { name: string }) => this.#serializeDatabaseWrite(
+      () => txKeyValueRemove(this, args),
     ),
-    get: (tenant: TTenantContext, args: { name: string }) => fxKeyValueGet(this, { tenant, ...args }),
+    get: (args: { name: string }) => fxKeyValueGet(this, args),
   };
 
   resourceEncryptionKey = {
-    get: (tenant: TTenantContext, args: { resourceId: string }) => fxResourceEncryptionKeyGet(this, { tenant, ...args }),
-    getOrCreate: (tenant: TTenantContext, args: {
+    get: (args: { resourceId: string }): Promise<TEncryptionKey | null> => (
+      fxResourceEncryptionKeyGet(this, args)
+    ),
+    getOrCreate: (args: {
       resourceId: string;
       keyId: string;
       purpose: string;
       algorithm: string;
       keyHex: string;
-    }) => this.#serializeResourceWrite(tenant, () => (
-      txResourceEncryptionKeyGetOrCreate(this, { tenant, ...args })
+    }) => this.#serializeDatabaseWrite(() => (
+      txResourceEncryptionKeyGetOrCreate(this, args)
     )),
+  };
+
+  chats = {
+    create: (args: TChatCreateArgs) => new ChatStoreTurso(this.db).create(args),
+    get: (args: { id: string }) => new ChatStoreTurso(this.db).get(args),
+    list: (args: TChatListArgs = {}) => new ChatStoreTurso(this.db).list(args),
+    update: (args: TChatUpdateArgs) => new ChatStoreTurso(this.db).update(args),
+    archive: (args: { id: string }) => new ChatStoreTurso(this.db).archive(args),
   };
 
   dbResource = {
     draft: {
-      create: (tenant: TTenantContext, args: { id: string; resourceId: string; name: string }) => this.#serializeResourceWrite(tenant, () => txDbResourceDraftCreate(this, { tenant, ...args })),
-      get: (tenant: TTenantContext, args: { id: string }) => fxDbResourceDraftGet(this, { tenant, ...args }),
-      getActive: (tenant: TTenantContext, args: { resourceId: string }) => fxDbResourceDraftGetActive(this, { tenant, ...args }),
-      list: (tenant: TTenantContext, args: {
+      create: (args: { id: string; resourceId: string; name: string }) => this.#serializeDatabaseWrite(
+        () => txDbResourceDraftCreate(this, args),
+      ),
+      get: (args: { id: string }) => fxDbResourceDraftGet(this, args),
+      getActive: (args: { resourceId: string }) => fxDbResourceDraftGetActive(this, args),
+      list: (args: {
         resourceId: string;
         status?: TDbResourceDraftStatus;
-        before?: { createdAt: string; id: string };
+        before?: { createdAtSec: string; id: string };
         limit?: number;
-      }) => fxDbResourceDraftList(this, { tenant, ...args }),
-      rename: (tenant: TTenantContext, args: { id: string; name: string }) => this.#serializeResourceWrite(tenant, () => txDbResourceDraftRename(this, { tenant, ...args })),
-      updateStatus: (tenant: TTenantContext, args: {
+      }) => fxDbResourceDraftList(this, args),
+      rename: (args: { id: string; name: string }) => this.#serializeDatabaseWrite(
+        () => txDbResourceDraftRename(this, args),
+      ),
+      updateStatus: (args: {
         id: string;
         status: TDbResourceDraftStatus;
         expectedStatus?: TDbResourceDraftStatus;
         lastError?: TJson | null;
-      }) => this.#serializeResourceWrite(tenant, () => txDbResourceDraftUpdateStatus(this, { tenant, ...args })),
-      discard: (tenant: TTenantContext, args: { id: string; lastError?: TJson | null }) => this.#serializeResourceWrite(tenant, () => txDbResourceDraftDiscard(this, { tenant, ...args })),
+      }) => this.#serializeDatabaseWrite(() => txDbResourceDraftUpdateStatus(this, args)),
+      discard: (args: { id: string; lastError?: TJson | null }) => this.#serializeDatabaseWrite(
+        () => txDbResourceDraftDiscard(this, args),
+      ),
       change: {
-        list: (tenant: TTenantContext, args: { draftId: string }) => fxDbResourceDraftChangeList(this, { tenant, ...args }),
-        append: (tenant: TTenantContext, args: {
+        list: (args: { draftId: string }) => fxDbResourceDraftChangeList(this, args),
+        append: (args: {
           draftId: string;
           sequence: number;
           kind: TDbResourceDraftChangeKind;
           operation?: TJson | null;
           sql: string;
-        }) => this.#serializeResourceWrite(tenant, () => txDbResourceDraftAppendChange(this, { tenant, ...args })),
+        }) => this.#serializeDatabaseWrite(() => txDbResourceDraftAppendChange(this, args)),
       },
     },
     apply: {
-      create: (tenant: TTenantContext, args: {
+      create: (args: {
         id: string;
         resourceId: string;
         draftId?: string | null;
         sourceApplyId?: string | null;
         status?: TDbResourceApplyStatus;
-      }) => this.#serializeResourceWrite(tenant, () => txDbResourceApplyCreate(this, { tenant, ...args })),
-      createFromDraft: (tenant: TTenantContext, args: { id: string; resourceId: string; draftId: string }) => (
-        this.#serializeResourceWrite(tenant, () => txDbResourceApplyCreateFromDraft(this, { tenant, ...args }))
+      }) => this.#serializeDatabaseWrite(() => txDbResourceApplyCreate(this, args)),
+      createFromDraft: (args: { id: string; resourceId: string; draftId: string }) => (
+        this.#serializeDatabaseWrite(() => txDbResourceApplyCreateFromDraft(this, args))
       ),
-      get: (tenant: TTenantContext, args: { id: string }) => fxDbResourceApplyGet(this, { tenant, ...args }),
-      list: (tenant: TTenantContext, args: {
+      get: (args: { id: string }) => fxDbResourceApplyGet(this, args),
+      list: (args: {
         resourceId: string;
         status?: TDbResourceApplyStatus;
-        before?: { createdAt: string; id: string };
+        before?: { createdAtSec: string; id: string };
         limit?: number;
-      }) => fxDbResourceApplyList(this, { tenant, ...args }),
-      update: (tenant: TTenantContext, args: {
+      }) => fxDbResourceApplyList(this, args),
+      update: (args: {
         id: string;
         status: TDbResourceApplyStatus;
         expectedStatus?: TDbResourceApplyStatus;
         lastError?: TJson | null;
         backupRetained?: boolean;
-      }) => this.#serializeResourceWrite(tenant, () => txDbResourceApplyUpdate(this, { tenant, ...args })),
-      finishWithDraft: (tenant: TTenantContext, args: {
+      }) => this.#serializeDatabaseWrite(() => txDbResourceApplyUpdate(this, args)),
+      finishWithDraft: (args: {
         id: string;
         draftId: string;
         status: Extract<TDbResourceApplyStatus, "succeeded" | "failed" | "recovered">;
@@ -645,90 +603,9 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         draftStatus: Extract<TDbResourceDraftStatus, "applied" | "editing" | "error">;
         lastError?: TJson | null;
         backupRetained?: boolean;
-      }) => this.#serializeResourceWrite(tenant, () => txDbResourceApplyFinishWithDraft(this, { tenant, ...args })),
+      }) => this.#serializeDatabaseWrite(() => txDbResourceApplyFinishWithDraft(this, args)),
     },
   };
-
-  toolGroup = {
-    listAll: (tenant: TTenantContext) => fxToolGroupListAll(this, { tenant }),
-    getByName: (tenant: TTenantContext, args: { name: string }) => fxToolGroupGetByName(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TToolGroup) => this.#serializeDatabaseWrite(
-      () => txToolGroupCreate(this, { tenant, ...args }),
-    ),
-    update: (tenant: TTenantContext, args: TToolGroup & { currentName: string }) => this.#serializeDatabaseWrite(
-      () => txToolGroupUpdate(this, { tenant, ...args }),
-    ),
-    remove: (tenant: TTenantContext, args: { name: string }) => this.#serializeDatabaseWrite(
-      () => txToolGroupRemove(this, { tenant, ...args }),
-    ),
-  };
-
-
-  forTenant(tenant: TTenantContext) {
-    const bind = <TArgs extends unknown[], TResult>(
-      operation: (tenantContext: TTenantContext, ...args: TArgs) => TResult,
-    ) => (...args: TArgs): TResult => operation(tenant, ...args)
-
-    return {
-      account: {
-        getDefaultOwner: bind(this.account.getDefaultOwner),
-      },
-      canvas: {
-        listAll: bind(this.canvas.listAll),
-        findByName: bind(this.canvas.findByName),
-        findById: bind(this.canvas.findById),
-        create: bind(this.canvas.create),
-        renameById: bind(this.canvas.renameById),
-        deleteById: bind(this.canvas.deleteById),
-        listMembers: bind(this.canvas.listMembers),
-      },
-      file: {
-        listAll: bind(this.file.listAll),
-        create: bind(this.file.create),
-        getById: bind(this.file.getById),
-        deleteById: bind(this.file.deleteById),
-      },
-      keyValue: {
-        add: bind(this.keyValue.add),
-        remove: bind(this.keyValue.remove),
-        get: bind(this.keyValue.get),
-      },
-      resourceEncryptionKey: {
-        get: bind(this.resourceEncryptionKey.get),
-        getOrCreate: bind(this.resourceEncryptionKey.getOrCreate),
-      },
-      dbResource: {
-        draft: {
-          create: bind(this.dbResource.draft.create),
-          get: bind(this.dbResource.draft.get),
-          getActive: bind(this.dbResource.draft.getActive),
-          list: bind(this.dbResource.draft.list),
-          rename: bind(this.dbResource.draft.rename),
-          updateStatus: bind(this.dbResource.draft.updateStatus),
-          discard: bind(this.dbResource.draft.discard),
-          change: {
-            list: bind(this.dbResource.draft.change.list),
-            append: bind(this.dbResource.draft.change.append),
-          },
-        },
-        apply: {
-          create: bind(this.dbResource.apply.create),
-          createFromDraft: bind(this.dbResource.apply.createFromDraft),
-          get: bind(this.dbResource.apply.get),
-          list: bind(this.dbResource.apply.list),
-          update: bind(this.dbResource.apply.update),
-          finishWithDraft: bind(this.dbResource.apply.finishWithDraft),
-        },
-      },
-      toolGroup: {
-        listAll: bind(this.toolGroup.listAll),
-        getByName: bind(this.toolGroup.getByName),
-        create: bind(this.toolGroup.create),
-        update: bind(this.toolGroup.update),
-        remove: bind(this.toolGroup.remove),
-      },
-    }
-  }
 }
 
-export type TTenantDb = ReturnType<DbServiceTurso['forTenant']>
+export type TDb = DbServiceTurso;

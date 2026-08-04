@@ -1,5 +1,5 @@
 import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
-import type { TToolAuthorizationContext, TToolAuthorizer } from '../approval/types';
+import type { TToolAuthorizer } from '../approval/types';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
 import { AI_CHAT_TOOL_NAMES } from './CONSTANTS';
@@ -9,18 +9,15 @@ import { createResourceTools } from './tool.resources';
 import type { TAgentResourceService } from './resource-service';
 import { createWebFetchTool } from './tool.web-fetch';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
-import { createWidgetPreviewTools, type TAgentWidgetPreviewCapability } from './tool.widget-preview';
 import { createWorkspaceFileTools } from './tool.workspace-files';
 import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 
 type TCreateToolRegistryArgs = {
   chatId: string;
   cwd: string;
-  authorization: TToolAuthorizationContext;
   authorize?: TToolAuthorizer;
   workspace: WidgetWorkspace;
   approvals: ApprovalCoordinator;
-  preview?: TAgentWidgetPreviewCapability;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
   onMounted?: (mount: TWidgetMount) => void;
@@ -41,7 +38,7 @@ function wrapAuthorized(tool: TToolDefinition, authorize: () => Promise<boolean>
 
 export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: string[]; customTools: TToolDefinition[] } {
   const authorize = async (toolName: string) => args.authorize
-    ? args.authorize({ chatId: args.chatId, toolName, context: args.authorization })
+    ? args.authorize({ chatId: args.chatId, toolName })
     : true;
   const tools = [
     ...createWidgetWorkspaceTools({
@@ -52,11 +49,6 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       onDraftChanged: args.onDraftChanged
         ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
         : undefined,
-    }),
-    ...createWidgetPreviewTools({
-      chatId: args.chatId,
-      preview: args.preview,
-      authorize: (toolName) => authorize(toolName),
     }),
     ...createWorkspaceFileTools({
       workspace: args.workspace,
@@ -69,7 +61,6 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
     }),
     ...createResourceTools({
       chatId: args.chatId,
-      authorization: args.authorization,
       resourceService: args.resourceService,
       approvals: args.approvals,
       authorize,

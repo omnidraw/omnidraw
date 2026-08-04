@@ -38,11 +38,5 @@ describe("AI chat error helpers", () => {
       message: "The live chat update stream stopped unexpectedly.",
       isAuthenticationError: false,
     })
-    expect(fnCreateAiChatWidgetError("preview", {})).toEqual({
-      kind: "preview",
-      title: "Could not open widget Preview",
-      message: "The widget draft Preview could not be opened.",
-      isAuthenticationError: false,
-    })
   })
 })

@@ -18,22 +18,20 @@ export type TAgentResourceDataEntry =
     key: string;
     value: TResourceJson;
     revision: number;
-    createdAt: string;
-    updatedAt: string;
+    createdAtSec: string;
+    updatedAtSec: string;
   }>
   | Readonly<{
     kind: 'secretStore';
     name: string;
     revision: number;
-    createdAt: string;
-    updatedAt: string;
+    createdAtSec: string;
+    updatedAtSec: string;
   }>;
 
 /**
- * Tenant-confined resource capability consumed by AI tools.
- *
- * The host binds tenant identity before injection. Optional members let each
- * tool fail closed when a deployment intentionally omits an operation.
+ * Single-user resource capability consumed by AI tools. Optional members let
+ * each tool fail closed when a deployment intentionally omits an operation.
  */
 export interface TAgentResourceService {
   listResources?(
@@ -47,7 +45,6 @@ export interface TAgentResourceService {
   createResource?(request: Readonly<{ kind: TAgentResource['kind']; name: string }>): Promise<TAgentResource>;
   renameResource?(request: Readonly<{ id: string; name: string }>): Promise<TAgentResource>;
   deleteResource?(resourceId: string): Promise<void>;
-  listResourceReferences?(resourceId: string): Promise<readonly unknown[]>;
   countResourceData?(request: Readonly<{ resourceId: string; prefix?: string; search?: string }>): Promise<number>;
   listResourceData?(request: Readonly<{
     resourceId: string;

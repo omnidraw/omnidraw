@@ -1,32 +1,35 @@
 import type { Database } from '@tursodatabase/database';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { TEncryptionKey } from '../model';
-import { fnTimestampFromMs } from './fn.legacy-row';
 
-type TPortal = {
-  db: Database;
-};
-
-type TArgs = {
-  tenant: TTenantContext;
-  resourceId: string;
-};
+type TPortal = { db: Database };
+type TArgs = { resourceId: string };
 
 function parseEncryptionKey(row: unknown): TEncryptionKey {
   const value = row as {
     id: unknown;
+    resource_id: unknown;
+    purpose: unknown;
+    algorithm: unknown;
     key_hex: unknown;
-    created_at_ms: unknown;
+    created_at_sec: unknown;
   };
-  if (typeof value.id !== 'string' || typeof value.key_hex !== 'string') {
+  if (
+    typeof value.id !== 'string'
+    || typeof value.resource_id !== 'string'
+    || typeof value.purpose !== 'string'
+    || typeof value.algorithm !== 'string'
+    || typeof value.key_hex !== 'string'
+    || typeof value.created_at_sec !== 'string'
+  ) {
     throw new Error('Stored encryption key is invalid.');
   }
   return {
     id: value.id,
-    purpose: 'resource-secret-store',
-    algorithm: 'aegis256',
-    key_hex: value.key_hex,
-    created_at: fnTimestampFromMs(value.created_at_ms),
+    resourceId: value.resource_id,
+    purpose: value.purpose,
+    algorithm: value.algorithm,
+    keyHex: value.key_hex,
+    createdAtSec: value.created_at_sec,
   };
 }
 
@@ -35,9 +38,10 @@ export async function fxResourceEncryptionKeyGet(
   args: TArgs,
 ): Promise<TEncryptionKey | null> {
   const row = await (await portal.db.prepare(`
-    SELECT id, lower(hex(key_material)) AS key_hex, created_at_ms
+    SELECT id, resource_id, purpose, algorithm,
+      lower(hex(key_material)) AS key_hex, created_at_sec
     FROM resource_encryption_keys
-    WHERE org_id = ? AND resource_id = ?
-  `)).get(args.tenant.orgId, args.resourceId);
+    WHERE resource_id = ?
+  `)).get(args.resourceId);
   return row ? parseEncryptionKey(row) : null;
 }

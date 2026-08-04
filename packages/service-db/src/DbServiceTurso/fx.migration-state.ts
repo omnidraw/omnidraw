@@ -52,7 +52,8 @@ function refusal(reason: string): Error {
   return new Error(
     `Refusing to open Omnidraw database: ${reason} `
       + 'The database was inspected read-only and was not modified. '
-      + 'Unknown databases are not migrated; select a fresh Omnidraw home.',
+      + 'This undeployed baseline does not upgrade or rewrite old databases; '
+      + 'run the explicit development database reset, then restart Omnidraw.',
   );
 }
 
@@ -165,10 +166,10 @@ async function fxPreflightMigrationState(
     );
   }
 
-  if (userVersion < 0 || userVersion > DATABASE_SCHEMA_VERSION) {
+  if (userVersion !== DATABASE_SCHEMA_VERSION) {
     throw refusal(
-      `managed database user_version is ${userVersion}, but this binary supports versions 0 through `
-        + `${DATABASE_SCHEMA_VERSION}; the database is newer than this binary or corrupt.`,
+      `managed database user_version is ${userVersion}, expected the single baseline version `
+        + `${DATABASE_SCHEMA_VERSION}.`,
     );
   }
 
@@ -214,6 +215,7 @@ async function fxPreflightMigrationState(
     schemaContract = await fxVerifyDatabaseSchemaContract(
       { Bun: portal.Bun, db: portal.db },
       {
+        expectedDomains: expectedSchemaContract.domains,
         expectedFingerprintSha256: expectedSchemaContract.fingerprintSha256,
         expectedIndexes: expectedSchemaContract.indexes,
         expectedSchema: expectedSchemaContract.tables,
@@ -232,7 +234,7 @@ async function fxPreflightMigrationState(
   try {
     ledgerRows = await (
       await portal.db.prepare(`
-        SELECT version, name, checksum_sha256, applied_at_ms, application_version
+        SELECT version, name, checksum_sha256, applied_at_sec, application_version
         FROM schema_migrations
         ORDER BY version
       `)
@@ -261,8 +263,8 @@ async function fxPreflightMigrationState(
       || typeof migration.application_version !== 'string'
       || migration.application_version.trim().length === 0
       || migration.application_version.trim().length > 100
-      || !Number.isSafeInteger(migration.applied_at_ms)
-      || migration.applied_at_ms < 0
+      || typeof migration.applied_at_sec !== 'string'
+      || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(migration.applied_at_sec)
     ) {
       throw refusal(
         `managed migration ledger metadata or immutable SHA-256 checksum for version ${version} `
@@ -272,9 +274,7 @@ async function fxPreflightMigrationState(
   }
 
   const appliedMigrations = Object.freeze([...ledgerRows]);
-  return userVersion === DATABASE_SCHEMA_VERSION
-    ? { status: 'ready', currentVersion: userVersion, appliedMigrations }
-    : { status: 'pending', currentVersion: userVersion, appliedMigrations };
+  return { status: 'ready', currentVersion: userVersion, appliedMigrations };
 }
 
 export { fxPreflightMigrationState };

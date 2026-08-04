@@ -5,8 +5,7 @@
     "types": ["bun-types"],
     "paths": {
       "@omnidraw/canvas-contract": ["../canvas-contract/src/index.ts"],
-      "@omnidraw/runtime": ["../runtime/src/index.ts"],
-      "@omnidraw/tenant-core": ["../tenant-core/src/index.ts"]
+      "@omnidraw/runtime": ["../runtime/src/index.ts"]
     }
   },
   "include": [

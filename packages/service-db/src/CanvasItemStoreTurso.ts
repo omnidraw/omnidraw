@@ -10,7 +10,6 @@ import {
   type TCanvasItemSnapshot,
   type TCanvasSnapshot,
 } from "@omnidraw/canvas-contract";
-import type { TTenantContext } from "@omnidraw/tenant-core";
 import { txRunDatabaseTransaction } from "./tx.run-database-transaction";
 
 type TCanvasItem = TCanvasItemSnapshot["item"];
@@ -35,7 +34,6 @@ export type TCanvasItemStoreApplyRequest = Readonly<{
   canvasId: string;
   expectedCanvasRevision: number;
   mutations: readonly TCanvasItemStoreMutation[];
-  nowMs: number;
 }>;
 
 export type TCanvasItemStoreApplyResult =
@@ -47,7 +45,7 @@ export type TCanvasItemStoreApplyResult =
     }>
   | Readonly<{
       status: "revision-conflict";
-      revision: number;
+      revision: number | null;
     }>;
 
 export type TLocatedCanvasItem = Readonly<{
@@ -73,30 +71,22 @@ export class CanvasItemStoreError extends Error {
 }
 
 type TStoredCanvasItemRow = Readonly<{
-  canvas_id?: string;
+  canvas_id: string;
   id: string;
   item_json: string;
   item_revision: unknown;
-  created_at_ms: unknown;
-  updated_at_ms: unknown;
+  created_at_sec: unknown;
+  updated_at_sec: unknown;
   kind: string;
   parent_id: string | null;
   order_key: string;
   widget_instance_id: string | null;
-  definition_id: string | null;
-  revision_id: string | null;
-}>;
-
-type TWidgetInstanceMetadataRow = Readonly<{
-  canvas_id: string;
-  element_id: string;
-  id: string;
+  widget_key: string | null;
 }>;
 
 type TWidgetInstanceIdentity = Readonly<{
-  definitionId: string;
   instanceId: string;
-  revisionId: string;
+  widgetKey: string;
 }>;
 
 type TCanvasImageResourceClaim = Readonly<{
@@ -111,14 +101,13 @@ const ITEM_SELECT = `
     id,
     item_json,
     item_revision,
-    created_at_ms,
-    updated_at_ms,
+    created_at_sec,
+    updated_at_sec,
     kind,
     parent_id,
     order_key,
     widget_instance_id,
-    definition_id,
-    revision_id
+    widget_key
   FROM canvas_items
 `;
 
@@ -131,6 +120,19 @@ function nonNegativeSafeInteger(value: unknown, label: string): number {
     );
   }
   return parsed;
+}
+
+function wholeSecondTimestamp(value: unknown, label: string): string {
+  if (
+    typeof value !== "string"
+    || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+  ) {
+    throw new CanvasItemStoreError(
+      "CANVAS_ITEM_ROW_INVALID",
+      `${label} must be a UTC whole-second timestamp.`,
+    );
+  }
+  return value;
 }
 
 function parseItemRow(row: TStoredCanvasItemRow): TCanvasItemSnapshot {
@@ -154,12 +156,13 @@ function parseItemRow(row: TStoredCanvasItemRow): TCanvasItemSnapshot {
       `Canvas item '${row.id}' does not match its stored row identity.`,
     );
   }
+  widgetInstanceIdentity(row);
   return {
     id: row.id,
     item: item as TCanvasItem,
     itemRevision: nonNegativeSafeInteger(row.item_revision, "Canvas item revision"),
-    createdAtMs: nonNegativeSafeInteger(row.created_at_ms, "Canvas item creation time"),
-    updatedAtMs: nonNegativeSafeInteger(row.updated_at_ms, "Canvas item update time"),
+    createdAtSec: wholeSecondTimestamp(row.created_at_sec, "Canvas item creation time"),
+    updatedAtSec: wholeSecondTimestamp(row.updated_at_sec, "Canvas item update time"),
   };
 }
 
@@ -168,15 +171,13 @@ function widgetInstanceIdentity(
 ): TWidgetInstanceIdentity | null {
   if (
     row.widget_instance_id === null
-    && row.definition_id === null
-    && row.revision_id === null
+    && row.widget_key === null
   ) {
     return null;
   }
   if (
     row.widget_instance_id === null
-    || row.definition_id === null
-    || row.revision_id === null
+    || row.widget_key === null
   ) {
     throw new CanvasItemStoreError(
       "CANVAS_ITEM_ROW_INVALID",
@@ -185,8 +186,7 @@ function widgetInstanceIdentity(
   }
   return {
     instanceId: row.widget_instance_id,
-    definitionId: row.definition_id,
-    revisionId: row.revision_id,
+    widgetKey: row.widget_key,
   };
 }
 
@@ -270,16 +270,15 @@ function nextCursor(
       id: row.id,
     };
   }
-  if (query.filter.type === "widget-definition") {
-    if (row.revision_id === null || row.widget_instance_id === null) {
+  if (query.filter.type === "widget-key") {
+    if (row.widget_instance_id === null) {
       throw new CanvasItemStoreError(
         "CANVAS_ITEM_ROW_INVALID",
-        "Widget definition query returned an item without complete identity.",
+        "Widget-key query returned an item without complete identity.",
       );
     }
     return {
       type: "widget-identity",
-      revisionId: row.revision_id,
       instanceId: row.widget_instance_id,
       id: row.id,
     };
@@ -300,7 +299,6 @@ function serializeItem(item: TCanvasItem): string {
 
 function assertApplyRequest(request: TCanvasItemStoreApplyRequest): void {
   nonNegativeSafeInteger(request.expectedCanvasRevision, "Expected canvas revision");
-  nonNegativeSafeInteger(request.nowMs, "Canvas mutation timestamp");
   if (
     request.mutations.length < 1
     || request.mutations.length > CANVAS_COMMAND_MAX_OPERATIONS
@@ -326,162 +324,35 @@ function assertApplyRequest(request: TCanvasItemStoreApplyRequest): void {
   }
 }
 
-/** Tenant-qualified JSONB persistence used by the authoritative CanvasService. */
+/** Single-user JSONB persistence used by the authoritative CanvasService. */
 export class CanvasItemStoreTurso {
   constructor(private readonly database: Database) {}
 
-  async #activateWidgetInstance(
-    tenant: TTenantContext,
-    request: Readonly<{
-      canvasId: string;
-      itemRow: TStoredCanvasItemRow;
-      nowMs: number;
-    }>,
-  ): Promise<void> {
-    const identity = widgetInstanceIdentity(request.itemRow);
-    if (identity === null) return;
-
-    try {
-      const matches = await (await this.database.prepare(`
-        SELECT id, canvas_id, element_id
-        FROM widget_instances
-        WHERE org_id = ?
-          AND (
-            id = ?
-            OR (canvas_id = ? AND element_id = ?)
-          )
-        ORDER BY id ASC
-      `)).all(
-        tenant.orgId,
-        identity.instanceId,
-        request.canvasId,
-        request.itemRow.id,
-      ) as TWidgetInstanceMetadataRow[];
-
-      if (matches.length > 1) {
-        throw new CanvasItemStoreError(
-          "CANVAS_ITEM_CONFLICT",
-          `Widget identity '${identity.instanceId}' conflicts with existing metadata.`,
-        );
-      }
-
-      const existing = matches[0];
-      if (existing === undefined) {
-        await (await this.database.prepare(`
-          INSERT INTO widget_instances (
-            org_id,
-            id,
-            canvas_id,
-            element_id,
-            definition_id,
-            revision_id,
-            status,
-            created_at_ms,
-            updated_at_ms
-          )
-          VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-        `)).run(
-          tenant.orgId,
-          identity.instanceId,
-          request.canvasId,
-          request.itemRow.id,
-          identity.definitionId,
-          identity.revisionId,
-          request.nowMs,
-          request.nowMs,
-        );
-        return;
-      }
-
-      const updated = await (await this.database.prepare(`
-        UPDATE widget_instances
-        SET
-          id = ?,
-          canvas_id = ?,
-          element_id = ?,
-          definition_id = ?,
-          revision_id = ?,
-          status = 'active',
-          updated_at_ms = max(updated_at_ms, ?)
-        WHERE org_id = ? AND id = ?
-      `)).run(
-        identity.instanceId,
-        request.canvasId,
-        request.itemRow.id,
-        identity.definitionId,
-        identity.revisionId,
-        request.nowMs,
-        tenant.orgId,
-        existing.id,
-      );
-      if (updated.changes !== 1) {
-        throw new CanvasItemStoreError(
-          "CANVAS_ITEM_CONFLICT",
-          `Widget identity '${identity.instanceId}' metadata changed concurrently.`,
-        );
-      }
-    } catch (error) {
-      if (error instanceof CanvasItemStoreError) throw error;
-      throw new CanvasItemStoreError(
-        "CANVAS_ITEM_CONFLICT",
-        `Widget identity '${identity.instanceId}' cannot safely replace existing metadata.`,
-      );
-    }
-  }
-
-  async #archiveWidgetInstance(
-    tenant: TTenantContext,
-    request: Readonly<{
-      canvasId: string;
-      elementId: string;
-      nowMs: number;
-    }>,
-  ): Promise<void> {
-    await (await this.database.prepare(`
-      UPDATE widget_instances
-      SET
-        status = 'archived',
-        updated_at_ms = max(updated_at_ms, ?)
-      WHERE org_id = ? AND canvas_id = ? AND element_id = ?
-    `)).run(
-      request.nowMs,
-      tenant.orgId,
-      request.canvasId,
-      request.elementId,
-    );
-  }
-
   async getRevision(
-    tenant: TTenantContext,
     request: Readonly<{ canvasId: string }>,
-  ): Promise<number> {
+  ): Promise<number | null> {
     const row = await (await this.database.prepare(`
       SELECT revision
       FROM canvases
-      WHERE org_id = ? AND id = ?
-    `)).get(tenant.orgId, request.canvasId) as { revision: unknown } | null;
-    if (!row) {
-      throw new CanvasItemStoreError(
-        "CANVAS_NOT_FOUND",
-        "Canvas was not found in the tenant.",
-      );
-    }
+      WHERE id = ?
+    `)).get(request.canvasId) as { revision: unknown } | null;
+    if (!row) return null;
     return nonNegativeSafeInteger(row.revision, "Canvas revision");
   }
 
   getSnapshot(
-    tenant: TTenantContext,
     request: Readonly<{ canvasId: string }>,
-  ): Promise<TCanvasSnapshot> {
+  ): Promise<TCanvasSnapshot | null> {
     return txRunDatabaseTransaction({ database: this.database }, {
       mode: "deferred",
       operation: async () => {
-        const revision = await this.getRevision(tenant, request);
+        const revision = await this.getRevision(request);
+        if (revision === null) return null;
         const rows = await (await this.database.prepare(`
           ${ITEM_SELECT}
-          WHERE org_id = ? AND canvas_id = ?
+          WHERE canvas_id = ?
           ORDER BY id ASC
-        `)).all(tenant.orgId, request.canvasId) as TStoredCanvasItemRow[];
+        `)).all(request.canvasId) as TStoredCanvasItemRow[];
         const items = rows.map(parseItemRow);
         fnAssertValidCanvasItems(items.map((item) => item.item));
         return {
@@ -494,15 +365,13 @@ export class CanvasItemStoreTurso {
   }
 
   async queryItems(
-    tenant: TTenantContext,
     query: TCanvasItemQuery,
   ): Promise<TCanvasItemPage> {
     const limit = queryLimit(query);
     const parameters: Array<string | number | null> = [
-      tenant.orgId,
       query.canvasId,
     ];
-    let predicate = "org_id = ? AND canvas_id = ?";
+    let predicate = "canvas_id = ?";
     let ordering = "id ASC";
 
     switch (query.filter.type) {
@@ -576,31 +445,19 @@ export class CanvasItemStoreTurso {
         parameters.push(query.filter.instanceId);
         break;
       }
-      case "widget-definition": {
+      case "widget-key": {
         assertCursorType(query.cursor, "widget-identity");
-        predicate += " AND definition_id = ?";
-        parameters.push(query.filter.definitionId);
-        ordering = "revision_id ASC, widget_instance_id ASC, id ASC";
-        if (query.filter.revisionId !== undefined) {
-          predicate += " AND revision_id = ?";
-          parameters.push(query.filter.revisionId);
-        }
+        predicate += " AND widget_key = ?";
+        parameters.push(query.filter.widgetKey);
+        ordering = "widget_instance_id ASC, id ASC";
         if (query.cursor?.type === "widget-identity") {
           predicate += `
             AND (
-              revision_id > ?
-              OR (
-                revision_id = ?
-                AND (
-                  widget_instance_id > ?
-                  OR (widget_instance_id = ? AND id > ?)
-                )
-              )
+              widget_instance_id > ?
+              OR (widget_instance_id = ? AND id > ?)
             )
           `;
           parameters.push(
-            query.cursor.revisionId,
-            query.cursor.revisionId,
             query.cursor.instanceId,
             query.cursor.instanceId,
             query.cursor.id,
@@ -626,7 +483,6 @@ export class CanvasItemStoreTurso {
   }
 
   async queryImageResourceClaims(
-    tenant: TTenantContext,
     request: Readonly<{
       canvasId: string;
       resourceIds: readonly string[];
@@ -657,7 +513,6 @@ export class CanvasItemStoreTurso {
     const urlPath = "json_extract(item_json, '$.extensions.\"omnidraw:image\".url')";
     const mimeTypePath = "json_extract(item_json, '$.extensions.\"omnidraw:image\".mimeType')";
     const parameters: Array<string | number> = [
-      tenant.orgId,
       request.canvasId,
       ...resourceIds,
     ];
@@ -673,8 +528,7 @@ export class CanvasItemStoreTurso {
         ${urlPath} AS url,
         ${mimeTypePath} AS mime_type
       FROM canvas_items
-      WHERE org_id = ?
-        AND canvas_id = ?
+      WHERE canvas_id = ?
         AND kind = 'image'
         AND ${resourcePath} IN (${resourceIds.map(() => "?").join(", ")})
         ${exclusions}
@@ -708,13 +562,12 @@ export class CanvasItemStoreTurso {
   }
 
   async findByWidgetInstance(
-    tenant: TTenantContext,
     request: Readonly<{ instanceId: string }>,
   ): Promise<TLocatedCanvasItem | null> {
     const row = await (await this.database.prepare(`
       ${ITEM_SELECT}
-      WHERE org_id = ? AND widget_instance_id = ?
-    `)).get(tenant.orgId, request.instanceId) as TStoredCanvasItemRow | null;
+      WHERE widget_instance_id = ?
+    `)).get(request.instanceId) as TStoredCanvasItemRow | null;
     if (!row?.canvas_id) return null;
     return {
       canvasId: row.canvas_id,
@@ -723,7 +576,6 @@ export class CanvasItemStoreTurso {
   }
 
   applyMutations(
-    tenant: TTenantContext,
     request: TCanvasItemStoreApplyRequest,
   ): Promise<TCanvasItemStoreApplyResult> {
     assertApplyRequest(request);
@@ -733,12 +585,10 @@ export class CanvasItemStoreTurso {
           UPDATE canvases
           SET
             revision = revision + 1,
-            updated_at_ms = max(updated_at_ms, ?)
-          WHERE org_id = ? AND id = ? AND revision = ?
+            updated_at_sec = CURRENT_TIMESTAMP
+          WHERE id = ? AND revision = ?
           RETURNING revision
         `)).get(
-          request.nowMs,
-          tenant.orgId,
           request.canvasId,
           request.expectedCanvasRevision,
         ) as { revision: unknown } | null;
@@ -747,13 +597,10 @@ export class CanvasItemStoreTurso {
           const current = await (await this.database.prepare(`
             SELECT revision
             FROM canvases
-            WHERE org_id = ? AND id = ?
-          `)).get(tenant.orgId, request.canvasId) as { revision: unknown } | null;
+            WHERE id = ?
+          `)).get(request.canvasId) as { revision: unknown } | null;
           if (!current) {
-            throw new CanvasItemStoreError(
-              "CANVAS_NOT_FOUND",
-              "Canvas was not found in the tenant.",
-            );
+            return { status: "revision-conflict", revision: null };
           }
           return {
             status: "revision-conflict",
@@ -767,36 +614,29 @@ export class CanvasItemStoreTurso {
           if (mutation.type === "insert") {
             const row = await (await this.database.prepare(`
               INSERT INTO canvas_items (
-                org_id,
                 canvas_id,
                 id,
                 item_json,
-                item_revision,
-                created_at_ms,
-                updated_at_ms
+                item_revision
               )
-              VALUES (?, ?, ?, ?, 0, ?, ?)
-              ON CONFLICT (org_id, canvas_id, id) DO NOTHING
+              VALUES (?, ?, ?, 0)
+              ON CONFLICT (canvas_id, id) DO NOTHING
               RETURNING
                 canvas_id,
                 id,
                 item_json,
                 item_revision,
-                created_at_ms,
-                updated_at_ms,
+                created_at_sec,
+                updated_at_sec,
                 kind,
                 parent_id,
                 order_key,
                 widget_instance_id,
-                definition_id,
-                revision_id
+                widget_key
             `)).get(
-              tenant.orgId,
               request.canvasId,
               mutation.item.id,
               serializeItem(mutation.item),
-              request.nowMs,
-              request.nowMs,
             ) as TStoredCanvasItemRow | null;
             if (!row) {
               throw new CanvasItemStoreError(
@@ -804,11 +644,6 @@ export class CanvasItemStoreTurso {
                 `Canvas item '${mutation.item.id}' already exists.`,
               );
             }
-            await this.#activateWidgetInstance(tenant, {
-              canvasId: request.canvasId,
-              itemRow: row,
-              nowMs: request.nowMs,
-            });
             changedItems.push(parseItemRow(row));
             continue;
           }
@@ -819,10 +654,9 @@ export class CanvasItemStoreTurso {
               SET
                 item_json = ?,
                 item_revision = item_revision + 1,
-                updated_at_ms = max(updated_at_ms, ?)
+                updated_at_sec = CURRENT_TIMESTAMP
               WHERE
-                org_id = ?
-                AND canvas_id = ?
+                canvas_id = ?
                 AND id = ?
                 AND item_revision = ?
               RETURNING
@@ -830,18 +664,15 @@ export class CanvasItemStoreTurso {
                 id,
                 item_json,
                 item_revision,
-                created_at_ms,
-                updated_at_ms,
+                created_at_sec,
+                updated_at_sec,
                 kind,
                 parent_id,
                 order_key,
                 widget_instance_id,
-                definition_id,
-                revision_id
+                widget_key
             `)).get(
               serializeItem(mutation.item),
-              request.nowMs,
-              tenant.orgId,
               request.canvasId,
               mutation.item.id,
               mutation.expectedItemRevision,
@@ -852,19 +683,6 @@ export class CanvasItemStoreTurso {
                 `Canvas item '${mutation.item.id}' does not match the expected revision.`,
               );
             }
-            if (widgetInstanceIdentity(row) === null) {
-              await this.#archiveWidgetInstance(tenant, {
-                canvasId: request.canvasId,
-                elementId: row.id,
-                nowMs: request.nowMs,
-              });
-            } else {
-              await this.#activateWidgetInstance(tenant, {
-                canvasId: request.canvasId,
-                itemRow: row,
-                nowMs: request.nowMs,
-              });
-            }
             changedItems.push(parseItemRow(row));
             continue;
           }
@@ -872,13 +690,11 @@ export class CanvasItemStoreTurso {
           const deleted = await (await this.database.prepare(`
             DELETE FROM canvas_items
             WHERE
-              org_id = ?
-              AND canvas_id = ?
+              canvas_id = ?
               AND id = ?
               AND item_revision = ?
             RETURNING id
           `)).get(
-            tenant.orgId,
             request.canvasId,
             mutation.itemId,
             mutation.expectedItemRevision,
@@ -889,11 +705,6 @@ export class CanvasItemStoreTurso {
               `Canvas item '${mutation.itemId}' does not match the expected revision.`,
             );
           }
-          await this.#archiveWidgetInstance(tenant, {
-            canvasId: request.canvasId,
-            elementId: deleted.id,
-            nowMs: request.nowMs,
-          });
           deletedItemIds.push(deleted.id);
         }
 

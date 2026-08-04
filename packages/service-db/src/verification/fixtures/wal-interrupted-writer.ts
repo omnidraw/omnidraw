@@ -1,3 +1,4 @@
+import { TURSO_ON_DISK_EXPERIMENTAL_FEATURES } from '../../DbServiceTurso/DbServiceTurso';
 import { Database } from '../../DbServiceTurso/turso-native';
 
 const databasePath = Bun.argv[2];
@@ -8,8 +9,7 @@ if (!databasePath || !readyPath) {
 }
 
 const database = new Database(databasePath, {
-  // @ts-ignore pinned native features may be ahead of the installed public union.
-  experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
+  experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
 });
 type TImmediateTransaction = (() => Promise<void>) & { immediate: () => Promise<void> };
 await database.connect();

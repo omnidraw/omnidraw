@@ -6,10 +6,10 @@ import type { TAgentResource, TAgentResourceService } from '../src/tools/resourc
 import { createResourceTools } from '../src/tools/tool.resources';
 import { executeTool } from './tool.test-helpers';
 
-const timestamp = '2026-07-16T00:00:00.000Z';
+const timestamp = '2026-07-16 00:00:00';
 
 function resource(id: string, kind: TAgentResource['kind'], name: string, status: TAgentResource['status'] = 'ready'): TAgentResource {
-  return { id, kind, name, status, last_error: null, created_at: timestamp, updated_at: timestamp };
+  return { id, kind, name, status, lastError: null, createdAtSec: timestamp, updatedAtSec: timestamp };
 }
 
 function tools(
@@ -22,7 +22,6 @@ function tools(
     approvals,
     byName: new Map(createResourceTools({
       chatId: 'chat-a',
-      authorization: { accountId: 'user-a' },
       resourceService,
       approvals,
       authorize,
@@ -101,18 +100,17 @@ describe('resource tools', () => {
     const dataListCalls: unknown[] = [];
     const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
-      listResourceReferences: async (id) => id === 'db-1' ? [{ slot_name: 'storage' }] : [],
       countResourceData: async () => 1,
       listResourceData: async (call) => {
         dataListCalls.push(call);
         return call.resourceId === 'secret-1'
-          ? { kind: 'secretStore', entries: [{ name: 'TOKEN', revision: 1, createdAt: timestamp, updatedAt: timestamp }], nextCursor: null }
-          : { kind: 'kv', entries: [{ key: 'theme', valuePreview: 'dark-value-must-not-be-listed', valueTruncated: false, revision: 1, createdAt: timestamp, updatedAt: timestamp }], nextCursor: null };
+          ? { kind: 'secretStore', entries: [{ name: 'TOKEN', revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp }], nextCursor: null }
+          : { kind: 'kv', entries: [{ key: 'theme', valuePreview: 'dark-value-must-not-be-listed', valueTruncated: false, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp }], nextCursor: null };
       },
       getResourceDataEntry: async ({ resourceId, key }) => {
         if (key === 'missing') return null;
-        if (resourceId === 'secret-1') return { kind: 'secretStore', name: key, revision: 1, createdAt: timestamp, updatedAt: timestamp };
-        return { kind: 'kv', key, value: { mode: 'dark' }, revision: 1, createdAt: timestamp, updatedAt: timestamp };
+        if (resourceId === 'secret-1') return { kind: 'secretStore', name: key, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp };
+        return { kind: 'kv', key, value: { mode: 'dark' }, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp };
       },
       inspectDbResource: async () => ({ objects: [{
         name: 'notes', kind: 'table', columns: [], indexes: [], foreignKeys: [], triggers: [], createSql: 'CREATE TABLE notes(id INTEGER)', identity: null, editable: true, readOnlyReason: null,
@@ -160,8 +158,7 @@ describe('resource tools', () => {
     const dbInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Notes' });
     expect(providerModelData(dbInspect)).toMatchObject({
       resource: { name: 'Notes', kind: 'db' },
-      bindingCount: 1,
-      currentlyDeletable: false,
+      currentlyDeletable: true,
       schema: {
         summary: { objectCount: 1, tableCount: 1, viewCount: 0 },
         objects: [{
@@ -187,11 +184,11 @@ describe('resource tools', () => {
       ],
     });
     expect(providerModelData(kvRead).results).toEqual([
-      { index: 0, ok: true, value: { kind: 'kv', key: 'theme', value: { mode: 'dark' }, revision: 1, createdAt: timestamp, updatedAt: timestamp } },
+      { index: 0, ok: true, value: { kind: 'kv', key: 'theme', value: { mode: 'dark' }, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp } },
       { index: 1, ok: true, value: { exists: false } },
       { index: 2, ok: true, value: {
         kind: 'kv',
-        entries: [{ key: 'theme', revision: 1, createdAt: timestamp, updatedAt: timestamp }],
+        entries: [{ key: 'theme', revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp }],
         matchingCount: 1,
         nextCursor: null,
       } },
@@ -212,7 +209,7 @@ describe('resource tools', () => {
       { index: 1, ok: true, value: { exists: true } },
       { index: 2, ok: true, value: {
         kind: 'secretStore',
-        entries: [{ name: 'TOKEN', revision: 1, createdAt: timestamp, updatedAt: timestamp }],
+        entries: [{ name: 'TOKEN', revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp }],
         matchingCount: 1,
         nextCursor: null,
       } },
@@ -322,13 +319,12 @@ describe('resource tools', () => {
         resources.push(created);
         return created;
       },
-      listResourceReferences: async () => [],
       countResourceData: async () => entries.size,
       listResourceData: async () => ({ kind: 'kv', entries: [], nextCursor: null }),
       getResourceDataEntry: async ({ key }) => {
         const entry = entries.get(key);
         return entry ? {
-          kind: 'kv', key, value: entry.value, revision: entry.revision, createdAt: timestamp, updatedAt: timestamp,
+          kind: 'kv', key, value: entry.value, revision: entry.revision, createdAtSec: timestamp, updatedAtSec: timestamp,
         } : null;
       },
       setResourceDataEntry: async ({ key, value }) => {
@@ -336,7 +332,7 @@ describe('resource tools', () => {
         entries.set(key, { value, revision });
         return {
           kind: 'kv',
-          entry: { key, valuePreview: String(JSON.stringify(value)), valueTruncated: false, revision, createdAt: timestamp, updatedAt: timestamp },
+          entry: { key, valuePreview: String(JSON.stringify(value)), valueTruncated: false, revision, createdAtSec: timestamp, updatedAtSec: timestamp },
         };
       },
       deleteResourceDataEntry: async ({ key }) => {
@@ -353,7 +349,7 @@ describe('resource tools', () => {
 
     const create = executeTool(byName.get('od_resource_create')!, { kind: 'kv', name: 'Team Preferences' });
     const createApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', createApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', createApproval.id, 'approve');
     const createdName = providerModelData(await create).resource.name;
     expect(createdName).toBe('Team Preferences');
 
@@ -365,7 +361,7 @@ describe('resource tools', () => {
       operations: [{ operation: 'set', key: 'theme', value: 'dark' }],
     });
     const writeApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', writeApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', writeApproval.id, 'approve');
     expect(providerModelData(await write).results).toMatchObject([{ index: 0, ok: true }]);
 
     const read = await executeTool(byName.get('od_resource_data_read')!, {
@@ -376,7 +372,7 @@ describe('resource tools', () => {
 
     const remove = executeTool(byName.get('od_resource_delete')!, { resourceName: createdName });
     const deleteApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', deleteApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', deleteApproval.id, 'approve');
     const removed = await remove;
     expect(providerModelData(removed)).toEqual({ deleted: true, resourceName: createdName });
     expect(JSON.stringify([inspected, read, removed])).not.toContain('internal-chain-id');
@@ -416,21 +412,21 @@ describe('resource tools', () => {
       const approval = await pendingApproval(approvals);
       expect(approval.toolCallId).toBe('tool-call');
       expect(JSON.stringify(approval)).not.toContain('resourceId');
-      await approvals.resolve('chat-a', approval.id, 'approve', { accountId: 'user-a' });
+      await approvals.resolve('chat-a', approval.id, 'approve');
       expect(providerModelData(await pending)).toEqual({ resource: { name: expectedName, kind: input.kind, status: 'ready' } });
     }
 
     const update = executeTool(byName.get('od_resource_update')!, { resourceName: 'Preferences', newName: 'Settings' });
     const updateApproval = await pendingApproval(approvals);
     resources[0] = { ...resources[0]!, name: 'Renamed Elsewhere' };
-    await approvals.resolve('chat-a', updateApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', updateApproval.id, 'approve');
     const updateResult = await update;
     expect(providerModelData(updateResult)).toEqual({ resource: { name: 'Settings', kind: 'kv', status: 'ready' } });
     expect(JSON.stringify(updateResult)).not.toContain('kv-stable-id');
 
     const remove = executeTool(byName.get('od_resource_delete')!, { resourceName: 'Settings' });
     const deleteApproval = await pendingApproval(approvals);
-    await expect(approvals.resolve('chat-a', deleteApproval.id, 'approve', { accountId: 'user-a' })).rejects.toThrow('still bound');
+    await expect(approvals.resolve('chat-a', deleteApproval.id, 'approve')).rejects.toThrow('still bound');
     const deleteResult = await remove;
     expect(providerModelData(deleteResult)).toMatchObject({ error: { code: 'RESOURCE_STILL_BOUND' } });
     expect(JSON.stringify(deleteResult)).not.toContain('kv-stable-id');
@@ -446,7 +442,7 @@ describe('resource tools', () => {
       setResourceDataEntry: async ({ key, value }) => {
         if (key === 'LEAK') throw new Error(`Provider rejected secret ${String(value)}`);
         secretValues.push(value);
-        return { kind: 'secretStore', entry: { name: key, revision: 1, createdAt: timestamp, updatedAt: timestamp } };
+        return { kind: 'secretStore', entry: { name: key, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp } };
       },
       deleteResourceDataEntry: async () => ({ deleted: true }),
       createDbDraft: async (resourceId, name) => {
@@ -457,7 +453,7 @@ describe('resource tools', () => {
       previewDbApply: async (draftId) => { draftCalls.push({ type: 'preview', draftId }); return { warnings: ['Raw SQL'] }; },
       confirmDbApply: async (draftId) => {
         draftCalls.push({ type: 'confirm', draftId });
-        return { id: 'apply-internal', resource_id: 'db-1', draft_id: draftId, source_apply_id: null, status: 'preparing', last_error: null, backup_retained: false, created_at: timestamp, completed_at: null };
+        return { id: 'apply-internal', status: 'preparing' };
       },
       getDbApply: async () => ({ apply: { id: 'apply-internal', status: 'succeeded' } }),
       discardDbDraft: async (draftId) => { draftCalls.push({ type: 'discard', draftId }); },
@@ -480,7 +476,7 @@ describe('resource tools', () => {
     });
     const secretApproval = await pendingApproval(approvals);
     expect(JSON.stringify(secretApproval)).not.toContain('super-secret-value');
-    await approvals.resolve('chat-a', secretApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', secretApproval.id, 'approve');
     const secretResult = await secret;
     expect(secretValues).toEqual(['super-secret-value']);
     expect(JSON.stringify(secretResult)).not.toContain('super-secret-value');
@@ -493,7 +489,7 @@ describe('resource tools', () => {
       resourceName: 'Credentials', operations: [{ operation: 'set', key: 'LEAK', value: '[redacted]' }],
     });
     const failedApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', failedApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', failedApproval.id, 'approve');
     const failedResult = await failedSecret;
     expect(JSON.stringify(failedResult)).not.toContain('must-not-leak');
     expect(JSON.stringify(failedResult)).toContain('[redacted]');
@@ -506,7 +502,7 @@ describe('resource tools', () => {
       ],
     });
     const dbApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', dbApproval.id, 'approve', { accountId: 'user-a' });
+    await approvals.resolve('chat-a', dbApproval.id, 'approve');
     const dbData = providerModelData(await dbWrite);
     expect(dbData.results).toEqual([
       { index: 0, ok: true, value: { staged: true, applyStatus: 'succeeded' } },
@@ -546,7 +542,7 @@ describe('resource tools', () => {
         operations: [{ operation: 'sql', sql: 'INSERT INTO notes(id) VALUES (1)' }],
       });
       const approval = await pendingApproval(approvals);
-      await approvals.resolve('chat-a', approval.id, 'approve', { accountId: 'user-a' });
+      await approvals.resolve('chat-a', approval.id, 'approve');
       const data = providerModelData(await write);
       expect(data.results).toEqual([
         { index: 0, ok: true, value: { staged: true, applyStatus: terminal } },

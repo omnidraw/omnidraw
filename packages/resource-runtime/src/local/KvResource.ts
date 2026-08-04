@@ -1,8 +1,5 @@
 import { ResourceError, toResourceError } from '../ResourceError';
 import type {
-  IResourceWritePermitGuard,
-} from '../interface';
-import type {
   IResourceKeyValuePersistence,
   TResourceJson as TJson,
   TResourceKeyValueCompareAndSetResult,
@@ -16,9 +13,6 @@ import type {
   TLocalResolvedResourceCall,
   TLocalResource,
   TLocalResourceRequirement,
-  TLocalResourceOperationIdentity,
-  TLocalResourceCommittedOperation,
-  TLocalResourceDispatchReceipt,
 } from './ResourceProviderTypes';
 
 type TResourceProviderCreateArgs = unknown;
@@ -264,73 +258,4 @@ export class KvResource implements ILocalResourceProvider {
     }
   }
 
-  async dispatchWithReceipt(
-    context: TLocalResolvedResourceCall,
-    operation: string,
-    rawArgs: unknown,
-    identity: TLocalResourceOperationIdentity,
-    guard: IResourceWritePermitGuard,
-  ): Promise<TLocalResourceDispatchReceipt> {
-    try {
-      if (
-        context.resource.kind !== this.kind
-        || context.requirement.kind !== this.kind
-        || context.resource.id !== identity.resourceId
-        || (context.tenant !== undefined && context.tenant.orgId !== identity.orgId)
-      ) throw new ResourceError('RESOURCE_KIND_MISMATCH', 'KV receipt identity does not match the resolved resource.');
-      const args = recordArgs(rawArgs);
-      const mutation = operation === 'set'
-        ? {
-            operation: 'set' as const,
-            key: keyArg(args.key),
-            value: args.value as TJson,
-          }
-        : operation === 'delete'
-          ? {
-              operation: 'delete' as const,
-              key: keyArg(args.key),
-              expectedRevision: optionalExpectedRevision(args.expectedRevision),
-            }
-          : operation === 'compareAndSet'
-            ? {
-                operation: 'compareAndSet' as const,
-                key: keyArg(args.key),
-                expectedRevision: expectedRevision(args.expectedRevision),
-                value: args.value as TJson,
-              }
-            : null;
-      if (mutation === null) {
-        throw new ResourceError('KV_WRITE_NOT_ALLOWED', 'Durable KV receipts apply only to write operations.');
-      }
-      return await this.persistence.mutateWithReceipt({
-        resourceId: identity.resourceId,
-        invocationId: identity.invocationId,
-        attemptId: identity.attemptId,
-        operationId: identity.operationId,
-        operationFingerprintSha256: identity.operationFingerprintSha256,
-        mutation,
-      }, guard);
-    } catch (error) {
-      if (error instanceof TypeError) throw new ResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.');
-      throw toResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
-    }
-  }
-
-  async readCommittedOperation(
-    resource: TLocalResource,
-    request: Readonly<{ invocationId: string; operationId: string }>,
-  ): Promise<TLocalResourceCommittedOperation | null> {
-    if (resource.kind !== this.kind) {
-      throw new ResourceError('RESOURCE_KIND_MISMATCH', 'KV receipt resource kind is invalid.');
-    }
-    try {
-      return await this.persistence.readCommittedOperation({
-        resourceId: resource.id,
-        invocationId: request.invocationId,
-        operationId: request.operationId,
-      });
-    } catch (error) {
-      throw toResourceError(error, 'KV_OPERATION_FAILED', 'KV receipt recovery failed.');
-    }
-  }
 }

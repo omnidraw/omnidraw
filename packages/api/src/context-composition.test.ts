@@ -44,7 +44,6 @@ const fakeResourceCapability = {
   listDbDrafts: unusedCapability,
   listDbRows: unusedCapability,
   listResourceData: unusedCapability,
-  listResourceReferences: unusedCapability,
   listResources: unusedCapability,
   previewDbApply: unusedCapability,
   previewDbBackupRestore: unusedCapability,
@@ -61,49 +60,21 @@ const fakeHumanResourceSecretCapability = {
 const fakeAgentCapability = {
   abortLogin: unusedCapability,
   approveChatDbChange: unusedCapability,
-  buildWidgetPreview: unusedCapability,
-  acquireWidgetPreviewMountLease: unusedCapability,
-  renewWidgetPreviewMountLease: unusedCapability,
-  releaseWidgetPreviewMountLease: unusedCapability,
-  reportWidgetPreviewDiagnostic: unusedCapability,
-  reportWidgetPreviewTestResult: unusedCapability,
-  getWidgetPreviewDiagnostics: unusedCapability,
-  retestWidgetPreviewDiagnostic: unusedCapability,
-  resolveWidgetPreviewDiagnostic: unusedCapability,
-  cancelWidgetPreviewBuild: unusedCapability,
   cancelChat: unusedCapability,
-  clearDraftResourceBindingsChat: unusedCapability,
   connectChat: unusedCapability,
-  deleteWidget: unusedCapability,
-  ensureWidgetDraft: unusedCapability,
-  ensureWidgetPreviewOwner: unusedCapability,
   getChatApproval: unusedCapability,
   getLoginStatus: unusedCapability,
-  getWidgetCatalog: unusedCapability,
-  getWidgetDetail: unusedCapability,
-  getWidgetDraft: unusedCapability,
-  getWidgetPreviewOwner: unusedCapability,
   listChatApprovals: unusedCapability,
-  listWidgetDrafts: unusedCapability,
-  listWidgetFiles: unusedCapability,
-  listWidgetPreviewOwners: unusedCapability,
   login: unusedCapability,
   logout: unusedCapability,
   newChatSession: unusedCapability,
-  patchWidgetDraftMetadata: unusedCapability,
-  patchWidgetDraftTool: unusedCapability,
   promptChat: unusedCapability,
-  publishWidgetDraft: unusedCapability,
-  readWidgetFile: unusedCapability,
   rejectChatDbChange: unusedCapability,
   removeApiKey: unusedCapability,
-  closeWidgetPreviewOwner: unusedCapability,
   resolveChatApproval: unusedCapability,
-  resolveWidgetPlacement: unusedCapability,
   setApiKey: unusedCapability,
   settings: unusedCapability,
   updateApprovalPolicy: unusedCapability,
-  validateWidgetDraft: unusedCapability,
 } satisfies TApiContext['agent'];
 
 const tenant = fnFreezeTenantContext({
@@ -123,13 +94,6 @@ const fakeContext = {
   db: {
     canvas: fakeCapability<TApiContext['db']['canvas']>(),
     file: fakeCapability<TApiContext['db']['file']>(),
-    toolGroup: {
-      create: async (_tenant, group) => group,
-      getByName: async () => null,
-      listAll: async () => [{ name: 'Fake tools', json: null }],
-      remove: async () => null,
-      update: async (_tenant, group) => ({ name: group.name, json: group.json }),
-    },
   },
   eventPublisher: {
     publishAgentEvent: () => 1,
@@ -140,7 +104,7 @@ const fakeContext = {
   functionInvocation: fakeCapability<TApiContext['functionInvocation']>(),
   humanResourceSecret: fakeHumanResourceSecretCapability,
   resource: fakeResourceCapability,
-  widget: fakeCapability<TApiContext['widget']>(),
+  widgetCatalog: fakeCapability<TApiContext['widgetCatalog']>(),
   widgetState: fakeCapability<TApiContext['widgetState']>(),
   widgetCapsuleHostConfiguration:
     fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),
@@ -172,16 +136,7 @@ describe('API context composition', () => {
       'function',
       'notification',
       'resource',
-      'tool',
       'widget',
-    ]);
-  });
-
-  test('runs a handler using only its narrow fake database capability', async () => {
-    const listToolGroups = router.api.tool.groups.list.callable({ context: fakeContext });
-
-    await expect(listToolGroups()).resolves.toEqual([
-      { name: 'Fake tools', json: null },
     ]);
   });
 });

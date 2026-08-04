@@ -1,221 +1,38 @@
-/**
- * @file Public registry, persistence, scheduling, sandbox, and usage SPIs.
- */
+/** @file Public direct-function execution seams. */
 
 import type { IResourceGateway } from '@omnidraw/resource-runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
-  TExecutorCapacityLease,
-  TExecutorCapacityRequest,
-  TFunctionAttempt,
-  TFunctionAttemptId,
-  TFunctionDefinition,
-  TFunctionDispatchRequest,
-  TFunctionExecutionOutcome,
-  TFunctionInvocationEnvelope,
-  TFunctionInvocationId,
-  TFunctionInvocationSubject,
-  TFunctionMemoryTier,
-  TFunctionName,
-  TFunctionRevisionRegistration,
-  TInvocationLease,
-  TInvocationLeaseMutationResult,
-  TInvocationRecord,
-  TInvocationAttemptCompletionRequest,
-  TInvocationAttemptCompletionResult,
-  TInvocationCancellationResult,
-  TInvocationClaimRequest,
-  TInvocationClaimResult,
-  TInvocationCreateRequest,
-  TInvocationCreateResult,
-  TInvocationHeartbeatRequest,
-  TInvocationRecoveryRequest,
-  TInvocationRecoveryResult,
-  TResourceWritePermit,
-  TResourceWritePermitAcquireRequest,
-  TResourceWritePermitAcquireResult,
-  TResourceWritePermitConsumeRequest,
-  TResourceWritePermitConsumeResult,
-  TSandboxExecutionResult,
-  TSandboxHandle,
-  TSandboxStartRequest,
-  TTerminalHistoryCompactionRequest,
-  TTerminalHistoryCompactionResult,
-  TUsageMetrics,
-  TUsageOutboxRecord,
-  TUsageOutboxState,
+  TDirectFunctionCall,
+  TDirectFunctionDefinition,
+  TDirectFunctionInvocationRequest,
+  TDirectFunctionResult,
+  TFunctionSandboxExecutionResult,
+  TFunctionSandboxHandle,
+  TFunctionSandboxStartRequest,
+  TFunctionUsageMetrics,
 } from './types';
 
-export interface IFunctionRegistry {
-  registerFunctionsForRevision(
-    tenant: TTenantContext,
-    registration: TFunctionRevisionRegistration,
-  ): Promise<readonly TFunctionDefinition[]>;
-  resolveFunction(
-    tenant: TTenantContext,
-    request: Readonly<{ widgetRevisionId: string; functionName: TFunctionName }>,
-  ): Promise<TFunctionDefinition | null>;
-  /** Resolves and revalidates either a published revision or an exact retained Preview revision. */
-  resolveFunctionForSubject(
-    tenant: TTenantContext,
-    request: Readonly<{
-      subject: TFunctionInvocationSubject;
-      widgetDefinitionId: string;
-      widgetRevisionId: string;
-      functionName: TFunctionName;
-    }> & (
-      | Readonly<{ purpose: 'admission' }>
-      | Readonly<{
-        purpose: 'execution';
-        invocationId: TFunctionInvocationId;
-      }>
-    ),
-  ): Promise<TFunctionDefinition | null>;
+export interface IDirectFunctionInvoker {
+  invoke(request: TDirectFunctionInvocationRequest): Promise<TDirectFunctionResult>;
 }
 
-export interface IInvocationStore {
-  createOrReplayInvocation(
-    tenant: TTenantContext,
-    request: TInvocationCreateRequest,
-  ): Promise<TInvocationCreateResult>;
-  getInvocation(
-    tenant: TTenantContext,
-    invocationId: TFunctionInvocationId,
-  ): Promise<TInvocationRecord | null>;
-  listAttempts(
-    tenant: TTenantContext,
-    invocationId: TFunctionInvocationId,
-  ): Promise<readonly TFunctionAttempt[]>;
-  requestCancellation(
-    tenant: TTenantContext,
-    request: Readonly<{ invocationId: TFunctionInvocationId; nowMs: number }>,
-  ): Promise<TInvocationCancellationResult>;
-  completeAttempt(
-    tenant: TTenantContext,
-    request: TInvocationAttemptCompletionRequest,
-  ): Promise<TInvocationAttemptCompletionResult>;
-  recoverExpiredLeases(
-    tenant: TTenantContext,
-    request: TInvocationRecoveryRequest,
-  ): Promise<TInvocationRecoveryResult>;
-  compactTerminalHistory(
-    tenant: TTenantContext,
-    request: TTerminalHistoryCompactionRequest,
-  ): Promise<TTerminalHistoryCompactionResult>;
-}
-
-export interface IInvocationLeaseAuthority {
-  claim(
-    tenant: TTenantContext,
-    request: TInvocationClaimRequest,
-  ): Promise<TInvocationClaimResult>;
-  startAttempt(
-    tenant: TTenantContext,
-    request: Readonly<{ lease: TInvocationLease; nowMs: number }>,
-  ): Promise<TInvocationLeaseMutationResult>;
-  enterGuestCode(
-    tenant: TTenantContext,
-    request: Readonly<{ lease: TInvocationLease; nowMs: number }>,
-  ): Promise<TInvocationLeaseMutationResult>;
-  heartbeat(
-    tenant: TTenantContext,
-    request: TInvocationHeartbeatRequest,
-  ): Promise<TInvocationLeaseMutationResult>;
-}
-
-export interface IResourceWritePermitAuthority {
-  acquireWritePermit(
-    tenant: TTenantContext,
-    request: TResourceWritePermitAcquireRequest,
-  ): Promise<TResourceWritePermitAcquireResult>;
-  getWritePermit(
-    tenant: TTenantContext,
-    permitId: string,
-  ): Promise<TResourceWritePermit | null>;
-  consumeWritePermit(
-    tenant: TTenantContext,
-    request: TResourceWritePermitConsumeRequest,
-  ): Promise<TResourceWritePermitConsumeResult>;
-  expireWritePermits(
-    tenant: TTenantContext,
-    request: Readonly<{ nowMs: number; limit: number }>,
-  ): Promise<number>;
-}
-
-export interface IScheduler {
-  notifyQueued(envelope: TFunctionInvocationEnvelope): Promise<void>;
-  takeNext(
-    request: Readonly<{
-      orgId: string;
-      cellId: string;
-      placementEpoch: number;
-      workerId: string;
-      memoryTiers: readonly TFunctionMemoryTier[];
-    }>,
-  ): Promise<TFunctionInvocationEnvelope | null>;
-}
-
-export interface IExecutorCapacityAllocator {
-  allocate(request: TExecutorCapacityRequest): Promise<TExecutorCapacityLease | null>;
-  release(lease: TExecutorCapacityLease): Promise<void>;
-}
-
-/** Placement-owned invocation admission and scheduling edge. */
-export interface IFunctionDispatcher {
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  invoke(
-    tenant: TTenantContext,
-    request: TFunctionDispatchRequest,
-  ): Promise<TInvocationCreateResult>;
-}
-
-/** One-attempt execution edge. Scheduling and fleet allocation remain outside it. */
-export interface IFunctionExecutor {
-  execute(envelope: TFunctionInvocationEnvelope): Promise<TFunctionExecutionOutcome>;
-}
-
-export interface ISandboxDriver {
+/** One child per call. Implementations must reap every handle on every exit. */
+export interface IFunctionSandboxDriver {
   readonly name: string;
   prepare(request: Readonly<{
-    definition: TFunctionDefinition;
+    definition: TDirectFunctionDefinition;
     artifact: Uint8Array;
-  }>): Promise<TSandboxHandle>;
+  }>): Promise<TFunctionSandboxHandle>;
   start(
-    prepared: TSandboxHandle,
-    attempt: TFunctionAttempt,
-    request: TSandboxStartRequest,
-  ): Promise<TSandboxHandle>;
+    prepared: TFunctionSandboxHandle,
+    request: TFunctionSandboxStartRequest,
+  ): Promise<TFunctionSandboxHandle>;
   execute(
-    running: TSandboxHandle,
-    envelope: TFunctionInvocationEnvelope,
+    running: TFunctionSandboxHandle,
+    call: TDirectFunctionCall,
     resources: IResourceGateway,
-  ): Promise<TSandboxExecutionResult>;
-  measure(running: TSandboxHandle): Promise<TUsageMetrics>;
-  cancel(running: TSandboxHandle, reason: string): Promise<void>;
-  reset(running: TSandboxHandle): Promise<void>;
-  destroy(handle: TSandboxHandle): Promise<void>;
+  ): Promise<TFunctionSandboxExecutionResult>;
+  measure(running: TFunctionSandboxHandle): Promise<TFunctionUsageMetrics>;
+  cancel(running: TFunctionSandboxHandle, reason: string): Promise<void>;
+  destroy(handle: TFunctionSandboxHandle): Promise<void>;
 }
-
-export interface IUsageSink {
-  listUsageOutbox(
-    tenant: TTenantContext,
-    request: Readonly<{ states?: readonly TUsageOutboxState[]; limit: number }>,
-  ): Promise<readonly TUsageOutboxRecord[]>;
-  transitionUsageOutbox(
-    tenant: TTenantContext,
-    request: Readonly<{
-      ids: readonly string[];
-      expected: TUsageOutboxState;
-      next: TUsageOutboxState;
-      nowMs: number;
-    }>,
-  ): Promise<number>;
-}
-
-export interface IFunctionControlStore extends
-  IFunctionRegistry,
-  IInvocationStore,
-  IInvocationLeaseAuthority,
-  IResourceWritePermitAuthority,
-  IUsageSink {}

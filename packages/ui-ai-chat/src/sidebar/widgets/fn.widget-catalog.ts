@@ -1,5 +1,12 @@
-import type { TWidgetCatalog, TWidgetSource, TWidgetVariantSummary } from '@omnidraw/orpc-client';
-import type { TWidgetSidebarProjection, TWidgetSidebarRow } from './types';
+import type {
+  TWidgetPublicCatalog,
+  TWidgetPublicCatalogForm,
+} from '@omnidraw/orpc-client';
+import type {
+  TWidgetSidebarProjection,
+  TWidgetSidebarRow,
+  TWidgetSource,
+} from './types';
 
 export function fnWidgetSourceOrder(source: TWidgetSource): number {
   return source === 'published' ? 0 : 1;
@@ -7,32 +14,44 @@ export function fnWidgetSourceOrder(source: TWidgetSource): number {
 
 export function fnSortWidgetRows(rows: TWidgetSidebarRow[]): TWidgetSidebarRow[] {
   return [...rows].sort((left, right) => {
-    const name = left.variant.displayName.localeCompare(right.variant.displayName);
-    return name || fnWidgetSourceOrder(left.source) - fnWidgetSourceOrder(right.source);
+    const priority = (left.form.config?.tool.priority ?? 0)
+      - (right.form.config?.tool.priority ?? 0);
+    const name = (left.form.config?.name ?? left.widgetKey)
+      .localeCompare(right.form.config?.name ?? right.widgetKey);
+    return priority
+      || name
+      || left.widgetKey.localeCompare(right.widgetKey)
+      || fnWidgetSourceOrder(left.source) - fnWidgetSourceOrder(right.source);
   });
 }
 
-export function fnProjectWidgetCatalog(catalog: TWidgetCatalog): TWidgetSidebarProjection {
-  const groupMap = new Map(catalog.groups.map((group) => [group.name, {
-    name: group.name,
-    icon: group.icon,
+export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSidebarProjection {
+  const groupMap = new Map(catalog.groups.map((name) => [name, {
+    name,
     rows: [] as TWidgetSidebarRow[],
   }]));
   const ungrouped: TWidgetSidebarRow[] = [];
-
-  const add = (name: string, source: TWidgetSource, variant: TWidgetVariantSummary, problem: TWidgetSidebarRow['problem']) => {
-    const groupName = variant.tool.group;
-    const missingGroup = groupName && !groupMap.has(groupName) ? groupName : null;
-    const row = { name, source, managementSource: source, variant, placement: variant.placement ?? null, problem, missingGroup };
-    if (groupName && groupMap.has(groupName)) groupMap.get(groupName)?.rows.push(row);
+  const add = (
+    entry: TWidgetPublicCatalog['entries'][number],
+    source: TWidgetSource,
+    form: TWidgetPublicCatalogForm,
+  ) => {
+    const row: TWidgetSidebarRow = {
+      widgetKey: entry.widgetKey,
+      source,
+      form,
+      entry,
+      placement: source === 'published' ? entry.placement : null,
+      problem: form.issues[0] ?? null,
+    };
+    const groupName = form.config?.tool.group;
+    if (groupName && groupMap.has(groupName)) groupMap.get(groupName)!.rows.push(row);
     else ungrouped.push(row);
   };
-
-  for (const widget of catalog.widgets) {
-    if (widget.published) add(widget.name, 'published', widget.published, widget.problem);
-    if (widget.draft && (widget.relation !== 'same' || !widget.published)) add(widget.name, 'draft', widget.draft, widget.problem);
+  for (const entry of catalog.entries) {
+    if (entry.published) add(entry, 'published', entry.published);
+    if (entry.draft) add(entry, 'draft', entry.draft);
   }
-
   return {
     groups: [...groupMap.values()]
       .map((group) => ({ ...group, rows: fnSortWidgetRows(group.rows) }))
@@ -44,12 +63,18 @@ export function fnProjectWidgetCatalog(catalog: TWidgetCatalog): TWidgetSidebarP
 export function fnFindWidgetSelectionGroup(
   projection: TWidgetSidebarProjection,
   source: TWidgetSource,
-  name: string,
+  widgetKey: string,
 ): string | null {
-  return projection.groups.find((group) => group.rows.some((row) => row.managementSource === source && row.name === name))?.name ?? null;
+  return projection.groups.find((group) => group.rows.some((row) => (
+    row.source === source && row.widgetKey === widgetKey
+  )))?.name ?? null;
 }
 
-export function fnWidgetSelection(pathname: string): { source: TWidgetSource; encodedName: string } | null {
+export function fnWidgetSelection(
+  pathname: string,
+): { source: TWidgetSource; encodedWidgetKey: string } | null {
   const match = pathname.match(/^\/widgets\/(published|draft)\/([^/]+)$/);
-  return match ? { source: match[1] as TWidgetSource, encodedName: match[2] ?? '' } : null;
+  return match
+    ? { source: match[1] as TWidgetSource, encodedWidgetKey: match[2] ?? '' }
+    : null;
 }

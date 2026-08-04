@@ -1,5 +1,3 @@
-import { fnScopedKey } from '@omnidraw/tenant-core';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   DEFAULT_WIDGET_STATE_MAX_ACTIVE_STREAMS,
   DEFAULT_WIDGET_STATE_MAX_MUTATION_RATE_LEDGERS,
@@ -128,17 +126,12 @@ export class WidgetStateService implements IWidgetStateService {
     );
   }
 
-  async get(
-    tenant: TTenantContext,
-    args: TWidgetStateGetArgs,
-  ): Promise<TWidgetStateGetResult> {
+  async get(args: TWidgetStateGetArgs): Promise<TWidgetStateGetResult> {
     this.#assertAvailable();
     this.#metrics.getAttempts += 1;
     const identity = fnNormalizeWidgetStateIdentity(args.identity);
-    if (identity.orgId !== tenant.orgId) return this.#unavailable();
 
     const result = await this.#store.getAuthorizedExactInstance({
-      tenant,
       identity,
       initialSnapshot: this.#initialSnapshot,
     });
@@ -149,16 +142,12 @@ export class WidgetStateService implements IWidgetStateService {
     return Object.freeze({ status: 'found', snapshot });
   }
 
-  async change(
-    tenant: TTenantContext,
-    args: TWidgetStateChangeArgs,
-  ): Promise<TWidgetStateChangeResult> {
+  async change(args: TWidgetStateChangeArgs): Promise<TWidgetStateChangeResult> {
     this.#assertAvailable();
     this.#metrics.changeAttempts += 1;
     const identity = fnNormalizeWidgetStateIdentity(args.identity);
     fnAssertWidgetStateVersion(args.expectedVersion);
     const state = fnNormalizeWidgetStateJson(args.state);
-    if (identity.orgId !== tenant.orgId) return this.#unavailable();
 
     const now = this.#readClock();
     const admission = this.#rateLimiter.admit(
@@ -174,7 +163,6 @@ export class WidgetStateService implements IWidgetStateService {
     }
 
     const result = await this.#store.compareAndSwapAuthorizedExactInstance({
-      tenant,
       identity,
       expectedVersion: args.expectedVersion,
       state,
@@ -200,19 +188,13 @@ export class WidgetStateService implements IWidgetStateService {
     return Object.freeze({ status: 'conflict', snapshot });
   }
 
-  async subscribe(
-    tenant: TTenantContext,
-    args: TWidgetStateSubscribeArgs,
-  ): Promise<TWidgetStateSubscribeResult> {
+  async subscribe(args: TWidgetStateSubscribeArgs): Promise<TWidgetStateSubscribeResult> {
     this.#assertAvailable();
     const identity = fnNormalizeWidgetStateIdentity(args.identity);
     if (args.afterVersion !== undefined) {
       fnAssertWidgetStateCursor(args.afterVersion);
     }
-    if (identity.orgId !== tenant.orgId) return this.#unavailable();
-
     const result = await this.#store.getAuthorizedExactInstance({
-      tenant,
       identity,
       initialSnapshot: this.#initialSnapshot,
     });
@@ -232,9 +214,8 @@ export class WidgetStateService implements IWidgetStateService {
     });
   }
 
-  release(tenant: TTenantContext, args: TWidgetStateReleaseArgs): void {
+  release(args: TWidgetStateReleaseArgs): void {
     const identity = fnNormalizeWidgetStateIdentity(args.identity);
-    if (identity.orgId !== tenant.orgId) return;
     const stream = this.#streams.get(this.#streamScope(identity));
     stream?.close();
     this.#streams.delete(this.#streamScope(identity));
@@ -333,19 +314,15 @@ export class WidgetStateService implements IWidgetStateService {
   }
 
   #streamScope(identity: TWidgetStateInstanceIdentity): string {
-    return fnScopedKey('widget-state-stream', [
-      identity.orgId,
+    return JSON.stringify([
       identity.canvasId,
       identity.elementId,
       identity.widgetInstanceId,
-      identity.definitionId,
-      identity.revisionId,
     ]);
   }
 
   #mutationRateScope(identity: TWidgetStateInstanceIdentity): string {
-    return fnScopedKey('widget-state-mutation-rate', [
-      identity.orgId,
+    return JSON.stringify([
       identity.widgetInstanceId,
     ]);
   }

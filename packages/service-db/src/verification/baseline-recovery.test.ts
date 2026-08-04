@@ -1,51 +1,51 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { cp, mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DbResource, ResourceStoreService } from '@omnidraw/resource-runtime/local';
-import type { TTenantContext } from '@omnidraw/tenant-core';
-import type { TWidgetArtifactDescriptor } from '@omnidraw/widget-contract';
-import { LocalWidgetArtifactStore } from '@omnidraw/widget-contract/local';
 import {
   DATABASE_APPLICATION_ID,
   DATABASE_SCHEMA_VERSION,
-  DEFAULT_OSS_ACCOUNT_ID,
-  DEFAULT_OSS_CELL_ID,
-  DEFAULT_OSS_ORGANIZATION_ID,
 } from '../CONSTANTS';
-import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
+import {
+  DbServiceTurso,
+  preflightDbServiceDatabase,
+  TURSO_EXPERIMENTAL_FEATURES,
+  TURSO_ON_DISK_EXPERIMENTAL_FEATURES,
+} from '../DbServiceTurso/DbServiceTurso';
 import { fnSerializeDatabaseSchemaFingerprint } from '../DbServiceTurso/fn.database-schema-fingerprint';
 import { Database } from '../DbServiceTurso/turso-native';
-import { ResourceControlStoreTurso } from '../ResourceControlStoreTurso';
+import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import { EXPECTED_DATABASE_SCHEMA_CONTRACTS } from '../schema/expected-schema';
 
-const RESOURCE_ID = '00000000-0000-4000-8000-000000000070';
-const KEY_ID = '00000000-0000-4000-8000-000000000071';
-const ARTIFACT_ID = '00000000-0000-4000-8000-000000000072';
-const FOREIGN_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000073';
-const FOREIGN_ACCOUNT_ID = '00000000-0000-4000-8000-000000000074';
-const ARTIFACT_BYTES = new TextEncoder().encode('managed recovery immutable widget artifact');
+const VALID_TIMESTAMP = '2026-08-04 12:34:56';
+const LATER_TIMESTAMP = '2026-08-04 12:35:56';
+const RESOURCE_ID = 'resource-recovery';
+const CANVAS_ID = 'canvas-recovery';
+const ELEMENT_ID = 'element-recovery';
+const INSTANCE_ID = 'instance-recovery';
 const temporaryRoots: string[] = [];
+const runningServices: DbServiceTurso[] = [];
 
-const DEFAULT_TENANT: TTenantContext = Object.freeze({
-  orgId: DEFAULT_OSS_ORGANIZATION_ID,
-  accountId: DEFAULT_OSS_ACCOUNT_ID,
-  cellId: DEFAULT_OSS_CELL_ID,
-  placementEpoch: 1,
-  roles: Object.freeze(['owner']),
-  capabilities: Object.freeze(['*']),
-  requestId: 'managed-recovery-default',
-});
-
-const FOREIGN_TENANT: TTenantContext = Object.freeze({
-  orgId: FOREIGN_ORGANIZATION_ID,
-  accountId: FOREIGN_ACCOUNT_ID,
-  cellId: DEFAULT_OSS_CELL_ID,
-  placementEpoch: 1,
-  roles: Object.freeze(['owner']),
-  capabilities: Object.freeze(['*']),
-  requestId: 'managed-recovery-foreign',
-});
+type TSnapshotEntry = Readonly<{
+  digest?: string;
+  kind: 'directory' | 'file' | 'symlink' | 'other';
+  link?: string;
+  mode: number;
+  mtimeMs?: number;
+  path: string;
+  size?: number;
+}>;
 
 async function temporaryRoot(label: string): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), `omnidraw-${label}-`));
@@ -56,428 +56,582 @@ async function temporaryRoot(label: string): Promise<string> {
 async function waitForPath(targetPath: string, timeoutMs = 10_000): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (await stat(targetPath).then(() => true).catch(() => false)) return;
+    if (await lstat(targetPath).then(() => true, () => false)) return;
     await Bun.sleep(10);
   }
   throw new Error(`Timed out waiting for ${targetPath}.`);
 }
 
-async function openNative(databasePath: string, readonly = false): Promise<Database> {
-  const database = new Database(databasePath, {
-    readonly,
-    fileMustExist: readonly,
-    experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns', 'multiprocess_wal'],
+function serviceFor(home: string): DbServiceTurso {
+  const service = new DbServiceTurso({
+    databasePath: path.join(home, 'main.db'),
+    dataDir: home,
+    cacheDir: path.join(home, 'cache'),
+    silentMigrations: true,
   });
-  await database.connect();
-  await database.exec('PRAGMA foreign_keys = ON');
-  return database;
+  runningServices.push(service);
+  return service;
 }
 
-async function databaseSchemaFingerprint(database: Database): Promise<string> {
-  const rows = await (await database.prepare(`
-    SELECT type, name, tbl_name AS table_name, sql
-    FROM sqlite_schema
-    WHERE type IN ('table', 'index', 'view', 'trigger')
-      AND name NOT GLOB 'sqlite_*'
-    ORDER BY type, name, tbl_name
-  `)).all() as Array<{
-    type: 'index' | 'table' | 'trigger' | 'view';
-    name: string;
-    table_name: string;
-    sql: string | null;
-  }>;
-  return new Bun.CryptoHasher('sha256')
-    .update(fnSerializeDatabaseSchemaFingerprint(rows.map((row) => ({
-      type: row.type,
-      name: row.name,
-      tableName: row.table_name,
-      sql: row.sql,
-    }))))
-    .digest('hex');
+async function stopService(service: DbServiceTurso): Promise<void> {
+  await service.stop();
+  const index = runningServices.indexOf(service);
+  if (index >= 0) runningServices.splice(index, 1);
 }
 
-async function migrationIdentity(database: Database): Promise<readonly Record<string, unknown>[]> {
-  return (await (await database.prepare(`
-    SELECT version, name, checksum_sha256
-    FROM schema_migrations
-    ORDER BY version
-  `)).all()) as Record<string, unknown>[];
+async function snapshotTree(root: string, includeModificationTimes = true): Promise<readonly TSnapshotEntry[]> {
+  const snapshots: TSnapshotEntry[] = [];
+  async function visit(target: string): Promise<void> {
+    const info = await lstat(target);
+    const relativePath = path.relative(root, target) || '.';
+    const common = {
+      path: relativePath,
+      mode: info.mode,
+      ...(includeModificationTimes ? { mtimeMs: info.mtimeMs } : {}),
+    };
+    if (info.isDirectory()) {
+      snapshots.push({ ...common, kind: 'directory' });
+      const entries = await readdir(target);
+      for (const entry of entries.toSorted()) await visit(path.join(target, entry));
+      return;
+    }
+    if (info.isFile()) {
+      const bytes = await readFile(target);
+      snapshots.push({
+        ...common,
+        kind: 'file',
+        size: info.size,
+        digest: new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
+      });
+      return;
+    }
+    if (info.isSymbolicLink()) {
+      snapshots.push({ ...common, kind: 'symlink', link: await readlink(target) });
+      return;
+    }
+    snapshots.push({ ...common, kind: 'other' });
+  }
+  await visit(root);
+  return snapshots;
 }
 
-async function representativeRows(database: Database): Promise<Readonly<Record<string, readonly unknown[]>>> {
-  const queries = {
-    accounts: `
-      SELECT id, kind, display_name, status, is_autogenerated, created_at_ms, updated_at_ms
-      FROM accounts ORDER BY id
-    `,
-    artifact_references: `
-      SELECT org_id, id, kind, digest_sha256, byte_size, retention_state, retain_until_ms, created_at_ms
-      FROM artifact_references ORDER BY org_id, id
-    `,
-    organization_memberships: `
-      SELECT org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
-      FROM organization_memberships ORDER BY org_id, account_id
-    `,
-    organizations: `
-      SELECT id, slug, name, status, created_at_ms, updated_at_ms
-      FROM organizations ORDER BY id
-    `,
-    resource_catalog: `
-      SELECT org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
-      FROM resource_catalog ORDER BY org_id, id
-    `,
-    resource_encryption_keys: `
-      SELECT org_id, id, resource_id, purpose, algorithm,
-        hex(key_material) AS key_material_hex, created_at_ms
-      FROM resource_encryption_keys ORDER BY org_id, id
-    `,
-    resource_placements: `
-      SELECT org_id, resource_id, cell_id, placement_epoch, relative_path,
-        status, created_at_ms, updated_at_ms
-      FROM resource_placements ORDER BY org_id, resource_id
-    `,
-  } as const;
-  const rows = await Promise.all(Object.entries(queries).map(async ([name, sql]) => (
-    [name, await (await database.prepare(sql)).all()] as const
-  )));
-  return Object.freeze(Object.fromEntries(rows));
-}
-
-async function assertDatabaseIntegrity(database: Database): Promise<void> {
-  expect(await (await database.prepare('PRAGMA integrity_check')).all()).toEqual([
-    { integrity_check: 'ok' },
-  ]);
-}
-
-async function assertFileDatabaseIntegrity(
-  databasePath: string,
-  assertRecovered: (database: Database) => Promise<void>,
+async function expectRejectedWithoutMutation(
+  root: string,
+  operation: () => Promise<unknown>,
+  message: RegExp,
 ): Promise<void> {
-  const database = await openNative(databasePath, true);
+  const before = await snapshotTree(root);
+  await expect(operation()).rejects.toThrow(message);
+  expect(await snapshotTree(root)).toEqual(before);
+}
+
+async function migrationSource(): Promise<{
+  checksumSha256: string;
+  sql: string;
+}> {
+  const bytes = new Uint8Array(await Bun.file(MIGRATION_FILES[0]!.path).arrayBuffer());
+  return {
+    checksumSha256: new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
+    sql: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+  };
+}
+
+async function createClaimedManagedDatabase(args: {
+  home: string;
+  migrationSql: string;
+}): Promise<void> {
+  await mkdir(args.home, { recursive: true });
+  await mkdir(path.join(args.home, 'cache'), { recursive: true });
+  await mkdir(path.join(args.home, 'main.db-shm'));
+  const database = new Database(path.join(args.home, 'main.db'), {
+    experimental: [...TURSO_ON_DISK_EXPERIMENTAL_FEATURES],
+  });
+  const migration = await migrationSource();
+  await database.connect();
   try {
-    await assertDatabaseIntegrity(database);
-    await assertRecovered(database);
+    await database.exec('PRAGMA foreign_keys = ON; PRAGMA ignore_check_constraints = 0;');
+    await database.exec(args.migrationSql);
+    await (await database.prepare(`
+      INSERT INTO schema_migrations (
+        version, name, checksum_sha256, application_version
+      ) VALUES (0, '000-initial.sql', ?, 'verification')
+    `)).run(migration.checksumSha256);
+    await database.exec(`
+      PRAGMA application_id = ${DATABASE_APPLICATION_ID};
+      PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+    `);
   } finally {
     await database.close();
   }
 }
 
+async function schemaFingerprint(database: Database): Promise<string> {
+  const [schemaObjects, domains] = await Promise.all([
+    (await database.prepare(`
+      SELECT type, name, tbl_name AS table_name, sql
+      FROM sqlite_schema
+      WHERE type IN ('table', 'index', 'view', 'trigger')
+        AND name NOT GLOB 'sqlite_*'
+      ORDER BY type, name, tbl_name
+    `)).all() as Promise<Array<{
+      name: string;
+      sql: string | null;
+      table_name: string;
+      type: 'index' | 'table' | 'trigger' | 'view';
+    }>>,
+    (await database.prepare(`
+      SELECT name, sql FROM __turso_internal_types ORDER BY name
+    `)).all() as Promise<Array<{ name: string; sql: string }>>,
+  ]);
+  return new Bun.CryptoHasher('sha256')
+    .update(fnSerializeDatabaseSchemaFingerprint([
+      ...schemaObjects.map((row) => ({
+        name: row.name,
+        sql: row.sql,
+        tableName: row.table_name,
+        type: row.type,
+      })),
+      ...domains.map((row) => ({
+        name: row.name,
+        sql: row.sql,
+        tableName: '__turso_internal_types',
+        type: 'domain' as const,
+      })),
+    ]))
+    .digest('hex');
+}
+
+async function representativeRows(database: Database): Promise<Readonly<Record<string, readonly unknown[]>>> {
+  const orderBy: Readonly<Record<string, string>> = {
+    canvases: 'id',
+    canvas_items: 'canvas_id, id',
+    widget_instance_states: 'canvas_id, element_id',
+    resource_catalog: 'id',
+    resource_placements: 'resource_id',
+    resource_encryption_keys: 'id',
+    db_resource_drafts: 'id',
+    db_resource_draft_changes: 'draft_id, sequence',
+    db_resource_apply_runs: 'id',
+    db_resource_backups: 'id',
+    key_values: 'name',
+    media_files: 'id',
+    chats: 'id',
+    schema_migrations: 'version',
+  };
+  const rows = await Promise.all(Object.entries(orderBy).map(async ([table, order]) => (
+    [table, await (await database.prepare(`SELECT * FROM ${table} ORDER BY ${order}`)).all()] as const
+  )));
+  return Object.freeze(Object.fromEntries(rows));
+}
+
+async function seedEveryRetainedArea(database: Database): Promise<void> {
+  const widgetItem = JSON.stringify({
+    id: ELEMENT_ID,
+    kind: 'rect',
+    parentId: null,
+    orderKey: 'a',
+    extensions: {
+      'omnidraw:widget': {
+        type: 'widget-instance',
+        instanceId: INSTANCE_ID,
+        widgetKey: 'recovery-widget',
+      },
+    },
+  });
+  await (await database.prepare(`
+    INSERT INTO canvases (id, name) VALUES (?, 'Recovery canvas')
+  `)).run(CANVAS_ID);
+  await (await database.prepare(`
+    INSERT INTO canvas_items (canvas_id, id, item_json)
+    VALUES (?, ?, ?)
+  `)).run(CANVAS_ID, ELEMENT_ID, widgetItem);
+  await (await database.prepare(`
+    INSERT INTO widget_instance_states (
+      canvas_id, element_id, instance_id, state_json
+    ) VALUES (?, ?, ?, '{"count":7}')
+  `)).run(CANVAS_ID, ELEMENT_ID, INSTANCE_ID);
+  await (await database.prepare(`
+    INSERT INTO resource_catalog (id, kind, name, status)
+    VALUES (?, 'db', 'Recovery resource', 'ready')
+  `)).run(RESOURCE_ID);
+  await (await database.prepare(`
+    INSERT INTO resource_placements (
+      resource_id, cell_id, placement_epoch, relative_path, status
+    ) VALUES (?, 'local', 1, ?, 'active')
+  `)).run(RESOURCE_ID, `${RESOURCE_ID}/data.db`);
+  await (await database.prepare(`
+    INSERT INTO resource_encryption_keys (
+      id, resource_id, purpose, algorithm, key_material
+    ) VALUES ('recovery-key', ?, 'resource-data', 'aegis-256', ?)
+  `)).run(RESOURCE_ID, new Uint8Array(32).fill(7));
+  await (await database.prepare(`
+    INSERT INTO db_resource_drafts (
+      id, resource_id, name, status, created_at_sec, updated_at_sec, applied_at_sec
+    ) VALUES ('recovery-draft', ?, 'Recovery draft', 'applied', ?, ?, ?)
+  `)).run(RESOURCE_ID, VALID_TIMESTAMP, LATER_TIMESTAMP, LATER_TIMESTAMP);
+  await (await database.prepare(`
+    INSERT INTO db_resource_draft_changes (
+      draft_id, sequence, kind, operation_json, sql_text, created_at_sec
+    ) VALUES ('recovery-draft', 1, 'sql', NULL, 'SELECT 1', ?)
+  `)).run(VALID_TIMESTAMP);
+  await (await database.prepare(`
+    INSERT INTO db_resource_apply_runs (
+      id, resource_id, draft_id, status, backup_retained,
+      created_at_sec, completed_at_sec
+    ) VALUES ('recovery-apply', ?, 'recovery-draft', 'succeeded', TRUE, ?, ?)
+  `)).run(RESOURCE_ID, VALID_TIMESTAMP, LATER_TIMESTAMP);
+  await (await database.prepare(`
+    INSERT INTO db_resource_backups (
+      id, resource_id, apply_run_id, relative_path, digest_sha256,
+      byte_size, state, created_at_sec, verified_at_sec, delete_after_sec
+    ) VALUES ('recovery-backup', ?, 'recovery-apply', ?, ?, 4,
+      'retained', ?, ?, ?)
+  `)).run(
+    RESOURCE_ID,
+    `${RESOURCE_ID}/backups/recovery.db`,
+    'a'.repeat(64),
+    VALID_TIMESTAMP,
+    LATER_TIMESTAMP,
+    LATER_TIMESTAMP,
+  );
+  await (await database.prepare(`
+    INSERT INTO key_values (name, kind, json_value)
+    VALUES ('recovery-settings', 'json', '{"restored":true}')
+  `)).run();
+  await (await database.prepare(`
+    INSERT INTO media_files (
+      id, canvas_id, source_hash, digest_sha256, mime_type, byte_size, data
+    ) VALUES ('recovery-media', ?, 'recovery-source', ?, 'text/plain', 4, ?)
+  `)).run(CANVAS_ID, 'b'.repeat(64), new TextEncoder().encode('data'));
+  await (await database.prepare(`
+    INSERT INTO chats (
+      id, canvas_id, name, status, workspace_relative_path, history_relative_path
+    ) VALUES ('recovery-chat', ?, 'Recovery chat', 'archived',
+      'agent/workspaces/recovery', 'agent/history/recovery.jsonl')
+  `)).run(CANVAS_ID);
+}
+
+async function createDirectResource(home: string): Promise<string> {
+  const resourceDirectory = path.join(home, 'resources', RESOURCE_ID);
+  await mkdir(resourceDirectory, { recursive: true });
+  const databasePath = path.join(resourceDirectory, 'data.db');
+  const database = new Database(databasePath, {
+    experimental: [...TURSO_EXPERIMENTAL_FEATURES],
+  });
+  await database.connect();
+  try {
+    await database.exec(`
+      CREATE TABLE notes (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL
+      ) STRICT;
+    `);
+    await (await database.prepare(`
+      INSERT INTO notes (id, title) VALUES (1, 'preserved')
+    `)).run();
+  } finally {
+    await database.close();
+  }
+  return databasePath;
+}
+
 afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(runningServices.splice(0).map((service) => service.stop().catch(() => undefined)));
+  await Promise.all(temporaryRoots.splice(0).map((root) => (
+    rm(root, { recursive: true, force: true })
+  )));
 });
 
-describe('managed baseline recovery', () => {
-  test('WAL recovery retains committed rows and rolls back a killed in-flight writer', async () => {
-    const root = await temporaryRoot('wal-recovery');
-    const databasePath = path.join(root, 'writer.db');
-    const readyPath = path.join(root, 'uncommitted.ready');
-    const fixturePath = path.join(import.meta.dir, 'fixtures', 'wal-interrupted-writer.ts');
+describe('single-user managed database preflight and recovery', () => {
+  test('starts a fresh home with exactly one baseline and directly preflights the resulting database', async () => {
+    const root = await temporaryRoot('fresh-baseline');
+    const home = path.join(root, 'home');
+    await mkdir(path.join(home, 'cache'), { recursive: true });
+    const databasePath = path.join(home, 'main.db');
+    expect(await preflightDbServiceDatabase({ databasePath, homeDir: home })).toEqual({ status: 'empty' });
+
+    const service = serviceFor(home);
+    await service.start();
+    expect(await (await service.db.prepare(`
+      SELECT version, name FROM schema_migrations ORDER BY version
+    `)).all()).toEqual([expect.objectContaining({ version: 0, name: '000-initial.sql' })]);
+    await stopService(service);
+
+    expect(await preflightDbServiceDatabase({ databasePath, homeDir: home })).toMatchObject({
+      status: 'ready',
+      currentVersion: 0,
+      appliedMigrations: [expect.objectContaining({ version: 0, name: '000-initial.sql' })],
+    });
+  });
+
+  test('rejects an old or unknown schema fingerprint through preflight and direct start without touching DB files or sidecars', async () => {
+    const root = await temporaryRoot('old-fingerprint');
+    const home = path.join(root, 'home');
+    await mkdir(path.join(home, 'cache'), { recursive: true });
+    const databasePath = path.join(home, 'main.db');
+    const source = serviceFor(home);
+    await source.start();
+    await source.db.exec(`ALTER TABLE canvases ADD COLUMN unexpected_legacy_value TEXT;`);
+    await stopService(source);
+
+    await expectRejectedWithoutMutation(
+      home,
+      () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
+      /Refusing to open Omnidraw database:.*whole-schema SHA-256 fingerprint differs.*explicit development database reset/s,
+    );
+    const rejectedService = serviceFor(home);
+    await expectRejectedWithoutMutation(
+      home,
+      () => rejectedService.start(),
+      /Refusing to open Omnidraw database:.*whole-schema SHA-256 fingerprint differs.*explicit development database reset/s,
+    );
+    await stopService(rejectedService);
+    expect(await lstat(path.join(home, 'cache', 'database-recovery')).then(
+      () => true,
+      () => false,
+    )).toBe(false);
+
+    const corruptCoordinator = Buffer.from('corrupt-coordinator-for-rollback');
+    await writeFile(`${databasePath}-tshm`, corruptCoordinator);
+    await expectRejectedWithoutMutation(
+      home,
+      () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
+      /read-only preflight failed:.*shared WAL coordination file/s,
+    );
+    expect(await readFile(`${databasePath}-tshm`)).toEqual(corruptCoordinator);
+    expect((await readdir(home)).some((entry) => entry.includes('healing-claim'))).toBe(false);
+    expect(await lstat(path.join(home, 'cache', 'database-recovery')).then(
+      () => true,
+      () => false,
+    )).toBe(false);
+  });
+
+  test('rejects a weakened custom domain even when the migration ledger claims the current immutable bytes', async () => {
+    const root = await temporaryRoot('weakened-domain');
+    const home = path.join(root, 'home');
+    const migration = await migrationSource();
+    const weakenedSql = migration.sql.replace(
+      /CREATE DOMAIN sha256_hex AS TEXT CHECK \([\s\S]*?\n\);/,
+      'CREATE DOMAIN sha256_hex AS TEXT CHECK (length(value) > 0);',
+    );
+    expect(weakenedSql).not.toBe(migration.sql);
+    await createClaimedManagedDatabase({ home, migrationSql: weakenedSql });
+
+    await expectRejectedWithoutMutation(
+      home,
+      () => preflightDbServiceDatabase({ databasePath: path.join(home, 'main.db'), homeDir: home }),
+      /Refusing to open Omnidraw database:.*custom domain definitions differ.*explicit development database reset/s,
+    );
+  });
+
+  test('rejects legacy roots, orphan coordinators, and wrong-type or symlink entries without mutation', async () => {
+    const root = await temporaryRoot('layout-refusal');
+    const cases: Array<{
+      label: string;
+      arrange: (home: string) => Promise<void>;
+      message: RegExp;
+    }> = [
+      {
+        label: 'legacy-organizations',
+        arrange: (home) => mkdir(path.join(home, 'organizations')),
+        message: /legacy organizations entry.*explicit development cleanup/s,
+      },
+      {
+        label: 'legacy-migrations',
+        arrange: (home) => mkdir(path.join(home, 'database-migrations')),
+        message: /legacy database-migrations entry.*explicit development cleanup/s,
+      },
+      {
+        label: 'orphan-wal',
+        arrange: async (home) => {
+          await writeFile(path.join(home, 'main.db'), '');
+          await writeFile(path.join(home, 'main.db-wal'), 'orphan');
+        },
+        message: /orphan database coordinator 'main\.db-wal'/,
+      },
+      {
+        label: 'orphan-tshm',
+        arrange: async (home) => {
+          await writeFile(path.join(home, 'main.db'), '');
+          await writeFile(path.join(home, 'main.db-tshm'), 'orphan');
+        },
+        message: /orphan database coordinator 'main\.db-tshm'/,
+      },
+      {
+        label: 'orphan-shm',
+        arrange: async (home) => {
+          await writeFile(path.join(home, 'main.db'), '');
+          await mkdir(path.join(home, 'main.db-shm'));
+        },
+        message: /orphan database coordinator 'main\.db-shm'/,
+      },
+      {
+        label: 'managed-file',
+        arrange: (home) => writeFile(path.join(home, 'widgets'), 'not a directory'),
+        message: /non-directory managed entry 'widgets'/,
+      },
+      {
+        label: 'managed-symlink',
+        arrange: async (home) => {
+          await mkdir(path.join(home, 'target'));
+          await symlink(path.join(home, 'target'), path.join(home, 'resources'));
+        },
+        message: /non-directory managed entry 'resources'/,
+      },
+      {
+        label: 'database-directory',
+        arrange: (home) => mkdir(path.join(home, 'main.db')),
+        message: /database path because it is not a regular file|non-file database entry/,
+      },
+      {
+        label: 'database-symlink',
+        arrange: async (home) => {
+          await writeFile(path.join(home, 'target.db'), '');
+          await symlink(path.join(home, 'target.db'), path.join(home, 'main.db'));
+        },
+        message: /database path because it is not a regular file|non-file database entry/,
+      },
+    ];
+
+    for (const entry of cases) {
+      const home = path.join(root, entry.label);
+      await mkdir(home);
+      await entry.arrange(home);
+      await expectRejectedWithoutMutation(
+        home,
+        () => preflightDbServiceDatabase({ databasePath: path.join(home, 'main.db'), homeDir: home }),
+        entry.message,
+      );
+    }
+  });
+
+  test('refuses a tiny corrupt coordinator for a current valid schema without claiming or quarantining it', async () => {
+    const root = await temporaryRoot('corrupt-coordinator-refusal');
+    const home = path.join(root, 'home');
+    await mkdir(path.join(home, 'cache'), { recursive: true });
+    const databasePath = path.join(home, 'main.db');
+    const service = serviceFor(home);
+    await service.start();
+    await stopService(service);
+
+    const corruptCoordinator = Buffer.from('tiny-corrupt-coordinator');
+    await writeFile(`${databasePath}-tshm`, corruptCoordinator);
+    await expectRejectedWithoutMutation(
+      home,
+      () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
+      /read-only preflight failed:.*shared WAL coordination file/s,
+    );
+    expect(await readFile(`${databasePath}-tshm`)).toEqual(corruptCoordinator);
+    expect((await readdir(home)).some((entry) => entry.includes('healing-claim'))).toBe(false);
+    expect(await lstat(path.join(home, 'cache', 'database-recovery')).then(
+      () => true,
+      () => false,
+    )).toBe(false);
+  });
+
+  test('accepts and reopens a valid full-size coordinator left by a killed owner without mutating the database', async () => {
+    const root = await temporaryRoot('coordinator-recovery');
+    const home = path.join(root, 'home');
+    await mkdir(path.join(home, 'cache'), { recursive: true });
+    const databasePath = path.join(home, 'main.db');
+    const service = serviceFor(home);
+    await service.start();
+    await (await service.db.prepare(`
+      INSERT INTO canvases (id, name) VALUES ('coordinator-canvas', 'Coordinator canvas')
+    `)).run();
+    await stopService(service);
+
+    const readyPath = path.join(root, 'holder.ready');
+    const fixturePath = path.join(import.meta.dir, 'fixtures', 'multiprocess-wal-holder.ts');
     const bunExecutable = Bun.which('bun') ?? process.execPath;
-    const writer = Bun.spawn([bunExecutable, fixturePath, databasePath, readyPath], {
+    const holder = Bun.spawn([bunExecutable, fixturePath, databasePath, readyPath], {
       cwd: path.resolve(import.meta.dir, '../../../..'),
       stdout: 'pipe',
       stderr: 'pipe',
     });
-
     try {
       await waitForPath(readyPath);
     } finally {
-      writer.kill(9);
-      await writer.exited;
+      holder.kill(9);
+      await holder.exited;
     }
 
-    const recovered = await openNative(databasePath);
-    try {
-      expect(await (await recovered.prepare('PRAGMA integrity_check')).get()).toEqual({ integrity_check: 'ok' });
-      expect(await (await recovered.prepare('SELECT id, value FROM recovery_rows ORDER BY id')).all()).toEqual([
-        { id: 1, value: 'committed' },
-      ]);
-    } finally {
-      await recovered.close();
-    }
+    const staleCoordinator = `${databasePath}-tshm`;
+    const staleCoordinatorBytes = await readFile(staleCoordinator);
+    expect(staleCoordinatorBytes.byteLength).toBeGreaterThanOrEqual(4096);
+    const databaseBefore = new Bun.CryptoHasher('sha256')
+      .update(await readFile(databasePath))
+      .digest('hex');
+
+    const preflight = await preflightDbServiceDatabase({ databasePath, homeDir: home });
+    expect(preflight).toMatchObject({ status: 'ready', currentVersion: 0 });
+    expect(await readFile(staleCoordinator)).toEqual(staleCoordinatorBytes);
+    expect(await lstat(path.join(home, 'cache', 'database-recovery')).then(
+      () => true,
+      () => false,
+    )).toBe(false);
+    expect(new Bun.CryptoHasher('sha256').update(await readFile(databasePath)).digest('hex'))
+      .toBe(databaseBefore);
+
+    const reopened = serviceFor(home);
+    await reopened.start();
+    expect(await (await reopened.db.prepare(`
+      SELECT id, name FROM canvases WHERE id = 'coordinator-canvas'
+    `)).get()).toMatchObject({ id: 'coordinator-canvas', name: 'Coordinator canvas' });
+    await stopService(reopened);
   });
 
-  test('whole-home backup and restore preserve schema, artifact, resource data, and tenant isolation', async () => {
-    const root = await temporaryRoot('backup-restore');
+  test('whole-home copy and reopen preserve every retained table and a direct-home resource database', async () => {
+    const root = await temporaryRoot('whole-home-recovery');
     const home = path.join(root, 'home');
     const backup = path.join(root, 'backup');
     const restored = path.join(root, 'restored');
-    await mkdir(home, { recursive: true });
+    await mkdir(path.join(home, 'cache'), { recursive: true });
+    const service = serviceFor(home);
+    await service.start();
+    await seedEveryRetainedArea(service.db);
+    await createDirectResource(home);
 
-    const service = new DbServiceTurso({
-      databasePath: path.join(home, 'main.db'),
-      dataDir: home,
-      cacheDir: path.join(home, 'cache'),
-      silentMigrations: true,
-    });
-    let sourceRunning = false;
-    try {
-      await service.start();
-      sourceRunning = true;
-
-    await (await service.db.prepare(`
-      INSERT INTO organizations (
-        id, slug, name, status, created_at_ms, updated_at_ms
-      ) VALUES (?, 'foreign-recovery', 'Foreign recovery tenant', 'active', 1, 1)
-    `)).run(FOREIGN_ORGANIZATION_ID);
-    await (await service.db.prepare(`
-      INSERT INTO accounts (
-        id, kind, display_name, status, is_autogenerated, created_at_ms, updated_at_ms
-      ) VALUES (?, 'user', 'Foreign recovery owner', 'active', 0, 1, 1)
-    `)).run(FOREIGN_ACCOUNT_ID);
-    await (await service.db.prepare(`
-      INSERT INTO organization_memberships (
-        org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, 'owner', 'active', 1, 1, 1)
-    `)).run(FOREIGN_ORGANIZATION_ID, FOREIGN_ACCOUNT_ID);
-
-    const relativeResourcePath = `${RESOURCE_ID}/data.db`;
-    await (await service.db.prepare(`
-      INSERT INTO resource_catalog (
-        org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, 'db', 'Recovery database', 'ready', NULL, 1, 1)
-    `)).run(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID);
-    await (await service.db.prepare(`
-      INSERT INTO resource_placements (
-        org_id, resource_id, cell_id, placement_epoch, relative_path, status, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, 1, ?, 'active', 1, 1)
-    `)).run(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID, DEFAULT_OSS_CELL_ID, relativeResourcePath);
-    await (await service.db.prepare(`
-      INSERT INTO resource_encryption_keys (
-        org_id, id, resource_id, purpose, algorithm, key_material, created_at_ms
-      ) VALUES (?, ?, ?, 'resource-data', 'aegis-256', ?, 1)
-    `)).run(DEFAULT_OSS_ORGANIZATION_ID, KEY_ID, RESOURCE_ID, new Uint8Array(32).fill(7));
-
-    const artifactsRoot = path.join(
-      home,
-      'organizations',
-      DEFAULT_OSS_ORGANIZATION_ID,
-      'artifacts',
-    );
-    const artifactStore = new LocalWidgetArtifactStore({
-      orgId: DEFAULT_OSS_ORGANIZATION_ID,
-      artifactsRoot,
-      createNonce: () => 'managed-recovery-artifact',
-    });
-    const storedArtifact = await artifactStore.writeArtifact({
-      kind: 'ui',
-      bytes: ARTIFACT_BYTES,
-    });
-    const artifactDescriptor: TWidgetArtifactDescriptor = Object.freeze({
-      orgId: DEFAULT_OSS_ORGANIZATION_ID,
-      id: ARTIFACT_ID,
-      kind: 'ui',
-      digestSha256: storedArtifact.digestSha256,
-      byteSize: storedArtifact.byteSize,
-      retentionState: 'pinned',
-      retainUntilMs: null,
-      createdAtMs: 1,
-    });
-    await (await service.db.prepare(`
-      INSERT INTO artifact_references (
-        org_id, id, kind, digest_sha256, byte_size,
-        retention_state, retain_until_ms, created_at_ms
-      ) VALUES (?, ?, 'ui', ?, ?, 'pinned', NULL, 1)
-    `)).run(
-      DEFAULT_OSS_ORGANIZATION_ID,
-      ARTIFACT_ID,
-      storedArtifact.digestSha256,
-      storedArtifact.byteSize,
-    );
-
-    const expectedSchema = EXPECTED_DATABASE_SCHEMA_CONTRACTS[DATABASE_SCHEMA_VERSION];
-    expect(expectedSchema).toBeDefined();
-    const sourceSchemaFingerprint = await databaseSchemaFingerprint(service.db);
-    expect(sourceSchemaFingerprint).toBe(expectedSchema!.fingerprintSha256);
-    const sourceMigrationIdentity = await migrationIdentity(service.db);
-    const sourceRepresentativeRows = await representativeRows(service.db);
-    await assertDatabaseIntegrity(service.db);
-    expect(Buffer.from(await artifactStore.readArtifact(artifactDescriptor))).toEqual(Buffer.from(ARTIFACT_BYTES));
-    await service.stop();
-    sourceRunning = false;
-
-    const resourceDirectory = path.join(
-      home,
-      'organizations',
-      DEFAULT_OSS_ORGANIZATION_ID,
-      'resources',
-      RESOURCE_ID,
-    );
-    await mkdir(resourceDirectory, { recursive: true });
-    const resource = await openNative(path.join(resourceDirectory, 'data.db'));
-    try {
-      await resource.exec(`
-        CREATE TABLE notebooks (
-          id INTEGER PRIMARY KEY,
-          name TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE notes (
-          id INTEGER PRIMARY KEY,
-          notebook_id INTEGER NOT NULL REFERENCES notebooks (id) ON DELETE RESTRICT,
-          title TEXT NOT NULL
-        ) STRICT;
-      `);
-      await (await resource.prepare("INSERT INTO notebooks (id, name) VALUES (1, 'Recovery')")).run();
-      await (await resource.prepare(
-        "INSERT INTO notes (id, notebook_id, title) VALUES (1, 1, 'preserved')",
-      )).run();
-      await assertDatabaseIntegrity(resource);
-    } finally {
-      await resource.close();
-    }
+    const expectedRows = await representativeRows(service.db);
+    expect(Object.keys(expectedRows)).toHaveLength(14);
+    expect(Object.values(expectedRows).every((rows) => rows.length > 0)).toBe(true);
+    const expectedFingerprint = await schemaFingerprint(service.db);
+    expect(expectedFingerprint).toBe(EXPECTED_DATABASE_SCHEMA_CONTRACTS[0]!.fingerprintSha256);
+    await stopService(service);
 
     await cp(home, backup, { recursive: true, errorOnExist: true });
     await cp(backup, restored, { recursive: true, errorOnExist: true });
+    expect(await snapshotTree(backup, false)).toEqual(await snapshotTree(home, false));
+    expect(await snapshotTree(restored, false)).toEqual(await snapshotTree(home, false));
+    expect(await lstat(path.join(restored, 'organizations')).then(() => true, () => false)).toBe(false);
+    expect(await lstat(path.join(restored, 'resources', RESOURCE_ID, 'data.db')).then(
+      (value) => value.isFile(),
+      () => false,
+    )).toBe(true);
 
-    const restoredService = new DbServiceTurso({
-      databasePath: path.join(restored, 'main.db'),
-      dataDir: restored,
-      cacheDir: path.join(restored, 'cache'),
-      silentMigrations: true,
-    });
+    const restoredService = serviceFor(restored);
     await restoredService.start();
+    expect(await schemaFingerprint(restoredService.db)).toBe(expectedFingerprint);
+    expect(await representativeRows(restoredService.db)).toEqual(expectedRows);
+    expect(await (await restoredService.db.prepare('PRAGMA integrity_check')).all())
+      .toEqual([expect.objectContaining({ integrity_check: 'ok' })]);
+    expect(await (await restoredService.db.prepare('PRAGMA foreign_key_check')).all()).toEqual([]);
+    await stopService(restoredService);
+
+    const resource = new Database(path.join(restored, 'resources', RESOURCE_ID, 'data.db'), {
+      readonly: true,
+      fileMustExist: true,
+      experimental: [...TURSO_EXPERIMENTAL_FEATURES],
+    });
+    await resource.connect();
     try {
-      expect(await (await restoredService.db.prepare('PRAGMA application_id')).get()).toEqual({
-        application_id: DATABASE_APPLICATION_ID,
-      });
-      expect(await (await restoredService.db.prepare('PRAGMA user_version')).get()).toEqual({
-        user_version: DATABASE_SCHEMA_VERSION,
-      });
-      expect(await (await restoredService.db.prepare('SELECT count(*) AS count FROM schema_migrations')).get())
-        .toEqual({ count: DATABASE_SCHEMA_VERSION + 1 });
-      expect(await databaseSchemaFingerprint(restoredService.db)).toBe(sourceSchemaFingerprint);
-      expect(await migrationIdentity(restoredService.db)).toEqual(sourceMigrationIdentity);
-      expect(await representativeRows(restoredService.db)).toEqual(sourceRepresentativeRows);
-      await assertDatabaseIntegrity(restoredService.db);
-      expect(await (await restoredService.db.prepare(`
-        SELECT relative_path FROM resource_placements WHERE org_id = ? AND resource_id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID)).toEqual({ relative_path: relativeResourcePath });
-      expect(await (await restoredService.db.prepare(`
-        SELECT length(key_material) AS key_bytes FROM resource_encryption_keys
-        WHERE org_id = ? AND resource_id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID)).toEqual({ key_bytes: 32 });
-      expect(await (await restoredService.db.prepare(`
-        SELECT id, kind, digest_sha256, byte_size, retention_state
-        FROM artifact_references WHERE org_id = ? AND id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, ARTIFACT_ID)).toEqual({
-        id: ARTIFACT_ID,
-        kind: 'ui',
-        digest_sha256: storedArtifact.digestSha256,
-        byte_size: storedArtifact.byteSize,
-        retention_state: 'pinned',
-      });
-      expect(await restoredService.resourceEncryptionKey.get(DEFAULT_TENANT, {
-        resourceId: RESOURCE_ID,
-      })).toMatchObject({ id: KEY_ID });
-      expect(await restoredService.resourceEncryptionKey.get(FOREIGN_TENANT, {
-        resourceId: RESOURCE_ID,
-      })).toBeNull();
-
-      const restoredDbResource = new DbResource({
-        db: restoredService.forTenant(DEFAULT_TENANT),
-        dataRoot: path.join(
-          restored,
-          'organizations',
-          DEFAULT_OSS_ORGANIZATION_ID,
-          'resources',
-        ),
-        databaseFactory: (databasePath, options) => new Database(databasePath, options),
-      });
-      const restoredStore = new ResourceStoreService({
-        controlStore: new ResourceControlStoreTurso(restoredService.db),
-        providers: [restoredDbResource],
-      });
-      const recoveryCall = {
-        slot: 'recovery',
-        resourceId: RESOURCE_ID,
-        kind: 'db' as const,
-        requirement: {
-          slot: 'recovery',
-          kind: 'db' as const,
-          effect: 'read' as const,
-          required: true,
-          arbitrarySql: true,
-        },
-        operation: 'query',
-        effect: 'read' as const,
-        input: {
-          sql: `
-            SELECT notes.id, notes.notebook_id, notebooks.name AS notebook, notes.title
-            FROM notes INNER JOIN notebooks ON notebooks.id = notes.notebook_id
-          `,
-        },
-      };
-      try {
-        expect((await restoredStore.call(DEFAULT_TENANT, recoveryCall)).output).toEqual([
-          { id: 1n, notebook_id: 1n, notebook: 'Recovery', title: 'preserved' },
-        ]);
-        await expect(restoredStore.call(FOREIGN_TENANT, recoveryCall)).rejects.toMatchObject({
-          code: 'RESOURCE_NOT_FOUND',
-        });
-      } finally {
-        await restoredStore.close();
-      }
-    } finally {
-      await restoredService.stop();
-    }
-    await assertFileDatabaseIntegrity(path.join(restored, 'main.db'), async (database) => {
-      expect(await databaseSchemaFingerprint(database)).toBe(sourceSchemaFingerprint);
-      expect(await migrationIdentity(database)).toEqual(sourceMigrationIdentity);
-      expect(await representativeRows(database)).toEqual(sourceRepresentativeRows);
-    });
-
-    const restoredArtifactStore = new LocalWidgetArtifactStore({
-      orgId: DEFAULT_OSS_ORGANIZATION_ID,
-      artifactsRoot: path.join(
-        restored,
-        'organizations',
-        DEFAULT_OSS_ORGANIZATION_ID,
-        'artifacts',
-      ),
-    });
-    expect(Buffer.from(await restoredArtifactStore.readArtifact(artifactDescriptor)))
-      .toEqual(Buffer.from(ARTIFACT_BYTES));
-    await expect(restoredArtifactStore.readArtifact({
-      ...artifactDescriptor,
-      orgId: FOREIGN_ORGANIZATION_ID,
-    })).rejects.toMatchObject({ code: 'WIDGET_ARTIFACT_NOT_FOUND' });
-
-    const restoredResource = await openNative(path.join(
-      restored,
-      'organizations',
-      DEFAULT_OSS_ORGANIZATION_ID,
-      'resources',
-      RESOURCE_ID,
-      'data.db',
-    ), true);
-    try {
-      await assertDatabaseIntegrity(restoredResource);
-      expect(await (await restoredResource.prepare(`
-        SELECT notes.id, notes.notebook_id, notebooks.name AS notebook, notes.title
-        FROM notes INNER JOIN notebooks ON notebooks.id = notes.notebook_id
-      `)).all()).toEqual([
-        { id: 1, notebook_id: 1, notebook: 'Recovery', title: 'preserved' },
+      expect(await (await resource.prepare('SELECT id, title FROM notes')).all()).toEqual([
+        expect.objectContaining({ id: 1, title: 'preserved' }),
       ]);
+      expect(await (await resource.prepare('PRAGMA integrity_check')).all())
+        .toEqual([expect.objectContaining({ integrity_check: 'ok' })]);
     } finally {
-      await restoredResource.close();
-    }
-    await assertFileDatabaseIntegrity(path.join(
-      restored,
-      'organizations',
-      DEFAULT_OSS_ORGANIZATION_ID,
-      'resources',
-      RESOURCE_ID,
-      'data.db',
-    ), async (database) => {
-      expect(await (await database.prepare(`
-        SELECT notes.id, notes.notebook_id, notebooks.name AS notebook, notes.title
-        FROM notes INNER JOIN notebooks ON notebooks.id = notes.notebook_id
-      `)).all()).toEqual([
-        { id: 1, notebook_id: 1, notebook: 'Recovery', title: 'preserved' },
-      ]);
-    });
-    } finally {
-      if (sourceRunning) await service.stop();
+      await resource.close();
     }
   });
 });

@@ -48,7 +48,6 @@ export type {
 } from './ResourceKeyValueStore';
 export type {
   IResourceKeyValuePersistence,
-  TResourceKeyValueCommittedOperation,
   TResourceKeyValueCompareAndSetResult,
   TResourceKeyValueDeleteResult,
   TResourceKeyValueEntry,
@@ -72,10 +71,7 @@ export { SecretStoreResource } from './SecretStoreResource';
 export type { TSecretStoreCompareAndSetResult } from './SecretStoreResource';
 export type {
   ILocalResourceProvider,
-  TLocalResourceCommittedOperation,
   TLocalResolvedResourceCall,
-  TLocalResourceDispatchReceipt,
-  TLocalResourceOperationIdentity,
   TLocalResource,
   TLocalResourceReconcileResult,
   TLocalResourceRequirement,
@@ -92,19 +88,13 @@ export type {
 export { ResourceManager } from './ResourceManager';
 export type {
   IResourceManagerStore,
-  TBindResourceArgs,
-  TConsumerStartAdmission,
   TCreateResourceArgs,
   TManagedResourceRequirement,
-  TReplaceResourceBindingsArgs,
-  TResourceBindingRecord,
-  TResourceBindingStatus,
   TResourceCatalogRecord,
   TResourceDirectBinding,
   TResourceGatewayAuthorization,
   TResourceManagerCall,
   TResourceManagerConfig,
-  TResourceRequirementsResolver,
   TResourceScope,
 } from './ResourceManager';
 export { ResourceManagerGateway } from './ResourceManagerGateway';

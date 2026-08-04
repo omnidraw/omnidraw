@@ -9,8 +9,7 @@
     "outDir": "dist",
     "paths": {
       "@omnidraw/canvas-contract": ["../canvas-contract/dist/index.d.ts"],
-      "@omnidraw/runtime": ["../runtime/dist/index.d.ts"],
-      "@omnidraw/tenant-core": ["../tenant-core/dist/index.d.ts"]
+      "@omnidraw/runtime": ["../runtime/dist/index.d.ts"]
     },
     "rootDir": "src",
     "sourceMap": false

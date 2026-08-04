@@ -4,30 +4,16 @@ type TApi = TOrpcSafeClient["api"];
 
 export type TAiChatApiPort = {
   api: {
-    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events" | "widgets" | "widgetPublish"> & {
-      widgetDraft: Pick<TApi["agent"]["widgetDraft"], "list" | "get" | "validate">;
-      widgetPreview: Pick<TApi["agent"]["widgetPreview"], "build" | "cancel"> & {
-        diagnostics: Pick<
-          TApi["agent"]["widgetPreview"]["diagnostics"],
-          "get" | "report" | "resolve" | "retest"
-        >;
-        test: Pick<TApi["agent"]["widgetPreview"]["test"], "report">;
-        mount: Pick<TApi["agent"]["widgetPreview"]["mount"], "acquire" | "renew" | "release">;
-        owner: Pick<
-          TApi["agent"]["widgetPreview"]["owner"],
-          "ensure" | "get" | "list" | "close"
-        >;
-      };
-    };
+    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events">;
     resource: Pick<TApi["resource"], "resources">;
+    widget: Pick<TApi["widget"], "catalog">;
   };
 };
 
 export type TWidgetTransportPort = {
   api: {
-    agent?: Pick<TApi["agent"], "events" | "widgets">;
-    widget: Pick<TApi['widget'], 'runtime'>;
-    function: Pick<TApi['function'], 'invoke' | 'get'>;
+    widget: Pick<TApi['widget'], 'catalog' | 'placement' | 'runtime'>;
+    function: Pick<TApi['function'], 'invoke'>;
   };
 };
 

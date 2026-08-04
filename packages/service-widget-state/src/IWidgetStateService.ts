@@ -1,5 +1,4 @@
 import type { IService, IStoppableService } from '@omnidraw/runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TWidgetStateChangeArgs,
   TWidgetStateChangeResult,
@@ -26,22 +25,13 @@ export interface IWidgetStateStore {
 }
 
 export interface IWidgetStateService extends IService, IStoppableService {
-  get(
-    tenant: TTenantContext,
-    args: TWidgetStateGetArgs,
-  ): Promise<TWidgetStateGetResult>;
+  get(args: TWidgetStateGetArgs): Promise<TWidgetStateGetResult>;
 
-  change(
-    tenant: TTenantContext,
-    args: TWidgetStateChangeArgs,
-  ): Promise<TWidgetStateChangeResult>;
+  change(args: TWidgetStateChangeArgs): Promise<TWidgetStateChangeResult>;
 
-  subscribe(
-    tenant: TTenantContext,
-    args: TWidgetStateSubscribeArgs,
-  ): Promise<TWidgetStateSubscribeResult>;
+  subscribe(args: TWidgetStateSubscribeArgs): Promise<TWidgetStateSubscribeResult>;
 
-  release(tenant: TTenantContext, args: TWidgetStateReleaseArgs): void;
+  release(args: TWidgetStateReleaseArgs): void;
 
   dispose(): void;
 

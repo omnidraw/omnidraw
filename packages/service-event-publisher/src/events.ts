@@ -55,7 +55,7 @@ export type TAgentApprovalEvent = Readonly<{
     risk: 'medium' | 'high';
     warnings: string[];
     details: unknown;
-    createdAt: string;
+    createdAtSec: string;
     policyMode: 'always-approve' | 'ai-review' | 'manual';
     decisionSource?: 'policy' | 'reviewer' | 'user';
     reviewerReason?: string;

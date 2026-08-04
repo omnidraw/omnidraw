@@ -10,15 +10,15 @@ export type TResourceKvDataEntry = {
   readonly valuePreview: string;
   readonly valueTruncated: boolean;
   readonly revision: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly createdAtSec: string;
+  readonly updatedAtSec: string;
 };
 
 export type TResourceSecretDataEntry = {
   readonly name: string;
   readonly revision: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly createdAtSec: string;
+  readonly updatedAtSec: string;
 };
 
 export type TResourceDataPage =
@@ -48,8 +48,8 @@ export function fnResourceDataPage(
       entries: page.entries.map((entry) => ({
         name: entry.key,
         revision: entry.revision,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
+        createdAtSec: entry.createdAtSec,
+        updatedAtSec: entry.updatedAtSec,
       })),
       nextCursor: page.nextCursor,
     };
@@ -63,8 +63,8 @@ export function fnResourceDataPage(
         valuePreview: value.preview,
         valueTruncated: value.truncated,
         revision: entry.revision,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
+        createdAtSec: entry.createdAtSec,
+        updatedAtSec: entry.updatedAtSec,
       };
     }),
     nextCursor: page.nextCursor,
@@ -81,8 +81,8 @@ export function fnResourceDataMutationResult(
       entry: {
         name: entry.key,
         revision: entry.revision,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
+        createdAtSec: entry.createdAtSec,
+        updatedAtSec: entry.updatedAtSec,
       },
     };
   }
@@ -94,8 +94,8 @@ export function fnResourceDataMutationResult(
       valuePreview: value.preview,
       valueTruncated: value.truncated,
       revision: entry.revision,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
+      createdAtSec: entry.createdAtSec,
+      updatedAtSec: entry.updatedAtSec,
     },
   };
 }

@@ -1,18 +1,6 @@
 import type { SessionManager, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { TValidationResult } from '../core/types';
-import type { TWidgetDraftSummary } from '../widget-drafts/types';
 export type { TValidationResult } from '../core/types';
-
-export type TWidgetEditSessionRecord = {
-  mode: 'edit-published-widget';
-  sourceDefinitionName: string;
-  sourceSlug: string;
-  sourceName: string;
-  sourceManifestPath: string;
-  previousVersion?: string;
-  nextVersion: string;
-  startedAt: string;
-};
 
 export type TWidgetResourceSelection = {
   id: string;
@@ -24,12 +12,6 @@ export type TWidgetResourceSelection = {
 export type TWidgetResourceSelectionRecord = {
   resources: TWidgetResourceSelection[];
   selectedAt: string;
-};
-
-export type TWidgetDraftResourceBindingSelectionRecord = {
-  resources: TWidgetResourceSelection[];
-  selectedAt: string;
-  source: 'mention' | 'explicit-clear';
 };
 
 export type TWidgetDbChangeProposalRecord = {
@@ -58,7 +40,15 @@ export type TWidgetDraftChange = {
   validation?: TValidationResult;
 };
 
-export type TWidgetDraftChangeResult = TWidgetDraftSummary | null | void;
+export type TWidgetDraftChangeResult = Readonly<{
+  draftId: string;
+  revision: string;
+  validation: Readonly<{
+    status: 'unknown' | 'valid' | 'invalid';
+    errors: readonly string[];
+    warnings: readonly string[];
+  }>;
+}> | null | void;
 
 export type TWidgetDraftChangeHandler = (
   change: TWidgetDraftChange,

@@ -2,7 +2,6 @@ import { defineTool } from '@earendil-works/pi-coding-agent';
 import type { TDbCellValue, TResourceJson } from '@omnidraw/resource-runtime';
 import { Type } from 'typebox';
 import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
-import type { TToolAuthorizationContext } from '../approval/types';
 import {
   fnDbSchemaFingerprint,
   fnCreateResourceListCursor,
@@ -37,7 +36,6 @@ type TResourceDataWriteOperation =
 
 type TCreateResourceToolsArgs = {
   chatId: string;
-  authorization: TToolAuthorizationContext;
   resourceService?: TAgentResourceService;
   approvals: ApprovalCoordinator;
   authorize: (toolName: string) => Promise<boolean>;
@@ -196,7 +194,12 @@ async function executeReadQuery(
       resourceService.countResourceData(filter),
     ]);
     const entries = page.kind === 'kv'
-      ? page.entries.map(({ key, revision, createdAt, updatedAt }) => ({ key, revision, createdAt, updatedAt }))
+      ? page.entries.map(({ key, revision, createdAtSec, updatedAtSec }) => ({
+          key,
+          revision,
+          createdAtSec,
+          updatedAtSec,
+        }))
       : page.entries;
     return {
       kind: page.kind,
@@ -357,7 +360,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const inspect = defineTool({
     name: 'od_resource_inspect',
     label: 'Inspect Resource',
-    description: 'Inspect compact safe metadata by resourceName, including status, bindings, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with od_resource_data_read.',
+    description: 'Inspect compact safe metadata by resourceName, including status, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with od_resource_data_read.',
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('od_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
@@ -365,12 +368,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       try {
         const resource = await resolveResource(args.resourceService, params.resourceName, false);
         internalResourceId = resource.id;
-        const bindings = await args.resourceService?.listResourceReferences?.(resource.id) ?? [];
-        const lifecycle = fnResourceCapabilities(resource, bindings.length);
+        const lifecycle = fnResourceCapabilities(resource);
         const base = {
           resource: fnSafeResourceMetadata(resource),
           ready: lifecycle.ready,
-          bindingCount: bindings.length,
           currentlyDeletable: lifecycle.currentlyDeletable,
           deleteBlockedReason: lifecycle.deleteBlockedReason,
           capabilities: lifecycle.capabilities,
@@ -421,7 +422,6 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           chatId: args.chatId,
           toolCallId,
           kind: 'resource-create',
-          authorization: args.authorization,
           exactArgs: { kind: params.kind as TResourceKind, name: String(params.name) },
           summary: `Create ${params.kind} resource '${params.name}'`,
           risk: 'medium',
@@ -456,7 +456,6 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           chatId: args.chatId,
           toolCallId,
           kind: 'resource-update',
-          authorization: args.authorization,
           exactArgs: { resourceId: current.id, newName: String(params.newName) },
           summary: `Rename resource '${current.name}' to '${params.newName}'`,
           risk: 'medium',
@@ -488,7 +487,6 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           chatId: args.chatId,
           toolCallId,
           kind: 'resource-delete',
-          authorization: args.authorization,
           exactArgs: { resourceId: current.id },
           summary: `Delete ${current.kind} resource '${current.name}'`,
           risk: 'high',
@@ -577,7 +575,6 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           chatId: args.chatId,
           toolCallId,
           kind: 'resource-data-write',
-          authorization: args.authorization,
           exactArgs: { resourceId: resource.id, operations },
           summary: `Execute ${operations.length} protected ${resource.kind} write${operations.length === 1 ? '' : 's'} on '${resource.name}'`,
           risk: 'high',

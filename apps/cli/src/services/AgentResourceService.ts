@@ -36,7 +36,6 @@ function createAgentResourceService(
       >
     ),
     deleteResource: (resourceId) => owner.deleteResource(tenant, resourceId),
-    listResourceReferences: (resourceId) => owner.listResourceReferences(tenant, resourceId),
     countResourceData: (request) => owner.countResourceData(tenant, request),
     listResourceData: (request) => (
       owner.listResourceData(tenant, request) as ReturnType<

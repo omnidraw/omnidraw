@@ -1,7 +1,7 @@
 {
   "name": "@omnidraw/widget-contract",
-  "version": "0.6.0",
-  "description": "Portable widget manifests, artifacts, diagnostics, and revision contracts for Omnidraw.",
+  "version": "0.9.0",
+  "description": "Filesystem widget manifests, release attestations, runtime descriptors, and diagnostics for Omnidraw.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,6 +20,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser/index.ts",
+    "./filesystem": "./src/filesystem/index.ts",
+    "./fn.filesystem-path": "./src/core/fn.filesystem-path.ts",
     "./CONSTANTS": "./src/CONSTANTS.ts",
     "./fn.diagnostic": "./src/core/fn.diagnostic.ts",
     "./core/fn.widget-frame": "./src/core/fn.widget-frame.ts",
@@ -34,8 +36,7 @@
   },
   "dependencies": {
     "@omnidraw/resource-runtime": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
-    "lucide-static": "^1.24.0",
+    "lucide-static": "1.24.0",
     "zod": "4.4.3"
   }
 }

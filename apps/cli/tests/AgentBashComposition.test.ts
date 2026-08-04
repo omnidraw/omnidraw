@@ -53,13 +53,11 @@ describe('production Agent Bash composition', () => {
     });
     const { services } = setupServices(config);
     const database = services.require('db');
-    const widgetOwner = services.require('widgetOwner');
     const resourceOwner = services.require('resourceOwner');
     const agentOwner = services.require('agent');
     const context = { config: {}, hooks: {} };
 
     await database.start();
-    widgetOwner.start(context);
     resourceOwner.start(context);
     agentOwner.start(context);
     try {
@@ -92,7 +90,6 @@ describe('production Agent Bash composition', () => {
     } finally {
       await agentOwner.stop();
       await resourceOwner.stop();
-      await widgetOwner.stop();
       await database.stop();
     }
   });

@@ -1,14 +1,11 @@
-import type { InferContractRouterInputs, InferContractRouterOutputs } from '@orpc/contract';
-import type { TToolGroupDatabaseCapability } from '../interface';
+import type {
+  InferContractRouterInputs,
+  InferContractRouterOutputs,
+} from '@orpc/contract';
 import type { agentContract, TAgentEvent } from './contract';
 
 type TAgentInputs = InferContractRouterInputs<typeof agentContract>;
 type TAgentOutputs = InferContractRouterOutputs<typeof agentContract>;
-
-type TAgentAuthorization = {
-  accountId?: string;
-  requestId?: string;
-};
 
 type TAgentPromptInput = TAgentInputs['chat']['prompt'];
 type TAgentPromptSelection = Pick<
@@ -16,16 +13,15 @@ type TAgentPromptSelection = Pick<
   'images' | 'model' | 'resourceIds' | 'thinkingLevel' | 'widgetRefs'
 >;
 
+/** Chat/auth capability only. Widget authoring is filesystem-owned under `api.widget`. */
 export type TAgentApiCapability = {
   settings(): Promise<TAgentOutputs['settings']['get']>;
   updateApprovalPolicy(
     policy: TAgentInputs['settings']['approvalPolicy']['update'],
   ): Promise<TAgentOutputs['settings']['approvalPolicy']['update']>;
-
   connectChat(
     widgetId: TAgentInputs['chat']['connect']['widgetId'],
     sessionId: TAgentInputs['chat']['connect']['sessionId'],
-    authorization?: TAgentAuthorization,
     mode?: NonNullable<TAgentInputs['chat']['connect']['mode']>,
   ): Promise<TAgentOutputs['chat']['connect']>;
   promptChat(
@@ -34,10 +30,6 @@ export type TAgentApiCapability = {
     text: TAgentPromptInput['text'],
     selection?: TAgentPromptSelection,
   ): Promise<void>;
-  clearDraftResourceBindingsChat(
-    widgetId: TAgentInputs['chat']['resourceBindings']['clear']['widgetId'],
-    sessionId: TAgentInputs['chat']['resourceBindings']['clear']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['resourceBindings']['clear']>;
   approveChatDbChange(
     widgetId: TAgentInputs['chat']['dbChange']['approve']['widgetId'],
     sessionId: TAgentInputs['chat']['dbChange']['approve']['sessionId'],
@@ -62,7 +54,6 @@ export type TAgentApiCapability = {
     sessionId: TAgentInputs['chat']['approval']['resolve']['sessionId'],
     approvalId: TAgentInputs['chat']['approval']['resolve']['approvalId'],
     decision: TAgentInputs['chat']['approval']['resolve']['decision'],
-    authorization?: TAgentAuthorization,
   ): Promise<TAgentOutputs['chat']['approval']['resolve']>;
   cancelChat(
     widgetId: TAgentInputs['chat']['cancel']['widgetId'],
@@ -72,112 +63,6 @@ export type TAgentApiCapability = {
     widgetId: TAgentInputs['chat']['newSession']['widgetId'],
     sessionId: TAgentInputs['chat']['newSession']['sessionId'],
   ): Promise<void>;
-
-  listWidgetDrafts(): Promise<TAgentOutputs['widgetDraft']['list']>;
-  getWidgetDraft(
-    draftId: TAgentInputs['widgetDraft']['get']['draftId'],
-  ): Promise<TAgentOutputs['widgetDraft']['get']>;
-  validateWidgetDraft(
-    draftId: TAgentInputs['widgetDraft']['validate']['draftId'],
-    expectedRevision: TAgentInputs['widgetDraft']['validate']['expectedRevision'],
-  ): Promise<TAgentOutputs['widgetDraft']['validate']>;
-
-  buildWidgetPreview(
-    draftId: TAgentInputs['widgetPreview']['build']['draftId'],
-    ownerRef?: Readonly<{
-      previewId: NonNullable<TAgentInputs['widgetPreview']['build']['previewId']>;
-      canvasId: NonNullable<TAgentInputs['widgetPreview']['build']['canvasId']>;
-      frameNodeId: NonNullable<TAgentInputs['widgetPreview']['build']['frameNodeId']>;
-    }>,
-  ): Promise<TAgentOutputs['widgetPreview']['build']>;
-  cancelWidgetPreviewBuild(
-    request: TAgentInputs['widgetPreview']['cancel'],
-  ): Promise<TAgentOutputs['widgetPreview']['cancel']>;
-  acquireWidgetPreviewMountLease(
-    request: TAgentInputs['widgetPreview']['mount']['acquire'],
-  ): Promise<TAgentOutputs['widgetPreview']['mount']['acquire']>;
-  renewWidgetPreviewMountLease(
-    request: TAgentInputs['widgetPreview']['mount']['renew'],
-  ): Promise<TAgentOutputs['widgetPreview']['mount']['renew']>;
-  releaseWidgetPreviewMountLease(
-    request: TAgentInputs['widgetPreview']['mount']['release'],
-  ): Promise<TAgentOutputs['widgetPreview']['mount']['release']>;
-  reportWidgetPreviewDiagnostic(
-    request: TAgentInputs['widgetPreview']['diagnostics']['report'],
-  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['report']>;
-  getWidgetPreviewDiagnostics(
-    request: TAgentInputs['widgetPreview']['diagnostics']['get'],
-  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['get']>;
-  retestWidgetPreviewDiagnostic(
-    request: TAgentInputs['widgetPreview']['diagnostics']['retest'],
-  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['retest']>;
-  resolveWidgetPreviewDiagnostic(
-    request: TAgentInputs['widgetPreview']['diagnostics']['resolve'],
-  ): Promise<TAgentOutputs['widgetPreview']['diagnostics']['resolve']>;
-  reportWidgetPreviewTestResult(
-    request: TAgentInputs['widgetPreview']['test']['report'],
-  ): Promise<TAgentOutputs['widgetPreview']['test']['report']['accepted']>;
-  ensureWidgetPreviewOwner(
-    request: TAgentInputs['widgetPreview']['owner']['ensure'],
-  ): Promise<TAgentOutputs['widgetPreview']['owner']['ensure']>;
-  getWidgetPreviewOwner(
-    request: TAgentInputs['widgetPreview']['owner']['get'],
-  ): Promise<TAgentOutputs['widgetPreview']['owner']['get']>;
-  listWidgetPreviewOwners(
-    request: TAgentInputs['widgetPreview']['owner']['list'],
-  ): Promise<TAgentOutputs['widgetPreview']['owner']['list']>;
-  closeWidgetPreviewOwner(
-    request: TAgentInputs['widgetPreview']['owner']['close'],
-  ): Promise<TAgentOutputs['widgetPreview']['owner']['close']>;
-  publishWidgetDraft(
-    draftId: TAgentInputs['widgetPublish']['publish']['draftId'],
-    target: Readonly<{
-      idempotencyKey: TAgentInputs['widgetPublish']['publish']['idempotencyKey'];
-      previewId: TAgentInputs['widgetPublish']['publish']['previewId'];
-      canvasId: TAgentInputs['widgetPublish']['publish']['canvasId'];
-      frameNodeId: TAgentInputs['widgetPublish']['publish']['frameNodeId'];
-    }>,
-  ): Promise<TAgentOutputs['widgetPublish']['publish']>;
-
-  getWidgetCatalog(
-    groups: TAgentOutputs['widgets']['groups']['create'][],
-  ): Promise<TAgentOutputs['widgets']['catalog']>;
-  getWidgetDetail(
-    name: TAgentInputs['widgets']['detail']['name'],
-    source: TAgentInputs['widgets']['detail']['source'],
-  ): Promise<TAgentOutputs['widgets']['detail']>;
-  listWidgetFiles(
-    name: TAgentInputs['widgets']['files']['name'],
-    source: TAgentInputs['widgets']['files']['source'],
-  ): Promise<TAgentOutputs['widgets']['files']>;
-  readWidgetFile(
-    name: TAgentInputs['widgets']['file']['name'],
-    source: TAgentInputs['widgets']['file']['source'],
-    path: TAgentInputs['widgets']['file']['path'],
-  ): Promise<TAgentOutputs['widgets']['file']>;
-  ensureWidgetDraft(
-    name: TAgentInputs['widgets']['ensureDraft']['name'],
-    expectedPublishedFingerprint?: TAgentInputs['widgets']['ensureDraft']['expectedPublishedFingerprint'],
-  ): Promise<TAgentOutputs['widgets']['ensureDraft']>;
-  patchWidgetDraftTool(
-    name: TAgentInputs['widgets']['patchDraftTool']['name'],
-    expectedRevision: TAgentInputs['widgets']['patchDraftTool']['expectedRevision'],
-    patch: TAgentInputs['widgets']['patchDraftTool']['patch'],
-  ): Promise<TAgentOutputs['widgets']['patchDraftTool']>;
-  patchWidgetDraftMetadata(
-    name: TAgentInputs['widgets']['patchDraftMetadata']['name'],
-    expectedRevision: TAgentInputs['widgets']['patchDraftMetadata']['expectedRevision'],
-    patch: TAgentInputs['widgets']['patchDraftMetadata']['patch'],
-  ): Promise<TAgentOutputs['widgets']['patchDraftMetadata']>;
-  deleteWidget(
-    name: TAgentInputs['widgets']['delete']['name'],
-    source: TAgentInputs['widgets']['delete']['source'],
-  ): Promise<TAgentOutputs['widgets']['delete'] | null>;
-  resolveWidgetPlacement(
-    reference: TAgentInputs['widgets']['resolvePlacement']['reference'],
-    expectedDraftId?: TAgentInputs['widgets']['resolvePlacement']['expectedDraftId'],
-  ): Promise<TAgentOutputs['widgets']['resolvePlacement']>;
-
   login(providerId: TAgentInputs['auth']['login']['providerId']): TAgentOutputs['auth']['login']['loginId'];
   logout(providerId: TAgentInputs['auth']['logout']['providerId']): Promise<void>;
   getLoginStatus(loginId: TAgentInputs['auth']['status']['loginId']): TAgentOutputs['auth']['status'];
@@ -190,13 +75,11 @@ export type TAgentApiCapability = {
 };
 
 export type TAgentEventCapability = {
-  publishAgentEvent(tenant: import('@omnidraw/tenant-core').TTenantContext, event: TAgentEvent): number;
-  subscribeAgentEvents(tenant: import('@omnidraw/tenant-core').TTenantContext): AsyncIterable<TAgentEvent>;
+  publishAgentEvent(event: TAgentEvent): number;
+  subscribeAgentEvents(): AsyncIterable<TAgentEvent>;
 };
 
 export type TAgentApiContext = {
-  db: TToolGroupDatabaseCapability;
   eventPublisher: TAgentEventCapability;
   agent: TAgentApiCapability;
-  tenant: import('@omnidraw/tenant-core').TTenantContext;
 };

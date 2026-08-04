@@ -3,24 +3,15 @@
  */
 
 import type {
-  TResourceEffect,
-  TResourceKind,
   TResourceNamedOperation,
   TResourceOperationParameterDeclaration,
   TResourceRequirement,
 } from '@omnidraw/resource-runtime';
-import type {
-  TWidgetManifestV3,
-  TWidgetResourceBindingInput,
-  TWidgetResourceBindingValidation,
-  TWidgetRevisionDescriptor,
-} from '../types';
+import type { TWidgetManifestV3 } from '../types';
 import {
   fnNormalizeWidgetCapsuleBudgetRequest,
   fnNormalizeWidgetCapsuleApis,
 } from './fn.capsule';
-
-type TRequestedEffect = Exclude<TResourceEffect, 'read_write'>;
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -142,72 +133,4 @@ export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV3): TWidgetM
 
 export function fnCanonicalizeWidgetManifest(manifest: TWidgetManifestV3): string {
   return JSON.stringify(fnNormalizeWidgetManifest(manifest));
-}
-
-export function fnWidgetManifestAllowsResource(
-  manifest: TWidgetManifestV3,
-  args: Readonly<{ slot: string; kind: TResourceKind; effect: TRequestedEffect }>,
-): boolean {
-  const requirement = manifest.resources?.find((candidate) => candidate.slot === args.slot);
-  if (!requirement || requirement.kind !== args.kind) return false;
-  return requirement.effect === 'read_write' || requirement.effect === args.effect;
-}
-
-export function fnValidateWidgetResourceBindings(
-  manifest: TWidgetManifestV3,
-  bindings: readonly TWidgetResourceBindingInput[],
-): TWidgetResourceBindingValidation {
-  const requirements = new Map<string, TResourceRequirement>();
-  for (const requirement of manifest.resources ?? []) {
-    if (requirements.has(requirement.slot)) {
-      return { valid: false, reason: 'duplicate_requirement_slot', slot: requirement.slot };
-    }
-    requirements.set(requirement.slot, requirement);
-  }
-
-  const boundSlots = new Set<string>();
-  for (const binding of bindings) {
-    if (boundSlots.has(binding.slot)) {
-      return { valid: false, reason: 'duplicate_binding_slot', slot: binding.slot };
-    }
-    boundSlots.add(binding.slot);
-
-    const requirement = requirements.get(binding.slot);
-    if (!requirement) return { valid: false, reason: 'unknown_slot', slot: binding.slot };
-    if (requirement.kind !== binding.kind) {
-      return { valid: false, reason: 'kind_mismatch', slot: binding.slot };
-    }
-    if (!binding.allowRead && !binding.allowWrite) {
-      return { valid: false, reason: 'empty_permission', slot: binding.slot };
-    }
-
-    const manifestAllowsRead = requirement.effect !== 'write';
-    const manifestAllowsWrite = requirement.effect !== 'read';
-    if ((binding.allowRead && !manifestAllowsRead) || (binding.allowWrite && !manifestAllowsWrite)) {
-      return { valid: false, reason: 'permission_exceeded', slot: binding.slot };
-    }
-  }
-
-  for (const requirement of requirements.values()) {
-    if (requirement.required === true && !boundSlots.has(requirement.slot)) {
-      return { valid: false, reason: 'missing_required_slot', slot: requirement.slot };
-    }
-  }
-
-  return { valid: true };
-}
-
-export function fnWidgetRevisionArtifactsMatchManifest(
-  revision: TWidgetRevisionDescriptor,
-): boolean {
-  if (revision.uiArtifact.orgId !== revision.orgId || revision.uiArtifact.kind !== 'ui') return false;
-
-  if (revision.manifest.server === undefined) {
-    return revision.serverArtifact === null;
-  }
-
-  return revision.serverArtifact !== null
-    && revision.serverArtifact.orgId === revision.orgId
-    && revision.serverArtifact.kind === 'server'
-    && revision.serverArtifact.id !== revision.uiArtifact.id;
 }

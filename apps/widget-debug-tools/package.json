@@ -7,14 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/capsule-omnidraw": "workspace:*",
-    "@omnidraw/function-runtime": "workspace:*",
-    "@omnidraw/sdk": "workspace:*",
-    "@omnidraw/service-agent": "workspace:*",
-    "@omnidraw/service-db": "workspace:*",
-    "@omnidraw/service-event-publisher": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
-    "zod": "catalog:"
+    "@omnidraw/service-agent": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

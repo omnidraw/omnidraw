@@ -21,8 +21,8 @@ const identity: TWidgetRuntimeIdentity = Object.freeze({
   canvasId: 'canvas-a',
   elementId: 'element-a',
   widgetInstanceId: 'instance-a',
-  definitionId: 'definition-a',
-  revisionId: 'revision-a',
+  widgetKey: 'pinned-widget',
+  catalogGeneration: 1,
 });
 
 function deferred<T>() {
@@ -59,9 +59,8 @@ function element(
       [CANVAS_WIDGET_EXTENSION_KEY]: {
         schemaVersion: 1,
         type: 'widget-instance',
-        definitionId: candidate.definitionId,
-        revisionId: candidate.revisionId,
         instanceId: candidate.widgetInstanceId,
+        widgetKey: candidate.widgetKey,
         ...(uiProps === undefined ? {} : { uiProps }),
       },
     },
@@ -147,13 +146,20 @@ function fixture(args: Readonly<{
       canvasId: identity.canvasId,
       elementId: identity.elementId,
       widgetInstanceId: identity.widgetInstanceId,
-      definitionId: identity.definitionId,
-      revisionId: identity.revisionId,
+      widgetKey: identity.widgetKey,
+      catalogGeneration: identity.catalogGeneration,
     },
     manifest: {
-      schemaVersion: 3 as const,
+      $schema: 'https://omnidraw.dev/schemas/widget/v4.json' as const,
+      schemaVersion: 4 as const,
       name: 'Pinned widget',
       slug: 'pinned-widget',
+      description: 'A pinned widget test fixture.',
+      tool: {
+        label: 'Pinned widget',
+        group: 'tests',
+        priority: 0,
+      },
       ui: {
         runtime: 'capsule' as const,
         entry: 'ui/main.ts',
@@ -205,7 +211,7 @@ function fixture(args: Readonly<{
     transport: {
       api: {
         widget: { runtime: { load } },
-        function: { invoke: vi.fn(), get: vi.fn() },
+        function: { invoke: vi.fn() },
       },
     } as unknown as TWidgetRuntimeTransportPort,
     codec: {
@@ -213,7 +219,6 @@ function fixture(args: Readonly<{
       digestSha256,
     },
     mount: { mount, destroy: destroyMount },
-    createIdempotencyKey: () => 'host-key',
     organizationId: args.organizationId ?? (() => identity.orgId),
     tenantAuthorityKey: args.tenantAuthorityKey ?? (() => 'authority-a'),
     nowMs: clock.now,
@@ -342,7 +347,28 @@ describe('WidgetUiRuntime Capsule ownership', () => {
     await current.runtime.destroy();
   });
 
-  test('caches exact opaque signed bytes by revision, digest, and Capsule hash', async () => {
+  test('renders a clear missing-widget frame without retrying a missing publication', async () => {
+    const load = vi.fn(async () => [{
+      code: 'NOT_FOUND',
+      message: 'Published widget is missing or unhealthy.',
+    }, undefined] as never);
+    const current = fixture({ load, isTargetCurrent: () => true });
+    const root = document.createElement('div');
+    current.runtime.render({
+      root,
+      canvasId: identity.canvasId,
+      element: element(),
+    });
+
+    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('error'));
+    expect(root.textContent).toBe(
+      'This widget is unavailable because its published folder is missing or unhealthy.',
+    );
+    expect(load).toHaveBeenCalledOnce();
+    await current.runtime.destroy();
+  });
+
+  test('caches exact opaque signed bytes by catalog generation, digest, and Capsule hash', async () => {
     const cache = new WidgetUiArtifactCache();
     const current = fixture({ cache });
     const first = await renderReady(current.runtime);

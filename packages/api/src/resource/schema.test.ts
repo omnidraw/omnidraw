@@ -172,8 +172,8 @@ describe('neutral resource contracts', () => {
     const sentinel = 'must-not-leak';
     try {
       await withResourceApiError(async () => {
-        throw new ResourceError('RESOURCE_STILL_BOUND', 'Resource remains bound.', {
-          bindingCount: 2,
+        throw new ResourceError('RESOURCE_NOT_READY', 'Resource is not ready.', {
+          status: 'migrating',
           token: sentinel,
         });
       });
@@ -181,8 +181,8 @@ describe('neutral resource contracts', () => {
     } catch (error) {
       expect(error).toMatchObject({
         code: 'RESOURCE_ERROR',
-        message: 'Resource remains bound.',
-        data: { code: 'RESOURCE_STILL_BOUND', details: { bindingCount: 2 } },
+        message: 'Resource is not ready.',
+        data: { code: 'RESOURCE_NOT_READY', details: { status: 'migrating' } },
       });
       expect(JSON.stringify(error)).not.toContain(sentinel);
     }

@@ -13,7 +13,6 @@ import {
 } from '@omnidraw/capsule/protocol';
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
@@ -50,15 +49,6 @@ const SIGNING_KEY = Object.freeze({
   keyId: 'capsule-boundary-test-key',
   privateKey: {} as CryptoKey,
 }) satisfies CapsuleArtifactSigningKey;
-const TENANT = Object.freeze({
-  orgId: 'capsule-boundary-org',
-  accountId: 'capsule-boundary-account',
-  cellId: 'capsule-boundary-cell',
-  placementEpoch: 1,
-  roles: Object.freeze([]),
-  capabilities: Object.freeze([]),
-  requestId: 'capsule-boundary-request',
-}) satisfies TTenantContext;
 const EMPTY_CAPSULE_OUTPUT = Object.freeze({
   artifactBytes: Uint8Array.of(1, 2, 3),
   artifactHash: CAPSULE_ARTIFACT_HASH,
@@ -84,12 +74,6 @@ const FN_HELLO_DESCRIPTOR = Object.freeze({
     memoryTier: 'small',
     outputByteLimit: 1_024,
     logByteLimit: 0,
-  }),
-  retry: Object.freeze({
-    mode: 'none',
-    maxAttempts: 1,
-    initialBackoffMs: 0,
-    maxBackoffMs: 0,
   }),
 }) satisfies TWidgetServerFunctionDescriptor;
 const PNG_BYTES = Uint8Array.from(
@@ -259,7 +243,6 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     });
 
     const result = await artifactBuilder.build(
-      TENANT,
       request(sourceSnapshot, widgetManifest),
     );
     expect(captured).toBeDefined();
@@ -299,7 +282,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       },
     });
 
-    await artifactBuilder.build(TENANT, request(sourceSnapshot, widgetManifest));
+    await artifactBuilder.build(request(sourceSnapshot, widgetManifest));
 
     expect(bunBuildCalls).toBe(0);
     expect(captured).toBeDefined();
@@ -364,7 +347,6 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     });
 
     const result = await artifactBuilder.build(
-      TENANT,
       request(sourceSnapshot, widgetManifest),
     );
 
@@ -442,7 +424,6 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     const nativeManifest = manifest({ entry: 'ui/main.ts' });
 
     const result = await artifactBuilder.build(
-      TENANT,
       request(sourceSnapshot, nativeManifest),
     );
 
@@ -502,7 +483,6 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       });
 
       const result = await artifactBuilder.build(
-        TENANT,
         request(sourceSnapshot, widgetManifest),
       );
 
@@ -536,9 +516,9 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       expect(result.functionDescriptorsDigestSha256).toBe(serverDigestSha256);
       expect(browserDigestSha256).not.toBe(serverDigestSha256);
       expect(captured!.capabilityRequests).toEqual([{
-        id: `omnidraw.widget.functions.h${browserDigestSha256}`,
+        id: `omnidraw.widget.functions.h${serverDigestSha256}`,
         versionRange: '1.0.0',
-        contractHash: `sha256:${browserDigestSha256}`,
+        contractHash: `sha256:${serverDigestSha256}`,
         required: true,
         operations: ['fnHello'],
       }]);
@@ -597,8 +577,13 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
           distributionBuildCalls += 1;
           return Object.freeze({
             kind: 'external-distribution',
-            snapshot: Object.freeze({ files: value.files }),
-            entry: value.entry,
+            snapshot: Object.freeze({
+              files: Object.freeze([Object.freeze({
+                path: 'main.js',
+                bytes: new Uint8Array([1, 2, 3]),
+              })]),
+            }),
+            entry: 'main.js',
             producer: Object.freeze({
               name: 'construction-test',
               version: '1',
@@ -625,7 +610,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         },
       });
       const buildRequest = request(sourceSnapshot, widgetManifest);
-      const construction = await artifactBuilder.construct(TENANT, {
+      const construction = await artifactBuilder.construct({
         snapshot: buildRequest.snapshot,
         manifest: buildRequest.manifest,
         canonicalManifestJson: buildRequest.canonicalManifestJson,
@@ -642,6 +627,10 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         .toBe(sha256(construction.sourceArtifact.bytes));
       expect(construction.uiArtifact.digestSha256)
         .toBe(sha256(construction.uiArtifact.unsignedBytes));
+      expect(construction.distributionFiles).toEqual([{
+        path: 'main.js',
+        bytes: new Uint8Array([1, 2, 3]),
+      }]);
       expect(construction.distributionProvenance).toEqual({
         kind: 'external-distribution',
         producer: {
@@ -656,11 +645,11 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       expect(construction.constructionContractDigestSha256)
         .toMatch(/^[0-9a-f]{64}$/);
 
-      const preview = await artifactBuilder.signConstruction(TENANT, {
+      const preview = await artifactBuilder.signConstruction({
         construction,
         signingPurpose: 'preview',
       });
-      const release = await artifactBuilder.signConstruction(TENANT, {
+      const release = await artifactBuilder.signConstruction({
         construction,
         signingPurpose: 'release',
       });
@@ -690,14 +679,14 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
 
       const unsignedBytes = new Uint8Array(construction.uiArtifact.unsignedBytes);
       unsignedBytes[0] = (unsignedBytes[0] ?? 0) ^ 0xff;
-      await expect(artifactBuilder.signConstruction(TENANT, {
+      await expect(artifactBuilder.signConstruction({
         construction: {
           ...construction,
           uiArtifact: { ...construction.uiArtifact, unsignedBytes },
         },
         signingPurpose: 'release',
       })).rejects.toThrow();
-      await expect(artifactBuilder.signConstruction(TENANT, {
+      await expect(artifactBuilder.signConstruction({
         construction: {
           ...construction,
           distributionProvenance: {
@@ -711,7 +700,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       sourceBytes[sourceBytes.byteLength - 1] = (
         sourceBytes[sourceBytes.byteLength - 1] ?? 0
       ) ^ 0xff;
-      await expect(artifactBuilder.signConstruction(TENANT, {
+      await expect(artifactBuilder.signConstruction({
         construction: {
           ...construction,
           sourceArtifact: { ...construction.sourceArtifact, bytes: sourceBytes },
@@ -720,7 +709,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       })).rejects.toThrow();
       const serverBytes = new Uint8Array(construction.serverArtifact!.bytes);
       serverBytes[0] = (serverBytes[0] ?? 0) ^ 0xff;
-      await expect(artifactBuilder.signConstruction(TENANT, {
+      await expect(artifactBuilder.signConstruction({
         construction: {
           ...construction,
           serverArtifact: { ...construction.serverArtifact!, bytes: serverBytes },

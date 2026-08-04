@@ -1,6 +1,6 @@
 # Tool workflow
 
-The fixed tool set is intentionally small. Use only tools that are present. There is no model-callable publish, Preview creation, approval, rejection, or resource-binding tool. The three Preview inspection tools can only observe or test an already-open authorized companion Preview.
+The fixed tool set is intentionally small. Use only tools that are present. There is no model-callable publish, Preview creation, Preview inspection, approval, rejection, or resource-binding tool.
 
 For a new widget:
 
@@ -38,28 +38,13 @@ For a new widget:
    second server entry or retrofitting the generated manifest.
 6. Run `od_widget_validate`; it performs the frozen install when dependency
    inputs require it and completes the guest build and Capsule distribution
-   validation, or reuses the open Preview's unchanged completed construction.
-   Inspect every diagnostic and fix all errors. If a durable Preview is open,
-   committed edits already trigger its latest-wins rebuild. After successful
-   validation, call `vc_widget_preview_wait` once with the exact `revision` and
-   `committedMutationId` returned for the edit. The host waits from Preview
-   events; do not poll, sleep, or invent a refresh loop. If it fails, repair the
-   diagnostics and repeat edit → validate → exact wait. If no authorized
-   companion Preview exists, state that live execution was not tested.
-7. When the exact wait returns `ready`, use `vc_widget_preview_test` for the
-   smallest relevant declared accessible checks (fill, click, visible text,
-   status, or a bounded text change). Supply the exact ready `draftId`, source
-   revision, committed mutation, and displayed Preview revision. The tool does
-   not accept scripts, selectors, screenshots, cross-widget actions, or
-   publication. Use `vc_widget_preview_status` only for a single bounded status
-   inspection when diagnostics or exact identities need clarification.
-8. Stop after a validated draft and the available live checks. In the final
-   response, name the exact source revision readiness, list which behavioral
-   checks ran and their outcome, or explicitly say that no companion Preview
-   was available and live execution was not tested. The AI cannot publish a draft; only a direct
-   user action starting from the draft Preview title bar or draft detail page
-   can Publish or **Republish**. Either surface must resolve the exact ready
-   frame-owned Preview revision; never suggest a source-only publish.
+   validation. Inspect every diagnostic and fix all errors. Do not poll, sleep,
+   or invent a Preview refresh loop: Preview is process-owned and this chat has
+   no Preview inspection capability.
+7. Stop after a validated draft. In the final response, report validation and
+   state clearly that live Preview interaction was not tested. The AI cannot
+   publish a draft; only a direct user action can Publish or **Republish** the
+   current validated filesystem draft.
 
 Use resource discovery and inspection only when the user selected or requested shared data. Protected database or secret changes require host approval. Never bypass an approval, expose a secret, copy a host path, or turn validation into publication.
 

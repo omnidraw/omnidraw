@@ -12,7 +12,6 @@ import {
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBrowserFunctionDescriptor,
-  type TWidgetRevisionDescriptor,
 } from '@omnidraw/widget-contract';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
@@ -20,101 +19,79 @@ import {
   WIDGET_RUNTIME_LOAD_TIMEOUT_ERROR_CODE,
 } from './CONSTANTS';
 import { baseWidgetOs } from './orpc';
-
-const BROWSER_ARTIFACT_CAPABILITY_TTL_MS = 60_000;
+import type { TWidgetRuntimeResolution } from './types';
 
 function widgetItemMatchesTarget(
   item: TCanvasItemSnapshot | undefined,
   target: Readonly<{
     elementId: string;
     widgetInstanceId: string;
-    definitionId: string;
-    revisionId: string;
+    widgetKey: string;
   }>,
 ): boolean {
   if (!item || item.id !== target.elementId) return false;
   const extension = fnReadCanvasWidgetExtension(item.item);
   return extension?.type === 'widget-instance'
     && extension.instanceId === target.widgetInstanceId
-    && extension.definitionId === target.definitionId
-    && extension.revisionId === target.revisionId;
-}
-
-function revisionMatchesTarget(
-  revision: TWidgetRevisionDescriptor | null,
-  target: Readonly<{
-    orgId: string;
-    definitionId: string;
-    revisionId: string;
-  }>,
-): revision is TWidgetRevisionDescriptor {
-  return revision !== null
-    && revision.orgId === target.orgId
-    && revision.id === target.revisionId
-    && revision.definitionId === target.definitionId
-    && revision.uiArtifact.orgId === target.orgId
-    && revision.uiArtifact.kind === 'ui';
-}
-
-function revisionArtifactBindingMatches(
-  left: TWidgetRevisionDescriptor,
-  right: TWidgetRevisionDescriptor,
-): boolean {
-  return left.uiArtifact.id === right.uiArtifact.id
-    && left.uiArtifact.digestSha256 === right.uiArtifact.digestSha256
-    && left.uiArtifact.byteSize === right.uiArtifact.byteSize
-    && left.contractDigestSha256 === right.contractDigestSha256
-    && left.uiRuntime.capsuleArtifactHash === right.uiRuntime.capsuleArtifactHash
-    && JSON.stringify(left.uiRuntime) === JSON.stringify(right.uiRuntime);
+    && extension.widgetKey === target.widgetKey;
 }
 
 function runtimeBrowserFunctionContract(
-  revision: TWidgetRevisionDescriptor,
+  resolution: TWidgetRuntimeResolution,
 ): Readonly<{
   descriptors: readonly TWidgetBrowserFunctionDescriptor[];
   digestSha256: string;
 }> {
   const serverDescriptors = ZWidgetServerFunctionDescriptors.parse(
-    revision.functionDescriptors,
+    resolution.functionDescriptors,
   );
   const validation = fnValidateWidgetServerFunctionDescriptors(
-    revision.manifest,
+    resolution.manifest,
     serverDescriptors,
   );
   if (!validation.valid) {
-    throw new Error('Persisted widget server-function descriptors are invalid.');
+    throw new Error('Published widget server-function descriptors are invalid.');
   }
 
-  const persistedDigestSha256 = createHash('sha256')
-    .update(fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors))
-    .digest('hex');
-  if (persistedDigestSha256 !== revision.functionDescriptorsDigestSha256) {
-    throw new Error('Persisted widget server-function descriptor digest mismatch.');
+  if (resolution.release.server === null) {
+    if (serverDescriptors.length !== 0) {
+      throw new Error('Browser-only widget includes server-function descriptors.');
+    }
+  } else {
+    const persistedDigestSha256 = createHash('sha256')
+      .update(fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors))
+      .digest('hex');
+    if (persistedDigestSha256 !== resolution.release.server.functionsDigestSha256) {
+      throw new Error('Published widget server-function descriptor digest mismatch.');
+    }
   }
 
   const descriptors = fnProjectWidgetBrowserFunctionDescriptors(serverDescriptors);
   const digestSha256 = createHash('sha256')
     .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
     .digest('hex');
+  const capabilityDigest = resolution.release.server?.functionsDigestSha256
+    ?? '0'.repeat(64);
   if (!fnWidgetServerFunctionCapabilityRequestMatches(
-    digestSha256,
+    capabilityDigest,
     descriptors,
-    revision.uiRuntime.capabilityRequests,
+    resolution.release.capsule.runtime.capabilityRequests,
   )) {
-    throw new Error('Widget server-function descriptors do not match the signed runtime request.');
+    throw new Error('Widget functions do not match the signed Capsule capability request.');
   }
-  return Object.freeze({
-    descriptors,
-    digestSha256,
-  });
+  return Object.freeze({ descriptors, digestSha256 });
 }
 
 function runtimeTargetNotFound(): ORPCError<'NOT_FOUND', unknown> {
-  return new ORPCError('NOT_FOUND', { message: 'Widget runtime target not found.' });
+  return new ORPCError('NOT_FOUND', {
+    message: 'Published widget is missing or unhealthy.',
+  });
 }
 
 function runtimeOperationFailed(): ORPCError<'INTERNAL_SERVER_ERROR', unknown> {
-  return new ORPCError('INTERNAL_SERVER_ERROR', { message: 'Widget runtime operation failed.' });
+  return new ORPCError('INTERNAL_SERVER_ERROR', {
+    message: 'Widget runtime operation failed.',
+  });
 }
 
 function errorCode(error: unknown): string | null {
@@ -165,14 +142,18 @@ function throwRuntimeLoadError(error: unknown): never {
   }
   if (
     (error instanceof ORPCError && error.code === 'NOT_FOUND')
-    || code === 'WIDGET_ARTIFACT_NOT_FOUND'
-  ) {
-    throw runtimeTargetNotFound();
-  }
+    || code === 'WIDGET_MISSING'
+    || code === 'WIDGET_CATALOG_CHANGED'
+    || code === 'WIDGET_CATALOG_NOT_READY'
+  ) throw runtimeTargetNotFound();
   throw runtimeOperationFailed();
 }
 
-const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, context, signal }) => {
+const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({
+  input,
+  context,
+  signal,
+}) => {
   try {
     return await context.widgetRuntimeLoadAdmission.run(
       context.tenant,
@@ -198,73 +179,46 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, c
         };
 
         await readWidgetItem();
-        const revision = await runtimeLoadStep(lifetimeSignal, () => (
-          context.widget.getRevision(context.tenant, input.revisionId)
+        const resolution = await runtimeLoadStep(lifetimeSignal, () => (
+          context.widgetCatalog.resolveRuntime(input.widgetKey)
         ));
-        if (!revisionMatchesTarget(revision, {
-          orgId: context.tenant.orgId,
-          definitionId: input.definitionId,
-          revisionId: input.revisionId,
-        })) {
-          throw runtimeTargetNotFound();
-        }
-
-        const readCapability = await runtimeLoadStep(lifetimeSignal, () => (
-          context.widget.issueBrowserUiArtifactReadCapability(context.tenant, {
-            definitionId: input.definitionId,
-            revisionId: input.revisionId,
-            artifactId: revision.uiArtifact.id,
-            artifactKind: 'ui',
-            digestSha256: revision.uiArtifact.digestSha256,
-            expiresAtMs: Date.now() + BROWSER_ARTIFACT_CAPABILITY_TTL_MS,
-          })
-        ));
-        const bytes = await runtimeLoadStep(lifetimeSignal, () => (
-          context.widget.readArtifact(context.tenant, {
-            artifactId: revision.uiArtifact.id,
-            readCapability,
-            purpose: 'browser_ui',
-          })
-        ));
-        if (!bytes || bytes.byteLength !== revision.uiArtifact.byteSize) {
-          throw runtimeTargetNotFound();
-        }
-        const exactByteDigest = createHash('sha256').update(bytes).digest('hex');
-        if (exactByteDigest !== revision.uiArtifact.digestSha256) {
-          throw runtimeTargetNotFound();
-        }
-
-        const finalRevision = await runtimeLoadStep(lifetimeSignal, () => (
-          context.widget.getRevision(context.tenant, input.revisionId)
-        ));
-        if (
-          !revisionMatchesTarget(finalRevision, {
-            orgId: context.tenant.orgId,
-            definitionId: input.definitionId,
-            revisionId: input.revisionId,
-          })
-          || !revisionArtifactBindingMatches(revision, finalRevision)
-        ) throw runtimeTargetNotFound();
+        if (resolution.widgetKey !== input.widgetKey) throw runtimeTargetNotFound();
         await readWidgetItem();
+        if (!context.widgetCatalog.isRuntimeResolutionCurrent(resolution)) {
+          throw Object.assign(new Error('Widget catalog changed during runtime load.'), {
+            code: 'WIDGET_CATALOG_CHANGED',
+          });
+        }
         assertRuntimeLoadActive(lifetimeSignal);
 
-        const browserFunctionContract = runtimeBrowserFunctionContract(finalRevision);
-        const { server: _server, ...browserManifest } = finalRevision.manifest;
+        const capsuleFile = resolution.release.files.find(
+          (file) => file.path === resolution.release.capsule.path,
+        );
+        if (capsuleFile === undefined || capsuleFile.byteSize !== resolution.capsuleBytes.byteLength) {
+          throw runtimeTargetNotFound();
+        }
+        const exactByteDigest = createHash('sha256')
+          .update(resolution.capsuleBytes)
+          .digest('hex');
+        if (exactByteDigest !== capsuleFile.sha256) throw runtimeTargetNotFound();
+
+        const browserFunctionContract = runtimeBrowserFunctionContract(resolution);
+        const { server: _server, ...browserManifest } = resolution.manifest;
         return {
           identity: {
             canvasId: input.canvasId,
             elementId: input.elementId,
             widgetInstanceId: input.widgetInstanceId,
-            definitionId: input.definitionId,
-            revisionId: input.revisionId,
+            widgetKey: input.widgetKey,
+            catalogGeneration: resolution.catalogGeneration,
           },
           manifest: browserManifest,
           artifact: {
-            digestSha256: finalRevision.uiArtifact.digestSha256,
-            byteSize: finalRevision.uiArtifact.byteSize,
-            bytesBase64: Buffer.from(bytes).toString('base64'),
+            digestSha256: capsuleFile.sha256,
+            byteSize: capsuleFile.byteSize,
+            bytesBase64: Buffer.from(resolution.capsuleBytes).toString('base64'),
           },
-          runtimeDescriptor: finalRevision.uiRuntime,
+          runtimeDescriptor: resolution.release.capsule.runtime,
           functionDescriptors: [...browserFunctionContract.descriptors],
           browserFunctionDescriptorsDigestSha256: browserFunctionContract.digestSha256,
         };

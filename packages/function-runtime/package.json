@@ -1,7 +1,7 @@
 {
   "name": "@omnidraw/function-runtime",
-  "version": "0.5.1",
-  "description": "Portable function scheduling, execution, and resource-call contracts for Omnidraw.",
+  "version": "0.8.0",
+  "description": "Portable direct function execution and resource-call contracts for Omnidraw.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -30,7 +30,6 @@
   },
   "dependencies": {
     "@omnidraw/resource-runtime": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
     "@omnidraw/widget-contract": "workspace:*",
     "ajv": "^8.20.0"
   }

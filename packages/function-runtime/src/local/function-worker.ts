@@ -14,7 +14,7 @@ import {
 } from 'node:vm';
 import type { TResourceCall, TResourceCallResult } from '@omnidraw/resource-runtime';
 import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
-import type { TFunctionFailure, TUsageMetrics } from '../types';
+import type { TFunctionFailure, TFunctionUsageMetrics } from '../types';
 import { fnFunctionArtifactAdmission } from './fn.artifact-admission';
 import type {
   TFunctionCanonicalRegistration,
@@ -41,15 +41,11 @@ type TLoadedGuest = Readonly<{
 
 type TSend = (message: TFunctionWorkerToHostMessage) => void;
 
-const ZERO_METRICS: TUsageMetrics = Object.freeze({
+const ZERO_METRICS: TFunctionUsageMetrics = Object.freeze({
   activeWallMs: 0,
   cpuMs: 0,
   allocatedMemoryByteMs: 0,
   peakRssBytes: 0,
-  diskReadBytes: 0,
-  diskWriteBytes: 0,
-  networkRxBytes: 0,
-  networkTxBytes: 0,
 });
 
 function canonical(value: unknown): string {
@@ -62,11 +58,11 @@ function canonical(value: unknown): string {
 }
 
 function userFailure(code: string, message: string): TFunctionFailure {
-  return { owner: 'user', code, message, retryable: false };
+  return { owner: 'user', code, message };
 }
 
 function platformFailure(code: string, message: string): TFunctionFailure {
-  return { owner: 'platform', code, message, retryable: true };
+  return { owner: 'platform', code, message };
 }
 
 function guestFunction(value: unknown): value is TGuestFunction {
@@ -235,11 +231,9 @@ function runtimeContext(
       log(level)(fields, message)
     ),
   });
-  const identity = JSON.stringify(value.identity);
   const invocationId = JSON.stringify(value.invocationId);
-  const widgetRevisionId = JSON.stringify(value.widgetRevisionId);
+  const widgetKey = JSON.stringify(value.widgetKey);
   const subject = JSON.stringify(value.subject);
-  const attemptId = JSON.stringify(value.attemptId);
   return withGuestBinding(guestContext, '__omnidrawHostBridge', bridge, `(() => {
     const bridge = __omnidrawHostBridge;
     let aborted = false;
@@ -270,12 +264,10 @@ function runtimeContext(
       listeners.clear();
     };
     const runtime = Object.freeze({
-      identity: Object.freeze(${identity}),
       invocationId: ${invocationId},
-      widgetRevisionId: ${widgetRevisionId},
+      widgetKey: ${widgetKey},
+      catalogGeneration: ${value.catalogGeneration},
       subject: Object.freeze(${subject}),
-      attemptId: ${attemptId},
-      leaseEpoch: ${value.leaseEpoch},
       deadlineAtMs: ${value.deadlineAtMs},
       signal,
       resources: Object.freeze({
@@ -418,7 +410,7 @@ export function runFunctionWorker(): void {
         type: 'failure',
         requestId: message.requestId,
         failure: cancelled
-          ? { owner: 'cancelled', code: 'FUNCTION_CANCELLED', message: 'Function invocation was cancelled.', retryable: false }
+          ? { owner: 'cancelled', code: 'FUNCTION_CANCELLED', message: 'Function invocation was cancelled.' }
           : userFailure('FUNCTION_HANDLER_FAILED', error instanceof Error ? error.message : 'Function handler failed.'),
         metrics: {
           ...ZERO_METRICS,

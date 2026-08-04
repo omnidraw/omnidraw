@@ -6,7 +6,6 @@ import { fileContract } from './file/contract';
 import { functionContract } from './function/contract';
 import { notificationContract } from './notification/contract';
 import { resourceContract } from './resource/contract';
-import { toolContract } from './tool/contract';
 import { widgetContract } from './widget/contract';
 
 const contract = oc.router({
@@ -17,7 +16,6 @@ const contract = oc.router({
   function: functionContract,
   notification: notificationContract,
   resource: resourceContract,
-  tool: toolContract,
   widget: widgetContract,
 });
 
@@ -35,6 +33,5 @@ export {
   functionContract,
   notificationContract,
   resourceContract,
-  toolContract,
   widgetContract,
 };

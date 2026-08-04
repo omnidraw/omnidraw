@@ -1,17 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import type { TTenantContext } from '@omnidraw/tenant-core';
-import { router } from '../router';
-import {
-  functionContract,
-  ZFunctionInvocationIdentity,
-  ZFunctionInvocationView,
-  ZInvokeFunctionInput,
-} from './contract';
-import type {
-  IFunctionInvocationApiCapability,
-  TFunctionApiContext,
-  TFunctionInvocationView,
-} from './types';
+import { apiInvokeFunction } from './api.invoke-function';
+import { functionContract, ZDirectFunctionResult, ZInvokeFunctionInput } from './contract';
+import type { IFunctionInvocationApiCapability, TFunctionApiContext } from './types';
 
 const tenant: TTenantContext = Object.freeze({
   orgId: 'org-a',
@@ -23,146 +14,83 @@ const tenant: TTenantContext = Object.freeze({
   requestId: 'request-a',
 });
 
-const queued: TFunctionInvocationView = Object.freeze({
-  id: 'invocation-a',
-  functionName: 'count',
-  widgetRevisionId: 'revision-a',
-  widgetInstanceId: 'instance-a',
-  status: 'queued',
-  output: null,
-  failure: null,
-  createdAtMs: 1,
-  startedAtMs: null,
-  finishedAtMs: null,
+const success = Object.freeze({
+  status: 'succeeded' as const,
+  output: { count: 1 },
+  diagnostics: { code: null, message: null, logByteSize: 0, truncated: false },
 });
 
-describe('function API contract', () => {
-  test('accepts only bounded invoke/get/cancel authority-free inputs', () => {
-    const input = {
-      widgetInstanceId: 'instance-a',
-      widgetRevisionId: 'revision-a',
-      functionName: 'count',
-      input: { text: 'hello' },
-      idempotencyKey: 'key-a',
-    };
-    expect(ZInvokeFunctionInput.parse(input)).toEqual(input);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      widgetRevisionId: '',
-    }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      functionId: 'caller-selected-function',
-    }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      artifactDigestSha256: 'a'.repeat(64),
-    }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      canvasId: 'caller-selected-canvas',
-    }).success).toBe(false);
-    expect(ZFunctionInvocationIdentity.safeParse({
-      invocationId: 'invocation-a',
-      canvasId: 'caller-selected-canvas',
-    }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({ ...input, waitUntilMs: 100 }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({ ...input, schedule: 'daily' }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({ ...input, durableContinuation: true }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      input: { text: 'x'.repeat(1_048_577) },
-    }).success).toBe(false);
-    expect(ZInvokeFunctionInput.safeParse({
-      ...input,
-      input: { text: '😀'.repeat(300_000) },
-    }).success).toBe(false);
+const request = Object.freeze({
+  canvasId: 'canvas-a',
+  elementId: 'element-a',
+  widgetInstanceId: 'instance-a',
+  widgetKey: 'counter',
+  catalogGeneration: 2,
+  functionName: 'count',
+  input: { amount: 1 },
+});
+
+describe('direct function API contract', () => {
+  test('exposes only one bounded synchronous invoke operation', () => {
+    expect(ZInvokeFunctionInput.parse(request)).toEqual(request);
+    for (const legacy of [
+      { invocationId: 'invocation-a' },
+      { widgetRevisionId: 'revision-a' },
+      { idempotencyKey: 'key-a' },
+      { retry: true },
+      { waitUntilMs: 100 },
+    ]) {
+      expect(ZInvokeFunctionInput.safeParse({ ...request, ...legacy }).success).toBe(false);
+    }
+    expect(ZInvokeFunctionInput.safeParse({ ...request, input: { text: 'x'.repeat(1_048_577) } }).success)
+      .toBe(false);
+    expect(ZDirectFunctionResult.parse(success)).toEqual(success);
     expect(functionContract.invoke['~orpc'].inputSchema).toBeDefined();
-    expect(ZFunctionInvocationView.parse(queued)).toEqual(queued);
+    expect(Object.keys(functionContract)).toEqual(['invoke']);
   });
 
-  test('forwards the server-derived tenant and stable idempotency key through a narrow capability', async () => {
-    const calls: Array<Readonly<{ tenant: TTenantContext; input: unknown }>> = [];
+  test('forwards server tenant and live cancellation through the narrow capability', async () => {
+    const calls: Array<Readonly<{ tenant: TTenantContext; input: unknown; signal: AbortSignal | undefined }>> = [];
     const capability: IFunctionInvocationApiCapability = {
-      invokeFunction: async (receivedTenant, input) => {
-        calls.push({ tenant: receivedTenant, input });
-        return queued;
+      invokeFunction: async (receivedTenant, input, signal) => {
+        calls.push({ tenant: receivedTenant, input, signal });
+        return success;
       },
-      getFunctionInvocation: async () => queued,
-      cancelFunctionInvocation: async () => ({ ...queued, status: 'cancelled', finishedAtMs: 2 }),
     };
     const context: TFunctionApiContext = { tenant, functionInvocation: capability };
-    const invoke = router.api.function.invoke.callable({ context });
-    const get = router.api.function.get.callable({ context });
-    const cancel = router.api.function.cancel.callable({ context });
-    const request = {
-      widgetInstanceId: 'instance-a',
-      widgetRevisionId: 'revision-a',
-      functionName: 'count',
-      input: { text: 'hello' },
-      idempotencyKey: 'stable-key-a',
-    };
-
-    await expect(invoke(request)).resolves.toEqual(queued);
-    await expect(get({ invocationId: 'invocation-a' })).resolves.toEqual(queued);
-    await expect(cancel({ invocationId: 'invocation-a' })).resolves.toMatchObject({
-      status: 'cancelled',
-    });
-    expect(calls).toEqual([{ tenant, input: request }]);
+    const invoke = apiInvokeFunction.callable({ context });
+    await expect(invoke(request)).resolves.toEqual(success);
+    expect(calls).toHaveLength(1);
     expect(calls[0]?.tenant).toBe(tenant);
+    expect(calls[0]?.input).toEqual(request);
   });
 
-  test('maps tenant-scoped missing or unauthorized get/cancel results to NOT_FOUND', async () => {
-    const context: TFunctionApiContext = {
-      tenant,
-      functionInvocation: {
-        invokeFunction: async () => queued,
-        getFunctionInvocation: async () => null,
-        cancelFunctionInvocation: async () => null,
-      },
-    };
-    const get = router.api.function.get.callable({ context });
-    const cancel = router.api.function.cancel.callable({ context });
-    await expect(get({ invocationId: 'missing' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await expect(cancel({ invocationId: 'missing' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-
-  test('maps domain failures to stable sanitized API errors', async () => {
-    const sentinel = '/organizations/org-a/resources/secret/data.db';
+  test('maps direct-call failures to stable path-free errors', async () => {
     const cases = [
       ['FUNCTION_INPUT_SCHEMA_INVALID', 'BAD_REQUEST'],
       ['WIDGET_INSTANCE_NOT_FOUND', 'NOT_FOUND'],
-      ['WIDGET_INSTANCE_FOREIGN', 'NOT_FOUND'],
       ['FUNCTION_NOT_FOUND', 'NOT_FOUND'],
-      ['IDEMPOTENCY_CONFLICT', 'CONFLICT'],
+      ['RESOURCE_EXHAUSTED', 'TOO_MANY_REQUESTS'],
       ['FUNCTION_RUNTIME_UNAVAILABLE', 'SERVICE_UNAVAILABLE'],
-      ['FUNCTION_CANCELLATION_CONFLICT', 'CONFLICT'],
       ['UNEXPECTED_INTERNAL_FAILURE', 'INTERNAL_SERVER_ERROR'],
     ] as const;
     for (const [domainCode, apiCode] of cases) {
+      const secret = '/private/widgets/counter/server-dist/main.artifact';
       const context: TFunctionApiContext = {
         tenant,
         functionInvocation: {
           invokeFunction: async () => {
-            throw Object.assign(new Error(sentinel), { code: domainCode, path: sentinel });
+            throw Object.assign(new Error(secret), { code: domainCode, path: secret });
           },
-          getFunctionInvocation: async () => null,
-          cancelFunctionInvocation: async () => null,
         },
       };
-      const invoke = router.api.function.invoke.callable({ context });
+      const invoke = apiInvokeFunction.callable({ context });
       try {
-        await invoke({
-          widgetInstanceId: 'instance-a',
-          widgetRevisionId: 'revision-a',
-          functionName: 'count',
-          input: {},
-          idempotencyKey: 'key-a',
-        });
-        throw new Error('Expected invocation rejection.');
+        await invoke(request);
+        throw new Error('Expected direct function rejection.');
       } catch (error) {
         expect(error).toMatchObject({ code: apiCode });
-        expect(JSON.stringify(error)).not.toContain(sentinel);
+        expect(JSON.stringify(error)).not.toContain(secret);
       }
     }
   });

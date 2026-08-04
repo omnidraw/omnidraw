@@ -5,7 +5,6 @@ import type { TFileApiContext } from './file/types';
 import type { TFunctionApiContext } from './function/types';
 import type { TNotificationApiContext } from './notification/types';
 import type { TResourceApiContext } from './resource/types';
-import type { TToolApiContext } from './tool/types';
 import type { TWidgetApiContext } from './widget/types';
 
 type TApiContext = TAgentApiContext
@@ -15,7 +14,6 @@ type TApiContext = TAgentApiContext
   & TFunctionApiContext
   & TNotificationApiContext
   & TResourceApiContext
-  & TToolApiContext
   & TWidgetApiContext;
 
 export type {
@@ -27,6 +25,5 @@ export type {
   TFunctionApiContext,
   TNotificationApiContext,
   TResourceApiContext,
-  TToolApiContext,
   TWidgetApiContext,
 };

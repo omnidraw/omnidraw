@@ -1,63 +1,60 @@
-import type { TWidgetCatalog, TWidgetVariantSummary } from "@omnidraw/orpc-client"
-import { describe, expect, it } from "vitest"
-import { fnIsWidgetCatalogEventKind, fnProjectMentionCatalog } from "../../../src/chat/mention-catalog/fn.mention-catalog"
+import { describe, expect, it } from 'vitest';
+import {
+  fnIsWidgetCatalogEventKind,
+  fnProjectMentionCatalog,
+} from '../../../src/chat/mention-catalog/fn.mention-catalog';
+import {
+  publicCatalog,
+  publicEntry,
+  publicForm,
+} from '../../widget-public-catalog.fixture';
 
-function variant(source: "published" | "draft", displayName = "Camera"): TWidgetVariantSummary {
-  return {
-    source,
-    displayName,
-    kind: "notes-widget",
-    slug: "camera",
-    description: null,
-    revision: source,
-    contentFingerprint: source,
-    updatedAt: null,
-    tool: { label: displayName, icon: { lucidIcon: "Camera" }, group: null, priority: null, behaviorType: "action" },
-    validation: source === "draft" ? { status: "unknown", errors: [], warnings: [] } : null,
-  }
-}
-
-describe("mention catalog projection", () => {
-  it("uses typed identities and configured icons for resources and widgets", () => {
-    const catalog: TWidgetCatalog = {
-      generation: "one",
-      groups: [],
-      widgets: [{
-        name: "CameraInternal",
-        relation: "different",
-        published: variant("published"),
-        draft: variant("draft"),
-        problem: null,
-      }],
-    }
+describe('mention catalog projection', () => {
+  it('uses widget keys and configured browser-safe icons', () => {
     const mentions = fnProjectMentionCatalog([{
-      id: "db-1",
-      kind: "db",
-      name: "Camera",
-      status: "ready",
-    }], catalog)
+      id: 'db-1',
+      kind: 'db',
+      name: 'Camera',
+      status: 'ready',
+    }], publicCatalog([publicEntry('camera-internal', {
+      draft: publicForm('draft', { name: 'Camera' }),
+      published: publicForm('published', { name: 'Camera' }),
+    })]));
 
     expect(mentions.map((mention) => mention.id)).toEqual([
-      "resource:db-1",
-      "widget:draft:CameraInternal",
-      "widget:published:CameraInternal",
-    ])
-    expect(mentions[0]).toMatchObject({ target: { type: "resource", resourceId: "db-1" }, icon: { type: "resource", kind: "db" } })
-    expect(mentions[1]).toMatchObject({ kind: "Draft widget · CameraInternal", target: { type: "widget", name: "CameraInternal", source: "draft" } })
-    expect(mentions[1]?.icon).toEqual({ type: "widget", icon: { lucidIcon: "Camera" } })
-  })
+      'resource:db-1',
+      'widget:draft:camera-internal',
+      'widget:published:camera-internal',
+    ]);
+    expect(mentions[0]).toMatchObject({
+      target: { type: 'resource', resourceId: 'db-1' },
+      icon: { type: 'resource', kind: 'db' },
+    });
+    expect(mentions[1]).toMatchObject({
+      kind: 'Draft widget · camera-internal',
+      target: { type: 'widget', name: 'camera-internal', source: 'draft' },
+    });
+    expect(mentions[1]?.icon).toEqual({
+      type: 'widget',
+      icon: { lucidIcon: 'Camera' },
+    });
+  });
 
-  it("collapses identical draft/published variants to the published target", () => {
-    const mentions = fnProjectMentionCatalog([], {
-      generation: "same",
-      groups: [],
-      widgets: [{ name: "Camera", relation: "same", published: variant("published"), draft: variant("draft"), problem: null }],
-    })
-    expect(mentions.map((mention) => mention.target)).toEqual([{ type: "widget", name: "Camera", source: "published" }])
-  })
+  it('collapses matched draft and published forms to the published target', () => {
+    const mentions = fnProjectMentionCatalog([], publicCatalog([
+      publicEntry('camera', { status: 'matched' }),
+    ]));
+    expect(mentions.map((mention) => mention.target)).toEqual([{
+      type: 'widget',
+      name: 'camera',
+      source: 'published',
+    }]);
+  });
 
-  it("recognizes every widget mutation event that can change suggestions", () => {
-    expect(["widget-draft", "widget-published", "widgetupdate", "widget-catalog"].every(fnIsWidgetCatalogEventKind)).toBe(true)
-    expect(fnIsWidgetCatalogEventKind("approval")).toBe(false)
-  })
-})
+  it('refreshes only for the filesystem catalog event stream', () => {
+    expect(fnIsWidgetCatalogEventKind('widget-catalog')).toBe(true);
+    expect(fnIsWidgetCatalogEventKind('widget-draft')).toBe(false);
+    expect(fnIsWidgetCatalogEventKind('widget-published')).toBe(false);
+    expect(fnIsWidgetCatalogEventKind('approval')).toBe(false);
+  });
+});

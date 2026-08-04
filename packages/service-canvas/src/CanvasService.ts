@@ -17,13 +17,9 @@ import type {
   TCanvasPrecondition,
   TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
-import { fnScopedKey } from '@omnidraw/tenant-core';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   ICanvasService,
   ICanvasStore,
-  TCanvasAccessArgs,
-  TCanvasAuthorizer,
   TCanvasServiceDependencies,
   TCanvasServiceMetrics,
   TCanvasServiceOptions,
@@ -44,7 +40,6 @@ import type { TCommandLimits } from './fn.command';
 type TSceneNode = TCanvasItemSnapshot['item'];
 
 export type TCanvasServiceErrorCode =
-  | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'INVALID_COMMAND'
   | 'LIMIT_EXCEEDED'
@@ -79,7 +74,6 @@ type TSubscriber = {
 
 type TCanvasState = {
   readonly key: string;
-  readonly orgId: string;
   readonly canvasId: string;
   readonly items: Map<TCanvasItemId, TCanvasItemSnapshot | null>;
   readonly events: TCanvasItemsChangedEvent[];
@@ -92,7 +86,6 @@ type TCanvasState = {
 };
 
 type TAttemptContext = {
-  readonly tenant: TTenantContext;
   readonly command: TCanvasCommand;
   readonly state: TCanvasState;
   readonly canvasRevision: number;
@@ -173,15 +166,11 @@ export class CanvasService implements ICanvasService {
   readonly name = 'canvas';
 
   readonly #store: ICanvasStore;
-  readonly #clock: TCanvasServiceDependencies['clock'];
-  readonly #authorizeAdditional: TCanvasAuthorizer | null;
   readonly #options: TResolvedOptions;
   readonly #states = new Map<string, TCanvasState>();
 
   constructor(dependencies: TCanvasServiceDependencies) {
     this.#store = dependencies.store;
-    this.#clock = dependencies.clock;
-    this.#authorizeAdditional = dependencies.authorize ?? null;
     this.#options = resolveOptions(dependencies.options);
   }
 
@@ -203,16 +192,14 @@ export class CanvasService implements ICanvasService {
   }
 
   async getSnapshot(
-    tenant: TTenantContext,
     args: Readonly<{ canvasId: string }>,
   ): Promise<TCanvasSnapshot> {
-    await this.#authorize(tenant, { canvasId: args.canvasId, access: 'read' });
-    const state = this.#state(tenant, args.canvasId);
+    const state = this.#state(args.canvasId);
     return this.#enqueue(state, async () => {
       this.#assertUsable(state);
       let snapshot: TCanvasSnapshot | null;
       try {
-        snapshot = await this.#store.getSnapshot(tenant, args);
+        snapshot = await this.#store.getSnapshot(args);
       } catch (error) {
         if (isStoreNotFound(error)) throw this.#notFound(args.canvasId, error);
         throw error;
@@ -229,11 +216,7 @@ export class CanvasService implements ICanvasService {
     });
   }
 
-  async queryItems(
-    tenant: TTenantContext,
-    query: TCanvasItemQuery,
-  ): Promise<TCanvasItemPage> {
-    await this.#authorize(tenant, { canvasId: query.canvasId, access: 'read' });
+  async queryItems(query: TCanvasItemQuery): Promise<TCanvasItemPage> {
     if (
       query.limit !== undefined
       && (
@@ -248,9 +231,9 @@ export class CanvasService implements ICanvasService {
       );
     }
     for (let attempt = 0; attempt < this.#options.maxCommitAttempts; attempt += 1) {
-      const revisionBefore = await this.#revision(tenant, query.canvasId);
-      const page = await this.#store.queryItems(tenant, query);
-      const revisionAfter = await this.#revision(tenant, query.canvasId);
+      const revisionBefore = await this.#revision(query.canvasId);
+      const page = await this.#store.queryItems(query);
+      const revisionAfter = await this.#revision(query.canvasId);
       if (revisionBefore === revisionAfter) return page;
     }
     throw new CanvasServiceError(
@@ -260,10 +243,7 @@ export class CanvasService implements ICanvasService {
     );
   }
 
-  async execute(
-    tenant: TTenantContext,
-    command: TCanvasCommand,
-  ): Promise<TCanvasItemsChangedEvent> {
+  async execute(command: TCanvasCommand): Promise<TCanvasItemsChangedEvent> {
     const commandLimits: TCommandLimits = this.#options;
     const issues = fnValidateCommand(command, commandLimits);
     if (issues.length > 0) {
@@ -274,22 +254,15 @@ export class CanvasService implements ICanvasService {
         { issues },
       );
     }
-    await this.#authorize(tenant, {
-      canvasId: command.canvasId,
-      access: 'write',
-    });
-    const state = this.#state(tenant, command.canvasId);
+    const state = this.#state(command.canvasId);
     return this.#enqueue(
       state,
-      () => this.#executeSerialized(tenant, command, state),
+      () => this.#executeSerialized(command, state),
       true,
     );
   }
 
-  subscribe(
-    tenant: TTenantContext,
-    args: TCanvasSubscribeArgs,
-  ): AsyncIterable<TCanvasEvent> {
+  subscribe(args: TCanvasSubscribeArgs): AsyncIterable<TCanvasEvent> {
     if (!Number.isSafeInteger(args.afterRevision) || args.afterRevision < 0) {
       throw new CanvasServiceError(
         'INVALID_COMMAND',
@@ -297,21 +270,12 @@ export class CanvasService implements ICanvasService {
       );
     }
     return {
-      [Symbol.asyncIterator]: () => this.#createSubscriberIterator(tenant, args),
+      [Symbol.asyncIterator]: () => this.#createSubscriberIterator(args),
     };
   }
 
-  async release(
-    tenant: TTenantContext,
-    args: Readonly<{ canvasId: string }>,
-  ): Promise<void> {
-    // Release remains available after membership or the canvas row is removed.
-    // The trusted tenant envelope still fences cleanup to its organization.
-    this.#assertBuiltInAuthorization(tenant, {
-      canvasId: args.canvasId,
-      access: 'read',
-    });
-    const key = this.#stateKey(tenant, args.canvasId);
+  async release(args: Readonly<{ canvasId: string }>): Promise<void> {
+    const key = this.#stateKey(args.canvasId);
     const state = this.#states.get(key);
     if (state === undefined) return;
     state.releasing = true;
@@ -327,14 +291,13 @@ export class CanvasService implements ICanvasService {
     });
   }
 
-  getMetrics(tenant: TTenantContext): TCanvasServiceMetrics {
+  getMetrics(): TCanvasServiceMetrics {
     let activeCanvases = 0;
     let cachedItems = 0;
     let replayEvents = 0;
     let subscribers = 0;
     let pendingCommands = 0;
     for (const state of this.#states.values()) {
-      if (state.orgId !== tenant.orgId) continue;
       activeCanvases += 1;
       cachedItems += state.items.size;
       replayEvents += state.events.length;
@@ -351,21 +314,13 @@ export class CanvasService implements ICanvasService {
   }
 
   async #executeSerialized(
-    tenant: TTenantContext,
     command: TCanvasCommand,
     state: TCanvasState,
   ): Promise<TCanvasItemsChangedEvent> {
     this.#assertUsable(state);
-    const nowMs = this.#clock.nowMs();
-    if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
-      throw new CanvasServiceError(
-        'INVALID_COMMAND',
-        'The canvas clock returned an invalid timestamp.',
-      );
-    }
 
     for (let attempt = 0; attempt < this.#options.maxCommitAttempts; attempt += 1) {
-      const revisionBefore = await this.#revision(tenant, command.canvasId);
+      const revisionBefore = await this.#revision(command.canvasId);
       this.#synchronizeRevision(state, revisionBefore);
       if (command.baseRevision > revisionBefore) {
         throw new CanvasServiceError(
@@ -380,9 +335,8 @@ export class CanvasService implements ICanvasService {
 
       const authorityIds = new Set(fnCollectCommandItemIds(command));
       await this.#assertAuthorityBudget(authorityIds);
-      await this.#loadIds(tenant, command.canvasId, state, authorityIds);
+      await this.#loadIds(command.canvasId, state, authorityIds);
       const revisionAfterInitialRead = await this.#revision(
-        tenant,
         command.canvasId,
       );
       if (revisionAfterInitialRead !== revisionBefore) {
@@ -394,7 +348,6 @@ export class CanvasService implements ICanvasService {
       for (const id of authorityIds) original.set(id, state.items.get(id) ?? null);
       this.#assertPreconditions(command.preconditions, original);
       const attemptContext = this.#applyOperations({
-        tenant,
         command,
         state,
         canvasRevision: revisionBefore,
@@ -406,7 +359,6 @@ export class CanvasService implements ICanvasService {
       await this.#validateAttempt(attemptContext);
 
       const revisionAfterValidation = await this.#revision(
-        tenant,
         command.canvasId,
       );
       if (revisionAfterValidation !== revisionBefore) {
@@ -425,16 +377,15 @@ export class CanvasService implements ICanvasService {
 
       let result;
       try {
-        result = await this.#store.applyMutations(tenant, {
+        result = await this.#store.applyMutations({
           canvasId: command.canvasId,
           expectedCanvasRevision: revisionBefore,
           mutations,
-          nowMs,
         });
       } catch (error) {
         let currentRevision: number | null = null;
         try {
-          currentRevision = await this.#store.getRevision(tenant, {
+          currentRevision = await this.#store.getRevision({
             canvasId: command.canvasId,
           });
         } catch {
@@ -650,7 +601,6 @@ export class CanvasService implements ICanvasService {
 
     const claimLimit = this.#options.maxTouchedItems + 1;
     const storedClaims = await this.#store.queryImageResourceClaims(
-      context.tenant,
       {
         canvasId: context.command.canvasId,
         resourceIds: [...resourceIds],
@@ -733,7 +683,6 @@ export class CanvasService implements ICanvasService {
       for (const id of required) context.authorityIds.add(id);
       await this.#assertAuthorityBudget(context.authorityIds);
       await this.#loadIds(
-        context.tenant,
         context.command.canvasId,
         context.state,
         required,
@@ -800,6 +749,22 @@ export class CanvasService implements ICanvasService {
       const item = context.finalItems.get(id);
       if (item === undefined || item === null) continue;
       const extension = fnReadCanvasWidgetExtension(item);
+      const original = context.original.get(id);
+      const originalExtension = original === undefined || original === null
+        ? null
+        : fnReadCanvasWidgetExtension(original.item);
+      if (
+        originalExtension?.type === 'widget-instance'
+        && (
+          extension?.type !== 'widget-instance'
+          || extension.instanceId !== originalExtension.instanceId
+          || extension.widgetKey !== originalExtension.widgetKey
+        )
+      ) {
+        this.#conflict(
+          `Widget identity on '${id}' is stable for the lifetime of the canvas item; delete and insert a new item to replace it.`,
+        );
+      }
       if (extension?.type !== 'widget-instance') continue;
       const existing = identities.get(extension.instanceId);
       if (existing !== undefined && existing !== id) {
@@ -810,9 +775,8 @@ export class CanvasService implements ICanvasService {
       identities.set(extension.instanceId, id);
     }
 
-    for (const [instanceId, ownerId] of identities) {
+    for (const [instanceId, placedItemId] of identities) {
       const matches = await this.#queryAll(
-        context.tenant,
         {
           canvasId: context.command.canvasId,
           filter: { type: 'widget-instance', instanceId },
@@ -830,7 +794,7 @@ export class CanvasService implements ICanvasService {
         if (
           extension?.type === 'widget-instance'
           && extension.instanceId === instanceId
-          && match.id !== ownerId
+          && match.id !== placedItemId
         ) {
           this.#conflict(
             `Widget instance '${instanceId}' already belongs to '${match.id}'.`,
@@ -933,7 +897,6 @@ export class CanvasService implements ICanvasService {
     parentId: TCanvasItemId,
   ): Promise<readonly TCanvasItemSnapshot[]> {
     const children = await this.#queryAll(
-      context.tenant,
       {
         canvasId: context.command.canvasId,
         filter: { type: 'parent', parentId },
@@ -960,7 +923,6 @@ export class CanvasService implements ICanvasService {
   }
 
   async #loadIds(
-    tenant: TTenantContext,
     canvasId: string,
     state: TCanvasState,
     ids: ReadonlySet<TCanvasItemId>,
@@ -973,7 +935,6 @@ export class CanvasService implements ICanvasService {
     ) {
       const batch = missing.slice(offset, offset + this.#options.queryPageSize);
       const snapshots = await this.#queryAll(
-        tenant,
         {
           canvasId,
           filter: { type: 'ids', ids: batch },
@@ -1002,7 +963,6 @@ export class CanvasService implements ICanvasService {
   }
 
   async #queryAll(
-    tenant: TTenantContext,
     query: Omit<TCanvasItemQuery, 'limit' | 'cursor'>,
     maxResults: number,
   ): Promise<readonly TCanvasItemSnapshot[]> {
@@ -1010,7 +970,7 @@ export class CanvasService implements ICanvasService {
     let cursor: TCanvasItemQueryCursor | undefined;
     const seenCursors = new Set<string>();
     while (true) {
-      const page = await this.#store.queryItems(tenant, {
+      const page = await this.#store.queryItems({
         ...query,
         limit: Math.min(this.#options.queryPageSize, maxResults),
         ...(cursor === undefined ? {} : { cursor }),
@@ -1035,10 +995,10 @@ export class CanvasService implements ICanvasService {
     }
   }
 
-  async #revision(tenant: TTenantContext, canvasId: string): Promise<number> {
+  async #revision(canvasId: string): Promise<number> {
     let revision: number | null;
     try {
-      revision = await this.#store.getRevision(tenant, { canvasId });
+      revision = await this.#store.getRevision({ canvasId });
     } catch (error) {
       if (isStoreNotFound(error)) throw this.#notFound(canvasId, error);
       throw error;
@@ -1055,7 +1015,6 @@ export class CanvasService implements ICanvasService {
   }
 
   #createSubscriberIterator(
-    tenant: TTenantContext,
     args: TCanvasSubscribeArgs,
   ): AsyncIterator<TCanvasEvent> {
     let state: TCanvasState | null = null;
@@ -1065,14 +1024,10 @@ export class CanvasService implements ICanvasService {
     const initialize = (): Promise<void> => {
       if (initialization !== null) return initialization;
       initialization = (async () => {
-        await this.#authorize(tenant, {
-          canvasId: args.canvasId,
-          access: 'read',
-        });
-        state = this.#state(tenant, args.canvasId);
+        state = this.#state(args.canvasId);
         await this.#enqueue(state, async () => {
           this.#assertUsable(state!);
-          const revision = await this.#revision(tenant, args.canvasId);
+          const revision = await this.#revision(args.canvasId);
           this.#synchronizeRevision(state!, revision);
           const replay = this.#replayAfter(state!, args.afterRevision);
           subscriber = {
@@ -1228,52 +1183,12 @@ export class CanvasService implements ICanvasService {
     }
   }
 
-  async #authorize(
-    tenant: TTenantContext,
-    args: TCanvasAccessArgs,
-  ): Promise<void> {
-    this.#assertBuiltInAuthorization(tenant, args);
-    await this.#authorizeAdditional?.(tenant, args);
-  }
-
-  #assertBuiltInAuthorization(
-    tenant: TTenantContext,
-    args: TCanvasAccessArgs,
-  ): void {
-    if (tenant.canvasId !== undefined && tenant.canvasId !== args.canvasId) {
-      throw new CanvasServiceError(
-        'FORBIDDEN',
-        'The tenant context is scoped to a different canvas.',
-      );
-    }
-    const hasCapability = tenant.capabilities.includes('*')
-      || tenant.capabilities.includes(
-        args.access === 'write' ? 'canvas:write' : 'canvas:read',
-      )
-      || (
-        args.access === 'read'
-        && tenant.capabilities.includes('canvas:write')
-      );
-    const hasRole = args.access === 'read'
-      ? tenant.roles.length > 0
-      : tenant.roles.some((role) => (
-          role === 'owner' || role === 'editor' || role === 'service'
-        ));
-    if (!hasCapability || !hasRole) {
-      throw new CanvasServiceError(
-        'FORBIDDEN',
-        `The tenant is not authorized for canvas ${args.access} access.`,
-      );
-    }
-  }
-
-  #state(tenant: TTenantContext, canvasId: string): TCanvasState {
-    const key = this.#stateKey(tenant, canvasId);
+  #state(canvasId: string): TCanvasState {
+    const key = this.#stateKey(canvasId);
     const existing = this.#states.get(key);
     if (existing !== undefined) return existing;
     const created: TCanvasState = {
       key,
-      orgId: tenant.orgId,
       canvasId,
       items: new Map(),
       events: [],
@@ -1288,8 +1203,8 @@ export class CanvasService implements ICanvasService {
     return created;
   }
 
-  #stateKey(tenant: TTenantContext, canvasId: string): string {
-    return fnScopedKey('canvas-service', [tenant.orgId, canvasId]);
+  #stateKey(canvasId: string): string {
+    return canvasId;
   }
 
   #enqueue<T>(
@@ -1333,7 +1248,7 @@ export class CanvasService implements ICanvasService {
   #notFound(canvasId: string, cause?: unknown): CanvasServiceError {
     return new CanvasServiceError(
       'NOT_FOUND',
-      `Canvas '${canvasId}' was not found for this tenant.`,
+      `Canvas '${canvasId}' was not found.`,
       { canvasId },
       cause === undefined ? undefined : { cause },
     );

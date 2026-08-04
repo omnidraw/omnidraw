@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type { IResourceControlStore, IResourceUseCoordinator } from '../src/interface';
 import { DbResourceCoordinator } from '../src/local/DbResourceCoordinator';
 import type {
@@ -12,20 +11,10 @@ import type {
 } from '../src/local/DbResourceCoordinator';
 import type { TResourceDescriptor } from '../src/types';
 
-const tenant: TTenantContext = {
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
-  requestId: 'request-a',
-};
-
 const useCoordinator: IResourceUseCoordinator = {
-  inspect: async (_tenant, resourceId) => ({ resourceId, uses: [] }),
-  drain: async (_tenant, request) => ({
-    ok: true,
+  inspect: async (resourceId) => ({ resourceId, uses: [] }),
+  drain: async (request) => ({
+    ok: true as const,
     lease: {
       resourceId: request.resourceId,
       leaseId: 'lease-a',
@@ -34,7 +23,7 @@ const useCoordinator: IResourceUseCoordinator = {
       drainedUses: [],
     },
   }),
-  release: async (_tenant, lease, mode) => ({
+  release: async (lease, mode) => ({
     resourceId: lease.resourceId,
     released: true,
     mode,
@@ -53,25 +42,25 @@ function createMemoryStore(now: () => number) {
       draft: {
         create: async ({ id, resourceId, name }) => {
           const draft: TDbCoordinatorDraft = {
-            id, resource_id: resourceId, name, status: 'editing',
-            last_error: null, created_at: iso(), updated_at: iso(), applied_at: null,
+            id, resourceId, name, status: 'editing',
+            lastError: null, createdAtSec: iso(), updatedAtSec: iso(), appliedAtSec: null,
           };
           drafts.set(id, draft);
           return draft;
         },
         get: async ({ id }) => drafts.get(id) ?? null,
         getActive: async ({ resourceId }) => [...drafts.values()].find((draft) => (
-          draft.resource_id === resourceId && (draft.status === 'editing' || draft.status === 'applying')
+          draft.resourceId === resourceId && (draft.status === 'editing' || draft.status === 'applying')
         )) ?? null,
         list: async ({ resourceId, status }) => [...drafts.values()].filter((draft) => (
-          draft.resource_id === resourceId && (!status || draft.status === status)
+          draft.resourceId === resourceId && (!status || draft.status === status)
         )),
         updateStatus: async ({ id, status, expectedStatus, lastError }) => {
           const draft = drafts.get(id);
           if (!draft || (expectedStatus && draft.status !== expectedStatus)) return null;
           const next: TDbCoordinatorDraft = {
-            ...draft, status, last_error: lastError ?? null, updated_at: iso(),
-            applied_at: status === 'applied' ? iso() : draft.applied_at,
+            ...draft, status, lastError: lastError ?? null, updatedAtSec: iso(),
+            appliedAtSec: status === 'applied' ? iso() : draft.appliedAtSec,
           };
           drafts.set(id, next);
           return next;
@@ -79,7 +68,7 @@ function createMemoryStore(now: () => number) {
         discard: async ({ id, lastError }) => {
           const draft = drafts.get(id);
           if (!draft) return null;
-          const next: TDbCoordinatorDraft = { ...draft, status: 'discarded', last_error: lastError ?? null, updated_at: iso() };
+          const next: TDbCoordinatorDraft = { ...draft, status: 'discarded', lastError: lastError ?? null, updatedAtSec: iso() };
           drafts.set(id, next);
           return next;
         },
@@ -87,8 +76,8 @@ function createMemoryStore(now: () => number) {
           list: async ({ draftId }) => changes.get(draftId) ?? [],
           append: async (args) => {
             const change: TDbCoordinatorDraftChange = {
-              draft_id: args.draftId, sequence: args.sequence, kind: args.kind,
-              operation: args.operation ?? null, sql: args.sql, created_at: iso(),
+              draftId: args.draftId, sequence: args.sequence, kind: args.kind,
+              operation: args.operation ?? null, sql: args.sql, createdAtSec: iso(),
             };
             changes.set(args.draftId, [...changes.get(args.draftId) ?? [], change]);
             return change;
@@ -98,9 +87,9 @@ function createMemoryStore(now: () => number) {
       apply: {
         create: async ({ id, resourceId, draftId, sourceApplyId, status }) => {
           const apply: TDbCoordinatorApplyRun = {
-            id, resource_id: resourceId, draft_id: draftId ?? null, source_apply_id: sourceApplyId ?? null,
-            status: status ?? 'preparing', last_error: null, backup_retained: false,
-            created_at: iso(), completed_at: null,
+            id, resourceId, draftId: draftId ?? null, sourceApplyId: sourceApplyId ?? null,
+            status: status ?? 'preparing', lastError: null, backupRetained: false,
+            createdAtSec: iso(), completedAtSec: null,
           };
           applies.set(id, apply);
           return apply;
@@ -109,27 +98,27 @@ function createMemoryStore(now: () => number) {
           const draft = drafts.get(draftId);
           if (!draft) throw new Error('draft missing');
           const apply: TDbCoordinatorApplyRun = {
-            id, resource_id: resourceId, draft_id: draftId, source_apply_id: null,
-            status: 'preparing', last_error: null, backup_retained: false,
-            created_at: iso(), completed_at: null,
+            id, resourceId, draftId, sourceApplyId: null,
+            status: 'preparing', lastError: null, backupRetained: false,
+            createdAtSec: iso(), completedAtSec: null,
           };
           applies.set(id, apply);
-          const nextDraft: TDbCoordinatorDraft = { ...draft, status: 'applying', updated_at: iso() };
+          const nextDraft: TDbCoordinatorDraft = { ...draft, status: 'applying', updatedAtSec: iso() };
           drafts.set(draftId, nextDraft);
           return { apply, draft: nextDraft };
         },
         get: async ({ id }) => applies.get(id) ?? null,
         list: async ({ resourceId, status, limit }) => [...applies.values()]
-          .filter((apply) => apply.resource_id === resourceId && (!status || apply.status === status))
+          .filter((apply) => apply.resourceId === resourceId && (!status || apply.status === status))
           .slice(0, limit ?? 100),
         update: async ({ id, status, expectedStatus, lastError, backupRetained }) => {
           const apply = applies.get(id);
           if (!apply || (expectedStatus && apply.status !== expectedStatus)) return null;
           const terminal = status === 'succeeded' || status === 'failed' || status === 'recovered';
           const next: TDbCoordinatorApplyRun = {
-            ...apply, status, last_error: lastError ?? null,
-            backup_retained: backupRetained ?? apply.backup_retained,
-            completed_at: terminal ? iso() : apply.completed_at,
+            ...apply, status, lastError: lastError ?? null,
+            backupRetained: backupRetained ?? apply.backupRetained,
+            completedAtSec: terminal ? iso() : apply.completedAtSec,
           };
           applies.set(id, next);
           return next;
@@ -139,16 +128,16 @@ function createMemoryStore(now: () => number) {
           const apply = applies.get(id);
           if (!apply || (expectedStatus && apply.status !== expectedStatus)) return null;
           const next: TDbCoordinatorApplyRun = {
-            ...apply, status, last_error: lastError ?? null,
-            backup_retained: backupRetained ?? apply.backup_retained,
-            completed_at: iso(),
+            ...apply, status, lastError: lastError ?? null,
+            backupRetained: backupRetained ?? apply.backupRetained,
+            completedAtSec: iso(),
           };
           applies.set(id, next);
           const draft = drafts.get(draftId);
           if (!draft) return null;
           const nextDraft: TDbCoordinatorDraft = {
-            ...draft, status: draftStatus, last_error: lastError ?? null, updated_at: iso(),
-            applied_at: draftStatus === 'applied' ? iso() : draft.applied_at,
+            ...draft, status: draftStatus, lastError: lastError ?? null, updatedAtSec: iso(),
+            appliedAtSec: draftStatus === 'applied' ? iso() : draft.appliedAtSec,
           };
           drafts.set(draftId, nextDraft);
           return { apply: next, draft: nextDraft };
@@ -180,9 +169,9 @@ function createHarness(options: {
     name: 'Notes',
     status: options.resourceStatus ?? 'ready',
     lastError: null,
-    createdAtMs: currentMs,
-    updatedAtMs: currentMs,
-  } as TResourceDescriptor;
+    createdAtSec: new Date(currentMs).toISOString(),
+    updatedAtSec: new Date(currentMs).toISOString(),
+  };
   const settlements: { resourceId: string; settlement: unknown }[] = [];
   const dbResource: IDbResourceLifecycle = {
     createDraft: async () => undefined,
@@ -197,11 +186,9 @@ function createHarness(options: {
     reconcileApply: options.reconcileApply ?? (async () => ({ outcome: 'committed' as const, retainedBackupApplyId: null })),
   };
   const coordinator = new DbResourceCoordinator({
-    tenant,
     controlStore: memory.store,
     resourceControlStore: {
       getResource: async () => descriptor,
-      listBindingsForResource: async () => [],
     } as unknown as IResourceControlStore,
     resourceManager: {
       getResource: async () => ({
@@ -209,9 +196,9 @@ function createHarness(options: {
         kind: descriptor.kind,
         name: descriptor.name,
         status: descriptor.status,
-        last_error: null,
-        created_at: new Date(currentMs).toISOString(),
-        updated_at: new Date(currentMs).toISOString(),
+        lastError: null,
+        createdAtSec: new Date(currentMs).toISOString(),
+        updatedAtSec: new Date(currentMs).toISOString(),
       }),
       listResources: async () => [],
       settleResourceMigration: async (resourceId, settlement) => {
@@ -222,9 +209,9 @@ function createHarness(options: {
         kind: descriptor.kind,
         name: descriptor.name,
         status: descriptor.status,
-        last_error: null,
-        created_at: new Date(currentMs).toISOString(),
-        updated_at: new Date(currentMs).toISOString(),
+        lastError: null,
+        createdAtSec: new Date(currentMs).toISOString(),
+        updatedAtSec: new Date(currentMs).toISOString(),
       }))()),
       drainResource: async () => undefined,
       coordinateResourceApply: async (_resourceId, operation) => operation(await (async () => ({
@@ -232,9 +219,9 @@ function createHarness(options: {
         kind: descriptor.kind,
         name: descriptor.name,
         status: descriptor.status,
-        last_error: null,
-        created_at: new Date(currentMs).toISOString(),
-        updated_at: new Date(currentMs).toISOString(),
+        lastError: null,
+        createdAtSec: new Date(currentMs).toISOString(),
+        updatedAtSec: new Date(currentMs).toISOString(),
       }))()),
     },
     useCoordinator,
@@ -250,7 +237,7 @@ function createHarness(options: {
     settlements,
     backdate: (applyId: string, ms: number) => {
       const apply = memory.applies.get(applyId);
-      if (apply) memory.applies.set(applyId, { ...apply, created_at: new Date(Date.now() - ms).toISOString() });
+      if (apply) memory.applies.set(applyId, { ...apply, createdAtSec: new Date(Date.now() - ms).toISOString() });
     },
   };
 }

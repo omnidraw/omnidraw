@@ -1,621 +1,388 @@
 import { describe, expect, test } from 'bun:test';
-import type { Database } from '@tursodatabase/database';
-import type {
-  IFunctionControlStore,
-  TInvocationRecord,
-} from '@omnidraw/function-runtime';
-import type { LocalFunctionDispatcher } from '@omnidraw/function-runtime/local';
-import type { TTenantContext } from '@omnidraw/tenant-core';
-import { FunctionService } from '../src/services/FunctionService';
 import {
-  createFunctionInvocationCapability,
-  FunctionServicePool,
-} from '../src/services/FunctionServicePool';
+  CANVAS_WIDGET_EXTENSION_KEY,
+  type TCanvasItemSnapshot,
+} from '@omnidraw/canvas-contract';
+import type {
+  IDirectFunctionInvoker,
+  TDirectFunctionCall,
+  TDirectFunctionInvocationRequest,
+} from '@omnidraw/function-runtime';
+import { EphemeralResourceWritePermitAuthority } from '@omnidraw/function-runtime/local';
+import type { ICanvasService } from '@omnidraw/service-canvas';
+import type { TTenantContext } from '@omnidraw/tenant-core';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
+import { FunctionService } from '../src/services/FunctionService';
+import type {
+  TWidgetFilesystemRuntimeResolution,
+  WidgetFilesystemRuntimeCatalog,
+} from '../src/services/WidgetFilesystemRuntimeCatalog';
+import type { ResourceServicePool } from '../src/services/ResourceServicePool';
 
-const TENANT: TTenantContext = Object.freeze({
-  orgId: '00000000-0000-4000-8000-000000000001',
-  accountId: '00000000-0000-4000-8000-000000000002',
-  cellId: '00000000-0000-4000-8000-000000000003',
+const tenant: TTenantContext = Object.freeze({
+  orgId: 'org-a',
+  accountId: 'account-a',
+  cellId: 'cell-a',
+  canvasId: 'canvas-a',
   placementEpoch: 1,
-  roles: ['owner'],
-  capabilities: ['*'],
+  roles: ['member'],
+  capabilities: [],
   requestId: 'request-a',
-  canvasId: '00000000-0000-4000-8000-000000000004',
 });
 
-const WS_TENANT: TTenantContext = Object.freeze({
-  orgId: TENANT.orgId,
-  accountId: TENANT.accountId,
-  cellId: TENANT.cellId,
-  placementEpoch: TENANT.placementEpoch,
-  roles: TENANT.roles,
-  capabilities: TENANT.capabilities,
-  requestId: 'request-without-canvas',
+const input = Object.freeze({
+  canvasId: 'canvas-a',
+  elementId: 'element-a',
+  widgetInstanceId: 'instance-a',
+  widgetKey: 'counter',
+  catalogGeneration: 7,
+  functionName: 'readCounter',
+  input: { key: 'count' },
 });
 
-const OUTSIDER_TENANT: TTenantContext = Object.freeze({
-  ...WS_TENANT,
-  accountId: '00000000-0000-4000-8000-000000000099',
-  requestId: 'request-outsider',
-});
-
-const OTHER_MEMBER_TENANT: TTenantContext = Object.freeze({
-  ...WS_TENANT,
-  accountId: '00000000-0000-4000-8000-000000000098',
-  requestId: 'request-other-member',
-});
-
-const WIDGET_INSTANCE_ID = '00000000-0000-4000-8000-000000000022';
-const PREVIEW_ID = '00000000-0000-4000-8000-000000000023';
-const PREVIEW_REVISION_ID = '00000000-0000-4000-8000-000000000024';
-
-function record(
-  status: TInvocationRecord['status'] = 'queued',
-  invocationTenant: TTenantContext = TENANT,
-): TInvocationRecord {
-  return {
-    envelope: {
-      id: '00000000-0000-4000-8000-000000000010',
-      tenant: invocationTenant,
-      widgetDefinitionId: '00000000-0000-4000-8000-000000000020',
-      widgetRevisionId: '00000000-0000-4000-8000-000000000021',
-      subject: {
-        kind: 'widget_instance',
-        canvasId: TENANT.canvasId!,
-        widgetInstanceId: WIDGET_INSTANCE_ID,
-      },
-      functionId: 'fn:definition:run',
-      functionName: 'run',
-      definitionRevision: 1,
-      artifactDigestSha256: 'a'.repeat(64),
-      contractDigestSha256: 'b'.repeat(64),
-      runtimeAbi: 'omnidraw.bun.v1',
-      input: { value: 1 },
-      inputDigestSha256: 'c'.repeat(64),
-      idempotencyKey: 'request-key',
-      policyVersion: 1,
-      priority: 0,
-      limits: {
-        timeoutMs: 1_000,
-        memoryTier: 'small',
-        outputByteLimit: 1_024,
-        logByteLimit: 1_024,
-      },
-      retry: { mode: 'none', maxAttempts: 1, initialBackoffMs: 0, maxBackoffMs: 0 },
-      createdAtMs: 10,
-      deadlineAtMs: 1_010,
-    },
-    status,
-    output: null,
-    failure: null,
-    resultDigestSha256: null,
-    outputByteSize: 0,
+const success = Object.freeze({
+  status: 'succeeded' as const,
+  output: { ok: true },
+  diagnostics: Object.freeze({
+    code: null,
+    message: null,
     logByteSize: 0,
-    bodyState: 'full',
-    retainsRevision: true,
-    cancelRequestedAtMs: null,
-    availableAtMs: 10,
-    startedAtMs: null,
-    finishedAtMs: null,
-    bodiesCompactedAtMs: null,
-  };
+    truncated: false,
+  }),
+});
+
+function descriptor(
+  effect: 'fn' | 'fx' | 'tx' = 'fx',
+  resourceEffect: 'read' | 'write' | 'read_write' = 'read',
+): TWidgetServerFunctionDescriptor {
+  return Object.freeze({
+    schemaVersion: 1,
+    exportName: input.functionName,
+    modulePath: 'server/main.ts',
+    effect,
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    resources: effect === 'fn'
+      ? []
+      : [Object.freeze({ slot: 'store', effect: resourceEffect })],
+    limits: Object.freeze({
+      timeoutMs: 1_000,
+      memoryTier: 'small' as const,
+      outputByteLimit: 1_024,
+      logByteLimit: 1_024,
+    }),
+  });
 }
 
-function databaseForTarget(options: Readonly<{
-  target?: Partial<{
-    canvas_id: string;
-    definition_id: string;
-    revision_id: string;
-    status: string;
-    subject_kind: 'widget_instance';
-  }> | null;
-  previewTarget?: Partial<{
-    canvas_id: string;
-    definition_id: string;
-    revision_id: string;
-    status: string;
-    subject_kind: 'widget_preview';
-  }> | null;
-  memberAccountIds?: readonly string[];
-}> = {}): Database {
-  const row = {
-    canvas_id: TENANT.canvasId!,
-    definition_id: record().envelope.widgetDefinitionId,
-    revision_id: record().envelope.widgetRevisionId,
-    status: 'active',
-    subject_kind: 'widget_instance' as const,
-    ...options.target,
-  };
-  const previewRow = {
-    canvas_id: TENANT.canvasId!,
-    definition_id: record().envelope.widgetDefinitionId,
-    revision_id: PREVIEW_REVISION_ID,
-    status: 'ready',
-    subject_kind: 'widget_preview' as const,
-    ...options.previewTarget,
-  };
-  const memberAccountIds = options.memberAccountIds ?? [TENANT.accountId];
+function canvasItem(
+  binding: Readonly<{ allowRead: boolean; allowWrite: boolean }> | null,
+): TCanvasItemSnapshot {
   return {
-    prepare: (sql: string) => ({
-      get: async (...values: unknown[]) => {
-        if (sql.includes('FROM widget_instances')) {
-          const [accountId, orgId, widgetInstanceId, widgetRevisionId] = values;
-          if (
-            options.target === null
-            || orgId !== TENANT.orgId
-            || widgetInstanceId !== WIDGET_INSTANCE_ID
-            || widgetRevisionId !== row.revision_id
-            || !memberAccountIds.includes(String(accountId))
-          ) {
-            return undefined;
-          }
-          return row;
-        }
-        if (sql.includes('FROM agent_previews')) {
-          const [widgetRevisionId, accountId, orgId, ownerAccountId, previewId] = values;
-          if (
-            options.previewTarget == null
-            || orgId !== TENANT.orgId
-            || ownerAccountId !== TENANT.accountId
-            || previewId !== PREVIEW_ID
-            || widgetRevisionId !== previewRow.revision_id
-            || !memberAccountIds.includes(String(accountId))
-          ) {
-            return undefined;
-          }
-          return previewRow;
-        }
-        if (sql.includes('FROM canvas_members')) {
-          const [orgId, canvasId, accountId] = values;
-          return orgId === TENANT.orgId
-            && canvasId === row.canvas_id
-            && memberAccountIds.includes(String(accountId))
-            ? { present: 1 }
-            : undefined;
-        }
-        throw new Error(`Unexpected FunctionService query: ${sql}`);
+    id: input.elementId,
+    item: {
+      id: input.elementId,
+      kind: 'widget-frame',
+      extensions: {
+        [CANVAS_WIDGET_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          type: 'widget-instance',
+          instanceId: input.widgetInstanceId,
+          widgetKey: input.widgetKey,
+          ...(binding === null ? {} : {
+            resourceBindings: {
+              store: {
+                resourceId: 'resource-a',
+                allowRead: binding.allowRead,
+                allowWrite: binding.allowWrite,
+              },
+            },
+          }),
+        },
       },
-    }),
-  } as unknown as Database;
+    } as TCanvasItemSnapshot['item'],
+    itemRevision: 3,
+    createdAtMs: 1,
+    updatedAtMs: 2,
+  };
 }
 
-function createService(args: Readonly<{
-  database?: Database;
-  invoke?: LocalFunctionDispatcher['invoke'];
-  invocation?: TInvocationRecord;
-  getInvocation?: IFunctionControlStore['getInvocation'];
-  cancellation?: IFunctionControlStore['requestCancellation'];
-  idempotencyTtlMs?: number;
-  nowMs?: () => number;
-}> = {}) {
-  const calls: unknown[] = [];
-  const cancellationCalls: unknown[] = [];
-  const invocation = args.invocation ?? record();
-  const dispatcher = {
-    start: () => undefined,
-    stop: async () => undefined,
-    invoke: args.invoke ?? (async (_tenant: TTenantContext, request: unknown) => {
-      calls.push(request);
-      return { status: 'created' as const, invocation };
-    }),
-  } as unknown as LocalFunctionDispatcher;
-  const store = {
-    getInvocation: args.getInvocation ?? (async () => invocation),
-    requestCancellation: async (tenant: TTenantContext, request: unknown) => {
-      cancellationCalls.push({ tenant, request });
-      return args.cancellation
-        ? args.cancellation(tenant, request as never)
-        : {
-            status: 'cancelled' as const,
-            invocation: { ...invocation, status: 'cancelled' as const, finishedAtMs: 20 },
-          };
+function runtimeResolution(
+  functionDescriptor: TWidgetServerFunctionDescriptor,
+): TWidgetFilesystemRuntimeResolution {
+  const serverEntryBytes = new Uint8Array([1, 2, 3, 4]);
+  const resourceEffect = functionDescriptor.resources[0]?.effect;
+  return {
+    widgetKey: input.widgetKey,
+    catalogGeneration: input.catalogGeneration,
+    catalogDigestSha256: 'b'.repeat(64),
+    manifest: {
+      schemaVersion: 4,
+      slug: input.widgetKey,
+      name: 'Counter',
+      entry: 'src/main.tsx',
+      capabilities: [],
+      resources: resourceEffect === undefined
+        ? []
+        : [{ slot: 'store', kind: 'kv', effect: resourceEffect, required: true }],
     },
-  } as unknown as IFunctionControlStore;
-  const service = new FunctionService({
-    placement: TENANT,
-    database: args.database ?? databaseForTarget(),
-    store,
-    dispatcher,
-    idempotencyTtlMs: args.idempotencyTtlMs,
-    nowMs: args.nowMs,
-  });
-  service.start({ hooks: {}, config: {} });
-  return { calls, cancellationCalls, service };
+    release: {
+      schemaVersion: 1,
+      widgetKey: input.widgetKey,
+      manifestSha256: 'a'.repeat(64),
+      capsule: { path: 'dist/widget.capsule', sha256: 'c'.repeat(64), byteSize: 1 },
+      files: [{
+        path: 'server/main.ts',
+        sha256: 'd'.repeat(64),
+        byteSize: serverEntryBytes.byteLength,
+      }],
+      server: {
+        entry: 'server/main.ts',
+        runtimeAbi: 'omnidraw.function.v1',
+        functions: { path: 'server/functions.json', sha256: 'e'.repeat(64), byteSize: 1 },
+      },
+    },
+    capsuleBytes: new Uint8Array([0]),
+    serverEntryBytes,
+    functionDescriptors: [functionDescriptor],
+  } as unknown as TWidgetFilesystemRuntimeResolution;
 }
 
-describe('FunctionService host authority', () => {
-  test('bootstraps its trusted placement on startup and again after restart without a request', async () => {
-    let createCalls = 0;
-    let startCalls = 0;
-    let stopCalls = 0;
-    const pool = new FunctionServicePool({
-      bootstrapTenants: [TENANT],
-      create: async () => {
-        createCalls += 1;
-        return {
-          start: async () => { startCalls += 1; },
-          stop: async () => { stopCalls += 1; },
-        } as unknown as FunctionService;
-      },
-    });
-
-    await pool.start({ hooks: {}, config: {} });
-    expect({ createCalls, startCalls, tenantCount: pool.getTenantCount() }).toEqual({
-      createCalls: 1,
-      startCalls: 1,
-      tenantCount: 1,
-    });
-    await pool.stop();
-    expect(stopCalls).toBe(1);
-    await pool.start({ hooks: {}, config: {} });
-    expect({ createCalls, startCalls, tenantCount: pool.getTenantCount() }).toEqual({
-      createCalls: 2,
-      startCalls: 2,
-      tenantCount: 1,
-    });
-    await pool.stop();
-    expect(stopCalls).toBe(2);
+function directCall(request: TDirectFunctionInvocationRequest): TDirectFunctionCall {
+  return Object.freeze({
+    id: 'call-a',
+    tenant: request.tenant,
+    subject: request.subject,
+    definition: request.definition,
+    input: request.input,
+    deadlineAtMs: Date.now() + 1_000,
   });
+}
 
-  test('retires a stale placement before its replacement function dispatcher starts', async () => {
-    const events: string[] = [];
-    const pool = new FunctionServicePool({
-      create: async (placement) => ({
-        placementEpoch: placement.placementEpoch,
-        start: async () => { events.push(`start:${placement.placementEpoch}`); },
-        stop: async () => { events.push(`stop:${placement.placementEpoch}`); },
-      } as unknown as FunctionService),
-    });
-    const replacement = {
-      ...TENANT,
-      cellId: 'replacement-cell',
-      placementEpoch: TENANT.placementEpoch + 1,
-      requestId: 'replacement-request',
-    };
-
-    await pool.start({ hooks: {}, config: {} });
-    await expect(pool.forTenant(TENANT)).resolves.toMatchObject({ placementEpoch: 1 });
-    await expect(pool.forTenant(replacement)).resolves.toMatchObject({ placementEpoch: 2 });
-
-    expect(events).toEqual(['start:1', 'stop:1', 'start:2']);
-    expect(pool.getTenantCount()).toBe(1);
-    await expect(pool.forTenant(TENANT)).rejects.toThrow(
-      'rejected stale organization placement epoch 1; current epoch is 2',
-    );
-    await pool.stop();
-    expect(events).toEqual(['start:1', 'stop:1', 'start:2', 'stop:2']);
-  });
-
-  test('drains an old-placement API operation before replacement startup', async () => {
-    const events: string[] = [];
-    let oldOperationEntryCount = 0;
-    let markOldOperationEntered: (() => void) | undefined;
-    const oldOperationEntered = new Promise<void>((resolve) => {
-      markOldOperationEntered = resolve;
-    });
-    let releaseOldOperation: (() => void) | undefined;
-    const oldOperationBlocked = new Promise<void>((resolve) => {
-      releaseOldOperation = resolve;
-    });
-    const pool = new FunctionServicePool({
-      create: async (placement) => ({
-        start: async () => { events.push(`start:${placement.placementEpoch}`); },
-        stop: async () => { events.push(`stop:${placement.placementEpoch}`); },
-        getFunctionInvocation: async (_tenant: TTenantContext, invocationId: string) => {
-          events.push(`operation:start:${placement.placementEpoch}:${invocationId}`);
-          if (placement.placementEpoch === 1) {
-            oldOperationEntryCount += 1;
-            if (oldOperationEntryCount === 2) markOldOperationEntered?.();
-            await oldOperationBlocked;
-          }
-          events.push(`operation:end:${placement.placementEpoch}:${invocationId}`);
-          return null;
+function harness(args: Readonly<{
+  functionDescriptor: TWidgetServerFunctionDescriptor;
+  binding: Readonly<{ allowRead: boolean; allowWrite: boolean }> | null;
+  executor: IDirectFunctionInvoker;
+}>): Readonly<{
+  service: FunctionService;
+  canvasQueries: unknown[];
+  catalogKeys: string[];
+  gatewayCalls: unknown[];
+  gatewayRequests: unknown[];
+  resolution: TWidgetFilesystemRuntimeResolution;
+}> {
+  const item = canvasItem(args.binding);
+  const canvasQueries: unknown[] = [];
+  const canvas = {
+    queryItems: async (_tenant: TTenantContext, query: unknown) => {
+      canvasQueries.push(query);
+      return { items: [item], nextCursor: null };
+    },
+  } as unknown as ICanvasService;
+  const resolution = runtimeResolution(args.functionDescriptor);
+  const catalogKeys: string[] = [];
+  const catalog = {
+    resolveRuntime: async (key: string) => {
+      catalogKeys.push(key);
+      return resolution;
+    },
+    isRuntimeResolutionCurrent: (candidate: unknown) => candidate === resolution,
+  } as unknown as WidgetFilesystemRuntimeCatalog;
+  const gatewayCalls: unknown[] = [];
+  const gatewayRequests: unknown[] = [];
+  const resourceService = {
+    getResource: async () => ({ id: 'resource-a', kind: 'kv', status: 'ready' }),
+    createFunctionResourceGateway: (_tenant: TTenantContext, request: {
+      requirements: readonly { slot: string; required?: boolean }[];
+      bindings: readonly {
+        slot: string;
+        resourceId: string;
+        kind: 'kv';
+        allowRead: boolean;
+        allowWrite: boolean;
+      }[];
+    }) => {
+      gatewayRequests.push(request);
+      const retained = new Map(request.bindings.map((binding) => [binding.slot, binding]));
+      return {
+        gateway: {
+          call: async (_callTenant: TTenantContext, call: unknown) => {
+            gatewayCalls.push(call);
+            return { output: { value: 41 } };
+          },
         },
-      } as unknown as FunctionService),
-    });
-    const replacement = {
-      ...TENANT,
-      cellId: 'replacement-cell',
-      placementEpoch: TENANT.placementEpoch + 1,
-      requestId: 'replacement-request',
-    };
-
-    await pool.start({ hooks: {}, config: {} });
-    const firstOldOperation = pool.getFunctionInvocation(TENANT, 'old-invocation-a');
-    const secondOldOperation = pool.getFunctionInvocation(TENANT, 'old-invocation-b');
-    await oldOperationEntered;
-    const replacementOperation = pool.getFunctionInvocation(replacement, 'new-invocation');
-
-    expect(events).toEqual([
-      'start:1',
-      'operation:start:1:old-invocation-a',
-      'operation:start:1:old-invocation-b',
-    ]);
-    releaseOldOperation?.();
-    await expect(firstOldOperation).resolves.toBeNull();
-    await expect(secondOldOperation).resolves.toBeNull();
-    await expect(replacementOperation).resolves.toBeNull();
-    expect(events).toEqual([
-      'start:1',
-      'operation:start:1:old-invocation-a',
-      'operation:start:1:old-invocation-b',
-      'operation:end:1:old-invocation-a',
-      'operation:end:1:old-invocation-b',
-      'stop:1',
-      'start:2',
-      'operation:start:2:new-invocation',
-      'operation:end:2:new-invocation',
-    ]);
-    await pool.stop();
-  });
-
-  test('derives definition and revision through membership when WebSocket tenant has no canvas', async () => {
-    const { calls, service } = createService({
-      idempotencyTtlMs: 60_000,
-      nowMs: () => 500,
-    });
-    await expect(service.invokeFunction(WS_TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run',
-      input: { value: 1 },
-      idempotencyKey: 'request-key',
-    })).resolves.toMatchObject({
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      status: 'queued',
-    });
-    expect(calls).toEqual([expect.objectContaining({
-      widgetDefinitionId: record().envelope.widgetDefinitionId,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      idempotencyScope: {
-        kind: 'widget_instance',
-        widgetInstanceId: WIDGET_INSTANCE_ID,
-      },
-      idempotencyExpiresAtMs: 60_500,
-    })]);
-    await service.stop();
-  });
-
-  test('routes an owned durable Preview through the active retained revision subject', async () => {
-    const { calls, service } = createService({
-      database: databaseForTarget({
-        target: null,
-        previewTarget: {},
-      }),
-      idempotencyTtlMs: 60_000,
-      nowMs: () => 500,
-    });
-
-    await service.invokeFunction(WS_TENANT, {
-      widgetInstanceId: PREVIEW_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: 'run',
-      input: { value: 1 },
-      idempotencyKey: 'preview-request-key',
-    });
-
-    expect(calls).toEqual([expect.objectContaining({
-      widgetDefinitionId: record().envelope.widgetDefinitionId,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      subject: {
-        kind: 'widget_preview',
-        canvasId: TENANT.canvasId,
-        widgetInstanceId: PREVIEW_ID,
-      },
-      idempotencyScope: {
-        kind: 'widget_preview',
-        previewId: PREVIEW_ID,
-      },
-      idempotencyExpiresAtMs: 60_500,
-    })]);
-    await service.stop();
-  });
-
-  test('hides another account Preview and a stale Preview canvas target', async () => {
-    const database = databaseForTarget({
-      target: null,
-      previewTarget: {},
-      memberAccountIds: [TENANT.accountId, OTHER_MEMBER_TENANT.accountId],
-    });
-    const otherAccount = createService({ database });
-    await expect(otherAccount.service.invokeFunction(OTHER_MEMBER_TENANT, {
-      widgetInstanceId: PREVIEW_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'foreign-preview',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(otherAccount.calls).toHaveLength(0);
-    await otherAccount.service.stop();
-
-    const staleCanvas = createService({
-      database: databaseForTarget({
-        target: null,
-        previewTarget: {
-          canvas_id: '00000000-0000-4000-8000-000000000098',
+        bindings: {
+          resolveBinding: async (_callTenant: TTenantContext, slot: string) => retained.get(slot) ?? null,
         },
-      }),
-    });
-    await expect(staleCanvas.service.invokeFunction(TENANT, {
-      widgetInstanceId: PREVIEW_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'stale-preview',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(staleCanvas.calls).toHaveLength(0);
-    await staleCanvas.service.stop();
+      };
+    },
+  };
+  const resources = {
+    forTenant: async () => resourceService,
+  } as unknown as ResourceServicePool;
+  const writePermits = new EphemeralResourceWritePermitAuthority({
+    secret: new Uint8Array(32).fill(7),
+  });
+  return {
+    service: new FunctionService({
+      canvas,
+      catalog,
+      resources,
+      executor: args.executor,
+      writePermits,
+    }),
+    canvasQueries,
+    catalogKeys,
+    gatewayCalls,
+    gatewayRequests,
+    resolution,
+  };
+}
 
-    const staleRevision = createService({
-      database: databaseForTarget({
-        target: null,
-        previewTarget: {},
-      }),
+describe('FunctionService direct filesystem invocation', () => {
+  test('pins canvas identity, catalog generation, exact server bytes, descriptors, and concrete bindings', async () => {
+    let invocation: TDirectFunctionInvocationRequest | null = null;
+    const executor: IDirectFunctionInvoker = {
+      invoke: async (request) => {
+        invocation = request;
+        const resources = await request.createResources(directCall(request));
+        await expect(resources.call(request.tenant, {
+          slot: 'store',
+          operation: 'get',
+          effect: 'read',
+          input: { key: 'count' },
+        })).resolves.toEqual({ output: { value: 41 } });
+        return success;
+      },
+    };
+    const setup = harness({
+      functionDescriptor: descriptor('fx', 'read'),
+      binding: { allowRead: true, allowWrite: false },
+      executor,
     });
-    await expect(staleRevision.service.invokeFunction(TENANT, {
-      widgetInstanceId: PREVIEW_ID,
-      widgetRevisionId: '00000000-0000-4000-8000-000000000099',
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'stale-preview-revision',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(staleRevision.calls).toHaveLength(0);
-    await staleRevision.service.stop();
 
-    const stalePublishedRevision = createService();
-    await expect(stalePublishedRevision.service.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: '00000000-0000-4000-8000-000000000099',
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'stale-published-revision',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(stalePublishedRevision.calls).toHaveLength(0);
-    await stalePublishedRevision.service.stop();
+    await expect(setup.service.invokeFunction(tenant, input)).resolves.toEqual(success);
+    expect(setup.canvasQueries).toEqual([
+      {
+        canvasId: input.canvasId,
+        filter: { type: 'widget-instance', instanceId: input.widgetInstanceId },
+        limit: 2,
+      },
+      {
+        canvasId: input.canvasId,
+        filter: { type: 'widget-instance', instanceId: input.widgetInstanceId },
+        limit: 2,
+      },
+    ]);
+    expect(setup.catalogKeys).toEqual([input.widgetKey]);
+    expect(invocation).not.toBeNull();
+    expect(invocation!.subject).toEqual({
+      canvasId: input.canvasId,
+      elementId: input.elementId,
+      widgetInstanceId: input.widgetInstanceId,
+    });
+    expect(invocation!.definition).toEqual({
+      widgetKey: input.widgetKey,
+      catalogGeneration: input.catalogGeneration,
+      runtimeAbi: 'omnidraw.function.v1',
+      artifactDigestSha256: 'd'.repeat(64),
+      descriptor: setup.resolution.functionDescriptors[0],
+    });
+    expect(invocation!.artifact).toEqual(setup.resolution.serverEntryBytes!);
+    expect(setup.gatewayRequests).toEqual([{
+      requirements: setup.resolution.manifest.resources,
+      bindings: [{
+        slot: 'store',
+        resourceId: 'resource-a',
+        kind: 'kv',
+        allowRead: true,
+        allowWrite: false,
+      }],
+    }]);
+    expect(setup.gatewayCalls).toEqual([{
+      slot: 'store',
+      operation: 'get',
+      effect: 'read',
+      input: { key: 'count' },
+    }]);
   });
 
-  test('hides unauthorized, context-mismatched, and inactive targets behind stable codes', async () => {
-    const unauthorized = createService();
-    await expect(unauthorized.service.invokeFunction(OUTSIDER_TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run', input: {}, idempotencyKey: 'key',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(unauthorized.calls).toHaveLength(0);
-    await unauthorized.service.stop();
-
-    const mismatched = createService({
-      database: databaseForTarget({
-        target: { canvas_id: '00000000-0000-4000-8000-000000000098' },
-      }),
+  test('denies an effect that exceeds the function descriptor before provider access', async () => {
+    const executor: IDirectFunctionInvoker = {
+      invoke: async (request) => {
+        const resources = await request.createResources(directCall(request));
+        return resources.call(request.tenant, {
+          slot: 'store',
+          operation: 'set',
+          effect: 'write',
+          input: { key: 'count', value: 42 },
+        }) as never;
+      },
+    };
+    const setup = harness({
+      functionDescriptor: descriptor('fx', 'write'),
+      binding: { allowRead: false, allowWrite: true },
+      executor,
     });
-    await expect(mismatched.service.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run', input: {}, idempotencyKey: 'key',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
-    expect(mismatched.calls).toHaveLength(0);
-    await mismatched.service.stop();
 
-    const inactive = createService({
-      database: databaseForTarget({ target: { status: 'archived' } }),
-    }).service;
-    await expect(inactive.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run', input: {}, idempotencyKey: 'key',
-    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
-    await inactive.stop();
-
-    const conflict = createService({
-      invoke: async () => ({
-        status: 'conflict',
-        invocationId: record().envelope.id,
-        reason: 'fingerprint_mismatch',
-      }),
-    }).service;
-    await expect(conflict.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run', input: {}, idempotencyKey: 'key',
-    })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
-    await conflict.stop();
+    await expect(setup.service.invokeFunction(tenant, input)).rejects.toMatchObject({
+      code: 'RESOURCE_SCOPE_INVALID',
+      message: 'Function resource call denied: fx_write.',
+    });
+    expect(setup.gatewayCalls).toEqual([]);
   });
 
-  test('maps an identity race at durable invocation creation to the stable target code', async () => {
-    const raced = createService({
-      invoke: async () => {
-        throw Object.assign(new Error('durable widget identity moved'), {
-          code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND',
+  test('forwards live cancellation and returns the direct terminal result', async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    let observedSignal: AbortSignal | undefined;
+    const executor: IDirectFunctionInvoker = {
+      invoke: async (request) => {
+        observedSignal = request.signal;
+        entered();
+        return new Promise((resolve) => {
+          request.signal?.addEventListener('abort', () => resolve({
+            status: 'cancelled',
+            output: null,
+            failure: {
+              owner: 'cancelled',
+              code: 'FUNCTION_CANCELLED',
+              message: 'Function invocation was cancelled.',
+            },
+            diagnostics: {
+              code: 'FUNCTION_CANCELLED',
+              message: 'Function invocation was cancelled.',
+              logByteSize: 0,
+              truncated: false,
+            },
+          }), { once: true });
         });
       },
-    }).service;
-
-    await expect(raced.invokeFunction(TENANT, {
-      widgetInstanceId: WIDGET_INSTANCE_ID,
-      widgetRevisionId: record().envelope.widgetRevisionId,
-      functionName: 'run',
-      input: {},
-      idempotencyKey: 'identity-race',
-    })).rejects.toMatchObject({
-      code: 'WIDGET_INSTANCE_NOT_FOUND',
-      message: 'Widget instance was not found.',
-    });
-    await raced.stop();
-  });
-
-  test('maps durable get and cancellation records to the public view', async () => {
-    const { cancellationCalls, service } = createService();
-    await expect(service.getFunctionInvocation(WS_TENANT, record().envelope.id)).resolves.toMatchObject({
-      id: record().envelope.id,
-      status: 'queued',
-    });
-    await expect(service.cancelFunctionInvocation(WS_TENANT, record().envelope.id)).resolves.toMatchObject({
-      id: record().envelope.id,
+    };
+    const setup = harness({ functionDescriptor: descriptor('fn'), binding: null, executor });
+    const controller = new AbortController();
+    const call = setup.service.invokeFunction(tenant, input, controller.signal);
+    await started;
+    expect(observedSignal).toBe(controller.signal);
+    controller.abort();
+    await expect(call).resolves.toMatchObject({
       status: 'cancelled',
-      finishedAtMs: 20,
+      failure: { code: 'FUNCTION_CANCELLED' },
     });
-    expect(cancellationCalls).toHaveLength(1);
-    await service.stop();
   });
 
-  test('returns not found and does not cancel outside persisted canvas authority', async () => {
-    const unauthorized = createService();
-    await expect(unauthorized.service.getFunctionInvocation(
-      OUTSIDER_TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    await expect(unauthorized.service.cancelFunctionInvocation(
-      OUTSIDER_TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    expect(unauthorized.cancellationCalls).toHaveLength(0);
-    await unauthorized.service.stop();
-
-    const otherMember = createService({
-      database: databaseForTarget({
-        memberAccountIds: [TENANT.accountId, OTHER_MEMBER_TENANT.accountId],
-      }),
-    });
-    await expect(otherMember.service.getFunctionInvocation(
-      OTHER_MEMBER_TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    await expect(otherMember.service.cancelFunctionInvocation(
-      OTHER_MEMBER_TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    expect(otherMember.cancellationCalls).toHaveLength(0);
-    await otherMember.service.stop();
-
-    const mismatchedTenant: TTenantContext = Object.freeze({
-      ...TENANT,
-      canvasId: '00000000-0000-4000-8000-000000000098',
-    });
-    const mismatched = createService();
-    await expect(mismatched.service.getFunctionInvocation(
-      mismatchedTenant,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    await expect(mismatched.service.cancelFunctionInvocation(
-      mismatchedTenant,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    expect(mismatched.cancellationCalls).toHaveLength(0);
-    await mismatched.service.stop();
-
-    const missingCanvas = createService({ invocation: record('queued', WS_TENANT) });
-    await expect(missingCanvas.service.getFunctionInvocation(
-      TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    await expect(missingCanvas.service.cancelFunctionInvocation(
-      TENANT,
-      record().envelope.id,
-    )).resolves.toBeNull();
-    expect(missingCanvas.cancellationCalls).toHaveLength(0);
-    await missingCanvas.service.stop();
+  test('exposes no invocation history, status, logs, usage, or cancellation control after restart', () => {
+    const executor: IDirectFunctionInvoker = { invoke: async () => success };
+    const first = harness({ functionDescriptor: descriptor('fn'), binding: null, executor }).service;
+    const restarted = harness({ functionDescriptor: descriptor('fn'), binding: null, executor }).service;
+    expect(Object.getOwnPropertyNames(FunctionService.prototype).sort()).toEqual([
+      'constructor',
+      'invokeFunction',
+    ]);
+    for (const service of [first, restarted]) {
+      expect('getFunction' in service).toBe(false);
+      expect('cancelFunction' in service).toBe(false);
+      expect('listFunctionLogs' in service).toBe(false);
+      expect('getFunctionUsage' in service).toBe(false);
+    }
   });
-
 });

@@ -1,24 +1,16 @@
 import { createAgentSessionFromServices, createAgentSessionServices, ModelRuntime, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
-import type { ITenantEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
+import type { IEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
 import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
-  ZWidgetBrowserFunctionDescriptors,
   ZWidgetManifestV3,
-  type TWidgetCapsuleBuildIdentity,
-  type TWidgetDiagnostic,
   type TWidgetManifestV3,
-  type TWidgetRevisionDescriptor,
-  type TWidgetSourceSnapshot,
 } from '@omnidraw/widget-contract';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
-import { fnWidgetMentionContext, type TWidgetMentionContextItem } from './core/fn.widget-mention-context';
-import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord } from './core/fx.session-records';
+import { join, relative, sep } from 'node:path';
+import { fxLatestWidgetDbChangeProposalRecord } from './core/fx.session-records';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
-import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
+import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
 import { ApprovalPolicyStore } from './approval/ApprovalPolicyStore';
@@ -32,7 +24,6 @@ import type {
   TApprovalReviewer,
   TApprovalReviewInput,
   TApprovalView,
-  TToolAuthorizationContext,
   TToolAuthorizer,
 } from './approval/types';
 import { createToolRegistry } from './tools/ToolRegistry';
@@ -43,40 +34,6 @@ import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import type { TWidgetDbChangeProposalRecord, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
-import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
-import type { IPreviewBuildAdmission } from './widget-drafts/PreviewBuildAdmission';
-import type {
-  IAgentAuthoringStore,
-  TAgentAuthoringDraftDescriptor,
-  TWidgetAuthoringCapability,
-  TWidgetAuthoringResourceSelection,
-  TWidgetPreviewDiagnosticReportResult,
-  TWidgetResourceBindingResolver,
-} from './widget-drafts/types';
-import { WidgetManagement } from './widget-management/WidgetManagement';
-import {
-  fnMergePublishedWidgetPlacementCatalog,
-  fnParsePublishedWidgetPlacementReference,
-  fnPublishedWidgetRelation,
-  fnPublishedWidgetVariant,
-  fnValidatePublishedWidgetPlacementTargets,
-} from './widget-management/fn.published-widget-placement';
-import {
-  fnPublishedWidgetFile,
-  fnPublishedWidgetFiles,
-} from './widget-management/fn.published-source';
-import type {
-  TPublishedWidgetPlacementIdentity,
-  TPublishedWidgetPlacementTarget,
-  TWidgetDeleteResult,
-  TWidgetDetail,
-  TWidgetFileEntry,
-  TWidgetFilePreview,
-  TWidgetCatalogGroup,
-  TWidgetDraftMetadataPatch,
-  TWidgetDraftToolPatch,
-  TWidgetSource,
-} from './widget-management/types';
 
 interface IPublicMethods {
   logout(providerId: string): Promise<void>;
@@ -85,29 +42,27 @@ interface IPublicMethods {
 }
 
 export interface IAgentServiceConfig {
-  cachePath: string;
   dataPath: string;
   npmUserConfigPath?: string;
   prepareWidgetNpmDependencies?: () => Promise<void>;
-  configPath: string;
-  eventPublisherService: ITenantEventPublisherService,
-  /** Required by the manifest-v3 Capsule authoring surface. */
-  tenant?: TTenantContext;
-  authoringStore?: IAgentAuthoringStore;
-  widgetAuthoringCapability?: TWidgetAuthoringCapability;
-  resolveWidgetResourceBindings?: TWidgetResourceBindingResolver;
-  createId?: () => string;
-  nowMs?: () => number;
-  widgetBuilderIdentity?: string;
-  widgetCapsuleBuildIdentity?: TWidgetCapsuleBuildIdentity;
-  widgetBuildPolicyId?: string;
-  previewBuildAdmission?: IPreviewBuildAdmission;
+  eventPublisherService: IEventPublisherService,
+  chats: Readonly<{
+    get(args: Readonly<{ id: string }>): Promise<Readonly<{ status: 'active' | 'archived' | 'error' }> | null>;
+    create(args: Readonly<{
+      id: string;
+      canvasId: string | null;
+      name: string;
+      workspaceRelativePath: string;
+      historyRelativePath: string;
+    }>): Promise<unknown>;
+    update(args: Readonly<{
+      id: string;
+      name?: string;
+      status?: 'active' | 'archived' | 'error';
+    }>): Promise<unknown>;
+  }>;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
-  listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
-  resolvePublishedWidgetPlacement?: (
-    target: TPublishedWidgetPlacementIdentity,
-  ) => Promise<TPublishedWidgetPlacementTarget | null>;
   authorizeToolCall?: TToolAuthorizer;
   approvalReviewer?: TApprovalReviewer;
   approvalPolicyStore?: Readonly<{
@@ -117,13 +72,6 @@ export interface IAgentServiceConfig {
 }
 
 type TWidgetId = string;
-type TPublishedWidgetSelection =
-  | Readonly<{ matched: false }>
-  | Readonly<{
-      matched: true;
-      target: TPublishedWidgetPlacementTarget;
-      revision: TWidgetRevisionDescriptor | null;
-    }>;
 // Persisted/API `sessionId` is the Omnidraw chat identity. Pi owns a separate
 // session ID inside each JSONL transcript header and filename.
 type TOmnidrawChatId = string;
@@ -147,11 +95,10 @@ type TPromptSelection = {
   images?: TPromptInputImage[];
   model?: TPromptModel;
   resourceIds?: string[];
-  widgetRefs?: Array<{ name: string; source: TWidgetSource }>;
+  widgetRefs?: Array<{ name: string; source: 'draft' | 'published' }>;
   thinkingLevel?: TThinkingLevel;
 };
 type TThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-const WIDGET_MENTION_CONTEXT_CUSTOM_TYPE = 'omnidraw.widgetMentions';
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -176,7 +123,6 @@ type TChatSessionEntry = {
   unsub: () => void;
   session: AgentSession;
   sessionManager: SessionManager;
-  authorizationContext?: TToolAuthorizationContext;
 };
 type TChatConnectGenerationResult =
   | { status: 'connected'; result: TAgentConnectResult }
@@ -198,8 +144,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
-  #widgetDrafts: WidgetDraftController;
-  #widgetManagement: WidgetManagement;
   #approvals: ApprovalCoordinator;
   #approvalPolicy: TApprovalPolicy = Object.freeze({ mode: 'manual' });
   #approvalPolicyStore: NonNullable<IAgentServiceConfig['approvalPolicyStore']>;
@@ -216,43 +160,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       dataPath: config.dataPath,
       npmUserConfigPath: config.npmUserConfigPath,
       prepareNpmDependencies: config.prepareWidgetNpmDependencies,
-    })
-    this.#widgetDrafts = config.tenant
-      && config.authoringStore
-      && config.widgetAuthoringCapability
-      && config.resolveWidgetResourceBindings
-      && config.createId
-      && config.nowMs
-      && config.widgetBuilderIdentity
-      && config.widgetCapsuleBuildIdentity
-      && config.widgetBuildPolicyId
-      ? new WidgetDraftController({
-          tenant: config.tenant,
-          workspace: this.#workspace,
-          eventPublisher: config.eventPublisherService,
-          authoringStore: config.authoringStore,
-          widgets: config.widgetAuthoringCapability,
-          resolveResourceBindings: async (tenant, request) => (
-            config.resolveWidgetResourceBindings!(tenant, {
-              ...request,
-              selectedResources: await this.#draftResourceSelections(
-                config.authoringStore!,
-                tenant,
-                request.draft,
-              ),
-            })
-          ),
-          createId: config.createId,
-          nowMs: config.nowMs,
-          builderIdentity: config.widgetBuilderIdentity,
-          capsuleBuildIdentity: config.widgetCapsuleBuildIdentity,
-          buildPolicyId: config.widgetBuildPolicyId,
-          previewBuildAdmission: config.previewBuildAdmission,
-        })
-      : this.#unavailableWidgetDrafts()
-    this.#widgetManagement = new WidgetManagement({
-      workspace: this.#workspace,
-      drafts: this.#widgetDrafts,
     })
     this.#approvalPolicyStore = config.approvalPolicyStore
       ?? new ApprovalPolicyStore(join(this.#piAgentDir, 'approval-policy.json'))
@@ -322,11 +229,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     } catch (error) {
       failures.push(error)
     }
-    try {
-      await this.#widgetDrafts.close()
-    } catch (error) {
-      failures.push(error)
-    }
     console.log('stop', this.name)
     if (failures.length > 0) throw new AggregateError(failures, 'Agent service shutdown failed.')
   }
@@ -334,14 +236,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async connectChat(
     id: TWidgetId,
     sessionId: string,
-    authorization: TToolAuthorizationContext = {},
     mode: TChatConnectMode = 'reuse',
   ): Promise<TAgentConnectResult> {
-    const existingEntry = this.#chatSessionEntry(sessionId)
-    if (existingEntry) this.#assertChatAuthorizationOwner(existingEntry, authorization)
     const generation = this.#nextChatConnectionGeneration(sessionId)
     if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
-    const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, authorization, generation))
+    const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, generation))
     if (outcome.status === 'connected') return outcome.result
 
     await this.#waitForChatConnectionLaneIdle(sessionId)
@@ -355,7 +254,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (!committedEntry) {
       throw this.#chatConnectionError('CHAT_CONNECTION_SUPERSEDED', 'The chat connection was superseded by another owner.')
     }
-    this.#assertChatAuthorizationOwner(committedEntry, authorization)
     return this.#chatConnectResult(id, sessionId, committedEntry)
   }
 
@@ -375,24 +273,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
-    const selectedWidgets = promptSelection?.widgetRefs
-      ? await this.#resolveChatWidgetSelections(promptSelection.widgetRefs)
-      : []
+    if ((promptSelection?.widgetRefs?.length ?? 0) > 0) {
+      throw new Error('OPERATION_UNAVAILABLE: Filesystem widget mention resolution is not configured.')
+    }
     if (promptSelection?.resourceIds !== undefined) {
       const resources = await this.#resolveChatResourceSelections(promptSelection?.resourceIds ?? [])
       txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
         resources,
         selectedAt: new Date().toISOString(),
       })
-      if (resources.length > 0) {
-        const current = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {})
-        txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
-          resources: fnMergeDraftResourceSelections({ current: current?.resources ?? [], mentioned: resources }),
-          selectedAt: new Date().toISOString(),
-          source: 'mention',
-        })
-        await this.#widgetDrafts.invalidatePreviewBindingsForChat(sessionId)
-      }
     }
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -418,35 +307,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     const images = this.#normalizePromptImages(promptSelection?.images)
-    const widgetContext = fnWidgetMentionContext({ widgets: selectedWidgets })
-    if (widgetContext) {
-      await session.sendCustomMessage({
-        customType: WIDGET_MENTION_CONTEXT_CUSTOM_TYPE,
-        content: widgetContext,
-        display: false,
-        details: { widgets: selectedWidgets },
-      }, { deliverAs: 'nextTurn' })
-    }
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
-  }
-
-  async clearDraftResourceBindingsChat(
-    id: TWidgetId,
-    sessionId: string,
-  ): Promise<{ cleared: true }> {
-    const connectedEntry = this.sessionMap[id]?.[sessionId]
-    if (!connectedEntry) {
-      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
-    }
-    txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
-      resources: [],
-      selectedAt: new Date().toISOString(),
-      source: 'explicit-clear',
-    })
-    await this.#widgetDrafts.invalidatePreviewBindingsForChat(sessionId)
-    return { cleared: true }
   }
 
   async approveChatDbChange(id: TWidgetId, sessionId: TOmnidrawChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
@@ -539,447 +402,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionId: TOmnidrawChatId,
     approvalId: string,
     decision: TApprovalDecision,
-    authorization: TToolAuthorizationContext = {},
-  ): Promise<{ resolved: true; decision: TApprovalDecision }> {
+  ): Promise<{
+    resolved: true;
+    decision: TApprovalDecision;
+    decisionSource: 'user';
+  }> {
     this.#assertChatScope(id, sessionId)
-    return this.#approvals.resolve(sessionId, approvalId, decision, authorization)
-  }
-
-  listWidgetDrafts() {
-    return this.#widgetDrafts.list()
-  }
-
-  getWidgetDraft(draftId: string) {
-    return this.#widgetDrafts.get(draftId)
-  }
-
-  validateWidgetDraft(draftId: string, expectedRevision?: string) {
-    return this.#widgetDrafts.validate(draftId, expectedRevision)
-  }
-
-  ensureWidgetPreviewOwner(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-    draftId: string;
-    originChatId: string;
-    role: 'companion' | 'placed';
-  }>) {
-    return this.#widgetDrafts.ensurePreviewOwner(request)
-  }
-
-  getWidgetPreviewOwner(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>) {
-    return this.#widgetDrafts.getPreviewOwner(request)
-  }
-
-  listWidgetPreviewOwners(request: Readonly<{
-    canvasId: string;
-    draftId?: string;
-    includeClosed?: boolean;
-  }>) {
-    return this.#widgetDrafts.listPreviewOwners(request)
-  }
-
-  async closeWidgetPreviewOwner(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>): Promise<boolean> {
-    return this.#widgetDrafts.closePreviewOwner(request)
-  }
-
-  async cancelWidgetPreviewBuild(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-    buildId: string;
-    expectedBuildSequence: number;
-  }>): Promise<boolean> {
-    return this.#widgetDrafts.cancelPreviewBuild(request)
-  }
-
-  acquireWidgetPreviewMountLease(request: Readonly<{
-    leaseId: string;
-    previewId: string;
-    previewRevisionId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>) {
-    return this.#widgetDrafts.acquirePreviewMountLease(request)
-  }
-
-  renewWidgetPreviewMountLease(request: Readonly<{
-    leaseId: string;
-    previewId: string;
-    previewRevisionId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>) {
-    return this.#widgetDrafts.renewPreviewMountLease(request)
-  }
-
-  releaseWidgetPreviewMountLease(request: Readonly<{
-    leaseId: string;
-    previewId: string;
-    previewRevisionId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>) {
-    return this.#widgetDrafts.releasePreviewMountLease(request)
-  }
-
-  async reportWidgetPreviewDiagnostic(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-    draftId: string;
-    originChatId: string;
-    diagnostic: TWidgetDiagnostic;
-  }>): Promise<TWidgetPreviewDiagnosticReportResult> {
-    const recorded = await this.#widgetDrafts.reportPreviewDiagnostic(request)
-    return {
-      accepted: true,
-      deduplicated: recorded.deduplicated,
-    }
-  }
-
-  async getWidgetPreviewDiagnostics(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-  }>) {
-    return [...await this.#widgetDrafts.getPreviewDiagnostics(request)]
-  }
-
-  async retestWidgetPreviewDiagnostic(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-    previewRevisionId: string;
-    fingerprint: string;
-    operation: string;
-  }>) {
-    return this.#widgetDrafts.retestPreviewDiagnostic(request)
-  }
-
-  async resolveWidgetPreviewDiagnostic(request: Readonly<{
-    previewId: string;
-    canvasId: string;
-    frameNodeId: string;
-    previewRevisionId: string;
-    fingerprint: string;
-  }>) {
-    return this.#widgetDrafts.resolvePreviewDiagnostic(request)
-  }
-
-  async reportWidgetPreviewTestResult(request: Readonly<{
-    requestId: string;
-    draftId: string;
-    previewId: string;
-    previewRevisionId: string;
-    revision: string;
-    committedMutationId: string;
-    mountLeaseId: string;
-    checks: readonly Readonly<{
-      index: number;
-      type: 'fill' | 'click' | 'assert-text' | 'assert-status' | 'wait-for-text';
-      passed: boolean;
-      evidence: string;
-    }>[];
-  }>): Promise<boolean> {
-    return this.#widgetDrafts.reportPreviewTestResult(request)
-  }
-
-  async buildWidgetPreview(
-    draftId: string,
-    ownerRef?: Readonly<{
-      previewId: string;
-      canvasId: string;
-      frameNodeId: string;
-    }>,
-  ) {
-    return this.#widgetDrafts.buildPreview(draftId, ownerRef)
-  }
-
-  publishWidgetDraft(
-    draftId: string,
-    target: Readonly<{
-      idempotencyKey: string;
-      previewId: string;
-      canvasId: string;
-      frameNodeId: string;
-    }>,
-  ) {
-    return this.#widgetDrafts.publish(draftId, target)
-  }
-
-  async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
-    const [unfilteredDraftCatalog, targets] = await Promise.all([
-      this.#widgetManagement.catalog(groups),
-      this.#config.listPublishedWidgetPlacements?.() ?? Promise.resolve([]),
-    ])
-    const visibleDraftWidgets = (await Promise.all(unfilteredDraftCatalog.widgets.map(async (entry) => (
-      await this.#workspace.isDraftMaterializationPending(entry.name) ? null : entry
-    )))).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-    const draftCatalog = visibleDraftWidgets.length === unfilteredDraftCatalog.widgets.length
-      ? unfilteredDraftCatalog
-      : {
-          ...unfilteredDraftCatalog,
-          generation: `${unfilteredDraftCatalog.generation}:pending-materializations-hidden`,
-          widgets: visibleDraftWidgets,
-        }
-    const validated = fnValidatePublishedWidgetPlacementTargets(targets)
-    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
-    const draftPublicationStates = this.#config.tenant && this.#config.authoringStore
-      ? (await this.#config.authoringStore.listDrafts(this.#config.tenant)).map((draft) => ({
-          draftId: draft.id,
-          definitionId: draft.definitionId,
-          name: draft.name,
-          status: draft.status,
-          publishedRevisionId: draft.publishedRevisionId,
-        }))
-      : []
-    return fnMergePublishedWidgetPlacementCatalog({
-      draftCatalog,
-      targets: validated.targets,
-      draftPublicationStates,
-    })
-  }
-
-  async getWidgetDetail(name: string, source: TWidgetSource): Promise<TWidgetDetail | null> {
-    if (source === 'draft') {
-      return await this.#workspace.isDraftMaterializationPending(name)
-        ? null
-        : this.#widgetManagement.detail(name, source)
-    }
-    const selected = await this.#publishedWidget(name)
-    if (!selected.matched) return null
-    if (!selected.revision) return null
-    const draft = await this.#workspace.isDraftMaterializationPending(name)
-      ? null
-      : await this.#widgetManagement.detail(name, 'draft')
-    const draftPublicationStates = await this.#draftPublicationStates(name)
-    return {
-      name,
-      source: 'published',
-      relation: fnPublishedWidgetRelation({
-        target: selected.target,
-        draft: draft?.variant ?? null,
-        draftPublicationStates,
-      }),
-      variant: fnPublishedWidgetVariant({
-        target: selected.target,
-        updatedAt: new Date(selected.revision.createdAtMs).toISOString(),
-      }),
-      sibling: draft?.variant ?? null,
-      manifest: selected.revision.manifest,
-      functions: ZWidgetBrowserFunctionDescriptors.parse(
-        selected.revision.functionDescriptors.map(({ modulePath: _modulePath, ...descriptor }) => descriptor),
-      ),
-      problem: null,
-    }
-  }
-
-  async listWidgetFiles(
-    name: string,
-    source: TWidgetSource,
-  ): Promise<TWidgetFileEntry[] | null> {
-    if (source === 'draft') {
-      return await this.#workspace.isDraftMaterializationPending(name)
-        ? null
-        : this.#widgetManagement.files(name, source)
-    }
-    const selected = await this.#publishedWidget(name)
-    if (!selected.matched) return null
-    if (!selected.revision) return null
-    return fnPublishedWidgetFiles({
-      snapshot: await this.#publishedSource(selected.target, selected.revision),
-    })
-  }
-
-  async readWidgetFile(
-    name: string,
-    source: TWidgetSource,
-    path: string,
-  ): Promise<TWidgetFilePreview | null> {
-    if (source === 'draft') {
-      return await this.#workspace.isDraftMaterializationPending(name)
-        ? null
-        : this.#widgetManagement.file(name, source, path)
-    }
-    const selected = await this.#publishedWidget(name)
-    if (!selected.matched) return null
-    if (!selected.revision) return null
-    return fnPublishedWidgetFile({
-      snapshot: await this.#publishedSource(selected.target, selected.revision),
-      path,
-      decodeUtf8: (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    })
-  }
-
-  async ensureWidgetDraft(name: string, expectedPublishedFingerprint?: string) {
-    const selected = await this.#publishedWidget(name)
-    if (!selected.matched) {
-      return this.#widgetManagement.ensureDraft(name, expectedPublishedFingerprint)
-    }
-    if (
-      !selected.revision
-      || (
-        expectedPublishedFingerprint !== undefined
-        && expectedPublishedFingerprint !== selected.target.contractDigestSha256
-      )
-    ) {
-      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
-    }
-
-    const snapshot = await this.#publishedSource(selected.target, selected.revision)
-    // Source reads are immutable, but active publication is mutable. Recheck
-    // the exact placement immediately before materialization so this operation
-    // has one explicit active-revision linearization point.
-    const current = await this.#publishedWidget(name)
-    if (
-      !current.matched
-      || !current.revision
-      || current.target.definitionId !== selected.target.definitionId
-      || current.target.revisionId !== selected.target.revisionId
-      || current.target.contractDigestSha256 !== selected.target.contractDigestSha256
-    ) {
-      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
-    }
-    await this.#widgetDrafts.materializePublishedDraft({
-      name,
-      definitionId: selected.target.definitionId,
-      publishedRevisionId: selected.target.revisionId,
-      snapshot,
-    })
-    const materialized = await this.#widgetManagement.detail(name, 'draft')
-    if (!materialized) {
-      throw new Error('OPERATION_UNAVAILABLE: Materialized widget draft could not be read.')
-    }
-    return materialized.variant
-  }
-
-  patchWidgetDraftTool(name: string, expectedRevision: string, patch: TWidgetDraftToolPatch) {
-    return this.#widgetManagement.patchDraftTool(name, expectedRevision, patch)
-  }
-
-  patchWidgetDraftMetadata(name: string, expectedRevision: string, patch: TWidgetDraftMetadataPatch) {
-    return this.#widgetManagement.patchDraftMetadata(name, expectedRevision, patch)
-  }
-
-  async deleteWidget(name: string, source: TWidgetSource): Promise<TWidgetDeleteResult | null> {
-    if (source === 'draft') return this.#widgetManagement.delete(name, source)
-    const selected = await this.#publishedWidget(name)
-    if (!selected.matched) return null
-    if (!selected.revision) return null
-    const tenant = this.#config.tenant
-    const widgets = this.#config.widgetAuthoringCapability
-    if (!tenant || !widgets || !this.#config.nowMs) {
-      throw new Error('OPERATION_UNAVAILABLE: Published widget deletion is unavailable in this host.')
-    }
-    const archived = await widgets.archive(tenant, {
-      definitionId: selected.target.definitionId,
-      expectedActiveRevisionId: selected.target.revisionId,
-      nowMs: this.#config.nowMs(),
-    })
-    if (archived.status !== 'archived') {
-      throw new Error('STALE_REVISION: Published widget changed before it could be deleted.')
-    }
-    let deletedDraft = false
-    const issues: TWidgetDeleteResult['issues'] = []
-    const durableDraft = this.#config.authoringStore
-      ? await this.#config.authoringStore.getDraftByName(tenant, name)
-      : null
-    if (
-      durableDraft
-      && durableDraft.definitionId === selected.target.definitionId
-      && durableDraft.status !== 'discarded'
-    ) {
-      const result = await this.#widgetManagement.delete(name, 'draft')
-      deletedDraft = result?.deletedDraft ?? false
-      issues.push(...(result?.issues ?? []))
-    }
-    return {
-      name,
-      source,
-      deletedDefinition: true,
-      deletedPublished: true,
-      deletedDraft,
-      deletedInstances: false,
-      issues,
-    }
-  }
-
-  async resolveWidgetPlacement(
-    reference: import('@omnidraw/widget-contract').TWidgetPlacementRef,
-    expectedDraftId?: string,
-  ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
-    const placementIdentity = fnParsePublishedWidgetPlacementReference(reference)
-    if (placementIdentity) {
-      const target = this.#config.resolvePublishedWidgetPlacement
-        ? await this.#config.resolvePublishedWidgetPlacement(placementIdentity)
-        : null
-      if (
-        !target
-        || target.definitionId !== placementIdentity.definitionId
-        || target.revisionId !== placementIdentity.revisionId
-      ) {
-        return {
-          ok: false,
-          code: 'NOT_FOUND',
-          message: 'Published widget placement is no longer active.',
-        }
-      }
-      return {
-        ok: true,
-        descriptor: {
-          reference,
-          bounds: target.bounds,
-          kind: 'published',
-          draftId: null,
-          definitionId: target.definitionId,
-          revisionId: target.revisionId,
-          definitionName: null,
-          definitionSlug: target.slug,
-        },
-      }
-    }
-    const resolved = await this.#widgetManagement.resolvePlacementReference(reference)
-    if (!resolved.ok) return resolved
-    if (resolved.descriptor.kind !== 'preview') {
-      return {
-        ok: false,
-        code: 'NOT_FOUND',
-        message: 'Widget Preview placement is unavailable.',
-      }
-    }
-    if (!expectedDraftId) {
-      return {
-        ok: false,
-        code: 'UNSUPPORTED_BEHAVIOR',
-        message: 'Preview placement requires an exact durable draft owner.',
-      }
-    }
-    const durableDraft = await this.#widgetDrafts.getByName(reference.name)
-    if (!durableDraft) {
-      return { ok: false, code: 'NOT_FOUND', message: `Widget draft '${reference.name}' is unavailable.` }
-    }
-    if (durableDraft.draftId !== expectedDraftId) {
-      return {
-        ok: false,
-        code: 'STALE_REVISION',
-        message: `Widget draft '${reference.name}' changed ownership before placement.`,
-        currentRevision: durableDraft.revision,
-      }
-    }
-    return {
-      ok: true,
-      descriptor: { ...resolved.descriptor, draftId: durableDraft.draftId },
-    }
+    return this.#approvals.resolve(sessionId, approvalId, decision)
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {
@@ -1179,7 +608,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #connectChatGeneration(
     id: TWidgetId,
     sessionId: TOmnidrawChatId,
-    authorization: TToolAuthorizationContext,
     generation: number,
   ): Promise<TChatConnectGenerationResult> {
     if (this.#isStopping) throw new Error('Agent service is stopping.')
@@ -1190,16 +618,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       : undefined
     const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
     if (connectedEntry && replacementGeneration === undefined) {
-      this.#assertChatAuthorizationOwner(connectedEntry, authorization)
-      this.#updateChatAuthorizationContext(connectedEntry, authorization)
+      await this.#ensureChatMetadata(sessionId)
       return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
     }
 
     const cwd = await this.#workspace.ensureChat(sessionId)
     const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
     await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
+    await this.#ensureChatMetadata(sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
-    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
 
     if (this.#isStopping) {
       this.#releaseUnpublishedChatSessionEntry(sessionEntry)
@@ -1247,138 +675,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async #publishedWidget(name: string): Promise<TPublishedWidgetSelection> {
-    if (!this.#config.listPublishedWidgetPlacements) return { matched: false }
-    const targets = await this.#config.listPublishedWidgetPlacements()
-    const validated = fnValidatePublishedWidgetPlacementTargets(targets)
-    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
-    const target = validated.targets.find((candidate) => candidate.name === name)
-    if (!target) return { matched: false }
-    const resolved = this.#config.resolvePublishedWidgetPlacement
-      ? await this.#config.resolvePublishedWidgetPlacement({
-          definitionId: target.definitionId,
-          revisionId: target.revisionId,
-        })
-      : target
-    if (!resolved) return { matched: true, target, revision: null }
-    const resolvedValidation = fnValidatePublishedWidgetPlacementTargets([resolved])
-    if (
-      !resolvedValidation.ok
-      || resolved.definitionId !== target.definitionId
-      || resolved.revisionId !== target.revisionId
-      || resolved.name !== target.name
-      || resolved.slug !== target.slug
-      || resolved.description !== target.description
-      || resolved.contractDigestSha256 !== target.contractDigestSha256
-      || resolved.updatedAtMs !== target.updatedAtMs
-      || resolved.bounds.width !== target.bounds.width
-      || resolved.bounds.height !== target.bounds.height
-    ) return { matched: true, target, revision: null }
-    const tenant = this.#config.tenant
-    const widgets = this.#config.widgetAuthoringCapability
-    if (!tenant || !widgets) {
-      throw new Error('OPERATION_UNAVAILABLE: Published widget inspection is unavailable in this host.')
-    }
-    const revision = await widgets.getActiveRevision(tenant, target.definitionId)
-    if (
-      !revision
-      || revision.orgId !== tenant.orgId
-      || revision.id !== target.revisionId
-      || revision.definitionId !== target.definitionId
-      || revision.manifest.name !== target.name
-      || revision.manifest.slug !== target.slug
-      || (revision.manifest.description ?? null) !== target.description
-      || revision.contractDigestSha256 !== target.contractDigestSha256
-      || revision.createdAtMs !== target.updatedAtMs
-    ) return { matched: true, target, revision: null }
-    return { matched: true, target, revision }
-  }
-
-  async #publishedSource(
-    target: TPublishedWidgetPlacementTarget,
-    revision: TWidgetRevisionDescriptor,
-  ): Promise<TWidgetSourceSnapshot> {
-    const tenant = this.#config.tenant
-    const widgets = this.#config.widgetAuthoringCapability
-    if (!tenant || !widgets) {
-      throw new Error('OPERATION_UNAVAILABLE: Published widget source inspection is unavailable in this host.')
-    }
-    const [source, snapshot] = await Promise.all([
-      widgets.getRevisionSource(tenant, revision.id),
-      widgets.readRevisionSourceSnapshot(tenant, {
-        definitionId: target.definitionId,
-        revisionId: revision.id,
-      }),
-    ])
-    if (
-      !source
-      || !snapshot
-      || source.orgId !== tenant.orgId
-      || source.definitionId !== target.definitionId
-      || source.revisionId !== revision.id
-      || snapshot.id !== source.sourceSnapshotId
-      || snapshot.digestSha256 !== source.sourceDigestSha256
-    ) {
-      throw new Error('OPERATION_UNAVAILABLE: Published widget source is unavailable.')
-    }
-    return snapshot
-  }
-
-  async #draftPublicationStates(name: string) {
-    const tenant = this.#config.tenant
-    const store = this.#config.authoringStore
-    if (!tenant || !store) return []
-    const draft = await store.getDraftByName(tenant, name)
-    return draft && draft.status !== 'discarded'
-      ? [{
-          draftId: draft.id,
-          definitionId: draft.definitionId,
-          name: draft.name,
-          status: draft.status,
-          publishedRevisionId: draft.publishedRevisionId,
-        }]
-      : []
-  }
-
   #chatSessionEntry(sessionId: TOmnidrawChatId): TChatSessionEntry | undefined {
     const widgetId = this.#chatWidgetIds.get(sessionId)
     return widgetId ? this.sessionMap[widgetId]?.[sessionId] : undefined
-  }
-
-  async #draftResourceSelections(
-    authoringStore: IAgentAuthoringStore,
-    tenant: TTenantContext,
-    draft: TAgentAuthoringDraftDescriptor,
-  ): Promise<readonly TWidgetAuthoringResourceSelection[] | undefined> {
-    const chat = await authoringStore.getChat(tenant, draft.chatId)
-    if (!chat) {
-      throw Object.assign(new Error('Durable widget draft chat was not found.'), {
-        code: 'AGENT_CHAT_NOT_FOUND',
-      })
-    }
-    const connected = this.#chatSessionEntry(chat.externalSessionKey)
-    const sessionManager = connected?.sessionManager ?? SessionManager.continueRecent(
-      this.#workspace.getChatRoot(chat.externalSessionKey),
-      this.#workspace.getChatHistoryRoot(chat.externalSessionKey),
-    )
-    const record = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
-    return record?.resources
-  }
-
-  #assertChatAuthorizationOwner(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
-    const connectedAccountId = sessionEntry.authorizationContext?.accountId
-    if (connectedAccountId === authorization.accountId) return
-    if (connectedAccountId === undefined && authorization.accountId === undefined) return
-    throw this.#chatConnectionError('CHAT_AUTHORIZATION_CHANGED', 'This chat belongs to a different authorization context.')
-  }
-
-  #updateChatAuthorizationContext(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
-    if (!sessionEntry.authorizationContext) {
-      sessionEntry.authorizationContext = { ...authorization }
-      return
-    }
-    sessionEntry.authorizationContext.accountId = authorization.accountId
-    sessionEntry.authorizationContext.requestId = authorization.requestId
   }
 
   #chatConnectionError(code: string, message: string): Error & { code: string } {
@@ -1404,23 +703,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionId: TOmnidrawChatId,
     sessionManager: SessionManager,
     previousSession?: AgentSession,
-    authorization: TToolAuthorizationContext = {},
   ): Promise<TChatSessionEntry> {
     const cwd = await this.#workspace.ensureChat(sessionId)
     const sensitiveToolArgs = new Map<string, unknown>()
-    const authorizationContext = { ...authorization }
     const registry = createToolRegistry({
       chatId: sessionId,
       cwd,
-      authorization: authorizationContext,
       authorize: this.#config.authorizeToolCall,
       workspace: this.#workspace,
       approvals: this.#approvals,
-      preview: this.#widgetDrafts,
       resourceService: this.#config.resourceService,
       bashCapability: this.#config.bashCapability,
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
-      onDraftChanged: (change) => this.#widgetDrafts.handleToolChange(change),
       takeSensitiveToolArgs: (toolCallId) => {
         const stored = sensitiveToolArgs.get(toolCallId)
         sensitiveToolArgs.delete(toolCallId)
@@ -1471,7 +765,27 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       })
     })
 
-    return { session, sessionManager, unsub, authorizationContext }
+    return { session, sessionManager, unsub }
+  }
+
+  async #ensureChatMetadata(sessionId: TOmnidrawChatId): Promise<void> {
+    const existing = await this.#config.chats.get({ id: sessionId })
+    if (existing) {
+      if (existing.status !== 'active') {
+        await this.#config.chats.update({ id: sessionId, status: 'active' })
+      }
+      return
+    }
+    const portableRelativePath = (path: string) => (
+      relative(this.#config.dataPath, path).split(sep).join('/')
+    )
+    await this.#config.chats.create({
+      id: sessionId,
+      canvasId: null,
+      name: 'AI Chat',
+      workspaceRelativePath: portableRelativePath(this.#workspace.getChatRoot(sessionId)),
+      historyRelativePath: portableRelativePath(this.#workspace.getChatHistoryRoot(sessionId)),
+    })
   }
 
   #flushSessionManager(sessionManager: SessionManager): void {
@@ -1527,25 +841,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         kind: resource.kind,
         name: resource.name,
         status: resource.status,
-      })
-    }
-    return selected
-  }
-
-  async #resolveChatWidgetSelections(
-    refs: readonly { name: string; source: TWidgetSource }[],
-  ): Promise<TWidgetMentionContextItem[]> {
-    if (refs.length > 16) throw new Error('A prompt can select at most 16 widgets.')
-    const unique = [...new Map(refs.map((ref) => [`${ref.source}\u0000${ref.name}`, ref])).values()]
-    const selected: TWidgetMentionContextItem[] = []
-    for (const ref of unique) {
-      const detail = await this.getWidgetDetail(ref.name, ref.source)
-      if (!detail) throw new Error(`Selected ${ref.source} widget was not found: ${ref.name}`)
-      selected.push({
-        name: detail.name,
-        source: detail.source,
-        displayName: detail.variant.displayName,
-        revision: detail.variant.revision,
       })
     }
     return selected
@@ -1617,48 +912,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #releaseUnpublishedChatSessionEntry(sessionEntry: TChatSessionEntry): void {
     sessionEntry.unsub()
     sessionEntry.session.dispose()
-  }
-
-  #unavailableWidgetDrafts(): WidgetDraftController {
-    const unavailable = () => {
-      throw Object.assign(new Error('Widget authoring is unavailable in this host.'), {
-        code: 'WIDGET_AUTHORING_UNAVAILABLE',
-      })
-    }
-    return {
-      close: async () => undefined,
-      handleToolChange: async () => undefined,
-      list: async () => [],
-      get: async () => null,
-      getByName: async () => null,
-      previewStatus: async () => unavailable(),
-      waitForPreview: async () => unavailable(),
-      testPreview: async () => unavailable(),
-      reportPreviewTestResult: async () => false,
-      ensurePreviewOwner: async () => unavailable(),
-      getPreviewOwner: async () => null,
-      listPreviewOwners: async () => [],
-      invalidatePreviewBindingsForChat: async () => undefined,
-      closePreviewOwner: async () => false,
-      cancelPreviewBuild: async () => false,
-      acquirePreviewMountLease: async () => null,
-      renewPreviewMountLease: async () => null,
-      releasePreviewMountLease: async () => false,
-      getWorkspaceRevision: async () => unavailable(),
-      validate: async () => null,
-      getPreviewCatalogState: async () => null,
-      buildPreview: async () => unavailable(),
-      publish: async () => unavailable(),
-      forget: async () => undefined,
-      withDraftDeletion: async (_name: string, operation: (cleanup: () => Promise<void>) => Promise<unknown>) => (
-        operation(async () => undefined)
-      ),
-      withDraftRename: async (
-        _name: string,
-        _nextName: string,
-        operation: (cleanup: () => Promise<void>) => Promise<unknown>,
-      ) => operation(async () => undefined),
-    } as unknown as WidgetDraftController
   }
 
 }

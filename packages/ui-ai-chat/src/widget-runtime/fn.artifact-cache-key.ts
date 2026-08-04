@@ -5,7 +5,7 @@ function encodePart(value: string): string {
 }
 
 export function fnWidgetUiArtifactCacheKey(args: Readonly<{
-  identity: Pick<TWidgetRuntimeIdentity, 'orgId' | 'definitionId' | 'revisionId'>;
+  identity: Pick<TWidgetRuntimeIdentity, 'orgId' | 'widgetKey' | 'catalogGeneration'>;
   tenantAuthorityKey: string;
   digestSha256: string;
   capsuleArtifactHash: string;
@@ -13,8 +13,8 @@ export function fnWidgetUiArtifactCacheKey(args: Readonly<{
   return [
     args.identity.orgId,
     args.tenantAuthorityKey,
-    args.identity.definitionId,
-    args.identity.revisionId,
+    args.identity.widgetKey,
+    String(args.identity.catalogGeneration),
     args.digestSha256,
     args.capsuleArtifactHash,
   ].map(encodePart).join('|');

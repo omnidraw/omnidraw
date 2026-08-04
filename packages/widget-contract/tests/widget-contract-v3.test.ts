@@ -186,12 +186,6 @@ describe('Capsule widget contract v4', () => {
         outputByteLimit: 1_024,
         logByteLimit: 0,
       },
-      retry: {
-        mode: 'none' as const,
-        maxAttempts: 1,
-        initialBackoffMs: 0,
-        maxBackoffMs: 0,
-      },
     };
     const changedPath = { ...descriptor, modulePath: 'src/private/moved.ts' };
     const browser = fnProjectWidgetBrowserFunctionDescriptors([descriptor]);
@@ -229,12 +223,6 @@ describe('Capsule widget contract v4', () => {
           memoryTier: 'small',
           outputByteLimit: 1_024,
           logByteLimit: 0,
-        },
-        retry: {
-          mode: 'none',
-          maxAttempts: 1,
-          initialBackoffMs: 0,
-          maxBackoffMs: 0,
         },
       }],
       serverModuleSpecifier: './src/server.ts',

@@ -28,7 +28,7 @@ For Three.js/WebGL widgets:
 - set \`ui.apis\` to \`["DOM", "WEBGL"]\` unless another public capability is
   independently required;
 - rely on the \`WEBGL\` group defaults. Add a partial \`ui.budgets\` override
-  only when a retained Preview diagnostic proves a specific dimension needs it;
+  only when a verified current-process diagnostic proves a specific dimension needs it;
 - stay inside the reviewed Three.js probe subset: build an explicitly indexed
   \`THREE.BufferGeometry\`, render it with a compact \`THREE.RawShaderMaterial\`,
   and animate \`Mesh\` transforms or small float/vector shader uniforms;
@@ -47,8 +47,8 @@ For Three.js/WebGL widgets:
   animation time from the monotonic timestamp passed to each
   \`requestAnimationFrame\` callback so animation speed stays independent of
   frame rate and Capsule scheduling;
-- do not claim the widget renders until validation has retained a successful
-  browser Preview execution result.
+- do not claim the widget renders until the current process has completed a
+  successful browser Preview execution.
 `;
 
 const WIDGET_CHAT_SYSTEM_PROMPT_SECTIONS = [

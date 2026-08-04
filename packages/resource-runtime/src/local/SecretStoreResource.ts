@@ -1,5 +1,4 @@
 import { ResourceError, toResourceError } from '../ResourceError';
-import type { IResourceWritePermitGuard } from '../interface';
 import type {
   IResourceKeyValuePersistence,
   TResourceKeyValueDeleteResult,
@@ -13,9 +12,6 @@ import type {
   TLocalResolvedResourceCall,
   TLocalResource,
   TLocalResourceRequirement,
-  TLocalResourceOperationIdentity,
-  TLocalResourceCommittedOperation,
-  TLocalResourceDispatchReceipt,
 } from './ResourceProviderTypes';
 
 type TResourceProviderCreateArgs = unknown;
@@ -84,8 +80,8 @@ function entryMetadata(entry: TResourceKeyValueEntry): TResourceKeyValueEntryMet
   return {
     key: entry.key,
     revision: entry.revision,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
+    createdAtSec: entry.createdAtSec,
+    updatedAtSec: entry.updatedAtSec,
   };
 }
 
@@ -304,8 +300,8 @@ export class SecretStoreResource implements ILocalResourceProvider {
           items: page.entries.map((entry) => ({
             name: entry.key,
             revision: entry.revision,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
+            createdAtSec: entry.createdAtSec,
+            updatedAtSec: entry.updatedAtSec,
           })),
           ...(page.nextCursor === null ? {} : { nextCursor: page.nextCursor }),
         };
@@ -334,79 +330,4 @@ export class SecretStoreResource implements ILocalResourceProvider {
     }
   }
 
-  async dispatchWithReceipt(
-    context: TLocalResolvedResourceCall,
-    operation: string,
-    rawArgs: unknown,
-    identity: TLocalResourceOperationIdentity,
-    guard: IResourceWritePermitGuard,
-  ): Promise<TLocalResourceDispatchReceipt> {
-    try {
-      if (
-        context.resource.kind !== this.kind
-        || context.requirement.kind !== this.kind
-        || context.resource.id !== identity.resourceId
-        || (context.tenant !== undefined && context.tenant.orgId !== identity.orgId)
-      ) throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Secret receipt identity does not match the resolved resource.');
-      const args = recordArgs(rawArgs);
-      const mutation = operation === 'set'
-        ? {
-            operation: 'set' as const,
-            key: secretName(args.name),
-            value: secretValue(args.value),
-          }
-        : operation === 'delete'
-          ? {
-              operation: 'delete' as const,
-              key: secretName(args.name),
-              expectedRevision: optionalExpectedRevision(args.expectedRevision),
-            }
-          : operation === 'compareAndSet'
-            ? {
-                operation: 'compareAndSet' as const,
-                key: secretName(args.name),
-                expectedRevision: expectedRevision(args.expectedRevision),
-                value: secretValue(args.value),
-              }
-            : null;
-      if (mutation === null) {
-        throw new ResourceError('SECRET_WRITE_NOT_ALLOWED', 'Durable secret receipts apply only to write operations.');
-      }
-      return await this.persistence.mutateWithReceipt({
-        resourceId: identity.resourceId,
-        invocationId: identity.invocationId,
-        attemptId: identity.attemptId,
-        operationId: identity.operationId,
-        operationFingerprintSha256: identity.operationFingerprintSha256,
-        mutation,
-      }, guard);
-    } catch (error) {
-      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
-    }
-  }
-
-  async readCommittedOperation(
-    resource: TLocalResource,
-    request: Readonly<{ invocationId: string; operationId: string }>,
-  ): Promise<TLocalResourceCommittedOperation | null> {
-    if (resource.kind !== this.kind) {
-      throw new ResourceError(
-        'RESOURCE_KIND_MISMATCH',
-        'Secret-store receipt resource kind is invalid.',
-      );
-    }
-    try {
-      return await this.persistence.readCommittedOperation({
-        resourceId: resource.id,
-        invocationId: request.invocationId,
-        operationId: request.operationId,
-      });
-    } catch (error) {
-      throw toResourceError(
-        error,
-        'SECRET_OPERATION_FAILED',
-        'Secret-store receipt recovery failed.',
-      );
-    }
-  }
 }

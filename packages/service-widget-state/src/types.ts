@@ -1,5 +1,3 @@
-import type { TTenantContext } from '@omnidraw/tenant-core';
-
 export type TWidgetStateJson =
   | null
   | boolean
@@ -9,12 +7,9 @@ export type TWidgetStateJson =
   | Readonly<{ [key: string]: TWidgetStateJson }>;
 
 export type TWidgetStateInstanceIdentity = Readonly<{
-  orgId: string;
   canvasId: string;
   elementId: string;
   widgetInstanceId: string;
-  definitionId: string;
-  revisionId: string;
 }>;
 
 export type TWidgetStateStoredSnapshot = Readonly<{
@@ -33,7 +28,6 @@ export type TWidgetStateUnavailableResult = Readonly<{
 }>;
 
 export type TWidgetStateStoreGetArgs = Readonly<{
-  tenant: TTenantContext;
   identity: TWidgetStateInstanceIdentity;
   initialSnapshot: TWidgetStateStoredSnapshot;
 }>;
@@ -46,7 +40,6 @@ export type TWidgetStateStoreGetResult =
   | TWidgetStateUnavailableResult;
 
 export type TWidgetStateStoreCompareAndSwapArgs = Readonly<{
-  tenant: TTenantContext;
   identity: TWidgetStateInstanceIdentity;
   expectedVersion: number;
   state: TWidgetStateJson;

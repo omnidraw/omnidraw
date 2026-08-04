@@ -1,10 +1,10 @@
 import type { Database } from '@tursodatabase/database';
 import type {
+  TExpectedDomain,
   TExpectedForeignKey,
   TExpectedIndexManifest,
   TExpectedSchema,
 } from '../schema/expected-schema';
-import { fnDatabaseColumnBaseType } from './fn.database-column-type';
 import { fnSerializeDatabaseSchemaFingerprint } from './fn.database-schema-fingerprint';
 
 type TPortal = {
@@ -13,6 +13,7 @@ type TPortal = {
 };
 
 type TArgs = {
+  expectedDomains: readonly TExpectedDomain[];
   expectedFingerprintSha256: string;
   expectedIndexes: TExpectedIndexManifest;
   expectedSchema: TExpectedSchema;
@@ -57,6 +58,11 @@ type TSchemaObjectRow = {
   sql: string | null;
   table_name: string;
   type: 'index' | 'table' | 'trigger' | 'view';
+};
+
+type TDomainRow = {
+  name: string;
+  sql: string;
 };
 
 function identifier(value: string): string {
@@ -151,20 +157,40 @@ async function fxVerifyDatabaseSchemaContract(
   portal: TPortal,
   args: TArgs,
 ): Promise<TResult> {
-  const schemaObjects = await (await portal.db.prepare(`
-    SELECT type, name, tbl_name AS table_name, sql
-    FROM sqlite_schema
-    WHERE type IN ('table', 'index', 'view', 'trigger')
-      AND name NOT GLOB 'sqlite_*'
-    ORDER BY type, name, tbl_name
-  `)).all() as TSchemaObjectRow[];
+  const [schemaObjects, domainRows] = await Promise.all([
+    (await portal.db.prepare(`
+      SELECT type, name, tbl_name AS table_name, sql
+      FROM sqlite_schema
+      WHERE type IN ('table', 'index', 'view', 'trigger')
+        AND name NOT GLOB 'sqlite_*'
+      ORDER BY type, name, tbl_name
+    `)).all() as Promise<TSchemaObjectRow[]>,
+    (await portal.db.prepare(`
+      SELECT name, sql
+      FROM __turso_internal_types
+      ORDER BY name
+    `)).all() as Promise<TDomainRow[]>,
+  ]);
+  const actualDomains = domainRows.map((row) => `${row.name}\u0000${row.sql}`);
+  const expectedDomains = args.expectedDomains.map((row) => `${row.name}\u0000${row.sql}`);
+  if (!sameStrings(actualDomains, expectedDomains)) {
+    return { valid: false, reason: 'custom domain definitions differ' };
+  }
   const fingerprintPayload = fnSerializeDatabaseSchemaFingerprint(
-    schemaObjects.map((row) => ({
-      name: row.name,
-      sql: row.sql,
-      tableName: row.table_name,
-      type: row.type,
-    })),
+    [
+      ...schemaObjects.map((row) => ({
+        name: row.name,
+        sql: row.sql,
+        tableName: row.table_name,
+        type: row.type,
+      })),
+      ...domainRows.map((row) => ({
+        name: row.name,
+        sql: row.sql,
+        tableName: '__turso_internal_types',
+        type: 'domain' as const,
+      })),
+    ],
   );
   const fingerprintSha256 = new portal.Bun.CryptoHasher('sha256')
     .update(fingerprintPayload)
@@ -192,7 +218,7 @@ async function fxVerifyDatabaseSchemaContract(
     );
     const actualColumns = columns.map((column) => [
       column.name,
-      fnDatabaseColumnBaseType(column.type),
+      column.type,
       column.notnull === 1 ? 'required' : 'nullable',
       String(primaryKeyPositions.get(column.name) ?? 0),
       generatedColumnKind(column.hidden),

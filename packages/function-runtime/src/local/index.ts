@@ -1,4 +1,4 @@
-/** @file Usable OSS local short-lived function runtime adapters. */
+/** @file Local one-child direct-function runtime adapters. */
 
 export {
   BunChildFunctionDescriptorExtractor,
@@ -11,14 +11,14 @@ export {
 } from './BunChildSandboxDriver';
 export type { TBunChildProcessGroupController } from './BunChildLifecycle';
 export {
-  FunctionExecutor,
-  type TFunctionExecutionOutcome,
-  type TFunctionExecutorConfig,
-} from './FunctionExecutor';
+  DirectFunctionExecutor,
+  type TDirectFunctionExecutorConfig,
+  type TDirectFunctionExecutorDiagnostics,
+} from './DirectFunctionExecutor';
 export {
-  InvocationResourceGateway,
-  type TInvocationResourceGatewayConfig,
-} from './InvocationResourceGateway';
+  DirectInvocationResourceGateway,
+  type TDirectInvocationResourceGatewayConfig,
+} from './DirectInvocationResourceGateway';
 export {
   JsonSchemaFunctionValidator,
   type IFunctionSchemaValidator,
@@ -26,16 +26,9 @@ export {
   type TJsonSchemaFunctionValidatorConfig,
 } from './JsonSchemaFunctionValidator';
 export {
-  LocalFunctionDispatcher,
-  type TLocalFunctionDispatcherConfig,
-  type TLocalFunctionDispatcherDiagnostics,
-  type TLocalFunctionInvocationRequest,
-} from './LocalFunctionDispatcher';
-export {
-  ResourceWriteCapabilityAuthority,
-  type IResourceWriteCapabilityIssuer,
-  type TResourceWriteCapabilityAuthorityConfig,
-} from './ResourceWriteCapabilityAuthority';
+  EphemeralResourceWritePermitAuthority,
+  type TEphemeralResourceWritePermitAuthorityConfig,
+} from './EphemeralResourceWritePermitAuthority';
 export { fnFunctionArtifactAdmission } from './fn.artifact-admission';
 export {
   fnParseServerArtifactEnvelope,
@@ -51,7 +44,3 @@ export {
 } from './fn.resource-call-policy';
 export { fnBunFunctionWorkerCommand } from './fn.sandbox-command';
 export { runFunctionWorker } from './function-worker';
-export type {
-  IExactFunctionArtifactReader,
-  IInvocationResourceGatewayFactory,
-} from './interface';

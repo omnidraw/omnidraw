@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M6 gate for typed, bounded, scale-to-zero server functions.
+ * @file Focused gate for typed, bounded, short-lived server functions.
  */
 
 import { resolve } from 'node:path';
@@ -26,63 +26,63 @@ const suites: readonly TFunctionRuntimeSuite[] = [
     ],
   },
   {
-    name: 'public contracts, schema bounds, sandbox lifecycle, and spoof resistance',
-    command: ['bun', 'test', 'packages/function-runtime/tests', '--timeout=30000'],
-    requiredPaths: [
-      'packages/function-runtime/tests/function-runtime.test.ts',
-      'packages/function-runtime/tests/local-runtime.test.ts',
-    ],
-  },
-  {
-    name: 'durable definitions, idempotency, leases, cancellation, recovery, usage, and retention',
+    name: 'direct executor, schema bounds, cancellation, concurrency, and ephemeral permits',
     command: [
       'bun',
       'test',
-      'packages/service-db/src/tests/FunctionControlStoreTurso.test.ts',
-      'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
+      'packages/function-runtime/tests/direct-function-runtime.test.ts',
       '--timeout=30000',
     ],
     requiredPaths: [
-      'packages/service-db/src/tests/FunctionControlStoreTurso.test.ts',
-      'packages/service-db/src/tests/fixtures/function-control-claim-crash.ts',
-      'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
+      'packages/function-runtime/tests/direct-function-runtime.test.ts',
     ],
   },
   {
-    name: 'atomic KV, secret, and database operation receipts',
+    name: 'filesystem-backed production invocation and no retained history',
     command: [
       'bun',
       'test',
-      'packages/resource-runtime/tests/function-operation-receipts.test.ts',
+      'apps/cli/tests/FunctionService.test.ts',
       '--timeout=30000',
     ],
-    requiredPaths: ['packages/resource-runtime/tests/function-operation-receipts.test.ts'],
+    requiredPaths: [
+      'apps/cli/tests/FunctionService.test.ts',
+    ],
   },
   {
-    name: 'SDK descriptors, generated proxy types, immutable publication, and API composition',
+    name: 'browser SDK bridge invokes one direct current-catalog request',
+    command: [
+      'bun',
+      'run',
+      '--cwd',
+      'packages/ui-ai-chat',
+      'test',
+      '--',
+      'tests/widget-runtime/create-widget-function-host-bridge.test.ts',
+    ],
+    requiredPaths: [
+      'packages/ui-ai-chat/tests/widget-runtime/create-widget-function-host-bridge.test.ts',
+    ],
+  },
+  {
+    name: 'SDK descriptors, generated proxy types, and direct invoke API composition',
     command: [
       'bun',
       'test',
       'packages/sdk/tests/server-functions.test.ts',
-      'packages/widget-contract/tests/widget-contract-v3.test.ts',
-      'packages/widget-contract/tests/widget-artifact-recovery.test.ts',
+      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/api/src/function/contract.test.ts',
-      'packages/api/src/context-composition.test.ts',
-      'packages/api/src/route-equivalence.test.ts',
       'apps/cli/tests/FunctionService.test.ts',
-      'apps/cli/tests/FunctionRuntimeComposition.test.ts',
-      'apps/cli/tests/WidgetService.test.ts',
       '--timeout=30000',
     ],
     requiredPaths: [
       'packages/sdk/tests/server-functions.test.ts',
       'packages/sdk/tests/generated-proxy-types.fixture.ts',
-      'packages/widget-contract/tests/widget-contract-v3.test.ts',
-      'packages/widget-contract/tests/widget-artifact-recovery.test.ts',
+      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/api/src/function/contract.test.ts',
       'apps/cli/tests/FunctionService.test.ts',
-      'apps/cli/tests/FunctionRuntimeComposition.test.ts',
-      'apps/cli/tests/WidgetService.test.ts',
     ],
   },
   {
@@ -136,4 +136,4 @@ async function runSuite(suite: TFunctionRuntimeSuite, index: number): Promise<vo
 
 for (const [index, suite] of suites.entries()) await runSuite(suite, index);
 
-console.log(`\n[function-runtime] passed all ${suites.length} bounded execution suites`);
+console.log(`\n[function-runtime] passed all ${suites.length} direct execution suites`);

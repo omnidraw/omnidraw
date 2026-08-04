@@ -45,17 +45,11 @@ const ZWidgetServerFunctionDescriptorObject = z.object({
     outputByteLimit: z.number().int().min(1).max(1_048_576),
     logByteLimit: z.number().int().min(0).max(1_048_576),
   }).strict(),
-  retry: z.object({
-    mode: z.enum(['none', 'idempotent']),
-    maxAttempts: z.number().int().min(1).max(3),
-    initialBackoffMs: z.number().int().min(0).max(10_000),
-    maxBackoffMs: z.number().int().min(0).max(30_000),
-  }).strict(),
 }).strict();
 
 type TFunctionDescriptorRules = Pick<
   TWidgetServerFunctionDescriptor,
-  'effect' | 'resources' | 'retry'
+  'effect' | 'resources'
 >;
 
 function refineFunctionDescriptor(
@@ -87,20 +81,6 @@ function refineFunctionDescriptor(
       });
     }
   });
-  if (descriptor.retry.mode === 'none' && descriptor.retry.maxAttempts !== 1) {
-    context.addIssue({
-      code: 'custom',
-      message: 'Non-retrying functions must use exactly one attempt.',
-      path: ['retry', 'maxAttempts'],
-    });
-  }
-  if (descriptor.retry.maxBackoffMs < descriptor.retry.initialBackoffMs) {
-    context.addIssue({
-      code: 'custom',
-      message: 'Maximum backoff must not be below initial backoff.',
-      path: ['retry', 'maxBackoffMs'],
-    });
-  }
 }
 
 const ZWidgetServerFunctionDescriptorShape = ZWidgetServerFunctionDescriptorObject

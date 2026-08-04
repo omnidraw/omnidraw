@@ -8,9 +8,11 @@ export type {
 } from './tools/tool.bash';
 export type { TAgentResource, TAgentResourceDataEntry, TAgentResourceService } from './tools/resource-service';
 export type { TToolEvent } from './tools/types';
-export {
-  PreviewBuildAdmission,
-  type IPreviewBuildAdmission,
-  type TPreviewBuildAdmissionConfig,
-  type TPreviewBuildAdmissionScope,
-} from './widget-drafts/PreviewBuildAdmission';
+export { WidgetFilesystemBuildService } from './widget-filesystem/build';
+export type * from './widget-filesystem/build';
+export * from './widget-filesystem/catalog';
+export * from './widget-filesystem/import';
+export * from './widget-filesystem/management';
+export * from './widget-filesystem/preview';
+export * from './widget-filesystem/publication';
+export * from './widget-filesystem/workspace';

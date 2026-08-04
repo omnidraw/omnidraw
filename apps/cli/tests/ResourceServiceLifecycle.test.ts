@@ -49,26 +49,14 @@ const useCoordinator: IResourceUseCoordinator = {
 };
 
 describe('ResourceService lifecycle', () => {
-  test('preserves provider-owned function receipts through the management adapter', async () => {
+  test('forwards direct provider calls without receipt or recovery seams', async () => {
     const calls: string[] = [];
     const provider: ILocalResourceProvider = {
       kind: 'kv',
       effect: () => 'write',
-      dispatch: async () => { throw new Error('Receipt path must not use plain dispatch.'); },
-      dispatchWithReceipt: async (_context, operation, _args, identity, guard) => {
-        calls.push(`dispatch:${operation}:${identity.operationId}`);
-        await guard.assertCanCommit();
-        return { output: { revision: 1 }, committed: true, replayed: false };
-      },
-      readCommittedOperation: async (_resource, request) => {
-        calls.push(`read:${request.operationId}`);
-        return {
-          invocationId: request.invocationId,
-          operationId: request.operationId,
-          attemptId: 'attempt-a',
-          operationName: 'set',
-          output: { revision: 1 },
-        };
+      dispatch: async (_context, operation) => {
+        calls.push(`dispatch:${operation}`);
+        return { revision: 1 };
       },
       provision: async () => undefined,
       delete: async () => undefined,
@@ -79,7 +67,7 @@ describe('ResourceService lifecycle', () => {
       dispatch: async () => { throw new Error('Management dispatch is not expected.'); },
     });
     const resource = { id: 'resource-a', kind: 'kv' as const };
-    const receipt = await adapter.dispatchWithReceipt(
+    const output = await adapter.dispatch(
       {
         tenant,
         resource,
@@ -89,34 +77,11 @@ describe('ResourceService lifecycle', () => {
       },
       'set',
       { key: 'theme', value: 'dark' },
-      {
-        orgId: tenant.orgId,
-        resourceId: resource.id,
-        invocationId: 'invocation-a',
-        attemptId: 'attempt-a',
-        operationId: 'operation-a',
-      },
-      { assertCanCommit: async () => { calls.push('guard'); } },
     );
-    expect(receipt).toEqual({
-      output: { revision: 1 },
-      committed: true,
-      replayed: false,
-    });
-    await expect(adapter.readCommittedOperation(resource, {
-      invocationId: 'invocation-a',
-      operationId: 'operation-a',
-    })).resolves.toMatchObject({
-      invocationId: 'invocation-a',
-      operationId: 'operation-a',
-      operationName: 'set',
-      output: { revision: 1 },
-    });
-    expect(calls).toEqual([
-      'dispatch:set:operation-a',
-      'guard',
-      'read:operation-a',
-    ]);
+    expect(output).toEqual({ revision: 1 });
+    expect(calls).toEqual(['dispatch:set']);
+    expect('dispatchWithReceipt' in adapter).toBe(false);
+    expect('readCommittedOperation' in adapter).toBe(false);
   });
 
   test('drains a queued management write before provider shutdown and restart', async () => {

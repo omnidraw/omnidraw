@@ -4,14 +4,7 @@ import { AsyncStateView } from "./AsyncStateView"
 import { ChatTab } from "./tabs/ChatTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { fnCreateAiChatWidgetError } from "./fn.error"
-import {
-  fnFirstAutoOpenWidgetPreviewReference,
-  fnNormalizeAutoOpenedPreviewDraftIds,
-  fnRecordAutoOpenedPreviewDraftId,
-  fnWidgetPreviewReferenceKey,
-} from "./fn.preview-auto-open"
 import { fnFindApprovalResourceId, fnGetApprovalResourceId } from "./tabs/fn.tool-call"
-import type { TChatWidgetDraftReference } from "./tabs/fn.tool-call"
 import type { TAiChatApproval, TAiChatApprovalStatus, TAiChatWidgetError, TAiChatWidgetErrorKind } from "./types"
 import type { TWidgetTitleBarPortal } from "../../widget/interface"
 import type { TChatComposerMention, TChatPromptImage } from "./ChatComposer/interface"
@@ -24,7 +17,6 @@ type TAiChatThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 type TAiChatPreference = {
   model?: { provider: string; modelId: string }
   thinkingLevel?: TAiChatThinkingLevel
-  autoOpenedPreviewDraftIds?: string[]
 }
 type TChatConnectIntent = { request: number; mode: "reuse" | "replace"; sessionId?: string }
 
@@ -37,7 +29,6 @@ interface IProps {
   sessionId: string
   aiChatPreference?: TAiChatPreference
   onAiChatPreferenceChange?: (preference: TAiChatPreference) => void
-  onOpenWidgetPreview: (reference: TChatWidgetDraftReference) => Promise<void>
   onResetSessionId: () => string
 }
 
@@ -73,12 +64,8 @@ export function AiChat(props: IProps) {
   const [isRunning, setIsRunning] = createSignal(false)
   const [isCanceling, setIsCanceling] = createSignal(false)
   const [chatDraftText, setChatDraftText] = createSignal("")
-  const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>({
-    ...(props.aiChatPreference ?? {}),
-    autoOpenedPreviewDraftIds: fnNormalizeAutoOpenedPreviewDraftIds(
-      props.aiChatPreference?.autoOpenedPreviewDraftIds,
-    ),
-  })
+  const [localAiChatPreference, setLocalAiChatPreference] =
+    createSignal<TAiChatPreference>({ ...(props.aiChatPreference ?? {}) })
   const [chatConnectIntent, setChatConnectIntent] = createSignal<TChatConnectIntent>({ request: 0, mode: "reuse" })
   const [eventStreamNonce, setEventStreamNonce] = createSignal(0)
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
@@ -129,12 +116,7 @@ export function AiChat(props: IProps) {
   }
 
   createEffect(() => {
-    setLocalAiChatPreference({
-      ...(props.aiChatPreference ?? {}),
-      autoOpenedPreviewDraftIds: fnNormalizeAutoOpenedPreviewDraftIds(
-        props.aiChatPreference?.autoOpenedPreviewDraftIds,
-      ),
-    })
+    setLocalAiChatPreference({ ...(props.aiChatPreference ?? {}) })
   })
 
   createEffect(() => {
@@ -355,16 +337,6 @@ export function AiChat(props: IProps) {
     void props.apiService.api.agent.chat.newSession({ widgetId: props.id, sessionId: previousSessionId })
   }
 
-  const clearResourceBindings = async () => {
-    try {
-      const [error] = await props.apiService.api.agent.chat.resourceBindings.clear({ widgetId: props.id, sessionId: sessionId() })
-      if (error) reportWidgetError("resource-context", error)
-      else clearWidgetError("resource-context")
-    } catch (error) {
-      reportWidgetError("resource-context", error)
-    }
-  }
-
   const resolveApproval = async (approvalId: string, decision: "approve" | "reject") => {
     setApprovalStatus(approvalId, "executing")
     const [error] = await props.apiService.api.agent.approval.resolve({
@@ -390,60 +362,6 @@ export function AiChat(props: IProps) {
   const openSettings = () => {
     setSelectedView("settings")
   }
-
-  const previewOpenOperations = new Map<string, Promise<boolean>>()
-  const requestWidgetPreview = (
-    reference: TChatWidgetDraftReference,
-  ): Promise<boolean> => {
-    const key = fnWidgetPreviewReferenceKey(reference)
-    const pending = previewOpenOperations.get(key)
-    if (pending !== undefined) return pending
-
-    clearWidgetError("preview")
-    const operation = (async (): Promise<boolean> => {
-      try {
-        await props.onOpenWidgetPreview(reference)
-        if (reference.draftId !== undefined) {
-          const currentIds = fnNormalizeAutoOpenedPreviewDraftIds(
-            localAiChatPreference().autoOpenedPreviewDraftIds,
-          )
-          if (!currentIds.includes(reference.draftId)) {
-            updateAiChatPreference({
-              autoOpenedPreviewDraftIds: fnRecordAutoOpenedPreviewDraftId(
-                currentIds,
-                reference.draftId,
-              ),
-            })
-          }
-        }
-        return true
-      } catch (error) {
-        reportWidgetError("preview", error)
-        return false
-      }
-    })()
-    previewOpenOperations.set(key, operation)
-    void operation.then(() => {
-      if (previewOpenOperations.get(key) === operation) {
-        previewOpenOperations.delete(key)
-      }
-    })
-    return operation
-  }
-
-  const openWidgetPreview = async (
-    reference: TChatWidgetDraftReference,
-  ): Promise<void> => {
-    await requestWidgetPreview(reference)
-  }
-
-  createEffect(() => {
-    const reference = fnFirstAutoOpenWidgetPreviewReference(
-      messageHistory,
-      localAiChatPreference().autoOpenedPreviewDraftIds,
-    )
-    if (reference !== undefined) void requestWidgetPreview(reference)
-  })
 
   const retryWidgetError = () => {
     const currentError = widgetError()
@@ -481,7 +399,6 @@ export function AiChat(props: IProps) {
                     onPreferenceChange={updateAiChatPreference}
                     onPrompt={prompt}
                     onResolveApproval={resolveApproval}
-                    onOpenWidgetPreview={openWidgetPreview}
                     onOpenResource={props.application.openResource}
                     browser={props.browser}
                     onLogError={props.application.logError}
@@ -491,7 +408,6 @@ export function AiChat(props: IProps) {
                     onReportError={reportWidgetError}
                     onRetryError={retryWidgetError}
                     onNewChat={newChat}
-                    onClearResourceBindings={clearResourceBindings}
                   />
                 )}
               </Show>

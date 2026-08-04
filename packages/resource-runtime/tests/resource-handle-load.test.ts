@@ -20,16 +20,6 @@ const RESOURCE_COUNT = 40;
 const IDLE_HANDLE_TIMEOUT_MS = 60_000;
 const roots: string[] = [];
 
-const tenant = {
-  orgId: 'org-load',
-  accountId: 'account-load',
-  cellId: 'cell-load',
-  placementEpoch: 1,
-  roles: ['member'],
-  capabilities: [],
-  requestId: 'request-load',
-} as const;
-
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -80,6 +70,42 @@ function recordFactoryOpen(openCounts: Map<string, number>, databasePath: string
 }
 
 describe('M10 bounded resource handle load', () => {
+  test('rejects legacy receipt-bearing resource files without silently upgrading them', async () => {
+    const dataRoot = await temporaryRoot('kv-legacy-receipt');
+    const resourceId = 'kv-legacy';
+    const databaseFactory: TResourceKeyValueDatabaseFactory = (databasePath, options) => (
+      new Database(databasePath, options as ConstructorParameters<typeof Database>[1])
+    );
+    const store = new ResourceKeyValueStore({ dataRoot, kind: 'kv', databaseFactory });
+    const databasePath = join(dataRoot, resourceId, 'data.db');
+    try {
+      await store.provision({ resourceId, kind: 'kv' });
+      const legacy = new Database(databasePath, { fileMustExist: true });
+      await legacy.connect();
+      await legacy.exec(`
+        CREATE TABLE _omnidraw_function_operation_receipts (
+          id TEXT PRIMARY KEY
+        ) STRICT;
+      `);
+      await legacy.close();
+
+      await expect(store.verify({ resourceId, kind: 'kv' })).rejects.toThrow(
+        'Resource key-value physical schema is incomplete.',
+      );
+
+      const inspected = new Database(databasePath, { fileMustExist: true });
+      await inspected.connect();
+      const row = await (await inspected.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = '_omnidraw_function_operation_receipts'
+      `)).get();
+      await inspected.close();
+      expect(row?.name).toBe('_omnidraw_function_operation_receipts');
+    } finally {
+      await store.close();
+    }
+  });
+
   test('bounds KV handles across many inactive resources, evicts LRU handles, and idle-closes to zero', async () => {
     expect(RESOURCE_KEY_VALUE_DEFAULT_MAX_OPEN_HANDLES).toBe(MAX_OPEN_HANDLES);
     expect(RESOURCE_KEY_VALUE_DEFAULT_IDLE_HANDLE_TIMEOUT_MS).toBe(IDLE_HANDLE_TIMEOUT_MS);
@@ -154,7 +180,6 @@ describe('M10 bounded resource handle load', () => {
       scheduleIdleSweep: clock.scheduleIdleSweep,
     });
     const context = (resourceId: string) => ({
-      tenant,
       resource: { id: resourceId, kind: 'db' as const },
       requirement: {
         kind: 'db' as const,

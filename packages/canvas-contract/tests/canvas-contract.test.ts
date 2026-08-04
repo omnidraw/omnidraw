@@ -89,14 +89,20 @@ describe("@omnidraw/canvas-contract", () => {
     });
   });
 
-  test("accepts namespaced widget identity without a state document", () => {
+  test("accepts filesystem widget identity and concrete local resources without state", () => {
     expect(fnValidateCanvasItems([
       widget({
         schemaVersion: 1,
         type: "widget-instance",
         instanceId: "instance-1",
-        definitionId: "definition-1",
-        revisionId: "revision-1",
+        widgetKey: "counter",
+        resourceBindings: {
+          todos: {
+            resourceId: "resource-1",
+            allowRead: true,
+            allowWrite: false,
+          },
+        },
       }),
     ])).toEqual({ valid: true, issues: [] });
   });
@@ -107,8 +113,7 @@ describe("@omnidraw/canvas-contract", () => {
         schemaVersion: 1,
         type: "widget-instance",
         instanceId: "instance-1",
-        definitionId: "definition-1",
-        revisionId: "revision-1",
+        widgetKey: "counter",
         stateDocumentId: "forbidden",
       }),
     ]);
@@ -138,6 +143,58 @@ describe("@omnidraw/canvas-contract", () => {
     } as TSceneNode])).toMatchObject({
       valid: false,
       issues: [expect.objectContaining({ code: "RUNTIME_ONLY_NODE_KIND" })],
+    });
+  });
+
+  test("rejects legacy database identity and invalid concrete resource choices", () => {
+    expect(fnValidateCanvasItems([
+      widget({
+        schemaVersion: 1,
+        type: "widget-instance",
+        instanceId: "instance-1",
+        widgetKey: "Counter",
+        definitionId: "legacy-definition",
+        revisionId: "legacy-revision",
+        resourceBindings: {
+          "9bad": {
+            resourceId: "r".repeat(201),
+            allowRead: false,
+            allowWrite: false,
+          },
+        },
+      }),
+    ])).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_SLOT" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_PERMISSIONS" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_ID" }),
+      ]),
+    });
+
+    expect(fnValidateCanvasItems([
+      widget({
+        schemaVersion: 1,
+        type: "widget-instance",
+        instanceId: "i".repeat(201),
+        widgetKey: "c".repeat(101),
+        resourceBindings: {
+          ["a".repeat(201)]: {
+            resourceId: "resource-1",
+            allowRead: true,
+            allowWrite: false,
+          },
+        },
+      }),
+    ])).toMatchObject({
+      valid: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: "WIDGET_EXTENSION_IDENTITY" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
+        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_SLOT" }),
+      ]),
     });
   });
 

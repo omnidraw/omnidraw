@@ -1,144 +1,73 @@
-import type { Database } from "@tursodatabase/database"
-import type { TTenantContext } from "@omnidraw/tenant-core"
-import type { TCanvas, TCanvasMember } from "../model"
-import { fnTimestampFromMs } from "./fn.legacy-row"
+import type { Database } from '@tursodatabase/database';
+import type { TCanvas } from '../model';
 
-type TPortal = {
-  db: Database
-}
-
-type TArgsAccountScoped = {
-  tenant: TTenantContext
-}
-
-type TArgsFindByName = TArgsAccountScoped & {
-  name: string
-}
-
-type TArgsFindById = TArgsAccountScoped & {
-  id: string
-}
-
-type TArgsCanEdit = {
-  tenant: TTenantContext
-  canvasId: string
-}
-
-type TArgsListMembers = {
-  tenant: TTenantContext
-  canvasId: string
-}
+type TPortal = { db: Database };
+type TArgs = Record<string, never>;
+type TArgsFindByName = { name: string };
+type TArgsFindById = { id: string };
 
 type TCanvasStorageRow = {
-  id: string
-  name: string
-  revision: unknown
-  created_at_ms: unknown
+  id: string;
+  name: string;
+  revision: unknown;
+  created_at_sec: unknown;
+  updated_at_sec: unknown;
+};
+
+function timestampSec(value: unknown, label: string): string {
+  if (
+    typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+  ) {
+    throw new TypeError(`Stored ${label} is not a whole-second timestamp.`);
+  }
+  return value;
 }
 
-type TCanvasMemberStorageRow = {
-  canvas_id: string
-  account_id: string
-  role: TCanvasMember["role"]
-  created_at_ms: unknown
-  updated_at_ms: unknown
-}
-
-function fnParseCanvasRow(row: TCanvasStorageRow): TCanvas {
+function parseCanvasRow(row: TCanvasStorageRow): TCanvas {
+  const revision = Number(row.revision);
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new TypeError('Stored canvas revision is invalid.');
+  }
   return {
     id: row.id,
     name: row.name,
-    revision: Number(row.revision),
-    created_at: fnTimestampFromMs(row.created_at_ms),
-  }
+    revision,
+    createdAtSec: timestampSec(row.created_at_sec, 'canvas creation time'),
+    updatedAtSec: timestampSec(row.updated_at_sec, 'canvas update time'),
+  };
 }
 
-function fnParseCanvasMemberRow(row: TCanvasMemberStorageRow): TCanvasMember {
-  return {
-    canvas_id: row.canvas_id,
-    account_id: row.account_id,
-    role: row.role,
-    created_at: fnTimestampFromMs(row.created_at_ms),
-    updated_at: fnTimestampFromMs(row.updated_at_ms),
-  }
-}
-
-export async function fxCanvasListAll(portal: TPortal, args: TArgsAccountScoped): Promise<TCanvas[]> {
-  const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
+export async function fxCanvasListAll(portal: TPortal, args: TArgs): Promise<TCanvas[]> {
+  void args;
+  const rows = await (await portal.db.prepare(`
+    SELECT id, name, revision, created_at_sec, updated_at_sec
     FROM canvases
-    INNER JOIN canvas_members
-      ON canvas_members.org_id = canvases.org_id
-      AND canvas_members.canvas_id = canvases.id
-      AND canvas_members.account_id = ?
-    WHERE canvases.org_id = ?
-  `)
-  const rows = await stmt.all(args.tenant.accountId, args.tenant.orgId) as TCanvasStorageRow[]
-  return rows.map(fnParseCanvasRow)
+    ORDER BY created_at_sec ASC, id ASC
+  `)).all() as TCanvasStorageRow[];
+  return rows.map(parseCanvasRow);
 }
 
-export async function fxCanvasFindByName(portal: TPortal, args: TArgsFindByName): Promise<TCanvas | null> {
-  const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
+export async function fxCanvasFindByName(
+  portal: TPortal,
+  args: TArgsFindByName,
+): Promise<TCanvas | null> {
+  const row = await (await portal.db.prepare(`
+    SELECT id, name, revision, created_at_sec, updated_at_sec
     FROM canvases
-    INNER JOIN canvas_members
-      ON canvas_members.org_id = canvases.org_id
-      AND canvas_members.canvas_id = canvases.id
-      AND canvas_members.account_id = ?
-    WHERE canvases.org_id = ? AND canvases.name = ?
-  `)
-  const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.name) as TCanvasStorageRow | undefined
-  return row ? fnParseCanvasRow(row) : null
+    WHERE name = ?
+  `)).get(args.name) as TCanvasStorageRow | undefined;
+  return row ? parseCanvasRow(row) : null;
 }
 
-export async function fxCanvasFindById(portal: TPortal, args: TArgsFindById): Promise<TCanvas | null> {
-  const stmt = await portal.db.prepare(`
-    SELECT canvases.id, canvases.name, canvases.revision, canvases.created_at_ms
+export async function fxCanvasFindById(
+  portal: TPortal,
+  args: TArgsFindById,
+): Promise<TCanvas | null> {
+  const row = await (await portal.db.prepare(`
+    SELECT id, name, revision, created_at_sec, updated_at_sec
     FROM canvases
-    INNER JOIN canvas_members
-      ON canvas_members.org_id = canvases.org_id
-      AND canvas_members.canvas_id = canvases.id
-      AND canvas_members.account_id = ?
-    WHERE canvases.org_id = ? AND canvases.id = ?
-  `)
-  const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.id) as TCanvasStorageRow | undefined
-  return row ? fnParseCanvasRow(row) : null
-}
-
-export async function fxCanvasCanEdit(portal: TPortal, args: TArgsCanEdit): Promise<boolean> {
-  const stmt = await portal.db.prepare(`
-    SELECT 1
-    FROM canvas_members
-    WHERE org_id = ?
-      AND canvas_id = ?
-      AND account_id = ?
-      AND role IN ('owner', 'editor')
-    LIMIT 1
-  `)
-  const row = await stmt.get(args.tenant.orgId, args.canvasId, args.tenant.accountId)
-  return row != null
-}
-
-export async function fxCanvasHasOwnerRole(portal: TPortal, args: TArgsCanEdit): Promise<boolean> {
-  const stmt = await portal.db.prepare(`
-    SELECT 1
-    FROM canvas_members
-    WHERE org_id = ?
-      AND canvas_id = ?
-      AND account_id = ?
-      AND role = 'owner'
-    LIMIT 1
-  `)
-  const row = await stmt.get(args.tenant.orgId, args.canvasId, args.tenant.accountId)
-  return row != null
-}
-
-export async function fxCanvasListMembers(portal: TPortal, args: TArgsListMembers): Promise<TCanvasMember[]> {
-  const stmt = await portal.db.prepare(`
-    SELECT canvas_id, account_id, role, created_at_ms, updated_at_ms
-    FROM canvas_members
-    WHERE org_id = ? AND canvas_id = ?
-  `)
-  const rows = await stmt.all(args.tenant.orgId, args.canvasId) as TCanvasMemberStorageRow[]
-  return rows.map(fnParseCanvasMemberRow)
+    WHERE id = ?
+  `)).get(args.id) as TCanvasStorageRow | undefined;
+  return row ? parseCanvasRow(row) : null;
 }

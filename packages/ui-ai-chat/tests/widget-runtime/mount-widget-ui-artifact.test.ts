@@ -48,12 +48,6 @@ const functionMetadata = [{
     outputByteLimit: 1_024,
     logByteLimit: 1_024,
   },
-  retry: {
-    mode: 'none' as const,
-    maxAttempts: 1,
-    initialBackoffMs: 0,
-    maxBackoffMs: 0,
-  },
 }];
 
 function browserFunctionDigest(

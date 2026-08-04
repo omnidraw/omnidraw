@@ -5,9 +5,7 @@ export {
   OMNIDRAW_CAPSULE_AUTHORING_APIS,
 } from '@omnidraw/capsule-omnidraw/contract';
 
-export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetEditSession';
 export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetResourceSelection';
-export const WIDGET_DRAFT_RESOURCE_BINDING_SELECTION_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetDraftResourceBindingSelection';
 export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetDbChangeProposal';
 export const TOOL_ERROR_DETAILS_MARKER = Symbol('omnidraw.toolError');
 
@@ -26,9 +24,6 @@ export const AI_CHAT_TOOL_NAMES = [
   'od_widget_list',
   'od_widget_create',
   'od_widget_validate',
-  'vc_widget_preview_status',
-  'vc_widget_preview_wait',
-  'vc_widget_preview_test',
   'read',
   'edit',
   'patch',

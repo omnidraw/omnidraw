@@ -1,7 +1,7 @@
 {
   "name": "@omnidraw/service-canvas",
-  "version": "0.5.0",
-  "description": "Portable authoritative canvas service with injected persistence and tenant fencing.",
+  "version": "0.7.0",
+  "description": "Portable authoritative single-user canvas service with injected persistence.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,8 +25,7 @@
   },
   "dependencies": {
     "@omnidraw/canvas-contract": "workspace:*",
-    "@omnidraw/runtime": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*"
+    "@omnidraw/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

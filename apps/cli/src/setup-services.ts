@@ -1,35 +1,33 @@
 import { createServiceRegistry } from '@omnidraw/runtime';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { IFunctionInvocationApiCapability } from '@omnidraw/api/function';
 import {
   BunChildFunctionDescriptorExtractor,
   BunChildSandboxDriver,
-  FunctionExecutor,
+  DirectFunctionExecutor,
+  EphemeralResourceWritePermitAuthority,
   JsonSchemaFunctionValidator,
-  LocalFunctionDispatcher,
-  ResourceWriteCapabilityAuthority,
 } from '@omnidraw/function-runtime/local';
+import {
+  AgentService,
+  WidgetFilesystemBuildService,
+  type TWidgetFilesystemCapsuleInspection,
+} from '@omnidraw/service-agent';
 import {
   type TOmnidrawCapsuleBuild,
   type TOmnidrawDistributionBuild,
 } from '@omnidraw/capsule-omnidraw/builder';
-import { buildCapsuleGuest } from '@omnidraw/capsule-omnidraw/build';
 import {
-  AgentService,
-  PreviewBuildAdmission,
-} from '@omnidraw/service-agent';
+  WidgetArtifactBuilderCapsule,
+  buildCapsuleGuest,
+} from '@omnidraw/capsule-omnidraw/build';
 import {
   CanvasService,
   CanvasServiceError,
   type ICanvasService,
 } from '@omnidraw/service-canvas';
-import {
-  planImplicitResourceSelections,
-  planSelectedResourceBindings,
-} from '@omnidraw/service-agent/tools/resource-bindings';
 import { CanvasItemStoreTurso } from '@omnidraw/service-db/CanvasItemStoreTurso';
 import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
-import { FunctionControlStoreTurso } from '@omnidraw/service-db/FunctionControlStoreTurso';
 import { ResourceControlStoreTurso } from '@omnidraw/service-db/ResourceControlStoreTurso';
 import { WidgetInstanceStateStoreTurso } from '@omnidraw/service-db/WidgetInstanceStateStoreTurso';
 import { EventPublisherService } from '@omnidraw/service-event-publisher/EventPublisherService';
@@ -38,24 +36,24 @@ import {
   WidgetStateService,
   type IWidgetStateService,
 } from '@omnidraw/service-widget-state';
+import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'path';
-import { fnScopedKey } from '@omnidraw/tenant-core';
+import rootPackage from '../../../package.json';
+import sdkPackage from '../../../packages/sdk/package.json';
 import type {
   IHumanResourceSecretService,
   TResourceApiCapability,
 } from '@omnidraw/api/resource/types';
 import type { ICliConfig } from './config';
 import { fnLocalRegistryNpmUserConfig } from './fn.local-registry-npm-userconfig';
-import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
-import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
-import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
 import { createBunAgentBashCapability } from './services/AgentBashCapability';
 import { fnWidgetCapsuleBuilderIdentity } from './services/fn.widget-capsule-builder-identity';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
   WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
 } from './services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from './services/WidgetCapsuleSigningKeyStore';
 import {
@@ -69,10 +67,6 @@ import {
 import {
   FunctionService,
 } from './services/FunctionService';
-import {
-  createFunctionInvocationCapability,
-  FunctionServicePool,
-} from './services/FunctionServicePool';
 import { ResourceService } from './services/ResourceService';
 import { createAgentResourceService } from './services/AgentResourceService';
 import {
@@ -81,53 +75,30 @@ import {
 } from './services/ResourceServicePool';
 import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
 import { TenantServicePool } from './services/TenantServicePool';
-import { WidgetService } from './services/WidgetService';
-import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
+import { WidgetFilesystemRuntimeCatalog } from './services/WidgetFilesystemRuntimeCatalog';
+import { WidgetReleaseAttestationService } from './services/WidgetReleaseAttestationService';
 import { LocalWidgetPackageRegistrySync } from './services/LocalWidgetPackageRegistrySync';
-import {
-  createWidgetAuthoringCapability,
-  createWidgetServerArtifactCapability,
-  createWidgetServiceCapability,
-  WidgetServicePool,
-  type TWidgetServiceCapability,
-} from './services/WidgetServicePool';
 
-const WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
-const DEFAULT_WIDGET_PREVIEW_BUILD_GLOBAL_CONCURRENCY = 4;
-const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
-  session: OSS_FAKE_SESSION,
-  requestId: 'function-runtime-placement-bootstrap',
-});
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
   '@omnidraw/sdk/server',
   'zod',
 ]);
 
-function widgetPreviewBuildGlobalConcurrency(): number {
-  const configured = process.env.OMNIDRAW_WIDGET_PREVIEW_BUILD_CONCURRENCY;
-  if (configured === undefined) {
-    return DEFAULT_WIDGET_PREVIEW_BUILD_GLOBAL_CONCURRENCY;
-  }
-  const value = Number(configured);
-  if (!Number.isSafeInteger(value) || value < 1 || value > 64) {
-    throw new Error(
-      'OMNIDRAW_WIDGET_PREVIEW_BUILD_CONCURRENCY must be an integer from 1 to 64.',
-    );
-  }
-  return value;
-}
-
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
   if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
     throw new Error(`Widget build package '${specifier}' is not trusted by the host.`);
   }
-  // Bun 1.3.x can flatten Zod's ESM `util` namespace into an invalid server
+  // Bun can flatten Zod's ESM `util` namespace into an invalid server
   // artifact. The package's equivalent CJS entry bundles deterministically.
   if (specifier === 'zod') {
     return join(dirname(Bun.resolveSync('zod/package.json', import.meta.dir)), 'index.cjs');
   }
   return Bun.resolveSync(specifier, import.meta.dir);
+}
+
+function sha256(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 export interface IRuntimeServices {
@@ -138,11 +109,10 @@ export interface IRuntimeServices {
   resourceOwner: ResourceServicePool;
   resource: TResourceApiCapability;
   humanResourceSecret: IHumanResourceSecretService;
-  widgetOwner: WidgetServicePool;
-  widget: TWidgetServiceCapability;
   widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
-  functionOwner: FunctionServicePool;
+  widgetCatalog: WidgetFilesystemRuntimeCatalog;
+  functionOwner: FunctionService;
   functionInvocation: IFunctionInvocationApiCapability;
   agent: TenantServicePool<AgentService>;
 }
@@ -163,10 +133,6 @@ type TSetupServicesOptions = Readonly<{
 
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
-  const previewBuildAdmission = new PreviewBuildAdmission({
-    maxActivePerTenant: 2,
-    maxActiveGlobal: widgetPreviewBuildGlobalConcurrency(),
-  });
   const eventPublisher = new EventPublisherService();
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
     homeDirectory: homedir(),
@@ -195,18 +161,22 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   const distributionBuildSetup = (() => {
     const injected = options.distributionBuild;
     if (injected !== undefined) {
-      return {
+      const environmentIdentity = options.distributionBuildEnvironmentIdentity
+        ?? fnWidgetNpmBuildEnvironmentIdentity({
+          runnerIdentity: 'injected-v1',
+          nodeVersion: 'injected',
+          npmVersion: 'injected',
+          platform: 'injected',
+          architecture: 'injected',
+          toolchainPinnedByRunner: true,
+        });
+      return Object.freeze({
         create: (_scratchDirectory: string): TOmnidrawDistributionBuild => injected,
-        environmentIdentity: options.distributionBuildEnvironmentIdentity
-          ?? fnWidgetNpmBuildEnvironmentIdentity({
-            runnerIdentity: 'injected-v1',
-            nodeVersion: 'injected',
-            npmVersion: 'injected',
-            platform: 'injected',
-            architecture: 'injected',
-            toolchainPinnedByRunner: true,
-          }),
-      };
+        environmentIdentity,
+        packageManagerVersion: 'injected',
+        runner: Object.freeze({ kind: 'isolated' as const, identity: 'injected-v1' }),
+        platform: Object.freeze({ os: 'injected', architecture: 'injected' }),
+      });
     }
     const runner = resolveWidgetNpmBuildRunner({
       env: process.env,
@@ -219,7 +189,13 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       ),
     });
     const toolchainPinnedByRunner = runner.kind === 'docker';
-    return {
+    const nodeVersion = toolchainPinnedByRunner ? 'runner-pinned' : process.version;
+    const packageManagerVersion = toolchainPinnedByRunner
+      ? 'runner-pinned'
+      : process.versions.npm ?? 'external';
+    const platform = toolchainPinnedByRunner ? 'linux' : process.platform;
+    const architecture = process.arch;
+    return Object.freeze({
       create: (scratchDirectory: string): TOmnidrawDistributionBuild => (
         createWidgetNpmDistributionBuild({
           scratchDirectory,
@@ -231,15 +207,19 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       ),
       environmentIdentity: fnWidgetNpmBuildEnvironmentIdentity({
         runnerIdentity: runner.identity,
-        nodeVersion: toolchainPinnedByRunner ? 'runner-pinned' : process.version,
-        npmVersion: toolchainPinnedByRunner
-          ? 'runner-pinned'
-          : process.versions.npm ?? 'external',
-        platform: toolchainPinnedByRunner ? 'linux' : process.platform,
-        architecture: process.arch,
+        nodeVersion,
+        npmVersion: packageManagerVersion,
+        platform,
+        architecture,
         toolchainPinnedByRunner,
       }),
-    };
+      packageManagerVersion,
+      runner: Object.freeze({
+        kind: runner.kind === 'docker' ? 'isolated' as const : 'host' as const,
+        identity: runner.identity,
+      }),
+      platform: Object.freeze({ os: platform, architecture }),
+    });
   })();
   const dbService = new DbServiceTurso({
     databasePath: config.home.mainDbPath,
@@ -247,67 +227,113 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     cacheDir: config.home.cacheRoot,
     silentMigrations: process.env.OMNIDRAW_SILENT_DB_MIGRATIONS === '1',
   });
-  const widgetBuilderIdentity = fnWidgetCapsuleBuilderIdentity({
-    npmVersion: process.versions.npm ?? 'external',
-    serverBunVersion: Bun.version,
-  });
   const widgetCapsuleSigningKeys = new WidgetCapsuleSigningKeyStore(
     join(config.home.homeDir, 'keys'),
   );
   const widgetCapsuleHostConfiguration = new WidgetCapsuleHostConfigurationService(
     widgetCapsuleSigningKeys,
   );
-  const functionStore = new FunctionControlStoreTurso(dbService.db);
-  const functionSchemas = new JsonSchemaFunctionValidator();
-  const functionWriteCapabilities = new ResourceWriteCapabilityAuthority({
+  const widgetReleaseAttestation = new WidgetReleaseAttestationService(
+    widgetCapsuleSigningKeys,
+    widgetCapsuleHostConfiguration,
+  );
+  const widgetBuilderIdentity = fnWidgetCapsuleBuilderIdentity({
+    npmVersion: process.versions.npm ?? 'external',
+    serverBunVersion: Bun.version,
+  });
+  const widgetBuildTempRoot = join(config.home.tempRoot, 'widget-builds');
+  const widgetDescriptorTempRoot = join(
+    config.home.tempRoot,
+    'widget-function-descriptors',
+  );
+  mkdirSync(widgetBuildTempRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(widgetDescriptorTempRoot, { recursive: true, mode: 0o700 });
+  const descriptorExtractor = new BunChildFunctionDescriptorExtractor({
+    compiledExecutable: config.compiled,
+    tempRoot: widgetDescriptorTempRoot,
+  });
+  const capsuleBuilder = new WidgetArtifactBuilderCapsule({
+    tempRoot: widgetBuildTempRoot,
+    builderIdentity: widgetBuilderIdentity,
+    capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
+    functionDescriptorExtractor: descriptorExtractor,
+    filesystemFunctionDescriptorExtractor: (request) => (
+      descriptorExtractor.extractServerFunctionDescriptors(request)
+    ),
+    resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
+    loadSigningKeys: (purpose) => widgetCapsuleSigningKeys.loadSigningKeys(purpose),
+    capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
+    distributionBuild: distributionBuildSetup.create(widgetBuildTempRoot),
+  });
+  const signedCapsuleInspections = new WeakMap<
+    Uint8Array,
+    TWidgetFilesystemCapsuleInspection & Readonly<{ bytesDigestSha256: string }>
+  >();
+  const widgetFilesystemBuilder = new WidgetFilesystemBuildService({
+    builderIdentity: widgetBuilderIdentity,
+    environment: Object.freeze({
+      packageManager: Object.freeze({
+        name: 'npm',
+        version: distributionBuildSetup.packageManagerVersion,
+        lockfile: 'package-lock.json',
+        lockFormat: 'npm-lock-v3',
+      }),
+      sdkVersion: sdkPackage.version,
+      importMapDigestSha256: sha256(JSON.stringify({
+        format: 'omnidraw-widget-host-import-map-v1',
+        imports: {
+          '@omnidraw/sdk/server': sdkPackage.version,
+          zod: rootPackage.catalog.zod,
+        },
+      })),
+      transformsDigestSha256: sha256(distributionBuildSetup.environmentIdentity),
+      runner: distributionBuildSetup.runner,
+      platform: distributionBuildSetup.platform,
+      capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
+      signingPolicyId: `capsule-ed25519:${WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID}`,
+    }),
+    construction: {
+      construct: (request) => capsuleBuilder.construct(request),
+      signConstruction: async (request) => {
+        const build = await capsuleBuilder.signConstruction(request);
+        signedCapsuleInspections.set(build.uiArtifact.bytes, Object.freeze({
+          bytesDigestSha256: sha256(build.uiArtifact.bytes),
+          artifactHash: build.uiArtifact.capsuleArtifactHash,
+          runtime: build.uiArtifact.runtimeDescriptor,
+        }));
+        return build;
+      },
+      closeWorkspace: (request) => capsuleBuilder.closeWorkspace(request),
+      close: () => capsuleBuilder.close(),
+    },
+    capsuleInspector: {
+      async inspect(bytes) {
+        const inspection = signedCapsuleInspections.get(bytes);
+        signedCapsuleInspections.delete(bytes);
+        if (
+          inspection === undefined
+          || inspection.bytesDigestSha256 !== sha256(bytes)
+        ) throw new Error('Signed Capsule bytes were not produced by the current builder.');
+        return Object.freeze({
+          artifactHash: inspection.artifactHash,
+          runtime: inspection.runtime,
+        });
+      },
+    },
+    releaseAttestor: widgetReleaseAttestation,
+  });
+  const widgetCatalog = new WidgetFilesystemRuntimeCatalog({
+    widgetsRoot: config.home.widgetsRoot,
+    capsule: widgetReleaseAttestation,
+    management: { builder: widgetFilesystemBuilder },
+  });
+  const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
+  const writePermits = new EphemeralResourceWritePermitAuthority({
     secret: randomBytes(32),
-    permits: functionStore,
   });
   services.provide('db', 20, dbService);
-
-  const widgetService = new WidgetServicePool({
-    create: async (tenant) => {
-      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
-      const artifactsRoot = join(organizationRoot, 'artifacts');
-      const buildTempRoot = join(organizationRoot, 'temp', 'widget-builds');
-      const functionTempRoot = join(organizationRoot, 'temp', 'widget-functions');
-      await Promise.all([
-        mkdir(artifactsRoot, { recursive: true, mode: 0o700 }),
-        mkdir(buildTempRoot, { recursive: true, mode: 0o700 }),
-        mkdir(functionTempRoot, { recursive: true, mode: 0o700 }),
-      ]);
-      return new WidgetService({
-        placement: tenant,
-        database: dbService.db,
-        artifactsRoot,
-        buildTempRoot,
-        builderIdentity: widgetBuilderIdentity,
-        buildEnvironmentIdentity: distributionBuildSetup.environmentIdentity,
-        capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
-        buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
-        capsuleBuild: options.capsuleBuild ?? buildCapsuleGuest,
-        distributionBuild: distributionBuildSetup.create(buildTempRoot),
-        loadCapsuleSigningKeys: (purpose) => (
-          widgetCapsuleSigningKeys.loadSigningKeys(purpose)
-        ),
-        artifactReadSecret: randomBytes(32),
-        artifactReadMaximumTtlMs: WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS,
-        compiledExecutable: config.compiled,
-        functionDescriptorExtractor: new BunChildFunctionDescriptorExtractor({
-          compiledExecutable: config.compiled,
-          tempRoot: functionTempRoot,
-        }),
-        resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
-      });
-    },
-  });
-  const widgetCapability = createWidgetServiceCapability(widgetService);
-  const widgetAuthoringCapability = createWidgetAuthoringCapability(widgetService);
-  const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
-  const widgetServerArtifacts = createWidgetServerArtifactCapability(widgetService);
-  const functionArtifactReader = new WidgetFunctionArtifactReader({
-    widgets: widgetServerArtifacts,
-  });
 
   const resourceService = new ResourceServicePool({
     create: async (tenant) => {
@@ -321,160 +347,12 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         controlStore: new ResourceControlStoreTurso(dbService.db),
         dataRoot: resourcesRoot,
         useCoordinator,
-        writeCapabilityVerifier: functionWriteCapabilities,
-        writePermitCoordinator: functionStore,
+        writeCapabilityVerifier: writePermits,
+        writePermitCoordinator: writePermits,
       });
     },
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
-  const functionResourceGateways = new FunctionResourceGatewayFactory({
-    resources: resourceService,
-    widgets: widgetServerArtifacts,
-    permits: functionStore,
-    writeCapabilities: functionWriteCapabilities,
-  });
-  const functionService = new FunctionServicePool({
-    bootstrapTenants: [FUNCTION_BOOTSTRAP_TENANT],
-    create: async (tenant) => {
-      const runtimeTempRoot = join(
-        config.home.organizationsDir,
-        tenant.orgId,
-        'temp',
-        'function-runtime',
-      );
-      await mkdir(runtimeTempRoot, { recursive: true, mode: 0o700 });
-      const workerId = fnScopedKey('function-worker', [
-        tenant.orgId,
-        tenant.cellId,
-        String(tenant.placementEpoch),
-      ]);
-      const driver = options.createFunctionSandboxDriver?.({
-        compiledExecutable: config.compiled,
-        tempRoot: runtimeTempRoot,
-      }) ?? new BunChildSandboxDriver({
-        compiledExecutable: config.compiled,
-        tempRoot: runtimeTempRoot,
-      });
-      const executor = new FunctionExecutor({
-        workerId,
-        store: functionStore,
-        artifacts: functionArtifactReader,
-        resources: functionResourceGateways,
-        driver,
-        schemas: functionSchemas,
-      });
-      const dispatcher = new LocalFunctionDispatcher({
-        orgId: tenant.orgId,
-        cellId: tenant.cellId,
-        placementEpoch: tenant.placementEpoch,
-        recoveryTenant: tenant,
-        workerId,
-        schedulingDomain: fnScopedKey('function-scheduling-domain', [
-          tenant.orgId,
-          tenant.cellId,
-          String(tenant.placementEpoch),
-        ]),
-        memoryTiers: ['small', 'medium', 'large'],
-        store: functionStore,
-        scheduler: functionStore,
-        executor,
-        schemas: functionSchemas,
-      });
-      return new FunctionService({
-        placement: tenant,
-        database: dbService.db,
-        store: functionStore,
-        dispatcher,
-      });
-    },
-  });
-  const functionCapability = createFunctionInvocationCapability(functionService);
-  const agentBashCapability = createBunAgentBashCapability();
-  const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
-    create: async (tenant) => {
-      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
-      const artifactsRoot = join(organizationRoot, 'artifacts');
-      const agentRoot = join(organizationRoot, 'agent', tenant.accountId);
-      const cacheRoot = join(config.home.cacheRoot, 'tenants', tenant.orgId, tenant.accountId);
-      await Promise.all([
-        mkdir(artifactsRoot, { recursive: true }),
-        mkdir(agentRoot, { recursive: true }),
-        mkdir(cacheRoot, { recursive: true }),
-      ]);
-      const widgetOwner = await widgetService.forTenant(tenant);
-      const agentResources = createAgentResourceService(
-        await resourceService.forTenant(tenant),
-        tenant,
-      );
-      return new AgentService({
-        dataPath: agentRoot,
-        npmUserConfigPath,
-        prepareWidgetNpmDependencies,
-        cachePath: cacheRoot,
-        configPath: artifactsRoot,
-        eventPublisherService: eventPublisher.forTenant(tenant),
-        tenant,
-        authoringStore: widgetOwner.authoringStore,
-        widgetAuthoringCapability,
-        resourceService: agentResources,
-        resolveWidgetResourceBindings: async (
-          resolutionTenant,
-          { manifest, selectedResources },
-        ) => {
-          let resources;
-          if (selectedResources === undefined) {
-            const available = (await agentResources.listResources!({
-              status: 'ready',
-            })).map((resource) => ({
-              id: resource.id,
-              kind: resource.kind,
-              name: resource.name,
-              status: resource.status,
-            }));
-            const implicit = planImplicitResourceSelections(manifest, available);
-            if (!implicit.ok) throw new Error(implicit.message);
-            resources = implicit.resources;
-          } else {
-            resources = await Promise.all(selectedResources.map(async (selection) => {
-              const current = await agentResources.getResource!(selection.id);
-              if (!current) {
-                throw new Error(`Selected resource is no longer available: ${selection.id}`);
-              }
-              return {
-                id: current.id,
-                kind: current.kind,
-                name: current.name,
-                status: current.status,
-              };
-            }));
-          }
-          const planned = planSelectedResourceBindings(manifest, resources);
-          if (!planned.ok) throw new Error(planned.message);
-          return planned.bindings.map((binding) => ({
-            slot: binding.slot,
-            resourceId: binding.resource.id,
-            kind: binding.resource.kind,
-            allowRead: binding.scope.includes('read'),
-            allowWrite: binding.scope.includes('write'),
-          }));
-        },
-        createId: randomUUID,
-        nowMs: Date.now,
-        widgetBuilderIdentity,
-        widgetCapsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
-        widgetBuildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
-        previewBuildAdmission,
-        bashCapability: agentBashCapability,
-        listPublishedWidgetPlacements: () => (
-          widgetCapability.listPublishedPlacements(tenant)
-        ),
-        resolvePublishedWidgetPlacement: (target) => (
-          widgetCapability.resolvePublishedPlacement(tenant, target)
-        ),
-      });
-    },
-  });
-
   const canvasService = new CanvasService({
     store: new CanvasItemStoreTurso(dbService.db),
     clock: { nowMs: () => Date.now() },
@@ -499,24 +377,69 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       }
     },
   });
+  const functionTempRoot = join(config.home.tempRoot, 'function-runtime');
+  const functionDriver = options.createFunctionSandboxDriver?.({
+    compiledExecutable: config.compiled,
+    tempRoot: functionTempRoot,
+  }) ?? new BunChildSandboxDriver({
+    compiledExecutable: config.compiled,
+    tempRoot: functionTempRoot,
+  });
+  const functionService = new FunctionService({
+    canvas: canvasService,
+    catalog: widgetCatalog,
+    resources: resourceService,
+    executor: new DirectFunctionExecutor({
+      driver: functionDriver,
+      schemas: new JsonSchemaFunctionValidator(),
+    }),
+    writePermits,
+  });
+  const agentBashCapability = createBunAgentBashCapability();
+  const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
+    create: async (tenant) => {
+      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
+      const artifactsRoot = join(organizationRoot, 'artifacts');
+      const agentRoot = join(organizationRoot, 'agent', tenant.accountId);
+      const cacheRoot = join(config.home.cacheRoot, 'tenants', tenant.orgId, tenant.accountId);
+      await Promise.all([
+        mkdir(artifactsRoot, { recursive: true }),
+        mkdir(agentRoot, { recursive: true }),
+        mkdir(cacheRoot, { recursive: true }),
+      ]);
+      const agentResources = createAgentResourceService(
+        await resourceService.forTenant(tenant),
+        tenant,
+      );
+      return new AgentService({
+        dataPath: agentRoot,
+        npmUserConfigPath,
+        prepareWidgetNpmDependencies,
+        cachePath: cacheRoot,
+        configPath: artifactsRoot,
+        eventPublisherService: eventPublisher.forTenant(tenant),
+        resourceService: agentResources,
+        bashCapability: agentBashCapability,
+      });
+    },
+  });
   const widgetStateService = new WidgetStateService(
     new WidgetInstanceStateStoreTurso(dbService.db),
   );
   services.provide('canvas', 49, canvasService);
   services.provide('widgetState', 50, widgetStateService);
-  services.provide('widgetOwner', 55, widgetService);
-  services.provide('widget', 56, widgetCapability);
   services.provide(
     'widgetCapsuleHostConfiguration',
     57,
     widgetCapsuleHostConfiguration,
   );
   services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
+  services.provide('widgetCatalog', 57, widgetCatalog);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
   services.provide('functionOwner', 61, functionService);
-  services.provide('functionInvocation', 61, functionCapability);
+  services.provide('functionInvocation', 61, functionService);
   services.provide('agent', 62, agentService);
 
   return {
@@ -526,7 +449,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     eventPublisher,
     resourceService,
     functionService,
-    widgetService,
+    widgetCatalog,
     widgetStateService,
   };
 }

@@ -13,7 +13,6 @@ export {
   fnResourceBindingAllows,
   fnResourceBindingDecision,
   fnResourceEffectAllows,
-  fnResourceSecretRevealAllowed,
 } from './core/fn.resource-access';
 export { fnResourceStatusCanTransition } from './core/fn.resource-lifecycle';
 export { fnResourceWriteCapabilityMatches } from './core/fn.write-capability';

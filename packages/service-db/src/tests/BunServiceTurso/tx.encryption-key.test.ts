@@ -1,58 +1,70 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { connect, type Database } from '@tursodatabase/database';
-import { DEFAULT_OSS_ORGANIZATION_ID } from '../../../src/CONSTANTS';
-import { fxResourceEncryptionKeyGet } from '../../../src/DbServiceTurso/fx.encryption-key';
-import { txResourceEncryptionKeyGetOrCreate } from '../../../src/DbServiceTurso/tx.encryption-key';
-import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
-import { EXPECTED_DATABASE_SCHEMA_CONTRACTS } from '../../../src/schema/expected-schema';
-import { TEST_TENANT } from '../tenant.fixture';
+import { DbServiceTurso } from '../../../src/DbServiceTurso/DbServiceTurso';
+import { ResourceControlStoreTurso } from '../../../src/ResourceControlStoreTurso';
 
-const SECRET_ID = '00000000-0000-4000-8000-000000000201';
-const KEY_ID = '00000000-0000-4000-8000-000000000211';
-
-describe('resource encryption keys', () => {
-  let db!: Database;
+describe('resource encryption key repository', () => {
+  let service: DbServiceTurso;
 
   beforeEach(async () => {
-    db = await connect(':memory:', { experimental: ['custom_types', 'triggers', 'index_method', 'generated_columns'] as never });
-    await txRunMigrations({ db, Bun, TextDecoder }, {
-      applicationVersion: 'test', appliedAtMs: 1,
-      expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+    service = new DbServiceTurso({ databasePath: ':memory:', dataDir: '/tmp', cacheDir: '/tmp' });
+    await service.start();
+    await new ResourceControlStoreTurso(service.db).createResource({
+      id: 'secrets-a',
+      kind: 'secretStore',
+      name: 'Secrets',
+      cellId: 'local-cell',
+      placementEpoch: 1,
+      storageKey: 'resources/secrets-a',
     });
-    await (await db.prepare(`
-      INSERT INTO resource_catalog (
-        org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, 'secretStore', 'Credentials', 'ready', NULL, 1, 1)
-    `)).run(DEFAULT_OSS_ORGANIZATION_ID, SECRET_ID);
   });
 
-  afterEach(async () => { await db.close(); });
+  afterEach(async () => service.stop());
 
-  test('creates and reads canonical neutral key material', async () => {
+  test('creates exactly one valid key per secret-store resource', async () => {
     const args = {
-      tenant: TEST_TENANT, resourceId: SECRET_ID, keyId: KEY_ID,
-      purpose: 'resource-secret-store', algorithm: 'aegis256', keyHex: '11'.repeat(32),
+      resourceId: 'secrets-a',
+      keyId: 'key-a',
+      purpose: 'resource-data',
+      algorithm: 'aegis-256',
+      keyHex: 'ab'.repeat(32),
     };
-    const created = await txResourceEncryptionKeyGetOrCreate({ db }, args);
-    expect(created).toMatchObject({ id: KEY_ID, purpose: 'resource-secret-store' });
-    await expect(fxResourceEncryptionKeyGet({ db }, {
-      tenant: TEST_TENANT, resourceId: SECRET_ID,
-    })).resolves.toEqual(created);
-    expect(await (await db.prepare(`
-      SELECT purpose, algorithm FROM resource_encryption_keys WHERE org_id = ? AND resource_id = ?
-    `)).get(DEFAULT_OSS_ORGANIZATION_ID, SECRET_ID)).toEqual({
-      purpose: 'resource-data', algorithm: 'aegis-256',
+    const created = await service.resourceEncryptionKey.getOrCreate(args);
+    expect(created).toMatchObject({
+      id: args.keyId,
+      resourceId: args.resourceId,
+      purpose: args.purpose,
+      algorithm: args.algorithm,
+      keyHex: args.keyHex,
     });
+    expect(await service.resourceEncryptionKey.get({ resourceId: 'secrets-a' })).toEqual(created);
+    expect(await service.resourceEncryptionKey.getOrCreate({
+      ...args,
+      keyId: 'key-b',
+      keyHex: 'cd'.repeat(32),
+    })).toEqual(created);
   });
 
-  test('rejects malformed keys and missing resources', async () => {
-    await expect(txResourceEncryptionKeyGetOrCreate({ db }, {
-      tenant: TEST_TENANT, resourceId: SECRET_ID, keyId: KEY_ID,
-      purpose: 'resource-secret-store', algorithm: 'aegis256', keyHex: 'AA'.repeat(32),
-    })).rejects.toThrow();
-    await expect(txResourceEncryptionKeyGetOrCreate({ db }, {
-      tenant: TEST_TENANT, resourceId: KEY_ID, keyId: KEY_ID,
-      purpose: 'resource-secret-store', algorithm: 'aegis256', keyHex: '11'.repeat(32),
-    })).rejects.toThrow('Secret-store resource was not found');
+  test('rejects unsupported algorithms, malformed bytes, and non-secret resources', async () => {
+    await expect(service.resourceEncryptionKey.getOrCreate({
+      resourceId: 'secrets-a',
+      keyId: 'key-a',
+      purpose: 'resource-data',
+      algorithm: 'unknown',
+      keyHex: 'ab'.repeat(32),
+    })).rejects.toThrow('unsupported');
+    await expect(service.resourceEncryptionKey.getOrCreate({
+      resourceId: 'secrets-a',
+      keyId: 'key-a',
+      purpose: 'resource-data',
+      algorithm: 'aegis-256',
+      keyHex: 'ABC',
+    })).rejects.toThrow('32 lowercase hexadecimal bytes');
+    await expect(service.resourceEncryptionKey.getOrCreate({
+      resourceId: 'missing',
+      keyId: 'key-a',
+      purpose: 'resource-data',
+      algorithm: 'aegis-256',
+      keyHex: 'ab'.repeat(32),
+    })).rejects.toThrow('not found');
   });
 });

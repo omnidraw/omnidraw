@@ -45,8 +45,6 @@ function identity(scope = tenantScope()) {
     canvasId: 'canvas-a',
     elementId: 'element-a',
     widgetInstanceId: 'instance-a',
-    definitionId: 'definition-a',
-    revisionId: 'revision-a',
   });
 }
 
@@ -135,8 +133,6 @@ describe('widget collaborative-state browser adapter', () => {
       canvasId: 'canvas-a',
       elementId: 'element-a',
       widgetInstanceId: 'instance-a',
-      definitionId: 'definition-a',
-      revisionId: 'revision-a',
     }, { signal: expect.any(AbortSignal) });
     expect(stateApi.events).not.toHaveBeenCalled();
   });

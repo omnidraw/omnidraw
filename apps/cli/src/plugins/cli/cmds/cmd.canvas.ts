@@ -46,8 +46,7 @@ Filters (choose at most one):
   --kind <kind>             Exact Cangine node kind
   --parent <id|root>        Direct parent id, or root for top-level items
   --widget-instance <id>    Exact widget instance id
-  --widget-definition <id>  Exact widget definition id
-  --revision <id>           Optional revision with --widget-definition
+  --widget-key <slug>       Exact filesystem widget key
 
 Pagination:
   --limit <number>

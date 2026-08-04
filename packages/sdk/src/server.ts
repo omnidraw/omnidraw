@@ -9,7 +9,6 @@ import type {
   TWidgetServerFunctionEffect,
   TWidgetServerFunctionLimits,
   TWidgetServerFunctionResourceAccess,
-  TWidgetServerFunctionRetry,
 } from '@omnidraw/widget-contract';
 
 export type TServerFunctionRuntimeSchema<TValue> = Readonly<{
@@ -66,20 +65,14 @@ export type TServerFunctionContext<
   TEffect extends TWidgetServerFunctionEffect = TWidgetServerFunctionEffect,
   TResources extends TServerFunctionResourceDeclaration = TServerFunctionResourceDeclaration,
 > = Readonly<{
-  identity: Readonly<{
-    orgId: string;
-    accountId: string;
-    roles: readonly string[];
-  }>;
   invocationId: string;
-  widgetRevisionId: string;
+  widgetKey: string;
+  catalogGeneration: number;
   subject: Readonly<{
-    kind: 'widget_instance';
     canvasId: string;
+    elementId: string;
     widgetInstanceId: string;
   }>;
-  attemptId: string;
-  leaseEpoch: number;
   deadlineAtMs: number;
   signal: AbortSignal;
   resources: TServerFunctionResources<TEffect, TResources>;
@@ -113,7 +106,6 @@ export type TServerFunctionConfig<
   input: TInputSchema;
   output: TOutputSchema;
   limits?: Partial<TWidgetServerFunctionLimits>;
-  retry?: TWidgetServerFunctionRetry['mode'];
 }> & TResourcesConfig<TEffect, TResources>;
 
 type TServerFunctionRegistration = Omit<TWidgetServerFunctionDescriptor, 'exportName'>;
@@ -139,7 +131,7 @@ const DEFAULT_LIMITS: TWidgetServerFunctionLimits = Object.freeze({
   logByteLimit: 65_536,
 });
 
-const CONFIG_KEYS = new Set(['effect', 'input', 'output', 'resources', 'limits', 'retry']);
+const CONFIG_KEYS = new Set(['effect', 'input', 'output', 'resources', 'limits']);
 const LIMIT_KEYS = new Set(['timeoutMs', 'memoryTier', 'outputByteLimit', 'logByteLimit']);
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 
@@ -198,24 +190,6 @@ function normalizeLimits(value: Partial<TWidgetServerFunctionLimits> | undefined
   return Object.freeze(limits);
 }
 
-function normalizeRetry(mode: TWidgetServerFunctionRetry['mode'] | undefined): TWidgetServerFunctionRetry {
-  if (mode === undefined || mode === 'none') {
-    return Object.freeze({
-      mode: 'none',
-      maxAttempts: 1,
-      initialBackoffMs: 0,
-      maxBackoffMs: 0,
-    });
-  }
-  if (mode !== 'idempotent') throw new TypeError('retry must be none or idempotent.');
-  return Object.freeze({
-    mode: 'idempotent',
-    maxAttempts: 2,
-    initialBackoffMs: 100,
-    maxBackoffMs: 1_000,
-  });
-}
-
 function normalizeResources(
   effect: TWidgetServerFunctionEffect,
   value: TServerFunctionResourceDeclaration | undefined,
@@ -271,7 +245,6 @@ export function defineServerFunction<
     outputSchema: runtimeJsonSchema(config.output, 'output'),
     resources: normalizeResources(config.effect, config.resources),
     limits: normalizeLimits(config.limits),
-    retry: normalizeRetry(config.retry),
   });
 
   const callable = (async () => {

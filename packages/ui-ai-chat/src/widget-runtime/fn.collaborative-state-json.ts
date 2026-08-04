@@ -78,9 +78,7 @@ export function fnWidgetCollaborativeStateIdentitiesMatch(
   return left.orgId === right.orgId
     && left.canvasId === right.canvasId
     && left.elementId === right.elementId
-    && left.widgetInstanceId === right.widgetInstanceId
-    && left.definitionId === right.definitionId
-    && left.revisionId === right.revisionId;
+    && left.widgetInstanceId === right.widgetInstanceId;
 }
 
 export function fnNormalizeWidgetCollaborativeStateTransportSnapshot(

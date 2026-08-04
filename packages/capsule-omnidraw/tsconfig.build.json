@@ -7,7 +7,6 @@
     "noEmit": false,
     "outDir": "dist",
     "paths": {
-      "@omnidraw/tenant-core": ["../tenant-core/dist/index.d.ts"],
       "@omnidraw/widget-contract": ["../widget-contract/dist/index.d.ts"]
     },
     "rootDir": "src",

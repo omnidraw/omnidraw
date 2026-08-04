@@ -46,10 +46,20 @@ const WIDGET_INSTANCE_KEYS = new Set([
   "schemaVersion",
   "type",
   "instanceId",
-  "definitionId",
-  "revisionId",
+  "widgetKey",
+  "resourceBindings",
   "uiProps",
 ]);
+const WIDGET_RESOURCE_BINDING_KEYS = new Set([
+  "resourceId",
+  "allowRead",
+  "allowWrite",
+]);
+const WIDGET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const WIDGET_RESOURCE_SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
+const WIDGET_KEY_MAX_LENGTH = 100;
+const WIDGET_ID_MAX_LENGTH = 200;
+const WIDGET_RESOURCE_BINDING_MAX_COUNT = 128;
 const AUTHORING_KEYS = new Set([
   "schemaVersion",
   "locked",
@@ -214,14 +224,94 @@ function validateWidgetExtension(
         node.id,
       ));
     }
-    for (const field of ["instanceId", "definitionId", "revisionId"] as const) {
-      if (!isNonEmptyString(value[field])) {
+    if (
+      !isNonEmptyString(value.instanceId)
+      || value.instanceId.length > WIDGET_ID_MAX_LENGTH
+      || value.instanceId.trim() !== value.instanceId
+    ) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_IDENTITY",
+        `${path}/instanceId`,
+        "instanceId must contain 1 to 200 trimmed characters.",
+        node.id,
+      ));
+    }
+    if (
+      !isNonEmptyString(value.widgetKey)
+      || value.widgetKey.length > WIDGET_KEY_MAX_LENGTH
+      || !WIDGET_KEY_PATTERN.test(value.widgetKey)
+    ) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_WIDGET_KEY",
+        `${path}/widgetKey`,
+        "widgetKey must be 1 to 100 lowercase ASCII kebab-case characters.",
+        node.id,
+      ));
+    }
+    if (value.resourceBindings !== undefined) {
+      if (!isRecord(value.resourceBindings)) {
         issues.push(issue(
-          "WIDGET_EXTENSION_IDENTITY",
-          `${path}/${field}`,
-          `${field} must be a non-empty string.`,
+          "WIDGET_EXTENSION_RESOURCE_BINDINGS",
+          `${path}/resourceBindings`,
+          "resourceBindings must be an object keyed by manifest slot.",
           node.id,
         ));
+      } else {
+        const bindings = Object.entries(value.resourceBindings);
+        if (bindings.length > WIDGET_RESOURCE_BINDING_MAX_COUNT) {
+          issues.push(issue(
+            "WIDGET_EXTENSION_RESOURCE_BINDING_LIMIT",
+            `${path}/resourceBindings`,
+            `resourceBindings may contain at most ${WIDGET_RESOURCE_BINDING_MAX_COUNT} slots.`,
+            node.id,
+          ));
+        }
+        for (const [slot, binding] of bindings) {
+          const bindingPath = `${path}/resourceBindings/${slot}`;
+          if (
+            !WIDGET_RESOURCE_SLOT_PATTERN.test(slot)
+          ) {
+            issues.push(issue(
+              "WIDGET_EXTENSION_RESOURCE_SLOT",
+              bindingPath,
+              "Resource slot names must match ^[A-Za-z][A-Za-z0-9._-]{0,199}$.",
+              node.id,
+            ));
+          }
+          if (!isRecord(binding) || !hasOnlyKeys(binding, WIDGET_RESOURCE_BINDING_KEYS)) {
+            issues.push(issue(
+              "WIDGET_EXTENSION_RESOURCE_BINDING",
+              bindingPath,
+              "Each resource binding must contain only resourceId, allowRead, and allowWrite.",
+              node.id,
+            ));
+            continue;
+          }
+          if (
+            !isNonEmptyString(binding.resourceId)
+            || binding.resourceId.length > WIDGET_ID_MAX_LENGTH
+            || binding.resourceId.trim() !== binding.resourceId
+          ) {
+            issues.push(issue(
+              "WIDGET_EXTENSION_RESOURCE_ID",
+              `${bindingPath}/resourceId`,
+              "resourceId must contain 1 to 200 trimmed characters.",
+              node.id,
+            ));
+          }
+          if (
+            typeof binding.allowRead !== "boolean"
+            || typeof binding.allowWrite !== "boolean"
+            || (!binding.allowRead && !binding.allowWrite)
+          ) {
+            issues.push(issue(
+              "WIDGET_EXTENSION_RESOURCE_PERMISSIONS",
+              bindingPath,
+              "A resource binding must grant at least one boolean read or write permission.",
+              node.id,
+            ));
+          }
+        }
       }
     }
     return issues;

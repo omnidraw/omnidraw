@@ -13,11 +13,8 @@
     "@tursodatabase/database": "catalog:",
     "@tursodatabase/database-common": "0.7.2",
     "@omnidraw/canvas-contract": "workspace:*",
-    "@omnidraw/function-runtime": "workspace:*",
     "@omnidraw/resource-runtime": "workspace:*",
     "@omnidraw/runtime": "workspace:*",
-    "@omnidraw/tenant-core": "workspace:*",
-    "@omnidraw/widget-contract": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

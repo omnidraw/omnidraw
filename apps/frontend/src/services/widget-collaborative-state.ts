@@ -24,8 +24,6 @@ function stateInput(identity: TWidgetCollaborativeStateIdentity) {
     canvasId: identity.canvasId,
     elementId: identity.elementId,
     widgetInstanceId: identity.widgetInstanceId,
-    definitionId: identity.definitionId,
-    revisionId: identity.revisionId,
   });
 }
 

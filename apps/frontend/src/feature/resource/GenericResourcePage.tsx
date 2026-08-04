@@ -19,7 +19,6 @@ import {
 } from "./fn.secret-reveal";
 
 export type TGenericResourcePageProps = { resource: TRouteResource };
-type TReference = { definitionId: string; revisionId: string; slot: string; allowRead: boolean; allowWrite: boolean };
 type TKvDataEntry = { key: string; valuePreview: string; valueTruncated: boolean; revision: number; createdAt: string; updatedAt: string };
 type TSecretDataEntry = { name: string; revision: number; createdAt: string; updatedAt: string };
 type TDataPage =
@@ -36,7 +35,6 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   const [searchParams, setSearchParams] = useSearchParams();
   const [name, setName] = createSignal(props.resource.name);
   const [displayName, setDisplayName] = createSignal(props.resource.name);
-  const [references, setReferences] = createSignal<TReference[]>([]);
   const [busy, setBusy] = createSignal(false);
   const [deleteOpen, setDeleteOpen] = createSignal(false);
   const [prefix, setPrefix] = createSignal("");
@@ -123,11 +121,6 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     });
   });
 
-  const loadReferences = async (resourceId: string) => {
-    const [referenceError, value] = await orpcWebsocketService.apiService.api.resource.resources.references({ resourceId });
-    if (resourceId === props.resource.id && !referenceError) setReferences(value);
-  };
-
   const loadData = async (cursor?: string, selectedPrefix = appliedPrefix(), resourceId = props.resource.id): Promise<boolean> => {
     clearSecretReveal();
     const request = ++dataRequest;
@@ -159,7 +152,6 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     dataRequest += 1;
     setName(resource.name);
     setDisplayName(resource.name);
-    setReferences([]);
     setPrefix("");
     setAppliedPrefix("");
     setDataPage(null);
@@ -171,7 +163,6 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     setEntryError("");
     setSecretValueVisible(false);
     clearSecretReveal();
-    void loadReferences(resource.id);
   });
 
   createEffect(() => {
@@ -418,10 +409,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
         <Tabs.Content value="overview" class={styles.tabContent}>
           <main class={styles.content}>
             <section class={styles.summary}><div class={styles.summaryItem}><span class={styles.label}>Status</span><span class={styles.status}>{props.resource.status}</span></div><div class={styles.summaryItem}><span class={styles.label}>Type</span><span class={styles.value}>{props.resource.kind}</span></div><div class={styles.summaryItem}><span class={styles.label}>Created</span><span class={styles.value}>{props.resource.created_at}</span></div><div class={styles.summaryItem}><span class={styles.label}>ID</span><span class={styles.value} title={props.resource.id}>{props.resource.id}</span></div></section>
-            <div class={styles.twoColumn}>
-              <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>Settings</h3></div><div class={styles.panelBody}><TextField.Root value={name()} onChange={setName}><TextField.Label class={styles.label}>Display name</TextField.Label><TextField.Input class={styles.input} /></TextField.Root><div class={styles.actions}><Button class={`${styles.button} ${styles.primary}`} disabled={busy() || !name().trim() || name().trim() === displayName()} onClick={rename}>Save name</Button></div></div></section>
-              <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>References</h3><span>{references().length}</span></div><table class={styles.table}><thead><tr><th>Revision</th><th>Slot</th><th>Access</th></tr></thead><tbody><For each={references()} fallback={<tr><td colSpan={3} class={styles.muted}>Not bound to a published widget revision.</td></tr>}>{(reference) => <tr><td>{reference.definitionId} · {reference.revisionId}</td><td>{reference.slot}</td><td>{[reference.allowRead && "read", reference.allowWrite && "write"].filter(Boolean).join(" + ")}</td></tr>}</For></tbody></table></section>
-            </div>
+            <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>Settings</h3></div><div class={styles.panelBody}><TextField.Root value={name()} onChange={setName}><TextField.Label class={styles.label}>Display name</TextField.Label><TextField.Input class={styles.input} /></TextField.Root><div class={styles.actions}><Button class={`${styles.button} ${styles.primary}`} disabled={busy() || !name().trim() || name().trim() === displayName()} onClick={rename}>Save name</Button></div></div></section>
           </main>
         </Tabs.Content>
 

@@ -19,7 +19,7 @@
     "zod": "4.4.3",
     "@kobalte/core": "^0.13.12",
     "lucide-solid": "^1.24.0",
-    "lucide-static": "^1.24.0",
+    "lucide-static": "1.24.0",
     "solid-js": "^1.9.14",
     "@tursodatabase/database": "0.7.2"
   },

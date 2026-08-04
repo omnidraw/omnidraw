@@ -62,7 +62,6 @@ describe('createAgentResourceService', () => {
       'getResourceDataEntry',
       'inspectDbResource',
       'listResourceData',
-      'listResourceReferences',
       'listResources',
       'previewDbApply',
       'renameResource',
@@ -108,7 +107,6 @@ describe('createAgentResourceService', () => {
     await capability.createResource!(createRequest);
     await capability.renameResource!(renameRequest);
     await capability.deleteResource!('resource-a');
-    await capability.listResourceReferences!('resource-a');
     await capability.countResourceData!(dataQuery);
     await capability.listResourceData!(dataPageQuery);
     await capability.getResourceDataEntry!(dataEntryRequest);
@@ -130,7 +128,6 @@ describe('createAgentResourceService', () => {
       'createResource',
       'renameResource',
       'deleteResource',
-      'listResourceReferences',
       'countResourceData',
       'listResourceData',
       'getResourceDataEntry',

@@ -1,4 +1,3 @@
-import { fnScopedKey } from '@omnidraw/tenant-core';
 import type { TSequencedEvent } from './IEventPublisherService';
 
 type TEventRecord<TEvent> = Readonly<{
@@ -19,37 +18,35 @@ type TSubscribeArgs = Readonly<{
 
 class EventBus<TEvent> {
   readonly #maxReplayEvents: number;
-  readonly #records = new Map<string, TEventRecord<TEvent>[]>();
-  readonly #sequences = new Map<string, number>();
+  readonly #records: TEventRecord<TEvent>[] = [];
   readonly #subscribers = new Map<string, Set<TSubscriber<TEvent>>>();
+  #sequence = 0;
 
   constructor(maxReplayEvents = 256) {
     this.#maxReplayEvents = Math.max(1, maxReplayEvents);
   }
 
-  cursor(scope: string): number {
-    return this.#sequences.get(scope) ?? 0;
+  cursor(): number {
+    return this.#sequence;
   }
 
-  publish(scope: string, topic: string, event: TEvent): number {
-    const sequence = this.cursor(scope) + 1;
-    this.#sequences.set(scope, sequence);
+  publish(topic: string, event: TEvent): number {
+    const sequence = this.#sequence + 1;
+    this.#sequence = sequence;
 
-    const records = this.#records.get(scope) ?? [];
     const record = { event, sequence, topic };
-    records.push(record);
-    if (records.length > this.#maxReplayEvents) {
-      records.splice(0, records.length - this.#maxReplayEvents);
+    this.#records.push(record);
+    if (this.#records.length > this.#maxReplayEvents) {
+      this.#records.splice(0, this.#records.length - this.#maxReplayEvents);
     }
-    this.#records.set(scope, records);
 
-    this.#push(scope, topic, record);
-    if (topic !== '*') this.#push(scope, '*', record);
+    this.#push(topic, record);
+    if (topic !== '*') this.#push('*', record);
     return sequence;
   }
 
-  subscribe(scope: string, topic: string, args: TSubscribeArgs = {}): AsyncIterable<TEvent> {
-    const records = this.subscribeRecords(scope, topic, args);
+  subscribe(topic: string, args: TSubscribeArgs = {}): AsyncIterable<TEvent> {
+    const records = this.subscribeRecords(topic, args);
     return {
       [Symbol.asyncIterator](): AsyncIterator<TEvent> {
         const iterator = records[Symbol.asyncIterator]();
@@ -68,15 +65,15 @@ class EventBus<TEvent> {
     };
   }
 
-  subscribeRecords(scope: string, topic: string, args: TSubscribeArgs = {}): AsyncIterable<TSequencedEvent<TEvent>> {
-    const afterSequence = args.afterSequence ?? this.cursor(scope);
+  subscribeRecords(topic: string, args: TSubscribeArgs = {}): AsyncIterable<TSequencedEvent<TEvent>> {
+    const afterSequence = args.afterSequence ?? this.cursor();
     const subscriber: TSubscriber<TEvent> = {
       closed: false,
       pending: null,
-      queue: (this.#records.get(scope) ?? [])
+      queue: this.#records
         .filter((record) => record.sequence > afterSequence && (topic === '*' || record.topic === topic)),
     };
-    const subscriberKey = fnScopedKey('subscriber', [scope, topic]);
+    const subscriberKey = topic;
     const subscribers = this.#subscribers.get(subscriberKey) ?? new Set<TSubscriber<TEvent>>();
     subscribers.add(subscriber);
     this.#subscribers.set(subscriberKey, subscribers);
@@ -114,8 +111,8 @@ class EventBus<TEvent> {
     };
   }
 
-  #push(scope: string, topic: string, record: TEventRecord<TEvent>): void {
-    const subscriberKey = fnScopedKey('subscriber', [scope, topic]);
+  #push(topic: string, record: TEventRecord<TEvent>): void {
+    const subscriberKey = topic;
     for (const subscriber of this.#subscribers.get(subscriberKey) ?? []) {
       if (subscriber.closed) continue;
       if (subscriber.pending) {

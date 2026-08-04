@@ -39,8 +39,8 @@ export function fnSafeResource(resource: TAgentResource): TSafeResource {
 export function fnSafeResourceMetadata(resource: TAgentResource) {
   return {
     ...fnSafeResource(resource),
-    createdAt: resource.created_at,
-    updatedAt: resource.updated_at,
+    createdAtSec: resource.createdAtSec,
+    updatedAtSec: resource.updatedAtSec,
   };
 }
 
@@ -140,18 +140,18 @@ export function fnDbApplyTerminalStatus(status: string): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'recovered';
 }
 
-export function fnResourceCapabilities(resource: TAgentResource, bindingCount: number) {
+export function fnResourceCapabilities(resource: TAgentResource) {
   const ready = resource.status === 'ready';
   const lifecycleBusy = resource.status === 'provisioning'
     || resource.status === 'migrating'
     || resource.status === 'deleting';
-  const currentlyDeletable = bindingCount === 0 && !lifecycleBusy;
+  const currentlyDeletable = !lifecycleBusy;
   return {
     ready,
     currentlyDeletable,
-    deleteBlockedReason: bindingCount > 0
-      ? `Resource is bound to ${bindingCount} widget definition slot(s).`
-      : lifecycleBusy ? `Resource status '${resource.status}' currently blocks deletion.` : null,
+    deleteBlockedReason: lifecycleBusy
+      ? `Resource status '${resource.status}' currently blocks deletion.`
+      : null,
     capabilities: {
       inspect: true,
       read: ready,

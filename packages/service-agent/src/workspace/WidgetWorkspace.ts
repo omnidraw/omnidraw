@@ -18,9 +18,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   ZWidgetManifestV3,
-  type TWidgetSourceSnapshot,
 } from '@omnidraw/widget-contract';
-import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@omnidraw/widget-contract/local';
 import { fnChatStorageSegments } from '@omnidraw/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
@@ -52,30 +50,6 @@ type TTransientDraftSnapshot = {
   dispose(): Promise<void>;
 };
 
-type TDraftMaterializationIdentity = Readonly<{
-  definitionId: string;
-  publishedRevisionId: string;
-  sourceDigestSha256: string;
-}>;
-
-type TDraftMaterializationMarker = TDraftMaterializationIdentity & Readonly<{
-  version: 1;
-  name: string;
-}>;
-
-type TDraftMaterializationResult = Readonly<{
-  draft: TWidgetDraftWorkspaceEntry;
-  created: boolean;
-  pending: boolean;
-  commitSeed<T>(operation: () => Promise<T>): Promise<T>;
-  rollback(): Promise<boolean>;
-}>;
-
-type TDraftMaterializationMarkerRead =
-  | Readonly<{ status: 'missing' }>
-  | Readonly<{ status: 'invalid' }>
-  | Readonly<{ status: 'valid'; marker: TDraftMaterializationMarker }>;
-
 type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
 
 const GREP_FILE_LIMIT = 500;
@@ -87,7 +61,6 @@ export class WidgetWorkspace {
   readonly agentRoot: string;
   readonly chatRoot: string;
   readonly draftRoot: string;
-  readonly draftStateRoot: string;
   readonly npmUserConfigPath?: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
@@ -100,7 +73,6 @@ export class WidgetWorkspace {
     this.agentRoot = join(config.dataPath, 'pi', 'agent');
     this.chatRoot = join(this.agentRoot, 'chats');
     this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
-    this.draftStateRoot = join(this.agentRoot, 'draft-state');
     this.npmUserConfigPath = config.npmUserConfigPath;
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
@@ -116,7 +88,6 @@ export class WidgetWorkspace {
     await Promise.all([
       mkdir(this.chatRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
-      mkdir(this.draftStateRoot, { recursive: true }),
     ]);
   }
 
@@ -189,100 +160,6 @@ export class WidgetWorkspace {
     const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
     await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
     return { name, source: 'draft', chatRoot, mountPath, targetPath };
-  }
-
-  /** Atomically promotes one verified immutable published snapshot into draft storage. */
-  async materializeDraftFromSnapshot(
-    requestedName: string,
-    snapshot: TWidgetSourceSnapshot,
-    publication: Readonly<{ definitionId: string; publishedRevisionId: string }>,
-  ): Promise<TDraftMaterializationResult> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    const marker: TDraftMaterializationMarker = {
-      version: 1,
-      name,
-      definitionId: publication.definitionId,
-      publishedRevisionId: publication.publishedRevisionId,
-      sourceDigestSha256: snapshot.digestSha256,
-    };
-    return this.#withWidgetWrite(draftPath, async () => {
-      await this.#assertNoCaseCollision(this.draftRoot, name);
-      const targetEntry = await lstat(draftPath).catch(() => null);
-      if (targetEntry) {
-        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-          throw new Error(`Widget draft '${name}' is not a managed directory.`);
-        }
-        const markerRead = await this.#readDraftMaterializationMarker(name);
-        if (markerRead.status === 'invalid') {
-          throw Object.assign(
-            new Error(`Widget draft '${name}' has invalid pending materialization authority.`),
-            { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
-          );
-        }
-        const draft = await this.#readDraftEntry(name, draftPath);
-        if (!draft) throw new Error(`Widget draft '${name}' could not be read.`);
-        if (markerRead.status === 'missing') {
-          return {
-            draft,
-            created: false,
-            pending: false,
-            commitSeed: async () => {
-              throw new Error(`Widget draft '${name}' is not pending publication materialization.`);
-            },
-            rollback: async () => false,
-          };
-        }
-        if (
-          !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
-          || !await this.#draftSourceMatchesDigest(draftPath, marker.sourceDigestSha256)
-        ) {
-          await this.#removePendingDraftMaterialization(name, draftPath);
-          throw Object.assign(
-            new Error(`Widget draft '${name}' does not match its pending immutable publication source.`),
-            { code: 'WIDGET_DRAFT_MATERIALIZATION_MISMATCH' },
-          );
-        }
-        return this.#pendingDraftMaterializationResult(name, draftPath, draft, marker, false);
-      }
-
-      await rm(this.#draftMaterializationMarkerPath(name), { force: true }).catch(() => undefined);
-
-      const temporary = join(this.draftRoot, `.materialize-${this.#safeId()}`);
-      let markerWritten = false;
-      let promoted = false;
-      try {
-        await new WidgetSourceSnapshotMaterializer().materialize(snapshot, temporary);
-        const manifest = ZWidgetManifestV3.safeParse(await this.#readManifest(temporary));
-        if (!manifest.success) {
-          throw new Error('INVALID_MANIFEST: Published widget source has no valid manifest-v3.');
-        }
-        if (manifest.data.name !== name) {
-          throw new Error(
-            `INVALID_MANIFEST: Published widget identity is '${name}', but omnidraw.json declares '${manifest.data.name}'.`,
-          );
-        }
-        await this.#writeDraftMaterializationMarker(marker);
-        markerWritten = true;
-        await rename(temporary, draftPath);
-        promoted = true;
-        const draft = await this.#readDraftEntry(name, draftPath);
-        if (!draft) throw new Error(`Widget draft '${name}' could not be read after materialization.`);
-        return this.#pendingDraftMaterializationResult(name, draftPath, draft, marker, true);
-      } catch (error) {
-        if (markerWritten && !promoted) {
-          await rm(this.#draftMaterializationMarkerPath(name), { force: true }).catch(() => undefined);
-        }
-        throw error;
-      } finally {
-        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
-      }
-    });
-  }
-
-  async isDraftMaterializationPending(requestedName: string): Promise<boolean> {
-    const name = this.#normalizeName(requestedName);
-    return (await this.#readDraftMaterializationMarker(name)).status !== 'missing';
   }
 
   async updateDraftManifestAtomic<T>(
@@ -384,12 +261,10 @@ export class WidgetWorkspace {
     const draftPath = join(this.draftRoot, name);
     return this.#withWidgetWrite(draftPath, async () => {
       if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-        await rm(this.#draftMaterializationMarkerPath(name), { force: true });
         return false;
       }
       await rm(draftPath, { recursive: true, force: false });
       await this.#removeDraftMount(name);
-      await rm(this.#draftMaterializationMarkerPath(name), { force: true });
       return true;
     });
   }
@@ -431,7 +306,6 @@ export class WidgetWorkspace {
     const name = this.#normalizeName(requestedName);
     await this.#assertNoCaseCollision(this.draftRoot, name);
     const draftPath = join(this.draftRoot, name);
-    if (await this.isDraftMaterializationPending(name)) return null;
     return this.#readDraftEntry(name, draftPath);
   }
 
@@ -781,9 +655,6 @@ export class WidgetWorkspace {
 
   async #resolveDraftTarget(name: string): Promise<string> {
     const draft = join(this.draftRoot, name);
-    if (await this.isDraftMaterializationPending(name)) {
-      throw new Error(`Widget draft '${name}' is still pending durable materialization.`);
-    }
     const draftExists = await this.#isDirectDirectory(this.draftRoot, draft);
     if (!draftExists) throw new Error(`Widget draft '${name}' does not exist.`);
     return realpath(draft);
@@ -801,7 +672,6 @@ export class WidgetWorkspace {
       if (ownedKind !== 'draft') continue;
       if (
         await this.#isDirectDirectory(this.draftRoot, join(this.draftRoot, entry.name))
-        && !await this.isDraftMaterializationPending(entry.name)
       ) continue;
       await rm(mountPath, { force: true });
     }
@@ -811,7 +681,6 @@ export class WidgetWorkspace {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const normalized = fnNormalizeWidgetName(entry.name);
       if (!normalized.ok || normalized.value !== entry.name) continue;
-      if (await this.isDraftMaterializationPending(entry.name)) continue;
       const targetPath = await realpath(join(this.draftRoot, entry.name));
       const mountPath = join(widgetsRoot, entry.name);
       const existing = await lstat(mountPath).catch(() => null);
@@ -1001,160 +870,6 @@ export class WidgetWorkspace {
       published: false,
       revision: revision.value,
       updatedAt: new Date(revision.updatedAtMs).toISOString(),
-    };
-  }
-
-  #draftMaterializationMarkerPath(name: string): string {
-    const key = createHash('sha256').update(name).digest('hex');
-    return join(this.draftStateRoot, `materialization-${key}.json`);
-  }
-
-  async #readDraftMaterializationMarker(name: string): Promise<TDraftMaterializationMarkerRead> {
-    let source: string;
-    try {
-      source = await readFile(this.#draftMaterializationMarkerPath(name), 'utf8');
-    } catch (error) {
-      return (error as NodeJS.ErrnoException).code === 'ENOENT'
-        ? { status: 'missing' }
-        : { status: 'invalid' };
-    }
-    try {
-      const value: unknown = JSON.parse(source);
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 'invalid' };
-      const candidate = value as Record<string, unknown>;
-      const keys = Object.keys(candidate).sort();
-      if (keys.join('\0') !== [
-        'definitionId',
-        'name',
-        'publishedRevisionId',
-        'sourceDigestSha256',
-        'version',
-      ].join('\0')) return { status: 'invalid' };
-      if (
-        candidate.version !== 1
-        || candidate.name !== name
-        || typeof candidate.definitionId !== 'string'
-        || typeof candidate.publishedRevisionId !== 'string'
-        || typeof candidate.sourceDigestSha256 !== 'string'
-        || !/^[0-9a-f]{64}$/.test(candidate.sourceDigestSha256)
-      ) return { status: 'invalid' };
-      return {
-        status: 'valid',
-        marker: {
-          version: 1,
-          name,
-          definitionId: candidate.definitionId,
-          publishedRevisionId: candidate.publishedRevisionId,
-          sourceDigestSha256: candidate.sourceDigestSha256,
-        },
-      };
-    } catch {
-      return { status: 'invalid' };
-    }
-  }
-
-  async #writeDraftMaterializationMarker(marker: TDraftMaterializationMarker): Promise<void> {
-    const markerPath = this.#draftMaterializationMarkerPath(marker.name);
-    const temporary = `${markerPath}.tmp-${this.#safeId()}`;
-    try {
-      await writeFile(temporary, `${JSON.stringify(marker)}\n`, 'utf8');
-      await rename(temporary, markerPath);
-    } finally {
-      await rm(temporary, { force: true }).catch(() => undefined);
-    }
-  }
-
-  #matchesDraftMaterializationMarker(
-    current: TDraftMaterializationMarker,
-    expected: TDraftMaterializationMarker,
-  ): boolean {
-    return current.version === expected.version
-      && current.name === expected.name
-      && current.definitionId === expected.definitionId
-      && current.publishedRevisionId === expected.publishedRevisionId
-      && current.sourceDigestSha256 === expected.sourceDigestSha256;
-  }
-
-  async #draftSourceMatchesDigest(draftPath: string, expectedDigestSha256: string): Promise<boolean> {
-    try {
-      const snapshot = await new WidgetSourceSnapshotMaterializer().capture(draftPath, {
-        expectedDigestSha256,
-      });
-      return snapshot.digestSha256 === expectedDigestSha256;
-    } catch {
-      return false;
-    }
-  }
-
-  async #removePendingDraftMaterialization(name: string, draftPath: string): Promise<void> {
-    if (await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-      await rm(draftPath, { recursive: true, force: false });
-    }
-    await this.#removeDraftMount(name);
-    await rm(this.#draftMaterializationMarkerPath(name), { force: true });
-  }
-
-  async #pendingDraftMaterializationResult(
-    name: string,
-    draftPath: string,
-    draft: TWidgetDraftWorkspaceEntry,
-    marker: TDraftMaterializationMarker,
-    created: boolean,
-  ): Promise<TDraftMaterializationResult> {
-    const createdEntry = await lstat(draftPath);
-    const assertExact = async () => {
-      const markerRead = await this.#readDraftMaterializationMarker(name);
-      if (
-        markerRead.status !== 'valid'
-        || !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
-      ) {
-        throw Object.assign(
-          new Error(`Widget draft '${name}' pending materialization authority changed.`),
-          { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
-        );
-      }
-      const currentEntry = await lstat(draftPath).catch(() => null);
-      if (
-        !currentEntry
-        || currentEntry.dev !== createdEntry.dev
-        || currentEntry.ino !== createdEntry.ino
-      ) {
-        throw Object.assign(
-          new Error(`Widget draft '${name}' pending materialization source was replaced.`),
-          { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
-        );
-      }
-      if (!await this.#draftSourceMatchesDigest(draftPath, marker.sourceDigestSha256)) {
-        await this.#removePendingDraftMaterialization(name, draftPath);
-        throw Object.assign(
-          new Error(`Widget draft '${name}' pending immutable source changed.`),
-          { code: 'WIDGET_DRAFT_MATERIALIZATION_MISMATCH' },
-        );
-      }
-    };
-    return {
-      draft,
-      created,
-      pending: true,
-      commitSeed: <T>(operation: () => Promise<T>) => this.#withWidgetWrite(draftPath, async () => {
-        await assertExact();
-        const result = await operation();
-        await rm(this.#draftMaterializationMarkerPath(name), { force: true });
-        return result;
-      }),
-      rollback: () => this.#withWidgetWrite(draftPath, async () => {
-        const markerRead = await this.#readDraftMaterializationMarker(name);
-        const currentEntry = await lstat(draftPath).catch(() => null);
-        if (
-          markerRead.status !== 'valid'
-          || !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
-          || !currentEntry
-          || currentEntry.dev !== createdEntry.dev
-          || currentEntry.ino !== createdEntry.ino
-        ) return false;
-        await this.#removePendingDraftMaterialization(name, draftPath);
-        return true;
-      }),
     };
   }
 

@@ -1,103 +1,74 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import { EventPublisherService } from './EventPublisherService';
 
-const tenantA = Object.freeze({
-  orgId: '00000000-0000-4000-8000-000000000011',
-  accountId: '00000000-0000-4000-8000-000000000012',
-  cellId: '00000000-0000-4000-8000-000000000013',
-  placementEpoch: 1,
-  roles: Object.freeze(['owner']),
-  capabilities: Object.freeze(['*']),
-  requestId: 'request-a',
-}) satisfies TTenantContext;
-
-const tenantB = Object.freeze({
-  ...tenantA,
-  orgId: '00000000-0000-4000-8000-000000000021',
-  accountId: '00000000-0000-4000-8000-000000000022',
-  requestId: 'request-b',
-}) satisfies TTenantContext;
-
-describe('EventPublisherService tenant isolation', () => {
-  test('isolates identical notification topics and latest values by tenant', async () => {
+describe('EventPublisherService', () => {
+  test('publishes one process-wide notification stream and latest value', async () => {
     const service = new EventPublisherService();
-    const iteratorA = service.subscribeNotifications(tenantA)[Symbol.asyncIterator]();
-    const nextA = iteratorA.next();
+    const iterator = service.subscribeNotifications()[Symbol.asyncIterator]();
+    const next = iterator.next();
 
-    service.publishNotification(tenantB, { type: 'warning', title: 'Tenant B' });
-    service.publishNotification(tenantA, { type: 'info', title: 'Tenant A' });
-
-    expect(await nextA).toEqual({
-      done: false,
-      value: { type: 'info', title: 'Tenant A' },
+    const sequence = service.publishNotification({
+      type: 'info',
+      title: 'Filesystem catalog refreshed',
     });
-    expect(service.getLatestNotification(tenantA)).toEqual({ type: 'info', title: 'Tenant A' });
-    expect(service.getLatestNotification(tenantB)).toEqual({ type: 'warning', title: 'Tenant B' });
-    await iteratorA.return?.();
+
+    expect(sequence).toBe(1);
+    expect(await next).toEqual({
+      done: false,
+      value: { type: 'info', title: 'Filesystem catalog refreshed' },
+    });
+    expect(service.getLatestNotification()).toEqual({
+      type: 'info',
+      title: 'Filesystem catalog refreshed',
+    });
+    await iterator.return?.();
   });
 
-  test('supports tenant-scoped wildcard topics and replay cursors', async () => {
+  test('supports canvas topics, wildcard replay, and one monotonic cursor', async () => {
     const service = new EventPublisherService();
-    service.publishDbEvent(tenantA, 'canvas-a', {
-      data: { change: 'delete', table: 'widgets', id: 'one' },
+    const firstSequence = service.publishDbEvent('canvas-a', {
+      data: { change: 'delete', table: 'canvas_items', id: 'one' },
     });
-    const cursor = service.getDbEventCursor(tenantA);
-    service.publishDbEvent(tenantB, 'canvas-a', {
-      data: { change: 'delete', table: 'widgets', id: 'foreign' },
-    });
-    service.publishDbEvent(tenantA, 'canvas-b', {
-      data: { change: 'delete', table: 'widgets', id: 'two' },
+    service.publishDbEvent('canvas-b', {
+      data: { change: 'delete', table: 'canvas_items', id: 'two' },
     });
 
-    const replay = service.subscribeDbEvents(tenantA, '*', { afterSequence: cursor })[Symbol.asyncIterator]();
-    expect(await replay.next()).toEqual({
-      done: false,
-      value: { data: { change: 'delete', table: 'widgets', id: 'two' } },
-    });
-    await replay.return?.();
-  });
-
-  test('exposes monotonic records for reconnect replay without crossing tenant scopes', async () => {
-    const service = new EventPublisherService();
-    const firstSequence = service.publishDbEvent(tenantA, 'canvas-a', {
-      data: { change: 'delete', table: 'widgets', id: 'first' },
-    });
-    service.publishDbEvent(tenantB, 'canvas-a', {
-      data: { change: 'delete', table: 'widgets', id: 'foreign' },
-    });
-    const secondSequence = service.publishDbEvent(tenantA, 'canvas-a', {
-      data: { change: 'delete', table: 'widgets', id: 'second' },
-    });
-
-    const replay = service.subscribeDbEventRecords(tenantA, 'canvas-a', {
-      afterSequence: firstSequence,
+    const canvasReplay = service.subscribeDbEventRecords('canvas-a', {
+      afterSequence: 0,
     })[Symbol.asyncIterator]();
-    expect(await replay.next()).toEqual({
+    expect(await canvasReplay.next()).toEqual({
       done: false,
       value: {
-        event: { data: { change: 'delete', table: 'widgets', id: 'second' } },
-        sequence: secondSequence,
+        event: { data: { change: 'delete', table: 'canvas_items', id: 'one' } },
+        sequence: firstSequence,
       },
     });
-    expect(secondSequence).toBe(firstSequence + 1);
-    await replay.return?.();
+    await canvasReplay.return?.();
+
+    const wildcard = service.subscribeDbEvents('*', {
+      afterSequence: firstSequence,
+    })[Symbol.asyncIterator]();
+    expect(await wildcard.next()).toEqual({
+      done: false,
+      value: { data: { change: 'delete', table: 'canvas_items', id: 'two' } },
+    });
+    expect(service.getDbEventCursor()).toBe(2);
+    await wildcard.return?.();
   });
 
-  test('atomically replays the latest notification and resumes after its sequence', async () => {
+  test('replays the latest notification by default and resumes from a cursor', async () => {
     const service = new EventPublisherService();
-    const firstSequence = service.publishNotification(tenantA, { type: 'info', title: 'First' });
+    const firstSequence = service.publishNotification({ type: 'info', title: 'First' });
 
-    const initial = service.subscribeNotificationRecords(tenantA)[Symbol.asyncIterator]();
+    const initial = service.subscribeNotificationRecords()[Symbol.asyncIterator]();
     expect(await initial.next()).toEqual({
       done: false,
       value: { event: { type: 'info', title: 'First' }, sequence: firstSequence },
     });
     await initial.return?.();
 
-    service.publishNotification(tenantB, { type: 'error', title: 'Foreign' });
-    const secondSequence = service.publishNotification(tenantA, { type: 'success', title: 'Second' });
-    const reconnect = service.subscribeNotificationRecords(tenantA, {
+    const secondSequence = service.publishNotification({ type: 'success', title: 'Second' });
+    const reconnect = service.subscribeNotificationRecords({
       afterSequence: firstSequence,
     })[Symbol.asyncIterator]();
     expect(await reconnect.next()).toEqual({
@@ -105,18 +76,5 @@ describe('EventPublisherService tenant isolation', () => {
       value: { event: { type: 'success', title: 'Second' }, sequence: secondSequence },
     });
     await reconnect.return?.();
-  });
-
-  test('creates an immutable tenant-bound capability for legacy services', () => {
-    const service = new EventPublisherService();
-    const boundA = service.forTenant(tenantA);
-    const boundB = service.forTenant(tenantB);
-
-    boundA.publishNotification({ type: 'success', title: 'A' });
-    boundB.publishNotification({ type: 'error', title: 'B' });
-
-    expect(Object.isFrozen(boundA)).toBe(true);
-    expect(boundA.getLatestNotification()?.title).toBe('A');
-    expect(boundB.getLatestNotification()?.title).toBe('B');
   });
 });

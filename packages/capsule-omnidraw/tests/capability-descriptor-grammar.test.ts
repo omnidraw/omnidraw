@@ -39,12 +39,6 @@ describe('Omnidraw capability descriptor grammar', () => {
             outputByteLimit: 4_096,
             logByteLimit: 0,
           },
-          retry: {
-            mode: 'none',
-            maxAttempts: 1,
-            initialBackoffMs: 0,
-            maxBackoffMs: 0,
-          },
         },
         inputSchema: INPUT_SCHEMA,
         outputSchema: OUTPUT_SCHEMA,

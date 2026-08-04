@@ -28,8 +28,8 @@ and must use schema version 3:
   `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
   `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use
   Capsule's selected-group defaults. Zero explicitly denies that dimension.
-- Do not call a widget Preview-ready unless validation retained a successful
-  browser Preview execution result for that exact construction.
+- Do not claim that live Preview interaction passed unless the current process
+  actually ran it for the exact draft digest.
 - Add `ui.state` only when needed. `collaborative` declares shared
   widget-instance state; `localStore` is `none` or `ephemeral`.
 - Parking is unavailable in this release. Do not request it.
@@ -51,17 +51,16 @@ operator-selected hardened Docker build runner. Keep them limited to necessary
 compilation; never use them to inspect ambient credentials, host files, or
 unrelated network services.
 
-Validation and an open Preview pin one immutable source snapshot and share its
-content-addressed construction. The draft-private warm workspace runs
+Validation captures one immutable source snapshot. The draft-private warm workspace runs
 frozen `npm ci` when package or lock inputs change, then runs the
 guest-owned `npm run build`; source-only edits reuse the installed workspace.
 Omnidraw captures only the bounded regular-file `dist/` tree and gives those
 exact bytes to Capsule for closed-distribution validation and artifact
 construction. Capsule does not install dependencies or compile source.
 
-The durable frame-owned Preview signs and retains that exact source/UI/server
-construction. Its UI invokes the exact retained server artifact with the
-user-selected resource binding revision. Preview collaborative/local state is
-authoring state and does not become published-instance state. A user Publish
-action release-signs and commits the retained construction without rerunning
-npm, the project build, or Capsule construction. “Ready” never means published.
+Preview construction, diagnostics, handles, resource choices, and signing are
+owned only by the current process and temporary files. They are not durable
+revision authority. Preview collaborative/local state is authoring state and
+does not become published-instance state. A user Publish action rechecks the
+current draft digest and may reuse an exact compatible construction; it never
+trusts a stored Preview pointer.

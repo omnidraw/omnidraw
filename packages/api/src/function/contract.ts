@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 const IDENTIFIER_MAX_LENGTH = 200;
 const FUNCTION_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
+const WIDGET_KEY_PATTERN = /^[a-z][a-z0-9-]{0,62}$/;
 const JSON_MAX_BYTES = 1_048_576;
 const JSON_MAX_DEPTH = 64;
 const JSON_MAX_NODES = 100_000;
@@ -14,11 +15,7 @@ function isBoundedJson(root: unknown): boolean {
     const next = pending.pop()!;
     nodes += 1;
     if (nodes > JSON_MAX_NODES || next.depth > JSON_MAX_DEPTH) return false;
-    if (
-      next.value === null
-      || typeof next.value === 'string'
-      || typeof next.value === 'boolean'
-    ) continue;
+    if (next.value === null || typeof next.value === 'string' || typeof next.value === 'boolean') continue;
     if (typeof next.value === 'number') {
       if (!Number.isFinite(next.value)) return false;
       continue;
@@ -42,50 +39,45 @@ export const ZFunctionJson = z.unknown().refine(isBoundedJson, {
   message: 'Expected bounded JSON data.',
 });
 
-export const ZFunctionInvocationStatus = z.enum([
-  'queued',
-  'claimed',
-  'running',
-  'succeeded',
-  'failed',
-  'cancelled',
-  'timed_out',
+const ZFunctionDiagnostics = z.object({
+  code: z.string().min(1).max(128).nullable(),
+  message: z.string().max(65_536).nullable(),
+  logByteSize: z.number().int().min(0).max(65_536),
+  truncated: z.boolean(),
+}).strict();
+
+const ZFunctionFailure = z.object({
+  owner: z.enum(['user', 'platform', 'cancelled']),
+  code: z.string().min(1).max(128),
+  message: z.string().min(1).max(65_536),
+}).strict();
+
+export const ZDirectFunctionResult = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('succeeded'),
+    output: ZFunctionJson,
+    diagnostics: ZFunctionDiagnostics,
+  }).strict(),
+  z.object({
+    status: z.enum(['failed', 'cancelled', 'timed_out']),
+    output: z.null(),
+    failure: ZFunctionFailure,
+    diagnostics: ZFunctionDiagnostics,
+  }).strict(),
 ]);
 
-export const ZFunctionInvocationView = z.object({
-  id: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
-  functionName: z.string().regex(FUNCTION_NAME_PATTERN),
-  widgetRevisionId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
-  widgetInstanceId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
-  status: ZFunctionInvocationStatus,
-  output: ZFunctionJson.nullable(),
-  failure: z.object({
-    owner: z.enum(['user', 'platform', 'cancelled']),
-    code: z.string().min(1).max(128),
-    message: z.string().min(1).max(4_096),
-    retryable: z.boolean(),
-  }).strict().nullable(),
-  createdAtMs: z.number().int().nonnegative(),
-  startedAtMs: z.number().int().nonnegative().nullable(),
-  finishedAtMs: z.number().int().nonnegative().nullable(),
-}).strict();
-
 export const ZInvokeFunctionInput = z.object({
+  canvasId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
+  elementId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
   widgetInstanceId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
-  widgetRevisionId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
+  widgetKey: z.string().regex(WIDGET_KEY_PATTERN),
+  catalogGeneration: z.number().int().positive(),
   functionName: z.string().regex(FUNCTION_NAME_PATTERN),
   input: ZFunctionJson,
-  idempotencyKey: z.string().min(1).max(200),
-}).strict();
-
-export const ZFunctionInvocationIdentity = z.object({
-  invocationId: z.string().min(1).max(IDENTIFIER_MAX_LENGTH),
 }).strict();
 
 const functionContract = oc.router({
-  invoke: oc.input(ZInvokeFunctionInput).output(ZFunctionInvocationView),
-  get: oc.input(ZFunctionInvocationIdentity).output(ZFunctionInvocationView),
-  cancel: oc.input(ZFunctionInvocationIdentity).output(ZFunctionInvocationView),
+  invoke: oc.input(ZInvokeFunctionInput).output(ZDirectFunctionResult),
 });
 
 export { functionContract };

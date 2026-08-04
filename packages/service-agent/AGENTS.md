@@ -70,9 +70,9 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 19 tools for its complete lifecycle:
+Every conversation receives exactly these 16 tools for its complete lifecycle:
 
-- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `vc_widget_preview_status`, `vc_widget_preview_wait`, `vc_widget_preview_test`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `read`, `edit`, `patch`, `grep`
 - Resources: `od_resource_list`, `od_resource_inspect`, `od_resource_create`, `od_resource_update`, `od_resource_delete`, `od_resource_data_read`, `od_resource_data_write`
 - General: `web_fetch`, `bash`
 
@@ -85,32 +85,23 @@ Chat filesystem ownership:
 - Canvas/API field `sessionId` is the stable Omnidraw chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
 - `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
 - `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
-- Build workspaces remain draft-private and warm while a Preview frame for that
-  draft exists. Durable, content-addressed Preview revisions retain their exact
-  source/UI/server artifacts and control metadata independently of that
-  reconstructable workspace.
+- Preview workspaces, constructions, diagnostics, handles, and resource choices
+  belong only to the current process and bounded temporary paths.
 - `sdk` is the host-materialized `@omnidraw/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to the shared draft root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
 
 Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
 
-Publishing remains a user-controlled API operation in `AgentService`. Publish
-accepts the exact active, frame-owned Preview revision, rechecks draft and
-binding authority, release-signs the retained canonical construction, and
-atomically commits its already-built source, UI, and optional server artifacts
-without rerunning guest build commands. Published catalog, detail, files,
-placement, and edit-as-draft reads come only from that durable revision and its
-verified source artifact. Every chat remains mounted to the editable draft, and
-published slugs are immutable after first publication.
+Publishing is a user-controlled filesystem operation outside `AgentService`.
+It rechecks the exact current draft digest, release-signs validated output, and
+atomically installs one current `published/<slug>` folder. `AgentService` owns
+chat behavior only; it has no database-backed widget catalog, revision, draft,
+publication, or Preview authority.
 
-Draft Preview is a durable, full-stack authoring runtime owned by a Cangine
-frame. Its verified UI invokes the exact active retained server revision through
-real selected resource bindings. Open frames follow committed draft changes
-through a latest-wins coordinator, retain the last good revision while building,
-and close their backend owner/workspace when the frame is removed. A stateless
-build request remains only as a compatibility surface; it is not the live
-Cangine Preview model.
+Draft Preview is full-stack but process-owned. Restarting loses its construction,
+diagnostics, handles, temporary resources, and signing work. It never creates a
+durable owner, revision, binding, lease, artifact, or replay row.
 
 Shared current session-record helpers:
 

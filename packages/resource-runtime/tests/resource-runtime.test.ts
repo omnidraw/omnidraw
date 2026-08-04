@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   fnResourceBindingDecision,
   fnResourceBindingAllows,
   fnResourceStatusCanTransition,
-  fnResourceSecretRevealAllowed,
   fnResourceWriteCapabilityMatches,
   ResourceError,
   toResourceError,
@@ -15,16 +13,6 @@ import {
   type TResourceKind,
   type TResourceRequirement,
 } from '../src';
-
-const tenant: TTenantContext = {
-  orgId: 'org-a',
-  accountId: 'account-a',
-  cellId: 'cell-a',
-  placementEpoch: 1,
-  roles: ['member'],
-  capabilities: [],
-  requestId: 'request-a',
-};
 
 const requirement: TResourceRequirement = {
   slot: 'preferences',
@@ -59,74 +47,42 @@ describe('resource-runtime public contracts', () => {
     expect(kinds).toEqual(['kv', 'secretStore', 'db']);
   });
 
-  test('keeps plaintext secret reveal behind a human role and explicit capability', () => {
-    expect(fnResourceSecretRevealAllowed({
-      ...tenant,
-      roles: ['owner'],
-      capabilities: ['resource:secret:reveal'],
-    })).toBe(true);
-    expect(fnResourceSecretRevealAllowed({
-      ...tenant,
-      roles: ['service'],
-      capabilities: ['*'],
-    })).toBe(false);
-    expect(fnResourceSecretRevealAllowed({
-      ...tenant,
-      roles: ['owner', 'service'],
-      capabilities: ['resource:secret:reveal'],
-    })).toBe(false);
-    expect(fnResourceSecretRevealAllowed({
-      ...tenant,
-      roles: ['member'],
-      capabilities: [],
-    })).toBe(false);
-  });
-
-  test('fences decoded write capabilities by tenant, attempt, epoch, and expiry', () => {
+  test('fences decoded write capabilities by exact call identity and expiry', () => {
     const claims = {
-      orgId: 'org-a',
       permitId: 'permit-a',
       resourceId: 'resource-a',
       invocationId: 'invocation-a',
       operation: 'set',
       operationId: 'operation-a',
       operationFingerprintSha256: 'a'.repeat(64),
-      attemptId: 'attempt-a',
-      leaseEpoch: 3,
       expiresAtMs: 200,
       nonce: 'nonce-a',
     } as const;
 
     expect(fnResourceWriteCapabilityMatches(claims, {
       nowMs: 100,
-      orgId: 'org-a',
       resourceId: 'resource-a',
       invocationId: 'invocation-a',
       operation: 'set',
       operationId: 'operation-a',
       operationFingerprintSha256: 'a'.repeat(64),
-      attemptId: 'attempt-a',
-      leaseEpoch: 3,
     })).toBe(true);
     expect(fnResourceWriteCapabilityMatches(claims, {
       nowMs: 200,
-      orgId: 'org-a',
       resourceId: 'resource-a',
       invocationId: 'invocation-a',
       operation: 'set',
       operationId: 'operation-a',
       operationFingerprintSha256: 'a'.repeat(64),
-      attemptId: 'attempt-a',
-      leaseEpoch: 3,
     })).toBe(false);
   });
 
   test('supports a fake location-transparent gateway', async () => {
     const gateway: IResourceGateway = {
-      call: async (_tenant, call) => ({ output: { operation: call.operation } }),
+      call: async (call) => ({ output: { operation: call.operation } }),
     };
 
-    expect(await gateway.call(tenant, {
+    expect(await gateway.call({
       slot: 'preferences',
       operation: 'get',
       effect: 'read',
@@ -134,14 +90,14 @@ describe('resource-runtime public contracts', () => {
     })).toEqual({ output: { operation: 'get' } });
   });
 
-  test('keeps resolved store calls free of tenant-selected paths and handles', async () => {
+  test('keeps resolved store calls free of caller-selected paths and handles', async () => {
     const store: IResourceStore = {
-      call: async (_tenant, call) => ({ output: `${call.kind}:${call.resourceId}` }),
+      call: async (call) => ({ output: `${call.kind}:${call.resourceId}` }),
       reconcile: async () => undefined,
       close: async () => undefined,
     };
 
-    expect(await store.call(tenant, {
+    expect(await store.call({
       slot: 'preferences',
       resourceId: 'resource-a',
       kind: 'kv',

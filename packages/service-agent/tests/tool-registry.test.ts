@@ -24,7 +24,6 @@ describe('AI Chat tool registry', () => {
     const registry = createToolRegistry({
       chatId: 'chat-a',
       cwd,
-      authorization: {},
       workspace,
       approvals: new ApprovalCoordinator(),
     });
@@ -33,11 +32,11 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).not.toContain('od_publish_widget');
     expect(registry.toolNames).not.toContain('od_approve_actor_candidate');
     expect(registry.toolNames).toContain('bash');
-    expect(registry.toolNames).toContain('vc_widget_preview_status');
-    expect(registry.toolNames).toContain('vc_widget_preview_wait');
-    expect(registry.toolNames).toContain('vc_widget_preview_test');
+    expect(registry.toolNames).not.toContain('vc_widget_preview_status');
+    expect(registry.toolNames).not.toContain('vc_widget_preview_wait');
+    expect(registry.toolNames).not.toContain('vc_widget_preview_test');
     expect(registry.toolNames).not.toContain('write');
-    expect(registry.toolNames).toHaveLength(19);
+    expect(registry.toolNames).toHaveLength(16);
 
     const bash = registry.customTools.find((tool) => tool.name === 'bash')!;
     const unavailable = await executeTool(bash, { command: 'pwd' });
@@ -48,7 +47,6 @@ describe('AI Chat tool registry', () => {
     const injectedRegistry = createToolRegistry({
       chatId: 'chat-a',
       cwd,
-      authorization: {},
       workspace,
       approvals: new ApprovalCoordinator(),
       bashCapability: {
@@ -74,7 +72,6 @@ describe('AI Chat tool registry', () => {
     const deniedRegistry = createToolRegistry({
       chatId: 'chat-a',
       cwd,
-      authorization: {},
       authorize: ({ toolName }) => toolName !== 'bash',
       workspace,
       approvals: new ApprovalCoordinator(),
@@ -179,7 +176,6 @@ describe('AI Chat tool registry', () => {
     const registry = createToolRegistry({
       chatId: 'chat-a',
       cwd,
-      authorization: {},
       workspace,
       approvals: new ApprovalCoordinator(),
       onDraftChanged: async (change) => {

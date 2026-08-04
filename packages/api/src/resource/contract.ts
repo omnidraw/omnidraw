@@ -161,21 +161,6 @@ export const ZResource = z.object({
   updated_at: z.string(),
 });
 
-export const ZResourceBinding = z.object({
-  definitionId: z.string(),
-  revisionId: z.string(),
-  slot: z.string(),
-  resourceId: z.string(),
-  kind: ZResourceKind,
-  required: z.boolean(),
-  manifestAllowRead: z.boolean(),
-  manifestAllowWrite: z.boolean(),
-  allowRead: z.boolean(),
-  allowWrite: z.boolean(),
-  createdAtMs: z.number().int().nonnegative(),
-  updatedAtMs: z.number().int().nonnegative(),
-});
-
 const ZResourceKvDataEntry = z.object({
   key: z.string().max(1_024),
   valuePreview: z.string().max(4_096),
@@ -448,7 +433,6 @@ const ZResourceDrainLease = z.object({
 });
 const ZDbImpact = z.object({
   resource: ZResource,
-  bindings: z.array(ZResourceBinding),
   uses: ZResourceUseInspection,
 });
 const ZDbDraftDetails = z.object({ draft: ZDbResourceDraft, changes: z.array(ZDbResourceDraftChange) });
@@ -480,9 +464,6 @@ export const resourceContract = oc.errors({
       .input(z.object({ resourceId: ZResourceId }))
       .route({ method: 'DELETE' })
       .output(z.object({ deleted: z.boolean() })),
-    references: oc
-      .input(z.object({ resourceId: ZResourceId }))
-      .output(ZResourceBinding.array()),
     data: oc
       .input(z.object({
         resourceId: ZResourceId,

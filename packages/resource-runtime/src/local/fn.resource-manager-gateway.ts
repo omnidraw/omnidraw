@@ -1,5 +1,5 @@
 /**
- * @file Pure conversion from the legacy-neutral manager model to public gateway contracts.
+ * @file Pure conversion from the local manager model to public gateway contracts.
  */
 
 import type {
@@ -12,7 +12,6 @@ import type {
 } from '../types';
 import type {
   TManagedResourceRequirement,
-  TResourceBindingRecord,
   TResourceScope,
 } from './ResourceManager';
 
@@ -73,14 +72,18 @@ export function fnResourceRequirementFromManaged(
 
 export function fnResourceBindingFromManaged(
   requirement: TResourceRequirement,
-  binding: TResourceBindingRecord,
+  binding: Readonly<{
+    slot: string;
+    resourceId: string;
+    allowRead: boolean;
+    allowWrite: boolean;
+  }>,
 ): TResourceBinding {
   return {
-    slot: binding.slot_name,
-    resourceId: binding.resource_id,
+    slot: binding.slot,
+    resourceId: binding.resourceId,
     kind: requirement.kind,
-    allowRead: binding.allow_read,
-    allowWrite: binding.allow_write,
-    definitionId: binding.definition_name,
+    allowRead: binding.allowRead,
+    allowWrite: binding.allowWrite,
   };
 }

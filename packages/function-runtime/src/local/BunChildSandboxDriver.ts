@@ -8,16 +8,15 @@ import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { IResourceGateway } from '@omnidraw/resource-runtime';
-import type { ISandboxDriver } from '../interface';
+import type { IFunctionSandboxDriver } from '../interface';
 import type {
-  TFunctionAttempt,
-  TFunctionDefinition,
+  TDirectFunctionCall,
+  TDirectFunctionDefinition,
   TFunctionFailure,
-  TFunctionInvocationEnvelope,
-  TSandboxExecutionResult,
-  TSandboxHandle,
-  TSandboxStartRequest,
-  TUsageMetrics,
+  TFunctionSandboxExecutionResult,
+  TFunctionSandboxHandle,
+  TFunctionSandboxStartRequest,
+  TFunctionUsageMetrics,
 } from '../types';
 import {
   createBunChildCage,
@@ -55,16 +54,16 @@ type TStartupDeadline = Readonly<{
 }>;
 
 type TPrepared = Readonly<{
-  definition: TFunctionDefinition;
+  definition: TDirectFunctionDefinition;
   sourceBase64: string;
   sourceDigestSha256: string;
 }>;
 
 type TActiveExecution = {
   requestId: string;
-  envelope: TFunctionInvocationEnvelope;
+  call: TDirectFunctionCall;
   resources: IResourceGateway;
-  resolve(result: TSandboxExecutionResult): void;
+  resolve(result: TFunctionSandboxExecutionResult): void;
   timer: ReturnType<typeof setTimeout>;
   settled: boolean;
   resourceCalls: number;
@@ -72,12 +71,11 @@ type TActiveExecution = {
 };
 
 type TRunning = {
-  handle: TSandboxHandle;
-  definition: TFunctionDefinition;
-  attempt: TFunctionAttempt;
+  handle: TFunctionSandboxHandle;
+  definition: TDirectFunctionDefinition;
   process: Bun.Subprocess;
   pending: Map<string, TPendingMessage>;
-  metrics: TUsageMetrics;
+  metrics: TFunctionUsageMetrics;
   logByteSize: number;
   latestRssBytes: number;
   active: TActiveExecution | null;
@@ -85,7 +83,7 @@ type TRunning = {
   memoryLimitExceeded: boolean;
   memoryTimer: ReturnType<typeof setInterval> | null;
   sandboxStartedAtMs: number;
-  observeMetrics(metrics: TUsageMetrics): void;
+  observeMetrics(metrics: TFunctionUsageMetrics): void;
   teardownTask: Promise<void> | null;
   teardownFailure: string | null;
   streamTasks: readonly Promise<void>[];
@@ -127,15 +125,11 @@ export type TBunChildSandboxDriverConfig = Readonly<{
   warmTtlMs?: 0;
 }>;
 
-const ZERO_METRICS: TUsageMetrics = Object.freeze({
+const ZERO_METRICS: TFunctionUsageMetrics = Object.freeze({
   activeWallMs: 0,
   cpuMs: 0,
   allocatedMemoryByteMs: 0,
   peakRssBytes: 0,
-  diskReadBytes: 0,
-  diskWriteBytes: 0,
-  networkRxBytes: 0,
-  networkTxBytes: 0,
 });
 
 const DEFAULT_MEMORY_TIERS = Object.freeze({
@@ -148,9 +142,8 @@ function failure(
   owner: TFunctionFailure['owner'],
   code: string,
   message: string,
-  retryable: boolean,
 ): TFunctionFailure {
-  return { owner, code, message, retryable };
+  return { owner, code, message };
 }
 
 function memoryLimitError(): Error {
@@ -165,15 +158,15 @@ function invocationDeadlineError(): Error {
   });
 }
 
-function canonicalRegistration(definition: TFunctionDefinition): TFunctionCanonicalRegistration {
+function canonicalRegistration(definition: TDirectFunctionDefinition): TFunctionCanonicalRegistration {
+  const descriptor = definition.descriptor;
   return {
     schemaVersion: 1,
-    effect: definition.effect,
-    inputSchema: definition.inputSchema as TFunctionCanonicalRegistration['inputSchema'],
-    outputSchema: definition.outputSchema as TFunctionCanonicalRegistration['outputSchema'],
-    resources: definition.resources,
-    limits: definition.limits,
-    retry: definition.retry,
+    effect: descriptor.effect,
+    inputSchema: descriptor.inputSchema as TFunctionCanonicalRegistration['inputSchema'],
+    outputSchema: descriptor.outputSchema as TFunctionCanonicalRegistration['outputSchema'],
+    resources: descriptor.resources,
+    limits: descriptor.limits,
   };
 }
 
@@ -229,7 +222,7 @@ async function defaultReadCpuMs(pid: number): Promise<number> {
 }
 
 /** One prepared handle and one child are scoped to exactly one invocation. */
-export class BunChildSandboxDriver implements ISandboxDriver {
+export class BunChildSandboxDriver implements IFunctionSandboxDriver {
   readonly name = 'bun-child';
   readonly #spawn: typeof Bun.spawn;
   readonly #command: readonly string[];
@@ -285,9 +278,9 @@ export class BunChildSandboxDriver implements ISandboxDriver {
   }
 
   async prepare(request: Readonly<{
-    definition: TFunctionDefinition;
+    definition: TDirectFunctionDefinition;
     artifact: Uint8Array;
-  }>): Promise<TSandboxHandle> {
+  }>): Promise<TFunctionSandboxHandle> {
     const artifactDigest = createHash('sha256').update(request.artifact).digest('hex');
     if (artifactDigest !== request.definition.artifactDigestSha256) {
       throw new Error('Function artifact bytes do not match the pinned definition digest.');
@@ -320,16 +313,12 @@ export class BunChildSandboxDriver implements ISandboxDriver {
   }
 
   async start(
-    preparedHandle: TSandboxHandle,
-    attempt: TFunctionAttempt,
-    request: TSandboxStartRequest,
-  ): Promise<TSandboxHandle> {
+    preparedHandle: TFunctionSandboxHandle,
+    request: TFunctionSandboxStartRequest,
+  ): Promise<TFunctionSandboxHandle> {
     const prepared = this.#prepared.get(preparedHandle.id);
     if (preparedHandle.driver !== this.name || prepared === undefined) {
       throw new Error('Bun child prepared handle is invalid.');
-    }
-    if (attempt.memoryTier !== prepared.definition.limits.memoryTier) {
-      throw new Error('Function attempt memory tier differs from its pinned definition.');
     }
     this.#prepared.delete(preparedHandle.id);
     const startupLimitAtMs = this.#nowMs() + this.#startupTimeoutMs;
@@ -385,7 +374,6 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     running = {
       handle,
       definition: prepared.definition,
-      attempt,
       process,
       pending: new Map(),
       metrics: ZERO_METRICS,
@@ -420,8 +408,6 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       );
       this.#assertMemoryWithinLimit(running);
       this.#assertBeforeStartupDeadline(deadline);
-      await this.#awaitBeforeStartupDeadline(request.enterGuestCode(), deadline);
-      this.#assertBeforeStartupDeadline(deadline);
       const requestId = this.#createId();
       const loaded = this.#waitMessage(running, requestId, 'loaded', deadline);
       this.#assertBeforeStartupDeadline(deadline);
@@ -430,7 +416,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
         requestId,
         sourceBase64: prepared.sourceBase64,
         sourceDigestSha256: prepared.sourceDigestSha256,
-        exportName: prepared.definition.name,
+        exportName: prepared.definition.descriptor.exportName,
         canonicalRegistration: canonicalRegistration(prepared.definition),
       });
       await loaded;
@@ -453,56 +439,54 @@ export class BunChildSandboxDriver implements ISandboxDriver {
   }
 
   execute(
-    runningHandle: TSandboxHandle,
-    envelope: TFunctionInvocationEnvelope,
+    runningHandle: TFunctionSandboxHandle,
+    call: TDirectFunctionCall,
     resources: IResourceGateway,
-  ): Promise<TSandboxExecutionResult> {
+  ): Promise<TFunctionSandboxExecutionResult> {
     const running = this.#requireRunning(runningHandle);
     if (running.memoryLimitExceeded) {
       return Promise.resolve({
         status: 'failed',
-        failure: failure('user', 'FUNCTION_MEMORY_LIMIT', 'Function exceeded its memory tier.', false),
+        failure: failure('user', 'FUNCTION_MEMORY_LIMIT', 'Function exceeded its memory tier.'),
         outputByteSize: 0,
         logByteSize: running.logByteSize,
       });
     }
     if (running.active !== null) throw new Error('Bun child already has an active invocation.');
     if (
-      running.attempt.invocationId !== envelope.id
-      || running.definition.id !== envelope.functionId
-      || running.definition.widgetRevisionId !== envelope.widgetRevisionId
-      || running.definition.definitionRevision !== envelope.definitionRevision
-      || running.definition.artifactDigestSha256 !== envelope.artifactDigestSha256
-      || running.definition.contractDigestSha256 !== envelope.contractDigestSha256
-      || running.definition.runtimeAbi !== envelope.runtimeAbi
+      running.definition.widgetKey !== call.definition.widgetKey
+      || running.definition.catalogGeneration !== call.definition.catalogGeneration
+      || running.definition.artifactDigestSha256 !== call.definition.artifactDigestSha256
+      || running.definition.runtimeAbi !== call.definition.runtimeAbi
+      || running.definition.descriptor.exportName !== call.definition.descriptor.exportName
     ) {
-      throw new Error('Bun child execution envelope does not match its pinned definition/attempt.');
+      throw new Error('Bun child call does not match its captured filesystem definition.');
     }
     const remainingMs = Math.min(
-      envelope.limits.timeoutMs,
-      envelope.deadlineAtMs - this.#nowMs(),
+      call.definition.descriptor.limits.timeoutMs,
+      call.deadlineAtMs - this.#nowMs(),
     );
     if (remainingMs <= 0) {
       return Promise.resolve({
         status: 'failed',
-        failure: failure('cancelled', 'FUNCTION_TIMED_OUT', 'Function deadline expired before execution.', false),
+        failure: failure('cancelled', 'FUNCTION_TIMED_OUT', 'Function deadline expired before execution.'),
         outputByteSize: 0,
         logByteSize: running.logByteSize,
       });
     }
     const requestId = this.#createId();
-    return new Promise<TSandboxExecutionResult>((resolve) => {
+    return new Promise<TFunctionSandboxExecutionResult>((resolve) => {
       const timer = setTimeout(() => {
         this.#finishExecution(running, {
           status: 'failed',
-          failure: failure('cancelled', 'FUNCTION_TIMED_OUT', 'Function execution exceeded its deadline.', false),
+          failure: failure('cancelled', 'FUNCTION_TIMED_OUT', 'Function execution exceeded its deadline.'),
           outputByteSize: 0,
           logByteSize: running.logByteSize,
         }, true);
       }, remainingMs);
       running.active = {
         requestId,
-        envelope,
+        call,
         resources,
         resolve,
         timer,
@@ -513,26 +497,19 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       this.#send(running, {
         type: 'execute',
         requestId,
-        input: envelope.input,
+        input: call.input,
         context: {
-          identity: {
-            orgId: envelope.tenant.orgId,
-            accountId: envelope.tenant.accountId,
-            roles: envelope.tenant.roles,
-          },
-          invocationId: envelope.id,
-          widgetDefinitionId: envelope.widgetDefinitionId,
-          widgetRevisionId: envelope.widgetRevisionId,
-          subject: envelope.subject,
-          attemptId: running.attempt.id,
-          leaseEpoch: running.attempt.leaseEpoch,
-          deadlineAtMs: envelope.deadlineAtMs,
+          invocationId: call.id,
+          widgetKey: call.definition.widgetKey,
+          catalogGeneration: call.definition.catalogGeneration,
+          subject: call.subject,
+          deadlineAtMs: call.deadlineAtMs,
         },
       });
     });
   }
 
-  async measure(runningHandle: TSandboxHandle): Promise<TUsageMetrics> {
+  async measure(runningHandle: TFunctionSandboxHandle): Promise<TFunctionUsageMetrics> {
     const running = this.#requireRunning(runningHandle);
     await this.#sampleMemory(running);
     this.#assertMemoryWithinLimit(running);
@@ -542,7 +519,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     };
   }
 
-  async cancel(runningHandle: TSandboxHandle, reason: string): Promise<void> {
+  async cancel(runningHandle: TFunctionSandboxHandle, reason: string): Promise<void> {
     const running = this.#requireRunning(runningHandle);
     if (running.active === null) return;
     running.active.cancelRequested = true;
@@ -560,18 +537,18 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     if (running.active === active) {
       this.#finishExecution(running, {
         status: 'failed',
-        failure: failure('cancelled', 'FUNCTION_CANCELLED', 'Function invocation was cancelled.', false),
+        failure: failure('cancelled', 'FUNCTION_CANCELLED', 'Function invocation was cancelled.'),
         outputByteSize: 0,
         logByteSize: running.logByteSize,
       }, true);
     }
   }
 
-  async reset(runningHandle: TSandboxHandle): Promise<void> {
+  async reset(runningHandle: TFunctionSandboxHandle): Promise<void> {
     await this.destroy(runningHandle);
   }
 
-  async destroy(handle: TSandboxHandle): Promise<void> {
+  async destroy(handle: TFunctionSandboxHandle): Promise<void> {
     this.#prepared.delete(handle.id);
     const running = this.#running.get(handle.id);
     if (!running) return;
@@ -600,7 +577,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       if (running.active) {
         this.#finishExecution(running, {
           status: 'failed',
-          failure: failure('platform', 'FUNCTION_SANDBOX_DESTROYED', 'Function sandbox was destroyed.', true),
+          failure: failure('platform', 'FUNCTION_SANDBOX_DESTROYED', 'Function sandbox was destroyed.'),
           outputByteSize: 0,
           logByteSize: running.logByteSize,
         });
@@ -645,7 +622,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     });
   }
 
-  #requireRunning(handle: TSandboxHandle): TRunning {
+  #requireRunning(handle: TFunctionSandboxHandle): TRunning {
     const running = this.#running.get(handle.id);
     if (handle.driver !== this.name || !running || running.destroyed) {
       throw new Error('Bun child running handle is invalid.');
@@ -705,7 +682,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     if (!active || !('requestId' in message) || message.requestId !== active.requestId) return;
     if (message.type === 'log') {
       const byteSize = hostJsonByteSize(message.values);
-      this.#addLogBytes(running, byteSize ?? active.envelope.limits.logByteLimit + 1);
+      this.#addLogBytes(running, byteSize ?? active.call.definition.descriptor.limits.logByteLimit + 1);
       return;
     }
     if (message.type === 'resource_call') {
@@ -720,7 +697,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
         return;
       }
       void Promise.resolve()
-        .then(() => active.resources.call(active.envelope.tenant, message.call))
+        .then(() => active.resources.call(message.call))
         .then(
           (result) => this.#replyToResourceCall(running, active, {
             type: 'resource_result', requestId: active.requestId, callId: message.callId, result,
@@ -741,7 +718,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       const outputByteSize = hostJsonByteSize(message.output);
       const invalid = outputByteSize === null;
       const overLimit = outputByteSize !== null
-        && outputByteSize > active.envelope.limits.outputByteLimit;
+        && outputByteSize > active.call.definition.descriptor.limits.outputByteLimit;
       this.#finishExecution(running, invalid || overLimit
         ? {
             status: 'failed',
@@ -751,7 +728,6 @@ export class BunChildSandboxDriver implements ISandboxDriver {
               invalid
                 ? 'Function output is not JSON serializable.'
                 : 'Function output exceeds its byte limit.',
-              false,
             ),
             outputByteSize: 0,
             logByteSize: running.logByteSize,
@@ -768,8 +744,8 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       this.#finishExecution(running, {
         status: 'failed',
         failure: active.cancelRequested
-          ? failure('cancelled', 'FUNCTION_CANCELLED', 'Function invocation was cancelled.', false)
-          : failure('user', 'FUNCTION_HANDLER_FAILED', 'Function handler failed.', false),
+          ? failure('cancelled', 'FUNCTION_CANCELLED', 'Function invocation was cancelled.')
+          : failure('user', 'FUNCTION_HANDLER_FAILED', 'Function handler failed.'),
         outputByteSize: 0,
         logByteSize: running.logByteSize,
       });
@@ -884,12 +860,12 @@ export class BunChildSandboxDriver implements ISandboxDriver {
   #addLogBytes(running: TRunning, byteSize: number): void {
     running.logByteSize += Math.max(0, byteSize);
     const active = running.active;
-    if (active && running.logByteSize > active.envelope.limits.logByteLimit) {
+    if (active && running.logByteSize > active.call.definition.descriptor.limits.logByteLimit) {
       this.#finishExecution(running, {
         status: 'failed',
-        failure: failure('user', 'FUNCTION_LOG_LIMIT', 'Function logs exceed their byte limit.', false),
+        failure: failure('user', 'FUNCTION_LOG_LIMIT', 'Function logs exceed their byte limit.'),
         outputByteSize: 0,
-        logByteSize: active.envelope.limits.logByteLimit,
+        logByteSize: active.call.definition.descriptor.limits.logByteLimit,
       }, true);
     }
   }
@@ -913,7 +889,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     this.#refreshTimeMetrics(running);
     this.#publishMetrics(running);
     const active = running.active;
-    if (rssBytes > this.#memoryTierBytes[running.attempt.memoryTier]) {
+    if (rssBytes > this.#memoryTierBytes[running.definition.descriptor.limits.memoryTier]) {
       running.memoryLimitExceeded = true;
       const error = memoryLimitError();
       for (const pending of running.pending.values()) {
@@ -924,7 +900,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
       if (active) {
         this.#finishExecution(running, {
           status: 'failed',
-          failure: failure('user', 'FUNCTION_MEMORY_LIMIT', 'Function exceeded its memory tier.', false),
+          failure: failure('user', 'FUNCTION_MEMORY_LIMIT', 'Function exceeded its memory tier.'),
           outputByteSize: 0,
           logByteSize: running.logByteSize,
         }, true);
@@ -956,7 +932,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     running.metrics = {
       ...running.metrics,
       activeWallMs,
-      allocatedMemoryByteMs: this.#memoryTierBytes[running.attempt.memoryTier] * activeWallMs,
+      allocatedMemoryByteMs: this.#memoryTierBytes[running.definition.descriptor.limits.memoryTier] * activeWallMs,
     };
   }
 
@@ -974,7 +950,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
 
   #finishExecution(
     running: TRunning,
-    result: TSandboxExecutionResult,
+    result: TFunctionSandboxExecutionResult,
     kill = false,
   ): void {
     const active = running.active;
@@ -1004,7 +980,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
     if (running.active) {
       this.#finishExecution(running, {
         status: 'failed',
-        failure: failure('platform', 'FUNCTION_SANDBOX_CRASHED', 'Function sandbox exited unexpectedly.', true),
+        failure: failure('platform', 'FUNCTION_SANDBOX_CRASHED', 'Function sandbox exited unexpectedly.'),
         outputByteSize: 0,
         logByteSize: running.logByteSize,
       });
@@ -1027,7 +1003,6 @@ export class BunChildSandboxDriver implements ISandboxDriver {
           'platform',
           'FUNCTION_SANDBOX_IPC_FAILED',
           'Function sandbox IPC failed while returning a resource result.',
-          true,
         ),
         outputByteSize: 0,
         logByteSize: running.logByteSize,

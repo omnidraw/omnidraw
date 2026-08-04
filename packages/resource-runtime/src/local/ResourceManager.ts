@@ -2,7 +2,7 @@
  * @file Local resource catalog, gateway, lifecycle, and consumer-use coordination.
  *
  * The manager deliberately depends on structural stores and requirement resolvers.
- * Host packages adapt their persistence models and legacy consumers at the edge.
+ * Host packages adapt their persistence models at the edge.
  */
 
 import { ResourceError, toResourceError } from '../ResourceError';
@@ -47,19 +47,16 @@ export type TResourceCatalogRecord = Readonly<{
   kind: TResourceKind;
   name: string;
   status: TResourceStatus;
-  last_error: TResourceJson | null;
-  created_at: string;
-  updated_at: string;
+  lastError: TResourceJson | null;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
-export type TResourceBindingRecord = Readonly<{
-  definition_name: string;
-  slot_name: string;
-  resource_id: string;
-  allow_read: boolean;
-  allow_write: boolean;
-  created_at: string;
-  updated_at: string;
+type TResolvedResourceBinding = Readonly<{
+  slot: string;
+  resourceId: string;
+  allowRead: boolean;
+  allowWrite: boolean;
 }>;
 
 export type TResourceFunctionClass = 'fn' | 'fx' | 'tx';
@@ -87,33 +84,6 @@ export type TResourceGatewayAuthorization = Readonly<{
   effect: TResourcePermission;
 }>;
 
-export type TResourceBindingStatus = Readonly<{
-  slot: string;
-  requirement: TManagedResourceRequirement;
-  bound: boolean;
-  resource: TResourceCatalogRecord | null;
-  requestedScope: TResourceScope;
-  bindingScope: TResourceScope | null;
-  scopeValid: boolean;
-  kindMatches: boolean;
-  ready: boolean;
-  blockedCode: string | null;
-  blockedMessage: string | null;
-}>;
-
-export type TConsumerStartAdmission = Readonly<{
-  allowed: boolean;
-  hadBlocks: boolean;
-  shouldRestart: boolean;
-  resolvedBlockResourceIds: readonly string[];
-  code: string | null;
-  message: string | null;
-}>;
-
-export type TResourceRequirementsResolver = (
-  definitionName: string,
-) => Readonly<Record<string, TManagedResourceRequirement>> | null;
-
 export type IResourceManagerStore = Readonly<{
   catalog: Readonly<{
     list(filter: Readonly<{ kind?: TResourceKind; status?: TResourceStatus }>): Promise<readonly TResourceCatalogRecord[]>;
@@ -129,56 +99,15 @@ export type IResourceManagerStore = Readonly<{
     }>): Promise<TResourceCatalogRecord | null>;
     beginDelete(args: Readonly<{ id: string }>): Promise<TResourceCatalogRecord | null>;
     delete(args: Readonly<{ id: string }>): Promise<boolean>;
-    listBindingsForResource(args: Readonly<{ resourceId: string }>): Promise<readonly TResourceBindingRecord[]>;
-    listBindingsForDefinition(args: Readonly<{ definitionName: string }>): Promise<readonly TResourceBindingRecord[]>;
-    upsertBinding(args: Readonly<{
-      definitionName: string;
-      slotName: string;
-      resourceId: string;
-      allowRead: boolean;
-      allowWrite: boolean;
-    }>): Promise<TResourceBindingRecord | null>;
-    removeBinding(args: Readonly<{ definitionName: string; slotName: string }>): Promise<boolean>;
-    replaceBindings(args: Readonly<{
-      definitionName: string;
-      expectedBindings?: readonly Readonly<{
-        slotName: string;
-        resourceId: string;
-        allowRead: boolean;
-        allowWrite: boolean;
-      }>[];
-      bindings: readonly Readonly<{
-        slotName: string;
-        resourceId: string;
-        allowRead: boolean;
-        allowWrite: boolean;
-      }>[];
-    }>): Promise<readonly TResourceBindingRecord[]>;
   }>;
   migration: Readonly<{
     hasActiveWork(resourceId: string): Promise<boolean>;
-  }>;
-  consumerRecovery?: Readonly<{
-    listResults(consumerId: string): Promise<readonly Readonly<{
-      migrationId: string;
-      consumerId: string;
-      definitionName: string;
-      wasRunning: boolean;
-      status: string;
-    }>[]>;
-    getMigration(migrationId: string): Promise<Readonly<{ resourceId: string }> | null>;
-    markRestarted(result: Readonly<{
-      migrationId: string;
-      consumerId: string;
-      definitionName: string;
-    }>): Promise<void>;
   }>;
 }>;
 
 export type TResourceManagerConfig = Readonly<{
   readonly store: IResourceManagerStore;
   readonly crypto: Pick<Crypto, 'randomUUID'>;
-  readonly resolveRequirements: TResourceRequirementsResolver;
   readonly providers: readonly ILocalResourceProvider[];
   /** The Resource Store owns provider shutdown in split manager/store composition. */
   readonly closeProviders?: boolean;
@@ -188,34 +117,6 @@ export type TCreateResourceArgs = Readonly<{
   readonly kind: TResourceKind;
   readonly name: string;
 }>;
-
-export type TBindResourceArgs = Readonly<{
-  readonly definitionName: string;
-  readonly slot: string;
-  readonly resourceId: string;
-  readonly scope?: TResourceScope;
-}>;
-
-export type TReplaceResourceBindingsArgs = Readonly<{
-  readonly definitionName: string;
-  readonly expectedBindings?: readonly {
-    readonly slot: string;
-    readonly resourceId: string;
-    readonly scope: TResourceScope;
-  }[];
-  readonly bindings: readonly {
-    readonly slot: string;
-    readonly resourceId: string;
-    readonly scope: TResourceScope;
-  }[];
-}>;
-
-type TConsumerStartReservation = {
-  readonly admission: TConsumerStartAdmission;
-  readonly definitionName: string;
-  readonly release: () => void;
-  readonly settled: Promise<void>;
-};
 
 function normalizedResourceName(name: unknown): { name: string; key: string } {
   if (typeof name !== 'string') {
@@ -252,28 +153,6 @@ function validateScope(scope: readonly string[], requirement: TManagedResourceRe
   return [...scope] as TResourceScope;
 }
 
-function bindingSetMatches(
-  current: readonly TResourceBindingRecord[],
-  expected: NonNullable<TReplaceResourceBindingsArgs['expectedBindings']>,
-): boolean {
-  const sorted = [...expected].sort((left, right) => left.slot.localeCompare(right.slot, 'en-US'));
-  return current.length === sorted.length && current.every((binding, index) => {
-    const candidate = sorted[index];
-    return candidate !== undefined
-      && binding.slot_name === candidate.slot
-      && binding.resource_id === candidate.resourceId
-      && binding.allow_read === candidate.scope.includes('read')
-      && binding.allow_write === candidate.scope.includes('write');
-  });
-}
-
-function bindingScope(binding: TResourceBindingRecord): TResourceScope {
-  const scope: TResourceScope = [];
-  if (binding.allow_read) scope.push('read');
-  if (binding.allow_write) scope.push('write');
-  return scope;
-}
-
 function safeLifecycleError(error: unknown): TResourceJson {
   if (error instanceof ResourceError) return { code: error.code, message: error.message };
   return { code: 'RESOURCE_PROVIDER_UNAVAILABLE', message: 'Resource provider operation failed.' };
@@ -282,7 +161,6 @@ function safeLifecycleError(error: unknown): TResourceJson {
 export class ResourceManager {
   readonly #store: IResourceManagerStore;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
-  readonly #resolveRequirements: TResourceRequirementsResolver;
   readonly #closeProviders: boolean;
   readonly #providers = new Map<TResourceKind, ILocalResourceProvider>();
   readonly #inflight = new Map<string, Set<Promise<unknown>>>();
@@ -291,18 +169,12 @@ export class ResourceManager {
   readonly #lifecycleOperations = new Set<Promise<unknown>>();
   readonly #blockedResources = new Set<string>();
   readonly #resourceGateTails = new Map<string, Promise<void>>();
-  readonly #definitionGateTails = new Map<string, Promise<void>>();
-  readonly #consumerStartAdmissionGateTails = new Map<string, Promise<void>>();
-  readonly #consumerStartReservations = new Map<string, TConsumerStartReservation>();
-  readonly #definitionStartLeases = new Map<string, Set<Promise<void>>>();
-  readonly #bindingIntents = new Map<string, Set<Promise<void>>>();
   #closed = false;
   #closePromise: Promise<void> | null = null;
 
   constructor(config: TResourceManagerConfig) {
     this.#store = config.store;
     this.#crypto = config.crypto;
-    this.#resolveRequirements = config.resolveRequirements;
     this.#closeProviders = config.closeProviders ?? true;
     for (const provider of config.providers) this.registerProvider(provider);
   }
@@ -337,7 +209,7 @@ export class ResourceManager {
     if (matches.length > 1) {
       throw new ResourceError(
         'RESOURCE_NAME_AMBIGUOUS',
-        `Resource name '${normalized.name}' matches multiple legacy resources and must be repaired by the host.`,
+        `Resource name '${normalized.name}' is ambiguous and must be repaired by the host.`,
       );
     }
     const resource = matches[0]!;
@@ -453,7 +325,6 @@ export class ResourceManager {
   }
 
   async #deleteResource(id: string): Promise<void> {
-    await this.#drainBindingIntents(id);
     this.#assertOpen();
     return this.#withResourceGate(id, async () => {
       const resource = await this.#requireResource(id);
@@ -465,13 +336,6 @@ export class ResourceManager {
       }
       this.#blockedResources.add(id);
       try {
-        const references = await this.#store.catalog.listBindingsForResource({ resourceId: id });
-        if (references.length > 0) {
-          throw new ResourceError('RESOURCE_STILL_BOUND', `Resource "${resource.name}" is still bound to ${references.length} definition slot(s).`, {
-            resourceId: id,
-            bindingCount: references.length,
-          });
-        }
         const deleting = await this.#store.catalog.beginDelete({ id })
           .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource deletion could not begin.'); });
         if (!deleting) {
@@ -492,319 +356,6 @@ export class ResourceManager {
     });
   }
 
-  listResourceReferences(resourceId: string): Promise<readonly TResourceBindingRecord[]> {
-    return this.#store.catalog.listBindingsForResource({ resourceId })
-      .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource references could not be listed.'); });
-  }
-
-  listResourceBindingsForDefinition(definitionName: string): Promise<readonly TResourceBindingRecord[]> {
-    return this.#store.catalog.listBindingsForDefinition({ definitionName })
-      .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Definition resource bindings could not be listed.'); });
-  }
-
-  async bindResource(args: TBindResourceArgs): Promise<TResourceBindingRecord> {
-    this.#assertOpen();
-    const releaseIntent = this.#registerBindingIntent(args.resourceId);
-    try {
-      return await this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
-        await this.#drainDefinitionStarts(args.definitionName);
-        this.#assertOpen();
-        const requirement = this.#requireRequirement(args.definitionName, args.slot);
-        const existing = (await this.#store.catalog.listBindingsForDefinition({ definitionName: args.definitionName }))
-          .find((binding) => binding.slot_name === args.slot);
-        const resourceIds = existing ? [existing.resource_id, args.resourceId] : [args.resourceId];
-        return this.#withResourceGates(resourceIds, async () => {
-          const resource = await this.#requireResource(args.resourceId);
-          if (resource.status !== 'ready') this.#throwUnavailable(resource);
-          if (resource.kind !== requirement.kind) {
-            throw new ResourceError('RESOURCE_KIND_MISMATCH', `Slot "${args.slot}" requires ${requirement.kind}, not ${resource.kind}.`, {
-              slot: args.slot,
-              expectedKind: requirement.kind,
-              actualKind: resource.kind,
-            });
-          }
-          const scope = validateScope(args.scope ?? requirement.scope, requirement);
-          for (const resourceId of resourceIds) {
-            if (this.#blockedResources.has(resourceId)) {
-              throw new ResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is busy with a lifecycle operation.`);
-            }
-          }
-          const binding = await this.#store.catalog.upsertBinding({
-            definitionName: args.definitionName,
-            slotName: args.slot,
-            resourceId: args.resourceId,
-            allowRead: scope.includes('read'),
-            allowWrite: scope.includes('write'),
-          }).catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be persisted.'); });
-          if (!binding) throw new ResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is not ready for binding.`);
-          return binding;
-        });
-      }));
-    } finally {
-      releaseIntent();
-    }
-  }
-
-  async unbindResource(args: { definitionName: string; slot: string }): Promise<boolean> {
-    this.#assertOpen();
-    return this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
-      await this.#drainDefinitionStarts(args.definitionName);
-      this.#assertOpen();
-      const existing = (await this.#store.catalog.listBindingsForDefinition({ definitionName: args.definitionName }))
-        .find((binding) => binding.slot_name === args.slot);
-      if (!existing) return false;
-      return this.#withResourceGate(existing.resource_id, async () => {
-        if (this.#blockedResources.has(existing.resource_id)) {
-          throw new ResourceError('RESOURCE_NOT_READY', 'Resource is busy with a lifecycle operation.');
-        }
-        return this.#store.catalog.removeBinding({ definitionName: args.definitionName, slotName: args.slot })
-          .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be removed.'); });
-      });
-    }));
-  }
-
-  async replaceResourceBindings(args: TReplaceResourceBindingsArgs): Promise<readonly TResourceBindingRecord[]> {
-    return this.#replaceResourceBindings(args, async () => undefined);
-  }
-
-  async transitionResourceBindings(
-    args: TReplaceResourceBindingsArgs,
-    beforeReplace: () => Promise<void>,
-  ): Promise<readonly TResourceBindingRecord[]> {
-    return this.#replaceResourceBindings(args, beforeReplace);
-  }
-
-  async #replaceResourceBindings(
-    args: TReplaceResourceBindingsArgs,
-    beforeReplace: () => Promise<void>,
-  ): Promise<readonly TResourceBindingRecord[]> {
-    this.#assertOpen();
-    if (new Set(args.bindings.map((binding) => binding.slot)).size !== args.bindings.length) {
-      throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Resource binding slots must be unique.');
-    }
-    if (args.expectedBindings && new Set(args.expectedBindings.map((binding) => binding.slot)).size !== args.expectedBindings.length) {
-      throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Expected resource binding slots must be unique.');
-    }
-    const involvedResourceIds = [...new Set([
-      ...args.bindings.map((binding) => binding.resourceId),
-      ...(args.expectedBindings?.map((binding) => binding.resourceId) ?? []),
-    ])];
-    const releaseIntents = involvedResourceIds.map((resourceId) => this.#registerBindingIntent(resourceId));
-    try {
-      return await this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
-        await this.#drainDefinitionStarts(args.definitionName);
-        this.#assertOpen();
-        const existing = await this.#store.catalog.listBindingsForDefinition({ definitionName: args.definitionName });
-        if (args.expectedBindings && !bindingSetMatches(existing, args.expectedBindings)) {
-          throw new ResourceError(
-            'RESOURCE_BINDING_CONFLICT',
-            `Resource bindings for definition '${args.definitionName}' changed concurrently.`,
-          );
-        }
-        const resourceIds = [...new Set([
-          ...existing.map((binding) => binding.resource_id),
-          ...involvedResourceIds,
-        ])];
-        return this.#withResourceGates(resourceIds, async () => {
-          await beforeReplace();
-          const validated: {
-            slotName: string;
-            resourceId: string;
-            allowRead: boolean;
-            allowWrite: boolean;
-          }[] = [];
-          for (const binding of args.bindings) {
-            const requirement = this.#requireRequirement(args.definitionName, binding.slot);
-            const resource = await this.#requireResource(binding.resourceId);
-            if (resource.status !== 'ready' || this.#blockedResources.has(resource.id)) this.#throwUnavailable(resource);
-            if (resource.kind !== requirement.kind) {
-              throw new ResourceError('RESOURCE_KIND_MISMATCH', `Slot "${binding.slot}" requires ${requirement.kind}, not ${resource.kind}.`, {
-                slot: binding.slot,
-                expectedKind: requirement.kind,
-                actualKind: resource.kind,
-              });
-            }
-            const scope = validateScope(binding.scope, requirement);
-            validated.push({
-              slotName: binding.slot,
-              resourceId: binding.resourceId,
-              allowRead: scope.includes('read'),
-              allowWrite: scope.includes('write'),
-            });
-          }
-          for (const resourceId of resourceIds) {
-            if (this.#blockedResources.has(resourceId)) {
-              throw new ResourceError('RESOURCE_NOT_READY', `Resource '${resourceId}' is busy with a lifecycle operation.`);
-            }
-          }
-          return this.#store.catalog.replaceBindings({
-            definitionName: args.definitionName,
-            expectedBindings: args.expectedBindings?.map((binding) => ({
-              slotName: binding.slot,
-              resourceId: binding.resourceId,
-              allowRead: binding.scope.includes('read'),
-              allowWrite: binding.scope.includes('write'),
-            })),
-            bindings: validated,
-          }).catch((error) => {
-            throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource bindings could not be replaced.');
-          });
-        });
-      }));
-    } finally {
-      for (const release of releaseIntents) release();
-    }
-  }
-
-  async getDefinitionResourceStatus(definitionName: string): Promise<TResourceBindingStatus[]> {
-    const requirements = this.#resolveRequirements(definitionName);
-    if (!requirements) throw new ResourceError('RESOURCE_DEFINITION_NOT_FOUND', `Resource definition "${definitionName}" was not found.`);
-    const bindings = await this.#store.catalog.listBindingsForDefinition({ definitionName })
-      .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding status could not be read.'); });
-    const bindingBySlot = new Map(bindings.map((binding) => [binding.slot_name, binding]));
-    const statuses: TResourceBindingStatus[] = [];
-
-    for (const [slot, requirement] of Object.entries(requirements)) {
-      const binding = bindingBySlot.get(slot) ?? null;
-      const resource = binding ? await this.#readResource(binding.resource_id) : null;
-      const scope = binding ? bindingScope(binding) : null;
-      const scopeValid = scope ? scope.every((permission) => requirement.scope.includes(permission)) : true;
-      const kindMatches = resource ? resource.kind === requirement.kind : false;
-      const ready = resource?.status === 'ready';
-      const blocked = this.#statusBlock(requirement, binding, resource, scopeValid, kindMatches);
-      statuses.push({
-        slot,
-        requirement,
-        bound: binding !== null,
-        resource,
-        requestedScope: requirement.scope,
-        bindingScope: scope,
-        scopeValid,
-        kindMatches,
-        ready,
-        blockedCode: blocked.code,
-        blockedMessage: blocked.message,
-      });
-    }
-    return statuses;
-  }
-
-  getConsumerStartAdmission(args: {
-    definitionName: string;
-    consumerId: string;
-    restartIfCompatible: boolean;
-  }): Promise<TConsumerStartAdmission> {
-    this.#assertOpen();
-    return this.#trackLifecycle(this.#withConsumerStartAdmissionGate(args.consumerId, async () => {
-      const existingReservation = this.#consumerStartReservations.get(args.consumerId);
-      if (existingReservation) {
-        await existingReservation.settled;
-        this.#assertOpen();
-      }
-      return this.#withDefinitionGate(args.definitionName, async () => {
-        const requirements = this.#requireRequirementMap(args.definitionName);
-        const bindings = await this.#store.catalog.listBindingsForDefinition({ definitionName: args.definitionName });
-        const bindingBySlot = new Map(bindings.map((binding) => [binding.slot_name, binding]));
-        const resourceIds = [...new Set(bindings.map((binding) => binding.resource_id))].sort();
-        return this.#withResourceGates(resourceIds, async () => {
-          const admittedResourceIds: string[] = [];
-          const admittedDbResourceIds: string[] = [];
-          for (const [slot, requirement] of Object.entries(requirements)) {
-            const binding = bindingBySlot.get(slot);
-            if (!binding) {
-              if (!requirement.required) continue;
-              return this.#blockedStartAdmission(args, {
-                code: this.#notBoundCode(requirement.kind),
-                message: `Required ${requirement.kind} resource slot "${slot}" is not bound for resource definition "${args.definitionName}".`,
-                lifecycleBlocked: false,
-              });
-            }
-            const resource = await this.#readResource(binding.resource_id);
-            if (!resource) {
-              return this.#blockedStartAdmission(args, {
-                code: 'RESOURCE_NOT_FOUND',
-                message: `Resource slot "${slot}" is bound to missing resource "${binding.resource_id}".`,
-                lifecycleBlocked: false,
-              });
-            }
-            const scope = bindingScope(binding);
-            if (!scope.every((permission) => requirement.scope.includes(permission))) {
-              return this.#blockedStartAdmission(args, {
-                code: 'RESOURCE_SCOPE_INVALID',
-                message: `Resource slot "${slot}" has a binding scope that exceeds its manifest scope.`,
-                lifecycleBlocked: false,
-              });
-            }
-            if (resource.kind !== requirement.kind) {
-              return this.#blockedStartAdmission(args, {
-                code: 'RESOURCE_KIND_MISMATCH',
-                message: `Resource slot "${slot}" requires ${requirement.kind}, but "${resource.name}" is ${resource.kind}.`,
-                lifecycleBlocked: false,
-              });
-            }
-            admittedResourceIds.push(resource.id);
-            if (resource.kind === 'db') admittedDbResourceIds.push(resource.id);
-            const lifecycleBlocked = resource.status === 'migrating' || this.#blockedResources.has(resource.id);
-            if (lifecycleBlocked || resource.status !== 'ready') {
-              return this.#blockedStartAdmission(args, {
-                code: resource.status === 'migrating'
-                  ? (resource.kind === 'db' ? 'DB_RESOURCE_MIGRATING' : 'RESOURCE_MIGRATING')
-                  : this.#unavailableCode(resource.kind),
-                message: lifecycleBlocked
-                  ? `Resource definition "${args.definitionName}" is waiting for ${resource.kind} resource "${resource.name}" to finish a lifecycle operation.`
-                  : `${resource.kind} resource "${resource.name}" bound to slot "${slot}" is ${resource.status}.`,
-                lifecycleBlocked,
-              });
-            }
-          }
-
-          const interrupted = await this.#resolvedConsumerMigrationBlocks(args.consumerId, admittedDbResourceIds);
-          const admission: TConsumerStartAdmission = {
-            allowed: true,
-            hadBlocks: interrupted.length > 0,
-            shouldRestart: args.restartIfCompatible || interrupted.length > 0,
-            resolvedBlockResourceIds: interrupted,
-            code: null,
-            message: null,
-          };
-          this.#reserveConsumerStart(args.consumerId, args.definitionName, admittedResourceIds, admission);
-          return admission;
-        });
-      });
-    }));
-  }
-
-  async completeConsumerStart(args: {
-    consumerId: string;
-    resourceIds: readonly string[];
-    succeeded: boolean;
-  }): Promise<void> {
-    const reservation = this.#consumerStartReservations.get(args.consumerId);
-    if (reservation) {
-      this.#consumerStartReservations.delete(args.consumerId);
-      reservation.release();
-    }
-    if (this.#closed && !reservation) return;
-    if (!args.succeeded) return;
-    const resolved = new Set(args.resourceIds);
-    if (resolved.size === 0) return;
-    const handledResources = new Set<string>();
-    const recovery = this.#store.consumerRecovery;
-    if (!recovery) return;
-    const results = await recovery.listResults(args.consumerId);
-    for (const result of results) {
-      const migration = await recovery.getMigration(result.migrationId);
-      if (!migration || !resolved.has(migration.resourceId) || handledResources.has(migration.resourceId)) continue;
-      handledResources.add(migration.resourceId);
-      if (!result.wasRunning || result.status === 'restarted' || result.status === 'notRunning') continue;
-      await recovery.markRestarted({
-        migrationId: result.migrationId,
-        consumerId: result.consumerId,
-        definitionName: result.definitionName,
-      });
-    }
-  }
-
   withReadyResource<T>(
     resourceId: string,
     operation: (resource: TResourceCatalogRecord) => Promise<T>,
@@ -817,18 +368,10 @@ export class ResourceManager {
     }));
   }
 
-  call(call: TResourceManagerCall): Promise<unknown> {
-    if (this.#closed) return Promise.reject(new ResourceError('RESOURCE_CALL_CANCELLED', 'Resource gateway is closed.'));
-    return this.#runGatewayCall(this.#resolveCall(call));
-  }
-
-  /**
-   * Resolves legacy consumer metadata into the exact host-owned authorization
-   * snapshot consumed by ResourceGateway and ResourceStoreService.
-   */
+  /** Resolves one caller-supplied resource choice into exact host authorization. */
   resolveGatewayCall(
     call: TResourceManagerCall,
-    direct?: TResourceDirectBinding,
+    direct: TResourceDirectBinding,
   ): Promise<TResourceGatewayAuthorization> {
     if (this.#closed) {
       return Promise.reject(new ResourceError('RESOURCE_CALL_CANCELLED', 'Resource gateway is closed.'));
@@ -838,34 +381,20 @@ export class ResourceManager {
 
   async #resolveGatewayAuthorization(
     call: TResourceManagerCall,
-    direct?: TResourceDirectBinding,
+    direct: TResourceDirectBinding,
   ): Promise<TResourceGatewayAuthorization> {
-    const requirement = direct?.requirement ?? this.#requireRequirement(call.definitionName, call.slot);
+    const requirement = direct.requirement;
     if (requirement.kind !== call.kind) {
       throw new ResourceError('RESOURCE_KIND_MISMATCH', `Slot "${call.slot}" is not a ${call.kind} resource.`);
     }
 
-    let binding: TResourceBindingRecord;
-    if (direct) {
-      const scope = validateScope(direct.scope, requirement);
-      binding = {
-        definition_name: call.definitionName,
-        slot_name: call.slot,
-        resource_id: direct.resourceId,
-        allow_read: scope.includes('read'),
-        allow_write: scope.includes('write'),
-        created_at: '',
-        updated_at: '',
-      };
-    } else {
-      const stored = (await this.#store.catalog.listBindingsForDefinition({
-        definitionName: call.definitionName,
-      })).find((candidate) => candidate.slot_name === call.slot);
-      if (!stored) {
-        throw new ResourceError('RESOURCE_NOT_BOUND', `Resource slot "${call.slot}" is not bound.`);
-      }
-      binding = stored;
-    }
+    const scope = validateScope(direct.scope, requirement);
+    const binding: TResolvedResourceBinding = {
+      slot: call.slot,
+      resourceId: direct.resourceId,
+      allowRead: scope.includes('read'),
+      allowWrite: scope.includes('write'),
+    };
 
     this.#assertOpen();
     const provider = this.#provider(requirement.kind);
@@ -878,10 +407,10 @@ export class ResourceManager {
     }
     const canRead = call.functionClass !== 'fn'
       && requirement.scope.includes('read')
-      && binding.allow_read;
+      && binding.allowRead;
     const canWrite = call.functionClass === 'tx'
       && requirement.scope.includes('write')
-      && binding.allow_write;
+      && binding.allowWrite;
     if (effect === 'read' && !canRead) {
       throw new ResourceError('RESOURCE_READ_NOT_ALLOWED', `Read access is not allowed for resource slot "${call.slot}".`);
     }
@@ -904,35 +433,23 @@ export class ResourceManager {
         throw new ResourceError('RESOURCE_KIND_MISMATCH', `Slot "${call.slot}" is not a ${call.kind} resource.`);
       }
       const scope = validateScope(direct.scope, direct.requirement);
-      const binding: TResourceBindingRecord = {
-        definition_name: call.definitionName,
-        slot_name: call.slot,
-        resource_id: direct.resourceId,
-        allow_read: scope.includes('read'),
-        allow_write: scope.includes('write'),
-        created_at: '',
-        updated_at: '',
+      const binding: TResolvedResourceBinding = {
+        slot: call.slot,
+        resourceId: direct.resourceId,
+        allowRead: scope.includes('read'),
+        allowWrite: scope.includes('write'),
       };
       return this.#track(direct.resourceId, this.#resolveBoundCall(call, direct.requirement, binding));
     })();
     return this.#runGatewayCall(resolving);
   }
 
-  async #resolveCall(call: TResourceManagerCall): Promise<unknown> {
-    const requirement = this.#requireRequirement(call.definitionName, call.slot);
-    if (requirement.kind !== call.kind) throw new ResourceError('RESOURCE_KIND_MISMATCH', `Slot "${call.slot}" is not a ${call.kind} resource.`);
-    const binding = (await this.#store.catalog.listBindingsForDefinition({ definitionName: call.definitionName }))
-      .find((candidate) => candidate.slot_name === call.slot);
-    if (!binding) throw new ResourceError('RESOURCE_NOT_BOUND', `Resource slot "${call.slot}" is not bound.`);
-    return this.#track(binding.resource_id, this.#resolveBoundCall(call, requirement, binding));
-  }
-
   async #resolveBoundCall(
     call: TResourceManagerCall,
     requirement: TManagedResourceRequirement,
-    binding: TResourceBindingRecord,
+    binding: TResolvedResourceBinding,
   ): Promise<unknown> {
-    const resource = await this.#requireResource(binding.resource_id);
+    const resource = await this.#requireResource(binding.resourceId);
     if (resource.kind !== requirement.kind) throw new ResourceError('RESOURCE_KIND_MISMATCH', `Bound resource kind does not match slot "${call.slot}".`);
     if (resource.status !== 'ready' || this.#blockedResources.has(resource.id)) this.#throwCallUnavailable(resource);
     return this.#dispatchResolvedCall(call, requirement, binding, resource);
@@ -941,15 +458,15 @@ export class ResourceManager {
   async #dispatchResolvedCall(
     call: TResourceManagerCall,
     requirement: TManagedResourceRequirement,
-    binding: TResourceBindingRecord,
+    binding: TResolvedResourceBinding,
     resource: TResourceCatalogRecord,
   ): Promise<unknown> {
     if (this.#blockedResources.has(resource.id)) this.#throwCallUnavailable(resource);
     const provider = this.#provider(resource.kind);
     const effect = provider.effect(call.operation, requirement, call.args);
     if (!effect) throw new ResourceError('RESOURCE_PROVIDER_UNAVAILABLE', `Unknown ${resource.kind} operation "${call.operation}".`);
-    const canRead = call.functionClass !== 'fn' && requirement.scope.includes('read') && binding.allow_read;
-    const canWrite = call.functionClass === 'tx' && requirement.scope.includes('write') && binding.allow_write;
+    const canRead = call.functionClass !== 'fn' && requirement.scope.includes('read') && binding.allowRead;
+    const canWrite = call.functionClass === 'tx' && requirement.scope.includes('write') && binding.allowWrite;
     if (effect === 'read' && !canRead) throw new ResourceError('RESOURCE_READ_NOT_ALLOWED', `Read access is not allowed for resource slot "${call.slot}".`);
     if (effect === 'write' && !canWrite) throw new ResourceError('RESOURCE_WRITE_NOT_ALLOWED', `Write access is not allowed for resource slot "${call.slot}".`);
 
@@ -963,11 +480,6 @@ export class ResourceManager {
       const cancellation = new ResourceError('RESOURCE_CALL_CANCELLED', 'Resource gateway closed before the operation completed.');
       for (const cancel of [...this.#gatewayCancellations]) cancel(cancellation);
       await Promise.allSettled([...this.#lifecycleOperations]);
-      await Promise.allSettled(
-        [...this.#consumerStartReservations.values()].map((reservation) => reservation.settled),
-      );
-      for (const reservation of this.#consumerStartReservations.values()) reservation.release();
-      this.#consumerStartReservations.clear();
       await Promise.allSettled([...this.#gatewayCalls]);
       await Promise.allSettled(
         [...this.#inflight.keys()].map((resourceId) => this.#drain(resourceId)),
@@ -1026,7 +538,6 @@ export class ResourceManager {
     resourceId: string,
     operation: (resource: TResourceCatalogRecord) => Promise<T>,
   ): Promise<T> {
-    await this.#drainBindingIntents(resourceId);
     this.#assertOpen();
     return this.#withResourceGate(resourceId, async () => {
       const resource = await this.#requireResource(resourceId);
@@ -1070,104 +581,6 @@ export class ResourceManager {
     });
   }
 
-  async #resolvedConsumerMigrationBlocks(consumerId: string, resourceIds: readonly string[]): Promise<string[]> {
-    if (resourceIds.length === 0) return [];
-    const recovery = this.#store.consumerRecovery;
-    if (!recovery) return [];
-    const resourceIdSet = new Set(resourceIds);
-    const resolved = new Set<string>();
-    const handledResources = new Set<string>();
-    const results = await recovery.listResults(consumerId);
-    for (const result of results) {
-      const migration = await recovery.getMigration(result.migrationId);
-      if (!migration || !resourceIdSet.has(migration.resourceId) || handledResources.has(migration.resourceId)) continue;
-      handledResources.add(migration.resourceId);
-      if (result.wasRunning && result.status !== 'restarted' && result.status !== 'notRunning') {
-        resolved.add(migration.resourceId);
-      }
-    }
-    return [...resolved].sort();
-  }
-
-  #reserveConsumerStart(
-    consumerId: string,
-    definitionName: string,
-    resourceIds: readonly string[],
-    admission: TConsumerStartAdmission,
-  ): void {
-    if (this.#consumerStartReservations.has(consumerId)) return;
-    const releases: (() => void)[] = [];
-    let settle!: () => void;
-    const settled = new Promise<void>((resolve) => { settle = resolve; });
-    let released = false;
-    for (const resourceId of [...new Set(resourceIds)]) {
-      let release!: () => void;
-      const pending = new Promise<void>((resolve) => { release = resolve; });
-      this.#track(resourceId, pending);
-      releases.push(release);
-    }
-    this.#consumerStartReservations.set(consumerId, {
-      admission,
-      definitionName,
-      settled,
-      release: () => {
-        if (released) return;
-        released = true;
-        for (const release of releases) release();
-        settle();
-      },
-    });
-    let definitionLeases = this.#definitionStartLeases.get(definitionName);
-    if (!definitionLeases) {
-      definitionLeases = new Set();
-      this.#definitionStartLeases.set(definitionName, definitionLeases);
-    }
-    definitionLeases.add(settled);
-    void settled.finally(() => {
-      definitionLeases?.delete(settled);
-      if (definitionLeases?.size === 0) this.#definitionStartLeases.delete(definitionName);
-    });
-  }
-
-  async #drainDefinitionStarts(definitionName: string): Promise<void> {
-    const leases = this.#definitionStartLeases.get(definitionName);
-    if (!leases || leases.size === 0) return;
-    await Promise.all([...leases]);
-  }
-
-  #registerBindingIntent(resourceId: string): () => void {
-    let settle!: () => void;
-    const intent = new Promise<void>((resolve) => { settle = resolve; });
-    let intents = this.#bindingIntents.get(resourceId);
-    if (!intents) {
-      intents = new Set();
-      this.#bindingIntents.set(resourceId, intents);
-    }
-    intents.add(intent);
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      intents?.delete(intent);
-      if (intents?.size === 0) this.#bindingIntents.delete(resourceId);
-      settle();
-    };
-  }
-
-  async #drainBindingIntents(resourceId: string): Promise<void> {
-    const intents = this.#bindingIntents.get(resourceId);
-    if (!intents || intents.size === 0) return;
-    await Promise.all([...intents]);
-  }
-
-  #withResourceGates<T>(resourceIds: readonly string[], operation: () => Promise<T>): Promise<T> {
-    const ordered = [...new Set(resourceIds)].sort();
-    const enter = (index: number): Promise<T> => index === ordered.length
-      ? operation()
-      : this.#withResourceGate(ordered[index]!, () => enter(index + 1));
-    return enter(0);
-  }
-
   async #withResourceGate<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.#resourceGateTails.get(resourceId) ?? Promise.resolve();
     let release!: () => void;
@@ -1182,44 +595,6 @@ export class ResourceManager {
       if (this.#resourceGateTails.get(resourceId) === tail) {
         void tail.finally(() => {
           if (this.#resourceGateTails.get(resourceId) === tail) this.#resourceGateTails.delete(resourceId);
-        });
-      }
-    }
-  }
-
-  async #withDefinitionGate<T>(definitionName: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.#definitionGateTails.get(definitionName) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => { release = resolve; });
-    const tail = previous.catch(() => undefined).then(() => current);
-    this.#definitionGateTails.set(definitionName, tail);
-    await previous.catch(() => undefined);
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.#definitionGateTails.get(definitionName) === tail) {
-        void tail.finally(() => {
-          if (this.#definitionGateTails.get(definitionName) === tail) this.#definitionGateTails.delete(definitionName);
-        });
-      }
-    }
-  }
-
-  async #withConsumerStartAdmissionGate<T>(consumerId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.#consumerStartAdmissionGateTails.get(consumerId) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => { release = resolve; });
-    const tail = previous.catch(() => undefined).then(() => current);
-    this.#consumerStartAdmissionGateTails.set(consumerId, tail);
-    await previous.catch(() => undefined);
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.#consumerStartAdmissionGateTails.get(consumerId) === tail) {
-        void tail.finally(() => {
-          if (this.#consumerStartAdmissionGateTails.get(consumerId) === tail) this.#consumerStartAdmissionGateTails.delete(consumerId);
         });
       }
     }
@@ -1240,54 +615,6 @@ export class ResourceManager {
   #readResource(id: string): Promise<TResourceCatalogRecord | null> {
     return this.#store.catalog.get({ id })
       .catch((error) => { throw toResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource catalog state could not be read.'); });
-  }
-
-  #requireRequirement(definitionName: string, slot: string): TManagedResourceRequirement {
-    const requirement = this.#requireRequirementMap(definitionName)[slot];
-    if (!requirement) throw new ResourceError('RESOURCE_SLOT_UNKNOWN', `Resource definition "${definitionName}" has no resource slot named "${slot}".`);
-    return requirement;
-  }
-
-  #requireRequirementMap(definitionName: string): Readonly<Record<string, TManagedResourceRequirement>> {
-    const requirements = this.#resolveRequirements(definitionName);
-    if (!requirements) throw new ResourceError('RESOURCE_DEFINITION_NOT_FOUND', `Resource definition "${definitionName}" was not found.`);
-    return requirements;
-  }
-
-  #statusBlock(requirement: TManagedResourceRequirement, binding: TResourceBindingRecord | null, resource: TResourceCatalogRecord | null, scopeValid: boolean, kindMatches: boolean): { code: string | null; message: string | null } {
-    if (!binding) return { code: requirement.required ? 'RESOURCE_NOT_BOUND' : null, message: requirement.required ? 'Required resource slot is not bound.' : null };
-    if (!resource) return { code: 'RESOURCE_NOT_FOUND', message: 'The bound resource no longer exists.' };
-    if (!scopeValid) return { code: 'RESOURCE_SCOPE_INVALID', message: 'The binding scope broadens the manifest scope.' };
-    if (!kindMatches) return { code: 'RESOURCE_KIND_MISMATCH', message: 'The bound resource kind does not match the slot.' };
-    if (resource.status === 'migrating') return { code: 'RESOURCE_MIGRATING', message: 'The resource is migrating.' };
-    if (resource.status !== 'ready') return { code: 'RESOURCE_NOT_READY', message: `The resource is ${resource.status}.` };
-    return { code: null, message: null };
-  }
-
-  #blockedStartAdmission(
-    args: { readonly restartIfCompatible: boolean },
-    blocked: { readonly code: string; readonly message: string; readonly lifecycleBlocked: boolean },
-  ): TConsumerStartAdmission {
-    return {
-      allowed: false,
-      hadBlocks: blocked.lifecycleBlocked,
-      shouldRestart: args.restartIfCompatible,
-      resolvedBlockResourceIds: [],
-      code: blocked.code,
-      message: blocked.message,
-    };
-  }
-
-  #notBoundCode(kind: TResourceKind): string {
-    if (kind === 'db') return 'DB_RESOURCE_NOT_BOUND';
-    if (kind === 'kv') return 'KV_RESOURCE_NOT_BOUND';
-    return 'SECRET_STORE_NOT_BOUND';
-  }
-
-  #unavailableCode(kind: TResourceKind): string {
-    if (kind === 'db') return 'DB_RESOURCE_UNAVAILABLE';
-    if (kind === 'kv') return 'KV_RESOURCE_UNAVAILABLE';
-    return 'SECRET_STORE_UNAVAILABLE';
   }
 
   #throwUnavailable(resource: TResourceCatalogRecord): never {

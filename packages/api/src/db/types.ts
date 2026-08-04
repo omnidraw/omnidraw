@@ -4,13 +4,11 @@ import type {
   TEventSubscriptionOptions,
   TSequencedEvent,
 } from '@omnidraw/service-event-publisher/IEventPublisherService';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 
 type TDbEvent = TServiceDbEvent;
 
 type TDbEventCapability = {
   subscribeDbEventRecords(
-    tenant: TTenantContext,
     canvasId: string,
     options?: TEventSubscriptionOptions,
   ): AsyncIterable<TSequencedEvent<TDbEvent>>;
@@ -18,14 +16,13 @@ type TDbEventCapability = {
 
 type TDbCanvasCapability = {
   canvas: {
-    findById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas | null>;
+    findById(args: { id: string }): Promise<TCanvas | null>;
   };
 };
 
 type TDbApiContext = {
   db: TDbCanvasCapability;
   eventPublisher: TDbEventCapability;
-  tenant: TTenantContext;
 };
 
 export type { TDbApiContext, TDbCanvasCapability, TDbEvent, TDbEventCapability };

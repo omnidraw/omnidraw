@@ -15,14 +15,19 @@ function txEnsureOmnidrawHome(
 ): TOmnidrawHome {
   const directories = [
     args.home.homeDir,
-    args.home.organizationsDir,
-    args.home.defaultOrganizationRoot,
     args.home.agentRoot,
-    args.home.artifactsRoot,
     args.home.resourcesRoot,
     args.home.tempRoot,
     args.home.cacheRoot,
     args.home.logsRoot,
+    args.home.keysRoot,
+    args.home.widgetsRoot,
+    args.home.widgetDraftsRoot,
+    args.home.widgetPublishedRoot,
+    args.home.widgetStagingRoot,
+    args.home.widgetPreviewRoot,
+    args.home.widgetTrashRoot,
+    args.home.widgetQuarantineRoot,
   ];
 
   for (const directory of directories) {

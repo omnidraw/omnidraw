@@ -1,22 +1,25 @@
-import * as AlertDialog from '@kobalte/core/alert-dialog';
 import { Button } from '@kobalte/core/button';
 import * as Tabs from '@kobalte/core/tabs';
-import type { TWidgetDetail, TWidgetFileEntry, TWidgetFilePreview, TWidgetSource } from '@omnidraw/orpc-client';
+import type {
+  TWidgetPublicFileEntry,
+  TWidgetPublicFilePreview,
+} from '@omnidraw/orpc-client';
 import File from 'lucide-solid/icons/file';
 import Folder from 'lucide-solid/icons/folder';
 import PanelLeft from 'lucide-solid/icons/panel-left';
-import Trash2 from 'lucide-solid/icons/trash-2';
-import { For, Show, createEffect, createMemo, createSignal, type Component } from 'solid-js';
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  type Component,
+} from 'solid-js';
 import { useWidgetCatalog } from './WidgetCatalogProvider';
 import { WidgetIcon } from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
-import { WidgetPublicationDialog } from '../../publication/WidgetPublicationDialog';
-import { fnPublicationPhaseLabel } from '../../publication/fn.publication-contract';
-import type {
-  TWidgetPublicationTarget,
-  TWidgetPublicationState,
-} from '../../publication/interface';
+import type { TWidgetSource } from './types';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
@@ -25,429 +28,403 @@ export type TWidgetDetailPageProps = {
   query: TWidgetDetailQueryPort;
 };
 
-type TTab =
-  | 'overview'
-  | 'config'
-  | 'functions'
-  | 'logs'
-  | 'resources'
-  | 'files';
+type TTab = 'overview' | 'config' | 'functions' | 'resources' | 'files';
 
-type TTabDefinition = Readonly<{
-  value: TTab;
-  label: string;
-}>;
-
-const V2_TABS = Object.freeze([
+const TABS = Object.freeze([
   { value: 'overview', label: 'Overview' },
   { value: 'config', label: 'Config' },
   { value: 'functions', label: 'Functions' },
-  { value: 'logs', label: 'Logs' },
   { value: 'resources', label: 'Resources' },
   { value: 'files', label: 'Files' },
-] satisfies readonly TTabDefinition[]);
+] satisfies readonly Readonly<{ value: TTab; label: string }>[]);
 
 export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const application = props.controller.application;
   const catalogState = useWidgetCatalog();
-  const [detail, setDetail] = createSignal<TWidgetDetail | null>(null);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal('');
-  const [files, setFiles] = createSignal<TWidgetFileEntry[] | null>(null);
+  const [files, setFiles] = createSignal<readonly TWidgetPublicFileEntry[] | null>(null);
+  const [filesTruncated, setFilesTruncated] = createSignal(false);
   const [filesError, setFilesError] = createSignal('');
-  const [preview, setPreview] = createSignal<TWidgetFilePreview | null>(null);
+  const [preview, setPreview] = createSignal<TWidgetPublicFilePreview | null>(null);
   const [previewError, setPreviewError] = createSignal('');
-  const [metadataName, setMetadataName] = createSignal('');
+  const [name, setName] = createSignal('');
   const [description, setDescription] = createSignal('');
-  const [saving, setSaving] = createSignal(false);
-  const [publishOpen, setPublishOpen] = createSignal(false);
-  const [publicationState, setPublicationState] = createSignal<TWidgetPublicationState>({
-    open: false,
-    loading: true,
-    publishing: false,
-    previewAvailable: false,
-    previewSelected: false,
-    phase: 'idle',
-    actionLabel: 'Publish',
-  });
-  const [deleteOpen, setDeleteOpen] = createSignal(false);
-  const [deleting, setDeleting] = createSignal(false);
-  let detailRequest = 0;
+  const [label, setLabel] = createSignal('');
+  const [group, setGroup] = createSignal('');
+  const [priority, setPriority] = createSignal('0');
+  const [iconKind, setIconKind] = createSignal<'none' | 'lucide' | 'custom'>('none');
+  const [iconValue, setIconValue] = createSignal('');
+  const [action, setAction] = createSignal<'save' | 'metadata' | 'build' | null>(null);
+  const [actionError, setActionError] = createSignal('');
   let fileListRequest = 0;
   let previewRequest = 0;
 
+  const entry = createMemo(() => (
+    catalogState.catalog()?.entries.find((candidate) => candidate.widgetKey === props.name) ?? null
+  ));
+  const form = createMemo(() => {
+    const selected = entry();
+    return props.source === 'draft' ? selected?.draft ?? null : selected?.published ?? null;
+  });
   const selectedPath = () => props.query.path() ?? '';
-  const v2Manifest = createMemo(() => detail()?.manifest ?? null);
-  const inspectorTabs = createMemo<readonly TTabDefinition[]>(() => V2_TABS);
   const activeTab = (): TTab => {
     const requested = props.query.tab();
-    return inspectorTabs().some((tab) => tab.value === requested)
-      ? requested as TTab
-      : 'overview';
+    return TABS.some((tab) => tab.value === requested) ? requested as TTab : 'overview';
   };
 
-  const loadDetail = async () => {
-    const source = props.source;
-    const name = props.name;
-    const request = ++detailRequest;
-    setLoading(true);
-    setError('');
-    if (!source || !name) {
-      setLoading(false);
-      setDetail(null);
-      setError('This widget route is malformed.');
-      return;
+  createEffect(() => {
+    const config = form()?.config;
+    setFiles(null);
+    setPreview(null);
+    setActionError('');
+    if (!config) return;
+    setName(config.name);
+    setDescription(config.description);
+    setLabel(config.tool.label);
+    setGroup(config.tool.group ?? '');
+    setPriority(String(config.tool.priority));
+    if (config.tool.icon?.lucidIcon) {
+      setIconKind('lucide');
+      setIconValue(config.tool.icon.lucidIcon);
+    } else if (config.tool.icon?.svgIcon) {
+      setIconKind('custom');
+      setIconValue(config.tool.icon.svgIcon);
+    } else {
+      setIconKind('none');
+      setIconValue('');
     }
-    const [loadError, value] = await props.controller.apiService.api.agent.widgets.detail({ name, source });
-    if (request !== detailRequest) return;
-    setLoading(false);
-    if (loadError) {
-      setDetail(null);
-      setError(loadError.message);
-      return;
-    }
-    if (!value) {
-      setDetail(null);
-      setError(`${source === 'published' ? 'Published widget' : 'Widget draft'} not found.`);
-      await catalogState.refresh();
-      return;
-    }
-    setDetail(value);
-    setMetadataName(value.manifest?.name ?? value.name);
-    setDescription(value.manifest?.description ?? '');
-  };
+  });
 
   const loadFiles = async () => {
     if (!props.source || !props.name) return;
     const request = ++fileListRequest;
     setFilesError('');
-    const [loadError, value] = await props.controller.apiService.api.agent.widgets.files({ name: props.name, source: props.source });
+    const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.list({
+      widgetKey: props.name,
+      source: props.source,
+    });
     if (request !== fileListRequest) return;
-    if (loadError || !value) {
+    if (loadError) {
       setFiles(null);
-      setFilesError(loadError?.message ?? 'Widget files were not found.');
+      setFilesError(loadError.message);
       return;
     }
-    setFiles(value);
+    setFiles(value.entries);
+    setFilesTruncated(value.truncated);
   };
 
   const loadPreview = async (path: string) => {
-    if (!props.source || !props.name || !path) { setPreview(null); return; }
+    if (!props.source || !props.name || !path) {
+      setPreview(null);
+      return;
+    }
     const request = ++previewRequest;
     setPreview(null);
     setPreviewError('');
-    const [loadError, value] = await props.controller.apiService.api.agent.widgets.file({ name: props.name, source: props.source, path });
+    const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.read({
+      widgetKey: props.name,
+      source: props.source,
+      path,
+    });
     if (request !== previewRequest) return;
-    if (loadError || !value) {
-      setPreviewError(loadError?.message ?? 'Widget file was not found.');
+    if (loadError) {
+      setPreviewError(loadError.message);
       return;
     }
     setPreview(value);
   };
 
   createEffect(() => {
-    void props.source;
-    void props.name;
-    setFiles(null);
-    setPreview(null);
-    void loadDetail();
+    if (activeTab() !== 'files' || files() !== null) return;
+    void loadFiles();
   });
-
   createEffect(() => {
     if (activeTab() !== 'files') return;
-    const name = props.name;
-    const source = props.source;
-    if (!name || !source) return;
-    if (!files()) void loadFiles();
-  });
-
-  createEffect(() => {
-    if (activeTab() !== 'files') return;
-    const path = selectedPath();
-    void loadPreview(path);
+    void loadPreview(selectedPath());
   });
 
   const selectTab = (value: string) => {
-    const tab = inspectorTabs().find((candidate) => candidate.value === value)?.value ?? 'overview';
-    props.query.set(tab === 'files' ? { tab, path: selectedPath() || undefined } : { tab, path: undefined });
+    const tab = TABS.find((candidate) => candidate.value === value)?.value ?? 'overview';
+    props.query.set(tab === 'files'
+      ? { tab, path: selectedPath() || undefined }
+      : { tab, path: undefined });
   };
 
-  const editAsDraft = async () => {
-    const current = detail();
-    if (!current || current.source !== 'published') return;
-    setSaving(true);
-    const [ensureError] = await props.controller.apiService.api.agent.widgets.ensureDraft({
-      name: current.name,
-      expectedPublishedFingerprint: current.variant.contentFingerprint ?? undefined,
-    });
-    setSaving(false);
-    if (ensureError) { application.notifyError(ensureError.message); return; }
-    await catalogState.refresh();
-    application.navigate(`/widgets/draft/${encodeURIComponent(current.name)}?tab=config`);
-  };
-
-  const saveMetadata = async () => {
-    const current = detail();
-    if (!current || current.source !== 'draft') return;
-    const nextName = metadataName().trim();
-    if (!nextName) { application.notifyError('Widget name is required.'); return; }
-    setSaving(true);
-    const [saveError, result] = await props.controller.apiService.api.agent.widgets.patchDraftMetadata({
-      name: current.name,
-      expectedRevision: current.variant.revision,
-      patch: {
-        name: nextName,
-        description: description(),
+  const configInput = () => {
+    const icon = iconKind() === 'none'
+      ? null
+      : iconKind() === 'lucide'
+        ? { lucidIcon: iconValue().trim() }
+        : { svgIcon: iconValue() };
+    return {
+      name: name().trim(),
+      description: description().trim(),
+      tool: {
+        label: label().trim(),
+        icon,
+        group: group().trim() || null,
+        priority: Number(priority()),
       },
-    });
-    setSaving(false);
-    if (saveError) {
-      const selected = {
-        name: metadataName(),
-        description: description(),
-      };
-      application.notifyError(saveError.message);
-      await loadDetail();
-      if (saveError.message.includes('STALE_REVISION:')) {
-        setMetadataName(selected.name);
-        setDescription(selected.description);
-      }
-      return;
-    }
-    application.notifySuccess('Widget draft configuration saved');
-    await catalogState.refresh();
-    if (result.name !== current.name) {
-      application.navigate(`/widgets/draft/${encodeURIComponent(result.name)}?tab=config`, { replace: true });
-      return;
-    }
-    await loadDetail();
+    };
   };
 
-  const resolvePreviewSelections = async (): Promise<
-    readonly TWidgetPublicationTarget[]
-  > => {
-    const current = detail();
+  const saveConfig = async () => {
+    const selected = form();
     if (
-      !current
-      || current.source !== 'draft'
-      || current.variant.draftId === null
-    ) return [];
-    const listOwners = props.controller.apiService.api.agent.widgetPreview?.owner?.list;
-    const canvases = application.canvases?.() ?? [];
-    if (!listOwners || canvases.length === 0) return [];
-
-    const selections = await Promise.all(canvases.map(async (canvas) => {
-      const [listError, owners] = await listOwners({
-        canvasId: canvas.id,
-        draftId: current.variant.draftId!,
-      });
-      if (listError || !owners) {
-        throw new Error(
-          listError?.message
-          ?? `Could not inspect ready Previews on “${canvas.name}”.`,
-        );
-      }
-      return owners
-        .filter((owner) =>
-          owner.draftId === current.variant.draftId
-          && owner.canvasId === canvas.id
-          && owner.closedAtMs === null)
-        .map((owner): TWidgetPublicationTarget => ({
-          draftId: owner.draftId,
-          previewId: owner.id,
-          canvasId: owner.canvasId,
-          frameNodeId: owner.frameNodeId,
-          label: `${canvas.name} · ${owner.role === 'companion' ? 'Companion' : 'Placed'} Preview · frame ${owner.frameNodeId.slice(0, 12)}`,
-        }));
-    }));
-    return selections.flat();
-  };
-
-  const removeWidget = async () => {
-    const current = detail();
-    if (!current) return;
-    setDeleting(true);
-    const [deleteError, result] = await props.controller.apiService.api.agent.widgets.delete({ name: current.name, source: current.source });
-    setDeleting(false);
-    if (deleteError) { application.notifyError(deleteError.message); return; }
-    setDeleteOpen(false);
-    const selectedSourceDeleted = current.source === 'published' ? result.deletedPublished : result.deletedDraft;
-    const issueDescription = result.issues.map((issue) => issue.message).join(' ');
-    if (result.issues.length > 0) {
-      const title = selectedSourceDeleted ? 'Widget cleanup completed with warnings' : 'Widget cleanup incomplete';
-      if (selectedSourceDeleted) application.notifySuccess(title, issueDescription);
-      else application.notifyError(title, issueDescription);
-    } else {
-      application.notifySuccess(current.source === 'published'
-        ? result.deletedInstances
-          ? 'Published widget, draft, and instances deleted'
-          : 'Published widget archived'
-        : 'Widget draft deleted');
+      action() !== null
+      || props.source !== 'draft'
+      || !props.name
+      || !selected?.manifestDigestSha256
+    ) return;
+    setAction('save');
+    setActionError('');
+    const [saveError] = await props.controller.apiService.api.widget.config.saveDraft({
+      widgetKey: props.name,
+      expectedManifestDigestSha256: selected.manifestDigestSha256,
+      config: configInput(),
+    });
+    setAction(null);
+    if (saveError) {
+      setActionError(saveError.message);
+      application.notifyError('Could not save widget Config', saveError.message);
+      return;
     }
     await catalogState.refresh();
-    if (selectedSourceDeleted) application.navigate('/');
-    else await loadDetail();
+    application.notifySuccess('Widget draft Config saved');
   };
 
-  return (
-    <Show when={!loading() && detail()} fallback={<div class={styles.routeState} role="status"><p>{error() || 'Loading widget…'}</p></div>}>
-      {(current) => <Tabs.Root class={styles.page} value={activeTab()} onChange={selectTab}>
-        <header class={styles.header}>
-          <div class={styles.titleBlock}>
-            <WidgetIcon icon={current().variant.tool.icon} class={styles.headerIcon} />
-            <div><p class={styles.eyebrow}>{current().source === 'published' ? 'Published widget' : 'Widget draft'}</p><h2>{current().variant.displayName}</h2></div>
+  const publish = async (kind: 'metadata' | 'build') => {
+    const catalog = catalogState.catalog();
+    const selected = form();
+    if (
+      action() !== null
+      || props.source !== 'draft'
+      || !props.name
+      || !catalog
+      || !selected?.manifestDigestSha256
+    ) return;
+    setAction(kind);
+    setActionError('');
+    const input = {
+      widgetKey: props.name,
+      expectedManifestDigestSha256: selected.manifestDigestSha256,
+      expectedCatalogDigestSha256: catalog.catalogDigestSha256,
+    };
+    const [publishError] = kind === 'metadata'
+      ? await props.controller.apiService.api.widget.publication.publishMetadata(input)
+      : await props.controller.apiService.api.widget.publication.buildAndPublish(input);
+    setAction(null);
+    if (publishError) {
+      setActionError(publishError.message);
+      application.notifyError(
+        kind === 'metadata' ? 'Could not publish metadata' : 'Could not build and publish',
+        publishError.message,
+      );
+      return;
+    }
+    await catalogState.refresh();
+    application.notifySuccess(kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published');
+  };
+
+  const configDirty = createMemo(() => {
+    const persisted = form()?.config;
+    return props.source === 'draft'
+      && persisted !== null
+      && persisted !== undefined
+      && JSON.stringify(configInput()) !== JSON.stringify({
+        name: persisted.name,
+        description: persisted.description,
+        tool: persisted.tool,
+      });
+  });
+
+  const metadataUnavailableReason = createMemo(() => {
+    if (configDirty()) return 'Save the draft Config before publishing.';
+    if (form()?.health !== 'healthy' || entry()?.published?.health !== 'healthy') {
+      return 'Metadata publication requires healthy draft and published folders.';
+    }
+    if (entry()?.differences.executableManifest !== 'same') {
+      return 'Executable Config differs; use Build and Publish.';
+    }
+    if (entry()?.differences.presentation !== 'different') {
+      return 'Published Config already matches the draft.';
+    }
+    return null;
+  });
+  const metadataAvailable = createMemo(() => (
+    props.source === 'draft' && metadataUnavailableReason() === null
+  ));
+
+  return <Show
+    when={!catalogState.loading() && entry() && form()}
+    fallback={<div class={styles.routeState} role="status">
+      <p>{catalogState.error() || 'Widget source was not found.'}</p>
+    </div>}
+  >
+    <Tabs.Root
+      class={styles.page}
+      value={activeTab()}
+      onChange={selectTab}
+      onKeyDown={(event) => {
+        if (
+          activeTab() === 'config'
+          && props.source === 'draft'
+          && (event.metaKey || event.ctrlKey)
+          && event.key.toLowerCase() === 's'
+        ) {
+          event.preventDefault();
+          void saveConfig();
+        }
+      }}
+    >
+      <header class={styles.header}>
+        <div class={styles.titleBlock}>
+          <WidgetIcon icon={form()!.config?.tool.icon ?? null} class={styles.headerIcon} />
+          <div>
+            <p class={styles.eyebrow}>{props.source === 'published' ? 'Published widget' : 'Widget draft'}</p>
+            <h2>{form()!.config?.name ?? props.name}</h2>
           </div>
-          <div class={styles.headerActions}>
-            <Show when={current().source === 'published'}><Button class={styles.button} disabled={saving()} onClick={editAsDraft}>Edit as draft</Button></Show>
-            <Show when={current().source === 'draft'}><Button
+        </div>
+        <div class={styles.headerActions}>
+          <Show when={props.source === 'draft'}>
+            <Button
+              class={styles.button}
+              disabled={!metadataAvailable() || action() !== null}
+              title={metadataAvailable()
+                ? 'Publish presentation Config without rebuilding executable files.'
+                : metadataUnavailableReason() ?? undefined}
+              onClick={() => void publish('metadata')}
+            >{action() === 'metadata' ? 'Publishing metadata…' : 'Publish metadata'}</Button>
+            <Button
               class={`${styles.button} ${styles.primary}`}
-              disabled={!current().variant.draftId || saving() || publicationState().loading || publicationState().open || publicationState().publishing}
-              aria-busy={publicationState().publishing}
-              title={!current().variant.draftId
-                ? 'Validate this widget again from its owning AI chat before publishing.'
-                : !publicationState().loading && !publicationState().previewAvailable
-                  ? 'Open or place this draft on a canvas to choose its publication frame.'
-                  : undefined}
-              onClick={() => setPublishOpen(true)}
-            >{!current().variant.draftId
-              ? 'Needs validation'
-              : publicationState().publishing
-                ? fnPublicationPhaseLabel(publicationState().phase)
-                : publicationState().loading
-                  ? 'Checking…'
-                  : publicationState().previewSelected
-                    ? publicationState().actionLabel
-                    : publicationState().previewAvailable
-                      ? 'Choose Preview'
-                      : 'Needs Preview frame'}</Button></Show>
-            <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
-          </div>
-        </header>
-        <Tabs.List class={styles.tabs}>
-          <For each={inspectorTabs()}>{(tab) => (
-            <Tabs.Trigger class={styles.tab} value={tab.value}>{tab.label}</Tabs.Trigger>
-          )}</For>
-        </Tabs.List>
-
-        <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
-          <section class={styles.panel}><h3>Widget</h3><dl class={styles.definitionList}><dt>Slug</dt><dd>{current().variant.slug ?? '—'}</dd><dt>Health</dt><dd><Show when={current().problem} fallback={<span class={styles.healthy}>Healthy</span>}>{(problem) => <span class={styles.problem}>{problem().code}</span>}</Show></dd><dt>Description</dt><dd>{current().variant.description || 'No description.'}</dd><dt>Tool label</dt><dd>{current().variant.tool.label ?? '—'}</dd><dt>Behavior</dt><dd>{current().variant.tool.behaviorType ?? '—'}</dd><dt>Tool group</dt><dd>{current().variant.tool.group ?? 'Ungrouped'}</dd><dt>Source relationship</dt><dd>{current().relation}</dd><dt>Updated</dt><dd>{current().variant.updatedAt ?? 'Unknown'}</dd></dl></section>
-          <Show when={current().source === 'draft' && !publicationState().loading && !publicationState().previewAvailable}>
-            <section class={styles.panel}>
-              <h3>Publication</h3>
-              <p class={styles.muted}>Publication requires a frame-owned Preview target. Open or place this draft on a canvas, then publish from its title bar or return here. Omnidraw will build the current draft when you confirm.</p>
-            </section>
+              disabled={action() !== null || form()!.health !== 'healthy' || configDirty()}
+              title={configDirty() ? 'Save the draft Config before building.' : undefined}
+              onClick={() => void publish('build')}
+            >{action() === 'build' ? 'Building and publishing…' : 'Build and Publish'}</Button>
           </Show>
-          <Show when={current().source === 'draft'}><section class={styles.panel}><h3>Validation</h3><p class={styles.muted}>{current().variant.validation?.status ?? 'unknown'}</p><For each={current().variant.validation?.errors}>{(item) => <p class={styles.validationError}>{item}</p>}</For><For each={current().variant.validation?.warnings}>{(item) => <p class={styles.validationWarning}>{item}</p>}</For></section></Show>
-          <Show when={current().problem}>{(problem) => <section class={styles.problemPanel}><h3>{problem().code}</h3><p>{problem().message}</p></section>}</Show>
-          <section class={`${styles.panel} ${styles.dangerPanel}`}><div><h3>Delete {current().source === 'published' ? 'published widget' : 'draft'}</h3><p class={styles.muted}>{current().source === 'published' ? 'Archives this publication and deletes its draft if one exists. Existing canvas instances stay pinned to their immutable revision.' : 'Permanently removes only this draft. The published widget and all of its canvas instances remain unchanged.'}</p></div><Button class={`${styles.button} ${styles.dangerButton}`} onClick={() => setDeleteOpen(true)}><Trash2 size={13} /> {current().source === 'published' ? 'Archive publication' : 'Delete draft'}</Button></section>
-        </div></Tabs.Content>
+          <Button
+            class={`${styles.button} ${styles.iconButton}`}
+            aria-label="Toggle sidebar"
+            onClick={application.toggleSidebar}
+          ><PanelLeft size={15} /></Button>
+        </div>
+      </header>
+      <Show when={actionError()}>{(message) => (
+        <p class={styles.validationError} role="alert">{message()}</p>
+      )}</Show>
+      <Tabs.List class={styles.tabs}>
+        <For each={TABS}>{(tab) => (
+          <Tabs.Trigger class={styles.tab} value={tab.value}>{tab.label}</Tabs.Trigger>
+        )}</For>
+      </Tabs.List>
 
-        <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
-          <section class={styles.panel}><h3>Widget configuration</h3><Show when={current().manifest} fallback={<p class={styles.validationError}>The manifest is invalid. Repair omnidraw.json from the Files tab before editing structured configuration.</p>}><Show when={current().source === 'draft'} fallback={<><p class={styles.muted}>Published configuration is immutable. Create or reuse a draft to edit it.</p><Button class={styles.button} onClick={editAsDraft}>Edit as draft</Button></>}>
-            <div class={styles.formGrid}>
-              <label>Name<input class={styles.input} value={metadataName()} onInput={(event) => setMetadataName(event.currentTarget.value)} maxlength={120} /><span class={styles.fieldHint}>Renaming a draft creates a new draft identity; an existing published widget keeps its current name.</span></label>
-              <label class={styles.fullField}>Description<textarea class={`${styles.input} ${styles.textarea}`} value={description()} onInput={(event) => setDescription(event.currentTarget.value)} maxlength={4000} /></label>
-              <div class={`${styles.formActions} ${styles.fullField}`}><Button class={`${styles.button} ${styles.primary}`} disabled={saving()} onClick={saveMetadata}>{saving() ? 'Saving…' : 'Save configuration'}</Button></div>
-            </div>
-          </Show></Show></section>
-        </div></Tabs.Content>
+      <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
+        <section class={styles.panel}>
+          <h3>Filesystem catalog</h3>
+          <dl class={styles.definitionList}>
+            <dt>Widget key</dt><dd>{entry()!.widgetKey}</dd>
+            <dt>Source</dt><dd>{props.source}</dd>
+            <dt>Health</dt><dd class={form()!.health === 'healthy' ? styles.healthy : styles.problem}>{form()!.health}</dd>
+            <dt>Draft and publication</dt><dd>{entry()!.differences.status}</dd>
+            <dt>Presentation</dt><dd>{entry()!.differences.presentation}</dd>
+            <dt>Executable Config</dt><dd>{entry()!.differences.executableManifest}</dd>
+            <dt>Files</dt><dd>{form()!.fileCount}</dd>
+          </dl>
+        </section>
+        <section class={styles.panel}>
+          <h3>Presentation</h3>
+          <p>{form()!.config?.description ?? 'Structured Config is unavailable.'}</p>
+          <dl class={styles.definitionList}>
+            <dt>Tool label</dt><dd>{form()!.config?.tool.label ?? '—'}</dd>
+            <dt>Group</dt><dd>{form()!.config?.tool.group ?? 'Ungrouped'}</dd>
+            <dt>Priority</dt><dd>{form()!.config?.tool.priority ?? '—'}</dd>
+          </dl>
+        </section>
+        <For each={form()!.issues}>{(issue) => <section class={styles.problemPanel}>
+          <h3>{issue.code}</h3><p>{issue.message}</p>
+        </section>}</For>
+      </div></Tabs.Content>
 
-          <Tabs.Content class={styles.content} value="functions"><div class={styles.contentInner}>
-            <section class={styles.panel}>
-              <h3>Server runtime</h3>
-              <Show when={v2Manifest()?.server} fallback={<p class={styles.muted}>This widget is browser-only and declares no server entry.</p>}>
-                {(server) => <dl class={styles.definitionList}>
-                  <dt>Entry</dt><dd><code>{server().entry}</code></dd>
-                  <dt>Runtime ABI</dt><dd><code>{server().runtimeAbi}</code></dd>
-                  <dt>Browser-safe functions</dt><dd>{current().functions.length}</dd>
-                </dl>}
-              </Show>
-            </section>
-            <section class={styles.panel}>
-              <h3>Functions</h3>
-              <For each={current().functions} fallback={<p class={styles.muted}>{v2Manifest()?.server ? 'No browser-safe function descriptors are available for this revision.' : 'Browser-only widgets have no server functions.'}</p>}>
-                {(descriptor) => <article class={styles.inspectorCard}>
-                  <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
-                  <dl class={styles.definitionList}>
-                    <dt>Resources</dt><dd>{descriptor.resources.map((resource) => `${resource.slot} (${resource.effect})`).join(', ') || 'None'}</dd>
-                    <dt>Timeout</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
-                    <dt>Memory</dt><dd>{descriptor.limits.memoryTier}</dd>
-                    <dt>Output limit</dt><dd>{descriptor.limits.outputByteLimit} bytes</dd>
-                    <dt>Log limit</dt><dd>{descriptor.limits.logByteLimit} bytes</dd>
-                    <dt>Retry</dt><dd>{descriptor.retry.mode === 'none' ? 'None' : `Up to ${descriptor.retry.maxAttempts} attempts`}</dd>
-                  </dl>
-                  <div class={styles.schemaGrid}>
-                    <div><h4>Input schema</h4><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(descriptor.inputSchema, null, 2)}</pre></div>
-                    <div><h4>Output schema</h4><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(descriptor.outputSchema, null, 2)}</pre></div>
-                  </div>
-                </article>}
-              </For>
-            </section>
-          </div></Tabs.Content>
+      <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
+        <section class={styles.panel}>
+          <h3>Widget Config</h3>
+          <Show when={form()!.config} fallback={<p class={styles.validationError}>Repair omnidraw.json in the Files workspace before editing structured Config.</p>}>
+            <Show when={props.source === 'draft'} fallback={<>
+              <p class={styles.muted}>Published Config is read-only. Edit the draft folder to change it.</p>
+              <pre class={styles.code}>{JSON.stringify(form()!.config, null, 2)}</pre>
+            </>}>
+              <div class={styles.formGrid}>
+                <label>Name<input class={styles.input} value={name()} maxlength={200} onInput={(event) => setName(event.currentTarget.value)} /></label>
+                <label>Tool label<input class={styles.input} value={label()} maxlength={120} onInput={(event) => setLabel(event.currentTarget.value)} /></label>
+                <label class={styles.fullField}>Description<textarea class={`${styles.input} ${styles.textarea}`} value={description()} maxlength={2000} onInput={(event) => setDescription(event.currentTarget.value)} /></label>
+                <label>Group<input class={styles.input} value={group()} maxlength={100} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="utilities" onInput={(event) => setGroup(event.currentTarget.value)} /></label>
+                <label>Priority<input class={styles.input} type="number" min="-1000" max="1000" step="1" value={priority()} onInput={(event) => setPriority(event.currentTarget.value)} /></label>
+                <label>Icon type<select class={styles.input} value={iconKind()} onChange={(event) => {
+                  setIconKind(event.currentTarget.value as 'none' | 'lucide' | 'custom');
+                  setIconValue('');
+                }}><option value="none">None</option><option value="lucide">Lucide name</option><option value="custom">SVG or one grapheme</option></select></label>
+                <label>Icon value<input class={styles.input} value={iconValue()} maxlength={16384} disabled={iconKind() === 'none'} onInput={(event) => setIconValue(event.currentTarget.value)} /></label>
+                <div class={`${styles.formActions} ${styles.fullField}`}>
+                  <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null} onClick={() => void saveConfig()}>
+                    {action() === 'save' ? 'Saving draft…' : 'Save draft'}
+                  </Button>
+                  <span class={styles.fieldHint}>Press Ctrl/⌘+S to save. The manifest digest prevents stale forms from overwriting external edits.</span>
+                </div>
+              </div>
+            </Show>
+          </Show>
+        </section>
+      </div></Tabs.Content>
 
-          <Tabs.Content class={styles.content} value="logs"><div class={styles.contentInner}>
-            <section class={styles.panel}>
-              <h3>Invocation logs</h3>
-              <p class={styles.messageIntro}>Logs are bounded and retained per function invocation. Select an invocation from its calling widget or session to inspect its output and logs.</p>
-            </section>
-            <section class={styles.panel}>
-              <h3>Per-invocation budgets</h3>
-              <For each={current().functions} fallback={<p class={styles.muted}>This revision declares no server-function log streams.</p>}>
-                {(descriptor) => <div class={styles.budgetRow}><code>{descriptor.exportName}</code><span>{descriptor.limits.logByteLimit} bytes maximum</span></div>}
-              </For>
-            </section>
-            <section class={styles.panel}><h3>Log stream</h3><p class={styles.muted}>No invocation is selected.</p></section>
-          </div></Tabs.Content>
+      <Tabs.Content class={styles.content} value="functions"><div class={styles.contentInner}>
+        <section class={styles.panel}><h3>Browser-safe function descriptors</h3>
+          <For each={form()!.functions} fallback={<p class={styles.muted}>This source exposes no published browser-safe functions.</p>}>
+            {(descriptor) => <article class={styles.inspectorCard}>
+              <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
+              <dl class={styles.definitionList}>
+                <dt>Resources</dt><dd>{descriptor.resources.map((resource) => `${resource.slot} (${resource.effect})`).join(', ') || 'None'}</dd>
+                <dt>Timeout</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
+                <dt>Memory</dt><dd>{descriptor.limits.memoryTier}</dd>
+                <dt>Output limit</dt><dd>{descriptor.limits.outputByteLimit} bytes</dd>
+                <dt>Log limit</dt><dd>{descriptor.limits.logByteLimit} bytes</dd>
+              </dl>
+            </article>}
+          </For>
+        </section>
+      </div></Tabs.Content>
 
-          <Tabs.Content class={styles.content} value="resources"><div class={styles.contentInner}>
-            <section class={styles.panel}>
-              <h3>Manifest resource requirements</h3>
-              <p class={styles.messageIntro}>Functions receive logical resource slots. Concrete resource IDs, credentials, storage paths, and writable handles remain host-owned.</p>
-            </section>
-            <div class={styles.inspectorGrid}>
-              <For each={v2Manifest()?.resources ?? []} fallback={<section class={styles.panel}><p class={styles.muted}>This widget declares no resource requirements.</p></section>}>
-                {(requirement) => {
-                  const operations = Object.keys(requirement.operations ?? {}).sort((left, right) => left.localeCompare(right));
-                  return <article class={`${styles.panel} ${styles.compactCard}`}>
-                    <div class={styles.inspectorCardHeader}><code>{requirement.slot}</code><span class={styles.badge}>{requirement.kind}</span></div>
-                    <dl class={styles.definitionList}>
-                      <dt>Effect ceiling</dt><dd>{requirement.effect === 'read_write' ? 'read + write' : requirement.effect}</dd>
-                      <dt>Binding</dt><dd>{requirement.required === undefined ? 'Manifest default' : requirement.required ? 'Required' : 'Optional'}</dd>
-                      <dt>Named operations</dt><dd>{operations.join(', ') || 'None'}</dd>
-                      <dt>Arbitrary SQL</dt><dd>{requirement.arbitrarySql ? 'Allowed by manifest' : 'Not allowed'}</dd>
-                    </dl>
-                  </article>;
-                }}
-              </For>
-            </div>
-          </div></Tabs.Content>
+      <Tabs.Content class={styles.content} value="resources"><div class={styles.contentInner}>
+        <section class={styles.panel}><h3>Portable resource requirements</h3>
+          <For each={form()!.resources} fallback={<p class={styles.muted}>This widget declares no resource requirements.</p>}>
+            {(requirement) => <article class={styles.inspectorCard}>
+              <div class={styles.inspectorCardHeader}><code>{requirement.slot}</code><span class={styles.badge}>{requirement.kind}</span></div>
+              <dl class={styles.definitionList}>
+                <dt>Effect ceiling</dt><dd>{requirement.effect}</dd>
+                <dt>Required</dt><dd>{requirement.required ? 'Yes' : 'No'}</dd>
+              </dl>
+            </article>}
+          </For>
+        </section>
+      </div></Tabs.Content>
 
-        <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files"><div class={styles.fileWorkbench}>
-          <aside class={styles.fileTree} aria-label="Widget files"><Show when={filesError()}>{(message) => <p class={styles.validationError}>{message()}</p>}</Show><For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>{(entry) => entry.kind === 'directory' ? <div class={styles.directory} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }}><Folder size={12} /> {entry.path.split('/').at(-1)}</div> : <Button class={`${styles.fileRow} ${selectedPath() === entry.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: entry.path })}><File size={12} /><span>{entry.path.split('/').at(-1)}</span><small>{entry.size} B</small></Button>}</For></aside>
-          <section class={styles.preview}><Show when={previewError()}>{(message) => <p class={styles.validationError}>{message()}</p>}</Show><Show when={preview()} fallback={<p class={styles.muted}>Select a file to inspect it.</p>}>{(file) => <><div class={styles.previewHeader}><strong>{file().path}</strong><span>{file().size} bytes{file().truncated ? ' · preview truncated' : ''}</span></div>{file().binary ? <p class={styles.muted}>Binary file. Content preview is unavailable.</p> : <pre class={styles.code}>{file().text}</pre>}</>}</Show></section>
-        </div></Tabs.Content>
-
-        <AlertDialog.Root open={deleteOpen()} onOpenChange={(open) => { if (!deleting()) setDeleteOpen(open); }}><AlertDialog.Portal><AlertDialog.Overlay class={styles.dialogOverlay} /><AlertDialog.Content class={styles.dialogContent}><AlertDialog.Title class={styles.dialogTitle}>{current().source === 'published' ? 'Archive published widget' : 'Delete widget draft'}</AlertDialog.Title><AlertDialog.Description class={styles.dialogDescription}>{current().source === 'published' ? `Archive the published widget “${current().variant.displayName}” and delete its draft if one exists? Existing canvas instances remain pinned to this immutable revision.` : `Delete only the draft “${current().variant.displayName}”? The published widget and all of its canvas instances will remain unchanged. This cannot be undone.`}</AlertDialog.Description><div class={styles.dialogActions}><AlertDialog.CloseButton class={styles.button} disabled={deleting()}>Cancel</AlertDialog.CloseButton><Button class={`${styles.button} ${styles.dangerButton}`} disabled={deleting()} onClick={removeWidget}>{deleting() ? 'Deleting…' : current().source === 'published' ? 'Archive publication' : 'Delete draft only'}</Button></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>
-        <Show when={current().source === 'draft' ? current().variant.draftId : null}>
-          {(draftId) => <WidgetPublicationDialog
-            api={props.controller.apiService.api.agent}
-            draftId={draftId()}
-            draftName={current().name}
-            createIdempotencyKey={props.controller.browser.createIdempotencyKey}
-            resolvePreviewSelections={resolvePreviewSelections}
-            open={publishOpen()}
-            onOpenChange={setPublishOpen}
-            onStateChange={setPublicationState}
-            onPublished={async ({ result }) => {
-              application.notifySuccess('Widget published');
-              props.controller.invalidation.invalidate('widgets');
-              await catalogState.refresh();
-              setPublishOpen(false);
-              application.navigate(`/widgets/published/${encodeURIComponent(result.manifest.name)}?tab=overview`, { replace: true });
-            }}
-          />}
-        </Show>
-      </Tabs.Root>}
-    </Show>
-  );
+      <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files">
+        <div class={styles.fileWorkbench}>
+          <aside class={styles.fileTree} aria-label="Widget files">
+            <Show when={filesError()}>{(message) => <p class={styles.validationError} role="alert">{message()}</p>}</Show>
+            <Show when={filesTruncated()}><p class={styles.validationWarning}>The bounded file list was truncated.</p></Show>
+            <For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>
+              {(file) => file.kind === 'directory'
+                ? <div class={styles.directory} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }}><Folder size={12} /> {file.path.split('/').at(-1)}</div>
+                : <Button class={`${styles.fileRow} ${selectedPath() === file.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: file.path })}><File size={12} /><span>{file.path.split('/').at(-1)}</span><small>{file.byteSize} B</small></Button>}
+            </For>
+          </aside>
+          <section class={styles.preview}>
+            <Show when={previewError()}>{(message) => <p class={styles.validationError} role="alert">{message()}</p>}</Show>
+            <Show when={preview()} fallback={<p class={styles.muted}>Select a file to inspect it.</p>}>
+              {(file) => <><div class={styles.previewHeader}><strong>{file().path}</strong><span>{file().byteSize} bytes{file().truncated ? ' · preview omitted by limit' : ''}</span></div>{file().binary ? <p class={styles.muted}>Binary file. Content preview is unavailable.</p> : file().text === null ? <p class={styles.muted}>Content preview is unavailable.</p> : <pre class={styles.code}>{file().text}</pre>}</>}
+            </Show>
+          </section>
+        </div>
+      </Tabs.Content>
+    </Tabs.Root>
+  </Show>;
 };

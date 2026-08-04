@@ -1,38 +1,7 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import { ZOmnidrawToolIcon, type TWidgetManifestV3 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
 import type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
-import type {
-  TWidgetDraftSummary,
-  TWidgetPreviewResult,
-} from '@omnidraw/service-agent/widget-drafts/types';
-import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetPlacementResolveResult, TWidgetVariantSummary } from '@omnidraw/service-agent/widget-management/types';
 import { z } from 'zod';
-import {
-  ZAgentOpaqueId,
-  ZAgentRevisionDigest,
-  ZAgentWidgetDraftSummaries,
-  ZAgentWidgetDraftSummary,
-  ZAgentWidgetPreviewOwnerCloseInput,
-  ZAgentWidgetPreviewOwnerDescriptor,
-  ZAgentWidgetPreviewOwnerDescriptors,
-  ZAgentWidgetPreviewBuildInput,
-  ZAgentWidgetPreviewCancelInput,
-  ZAgentWidgetPreviewDiagnosticReportInput,
-  ZAgentWidgetPreviewDiagnosticReportResult,
-  ZAgentWidgetPreviewDiagnosticRetestInput,
-  ZAgentWidgetPreviewDiagnosticSelectionInput,
-  ZAgentWidgetPreviewRuntimeDiagnosticRecords,
-  ZAgentWidgetPreviewTestReportInput,
-  ZAgentWidgetPreviewTestReportResult,
-  ZAgentWidgetPreviewMountLeaseDescriptor,
-  ZAgentWidgetPreviewMountLeaseInput,
-  ZAgentWidgetPreviewOwnerEnsureInput,
-  ZAgentWidgetPreviewOwnerListInput,
-  ZAgentWidgetPreviewOwnerRef,
-  ZAgentWidgetPreviewResult,
-  ZAgentWidgetPublishInput,
-  ZAgentWidgetPublishResult,
-} from './authoring-schema';
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
@@ -99,33 +68,10 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
 const ZAgentChatConnectInput = ZAgentChatScope.extend({ mode: z.enum(['reuse', 'replace']).optional() })
-const ZWidgetName = z.string().min(1).max(120).refine((value) => value.trim() === value && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !value.includes('\0'), 'Unsafe widget name')
-const ZAgentWidgetDraftRef = z.object({ draftId: ZAgentOpaqueId }).strict()
-const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({
-  expectedRevision: ZAgentRevisionDigest,
-})
+const ZWidgetKey = z.string().min(1).max(100)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const ZWidgetSource = z.enum(['published', 'draft'])
-const ZWidgetVariantRef = z.object({ name: ZWidgetName, source: ZWidgetSource })
-const ZWidgetPlacementRef = z.object({
-  source: z.enum(['published', 'draft']),
-  name: ZWidgetName,
-  revision: z.string().min(1).max(256),
-})
-const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZOmnidrawToolIcon.nullable() })
-const ZWidgetDraftToolPatch = z.object({
-  icon: ZOmnidrawToolIcon.nullable().optional(),
-  group: z.string().trim().min(1).max(120).nullable().optional(),
-}).strict().refine((patch) => Object.prototype.hasOwnProperty.call(patch, 'icon') || Object.prototype.hasOwnProperty.call(patch, 'group'), 'At least one tool field is required')
-const ZWidgetDraftMetadataPatch = z.object({
-  name: ZWidgetName.optional(),
-  description: z.string().max(4_000).optional(),
-  tool: z.object({
-    label: z.string().min(1).max(120).optional(),
-    icon: ZOmnidrawToolIcon.nullable().optional(),
-    group: z.string().trim().min(1).max(120).nullable().optional(),
-    priority: z.number().finite().nullable().optional(),
-  }).strict().optional(),
-}).strict().refine((patch) => Object.keys(patch).length > 0, 'At least one metadata field is required')
+const ZWidgetVariantRef = z.object({ name: ZWidgetKey, source: ZWidgetSource }).strict()
 const AGENT_CHAT_PROMPT_IMAGE_MAX_COUNT = 5;
 const AGENT_CHAT_PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const AGENT_CHAT_PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(AGENT_CHAT_PROMPT_IMAGE_MAX_BYTES / 3) * 4;
@@ -183,30 +129,6 @@ const ZAgentApproval = z.object({
 })
 
 export type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
-export type {
-  TWidgetDraftSummary,
-  TWidgetPreviewResult,
-} from '@omnidraw/service-agent/widget-drafts/types';
-export type {
-  TWidgetCatalog,
-  TWidgetCatalogEntry,
-  TWidgetCatalogGroup,
-  TWidgetCatalogProblem,
-  TWidgetDeleteResult,
-  TWidgetDetail,
-  TWidgetDraftMetadataPatch,
-  TWidgetDraftMetadataPatchResult,
-  TWidgetDraftToolPatch,
-  TWidgetFileEntry,
-  TWidgetFilePreview,
-  TWidgetRelation,
-  TWidgetSource,
-  TWidgetVariantSummary,
-  TWidgetPlacementResolveResult,
-  TWidgetPlacementSummary,
-  TWidgetCatalogPreviewSummary,
-} from '@omnidraw/service-agent/widget-management/types';
-export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 
 export type TAgentChatConnect = {
   vcJson: TWidgetManifestV3 | null;
@@ -227,9 +149,6 @@ export const agentContract = oc.router({
   chat: {
     connect: oc.input(ZAgentChatConnectInput).output(orpcType<TAgentChatConnect>()),
     prompt: oc.input(ZAgentChatPrompt),
-    resourceBindings: {
-      clear: oc.input(ZAgentChatScope).output(z.object({ cleared: z.literal(true) })),
-    },
     dbChange: {
       approve: oc.input(ZAgentChatScope.extend({
         proposalId: z.string().min(1),
@@ -251,100 +170,6 @@ export const agentContract = oc.router({
     },
     cancel: oc.input(ZAgentChatScope).output(ZAgentChatCancel),
     newSession: oc.input(ZAgentChatScope),
-  },
-  widgetDraft: {
-    list: oc.input(z.object({}).strict()).output(ZAgentWidgetDraftSummaries),
-    get: oc.input(ZAgentWidgetDraftRef).output(ZAgentWidgetDraftSummary.nullable()),
-    validate: oc.input(ZAgentWidgetDraftRevisionRef).output(ZAgentWidgetDraftSummary.nullable()),
-  },
-    widgetPreview: {
-        build: oc.input(ZAgentWidgetPreviewBuildInput).output(ZAgentWidgetPreviewResult),
-        cancel: oc.input(ZAgentWidgetPreviewCancelInput).output(z.boolean()),
-        mount: {
-          acquire: oc
-            .input(ZAgentWidgetPreviewMountLeaseInput)
-            .output(ZAgentWidgetPreviewMountLeaseDescriptor.nullable()),
-          renew: oc
-            .input(ZAgentWidgetPreviewMountLeaseInput)
-            .output(ZAgentWidgetPreviewMountLeaseDescriptor.nullable()),
-          release: oc
-            .input(ZAgentWidgetPreviewMountLeaseInput)
-            .output(z.boolean()),
-        },
-        diagnostics: {
-          report: oc
-            .input(ZAgentWidgetPreviewDiagnosticReportInput)
-            .output(ZAgentWidgetPreviewDiagnosticReportResult),
-          get: oc
-            .input(ZAgentWidgetPreviewOwnerRef)
-            .output(ZAgentWidgetPreviewRuntimeDiagnosticRecords),
-          retest: oc
-            .input(ZAgentWidgetPreviewDiagnosticRetestInput)
-            .output(ZAgentWidgetPreviewOwnerDescriptor),
-          resolve: oc
-            .input(ZAgentWidgetPreviewDiagnosticSelectionInput)
-            .output(ZAgentWidgetPreviewOwnerDescriptor),
-        },
-        test: {
-          report: oc
-            .input(ZAgentWidgetPreviewTestReportInput)
-            .output(ZAgentWidgetPreviewTestReportResult),
-        },
-    owner: {
-      ensure: oc
-        .input(ZAgentWidgetPreviewOwnerEnsureInput)
-        .output(ZAgentWidgetPreviewOwnerDescriptor),
-      get: oc
-        .input(ZAgentWidgetPreviewOwnerRef)
-        .output(ZAgentWidgetPreviewOwnerDescriptor.nullable()),
-      list: oc
-        .input(ZAgentWidgetPreviewOwnerListInput)
-        .output(ZAgentWidgetPreviewOwnerDescriptors),
-      close: oc
-        .input(ZAgentWidgetPreviewOwnerCloseInput)
-        .output(z.boolean()),
-    },
-  },
-  widgetPublish: {
-    publish: oc.input(ZAgentWidgetPublishInput).output(ZAgentWidgetPublishResult),
-  },
-  widgets: {
-    catalog: oc.input(z.object({})).output(orpcType<TWidgetCatalog>()),
-    detail: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetDetail | null>()),
-    files: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetFileEntry[] | null>()),
-    file: oc.input(ZWidgetVariantRef.extend({ path: z.string().min(1).max(1_000) })).output(orpcType<TWidgetFilePreview | null>()),
-    ensureDraft: oc.input(z.object({
-      name: ZWidgetName,
-      expectedPublishedFingerprint: z.string().length(64).optional(),
-    })).output(orpcType<TWidgetVariantSummary>()),
-    patchDraftTool: oc.input(z.object({
-      name: ZWidgetName,
-      expectedRevision: z.string().min(1).max(256),
-      patch: ZWidgetDraftToolPatch,
-    })).output(orpcType<TWidgetVariantSummary>()),
-    patchDraftMetadata: oc.input(z.object({
-      name: ZWidgetName,
-      expectedRevision: z.string().min(1).max(256),
-      patch: ZWidgetDraftMetadataPatch,
-    })).output(orpcType<TWidgetDraftMetadataPatchResult>()),
-    delete: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetDeleteResult>()),
-    resolvePlacement: oc.input(z.object({
-      reference: ZWidgetPlacementRef,
-      expectedDraftId: ZAgentOpaqueId.optional(),
-    }).superRefine((input, context) => {
-      if (input.reference.source !== 'published' && input.expectedDraftId === undefined) {
-        context.addIssue({
-          code: 'custom',
-          path: ['expectedDraftId'],
-          message: 'Draft placement requires an exact durable draft owner.',
-        });
-      }
-    })).output(orpcType<TWidgetPlacementResolveResult>()),
-    groups: {
-      create: oc.input(ZWidgetGroup).output(orpcType<TWidgetCatalogGroup>()),
-      update: oc.input(z.object({ currentName: z.string().trim().min(1).max(120), group: ZWidgetGroup })).output(orpcType<TWidgetCatalogGroup>()),
-      remove: oc.input(z.object({ name: z.string().trim().min(1).max(120) })).output(orpcType<TWidgetCatalogGroup>()),
-    },
   },
   approval: {
     list: oc.input(ZAgentChatScope).output(ZAgentApproval.array()),

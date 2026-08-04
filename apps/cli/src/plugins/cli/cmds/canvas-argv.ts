@@ -266,7 +266,6 @@ function queryCursor(
     && typeof record.id === 'string'
   ) || (
     record.type === 'widget-identity'
-    && typeof record.revisionId === 'string'
     && typeof record.instanceId === 'string'
     && typeof record.id === 'string'
   );
@@ -288,25 +287,17 @@ function queryFilter(
   const kind = stringValue(command, values, 'kind');
   const parent = stringValue(command, values, 'parent');
   const widgetInstance = stringValue(command, values, 'widget-instance');
-  const widgetDefinition = stringValue(command, values, 'widget-definition');
-  const revisionId = stringValue(command, values, 'revision');
+  const widgetKey = stringValue(command, values, 'widget-key');
   const filterCount = Number(ids.length > 0)
     + Number(kind !== undefined)
     + Number(parent !== undefined)
     + Number(widgetInstance !== undefined)
-    + Number(widgetDefinition !== undefined);
+    + Number(widgetKey !== undefined);
   if (filterCount > 1) {
     throw fnCanvasCliError(
       command,
       'CANVAS_QUERY_FILTER_CONFLICT',
-      'Choose at most one query filter: --id, --kind, --parent, --widget-instance, or --widget-definition.',
-    );
-  }
-  if (revisionId !== undefined && widgetDefinition === undefined) {
-    throw fnCanvasCliError(
-      command,
-      'CANVAS_QUERY_REVISION_WITHOUT_DEFINITION',
-      '--revision is only valid with --widget-definition.',
+      'Choose at most one query filter: --id, --kind, --parent, --widget-instance, or --widget-key.',
     );
   }
   if (ids.length > 0) return { type: 'ids', ids };
@@ -317,12 +308,8 @@ function queryFilter(
   if (widgetInstance !== undefined) {
     return { type: 'widget-instance', instanceId: widgetInstance };
   }
-  if (widgetDefinition !== undefined) {
-    return {
-      type: 'widget-definition',
-      definitionId: widgetDefinition,
-      ...(revisionId === undefined ? {} : { revisionId }),
-    };
+  if (widgetKey !== undefined) {
+    return { type: 'widget-key', widgetKey };
   }
   return { type: 'all' };
 }
@@ -343,8 +330,7 @@ export function parseCanvasSubcommandArgs(
       kind: { type: 'string' },
       parent: { type: 'string' },
       'widget-instance': { type: 'string' },
-      'widget-definition': { type: 'string' },
-      revision: { type: 'string' },
+      'widget-key': { type: 'string' },
       limit: { type: 'string' },
       cursor: { type: 'string' },
     });

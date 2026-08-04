@@ -25,14 +25,19 @@ describe('txEnsureOmnidrawHome', () => {
     expect(Object.isFrozen(result)).toBe(true);
     expect(mkdirCalls.map(([path]) => path)).toEqual([
       home.homeDir,
-      home.organizationsDir,
-      home.defaultOrganizationRoot,
       home.agentRoot,
-      home.artifactsRoot,
       home.resourcesRoot,
       home.tempRoot,
       home.cacheRoot,
       home.logsRoot,
+      home.keysRoot,
+      home.widgetsRoot,
+      home.widgetDraftsRoot,
+      home.widgetPublishedRoot,
+      home.widgetStagingRoot,
+      home.widgetPreviewRoot,
+      home.widgetTrashRoot,
+      home.widgetQuarantineRoot,
     ]);
     expect(mkdirCalls.every(([, options]) => (
       options?.recursive === true && options.mode === 0o700
@@ -53,14 +58,19 @@ describe('txEnsureOmnidrawHome', () => {
 
       const directories = [
         home.homeDir,
-        home.organizationsDir,
-        home.defaultOrganizationRoot,
         home.agentRoot,
-        home.artifactsRoot,
         home.resourcesRoot,
         home.tempRoot,
         home.cacheRoot,
         home.logsRoot,
+        home.keysRoot,
+        home.widgetsRoot,
+        home.widgetDraftsRoot,
+        home.widgetPublishedRoot,
+        home.widgetStagingRoot,
+        home.widgetPreviewRoot,
+        home.widgetTrashRoot,
+        home.widgetQuarantineRoot,
       ];
       expect(directories.every((directory) => statSync(directory).isDirectory())).toBe(true);
       if (process.platform !== 'win32') {

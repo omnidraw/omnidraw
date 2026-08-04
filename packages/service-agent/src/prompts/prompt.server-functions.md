@@ -19,7 +19,7 @@ export const calculate = defineServerFunction({
 - Keep calls short, bounded, schema-validated, and JSON-only.
 - Declare exact resource effects in both the manifest ceiling and function registration.
 - Use `context.resources.read` or `context.resources.write`; never open a database, file, socket, or secret directly.
-- Draft Preview invokes the exact retained Preview server artifact with the
-  user's selected resource bindings. Treat Preview calls and permitted writes
-  as real; do not substitute mock data or a browser-only fallback.
+- Draft Preview may invoke exact process-owned server output with temporary
+  resource choices. Treat permitted Preview writes as real; do not substitute
+  mock data or a browser-only fallback.
 - Never add HTTP handlers, listeners, subprocesses, timers, sleeps, polling loops, background jobs, or mutable module-global state.

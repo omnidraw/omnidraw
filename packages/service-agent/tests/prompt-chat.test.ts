@@ -3,10 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
-import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-records';
+import { fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from '../src/prompts';
-import { createTestTenantEvents } from './tenant.fixture';
+import { createTestChats, createTestEvents } from './service.fixture';
 
 const tempDirs: string[] = [];
 
@@ -17,15 +17,15 @@ afterEach(async () => {
 async function createService(
   resourceService?: ConstructorParameters<typeof AgentService>[0]['resourceService'],
   authorizeToolCall?: ConstructorParameters<typeof AgentService>[0]['authorizeToolCall'],
+  chats = createTestChats(),
 ) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-prompt-'));
   tempDirs.push(dataPath);
 
   return new AgentService({
-    cachePath: join(dataPath, 'cache'),
     dataPath,
-    configPath: join(dataPath, 'config'),
-    eventPublisherService: createTestTenantEvents(),
+    eventPublisherService: createTestEvents(),
+    chats,
     resourceService,
     authorizeToolCall,
   });
@@ -88,7 +88,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not use `THREE.Clock`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('monotonic timestamp passed to each');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('independent of');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('browser Preview execution result');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('successful browser Preview execution');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('custom properties and');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`var()` fallbacks');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not part of the signed artifact');
@@ -105,14 +105,13 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_validate`; it performs the frozen install');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('call `vc_widget_preview_wait` once');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('use `vc_widget_preview_test`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('live execution was not tested');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_wait');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_test');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('live Preview interaction was not tested');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“Ready”');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('means published');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('draft Preview title bar or draft detail page');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('frame-owned Preview revision');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/\barrow(?:js)?\b/i);
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('od_widget_create({ name, kind');
@@ -172,9 +171,9 @@ describe('AgentService.promptChat', () => {
         kind: id === 'kv-1' ? 'kv' : 'db',
         name: id === 'kv-1' ? 'Preferences' : 'Notes Database',
         status: 'ready',
-        last_error: null,
-        created_at: '2026-01-01T00:00:00.000Z',
-        updated_at: '2026-01-01T00:00:00.000Z',
+        lastError: null,
+        createdAtSec: '2026-01-01 00:00:00',
+        updatedAtSec: '2026-01-01 00:00:00',
       }),
     });
     const sessionManager = {
@@ -200,142 +199,6 @@ describe('AgentService.promptChat', () => {
     });
     await service.promptChat('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
     expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([]);
-    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
-      { id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' },
-    ]);
-  });
-
-  test('rejects a stale widget mention instead of resolving a replacement by display name', async () => {
-    let resourceRead = false;
-    const service = await createService({
-      getResource: async (id) => {
-        resourceRead = true;
-        return {
-          id,
-          kind: 'db',
-          name: 'Notes',
-          status: 'ready',
-          last_error: null,
-          created_at: '2026-07-19T00:00:00.000Z',
-          updated_at: '2026-07-19T00:00:00.000Z',
-        };
-      },
-    });
-    let prompted = false;
-    let thinkingChanged = false;
-    const sessionManager = createFakeSessionManager();
-    service.sessionMap.widget = {
-      session: {
-        unsub: () => {},
-        sessionManager: sessionManager as never,
-        session: {
-          prompt: async () => { prompted = true; },
-          setThinkingLevel: () => { thinkingChanged = true; },
-        } as never,
-      },
-    };
-
-    await expect(service.promptChat('widget', 'session', 'Update @Weather', {
-      resourceIds: ['db-1'],
-      thinkingLevel: 'high',
-      widgetRefs: [{ name: 'DeletedWeatherDraft', source: 'draft' }],
-    })).rejects.toThrow('Selected draft widget was not found: DeletedWeatherDraft');
-    expect(prompted).toBe(false);
-    expect(thinkingChanged).toBe(false);
-    expect(resourceRead).toBe(false);
-    expect(sessionManager.getEntries()).toEqual([]);
-  });
-
-  test('delivers widget identity as hidden next-turn context without changing the user prompt', async () => {
-    const service = await createService();
-    service.getWidgetDetail = async (name, source) => ({
-      name,
-      source,
-      relation: 'draft-only',
-      variant: {
-        source,
-        displayName: 'Weather dashboard',
-        kind: 'notes-widget',
-        slug: 'weather',
-        description: null,
-        revision: 'rev-2',
-        contentFingerprint: null,
-        updatedAt: null,
-        tool: { label: 'Weather dashboard', icon: null, group: null, priority: null, behaviorType: 'action' },
-        validation: { status: 'valid', errors: [], warnings: [] },
-      },
-      sibling: null,
-      manifest: null,
-      problem: null,
-    }) as never;
-    const customMessages: Array<{ message: unknown; options: unknown }> = [];
-    const prompts: string[] = [];
-    service.sessionMap.widget = {
-      session: {
-        unsub: () => {},
-        sessionManager: createFakeSessionManager() as never,
-        session: {
-          sendCustomMessage: async (message: unknown, options: unknown) => { customMessages.push({ message, options }); },
-          prompt: async (text: string) => { prompts.push(text); },
-        } as never,
-      },
-    };
-
-    await service.promptChat('widget', 'session', 'Update @Weather', {
-      widgetRefs: [{ name: 'Weather', source: 'draft' }],
-    });
-
-    expect(prompts).toEqual(['Update @Weather']);
-    expect(customMessages).toEqual([{
-      message: {
-        customType: 'omnidraw.widgetMentions',
-        content: expect.stringContaining('"name":"Weather"'),
-        display: false,
-        details: { widgets: [{ name: 'Weather', source: 'draft', displayName: 'Weather dashboard', revision: 'rev-2' }] },
-      },
-      options: { deliverAs: 'nextTurn' },
-    }]);
-  });
-
-  test('replaces a same-kind draft binding on mention and clears it only through the explicit action', async () => {
-    const resources = [
-      { id: 'db-1', kind: 'db' as const, name: 'QA Database' },
-      { id: 'db-2', kind: 'db' as const, name: 'Manual QA Database' },
-      { id: 'kv-1', kind: 'kv' as const, name: 'Preferences' },
-    ];
-    const service = await createService({
-      getResource: async (id) => {
-        const resource = resources.find((candidate) => candidate.id === id);
-        return resource ? {
-          ...resource,
-          status: 'ready',
-          last_error: null,
-          created_at: '2026-07-13T00:00:00.000Z',
-          updated_at: '2026-07-13T00:00:00.000Z',
-        } : null;
-      },
-    });
-    const sessionManager = createFakeSessionManager();
-    service.sessionMap.widget = {
-      session: {
-        unsub: () => {},
-        sessionManager: sessionManager as never,
-        session: { prompt: async () => {} } as never,
-      },
-    };
-
-    await service.promptChat('widget', 'session', 'Use these resources', { resourceIds: ['db-1', 'kv-1'] });
-    await service.promptChat('widget', 'session', 'Switch to @Manual QA Database', { resourceIds: ['db-2'] });
-    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
-      { id: 'kv-1', kind: 'kv', name: 'Preferences', status: 'ready' },
-      { id: 'db-2', kind: 'db', name: 'Manual QA Database', status: 'ready' },
-    ]);
-
-    expect(await service.clearDraftResourceBindingsChat('widget', 'session')).toEqual({ cleared: true });
-    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})).toMatchObject({
-      resources: [],
-      source: 'explicit-clear',
-    });
   });
 
   test('keeps the exact phase-free registry across reconnect and continuation errors', async () => {
@@ -348,7 +211,6 @@ describe('AgentService.promptChat', () => {
       'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
       'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
       'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_validate', 'patch', 'read',
-      'vc_widget_preview_status', 'vc_widget_preview_test', 'vc_widget_preview_wait',
       'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
@@ -370,9 +232,9 @@ describe('AgentService.promptChat', () => {
         kind,
         name,
         status: 'ready',
-        last_error: null,
-        created_at: '2026-07-18T00:00:00.000Z',
-        updated_at: '2026-07-18T00:00:00.000Z',
+        lastError: null,
+        createdAtSec: '2026-07-18 00:00:00',
+        updatedAtSec: '2026-07-18 00:00:00',
       }),
     });
     const widgetId = 'widget-reuse';
@@ -414,9 +276,9 @@ describe('AgentService.promptChat', () => {
         kind,
         name,
         status: 'ready',
-        last_error: null,
-        created_at: '2026-07-18T00:00:00.000Z',
-        updated_at: '2026-07-18T00:00:00.000Z',
+        lastError: null,
+        createdAtSec: '2026-07-18 00:00:00',
+        updatedAtSec: '2026-07-18 00:00:00',
       }),
     });
     const widgetId = 'widget-replace';
@@ -428,8 +290,8 @@ describe('AgentService.promptChat', () => {
 
     const toolResult = createTool.execute('tool-replace', { kind: 'kv', name: 'Cache' }, undefined, undefined, {} as never);
     const approval = await waitForChatApproval(service, widgetId, sessionId);
-    const firstReplacement = service.connectChat(widgetId, sessionId, {}, 'replace');
-    const secondReplacement = service.connectChat(widgetId, sessionId, {}, 'replace');
+    const firstReplacement = service.connectChat(widgetId, sessionId, 'replace');
+    const secondReplacement = service.connectChat(widgetId, sessionId, 'replace');
 
     expect(service.listChatApprovals(widgetId, sessionId).map((item) => item.id)).toEqual([approval.id]);
     await Promise.all([firstReplacement, secondReplacement]);
@@ -446,64 +308,31 @@ describe('AgentService.promptChat', () => {
     await service.connectChat(widgetId, sessionId);
     const originalEntry = service.sessionMap[widgetId][sessionId];
 
-    const replacement = service.connectChat(widgetId, sessionId, {}, 'replace');
-    const laterReuse = service.connectChat(widgetId, sessionId, {}, 'reuse');
+    const replacement = service.connectChat(widgetId, sessionId, 'replace');
+    const laterReuse = service.connectChat(widgetId, sessionId, 'reuse');
     await Promise.all([replacement, laterReuse]);
 
     expect(service.sessionMap[widgetId][sessionId]).not.toBe(originalEntry);
   });
 
-  test('refreshes request authorization, reauthorizes approval, and rejects account ownership changes', async () => {
-    const authorizationChecks: Array<{ toolName: string; accountId?: string; requestId?: string }> = [];
-    const service = await createService({
-      createResource: async ({ kind, name }) => ({
-        id: 'resource-authorization',
-        kind,
-        name,
-        status: 'ready',
-        last_error: null,
-        created_at: '2026-07-18T00:00:00.000Z',
-        updated_at: '2026-07-18T00:00:00.000Z',
-      }),
-    }, ({ toolName, context }) => {
-      authorizationChecks.push({ toolName, ...context });
-      return true;
-    });
-    const widgetId = 'widget-authorization';
-    const sessionId = 'session-authorization';
-    const initialConnect = await service.connectChat(widgetId, sessionId, { accountId: 'account-1', requestId: 'request-1' });
-    expect(JSON.stringify(initialConnect)).not.toContain('account-1');
-    expect(JSON.stringify(initialConnect)).not.toContain('request-1');
-    await service.connectChat(widgetId, sessionId, { accountId: 'account-1', requestId: 'request-2' });
+  test('retains one durable chat metadata row with portable relative paths', async () => {
+    const chats = createTestChats();
+    const service = await createService(undefined, undefined, chats);
+    const widgetId = 'widget-metadata';
+    const sessionId = 'session-metadata';
 
-    const createTool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('od_resource_create');
-    if (!createTool) throw new Error('Resource create tool was not registered.');
-    const toolResult = createTool.execute('tool-authorization', { kind: 'kv', name: 'Preferences' }, undefined, undefined, {} as never);
-    const approval = await waitForChatApproval(service, widgetId, sessionId);
-
-    expect(JSON.stringify(service.listChatApprovals(widgetId, sessionId))).not.toContain('account-1');
-    expect(JSON.stringify(service.listChatApprovals(widgetId, sessionId))).not.toContain('request-2');
-    expect(authorizationChecks).toContainEqual({
-      toolName: 'od_resource_create',
-      accountId: 'account-1',
-      requestId: 'request-2',
+    await service.connectChat(widgetId, sessionId);
+    const created = chats.records.get(sessionId);
+    expect(created).toMatchObject({
+      id: sessionId,
+      canvasId: null,
+      name: 'AI Chat',
+      status: 'active',
     });
-    await service.resolveChatApproval(widgetId, sessionId, approval.id, 'approve', {
-      accountId: 'account-1',
-      requestId: 'request-approval',
-    });
-    await toolResult;
-    expect(authorizationChecks).toContainEqual({
-      toolName: 'approval.resolve',
-      accountId: 'account-1',
-      requestId: 'request-approval',
-    });
-    await expect(service.connectChat(widgetId, sessionId, { accountId: 'account-2', requestId: 'request-3' }))
-      .rejects.toMatchObject({ code: 'CHAT_AUTHORIZATION_CHANGED' });
-    expect(service.sessionMap[widgetId][sessionId].authorizationContext).toEqual({
-      accountId: 'account-1',
-      requestId: 'request-2',
-    });
+    expect(created?.workspaceRelativePath).toMatch(/^pi\/agent\/chats\//);
+    expect(created?.historyRelativePath).toMatch(/^pi\/agent\/chats\//);
+    await service.connectChat(widgetId, sessionId);
+    expect(chats.records.size).toBe(1);
   });
 
   test('moves a session between widgets without weakening approval scope checks', async () => {
@@ -525,9 +354,9 @@ describe('AgentService.promptChat', () => {
         kind,
         name,
         status: 'ready',
-        last_error: null,
-        created_at: '2026-07-18T00:00:00.000Z',
-        updated_at: '2026-07-18T00:00:00.000Z',
+        lastError: null,
+        createdAtSec: '2026-07-18 00:00:00',
+        updatedAtSec: '2026-07-18 00:00:00',
       }),
     });
     const widgetId = 'widget-new-chat';

@@ -7,11 +7,11 @@ export function fnNormalizeWidgetFrame(frame?: TWidgetFrameBounds): TWidgetFrame
 }
 
 export function fnWidgetPlacementRefKey(reference: TWidgetPlacementRef): string {
-  return `${reference.source}:${encodeURIComponent(reference.name)}:${encodeURIComponent(reference.revision)}`
+  return `${reference.source}:${encodeURIComponent(reference.widgetKey)}:${reference.catalogGeneration}`
 }
 
 export function fnWidgetPlacementToolId(
-  reference: Pick<TWidgetPlacementRef, 'source' | 'name'>,
+  reference: Pick<TWidgetPlacementRef, 'source' | 'widgetKey'>,
 ): string {
-  return `widget-placement:${reference.source}:${encodeURIComponent(reference.name)}`
+  return `widget-placement:${reference.source}:${encodeURIComponent(reference.widgetKey)}`
 }

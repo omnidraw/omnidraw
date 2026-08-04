@@ -3,7 +3,6 @@
  */
 
 import type { IService } from '@omnidraw/runtime';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import type {
   TAgentEvent,
   TDbEvent,
@@ -25,22 +24,20 @@ export type {
 } from './events';
 
 export interface IEventPublisherService extends IService {
-  forTenant(tenant: TTenantContext): ITenantEventPublisherService;
+  publishDbEvent(canvasId: string, event: TDbEvent): number;
+  subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
+  subscribeDbEventRecords(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
+  getDbEventCursor(): number;
 
-  publishDbEvent(tenant: TTenantContext, canvasId: string, event: TDbEvent): number;
-  subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
-  subscribeDbEventRecords(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
-  getDbEventCursor(tenant: TTenantContext): number;
+  publishAgentEvent(event: TAgentEvent): number;
+  subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
+  getAgentEventCursor(): number;
 
-  publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number;
-  subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
-  getAgentEventCursor(tenant: TTenantContext): number;
-
-  publishNotification(tenant: TTenantContext, event: TNotificationEvent): number;
-  subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
-  subscribeNotificationRecords(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
-  getNotificationEventCursor(tenant: TTenantContext): number;
-  getLatestNotification(tenant: TTenantContext): TNotificationEvent | null;
+  publishNotification(event: TNotificationEvent): number;
+  subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
+  subscribeNotificationRecords(options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
+  getNotificationEventCursor(): number;
+  getLatestNotification(): TNotificationEvent | null;
 }
 
 export type TEventSubscriptionOptions = Readonly<{ afterSequence?: number }>;
@@ -49,18 +46,3 @@ export type TSequencedEvent<TEvent> = Readonly<{
   event: TEvent;
   sequence: number;
 }>;
-
-export interface ITenantEventPublisherService {
-  publishDbEvent(canvasId: string, event: TDbEvent): number;
-  subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
-  subscribeDbEventRecords(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
-  getDbEventCursor(): number;
-  publishAgentEvent(event: TAgentEvent): number;
-  subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
-  getAgentEventCursor(): number;
-  publishNotification(event: TNotificationEvent): number;
-  subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
-  subscribeNotificationRecords(options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
-  getNotificationEventCursor(): number;
-  getLatestNotification(): TNotificationEvent | null;
-}

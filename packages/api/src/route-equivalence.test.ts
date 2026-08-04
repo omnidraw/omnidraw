@@ -11,7 +11,6 @@ const ROUTE_KEYS = [
   'function',
   'notification',
   'resource',
-  'tool',
   'widget',
 ];
 
@@ -24,7 +23,7 @@ function collectProcedurePaths(node: object, prefix = ''): string[] {
 }
 
 describe('unified API route equivalence', () => {
-  test('preserves existing route keys and exposes neutral resource, function, and widget routes', () => {
+  test('exposes only the current neutral API domains', () => {
     expect(Object.keys(contract)).toEqual(ROUTE_KEYS);
     expect(Object.keys(apiContract.api)).toEqual(ROUTE_KEYS);
     expect(Object.keys(handlers)).toEqual(ROUTE_KEYS);
@@ -35,7 +34,7 @@ describe('unified API route equivalence', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(115);
+    expect(contractProcedures).toHaveLength(85);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

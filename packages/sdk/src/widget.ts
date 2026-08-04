@@ -41,3 +41,13 @@ export type {
 } from './widget-channels';
 
 export type * from './shared';
+export type {
+  TWidgetChangeClass,
+  TWidgetChangeClassification,
+  TWidgetExecutableManifestProjection,
+  TWidgetManifestV4,
+  TWidgetPresentationProjection,
+  TWidgetReleaseDescriptor,
+  TWidgetReleaseAttestation,
+  TWidgetUnsignedReleaseDescriptor,
+} from '@omnidraw/widget-contract/filesystem';

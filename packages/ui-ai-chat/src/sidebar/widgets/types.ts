@@ -1,18 +1,23 @@
-import type { TWidgetCatalogProblem, TWidgetPlacementSummary, TWidgetSource, TWidgetVariantSummary } from '@omnidraw/orpc-client';
+import type {
+  TWidgetPublicCatalogEntry,
+  TWidgetPublicCatalogForm,
+  TWidgetPublicIssue,
+  TWidgetPublicPlacement,
+} from '@omnidraw/orpc-client';
+
+export type TWidgetSource = 'draft' | 'published';
 
 export type TWidgetSidebarRow = {
-  name: string;
+  widgetKey: string;
   source: TWidgetSource;
-  managementSource: TWidgetSource;
-  variant: TWidgetVariantSummary;
-  placement: TWidgetPlacementSummary | null;
-  problem: TWidgetCatalogProblem | null;
-  missingGroup: string | null;
+  form: TWidgetPublicCatalogForm;
+  entry: TWidgetPublicCatalogEntry;
+  placement: TWidgetPublicPlacement | null;
+  problem: TWidgetPublicIssue | null;
 };
 
 export type TWidgetSidebarGroup = {
   name: string;
-  icon: TWidgetVariantSummary['tool']['icon'];
   rows: TWidgetSidebarRow[];
 };
 

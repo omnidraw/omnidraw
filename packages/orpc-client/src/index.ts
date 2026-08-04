@@ -3,28 +3,17 @@ import { RPCLink } from "@orpc/client/websocket";
 import type { ContractRouterClient } from "@orpc/contract";
 import { apiContract, contract } from "@omnidraw/api/contract";
 export type {
-  TWidgetCatalog,
-  TWidgetCatalogEntry,
-  TWidgetCatalogGroup,
-  TWidgetCatalogProblem,
-  TWidgetDeleteResult,
-  TWidgetDetail,
-  TWidgetDraftMetadataPatch,
-  TWidgetDraftMetadataPatchResult,
-  TWidgetDraftToolPatch,
-  TWidgetFileEntry,
-  TWidgetFilePreview,
-  TWidgetRelation,
-  TWidgetSource,
-  TWidgetVariantSummary,
-  TWidgetPlacementResolveResult,
-  TWidgetFrameBounds,
-  TWidgetPlacementRef,
-  TWidgetPlacementSummary,
-  TWidgetCatalogPreviewSummary,
-  TWidgetDraftSummary,
-  TWidgetPreviewResult,
-} from "@omnidraw/api/agent/contract";
+  TWidgetPublicCatalog,
+  TWidgetPublicCatalogEntry,
+  TWidgetPublicCatalogForm,
+  TWidgetPublicCatalogDifferences,
+  TWidgetPublicFileEntry,
+  TWidgetPublicFileList,
+  TWidgetPublicFilePreview,
+  TWidgetPublicIssue,
+  TWidgetPublicMutationResult,
+  TWidgetPublicPlacement,
+} from "@omnidraw/api/widget/public-types";
 import type { TNotificationEvent } from "@omnidraw/api/notification/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 

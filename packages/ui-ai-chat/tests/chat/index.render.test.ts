@@ -7,16 +7,15 @@ let disposeRendered: (() => void) | undefined
 let container: HTMLDivElement | undefined
 
 type TAiChatProps = Parameters<typeof AiChat>[0]
-type TTestAiChatProps = Omit<TAiChatProps, "application" | "browser" | "onOpenWidgetPreview"> & Partial<Pick<TAiChatProps, "application" | "browser" | "onOpenWidgetPreview">>
+type TTestAiChatProps = Omit<TAiChatProps, "application" | "browser"> & Partial<Pick<TAiChatProps, "application" | "browser">>
 
 function renderAiChat(props: TTestAiChatProps) {
   const {
     application = createTestApplication(),
     browser = createTestChatBrowser(),
-    onOpenWidgetPreview = async () => {},
     ...rest
   } = props
-  return AiChat({ ...rest, application, browser, onOpenWidgetPreview })
+  return AiChat({ ...rest, application, browser })
 }
 
 function ensureComponentDomMocks() {
@@ -55,6 +54,19 @@ function ensureComponentDomMocks() {
 function createApiService() {
   return {
     api: {
+      widget: {
+        catalog: {
+          get: async () => [undefined, {
+            format: "omnidraw.widget-catalog.public.v1",
+            generation: 1,
+            catalogDigestSha256: "0".repeat(64),
+            healthy: true,
+            groups: [],
+            entries: [],
+            issues: [],
+          }],
+        },
+      },
       resource: {
         resources: {
           list: async () => [undefined, []],
@@ -84,16 +96,6 @@ function createApiService() {
             vcJson: null,
           }],
           newSession: async () => [undefined, { started: true }],
-          resourceBindings: {
-            clear: async () => [undefined, { cleared: true }],
-          },
-        },
-        widgetDraft: {
-          list: async () => [undefined, []],
-          validate: async () => [undefined, null],
-        },
-        widgetPublish: {
-          publish: async () => [undefined, { published: false, message: "not configured" }],
         },
         events: async () => [undefined, {
           async *[Symbol.asyncIterator]() {},
@@ -562,176 +564,4 @@ describe("AiChat shell", () => {
     expect(onOpenResource).toHaveBeenCalledWith("kv-1")
   })
 
-  it("auto-opens only the first trusted widget create and keeps manual Open Preview available", async () => {
-    ensureComponentDomMocks()
-    container = document.createElement("div")
-    document.body.appendChild(container)
-    const apiService = createApiService() as any
-    const firstDraftId = "10000000-0000-4000-8000-000000000001"
-    const secondDraftId = "10000000-0000-4000-8000-000000000002"
-    apiService.api.agent.chat.connect = async () => [undefined, {
-      editSession: null,
-      messageHistory: [
-        {
-          role: "toolResult",
-          toolCallId: "call-widget-create-1",
-          toolName: "od_widget_create",
-          content: [{ type: "text", text: "Created Shared Timer." }],
-          details: {
-            draftId: firstDraftId,
-            name: "Shared Timer",
-            source: "draft",
-            draft: true,
-          },
-        },
-        {
-          role: "toolResult",
-          toolCallId: "call-widget-create-2",
-          toolName: "od_widget_create",
-          content: [{ type: "text", text: "Created Team Notes." }],
-          details: {
-            draftId: secondDraftId,
-            name: "Team Notes",
-            source: "draft",
-            draft: true,
-          },
-        },
-      ],
-      vcJson: null,
-    }]
-    const onOpenWidgetPreview = vi.fn(async () => undefined)
-    const onAiChatPreferenceChange = vi.fn()
-
-    disposeRendered = render(() => renderAiChat({
-      apiService: apiService as never,
-      id: "surface-1",
-      titleBar: {
-        onAction: () => () => {},
-        setActionState: () => {},
-      },
-      onAiChatPreferenceChange,
-      onOpenWidgetPreview,
-      onResetSessionId: () => "conversation-2",
-      sessionId: "conversation-1",
-    }), container)
-
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1))
-    expect(onOpenWidgetPreview).toHaveBeenCalledWith({
-      draftId: firstDraftId,
-      name: "Shared Timer",
-    })
-    await vi.waitFor(() => expect(onAiChatPreferenceChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        autoOpenedPreviewDraftIds: [firstDraftId],
-      }),
-    ))
-    const previewButtons = container.querySelectorAll<HTMLButtonElement>(
-      ".ai-chat-history__preview-action button",
-    )
-    expect(previewButtons).toHaveLength(2)
-    expect(previewButtons[0]?.textContent?.trim()).toBe("Open Preview")
-
-    previewButtons[0]?.click()
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledTimes(2))
-    expect(onOpenWidgetPreview).toHaveBeenLastCalledWith({
-      draftId: firstDraftId,
-      name: "Shared Timer",
-    })
-  })
-
-  it("respects a persisted automatic-open marker after remount while allowing manual reopen", async () => {
-    ensureComponentDomMocks()
-    container = document.createElement("div")
-    document.body.appendChild(container)
-    const apiService = createApiService() as any
-    const draftId = "10000000-0000-4000-8000-000000000001"
-    apiService.api.agent.chat.connect = async () => [undefined, {
-      editSession: null,
-      messageHistory: [{
-        role: "toolResult",
-        toolCallId: "call-widget-create",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: "Created Shared Timer." }],
-        details: { draftId, name: "Shared Timer", source: "draft", draft: true },
-      }],
-      vcJson: null,
-    }]
-    const onOpenWidgetPreview = vi.fn(async () => undefined)
-
-    disposeRendered = render(() => renderAiChat({
-      apiService: apiService as never,
-      id: "surface-1",
-      titleBar: {
-        onAction: () => () => {},
-        setActionState: () => {},
-      },
-      aiChatPreference: {
-        autoOpenedPreviewDraftIds: [draftId],
-      },
-      onOpenWidgetPreview,
-      onResetSessionId: () => "conversation-2",
-      sessionId: "conversation-1",
-    }), container)
-
-    await vi.waitFor(() => expect(
-      container?.querySelector<HTMLButtonElement>(
-        ".ai-chat-history__preview-action button",
-      ),
-    ).not.toBeNull())
-    expect(onOpenWidgetPreview).not.toHaveBeenCalled()
-
-    container.querySelector<HTMLButtonElement>(
-      ".ai-chat-history__preview-action button",
-    )?.click()
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledOnce())
-  })
-
-  it("keeps a failed automatic Preview open retryable and surfaces the existing error", async () => {
-    ensureComponentDomMocks()
-    container = document.createElement("div")
-    document.body.appendChild(container)
-    const apiService = createApiService() as any
-    const draftId = "10000000-0000-4000-8000-000000000001"
-    apiService.api.agent.chat.connect = async () => [undefined, {
-      editSession: null,
-      messageHistory: [{
-        role: "toolResult",
-        toolCallId: "call-widget-create",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: "Created Shared Timer." }],
-        details: { draftId, name: "Shared Timer", source: "draft", draft: true },
-      }],
-      vcJson: null,
-    }]
-    const onOpenWidgetPreview = vi.fn()
-      .mockRejectedValueOnce(new Error("Widget draft 'Shared Timer' no longer exists."))
-      .mockResolvedValue(undefined)
-    const onAiChatPreferenceChange = vi.fn()
-
-    disposeRendered = render(() => renderAiChat({
-      apiService: apiService as never,
-      id: "surface-1",
-      titleBar: {
-        onAction: () => () => {},
-        setActionState: () => {},
-      },
-      onAiChatPreferenceChange,
-      onOpenWidgetPreview,
-      onResetSessionId: () => "conversation-2",
-      sessionId: "conversation-1",
-    }), container)
-
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledOnce())
-    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")?.textContent).toContain("Widget draft 'Shared Timer' no longer exists."))
-    expect(onAiChatPreferenceChange).not.toHaveBeenCalled()
-
-    container.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")?.click()
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")).toBeNull())
-    await vi.waitFor(() => expect(onAiChatPreferenceChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        autoOpenedPreviewDraftIds: [draftId],
-      }),
-    ))
-  })
 })

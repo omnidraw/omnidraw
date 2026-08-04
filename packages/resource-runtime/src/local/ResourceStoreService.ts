@@ -2,7 +2,6 @@
  * @file Local Resource Store and location-transparent gateway.
  */
 
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ResourceError,
   fnResourceBindingDecision,
@@ -23,12 +22,10 @@ import type {
   TResourceCallResult,
   TResourceDescriptor,
   TResourceKind,
-  TResourceOperationReceipt,
   TResourcePlacement,
   TResourcePermission,
   TResourceRequirement,
   TResourceWriteCapabilityClaims,
-  TResourceWritePermitRecoveryCandidate,
 } from '../index';
 import type { ILocalResourceProvider } from './ResourceProviderTypes';
 
@@ -46,11 +43,9 @@ export type ILocalResourceStoreProvider = ILocalResourceProvider;
 
 export type TResourceReconciliationAuthority = Readonly<{
   canAdoptUnplacedResource(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
   ): boolean | Promise<boolean>;
   canDeleteUnplacedResource(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
   ): boolean | Promise<boolean>;
 }>;
@@ -58,13 +53,16 @@ export type TResourceReconciliationAuthority = Readonly<{
 export type TResourceStoreServiceConfig = Readonly<{
   controlStore: IResourceControlStore;
   providers: readonly ILocalResourceStoreProvider[];
+  placement: Readonly<{
+    cellId: string;
+    placementEpoch: number;
+  }>;
   /** Explicit host authority for one-shot recovery of catalog rows with no placement. */
   reconciliationAuthority?: TResourceReconciliationAuthority;
   writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
   writePermitCoordinator?: IResourceWritePermitCoordinator;
   /** Process-local authority for trusted host management writes. */
   hostWriteCapability?: string;
-  allowUnfencedWrites?: boolean;
   nowMs?: () => number;
 }>;
 
@@ -76,44 +74,41 @@ export type TResourceStoreCreateRequest = Readonly<{
 }>;
 
 function resourceMatches(
-  tenant: TTenantContext,
   resourceId: string,
   resource: TResourceDescriptor,
 ): boolean {
-  return resource.orgId === tenant.orgId && resource.id === resourceId;
+  return resource.id === resourceId;
 }
 
 function placementMatches(
-  tenant: TTenantContext,
+  local: TResourceStoreServiceConfig['placement'],
   resourceId: string,
   placement: TResourcePlacement,
 ): boolean {
-  return placement.orgId === tenant.orgId
-    && placement.resourceId === resourceId
+  return placement.resourceId === resourceId
     && placement.status === 'active'
-    && placement.cellId === tenant.cellId
-    && placement.placementEpoch === tenant.placementEpoch;
+    && placement.cellId === local.cellId
+    && placement.placementEpoch === local.placementEpoch;
 }
 
 function placementCanActivate(
-  tenant: TTenantContext,
+  local: TResourceStoreServiceConfig['placement'],
   resourceId: string,
   placement: TResourcePlacement,
 ): boolean {
-  return placement.orgId === tenant.orgId
-    && placement.resourceId === resourceId
-    && placement.cellId === tenant.cellId
-    && placement.placementEpoch === tenant.placementEpoch
+  return placement.resourceId === resourceId
+    && placement.cellId === local.cellId
+    && placement.placementEpoch === local.placementEpoch
     && (placement.status === 'reserved' || placement.status === 'active');
 }
 
 export class ResourceStoreService implements IResourceStore {
   readonly #controlStore: IResourceControlStore;
+  readonly #placement: TResourceStoreServiceConfig['placement'];
   readonly #providers = new Map<TResourceKind, ILocalResourceStoreProvider>();
   readonly #writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
   readonly #writePermitCoordinator?: IResourceWritePermitCoordinator;
   readonly #hostWriteCapability?: string;
-  readonly #allowUnfencedWrites: boolean;
   readonly #reconciliationAuthority?: TResourceReconciliationAuthority;
   readonly #nowMs: () => number;
   readonly #writeTails = new Map<string, Promise<void>>();
@@ -123,10 +118,10 @@ export class ResourceStoreService implements IResourceStore {
 
   constructor(config: TResourceStoreServiceConfig) {
     this.#controlStore = config.controlStore;
+    this.#placement = Object.freeze({ ...config.placement });
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
     this.#writePermitCoordinator = config.writePermitCoordinator;
     this.#hostWriteCapability = config.hostWriteCapability;
-    this.#allowUnfencedWrites = config.allowUnfencedWrites ?? false;
     this.#reconciliationAuthority = config.reconciliationAuthority;
     this.#nowMs = config.nowMs ?? (() => Date.now());
     for (const provider of config.providers) {
@@ -141,34 +136,31 @@ export class ResourceStoreService implements IResourceStore {
   }
 
   async call<TOutput = unknown>(
-    tenant: TTenantContext,
     call: TResolvedResourceCall,
   ): Promise<TResourceCallResult<TOutput>> {
     this.#assertOpen();
     const operation = call.effect === 'write'
       ? this.#withWriteLane(
-        tenant,
         call.resourceId,
-        () => this.#dispatchCall<TOutput>(tenant, call),
+        () => this.#dispatchCall<TOutput>(call),
       )
-      : this.#dispatchCall<TOutput>(tenant, call);
+      : this.#dispatchCall<TOutput>(call);
     return this.#track(operation);
   }
 
   async #dispatchCall<TOutput>(
-    tenant: TTenantContext,
     call: TResolvedResourceCall,
   ): Promise<TResourceCallResult<TOutput>> {
     const [resource, placement] = await Promise.all([
-      this.#controlStore.getResource(tenant, call.resourceId),
-      this.#controlStore.getPlacement(tenant, call.resourceId),
+      this.#controlStore.getResource(call.resourceId),
+      this.#controlStore.getPlacement(call.resourceId),
     ]);
     if (!resource || !placement) {
       throw new ResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
     }
     if (
-      !resourceMatches(tenant, call.resourceId, resource)
-      || !placementMatches(tenant, call.resourceId, placement)
+      !resourceMatches(call.resourceId, resource)
+      || !placementMatches(this.#placement, call.resourceId, placement)
     ) {
       throw new ResourceError(
         'RESOURCE_PLACEMENT_STALE',
@@ -207,56 +199,25 @@ export class ResourceStoreService implements IResourceStore {
       throw new ResourceError('RESOURCE_CALL_INVALID', 'Resource operation effect does not match the resolved call.');
     }
     const providerContext = {
-      tenant,
       resource,
       requirement,
       canRead: call.effect === 'read',
       canWrite: call.effect === 'write',
     };
     const claims = call.effect === 'write'
-      ? await this.#verifyWriteCapability(tenant, call)
+      ? await this.#verifyWriteCapability(call)
       : null;
     const dispatch = async (
       guard?: IResourceWritePermitGuard,
     ): Promise<TResourceCallResult<TOutput>> => {
-      if (call.effect === 'write' && call.operationId && claims) {
-        if (!provider.dispatchWithReceipt) {
+      if (call.effect === 'write' && claims) {
+        if (guard === undefined) {
           throw new ResourceError(
-            'RESOURCE_PROVIDER_UNAVAILABLE',
-            'Resource provider does not support durable operation receipts.',
+            'RESOURCE_WRITE_CAPABILITY_STALE',
+            'A function resource mutation requires a live single-use permit.',
           );
         }
-        const result = await provider.dispatchWithReceipt(
-          providerContext,
-          call.operation,
-          call.input,
-          {
-            orgId: tenant.orgId,
-            resourceId: call.resourceId,
-            invocationId: claims.invocationId,
-            attemptId: claims.attemptId,
-            operationId: call.operationId,
-            operationFingerprintSha256: claims.operationFingerprintSha256,
-          },
-          guard ?? {
-            assertCanCommit: async () => {
-              throw new ResourceError(
-                'RESOURCE_WRITE_CAPABILITY_STALE',
-                'A fenced resource mutation requires a live precommit guard.',
-              );
-            },
-          },
-        );
-        if (!result.committed) {
-          throw new ResourceError(
-            'RESOURCE_PROVIDER_UNAVAILABLE',
-            'Resource provider returned an uncommitted operation receipt.',
-          );
-        }
-        return {
-          output: result.output as TOutput,
-          receipt: this.#receipt(call, true, result.replayed),
-        };
+        await guard.assertCanCommit();
       }
 
       const output = await provider.dispatch(
@@ -266,9 +227,6 @@ export class ResourceStoreService implements IResourceStore {
       ) as TOutput;
       return {
         output,
-        ...(call.operationId
-          ? { receipt: this.#receipt(call, true) }
-          : {}),
       };
     };
 
@@ -278,175 +236,73 @@ export class ResourceStoreService implements IResourceStore {
       && claims
       && this.#writePermitCoordinator
     ) {
-      const candidate: TResourceWritePermitRecoveryCandidate = {
-        permitId: claims.permitId,
+      return this.#writePermitCoordinator.runWithWritePermit({
+        claims,
+        slot: call.slot,
+        kind: call.kind,
         resourceId: call.resourceId,
-        invocationId: claims.invocationId,
-        attemptId: claims.attemptId,
-        leaseEpoch: claims.leaseEpoch,
-        operationName: call.operation,
+        operation: call.operation,
         operationId: call.operationId,
         operationFingerprintSha256: claims.operationFingerprintSha256,
-      };
-      try {
-        return await this.#writePermitCoordinator.runWithWritePermit(tenant, {
-          claims,
-          slot: call.slot,
-          kind: call.kind,
-          resourceId: call.resourceId,
-          operation: call.operation,
-          operationId: call.operationId,
-          operationFingerprintSha256: claims.operationFingerprintSha256,
-        }, dispatch);
-      } catch (error) {
-        const recovered = await this.#recoverCommittedWrite(
-          tenant,
-          resource,
-          provider,
-          candidate,
-        );
-        if (recovered !== null) return recovered as TResourceCallResult<TOutput>;
-        throw error;
-      }
+      }, dispatch);
     }
     return dispatch();
   }
 
-  async reconcile(tenant: TTenantContext): Promise<void> {
+  async reconcile(): Promise<void> {
     this.#assertOpen();
-    return this.#track(this.#reconcile(tenant));
+    return this.#track(this.#reconcile());
   }
 
-  async #reconcile(tenant: TTenantContext): Promise<void> {
-    const resources = await this.#controlStore.listResources(tenant);
+  async #reconcile(): Promise<void> {
+    const resources = await this.#controlStore.listResources();
     for (const resource of resources) {
-      if (!resourceMatches(tenant, resource.id, resource)) continue;
-      let placement = await this.#controlStore.getPlacement(tenant, resource.id);
+      if (!resourceMatches(resource.id, resource)) continue;
+      let placement = await this.#controlStore.getPlacement(resource.id);
       if (!placement && resource.status !== 'deleting') {
-        placement = await this.#adoptMissingPlacement(tenant, resource);
+        placement = await this.#adoptMissingPlacement(resource);
       }
       if (resource.status === 'deleting' && !placement) {
-        await this.#reconcileDeletingResource(tenant, resource);
+        await this.#reconcileDeletingResource(resource);
         continue;
       }
-      if (!placement || !placementCanActivate(tenant, resource.id, placement)) {
+      if (!placement || !placementCanActivate(this.#placement, resource.id, placement)) {
         continue;
       }
-      await this.#reconcileResource(tenant, resource, placement);
-      const reconciled = await this.#controlStore.getResource(tenant, resource.id);
-      if (reconciled?.status === 'ready' && resourceMatches(tenant, resource.id, reconciled)) {
-        await this.#reconcileCommittedWrites(tenant, reconciled);
-      }
+      await this.#reconcileResource(resource, placement);
     }
-  }
-
-  async #reconcileCommittedWrites(
-    tenant: TTenantContext,
-    resource: TResourceDescriptor,
-  ): Promise<void> {
-    const coordinator = this.#writePermitCoordinator;
-    const provider = this.#providers.get(resource.kind);
-    if (
-      !coordinator?.listRecoverableWritePermits
-      || !coordinator.reconcileCommittedWritePermit
-      || !provider?.readCommittedOperation
-    ) return;
-    let afterPermitId: string | undefined;
-    while (true) {
-      const candidates = await coordinator.listRecoverableWritePermits(tenant, {
-        resourceId: resource.id,
-        ...(afterPermitId === undefined ? {} : { afterPermitId }),
-        limit: 100,
-      });
-      for (const candidate of candidates) {
-        await this.#recoverCommittedWrite(tenant, resource, provider, candidate);
-      }
-      if (candidates.length < 100) return;
-      afterPermitId = candidates[candidates.length - 1]?.permitId;
-      if (afterPermitId === undefined) return;
-    }
-  }
-
-  async #recoverCommittedWrite(
-    tenant: TTenantContext,
-    resource: TResourceDescriptor,
-    provider: ILocalResourceStoreProvider,
-    candidate: TResourceWritePermitRecoveryCandidate,
-  ): Promise<TResourceCallResult | null> {
-    const coordinator = this.#writePermitCoordinator;
-    const reconcile = coordinator?.reconcileCommittedWritePermit;
-    if (!provider.readCommittedOperation || !coordinator || !reconcile) return null;
-    const receipt = await provider.readCommittedOperation(resource, {
-      invocationId: candidate.invocationId,
-      operationId: candidate.operationId,
-    });
-    if (receipt === null) return null;
-    if (
-      receipt.invocationId !== candidate.invocationId
-      || receipt.operationId !== candidate.operationId
-      || receipt.operationName !== candidate.operationName
-      || receipt.operationFingerprintSha256 !== candidate.operationFingerprintSha256
-    ) {
-      throw new ResourceError(
-        'RESOURCE_WRITE_CAPABILITY_STALE',
-        'Provider receipt conflicts with its authoritative write permit.',
-      );
-    }
-    const result = await reconcile.call(coordinator, tenant, {
-      ...candidate,
-      output: receipt.output,
-      recordedAtMs: this.#nowMs(),
-    });
-    if (result.status === 'missing' || result.status === 'conflict') {
-      throw new ResourceError(
-        'RESOURCE_WRITE_CAPABILITY_STALE',
-        'Provider receipt could not be reconciled with its authoritative write permit.',
-      );
-    }
-    return {
-      output: receipt.output,
-      receipt: {
-        operationId: candidate.operationId,
-        resourceId: candidate.resourceId,
-        effect: 'write',
-        committed: true,
-        replayed: true,
-      },
-    };
   }
 
   /** Atomically reserves catalog + placement, then provisions and activates it. */
   async createResource(
-    tenant: TTenantContext,
     request: TResourceStoreCreateRequest,
   ): Promise<TResourceDescriptor> {
     this.#assertOpen();
-    return this.#track(this.#withWriteLane(tenant, request.id, async () => {
-      const created = await this.#controlStore.createResource(tenant, {
+    return this.#track(this.#withWriteLane(request.id, async () => {
+      const created = await this.#controlStore.createResource({
         id: request.id,
         kind: request.kind,
         name: request.name,
-        cellId: tenant.cellId,
-        placementEpoch: tenant.placementEpoch,
+        cellId: this.#placement.cellId,
+        placementEpoch: this.#placement.placementEpoch,
         storageKey: request.storageKey ?? request.id,
-        nowMs: this.#nowMs(),
       });
-      if (!resourceMatches(tenant, request.id, created)) {
+      if (!resourceMatches(request.id, created)) {
         throw new ResourceError(
           'RESOURCE_PLACEMENT_STALE',
-          'Created resource identity does not match this tenant placement.',
+          'Created resource identity does not match the configured placement.',
         );
       }
-      const placement = await this.#controlStore.getPlacement(tenant, request.id);
+      const placement = await this.#controlStore.getPlacement(request.id);
       if (!placement) {
         throw new ResourceError(
           'RESOURCE_PLACEMENT_NOT_FOUND',
           'Resource placement reservation was not persisted.',
         );
       }
-      await this.#reconcileResource(tenant, created, placement);
-      const ready = await this.#controlStore.getResource(tenant, request.id);
-      if (!ready || !resourceMatches(tenant, request.id, ready) || ready.status !== 'ready') {
+      await this.#reconcileResource(created, placement);
+      const ready = await this.#controlStore.getResource(request.id);
+      if (!ready || !resourceMatches(request.id, ready) || ready.status !== 'ready') {
         throw new ResourceError(
           'RESOURCE_NOT_READY',
           'Resource provisioning did not reach ready state.',
@@ -458,69 +314,65 @@ export class ResourceStoreService implements IResourceStore {
   }
 
   async #adoptMissingPlacement(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
   ): Promise<TResourcePlacement | null> {
     if (
       !this.#reconciliationAuthority
-      || !await this.#reconciliationAuthority.canAdoptUnplacedResource(tenant, resource)
+      || !await this.#reconciliationAuthority.canAdoptUnplacedResource(resource)
     ) {
       return null;
     }
-    const current = await this.#controlStore.getPlacement(tenant, resource.id);
+    const current = await this.#controlStore.getPlacement(resource.id);
     if (current) return current;
-    const adopted = await this.#controlStore.reservePlacement(tenant, {
+    const adopted = await this.#controlStore.reservePlacement({
       resourceId: resource.id,
-      cellId: tenant.cellId,
-      placementEpoch: tenant.placementEpoch,
+      cellId: this.#placement.cellId,
+      placementEpoch: this.#placement.placementEpoch,
       storageKey: resource.id,
-      nowMs: this.#nowMs(),
     });
-    return placementCanActivate(tenant, resource.id, adopted) ? adopted : null;
+    return placementCanActivate(this.#placement, resource.id, adopted) ? adopted : null;
   }
 
   async #reconcileResource(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
     placement: TResourcePlacement,
   ): Promise<void> {
     if (
-      !resourceMatches(tenant, resource.id, resource)
-      || !placementCanActivate(tenant, resource.id, placement)
+      !resourceMatches(resource.id, resource)
+      || !placementCanActivate(this.#placement, resource.id, placement)
     ) {
       return;
     }
     let reconciliationState = resource;
     try {
       if (resource.status === 'deleting') {
-        await this.#reconcileDeletingResource(tenant, resource);
+        await this.#reconcileDeletingResource(resource);
         return;
       }
       const provider = this.#provider(resource.kind);
       if (resource.status === 'created') {
-        const provisioning = await this.#controlStore.updateResourceState(tenant, {
+        const provisioning = await this.#controlStore.updateResourceState({
           resourceId: resource.id,
           expectedStatus: 'created',
           status: 'provisioning',
           lastError: null,
-          nowMs: this.#nowMs(),
         });
         if (!provisioning) return;
-        if (!resourceMatches(tenant, resource.id, provisioning)) {
+        if (!resourceMatches(resource.id, provisioning)) {
           throw new ResourceError(
             'RESOURCE_PLACEMENT_STALE',
             'Provisioning resource identity changed during reconciliation.',
           );
         }
         reconciliationState = provisioning;
-        const currentPlacement = await this.#currentOwnedPlacement(tenant, resource.id);
+        const currentPlacement = await this.#currentOwnedPlacement(resource.id);
         if (!currentPlacement) return;
         await provider.provision(provisioning, {});
-        await this.#activateReady(tenant, provisioning, currentPlacement);
+        await this.#activateReady(provisioning, currentPlacement);
         return;
       }
       if (resource.status === 'provisioning' || (resource.status === 'ready' && provider.reconcileReady)) {
-        const currentPlacement = await this.#currentOwnedPlacement(tenant, resource.id);
+        const currentPlacement = await this.#currentOwnedPlacement(resource.id);
         if (!currentPlacement) return;
         const result = provider.reconcile
           ? await provider.reconcile(resource)
@@ -529,77 +381,73 @@ export class ResourceStoreService implements IResourceStore {
             message: 'Resource provider cannot reconcile physical state.',
           } };
         if (result.status === 'ready') {
-          await this.#activateReady(tenant, resource, currentPlacement);
+          await this.#activateReady(resource, currentPlacement);
         } else {
-          await this.#markError(tenant, resource, result.lastError ?? {
+          await this.#markError(resource, result.lastError ?? {
             code: 'RESOURCE_PROVIDER_UNAVAILABLE',
             message: 'Resource provider reconciliation failed.',
           });
         }
       }
     } catch (error) {
-      await this.#markError(tenant, reconciliationState, toSafeResourceError(error)).catch(() => undefined);
+      await this.#markError(reconciliationState, toSafeResourceError(error)).catch(() => undefined);
     }
   }
 
   async #reconcileDeletingResource(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
   ): Promise<void> {
-    if (!resourceMatches(tenant, resource.id, resource)) return;
+    if (!resourceMatches(resource.id, resource)) return;
     try {
-      await this.#withWriteLane(tenant, resource.id, async () => {
-        const placement = await this.#controlStore.getPlacement(tenant, resource.id);
+      await this.#withWriteLane(resource.id, async () => {
+        const placement = await this.#controlStore.getPlacement(resource.id);
         const mayDelete = placement
-          ? placementCanActivate(tenant, resource.id, placement)
-          : await this.#reconciliationAuthority?.canDeleteUnplacedResource(tenant, resource) === true;
+          ? placementCanActivate(this.#placement, resource.id, placement)
+          : await this.#reconciliationAuthority?.canDeleteUnplacedResource(resource) === true;
         if (!mayDelete) return;
         const provider = this.#provider(resource.kind);
         await provider.delete(resource);
-        if (!await this.#controlStore.deleteResource(tenant, resource.id)) {
+        if (!await this.#controlStore.deleteResource(resource.id)) {
           throw new ResourceError('RESOURCE_LIFECYCLE_CONFLICT', 'Resource deletion state changed.');
         }
       });
     } catch (error) {
-      await this.#markError(tenant, resource, toSafeResourceError(error)).catch(() => undefined);
+      await this.#markError(resource, toSafeResourceError(error)).catch(() => undefined);
     }
   }
 
   async #activateReady(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
     placement: TResourcePlacement,
   ): Promise<void> {
     if (
-      !resourceMatches(tenant, resource.id, resource)
-      || !placementCanActivate(tenant, resource.id, placement)
+      !resourceMatches(resource.id, resource)
+      || !placementCanActivate(this.#placement, resource.id, placement)
     ) {
       throw new ResourceError('RESOURCE_PLACEMENT_STALE', 'Resource placement cannot be activated by this cell.');
     }
-    const active = await this.#controlStore.updatePlacement(tenant, {
+    const active = await this.#controlStore.updatePlacement({
       resourceId: resource.id,
       expectedEpoch: placement.placementEpoch,
       placementEpoch: placement.placementEpoch,
       cellId: placement.cellId,
       status: 'active',
       storageKey: placement.storageKey,
-      nowMs: this.#nowMs(),
     });
     if (
       !active
-      || !placementCanActivate(tenant, resource.id, active)
-      || !placementMatches(tenant, resource.id, active)
+      || !placementCanActivate(this.#placement, resource.id, active)
+      || !placementMatches(this.#placement, resource.id, active)
     ) {
       throw new ResourceError('RESOURCE_PLACEMENT_STALE', 'Resource placement changed during activation.');
     }
 
     const expectedStatus = resource.status === 'created' ? 'provisioning' : resource.status;
-    const ready = await this.#controlStore.updateResourceState(tenant, {
+    const ready = await this.#controlStore.updateResourceState({
       resourceId: resource.id,
       expectedStatus,
       status: 'ready',
       lastError: null,
-      nowMs: this.#nowMs(),
     });
     if (!ready) {
       throw new ResourceError('RESOURCE_LIFECYCLE_CONFLICT', 'Resource state changed during reconciliation.');
@@ -607,40 +455,35 @@ export class ResourceStoreService implements IResourceStore {
   }
 
   async #markError(
-    tenant: TTenantContext,
     resource: TResourceDescriptor,
     error: ReturnType<typeof toSafeResourceError>,
   ): Promise<void> {
     if (
-      !resourceMatches(tenant, resource.id, resource)
-      || !await this.#currentOwnedPlacement(tenant, resource.id)
+      !resourceMatches(resource.id, resource)
+      || !await this.#currentOwnedPlacement(resource.id)
     ) {
       return;
     }
-    await this.#controlStore.updateResourceState(tenant, {
+    await this.#controlStore.updateResourceState({
       resourceId: resource.id,
       expectedStatus: resource.status,
       status: 'error',
       lastError: error,
-      nowMs: this.#nowMs(),
     });
   }
 
   async #currentOwnedPlacement(
-    tenant: TTenantContext,
     resourceId: string,
   ): Promise<TResourcePlacement | null> {
-    const placement = await this.#controlStore.getPlacement(tenant, resourceId);
-    return placement && placementCanActivate(tenant, resourceId, placement) ? placement : null;
+    const placement = await this.#controlStore.getPlacement(resourceId);
+    return placement && placementCanActivate(this.#placement, resourceId, placement) ? placement : null;
   }
 
   async #verifyWriteCapability(
-    tenant: TTenantContext,
     call: TResolvedResourceCall,
   ): Promise<TResourceWriteCapabilityClaims | null> {
     if (call.writeCapability && call.writeCapability === this.#hostWriteCapability) return null;
     if (!call.writeCapability) {
-      if (this.#allowUnfencedWrites) return null;
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_INVALID', 'A write capability is required.');
     }
     if (!call.operationId) {
@@ -650,7 +493,6 @@ export class ResourceStoreService implements IResourceStore {
       );
     }
     const claims = await this.#writeCapabilityVerifier?.verifyWriteCapability(
-      tenant,
       call.writeCapability,
     );
     if (!claims) {
@@ -660,28 +502,13 @@ export class ResourceStoreService implements IResourceStore {
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_EXPIRED', 'Resource write capability expired.');
     }
     if (
-      claims.orgId !== tenant.orgId
-      || claims.resourceId !== call.resourceId
+      claims.resourceId !== call.resourceId
       || claims.operation !== call.operation
       || claims.operationId !== call.operationId
     ) {
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_STALE', 'Resource write capability scope is stale.');
     }
     return claims;
-  }
-
-  #receipt(
-    call: TResolvedResourceCall,
-    committed: boolean,
-    replayed?: boolean,
-  ): TResourceOperationReceipt {
-    return {
-      operationId: call.operationId!,
-      resourceId: call.resourceId,
-      effect: call.effect,
-      committed,
-      ...(replayed === undefined ? {} : { replayed }),
-    };
   }
 
   #provider(kind: TResourceKind): ILocalResourceStoreProvider {
@@ -693,11 +520,10 @@ export class ResourceStoreService implements IResourceStore {
   }
 
   #withWriteLane<T>(
-    tenant: TTenantContext,
     resourceId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const key = `${tenant.orgId}:${resourceId}`;
+    const key = resourceId;
     const previous = this.#writeTails.get(key) ?? Promise.resolve();
     const result = previous.then(operation, operation);
     const tail = result.then(() => undefined, () => undefined);
@@ -781,12 +607,11 @@ export class ResourceGateway implements IResourceGateway {
   }
 
   async call<TOutput = unknown>(
-    tenant: TTenantContext,
     call: TResourceCall,
   ): Promise<TResourceCallResult<TOutput>> {
     const [binding, requirement] = await Promise.all([
-      this.#bindings.resolveBinding(tenant, call.slot),
-      this.#requirements.resolveRequirement(tenant, call.slot),
+      this.#bindings.resolveBinding(call.slot),
+      this.#requirements.resolveRequirement(call.slot),
     ]);
     if (!binding) throw new ResourceError('RESOURCE_NOT_BOUND', 'Resource slot is not bound.');
     if (!requirement) throw new ResourceError('RESOURCE_SLOT_UNKNOWN', 'Resource slot is not declared.');
@@ -802,7 +627,7 @@ export class ResourceGateway implements IResourceGateway {
     if (call.kind && call.kind !== binding.kind) {
       throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Logical call kind does not match its binding.');
     }
-    return this.#store.call(tenant, {
+    return this.#store.call({
       slot: call.slot,
       resourceId: binding.resourceId,
       kind: binding.kind,

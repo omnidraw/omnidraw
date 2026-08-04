@@ -9,7 +9,7 @@ type TMigrationLedgerRow = {
   version: number;
   name: string;
   checksum_sha256: string;
-  applied_at_ms: number;
+  applied_at_sec: string;
   application_version: string;
 };
 
@@ -21,11 +21,6 @@ type TMigrationChecksum = Readonly<{
 
 type TDatabasePreflightResult =
   | Readonly<{ status: 'empty' }>
-  | Readonly<{
-      status: 'pending';
-      currentVersion: number;
-      appliedMigrations: readonly TMigrationLedgerRow[];
-    }>
   | Readonly<{
       status: 'ready';
       currentVersion: number;

@@ -9,11 +9,9 @@ import {
   signCapsuleArtifactBytes,
   type CapsuleArtifactSigningKey,
 } from '@omnidraw/capsule/sign';
-import type { TTenantContext } from '@omnidraw/tenant-core';
 import {
   ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetConstructionContractPayload,
@@ -37,6 +35,7 @@ import {
   type TWidgetDistributionBuildProvenance,
   type TWidgetServerBuildArtifact,
   type TWidgetServerFunctionDescriptor,
+  type TWidgetServerFunctionDescriptorExtractionRequest,
   type TWidgetSourceSnapshot,
 } from '@omnidraw/widget-contract';
 import {
@@ -229,11 +228,8 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       ?? ((specifier) => Bun.resolveSync(specifier, import.meta.dir));
   }
 
-  async build(
-    tenant: TTenantContext,
-    request: TWidgetBuildRequest,
-  ): Promise<TWidgetBuildResult> {
-    const construction = await this.construct(tenant, {
+  async build(request: TWidgetBuildRequest): Promise<TWidgetBuildResult> {
+    const construction = await this.construct({
       snapshot: request.snapshot,
       manifest: request.manifest,
       canonicalManifestJson: request.canonicalManifestJson,
@@ -241,14 +237,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       capsuleBuildIdentity: request.capsuleBuildIdentity,
       buildPolicyId: request.buildPolicyId,
     });
-    return this.signConstruction(tenant, {
+    return this.signConstruction({
       construction,
       signingPurpose: request.signingPurpose,
     });
   }
 
   async construct(
-    tenant: TTenantContext,
     request: TWidgetArtifactConstructionRequest,
   ): Promise<TWidgetArtifactConstructionResult> {
     assertBuildActive(request.signal);
@@ -285,12 +280,13 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     assertBuildActive(request.signal);
     let functionDescriptors: readonly TWidgetServerFunctionDescriptor[] = [];
     if (serverArtifact !== null && manifest.server !== undefined) {
+      const extractionRequest = Object.freeze({
+        serverArtifact,
+        serverEntry: manifest.server.entry,
+        runtimeAbi: manifest.server.runtimeAbi,
+      });
       const extracted = await this.config.functionDescriptorExtractor
-        .extractServerFunctionDescriptors(tenant, {
-          serverArtifact,
-          serverEntry: manifest.server.entry,
-          runtimeAbi: manifest.server.runtimeAbi,
-        });
+        .extractServerFunctionDescriptors(extractionRequest);
       functionDescriptors = ZWidgetServerFunctionDescriptors.parse(
         fnAttachServerFunctionModulePaths(extracted, functionModules),
       );
@@ -303,11 +299,11 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     );
     const browserFunctionDescriptors =
       fnProjectWidgetBrowserFunctionDescriptors(functionDescriptors);
-    const browserFunctionDescriptorsDigestSha256 = sha256(
-      fnCanonicalizeWidgetBrowserFunctionDescriptors(browserFunctionDescriptors),
-    );
     const functions = await createOmnidrawServerFunctionCapabilityContract({
-      descriptorDigestSha256: browserFunctionDescriptorsDigestSha256,
+      // The capability binds the exact generated functions.json contract. The
+      // browser receives the safe projection, but its selector must still
+      // identify the full descriptor file verified by the host.
+      descriptorDigestSha256: functionDescriptorsDigestSha256,
       functions: browserFunctionDescriptors,
     });
     const collaborative = manifest.ui.state?.collaborative === true
@@ -460,6 +456,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       buildPolicyId,
       canonicalManifestJson: request.canonicalManifestJson,
       distributionProvenance,
+      distributionFiles: Object.freeze(distributionInput.snapshot.files.map((file) => Object.freeze({
+        path: file.path,
+        bytes: new Uint8Array(file.bytes),
+      }))),
       functionDescriptors,
       functionDescriptorsDigestSha256,
       capabilityContractDigestSha256,
@@ -480,7 +480,6 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
   }
 
   async signConstruction(
-    _tenant: TTenantContext,
     request: TWidgetArtifactConstructionSignRequest,
   ): Promise<TWidgetBuildResult> {
     const construction = request.construction;
@@ -524,6 +523,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       canonicalManifestJson: construction.canonicalManifestJson,
       constructionContractDigestSha256: construction.constructionContractDigestSha256,
       distributionProvenance: construction.distributionProvenance,
+      ...(construction.distributionFiles === undefined
+        ? {}
+        : { distributionFiles: construction.distributionFiles }),
       functionDescriptors: construction.functionDescriptors,
       functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
       capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
@@ -545,7 +547,6 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
   }
 
   async closeWorkspace(
-    _tenant: TTenantContext,
     request: Readonly<{ workspaceKey: string }>,
   ): Promise<void> {
     await this.#distributionBuild.closeWorkspace?.(request.workspaceKey);

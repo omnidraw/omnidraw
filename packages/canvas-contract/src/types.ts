@@ -18,6 +18,13 @@ export type TCanvasRevision = number;
 export type TCanvasItemRevision = number;
 export type TCanvasJsonPath = readonly (string | number)[];
 
+/** One concrete, host-selected local resource choice for a placed widget. */
+export type TCanvasWidgetResourceBindingV1 = Readonly<{
+  resourceId: string;
+  allowRead: boolean;
+  allowWrite: boolean;
+}>;
+
 export type TCanvasWidgetExtensionV1 =
   | Readonly<{
       schemaVersion: 1;
@@ -30,8 +37,10 @@ export type TCanvasWidgetExtensionV1 =
       schemaVersion: 1;
       type: "widget-instance";
       instanceId: string;
-      definitionId: string;
-      revisionId: string;
+      widgetKey: string;
+      resourceBindings?: Readonly<
+        Record<string, TCanvasWidgetResourceBindingV1>
+      >;
       uiProps?: TJsonValue;
     }>;
 
@@ -63,8 +72,8 @@ export type TCanvasItemSnapshot = Readonly<{
   id: TCanvasItemId;
   item: TSceneNode;
   itemRevision: TCanvasItemRevision;
-  createdAtMs: number;
-  updatedAtMs: number;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
 export type TCanvasSnapshot = Readonly<{
@@ -188,9 +197,8 @@ export type TCanvasItemQueryFilter =
   | Readonly<{ type: "parent"; parentId: TCanvasItemId | null }>
   | Readonly<{ type: "widget-instance"; instanceId: string }>
   | Readonly<{
-      type: "widget-definition";
-      definitionId: string;
-      revisionId?: string;
+      type: "widget-key";
+      widgetKey: string;
     }>;
 
 export type TCanvasItemQueryCursor =
@@ -202,7 +210,6 @@ export type TCanvasItemQueryCursor =
     }>
   | Readonly<{
       type: "widget-identity";
-      revisionId: string;
       instanceId: string;
       id: TCanvasItemId;
     }>;

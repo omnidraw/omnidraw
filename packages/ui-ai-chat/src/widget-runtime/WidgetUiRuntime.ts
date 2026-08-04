@@ -55,7 +55,6 @@ type TWidgetUiRuntimeConfig = Readonly<{
   transport: TWidgetRuntimeTransportPort;
   codec: TWidgetArtifactCodecPort;
   mount: TWidgetUiArtifactMountPort;
-  createIdempotencyKey(): string;
   organizationId(): string;
   tenantAuthorityKey(): string;
   nowMs(): number;
@@ -138,8 +137,7 @@ function loadErrorCode(error: unknown): string | null {
 function isRecoverableLoadError(error: unknown): boolean {
   const code = loadErrorCode(error);
   if (code !== null) {
-    return code === 'NOT_FOUND'
-      || code === 'SERVICE_UNAVAILABLE'
+    return code === 'SERVICE_UNAVAILABLE'
       || code === 'TIMEOUT'
       || code === 'TOO_MANY_REQUESTS';
   }
@@ -244,9 +242,8 @@ export class WidgetUiRuntime {
     const request = fnWidgetRuntimeLoadRequest({
       canvasId: target.canvasId,
       elementId: target.elementId,
-      definitionId: target.definitionId,
-      revisionId: target.revisionId,
       widgetInstanceId: target.widgetInstanceId,
+      widgetKey: target.widgetKey,
     });
     const organizationId = this.#readOrganizationId();
     const tenantAuthorityKey = this.#readTenantAuthorityKey();
@@ -363,9 +360,6 @@ export class WidgetUiRuntime {
           identity: selected.identity,
           transport: this.config.transport,
           functionDescriptors: selected.functionDescriptors,
-          createIdempotencyKey: this.config.createIdempotencyKey,
-          nowMs: this.config.nowMs,
-          wait: this.config.wait,
           isTargetCurrent: isCurrent,
         });
         args.root.replaceChildren();
@@ -1136,6 +1130,11 @@ export class WidgetUiRuntime {
       signal,
     );
     if (error || !response) {
+      if (loadErrorCode(error) === 'NOT_FOUND') {
+        throw new Error(
+          'This widget is unavailable because its published folder is missing or unhealthy.',
+        );
+      }
       if (isRecoverableLoadError(error) && this.config.isTargetCurrent !== undefined) {
         throw new RecoverableWidgetRuntimeLoadError(
           'Widget runtime target is temporarily unavailable.',

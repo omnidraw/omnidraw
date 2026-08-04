@@ -1,4 +1,4 @@
-import type { TWidgetCatalog } from "@omnidraw/orpc-client"
+import type { TWidgetPublicCatalog } from "@omnidraw/orpc-client"
 import type { TAiChatApiPort } from "../../ports"
 import type { TChatComposerMention } from "../components/ChatComposer/interface"
 import { fnProjectMentionCatalog, type TMentionCatalogResource } from "./fn.mention-catalog"
@@ -6,7 +6,7 @@ import { fnProjectMentionCatalog, type TMentionCatalogResource } from "./fn.ment
 export type TMentionCatalogSnapshot = {
   mentions: TChatComposerMention[]
   resources: TMentionCatalogResource[]
-  widgets: TWidgetCatalog | null
+  widgets: TWidgetPublicCatalog | null
 }
 
 type TMentionCatalogEntry = {
@@ -43,10 +43,9 @@ function notify(entry: TMentionCatalogEntry) {
 }
 
 async function loadEntry(entry: TMentionCatalogEntry): Promise<TMentionCatalogSnapshot> {
-  const widgetCatalog = entry.api.api.agent.widgets?.catalog
   const [resourceRequest, widgetRequest] = await Promise.allSettled([
     entry.api.api.resource.resources.list({}),
-    widgetCatalog ? widgetCatalog({}) : Promise.resolve(undefined),
+    entry.api.api.widget.catalog.get(),
   ])
   if (entry.closed) return entry.snapshot
 

@@ -15,8 +15,6 @@ const identity = Object.freeze({
   canvasId: 'canvas-a',
   elementId: 'element-a',
   widgetInstanceId: 'instance-a',
-  definitionId: 'definition-a',
-  revisionId: 'revision-a',
 }) satisfies TWidgetCollaborativeStateIdentity;
 
 class MemoryEventQueue implements AsyncIterableIterator<TWidgetCollaborativeStateTransportSnapshot> {

@@ -23,19 +23,13 @@ function assertIdentifier(value: unknown, label: string): asserts value is strin
 export function fnNormalizeWidgetStateIdentity(
   value: TWidgetStateInstanceIdentity,
 ): TWidgetStateInstanceIdentity {
-  assertIdentifier(value.orgId, 'Widget state organization id');
   assertIdentifier(value.canvasId, 'Widget state canvas id');
   assertIdentifier(value.elementId, 'Widget state element id');
   assertIdentifier(value.widgetInstanceId, 'Widget state instance id');
-  assertIdentifier(value.definitionId, 'Widget state definition id');
-  assertIdentifier(value.revisionId, 'Widget state revision id');
   return Object.freeze({
-    orgId: value.orgId,
     canvasId: value.canvasId,
     elementId: value.elementId,
     widgetInstanceId: value.widgetInstanceId,
-    definitionId: value.definitionId,
-    revisionId: value.revisionId,
   });
 }
 
@@ -71,11 +65,8 @@ export function fnWidgetStateSnapshotsMatch(
   right: TWidgetStateSnapshot,
 ): boolean {
   return left.version === right.version
-    && left.identity.orgId === right.identity.orgId
     && left.identity.canvasId === right.identity.canvasId
     && left.identity.elementId === right.identity.elementId
     && left.identity.widgetInstanceId === right.identity.widgetInstanceId
-    && left.identity.definitionId === right.identity.definitionId
-    && left.identity.revisionId === right.identity.revisionId
     && JSON.stringify(left.state) === JSON.stringify(right.state);
 }

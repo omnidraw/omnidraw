@@ -34,21 +34,26 @@ describe('M6 short-lived function runtime boundaries', () => {
     expect(packageJson.exports?.['./local']).toBe('./src/local/index.ts');
   });
 
-  test('requires the exact widget revision without exposing tenant, resource, or durable-wait authority', () => {
+  test('requires exact canvas and filesystem-catalog identity without durable authority', () => {
     const base = {
+      canvasId: 'canvas-a',
+      elementId: 'element-a',
       widgetInstanceId: 'widget-instance',
-      widgetRevisionId: 'widget-revision',
+      widgetKey: 'settings',
+      catalogGeneration: 7,
       functionName: 'updateSettings',
       input: { theme: 'dark' },
-      idempotencyKey: 'stable-key',
     };
     expect(ZInvokeFunctionInput.safeParse(base).success).toBe(true);
     for (const forbidden of [
       { orgId: 'foreign-org' },
       { accountId: 'foreign-account' },
       { widgetDefinitionId: 'caller-definition' },
+      { widgetRevisionId: 'caller-revision' },
       { functionId: 'caller-function' },
       { resourceId: 'caller-resource' },
+      { invocationId: 'caller-invocation' },
+      { idempotencyKey: 'caller-key' },
       { waitUntilMs: 1 },
       { schedule: 'daily' },
       { durableContinuation: true },
@@ -85,19 +90,23 @@ describe('M6 short-lived function runtime boundaries', () => {
     expect(pathViolations).toEqual([]);
   });
 
-  test('wires production through the durable store and one-shot sandbox capability', async () => {
+  test('wires production through the direct catalog runtime and one-shot sandbox capability', async () => {
     const setup = await readFile(join(REPO_ROOT, 'apps', 'cli', 'src', 'setup-services.ts'), 'utf8');
     for (const token of [
-      'FunctionControlStoreTurso',
       'BunChildSandboxDriver',
-      'FunctionExecutor',
-      'LocalFunctionDispatcher',
-      'FunctionResourceGatewayFactory',
-      'WidgetFunctionArtifactReader',
+      'DirectFunctionExecutor',
+      'EphemeralResourceWritePermitAuthority',
+      'WidgetFilesystemRuntimeCatalog',
       "services.provide('functionInvocation'",
     ]) {
       expect(setup).toContain(token);
     }
+    for (const removed of [
+      'FunctionControlStoreTurso',
+      'LocalFunctionDispatcher',
+      'FunctionResourceGatewayFactory',
+      'WidgetFunctionArtifactReader',
+    ]) expect(setup).not.toContain(removed);
 
     const driver = await readFile(
       join(REPO_ROOT, 'packages', 'function-runtime', 'src', 'local', 'BunChildSandboxDriver.ts'),

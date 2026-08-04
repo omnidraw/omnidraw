@@ -1,11 +1,11 @@
-import type { TWidgetVariantSummary } from '@omnidraw/orpc-client';
+import type { TOmnidrawToolIcon } from '@omnidraw/widget-contract';
 import DOMPurify from 'dompurify';
 import Puzzle from 'lucide-solid/icons/puzzle';
 import * as LucideStatic from 'lucide-static';
 import { Show, type Component } from 'solid-js';
 
 export type TWidgetIconProps = {
-  icon: TWidgetVariantSummary['tool']['icon'];
+  icon: TOmnidrawToolIcon | null;
   class?: string;
   label?: string;
 };

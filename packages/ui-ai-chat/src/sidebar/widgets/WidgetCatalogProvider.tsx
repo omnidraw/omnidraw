@@ -1,9 +1,17 @@
-import type { TWidgetCatalog } from '@omnidraw/orpc-client';
-import { createContext, createSignal, onCleanup, onMount, useContext, type Accessor, type ParentComponent } from 'solid-js';
+import type { TWidgetPublicCatalog } from '@omnidraw/orpc-client';
+import {
+  createContext,
+  createSignal,
+  onCleanup,
+  onMount,
+  useContext,
+  type Accessor,
+  type ParentComponent,
+} from 'solid-js';
 import type { TSidebarController } from '../ports';
 
 type TWidgetCatalogContext = {
-  catalog: Accessor<TWidgetCatalog | null>;
+  catalog: Accessor<TWidgetPublicCatalog | null>;
   loading: Accessor<boolean>;
   error: Accessor<string>;
   refresh: () => Promise<void>;
@@ -12,7 +20,7 @@ type TWidgetCatalogContext = {
 const WidgetCatalogContext = createContext<TWidgetCatalogContext>();
 
 export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarController }> = (props) => {
-  const [catalog, setCatalog] = createSignal<TWidgetCatalog | null>(null);
+  const [catalog, setCatalog] = createSignal<TWidgetPublicCatalog | null>(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
   let requestId = 0;
@@ -33,7 +41,7 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
   const refresh = async () => {
     const currentRequest = ++requestId;
     setLoading(catalog() === null);
-    const [loadError, value] = await props.controller.apiService.api.agent.widgets.catalog({});
+    const [loadError, value] = await props.controller.apiService.api.widget.catalog.get();
     if (closed || currentRequest !== requestId) return;
     setLoading(false);
     if (loadError) {
@@ -41,7 +49,12 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
       return;
     }
     setError('');
-    setCatalog((current) => current?.generation === value.generation ? current : value);
+    setCatalog((current) => (
+      current?.generation === value.generation
+      && current.catalogDigestSha256 === value.catalogDigestSha256
+        ? current
+        : value
+    ));
   };
 
   const scheduleRefresh = () => {
@@ -55,7 +68,7 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
   onMount(() => {
     void refresh();
     void (async () => {
-      const [eventError, events] = await props.controller.apiService.api.agent.events({});
+      const [eventError, events] = await props.controller.apiService.api.widget.catalog.events({});
       if (eventError) return;
       const currentIterator = events[Symbol.asyncIterator]();
       if (closed) {
@@ -67,15 +80,10 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
         while (!closed) {
           const next = await currentIterator.next();
           if (next.done || closed) break;
-          const event = next.value;
-          if (event && typeof event === 'object' && 'kind' in event) {
-            const kind = (event as { kind?: string }).kind;
-            const type = (event as { type?: string }).type;
-            if (kind === 'widget-draft' || (kind === 'widget-preview' && type === 'catalog-changed') || kind === 'widget-published' || kind === 'widgetupdate' || kind === 'widget-catalog') scheduleRefresh();
-          }
+          scheduleRefresh();
         }
       } catch {
-        // WebSocket reconnects are owned by the shared client; a later provider mount resubscribes.
+        // Reconnection is owned by the shared client; the current catalog remains visible.
       } finally {
         if (iterator === currentIterator) {
           iterator = undefined;
@@ -96,7 +104,9 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
     closeIterator(activeIterator);
   });
 
-  return <WidgetCatalogContext.Provider value={{ catalog, loading, error, refresh }}>{props.children}</WidgetCatalogContext.Provider>;
+  return <WidgetCatalogContext.Provider value={{ catalog, loading, error, refresh }}>
+    {props.children}
+  </WidgetCatalogContext.Provider>;
 };
 
 export function useWidgetCatalog(): TWidgetCatalogContext {

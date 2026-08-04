@@ -89,7 +89,6 @@ describe('Capsule adapter package boundary', () => {
     expect(manifest.exports['.']).toBeUndefined();
     expect(manifest.dependencies).toEqual({
       '@omnidraw/capsule': CAPSULE_DEPENDENCY,
-      '@omnidraw/tenant-core': 'workspace:*',
       '@omnidraw/widget-contract': 'workspace:*',
     });
   });

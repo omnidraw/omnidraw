@@ -1,13 +1,28 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
-import { ZWidgetManifestV3 } from '../packages/widget-contract/src';
-import { fnArtifactBlobRelativePath } from '../packages/widget-contract/src/local/fn.artifact-path';
+import { ZWidgetManifestV4 } from '../packages/widget-contract/src';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const WIDGET_CONTRACT_SOURCE = 'packages/widget-contract/src';
 const WIDGET_LOCAL_SOURCE = 'packages/widget-contract/src/local';
-const WIDGET_CONTROL_STORE_SOURCE = 'packages/service-db/src/WidgetControlStoreTurso';
-const CLI_WIDGET_INTEGRATION_TEST = 'apps/cli/tests/WidgetService.test.ts';
+const WIDGET_FILESYSTEM_SOURCE = 'packages/service-agent/src/widget-filesystem';
+const CLI_RUNTIME_CATALOG_SOURCE = 'apps/cli/src/services/WidgetFilesystemRuntimeCatalog.ts';
+const CLI_RUNTIME_CATALOG_TEST = 'apps/cli/tests/WidgetFilesystemRuntimeCatalog.test.ts';
+const RETIRED_WIDGET_CONTROL_OWNERS = [
+  'packages/service-db/src/AgentAuthoringStoreTurso.ts',
+  'packages/service-db/src/WidgetControlStoreTurso.ts',
+  'packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts',
+  'packages/service-db/src/DbServiceTurso/fx.tool-group.ts',
+  'packages/service-db/src/DbServiceTurso/tx.tool-group.ts',
+  'packages/service-agent/src/widget-drafts/WidgetDraftController.ts',
+  'packages/service-agent/src/widget-management/WidgetManagement.ts',
+  'packages/widget-contract/src/local/LocalWidgetArtifactStore.ts',
+  'packages/widget-contract/src/local/WidgetArtifactService.ts',
+  'packages/widget-contract/src/local/WidgetPreviewService.ts',
+  'packages/widget-contract/src/local/WidgetPublicationService.ts',
+  'apps/cli/src/services/WidgetService.ts',
+  'apps/cli/src/services/WidgetServicePool.ts',
+] as const;
 
 type TSource = Readonly<{
   path: string;
@@ -35,45 +50,13 @@ async function sources(paths: readonly string[]): Promise<TSource[]> {
   })));
 }
 
-async function cliWidgetServiceFiles(): Promise<string[]> {
-  const files: string[] = [];
-  const glob = new Bun.Glob('apps/cli/src/services/WidgetService*.ts');
-  for await (const path of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) files.push(path);
-  return files.sort();
-}
-
 function linesMatching(source: TSource, pattern: RegExp, message: string): string[] {
   return source.text.split('\n').flatMap((line, index) => (
     pattern.test(line) ? [`${source.path}:${index + 1}: ${message}`] : []
   ));
 }
 
-function declarationBody(source: string, declarationName: string): string | null {
-  const declaration = new RegExp(
-    `(?:export\\s+)?(?:type|interface)\\s+${declarationName}\\b[^={]*[={]`,
-    'm',
-  ).exec(source);
-  if (declaration === null) return null;
-
-  const openingIndex = source.indexOf(
-    declaration[0].endsWith('{') ? '{' : '=',
-    declaration.index,
-  );
-  if (openingIndex < 0) return null;
-  const bodyStart = source.indexOf('{', openingIndex);
-  if (bodyStart < 0) return null;
-
-  let depth = 0;
-  for (let index = bodyStart; index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1;
-    if (source[index] !== '}') continue;
-    depth -= 1;
-    if (depth === 0) return source.slice(bodyStart, index + 1);
-  }
-  return null;
-}
-
-describe('M5 immutable widget artifact boundaries', () => {
+describe('filesystem-first widget artifact boundaries', () => {
   test('keeps the widget-contract root browser-safe and local implementations opt-in', async () => {
     const packageJson = await Bun.file(
       resolve(REPO_ROOT, 'packages/widget-contract/package.json'),
@@ -113,167 +96,93 @@ describe('M5 immutable widget artifact boundaries', () => {
     expect(rootEntry).not.toMatch(/['"]\.\/?local(?:\/|['"])/);
   });
 
-  test('keeps immutable storage, local publication, and dedicated CLI widget services runtime-neutral', async () => {
-    const controlStoreFiles = [
-      'packages/service-db/src/WidgetControlStoreTurso.ts',
-      ...(await sourceFiles(WIDGET_CONTROL_STORE_SOURCE)),
-    ].filter((path, index, files) => files.indexOf(path) === index);
+  test('keeps filesystem publication and runtime catalog independent from database authority', async () => {
     const files = [
-      ...(await sourceFiles(WIDGET_CONTRACT_SOURCE)),
-      ...controlStoreFiles,
-      ...(await cliWidgetServiceFiles()),
+      ...(await sourceFiles(WIDGET_FILESYSTEM_SOURCE)),
+      CLI_RUNTIME_CATALOG_SOURCE,
     ];
-    const existingFiles: string[] = [];
-    for (const path of files) {
-      if (await Bun.file(resolve(REPO_ROOT, path)).exists()) existingFiles.push(path);
-    }
-
     const violations: string[] = [];
-    for (const source of await sources(existingFiles)) {
+    for (const source of await sources(files)) {
       violations.push(...linesMatching(
         source,
-        /@omnidraw\/service-actor|(?:^|[^A-Za-z])ActorService(?:[^A-Za-z]|$)/,
-        'widget publication depends on a retired resident runtime',
+        /@omnidraw\/service-db|WidgetControlStore|AgentAuthoringStore|\btoolGroup\b|\b(?:widget_definitions|widget_definition_revisions|widget_revision_sources|artifact_references|widget_instances|resource_bindings|tool_groups|agent_drafts|agent_previews)\b/,
+        'filesystem widget authority depends on the retired database control plane',
       ));
     }
     expect(violations).toEqual([]);
   });
 
-  test('keeps durable Preview writes inside the two authoritative stores', async () => {
-    const writers = new Set<string>();
-    for (const source of await sources(await sourceFiles('packages/service-db/src'))) {
-      if (/\b(?:INSERT\s+INTO|UPDATE)\s+agent_previews\b/i.test(source.text)) {
-        writers.add(source.path);
-      }
+  test('keeps retired database widget control-plane owners deleted', async () => {
+    for (const path of RETIRED_WIDGET_CONTROL_OWNERS) {
+      expect(await Bun.file(resolve(REPO_ROOT, path)).exists(), path).toBe(false);
     }
-
-    expect([...writers].sort()).toEqual([
-      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
-      'packages/service-db/src/WidgetControlStoreTurso.ts',
-    ]);
-    const authoringStore = await Bun.file(resolve(
+    const serviceAgentIndex = await Bun.file(resolve(
       REPO_ROOT,
-      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
+      'packages/service-agent/src/index.ts',
     )).text();
-    expect(authoringStore).toContain('IWidgetPreviewStore');
-    expect(authoringStore).toContain('agent_preview');
+    expect(serviceAgentIndex).not.toContain('widget-drafts');
+    expect(serviceAgentIndex).not.toContain('widget-management');
   });
 
-  test('strictly rejects fields outside the current widget manifest', () => {
-    const validManifest = {
-      schemaVersion: 3,
+  test('strictly rejects database identity and release-pointer fields in filesystem manifests', () => {
+    const portableManifest = {
+      $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
+      schemaVersion: 4,
       name: 'Clock',
       slug: 'clock',
-      ui: {
-        runtime: 'capsule',
-        entry: 'src/ui.ts',
-        apis: ['DOM'],
-      },
+      description: 'A portable clock.',
+      tool: { label: 'Clock', group: 'utilities', priority: 0 },
+      ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
     } as const;
-    expect(ZWidgetManifestV3.safeParse(validManifest).success).toBe(true);
-    expect(ZWidgetManifestV3.safeParse({
-      ...validManifest,
-      residentRuntime: {
-        entry: 'src/runtime.ts',
-      },
-    }).success).toBe(false);
-    expect(ZWidgetManifestV3.safeParse({
-      schemaVersion: 2,
-      name: 'Old widget',
-      slug: 'old-widget',
-      ui: { entry: 'src/ui.ts' },
-    }).success).toBe(false);
+    expect(ZWidgetManifestV4.safeParse(portableManifest).success).toBe(true);
+    for (const field of ['definitionId', 'revisionId', 'artifactId', 'activeRevisionId']) {
+      expect(ZWidgetManifestV4.safeParse({
+        ...portableManifest,
+        [field]: 'db-owned',
+      }).success, field).toBe(false);
+    }
+    expect(ZWidgetManifestV4.safeParse({ ...portableManifest, $schema: 'https://example.test' }).success)
+      .toBe(false);
   });
 
-  test('keeps the production widget capability narrow and identity-bound', async () => {
-    const serviceFiles = await cliWidgetServiceFiles();
-    const integrationExists = await Bun.file(
-      resolve(REPO_ROOT, CLI_WIDGET_INTEGRATION_TEST),
-    ).exists();
-
-    if (integrationExists) expect(serviceFiles.length).toBeGreaterThan(0);
-    if (serviceFiles.length > 0) {
-      const { createWidgetServiceCapability } = await import(
-        '../apps/cli/src/services/WidgetServicePool'
-      );
-      const method = () => Promise.resolve(undefined);
-      const capability = createWidgetServiceCapability({
-        publish: method,
-        rollback: method,
-        getRevision: method,
-        getActiveRevision: method,
-        issueBrowserUiArtifactReadCapability: method,
-        getArtifact: method,
-        readArtifact: method,
-        forTenant: method,
-        controlStore: {},
-        artifactsPath: '/host/private',
-        deleteArtifact: method,
-        collect: method,
-      } as never);
-      expect(Object.isFrozen(capability)).toBe(true);
-      expect(Reflect.ownKeys(capability).sort()).toEqual([
-        'getActiveRevision',
-        'getArtifact',
-        'getRevision',
-        'getRevisionSource',
-        'issueBrowserUiArtifactReadCapability',
-        'listPublishedPlacements',
-        'publish',
-        'readArtifact',
-        'resolvePublishedPlacement',
-        'rollback',
-      ]);
-      for (const forbidden of [
-        'forTenant',
-        'controlStore',
-        'path',
-        'artifactsPath',
-        'delete',
-        'deleteArtifact',
-        'collect',
-        'digestSha256',
-        'issueArtifactReadCapability',
-        'issueSourceBuildArtifactReadCapability',
-        'issueUiPreviewArtifactReadCapability',
-        'issueServerExecutionArtifactReadCapability',
-        'buildPreview',
-        'getPreview',
-        'getPreviewRevision',
-        'stopPreview',
-        'captureSource',
-      ]) {
-        expect(forbidden in capability).toBe(false);
-      }
+  test('keeps the production runtime capability generation-bound and filesystem-only', async () => {
+    const { WidgetFilesystemRuntimeCatalog } = await import(
+      '../apps/cli/src/services/WidgetFilesystemRuntimeCatalog'
+    );
+    const methods = Object.getOwnPropertyNames(WidgetFilesystemRuntimeCatalog.prototype);
+    expect(methods).toEqual(expect.arrayContaining([
+      'catalogObservation',
+      'current',
+      'isRuntimeResolutionCurrent',
+      'publishedReferences',
+      'refresh',
+      'resolvePlacement',
+      'resolveRuntime',
+      'start',
+      'subscribe',
+    ]));
+    for (const retired of [
+      'getActiveRevision',
+      'getRevision',
+      'rollback',
+      'readArtifact',
+      'resolvePublishedPlacement',
+    ]) {
+      expect(methods).not.toContain(retired);
     }
 
-    const capabilitySource = serviceFiles.find((path) => path.endsWith('WidgetServicePool.ts'));
-    if (capabilitySource !== undefined) {
-      const source = await Bun.file(resolve(REPO_ROOT, capabilitySource)).text();
-      expect(source).toMatch(
-        /type\s+TWidgetServiceCapability\s*=\s*Omit<\s*IWidgetPublicationService,\s*'archive'\s*\|\s*'publishConstruction'\s*>/,
-      );
-      expect(source).toMatch(/\bIWidgetArtifactReader\b/);
-      expect(source).toMatch(/\bIWidgetBrowserUiArtifactReadCapabilityIssuer\b/);
-      expect(source).toMatch(/createWidgetServerArtifactCapability/);
-    }
-
-    const artifactReadRequest = await Bun.file(
-      resolve(REPO_ROOT, 'packages/widget-contract/src/types.ts'),
-    ).text();
-    const readRequestBody = declarationBody(artifactReadRequest, 'TWidgetArtifactReadRequest');
-    expect(readRequestBody).not.toBeNull();
-    expect(readRequestBody).toMatch(/\bartifactId\b/);
-    expect(readRequestBody).toMatch(/\breadCapability\b/);
-    expect(readRequestBody).toMatch(/\bpurpose\b/);
-    expect(readRequestBody).not.toMatch(/\baudience\b/);
-    expect(readRequestBody).not.toMatch(/\bdigestSha256\b/);
+    const source = await Bun.file(resolve(REPO_ROOT, CLI_RUNTIME_CATALOG_SOURCE)).text();
+    expect(source).toContain('NodeWidgetCatalogFilesystem');
+    expect(source).toContain('catalogGeneration');
+    expect(source).toContain('withRead');
+    expect(source).not.toMatch(/WidgetControlStore|DbServiceTurso|definitionId|revisionId|artifactId/);
+    expect(await Bun.file(resolve(REPO_ROOT, CLI_RUNTIME_CATALOG_TEST)).exists()).toBe(true);
   });
 
-  test('does not restore mutable slug-addressed artifact writes in the M5 implementation', async () => {
+  test('does not restore the mutable artifact directory or database compatibility reads', async () => {
     const files = [
-      ...(await sourceFiles(WIDGET_LOCAL_SOURCE)),
-      ...(await cliWidgetServiceFiles()),
+      ...(await sourceFiles(WIDGET_FILESYSTEM_SOURCE)),
+      CLI_RUNTIME_CATALOG_SOURCE,
       'apps/cli/src/setup-services.ts',
     ];
     expect(files.length).toBeGreaterThan(0);
@@ -282,28 +191,14 @@ describe('M5 immutable widget artifact boundaries', () => {
     for (const source of await sources(files)) {
       violations.push(...linesMatching(
         source,
-        /artifacts[\\/]widgets[\\/]|artifacts\s*['"`]\s*,\s*['"`]widgets|widgets\s*['"`]\s*,\s*(?:manifest\.)?slug/,
-        'writes an artifact beneath mutable artifacts/widgets/<slug>',
+        /artifacts[\\/]widgets[\\/]|artifacts\s*['"`]\s*,\s*['"`]widgets|\b(?:widget_definitions|widget_definition_revisions|widget_revision_sources|artifact_references|widget_instances|resource_bindings|tool_groups|agent_drafts|agent_previews)\b/,
+        'uses a retired widget artifact path or database compatibility read',
       ));
-      if (
-        /artifacts[\\/]widgets[\\/]/.test(source.text)
-        || /['"`]artifacts['"`]\s*,\s*['"`]widgets['"`]/.test(source.text)
-        || /['"`]widgets['"`]\s*,\s*(?:manifest\.)?slug\b/.test(source.text)
-      ) {
-        violations.push(
-          `${source.path}: writes an artifact beneath mutable artifacts/widgets/<slug>`,
-        );
-      }
     }
     expect(violations).toEqual([]);
 
-    const artifactPathSource = await Bun.file(
-      resolve(REPO_ROOT, 'packages/widget-contract/src/local/fn.artifact-path.ts'),
-    ).text();
-    const digest = `ab${'0'.repeat(62)}`;
-    expect(fnArtifactBlobRelativePath(digest)).toBe(`blobs/sha256/ab/${digest}`);
-    expect(artifactPathSource).toMatch(/WIDGET_ARTIFACT_BLOB_DIRECTORY/);
-    expect(artifactPathSource).toMatch(/WIDGET_ARTIFACT_DIGEST_ALGORITHM/);
-    expect(artifactPathSource).not.toMatch(/['"]widgets['"]/);
+    const setupSource = await Bun.file(resolve(REPO_ROOT, 'apps/cli/src/setup-services.ts')).text();
+    expect(setupSource).toContain('widgetsRoot: config.home.widgetsRoot');
+    expect(setupSource).not.toContain('WidgetServicePool');
   });
 });

@@ -1,83 +1,75 @@
 import { describe, expect, test } from 'vitest';
-import type { TWidgetCatalog, TWidgetVariantSummary } from '@omnidraw/orpc-client';
-import { fnFindWidgetSelectionGroup, fnProjectWidgetCatalog, fnWidgetSelection } from '../../src/sidebar/widgets/fn.widget-catalog';
+import {
+  fnFindWidgetSelectionGroup,
+  fnProjectWidgetCatalog,
+  fnWidgetSelection,
+} from '../../src/sidebar/widgets/fn.widget-catalog';
+import {
+  publicCatalog,
+  publicEntry,
+  publicForm,
+} from '../widget-public-catalog.fixture';
 
-function variant(source: 'published' | 'draft', group: string | null): TWidgetVariantSummary {
-  return {
-    source,
-    displayName: 'Camera',
-    kind: 'notes-widget',
-    slug: 'camera',
-    description: null,
-    revision: source,
-    contentFingerprint: source,
-    updatedAt: null,
-    tool: { label: 'Camera', icon: null, group, priority: null, behaviorType: 'action' },
-    validation: source === 'draft' ? { status: 'unknown', errors: [], warnings: [] } : null,
-  };
-}
+describe('filesystem widget catalog projection', () => {
+  test('renders both observed forms inside their implicit manifest group', () => {
+    const projection = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('camera', { status: 'matched' }),
+    ]));
 
-describe('widget catalog projection', () => {
-  test('hides an identical draft and keeps empty groups', () => {
-    const projection = fnProjectWidgetCatalog({
-      generation: 'one',
-      groups: [{ name: 'Media', icon: null }, { name: 'Empty', icon: null }],
-      widgets: [{ name: 'Camera', relation: 'same', published: variant('published', 'Media'), draft: variant('draft', 'Media'), problem: null }],
-    });
-    expect(projection.groups.map((group) => [group.name, group.rows.length])).toEqual([['Empty', 0], ['Media', 1]]);
-    expect(projection.groups[1]?.rows[0]?.source).toBe('published');
+    expect(projection.groups.map((group) => [group.name, group.rows.length]))
+      .toEqual([['media', 2]]);
+    expect(projection.groups[0]?.rows.map((row) => row.source))
+      .toEqual(['published', 'draft']);
+    expect(fnFindWidgetSelectionGroup(projection, 'published', 'camera')).toBe('media');
+    expect(fnFindWidgetSelectionGroup(projection, 'draft', 'camera')).toBe('media');
   });
 
-  test('shows divergent sources in their own groups and surfaces missing references', () => {
-    const catalog: TWidgetCatalog = {
-      generation: 'two',
-      groups: [{ name: 'Media', icon: null }],
-      widgets: [{ name: 'Camera', relation: 'different', published: variant('published', 'Media'), draft: variant('draft', 'Missing'), problem: null }],
-    };
-    const projection = fnProjectWidgetCatalog(catalog);
-    expect(projection.groups[0]?.rows[0]?.source).toBe('published');
-    expect(projection.ungrouped[0]).toMatchObject({ source: 'draft', missingGroup: 'Missing' });
-    expect(fnFindWidgetSelectionGroup(projection, 'published', 'Camera')).toBe('Media');
-    expect(fnFindWidgetSelectionGroup(projection, 'draft', 'Camera')).toBeNull();
-    expect(fnWidgetSelection('/widgets/draft/Camera')).toEqual({ source: 'draft', encodedName: 'Camera' });
+  test('orders implicit-group rows by ascending priority before name and source', () => {
+    const projection = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('zebra', {
+        draft: null,
+        published: publicForm('published', { name: 'Zebra', priority: -10 }),
+        status: 'published-only',
+      }),
+      publicEntry('alpha', {
+        draft: null,
+        published: publicForm('published', { name: 'Alpha', priority: 20 }),
+        status: 'published-only',
+      }),
+    ]));
+
+    expect(projection.groups[0]?.rows.map((row) => row.widgetKey))
+      .toEqual(['zebra', 'alpha']);
   });
 
-  test('keeps a ready Preview internal and exposes only its draft as a placement row', () => {
-    const draft = variant('draft', 'Media');
-    draft.placement = {
-      reference: { source: 'draft', name: 'Camera', revision: 'draft' },
-      bounds: { width: 360, height: 320 },
-    };
-    const projection = fnProjectWidgetCatalog({
-      generation: 'preview',
-      groups: [{ name: 'Media', icon: null }],
-      widgets: [{
-        name: 'Camera',
-        relation: 'draft-only',
-        published: null,
-        draft,
-        preview: {
-          status: 'ready',
-          revision: 'draft',
-          placement: {
-            reference: { source: 'preview', name: 'Camera', revision: 'draft' },
-            bounds: { width: 360, height: 320 },
-          },
-        },
-        problem: null,
-      }],
-    });
+  test('keeps sources with no known implicit group ungrouped', () => {
+    const projection = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('camera', {
+        draft: publicForm('draft', { group: null }),
+        published: publicForm('published', { group: 'media' }),
+      }),
+    ]));
+
     expect(projection.groups[0]?.rows).toHaveLength(1);
-    expect(projection.groups[0]?.rows[0]).toMatchObject({
+    expect(projection.groups[0]?.rows[0]?.source).toBe('published');
+    expect(projection.ungrouped).toHaveLength(1);
+    expect(projection.ungrouped[0]).toMatchObject({
+      widgetKey: 'camera',
       source: 'draft',
-      managementSource: 'draft',
-      placement: { reference: { source: 'draft', revision: 'draft' } },
+      placement: null,
     });
   });
 
-  test('matches only exact published and draft detail routes', () => {
-    expect(fnWidgetSelection('/widgets/published/Camera%20Feed')).toEqual({ source: 'published', encodedName: 'Camera%20Feed' });
-    expect(fnWidgetSelection('/widgets/preview/Camera')).toBeNull();
-    expect(fnWidgetSelection('/widgets/draft/Camera/files')).toBeNull();
+  test('matches only exact draft and published widget-key routes', () => {
+    expect(fnWidgetSelection('/widgets/published/camera-feed')).toEqual({
+      source: 'published',
+      encodedWidgetKey: 'camera-feed',
+    });
+    expect(fnWidgetSelection('/widgets/draft/camera%20feed')).toEqual({
+      source: 'draft',
+      encodedWidgetKey: 'camera%20feed',
+    });
+    expect(fnWidgetSelection('/widgets/preview/camera')).toBeNull();
+    expect(fnWidgetSelection('/widgets/draft/camera/files')).toBeNull();
   });
 });

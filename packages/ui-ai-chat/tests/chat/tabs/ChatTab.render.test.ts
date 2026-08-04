@@ -147,11 +147,9 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onOpenSettings: () => {},
     onReportError: () => {},
     onRetryError: () => {},
-    onClearResourceBindings: async () => {},
     onPrompt: async () => {},
     onPreferenceChange: () => {},
     onResolveApproval: async () => {},
-    onOpenWidgetPreview: async () => {},
     settings,
     mentions: [{ id: "db-1", label: "db", kind: "Database" }],
     ...overrides,
@@ -318,118 +316,6 @@ describe("ChatTab rendered message history", () => {
     expect(message?.textContent).not.toContain("line 6")
   })
 
-  it("keeps Open Preview visible for a trusted widget-create result without expanding the card", async () => {
-    let completeOpenPreview!: () => void
-    const pendingOpenPreview = new Promise<void>((resolve) => {
-      completeOpenPreview = () => resolve()
-    })
-    const draftId = "10000000-0000-4000-8000-000000000001"
-    const onOpenWidgetPreview = vi.fn(() => pendingOpenPreview)
-    const root = renderChatTab(undefined, [{
-      role: "toolResult",
-      toolCallId: "call-widget-create",
-      toolName: "od_widget_create",
-      content: [{ type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" }],
-      details: {
-        draftId,
-        name: "Shared Timer",
-        mountPath: "widgets/Shared Timer",
-        source: "draft",
-        draft: true,
-        files: ["omnidraw.json", "widget/main.ts"],
-      },
-    }], { onOpenWidgetPreview })
-    const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
-    const toggle = () => root.querySelector<HTMLButtonElement>(".ai-chat-history__tool-result-toggle")
-    const openPreview = () => root.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")
-
-    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
-    expect(openPreview()?.closest(".ai-chat-history__plain")).toBeNull()
-    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
-    expect(message?.textContent).not.toContain("line 6")
-
-    openPreview()?.click()
-
-    expect(onOpenWidgetPreview).toHaveBeenCalledWith({ draftId, name: "Shared Timer" })
-    expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
-    expect(openPreview()?.disabled).toBe(true)
-    expect(openPreview()?.getAttribute("aria-busy")).toBe("true")
-    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
-    expect(message?.textContent).not.toContain("line 6")
-
-    openPreview()?.click()
-    expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
-
-    completeOpenPreview()
-    await vi.waitFor(() => expect(openPreview()?.disabled).toBe(false))
-
-    toggle()?.click()
-    expect(toggle()?.getAttribute("aria-expanded")).toBe("true")
-    expect(message?.textContent).toContain("line 6")
-    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
-
-    toggle()?.click()
-    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
-    expect(message?.textContent).not.toContain("line 6")
-    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
-  })
-
-  it("does not offer Open Preview for failed, malformed, prose-derived, or unrelated results", () => {
-    const trustedDetails = {
-      draftId: "10000000-0000-4000-8000-000000000001",
-      name: "Shared Timer",
-      source: "draft",
-      draft: true,
-    }
-    const root = renderChatTab(undefined, [
-      {
-        role: "toolResult",
-        toolName: "od_widget_create",
-        isError: true,
-        content: [{ type: "text", text: "failed" }],
-        details: trustedDetails,
-      },
-      {
-        role: "toolResult",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: "created" }],
-        details: { ...trustedDetails, name: "../Shared Timer" },
-      },
-      {
-        role: "toolResult",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: "created" }],
-        details: { ...trustedDetails, draftId: "draft-preview-v1-forged" },
-      },
-      {
-        role: "toolResult",
-        toolName: "od_widget_create_preview",
-        content: [{ type: "text", text: "created" }],
-        details: trustedDetails,
-      },
-      {
-        role: "toolResult",
-        toolName: "od_resource_create",
-        content: [{ type: "text", text: "created" }],
-        details: trustedDetails,
-      },
-      {
-        role: "toolResult",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: JSON.stringify(trustedDetails) }],
-      },
-      {
-        role: "assistant",
-        toolName: "od_widget_create",
-        content: [{ type: "text", text: "Created Shared Timer" }],
-        details: trustedDetails,
-      },
-    ])
-
-    expect(root.querySelectorAll(".ai-chat-history__preview-action button")).toHaveLength(0)
-    expect(root.textContent).not.toContain("Open Preview")
-  })
-
   it("renders generic protected resource approvals with redacted structured details", async () => {
     const onResolveApproval = vi.fn(async () => {})
     const root = renderChatTab(undefined, [{
@@ -486,6 +372,24 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab()
     expect(root.querySelector(".ai-chat-drafts")).toBeNull()
     expect(root.textContent).not.toContain("Widget drafts")
+  })
+
+  it("does not expose the removed durable Preview action", () => {
+    const root = renderChatTab(undefined, [{
+      role: "toolResult",
+      toolCallId: "call-widget-create",
+      toolName: "od_widget_create",
+      content: [{ type: "text", text: "Created Shared Timer." }],
+      details: {
+        draftId: "10000000-0000-4000-8000-000000000001",
+        name: "Shared Timer",
+        source: "draft",
+        draft: true,
+      },
+    }])
+
+    expect(root.querySelector(".ai-chat-history__preview-action")).toBeNull()
+    expect(root.textContent).not.toContain("Open Preview")
   })
 
   it("forwards vertical table wheel gestures to the chat scroller", () => {
@@ -679,16 +583,13 @@ describe("ChatTab rendered message history", () => {
     expect(editorRule).toContain("overflow-wrap: anywhere")
   })
 
-  it("exposes an explicit action that clears persistent draft resource bindings", () => {
-    const onClearResourceBindings = vi.fn(async () => {})
-    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onClearResourceBindings })
-
+  it("does not expose the removed persistent resource-context action", () => {
+    const root = renderChatTab()
     root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
-    Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
-      .find((button) => button.textContent?.trim() === "Clear resource context")
-      ?.click()
 
-    expect(onClearResourceBindings).toHaveBeenCalledTimes(1)
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .some((button) => button.textContent?.trim() === "Clear resource context"))
+      .toBe(false)
   })
 
   it("forwards selected model changes as chat preference changes", () => {

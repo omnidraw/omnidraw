@@ -1,102 +1,31 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { connect, Database } from "@tursodatabase/database";
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
-import { fxKeyValueGet as fxKeyValueGetRaw } from "../../../src/DbServiceTurso/fx.keyValue";
-import { txKeyValueAdd as txKeyValueAddRaw, txKeyValueRemove as txKeyValueRemoveRaw } from "../../../src/DbServiceTurso/tx.keyValue";
-import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
-import {
-  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
-} from "../../../src/schema/expected-schema";
-import { bindTenantOperation } from "../tenant.fixture";
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { DbServiceTurso } from '../../../src/DbServiceTurso/DbServiceTurso';
 
-const fxKeyValueGet = bindTenantOperation(fxKeyValueGetRaw);
-const txKeyValueAdd = bindTenantOperation(txKeyValueAddRaw);
-const txKeyValueRemove = bindTenantOperation(txKeyValueRemoveRaw);
-
-async function inMemoryDb() {
-  return connect(":memory:", { experimental: ["custom_types", "triggers", "index_method", "generated_columns"] as never });
-}
-
-async function expectSqlConstraintFailure(action: () => Promise<unknown>) {
-  let error: unknown;
-
-  try {
-    await action();
-  } catch (caught) {
-    error = caught;
-  }
-
-  expect(error).toBeInstanceOf(Error);
-}
-
-describe("tx.keyValue/fx.keyValue", () => {
-  let db!: Database;
+describe('direct key-value repository', () => {
+  let service: DbServiceTurso;
 
   beforeEach(async () => {
-    db = await inMemoryDb();
-    await txRunMigrations({ db, Bun, TextDecoder }, {
-      applicationVersion: "test",
-      appliedAtMs: 1,
-      expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
-    });
+    service = new DbServiceTurso({ databasePath: ':memory:', dataDir: '/tmp', cacheDir: '/tmp' });
+    await service.start();
   });
 
-  afterEach(async () => {
-    await db.close();
-  });
+  afterEach(async () => service.stop());
 
-  test("adds and gets text, json, number, and bool values", async () => {
-    const text = await txKeyValueAdd({ db }, { name: "kv-text", type: "text", value: "hello" });
-    const json = await txKeyValueAdd({ db }, { name: "kv-json", type: "json", value: { ok: true, count: 2 } });
-    const number = await txKeyValueAdd({ db }, { name: "kv-number", type: "number", value: 42 });
-    const bool = await txKeyValueAdd({ db }, { name: "kv-bool", type: "bool", value: true });
+  test('round-trips each exactly-one typed value and supports replacement/removal', async () => {
+    expect(await service.keyValue.add({ name: 'text', type: 'text', value: 'hello' }))
+      .toEqual({ name: 'text', type: 'text', value: 'hello' });
+    expect(await service.keyValue.add({ name: 'json', type: 'json', value: { ok: true } }))
+      .toEqual({ name: 'json', type: 'json', value: { ok: true } });
+    expect(await service.keyValue.add({ name: 'number', type: 'number', value: 42 }))
+      .toEqual({ name: 'number', type: 'number', value: 42 });
+    expect(await service.keyValue.add({ name: 'bool', type: 'bool', value: true }))
+      .toEqual({ name: 'bool', type: 'bool', value: true });
+    expect(await service.keyValue.add({ name: 'blob', type: 'blob', value: new Uint8Array([1, 2]) }))
+      .toEqual({ name: 'blob', type: 'blob', value: new Uint8Array([1, 2]) });
 
-    expect(text).toEqual({ name: "kv-text", type: "text", value: "hello" });
-    expect(json).toEqual({ name: "kv-json", type: "json", value: { ok: true, count: 2 } });
-    expect(number).toEqual({ name: "kv-number", type: "number", value: 42 });
-    expect(bool).toEqual({ name: "kv-bool", type: "bool", value: true });
-
-    await expect(fxKeyValueGet({ db }, { name: "kv-text" })).resolves.toEqual(text);
-    await expect(fxKeyValueGet({ db }, { name: "kv-json" })).resolves.toEqual(json);
-    await expect(fxKeyValueGet({ db }, { name: "kv-number" })).resolves.toEqual(number);
-    await expect(fxKeyValueGet({ db }, { name: "kv-bool" })).resolves.toEqual(bool);
-  });
-
-  test("removes a value and get returns null", async () => {
-    await txKeyValueAdd({ db }, { name: "kv-remove", type: "text", value: "temporary" });
-
-    await expect(fxKeyValueGet({ db }, { name: "kv-remove" })).resolves.toEqual({
-      name: "kv-remove",
-      type: "text",
-      value: "temporary",
-    });
-
-    await txKeyValueRemove({ db }, { name: "kv-remove" });
-
-    await expect(fxKeyValueGet({ db }, { name: "kv-remove" })).resolves.toBeNull();
-  });
-
-  test("enforces exactly one non-null value column", async () => {
-    const insert = await db.prepare(`
-      INSERT INTO key_values (
-        org_id, name, kind, text_value, json_value, number_value, bool_value,
-        blob_value, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1, 1)
-    `);
-
-    await expectSqlConstraintFailure(() => insert.run(
-      DEFAULT_OSS_ORGANIZATION_ID, "kv-none", "text", null, null, null, null,
-    ));
-    await expectSqlConstraintFailure(() => insert.run(
-      DEFAULT_OSS_ORGANIZATION_ID, "kv-many", "text", "hello", null, 42, null,
-    ));
-
-    await insert.run(DEFAULT_OSS_ORGANIZATION_ID, "kv-one", "text", "hello", null, null, null);
-
-    await expect(fxKeyValueGet({ db }, { name: "kv-one" })).resolves.toEqual({
-      name: "kv-one",
-      type: "text",
-      value: "hello",
-    });
+    await service.keyValue.add({ name: 'text', type: 'number', value: 7 });
+    expect(await service.keyValue.get({ name: 'text' })).toEqual({ name: 'text', type: 'number', value: 7 });
+    await service.keyValue.remove({ name: 'text' });
+    expect(await service.keyValue.get({ name: 'text' })).toBeNull();
   });
 });

@@ -5,7 +5,6 @@ import { fileHandlers } from './file/handlers';
 import { functionHandlers } from './function/handlers';
 import { notificationHandlers } from './notification/handlers';
 import { resourceHandlers } from './resource/handlers';
-import { toolHandlers } from './tool/handlers';
 import { widgetHandlers } from './widget/handlers';
 
 const handlers = {
@@ -16,7 +15,6 @@ const handlers = {
   function: functionHandlers,
   notification: notificationHandlers,
   resource: resourceHandlers,
-  tool: toolHandlers,
   widget: widgetHandlers,
 };
 
@@ -29,6 +27,5 @@ export {
   handlers,
   notificationHandlers,
   resourceHandlers,
-  toolHandlers,
   widgetHandlers,
 };

@@ -2,25 +2,22 @@
 
 import type { TResourceCall, TResourceCallResult } from '@omnidraw/resource-runtime';
 import type { TWidgetServerFunctionDescriptor } from '@omnidraw/widget-contract';
-import type { TFunctionFailure, TFunctionInvocationSubject, TUsageMetrics } from '../types';
+import type {
+  TDirectFunctionSubject,
+  TFunctionFailure,
+  TFunctionUsageMetrics,
+} from '../types';
 
 export type TFunctionCanonicalRegistration = Omit<
   TWidgetServerFunctionDescriptor,
-  'exportName'
+  'exportName' | 'modulePath'
 >;
 
 export type TFunctionWorkerContext = Readonly<{
-  identity: Readonly<{
-    orgId: string;
-    accountId: string;
-    roles: readonly string[];
-  }>;
   invocationId: string;
-  widgetDefinitionId: string;
-  widgetRevisionId: string;
-  subject: TFunctionInvocationSubject;
-  attemptId: string;
-  leaseEpoch: number;
+  widgetKey: string;
+  catalogGeneration: number;
+  subject: TDirectFunctionSubject;
   deadlineAtMs: number;
 }>;
 
@@ -85,13 +82,13 @@ export type TFunctionWorkerToHostMessage =
       requestId: string;
       output: unknown;
       outputByteSize: number;
-      metrics: TUsageMetrics;
+      metrics: TFunctionUsageMetrics;
     }>
   | Readonly<{
       type: 'failure';
       requestId: string;
       failure: TFunctionFailure;
-      metrics: TUsageMetrics;
+      metrics: TFunctionUsageMetrics;
     }>
   | Readonly<{
       type: 'memory';

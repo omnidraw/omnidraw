@@ -2,6 +2,7 @@ import { createCatalogInvalidation } from "../../src/sidebar/ports";
 import { WidgetCatalogProvider } from "../../src/sidebar/widgets/WidgetCatalogProvider";
 import { render } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
+import { publicCatalog } from '../widget-public-catalog.fixture';
 
 describe("WidgetCatalogProvider", () => {
   it("closes an event stream that resolves after the provider unmounts", async () => {
@@ -13,10 +14,10 @@ describe("WidgetCatalogProvider", () => {
     const controller = {
       apiService: {
         api: {
-          agent: {
-            events,
-            widgets: {
-              catalog: vi.fn(async () => [null, { generation: 1 }] as const),
+          widget: {
+            catalog: {
+              events,
+              get: vi.fn(async () => [null, publicCatalog([])] as const),
             },
           },
         },

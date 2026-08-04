@@ -4,23 +4,18 @@ import type {
   TWidgetFrameNode,
 } from '@omnidraw/cangine';
 import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';
-import type { TCanvasWidgetExtensionV1 } from '@omnidraw/canvas-contract/types';
+import type {
+  TCanvasWidgetExtensionV1,
+  TCanvasWidgetResourceBindingV1,
+} from '@omnidraw/canvas-contract/types';
 
 export type TAiWidgetPayload = Readonly<{
   sessionId: string;
-  autoOpenedPreviewDraftIds?: string[];
   model?: Readonly<{
     provider: string;
     modelId: string;
   }>;
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-}>;
-
-export type TPreviewWidgetPayload = Readonly<{
-  previewId: string;
-  draftId: string;
-  originChatId: string;
-  role: 'companion' | 'placed';
 }>;
 
 type TArgsNodeBase = Readonly<{
@@ -36,12 +31,10 @@ type TArgsAiNode = TArgsNodeBase & Readonly<{
   sessionId: string;
 }>;
 
-type TArgsPreviewNode = TArgsNodeBase & TPreviewWidgetPayload;
-
 type TArgsPublishedNode = TArgsNodeBase & Readonly<{
-  definitionId: string;
   instanceId: string;
-  revisionId: string;
+  widgetKey: string;
+  resourceBindings?: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
 }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,13 +63,6 @@ function normalizedAiWidgetPayload(
 ): TAiWidgetPayload {
   return {
     sessionId: payload.sessionId,
-    ...(payload.autoOpenedPreviewDraftIds === undefined
-      ? {}
-      : {
-          autoOpenedPreviewDraftIds: [
-            ...payload.autoOpenedPreviewDraftIds,
-          ],
-        }),
     ...(payload.model === undefined
       ? {}
       : {
@@ -146,42 +132,6 @@ export function fnCreateAiWidgetNode(args: TArgsAiNode): TWidgetFrameNode {
   };
 }
 
-export function fnCreatePreviewWidgetNode(
-  args: TArgsPreviewNode,
-): TWidgetFrameNode {
-  const payload: TPreviewWidgetPayload = {
-    previewId: args.previewId,
-    draftId: args.draftId,
-    originChatId: args.originChatId,
-    role: args.role,
-  };
-  const extension: TCanvasWidgetExtensionV1 = {
-    schemaVersion: 1,
-    type: 'ui-widget',
-    kind: 'preview',
-    payload,
-  };
-  return {
-    ...fnBaseWidgetNode(args),
-    headerItems: [{
-      type: 'dropdown',
-      id: 'manage',
-      label: 'Manage Preview',
-      content: { type: 'text', text: 'Manage' },
-      items: [
-        { id: 'live-updates', text: 'Pause live updates' },
-        { id: 'cancel-build', text: 'Cancel build' },
-        { id: 'retry', text: 'Retry' },
-        { id: 'reset', text: 'Reset' },
-        { id: 'publish', text: 'Publish' },
-      ],
-    }],
-    extensions: {
-      [CANVAS_WIDGET_EXTENSION_KEY]: extension,
-    },
-  };
-}
-
 export function fnCreatePublishedWidgetNode(
   args: TArgsPublishedNode,
 ): TWidgetFrameNode {
@@ -189,8 +139,10 @@ export function fnCreatePublishedWidgetNode(
     schemaVersion: 1,
     type: 'widget-instance',
     instanceId: args.instanceId,
-    definitionId: args.definitionId,
-    revisionId: args.revisionId,
+    widgetKey: args.widgetKey,
+    ...(args.resourceBindings === undefined
+      ? {}
+      : { resourceBindings: args.resourceBindings }),
   };
   return {
     ...fnBaseWidgetNode(args),
@@ -217,8 +169,7 @@ export function fnCanvasWidgetExtension(
   if (
     value.type === 'widget-instance'
     && typeof value.instanceId === 'string'
-    && typeof value.definitionId === 'string'
-    && typeof value.revisionId === 'string'
+    && typeof value.widgetKey === 'string'
   ) {
     return value as TCanvasWidgetExtensionV1;
   }
@@ -235,35 +186,6 @@ export function fnAiWidgetPayload(
     return {};
   }
   return payload as Partial<TAiWidgetPayload>;
-}
-
-export function fnPreviewWidgetPayload(
-  node: Readonly<TSceneNode> | null | undefined,
-): TPreviewWidgetPayload | null {
-  const extension = fnCanvasWidgetExtension(node);
-  if (extension?.type !== 'ui-widget' || extension.kind !== 'preview') return null;
-  const payload = extension.payload;
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return null;
-  }
-  if (
-    Object.keys(payload).length !== 4
-    || typeof payload.previewId !== 'string'
-    || payload.previewId.trim().length === 0
-    || typeof payload.draftId !== 'string'
-    || payload.draftId.trim().length === 0
-    || typeof payload.originChatId !== 'string'
-    || payload.originChatId.trim().length === 0
-    || (payload.role !== 'companion' && payload.role !== 'placed')
-  ) {
-    return null;
-  }
-  return {
-    previewId: payload.previewId,
-    draftId: payload.draftId,
-    originChatId: payload.originChatId,
-    role: payload.role,
-  };
 }
 
 export function fnWithAiWidgetPayload(
@@ -301,10 +223,17 @@ export function fnAiWidgetPayloadEquals(
 
 export function fnCanvasWidgetMountSignature(
   node: Readonly<TWidgetFrameNode>,
+  catalogEpoch: Readonly<{
+    global: number;
+    widget: number;
+  }> = { global: 0, widget: 0 },
 ): string {
   const extension = fnCanvasWidgetExtension(node);
   return JSON.stringify({
     extension,
     portal: node.portal,
+    publishedCatalogEpoch: extension?.type === 'widget-instance'
+      ? [catalogEpoch.global, catalogEpoch.widget]
+      : null,
   });
 }

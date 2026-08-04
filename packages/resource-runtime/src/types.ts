@@ -2,12 +2,6 @@
  * @file Resource catalog, capability, data, and lifecycle types.
  */
 
-import type {
-  TCellId,
-  TOrganizationId,
-  TPlacementEpoch,
-} from '@omnidraw/tenant-core';
-
 export type TResourceId = string;
 export type TResourceSlot = string;
 export type TResourceKind = 'kv' | 'secretStore' | 'db';
@@ -34,8 +28,6 @@ export type TResourceErrorCode =
   | 'RESOURCE_NOT_BOUND'
   | 'RESOURCE_KIND_MISMATCH'
   | 'RESOURCE_SCOPE_INVALID'
-  | 'RESOURCE_BINDING_CONFLICT'
-  | 'RESOURCE_STILL_BOUND'
   | 'RESOURCE_NOT_READY'
   | 'RESOURCE_UNAVAILABLE'
   | 'RESOURCE_MIGRATING'
@@ -106,28 +98,26 @@ export type TSafeResourceError = Readonly<{
 }>;
 
 export type TResourceDescriptor = Readonly<{
-  orgId: TOrganizationId;
   id: TResourceId;
   kind: TResourceKind;
   name: string;
   status: TResourceStatus;
   lastError: TSafeResourceError | null;
-  createdAtMs: number;
-  updatedAtMs: number;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
 /** A storage key is meaningful only to a Resource Store adapter and is never a host path. */
 export type TResourceStorageKey = string;
 
 export type TResourcePlacement = Readonly<{
-  orgId: TOrganizationId;
   resourceId: TResourceId;
-  cellId: TCellId;
-  placementEpoch: TPlacementEpoch;
+  cellId: string;
+  placementEpoch: number;
   storageKey: TResourceStorageKey;
   status: TResourcePlacementStatus;
-  createdAtMs: number;
-  updatedAtMs: number;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
 export type TResourceReference = Readonly<{
@@ -140,7 +130,7 @@ export type TResourceRequirement = Readonly<{
   kind: TResourceKind;
   effect: TResourceEffect;
   required?: boolean;
-  /** Host-declared escape hatch for trusted compatibility definitions only. */
+  /** Host-declared escape hatch for trusted database declarations only. */
   arbitrarySql?: boolean;
   /** Host-derived named operations. Callers may select a name, but never supply SQL. */
   operations?: Readonly<Record<string, TResourceNamedOperation>>;
@@ -173,24 +163,7 @@ export type TResourceBinding = Readonly<{
   kind: TResourceKind;
   allowRead: boolean;
   allowWrite: boolean;
-  definitionId?: string;
-  revisionId?: string;
   required?: boolean;
-}>;
-
-export type TResourceBindingReference = Readonly<{
-  definitionId: string;
-  revisionId: string;
-  slot: TResourceSlot;
-  resourceId: TResourceId;
-  kind: TResourceKind;
-  required: boolean;
-  manifestAllowRead: boolean;
-  manifestAllowWrite: boolean;
-  allowRead: boolean;
-  allowWrite: boolean;
-  createdAtMs: number;
-  updatedAtMs: number;
 }>;
 
 export type TResourceBindingDecision =
@@ -216,7 +189,7 @@ type TResourceWriteCall = Readonly<{
   operationId?: TResourceOperationId;
   effect: 'write';
   input: unknown;
-  /** Required by fenced stores; optional only for explicit legacy/local compatibility. */
+  /** Required by fenced stores; omitted only for an explicit trusted-host write. */
   writeCapability?: string;
 }>;
 
@@ -228,7 +201,7 @@ export type TResolvedResourceCall = Readonly<{
   slot: TResourceSlot;
   resourceId: TResourceId;
   kind: TResourceKind;
-  /** Authorization snapshot resolved from the host-owned manifest/revision. */
+  /** Authorization snapshot resolved from the current host-owned manifest. */
   requirement: TResourceRequirement;
   operation: TResourceOperationName;
   operationId?: TResourceOperationId;
@@ -237,29 +210,17 @@ export type TResolvedResourceCall = Readonly<{
   writeCapability?: string;
 }>;
 
-export type TResourceOperationReceipt = Readonly<{
-  operationId: TResourceOperationId;
-  resourceId: TResourceId;
-  effect: TResourcePermission;
-  committed: boolean;
-  replayed?: boolean;
-}>;
-
 export type TResourceCallResult<TOutput = unknown> = Readonly<{
   output: TOutput;
-  receipt?: TResourceOperationReceipt;
 }>;
 
 export type TResourceWriteCapabilityClaims = Readonly<{
-  orgId: TOrganizationId;
   permitId: string;
   resourceId: TResourceId;
   invocationId: string;
   operation: TResourceOperationName;
   operationId: TResourceOperationId;
   operationFingerprintSha256: string;
-  attemptId: string;
-  leaseEpoch: number;
   expiresAtMs: number;
   nonce: string;
 }>;
@@ -274,28 +235,6 @@ export type TResourceWritePermitScope = Readonly<{
   operationId: TResourceOperationId;
   operationFingerprintSha256: string;
 }>;
-
-/** Main-ledger permit that may have a matching provider-owned commit receipt. */
-export type TResourceWritePermitRecoveryCandidate = Readonly<{
-  permitId: string;
-  resourceId: TResourceId;
-  invocationId: string;
-  attemptId: string;
-  leaseEpoch: number;
-  operationName: TResourceOperationName;
-  operationId: TResourceOperationId;
-  operationFingerprintSha256: string;
-}>;
-
-/** Host-only proof copied from an authoritative Resource Store receipt. */
-export type TCommittedResourceWrite = TResourceWritePermitRecoveryCandidate & Readonly<{
-  output: unknown;
-  recordedAtMs: number;
-}>;
-
-export type TResourceWritePermitRecoveryResult =
-  | Readonly<{ status: 'consumed' | 'replayed' }>
-  | Readonly<{ status: 'missing' | 'conflict' }>;
 
 export type TResourceProviderCreateArgs = Readonly<Record<string, never>>;
 
@@ -355,8 +294,8 @@ export type TKeyValueEntry = Readonly<{
   key: string;
   value: TResourceJson;
   revision: number;
-  createdAtMs: number;
-  updatedAtMs: number;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
 export type TKeyValueEntryMetadata = Omit<TKeyValueEntry, 'value'>;
@@ -369,8 +308,8 @@ export type TKeyValueEntryPreview = TKeyValueEntryMetadata & Readonly<{
 export type TSecretEntryMetadata = Readonly<{
   name: string;
   revision: number;
-  createdAtMs: number;
-  updatedAtMs: number;
+  createdAtSec: string;
+  updatedAtSec: string;
 }>;
 
 /** Plaintext secret DTO; only IHumanResourceSecretService may return this type. */
@@ -582,29 +521,26 @@ export type TDbResourceApplyStatus =
 export type TDbResourceBackupState = 'retained' | 'deleting' | 'deleted';
 
 export type TDbResourceDraft = Readonly<{
-  orgId: TOrganizationId;
   id: string;
   resourceId: TResourceId;
   name: string;
   status: TDbResourceDraftStatus;
   lastError: TSafeResourceError | null;
-  createdAtMs: number;
-  updatedAtMs: number;
-  appliedAtMs: number | null;
+  createdAtSec: string;
+  updatedAtSec: string;
+  appliedAtSec: string | null;
 }>;
 
 export type TDbResourceDraftChange = Readonly<{
-  orgId: TOrganizationId;
   draftId: string;
   sequence: number;
   kind: TDbResourceDraftChangeKind;
   operation: TDbDraftOperation | Readonly<{ type: 'boundSql'; parameters: readonly TDbCellValue[] }> | null;
   sql: string;
-  createdAtMs: number;
+  createdAtSec: string;
 }>;
 
 export type TDbResourceApplyRun = Readonly<{
-  orgId: TOrganizationId;
   id: string;
   resourceId: TResourceId;
   draftId: string | null;
@@ -612,12 +548,11 @@ export type TDbResourceApplyRun = Readonly<{
   status: TDbResourceApplyStatus;
   lastError: TSafeResourceError | null;
   backupRetained: boolean;
-  createdAtMs: number;
-  completedAtMs: number | null;
+  createdAtSec: string;
+  completedAtSec: string | null;
 }>;
 
 export type TDbResourceBackup = Readonly<{
-  orgId: TOrganizationId;
   id: string;
   resourceId: TResourceId;
   applyRunId: string;
@@ -625,10 +560,30 @@ export type TDbResourceBackup = Readonly<{
   digestSha256: string;
   byteSize: number;
   state: TDbResourceBackupState;
-  createdAtMs: number;
-  verifiedAtMs: number;
-  deleteAfterMs: number | null;
+  createdAtSec: string;
+  verifiedAtSec: string;
+  deleteAfterSec: string | null;
 }>;
+
+export type TCreateDbResourceDraftRequest = Omit<
+  TDbResourceDraft,
+  'createdAtSec' | 'updatedAtSec'
+>;
+
+export type TCreateDbResourceDraftChangeRequest = Omit<
+  TDbResourceDraftChange,
+  'createdAtSec'
+>;
+
+export type TCreateDbResourceApplyRequest = Omit<
+  TDbResourceApplyRun,
+  'createdAtSec'
+>;
+
+export type TCreateDbResourceBackupRequest = Omit<
+  TDbResourceBackup,
+  'createdAtSec'
+>;
 
 export type TDbDraftDetails = Readonly<{
   draft: TDbResourceDraft;
@@ -637,7 +592,6 @@ export type TDbDraftDetails = Readonly<{
 
 export type TDbResourceImpact = Readonly<{
   resource: TResourceDescriptor;
-  bindings: readonly TResourceBindingReference[];
   uses: TResourceUseInspection;
 }>;
 
@@ -661,10 +615,9 @@ export type TCreateResourceRequest = Readonly<{
   id: TResourceId;
   kind: TResourceKind;
   name: string;
-  cellId: TCellId;
-  placementEpoch: TPlacementEpoch;
+  cellId: string;
+  placementEpoch: number;
   storageKey: TResourceStorageKey;
-  nowMs: number;
 }>;
 
 export type TUpdateResourceStateRequest = Readonly<{
@@ -672,23 +625,20 @@ export type TUpdateResourceStateRequest = Readonly<{
   expectedStatus: TResourceStatus | readonly TResourceStatus[];
   status: TResourceStatus;
   lastError: TSafeResourceError | null;
-  nowMs: number;
 }>;
 
 export type TReserveResourcePlacementRequest = Readonly<{
   resourceId: TResourceId;
-  cellId: TCellId;
-  placementEpoch: TPlacementEpoch;
+  cellId: string;
+  placementEpoch: number;
   storageKey: TResourceStorageKey;
-  nowMs: number;
 }>;
 
 export type TUpdateResourcePlacementRequest = Readonly<{
   resourceId: TResourceId;
-  expectedEpoch: TPlacementEpoch;
-  placementEpoch: TPlacementEpoch;
-  cellId: TCellId;
+  expectedEpoch: number;
+  placementEpoch: number;
+  cellId: string;
   status: TResourcePlacementStatus;
   storageKey: TResourceStorageKey;
-  nowMs: number;
 }>;

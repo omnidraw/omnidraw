@@ -29,10 +29,6 @@ export const apiDeleteResource = baseResourceOs.resources.delete.handler(async (
   return { deleted: true };
 });
 
-export const apiListResourceReferences = baseResourceOs.resources.references.handler(async ({ input, context }) => {
-  return withResourceApiError(() => context.resource.listResourceReferences(context.tenant, input.resourceId));
-});
-
 export const apiListResourceData = baseResourceOs.resources.data.handler(async ({ input, context }) => {
   return withResourceApiError(() => context.resource.listResourceData(context.tenant, input));
 });

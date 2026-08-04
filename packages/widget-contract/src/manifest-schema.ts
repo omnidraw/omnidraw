@@ -38,7 +38,7 @@ const CAPSULE_RENDERING_API_GROUPS = new Set<TWidgetCapsuleApiGroup>([
   'WEBGPU',
 ]);
 
-const ZWidgetRelativePath = z.string().superRefine((value, context) => {
+export const ZWidgetRelativePath = z.string().superRefine((value, context) => {
   if (fnNormalizeWidgetRelativePath(value) === null) {
     context.addIssue({
       code: 'custom',
@@ -47,7 +47,7 @@ const ZWidgetRelativePath = z.string().superRefine((value, context) => {
   }
 }).transform((value) => fnNormalizeWidgetRelativePath(value)!);
 
-const ZWidgetBuildEntryPath = ZWidgetRelativePath.refine(
+export const ZWidgetBuildEntryPath = ZWidgetRelativePath.refine(
   (value) => BUILD_ENTRY_PATTERN.test(value),
   'Widget build entries must use a JavaScript or TypeScript extension',
 );
@@ -186,7 +186,7 @@ const ZResourceNamedOperation = z.object({
   result: z.enum(['rows', 'execute']),
 }).strict();
 
-const ZWidgetResourceRequirement = z.object({
+export const ZWidgetResourceRequirement = z.object({
   slot: z.string().regex(SLOT_PATTERN),
   kind: z.enum(['kv', 'secretStore', 'db']),
   effect: z.enum(['read', 'write', 'read_write']),

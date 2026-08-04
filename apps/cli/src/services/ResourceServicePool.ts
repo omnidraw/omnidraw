@@ -53,10 +53,6 @@ implements TResourceApiCapability, IHumanResourceSecretService {
     this.#delegate(tenant, (service) => service.deleteResource(tenant, resourceId))
   );
 
-  listResourceReferences: TResourceApiCapability['listResourceReferences'] = (tenant, resourceId) => (
-    this.#delegate(tenant, (service) => service.listResourceReferences(tenant, resourceId))
-  );
-
   listResourceData: TResourceApiCapability['listResourceData'] = (tenant, input) => (
     this.#delegate(tenant, (service) => service.listResourceData(tenant, input))
   );
@@ -199,7 +195,6 @@ function createResourceServiceCapabilities(
     createResource: pool.createResource,
     renameResource: pool.renameResource,
     deleteResource: pool.deleteResource,
-    listResourceReferences: pool.listResourceReferences,
     listResourceData: pool.listResourceData,
     setResourceDataEntry: pool.setResourceDataEntry,
     deleteResourceDataEntry: pool.deleteResourceDataEntry,

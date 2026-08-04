@@ -13,6 +13,7 @@ import type {
   TWidgetServerFunctionDescriptorValidation,
   TWidgetServerFunctionResourceAccess,
 } from '../types';
+import type { TWidgetManifestV4 } from '../filesystem/typed';
 
 const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'omnidraw.widget.functions.';
 const SERVER_FUNCTION_CAPABILITY_ID_PREFIX = `${SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE}h`;
@@ -57,12 +58,6 @@ export function fnNormalizeWidgetServerFunctionDescriptor(
       memoryTier: descriptor.limits.memoryTier,
       outputByteLimit: descriptor.limits.outputByteLimit,
       logByteLimit: descriptor.limits.logByteLimit,
-    },
-    retry: {
-      mode: descriptor.retry.mode,
-      maxAttempts: descriptor.retry.maxAttempts,
-      initialBackoffMs: descriptor.retry.initialBackoffMs,
-      maxBackoffMs: descriptor.retry.maxBackoffMs,
     },
   };
 }
@@ -155,7 +150,7 @@ export function fnWidgetServerFunctionCapabilityRequestMatches(
 }
 
 export function fnValidateWidgetServerFunctionDescriptors(
-  manifest: TWidgetManifestV3,
+  manifest: TWidgetManifestV3 | TWidgetManifestV4,
   descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): TWidgetServerFunctionDescriptorValidation {
   if (manifest.server === undefined) {

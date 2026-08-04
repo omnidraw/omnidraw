@@ -1,12 +1,12 @@
-import type { TWidgetSource, TWidgetVariantSummary } from "@omnidraw/orpc-client"
+import type { TOmnidrawToolIcon } from "@omnidraw/widget-contract"
 
 export type TChatComposerMentionTarget =
   | { type: "resource"; resourceId: string }
-  | { type: "widget"; name: string; source: TWidgetSource }
+  | { type: "widget"; name: string; source: "draft" | "published" }
 
 export type TChatComposerMentionIcon =
   | { type: "resource"; kind: "kv" | "secretStore" | "db" }
-  | { type: "widget"; icon: TWidgetVariantSummary["tool"]["icon"] }
+  | { type: "widget"; icon: TOmnidrawToolIcon | null }
 
 export type TChatComposerMention = {
   id: string
@@ -78,7 +78,6 @@ export type TChatComposerProps = {
   onCancel?: () => void
   onNewChat?: () => void
   onCopyChat?: () => void
-  onClearResourceBindings?: () => void
 }
 
 export type TPromptSuggestionKind = "mention" | "command"
