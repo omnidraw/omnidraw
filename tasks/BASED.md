@@ -434,9 +434,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S132](s/S132.md) - packages: make the canvas kernel workspace-split ready
 - [x]: [S133](s/S133.md) - widget publish: auto-heal changed drafts; Publish builds current source and promotes that exact build
 - [x]: [S134](s/S134.md) - release 0.5.0: remove binary distribution, normal build, docs and CI cleanup
-- [~]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
-- [~]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
-- [~]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
+- [x]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
+- [x]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
+- [x]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
 - [R]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
 
 ## E xplorations
