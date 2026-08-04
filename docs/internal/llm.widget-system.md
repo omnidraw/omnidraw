@@ -69,6 +69,10 @@ flowchart LR
 | `packages/canvas` | Authoritative canvas document client, Cangine projection, semantic selection, product tools and command routing, durable collapse, portal-content reconciliation, and lifecycle signals |
 | Server services | `CanvasService` commands/snapshots/queries/events, `WidgetStateService` versioned widget-instance state, durable function execution, resource access, tenancy, and database records |
 
+`@omnidraw/capsule` and `@omnidraw/cangine` are external npm dependencies,
+not packages in this workspace. The current workspace pins Capsule `0.12.0`
+and Cangine `0.6.1`.
+
 Capsule has no Omnidraw dependency. Omnidraw imports Capsule only through
 its public package entries.
 
@@ -91,7 +95,6 @@ widgets/drafts/<name>/
   shared/                 # optional
 
 draft-state/              # atomic publication materialization markers
-sdk/                      # host-materialized @omnidraw/sdk package
 ```
 
 One shared draft directory is the mutable source authority. Chat workspaces
@@ -103,6 +106,12 @@ mount targets. Writes are serialized by the real draft root.
 Draft metadata is durable in the authoring store and uses compare-and-set
 revision checks. Validation results are tied to the exact captured source
 digest. Any source change invalidates the previous validation result.
+
+Generated drafts declare registry-compatible versions of `@omnidraw/sdk` and
+its Capsule dependency in `package.json`. Development synchronizes workspace
+builds of those packages into the configured local npm registry before install;
+production resolves them through its configured npm registry. No SDK directory
+is materialized below `<dataPath>/pi/agent`.
 
 AI Chat also has an authorized host-authority Bash capability for builds,
 tests, formatting, package commands, and general host work. Each call starts
@@ -453,9 +462,9 @@ operator-trusted host or optional Docker build runner; and Preview server
 functions remain operator-trusted host execution. Its proposed AI sharing and
 repair controls were intentionally removed as premature.
 
-### 7.3 Capsule 0.10.2 runtime source locations
+### 7.3 Capsule 0.12.0 runtime source locations
 
-Capsule 0.10.2 exposes the public, message-free
+Capsule 0.12.0 exposes the public, message-free
 `capsule-mount-error-v2` union. Guest runtime events identify the exact Capsule
 artifact and never-reused runtime generation and may include a verified
 artifact-relative generated JavaScript module, one-based line, and zero-based
@@ -562,7 +571,7 @@ A committed canvas widget stores:
 - `revisionId`;
 - `instanceId`;
 - durable world geometry and ordering;
-- one durable collapse bit, `expanded`; and
+- one durable collapse bit, `collapsed`; and
 - host-owned UI props;
 
 The database projection creates a tenant-scoped `widget_instances` record bound
@@ -589,18 +598,20 @@ collapse, resize, and every other durable product effect return through
 Omnidraw commands to `CanvasService`.
 
 A projected widget frame contains only fixed-frame data: size, title,
-title-bar color, bounded declarative header items, portal ID, collapsed state,
-resizability, and optional constraints. Cangine owns the fixed 36-unit title
-bar, traffic lights, chrome painting, minimum chrome bounds, title-bar drag,
-resize acquisition, frame/content focus mode, and menu presentation. Product
-callbacks, permissions, confirmations, deletion, definition management, and
-backend effects never enter scene data.
+title-bar color, bounded declarative header items, a
+`TWidgetFramePortalContent` object, collapsed state, resizability, and optional
+constraints. The portal object contains its `portalId` plus runtime presentation
+options such as interaction, scale mode, offscreen suspension, and overscan.
+Cangine owns the fixed 36-unit title bar, traffic lights, chrome painting,
+minimum chrome bounds, title-bar drag, resize acquisition, frame/content focus
+mode, and menu presentation. Product callbacks, permissions, confirmations,
+deletion, definition management, and backend effects never enter scene data.
 
 Canvas maximize is local Cangine presentation state. It is not persisted,
 collaborated, recorded in product history, or treated as browser fullscreen.
-Legacy persisted widget `window` values are deterministically migrated:
-minimized becomes `expanded: false`; contained and fullscreen become contained
-with `expanded: true`. New writes have no `window` field.
+The current canvas contract has no widget `window` field and implements no
+legacy `window` migration. New writes persist `collapsed?: boolean` and no
+`window` field.
 
 ## 10. Runtime-load authority
 
@@ -617,8 +628,8 @@ The server:
 6. reads and hashes the signed bytes;
 7. re-reads the revision and canvas element to fence concurrent replacement;
 8. validates and projects browser-safe function descriptors;
-9. returns only the browser manifest, exact bytes, runtime descriptor, and
-   browser-safe function contract.
+9. returns the verified identity, browser manifest, exact bytes, runtime
+   descriptor, browser-safe function descriptors, and their digest.
 
 The response never includes private keys, server module paths, resource IDs,
 provider objects, or a guest-selectable state document.
@@ -819,6 +830,8 @@ The main durable records are:
   and cleanup status;
 - `agent_preview_resource_bindings` and `agent_preview_mount_leases`: exact
   revision bindings and renewable mounted-handle roots;
+- `agent_preview_source_maps`: Preview-only source-map artifact identity bound
+  to one exact Preview revision;
 - `widget_preview_publication_idempotency`: exact committed construction
   identity plus stable frame-target replay scope for its published revision;
 - authoring chats and draft descriptors.
@@ -835,19 +848,21 @@ Authoring and management:
 - `agent.widgetPreview.owner.ensure`, `get`, `list`, and `close`;
 - `agent.widgetPreview.mount.acquire`, `renew`, and `release`;
 - `agent.widgetPreview.build`, `cancel`, `diagnostics.report`,
-  `diagnostics.get`, `diagnostics.retest`, `diagnostics.resolve`,
-  `mount.*`, and `owner.*`;
+  `diagnostics.get`, `diagnostics.retest`, and `diagnostics.resolve`;
+- `agent.widgetPreview.test.report`;
 - `agent.widgetPublish.publish`, requiring a stable per-confirmation
   idempotency key plus draft, Preview owner, canvas, and frame target; the
   server selects the exact source, Preview revision, and binding plan;
 - `agent.widgets.catalog`, `detail`, `files`, `file`;
-- `agent.widgets.ensureDraft`, patch operations, deletion, and placement
-  resolution.
+- `agent.widgets.ensureDraft`, `patchDraftTool`, `patchDraftMetadata`, `delete`,
+  and `resolvePlacement`;
+- `agent.widgets.groups.create`, `update`, and `remove`.
 
 Browser runtime:
 
 - `widget.runtime.config`;
-- `widget.runtime.load`.
+- `widget.runtime.load`;
+- `widget.runtime.state.get`, `change`, and `events`.
 
 Functions and resources retain their typed oRPC contracts for invocation,
 status, cancellation, logs, resource catalogs, bindings, data, schema changes,
@@ -1014,10 +1029,10 @@ Authoring and publication:
 Browser:
 
 - [`packages/api/src/widget/api.runtime-load-widget.ts`](../../packages/api/src/widget/api.runtime-load-widget.ts)
-- [`packages/canvas/src/engine/editor/CanvasEditorBridge.ts`](../../packages/canvas/src/engine/editor/CanvasEditorBridge.ts)
-- [`packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts`](../../packages/canvas/src/engine/editor/CanvasEditorHistoryAdapter.ts)
-- [`packages/canvas/src/engine/projection/projectors/fn.widget.ts`](../../packages/canvas/src/engine/projection/projectors/fn.widget.ts)
-- [`packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts`](../../packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts)
+- [`packages/canvas/src/runtime.ts`](../../packages/canvas/src/runtime.ts)
+- [`packages/canvas/src/services/CanvasDocumentService.ts`](../../packages/canvas/src/services/CanvasDocumentService.ts)
+- [`packages/canvas/src/services/fn.scene-node-diff.ts`](../../packages/canvas/src/services/fn.scene-node-diff.ts)
+- [`packages/canvas/src/fn.semantic-canvas-style.ts`](../../packages/canvas/src/fn.semantic-canvas-style.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts`](../../packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts`](../../packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts)
 - [`packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts`](../../packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts)
@@ -1037,6 +1052,7 @@ Guest, state, and persistence:
 - [`packages/service-db/src/AgentAuthoringStoreTurso.ts`](../../packages/service-db/src/AgentAuthoringStoreTurso.ts)
 - [`packages/service-db/src/WidgetControlStoreTurso.ts`](../../packages/service-db/src/WidgetControlStoreTurso.ts)
 - [`packages/service-db/src/migrations/004-live-widget-preview.sql`](../../packages/service-db/src/migrations/004-live-widget-preview.sql)
+- [`packages/service-db/src/migrations/006-preview-source-maps.sql`](../../packages/service-db/src/migrations/006-preview-source-maps.sql)
 
 ## 21. Verification
 

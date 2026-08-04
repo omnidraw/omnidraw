@@ -186,6 +186,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B73](b/B73.md) - AI widget scaffold: resolve workspace dependency protocols before npm install
 - [x]: [B74](b/B74.md) - Preview: keep generated SDK and Capsule bridge versions aligned
  - [x]: [B75](b/B75.md) - db resource tool: apply reported stuck in `preparing` though it succeeded
+- [ ]: [B76](b/B76.md) - widgets: focused/maximized widget keys leak into canvas shortcuts
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
