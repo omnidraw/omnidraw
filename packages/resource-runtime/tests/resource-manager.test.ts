@@ -52,9 +52,9 @@ function memoryStore() {
         resources.set(id, renamed);
         return renamed;
       },
-      updateProviderState: async ({ id, status, lastError }) => {
+      updateProviderState: async ({ id, status, expectedStatus, lastError }) => {
         const resource = resources.get(id);
-        if (!resource) return null;
+        if (!resource || (expectedStatus !== undefined && resource.status !== expectedStatus)) return null;
         const updated = { ...resource, status, last_error: lastError };
         resources.set(id, updated);
         return updated;
@@ -346,6 +346,65 @@ describe('ResourceManager', () => {
         writeCapability: 'capability-b',
       },
     });
+  });
+
+  test('restores ready after a successful coordinated db migration so the next call is admitted', async () => {
+    const provider: ILocalResourceProvider = {
+      kind: 'db',
+      provision: async () => undefined,
+      delete: async () => undefined,
+      effect: (operation) => operation === 'query' ? 'read' : null,
+      dispatch: async () => ({ rows: [] }),
+    };
+    const { store, resources } = memoryStore();
+    const manager = new ResourceManager({
+      store,
+      crypto: { randomUUID: () => '00000000-0000-4000-8000-000000000004' },
+      resolveRequirements: () => ({ data: { kind: 'db', required: true, scope: ['read'] } }),
+      providers: [provider],
+    });
+    const resource = await manager.createResource({ kind: 'db', name: 'Notes' });
+    await manager.bindResource({ definitionName: 'notes-widget', slot: 'data', resourceId: resource.id });
+
+    await expect(manager.coordinateResourceMigration(resource.id, async () => 'applied')).resolves.toBe('applied');
+    expect(resources.get(resource.id)?.status).toBe('ready');
+    await expect(manager.call({
+      consumerId: 'consumer-a',
+      definitionName: 'notes-widget',
+      invocationId: 1,
+      functionClass: 'fx',
+      slot: 'data',
+      kind: 'db',
+      operation: 'query',
+      args: {},
+    })).resolves.toEqual({ rows: [] });
+
+    await manager.close();
+  });
+
+  test('marks a failed coordinated db migration as error instead of leaving it migrating', async () => {
+    const provider: ILocalResourceProvider = {
+      kind: 'db',
+      provision: async () => undefined,
+      delete: async () => undefined,
+      effect: () => null,
+      dispatch: async () => undefined,
+    };
+    const { store, resources } = memoryStore();
+    const manager = new ResourceManager({
+      store,
+      crypto: { randomUUID: () => '00000000-0000-4000-8000-000000000005' },
+      resolveRequirements: () => null,
+      providers: [provider],
+    });
+    const resource = await manager.createResource({ kind: 'db', name: 'Notes' });
+
+    await expect(manager.coordinateResourceMigration(resource.id, async () => {
+      throw new Error('physical apply exploded');
+    })).rejects.toThrow('physical apply exploded');
+    expect(resources.get(resource.id)?.status).toBe('error');
+
+    await manager.close();
   });
 
   test('cancels and drains pending gateway authorization before provider shutdown', async () => {

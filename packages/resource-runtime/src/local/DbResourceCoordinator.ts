@@ -164,6 +164,10 @@ export interface IDbResourceCoordinatorManager {
   withReadyResource<T>(resourceId: string, operation: (resource: TDbCoordinatorResource) => Promise<T>): Promise<T>;
   drainResource(resourceId: string): Promise<void>;
   coordinateResourceApply<T>(resourceId: string, operation: (resource: TDbCoordinatorResource) => Promise<T>): Promise<T>;
+  settleResourceMigration(
+    resourceId: string,
+    settlement: Readonly<{ status: 'ready' } | { status: 'error'; code: string; message: string }>,
+  ): Promise<void>;
 }
 
 export type IDbResourceLifecycle = Pick<
@@ -488,6 +492,12 @@ export class DbResourceCoordinator {
           });
         }
       }
+      if (resource.status === 'migrating') {
+        const remaining = await this.#listAllApplies(resource.id);
+        if (!remaining.some((apply) => apply.status === 'preparing' || apply.status === 'applying')) {
+          await this.#resourceManager.settleResourceMigration(resource.id, { status: 'ready' });
+        }
+      }
     }
   }
 
@@ -638,6 +648,12 @@ export class DbResourceCoordinator {
       });
       if (retry.ok) await this.#useCoordinator.release(tenant, retry.lease, 'resume');
     }
+    await this.#resourceManager.settleResourceMigration(
+      apply.resource_id,
+      outcome === 'failed'
+        ? { status: 'error', code: error?.code ?? 'DB_RESOURCE_RECOVERY_FAILED', message: error?.message ?? 'Interrupted database work could not be recovered safely.' }
+        : { status: 'ready' },
+    );
   }
 
   async #validatedDraftDetails(draftId: string): Promise<TDbDraftDetails> {
