@@ -292,6 +292,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A104](a/A104.md) - AI chat: configurable protected-operation approval policy
 - [x]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 - [x]: [A106](a/A106.md) - theme: authoritative CSS variables and compact canvas colors
+- [ ]: [A107](a/A107.md) - sidebar: no hover color on section titles, compact "+ Add" widget button
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
