@@ -437,7 +437,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
 - [x]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
 - [x]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
-- [R]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
+- [x]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
