@@ -97,6 +97,9 @@ describe('AgentService.promptChat', () => {
       'Capsule does not admit CSS custom-property references',
     );
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('subscribeWidgetTheme()');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`document.body` is already the application');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Every intermediate');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('empty, loading, or error state');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('background: var(--card)');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');

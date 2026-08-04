@@ -68,6 +68,7 @@ describe('Capsule widget authoring scaffold', () => {
     });
     expect(files.get('/draft/ui/main.ts')).toContain('document.createElement');
     expect(files.get('/draft/ui/main.ts')).toContain('document.body.append');
+    expect(files.get('/draft/ui/styles.css')).toContain('height: 100%');
     expect(files.get('/draft/ui/main.ts')).not.toContain('@omnidraw/capsule/guest');
     expect(files.get('/draft/ui/main.ts')).not.toContain('export default');
   });
@@ -111,6 +112,8 @@ describe('Capsule widget authoring scaffold', () => {
     });
     expect(files.get('/draft/ui/main.tsx')).toContain('useState');
     expect(files.get('/draft/ui/main.tsx')).toContain('createRoot(root).render(<App />)');
+    expect(files.get('/draft/ui/styles.css')).toContain('.omnidraw-widget-root,');
+    expect(files.get('/draft/ui/styles.css')).toContain('height: 100%');
     expect(files.has('/draft/ui/main.ts')).toBe(false);
   });
 

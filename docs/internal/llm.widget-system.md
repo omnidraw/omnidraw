@@ -667,6 +667,14 @@ identity, serialized asynchronous updates, generation rejection, viewport
 publication, Capsule mounting, and cleanup; widget content does not emulate
 frame-edge resize hit regions.
 
+Inside Capsule, `document.body` is already the frame's application content
+area. Authored UI must fill that area in every state. The direct body child and
+every intermediate framework mount container must propagate `width: 100%` and
+`height: 100%` to the application root; otherwise a full-height inner component
+still resolves against a content-sized wrapper and leaves the rest of the frame
+visually empty. Growing content should scroll inside a bounded Flexbox or Grid
+region rather than changing the widget's outer size.
+
 The host output channel accepts only bounded notification events. The UI layer
 rate-limits them to five events per ten seconds per mount.
 

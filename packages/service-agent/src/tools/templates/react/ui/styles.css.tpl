@@ -1,7 +1,14 @@
+.omnidraw-widget-root,
 .omnidraw-widget {
   box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.omnidraw-widget {
   display: grid;
-  min-height: 100%;
   place-items: center;
   gap: 12px;
   padding: 20px;
