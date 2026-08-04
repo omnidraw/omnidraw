@@ -1,9 +1,9 @@
 import type {
   TWidgetCapsuleBuildIdentity,
   TWidgetBuildResult,
-  TWidgetManifestV3,
   TWidgetSourceSnapshot,
 } from '../types';
+import type { TWidgetExecutableManifestProjection } from '../filesystem/typed';
 import {
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
@@ -48,7 +48,7 @@ export type TWidgetBuildIntegrityValidation =
 
 export type TWidgetBuildIntegrityArgs = Readonly<{
   snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV3;
+  manifest: TWidgetExecutableManifestProjection;
   canonicalManifestJson: string;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
@@ -142,7 +142,7 @@ export function fnValidateWidgetBuildIntegrity(
 
   if (
     args.build.uiArtifact.kind !== 'ui'
-    || (args.manifest.server === undefined) !== (args.build.serverArtifact === null)
+    || (args.manifest.server === null) !== (args.build.serverArtifact === null)
     || (args.build.serverArtifact !== null && args.build.serverArtifact.kind !== 'server')
     || (
       args.build.serverArtifact !== null

@@ -166,6 +166,47 @@ export function fnCanonicalizeWidgetExecutableManifest(manifest: TWidgetManifest
   return JSON.stringify(fnProjectWidgetExecutableManifest(manifest));
 }
 
+export function fnNormalizeWidgetExecutableProjection(
+  projection: TWidgetExecutableManifestProjection,
+): TWidgetExecutableManifestProjection {
+  return {
+    schemaVersion: 4,
+    ui: {
+      runtime: 'capsule',
+      entry: fnNormalizeWidgetFilesystemRelativePath(projection.ui.entry) ?? projection.ui.entry,
+      apis: fnNormalizeWidgetCapsuleApis(projection.ui.apis),
+      ...(projection.ui.budgets === undefined
+        ? {}
+        : { budgets: fnNormalizeWidgetCapsuleBudgetRequest(projection.ui.budgets) }),
+      ...(projection.ui.state === undefined
+        ? {}
+        : { state: {
+            collaborative: projection.ui.state.collaborative,
+            localStore: projection.ui.state.localStore,
+          } }),
+      ...(projection.ui.parkability === undefined
+        ? {}
+        : { parkability: { enabled: false as const } }),
+    },
+    server: projection.server === null
+      ? null
+      : {
+          entry: fnNormalizeWidgetFilesystemRelativePath(projection.server.entry)
+            ?? projection.server.entry,
+          runtimeAbi: projection.server.runtimeAbi,
+        },
+    resources: [...projection.resources]
+      .sort((left, right) => compareText(left.slot, right.slot))
+      .map(normalizeRequirement),
+  };
+}
+
+export function fnCanonicalizeWidgetExecutableProjection(
+  projection: TWidgetExecutableManifestProjection,
+): string {
+  return JSON.stringify(fnNormalizeWidgetExecutableProjection(projection));
+}
+
 export function fnWidgetManifestV4Digest(args: Readonly<{
   manifest: TWidgetManifestV4;
   digestSha256(value: string): string;

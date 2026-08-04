@@ -1,18 +1,23 @@
+import type { TWidgetPlacementRef } from '@omnidraw/widget-contract';
 import type {
   TWidgetPublicCatalogEntry,
   TWidgetPublicCatalogForm,
   TWidgetPublicIssue,
-  TWidgetPublicPlacement,
 } from '@omnidraw/orpc-client';
 
 export type TWidgetSource = 'draft' | 'published';
+
+export type TWidgetSidebarPlacement = Readonly<{
+  reference: TWidgetPlacementRef;
+  bounds: Readonly<{ width: number; height: number }>;
+}>;
 
 export type TWidgetSidebarRow = {
   widgetKey: string;
   source: TWidgetSource;
   form: TWidgetPublicCatalogForm;
   entry: TWidgetPublicCatalogEntry;
-  placement: TWidgetPublicPlacement | null;
+  placement: TWidgetSidebarPlacement | null;
   problem: TWidgetPublicIssue | null;
 };
 

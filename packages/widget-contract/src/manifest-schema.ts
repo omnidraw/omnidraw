@@ -5,7 +5,6 @@
 import { z } from 'zod';
 
 import {
-  fnNormalizeWidgetManifest,
   fnNormalizeWidgetRelativePath,
 } from './core/fn.manifest';
 import { WIDGET_CAPSULE_API_GROUPS } from './CONSTANTS';
@@ -18,13 +17,10 @@ import type {
   TWidgetCapsuleHash,
   TWidgetCapsuleParkability,
   TWidgetCapsuleSchemaReference,
-  TWidgetManifestV3,
 } from './types';
 
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9._-]{0,127}$/;
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const TARGET_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,99}$/;
 const CAPSULE_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const CAPSULE_CAPABILITY_ID_PATTERN =
   /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*)+$/;
@@ -214,43 +210,3 @@ export const ZWidgetResourceRequirement = z.object({
     }
   }
 });
-
-const ZWidgetManifestV3Shape = z.object({
-  schemaVersion: z.literal(3),
-  name: z.string().trim().min(1).max(200),
-  slug: z.string().min(1).max(100).regex(SLUG_PATTERN),
-  description: z.string().trim().min(1).max(2_000).optional(),
-  ui: z.object({
-    runtime: z.literal('capsule'),
-    entry: ZWidgetBuildEntryPath,
-    apis: ZWidgetCapsuleApis,
-    budgets: ZWidgetCapsuleBudgetRequest.optional(),
-    state: z.object({
-      collaborative: z.boolean(),
-      localStore: z.enum(['none', 'ephemeral']),
-    }).strict().optional(),
-    parkability: z.object({
-      enabled: z.literal(false),
-    }).strict().optional(),
-  }).strict(),
-  server: z.object({
-    entry: ZWidgetBuildEntryPath,
-    runtimeAbi: z.string().min(1).max(100).regex(TARGET_ID_PATTERN),
-  }).strict().optional(),
-  resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
-    const slots = new Set<string>();
-    resources.forEach((requirement, index) => {
-      if (slots.has(requirement.slot)) {
-        context.addIssue({
-          code: 'custom',
-          message: `Duplicate resource slot: ${requirement.slot}`,
-          path: [index, 'slot'],
-        });
-      }
-      slots.add(requirement.slot);
-    });
-  }).optional(),
-}).strict();
-
-export const ZWidgetManifestV3: z.ZodType<TWidgetManifestV3> = ZWidgetManifestV3Shape
-  .transform((manifest) => fnNormalizeWidgetManifest(manifest));

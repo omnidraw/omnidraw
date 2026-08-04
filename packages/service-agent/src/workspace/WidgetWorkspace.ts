@@ -17,7 +17,7 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
-  ZWidgetManifestV3,
+  ZWidgetManifestV4,
 } from '@omnidraw/widget-contract';
 import { fnChatStorageSegments } from '@omnidraw/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
@@ -319,9 +319,9 @@ export class WidgetWorkspace {
       join,
       dirname,
       parseManifest: (value) => {
-        const v3 = ZWidgetManifestV3.safeParse(value);
-        if (v3.success) {
-          return { ok: true as const, name: v3.data.name, kind: 'widget' as const };
+        const manifest = ZWidgetManifestV4.safeParse(value);
+        if (manifest.success) {
+          return { ok: true as const, name: manifest.data.name, kind: 'widget' as const };
         }
         return { ok: false as const };
       },

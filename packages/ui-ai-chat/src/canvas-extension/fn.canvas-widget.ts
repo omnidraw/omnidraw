@@ -152,6 +152,32 @@ export function fnCreatePublishedWidgetNode(
   };
 }
 
+export function fnCreatePreviewWidgetNode(
+  args: Readonly<{
+    id: string;
+    parentId: string | null;
+    orderKey: string;
+    position: Readonly<{ x: number; y: number }>;
+    size: Readonly<{ width: number; height: number }>;
+    title: string;
+    instanceId: string;
+    widgetKey: string;
+  }>,
+): TWidgetFrameNode {
+  const extension: TCanvasWidgetExtensionV1 = {
+    schemaVersion: 1,
+    type: 'widget-preview',
+    instanceId: args.instanceId,
+    widgetKey: args.widgetKey,
+  };
+  return {
+    ...fnBaseWidgetNode(args),
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: extension,
+    },
+  };
+}
+
 export function fnCanvasWidgetExtension(
   node: Readonly<TSceneNode> | null | undefined,
 ): TCanvasWidgetExtensionV1 | null {
@@ -168,6 +194,13 @@ export function fnCanvasWidgetExtension(
   }
   if (
     value.type === 'widget-instance'
+    && typeof value.instanceId === 'string'
+    && typeof value.widgetKey === 'string'
+  ) {
+    return value as TCanvasWidgetExtensionV1;
+  }
+  if (
+    value.type === 'widget-preview'
     && typeof value.instanceId === 'string'
     && typeof value.widgetKey === 'string'
   ) {

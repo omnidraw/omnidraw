@@ -1,4 +1,5 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import { ZDirectFunctionResult } from '../function/contract';
 import type {
   TWidgetStateChangeResult,
   TWidgetStateGetResult,
@@ -201,6 +202,51 @@ export const ZWidgetRuntimeLoadOutput = z.object({
   browserFunctionDescriptorsDigestSha256: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
+const ZWidgetPreviewSessionIdentity = z.object({
+  canvasId: ZIdentifier,
+  elementId: ZIdentifier,
+  widgetKey: ZWidgetKey,
+}).strict();
+
+export const ZWidgetPreviewSelectedResource = z.object({
+  slot: z.string().min(1).max(128),
+  resourceId: ZIdentifier,
+  effect: z.enum(['read', 'read_write']),
+}).strict();
+
+export const ZWidgetPreviewDiagnostic = z.object({
+  severity: z.enum(['info', 'warning', 'error']),
+  message: z.string().min(1).max(4_096),
+  code: z.string().min(1).max(100).nullable(),
+  path: z.string().min(1).max(512).nullable(),
+}).strict();
+
+export const ZWidgetPreviewMount = z.object({
+  canvasId: ZIdentifier,
+  elementId: ZIdentifier,
+  widgetKey: ZWidgetKey,
+  manifest: ZWidgetBrowserManifest,
+  artifact: ZWidgetRuntimeLoadOutput.shape.artifact,
+  runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
+  functionDescriptors: ZWidgetBrowserFunctionDescriptors,
+  browserFunctionDescriptorsDigestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  constructionReused: z.boolean(),
+  diagnostics: z.array(ZWidgetPreviewDiagnostic).max(1_024),
+}).strict();
+
+export const ZWidgetPreviewInvokeInput = z.object({
+  canvasId: ZIdentifier,
+  elementId: ZIdentifier,
+  functionName: z.string().min(1).max(129).regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/),
+  input: z.unknown().refine((value) => {
+    try {
+      return (JSON.stringify(value)?.length ?? 0) <= 1_048_576;
+    } catch {
+      return false;
+    }
+  }, 'Function input must be JSON-compatible and no larger than 1 MiB.'),
+}).strict();
+
 const ZWidgetPublicIssue: z.ZodType<TWidgetPublicIssue> = z.object({
   code: z.string().min(1).max(100),
   message: z.string().min(1).max(500),
@@ -351,6 +397,17 @@ const widgetContract = oc.router({
       }).strict(),
       resourceBindings: ZWidgetResourceBindings,
     }).strict()),
+  }),
+  preview: oc.router({
+    open: oc.input(ZWidgetPreviewSessionIdentity.extend({
+      selectedResources: z.array(ZWidgetPreviewSelectedResource).max(64).optional(),
+    }).strict()).output(ZWidgetPreviewMount),
+    load: oc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
+    close: oc.input(z.object({
+      canvasId: ZIdentifier,
+      elementId: ZIdentifier,
+    }).strict()).output(z.object({ closed: z.boolean() }).strict()),
+    invoke: oc.input(ZWidgetPreviewInvokeInput).output(ZDirectFunctionResult),
   }),
   runtime: oc.router({
     config: oc.output(ZWidgetCapsuleHostConfiguration),

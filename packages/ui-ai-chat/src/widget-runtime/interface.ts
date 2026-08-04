@@ -33,9 +33,11 @@ export type TWidgetRuntimeIdentity = Readonly<{
   catalogGeneration: number;
 }>;
 
-/** Browser-local draft Preview identity; it carries no backend execution authority. */
+/** Browser-local draft Preview identity for one process-owned Preview session. */
 export type TWidgetPreviewRuntimeIdentity = Readonly<{
   kind: 'draft_preview';
+  canvasId: string;
+  elementId: string;
   widgetKey: string;
 }>;
 
@@ -133,6 +135,12 @@ export type TWidgetRuntimeTransportPort = Readonly<{
     widget: Readonly<{
       runtime: Readonly<{
         load: TApi['widget']['runtime']['load'];
+      }>;
+      preview: Readonly<{
+        open: TApi['widget']['preview']['open'];
+        load: TApi['widget']['preview']['load'];
+        close: TApi['widget']['preview']['close'];
+        invoke: TApi['widget']['preview']['invoke'];
       }>;
     }>;
     function: Pick<TApi['function'], 'invoke'>;

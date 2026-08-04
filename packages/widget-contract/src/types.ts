@@ -1,6 +1,7 @@
 /**
  * @file Browser-safe widget manifest, immutable artifact, publication, and retention types.
  */
+import type { TWidgetExecutableManifestProjection } from './filesystem/typed';
 
 import type {
   TResourceRequirement,
@@ -235,17 +236,6 @@ export type TWidgetServerFunctionDescriptorValidation =
       slot?: string;
     }>;
 
-/** Fields outside the current manifest contract are rejected by the runtime schema. */
-export type TWidgetManifestV3 = Readonly<{
-  schemaVersion: 3;
-  name: string;
-  slug: string;
-  description?: string;
-  ui: TWidgetUiManifest;
-  server?: TWidgetServerManifest;
-  resources?: readonly TResourceRequirement[];
-}>;
-
 export type TWidgetSourceFile = Readonly<{
   path: string;
   bytes: Uint8Array;
@@ -290,7 +280,7 @@ export type TWidgetNativeCapsuleRuntimeDescriptor = TWidgetCapsuleRuntimeDescrip
 
 export type TWidgetBuildRequest = Readonly<{
   snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV3;
+  manifest: TWidgetExecutableManifestProjection;
   canonicalManifestJson: string;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;

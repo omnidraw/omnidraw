@@ -1,5 +1,5 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
 import type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
 
@@ -131,7 +131,7 @@ const ZAgentApproval = z.object({
 export type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
 
 export type TAgentChatConnect = {
-  vcJson: TWidgetManifestV3 | null;
+  vcJson: TWidgetManifestV4 | null;
   messageHistory: unknown[];
 }
 

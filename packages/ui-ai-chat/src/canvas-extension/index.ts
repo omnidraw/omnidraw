@@ -43,12 +43,14 @@ import type {
   TWidgetUiRuntimeRenderOwner,
 } from '../widget-runtime/interface';
 import { createWidgetUiArtifactMountPort } from '../widget-runtime/mount-widget-ui-artifact';
+import { createWidgetPreviewOwner, type TWidgetPreviewOwner } from './preview-owner';
 import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 import {
   fnAiWidgetPayload,
   fnCanvasWidgetExtension,
   fnCanvasWidgetMountSignature,
   fnCreateAiWidgetNode,
+  fnCreatePreviewWidgetNode,
   fnCreatePublishedWidgetNode,
   type TAiWidgetPayload,
 } from './fn.canvas-widget';
@@ -398,12 +400,15 @@ export function createAiChatCanvasExtension(
         let visible = true;
         let portalHost: HTMLElement | null = null;
         let owner: TWidgetUiRuntimeRenderOwner | null = null;
+        let previewOwner: TWidgetPreviewOwner | null = null;
         const updateViewport = () => {
-          owner?.setViewport(fxWidgetCapsuleViewport(capsuleViewportPortal, {
+          const viewport = fxWidgetCapsuleViewport(capsuleViewportPortal, {
             host: portalHost,
             geometry,
             visible,
-          }));
+          });
+          owner?.setViewport(viewport);
+          previewOwner?.setViewport(viewport);
         };
         const unregister = context.engine.portals.register({
           portalId,
@@ -447,26 +452,54 @@ export function createAiChatCanvasExtension(
                 host.replaceChildren();
               };
             }
-            if (currentExtension?.type !== 'widget-instance') return undefined;
-            portalHost = host;
-            owner = widgetRuntime.renderOwned({
-              canvasId: context.config.canvasId,
-              element: current,
-              root: host,
-              initialViewport: fxWidgetCapsuleViewport(capsuleViewportPortal, {
-                host,
-                geometry,
-                visible,
-              }),
-            });
-            return async () => {
-              reportUnmount();
-              const mounted = owner;
-              owner = null;
-              if (portalHost === host) portalHost = null;
-              await mounted?.destroy('canvas portal unmounted');
-              host.replaceChildren();
-            };
+            if (currentExtension?.type === 'widget-instance') {
+              portalHost = host;
+              owner = widgetRuntime.renderOwned({
+                canvasId: context.config.canvasId,
+                element: current,
+                root: host,
+                initialViewport: fxWidgetCapsuleViewport(capsuleViewportPortal, {
+                  host,
+                  geometry,
+                  visible,
+                }),
+              });
+              return async () => {
+                reportUnmount();
+                const mounted = owner;
+                owner = null;
+                if (portalHost === host) portalHost = null;
+                await mounted?.destroy('canvas portal unmounted');
+                host.replaceChildren();
+              };
+            }
+            if (currentExtension?.type === 'widget-preview') {
+              portalHost = host;
+              let previewDisposed = false;
+              const owner = createWidgetPreviewOwner({
+                transport: args.widgetTransport,
+                mount: widgetMount,
+                codec: {
+                  decodeBase64: args.widgetBrowser.decodeBase64,
+                  digestSha256: args.widgetBrowser.digestSha256,
+                },
+                canvasId: context.config.canvasId,
+                widgetKey: currentExtension.widgetKey,
+                isTargetCurrent: () => !previewDisposed,
+              });
+              previewOwner = owner;
+              owner.attach(host, current);
+              updateViewport();
+              return async () => {
+                reportUnmount();
+                if (portalHost === host) portalHost = null;
+                previewDisposed = true;
+                previewOwner = null;
+                await owner.destroy('canvas portal unmounted');
+                host.replaceChildren();
+              };
+            }
+            return undefined;
           },
           onGeometryChange(next) {
             geometry = next;
@@ -685,8 +718,21 @@ export function createAiChatCanvasExtension(
               bounds: placementArgs.bounds,
             },
           });
-          if (placementArgs.reference.source !== 'published') {
-            throw new Error('Build and publish this widget before adding it to the canvas.');
+          if (placementArgs.reference.source === 'draft') {
+            appendWidgetNode(fnCreatePreviewWidgetNode({
+              id: args.widgetBrowser.createId(),
+              parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+              orderKey: '',
+              position: placementArgs.position,
+              size: placementArgs.bounds,
+              title: placementArgs.label,
+              instanceId: args.widgetBrowser.createId(),
+              widgetKey: placementArgs.reference.widgetKey,
+            }), 'omnidraw:widget-placement');
+            context.config.notification?.showSuccess(
+              `${placementArgs.label} Preview added to canvas`,
+            );
+            return;
           }
           await addPublishedWidget(
             placementArgs.reference,

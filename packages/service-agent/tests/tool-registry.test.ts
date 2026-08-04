@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ZWidgetManifestV3 } from '@omnidraw/widget-contract';
+import { ZWidgetManifestV4 } from '@omnidraw/widget-contract';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
@@ -101,7 +101,7 @@ describe('AI Chat tool registry', () => {
         await mkdir(join(cwd, 'ui'), { recursive: true });
         await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("canvas"));\n', 'utf8');
         await writeFile(join(cwd, 'omnidraw.json'), `${JSON.stringify({
-          schemaVersion: 3,
+          schemaVersion: 4,
           name: 'Migrated WebGL',
           slug: 'migrated-webgl',
           ui: {
@@ -127,7 +127,7 @@ describe('AI Chat tool registry', () => {
       'utf8',
     ));
     expect(manifest.ui).toHaveProperty('target');
-    expect(ZWidgetManifestV3.safeParse(manifest).success).toBe(false);
+    expect(ZWidgetManifestV4.safeParse(manifest).success).toBe(false);
     const first = await workspace.getDraft('Migrated WebGL');
     const second = await workspace.getDraft('Migrated WebGL');
     expect(first?.revision).toMatch(/^[0-9a-f]{64}$/);
@@ -145,9 +145,11 @@ describe('AI Chat tool registry', () => {
       await writeFile(
         join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
-          schemaVersion: 3,
+          schemaVersion: 4,
           name: 'Bash Clock',
           slug: 'bash-clock',
+          description: 'Bash clock fixture.',
+          tool: { label: 'Bash Clock', group: null, priority: 0 },
           ui: { runtime: 'capsule', entry: 'ui/main.ts' },
         })}\n`,
         'utf8',
@@ -160,9 +162,11 @@ describe('AI Chat tool registry', () => {
       await writeFile(
         join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
-          schemaVersion: 3,
+          schemaVersion: 4,
           name: 'Second Clock',
           slug: 'second-clock',
+          description: 'Second clock fixture.',
+          tool: { label: 'Second Clock', group: null, priority: 0 },
           ui: { runtime: 'capsule', entry: 'ui/main.ts' },
         })}\n`,
         'utf8',

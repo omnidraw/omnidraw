@@ -3,7 +3,7 @@ import * as Checkbox from "@kobalte/core/checkbox";
 import * as Dialog from "@kobalte/core/dialog";
 import Check from "lucide-solid/icons/check";
 import { For, Show, createEffect, createSignal, type Component } from "solid-js";
-import { fnChangeSummary, fnImpactSlots, fnStatusLabel } from "../fn.db-resource";
+import { fnChangeSummary, fnStatusLabel } from "../fn.db-resource";
 import type { TDbApplyDetails, TDbApplyPreview, TDbRestorePreview } from "../types";
 import styles from "../DbResourcePage.module.css";
 
@@ -74,15 +74,6 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
                       <td>{use.kind}</td>
                       <td>{use.state}</td>
                     </tr>
-                  )}</For></tbody>
-                </table>
-              </section>
-              <section class={styles.ruledSection}>
-                <h4 class={styles.sectionTitle}>Affected bindings</h4>
-                <table class={styles.table}>
-                  <thead><tr><th>Definition</th><th>Slot</th><th>Effective access</th></tr></thead>
-                  <tbody><For each={fnImpactSlots(props.preview?.impact)} fallback={<tr><td colSpan={3} class={styles.muted}>No bound slots.</td></tr>}>{(slot) => (
-                    <tr><td>{slot.definitionId} · {slot.revisionId}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
                   )}</For></tbody>
                 </table>
               </section>

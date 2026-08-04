@@ -12,6 +12,12 @@ import {
   apiWidgetPublishMetadata,
 } from './api.publication';
 import { apiWidgetPlacementResolve } from './api.placement-resolve';
+import {
+  apiWidgetPreviewClose,
+  apiWidgetPreviewInvoke,
+  apiWidgetPreviewLoad,
+  apiWidgetPreviewOpen,
+} from './api.preview';
 import { apiWidgetRuntimeLoad } from './api.runtime-load-widget';
 import { apiRuntimeWidgetStateChange } from './api.runtime-widget-state-change';
 import { apiRuntimeWidgetStateEvents } from './api.runtime-widget-state-events';
@@ -36,6 +42,12 @@ const widgetHandlers = {
   },
   placement: {
     resolve: apiWidgetPlacementResolve,
+  },
+  preview: {
+    open: apiWidgetPreviewOpen,
+    load: apiWidgetPreviewLoad,
+    close: apiWidgetPreviewClose,
+    invoke: apiWidgetPreviewInvoke,
   },
   runtime: {
     config: apiWidgetRuntimeConfig,

@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from './types';
 import { fxWalkFiles } from './fx.walk-files';
 import { fnLintRequiredWidgetFiles } from './lint/fn.required-widget-files';
@@ -38,13 +38,13 @@ export async function txValidateWidgetFiles(
   const files: string[] = await fxWalkFiles(portal, { root: args.cwd }).catch((): string[] => []);
   const hasFile = (path: string): boolean => files.includes(path);
 
-  let manifest: TWidgetManifestV3 | null = null;
+  let manifest: TWidgetManifestV4 | null = null;
   if (hasFile('omnidraw.json')) {
     try {
       const candidate: unknown = JSON.parse(
         await portal.readFile(portal.join(args.cwd, 'omnidraw.json'), 'utf8'),
       );
-      manifest = candidate as TWidgetManifestV3;
+      manifest = candidate as TWidgetManifestV4;
       const manifestValidation = fnValidateManifest(manifest);
       errors.push(...manifestValidation.errors);
       warnings.push(...manifestValidation.warnings);

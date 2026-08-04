@@ -3,8 +3,8 @@ import type { IEventPublisherService } from '@omnidraw/service-event-publisher/I
 import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
 import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
 import {
-  ZWidgetManifestV3,
-  type TWidgetManifestV3,
+  ZWidgetManifestV4,
+  type TWidgetManifestV4,
 } from '@omnidraw/widget-contract';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
@@ -112,7 +112,7 @@ type TLoginSession = {
 };
 
 type TAgentConnectResult = {
-  vcJson: TWidgetManifestV3 | null;
+  vcJson: TWidgetManifestV4 | null;
   messageHistory: AgentSession['messages'];
 };
 type TAgentCancelResult = {
@@ -815,8 +815,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#workspace.findMountedWidget(sessionId, name)
   }
 
-  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV3> {
-    return ZWidgetManifestV3.parse(
+  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV4> {
+    return ZWidgetManifestV4.parse(
       JSON.parse(await readFile(join(mount.targetPath, 'omnidraw.json'), 'utf8')),
     )
   }

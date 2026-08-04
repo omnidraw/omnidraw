@@ -90,22 +90,41 @@ describe('direct widget function host bridge', () => {
       .rejects.toThrow('no longer current');
   });
 
-  test('rejects undeclared functions and durable Preview execution locally', async () => {
+  test('rejects undeclared functions locally and routes Preview calls to the Preview transport', async () => {
     const invoke = vi.fn();
     await expect(bridge(invoke).invoke({ functionName: 'missing', input: {} }))
       .rejects.toThrow('not declared');
     expect(invoke).not.toHaveBeenCalled();
 
+    const previewInvoke = vi.fn(async () => [undefined, {
+      status: 'succeeded',
+      output: { count: 2 },
+      diagnostics: { code: null, message: null, logByteSize: 0, truncated: false },
+    }]);
     const preview = createWidgetFunctionHostBridge({
-      identity: { kind: 'draft_preview', draftId: 'draft-a', definitionId: 'old', revision: '1' },
+      identity: {
+        kind: 'draft_preview',
+        canvasId: 'canvas-a',
+        elementId: 'element-a',
+        widgetKey: 'counter',
+      },
       functionDescriptors: [descriptor],
       isTargetCurrent: () => true,
       transport: {
-        api: { widget: { runtime: { load: vi.fn() } }, function: { invoke } },
+        api: {
+          widget: { preview: { invoke: previewInvoke } },
+          function: { invoke },
+        },
       } as unknown as TWidgetRuntimeTransportPort,
     });
-    await expect(preview.invoke({ functionName: 'increment', input: {} }))
-      .rejects.toThrow('live ephemeral Preview runtime');
+    await expect(preview.invoke({ functionName: 'increment', input: { amount: 1 } }))
+      .resolves.toEqual({ count: 2 });
+    expect(previewInvoke).toHaveBeenCalledWith({
+      canvasId: 'canvas-a',
+      elementId: 'element-a',
+      functionName: 'increment',
+      input: { amount: 1 },
+    }, expect.anything());
     expect(invoke).not.toHaveBeenCalled();
   });
 });

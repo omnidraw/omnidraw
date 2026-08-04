@@ -1,5 +1,5 @@
 /**
- * @file Pure normalization and invariant checks for widget manifest v3.
+ * @file Pure path and resource-requirement normalization shared by widget manifests.
  */
 
 import type {
@@ -7,7 +7,6 @@ import type {
   TResourceOperationParameterDeclaration,
   TResourceRequirement,
 } from '@omnidraw/resource-runtime';
-import type { TWidgetManifestV3 } from '../types';
 import {
   fnNormalizeWidgetCapsuleBudgetRequest,
   fnNormalizeWidgetCapsuleApis,
@@ -85,52 +84,4 @@ export function fnNormalizeWidgetRelativePath(value: string): string | null {
   ))) return null;
 
   return segments.join('/');
-}
-
-export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV3): TWidgetManifestV3 {
-  const uiEntry = fnNormalizeWidgetRelativePath(manifest.ui.entry) ?? manifest.ui.entry;
-  const serverEntry = manifest.server === undefined
-    ? undefined
-    : fnNormalizeWidgetRelativePath(manifest.server.entry) ?? manifest.server.entry;
-  const resources = manifest.resources === undefined
-    ? undefined
-    : [...manifest.resources]
-      .sort((left, right) => compareText(left.slot, right.slot))
-      .map(normalizeRequirement);
-
-  return {
-    schemaVersion: 3,
-    name: manifest.name.trim(),
-    slug: manifest.slug,
-    ...(manifest.description === undefined
-      ? {}
-      : { description: manifest.description.trim() }),
-    ui: {
-      runtime: 'capsule',
-      entry: uiEntry,
-      apis: fnNormalizeWidgetCapsuleApis(manifest.ui.apis),
-      ...(manifest.ui.budgets === undefined
-        ? {}
-        : { budgets: fnNormalizeWidgetCapsuleBudgetRequest(manifest.ui.budgets) }),
-      ...(manifest.ui.state === undefined
-        ? {}
-        : {
-            state: {
-              collaborative: manifest.ui.state.collaborative,
-              localStore: manifest.ui.state.localStore,
-            },
-          }),
-      ...(manifest.ui.parkability === undefined
-        ? {}
-        : { parkability: { enabled: false as const } }),
-    },
-    ...(manifest.server === undefined
-      ? {}
-      : { server: { entry: serverEntry!, runtimeAbi: manifest.server.runtimeAbi } }),
-    ...(resources === undefined ? {} : { resources }),
-  };
-}
-
-export function fnCanonicalizeWidgetManifest(manifest: TWidgetManifestV3): string {
-  return JSON.stringify(fnNormalizeWidgetManifest(manifest));
 }

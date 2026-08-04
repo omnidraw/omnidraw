@@ -3,8 +3,8 @@ import type {
   TWidgetCapsuleApiContract,
   TWidgetCapsuleBudgets,
   TWidgetNativeCapsuleRuntimeDescriptor,
-  TWidgetManifestV3,
 } from '../src';
+import type { TWidgetExecutableManifestProjection } from '../src/filesystem/typed';
 
 export const CAPSULE_HASH_A = `sha256:${'a'.repeat(64)}` as const;
 export const CAPSULE_HASH_B = `sha256:${'b'.repeat(64)}` as const;
@@ -49,13 +49,13 @@ export const CAPSULE_RUNTIME_DESCRIPTOR: TWidgetNativeCapsuleRuntimeDescriptor =
   signatureKeyIds: Object.freeze(['omnidraw-preview-v1']),
 });
 
-export const CAPSULE_MANIFEST: TWidgetManifestV3 = Object.freeze({
-  schemaVersion: 3,
-  name: 'Example',
-  slug: 'example',
+export const CAPSULE_MANIFEST: TWidgetExecutableManifestProjection = Object.freeze({
+  schemaVersion: 4,
   ui: Object.freeze({
     runtime: 'capsule',
     entry: 'src/ui.tsx',
     apis: Object.freeze(['DOM'] as const),
   }),
+  server: null,
+  resources: Object.freeze([]),
 });

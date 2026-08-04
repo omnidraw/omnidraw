@@ -56,7 +56,9 @@ describe('filesystem widget catalog projection', () => {
     expect(projection.ungrouped[0]).toMatchObject({
       widgetKey: 'camera',
       source: 'draft',
-      placement: null,
+      placement: {
+        reference: { source: 'draft', widgetKey: 'camera' },
+      },
     });
   });
 

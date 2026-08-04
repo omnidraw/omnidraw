@@ -25,6 +25,8 @@ export function fnSortWidgetRows(rows: TWidgetSidebarRow[]): TWidgetSidebarRow[]
   });
 }
 
+const DRAFT_PLACEMENT_BOUNDS = Object.freeze({ width: 360, height: 320 });
+
 export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSidebarProjection {
   const groupMap = new Map(catalog.groups.map((name) => [name, {
     name,
@@ -41,7 +43,18 @@ export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSi
       source,
       form,
       entry,
-      placement: source === 'published' ? entry.placement : null,
+      placement: source === 'published'
+        ? entry.placement
+        : form.health === 'healthy'
+          ? {
+            reference: {
+              source: 'draft' as const,
+              widgetKey: entry.widgetKey,
+              catalogGeneration: catalog.generation,
+            },
+            bounds: DRAFT_PLACEMENT_BOUNDS,
+          }
+          : null,
       problem: form.issues[0] ?? null,
     };
     const groupName = form.config?.tool.group;

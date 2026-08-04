@@ -1,5 +1,6 @@
 export type * from './typed';
 export {
+  ZWidgetExecutableManifest,
   ZWidgetManifestV4,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
@@ -8,8 +9,10 @@ export {
 } from './schema';
 export {
   fnCanonicalizeWidgetExecutableManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetManifestV4,
   fnCanonicalizeWidgetPresentation,
+  fnNormalizeWidgetExecutableProjection,
   fnNormalizeWidgetManifestV4,
   fnProjectWidgetExecutableManifest,
   fnProjectWidgetPresentation,

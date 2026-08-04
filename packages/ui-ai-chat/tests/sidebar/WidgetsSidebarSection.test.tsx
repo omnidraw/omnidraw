@@ -114,7 +114,7 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
     expect(container.querySelectorAll('button[aria-current="page"]')).toHaveLength(1);
   });
 
-  test('places only the healthy published form and shows catalog failures', async () => {
+  test('places published and healthy draft forms and shows catalog failures', async () => {
     const addToCanvas = vi.fn(async () => undefined);
     const container = mount(controller(() => '/c/canvas-1', {
       placement: {
@@ -131,17 +131,22 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
       return button!;
     });
     disclosure.click();
-    const add = container.querySelector<HTMLButtonElement>(
+    const adds = container.querySelectorAll<HTMLButtonElement>(
       'button[aria-label="Add Camera to canvas"]',
     );
-    expect(add).not.toBeNull();
-    expect(container.querySelectorAll('button[aria-label="Add Camera to canvas"]'))
-      .toHaveLength(1);
-    add?.click();
+    expect(adds).toHaveLength(2);
+    adds[0]?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
     expect(addToCanvas).toHaveBeenCalledWith({
       reference: { source: 'published', widgetKey: 'camera', catalogGeneration: 1 },
       bounds: { width: 480, height: 320 },
+      label: 'Camera',
+    });
+    adds[1]?.click();
+    await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledTimes(2));
+    expect(addToCanvas).toHaveBeenLastCalledWith({
+      reference: { source: 'draft', widgetKey: 'camera', catalogGeneration: 1 },
+      bounds: { width: 360, height: 320 },
       label: 'Camera',
     });
 

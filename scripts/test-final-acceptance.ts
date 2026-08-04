@@ -33,7 +33,6 @@ const durableSuites: readonly TAcceptanceSuite[] = [
   { name: 'strict database schema', command: ['bun', 'run', 'db:schema:verify'] },
   { name: 'database constraints', command: ['bun', 'run', 'db:constraints:test'] },
   { name: 'database recovery', command: ['bun', 'run', 'db:recovery:test'] },
-  { name: 'tenant isolation', command: ['bun', 'run', 'test:isolation'] },
   { name: 'resource runtime', command: ['bun', 'run', 'test:resource-runtime'] },
   { name: 'widget artifacts', command: ['bun', 'run', 'test:widget-artifacts'] },
   { name: 'function runtime', command: ['bun', 'run', 'test:function-runtime'] },

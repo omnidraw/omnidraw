@@ -42,6 +42,13 @@ export type TCanvasWidgetExtensionV1 =
         Record<string, TCanvasWidgetResourceBindingV1>
       >;
       uiProps?: TJsonValue;
+    }>
+  | Readonly<{
+      schemaVersion: 1;
+      type: "widget-preview";
+      instanceId: string;
+      widgetKey: string;
+      uiProps?: TJsonValue;
     }>;
 
 export type TCanvasAuthoringExtensionV1 = Readonly<{

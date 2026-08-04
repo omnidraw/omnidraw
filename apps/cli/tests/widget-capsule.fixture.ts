@@ -1,7 +1,7 @@
 import type {
   TWidgetCapsuleApiGroup,
   TWidgetCapsuleRuntimeDescriptor,
-  TWidgetManifestV3,
+  TWidgetExecutableManifestProjection,
 } from '@omnidraw/widget-contract';
 import type { TOmnidrawDistributionBuild } from '@omnidraw/capsule-omnidraw/builder';
 import { OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST } from '@omnidraw/capsule-omnidraw/contract';
@@ -54,7 +54,7 @@ export const testWidgetDistributionBuild: TOmnidrawDistributionBuild = async (re
 export function capsuleUi(
   entry: string,
   apis: readonly TWidgetCapsuleApiGroup[] = ['DOM'],
-): TWidgetManifestV3['ui'] {
+): TWidgetExecutableManifestProjection['ui'] {
   return {
     runtime: 'capsule',
     entry,
@@ -63,7 +63,7 @@ export function capsuleUi(
 }
 
 export function capsuleRuntimeDescriptor(
-  manifest: TWidgetManifestV3,
+  manifest: TWidgetExecutableManifestProjection,
   capsuleArtifactHash: `sha256:${string}`,
   signatureKeyId = 'omnidraw-release-v1',
 ): TWidgetCapsuleRuntimeDescriptor {

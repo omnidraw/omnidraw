@@ -741,13 +741,58 @@ describe('managed composition architecture boundaries', () => {
     expect(violations).toEqual([])
   })
 
+  test('keeps the legacy database widget system and identity scope absent', async () => {
+    const patterns = Object.freeze([
+      /ZWidgetManifestV3/,
+      /TWidgetManifestV3/,
+      /TTenantContext/,
+      /fnFreezeTenantContext/,
+      /TenantServicePool/,
+      /LazyTenantServiceCapability/,
+      /@omnidraw\/tenant-core/,
+      /widget_definitions/,
+      /widget_definition_revisions/,
+      /agent_previews/,
+      /agent_preview_revisions/,
+      /agent_drafts/,
+      /function_invocations/,
+      /function_attempts/,
+      /invocation_leases/,
+      /idempotency_records/,
+      /resource_write_permits/,
+      /usage_outbox/,
+      /organizations/,
+      /organization_memberships/,
+      /canvas_members/,
+    ])
+    const allowedPaths = new Set([
+      'scripts/architecture-boundaries.test.ts',
+      'scripts/widget-artifact-boundary.test.ts',
+      'packages/service-db/src/DbServiceTurso/DbServiceTurso.ts',
+      'packages/service-db/src/verification/baseline-schema.test.ts',
+      'packages/service-db/src/verification/baseline-recovery.test.ts',
+    ])
+    const violations: string[] = []
+    for (const file of await removedStackScanFiles()) {
+      const path = relative(ROOT, file)
+      if (allowedPaths.has(path)) continue
+      const searchable = await readFile(file, 'utf8')
+      for (const pattern of patterns) {
+        if (pattern.test(searchable)) {
+          violations.push(`${path}: ${pattern.source}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
   test('keeps the canvas kernel versioned, public, built, and deliberately exported', async () => {
     const releaseVersions = new Map<string, string>([
       ['@omnidraw/cangine', '0.6.1'],
       ['@omnidraw/theme-contract', '0.5.0'],
-      ['@omnidraw/canvas-contract', '0.5.0'],
+      ['@omnidraw/canvas-contract', '0.7.0'],
       ['@omnidraw/service-theme', '0.5.0'],
-      ['@omnidraw/canvas', '0.5.1'],
+      ['@omnidraw/canvas', '0.6.0'],
     ])
 
     for (const [name, directory] of Object.entries(CANVAS_KERNEL_PACKAGES)) {

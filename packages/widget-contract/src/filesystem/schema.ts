@@ -15,6 +15,7 @@ import {
   WIDGET_TOOL_LABEL_MAX_CHARACTERS,
 } from '../CONSTANTS';
 import {
+  fnNormalizeWidgetExecutableProjection,
   fnNormalizeWidgetManifestV4,
 } from '../core/fn.filesystem-manifest';
 import {
@@ -30,6 +31,7 @@ import {
 import { ZWidgetCapsuleRuntimeDescriptor } from '../runtime-descriptor-schema';
 import { ZOmnidrawToolIcon } from '../tool-icon';
 import type {
+  TWidgetExecutableManifestProjection,
   TWidgetManifestV4,
   TWidgetReleaseDescriptor,
   TWidgetUnsignedReleaseDescriptor,
@@ -112,6 +114,44 @@ const ZWidgetManifestV4Shape = z.object({
 
 export const ZWidgetManifestV4: z.ZodType<TWidgetManifestV4> = ZWidgetManifestV4Shape
   .transform((manifest) => fnNormalizeWidgetManifestV4(manifest));
+
+const ZWidgetExecutableUi = z.object({
+  runtime: z.literal('capsule'),
+  entry: ZWidgetManifestV4BuildEntry,
+  apis: ZWidgetCapsuleApis,
+  budgets: ZWidgetCapsuleBudgetRequest.optional(),
+  state: z.object({
+    collaborative: z.boolean(),
+    localStore: z.enum(['none', 'ephemeral']),
+  }).strict().optional(),
+  parkability: z.object({ enabled: z.literal(false) }).strict().optional(),
+}).strict();
+
+const ZWidgetExecutableServer = z.object({
+  entry: ZWidgetManifestV4BuildEntry,
+  runtimeAbi: z.string().min(1).max(100).regex(TARGET_ID_PATTERN),
+}).strict();
+
+/** Strict parser for the build-time executable projection of manifest v4. */
+export const ZWidgetExecutableManifest: z.ZodType<TWidgetExecutableManifestProjection> = z.object({
+  schemaVersion: z.literal(4),
+  ui: ZWidgetExecutableUi,
+  server: ZWidgetExecutableServer.nullable(),
+  resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
+    const slots = new Set<string>();
+    resources.forEach((requirement, index) => {
+      if (slots.has(requirement.slot)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate resource slot: ${requirement.slot}`,
+          path: [index, 'slot'],
+        });
+      }
+      slots.add(requirement.slot);
+    });
+  }),
+}).strict()
+  .transform((projection) => fnNormalizeWidgetExecutableProjection(projection));
 
 const ZWidgetReleaseRuntimePath = z.string().superRefine((value, context) => {
   const normalized = fnNormalizeWidgetFilesystemRelativePath(value);

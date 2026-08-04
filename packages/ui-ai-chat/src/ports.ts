@@ -12,7 +12,7 @@ export type TAiChatApiPort = {
 
 export type TWidgetTransportPort = {
   api: {
-    widget: Pick<TApi['widget'], 'catalog' | 'placement' | 'runtime'>;
+    widget: Pick<TApi['widget'], 'catalog' | 'placement' | 'preview' | 'runtime'>;
     function: Pick<TApi['function'], 'invoke'>;
   };
 };

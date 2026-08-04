@@ -77,6 +77,7 @@ import {
 import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import { WidgetFilesystemRuntimeCatalog } from './services/WidgetFilesystemRuntimeCatalog';
+import { WidgetPreviewService } from './services/WidgetPreviewService';
 import { WidgetReleaseAttestationService } from './services/WidgetReleaseAttestationService';
 import { LocalWidgetPackageRegistrySync } from './services/LocalWidgetPackageRegistrySync';
 
@@ -112,6 +113,7 @@ export interface IRuntimeServices {
   widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   widgetCatalog: WidgetFilesystemRuntimeCatalog;
+  widgetPreview: WidgetPreviewService;
   functionOwner: FunctionService;
   functionInvocation: IFunctionInvocationApiCapability;
   agent: AgentService;
@@ -367,6 +369,24 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     }),
     writePermits,
   });
+  const widgetPreview = new WidgetPreviewService({
+    widgetsRoot: config.home.widgetsRoot,
+    catalog: widgetCatalog,
+    builder: widgetFilesystemBuilder,
+    resources: resourceService,
+    executor: new DirectFunctionExecutor({
+      driver: functionDriver,
+      schemas: new JsonSchemaFunctionValidator(),
+    }),
+    writePermits,
+    environment: widgetFilesystemBuilder.config.environment,
+    compatibility: Object.freeze({
+      builderIdentity: widgetBuilderIdentity,
+      buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
+      environmentIdentity: distributionBuildSetup.environmentIdentity,
+      capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
+    }),
+  });
   const agentBashCapability = createBunAgentBashCapability();
   const agentRoot = config.home.agentRoot;
   mkdirSync(agentRoot, { recursive: true });
@@ -391,6 +411,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   );
   services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
   services.provide('widgetCatalog', 57, widgetCatalog);
+  services.provide('widgetPreview', 60, widgetPreview);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);

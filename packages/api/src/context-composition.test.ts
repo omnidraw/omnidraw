@@ -93,6 +93,7 @@ const fakeContext = {
   humanResourceSecret: fakeHumanResourceSecretCapability,
   resource: fakeResourceCapability,
   widgetCatalog: fakeCapability<TApiContext['widgetCatalog']>(),
+  widgetPreview: fakeCapability<TApiContext['widgetPreview']>(),
   widgetState: fakeCapability<TApiContext['widgetState']>(),
   widgetCapsuleHostConfiguration:
     fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),

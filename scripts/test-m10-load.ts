@@ -22,12 +22,8 @@ const cases: readonly TAcceptanceCase[] = [
     name: 'bounds DbResource handles across many inactive resources, evicts LRU handles, and idle-closes to zero',
   },
   {
-    file: 'apps/cli/tests/TenantServicePool.test.ts',
-    name: 'lets a separate organization progress while one organization operation is blocked',
-  },
-  {
     file: 'apps/cli/tests/WidgetRuntimeLoadAdmission.test.ts',
-    name: 'enforces and reclaims the production 64 global and 32 organization cleanup limits',
+    name: 'enforces and reclaims the production 64 global cleanup limit',
   },
   {
     directory: 'packages/ui-ai-chat',

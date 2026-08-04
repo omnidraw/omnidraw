@@ -6,6 +6,7 @@ export * from './api.catalog-files';
 export * from './api.config-save';
 export * from './api.publication';
 export * from './api.placement-resolve';
+export * from './api.preview';
 export * from './api.runtime-load-widget';
 export * from './CONSTANTS';
 export * from './contract';

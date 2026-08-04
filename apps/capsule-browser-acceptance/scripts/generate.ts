@@ -23,7 +23,7 @@ import {
 } from '@omnidraw/capsule-omnidraw/contract';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
-  fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnProjectWidgetBrowserFunctionDescriptors,
 } from '@omnidraw/widget-contract';
 import type { TWidgetCapsuleApiGroup } from '@omnidraw/widget-contract';
@@ -696,9 +696,7 @@ function snapshot(files: readonly TSourceFile[]): TSnapshot {
 
 function manifest(args: TFixtureBuild): TManifest {
   return Object.freeze({
-    schemaVersion: 3,
-    name: args.name,
-    slug: args.slug,
+    schemaVersion: 4,
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,
@@ -710,7 +708,8 @@ function manifest(args: TFixtureBuild): TManifest {
       parkability: Object.freeze({ enabled: false }),
       ...(args.budgets === undefined ? {} : { budgets: args.budgets }),
     }),
-    ...(args.server === undefined ? {} : { server: args.server }),
+    server: args.server ?? null,
+    resources: Object.freeze([]),
   });
 }
 
@@ -768,7 +767,7 @@ async function construct(args: TFixtureBuild) {
   return await builder.construct({
     snapshot: snapshot(args.files),
     manifest: widgetManifest,
-    canonicalManifestJson: fnCanonicalizeWidgetManifest(widgetManifest),
+    canonicalManifestJson: fnCanonicalizeWidgetExecutableProjection(widgetManifest),
     builderIdentity,
     capsuleBuildIdentity,
     buildPolicyId: OMNIDRAW_CAPSULE_BUILD_POLICY_ID,

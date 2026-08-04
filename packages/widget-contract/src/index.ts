@@ -6,6 +6,7 @@ export type * from './interface';
 export type * from './types';
 export type * from './filesystem/typed';
 export {
+  ZWidgetExecutableManifest,
   ZWidgetManifestV4,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
@@ -26,7 +27,6 @@ export {
   ZWidgetCapsuleChannelContract,
   ZWidgetCapsuleParkability,
   ZWidgetCapsuleSchemaReference,
-  ZWidgetManifestV3,
   ZWidgetResourceRequirement,
 } from './manifest-schema';
 export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
@@ -52,6 +52,7 @@ export {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
+  WIDGET_MANIFEST_V4_SCHEMA_URL,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_TOOL_GROUP_MAX_BYTES,
   WIDGET_TOOL_LABEL_MAX_CHARACTERS,
@@ -106,14 +107,14 @@ export {
   fnWidgetPlacementToolId,
 } from './core/fn.widget-frame';
 export {
-  fnCanonicalizeWidgetManifest,
-  fnNormalizeWidgetManifest,
   fnNormalizeWidgetRelativePath,
 } from './core/fn.manifest';
 export {
   fnCanonicalizeWidgetExecutableManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetManifestV4,
   fnCanonicalizeWidgetPresentation,
+  fnNormalizeWidgetExecutableProjection,
   fnNormalizeWidgetManifestV4,
   fnProjectWidgetExecutableManifest,
   fnProjectWidgetPresentation,

@@ -1,4 +1,4 @@
-import type { TWidgetManifestV3 } from '@omnidraw/widget-contract';
+import { WIDGET_MANIFEST_V4_SCHEMA_URL, type TWidgetManifestV4 } from '@omnidraw/widget-contract';
 import type { TWidgetCreateInput } from '../workspace/types';
 import {
   OMNIDRAW_CAPSULE_AUTHORING_APIS,
@@ -14,12 +14,18 @@ function slugify(name: string): string {
   return slug || 'widget';
 }
 
-export function fnBuildWidgetCreateManifest(args: TWidgetCreateInput): TWidgetManifestV3 {
+export function fnBuildWidgetCreateManifest(args: TWidgetCreateInput): TWidgetManifestV4 {
   const manifest = {
-    schemaVersion: 3 as const,
+    $schema: WIDGET_MANIFEST_V4_SCHEMA_URL,
+    schemaVersion: 4 as const,
     slug: slugify(args.name),
     name: args.name,
-    ...(args.description === undefined ? {} : { description: args.description }),
+    description: args.description ?? args.name,
+    tool: {
+      label: args.name,
+      group: null,
+      priority: 0,
+    },
     ui: {
       runtime: 'capsule' as const,
       entry: args.template === 'react' ? 'ui/main.tsx' : 'ui/main.ts',

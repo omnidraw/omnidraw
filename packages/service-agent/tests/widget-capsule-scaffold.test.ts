@@ -3,7 +3,7 @@ import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { txWriteWidgetScaffold } from '../src/tools/tx.scaffold';
 
 describe('Capsule widget authoring scaffold', () => {
-  test('creates a strict manifest-v3 plain-DOM widget with only supported dependencies', async () => {
+  test('creates a strict manifest-v4 plain-DOM widget with only supported dependencies', async () => {
     const files = new Map<string, string>();
     const manifest = fnBuildWidgetCreateManifest({
       name: 'Focus Timer',
@@ -25,10 +25,16 @@ describe('Capsule widget authoring scaffold', () => {
     });
 
     expect(manifest).toEqual({
-      schemaVersion: 3,
+      $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
+      schemaVersion: 4,
       name: 'Focus Timer',
       slug: 'focus-timer',
       description: 'A focused timer named __OMNIDRAW_SDK_DEPENDENCY__',
+      tool: {
+        label: 'Focus Timer',
+        group: null,
+        priority: 0,
+      },
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',

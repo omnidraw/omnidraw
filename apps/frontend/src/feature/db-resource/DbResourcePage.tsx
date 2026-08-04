@@ -31,7 +31,6 @@ import {
   fnCellText,
   fnChangeSummary,
   fnImpactUses,
-  fnImpactSlots,
   fnInspectionTables,
   fnLiveSqlApprovalRequired,
   fnRestoreTerminal,
@@ -678,15 +677,6 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                       </TextField.Root>
                       <div class={styles.actions}><Button class={`${styles.button} ${styles.primary}`} disabled={busy() || !name().trim() || name().trim() === current().name} onClick={rename}>Save name</Button></div>
                     </div>
-                  </section>
-                  <section class={styles.panel}>
-                    <div class={styles.panelHeader}><h3>Bindings</h3><span>{fnImpactSlots(impact()).length}</span></div>
-                    <table class={styles.table}>
-                      <thead><tr><th>Definition</th><th>Slot</th><th>Effective access</th></tr></thead>
-                      <tbody><For each={fnImpactSlots(impact())} fallback={<tr><td colSpan={3} class={styles.muted}>No revision bindings.</td></tr>}>{(slot) => (
-                        <tr><td>{slot.definitionId} · {slot.revisionId}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
-                      )}</For></tbody>
-                    </table>
                   </section>
                 </div>
                 <section class={styles.panel}>

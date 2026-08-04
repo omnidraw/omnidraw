@@ -10,13 +10,13 @@ import {
   type CapsuleArtifactSigningKey,
 } from '@omnidraw/capsule/sign';
 import {
-  ZWidgetManifestV3,
+  ZWidgetExecutableManifest,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetCapsuleCapabilityRequests,
   fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetConstructionContractPayload,
   fnCanonicalizeWidgetContractPayload,
-  fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnGenerateWidgetServerFunctionClientModule,
   fnProjectWidgetBrowserFunctionDescriptors,
@@ -256,30 +256,30 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     ) {
       throw new Error('Widget build requested an untrusted build identity or policy.');
     }
-    const manifest = ZWidgetManifestV3.parse(request.manifest);
-    if (request.canonicalManifestJson !== fnCanonicalizeWidgetManifest(manifest)) {
+    const manifest = ZWidgetExecutableManifest.parse(request.manifest);
+    if (request.canonicalManifestJson !== fnCanonicalizeWidgetExecutableProjection(manifest)) {
       throw new Error('Widget build canonical manifest does not match the validated manifest.');
     }
     assertSnapshotEntry(request.snapshot, manifest.ui.entry);
-    if (manifest.server !== undefined) assertSnapshotEntry(request.snapshot, manifest.server.entry);
+    if (manifest.server !== null) assertSnapshotEntry(request.snapshot, manifest.server.entry);
 
-    const serverSourceGraph = manifest.server === undefined
+    const serverSourceGraph = manifest.server === null
       ? null
       : serverGraph({
           snapshot: request.snapshot,
           entry: manifest.server.entry,
           allowedImports: this.#allowedServerImports,
         });
-    const functionModules = manifest.server === undefined || serverSourceGraph === null
+    const functionModules = manifest.server === null || serverSourceGraph === null
       ? Object.freeze([])
       : serverFunctionModules(request.snapshot, serverSourceGraph, manifest.server.entry);
 
-    const serverArtifact = manifest.server === undefined
+    const serverArtifact = manifest.server === null
       ? null
       : await this.#buildServer(request.snapshot, manifest.server, functionModules);
     assertBuildActive(request.signal);
     let functionDescriptors: readonly TWidgetServerFunctionDescriptor[] = [];
-    if (serverArtifact !== null && manifest.server !== undefined) {
+    if (serverArtifact !== null && manifest.server !== null) {
       const extractionRequest = Object.freeze({
         serverArtifact,
         serverEntry: manifest.server.entry,
@@ -583,17 +583,17 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     }
     let manifest;
     try {
-      manifest = ZWidgetManifestV3.parse(JSON.parse(construction.canonicalManifestJson));
+      manifest = ZWidgetExecutableManifest.parse(JSON.parse(construction.canonicalManifestJson));
     } catch (cause) {
       throw new Error('Widget construction canonical manifest is invalid.', { cause });
     }
     if (
-      construction.canonicalManifestJson !== fnCanonicalizeWidgetManifest(manifest)
+      construction.canonicalManifestJson !== fnCanonicalizeWidgetExecutableProjection(manifest)
       || JSON.stringify(construction.uiArtifact.runtimeDescriptor.apiContract.groups)
         !== JSON.stringify(manifest.ui.apis)
       || JSON.stringify(construction.uiArtifact.runtimeDescriptor.budgets)
         !== JSON.stringify(manifest.ui.budgets ?? {})
-      || (manifest.server === undefined) !== (construction.serverArtifact === null)
+      || (manifest.server === null) !== (construction.serverArtifact === null)
       || (
         construction.serverArtifact !== null
         && construction.serverArtifact.runtimeAbi !== manifest.server?.runtimeAbi

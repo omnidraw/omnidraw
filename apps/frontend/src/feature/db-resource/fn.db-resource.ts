@@ -7,7 +7,6 @@ import type {
   TDbForeignKey,
   TDbImpact,
   TDbIndex,
-  TDbImpactSlot,
   TDbInspection,
   TDbResourceUse,
   TDbObject,
@@ -23,17 +22,6 @@ export const fnInspectionTables = (inspection: TDbInspection | null | undefined)
 
 export const fnActiveDraft = (drafts: TDbDraft[]): TDbDraft | null =>
   drafts.find((draft) => draft.status === "editing" || draft.status === "applying") ?? null;
-
-export const fnImpactSlots = (impact: TDbImpact | null | undefined): TDbImpactSlot[] =>
-  (impact?.bindings ?? []).map((binding) => ({
-    definitionId: binding.definitionId,
-    revisionId: binding.revisionId,
-    slot: binding.slot,
-    scope: [
-      ...(binding.allowRead ? ["read" as const] : []),
-      ...(binding.allowWrite ? ["write" as const] : []),
-    ],
-  }));
 
 export const fnImpactUses = (impact: TDbImpact | null | undefined): TDbResourceUse[] =>
   impact?.uses.uses ?? [];

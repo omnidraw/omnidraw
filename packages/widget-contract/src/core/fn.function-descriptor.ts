@@ -6,14 +6,13 @@
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapsuleCapabilityRequest,
-  TWidgetManifestV3,
   TWidgetSerializableJsonObject,
   TWidgetSerializableJsonValue,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorValidation,
   TWidgetServerFunctionResourceAccess,
 } from '../types';
-import type { TWidgetManifestV4 } from '../filesystem/typed';
+import type { TWidgetExecutableManifestProjection, TWidgetManifestV4 } from '../filesystem/typed';
 
 const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'omnidraw.widget.functions.';
 const SERVER_FUNCTION_CAPABILITY_ID_PREFIX = `${SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE}h`;
@@ -150,10 +149,10 @@ export function fnWidgetServerFunctionCapabilityRequestMatches(
 }
 
 export function fnValidateWidgetServerFunctionDescriptors(
-  manifest: TWidgetManifestV3 | TWidgetManifestV4,
+  manifest: TWidgetManifestV4 | TWidgetExecutableManifestProjection,
   descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): TWidgetServerFunctionDescriptorValidation {
-  if (manifest.server === undefined) {
+  if (manifest.server === undefined || manifest.server === null) {
     return descriptors.length === 0
       ? { valid: true }
       : { valid: false, reason: 'browser_only_has_functions' };

@@ -23,6 +23,7 @@ type TOrpcContextServices = Pick<IRuntimeServices,
   | 'humanResourceSecret'
   | 'resource'
   | 'widgetCatalog'
+  | 'widgetPreview'
   | 'widgetCapsuleHostConfiguration'
   | 'widgetRuntimeLoadAdmission'
   | 'widgetState'
@@ -40,6 +41,7 @@ function createOrpcContext(
     humanResourceSecret: services.humanResourceSecret,
     resource: services.resource,
     widgetCatalog: services.widgetCatalog,
+    widgetPreview: services.widgetPreview,
     widgetState: services.widgetState,
     widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
@@ -61,6 +63,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const humanResourceSecret = ctx.services.require('humanResourceSecret');
       const resource = ctx.services.require('resource');
       const widgetCatalog = ctx.services.require('widgetCatalog');
+      const widgetPreview = ctx.services.require('widgetPreview');
       const widgetCapsuleHostConfiguration = ctx.services.require(
         'widgetCapsuleHostConfiguration',
       );
@@ -92,6 +95,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         humanResourceSecret,
         resource,
         widgetCatalog,
+        widgetPreview,
         widgetState,
         widgetCapsuleHostConfiguration,
         widgetRuntimeLoadAdmission,

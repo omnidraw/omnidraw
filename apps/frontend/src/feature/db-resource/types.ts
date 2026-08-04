@@ -79,16 +79,8 @@ export type TDbInspection = {
 };
 
 export type TDbScope = Array<"read" | "write">;
-export type TDbResourceBinding = {
-  definitionId: string;
-  revisionId: string;
-  slot: string;
-  allowRead: boolean;
-  allowWrite: boolean;
-};
 export type TDbResourceUse = { id: string; kind: string; state: "active" | "draining" | "stopped"; label?: string };
-export type TDbImpact = { resource: TResource; bindings: TDbResourceBinding[]; uses: { resourceId: string; uses: TDbResourceUse[] } };
-export type TDbImpactSlot = { definitionId: string; revisionId: string; slot: string; scope: TDbScope };
+export type TDbImpact = { resource: TResource; uses: { resourceId: string; uses: TDbResourceUse[] } };
 
 export type TDbDraftChange = {
   draftId: string;

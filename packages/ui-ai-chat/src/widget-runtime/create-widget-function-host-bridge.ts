@@ -123,9 +123,23 @@ export function createWidgetFunctionHostBridge(
       }
       const identity = args.identity;
       if (!isPublishedIdentity(identity)) {
-        return Promise.reject(new Error(
-          'Draft Preview server functions require a live ephemeral Preview runtime.',
-        ));
+        return run<TOutput>(async (signal) => {
+          assertCurrent();
+          const [error, result] = await args.transport.api.widget.preview.invoke({
+            canvasId: identity.canvasId,
+            elementId: identity.elementId,
+            functionName: request.functionName,
+            input: request.input,
+          }, { signal });
+          assertCurrent();
+          if (error || result === undefined) {
+            throw new Error('Widget function execution failed.');
+          }
+          if (result.status !== 'succeeded') {
+            throw new Error(result.failure.message);
+          }
+          return result.output as TOutput;
+        }, request.signal);
       }
       return run<TOutput>(async (signal) => {
         assertCurrent();

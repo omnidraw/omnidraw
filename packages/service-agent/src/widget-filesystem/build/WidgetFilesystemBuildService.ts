@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
-  ZWidgetManifestV3,
   ZWidgetManifestV4,
-  fnCanonicalizeWidgetExecutableManifest,
-  fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetManifestV4,
   fnCanonicalizeWidgetReleaseDescriptor,
   fnCanonicalizeWidgetUnsignedReleaseDescriptor,
@@ -15,7 +13,7 @@ import {
   fnWidgetExecutableInputDigest,
   fnWidgetExecutableManifestDigest,
   fnWidgetReleaseDirectoryDigest,
-  type TWidgetManifestV3,
+  fnProjectWidgetExecutableManifest,
   type TWidgetReleaseFile,
   type TWidgetSourceFile,
   type TWidgetSourceSnapshot,
@@ -83,19 +81,6 @@ function sourceSnapshot(files: readonly TWidgetSourceFile[]): TWidgetSourceSnaps
   });
 }
 
-function compatibilityManifest(
-  request: TWidgetFilesystemConstructionRequest,
-): TWidgetManifestV3 {
-  return ZWidgetManifestV3.parse({
-    schemaVersion: 3,
-    name: 'Filesystem widget construction',
-    slug: 'filesystem-widget-construction',
-    ui: request.manifest.ui,
-    ...(request.manifest.server === undefined ? {} : { server: request.manifest.server }),
-    ...(request.manifest.resources === undefined ? {} : { resources: request.manifest.resources }),
-  });
-}
-
 function releaseFile(file: TWidgetSourceFile): TWidgetReleaseFile {
   return Object.freeze({
     path: file.path,
@@ -150,7 +135,8 @@ export class WidgetFilesystemBuildService {
       && request.expectedExecutableInputDigestSha256 !== executableInputDigestSha256
     ) throw new Error('Widget source changed after the executable-input fence was selected.');
 
-    const canonicalExecutableManifestJson = fnCanonicalizeWidgetExecutableManifest(manifest);
+    const executableProjection = fnProjectWidgetExecutableManifest(manifest);
+    const canonicalExecutableManifestJson = fnCanonicalizeWidgetExecutableProjection(executableProjection);
     const executableManifestDigestSha256 = fnWidgetExecutableManifestDigest({
       manifest,
       digestSha256: sha256,
@@ -162,11 +148,10 @@ export class WidgetFilesystemBuildService {
         bytes: new TextEncoder().encode(canonicalExecutableManifestJson),
       }),
     ]);
-    const legacyManifest = compatibilityManifest({ ...request, manifest });
     const construction = await this.config.construction.construct({
       snapshot: sourceSnapshot(stagedFiles),
-      manifest: legacyManifest,
-      canonicalManifestJson: fnCanonicalizeWidgetManifest(legacyManifest),
+      manifest: executableProjection,
+      canonicalManifestJson: fnCanonicalizeWidgetExecutableProjection(executableProjection),
       builderIdentity: this.config.builderIdentity,
       capsuleBuildIdentity: this.config.environment.capsuleBuildIdentity,
       buildPolicyId: this.config.environment.buildPolicyId,

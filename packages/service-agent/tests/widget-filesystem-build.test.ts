@@ -188,7 +188,7 @@ describe('filesystem widget build service', () => {
 
     expect(uiConstruction.executableInputDigestSha256)
       .not.toBe(serverConstruction.executableInputDigestSha256);
-    expect(uiManifest?.server).toBeUndefined();
+    expect(uiManifest?.server).toBeNull();
     expect(harness.captured()?.manifest.server?.runtimeAbi).toBe('bun-v1');
   });
 

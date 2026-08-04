@@ -6,6 +6,10 @@ import type {
   TWidgetFilesystemManagementCapability,
 } from '@omnidraw/service-agent';
 import type {
+  TWidgetBrowserFunctionDescriptor,
+  TWidgetCapsuleRuntimeDescriptor,
+} from '@omnidraw/widget-contract';
+import type {
   IWidgetCapsuleHostConfigurationReader,
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsulePublicSigningKey,
@@ -81,9 +85,95 @@ type TWidgetRuntimeLoadCleanupRegistrar = (
   cleanup: () => Promise<void>,
 ) => void;
 
+type TWidgetPreviewSelectedResourceInput = Readonly<{
+  slot: string;
+  resourceId: string;
+  effect: 'read' | 'read_write';
+}>;
+
+type TWidgetPreviewSessionInput = Readonly<{
+  canvasId: string;
+  elementId: string;
+  widgetKey: string;
+}>;
+
+type TWidgetPreviewDiagnosticView = Readonly<{
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  code: string | null;
+  path: string | null;
+}>;
+
+/** Process-owned Preview mount payload; never persisted. */
+type TWidgetPreviewMountView = Readonly<{
+  canvasId: string;
+  elementId: string;
+  widgetKey: string;
+  manifest: Omit<TWidgetManifestV4, 'server'>;
+  artifact: Readonly<{
+    digestSha256: string;
+    byteSize: number;
+    bytesBase64: string;
+  }>;
+  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+  functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  browserFunctionDescriptorsDigestSha256: string;
+  constructionReused: boolean;
+  diagnostics: readonly TWidgetPreviewDiagnosticView[];
+}>;
+
+type TWidgetPreviewInvokeResult = Readonly<{
+  status: 'succeeded';
+  output: unknown;
+  diagnostics: Readonly<{
+    code: string | null;
+    message: string | null;
+    logByteSize: number;
+    truncated: boolean;
+  }>;
+}> | Readonly<{
+  status: 'failed' | 'cancelled' | 'timed_out';
+  output: null;
+  failure: Readonly<{
+    owner: 'user' | 'platform' | 'cancelled';
+    code: string;
+    message: string;
+  }>;
+  diagnostics: Readonly<{
+    code: string | null;
+    message: string | null;
+    logByteSize: number;
+    truncated: boolean;
+  }>;
+}>;
+
+type TWidgetPreviewApiCapability = Readonly<{
+  open(
+    args: TWidgetPreviewSessionInput & Readonly<{
+      selectedResources?: readonly TWidgetPreviewSelectedResourceInput[];
+    }>,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewMountView>;
+  load(
+    args: TWidgetPreviewSessionInput,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewMountView>;
+  close(args: Readonly<{ canvasId: string; elementId: string }>): Promise<boolean>;
+  invoke(
+    args: Readonly<{
+      canvasId: string;
+      elementId: string;
+      functionName: string;
+      input: unknown;
+    }>,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewInvokeResult>;
+}>;
+
 type TWidgetApiContext = Readonly<{
   canvas: ICanvasService;
   widgetCatalog: TWidgetRuntimeApiCapability;
+  widgetPreview: TWidgetPreviewApiCapability;
   widgetState: IWidgetStateService;
   widgetCapsuleHostConfiguration: TWidgetCapsuleHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;
@@ -94,6 +184,12 @@ export type {
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsuleHostConfigurationCapability,
   TWidgetCapsulePublicSigningKey,
+  TWidgetPreviewApiCapability,
+  TWidgetPreviewDiagnosticView,
+  TWidgetPreviewInvokeResult,
+  TWidgetPreviewMountView,
+  TWidgetPreviewSelectedResourceInput,
+  TWidgetPreviewSessionInput,
   TWidgetRuntimeApiCapability,
   TWidgetRuntimeResolution,
   TWidgetRuntimeLoadAdmissionCapability,

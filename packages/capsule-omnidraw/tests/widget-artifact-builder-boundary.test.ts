@@ -15,12 +15,12 @@ import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
 import { describe, expect, test } from 'bun:test';
 import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
-  fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnProjectWidgetBrowserFunctionDescriptors,
   type TWidgetBuildRequest,
   type TWidgetCapsuleBuildIdentity,
-  type TWidgetManifestV3,
+  type TWidgetExecutableManifestProjection,
   type TWidgetServerFunctionDescriptor,
   type TWidgetSourceSnapshot,
 } from '@omnidraw/widget-contract';
@@ -119,35 +119,32 @@ function manifest(args: Readonly<{
   entry: string;
   apis?: readonly CapsuleApiGroup[];
   serverEntry?: string;
-}>): TWidgetManifestV3 {
+}>): TWidgetExecutableManifestProjection {
   return Object.freeze({
-    schemaVersion: 3,
-    name: 'Capsule boundary fixture',
-    slug: 'capsule-boundary-fixture',
+    schemaVersion: 4,
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,
       apis: Object.freeze(['DOM' as const, ...(args.apis ?? [])]),
     }),
-    ...(args.serverEntry === undefined
-      ? {}
-      : {
-          server: Object.freeze({
-            entry: args.serverEntry,
-            runtimeAbi: 'bun-v1',
-          }),
+    server: args.serverEntry === undefined
+      ? null
+      : Object.freeze({
+          entry: args.serverEntry,
+          runtimeAbi: 'bun-v1',
         }),
+    resources: Object.freeze([]),
   });
 }
 
 function request(
   sourceSnapshot: TWidgetSourceSnapshot,
-  widgetManifest: TWidgetManifestV3,
+  widgetManifest: TWidgetExecutableManifestProjection,
 ): TWidgetBuildRequest {
   return Object.freeze({
     snapshot: sourceSnapshot,
     manifest: widgetManifest,
-    canonicalManifestJson: fnCanonicalizeWidgetManifest(widgetManifest),
+    canonicalManifestJson: fnCanonicalizeWidgetExecutableProjection(widgetManifest),
     builderIdentity: BUILDER_IDENTITY,
     capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
     buildPolicyId: OMNIDRAW_CAPSULE_BUILD_POLICY_ID,

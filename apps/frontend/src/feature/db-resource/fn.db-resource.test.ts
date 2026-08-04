@@ -7,7 +7,6 @@ import {
   fnCellInputError,
   fnCellText,
   fnImpactUses,
-  fnImpactSlots,
   fnInspectionTables,
   fnInputCell,
   fnLiveSqlApprovalRequired,
@@ -54,14 +53,12 @@ describe("database resource workbench functions", () => {
     expect(fnRowInputOmitted("edit", "", { ...column({ name: "id", declaredType: "INTEGER", nullable: false }), primaryKeyOrder: 1 })).toBe(false);
   });
 
-  test("normalizes revision bindings and active uses", () => {
+  test("normalizes active resource uses", () => {
     const impact: TDbImpact = {
       resource: { id: "resource-1", kind: "db", name: "Notes DB", status: "ready", lastError: null, createdAtSec: "now", updatedAtSec: "now" },
-      bindings: [{ definitionId: "definition-1", revisionId: "revision-1", slot: "database", allowRead: true, allowWrite: true }],
       uses: { resourceId: "resource-1", uses: [{ id: "invocation-1", kind: "function", state: "active" }] },
     };
 
-    expect(fnImpactSlots(impact)).toEqual([{ definitionId: "definition-1", revisionId: "revision-1", slot: "database", scope: ["read", "write"] }]);
     expect(fnImpactUses(impact)).toEqual(impact.uses.uses);
   });
 

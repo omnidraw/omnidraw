@@ -15,7 +15,8 @@
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
     "vite-plugin-solid": "^2.11.10",
-    "solid-devtools": "^0.34.3"
+    "solid-devtools": "^0.34.3",
+    "esbuild": "^0.27.0"
   },
   "dependencies": {
     "@orpc/client": "catalog:",

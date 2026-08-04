@@ -27,7 +27,7 @@ const suites: readonly TResourceRuntimeSuite[] = [
     command: ['bun', 'test', 'packages/service-db/src/tests/ResourceControlStoreTurso.test.ts'],
   },
   {
-    name: 'neutral resource API and tenant-first composition',
+    name: 'neutral resource API and singleton composition',
     command: [
       'bun',
       'test',
@@ -44,8 +44,6 @@ const suites: readonly TResourceRuntimeSuite[] = [
       'test',
       'apps/cli/tests/ResourceServiceLifecycle.test.ts',
       'apps/cli/tests/ResourceUseCoordinatorBridge.test.ts',
-      'apps/cli/tests/TenantServicePool.test.ts',
-      'apps/cli/tests/LazyTenantServiceCapability.test.ts',
       '--timeout=30000',
     ],
   },
