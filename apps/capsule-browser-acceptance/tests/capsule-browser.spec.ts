@@ -26,6 +26,8 @@ const REQUIRED_OUTPUTS = Object.freeze([
   'canvas-ready',
   'three-ready:2',
   'react-css-ready:rgb(18,52,86)',
+  'preview-functions-ready',
+  'preview-functions-invoked:42',
   'lifecycle:active:1',
   'collab-stream:0',
   'collab-stream:1',

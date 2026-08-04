@@ -56,6 +56,13 @@ const outputDirectory = join(import.meta.dir, '..', 'generated');
 const tempRoot = join(import.meta.dir, '..', '.tmp');
 const repositoryRoot = join(import.meta.dir, '..', '..', '..');
 const sdkWidgetSourcePath = join(repositoryRoot, 'packages', 'sdk', 'src', 'widget.ts');
+const sdkFunctionClientSourcePath = join(
+  repositoryRoot,
+  'packages',
+  'sdk',
+  'src',
+  'function-client.ts',
+);
 const builderIdentity = 'omnidraw-capsule-browser-acceptance-v1';
 const tenant = Object.freeze({
   orgId: 'capsule-browser-acceptance',
@@ -483,6 +490,52 @@ export async function double(
   serverEntry: `
 import './double.server';
 `.trim(),
+  previewFunctions: `
+import { double } from '../server/double.server';
+import {
+  emitWidgetOutput,
+  getWidgetProps,
+  subscribeWidgetProps,
+} from '@omnidraw/sdk/widget';
+
+let invoked = false;
+
+function emit(message: string, tone: 'success' | 'error' = 'success'): void {
+  emitWidgetOutput({ type: 'notification', tone, message });
+}
+
+function invoke(): void {
+  if (invoked) return;
+  invoked = true;
+  void (async (): Promise<void> => {
+    const result = await double(
+      { value: 21 },
+      { timeoutMs: 3_000 },
+    ) as Readonly<{ doubled: number }>;
+    emit('preview-functions-invoked:' + String(result.doubled));
+  })().catch(() => {
+    emit('preview-functions-invoke-failed', 'error');
+  });
+}
+
+const button = document.createElement('button');
+button.type = 'button';
+button.textContent = 'Double';
+button.addEventListener('click', invoke);
+document.body.append(button);
+
+function wantsInvoke(props: unknown): boolean {
+  if (props === null || typeof props !== 'object' || Array.isArray(props)) return false;
+  return (props as Readonly<{ invoke?: unknown }>).invoke === true;
+}
+
+if (wantsInvoke(getWidgetProps())) invoke();
+subscribeWidgetProps((props) => {
+  if (wantsInvoke(props)) invoke();
+});
+
+emit('preview-functions-ready');
+`.trim(),
 });
 
 const SERVER_FUNCTION_DESCRIPTOR = Object.freeze({
@@ -565,6 +618,7 @@ const buildBrowserDistribution: TOmnidrawDistributionBuild = async (request) => 
         // not depend on ignored/generated SDK dist files.
         alias: {
           '@omnidraw/sdk/widget': sdkWidgetSourcePath,
+          '@omnidraw/sdk/function-client': sdkFunctionClientSourcePath,
         },
       },
       build: {
@@ -869,6 +923,20 @@ const artifacts = Object.freeze({
       runtimeAbi: 'omnidraw-function-v1',
     }),
     signingPurpose: 'release',
+  }),
+  previewFunctions: await build({
+    name: 'Preview server-function binding acceptance',
+    slug: 'preview-functions-acceptance',
+    entry: 'ui/main.ts',
+    files: [
+      { path: 'ui/main.ts', source: sources.previewFunctions },
+      { path: 'server/index.ts', source: sources.serverEntry },
+      { path: 'server/double.server.ts', source: sources.server },
+    ],
+    server: Object.freeze({
+      entry: 'server/index.ts',
+      runtimeAbi: 'omnidraw-function-v1',
+    }),
   }),
 });
 

@@ -33,6 +33,7 @@ import {
   type TWidgetCapsuleApiGroup,
   type TWidgetCapsuleTheme,
 } from '@omnidraw/widget-contract';
+import { fnNormalizePreviewDiagnostic } from '../../src/canvas-extension/fn.preview-diagnostic';
 
 const functionMetadata = [{
   schemaVersion: 1 as const,
@@ -691,6 +692,120 @@ describe('Capsule widget mount boundary', () => {
     } finally {
       digest.mockRestore();
     }
+  });
+
+  test('pins the retained server-function binding boundary with an actionable diagnostic', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(
+      new Uint8Array(32).buffer,
+    );
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
+      },
+      output: { notification: vi.fn() },
+    });
+    const revision = 'a'.repeat(64);
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision,
+      },
+      invoke: vi.fn(async () => Object.freeze({ doubled: 42 })),
+      dispose: vi.fn(),
+    };
+    const onDiagnostic = vi.fn();
+    const handle = await mount.mount({
+      mode: 'preview',
+      root: document.createElement('div'),
+      identity: functionBridge.identity,
+      artifact: artifact('preview'),
+      functionDescriptors: functionMetadata,
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest(functionMetadata),
+      functionBridge,
+      collaborativeStateBridge: null,
+      onDiagnostic,
+      onFatal: vi.fn(),
+    });
+
+    // The retained generated binding mounts before any guest interaction.
+    const mountOptions = factory.created[0]!.mount.mock.calls[0]![0];
+    const binding = mountOptions.capabilityBindings[0]!;
+    expect(binding.descriptor.id).toBe(functionDescriptor.id);
+
+    // A deferred click-time invocation crosses the bridge unchanged.
+    await binding.invoke(
+      { signal: new AbortController().signal } as never,
+      'count',
+      Object.freeze({ value: 21 }),
+    );
+    expect(functionBridge.invoke).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: 'count',
+    }));
+
+    // A bridge rejection names the capability and operation, never GUEST_EXCEPTION.
+    const event = {
+      format: 'capsule-mount-error-v2',
+      sequence: 1,
+      timestamp: 1,
+      lifecycleGeneration: 1,
+      category: 'capability',
+      source: 'call.failed',
+      code: 'CAPABILITY_NOT_FOUND',
+      fatal: false,
+      capabilityId: functionDescriptor.id,
+      operation: 'count',
+    } satisfies CapsuleMountErrorEvent;
+    mountOptions.onError?.(event);
+    factory.created[0]!.raw.emitError({ ...event, sequence: 2 });
+
+    expect(onDiagnostic).toHaveBeenCalledTimes(2);
+    const mapped = onDiagnostic.mock.calls[0]![0];
+    expect(mapped).toMatchObject({
+      format: 'omnidraw.capsule-error.v1',
+      category: 'capability',
+      capsuleCode: 'CAPABILITY_NOT_FOUND',
+      capability: functionDescriptor.id,
+      operation: 'count',
+    });
+
+    const diagnostic = await fnNormalizePreviewDiagnostic({
+      error: mapped,
+      phase: 'runtime',
+      draftRevision: revision,
+      previewRevisionId: 'preview-revision',
+      buildSequence: 1,
+      timestampMs: 123,
+      encodeFingerprint: (value) => Buffer.from(value, 'utf8'),
+      digestSha256: async (value) => createHash('sha256').update(value).digest('hex'),
+    });
+    expect(diagnostic).toMatchObject({
+      origin: 'capability',
+      phase: 'runtime',
+      code: 'CAPABILITY_NOT_FOUND',
+      capability: functionDescriptor.id,
+      operation: 'count',
+      remediation: 'generated-binding',
+      retryability: 'non-retryable',
+    });
+    expect(diagnostic.code).not.toBe('GUEST_EXCEPTION');
+    expect(diagnostic.message).toContain('server-function binding');
+
+    await handle.destroy('test-complete');
+    await coordinator.destroy();
+    digest.mockRestore();
   });
 
   test('rejects browser descriptor field mutations before provider creation', async () => {

@@ -101,6 +101,39 @@ describe('widget diagnostic contract', () => {
     }).success).toBe(false);
   });
 
+  test('accepts only bounded remediation categories', () => {
+    const common = {
+      formatVersion: 1,
+      fingerprint: 'a'.repeat(64),
+      origin: 'capability',
+      phase: 'mounting',
+      code: 'CAPABILITY_DENIED',
+      severity: 'error',
+      message: 'A widget capability was denied.',
+      trust: 'untrusted',
+      draftRevision: 'b'.repeat(64),
+      previewRevisionId: null,
+      buildId: 'build-2',
+      buildSequence: 1,
+      occurrenceCount: 1,
+      retryability: 'non-retryable',
+      timestampMs: 456,
+    } as const;
+
+    expect(ZWidgetDiagnostic.parse({
+      ...common,
+      remediation: 'generated-binding',
+    })).toMatchObject({ remediation: 'generated-binding' });
+    expect(ZWidgetDiagnostic.safeParse({
+      ...common,
+      remediation: 'check /private/tmp/build.log for details',
+    }).success).toBe(false);
+    expect(ZWidgetDiagnostic.safeParse({
+      ...common,
+      remediation: 'widget-source\u0007',
+    }).success).toBe(false);
+  });
+
   test('normalizes thrown runner failures without exposing host paths', () => {
     const diagnostic = fnNormalizeWidgetBuildError({
       error: Object.assign(new Error('build failed'), {

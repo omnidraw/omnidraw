@@ -240,7 +240,50 @@ const providerState = {
   collaborativeCancels: 0,
   collaborativeDisposals: 0,
 };
+const previewProviderState = {
+  functionCalls: [] as unknown[],
+  invalidFunctionCalls: 0,
+  functionDisposals: 0,
+};
 let functionProviderDisposed = false;
+let previewFunctionProviderDisposed = false;
+const previewFunctionBridge: TWidgetFunctionHostBridge = Object.freeze({
+  identity: Object.freeze({
+    kind: 'draft_preview' as const,
+    draftId: 'browser-preview-functions',
+    definitionId: 'browser-preview-functions',
+    revision: '1',
+  }),
+  async invoke<TOutput>(
+    request: Parameters<TWidgetFunctionHostBridge['invoke']>[0],
+  ): Promise<TOutput> {
+    if (previewFunctionProviderDisposed) {
+      throw new Error('Preview function provider is disposed.');
+    }
+    if (request.functionName !== 'double') {
+      throw new Error(`Unexpected function operation "${request.functionName}".`);
+    }
+    if (
+      request.input === null
+      || typeof request.input !== 'object'
+      || Array.isArray(request.input)
+      || Reflect.ownKeys(request.input).length !== 1
+      || typeof (request.input as Readonly<{ value?: unknown }>).value !== 'number'
+    ) {
+      previewProviderState.invalidFunctionCalls += 1;
+      throw new TypeError('Function input reached the provider without schema validation.');
+    }
+    previewProviderState.functionCalls.push(request.input);
+    return Object.freeze({
+      doubled: (request.input as Readonly<{ value: number }>).value * 2,
+    }) as TOutput;
+  },
+  dispose(): void {
+    if (previewFunctionProviderDisposed) return;
+    previewFunctionProviderDisposed = true;
+    previewProviderState.functionDisposals += 1;
+  },
+});
 const publishedFunctionBridge: TWidgetFunctionHostBridge = Object.freeze({
   identity: publishedIdentity,
   async invoke<TOutput>(
@@ -651,6 +694,9 @@ const reactArtifact = artifact(fixture.artifacts.react);
 const publishedArtifact = artifact(fixture.artifacts.published);
 const publishedFunctionDescriptors =
   fixture.artifacts.published.functionDescriptors as TFunctionDescriptors;
+const previewFunctionsArtifact = artifact(fixture.artifacts.previewFunctions);
+const previewFunctionDescriptors =
+  fixture.artifacts.previewFunctions.functionDescriptors as TFunctionDescriptors;
 
 function artifactApis(value: TBrowserArtifact): readonly string[] {
   assert(
@@ -787,6 +833,37 @@ await check('React mounts with native modern CSS and inherited host variables', 
   const handle = await mount(positive.port, 'react', reactArtifact);
   handles.set('react', handle);
   await waitForOutput('react-css-ready:rgb(18,52,86)');
+});
+
+await check('retained preview server-function binding mounts before any interaction', async () => {
+  const handle = await mount(
+    positive.port,
+    'preview-functions',
+    previewFunctionsArtifact,
+    {},
+    {
+      mode: 'preview',
+      functionDescriptors: previewFunctionDescriptors,
+      functionBridge: previewFunctionBridge,
+    },
+  );
+  handles.set('preview-functions', handle);
+  await waitForOutput('preview-functions-ready');
+  const callsBeforeInteraction = previewProviderState.functionCalls.length;
+  handle.setProps({ invoke: true });
+  await waitForOutput('preview-functions-invoked:42');
+  assert(
+    callsBeforeInteraction === 0,
+    'Preview server function was invoked before guest interaction.',
+  );
+  assert(
+    previewProviderState.functionCalls.length === 1,
+    'Preview server-function call count widened.',
+  );
+  assert(
+    previewProviderState.invalidFunctionCalls === 0,
+    'Invalid preview function input reached the provider.',
+  );
 });
 
 await check('release-signed published guest receives exact function and collaboration authority', async () => {
@@ -1127,8 +1204,8 @@ await check('invalid initial props are rejected by the fixed channel schema', as
 
 await check('destroy is idempotent and terminal diagnostics retain zero resources', async () => {
   const failures: string[] = [];
-  if (handles.size !== 7) {
-    failures.push(`expected seven positive handles; found ${handles.size}`);
+  if (handles.size !== 8) {
+    failures.push(`expected eight positive handles; found ${handles.size}`);
   }
   const terminals: unknown[] = [];
   for (const [name, handle] of handles) {
@@ -1160,6 +1237,11 @@ await check('destroy is idempotent and terminal diagnostics retain zero resource
   if (themeListeners.size !== 0) failures.push('theme channel listeners were retained');
   if (providerState.functionDisposals !== 1) {
     failures.push(`function provider disposal count=${providerState.functionDisposals}`);
+  }
+  if (previewProviderState.functionDisposals !== 1) {
+    failures.push(
+      `preview function provider disposal count=${previewProviderState.functionDisposals}`,
+    );
   }
   if (providerState.collaborativeDisposals !== 1) {
     failures.push(`collaborative provider disposal count=${providerState.collaborativeDisposals}`);
