@@ -199,6 +199,7 @@ reads, and injected `tx.*` writes around thin orchestration edges.
 ## Deeper references
 
 - [Widget lifecycle and Capsule model](./llm.widget-system.md)
+- [Approved filesystem-first widget target (not yet implemented)](./widget-filesystem-design.md)
 - [Canvas runtime and document ownership](../../packages/canvas/ARCHITECTURE.md)
 - [Managed/public package consumption](./managed-service-package-consumption.md)
 - [Current UI surfaces](./screens/SCREENS.md)

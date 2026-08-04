@@ -28,6 +28,7 @@ The status are tagged:
 - [!]: urgent
 - [~]: in progress
 - [/]: blocked
+- [R]: ready; part of a coordinated redesign group
 
 Remember to keep the codebase small. Small is clean, small is fast. Delete often.
 
@@ -294,6 +295,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 - [x]: [A106](a/A106.md) - theme: authoritative CSS variables and compact canvas colors
 - [ ]: [A107](a/A107.md) - sidebar: no hover color on section titles, compact "+ Add" widget button
+- [R]: [A108](a/A108.md) - widgets: manifest v4 and pure filesystem contracts
+- [R]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
+- [R]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -430,6 +434,10 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S132](s/S132.md) - packages: make the canvas kernel workspace-split ready
 - [x]: [S133](s/S133.md) - widget publish: auto-heal changed drafts; Publish builds current source and promotes that exact build
 - [x]: [S134](s/S134.md) - release 0.5.0: remove binary distribution, normal build, docs and CI cleanup
+- [R]: [S135](s/S135.md) - db: rewrite the single-user Turso baseline and remove identity scope
+- [R]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
+- [R]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
+- [R]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -468,6 +476,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
 - [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
 - [x]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
+- [x]: [E41](e/E41.md) - widgets: filesystem-first publication and database hard cut
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
@@ -475,6 +484,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
 - [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
 - [ ]: [D5](d/D5.md) - packages: publish the managed-service dependency set
+- [R]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
 
 ## Pragmatic Code Style
 
