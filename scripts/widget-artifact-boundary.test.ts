@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
-import { ZWidgetManifestV4 } from '../packages/widget-contract/src';
+import { ZWidgetManifestV1 } from '../packages/widget-contract/src';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const WIDGET_CONTRACT_SOURCE = 'packages/widget-contract/src';
@@ -126,22 +126,22 @@ describe('filesystem-first widget artifact boundaries', () => {
 
   test('strictly rejects database identity and release-pointer fields in filesystem manifests', () => {
     const portableManifest = {
-      $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-      schemaVersion: 4,
+      $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+      schemaVersion: 1,
       name: 'Clock',
       slug: 'clock',
       description: 'A portable clock.',
       tool: { label: 'Clock', group: 'utilities', priority: 0 },
       ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
     } as const;
-    expect(ZWidgetManifestV4.safeParse(portableManifest).success).toBe(true);
+    expect(ZWidgetManifestV1.safeParse(portableManifest).success).toBe(true);
     for (const field of ['definitionId', 'revisionId', 'artifactId', 'activeRevisionId']) {
-      expect(ZWidgetManifestV4.safeParse({
+      expect(ZWidgetManifestV1.safeParse({
         ...portableManifest,
         [field]: 'db-owned',
       }).success, field).toBe(false);
     }
-    expect(ZWidgetManifestV4.safeParse({ ...portableManifest, $schema: 'https://example.test' }).success)
+    expect(ZWidgetManifestV1.safeParse({ ...portableManifest, $schema: 'https://example.test' }).success)
       .toBe(false);
   });
 

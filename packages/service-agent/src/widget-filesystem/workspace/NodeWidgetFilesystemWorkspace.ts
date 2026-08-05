@@ -18,9 +18,9 @@ import {
 } from 'node:path';
 import { TextDecoder } from 'node:util';
 import {
-  fnCanonicalizeWidgetManifestV4,
-  fnWidgetManifestV4Digest,
-  parseWidgetManifestV4Json,
+  fnCanonicalizeWidgetManifestV1,
+  fnWidgetManifestV1Digest,
+  parseWidgetManifestV1Json,
 } from '@omnidraw/widget-contract/filesystem';
 import type { TWidgetImportTreeEntry } from '../import/typed';
 import { fnCanonicalizeWidgetObservedFileSet } from '../core/fn.file-set';
@@ -380,7 +380,7 @@ export class NodeWidgetFilesystemWorkspace {
     }
     let manifest;
     try {
-      manifest = parseWidgetManifestV4Json(
+      manifest = parseWidgetManifestV1Json(
         new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       );
     } catch (error) {
@@ -408,8 +408,8 @@ export class NodeWidgetFilesystemWorkspace {
     return Object.freeze({
       slug: manifest.slug,
       manifest,
-      canonicalJson: fnCanonicalizeWidgetManifestV4(manifest),
-      manifestDigestSha256: fnWidgetManifestV4Digest({ manifest, digestSha256: sha256 }),
+      canonicalJson: fnCanonicalizeWidgetManifestV1(manifest),
+      manifestDigestSha256: fnWidgetManifestV1Digest({ manifest, digestSha256: sha256 }),
       treeDigestSha256: confirmed.digestSha256,
     });
   }
@@ -439,7 +439,7 @@ export class NodeWidgetFilesystemWorkspace {
     }
     let manifest;
     try {
-      manifest = parseWidgetManifestV4Json(
+      manifest = parseWidgetManifestV1Json(
         new TextDecoder('utf-8', { fatal: true }).decode(manifestSource.bytes),
       );
     } catch (error) {
@@ -470,8 +470,8 @@ export class NodeWidgetFilesystemWorkspace {
     return Object.freeze({
       slug: args.slug,
       manifest,
-      canonicalManifestJson: fnCanonicalizeWidgetManifestV4(manifest),
-      manifestDigestSha256: fnWidgetManifestV4Digest({ manifest, digestSha256: sha256 }),
+      canonicalManifestJson: fnCanonicalizeWidgetManifestV1(manifest),
+      manifestDigestSha256: fnWidgetManifestV1Digest({ manifest, digestSha256: sha256 }),
       treeDigestSha256: confirmed.capture.digestSha256,
       fileSetDigestSha256: sha256(
         fnCanonicalizeWidgetObservedFileSet(confirmed.capture.files),
@@ -501,8 +501,8 @@ export class NodeWidgetFilesystemWorkspace {
     if (!/^[A-Za-z0-9_-]{1,96}$/.test(args.operationToken)) {
       throw new TypeError('Draft manifest save operation token is invalid.');
     }
-    const canonicalJson = fnCanonicalizeWidgetManifestV4(args.manifest);
-    const manifest = parseWidgetManifestV4Json(canonicalJson);
+    const canonicalJson = fnCanonicalizeWidgetManifestV1(args.manifest);
+    const manifest = parseWidgetManifestV1Json(canonicalJson);
     if (manifest.slug !== args.slug) {
       throw errorWithCode(
         'Structured Config cannot rename a widget slug.',
@@ -563,7 +563,7 @@ export class NodeWidgetFilesystemWorkspace {
         relativePath: `drafts/${args.slug}`,
         signal: args.signal,
       });
-      const expectedDigest = fnWidgetManifestV4Digest({ manifest, digestSha256: sha256 });
+      const expectedDigest = fnWidgetManifestV1Digest({ manifest, digestSha256: sha256 });
       if (after.manifestDigestSha256 !== expectedDigest) {
         throw errorWithCode(
           'Saved widget manifest bytes failed exact re-open validation.',

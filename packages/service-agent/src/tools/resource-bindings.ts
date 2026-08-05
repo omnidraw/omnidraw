@@ -1,5 +1,5 @@
 import type { TResourceEffect } from '@omnidraw/resource-runtime';
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
 import type { TWidgetResourceSelection } from './types';
 
 export type TResourceBindingPlan = {
@@ -8,7 +8,7 @@ export type TResourceBindingPlan = {
   scope: ('read' | 'write')[];
 };
 
-type TResourceManifest = TWidgetManifestV4;
+type TResourceManifest = TWidgetManifestV1;
 type TNormalizedRequirement = {
   slot: string;
   kind: TWidgetResourceSelection['kind'];

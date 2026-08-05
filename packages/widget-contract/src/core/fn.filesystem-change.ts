@@ -4,7 +4,7 @@ import type {
   TWidgetBuildEnvironment,
   TWidgetChangeClassification,
   TWidgetExecutableInputFile,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '../filesystem/typed';
 import {
   fnProjectWidgetExecutableManifest,
@@ -61,7 +61,7 @@ function changedFilePaths(
 
 export function fnClassifyWidgetChange(args: Readonly<{
   previous: Readonly<{
-    manifest: TWidgetManifestV4;
+    manifest: TWidgetManifestV1;
     files?: readonly TWidgetExecutableInputFile[];
     environment?: TWidgetBuildEnvironment;
   }>;
@@ -69,7 +69,7 @@ export function fnClassifyWidgetChange(args: Readonly<{
     | Readonly<{ valid: false; reason: string }>
     | Readonly<{
         valid: true;
-        manifest: TWidgetManifestV4;
+        manifest: TWidgetManifestV1;
         files?: readonly TWidgetExecutableInputFile[];
         environment?: TWidgetBuildEnvironment;
       }>;

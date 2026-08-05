@@ -152,13 +152,13 @@ Widgets live under one application root:
 
 ## Portable manifest
 
-Manifest v4 adds presentation metadata to the current strict runtime contract.
+Manifest v1 adds presentation metadata to the current strict runtime contract.
 Unknown fields are errors.
 
 ```json
 {
-  "$schema": "https://omnidraw.dev/schemas/widget/v4.json",
-  "schemaVersion": 4,
+  "$schema": "https://omnidraw.dev/schemas/widget/v1.json",
+  "schemaVersion": 1,
   "name": "Counter",
   "slug": "counter",
   "description": "A shared counter.",
@@ -349,7 +349,7 @@ For each publication, startup checks:
 
 1. safe folder and file types;
 2. folder slug equals manifest slug;
-3. strict manifest v4;
+3. strict manifest v1;
 4. `release.json` completion and executable-manifest digest;
 5. exact file list, byte sizes, and hashes;
 6. Capsule artifact hash, signature, runtime descriptor, and host policy; and

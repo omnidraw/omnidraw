@@ -18,7 +18,7 @@ const capsuleBuildIdentity = {
 const trustedBuild = {
   sourceSnapshotId: digest,
   sourceDigestSha256: digest,
-  canonicalManifestJson: '{"schemaVersion":4}',
+  canonicalManifestJson: '{"schemaVersion": 1}',
   builderIdentity: 'builder-1',
   capsuleBuildIdentity,
   buildPolicyId: 'policy-1',
@@ -32,7 +32,7 @@ const args = {
     createdAtMs: 1,
   },
   manifest: {
-    schemaVersion: 4,
+    schemaVersion: 1,
     ui: {
       runtime: 'capsule',
       entry: 'ui/main.ts',
@@ -41,7 +41,7 @@ const args = {
     server: null,
     resources: [],
   },
-  canonicalManifestJson: '{"schemaVersion":4}',
+  canonicalManifestJson: '{"schemaVersion": 1}',
   builderIdentity: 'builder-1',
   capsuleBuildIdentity,
   buildPolicyId: 'policy-1',

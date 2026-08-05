@@ -1,4 +1,4 @@
-/** @file Pure manifest-v4 normalization, projection, and manifest digest rules. */
+/** @file Pure manifest-v1 normalization, projection, and manifest digest rules. */
 
 import type {
   TResourceNamedOperation,
@@ -7,7 +7,7 @@ import type {
 } from '@omnidraw/resource-runtime';
 import type {
   TWidgetExecutableManifestProjection,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetPresentationProjection,
 } from '../filesystem/typed';
 import type { TOmnidrawToolIcon } from '../types';
@@ -81,13 +81,13 @@ function assertDigest(value: string, field: string): void {
   if (!SHA256_PATTERN.test(value)) throw new TypeError(`${field} must be a lowercase SHA-256 digest.`);
 }
 
-export function fnNormalizeWidgetManifestV4(manifest: TWidgetManifestV4): TWidgetManifestV4 {
+export function fnNormalizeWidgetManifestV1(manifest: TWidgetManifestV1): TWidgetManifestV1 {
   const resources = [...(manifest.resources ?? [])]
     .sort((left, right) => compareText(left.slot, right.slot))
     .map(normalizeRequirement);
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: manifest.name.trim(),
     slug: manifest.slug,
     description: manifest.description.trim(),
@@ -126,9 +126,9 @@ export function fnNormalizeWidgetManifestV4(manifest: TWidgetManifestV4): TWidge
 }
 
 export function fnProjectWidgetPresentation(
-  manifest: TWidgetManifestV4,
+  manifest: TWidgetManifestV1,
 ): TWidgetPresentationProjection {
-  const normalized = fnNormalizeWidgetManifestV4(manifest);
+  const normalized = fnNormalizeWidgetManifestV1(manifest);
   return {
     $schema: normalized.$schema,
     name: normalized.name,
@@ -143,26 +143,26 @@ export function fnProjectWidgetPresentation(
 }
 
 export function fnProjectWidgetExecutableManifest(
-  manifest: TWidgetManifestV4,
+  manifest: TWidgetManifestV1,
 ): TWidgetExecutableManifestProjection {
-  const normalized = fnNormalizeWidgetManifestV4(manifest);
+  const normalized = fnNormalizeWidgetManifestV1(manifest);
   return {
-    schemaVersion: 4,
+    schemaVersion: 1,
     ui: normalized.ui,
     server: normalized.server ?? null,
     resources: normalized.resources ?? [],
   };
 }
 
-export function fnCanonicalizeWidgetManifestV4(manifest: TWidgetManifestV4): string {
-  return JSON.stringify(fnNormalizeWidgetManifestV4(manifest));
+export function fnCanonicalizeWidgetManifestV1(manifest: TWidgetManifestV1): string {
+  return JSON.stringify(fnNormalizeWidgetManifestV1(manifest));
 }
 
-export function fnCanonicalizeWidgetPresentation(manifest: TWidgetManifestV4): string {
+export function fnCanonicalizeWidgetPresentation(manifest: TWidgetManifestV1): string {
   return JSON.stringify(fnProjectWidgetPresentation(manifest));
 }
 
-export function fnCanonicalizeWidgetExecutableManifest(manifest: TWidgetManifestV4): string {
+export function fnCanonicalizeWidgetExecutableManifest(manifest: TWidgetManifestV1): string {
   return JSON.stringify(fnProjectWidgetExecutableManifest(manifest));
 }
 
@@ -170,7 +170,7 @@ export function fnNormalizeWidgetExecutableProjection(
   projection: TWidgetExecutableManifestProjection,
 ): TWidgetExecutableManifestProjection {
   return {
-    schemaVersion: 4,
+    schemaVersion: 1,
     ui: {
       runtime: 'capsule',
       entry: fnNormalizeWidgetFilesystemRelativePath(projection.ui.entry) ?? projection.ui.entry,
@@ -207,17 +207,17 @@ export function fnCanonicalizeWidgetExecutableProjection(
   return JSON.stringify(fnNormalizeWidgetExecutableProjection(projection));
 }
 
-export function fnWidgetManifestV4Digest(args: Readonly<{
-  manifest: TWidgetManifestV4;
+export function fnWidgetManifestV1Digest(args: Readonly<{
+  manifest: TWidgetManifestV1;
   digestSha256(value: string): string;
 }>): string {
-  const digest = args.digestSha256(fnCanonicalizeWidgetManifestV4(args.manifest));
+  const digest = args.digestSha256(fnCanonicalizeWidgetManifestV1(args.manifest));
   assertDigest(digest, 'Manifest digest');
   return digest;
 }
 
 export function fnWidgetExecutableManifestDigest(args: Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   digestSha256(value: string): string;
 }>): string {
   const digest = args.digestSha256(fnCanonicalizeWidgetExecutableManifest(args.manifest));

@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { connect, type Database } from '@tursodatabase/database';
 import type {
   TWidgetCapsuleRuntimeDescriptor,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import {
   fnCreateWidgetReleaseDescriptor,
@@ -92,10 +92,10 @@ const capsule: TWidgetCatalogCapsuleInspectionPortal = {
   },
 };
 
-function manifest(): TWidgetManifestV4 {
+function manifest(): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: 'Counter',
     slug: 'counter',
     description: 'Clean-home filesystem integration fixture.',

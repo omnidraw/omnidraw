@@ -86,6 +86,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
 | [apps/cli/src/services/ResourceServiceCapabilities.ts](apps/cli/src/services/ResourceServiceCapabilities.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
+| [apps/cli/src/services/tx.retire-legacy-agent-drafts.ts](apps/cli/src/services/tx.retire-legacy-agent-drafts.ts) | Dev-only retirement of the obsolete agent-private widget draft root. |
 | [apps/cli/src/services/tx.terminate-widget-build-process-tree.ts](apps/cli/src/services/tx.terminate-widget-build-process-tree.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
@@ -508,7 +509,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/approval/fn.approval-policy.ts](packages/service-agent/src/approval/fn.approval-policy.ts) | Pure normalization for persisted protected-operation approval policy. |
 | [packages/service-agent/src/approval/types.ts](packages/service-agent/src/approval/types.ts) |  |
 | [packages/service-agent/src/core/CONSTANTS.ts](packages/service-agent/src/core/CONSTANTS.ts) |  |
-| [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-typescript-command.ts](packages/service-agent/src/core/fn.widget-typescript-command.ts) |  |
 | [packages/service-agent/src/core/fx.session-records.ts](packages/service-agent/src/core/fx.session-records.ts) |  |
@@ -610,6 +610,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/workspace/fn.resolve-widget-dependency.ts](packages/service-agent/src/workspace/fn.resolve-widget-dependency.ts) |  |
 | [packages/service-agent/src/workspace/fn.safe-search-pattern.ts](packages/service-agent/src/workspace/fn.safe-search-pattern.ts) |  |
 | [packages/service-agent/src/workspace/fx.chat-metadata.ts](packages/service-agent/src/workspace/fx.chat-metadata.ts) |  |
+| [packages/service-agent/src/workspace/fx.draft-manifest.ts](packages/service-agent/src/workspace/fx.draft-manifest.ts) | Impure read of one shared draft folder's raw manifest record. |
 | [packages/service-agent/src/workspace/fx.widget-catalog.ts](packages/service-agent/src/workspace/fx.widget-catalog.ts) |  |
 | [packages/service-agent/src/workspace/tx.chat-storage.ts](packages/service-agent/src/workspace/tx.chat-storage.ts) |  |
 | [packages/service-agent/src/workspace/types.ts](packages/service-agent/src/workspace/types.ts) |  |
@@ -889,7 +890,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/core/fn.diagnostic.ts](packages/widget-contract/src/core/fn.diagnostic.ts) |  |
 | [packages/widget-contract/src/core/fn.filesystem-change.ts](packages/widget-contract/src/core/fn.filesystem-change.ts) | Pure evidence-based widget change classification. |
 | [packages/widget-contract/src/core/fn.filesystem-input.ts](packages/widget-contract/src/core/fn.filesystem-input.ts) | Pure bounded, versioned binary framing for exact executable inputs. |
-| [packages/widget-contract/src/core/fn.filesystem-manifest.ts](packages/widget-contract/src/core/fn.filesystem-manifest.ts) | Pure manifest-v4 normalization, projection, and manifest digest rules. |
+| [packages/widget-contract/src/core/fn.filesystem-manifest.ts](packages/widget-contract/src/core/fn.filesystem-manifest.ts) | Pure manifest-v1 normalization, projection, and manifest digest rules. |
 | [packages/widget-contract/src/core/fn.filesystem-path.ts](packages/widget-contract/src/core/fn.filesystem-path.ts) | Pure UTF-8, confined path, and portable icon-shape rules. |
 | [packages/widget-contract/src/core/fn.filesystem-release.ts](packages/widget-contract/src/core/fn.filesystem-release.ts) | Pure exact-file and runtime validation for one current widget publication. |
 | [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
@@ -899,7 +900,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
 | [packages/widget-contract/src/diagnostic-schema.ts](packages/widget-contract/src/diagnostic-schema.ts) |  |
 | [packages/widget-contract/src/filesystem/index.ts](packages/widget-contract/src/filesystem/index.ts) |  |
-| [packages/widget-contract/src/filesystem/schema.ts](packages/widget-contract/src/filesystem/schema.ts) | Strict parsers for portable manifest v4 and generated release metadata. |
+| [packages/widget-contract/src/filesystem/schema.ts](packages/widget-contract/src/filesystem/schema.ts) | Strict parsers for portable manifest v1 and generated release metadata. |
 | [packages/widget-contract/src/filesystem/typed.ts](packages/widget-contract/src/filesystem/typed.ts) | Portable, database-free widget repository and publication contracts. |
 | [packages/widget-contract/src/function-descriptor-schema.ts](packages/widget-contract/src/function-descriptor-schema.ts) | Strict runtime schema for generated server-function registrations. |
 | [packages/widget-contract/src/index.ts](packages/widget-contract/src/index.ts) | Public widget manifest and immutable artifact contract surface. |

@@ -37,7 +37,7 @@ import {
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetBuildEnvironment,
   type TWidgetCapsuleRuntimeDescriptor,
-  type TWidgetManifestV4,
+  type TWidgetManifestV1,
   type TWidgetServerFunctionDescriptor,
 } from '@omnidraw/widget-contract';
 
@@ -69,7 +69,7 @@ type TWidgetPreviewServerMount = Readonly<{
 
 type TWidgetPreviewSignedArtifact = Readonly<{
   widgetKey: string;
-  manifest: Omit<TWidgetManifestV4, 'server'>;
+  manifest: Omit<TWidgetManifestV1, 'server'>;
   capsuleBytes: Uint8Array;
   artifactDigestSha256: string;
   runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
@@ -81,7 +81,7 @@ type TWidgetPreviewSignedArtifact = Readonly<{
 }>;
 
 type TWidgetPreviewConstruction = Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   construction: TWidgetFilesystemConstruction;
 }>;
 
@@ -253,6 +253,37 @@ class WidgetPreviewService implements IService {
     });
     this.#artifacts.set(sessionId, artifact);
     return this.#mountView(args, artifact);
+  }
+
+  /**
+   * Headless Preview build for agent validation: captures the current shared
+   * draft and runs the same construction pipeline a Preview frame would,
+   * without opening a session or retaining an artifact.
+   */
+  async buildCheck(args: Readonly<{
+    widgetKey: string;
+    signal?: AbortSignal;
+  }>): Promise<Readonly<{ ok: boolean; errors: readonly string[] }>> {
+    try {
+      const workspace = await this.#workspace;
+      const capture = await workspace.captureDraftBuildInput({
+        slug: args.widgetKey,
+        signal: args.signal ?? new AbortController().signal,
+      });
+      await this.#config.builder.construct({
+        manifest: capture.manifest,
+        files: capture.files,
+        workspaceKey: `preview_${args.widgetKey}`,
+        ...(args.signal === undefined ? {} : { signal: args.signal }),
+      });
+      return Object.freeze({ ok: true, errors: Object.freeze([]) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return Object.freeze({
+        ok: false,
+        errors: Object.freeze([message.slice(0, 8_000)]),
+      });
+    }
   }
 
   async load(args: TWidgetPreviewSessionInput): Promise<TWidgetPreviewMountView> {

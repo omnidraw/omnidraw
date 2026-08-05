@@ -267,6 +267,9 @@ export function createAiChatCanvasExtension(
       });
       const actionHandlers = new Map<string, Map<string, () => void>>();
       const registrations = new Map<string, TPortalRegistration>();
+      // Freshly placed Preview frames auto-build once on first attach; a frame
+      // that outlives its host session keeps the stopped fallback instead.
+      const freshPreviewNodes = new Set<string>();
       let publishedCatalogEpoch = 0;
       const publishedWidgetEpochs = new Map<string, number>();
       const portalRegistrationSignature = (
@@ -321,6 +324,51 @@ export function createAiChatCanvasExtension(
         });
       };
 
+      const DRAFT_PREVIEW_BOUNDS = Object.freeze({ width: 360, height: 320 });
+
+      /** Places (or focuses) the live draft Preview frame beside the chat. */
+      const openDraftPreviewBeside = async (
+        chatNodeId: string,
+        name: string,
+      ): Promise<void> => {
+        try {
+          const [catalogError, catalog] = await args.chatApi.api.widget.catalog.get();
+          if (catalogError || !catalog) {
+            throw new Error(errorMessage(catalogError, 'The widget catalog is unavailable.'));
+          }
+          const entry = catalog.entries.find(
+            (candidate) => candidate.draft?.config?.name === name,
+          );
+          if (entry?.draft == null) {
+            throw new Error(`Widget draft '${name}' was not found in the shared drafts root.`);
+          }
+          if (entry.draft.health !== 'healthy') {
+            throw new Error(`Widget draft '${name}' is unhealthy and cannot be previewed.`);
+          }
+          const chatNode = widgetFrame(context.engine.scene.get(chatNodeId));
+          await placementCoordinator.addToCanvas({
+            reference: {
+              source: 'draft',
+              widgetKey: entry.widgetKey,
+              catalogGeneration: catalog.generation,
+            },
+            bounds: DRAFT_PREVIEW_BOUNDS,
+            label: entry.draft.config?.tool.label ?? entry.draft.config?.name ?? name,
+            ...(chatNode === null ? {} : {
+              position: {
+                x: chatNode.transform.position.x + chatNode.size.width + 24,
+                y: chatNode.transform.position.y,
+              },
+            }),
+          });
+        } catch (error) {
+          context.config.notification?.showError(
+            'Could not open the widget Preview',
+            errorMessage(error, 'The widget Preview could not be opened.'),
+          );
+        }
+      };
+
       const mountAiWidget = (
         root: HTMLDivElement,
         node: Readonly<TWidgetFrameNode>,
@@ -351,6 +399,7 @@ export function createAiChatCanvasExtension(
           titleBar,
           sessionId: initialSessionId,
           aiChatPreference: storedPayload,
+          onOpenWidgetPreview: ({ name }) => openDraftPreviewBeside(node.id, name),
           onAiChatPreferenceChange: (preference) => {
             persistAiPayload(node.id, {
               ...preference,
@@ -486,6 +535,7 @@ export function createAiChatCanvasExtension(
                 canvasId: context.config.canvasId,
                 widgetKey: currentExtension.widgetKey,
                 isTargetCurrent: () => !previewDisposed,
+                shouldAutoBuild: () => freshPreviewNodes.delete(node.id),
               });
               previewOwner = owner;
               owner.attach(host, current);
@@ -719,16 +769,36 @@ export function createAiChatCanvasExtension(
             },
           });
           if (placementArgs.reference.source === 'draft') {
+            const widgetKey = placementArgs.reference.widgetKey;
+            const existingPreview = context.engine.scene
+              .query((candidate) => candidate.kind === 'widget-frame')
+              .find((candidate) => {
+                const extension = fnCanvasWidgetExtension(candidate);
+                return extension?.type === 'widget-preview'
+                  && extension.widgetKey === widgetKey;
+              });
+            if (existingPreview) {
+              context.editor.setSelection(
+                [existingPreview.id],
+                { focusedNodeId: existingPreview.id },
+              );
+              context.config.notification?.showInfo(
+                `${placementArgs.label} Preview is already on the canvas`,
+              );
+              return;
+            }
+            const previewNodeId = args.widgetBrowser.createId();
             appendWidgetNode(fnCreatePreviewWidgetNode({
-              id: args.widgetBrowser.createId(),
+              id: previewNodeId,
               parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
               orderKey: '',
               position: placementArgs.position,
               size: placementArgs.bounds,
               title: placementArgs.label,
               instanceId: args.widgetBrowser.createId(),
-              widgetKey: placementArgs.reference.widgetKey,
+              widgetKey,
             }), 'omnidraw:widget-placement');
+            freshPreviewNodes.add(previewNodeId);
             context.config.notification?.showSuccess(
               `${placementArgs.label} Preview added to canvas`,
             );

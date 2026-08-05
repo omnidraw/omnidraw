@@ -10,7 +10,7 @@ import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 import { ApprovalList } from "../ApprovalList"
-import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource } from "./fn.tool-call"
+import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetToolResultWidgetDraft } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
 import type { TAiChatBrowserPort } from "../../../ports"
 
@@ -51,6 +51,7 @@ interface IProps {
   onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
   onOpenResource?: (resourceId: string) => void
+  onOpenWidgetPreview?: (args: { name: string }) => void | Promise<void>
   onCancel: () => void
   onDismissError: () => void
   onOpenSettings: () => void
@@ -474,10 +475,12 @@ function ChatHistoryMessage(props: {
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
   onOpenResource?: IProps["onOpenResource"]
+  onOpenWidgetPreview?: IProps["onOpenWidgetPreview"]
   onReportError: IProps["onReportError"]
   onOpenSettings: IProps["onOpenSettings"]
 }) {
   const [isExpanded, setIsExpanded] = createSignal(false)
+  const [previewPending, setPreviewPending] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
@@ -485,6 +488,7 @@ function ChatHistoryMessage(props: {
   const kind = () => getMessageKind(role())
   const toolCalls = () => fnGetChatToolCalls(props.message)
   const resource = () => props.onOpenResource ? fnGetToolResultResource(props.message) : undefined
+  const widgetDraft = () => props.onOpenWidgetPreview ? fnGetToolResultWidgetDraft(props.message) : undefined
   const isToolResult = () => isToolResultMessage(props.message)
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
@@ -556,6 +560,26 @@ function ChatHistoryMessage(props: {
               }}
             >
               Open {linkedResource().name}
+            </button>
+          </div>
+        )}
+      </Show>
+      <Show when={widgetDraft()}>
+        {(draft) => (
+          <div class="ai-chat-history__preview-action">
+            <button
+              type="button"
+              disabled={previewPending()}
+              onClick={(event) => {
+                event.stopPropagation()
+                if (previewPending()) return
+                setPreviewPending(true)
+                Promise.resolve(props.onOpenWidgetPreview?.({ name: draft().name }))
+                  .catch(() => undefined)
+                  .finally(() => setPreviewPending(false))
+              }}
+            >
+              {previewPending() ? "Opening Preview…" : "Open Preview"}
             </button>
           </div>
         )}
@@ -693,6 +717,7 @@ export function ChatTab(props: IProps) {
                   approvals={props.approvals}
                   onResolveApproval={props.onResolveApproval}
                   onOpenResource={props.onOpenResource}
+                  onOpenWidgetPreview={props.onOpenWidgetPreview}
                   onReportError={props.onReportError}
                   onOpenSettings={props.onOpenSettings}
                 />

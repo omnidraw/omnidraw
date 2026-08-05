@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetReleaseObservation,
   TWidgetReleaseValidation,
@@ -30,9 +30,9 @@ const RELEASE_ATTESTATION = Object.freeze({
   keyId: 'release-key',
   signatureBase64: Buffer.alloc(64, 1).toString('base64'),
 });
-const MANIFEST: TWidgetManifestV4 = {
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-  schemaVersion: 4,
+const MANIFEST: TWidgetManifestV1 = {
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+  schemaVersion: 1,
   name: 'Server widget',
   slug: 'server-widget',
   description: 'Calls one bounded server function.',

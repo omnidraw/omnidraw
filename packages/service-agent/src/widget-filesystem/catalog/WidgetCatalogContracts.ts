@@ -10,9 +10,9 @@ import {
   fnProjectWidgetPresentation,
   fnValidateWidgetRelease,
   fnWidgetExecutableManifestDigest,
-  fnWidgetManifestV4Digest,
+  fnWidgetManifestV1Digest,
   fnWidgetReleaseDirectoryDigest,
-  parseWidgetManifestV4Json,
+  parseWidgetManifestV1Json,
   parseWidgetReleaseJson,
 } from '@omnidraw/widget-contract/filesystem';
 import type { TWidgetCatalogContractPortal } from './typed';
@@ -20,7 +20,7 @@ import type { TWidgetCatalogContractPortal } from './typed';
 /** A109's edge adapter over the pure A108 contract surface. */
 export const WIDGET_CATALOG_CONTRACTS: TWidgetCatalogContractPortal = Object.freeze({
   normalizeRelativePath: fnNormalizeWidgetFilesystemRelativePath,
-  parseManifestJson: parseWidgetManifestV4Json,
+  parseManifestJson: parseWidgetManifestV1Json,
   parseReleaseJson: parseWidgetReleaseJson,
   parseFunctionsJson(value) {
     const envelope = JSON.parse(value) as unknown;
@@ -41,7 +41,7 @@ export const WIDGET_CATALOG_CONTRACTS: TWidgetCatalogContractPortal = Object.fre
   projectPresentation: fnProjectWidgetPresentation,
   projectExecutable: fnProjectWidgetExecutableManifest,
   canonicalizePresentation: fnCanonicalizeWidgetPresentation,
-  manifestDigest: fnWidgetManifestV4Digest,
+  manifestDigest: fnWidgetManifestV1Digest,
   executableManifestDigest: fnWidgetExecutableManifestDigest,
   releaseDirectoryDigest: fnWidgetReleaseDirectoryDigest,
   canonicalizeUnsignedRelease: fnCanonicalizeWidgetUnsignedReleaseDescriptor,

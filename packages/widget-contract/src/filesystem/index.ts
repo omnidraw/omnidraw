@@ -1,23 +1,23 @@
 export type * from './typed';
 export {
   ZWidgetExecutableManifest,
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
-  parseWidgetManifestV4Json,
+  parseWidgetManifestV1Json,
   parseWidgetReleaseJson,
 } from './schema';
 export {
   fnCanonicalizeWidgetExecutableManifest,
   fnCanonicalizeWidgetExecutableProjection,
-  fnCanonicalizeWidgetManifestV4,
+  fnCanonicalizeWidgetManifestV1,
   fnCanonicalizeWidgetPresentation,
   fnNormalizeWidgetExecutableProjection,
-  fnNormalizeWidgetManifestV4,
+  fnNormalizeWidgetManifestV1,
   fnProjectWidgetExecutableManifest,
   fnProjectWidgetPresentation,
   fnWidgetExecutableManifestDigest,
-  fnWidgetManifestV4Digest,
+  fnWidgetManifestV1Digest,
 } from '../core/fn.filesystem-manifest';
 export {
   fnNormalizeWidgetFilesystemRelativePath,

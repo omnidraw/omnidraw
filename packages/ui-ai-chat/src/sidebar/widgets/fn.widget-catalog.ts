@@ -1,5 +1,6 @@
 import type {
   TWidgetPublicCatalog,
+  TWidgetPublicCatalogEntry,
   TWidgetPublicCatalogForm,
 } from '@omnidraw/orpc-client';
 import type {
@@ -27,6 +28,17 @@ export function fnSortWidgetRows(rows: TWidgetSidebarRow[]): TWidgetSidebarRow[]
 
 const DRAFT_PLACEMENT_BOUNDS = Object.freeze({ width: 360, height: 320 });
 
+/**
+ * A draft row is shown only while the draft actually differs from the
+ * publication: draft-only widgets always show it, and a published widget
+ * shows it only after edits changed the draft manifest.
+ */
+export function fnWidgetDraftRowVisible(entry: TWidgetPublicCatalogEntry): boolean {
+  return entry.draft !== null
+    && (entry.differences.availability === 'draft-only'
+      || entry.differences.manifest === 'different');
+}
+
 export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSidebarProjection {
   const groupMap = new Map(catalog.groups.map((name) => [name, {
     name,
@@ -41,6 +53,7 @@ export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSi
     const row: TWidgetSidebarRow = {
       widgetKey: entry.widgetKey,
       source,
+      action: source === 'published' ? 'add' : 'preview',
       form,
       entry,
       placement: source === 'published'
@@ -63,7 +76,7 @@ export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSi
   };
   for (const entry of catalog.entries) {
     if (entry.published) add(entry, 'published', entry.published);
-    if (entry.draft) add(entry, 'draft', entry.draft);
+    if (entry.draft && fnWidgetDraftRowVisible(entry)) add(entry, 'draft', entry.draft);
   }
   return {
     groups: [...groupMap.values()]

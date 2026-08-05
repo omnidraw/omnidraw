@@ -10,7 +10,7 @@ import type { TAgentResourceService } from './resource-service';
 import { createWebFetchTool } from './tool.web-fetch';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
 import { createWorkspaceFileTools } from './tool.workspace-files';
-import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
+import type { TToolDefinition, TWidgetDraftChangeHandler, TWidgetPreviewBuildCheck } from './types';
 
 type TCreateToolRegistryArgs = {
   chatId: string;
@@ -22,6 +22,7 @@ type TCreateToolRegistryArgs = {
   bashCapability?: TAgentBashCapability;
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
+  previewBuild?: TWidgetPreviewBuildCheck;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
 };
 
@@ -46,6 +47,7 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       chatId: args.chatId,
       authorize: (toolName) => authorize(toolName),
       onMounted: args.onMounted,
+      previewBuild: args.previewBuild,
       onDraftChanged: args.onDraftChanged
         ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
         : undefined,

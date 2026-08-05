@@ -104,7 +104,7 @@ function runtimeResolution(
     catalogGeneration: input.catalogGeneration,
     catalogDigestSha256: 'b'.repeat(64),
     manifest: {
-      schemaVersion: 4,
+      schemaVersion: 1,
       slug: input.widgetKey,
       name: 'Counter',
       entry: 'src/main.tsx',

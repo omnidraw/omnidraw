@@ -36,7 +36,7 @@ import {
   WidgetStateService,
   type IWidgetStateService,
 } from '@omnidraw/service-widget-state';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, renameSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'path';
@@ -66,6 +66,7 @@ import {
 import {
   WidgetCapsuleHostConfigurationService,
 } from './services/WidgetCapsuleHostConfigurationService';
+import { txRetireLegacyAgentDrafts } from './services/tx.retire-legacy-agent-drafts';
 import {
   FunctionService,
 } from './services/FunctionService';
@@ -251,6 +252,19 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   mkdirSync(widgetBuildTempRoot, { recursive: true, mode: 0o700 });
   mkdirSync(widgetDescriptorTempRoot, { recursive: true, mode: 0o700 });
   txEnsureOmnidrawHome({ mkdirSync }, { home: config.home });
+  if (config.dev && process.env.NODE_ENV !== 'production') {
+    const retired = txRetireLegacyAgentDrafts(
+      { readdirSync, mkdirSync, renameSync, join },
+      {
+        agentRoot: config.home.agentRoot,
+        trashRoot: config.home.widgetTrashRoot,
+        token: new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14),
+      },
+    );
+    if (retired) {
+      console.warn('Moved obsolete agent-private widget drafts into the widget trash.');
+    }
+  }
   const descriptorExtractor = new BunChildFunctionDescriptorExtractor({
     compiledExecutable: config.compiled,
     tempRoot: widgetDescriptorTempRoot,
@@ -392,8 +406,13 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   mkdirSync(agentRoot, { recursive: true });
   const agentService = new AgentService({
     dataPath: agentRoot,
+    widgetDraftsRoot: config.home.widgetDraftsRoot,
     npmUserConfigPath,
     prepareWidgetNpmDependencies,
+    onWidgetDraftsChanged: () => {
+      void widgetCatalog.refresh().catch(() => undefined);
+    },
+    previewBuild: ({ slug }) => widgetPreview.buildCheck({ widgetKey: slug }),
     eventPublisherService: eventPublisher,
     chats: dbService.chats,
     resourceService: createAgentResourceService(resourceService),

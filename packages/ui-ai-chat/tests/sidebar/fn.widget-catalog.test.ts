@@ -13,15 +13,34 @@ import {
 describe('filesystem widget catalog projection', () => {
   test('renders both observed forms inside their implicit manifest group', () => {
     const projection = fnProjectWidgetCatalog(publicCatalog([
-      publicEntry('camera', { status: 'matched' }),
+      publicEntry('camera'),
     ]));
 
     expect(projection.groups.map((group) => [group.name, group.rows.length]))
       .toEqual([['media', 2]]);
-    expect(projection.groups[0]?.rows.map((row) => row.source))
-      .toEqual(['published', 'draft']);
+    expect(projection.groups[0]?.rows.map((row) => [row.source, row.action]))
+      .toEqual([['published', 'add'], ['draft', 'preview']]);
     expect(fnFindWidgetSelectionGroup(projection, 'published', 'camera')).toBe('media');
     expect(fnFindWidgetSelectionGroup(projection, 'draft', 'camera')).toBe('media');
+  });
+
+  test('hides the draft row once the publication matches the draft', () => {
+    const matched = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('camera', { status: 'matched' }),
+    ]));
+    expect(matched.groups[0]?.rows.map((row) => row.source)).toEqual(['published']);
+
+    const draftOnly = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('camera', { published: null, status: 'draft-only' }),
+    ]));
+    expect(draftOnly.groups[0]?.rows.map((row) => [row.source, row.action]))
+      .toEqual([['draft', 'preview']]);
+
+    const changed = fnProjectWidgetCatalog(publicCatalog([
+      publicEntry('camera', { status: 'executable-changed' }),
+    ]));
+    expect(changed.groups[0]?.rows.map((row) => row.source))
+      .toEqual(['published', 'draft']);
   });
 
   test('orders implicit-group rows by ascending priority before name and source', () => {

@@ -1,5 +1,5 @@
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetReleaseFile,
   TWidgetReleaseValidation,
@@ -65,7 +65,7 @@ type TScannedTree = Readonly<{
 }>;
 
 type TManifestFacts = Readonly<{
-  manifest: TWidgetManifestV4 | null;
+  manifest: TWidgetManifestV1 | null;
   manifestDigestSha256: string | null;
   presentation: ReturnType<TPortal['contracts']['projectPresentation']> | null;
   presentationDigestSha256: string | null;

@@ -149,16 +149,12 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
           for (const name of changedNames) {
             if (after.get(name) === null || args.onDraftChanged === undefined) {
               failures.push(new Error(
-                `Bash changed widget source '${name}' without durable mutation-fence authority.`,
+                `Bash changed widget source '${name}' without draft-change notification authority.`,
               ));
               continue;
             }
             try {
-              const durable = await args.onDraftChanged({ name, type: 'changed' });
-              if (durable) continue;
-              failures.push(new Error(
-                `Bash changed widget source '${name}' without receiving a durable mutation fence.`,
-              ));
+              await args.onDraftChanged({ name, type: 'changed' });
             } catch (error) {
               failures.push(error);
             }

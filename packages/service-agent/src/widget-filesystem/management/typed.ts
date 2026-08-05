@@ -3,7 +3,7 @@ import type {
 } from '../catalog/typed';
 import type {
   TOmnidrawToolIcon,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 
 export type TWidgetDraftConfig = Readonly<{
@@ -70,6 +70,6 @@ export type TWidgetFilesystemManagementCapability = Readonly<{
 }>;
 
 export type TWidgetDraftConfigManifest = Pick<
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   '$schema' | 'schemaVersion' | 'slug' | 'ui' | 'server' | 'resources'
 > & TWidgetDraftConfig;

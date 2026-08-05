@@ -15,7 +15,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract/filesystem';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract/filesystem';
 import {
   NodeWidgetFilesystemWorkspace,
   createWidgetImportWorkspacePorts,
@@ -24,10 +24,10 @@ import {
 
 const temporaryRoots: string[] = [];
 
-function manifest(slug = 'counter'): TWidgetManifestV4 {
+function manifest(slug = 'counter'): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: 'Counter',
     slug,
     description: 'A copied filesystem widget.',
@@ -104,7 +104,7 @@ describe('NodeWidgetFilesystemWorkspace', () => {
     expect(inspected).toMatchObject({
       slug: 'counter',
       treeDigestSha256: copied.digestSha256,
-      manifest: { schemaVersion: 4, slug: 'counter' },
+      manifest: { schemaVersion: 1, slug: 'counter' },
     });
 
     await workspace.promoteStaging({

@@ -1,4 +1,5 @@
 import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
+import type { TWidgetPlacementPoint } from './fn.pointer-placement';
 
 export type TWidgetPlacementStartArgs = {
   reference: TWidgetPlacementRef;
@@ -9,9 +10,17 @@ export type TWidgetPlacementStartArgs = {
   onDragEnd?: () => void;
 };
 
+export type TWidgetPlacementAddArgs = Omit<
+  TWidgetPlacementStartArgs,
+  "event" | "onDragStart" | "onDragEnd"
+> & {
+  /** Optional world-space top-left; defaults to the viewport center. */
+  position?: TWidgetPlacementPoint;
+};
+
 export type TWidgetPlacementPort = {
   beginPointerSession(args: TWidgetPlacementStartArgs): boolean;
-  addToCanvas(args: Omit<TWidgetPlacementStartArgs, "event" | "onDragStart" | "onDragEnd">): Promise<void>;
+  addToCanvas(args: TWidgetPlacementAddArgs): Promise<void>;
 };
 
 export type TWidgetPlacementCoordinator = TWidgetPlacementPort & {

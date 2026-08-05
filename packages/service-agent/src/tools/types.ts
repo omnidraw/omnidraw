@@ -37,22 +37,17 @@ export type TWidgetDraftChange = {
   name: string;
   chatId?: string;
   type: 'created' | 'changed' | 'validated';
-  validation?: TValidationResult;
 };
 
-export type TWidgetDraftChangeResult = Readonly<{
-  draftId: string;
-  revision: string;
-  validation: Readonly<{
-    status: 'unknown' | 'valid' | 'invalid';
-    errors: readonly string[];
-    warnings: readonly string[];
-  }>;
-}> | null | void;
-
+/** Notification sink fired after a draft mutation is durable on disk. */
 export type TWidgetDraftChangeHandler = (
   change: TWidgetDraftChange,
-) => TWidgetDraftChangeResult | Promise<TWidgetDraftChangeResult>;
+) => void | Promise<void>;
+
+/** Runs the real host Preview build for one shared draft slug. */
+export type TWidgetPreviewBuildCheck = (args: Readonly<{
+  slug: string;
+}>) => Promise<Readonly<{ ok: boolean; errors: readonly string[] }>>;
 
 export type TToolDefinition = ToolDefinition<any, unknown, any>;
 

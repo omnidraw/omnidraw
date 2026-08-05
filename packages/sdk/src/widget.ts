@@ -45,7 +45,7 @@ export type {
   TWidgetChangeClass,
   TWidgetChangeClassification,
   TWidgetExecutableManifestProjection,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetPresentationProjection,
   TWidgetReleaseDescriptor,
   TWidgetReleaseAttestation,

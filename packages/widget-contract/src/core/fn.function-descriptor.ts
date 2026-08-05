@@ -12,7 +12,7 @@ import type {
   TWidgetServerFunctionDescriptorValidation,
   TWidgetServerFunctionResourceAccess,
 } from '../types';
-import type { TWidgetExecutableManifestProjection, TWidgetManifestV4 } from '../filesystem/typed';
+import type { TWidgetExecutableManifestProjection, TWidgetManifestV1 } from '../filesystem/typed';
 
 const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'omnidraw.widget.functions.';
 const SERVER_FUNCTION_CAPABILITY_ID_PREFIX = `${SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE}h`;
@@ -149,7 +149,7 @@ export function fnWidgetServerFunctionCapabilityRequestMatches(
 }
 
 export function fnValidateWidgetServerFunctionDescriptors(
-  manifest: TWidgetManifestV4 | TWidgetExecutableManifestProjection,
+  manifest: TWidgetManifestV1 | TWidgetExecutableManifestProjection,
   descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): TWidgetServerFunctionDescriptorValidation {
   if (manifest.server === undefined || manifest.server === null) {

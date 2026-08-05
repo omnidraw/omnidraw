@@ -12,9 +12,9 @@ import type {
   TWidgetUiManifest,
 } from '../types';
 
-export type TWidgetManifestV4 = Readonly<{
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json';
-  schemaVersion: 4;
+export type TWidgetManifestV1 = Readonly<{
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json';
+  schemaVersion: 1;
   name: string;
   slug: string;
   description: string;
@@ -30,7 +30,7 @@ export type TWidgetManifestV4 = Readonly<{
 }>;
 
 export type TWidgetPresentationProjection = Readonly<{
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json';
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json';
   name: string;
   description: string;
   tool: Readonly<{
@@ -42,7 +42,7 @@ export type TWidgetPresentationProjection = Readonly<{
 }>;
 
 export type TWidgetExecutableManifestProjection = Readonly<{
-  schemaVersion: 4;
+  schemaVersion: 1;
   ui: TWidgetUiManifest;
   server: TWidgetServerManifest | null;
   resources: readonly TResourceRequirement[];

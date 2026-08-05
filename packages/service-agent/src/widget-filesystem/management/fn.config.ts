@@ -5,13 +5,13 @@ import type {
   TWidgetDraftConfig,
 } from './typed';
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 
 export function fnApplyWidgetDraftConfig(
-  manifest: TWidgetManifestV4,
+  manifest: TWidgetManifestV1,
   config: TWidgetDraftConfig,
-): TWidgetManifestV4 {
+): TWidgetManifestV1 {
   return {
     ...manifest,
     name: config.name,

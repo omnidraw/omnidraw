@@ -1,8 +1,8 @@
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from '../types';
 import { Z_OMNIDRAW_JSON } from '../../tools/CONSTANTS';
 
-export function fnLintManifestShape(manifest: TWidgetManifestV4): TValidationResult {
+export function fnLintManifestShape(manifest: TWidgetManifestV1): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const zodResult = Z_OMNIDRAW_JSON.safeParse(manifest);

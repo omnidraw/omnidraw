@@ -147,8 +147,8 @@ function fixture(args: Readonly<{
       catalogGeneration: identity.catalogGeneration,
     },
     manifest: {
-      $schema: 'https://omnidraw.dev/schemas/widget/v4.json' as const,
-      schemaVersion: 4 as const,
+      $schema: 'https://omnidraw.dev/schemas/widget/v1.json' as const,
+      schemaVersion: 1 as const,
       name: 'Pinned widget',
       slug: 'pinned-widget',
       description: 'A pinned widget test fixture.',

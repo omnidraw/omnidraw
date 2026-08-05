@@ -3,7 +3,7 @@
  */
 
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetPresentationProjection,
   TWidgetExecutableManifestProjection,
   TWidgetReleaseDescriptor,
@@ -67,7 +67,7 @@ export type TWidgetCatalogDraft = Readonly<{
   slug: string;
   relativePath: string;
   health: 'healthy' | 'unhealthy';
-  manifest: TWidgetManifestV4 | null;
+  manifest: TWidgetManifestV1 | null;
   manifestDigestSha256: string | null;
   presentation: TWidgetPresentationProjection | null;
   presentationDigestSha256: string | null;
@@ -83,7 +83,7 @@ export type TWidgetCatalogPublished = Readonly<{
   slug: string;
   relativePath: string;
   health: 'healthy' | 'unhealthy';
-  manifest: TWidgetManifestV4 | null;
+  manifest: TWidgetManifestV1 | null;
   manifestDigestSha256: string | null;
   presentation: TWidgetPresentationProjection | null;
   presentationDigestSha256: string | null;
@@ -180,7 +180,7 @@ export type TWidgetCatalogHashPortal = Readonly<{
 export type TWidgetCatalogCapsuleInspectionPortal = Readonly<{
   inspectCapsuleArtifact(args: Readonly<{
     bytes: Uint8Array;
-    expectedApis: TWidgetManifestV4['ui']['apis'];
+    expectedApis: TWidgetManifestV1['ui']['apis'];
     expectedRuntime: TWidgetCapsuleRuntimeDescriptor;
     expectedCapsuleFile: TWidgetReleaseFile;
     canonicalUnsignedReleaseJson: string;
@@ -193,18 +193,18 @@ export type TWidgetCatalogCapsuleInspectionPortal = Readonly<{
 
 export type TWidgetCatalogContractPortal = Readonly<{
   normalizeRelativePath(value: string): string | null;
-  parseManifestJson(value: string): TWidgetManifestV4;
+  parseManifestJson(value: string): TWidgetManifestV1;
   parseReleaseJson(value: string): TWidgetReleaseDescriptor;
   parseFunctionsJson(value: string): readonly TWidgetServerFunctionDescriptor[];
-  projectPresentation(manifest: TWidgetManifestV4): TWidgetPresentationProjection;
-  projectExecutable(manifest: TWidgetManifestV4): TWidgetExecutableManifestProjection;
-  canonicalizePresentation(manifest: TWidgetManifestV4): string;
+  projectPresentation(manifest: TWidgetManifestV1): TWidgetPresentationProjection;
+  projectExecutable(manifest: TWidgetManifestV1): TWidgetExecutableManifestProjection;
+  canonicalizePresentation(manifest: TWidgetManifestV1): string;
   manifestDigest(args: Readonly<{
-    manifest: TWidgetManifestV4;
+    manifest: TWidgetManifestV1;
     digestSha256(value: string): string;
   }>): string;
   executableManifestDigest(args: Readonly<{
-    manifest: TWidgetManifestV4;
+    manifest: TWidgetManifestV1;
     digestSha256(value: string): string;
   }>): string;
   releaseDirectoryDigest(args: Readonly<{
@@ -213,7 +213,7 @@ export type TWidgetCatalogContractPortal = Readonly<{
   }>): string;
   canonicalizeUnsignedRelease(release: TWidgetReleaseDescriptor): string;
   validateRelease(args: Readonly<{
-    manifest: TWidgetManifestV4;
+    manifest: TWidgetManifestV1;
     expectedExecutableManifestDigestSha256: string;
     release: TWidgetReleaseDescriptor;
     observation: TWidgetReleaseObservation;

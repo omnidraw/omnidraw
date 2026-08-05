@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import {
   access,
-  cp,
   lstat,
   mkdir,
   readFile,
@@ -17,12 +16,13 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import { fnChatStorageSegments } from '@omnidraw/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
-import { fnNormalizeWidgetName } from './fn.names';
+import { fnIsWidgetDraftSlug, fnNormalizeWidgetName } from './fn.names';
+import { fxReadWidgetManifestRecord } from './fx.draft-manifest';
 import { fxWidgetCatalog } from './fx.widget-catalog';
 import { txEnsureChatStorage } from './tx.chat-storage';
 import type {
@@ -36,18 +36,11 @@ import type {
 
 type TWidgetWorkspaceConfig = {
   dataPath: string;
+  draftRoot: string;
   platform?: NodeJS.Platform;
   createId?: () => string;
-  copyDirectory?: typeof cp;
   npmUserConfigPath?: string;
   prepareNpmDependencies?: () => Promise<void>;
-};
-
-type TTransientDraftSnapshot = {
-  name: string;
-  revision: string;
-  rootPath: string;
-  dispose(): Promise<void>;
 };
 
 type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
@@ -57,14 +50,20 @@ const GREP_BYTE_LIMIT = 2_000_000;
 const GREP_MATCH_LIMIT = 500;
 const MUTATION_FILE_BYTE_LIMIT = 5_000_000;
 
+/**
+ * Chat-facing workspace over the one app-owned widget draft root. Drafts are
+ * stored as `<draftRoot>/<slug>/` next to the catalog, Preview, and Publish
+ * authorities; every chat mounts them by display name through symlinks under
+ * `workspace/widgets/<name>`.
+ */
 export class WidgetWorkspace {
   readonly agentRoot: string;
   readonly chatRoot: string;
   readonly draftRoot: string;
+  readonly transientRoot: string;
   readonly npmUserConfigPath?: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
-  readonly #copyDirectory: typeof cp;
   readonly #prepareNpmDependencies?: () => Promise<void>;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #authoringQueues = new Map<string, Promise<unknown>>();
@@ -72,11 +71,11 @@ export class WidgetWorkspace {
   constructor(config: TWidgetWorkspaceConfig) {
     this.agentRoot = join(config.dataPath, 'pi', 'agent');
     this.chatRoot = join(this.agentRoot, 'chats');
-    this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
+    this.draftRoot = config.draftRoot;
+    this.transientRoot = join(this.agentRoot, 'widgets', 'tmp');
     this.npmUserConfigPath = config.npmUserConfigPath;
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
-    this.#copyDirectory = config.copyDirectory ?? cp;
     this.#prepareNpmDependencies = config.prepareNpmDependencies;
   }
 
@@ -88,6 +87,7 @@ export class WidgetWorkspace {
     await Promise.all([
       mkdir(this.chatRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
+      mkdir(this.transientRoot, { recursive: true }),
     ]);
   }
 
@@ -119,12 +119,20 @@ export class WidgetWorkspace {
     await this.ensureChat(chatId);
     await this.#assertNameAvailable(chatId, normalized);
 
-    const target = join(this.draftRoot, normalized);
-    const temporary = join(this.draftRoot, `.create-${this.#safeId()}`);
+    const temporary = join(this.transientRoot, `create-${this.#safeId()}`);
     let promoted = false;
     try {
       await mkdir(temporary, { recursive: false });
       const files = await scaffold({ ...input, name: normalized, cwd: temporary });
+      const identity = await this.#readDraftIdentity(temporary);
+      if (identity === null) {
+        throw new Error('Generated widget draft is missing a valid omnidraw.json name and slug.');
+      }
+      if (identity.name !== normalized) {
+        throw new Error(`Generated widget manifest name '${identity.name}' does not match the requested name '${normalized}'.`);
+      }
+      await this.#assertSlugAvailable(identity.slug);
+      const target = join(this.draftRoot, identity.slug);
       await rename(temporary, target);
       promoted = true;
       try {
@@ -142,7 +150,6 @@ export class WidgetWorkspace {
   async loadWidget(chatId: string, requestedName: string): Promise<TWidgetMount> {
     const name = this.#normalizeName(requestedName);
     const chatRoot = await this.ensureChat(chatId);
-    await this.#assertNoCaseCollision(this.draftRoot, name);
     const targetPath = await this.#resolveDraftTarget(name);
     const mountPath = join(chatRoot, 'widgets', name);
     await this.#assertNoCaseCollision(join(chatRoot, 'widgets'), name);
@@ -160,113 +167,6 @@ export class WidgetWorkspace {
     const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
     await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
     return { name, source: 'draft', chatRoot, mountPath, targetPath };
-  }
-
-  async updateDraftManifestAtomic<T>(
-    requestedName: string,
-    expectedRevision: string,
-    update: (manifest: unknown) => T,
-  ): Promise<{ manifest: T; revision: string }> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    return this.#withWidgetWrite(draftPath, async () => {
-      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
-      const currentRevision = await this.#readDraftRevision(draftPath);
-      if (currentRevision.value !== expectedRevision) {
-        throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
-      }
-      const manifestPath = join(draftPath, 'omnidraw.json');
-      const entry = await lstat(manifestPath).catch(() => null);
-      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: omnidraw.json is not a regular file.');
-      const manifest = update(JSON.parse(await readFile(manifestPath, 'utf8')));
-      const temporary = join(draftPath, `.omnidraw.json.edit-${this.#safeId()}.tmp`);
-      try {
-        await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-        await rename(temporary, manifestPath);
-      } finally {
-        await rm(temporary, { force: true }).catch(() => undefined);
-      }
-      return { manifest, revision: (await this.#readDraftRevision(draftPath)).value };
-    });
-  }
-
-  async updateDraftManifestAndNameAtomic<T>(
-    requestedName: string,
-    requestedNextName: string,
-    expectedRevision: string,
-    update: (manifest: unknown) => T,
-    coordinateCommit?: (commit: () => Promise<void>) => Promise<void>,
-  ): Promise<{ name: string; manifest: T; revision: string }> {
-    const name = this.#normalizeName(requestedName);
-    const nextName = this.#normalizeName(requestedNextName);
-    const draftPath = join(this.draftRoot, name);
-    const nextDraftPath = join(this.draftRoot, nextName);
-    return this.#withWidgetWrites([draftPath, nextDraftPath], async () => {
-      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
-      const currentRevision = await this.#readDraftRevision(draftPath);
-      if (currentRevision.value !== expectedRevision) {
-        throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
-      }
-      if (nextName !== name) {
-        await this.#assertNoCaseCollision(this.draftRoot, nextName);
-        if (await lstat(nextDraftPath).catch(() => null)) {
-          throw new Error(`NAME_IN_USE: Widget name '${nextName}' is already in use.`);
-        }
-      }
-
-      const manifestPath = join(draftPath, 'omnidraw.json');
-      const entry = await lstat(manifestPath).catch(() => null);
-      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: omnidraw.json is not a regular file.');
-      const previousManifestText = await readFile(manifestPath, 'utf8');
-      const manifest = update(JSON.parse(previousManifestText));
-      const temporary = join(draftPath, `.omnidraw.json.edit-${this.#safeId()}.tmp`);
-      let renamed = false;
-      let manifestReplaced = false;
-      let rollbackMounts: (() => Promise<void>) | null = null;
-      const commit = async () => {
-        await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-        await rename(temporary, manifestPath);
-        manifestReplaced = true;
-        if (nextName !== name) {
-          await rename(draftPath, nextDraftPath);
-          renamed = true;
-          rollbackMounts = await this.#moveDraftMount(name, nextName, nextDraftPath);
-        }
-      };
-      try {
-        if (coordinateCommit) await coordinateCommit(commit);
-        else await commit();
-      } catch (error) {
-        await rm(temporary, { force: true }).catch(() => undefined);
-        const rollback = rollbackMounts as (() => Promise<void>) | null;
-        if (rollback) await rollback().catch(() => undefined);
-        if (renamed && !await lstat(draftPath).catch(() => null)) {
-          await rename(nextDraftPath, draftPath).catch(() => undefined);
-        }
-        if (manifestReplaced) {
-          await writeFile(join(draftPath, 'omnidraw.json'), previousManifestText, 'utf8').catch(() => undefined);
-        }
-        throw error;
-      }
-      return {
-        name: nextName,
-        manifest,
-        revision: (await this.#readDraftRevision(nextDraftPath)).value,
-      };
-    });
-  }
-
-  async removeDraft(requestedName: string): Promise<boolean> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    return this.#withWidgetWrite(draftPath, async () => {
-      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-        return false;
-      }
-      await rm(draftPath, { recursive: true, force: false });
-      await this.#removeDraftMount(name);
-      return true;
-    });
   }
 
   async listMounts(chatId: string): Promise<TWidgetMount[]> {
@@ -288,25 +188,20 @@ export class WidgetWorkspace {
     return mounts.sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  async listDrafts(): Promise<TWidgetDraftWorkspaceEntry[]> {
-    const entries = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
-    const drafts = await Promise.all(entries.map(async (entry) => {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) return null;
-      const normalized = fnNormalizeWidgetName(entry.name);
-      if (!normalized.ok || normalized.value !== entry.name) return null;
-      return this.getDraft(entry.name);
-    }));
-
-    return drafts
-      .filter((draft): draft is TWidgetDraftWorkspaceEntry => draft !== null)
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }
-
   async getDraft(requestedName: string): Promise<TWidgetDraftWorkspaceEntry | null> {
     const name = this.#normalizeName(requestedName);
-    await this.#assertNoCaseCollision(this.draftRoot, name);
-    const draftPath = join(this.draftRoot, name);
-    return this.#readDraftEntry(name, draftPath);
+    const slug = await this.#draftSlugForName(name);
+    if (slug === null) return null;
+    const draftPath = join(this.draftRoot, slug);
+    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return null;
+    const revision = await this.#readDraftRevision(draftPath);
+    return {
+      name,
+      draftPath,
+      published: false,
+      revision: revision.value,
+      updatedAt: new Date(revision.updatedAtMs).toISOString(),
+    };
   }
 
   async listAvailableWidgets(chatId: string): Promise<TAvailableWidget[]> {
@@ -319,9 +214,14 @@ export class WidgetWorkspace {
       join,
       dirname,
       parseManifest: (value) => {
-        const manifest = ZWidgetManifestV4.safeParse(value);
+        const manifest = ZWidgetManifestV1.safeParse(value);
         if (manifest.success) {
-          return { ok: true as const, name: manifest.data.name, kind: 'widget' as const };
+          return {
+            ok: true as const,
+            name: manifest.data.name,
+            slug: manifest.data.slug,
+            kind: 'widget' as const,
+          };
         }
         return { ok: false as const };
       },
@@ -341,19 +241,6 @@ export class WidgetWorkspace {
     await this.#assertOwnedMountLink(mountPath, name);
     await rm(mountPath, { force: true });
     return true;
-  }
-
-  async removeAllMounts(chatId: string): Promise<number> {
-    const chatRoot = await this.ensureChat(chatId);
-    const entries = await readdir(join(chatRoot, 'widgets'), { withFileTypes: true });
-    let removed = 0;
-    for (const entry of entries) {
-      if (!entry.isSymbolicLink()) continue;
-      const normalized = fnNormalizeWidgetName(entry.name);
-      if (!normalized.ok || !await this.#ownedMountKind(join(chatRoot, 'widgets', entry.name), normalized.value)) continue;
-      if (await this.removeMount(chatId, normalized.value)) removed += 1;
-    }
-    return removed;
   }
 
   async resolveMountedPath(chatId: string, lexicalPath: string, options: { allowMissing?: boolean } = {}): Promise<TResolvedMountedPath> {
@@ -541,105 +428,6 @@ export class WidgetWorkspace {
     return { matches, truncated, filesSearched };
   }
 
-  async createTransientDraftSnapshot(requestedName: string, expectedRevision: string): Promise<TTransientDraftSnapshot> {
-    return this.#createTransientDraftSnapshot(requestedName, expectedRevision, false);
-  }
-
-  /**
-   * Creates the same filtered snapshot while `updateDraftManifestAndNameAtomic`
-   * already owns the draft write lanes. This must only be called from that
-   * method's coordinated-commit callback after its commit has completed.
-   */
-  async createTransientDraftSnapshotAtCoordinatedCommit(
-    requestedName: string,
-    expectedRevision: string,
-  ): Promise<TTransientDraftSnapshot> {
-    return this.#createTransientDraftSnapshot(requestedName, expectedRevision, true);
-  }
-
-  async #createTransientDraftSnapshot(
-    requestedName: string,
-    expectedRevision: string,
-    writeFenceHeld: boolean,
-  ): Promise<TTransientDraftSnapshot> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    const rootPath = join(this.draftRoot, `.snapshot-${this.#safeId()}-${name}`);
-    let settled = false;
-    try {
-      const copy = async () => {
-        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-          throw new Error(`Widget draft '${name}' does not exist.`);
-        }
-        const before = await this.#readDraftRevision(draftPath);
-        if (before.value !== expectedRevision) {
-          throw Object.assign(
-            new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${before.value}'.`),
-            { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision: before.value },
-          );
-        }
-        await this.#copyWidgetFolder(draftPath, rootPath);
-        const after = await this.#readDraftRevision(draftPath);
-        if (after.value !== before.value) {
-          throw Object.assign(
-            new Error(`Widget draft '${name}' changed while its request snapshot was being created.`),
-            { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision: after.value },
-          );
-        }
-        const snapshot = await this.#readDraftRevision(rootPath);
-        if (snapshot.value !== before.value) {
-          throw Object.assign(
-            new Error(`Widget draft '${name}' could not be copied into one coherent request snapshot.`),
-            { code: 'WIDGET_DRAFT_SNAPSHOT_MISMATCH', currentRevision: after.value },
-          );
-        }
-      };
-      if (writeFenceHeld) await copy();
-      else await this.#withWidgetWrite(draftPath, copy);
-    } catch (error) {
-      await rm(rootPath, { recursive: true, force: true }).catch(() => undefined);
-      throw error;
-    }
-    return {
-      name,
-      revision: expectedRevision,
-      rootPath,
-      dispose: async () => {
-        if (settled) return;
-        await rm(rootPath, { recursive: true, force: true });
-        settled = true;
-      },
-    };
-  }
-
-  /**
-   * Runs a durable authoring commit only while the live draft still matches
-   * the immutable source revision that was validated. The operation executes
-   * inside the draft's write lane and must not call another workspace mutation
-   * for the same draft.
-   */
-  async withDraftRevisionFence<T>(
-    requestedName: string,
-    expectedRevision: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    return this.#withWidgetWrite(draftPath, async () => {
-      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-        throw new Error(`Widget draft '${name}' does not exist.`);
-      }
-      const currentRevision = (await this.#readDraftRevision(draftPath)).value;
-      if (currentRevision !== expectedRevision) {
-        throw Object.assign(
-          new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${currentRevision}'.`),
-          { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision },
-        );
-      }
-      return operation();
-    });
-  }
-
   async findMountedWidget(chatId: string, requestedName?: string): Promise<TWidgetMount> {
     const mounts = await this.listMounts(chatId);
     if (requestedName) {
@@ -653,10 +441,42 @@ export class WidgetWorkspace {
     throw new Error('More than one widget is mounted. Select a widget explicitly.');
   }
 
+  /**
+   * Resolves a display name to its shared draft slug by reading each draft's
+   * manifest. Display names are mount identities; folder names stay slugs.
+   */
+  async #draftSlugForName(name: string): Promise<string | null> {
+    const entries = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
+    let match: string | null = null;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !fnIsWidgetDraftSlug(entry.name)) continue;
+      const identity = await this.#readDraftIdentity(join(this.draftRoot, entry.name));
+      if (identity?.name !== name) continue;
+      if (match !== null) throw new Error(`Widget name '${name}' is ambiguous across shared drafts.`);
+      match = entry.name;
+    }
+    return match;
+  }
+
+  async #readDraftIdentity(
+    draftPath: string,
+  ): Promise<Readonly<{ name: string; slug: string }> | null> {
+    const manifest = await fxReadWidgetManifestRecord({ lstat, readFile, join }, { draftPath });
+    if (manifest === null) return null;
+    const { name, slug } = manifest;
+    if (typeof name !== 'string' || typeof slug !== 'string' || !fnIsWidgetDraftSlug(slug)) return null;
+    const normalized = fnNormalizeWidgetName(name);
+    if (!normalized.ok || normalized.value !== name) return null;
+    return { name, slug };
+  }
+
   async #resolveDraftTarget(name: string): Promise<string> {
-    const draft = join(this.draftRoot, name);
-    const draftExists = await this.#isDirectDirectory(this.draftRoot, draft);
-    if (!draftExists) throw new Error(`Widget draft '${name}' does not exist.`);
+    const slug = await this.#draftSlugForName(name);
+    if (slug === null) throw new Error(`Widget draft '${name}' does not exist.`);
+    const draft = join(this.draftRoot, slug);
+    if (!await this.#isDirectDirectory(this.draftRoot, draft)) {
+      throw new Error(`Widget draft '${name}' does not exist.`);
+    }
     return realpath(draft);
   }
 
@@ -669,25 +489,19 @@ export class WidgetWorkspace {
       if (!normalized.ok || normalized.value !== entry.name) continue;
       const mountPath = join(widgetsRoot, entry.name);
       const ownedKind = await this.#ownedMountKind(mountPath, entry.name).catch(() => null);
-      if (ownedKind !== 'draft') continue;
-      if (
-        await this.#isDirectDirectory(this.draftRoot, join(this.draftRoot, entry.name))
-      ) continue;
-      await rm(mountPath, { force: true });
+      if (ownedKind === 'draft') continue;
+      if (ownedKind === 'stale') await rm(mountPath, { force: true });
     }
 
     const drafts = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
     for (const entry of drafts) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-      const normalized = fnNormalizeWidgetName(entry.name);
-      if (!normalized.ok || normalized.value !== entry.name) continue;
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !fnIsWidgetDraftSlug(entry.name)) continue;
+      const identity = await this.#readDraftIdentity(join(this.draftRoot, entry.name));
+      if (identity === null || identity.slug !== entry.name) continue;
       const targetPath = await realpath(join(this.draftRoot, entry.name));
-      const mountPath = join(widgetsRoot, entry.name);
+      const mountPath = join(widgetsRoot, identity.name);
       const existing = await lstat(mountPath).catch(() => null);
       if (existing) {
-        if (!existing.isSymbolicLink()) continue;
-        const existingTarget = await realpath(mountPath).catch(() => null);
-        if (existingTarget === targetPath) continue;
         continue;
       }
       const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
@@ -702,24 +516,36 @@ export class WidgetWorkspace {
     if (!mountStat?.isSymbolicLink()) throw new Error(`Widget '${name}' is not a backend mount.`);
     const targetPath = await realpath(mountPath);
     const draftRoot = await realpath(this.draftRoot);
-    const targetParent = dirname(targetPath);
-    if (targetParent !== draftRoot || basename(targetPath) !== name) throw new Error(`Widget mount '${name}' does not point to a shared draft.`);
+    if (dirname(targetPath) !== draftRoot || !fnIsWidgetDraftSlug(basename(targetPath))) {
+      throw new Error(`Widget mount '${name}' does not point to a shared draft.`);
+    }
     const targetStat = await lstat(targetPath);
     if (!targetStat.isDirectory() || targetStat.isSymbolicLink()) throw new Error(`Widget mount '${name}' has an invalid target.`);
+    const identity = await this.#readDraftIdentity(targetPath);
+    if (identity?.name !== name) {
+      throw new Error(`Widget mount '${name}' does not match the draft identity in its manifest.`);
+    }
     return { name, source: 'draft', chatRoot, mountPath, targetPath };
   }
 
   async #assertOwnedMountLink(mountPath: string, name: string): Promise<void> {
-    if (!await this.#ownedMountKind(mountPath, name)) throw new Error(`Widget mount '${name}' is not owned by the backend.`);
+    if (await this.#ownedMountKind(mountPath, name) !== 'draft') throw new Error(`Widget mount '${name}' is not owned by the backend.`);
   }
 
-  async #ownedMountKind(mountPath: string, name: string): Promise<'draft' | null> {
+  /**
+   * Classifies a mount link: 'draft' is live, 'stale' still points at a shared
+   * draft folder but no longer matches its manifest identity, and null is a
+   * foreign link the backend must not touch.
+   */
+  async #ownedMountKind(mountPath: string, name: string): Promise<'draft' | 'stale' | null> {
     const link = await readlink(mountPath);
     const lexicalTarget = resolve(await realpath(dirname(mountPath)), link);
     const linkedTarget = await realpath(mountPath).catch(() => lexicalTarget);
     const draftRoot = await realpath(this.draftRoot);
-    if (linkedTarget === join(draftRoot, name)) return 'draft';
-    return null;
+    if (dirname(linkedTarget) !== draftRoot || !fnIsWidgetDraftSlug(basename(linkedTarget))) return null;
+    const identity = await this.#readDraftIdentity(linkedTarget).catch(() => null);
+    if (identity === null || identity.slug !== basename(linkedTarget)) return 'stale';
+    return identity.name === name ? 'draft' : 'stale';
   }
 
   async #grepRoots(chatId: string, lexicalPath?: string): Promise<{ absolutePath: string; displayPath: string; widgetRoot: string }[]> {
@@ -732,13 +558,35 @@ export class WidgetWorkspace {
   }
 
   async #assertNameAvailable(chatId: string, name: string): Promise<void> {
-    await Promise.all([
-      this.#assertNoCaseCollision(this.draftRoot, name),
-      this.#assertNoCaseCollision(join(this.getChatRoot(chatId), 'widgets'), name),
-    ]);
-    const paths = [join(this.draftRoot, name), join(this.getChatRoot(chatId), 'widgets', name)];
-    if ((await Promise.all(paths.map((path) => lstat(path).catch(() => null)))).some(Boolean)) {
+    await this.#assertNoCaseCollision(join(this.getChatRoot(chatId), 'widgets'), name);
+    const chatMountPath = join(this.getChatRoot(chatId), 'widgets', name);
+    if (await lstat(chatMountPath).catch(() => null)) {
       throw new Error(`Widget name '${name}' is already in use.`);
+    }
+    const entries = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
+    const caseKey = name.toLocaleLowerCase('en-US');
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !fnIsWidgetDraftSlug(entry.name)) continue;
+      const identity = await this.#readDraftIdentity(join(this.draftRoot, entry.name));
+      if (identity === null) continue;
+      if (identity.name === name || identity.name.toLocaleLowerCase('en-US') === caseKey) {
+        throw new Error(`Widget name '${name}' is already in use.`);
+      }
+    }
+  }
+
+  async #assertSlugAvailable(slug: string): Promise<void> {
+    const entries = await readdir(this.draftRoot).catch(() => [] as string[]);
+    const caseKey = slug.toLocaleLowerCase('en-US');
+    const collision = entries.find((entry) => (
+      entry.toLocaleLowerCase('en-US') === caseKey
+    ));
+    if (collision !== undefined) {
+      throw new Error(
+        collision === slug
+          ? `Widget draft '${slug}' already exists.`
+          : `Widget draft '${slug}' collides with existing '${collision}' on a case-insensitive filesystem.`,
+      );
     }
   }
 
@@ -759,118 +607,6 @@ export class WidgetWorkspace {
   async #mountLinkTarget(mountPath: string, targetPath: string): Promise<string> {
     if (this.#platform === 'win32') return targetPath;
     return relative(await realpath(dirname(mountPath)), targetPath);
-  }
-
-  async #removeDraftMount(name: string): Promise<void> {
-    for (const root of await this.#existingChatWorkspaceRoots()) {
-      await this.#withWidgetWrite(root, async () => {
-        const mountPath = join(root, 'widgets', name);
-        const entry = await lstat(mountPath).catch(() => null);
-        if (!entry?.isSymbolicLink()) return;
-        if (await this.#ownedMountKind(mountPath, name).catch(() => null) !== 'draft') return;
-        await rm(mountPath, { force: true });
-      });
-    }
-  }
-
-  async #moveDraftMount(
-    name: string,
-    nextName: string,
-    nextDraftPath: string,
-  ): Promise<() => Promise<void>> {
-    const moves: { mountPath: string; nextMountPath: string; root: string }[] = [];
-    for (const root of await this.#existingChatWorkspaceRoots()) {
-      const mountPath = join(root, 'widgets', name);
-      const entry = await lstat(mountPath).catch(() => null);
-      if (!entry?.isSymbolicLink()) continue;
-      if (await this.#ownedMountKind(mountPath, name).catch(() => null) !== 'draft') continue;
-      const nextMountPath = join(root, 'widgets', nextName);
-      if (await lstat(nextMountPath).catch(() => null)) throw new Error(`Widget mount '${nextName}' already exists.`);
-      moves.push({ mountPath, nextMountPath, root });
-    }
-
-    const completed: typeof moves = [];
-    try {
-      for (const move of moves) {
-        await this.#withWidgetWrite(move.root, async () => {
-          await rm(move.mountPath, { force: true });
-          try {
-            const linkTarget = await this.#mountLinkTarget(move.nextMountPath, nextDraftPath);
-            await symlink(linkTarget, move.nextMountPath, this.#platform === 'win32' ? 'junction' : 'dir');
-          } catch (error) {
-            await rm(move.nextMountPath, { force: true }).catch(() => undefined);
-            const draftPath = join(this.draftRoot, name);
-            const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
-            await symlink(
-              linkTarget,
-              move.mountPath,
-              this.#platform === 'win32' ? 'junction' : 'dir',
-            ).catch(() => undefined);
-            throw error;
-          }
-        });
-        completed.push(move);
-      }
-    } catch (error) {
-      const draftPath = join(this.draftRoot, name);
-      for (const move of completed.reverse()) {
-        await this.#withWidgetWrite(move.root, async () => {
-          await rm(move.nextMountPath, { force: true }).catch(() => undefined);
-          const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
-          await symlink(linkTarget, move.mountPath, this.#platform === 'win32' ? 'junction' : 'dir').catch(() => undefined);
-        });
-      }
-      throw error;
-    }
-    let rolledBack = false;
-    return async () => {
-      if (rolledBack) return;
-      rolledBack = true;
-      const draftPath = join(this.draftRoot, name);
-      for (const move of [...completed].reverse()) {
-        await this.#withWidgetWrite(move.root, async () => {
-          await rm(move.nextMountPath, { force: true }).catch(() => undefined);
-          const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
-          await symlink(
-            linkTarget,
-            move.mountPath,
-            this.#platform === 'win32' ? 'junction' : 'dir',
-          );
-        });
-      }
-    };
-  }
-
-  async #existingChatWorkspaceRoots(): Promise<string[]> {
-    const roots: string[] = [];
-    const groups = await readdir(this.chatRoot, { withFileTypes: true }).catch(() => []);
-    for (const group of groups) {
-      if (!group.isDirectory() || group.isSymbolicLink()) continue;
-      const groupRoot = join(this.chatRoot, group.name);
-      const chats = await readdir(groupRoot, { withFileTypes: true }).catch(() => []);
-      for (const chat of chats) {
-        if (!chat.isDirectory() || chat.isSymbolicLink()) continue;
-        const workspaceRoot = join(groupRoot, chat.name, 'workspace');
-        const entry = await lstat(workspaceRoot).catch(() => null);
-        if (entry?.isDirectory() && !entry.isSymbolicLink()) roots.push(workspaceRoot);
-      }
-    }
-    return roots;
-  }
-
-  async #readDraftEntry(
-    name: string,
-    draftPath: string,
-  ): Promise<TWidgetDraftWorkspaceEntry | null> {
-    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return null;
-    const revision = await this.#readDraftRevision(draftPath);
-    return {
-      name,
-      draftPath,
-      published: false,
-      revision: revision.value,
-      updatedAt: new Date(revision.updatedAtMs).toISOString(),
-    };
   }
 
   #assertInside(root: string, candidate: string): void {
@@ -937,30 +673,6 @@ export class WidgetWorkspace {
     return canonicalParent ? join(canonicalParent, basename(absolute)) : absolute;
   }
 
-  async #copyWidgetFolder(source: string, target: string): Promise<void> {
-    await this.#copyDirectory(source, target, {
-      recursive: true,
-      dereference: false,
-      verbatimSymlinks: true,
-      filter: async (candidate) => {
-        const rel = relative(source, candidate);
-        if (rel.split(sep).some((part) => (
-          part === 'node_modules'
-          || part === '.git'
-          || part === '.omnidraw-wizard'
-          || part === '.omnidraw-validate.tsconfig.json'
-        ))) return false;
-        if ((await lstat(candidate)).isSymbolicLink()) {
-          throw Object.assign(
-            new Error('Widget source snapshots cannot contain symbolic links.'),
-            { code: 'WIDGET_DRAFT_SYMLINK_FORBIDDEN' },
-          );
-        }
-        return true;
-      },
-    });
-  }
-
   async #readDraftRevision(root: string): Promise<{ value: string; updatedAtMs: number }> {
     const hash = createHash('sha256');
     let updatedAtMicros = 0;
@@ -1005,15 +717,6 @@ export class WidgetWorkspace {
       value: hash.digest('hex'),
       updatedAtMs: updatedAtMicros / 1_000,
     };
-  }
-
-  async #readManifest(root: string): Promise<Record<string, unknown> | null> {
-    try {
-      const value: unknown = JSON.parse(await readFile(join(root, 'omnidraw.json'), 'utf8'));
-      return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-    } catch {
-      return null;
-    }
   }
 
   #normalizeName(input: string): string {

@@ -1,5 +1,5 @@
 import type { Dirent, Stats } from 'node:fs';
-import { fnNormalizeWidgetName } from './fn.names';
+import { fnIsWidgetDraftSlug, fnNormalizeWidgetName } from './fn.names';
 import type { TAvailableWidget } from './types';
 
 type TPortal = {
@@ -10,7 +10,7 @@ type TPortal = {
   join(...parts: string[]): string;
   dirname(path: string): string;
   parseManifest(value: unknown):
-    | { ok: true; name: string; kind: 'widget' | null }
+    | { ok: true; name: string; slug: string; kind: 'widget' | null }
     | { ok: false };
 };
 
@@ -19,14 +19,10 @@ type TArgs = {
   mountedNames: string[];
 };
 
-type TCandidate = {
-  names: Set<string>;
-  draftNames: Set<string>;
-};
-
 const MANIFEST_MAX_BYTES = 256_000;
 const INTERNAL_DIRECTORY_PREFIXES = [
   '.create-',
+  '.snapshot-',
   '.materialize-',
 ];
 
@@ -53,9 +49,9 @@ async function directDirectoryNames(portal: TPortal, root: string): Promise<stri
 async function readManifest(
   portal: TPortal,
   root: string,
-  name: string,
+  folder: string,
 ): Promise<Record<string, unknown> | null> {
-  const path = portal.join(root, name, 'omnidraw.json');
+  const path = portal.join(root, folder, 'omnidraw.json');
   const fileStat = await portal.lstat(path).catch(() => null);
   if (!fileStat?.isFile() || fileStat.isSymbolicLink() || fileStat.size > MANIFEST_MAX_BYTES) return null;
   try {
@@ -68,55 +64,60 @@ async function readManifest(
   }
 }
 
-function addCandidate(catalog: Map<string, TCandidate>, directoryName: string): void {
-  const normalized = fnNormalizeWidgetName(directoryName);
-  if (!normalized.ok) return;
-  const candidate = catalog.get(normalized.caseKey) ?? {
-    names: new Set<string>(),
-    draftNames: new Set<string>(),
-  };
-  candidate.names.add(directoryName);
-  candidate.draftNames.add(directoryName);
-  catalog.set(normalized.caseKey, candidate);
-}
-
+/**
+ * Lists the shared draft root for the agent. Draft folders are named by
+ * manifest slug; the widget display name always comes from the manifest.
+ */
 export async function fxWidgetCatalog(portal: TPortal, args: TArgs): Promise<TAvailableWidget[]> {
-  const draftNames = await directDirectoryNames(portal, args.draftRoot);
-  const catalog = new Map<string, TCandidate>();
-  for (const name of draftNames) addCandidate(catalog, name);
+  const folderNames = await directDirectoryNames(portal, args.draftRoot);
   const mounted = new Set(args.mountedNames.map((name) => fnNormalizeWidgetName(name)).flatMap((result) => (
     result.ok ? [result.caseKey] : []
   )));
   const widgets: TAvailableWidget[] = [];
 
-  for (const [caseKey, candidate] of catalog) {
-    const names = [...candidate.names].sort();
-    const normalized = fnNormalizeWidgetName(names[0]!);
-    if (!normalized.ok) continue;
-    const name = normalized.value;
-    const hasDraft = candidate.draftNames.size > 0;
-    let problemCode: string | null = null;
-    if (names.length > 1) problemCode = 'WIDGET_NAME_AMBIGUOUS';
-    else if (names[0] !== name) problemCode = 'WIDGET_DIRECTORY_NAME_INVALID';
-
-    const sourceRoot = candidate.draftNames.has(name) ? args.draftRoot : null;
-    const manifest = sourceRoot ? await readManifest(portal, sourceRoot, name) : null;
-    const parsedManifest = manifest ? portal.parseManifest(manifest) : { ok: false as const };
-    if (!problemCode && !parsedManifest.ok) problemCode = 'WIDGET_MANIFEST_INVALID';
-    if (!problemCode && parsedManifest.ok && parsedManifest.name !== name) {
-      problemCode = 'WIDGET_MANIFEST_NAME_MISMATCH';
+  for (const folder of folderNames) {
+    if (!fnIsWidgetDraftSlug(folder)) continue;
+    const manifest = await readManifest(portal, args.draftRoot, folder);
+    const parsed = manifest ? portal.parseManifest(manifest) : { ok: false as const };
+    if (!parsed.ok) {
+      widgets.push({
+        name: folder,
+        kind: null,
+        hasDraft: true,
+        hasPublished: false,
+        mountedInThisChat: false,
+        problemCode: 'WIDGET_MANIFEST_INVALID',
+      });
+      continue;
     }
-    const kind = parsedManifest.ok ? parsedManifest.kind : null;
-
+    const normalizedName = fnNormalizeWidgetName(parsed.name);
+    const mountable = normalizedName.ok && normalizedName.value === parsed.name;
     widgets.push({
-      name,
-      kind,
-      hasDraft,
+      name: mountable ? parsed.name : folder,
+      kind: parsed.kind,
+      hasDraft: true,
       hasPublished: false,
-      mountedInThisChat: mounted.has(caseKey),
-      problemCode,
+      mountedInThisChat: mountable && mounted.has(normalizedName.caseKey),
+      problemCode: parsed.slug !== folder
+        ? 'WIDGET_DIRECTORY_NAME_INVALID'
+        : mountable
+          ? null
+          : 'WIDGET_MANIFEST_NAME_MISMATCH',
     });
   }
 
-  return widgets;
+  const byCaseKey = new Map<string, string[]>();
+  for (const widget of widgets) {
+    const caseKey = widget.name.toLocaleLowerCase('en-US');
+    byCaseKey.set(caseKey, [...(byCaseKey.get(caseKey) ?? []), widget.name]);
+  }
+  for (const widget of widgets) {
+    if (widget.problemCode !== null) continue;
+    const names = byCaseKey.get(widget.name.toLocaleLowerCase('en-US')) ?? [];
+    if (names.length > 1 || names[0] !== widget.name) {
+      widget.problemCode = 'WIDGET_NAME_AMBIGUOUS';
+    }
+  }
+
+  return widgets.sort((left, right) => left.name.localeCompare(right.name));
 }

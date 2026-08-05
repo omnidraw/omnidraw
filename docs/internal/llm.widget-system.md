@@ -1,7 +1,7 @@
 # Omnidraw widget system
 
 **Status:** Current after the filesystem-first single-user hard cut
-(A108–A110, S135–S138, D6).
+(A108–A111, S135–S138, D6).
 
 Omnidraw widgets are folders. The filesystem is the only widget authority:
 drafts, published folders, and ephemeral Preview live under one pinned widget
@@ -11,7 +11,7 @@ releases, no artifacts, no Preview records, and no function history.
 ## Concepts
 
 1. **Draft** is a mutable source folder under `drafts/<slug>/` with a strict
-   `omnidraw.json` (manifest v4). Editing a draft never changes a published
+   `omnidraw.json` (manifest v1). Editing a draft never changes a published
    widget.
 2. **Published widget** is an immutable folder under `published/<slug>/`
    written by one atomic publication: the exact `omnidraw.json`, the exact
@@ -52,13 +52,13 @@ widgets/
   restoring the last validated current folder or quarantining the invalid
   candidate; readers are poisoned instead of guessing.
 
-## Manifest v4 and release.json
+## Manifest v1 and release.json
 
 `omnidraw.json` is strict: unknown fields fail. Presentation fields (`name`,
 `description`, `tool`) and executable fields (`ui`, `server`, `resources`)
 project separately, so metadata-only edits never rebuild executable bytes.
 
-- **Executable projection** (`schemaVersion: 4`, `ui`, `server | null`,
+- **Executable projection** (`schemaVersion: 1`, `ui`, `server | null`,
   `resources`) is the only manifest form the Capsule builder consumes. Its
   canonical JSON digest keys every build and reuse decision together with the
   executable-input digest (manifest + source files + build environment).
@@ -67,7 +67,8 @@ project separately, so metadata-only edits never rebuild executable bytes.
   with `runtimeAbi` and the functions digest, the executable-manifest digest,
   and the host release attestation. It is validated exactly before a folder
   counts as published.
-- There is no manifest v3, no revision ID, no pinning, and no rollback.
+- Exactly one manifest version exists: v1. There is no legacy reader, no
+  migration, no revision ID, no pinning, and no rollback.
 
 ## Publication actions
 
@@ -100,18 +101,25 @@ Preview is full-stack but process-owned. The current process keeps build
 status, temporary Capsule bytes, live diagnostics, selected resources,
 signing work, and mounted handles; nothing survives restart.
 
+- The sidebar renders each catalog entry as one published row (**Add**:
+  places the current publication) and, only while the draft differs from the
+  publication, one draft row (**Preview**: places an ephemeral Preview frame).
+- A freshly placed Preview frame builds immediately: its first attach falls
+  back from `widget.preview.load` to `widget.preview.open` when no live
+  session exists. The stopped fallback (**Preview stopped — build again.**)
+  remains only for frames that outlived their host process.
 - `widget.preview.open` captures the draft, builds (or reuses the exact
   validated construction while digest and compatibility policy match),
   signs with the preview key, and returns mount inputs and diagnostics.
 - `widget.preview.load` returns the live session for one canvas frame or
-  fails `NOT_FOUND`; the frame then shows **Preview stopped — build again.**
-  with an explicit build-again action.
+  fails `NOT_FOUND`.
 - `widget.preview.close` disposes the session; `widget.preview.invoke`
   executes a declared server function against the session's exact server
   artifact with its selected resources.
 - The canvas Preview frame persists only the draft `widgetKey` and normal
   frame data (`widget-preview` extension). Deleting the frame closes the
-  session.
+  session. One Preview frame per draft is kept per canvas: placing the same
+  draft again focuses the existing frame.
 - Publish may reuse the exact validated construction when the draft digest
   still matches; release signing wraps the same unsigned bytes.
 
@@ -131,17 +139,24 @@ one disposable child process and returns one terminal result.
 
 ## AI authoring
 
-The agent works on ordinary draft folders through workspace tools. The chat
-surface lists available widgets and resources from the live catalog, scaffolds
-strict manifest-v4 drafts, and validates through the same build pipeline used
-by Preview and Publish. Durable chat metadata lives in the `chats` table;
+The agent works on the same shared draft root as every other surface:
+`od_widget_create` scaffolds a strict manifest-v1 draft directly into
+`widgets/drafts/<slug>/`, and each chat workspace mounts it by display name
+(`workspace/widgets/<name>` symlinks resolved through the manifest). Chat
+created drafts therefore appear in the catalog, the sidebar, Preview, and
+Publish without any bridge. Successful create/validate results offer an
+**Open Preview** action that places a live draft Preview frame beside the
+originating chat. Validation runs the same build pipeline used by Preview
+and Publish and reports whether the Preview build actually ran. Every draft
+change invalidates the widget catalog so sidebar rows and frames refresh
+without a manual reload. Durable chat metadata lives in the `chats` table;
 transcripts stay files.
 
 ## Package map
 
 | Package | Role |
 | --- | --- |
-| `packages/widget-contract` | Manifest v4, executable projection, release descriptor, runtime descriptor, canonical digests, Capsule identity, function descriptors. |
+| `packages/widget-contract` | Manifest v1, executable projection, release descriptor, runtime descriptor, canonical digests, Capsule identity, function descriptors. |
 | `packages/capsule-omnidraw` | Omnidraw policy bridge for Capsule: capabilities, budgets, signing, guest build, and the executable-projection artifact builder. |
 | `packages/function-runtime` | Direct descriptor-driven invocation, disposable child driver, schema validation, ephemeral write permits. |
 | `packages/resource-runtime` | Resource gateway/store contracts and local kv/secret/db providers. |

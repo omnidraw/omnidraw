@@ -25,7 +25,7 @@ import {
   type WidgetFilesystemBuildService,
 } from '@omnidraw/service-agent';
 import {
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
 } from '@omnidraw/widget-contract/filesystem';
@@ -139,7 +139,7 @@ implements TWidgetFilesystemManagementCapability {
         'WIDGET_MANIFEST_CONFLICT',
       );
     }
-    const nextManifest = ZWidgetManifestV4.parse(
+    const nextManifest = ZWidgetManifestV1.parse(
       fnApplyWidgetDraftConfig(draft.manifest, args.config),
     );
     const token = this.#operationToken();
@@ -445,7 +445,7 @@ implements TWidgetFilesystemManagementCapability {
           expectedExecutableManifestDigestSha256,
         }) => {
           try {
-            const manifest = ZWidgetManifestV4.parse(JSON.parse(manifestJson));
+            const manifest = ZWidgetManifestV1.parse(JSON.parse(manifestJson));
             const executableDigest = fnWidgetExecutableManifestDigest({
               manifest,
               digestSha256: sha256,

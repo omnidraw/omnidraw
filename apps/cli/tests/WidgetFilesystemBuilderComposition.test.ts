@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
 import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
@@ -16,7 +16,7 @@ afterEach(async () => {
 
 async function writeDraft(
   draftsRoot: string,
-  manifest: TWidgetManifestV4,
+  manifest: TWidgetManifestV1,
 ): Promise<void> {
   const root = join(draftsRoot, manifest.slug);
   await mkdir(join(root, 'ui'), { recursive: true });
@@ -43,10 +43,10 @@ async function writeDraft(
 function manifest(
   slug: string,
   serverRuntimeAbi?: string,
-): TWidgetManifestV4 {
+): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: slug,
     slug,
     description: `${slug} composition fixture`,

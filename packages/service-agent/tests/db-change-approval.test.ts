@@ -17,6 +17,7 @@ const proposal = {
 function createService(resourceService: ConstructorParameters<typeof AgentService>[0]['resourceService']) {
   const service = new AgentService({
     dataPath: '/tmp/data',
+    widgetDraftsRoot: '/tmp/widgets/drafts',
     eventPublisherService: createTestEvents(),
     chats: createTestChats(),
     resourceService,

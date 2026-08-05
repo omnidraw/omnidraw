@@ -1,11 +1,11 @@
 /**
- * @file Strict parsers for portable manifest v4 and generated release metadata.
+ * @file Strict parsers for portable manifest v1 and generated release metadata.
  */
 
 import { z } from 'zod';
 import {
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
-  WIDGET_MANIFEST_V4_SCHEMA_URL,
+  WIDGET_MANIFEST_V1_SCHEMA_URL,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_RELEASE_FILE_COUNT_MAX,
   WIDGET_RELEASE_FILE_MAX_BYTES,
@@ -16,7 +16,7 @@ import {
 } from '../CONSTANTS';
 import {
   fnNormalizeWidgetExecutableProjection,
-  fnNormalizeWidgetManifestV4,
+  fnNormalizeWidgetManifestV1,
 } from '../core/fn.filesystem-manifest';
 import {
   fnNormalizeWidgetFilesystemRelativePath,
@@ -32,7 +32,7 @@ import { ZWidgetCapsuleRuntimeDescriptor } from '../runtime-descriptor-schema';
 import { ZOmnidrawToolIcon } from '../tool-icon';
 import type {
   TWidgetExecutableManifestProjection,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetUnsignedReleaseDescriptor,
 } from './typed';
@@ -55,7 +55,7 @@ const ZWidgetGroup = z.union([
   z.null(),
 ]);
 
-const ZWidgetManifestV4BuildEntry = z.string().superRefine((value, context) => {
+const ZWidgetManifestV1BuildEntry = z.string().superRefine((value, context) => {
   if (fnNormalizeWidgetFilesystemRelativePath(value) === null) {
     context.addIssue({ code: 'custom', message: 'Expected a safe relative widget entry path' });
   }
@@ -64,27 +64,27 @@ const ZWidgetManifestV4BuildEntry = z.string().superRefine((value, context) => {
   }
 }).transform((value) => fnNormalizeWidgetFilesystemRelativePath(value)!);
 
-const ZWidgetManifestV4ToolIcon = ZOmnidrawToolIcon.superRefine((icon, context) => {
+const ZWidgetManifestV1ToolIcon = ZOmnidrawToolIcon.superRefine((icon, context) => {
   if (icon.svgIcon === undefined) return;
   const error = fnWidgetToolIconTextError(icon.svgIcon);
   if (error !== null) context.addIssue({ code: 'custom', message: error, path: ['svgIcon'] });
 });
 
-const ZWidgetManifestV4Shape = z.object({
-  $schema: z.literal(WIDGET_MANIFEST_V4_SCHEMA_URL),
-  schemaVersion: z.literal(4),
+const ZWidgetManifestV1Shape = z.object({
+  $schema: z.literal(WIDGET_MANIFEST_V1_SCHEMA_URL),
+  schemaVersion: z.literal(1),
   name: z.string().trim().min(1).max(WIDGET_NAME_MAX_CHARACTERS),
   slug: ZWidgetSlug,
   description: z.string().trim().min(1).max(WIDGET_DESCRIPTION_MAX_CHARACTERS),
   tool: z.object({
     label: z.string().trim().min(1).max(WIDGET_TOOL_LABEL_MAX_CHARACTERS),
-    icon: ZWidgetManifestV4ToolIcon.optional(),
+    icon: ZWidgetManifestV1ToolIcon.optional(),
     group: ZWidgetGroup,
     priority: z.number().int().min(-1_000).max(1_000),
   }).strict(),
   ui: z.object({
     runtime: z.literal('capsule'),
-    entry: ZWidgetManifestV4BuildEntry,
+    entry: ZWidgetManifestV1BuildEntry,
     apis: ZWidgetCapsuleApis,
     budgets: ZWidgetCapsuleBudgetRequest.optional(),
     state: z.object({
@@ -94,7 +94,7 @@ const ZWidgetManifestV4Shape = z.object({
     parkability: z.object({ enabled: z.literal(false) }).strict().optional(),
   }).strict(),
   server: z.object({
-    entry: ZWidgetManifestV4BuildEntry,
+    entry: ZWidgetManifestV1BuildEntry,
     runtimeAbi: z.string().min(1).max(100).regex(TARGET_ID_PATTERN),
   }).strict().optional(),
   resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
@@ -112,12 +112,12 @@ const ZWidgetManifestV4Shape = z.object({
   }).optional(),
 }).strict();
 
-export const ZWidgetManifestV4: z.ZodType<TWidgetManifestV4> = ZWidgetManifestV4Shape
-  .transform((manifest) => fnNormalizeWidgetManifestV4(manifest));
+export const ZWidgetManifestV1: z.ZodType<TWidgetManifestV1> = ZWidgetManifestV1Shape
+  .transform((manifest) => fnNormalizeWidgetManifestV1(manifest));
 
 const ZWidgetExecutableUi = z.object({
   runtime: z.literal('capsule'),
-  entry: ZWidgetManifestV4BuildEntry,
+  entry: ZWidgetManifestV1BuildEntry,
   apis: ZWidgetCapsuleApis,
   budgets: ZWidgetCapsuleBudgetRequest.optional(),
   state: z.object({
@@ -128,13 +128,13 @@ const ZWidgetExecutableUi = z.object({
 }).strict();
 
 const ZWidgetExecutableServer = z.object({
-  entry: ZWidgetManifestV4BuildEntry,
+  entry: ZWidgetManifestV1BuildEntry,
   runtimeAbi: z.string().min(1).max(100).regex(TARGET_ID_PATTERN),
 }).strict();
 
-/** Strict parser for the build-time executable projection of manifest v4. */
+/** Strict parser for the build-time executable projection of manifest v1. */
 export const ZWidgetExecutableManifest: z.ZodType<TWidgetExecutableManifestProjection> = z.object({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(1),
   ui: ZWidgetExecutableUi,
   server: ZWidgetExecutableServer.nullable(),
   resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
@@ -203,11 +203,11 @@ export const ZWidgetReleaseDescriptor: z.ZodType<TWidgetReleaseDescriptor> =
     }).strict(),
   }).strict();
 
-export function parseWidgetManifestV4Json(value: string): TWidgetManifestV4 {
+export function parseWidgetManifestV1Json(value: string): TWidgetManifestV1 {
   if (fnUtf8ByteLength(value) > 128 * 1_024) {
     throw new TypeError('omnidraw.json exceeds the 128 KiB manifest limit.');
   }
-  return ZWidgetManifestV4.parse(JSON.parse(value));
+  return ZWidgetManifestV1.parse(JSON.parse(value));
 }
 
 export function parseWidgetReleaseJson(value: string): TWidgetReleaseDescriptor {

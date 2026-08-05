@@ -23,7 +23,7 @@ import {
   fnCanonicalizeWidgetServerFunctionDescriptors,
 } from '@omnidraw/widget-contract';
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract/filesystem';
 import {
   fnCreateWidgetReleaseDescriptor,
@@ -55,10 +55,10 @@ function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function manifest(slug: string, name = 'Counter'): TWidgetManifestV4 {
+function manifest(slug: string, name = 'Counter'): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name,
     slug,
     description: 'A bounded filesystem widget.',
@@ -121,11 +121,11 @@ async function root(): Promise<string> {
   return path;
 }
 
-async function writeManifest(path: string, value: TWidgetManifestV4): Promise<void> {
+async function writeManifest(path: string, value: TWidgetManifestV1): Promise<void> {
   await writeFile(join(path, 'omnidraw.json'), JSON.stringify(value));
 }
 
-async function writeDraft(rootPath: string, value: TWidgetManifestV4): Promise<string> {
+async function writeDraft(rootPath: string, value: TWidgetManifestV1): Promise<string> {
   const path = join(rootPath, 'drafts', value.slug);
   await mkdir(join(path, 'ui'), { recursive: true });
   await Promise.all([
@@ -137,7 +137,7 @@ async function writeDraft(rootPath: string, value: TWidgetManifestV4): Promise<s
 
 async function writePublication(
   rootPath: string,
-  value: TWidgetManifestV4,
+  value: TWidgetManifestV1,
   capsuleText = 'signed-capsule',
 ): Promise<string> {
   const path = join(rootPath, 'published', value.slug);
@@ -191,7 +191,7 @@ async function writeServerPublication(
   rootPath: string,
   slug: string,
 ): Promise<string> {
-  const value: TWidgetManifestV4 = {
+  const value: TWidgetManifestV1 = {
     ...manifest(slug, 'Server widget'),
     server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' },
   };

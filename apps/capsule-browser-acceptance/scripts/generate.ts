@@ -696,7 +696,7 @@ function snapshot(files: readonly TSourceFile[]): TSnapshot {
 
 function manifest(args: TFixtureBuild): TManifest {
   return Object.freeze({
-    schemaVersion: 4,
+    schemaVersion: 1,
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,

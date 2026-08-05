@@ -786,6 +786,34 @@ describe('managed composition architecture boundaries', () => {
     expect(violations).toEqual([])
   })
 
+  test('keeps retired widget manifest versions and migration readers absent', async () => {
+    const patterns = Object.freeze([
+      /WidgetManifestV[34]/,
+      /WIDGET_MANIFEST_V[34]/,
+      /widget\/v[34]\.json/,
+      /manifest[- ]v[34]/i,
+      /schemaVersion"?\s*:\s*(?:z\.literal\()?[34]\b/,
+      /migrateWidgetManifest|upgradeWidgetManifest|WidgetManifestMigrat/i,
+    ])
+    const allowedPaths = new Set([
+      'scripts/architecture-boundaries.test.ts',
+    ])
+    const violations: string[] = []
+    const docFiles = (await listFiles(join(ROOT, 'docs')))
+      .filter((path) => extname(path) === '.md')
+    for (const file of [...await removedStackScanFiles(), ...docFiles]) {
+      const path = relative(ROOT, file)
+      if (allowedPaths.has(path)) continue
+      const searchable = await readFile(file, 'utf8')
+      for (const pattern of patterns) {
+        if (pattern.test(searchable)) {
+          violations.push(`${path}: ${pattern.source}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
   test('keeps the canvas kernel versioned, public, built, and deliberately exported', async () => {
     const releaseVersions = new Map<string, string>([
       ['@omnidraw/cangine', '0.6.1'],

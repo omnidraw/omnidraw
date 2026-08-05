@@ -1,14 +1,23 @@
-# Omnidraw manifest v3
+# Omnidraw manifest v1
 
 Build browser-first widgets. `omnidraw.json` is the authoritative manifest
-and must use schema version 3:
+and must use schema version 1. Version 1 is the only accepted version: there
+is no older format, no upgrade path, and no compatibility reader. Never
+rewrite, downgrade, or restructure the scaffolded manifest; edit only the
+fields the request actually changes.
 
 ```json
 {
-  "schemaVersion": 3,
-  "name": "Timer",
+  "$schema": "https://omnidraw.dev/schemas/widget/v1.json",
+  "schemaVersion": 1,
   "slug": "timer",
+  "name": "Timer",
   "description": "A focused timer",
+  "tool": {
+    "label": "Timer",
+    "group": null,
+    "priority": 0
+  },
   "ui": {
     "runtime": "capsule",
     "entry": "ui/main.ts",
@@ -17,8 +26,21 @@ and must use schema version 3:
 }
 ```
 
-- `name` is the human-readable identity and must match the draft identity.
-- `slug` is lowercase kebab-case and remains stable after publication.
+- `$schema` is exactly `https://omnidraw.dev/schemas/widget/v1.json`.
+- `schemaVersion` is exactly `1`.
+- `slug` is the stable widget key: lowercase kebab-case, 1-100 bytes. The
+  draft folder is `widgets/drafts/<slug>/`, so the folder name and the slug
+  must always match. Never rename `slug` after creation.
+- `name` is the human-readable display name and must match the draft
+  identity. The chat workspace mounts the draft by this name.
+- `description` is one required human sentence.
+- `tool` is required and strict: `label` is the sidebar/toolbar label,
+  `group` is an optional lowercase kebab-case sidebar group or `null`,
+  `priority` is an integer from -1000 to 1000, and `icon` is an optional
+  pinned Lucide icon name or bounded inline SVG.
+- Every section is strict: unknown fields are validation errors. Never add
+  runtime ABI names, DOM profiles, feature profiles, resolved targets, bundle
+  digests, or host limits.
 - `ui.runtime` is always `capsule`; `ui.entry` is one safe relative TypeScript
   or JavaScript entry path.
 - `ui.apis` requests Capsule public API groups. `DOM` is explicit and mandatory.
@@ -57,6 +79,14 @@ guest-owned `npm run build`; source-only edits reuse the installed workspace.
 Omnidraw captures only the bounded regular-file `dist/` tree and gives those
 exact bytes to Capsule for closed-distribution validation and artifact
 construction. Capsule does not install dependencies or compile source.
+
+A validated draft appears in the widget catalog sidebar next to its
+publication. The user places an ephemeral Preview frame from the draft row or
+from the Open Preview action on a successful create/validate result; placing
+that frame builds the current draft bytes live and renders them. Publish is a
+separate user action that rechecks the current draft digest, builds the exact
+current source, and promotes that build; it never trusts a stored Preview
+pointer.
 
 Preview construction, diagnostics, handles, resource choices, and signing are
 owned only by the current process and temporary files. They are not durable

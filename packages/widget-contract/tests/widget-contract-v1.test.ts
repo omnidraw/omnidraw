@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 import type {
   TWidgetBuildEnvironment,
   TWidgetExecutableInputFile,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '../src';
 import {
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   fnCanonicalizeWidgetExecutableInput,
   fnClassifyWidgetChange,
   fnNormalizeWidgetFilesystemRelativePath,
@@ -14,7 +14,7 @@ import {
   fnProjectWidgetPresentation,
   fnWidgetExecutableInputDigest,
   fnWidgetExecutableManifestDigest,
-  parseWidgetManifestV4Json,
+  parseWidgetManifestV1Json,
 } from '../src';
 import { CAPSULE_BUILD_IDENTITY } from './capsule.fixture';
 
@@ -22,9 +22,9 @@ const digestString = (value: string): string => createHash('sha256').update(valu
 const digestBytes = (value: Uint8Array): string => createHash('sha256').update(value).digest('hex');
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 
-const MANIFEST: TWidgetManifestV4 = Object.freeze({
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-  schemaVersion: 4,
+const MANIFEST: TWidgetManifestV1 = Object.freeze({
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+  schemaVersion: 1,
   name: 'Counter',
   slug: 'counter',
   description: 'A shared counter.',
@@ -70,7 +70,7 @@ const FILES: readonly TWidgetExecutableInputFile[] = Object.freeze([
 ]);
 
 function classify(
-  next: TWidgetManifestV4,
+  next: TWidgetManifestV1,
   nextFiles: readonly TWidgetExecutableInputFile[] = FILES,
   nextEnvironment: TWidgetBuildEnvironment = ENVIRONMENT,
 ) {
@@ -80,9 +80,9 @@ function classify(
   });
 }
 
-describe('portable widget manifest v4', () => {
+describe('portable widget manifest v1', () => {
   test('strictly parses, normalizes, and separates presentation from executable facts', () => {
-    const parsed = ZWidgetManifestV4.parse({
+    const parsed = ZWidgetManifestV1.parse({
       ...MANIFEST,
       name: '  Counter  ',
       tool: { ...MANIFEST.tool, label: '  Counter tool  ' },
@@ -98,18 +98,20 @@ describe('portable widget manifest v4', () => {
     });
     expect(fnProjectWidgetPresentation(parsed)).not.toHaveProperty('slug');
     expect(fnProjectWidgetExecutableManifest(parsed)).toEqual({
-      schemaVersion: 4,
+      schemaVersion: 1,
       ui: parsed.ui,
       server: null,
       resources: [],
     });
     expect(fnProjectWidgetExecutableManifest(parsed)).not.toHaveProperty('name');
-    expect(parseWidgetManifestV4Json(JSON.stringify(parsed))).toEqual(parsed);
+    expect(parseWidgetManifestV1Json(JSON.stringify(parsed))).toEqual(parsed);
   });
 
-  test('rejects old versions, unknown fields, unsafe paths, and bad portable identity', () => {
+  test('rejects retired versions, unknown fields, unsafe paths, and bad portable identity', () => {
+    const retiredVersions = [1 + 2, 1 + 3];
     const invalid = [
-      { ...MANIFEST, schemaVersion: 3 },
+      ...retiredVersions.map((schemaVersion) => ({ ...MANIFEST, schemaVersion })),
+      { ...MANIFEST, $schema: MANIFEST.$schema.replace('/v1.', '/v9.') },
       { ...MANIFEST, $schema: 'https://example.test/widget.json' },
       { ...MANIFEST, extra: true },
       { ...MANIFEST, slug: 'Counter' },
@@ -124,7 +126,7 @@ describe('portable widget manifest v4', () => {
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui\\main.ts' } },
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui/ma\nin.ts' } },
     ];
-    for (const candidate of invalid) expect(ZWidgetManifestV4.safeParse(candidate).success).toBe(false);
+    for (const candidate of invalid) expect(ZWidgetManifestV1.safeParse(candidate).success).toBe(false);
   });
 
   test('bounds and shape-checks icons while retaining render-time sanitization as a separate edge', () => {
@@ -135,20 +137,20 @@ describe('portable widget manifest v4', () => {
       '<svg><image href="https://example.test/x" /></svg>',
       '😀'.repeat(4_097),
     ]) {
-      expect(ZWidgetManifestV4.safeParse({
+      expect(ZWidgetManifestV1.safeParse({
         ...MANIFEST,
         tool: { ...MANIFEST.tool, icon: { svgIcon } },
       }).success).toBe(false);
     }
-    expect(ZWidgetManifestV4.parse({
+    expect(ZWidgetManifestV1.parse({
       ...MANIFEST,
       tool: { ...MANIFEST.tool, icon: { svgIcon: '👨‍👩‍👧‍👦' } },
     }).tool.icon).toEqual({ svgIcon: '👨‍👩‍👧‍👦' });
-    expect(ZWidgetManifestV4.parse({
+    expect(ZWidgetManifestV1.parse({
       ...MANIFEST,
       tool: { ...MANIFEST.tool, icon: { svgIcon: '<svg viewBox="0 0 1 1"></svg>' } },
     }).tool.icon).toEqual({ svgIcon: '<svg viewBox="0 0 1 1"></svg>' });
-    expect(ZWidgetManifestV4.safeParse({
+    expect(ZWidgetManifestV1.safeParse({
       ...MANIFEST,
       tool: { ...MANIFEST.tool, icon: { lucidIcon: 'NotAPinnedLucideIcon' } },
     }).success).toBe(false);
@@ -156,9 +158,9 @@ describe('portable widget manifest v4', () => {
 
   test('rejects duplicate and invalid resource contracts', () => {
     const resource = { slot: 'todos', kind: 'kv' as const, effect: 'read_write' as const, required: true };
-    expect(ZWidgetManifestV4.safeParse({ ...MANIFEST, resources: [resource, resource] }).success)
+    expect(ZWidgetManifestV1.safeParse({ ...MANIFEST, resources: [resource, resource] }).success)
       .toBe(false);
-    expect(ZWidgetManifestV4.safeParse({
+    expect(ZWidgetManifestV1.safeParse({
       ...MANIFEST,
       resources: [{ ...resource, arbitrarySql: true }],
     }).success).toBe(false);
@@ -167,7 +169,7 @@ describe('portable widget manifest v4', () => {
 
 describe('canonical widget change classification', () => {
   test('classifies every presentation field without changing executable identity', () => {
-    const mutations: readonly TWidgetManifestV4[] = [
+    const mutations: readonly TWidgetManifestV1[] = [
       { ...MANIFEST, name: 'Renamed counter' },
       { ...MANIFEST, description: 'Changed description.' },
       { ...MANIFEST, tool: { ...MANIFEST.tool, label: 'Changed label' } },

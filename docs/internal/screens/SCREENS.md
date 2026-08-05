@@ -50,12 +50,12 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data, mounts the exact signed bytes of the live session, and after a host restart shows **Preview stopped — build again.** with an explicit rebuild action. Preview server functions run directly against the session's exact server artifact with its selected resources. |
+| **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas — from the sidebar draft row or from the **Open Preview** action on a successful widget create/validate result, placed beside the originating chat. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data, a freshly placed frame builds the current draft bytes on first attach, and only a frame that outlived its host process shows **Preview stopped — build again.** with an explicit rebuild action. Preview server functions run directly against the session's exact server artifact with its selected resources. |
 
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement follows the current publication; every successful Draft drop creates an ephemeral Preview frame at the world-space drop point. |
+| **Sidebar — Direct placement.** Each widget shows one published row with **Add** and, only while the draft differs from the publication, one draft row with **Preview**. Published placement follows the current publication; a draft drop or **Preview** click creates an ephemeral Preview frame that builds the current draft bytes on first attach. |
 
 ## Widget inspector
 

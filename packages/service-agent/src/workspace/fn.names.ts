@@ -57,3 +57,9 @@ export function fnAssertSafeChatId(input: string): string {
 export function fnIsCaseCollision(left: string, right: string): boolean {
   return left.toLocaleLowerCase('en-US') === right.toLocaleLowerCase('en-US') && left !== right;
 }
+
+export function fnIsWidgetDraftSlug(value: string): boolean {
+  return value.length >= 1
+    && value.length <= 100
+    && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}

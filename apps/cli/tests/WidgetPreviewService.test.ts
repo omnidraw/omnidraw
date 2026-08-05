@@ -8,7 +8,7 @@ import {
   fnProjectWidgetExecutableManifest,
   fnWidgetExecutableInputDigest,
   type TWidgetCapsuleRuntimeDescriptor,
-  type TWidgetManifestV4,
+  type TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import { EphemeralResourceWritePermitAuthority } from '@omnidraw/function-runtime/local';
 import type { IDirectFunctionInvoker } from '@omnidraw/function-runtime';
@@ -23,9 +23,9 @@ function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-const MANIFEST: TWidgetManifestV4 = {
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-  schemaVersion: 4,
+const MANIFEST: TWidgetManifestV1 = {
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+  schemaVersion: 1,
   name: 'Counter',
   slug: 'counter',
   description: 'Preview fixture.',
@@ -77,7 +77,7 @@ async function harness(options: Readonly<{ withDraft?: boolean }> = {}) {
   const builds: string[] = [];
   const builder = {
     async construct(request: {
-      manifest: TWidgetManifestV4;
+      manifest: TWidgetManifestV1;
       expectedExecutableInputDigestSha256?: string;
     }) {
       builds.push(request.manifest.slug);
@@ -223,6 +223,26 @@ describe('WidgetPreviewService', () => {
       message: 'Preview stopped — build again.',
     });
     await restarted.service.stop();
+  });
+
+  test('buildCheck constructs the current draft without opening a session', async () => {
+    const { builds, service } = await harness();
+    const result = await service.buildCheck({ widgetKey: 'counter' });
+    expect(result).toEqual({ ok: true, errors: [] });
+    expect(builds).toEqual(['counter']);
+    await expect(service.load(sessionTarget)).rejects.toMatchObject({
+      code: 'WIDGET_PREVIEW_NOT_FOUND',
+    });
+    await service.stop();
+  });
+
+  test('buildCheck reports a missing draft as a failed check without throwing', async () => {
+    const { builds, service } = await harness({ withDraft: false });
+    const result = await service.buildCheck({ widgetKey: 'counter' });
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(builds).toEqual([]);
+    await service.stop();
   });
 
   test('rejects function invocation without a live preview session', async () => {

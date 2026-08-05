@@ -15,6 +15,8 @@ export type TWidgetSidebarPlacement = Readonly<{
 export type TWidgetSidebarRow = {
   widgetKey: string;
   source: TWidgetSource;
+  /** add places the publication; preview places an ephemeral draft Preview. */
+  action: 'add' | 'preview';
   form: TWidgetPublicCatalogForm;
   entry: TWidgetPublicCatalogEntry;
   placement: TWidgetSidebarPlacement | null;

@@ -70,7 +70,7 @@ const suites: readonly TFunctionRuntimeSuite[] = [
       'bun',
       'test',
       'packages/sdk/tests/server-functions.test.ts',
-      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-contract-v1.test.ts',
       'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/api/src/function/contract.test.ts',
       'apps/cli/tests/FunctionService.test.ts',
@@ -79,7 +79,7 @@ const suites: readonly TFunctionRuntimeSuite[] = [
     requiredPaths: [
       'packages/sdk/tests/server-functions.test.ts',
       'packages/sdk/tests/generated-proxy-types.fixture.ts',
-      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-contract-v1.test.ts',
       'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/api/src/function/contract.test.ts',
       'apps/cli/tests/FunctionService.test.ts',

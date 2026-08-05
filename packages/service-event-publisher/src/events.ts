@@ -64,74 +64,6 @@ export type TAgentApprovalEvent = Readonly<{
   reason?: string;
 }>;
 
-export type TAgentWidgetDraftEvent = Readonly<{
-  kind: 'widget-draft';
-  type: 'created' | 'changed' | 'validated';
-  draftId: string;
-  revision: string;
-  sourceDigestSha256: string;
-  committedMutationId: string;
-  buildSequence: number;
-}>;
-
-export type TAgentWidgetPreviewEvent =
-  | Readonly<{
-      kind: 'widget-preview';
-      type: 'changed' | 'catalog-changed';
-      draftId: string;
-      revision: string;
-      sourceDigestSha256: string;
-      committedMutationId: string;
-      buildSequence: number;
-    }>
-  | Readonly<{
-      kind: 'widget-preview';
-      type: 'progress';
-      draftId: string;
-      revision: string;
-      sourceDigestSha256: string;
-      committedMutationId: string;
-      previewId: string;
-      buildId: string;
-      buildSequence: number;
-      phase:
-        | 'queued'
-        | 'installing'
-        | 'building'
-        | 'validating'
-        | 'ready'
-        | 'failed'
-        | 'superseded';
-    }>
-  | Readonly<{
-      kind: 'widget-preview-test';
-      type: 'requested';
-      requestId: string;
-      draftId: string;
-      previewId: string;
-      previewRevisionId: string;
-      canvasId: string;
-      frameNodeId: string;
-      revision: string;
-      committedMutationId: string;
-      mountLeaseId: string;
-      deadlineAtMs: number;
-      checks: readonly (
-        | Readonly<{ type: 'fill'; label: string; value: string }>
-        | Readonly<{ type: 'click'; name: string }>
-        | Readonly<{ type: 'assert-text'; text: string }>
-        | Readonly<{ type: 'assert-status'; text: string }>
-        | Readonly<{ type: 'wait-for-text'; text: string; timeoutMs?: number }>
-      )[];
-    }>;
-
-export type TAgentWidgetPublishedEvent = Readonly<{
-  kind: 'widget-published';
-  draftId: string;
-  revision: string;
-  definitionName: string;
-}>;
-
 export type TAgentWidgetCatalogEvent = Readonly<{
   kind: 'widget-catalog';
   type: 'changed';
@@ -141,7 +73,4 @@ export type TAgentEvent =
   | TAgentChatEvent
   | TAgentWidgetUpdateEvent
   | TAgentApprovalEvent
-  | TAgentWidgetDraftEvent
-  | TAgentWidgetPreviewEvent
-  | TAgentWidgetPublishedEvent
   | TAgentWidgetCatalogEvent;

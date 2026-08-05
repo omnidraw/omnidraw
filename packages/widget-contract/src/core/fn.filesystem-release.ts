@@ -3,7 +3,7 @@
  */
 
 import type {
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetReleaseAttestation,
   TWidgetReleaseFile,
@@ -171,7 +171,7 @@ export function fnCanonicalizeWidgetReleaseDescriptor(
 }
 
 export function fnValidateWidgetRelease(args: Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   expectedExecutableManifestDigestSha256: string;
   release: TWidgetReleaseDescriptor;
   observation: TWidgetReleaseObservation;

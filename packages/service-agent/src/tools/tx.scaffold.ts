@@ -1,4 +1,4 @@
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
 import type { TWidgetCreateInput } from '../workspace/types';
 import {
   WIDGET_TEMPLATE_FILES,
@@ -13,7 +13,7 @@ type TPortal = {
 
 type TArgs = {
   cwd: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   sdkDependency: string;
   capsuleDependency: string;
   template: NonNullable<TWidgetCreateInput['template']>;

@@ -22,6 +22,12 @@ type TCreateWidgetPreviewOwnerArgs = Readonly<{
   canvasId: string;
   widgetKey: string;
   isTargetCurrent(): boolean;
+  /**
+   * Consume-on-check flag: returns true exactly once for a freshly placed
+   * frame so its first attach builds the draft instead of showing the stopped
+   * fallback. Absent or false keeps the restart behavior.
+   */
+  shouldAutoBuild?(): boolean;
   onFatal?(error: unknown): void;
 }>;
 
@@ -42,8 +48,9 @@ function isNotFound(error: unknown): boolean {
 
 /**
  * One browser owner for a process-owned ephemeral Preview. It mounts the exact
- * signed bytes of the live session or shows the stopped state with an explicit
- * build-again action; nothing is recovered across a host restart.
+ * signed bytes of the live session; a freshly placed frame auto-builds once,
+ * and a lost session shows the stopped state with an explicit build-again
+ * action; nothing is recovered across a host restart.
  */
 export function createWidgetPreviewOwner(
   args: TCreateWidgetPreviewOwnerArgs,
@@ -164,6 +171,10 @@ export function createWidgetPreviewOwner(
         });
         if (error || !response) {
           if (isNotFound(error)) {
+            if (args.shouldAutoBuild?.() === true) {
+              await rebuild();
+              return;
+            }
             renderStopped();
             return;
           }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ZWidgetManifestV4 } from '@omnidraw/widget-contract';
+import { ZWidgetManifestV1 } from '@omnidraw/widget-contract';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../src/tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../src/tools/fn.result';
@@ -18,7 +18,7 @@ describe('AI Chat tool registry', () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-tool-registry-'));
     roots.push(root);
     await mkdir(join(root, 'config', 'widgets'), { recursive: true });
-    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data'), draftRoot: join(root, 'widgets', 'drafts') });
     await workspace.init();
     const cwd = await workspace.ensureChat('chat-a');
     const registry = createToolRegistry({
@@ -91,7 +91,7 @@ describe('AI Chat tool registry', () => {
   test('does not rewrite unsupported private-target draft source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-capsule-api-groups-migration-'));
     roots.push(root);
-    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data'), draftRoot: join(root, 'widgets', 'drafts') });
     await workspace.init();
 
     const created = await workspace.createDraft(
@@ -101,7 +101,7 @@ describe('AI Chat tool registry', () => {
         await mkdir(join(cwd, 'ui'), { recursive: true });
         await writeFile(join(cwd, 'ui', 'main.ts'), 'document.body.append(document.createElement("canvas"));\n', 'utf8');
         await writeFile(join(cwd, 'omnidraw.json'), `${JSON.stringify({
-          schemaVersion: 4,
+          schemaVersion: 1,
           name: 'Migrated WebGL',
           slug: 'migrated-webgl',
           ui: {
@@ -127,7 +127,7 @@ describe('AI Chat tool registry', () => {
       'utf8',
     ));
     expect(manifest.ui).toHaveProperty('target');
-    expect(ZWidgetManifestV4.safeParse(manifest).success).toBe(false);
+    expect(ZWidgetManifestV1.safeParse(manifest).success).toBe(false);
     const first = await workspace.getDraft('Migrated WebGL');
     const second = await workspace.getDraft('Migrated WebGL');
     expect(first?.revision).toMatch(/^[0-9a-f]{64}$/);
@@ -137,7 +137,7 @@ describe('AI Chat tool registry', () => {
   test('fences one mounted draft once after multi-file and failed Bash mutations', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-tool-registry-bash-fence-'));
     roots.push(root);
-    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data'), draftRoot: join(root, 'widgets', 'drafts') });
     await workspace.init();
     const cwd = await workspace.ensureChat('chat-a');
     await workspace.createDraft('chat-a', { name: 'Bash Clock' }, async ({ cwd: draftCwd }) => {
@@ -145,7 +145,7 @@ describe('AI Chat tool registry', () => {
       await writeFile(
         join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
-          schemaVersion: 4,
+          schemaVersion: 1,
           name: 'Bash Clock',
           slug: 'bash-clock',
           description: 'Bash clock fixture.',
@@ -162,7 +162,7 @@ describe('AI Chat tool registry', () => {
       await writeFile(
         join(draftCwd, 'omnidraw.json'),
         `${JSON.stringify({
-          schemaVersion: 4,
+          schemaVersion: 1,
           name: 'Second Clock',
           slug: 'second-clock',
           description: 'Second clock fixture.',
@@ -184,19 +184,20 @@ describe('AI Chat tool registry', () => {
       approvals: new ApprovalCoordinator(),
       onDraftChanged: async (change) => {
         changes.push(change);
-        if (rejectBashClockFence && change.name === 'Bash Clock') return null;
-        return {} as never;
+        if (rejectBashClockFence && change.name === 'Bash Clock') {
+          throw new Error('catalog invalidation rejected');
+        }
       },
       bashCapability: {
         run: async ({ command }) => {
           if (command === 'multi-file') {
             await writeFile(
-              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              join(workspace.draftRoot, 'bash-clock', 'ui', 'main.ts'),
               'export const first = 2;\n',
               'utf8',
             );
             await writeFile(
-              join(workspace.draftRoot, 'Bash Clock', 'ui', 'secondary.ts'),
+              join(workspace.draftRoot, 'bash-clock', 'ui', 'secondary.ts'),
               'export const second = 2;\n',
               'utf8',
             );
@@ -207,7 +208,7 @@ describe('AI Chat tool registry', () => {
           }
           if (command === 'tamper-mount') {
             await writeFile(
-              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              join(workspace.draftRoot, 'bash-clock', 'ui', 'main.ts'),
               'export const first = 4;\n',
               'utf8',
             );
@@ -219,12 +220,12 @@ describe('AI Chat tool registry', () => {
           }
           if (command === 'multi-draft') {
             await writeFile(
-              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              join(workspace.draftRoot, 'bash-clock', 'ui', 'main.ts'),
               'export const first = 5;\n',
               'utf8',
             );
             await writeFile(
-              join(workspace.draftRoot, 'Second Clock', 'ui', 'main.ts'),
+              join(workspace.draftRoot, 'second-clock', 'ui', 'main.ts'),
               'export const second = 2;\n',
               'utf8',
             );
@@ -235,7 +236,7 @@ describe('AI Chat tool registry', () => {
           }
           if (command.startsWith('settled:')) {
             await writeFile(
-              join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+              join(workspace.draftRoot, 'bash-clock', 'ui', 'main.ts'),
               `export const settled = ${JSON.stringify(command)};\n`,
               'utf8',
             );
@@ -246,7 +247,7 @@ describe('AI Chat tool registry', () => {
             };
           }
           await writeFile(
-            join(workspace.draftRoot, 'Bash Clock', 'ui', 'main.ts'),
+            join(workspace.draftRoot, 'bash-clock', 'ui', 'main.ts'),
             'export const first = 3;\n',
             'utf8',
           );
@@ -305,7 +306,7 @@ describe('AI Chat tool registry', () => {
     const partialFenceFailure = await executeTool(bash, { command: 'multi-draft' });
     expect(partialFenceFailure.isError).toBe(true);
     expect(partialFenceFailure.content[0]?.text).toContain(
-      "Bash changed widget source 'Bash Clock' without receiving a durable mutation fence.",
+      'catalog invalidation rejected',
     );
     expect(changes.slice(-2)).toEqual([
       {

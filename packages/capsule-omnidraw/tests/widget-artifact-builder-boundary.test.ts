@@ -121,7 +121,7 @@ function manifest(args: Readonly<{
   serverEntry?: string;
 }>): TWidgetExecutableManifestProjection {
   return Object.freeze({
-    schemaVersion: 4,
+    schemaVersion: 1,
     ui: Object.freeze({
       runtime: 'capsule',
       entry: args.entry,

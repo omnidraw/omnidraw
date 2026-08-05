@@ -24,6 +24,7 @@ async function createService(
 
   return new AgentService({
     dataPath,
+    widgetDraftsRoot: join(dataPath, 'widgets', 'drafts'),
     eventPublisherService: createTestEvents(),
     chats,
     resourceService,
@@ -42,7 +43,11 @@ async function waitForChatApproval(service: AgentService, widgetId: string, sess
 
 describe('AgentService.promptChat', () => {
   test('teaches widget agents the browser-first Capsule and short-function contract', () => {
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 3');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 1');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"$schema": "https://omnidraw.dev/schemas/widget/v1.json"');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"tool": {');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/schemaVersion"?\s*:\s*[34]/);
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/manifest[- ]v[34]/i);
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtime": "capsule"');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"apis": ["DOM"]');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Omit `server` and `resources` for a UI-only widget');

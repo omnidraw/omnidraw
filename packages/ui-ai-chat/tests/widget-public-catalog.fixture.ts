@@ -21,7 +21,7 @@ export function publicForm(
     health: options.health ?? 'healthy',
     manifestDigestSha256: SHA,
     config: {
-      $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
+      $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
       name,
       description: 'Filesystem widget fixture.',
       tool: {
@@ -61,7 +61,9 @@ export function publicEntry(
         : draft
           ? 'draft-only'
           : 'published-only',
-      manifest: draft && published ? 'different' : 'unavailable',
+      manifest: draft && published
+        ? status === 'matched' ? 'same' : 'different'
+        : 'unavailable',
       presentation: draft && published
         ? status === 'matched' ? 'same' : 'different'
         : 'unavailable',

@@ -235,7 +235,7 @@ export function txCreateWidgetPointerPlacement(
       cancelSession();
       const viewport = portal.camera.visibleWorldBounds();
       const position = fnClampWidgetPlacementPosition({
-        point: {
+        point: request.position ?? {
           x: (viewport.minX + viewport.maxX - request.bounds.width) / 2,
           y: (viewport.minY + viewport.maxY - request.bounds.height) / 2,
         },

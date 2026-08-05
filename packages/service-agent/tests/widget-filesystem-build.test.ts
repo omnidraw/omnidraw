@@ -4,7 +4,7 @@ import type {
   TWidgetArtifactConstructionResult,
   TWidgetBuildEnvironment,
   TWidgetBuildResult,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import { WidgetArtifactBuilderCapsule } from '@omnidraw/capsule-omnidraw/build';
 import { WidgetFilesystemBuildService } from '../src/widget-filesystem/build';
@@ -33,9 +33,9 @@ const RUNTIME = Object.freeze({
   parkability: Object.freeze({ parkable: false as const }),
   signatureKeyIds: Object.freeze(['release-key']),
 });
-const MANIFEST: TWidgetManifestV4 = Object.freeze({
-  $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-  schemaVersion: 4,
+const MANIFEST: TWidgetManifestV1 = Object.freeze({
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+  schemaVersion: 1,
   name: 'Counter',
   slug: 'counter',
   description: 'A small counter.',

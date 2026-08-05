@@ -2,7 +2,7 @@
 
 import type {
   TWidgetExecutableInputFile,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseFile,
 } from '@omnidraw/widget-contract/filesystem';
 import type {
@@ -31,7 +31,7 @@ export type TWidgetWorkspaceTreeCapture = Readonly<{
 
 export type TWidgetWorkspaceManifestObservation = Readonly<{
   slug: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   canonicalJson: string;
   manifestDigestSha256: string;
   treeDigestSha256: string;
@@ -39,7 +39,7 @@ export type TWidgetWorkspaceManifestObservation = Readonly<{
 
 export type TWidgetWorkspaceDraftBuildCapture = Readonly<{
   slug: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   canonicalManifestJson: string;
   manifestDigestSha256: string;
   treeDigestSha256: string;
@@ -49,7 +49,7 @@ export type TWidgetWorkspaceDraftBuildCapture = Readonly<{
 
 export type TWidgetWorkspaceDraftManifestSaveResult = Readonly<{
   slug: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   canonicalJson: string;
   previousManifestDigestSha256: string;
   manifestDigestSha256: string;

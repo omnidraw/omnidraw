@@ -29,7 +29,7 @@ const suites: TWidgetArtifactSuite[] = [
     command: [
       'bun',
       'test',
-      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-contract-v1.test.ts',
       'packages/widget-contract/tests/widget-filesystem-boundary.test.ts',
       'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/service-agent/tests/widget-filesystem-build.test.ts',
@@ -38,7 +38,7 @@ const suites: TWidgetArtifactSuite[] = [
       '--timeout=30000',
     ],
     requiredPaths: [
-      'packages/widget-contract/tests/widget-contract-v4.test.ts',
+      'packages/widget-contract/tests/widget-contract-v1.test.ts',
       'packages/widget-contract/tests/widget-filesystem-boundary.test.ts',
       'packages/widget-contract/tests/widget-release-v1.test.ts',
       'packages/service-agent/tests/widget-filesystem-build.test.ts',

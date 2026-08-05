@@ -57,6 +57,23 @@ export function fnGetToolResultResource(message: unknown): TChatResourceLink | u
   return getResource(getObject(object.details)?.resource)
 }
 
+const WIDGET_DRAFT_RESULT_TOOLS = new Set(["od_widget_create", "od_widget_validate"])
+
+/**
+ * Trusted draft identity from a successful widget create/validate result.
+ * Only structured details count; summaries and prose are never scraped.
+ */
+export function fnGetToolResultWidgetDraft(message: unknown): { name: string } | undefined {
+  const object = getObject(message)
+  if (object?.role !== "toolResult" || object.isError === true) return undefined
+  const toolName = getString(object.toolName)
+  if (toolName === undefined || !WIDGET_DRAFT_RESULT_TOOLS.has(toolName)) return undefined
+  const details = getObject(object.details)
+  const name = getString(details?.name)
+  if (!name || details?.draft !== true || details?.source !== "draft") return undefined
+  return { name }
+}
+
 export function fnGetApprovalResourceId(details: unknown): string | undefined {
   return getString(getObject(getObject(details)?.resource)?.id)
 }

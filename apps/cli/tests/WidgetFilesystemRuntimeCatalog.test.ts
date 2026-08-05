@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   TWidgetCapsuleRuntimeDescriptor,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import {
   fnCreateWidgetReleaseDescriptor,
@@ -45,10 +45,10 @@ function runtime(artifactHash: `sha256:${string}`): TWidgetCapsuleRuntimeDescrip
 function manifest(
   slug: string,
   options: Readonly<{ requiredResource?: boolean }> = {},
-): TWidgetManifestV4 {
+): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: `Widget ${slug}`,
     slug,
     description: 'A filesystem runtime catalog fixture.',
@@ -88,7 +88,7 @@ async function widgetsRoot(): Promise<string> {
 
 async function writePublication(
   root: string,
-  value: TWidgetManifestV4,
+  value: TWidgetManifestV1,
   capsuleText: string,
 ): Promise<string> {
   const path = join(root, 'published', value.slug);
@@ -130,7 +130,7 @@ async function writePublication(
   return path;
 }
 
-async function writeDraft(root: string, value: TWidgetManifestV4): Promise<void> {
+async function writeDraft(root: string, value: TWidgetManifestV1): Promise<void> {
   const path = join(root, 'drafts', value.slug);
   await mkdir(join(path, 'ui'), { recursive: true });
   await Promise.all([

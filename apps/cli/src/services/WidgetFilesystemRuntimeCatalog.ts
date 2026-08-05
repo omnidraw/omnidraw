@@ -16,7 +16,7 @@ import {
 } from '@omnidraw/service-agent';
 import type {
   TWidgetFrameBounds,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetPlacementRef,
   TWidgetReleaseDescriptor,
   TWidgetServerFunctionDescriptor,
@@ -41,7 +41,7 @@ type TWidgetFilesystemRuntimeResolution = Readonly<{
   widgetKey: string;
   catalogGeneration: number;
   catalogDigestSha256: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   release: TWidgetReleaseDescriptor;
   capsuleBytes: Uint8Array;
   serverEntryBytes: Uint8Array | null;

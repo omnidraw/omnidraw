@@ -65,8 +65,8 @@ async function syncPath(path: string): Promise<void> {
 
 function jsonManifest(version: string, name = `Counter ${version}`, slug = 'counter'): string {
   return `${JSON.stringify({
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     slug,
     name,
     description: `Counter ${version}`,
@@ -233,7 +233,7 @@ function createPortal(): TTestPortal {
 }
 
 describe('atomic filesystem widget publication', () => {
-  test('uses the manifest-v4 100-byte ASCII slug bound', () => {
+  test('uses the manifest-v1 100-byte ASCII slug bound', () => {
     expect(fnIsPublicationSlug('a'.repeat(100))).toBe(true);
     expect(fnIsPublicationSlug('a'.repeat(101))).toBe(false);
   });

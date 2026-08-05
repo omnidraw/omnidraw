@@ -7,10 +7,10 @@ export type * from './types';
 export type * from './filesystem/typed';
 export {
   ZWidgetExecutableManifest,
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
-  parseWidgetManifestV4Json,
+  parseWidgetManifestV1Json,
   parseWidgetReleaseJson,
 } from './filesystem/schema';
 export {
@@ -52,7 +52,7 @@ export {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
-  WIDGET_MANIFEST_V4_SCHEMA_URL,
+  WIDGET_MANIFEST_V1_SCHEMA_URL,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_TOOL_GROUP_MAX_BYTES,
   WIDGET_TOOL_LABEL_MAX_CHARACTERS,
@@ -112,14 +112,14 @@ export {
 export {
   fnCanonicalizeWidgetExecutableManifest,
   fnCanonicalizeWidgetExecutableProjection,
-  fnCanonicalizeWidgetManifestV4,
+  fnCanonicalizeWidgetManifestV1,
   fnCanonicalizeWidgetPresentation,
   fnNormalizeWidgetExecutableProjection,
-  fnNormalizeWidgetManifestV4,
+  fnNormalizeWidgetManifestV1,
   fnProjectWidgetExecutableManifest,
   fnProjectWidgetPresentation,
   fnWidgetExecutableManifestDigest,
-  fnWidgetManifestV4Digest,
+  fnWidgetManifestV1Digest,
 } from './core/fn.filesystem-manifest';
 export {
   fnNormalizeWidgetFilesystemRelativePath,

@@ -3,8 +3,8 @@ import type { IEventPublisherService } from '@omnidraw/service-event-publisher/I
 import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
 import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
 import {
-  ZWidgetManifestV4,
-  type TWidgetManifestV4,
+  ZWidgetManifestV1,
+  type TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
@@ -31,7 +31,7 @@ import type { TAgentResourceService } from './tools/resource-service';
 import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
-import type { TWidgetDbChangeProposalRecord, TWidgetResourceSelection } from './tools/types';
+import type { TWidgetDbChangeProposalRecord, TWidgetPreviewBuildCheck, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 
@@ -43,8 +43,14 @@ interface IPublicMethods {
 
 export interface IAgentServiceConfig {
   dataPath: string;
+  widgetDraftsRoot: string;
   npmUserConfigPath?: string;
   prepareWidgetNpmDependencies?: () => Promise<void>;
+  /** Notified after any agent-owned draft change so the app can rescan the
+   * shared widget root and invalidate catalogs. */
+  onWidgetDraftsChanged?: () => void;
+  /** Runs the real host Preview build for one draft slug during validation. */
+  previewBuild?: TWidgetPreviewBuildCheck;
   eventPublisherService: IEventPublisherService,
   chats: Readonly<{
     get(args: Readonly<{ id: string }>): Promise<Readonly<{ status: 'active' | 'archived' | 'error' }> | null>;
@@ -112,7 +118,7 @@ type TLoginSession = {
 };
 
 type TAgentConnectResult = {
-  vcJson: TWidgetManifestV4 | null;
+  vcJson: TWidgetManifestV1 | null;
   messageHistory: AgentSession['messages'];
 };
 type TAgentCancelResult = {
@@ -158,6 +164,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
     this.#workspace = new WidgetWorkspace({
       dataPath: config.dataPath,
+      draftRoot: config.widgetDraftsRoot,
       npmUserConfigPath: config.npmUserConfigPath,
       prepareNpmDependencies: config.prepareWidgetNpmDependencies,
     })
@@ -715,6 +722,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       resourceService: this.#config.resourceService,
       bashCapability: this.#config.bashCapability,
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
+      onDraftChanged: () => this.#publishWidgetDraftsChanged(),
+      ...(this.#config.previewBuild === undefined
+        ? {}
+        : { previewBuild: this.#config.previewBuild }),
       takeSensitiveToolArgs: (toolCallId) => {
         const stored = sensitiveToolArgs.get(toolCallId)
         sensitiveToolArgs.delete(toolCallId)
@@ -801,6 +812,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#flushSessionManager(sessionManager)
   }
 
+  #publishWidgetDraftsChanged(): void {
+    this.#config.eventPublisherService.publishAgentEvent({
+      kind: 'widget-catalog',
+      type: 'changed',
+    })
+    this.#config.onWidgetDraftsChanged?.()
+  }
+
   async #resolveActiveMount(id: TWidgetId, sessionId: TOmnidrawChatId): Promise<TWidgetMount> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
@@ -815,8 +834,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#workspace.findMountedWidget(sessionId, name)
   }
 
-  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV4> {
-    return ZWidgetManifestV4.parse(
+  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV1> {
+    return ZWidgetManifestV1.parse(
       JSON.parse(await readFile(join(mount.targetPath, 'omnidraw.json'), 'utf8')),
     )
   }

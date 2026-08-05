@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import {
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   fnCanonicalizeWidgetExecutableProjection,
-  fnCanonicalizeWidgetManifestV4,
+  fnCanonicalizeWidgetManifestV1,
   fnCanonicalizeWidgetReleaseDescriptor,
   fnCanonicalizeWidgetUnsignedReleaseDescriptor,
   fnCanonicalizeWidgetServerFunctionDescriptors,
@@ -118,7 +118,7 @@ export class WidgetFilesystemBuildService {
   async construct(
     request: TWidgetFilesystemConstructionRequest,
   ): Promise<TWidgetFilesystemConstruction> {
-    const manifest = ZWidgetManifestV4.parse(request.manifest);
+    const manifest = ZWidgetManifestV1.parse(request.manifest);
     const environment = Object.freeze({
       ...this.config.environment,
       serverRuntimeAbi: manifest.server?.runtimeAbi ?? null,
@@ -206,10 +206,10 @@ export class WidgetFilesystemBuildService {
   }
 
   async preparePublication(args: Readonly<{
-    manifest: import('@omnidraw/widget-contract').TWidgetManifestV4;
+    manifest: import('@omnidraw/widget-contract').TWidgetManifestV1;
     construction: TWidgetFilesystemConstruction;
   }>): Promise<TWidgetFilesystemPreparedPublication> {
-    const manifest = ZWidgetManifestV4.parse(args.manifest);
+    const manifest = ZWidgetManifestV1.parse(args.manifest);
     const browserFiles = immutableFiles(args.construction.distFiles);
     if (
       directoryDigest(browserFiles, 'dist/')
@@ -307,7 +307,7 @@ export class WidgetFilesystemBuildService {
     }
     return Object.freeze({
       executableInputDigestSha256: args.construction.executableInputDigestSha256,
-      manifestJson: fnCanonicalizeWidgetManifestV4(manifest),
+      manifestJson: fnCanonicalizeWidgetManifestV1(manifest),
       browser: Object.freeze({ files: browserFiles }),
       capsule: Object.freeze({
         artifactBytes: new Uint8Array(signed.capsule.artifactBytes),

@@ -4,7 +4,7 @@ export const WIDGET_FRAME_MAX_WIDTH = 2_048
 export const WIDGET_FRAME_MAX_HEIGHT = 2_048
 export const WIDGET_FRAME_FALLBACK = Object.freeze({ width: 360, height: 320 })
 
-export const WIDGET_MANIFEST_V4_SCHEMA_URL = 'https://omnidraw.dev/schemas/widget/v4.json' as const
+export const WIDGET_MANIFEST_V1_SCHEMA_URL = 'https://omnidraw.dev/schemas/widget/v1.json' as const
 export const WIDGET_RELEASE_FORMAT = 'omnidraw.widget-release.v1' as const
 export const WIDGET_SLUG_MAX_BYTES = 100
 export const WIDGET_NAME_MAX_CHARACTERS = 200

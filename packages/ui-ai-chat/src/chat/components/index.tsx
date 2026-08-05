@@ -28,6 +28,7 @@ interface IProps {
   titleBar: TWidgetTitleBarPortal
   sessionId: string
   aiChatPreference?: TAiChatPreference
+  onOpenWidgetPreview?: (args: { name: string }) => void | Promise<void>
   onAiChatPreferenceChange?: (preference: TAiChatPreference) => void
   onResetSessionId: () => string
 }
@@ -400,6 +401,7 @@ export function AiChat(props: IProps) {
                     onPrompt={prompt}
                     onResolveApproval={resolveApproval}
                     onOpenResource={props.application.openResource}
+                    onOpenWidgetPreview={props.onOpenWidgetPreview}
                     browser={props.browser}
                     onLogError={props.application.logError}
                     onCancel={() => void cancelPrompt()}

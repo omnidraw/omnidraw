@@ -374,22 +374,74 @@ describe("ChatTab rendered message history", () => {
     expect(root.textContent).not.toContain("Widget drafts")
   })
 
-  it("does not expose the removed durable Preview action", () => {
+  it("offers Open Preview on a successful widget create result and calls back with the draft name", async () => {
+    const onOpenWidgetPreview = vi.fn()
     const root = renderChatTab(undefined, [{
       role: "toolResult",
       toolCallId: "call-widget-create",
       toolName: "od_widget_create",
-      content: [{ type: "text", text: "Created Shared Timer." }],
+      content: [{ type: "text", text: "Created and mounted runnable unpublished plain DOM widget draft 'Shared Timer'." }],
       details: {
-        draftId: "10000000-0000-4000-8000-000000000001",
         name: "Shared Timer",
+        mountPath: "widgets/Shared Timer",
         source: "draft",
         draft: true,
+        template: "plain",
+        server: false,
+        files: ["omnidraw.json", "ui/main.ts"],
       },
-    }])
+      isError: false,
+    }], { onOpenWidgetPreview })
 
-    expect(root.querySelector(".ai-chat-history__preview-action")).toBeNull()
-    expect(root.textContent).not.toContain("Open Preview")
+    const openButton = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__preview-action button"))
+      .find((button) => button.textContent === "Open Preview")
+    expect(openButton).not.toBeUndefined()
+    openButton?.click()
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" }))
+  })
+
+  it("offers Open Preview on a successful widget validate result but not on failures or prose", () => {
+    const onOpenWidgetPreview = vi.fn()
+    const root = renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolCallId: "call-widget-validate",
+        toolName: "od_widget_validate",
+        content: [{ type: "text", text: "Widget 'Shared Timer' construction is valid and the Preview build passed." }],
+        details: {
+          name: "Shared Timer",
+          mountPath: "widgets/Shared Timer",
+          source: "draft",
+          ok: true,
+          draft: true,
+          previewExecution: "passed",
+        },
+        isError: false,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-widget-validate-failed",
+        toolName: "od_widget_validate",
+        content: [{ type: "text", text: "Widget 'Shared Timer' Preview build failed." }],
+        details: {
+          name: "Shared Timer",
+          source: "draft",
+          ok: false,
+          draft: true,
+          previewExecution: "failed",
+        },
+        isError: true,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Your draft 'Shared Timer' is ready. Open Preview whenever you like." }],
+      },
+    ], { onOpenWidgetPreview })
+
+    const buttons = root.querySelectorAll(".ai-chat-history__preview-action button")
+    expect(buttons).toHaveLength(1)
+    buttons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" })
   })
 
   it("forwards vertical table wheel gestures to the chat scroller", () => {

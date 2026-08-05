@@ -5,7 +5,7 @@ import type {
   TWidgetBuildEnvironment,
   TWidgetBuildResult,
   TWidgetExecutableInputFile,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetReleaseAttestation,
   TWidgetReleaseServer,
@@ -45,7 +45,7 @@ export type TWidgetFilesystemBuildServiceConfig = Readonly<{
 }>;
 
 export type TWidgetFilesystemConstructionRequest = Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   files: readonly TWidgetExecutableInputFile[];
   expectedExecutableInputDigestSha256?: string;
   workspaceKey?: string;

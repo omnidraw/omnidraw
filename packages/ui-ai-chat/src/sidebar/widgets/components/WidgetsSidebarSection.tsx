@@ -137,14 +137,14 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       <Show when={placementAvailable() && value.placement}>
         <Button
           class={styles.addButton}
-          aria-label={`Add ${label} to canvas`}
-          title={disabledReason ?? 'Add to canvas'}
+          aria-label={value.action === 'add' ? `Add ${label} to canvas` : `Preview ${label} on canvas`}
+          title={disabledReason ?? (value.action === 'add' ? 'Add to canvas' : 'Place a live Preview frame')}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             void addToCanvas();
           }}
-        >Add to canvas</Button>
+        >{value.action === 'add' ? 'Add' : 'Preview'}</Button>
       </Show>
     </div>;
   };

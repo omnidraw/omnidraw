@@ -16,7 +16,7 @@ import {
   ZWidgetCapsuleAllowedApis,
   ZWidgetCapsuleBudgetRequest,
   ZWidgetCapsuleRuntimeDescriptor,
-  ZWidgetManifestV4,
+  ZWidgetManifestV1,
   ZWidgetResourceRequirement,
 } from '@omnidraw/widget-contract';
 import {
@@ -174,7 +174,7 @@ export const ZWidgetRuntimeIdentity = ZWidgetStateIdentity.extend({
 export const ZWidgetRuntimeLoadInput = ZWidgetRuntimeIdentity;
 export const ZWidgetStateJson = z.custom<TWidgetStateJson>();
 
-export const ZWidgetBrowserManifest = ZWidgetManifestV4.transform((manifest) => {
+export const ZWidgetBrowserManifest = ZWidgetManifestV1.transform((manifest) => {
   const { server: _server, ...browserManifest } = manifest;
   return browserManifest;
 });
@@ -252,7 +252,7 @@ const ZWidgetPublicIssue: z.ZodType<TWidgetPublicIssue> = z.object({
   message: z.string().min(1).max(500),
 }).strict();
 const ZWidgetPublicConfig = z.object({
-  $schema: z.literal('https://omnidraw.dev/schemas/widget/v4.json'),
+  $schema: z.literal('https://omnidraw.dev/schemas/widget/v1.json'),
   name: z.string().trim().min(1).max(WIDGET_NAME_MAX_CHARACTERS),
   description: z.string().trim().min(1).max(WIDGET_DESCRIPTION_MAX_CHARACTERS),
   tool: z.object({

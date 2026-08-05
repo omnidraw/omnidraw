@@ -1,11 +1,11 @@
-import type { TWidgetManifestV4 } from '@omnidraw/widget-contract';
+import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
 import type { TValidationResult } from '../types';
 
 export function fnNormalizeRelativeFilePath(path: string): string {
   return path.replace(/^\.\//, '');
 }
 
-export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TWidgetManifestV4 }): TValidationResult {
+export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TWidgetManifestV1 }): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const hasFile = (path: string) => args.files.includes(fnNormalizeRelativeFilePath(path));

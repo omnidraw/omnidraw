@@ -1,4 +1,4 @@
-import { ZWidgetManifestV4 } from '@omnidraw/widget-contract';
+import { ZWidgetManifestV1 } from '@omnidraw/widget-contract';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 export {
@@ -9,7 +9,7 @@ export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetResou
 export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetDbChangeProposal';
 export const TOOL_ERROR_DETAILS_MARKER = Symbol('omnidraw.toolError');
 
-export const Z_OMNIDRAW_JSON = ZWidgetManifestV4;
+export const Z_OMNIDRAW_JSON = ZWidgetManifestV1;
 
 export const AJV = new Ajv({ allErrors: true, strict: false });
 addFormats(AJV);

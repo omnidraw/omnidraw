@@ -131,18 +131,22 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
       return button!;
     });
     disclosure.click();
-    const adds = container.querySelectorAll<HTMLButtonElement>(
+    const add = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Add Camera to canvas"]',
     );
-    expect(adds).toHaveLength(2);
-    adds[0]?.click();
+    const preview = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Preview Camera on canvas"]',
+    );
+    expect(add?.textContent).toBe('Add');
+    expect(preview?.textContent).toBe('Preview');
+    add?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
     expect(addToCanvas).toHaveBeenCalledWith({
       reference: { source: 'published', widgetKey: 'camera', catalogGeneration: 1 },
       bounds: { width: 480, height: 320 },
       label: 'Camera',
     });
-    adds[1]?.click();
+    preview?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledTimes(2));
     expect(addToCanvas).toHaveBeenLastCalledWith({
       reference: { source: 'draft', widgetKey: 'camera', catalogGeneration: 1 },

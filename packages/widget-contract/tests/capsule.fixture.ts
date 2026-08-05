@@ -50,7 +50,7 @@ export const CAPSULE_RUNTIME_DESCRIPTOR: TWidgetNativeCapsuleRuntimeDescriptor =
 });
 
 export const CAPSULE_MANIFEST: TWidgetExecutableManifestProjection = Object.freeze({
-  schemaVersion: 4,
+  schemaVersion: 1,
   ui: Object.freeze({
     runtime: 'capsule',
     entry: 'src/ui.tsx',

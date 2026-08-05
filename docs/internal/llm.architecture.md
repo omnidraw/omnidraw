@@ -128,7 +128,7 @@ flowchart TB
 | Package | Role |
 | --- | --- |
 | `resource-runtime` | Resource capabilities, providers, gateways, and effect boundaries. |
-| `widget-contract` | Widget manifest v4, executable projections, release descriptors, and runtime descriptors. |
+| `widget-contract` | Widget manifest v1, executable projections, release descriptors, and runtime descriptors. |
 | `function-runtime` | Direct, history-free descriptor-driven function invocation and sandbox drivers. |
 | `canvas-contract` | Portable Cangine item, command, snapshot, event, query, descriptor, and document-transport contracts. |
 | `theme-contract` | State-free detailed theme and six-code semantic canvas-color types, constants, and validation. |

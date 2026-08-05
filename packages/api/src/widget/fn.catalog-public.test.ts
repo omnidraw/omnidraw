@@ -7,8 +7,8 @@ const SHA = 'a'.repeat(64);
 
 function snapshot(): TWidgetCatalogSnapshot {
   const manifest = {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name: 'Notes Board',
     slug: 'notes-board',
     description: 'A bounded catalog fixture.',
@@ -55,7 +55,7 @@ function snapshot(): TWidgetCatalogSnapshot {
           manifestDigestSha256: SHA,
           presentation,
           presentationDigestSha256: SHA,
-          executable: { schemaVersion: 4, ui: manifest.ui, server: null, resources: manifest.resources },
+          executable: { schemaVersion: 1, ui: manifest.ui, server: null, resources: manifest.resources },
           executableManifestDigestSha256: SHA,
           treeDigestSha256: 'b'.repeat(64),
           files: [{ path: 'ui/main.ts', byteSize: 12, sha256: SHA }],
@@ -70,7 +70,7 @@ function snapshot(): TWidgetCatalogSnapshot {
           manifestDigestSha256: SHA,
           presentation,
           presentationDigestSha256: SHA,
-          executable: { schemaVersion: 4, ui: manifest.ui, server: null, resources: manifest.resources },
+          executable: { schemaVersion: 1, ui: manifest.ui, server: null, resources: manifest.resources },
           executableManifestDigestSha256: SHA,
           treeDigestSha256: 'c'.repeat(64),
           files: [{ path: 'server-dist/private.js', byteSize: 12, sha256: SHA }],

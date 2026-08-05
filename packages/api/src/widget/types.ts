@@ -13,7 +13,7 @@ import type {
   IWidgetCapsuleHostConfigurationReader,
   TWidgetCapsuleHostConfiguration,
   TWidgetCapsulePublicSigningKey,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetServerFunctionDescriptor,
 } from '@omnidraw/widget-contract';
@@ -25,7 +25,7 @@ type TWidgetRuntimeResolution = Readonly<{
   widgetKey: string;
   catalogGeneration: number;
   catalogDigestSha256: string;
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   release: TWidgetReleaseDescriptor;
   capsuleBytes: Uint8Array;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
@@ -109,7 +109,7 @@ type TWidgetPreviewMountView = Readonly<{
   canvasId: string;
   elementId: string;
   widgetKey: string;
-  manifest: Omit<TWidgetManifestV4, 'server'>;
+  manifest: Omit<TWidgetManifestV1, 'server'>;
   artifact: Readonly<{
     digestSha256: string;
     byteSize: number;

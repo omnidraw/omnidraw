@@ -3,7 +3,7 @@
 import type {
   TWidgetBuildEnvironment,
   TWidgetExecutableInputFile,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '../filesystem/typed';
 import {
   WIDGET_BUILD_FILE_COUNT_MAX,
@@ -77,7 +77,7 @@ function assertDigest(value: string, field: string): void {
 }
 
 export function fnCanonicalizeWidgetExecutableInput(args: Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   files: readonly TWidgetExecutableInputFile[];
   environment: TWidgetBuildEnvironment;
 }>): Uint8Array {
@@ -134,7 +134,7 @@ export function fnCanonicalizeWidgetExecutableInput(args: Readonly<{
 }
 
 export function fnWidgetExecutableInputDigest(args: Readonly<{
-  manifest: TWidgetManifestV4;
+  manifest: TWidgetManifestV1;
   files: readonly TWidgetExecutableInputFile[];
   environment: TWidgetBuildEnvironment;
   digestSha256(value: Uint8Array): string;

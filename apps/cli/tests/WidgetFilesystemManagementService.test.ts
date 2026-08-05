@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   TWidgetCapsuleRuntimeDescriptor,
-  TWidgetManifestV4,
+  TWidgetManifestV1,
 } from '@omnidraw/widget-contract';
 import {
   fnCreateWidgetReleaseDescriptor,
@@ -29,10 +29,10 @@ function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function manifest(name: string): TWidgetManifestV4 {
+function manifest(name: string): TWidgetManifestV1 {
   return {
-    $schema: 'https://omnidraw.dev/schemas/widget/v4.json',
-    schemaVersion: 4,
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
     name,
     slug: 'notes-board',
     description: `${name} description`,
@@ -89,7 +89,7 @@ async function createWidgetsRoot(): Promise<string> {
   return root;
 }
 
-async function writeDraft(root: string, value: TWidgetManifestV4): Promise<void> {
+async function writeDraft(root: string, value: TWidgetManifestV1): Promise<void> {
   const path = join(root, 'drafts', value.slug);
   await mkdir(join(path, 'ui'), { recursive: true });
   await Promise.all([
@@ -99,7 +99,7 @@ async function writeDraft(root: string, value: TWidgetManifestV4): Promise<void>
   ]);
 }
 
-async function writePublication(root: string, value: TWidgetManifestV4): Promise<void> {
+async function writePublication(root: string, value: TWidgetManifestV1): Promise<void> {
   const path = join(root, 'published', value.slug);
   const distribution = new Uint8Array(Buffer.from('export default 1;\n', 'utf8'));
   const capsuleBytes = new Uint8Array(Buffer.from('signed capsule bytes', 'utf8'));
