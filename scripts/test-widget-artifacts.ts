@@ -82,12 +82,26 @@ const suites: TWidgetArtifactSuite[] = [
       'packages/ui-ai-chat',
       'test',
       '--',
-      'tests/canvas-extension/index.preview-integration.test.ts',
-      '-t',
-      'remounts changed published portals',
+      'tests/widget-runtime/WidgetUiRuntime.test.ts',
+      'tests/canvas-extension/fn.widget-catalog-event.test.ts',
     ],
     requiredPaths: [
-      'packages/ui-ai-chat/tests/canvas-extension/index.preview-integration.test.ts',
+      'packages/ui-ai-chat/tests/widget-runtime/WidgetUiRuntime.test.ts',
+      'packages/ui-ai-chat/tests/canvas-extension/fn.widget-catalog-event.test.ts',
+    ],
+  },
+  {
+    name: 'ephemeral process-owned Preview build, load, close, and invoke',
+    command: [
+      'bun',
+      'test',
+      'apps/cli/tests/WidgetPreviewService.test.ts',
+      'packages/service-agent/tests/widget-filesystem/preview-ephemeral.test.ts',
+      '--timeout=30000',
+    ],
+    requiredPaths: [
+      'apps/cli/tests/WidgetPreviewService.test.ts',
+      'packages/service-agent/tests/widget-filesystem/preview-ephemeral.test.ts',
     ],
   },
 ];

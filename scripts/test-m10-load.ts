@@ -32,16 +32,16 @@ const cases: readonly TAcceptanceCase[] = [
     runner: 'package-test',
   },
   {
-    file: 'packages/function-runtime/tests/local-runtime.test.ts',
-    name: 'executes one exact revision and tears down to zero PID/RSS/cwd',
+    file: 'packages/function-runtime/tests/direct-function-runtime.test.ts',
+    name: 'forwards live cancellation and always reaps the child',
   },
   {
     file: 'packages/service-canvas/tests/CanvasService.test.ts',
-    name: 'publishes after commit, replays a contiguous tail, and requires resync after gaps',
+    name: 'publishes committed events and resyncs when replay history has a gap',
   },
   {
     file: 'packages/service-widget-state/src/WidgetStateService.test.ts',
-    name: 'release and dispose close pending subscribers and clear metrics',
+    name: 'bounds mutation ledgers and releases their capacity',
   },
 ];
 

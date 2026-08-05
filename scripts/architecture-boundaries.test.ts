@@ -1241,7 +1241,7 @@ describe('managed composition architecture boundaries', () => {
     expect(canvasInvocation).not.toMatch(/\b(?:adapter|cell|managed|protocol)\s*=/i)
     expect([...(canvasInvocation ?? '').matchAll(/\b([A-Za-z][A-Za-z0-9]*)=/g)]
       .map((match) => match[1])
-      .sort()).toEqual(['canvas', 'dependencies', 'hostScopeKey'])
+      .sort()).toEqual(['canvas', 'dependencies'])
   })
 
   test('keeps public contract packages free of private Omnidraw dependencies', async () => {

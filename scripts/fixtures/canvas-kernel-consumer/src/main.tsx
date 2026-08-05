@@ -185,7 +185,6 @@ const dispose = render(() => (
     <span class="consumer-font-probe">Packaged font probe</span>
     <Canvas
       canvas={{ id: canvasId }}
-      hostScopeKey={`external-host:${adapter}`}
       dependencies={dependencies}
     />
   </main>

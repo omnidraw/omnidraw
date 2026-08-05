@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { apiInvokeFunction } from '../packages/api/src/function/api.invoke-function'
 import type { IFunctionInvocationApiCapability } from '../packages/api/src/function/types'
 import {
-  MANAGED_TENANT,
   createManagedCompositionFixture,
 } from './fixtures/external-composition/src/managed-composition'
 
@@ -34,8 +33,10 @@ function createManagedFunctionApiAdapter(
   fixture: TManagedFixture,
 ): IFunctionInvocationApiCapability {
   return Object.freeze({
-    invokeFunction: (tenant, request, signal) => fixture.services.functions.invoke({
-      tenant,
+    invokeFunction: (
+      request: Parameters<IFunctionInvocationApiCapability['invokeFunction']>[0],
+      signal?: AbortSignal,
+    ) => fixture.services.functions.invoke({
       subject: {
         canvasId: request.canvasId,
         elementId: request.elementId,
@@ -56,7 +57,6 @@ describe('external managed composition through the direct OSS API handler', () =
     await fixture.runtime.boot()
     try {
       const context = {
-        tenant: MANAGED_TENANT,
         functionInvocation: createManagedFunctionApiAdapter(fixture),
       }
       const functionRouter = { invoke: apiInvokeFunction } as Record<string, unknown>
@@ -79,7 +79,6 @@ describe('external managed composition through the direct OSS API handler', () =
           artifactByteSize: 3,
           resource: {
             managed: true,
-            orgId: MANAGED_TENANT.orgId,
             operation: 'get',
           },
         },
@@ -92,7 +91,6 @@ describe('external managed composition through the direct OSS API handler', () =
       })
       expect(fixture.invocationEvidence).toHaveLength(1)
       expect(fixture.invocationEvidence[0]).toMatchObject({
-        tenant: MANAGED_TENANT,
         subject: {
           canvasId: request.canvasId,
           elementId: request.elementId,
@@ -108,7 +106,6 @@ describe('external managed composition through the direct OSS API handler', () =
 
   test('preserves direct host error mapping without durable conflict semantics', async () => {
     const context = {
-      tenant: MANAGED_TENANT,
       functionInvocation: {
         invokeFunction: async () => {
           throw Object.assign(new Error('Direct capacity is full.'), {

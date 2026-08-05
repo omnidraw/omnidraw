@@ -1,6 +1,6 @@
 # Omnidraw architecture
 
-**Status:** Current after the S132 canvas-kernel split
+**Status:** Current after the filesystem-first single-user hard cut (D6)
 
 Omnidraw is a Bun monorepo with a Solid browser application, a Bun server/CLI,
 and a set of capability contracts and service implementations. The browser
@@ -44,7 +44,6 @@ flowchart TB
     CanvasContract["canvas-contract"]
     ThemeContract["theme-contract"]
     Theme["service-theme"]
-    Tenant["tenant-core"]
     Resource["resource-runtime"]
     Widget["widget-contract"]
     Function["function-runtime"]
@@ -98,12 +97,9 @@ flowchart TB
   EventPublisher --> Runtime
   KV --> Runtime
   KV --> DB
-  DB --> Tenant
-
   Function --> Resource
   Function --> Widget
   Widget --> Resource
-  Resource --> Tenant
   SDK --> Widget
   SDK --> Capsule
   CapsuleBridge --> Widget
@@ -120,7 +116,7 @@ flowchart TB
 
 | App | Role |
 | --- | --- |
-| `apps/frontend` | Solid SPA and browser composition root. Owns routing, tenant switching, the oRPC canvas adapter, AI/sidebar contributions, and concrete canvas dependencies. |
+| `apps/frontend` | Solid SPA and browser composition root. Owns routing, the singleton oRPC connection, AI/sidebar contributions, and concrete canvas dependencies. |
 | `apps/cli` | Production Bun server and executable entry point. Builds the runtime registry, concrete services, API handlers, persistence, configuration, and static frontend delivery. |
 | `apps/widget-debug-tools` | Terminal-oriented local lab for exercising widget, file, resource, and agent flows without the full browser app. |
 | `apps/capsule-browser-acceptance` | Test application for real-browser Capsule, SDK, widget, and UI integration. It is not production composition. |
@@ -131,10 +127,9 @@ flowchart TB
 
 | Package | Role |
 | --- | --- |
-| `tenant-core` | Tenant identity, placement, immutable tenant context, and scoped-key contracts. |
 | `resource-runtime` | Resource capabilities, providers, gateways, and effect boundaries. |
-| `widget-contract` | Widget manifests, artifacts, immutable revisions, runtime descriptors, and publication contracts. |
-| `function-runtime` | Short-lived function dispatch, execution, scheduling, storage, sandbox, and usage interfaces. |
+| `widget-contract` | Widget manifest v4, executable projections, release descriptors, and runtime descriptors. |
+| `function-runtime` | Direct, history-free descriptor-driven function invocation and sandbox drivers. |
 | `canvas-contract` | Portable Cangine item, command, snapshot, event, query, descriptor, and document-transport contracts. |
 | `theme-contract` | State-free detailed theme and six-code semantic canvas-color types, constants, and validation. |
 | `service-theme` | Atomic theme registry/selection authority, built-in themes, semantic lookup, immutable snapshots, and generated DOM projection. |
@@ -154,9 +149,9 @@ flowchart TB
 
 | Package | Role |
 | --- | --- |
-| `api` | Consolidated oRPC contracts and tenant-authorized handlers. It is a transport boundary, not a persistence authority. |
+| `api` | Consolidated oRPC contracts and handlers. It is a transport boundary, not a persistence authority. |
 | `service-canvas` | Durable canvas commands, snapshots, queries, revisions, and events. `CanvasService` is the only durable canvas authority. |
-| `service-agent` | Agent sessions, approvals, draft workspaces, widget generation, preview, publication, and function orchestration. |
+| `service-agent` | Agent sessions, approvals, the filesystem widget root, catalog scans, atomic publication, ephemeral Preview, and widget generation. |
 | `service-widget-state` | Centralized, versioned JSON state for widget instances. `WidgetStateService` is the only widget-instance state authority. |
 | `service-event-publisher` | Publishes runtime service events into API subscription streams. |
 | `service-db` | Turso-backed models, stores, migrations, and recovery/constraint verification used by concrete OSS services. |
@@ -176,13 +171,17 @@ flowchart TB
    durable ordering and revisions. The browser `CanvasDocumentService` owns
    only the current optimistic session and communicates through the injected
    `TCanvasDocumentTransport`.
-2. **Widget lifecycle versus widget-instance state.** `service-agent` owns
-   mutable drafts and preview/publish orchestration; `widget-contract` defines
-   immutable artifacts and revisions; `ui-ai-chat` mounts them in the browser;
-   `WidgetStateService` alone owns each placed instance's versioned JSON state.
-3. **Tenant scope is an authority boundary.** The server derives tenant
-   context before calling services. The frontend must retire old canvas
-   runtimes before switching its transport and caches to a new tenant scope.
+2. **Widget authority is the filesystem.** Drafts, immutable published
+   folders, and ephemeral Preview live under one pinned widget root.
+   `service-agent` scans bounded catalog generations and publishes
+   atomically; `ui-ai-chat` mounts exact signed bytes in the browser;
+   `WidgetStateService` alone owns each placed instance's versioned JSON
+   state. The database stores no widget catalog, artifacts, Preview records,
+   or function history.
+3. **The application is single-user.** There is one singleton composition:
+   one database, resource store, canvas service, agent service, and oRPC
+   context. No tenant, organization, account, or membership scope exists;
+   plaintext secret reveal is exposed only on the trusted local human API.
 4. **Transport is not business logic.** `api` and `orpc-client` move typed
    requests and events. Durable decisions stay in services and portable rules
    stay in contract/runtime packages.
@@ -199,7 +198,7 @@ reads, and injected `tx.*` writes around thin orchestration edges.
 ## Deeper references
 
 - [Widget lifecycle and Capsule model](./llm.widget-system.md)
-- [Approved filesystem-first widget target (not yet implemented)](./widget-filesystem-design.md)
+- [Filesystem-first widget design report](./widget-filesystem-design.md)
 - [Canvas runtime and document ownership](../../packages/canvas/ARCHITECTURE.md)
 - [Managed/public package consumption](./managed-service-package-consumption.md)
 - [Current UI surfaces](./screens/SCREENS.md)

@@ -21,6 +21,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/generated/fixtures.json](apps/capsule-browser-acceptance/generated/fixtures.json) |  |
 | [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
 | [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
 | [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
@@ -49,10 +50,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
-| [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
-| [apps/cli/src/plugins/auth/CONSTANTS.ts](apps/cli/src/plugins/auth/CONSTANTS.ts) |  |
-| [apps/cli/src/plugins/auth/fn.oss-tenant-context.ts](apps/cli/src/plugins/auth/fn.oss-tenant-context.ts) |  |
-| [apps/cli/src/plugins/auth/types.ts](apps/cli/src/plugins/auth/types.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/canvas-argv.ts](apps/cli/src/plugins/cli/cmds/canvas-argv.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.add.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.add.canvas.ts) |  |
@@ -82,22 +79,20 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
 | [apps/cli/src/services/fn.redact-build-output.ts](apps/cli/src/services/fn.redact-build-output.ts) |  |
 | [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
-| [apps/cli/src/services/fn.widget-runtime-load-admission.ts](apps/cli/src/services/fn.widget-runtime-load-admission.ts) |  |
 | [apps/cli/src/services/fn.widget-ui-entry.ts](apps/cli/src/services/fn.widget-ui-entry.ts) |  |
 | [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
-| [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
 | [apps/cli/src/services/LocalWidgetPackageRegistrySync.ts](apps/cli/src/services/LocalWidgetPackageRegistrySync.ts) |  |
 | [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
-| [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
+| [apps/cli/src/services/ResourceServiceCapabilities.ts](apps/cli/src/services/ResourceServiceCapabilities.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
-| [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
 | [apps/cli/src/services/tx.terminate-widget-build-process-tree.ts](apps/cli/src/services/tx.terminate-widget-build-process-tree.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
 | [apps/cli/src/services/WidgetFilesystemManagementService.ts](apps/cli/src/services/WidgetFilesystemManagementService.ts) |  |
 | [apps/cli/src/services/WidgetFilesystemRuntimeCatalog.ts](apps/cli/src/services/WidgetFilesystemRuntimeCatalog.ts) |  |
 | [apps/cli/src/services/WidgetNpmDistributionBuild.ts](apps/cli/src/services/WidgetNpmDistributionBuild.ts) |  |
+| [apps/cli/src/services/WidgetPreviewService.ts](apps/cli/src/services/WidgetPreviewService.ts) |  |
 | [apps/cli/src/services/WidgetReleaseAttestationService.ts](apps/cli/src/services/WidgetReleaseAttestationService.ts) |  |
 | [apps/cli/src/services/WidgetRuntimeLoadAdmission.ts](apps/cli/src/services/WidgetRuntimeLoadAdmission.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
@@ -151,22 +146,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/services/canvas-document-transport-adapter.ts](apps/frontend/src/services/canvas-document-transport-adapter.ts) |  |
 | [apps/frontend/src/services/canvas-document-transport.ts](apps/frontend/src/services/canvas-document-transport.ts) |  |
 | [apps/frontend/src/services/canvas-runtime-retirement.ts](apps/frontend/src/services/canvas-runtime-retirement.ts) |  |
-| [apps/frontend/src/services/CONSTANTS.ts](apps/frontend/src/services/CONSTANTS.ts) |  |
-| [apps/frontend/src/services/fn.browser-tenant-scope.ts](apps/frontend/src/services/fn.browser-tenant-scope.ts) |  |
 | [apps/frontend/src/services/fn.widget-capsule-theme.ts](apps/frontend/src/services/fn.widget-capsule-theme.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
-| [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
-| [apps/frontend/src/services/tenant-runtime.ts](apps/frontend/src/services/tenant-runtime.ts) |  |
-| [apps/frontend/src/services/tenant-switch-coordinator.ts](apps/frontend/src/services/tenant-switch-coordinator.ts) |  |
-| [apps/frontend/src/services/tenant.ts](apps/frontend/src/services/tenant.ts) |  |
-| [apps/frontend/src/services/tenant.vitest.ts](apps/frontend/src/services/tenant.vitest.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
 | [apps/frontend/src/services/tx.route-notification-toast.ts](apps/frontend/src/services/tx.route-notification-toast.ts) |  |
 | [apps/frontend/src/services/tx.route-widget-capsule-output.ts](apps/frontend/src/services/tx.route-widget-capsule-output.ts) |  |
-| [apps/frontend/src/services/tx.switch-browser-tenant.ts](apps/frontend/src/services/tx.switch-browser-tenant.ts) |  |
 | [apps/frontend/src/services/widget-collaborative-state.ts](apps/frontend/src/services/widget-collaborative-state.ts) |  |
-| [apps/frontend/src/services/widget-collaborative-state.vitest.ts](apps/frontend/src/services/widget-collaborative-state.vitest.ts) |  |
 | [apps/frontend/src/startup-canvas.ts](apps/frontend/src/startup-canvas.ts) |  |
 | [apps/frontend/src/store.ts](apps/frontend/src/store.ts) |  |
 | [apps/frontend/src/styles/route-state.module.css](apps/frontend/src/styles/route-state.module.css) |  |
@@ -174,7 +160,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/utils/path-display.ts](apps/frontend/src/utils/path-display.ts) |  |
 | [apps/frontend/tsconfig.json](apps/frontend/tsconfig.json) |  |
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
-| [apps/frontend/vitest.config.ts](apps/frontend/vitest.config.ts) |  |
 
 ## apps/widget-debug-tools
 
@@ -284,6 +269,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/widget/api.config-save.ts](packages/api/src/widget/api.config-save.ts) |  |
 | [packages/api/src/widget/api.filesystem-error.ts](packages/api/src/widget/api.filesystem-error.ts) |  |
 | [packages/api/src/widget/api.placement-resolve.ts](packages/api/src/widget/api.placement-resolve.ts) |  |
+| [packages/api/src/widget/api.preview.ts](packages/api/src/widget/api.preview.ts) |  |
 | [packages/api/src/widget/api.publication.ts](packages/api/src/widget/api.publication.ts) |  |
 | [packages/api/src/widget/api.runtime-config.ts](packages/api/src/widget/api.runtime-config.ts) |  |
 | [packages/api/src/widget/api.runtime-load-widget.ts](packages/api/src/widget/api.runtime-load-widget.ts) |  |
@@ -455,7 +441,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/resource-runtime/src/local/DbResourceCoordinator.ts](packages/resource-runtime/src/local/DbResourceCoordinator.ts) |  |
 | [packages/resource-runtime/src/local/fn.resource-data.ts](packages/resource-runtime/src/local/fn.resource-data.ts) |  |
 | [packages/resource-runtime/src/local/fn.resource-key-value.ts](packages/resource-runtime/src/local/fn.resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical resource key-value files. |
-| [packages/resource-runtime/src/local/fn.resource-manager-gateway.ts](packages/resource-runtime/src/local/fn.resource-manager-gateway.ts) | Pure conversion from the legacy-neutral manager model to public gateway contracts. |
+| [packages/resource-runtime/src/local/fn.resource-manager-gateway.ts](packages/resource-runtime/src/local/fn.resource-manager-gateway.ts) | Pure conversion from the local manager model to public gateway contracts. |
 | [packages/resource-runtime/src/local/index.ts](packages/resource-runtime/src/local/index.ts) | Node-local Resource Store implementation boundary. |
 | [packages/resource-runtime/src/local/KvResource.ts](packages/resource-runtime/src/local/KvResource.ts) |  |
 | [packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts](packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts) | Neutral contracts for independently persisted KV and secret-store entries. |
@@ -654,17 +640,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/_embedded-migrations.ts](packages/service-db/src/_embedded-migrations.ts) |  |
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
 | [packages/service-db/src/CanvasItemStoreTurso.ts](packages/service-db/src/CanvasItemStoreTurso.ts) |  |
+| [packages/service-db/src/ChatStoreTurso.ts](packages/service-db/src/ChatStoreTurso.ts) |  |
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
 | [packages/service-db/src/core/fn.resource-name.ts](packages/service-db/src/core/fn.resource-name.ts) |  |
 | [packages/service-db/src/database-transaction/CONSTANTS.ts](packages/service-db/src/database-transaction/CONSTANTS.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fn.database-column-type.ts](packages/service-db/src/DbServiceTurso/fn.database-column-type.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts](packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.json.ts](packages/service-db/src/DbServiceTurso/fn.json.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fn.legacy-row.ts](packages/service-db/src/DbServiceTurso/fn.legacy-row.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts](packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.database-checks.ts](packages/service-db/src/DbServiceTurso/fx.database-checks.ts) | Read complete Turso integrity and quick-check diagnostics. |
 | [packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts](packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts) |  |
@@ -677,7 +661,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
-| [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
@@ -688,12 +671,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
-| [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
-| [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
-| [packages/service-db/src/migrations/003-agent-authoring.sql](packages/service-db/src/migrations/003-agent-authoring.sql) |  |
-| [packages/service-db/src/migrations/004-live-widget-preview.sql](packages/service-db/src/migrations/004-live-widget-preview.sql) |  |
-| [packages/service-db/src/migrations/005-capsule-api-groups.sql](packages/service-db/src/migrations/005-capsule-api-groups.sql) |  |
-| [packages/service-db/src/migrations/006-preview-source-maps.sql](packages/service-db/src/migrations/006-preview-source-maps.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
@@ -774,7 +751,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/shared-functions/src/functional/fn.memoize.ts](packages/shared-functions/src/functional/fn.memoize.ts) |  |
 | [packages/shared-functions/src/functional/fn.pipe.ts](packages/shared-functions/src/functional/fn.pipe.ts) |  |
 | [packages/shared-functions/src/functional/fn.throttle.ts](packages/shared-functions/src/functional/fn.throttle.ts) |  |
-| [packages/shared-functions/src/omnidraw-config/CONSTANTS.ts](packages/shared-functions/src/omnidraw-config/CONSTANTS.ts) |  |
 | [packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts) |  |
 | [packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts) |  |
 | [packages/shared-functions/src/serialized-operation/CONSTANTS.ts](packages/shared-functions/src/serialized-operation/CONSTANTS.ts) |  |
@@ -794,19 +770,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/tapable/src/SyncExitHook.ts](packages/tapable/src/SyncExitHook.ts) |  |
 | [packages/tapable/src/SyncHook.ts](packages/tapable/src/SyncHook.ts) |  |
 | [packages/tapable/tsconfig.json](packages/tapable/tsconfig.json) |  |
-
-## packages/tenant-core
-
-| path | jsdocs |
-|---|---|
-| [packages/tenant-core/package.json](packages/tenant-core/package.json) |  |
-| [packages/tenant-core/src/core/fn.scoped-key.ts](packages/tenant-core/src/core/fn.scoped-key.ts) | Builds collision-safe keys for tenant-scoped in-memory registries and stores. |
-| [packages/tenant-core/src/core/fn.tenant-context.ts](packages/tenant-core/src/core/fn.tenant-context.ts) | Evaluates immutable tenant context capabilities and placement fences. |
-| [packages/tenant-core/src/index.ts](packages/tenant-core/src/index.ts) | Public tenant context contract surface. |
-| [packages/tenant-core/src/interface.ts](packages/tenant-core/src/interface.ts) | Narrow capabilities for deriving tenant context and resolving placement. |
-| [packages/tenant-core/src/types.ts](packages/tenant-core/src/types.ts) | Public tenant identity, scope, and placement value types. |
-| [packages/tenant-core/tsconfig.build.json](packages/tenant-core/tsconfig.build.json) |  |
-| [packages/tenant-core/tsconfig.json](packages/tenant-core/tsconfig.json) |  |
 
 ## packages/theme-contract
 
@@ -834,6 +797,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/canvas-extension/fn.widget-catalog-event.ts](packages/ui-ai-chat/src/canvas-extension/fn.widget-catalog-event.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/preview-owner.ts](packages/ui-ai-chat/src/canvas-extension/preview-owner.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts](packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx](packages/ui-ai-chat/src/chat/components/AsyncStateView.tsx) |  |
@@ -929,7 +893,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/core/fn.filesystem-path.ts](packages/widget-contract/src/core/fn.filesystem-path.ts) | Pure UTF-8, confined path, and portable icon-shape rules. |
 | [packages/widget-contract/src/core/fn.filesystem-release.ts](packages/widget-contract/src/core/fn.filesystem-release.ts) | Pure exact-file and runtime validation for one current widget publication. |
 | [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
-| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v3. |
+| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure path and resource-requirement normalization shared by widget manifests. |
 | [packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts](packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts) |  |
 | [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
 | [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
@@ -990,7 +954,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
 | [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
 | [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Focused gate for typed, bounded, short-lived server functions. |
-| [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
 | [scripts/test-packed-canvas-kernel.ts](scripts/test-packed-canvas-kernel.ts) | Packs the public canvas kernel and proves a clean external browser consumer. |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |

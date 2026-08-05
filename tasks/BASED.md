@@ -484,7 +484,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D3](d/D3.md) - canvas projection: remove remaining scale cliffs
 - [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
 - [ ]: [D5](d/D5.md) - packages: publish the managed-service dependency set
-- [R]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
+- [x]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
 
 ## Pragmatic Code Style
 

@@ -1,6 +1,6 @@
 # Omnidraw screen atlas
 
-This is the desktop visual reference for Omnidraw. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-08-01. The local product data shown here is illustrative and contains no real secrets.
+This is the desktop visual reference for Omnidraw. It covers the active app shell, canvas, widget inspector, and resource workspaces as of the filesystem-first single-user redesign (2026-08-04). The local product data shown here is illustrative and contains no real secrets.
 
 All screenshots are optimized WebP files under [`assets/`](assets/). Capture a new image when a route, workspace, modal, or interaction state changes meaningfully; avoid adding cosmetic duplicates.
 
@@ -10,10 +10,9 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
 | [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, draft Preview, direct widget placement |
-| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, runs, logs, resources, files, draft editing |
+| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
-| [Public website](#public-website) | `/`, `/docs`, `/docs/*` | Landing page, documentation index, article layout |
 
 ## App shell
 
@@ -36,7 +35,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Populated canvas | Selection and style tools |
 | --- | --- |
 | ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with compact semantic background and border color controls](assets/11-canvas-selection-style.webp) |
-| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected rectangle.** The contextual style panel exposes exactly six theme-relative background choices (transparent, neutral, red, yellow, green, blue), five non-transparent border choices, stroke, width, and opacity. Swatches retain keyboard focus, pressed-state, mixed-value, and transparent-checkerboard affordances. |
+| **`/c/:id` — Hosted widget.** A published widget instance placed and resized on the grid; it always follows the current publication. | **Selected rectangle.** The contextual style panel exposes exactly six theme-relative background choices (transparent, neutral, red, yellow, green, blue), five non-transparent border choices, stroke, width, and opacity. Swatches retain keyboard focus, pressed-state, mixed-value, and transparent-checkerboard affordances. |
 
 | Widget actions | Widget canvas maximize |
 | --- | --- |
@@ -51,12 +50,12 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens a full-stack Preview beside its originating chat. Guest content occupies the flexible upper lane; a compact, keyboard-focusable host-owned log terminal is docked below it with bounded scrollback and a clear action. Revision/binding selection, queued/install/build/validation/failure/superseded/ready progress, and structured runtime diagnostics stay in this terminal rather than covering or entering guest content; the latest diagnostic retains its host-owned **Resolve** action. The durable frame survives restart, follows committed edits automatically, and keeps its last known good UI visible through failures. Its functions use the exact retained server artifact and real selected binding revision. The right-aligned **Manage** menu keeps the title lane draggable and contains live-update pause/resume, build cancellation, Retry, Reset, and **Publish current draft**. Publish stays available while the durable frame target exists; confirmation reuses a matching construction or builds and validates the newest stable source before exact promotion. |
+| **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data, mounts the exact signed bytes of the live session, and after a host restart shows **Preview stopped — build again.** with an explicit rebuild action. Preview server functions run directly against the session's exact server artifact with its selected resources. |
 
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement pins an immutable revision; every successful Draft drop creates a new frame and builds the current draft at the world-space drop point. |
+| **Sidebar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement follows the current publication; every successful Draft drop creates an ephemeral Preview frame at the world-space drop point. |
 
 ## Widget inspector
 
@@ -67,12 +66,13 @@ The widget route provides one tabbed workspace for published and draft widget de
 | ![Published Hacker News widget overview](assets/20-widget-published-overview.webp) | ![Read-only configuration for a published widget](assets/21-widget-published-config.webp) |
 | **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** Immutable published configuration with the edit-as-draft entry point. |
 
-The current inspector tabs are **Overview**, **Config**, **Functions**, **Collaborative State**, **Runs**, **Logs**, **Resources**, and **Files**. Published configuration and source are read from the active immutable revision; draft configuration edits the mutable draft.
+The current inspector tabs are **Overview**, **Config**, **Functions**, **Collaborative State**, **Resources**, and **Files**. Published configuration and source are read from the exact published folder; draft configuration edits the mutable draft with digest-fenced saves.
 
-Draft-header publication uses the same current-source contract as the Preview
-frame. With one target it is selected automatically; with several persisted
-Preview frames the user chooses the canvas/frame. Readiness and binding build
-details are server-owned and are not frozen into the confirmation request.
+Draft publication offers two actions. **Publish metadata** atomically replaces
+only the published `omnidraw.json` and preserves every executable byte.
+**Build & publish** rebuilds the current draft source and promotes the exact
+validated construction; existing canvas instances remount while keeping their
+instance state and resource choices.
 
 | Files | Draft config |
 | --- | --- |
@@ -86,7 +86,7 @@ Key-value and secret resources share the same overview/data shell. Secret values
 | Key-value overview | Empty key-value data |
 | --- | --- |
 | ![Key-value resource overview](assets/30-resource-kv-overview.webp) | ![Empty key-value resource data table](assets/31-resource-kv-data-empty.webp) |
-| **`?tab=overview`.** Status, type, revision, settings, revision bindings, and active uses. | **`?tab=data`.** Key filter, pagination, empty state, and the add-value action. |
+| **`?tab=overview`.** Status, type, settings, and active uses. | **`?tab=data`.** Key filter, pagination, empty state, and the add-value action. |
 
 | Add value | Populated key-value data |
 | --- | --- |
@@ -112,7 +112,7 @@ Database resources add schema, data, and SQL workspaces. Schema edits remain a d
 | Schema draft | Review and apply |
 | --- | --- |
 | ![Database schema draft with pending table and columns](assets/42-resource-db-schema-draft.webp) | ![Review and Apply dialog for database schema changes](assets/43-resource-db-review-apply.webp) |
-| **Schema draft.** Pending changes, table details, columns, indexes, triggers, and generated SQL. | **Review & apply.** Ordered changes, affected revision bindings/active uses, and coordinated-operation acknowledgement. |
+| **Schema draft.** Pending changes, table details, columns, indexes, triggers, and generated SQL. | **Review & apply.** Ordered changes, active uses, and coordinated-operation acknowledgement. |
 
 | Add row | Data table |
 | --- | --- |
@@ -123,20 +123,6 @@ Database resources add schema, data, and SQL workspaces. Schema edits remain a d
 | --- | --- |
 | ![Live SQL console showing a SELECT query and result](assets/46-resource-db-sql.webp) | ![Approval dialog for a potentially mutating SQL statement](assets/47-resource-db-sql-approval.webp) |
 | **`?tab=sql` — Read query.** SQL editor, run action, and paginated result table. | **`?tab=sql` — Write guard.** Statement review plus explicit acknowledgement before execution. |
-
-## Public website
-
-The public site uses a separate light visual system. The documentation index and one article capture the two distinct documentation layouts; `/docs/widgets-and-functions`, `/docs/installation`, and `/docs/faq` reuse the article shell.
-
-| Landing page | Documentation index |
-| --- | --- |
-| ![Omnidraw public landing page](assets/50-web-landing.webp) | ![Omnidraw documentation index](assets/51-web-docs-index.webp) |
-| **`/`.** Product proposition, canvas preview, and top-level documentation/GitHub links. | **`/docs`.** Guide navigation and cards for each documentation section. |
-
-| Getting Started article |
-| --- |
-| ![Getting Started documentation article](assets/52-web-getting-started.webp) |
-| **`/docs/getting-started`.** Representative article layout with guide navigation, prerequisites, install commands, and run instructions. |
 
 ## Coverage boundaries
 

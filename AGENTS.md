@@ -21,7 +21,6 @@ packages/service-widget-state -> centralized versioned widget JSON state
 packages/service-theme -> built-in themes and runtime theme synchronization
 packages/shared-functions -> shared functional helpers and Omnidraw config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives
-packages/tenant-core -> public tenant context, placement, and scoped-key contracts
 packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
 packages/widget-contract -> public widget manifest, artifact, and revision contracts
 
@@ -34,12 +33,15 @@ selected by package publishing scripts.
 
 Currently published on public npm at `0.5.0` as of 2026-08-01:
 
-- `@omnidraw/tenant-core`
 - `@omnidraw/runtime`
 - `@omnidraw/widget-contract`
 - `@omnidraw/resource-runtime`
 - `@omnidraw/function-runtime`
 - `@omnidraw/sdk`
+
+`@omnidraw/tenant-core` was published at `0.5.0` and is retired: the
+application is single-user and the package no longer exists in this workspace.
+It must never be republished or reintroduced.
 
 Versioned release packages awaiting their first public npm publication:
 

@@ -130,7 +130,7 @@ function assertPreconditions(
  */
 export function createInMemoryCanvasTransport(args: TTransportArgs): TCanvasTransportHarness {
   let revision = args.initialRevision ?? (args.initialItems?.length ? 1 : 0)
-  let clockMs = 1_000
+  let clockSec = 1_000
   let executedCommands = 0
   let cancelledSubscriptions = 0
   let observedEvents = 0
@@ -141,8 +141,8 @@ export function createInMemoryCanvasTransport(args: TTransportArgs): TCanvasTran
         id: item.id,
         item: clone(item),
         itemRevision: 1,
-        createdAtMs: clockMs,
-        updatedAtMs: clockMs,
+        createdAtSec: String(clockSec),
+        updatedAtSec: String(clockSec),
       }),
     ]),
   )
@@ -229,7 +229,7 @@ export function createInMemoryCanvasTransport(args: TTransportArgs): TCanvasTran
 
       fnAssertValidCanvasItems([...nextNodes.values()])
       revision += 1
-      clockMs += 1
+      clockSec += 1
       const nextItems = new Map(items)
       for (const deletedId of deletedIds) nextItems.delete(deletedId)
       const changedItems: TCanvasItemSnapshot[] = []
@@ -240,8 +240,8 @@ export function createInMemoryCanvasTransport(args: TTransportArgs): TCanvasTran
           id: changedId,
           item: clone(item),
           itemRevision: (previous?.itemRevision ?? 0) + 1,
-          createdAtMs: previous?.createdAtMs ?? clockMs,
-          updatedAtMs: clockMs,
+          createdAtSec: previous?.createdAtSec ?? String(clockSec),
+          updatedAtSec: String(clockSec),
         }) satisfies TCanvasItemSnapshot
         nextItems.set(changedId, snapshot)
         changedItems.push(clone(snapshot))
