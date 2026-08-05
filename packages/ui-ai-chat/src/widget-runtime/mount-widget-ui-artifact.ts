@@ -16,6 +16,7 @@ import {
 import {
   ZWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnWidgetBrowserFunctionCapabilityRequestMatches,
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetCapsuleCapabilityRequest,
   type TWidgetCapsuleTheme,
@@ -153,22 +154,28 @@ async function createMountCatalog(
     throw new Error('Widget server-function metadata does not match signed capability requests.');
   }
 
-  const signedFunctionDigestSha256 = functionRequests.length === 0
+  const signedFunctionRequest = functionRequests.length === 0
     ? null
-    : functionDescriptorDigest(functionRequests[0]!);
+    : functionRequests[0]!;
   if (
-    signedFunctionDigestSha256 !== null
-    && signedFunctionDigestSha256
-      !== args.browserFunctionDescriptorsDigestSha256
+    signedFunctionRequest !== null
+    && !fnWidgetBrowserFunctionCapabilityRequestMatches(
+      signedFunctionRequest,
+      args.functionDescriptors,
+    )
   ) {
     throw new Error(
-      'Widget browser function descriptor digest does not match the signed capability request.',
+      'Widget browser function descriptors do not match the signed capability request.',
     );
   }
-  const functionContract = signedFunctionDigestSha256 === null
+  // contractHash binds the canonical server descriptor file (modulePath
+  // included); that digest is unverifiable in the browser by design, so its
+  // binding stays a host-side check. The client only re-derives the contract
+  // under the signed selector.
+  const functionContract = signedFunctionRequest === null
     ? null
     : await createOmnidrawServerFunctionCapabilityContract({
-        descriptorDigestSha256: signedFunctionDigestSha256,
+        descriptorDigestSha256: functionDescriptorDigest(signedFunctionRequest),
         functions: args.functionDescriptors,
       });
   if (functionContract !== null) {

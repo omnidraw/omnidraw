@@ -483,7 +483,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
 - [x]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
 - [x]: [E41](e/E41.md) - widgets: filesystem-first publication and database hard cut
-- [ ]: [E42](e/E42.md) - widgets: server-function mounts reject builder-signed capability digest (a04fb57b regression)
+- [x]: [E42](e/E42.md) - widgets: server-function mounts reject builder-signed capability digest (a04fb57b regression)
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
@@ -493,6 +493,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [D5](d/D5.md) - packages: publish the managed-service dependency set
 - [x]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
 - [?]: [D7](d/D7.md) - undecided: per-canvas revision is a coarse optimistic concurrency counter
+- [ ]: [D8](d/D8.md) - widgets: headless mount-catalog dry-run in od_widget_validate
+- [ ]: [D9](d/D9.md) - local registry: decouple dev boot from publish, automate the dev-prerelease escape hatch, stop version-bump churn
 
 ## Pragmatic Code Style
 

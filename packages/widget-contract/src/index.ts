@@ -98,6 +98,7 @@ export {
   fnNormalizeWidgetServerFunctionDescriptors,
   fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetBrowserFunctionCapabilityRequestMatches,
   fnWidgetServerFunctionCapabilityRequestMatches,
 } from './core/fn.function-descriptor';
 export { fnGenerateWidgetServerFunctionClientModule } from './core/fn.server-function-client-module';

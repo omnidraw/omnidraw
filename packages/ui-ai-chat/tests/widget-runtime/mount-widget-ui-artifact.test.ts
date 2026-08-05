@@ -28,7 +28,14 @@ import type {
   TVerifiedWidgetUiArtifact,
 } from '../../src/widget-runtime/interface';
 import {
+  createOmnidrawServerFunctionCapabilityContract,
+  fnOmnidrawCapabilityRequest,
+  fnOmnidrawServerFunctionCapabilitySelector,
+} from '@omnidraw/capsule-omnidraw/capabilities';
+import {
   fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetCapsuleApiGroup,
   type TWidgetCapsuleTheme,
@@ -57,6 +64,25 @@ function browserFunctionDigest(
     .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
     .digest('hex');
 }
+
+function serverFunctionDigest(
+  descriptors: Parameters<
+    typeof fnCanonicalizeWidgetServerFunctionDescriptors
+  >[0],
+): string {
+  return createHash('sha256')
+    .update(fnCanonicalizeWidgetServerFunctionDescriptors(descriptors))
+    .digest('hex');
+}
+
+// Builder convention (WidgetArtifactBuilderCapsule): the signed selector binds
+// the canonical server descriptor file, modulePath included.
+const serverFunctionMetadata = functionMetadata.map((descriptor) => ({
+  ...descriptor,
+  modulePath: 'server/main.server.ts',
+}));
+const SERVER_FUNCTION_DIGEST = serverFunctionDigest(serverFunctionMetadata);
+const SERVER_HASH = `sha256:${SERVER_FUNCTION_DIGEST}` as const;
 
 const FUNCTION_DESCRIPTOR_DIGEST = browserFunctionDigest(functionMetadata);
 const HASH_A = `sha256:${FUNCTION_DESCRIPTOR_DIGEST}` as const;
@@ -120,7 +146,7 @@ const schema = {
 
 function descriptor(
   id: string,
-  contractHash: typeof HASH_A | typeof HASH_B,
+  contractHash: string,
   operations: readonly Readonly<{ name: string; kind: 'call' | 'stream' }>[],
 ): CapsuleCapabilityDescriptor {
   return {
@@ -138,8 +164,8 @@ function descriptor(
 }
 
 const functionDescriptor = descriptor(
-  `omnidraw.widget.functions.h${FUNCTION_DESCRIPTOR_DIGEST}`,
-  HASH_A,
+  `omnidraw.widget.functions.h${SERVER_FUNCTION_DIGEST}`,
+  SERVER_HASH,
   [{ name: 'count', kind: 'call' }],
 );
 const alternateFunctionDescriptor = descriptor(
@@ -188,13 +214,10 @@ function catalog(
 
 function runtimeDescriptor(
   mode: 'preview' | 'published',
-  requests = [{
-    id: functionDescriptor.id,
-    versionRange: '1.0.0',
-    contractHash: HASH_A,
-    required: true,
-    operations: ['count'],
-  }],
+  requests = [fnOmnidrawCapabilityRequest(
+    fnOmnidrawServerFunctionCapabilitySelector(SERVER_FUNCTION_DIGEST),
+    ['count'],
+  )],
   apis: readonly TWidgetCapsuleApiGroup[] = DOM_APIS,
   channels: TVerifiedWidgetUiArtifact['runtimeDescriptor']['channels'] = null,
 ) {
@@ -676,7 +699,7 @@ describe('Capsule widget mount boundary', () => {
       expect(factory.created[0]!.options.capabilities).toEqual([
         expect.objectContaining({
           id: functionDescriptor.id,
-          contractHash: HASH_A,
+          contractHash: SERVER_HASH,
           operations: ['count'],
         }),
       ]);
@@ -855,36 +878,131 @@ describe('Capsule widget mount boundary', () => {
       expect(functionBridge.dispose).toHaveBeenCalledOnce();
     }
 
-    const signedMismatchBridge: TWidgetFunctionHostBridge = {
-      identity: {
-        kind: 'draft_preview',
-        draftId: 'draft-a',
-        definitionId: 'definition-a',
-        revision: 'revision-a',
-      },
-      invoke: vi.fn(),
-      dispose: vi.fn(),
-    };
-    await expect(mount.mount({
-      mode: 'published',
-      root: document.createElement('div'),
-      identity: signedMismatchBridge.identity,
-      artifact: artifact('published', [{
-        id: `omnidraw.widget.functions.h${'b'.repeat(64)}`,
-        versionRange: '1.0.0',
+    // The client cannot re-derive the server digest (modulePath is withheld),
+    // so only client-checkable inconsistencies may be rejected: tampered
+    // operations, a contractHash that contradicts the signed id, or a wrong
+    // capability version.
+    const signedSelector = fnOmnidrawServerFunctionCapabilitySelector(
+      SERVER_FUNCTION_DIGEST,
+    );
+    const inconsistencies = [
+      fnOmnidrawCapabilityRequest(signedSelector, ['tampered']),
+      {
+        ...fnOmnidrawCapabilityRequest(signedSelector, ['count']),
         contractHash: HASH_B,
-        required: true,
-        operations: ['count'],
-      }]),
-      functionDescriptors: functionMetadata,
-      browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
-      functionBridge: signedMismatchBridge,
-      collaborativeStateBridge: null,
-      onFatal: vi.fn(),
-    })).rejects.toThrow('does not match the signed capability request');
-    expect(signedMismatchBridge.dispose).toHaveBeenCalledOnce();
+      },
+      {
+        ...fnOmnidrawCapabilityRequest(signedSelector, ['count']),
+        versionRange: '9.9.9',
+      },
+    ];
+    for (const inconsistency of inconsistencies) {
+      const signedMismatchBridge: TWidgetFunctionHostBridge = {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
+        },
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      };
+      await expect(mount.mount({
+        mode: 'published',
+        root: document.createElement('div'),
+        identity: signedMismatchBridge.identity,
+        artifact: artifact('published', [inconsistency]),
+        functionDescriptors: functionMetadata,
+        browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
+        functionBridge: signedMismatchBridge,
+        collaborativeStateBridge: null,
+        onFatal: vi.fn(),
+      })).rejects.toThrow('do not match the signed capability request');
+      expect(signedMismatchBridge.dispose).toHaveBeenCalledOnce();
+    }
 
     expect(factory.create).not.toHaveBeenCalled();
+  });
+
+  test('mounts builder-signed server-function capabilities in preview and published modes', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockImplementation(
+      async (_algorithm, value) => {
+        const bytes = ArrayBuffer.isView(value)
+          ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+          : new Uint8Array(value);
+        return Uint8Array.from(
+          createHash('sha256').update(bytes).digest(),
+        ).buffer;
+      },
+    );
+    try {
+      // Regression (E42): WidgetArtifactBuilderCapsule signs contractHash with
+      // the canonical server descriptor digest (modulePath included). The mount
+      // boundary must accept that convention together with the browser
+      // projection and its own digest; comparing the two digests across domains
+      // made every server-function widget unmountable.
+      const browserDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
+        serverFunctionMetadata,
+      );
+      const contract = await createOmnidrawServerFunctionCapabilityContract({
+        descriptorDigestSha256: SERVER_FUNCTION_DIGEST,
+        functions: browserDescriptors,
+      });
+      if (contract === null) throw new Error('Expected a function contract.');
+      expect(contract.request.contractHash).toBe(SERVER_HASH);
+
+      const factory = fakeHostFactory();
+      const coordinator = new CapsuleWidgetHostCoordinator({
+        document,
+        catalog: () => catalog('catalog-a', []),
+        hostFactory: factory,
+      });
+      const mount = createWidgetUiArtifactMountPort({
+        coordinator,
+        createStreamId: () => 'stream-a',
+        digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+        nowMs: () => 0,
+        theme: {
+          read: () => THEME,
+          subscribe: () => vi.fn(),
+        },
+        output: { notification: vi.fn() },
+      });
+
+      for (const [index, mode] of (['preview', 'published'] as const).entries()) {
+        const functionBridge: TWidgetFunctionHostBridge = {
+          identity: {
+            kind: 'draft_preview',
+            draftId: 'draft-a',
+            definitionId: 'definition-a',
+            revision: 'revision-a',
+          },
+          invoke: vi.fn(),
+          dispose: vi.fn(),
+        };
+        const handle = await mount.mount({
+          mode,
+          root: document.createElement('div'),
+          identity: functionBridge.identity,
+          artifact: artifact(mode, [contract.request]),
+          functionDescriptors: browserDescriptors,
+          browserFunctionDescriptorsDigestSha256:
+            browserFunctionDigest(browserDescriptors),
+          functionBridge,
+          collaborativeStateBridge: null,
+          onFatal: vi.fn(),
+        });
+        const mountOptions = factory.created[index]!.mount.mock.calls[0]![0];
+        expect(mountOptions.capabilityBindings).toHaveLength(1);
+        expect(mountOptions.capabilityBindings[0]!.descriptor.id).toBe(
+          functionDescriptor.id,
+        );
+        await handle.destroy('test-complete');
+      }
+      await coordinator.destroy();
+    } finally {
+      digest.mockRestore();
+    }
   });
 
   test('delivers fixed props/theme/output channels and releases listeners at destroy', async () => {
@@ -1251,7 +1369,7 @@ describe('Capsule widget mount boundary', () => {
       effect: 'allow',
       id: functionDescriptor.id,
       versionRange: '1.0.0',
-      contractHash: HASH_A,
+      contractHash: SERVER_HASH,
       operations: ['count'],
     }, {
       effect: 'allow',

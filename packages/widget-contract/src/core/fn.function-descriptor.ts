@@ -148,6 +148,31 @@ export function fnWidgetServerFunctionCapabilityRequestMatches(
     && expectedOperations.every((operation, index) => operation === actualOperations[index]);
 }
 
+/**
+ * Client-side twin of `fnWidgetServerFunctionCapabilityRequestMatches`.
+ * The browser cannot re-derive the server digest (modulePath is withheld
+ * from the projection), so this checks only what the client can verify:
+ * the signed selector is self-consistent and its operations/version/required
+ * fields match the browser descriptor projection. The server-digest binding
+ * of `contractHash` stays a host-side check.
+ */
+export function fnWidgetBrowserFunctionCapabilityRequestMatches(
+  request: TWidgetCapsuleCapabilityRequest,
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+): boolean {
+  const idMatch = /^omnidraw\.widget\.functions\.h([0-9a-f]{64})$/.exec(request.id);
+  if (idMatch === null) return false;
+  const expectedOperations = descriptors
+    .map((descriptor) => descriptor.exportName)
+    .sort(compareText);
+  const actualOperations = [...request.operations].sort(compareText);
+  return request.contractHash === `sha256:${idMatch[1]!}`
+    && request.versionRange === SERVER_FUNCTION_CAPABILITY_VERSION
+    && request.required
+    && expectedOperations.length === actualOperations.length
+    && expectedOperations.every((operation, index) => operation === actualOperations[index]);
+}
+
 export function fnValidateWidgetServerFunctionDescriptors(
   manifest: TWidgetManifestV1 | TWidgetExecutableManifestProjection,
   descriptors: readonly TWidgetServerFunctionDescriptor[],
