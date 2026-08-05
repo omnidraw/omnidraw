@@ -512,6 +512,7 @@ export function buildRuntime(
     widgetId: null,
   });
   let lastMaximizedWidgetId: string | null = null;
+  let lastWidgetCreationExtension: ICanvasRuntimeExtension | null = null;
   let normalizingWidgetShell = false;
   let selectionOverlaySuppressed = false;
   const shellSelectionOverlayOwner = Object.freeze({});
@@ -682,13 +683,28 @@ export function buildRuntime(
                           creation,
                           engine: engine!,
                         });
-                        if (nodes !== undefined && nodes !== null) return nodes;
+                        if (nodes !== undefined && nodes !== null) {
+                          lastWidgetCreationExtension = extension;
+                          return nodes;
+                        }
                       }
+                      lastWidgetCreationExtension = null;
                       return null;
                     },
                   },
                 }
               : {}),
+          },
+          // One-shot extensions (e.g. AI Chat) opt out of the sticky widget
+          // tool right after their committed placement is selected.
+          onWidgetCreated: () => {
+            const extension = lastWidgetCreationExtension;
+            lastWidgetCreationExtension = null;
+            if (
+              extension?.oneShotWidgetCreation !== true
+              || editorSession?.editor.state.activeToolId !== 'widget'
+            ) return;
+            editorSession.editor.setActiveTool('select');
           },
           onCallbackError: (error) => {
             reportTraceCallbackError(config.trace, 'editor', error);
@@ -959,6 +975,7 @@ export function buildRuntime(
       releaseEditorShell = null;
       await attempt(() => editorShell?.());
       lastMaximizedWidgetId = null;
+      lastWidgetCreationExtension = null;
       normalizingWidgetShell = false;
       if (selectionOverlaySuppressed) {
         selectionOverlaySuppressed = false;

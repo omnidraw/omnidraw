@@ -50,6 +50,11 @@ export type TCanvasRuntimeExtensionInstall = Readonly<{
 
 export interface ICanvasRuntimeExtension {
   readonly name: string;
+  /**
+   * When true, the canvas returns to the select tool immediately after this
+   * extension's widget creation commits (one-shot placement). Default: sticky.
+   */
+  oneShotWidgetCreation?: boolean;
   createWidgetNodes?(
     context: Readonly<{
       config: TCanvasRuntimeExtensionConfig;

@@ -820,7 +820,7 @@ describe('managed composition architecture boundaries', () => {
       ['@omnidraw/theme-contract', '0.5.0'],
       ['@omnidraw/canvas-contract', '0.7.0'],
       ['@omnidraw/service-theme', '0.5.0'],
-      ['@omnidraw/canvas', '0.6.0'],
+      ['@omnidraw/canvas', '0.6.1'],
     ])
 
     for (const [name, directory] of Object.entries(CANVAS_KERNEL_PACKAGES)) {

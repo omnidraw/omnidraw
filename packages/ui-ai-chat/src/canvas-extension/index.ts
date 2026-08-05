@@ -193,6 +193,7 @@ export function createAiChatCanvasExtension(
 ): ICanvasRuntimeExtension {
   return {
     name: 'ai-chat',
+    oneShotWidgetCreation: true,
     createWidgetNodes({ creation }) {
       const bounds = creation.draft.worldBounds;
       return [fnCreateAiWidgetNode({

@@ -1013,4 +1013,100 @@ describe('canvas runtime composition', () => {
     expect(runtimeState.segmentModes).toEqual(['smooth', 'elbow']);
     await runtime.shutdown();
   });
+
+  test('returns to select tool after one-shot widget creation commits', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const chatNode = Object.freeze({
+      id: 'widget-chat',
+      kind: 'widget-frame',
+    });
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      wait,
+      themeService,
+    }, [{
+      name: 'one-shot',
+      oneShotWidgetCreation: true,
+      createWidgetNodes: () => [chatNode as never],
+      install: () => ({}),
+    }]);
+    await runtime.boot();
+
+    const sessionConfig = runtimeState.sessionConfig as {
+      editor: {
+        creation: {
+          factories: {
+            widget(creation: unknown): readonly unknown[] | null;
+          };
+        };
+        onWidgetCreated(nodeId: string): void;
+      };
+    };
+    const editor = runtimeState.editorController as {
+      state: { activeToolId: string };
+      setActiveTool(toolId: string): void;
+    };
+    editor.setActiveTool('widget');
+    expect(sessionConfig.editor.creation.factories.widget({}))
+      .toEqual([chatNode]);
+    sessionConfig.editor.onWidgetCreated('widget-chat');
+
+    expect(editor.state.activeToolId).toBe('select');
+    expect(runtimeState.activeToolIds).toEqual(['widget', 'select']);
+
+    await runtime.shutdown();
+  });
+
+  test('keeps sticky widget tool for extensions without one-shot opt-in', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const stickyNode = Object.freeze({
+      id: 'widget-sticky',
+      kind: 'widget-frame',
+    });
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      wait,
+      themeService,
+    }, [{
+      name: 'sticky',
+      createWidgetNodes: () => [stickyNode as never],
+      install: () => ({}),
+    }]);
+    await runtime.boot();
+
+    const sessionConfig = runtimeState.sessionConfig as {
+      editor: {
+        creation: {
+          factories: {
+            widget(creation: unknown): readonly unknown[] | null;
+          };
+        };
+        onWidgetCreated(nodeId: string): void;
+      };
+    };
+    const editor = runtimeState.editorController as {
+      state: { activeToolId: string };
+      setActiveTool(toolId: string): void;
+    };
+    editor.setActiveTool('widget');
+    expect(sessionConfig.editor.creation.factories.widget({}))
+      .toEqual([stickyNode]);
+    sessionConfig.editor.onWidgetCreated('widget-sticky');
+
+    expect(editor.state.activeToolId).toBe('widget');
+    expect(runtimeState.activeToolIds).toEqual(['widget']);
+    // A repeated hook without a new claimed creation must stay inert.
+    sessionConfig.editor.onWidgetCreated('widget-sticky');
+    expect(runtimeState.activeToolIds).toEqual(['widget']);
+
+    await runtime.shutdown();
+  });
 });

@@ -302,6 +302,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
 - [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
 - [x]: [A111](a/A111.md) - widgets: manifest v1 rename, shared draft root, sidebar draft rows, live Preview from creation
+- [x]: [A112](a/A112.md) - chat tool: auto-return to select mode after placing a chat widget
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -481,6 +482,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E39](e/E39.md) - canvas: collapse the collaborative document onto Automerge and Cangine
 - [x]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
 - [x]: [E41](e/E41.md) - widgets: filesystem-first publication and database hard cut
+- [ ]: [E42](e/E42.md) - widgets: server-function mounts reject builder-signed capability digest (a04fb57b regression)
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
