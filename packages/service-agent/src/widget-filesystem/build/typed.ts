@@ -32,6 +32,14 @@ export type TWidgetFilesystemCapsuleInspector = Readonly<{
   inspect(bytes: Uint8Array): Promise<TWidgetFilesystemCapsuleInspection>;
 }>;
 
+export type TWidgetFilesystemConstructionCache = Readonly<{
+  read(key: string): Promise<TWidgetFilesystemConstruction | null>;
+  write(
+    key: string,
+    construction: TWidgetFilesystemConstruction,
+  ): Promise<void>;
+}>;
+
 export type TWidgetFilesystemBuildServiceConfig = Readonly<{
   builderIdentity: string;
   /** Trusted identity of the concrete runner/toolchain wired to this service. */
@@ -42,6 +50,13 @@ export type TWidgetFilesystemBuildServiceConfig = Readonly<{
   releaseAttestor: Readonly<{
     attest(canonicalUnsignedReleaseJson: string): Promise<TWidgetReleaseAttestation>;
   }>;
+  /**
+   * Optional durable construction cache keyed by the exact executable-input
+   * digest plus builder/environment identity, so a process restart can reuse
+   * the validated build instead of re-running npm/vite/Capsule. A hit is only
+   * honored when every digest still matches the current request.
+   */
+  constructionCache?: TWidgetFilesystemConstructionCache;
 }>;
 
 export type TWidgetFilesystemConstructionRequest = Readonly<{

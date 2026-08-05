@@ -21,32 +21,46 @@ function stoppedNotFound(): [Error, undefined] {
 }
 
 function mountView() {
+  return mountViewForBytes(BYTES);
+}
+
+function mountViewForBytes(bytes: Uint8Array) {
+  const digest = createHash('sha256').update(bytes).digest('hex');
   return {
     canvasId: 'canvas-1',
     elementId: 'node-1',
     widgetKey: 'hello-app',
     artifact: {
-      digestSha256: DIGEST,
-      byteSize: BYTES.byteLength,
-      bytesBase64: Buffer.from(BYTES).toString('base64'),
+      digestSha256: digest,
+      byteSize: bytes.byteLength,
+      bytesBase64: Buffer.from(bytes).toString('base64'),
     },
-    runtimeDescriptor: { capsuleArtifactHash: CAPSULE_HASH },
+    runtimeDescriptor: { capsuleArtifactHash: `sha256:${digest}` },
     functionDescriptors: [],
     browserFunctionDescriptorsDigestSha256: '0'.repeat(64),
   };
 }
 
-function createHarness(args: Readonly<{ autoBuild?: () => boolean }> = {}) {
+function createHarness(args: Readonly<{
+  autoBuild?: () => boolean;
+  openResponses?: ReadonlyArray<readonly [Error | null, ReturnType<typeof mountView> | undefined]>;
+}> = {}) {
   const handle = {
     setViewport: vi.fn(),
     destroy: vi.fn(async () => undefined),
   };
+  const openResponses = args.openResponses ?? [[undefined, mountView()]];
+  let openCall = 0;
   const transport = {
     api: {
       widget: {
         preview: {
           load: vi.fn(async () => stoppedNotFound()),
-          open: vi.fn(async () => [undefined, mountView()]),
+          open: vi.fn(async () => {
+            const response = openResponses[Math.min(openCall, openResponses.length - 1)];
+            openCall += 1;
+            return response;
+          }),
           close: vi.fn(async () => [undefined, { closed: true }]),
         },
       },
@@ -127,5 +141,59 @@ describe('widget preview owner auto-build', () => {
     await vi.waitFor(() => expect(second.host.dataset.widgetRuntimeStatus).toBe('deferred'));
     expect(second.transport.api.widget.preview.open).not.toHaveBeenCalled();
     await second.owner.destroy('test done');
+  });
+});
+
+describe('widget preview owner refresh', () => {
+  test('remounts only when the rebuilt artifact digest changes', async () => {
+    const refreshed = mountViewForBytes(new TextEncoder().encode('widget-bytes-v2'));
+    const { handle, host, mount, owner } = createHarness({
+      autoBuild: () => true,
+      openResponses: [
+        [undefined, mountView()],
+        [undefined, mountView()],
+        [undefined, refreshed],
+      ],
+    });
+
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(mount.mount).toHaveBeenCalledOnce();
+    expect(handle.destroy).not.toHaveBeenCalled();
+
+    await owner.refresh();
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(mount.mount).toHaveBeenCalledOnce();
+    expect(handle.destroy).not.toHaveBeenCalled();
+
+    await owner.refresh();
+    await vi.waitFor(() => expect(mount.mount).toHaveBeenCalledTimes(2));
+    expect(handle.destroy).toHaveBeenCalledTimes(1);
+    expect(host.dataset.widgetRuntimeStatus).toBe('ready');
+
+    await owner.destroy('test done');
+  });
+
+  test('coalesces concurrent refreshes into one final rebuild', async () => {
+    const v2 = mountViewForBytes(new TextEncoder().encode('widget-bytes-v2'));
+    const { host, mount, owner } = createHarness({
+      autoBuild: () => true,
+      openResponses: [
+        [undefined, mountView()],
+        [undefined, v2],
+        [undefined, v2],
+        [undefined, v2],
+      ],
+    });
+
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(mount.mount).toHaveBeenCalledOnce();
+
+    await Promise.all([owner.refresh(), owner.refresh(), owner.refresh()]);
+    await vi.waitFor(() => expect(mount.mount).toHaveBeenCalledTimes(2));
+    expect(host.dataset.widgetRuntimeStatus).toBe('ready');
+
+    await owner.destroy('test done');
   });
 });

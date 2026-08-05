@@ -9,6 +9,7 @@ const EXPECTED_EXPORTS = Object.freeze({
   './build': './src/build/index.ts',
   './builder': './src/builder/index.ts',
   './host': './src/host/index.ts',
+  './host/fn.error': './src/host/fn.error.ts',
   './capabilities': './src/capabilities/index.ts',
   './testkit': './src/testkit/index.ts',
 });
@@ -75,7 +76,7 @@ async function resolvedPackageRoot(specifier: string): Promise<string> {
 }
 
 describe('Capsule adapter package boundary', () => {
-  test('exposes only the six environment-specific adapter subpaths', async () => {
+  test('exposes only the seven environment-specific adapter subpaths', async () => {
     const manifest = JSON.parse(
       await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8'),
     ) as {

@@ -6,14 +6,15 @@ import "./services/orpc-websocket";
 import "./services/theme";
 
 import { Route, Router, useParams } from "@solidjs/router";
-import { Show } from "solid-js";
+import { lazy, Show } from "solid-js";
 import App from "./App";
-import CanvasPage from "./pages/canvas";
 import WelcomePage from "./pages/welcome";
-import ResourcePage from "./pages/resource";
-import WidgetPage from "./pages/widget";
 import { store } from "./store";
 import routeStateStyles from "./styles/route-state.module.css";
+
+const CanvasPage = lazy(() => import("./pages/canvas"));
+const ResourcePage = lazy(() => import("./pages/resource"));
+const WidgetPage = lazy(() => import("./pages/widget"));
 
 const CanvasRoute = () => {
   const params = useParams<{ id: string }>();

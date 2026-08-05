@@ -198,7 +198,7 @@
     },
     "packages/sdk": {
       "name": "@omnidraw/sdk",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "@omnidraw/capsule": "catalog:",
         "@omnidraw/widget-contract": "workspace:*",
@@ -309,6 +309,7 @@
         "@omnidraw/cangine": "0.6.1",
         "@omnidraw/canvas": "workspace:*",
         "@omnidraw/canvas-contract": "workspace:*",
+        "@omnidraw/capsule": "catalog:",
         "@omnidraw/capsule-omnidraw": "workspace:*",
         "@omnidraw/orpc-client": "workspace:*",
         "@omnidraw/service-db": "workspace:*",
@@ -337,7 +338,7 @@
     },
     "packages/widget-contract": {
       "name": "@omnidraw/widget-contract",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
         "lucide-static": "1.24.0",

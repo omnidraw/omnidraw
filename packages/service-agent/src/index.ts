@@ -9,6 +9,10 @@ export type {
 export type { TAgentResource, TAgentResourceDataEntry, TAgentResourceService } from './tools/resource-service';
 export type { TToolEvent } from './tools/types';
 export { WidgetFilesystemBuildService } from './widget-filesystem/build';
+export {
+  fnDecodeWidgetFilesystemConstruction,
+  fnEncodeWidgetFilesystemConstruction,
+} from './widget-filesystem/build';
 export type * from './widget-filesystem/build';
 export * from './widget-filesystem/catalog';
 export * from './widget-filesystem/import';

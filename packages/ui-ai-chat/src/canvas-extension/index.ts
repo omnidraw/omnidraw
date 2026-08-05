@@ -272,6 +272,8 @@ export function createAiChatCanvasExtension(
       const freshPreviewNodes = new Set<string>();
       let publishedCatalogEpoch = 0;
       const publishedWidgetEpochs = new Map<string, number>();
+      const previewOwnersByWidgetKey = new Map<string, TWidgetPreviewOwner>();
+      const previewRefreshTimers = new Map<string, unknown>();
       const portalRegistrationSignature = (
         node: Readonly<TWidgetFrameNode>,
       ): string => {
@@ -538,12 +540,22 @@ export function createAiChatCanvasExtension(
                 shouldAutoBuild: () => freshPreviewNodes.delete(node.id),
               });
               previewOwner = owner;
+              const ownedKey = currentExtension.widgetKey;
+              previewOwnersByWidgetKey.set(ownedKey, owner);
               owner.attach(host, current);
               updateViewport();
               return async () => {
                 reportUnmount();
                 if (portalHost === host) portalHost = null;
                 previewDisposed = true;
+                if (previewOwnersByWidgetKey.get(ownedKey) === owner) {
+                  previewOwnersByWidgetKey.delete(ownedKey);
+                }
+                const timer = previewRefreshTimers.get(ownedKey);
+                if (timer !== undefined) {
+                  args.widgetBrowser.clearTimeout(timer);
+                  previewRefreshTimers.delete(ownedKey);
+                }
                 previewOwner = null;
                 await owner.destroy('canvas portal unmounted');
                 host.replaceChildren();
@@ -618,6 +630,24 @@ export function createAiChatCanvasExtension(
       let widgetCatalogEventStreamDisposed = false;
       let closeWidgetCatalogEventStream: (() => void) | null = null;
       let lastWidgetCatalogGeneration = 0;
+      const schedulePreviewRefresh = (widgetKey: string): void => {
+        const existing = previewRefreshTimers.get(widgetKey);
+        if (existing !== undefined) args.widgetBrowser.clearTimeout(existing);
+        const timer = args.widgetBrowser.setTimeout(() => {
+          previewRefreshTimers.delete(widgetKey);
+          const owner = previewOwnersByWidgetKey.get(widgetKey);
+          if (owner !== undefined) void owner.refresh();
+        }, 400);
+        previewRefreshTimers.set(widgetKey, timer);
+      };
+      const refreshChangedPreviews = (widgetKeys: readonly string[]): void => {
+        for (const widgetKey of widgetKeys) schedulePreviewRefresh(widgetKey);
+      };
+      const refreshAllPreviews = (): void => {
+        for (const widgetKey of previewOwnersByWidgetKey.keys()) {
+          schedulePreviewRefresh(widgetKey);
+        }
+      };
       const invalidatePublishedWidgetKeys = (
         widgetKeys: readonly string[],
       ): void => {
@@ -627,6 +657,7 @@ export function createAiChatCanvasExtension(
             (publishedWidgetEpochs.get(widgetKey) ?? 0) + 1,
           );
         }
+        refreshChangedPreviews(widgetKeys);
         reconcilePortals();
       };
       const startWidgetCatalogEventStream = async (): Promise<void> => {
@@ -681,6 +712,7 @@ export function createAiChatCanvasExtension(
               lastWidgetCatalogGeneration = update.observedGeneration;
               if (update.remount === 'all') {
                 publishedCatalogEpoch += 1;
+                refreshAllPreviews();
                 reconcilePortals();
               } else if (update.remount === 'keys') {
                 invalidatePublishedWidgetKeys(update.widgetKeys);
@@ -870,6 +902,11 @@ export function createAiChatCanvasExtension(
           widgetCatalogEventStreamDisposed = true;
           closeWidgetCatalogEventStream?.();
           closeWidgetCatalogEventStream = null;
+          for (const timer of previewRefreshTimers.values()) {
+            args.widgetBrowser.clearTimeout(timer);
+          }
+          previewRefreshTimers.clear();
+          previewOwnersByWidgetKey.clear();
           unregisterPlacement();
           placement.destroy();
           unsubscribeActivation();

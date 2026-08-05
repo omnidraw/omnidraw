@@ -20,6 +20,7 @@
     "./build": "./src/build/index.ts",
     "./builder": "./src/builder/index.ts",
     "./host": "./src/host/index.ts",
+    "./host/fn.error": "./src/host/fn.error.ts",
     "./capabilities": "./src/capabilities/index.ts",
     "./testkit": "./src/testkit/index.ts"
   },

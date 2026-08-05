@@ -58,6 +58,7 @@ import {
   WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
 } from './services/CONSTANTS';
 import { WidgetCapsuleSigningKeyStore } from './services/WidgetCapsuleSigningKeyStore';
+import { WidgetConstructionCache } from './services/WidgetConstructionCache';
 import {
   createWidgetNpmDistributionBuild,
   fnWidgetNpmBuildEnvironmentIdentity,
@@ -251,6 +252,9 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   );
   mkdirSync(widgetBuildTempRoot, { recursive: true, mode: 0o700 });
   mkdirSync(widgetDescriptorTempRoot, { recursive: true, mode: 0o700 });
+  const widgetConstructionCache = new WidgetConstructionCache(
+    join(widgetBuildTempRoot, 'construction-cache'),
+  );
   txEnsureOmnidrawHome({ mkdirSync }, { home: config.home });
   if (config.dev && process.env.NODE_ENV !== 'production') {
     const retired = txRetireLegacyAgentDrafts(
@@ -308,6 +312,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
       signingPolicyId: `capsule-ed25519:${WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID}`,
     }),
+    constructionCache: widgetConstructionCache,
     construction: {
       construct: (request) => capsuleBuilder.construct(request),
       signConstruction: async (request) => {

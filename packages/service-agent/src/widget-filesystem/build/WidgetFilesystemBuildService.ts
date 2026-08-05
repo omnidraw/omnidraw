@@ -135,6 +135,21 @@ export class WidgetFilesystemBuildService {
       && request.expectedExecutableInputDigestSha256 !== executableInputDigestSha256
     ) throw new Error('Widget source changed after the executable-input fence was selected.');
 
+    const cache = this.config.constructionCache;
+    if (cache !== undefined) {
+      const cached = await cache.read(
+        this.#constructionCacheKey(executableInputDigestSha256),
+      ).catch(() => null);
+      if (
+        cached !== null
+        && cached.executableInputDigestSha256 === executableInputDigestSha256
+        && cached.executableManifestDigestSha256
+          === fnWidgetExecutableManifestDigest({ manifest, digestSha256: sha256 })
+      ) {
+        return cached;
+      }
+    }
+
     const executableProjection = fnProjectWidgetExecutableManifest(manifest);
     const canonicalExecutableManifestJson = fnCanonicalizeWidgetExecutableProjection(executableProjection);
     const executableManifestDigestSha256 = fnWidgetExecutableManifestDigest({
@@ -169,7 +184,7 @@ export class WidgetFilesystemBuildService {
       bytes: file.bytes,
     })));
     if (distFiles.length === 0) throw new Error('Widget build produced no browser distribution.');
-    return Object.freeze({
+    const result = Object.freeze({
       executableInputDigestSha256,
       executableManifestDigestSha256,
       canonicalExecutableManifestJson,
@@ -177,6 +192,18 @@ export class WidgetFilesystemBuildService {
       construction,
       distFiles,
     });
+    const writeCache = this.config.constructionCache;
+    if (writeCache !== undefined) {
+      await writeCache.write(
+        this.#constructionCacheKey(executableInputDigestSha256),
+        result,
+      ).catch(() => undefined);
+    }
+    return result;
+  }
+
+  #constructionCacheKey(executableInputDigestSha256: string): string {
+    return `${this.config.builderIdentity}\u0000${executableInputDigestSha256}`;
   }
 
   async sign(

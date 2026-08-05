@@ -18,6 +18,7 @@
     "@kobalte/core": "catalog:",
     "@jridgewell/trace-mapping": "0.3.31",
     "@omnidraw/cangine": "0.6.1",
+    "@omnidraw/capsule": "catalog:",
     "@omnidraw/capsule-omnidraw": "workspace:*",
     "@omnidraw/canvas": "workspace:*",
     "@omnidraw/canvas-contract": "workspace:*",

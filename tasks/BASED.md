@@ -189,6 +189,8 @@ the leaf task's `## Plan` instead of living as detached references.
  - [x]: [B75](b/B75.md) - db resource tool: apply reported stuck in `preparing` though it succeeded
 - [ ]: [B76](b/B76.md) - widgets: focused/maximized widget keys leak into canvas shortcuts
 - [x]: [B77](b/B77.md) - widget Preview never renders: template config reads missing omnidraw.json and validator rejects widget-preview frames
+- [x]: [B78](b/B78.md) - Preview does not hot-reload on AI edits; initial bundle is slow
+- [x]: [B79](b/B79.md) - Preview goes white and rebuilds slowly after server restart
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

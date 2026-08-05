@@ -1,17 +1,14 @@
 import {
-  CAPSULE_MOUNT_ERROR_FORMAT,
-  CapsuleHostError,
-  CapsuleMemoryArtifactCache,
-  createCapsuleHost,
-  createDefaultCapsuleBrowserPlatform,
   fnMapCapsuleMountError,
   fnMapThrownCapsuleHostError,
-  type CapsuleCapabilityBinding,
-  type CapsuleHandle,
-  type CapsuleHost,
-  type CapsuleMountErrorEvent,
-  type CapsuleMountGuestChannels,
-  type CapsuleViewport,
+} from '@omnidraw/capsule-omnidraw/host/fn.error';
+import type {
+  CapsuleCapabilityBinding,
+  CapsuleHandle,
+  CapsuleHost,
+  CapsuleMountErrorEvent,
+  CapsuleMountGuestChannels,
+  CapsuleViewport,
 } from '@omnidraw/capsule-omnidraw/host';
 import { originalPositionFor } from '@jridgewell/trace-mapping';
 import type {
@@ -37,6 +34,22 @@ import type {
   TVerifiedWidgetSourceMapArtifact,
   TVerifiedWidgetUiArtifact,
 } from './interface';
+
+type TCapsuleModule = Pick<
+  typeof import('@omnidraw/capsule-omnidraw/host'),
+  | 'CAPSULE_MOUNT_ERROR_FORMAT'
+  | 'CapsuleHostError'
+  | 'CapsuleMemoryArtifactCache'
+  | 'createCapsuleHost'
+  | 'createDefaultCapsuleBrowserPlatform'
+>;
+
+let capsuleModulePromise: Promise<TCapsuleModule> | null = null;
+
+function capsuleModule(): Promise<TCapsuleModule> {
+  capsuleModulePromise ??= import('@omnidraw/capsule') as Promise<TCapsuleModule>;
+  return capsuleModulePromise;
+}
 
 type TCapsuleWidgetHostCoordinatorConfig = Readonly<{
   document: Document;
@@ -78,7 +91,7 @@ type TCoordinatedWidgetUiRuntimeHandle = TWidgetUiRuntimeHandle & Readonly<{
 }>;
 
 const DEFAULT_HOST_FACTORY: TWidgetCapsuleHostFactory = Object.freeze({
-  create: createCapsuleHost,
+  create: async (options) => (await capsuleModule()).createCapsuleHost(options),
 });
 
 function catalogSignature(catalog: TWidgetCapsuleHostCatalog): string {
@@ -249,7 +262,10 @@ function idempotentHandle(
   });
 }
 
-function eventMapper(args: TMountArgs): (
+function eventMapper(
+  capsule: TCapsuleModule,
+  args: TMountArgs,
+): (
   event: CapsuleMountErrorEvent,
   lifecycleGeneration?: number,
 ) => TOmnidrawCapsuleError {
@@ -260,7 +276,7 @@ function eventMapper(args: TMountArgs): (
       args.mode !== 'preview'
       || !('kind' in args.identity)
       || args.identity.kind !== 'draft_preview'
-      || event.format !== CAPSULE_MOUNT_ERROR_FORMAT
+      || event.format !== capsule.CAPSULE_MOUNT_ERROR_FORMAT
       || event.category !== 'vm'
       || event.artifactHash !== args.artifact.capsuleArtifactHash
       || !Number.isSafeInteger(event.runtimeGeneration)
@@ -324,6 +340,7 @@ export class CapsuleWidgetHostCoordinator {
   readonly #states = new Map<string, THostState>();
   #generation: string | undefined;
   #stateSignature: string | undefined;
+  #policySignature: string | undefined;
   #transition: Promise<void> = Promise.resolve();
   #destroyed = false;
 
@@ -341,6 +358,7 @@ export class CapsuleWidgetHostCoordinator {
   mount(args: TMountArgs): Promise<TWidgetUiRuntimeHandle> {
     return this.#serialize(async () => {
       if (this.#destroyed) throw new Error('Widget Capsule host coordinator is destroyed.');
+      const capsule = await capsuleModule();
       const currentCatalog = await this.catalog();
       const catalog = args.catalog;
       fnValidateWidgetCapsuleMountCatalog(catalog);
@@ -371,7 +389,7 @@ export class CapsuleWidgetHostCoordinator {
       );
       let rawHandle: CapsuleHandle | undefined;
       let logicalHandle: TCoordinatedWidgetUiRuntimeHandle | undefined;
-      const mapError = eventMapper(args);
+      const mapError = eventMapper(capsule, args);
       const observeStartupError = (event: CapsuleMountErrorEvent): void => {
         const mapped = mapError(event);
         try {
@@ -437,7 +455,7 @@ export class CapsuleWidgetHostCoordinator {
         for (const binding of args.capabilityBindings) {
           await Promise.resolve(binding.dispose()).catch(() => undefined);
         }
-        throw error instanceof CapsuleHostError
+        throw error instanceof capsule.CapsuleHostError
           ? fnMapThrownCapsuleHostError(error)
           : error;
       }
@@ -496,6 +514,7 @@ export class CapsuleWidgetHostCoordinator {
     mode: TMountArgs['mode'],
   ): Promise<THostState> {
     const signature = catalogSignature(catalog);
+    const policySignature = catalogSignature({ ...catalog, generation: '' });
     if (this.#generation === undefined) {
       this.#generation = catalog.generation;
       this.#stateSignature = signature;
@@ -504,10 +523,23 @@ export class CapsuleWidgetHostCoordinator {
       && this.#stateSignature !== signature
     ) {
       throw new Error('Widget Capsule catalog changed without a new generation.');
-    } else if (this.#generation !== catalog.generation) {
+    } else if (
+      this.#generation !== catalog.generation
+      && this.#policySignature !== policySignature
+    ) {
+      // Only a real host-policy change (apis, keys, limits) is terminal for the
+      // whole pool; a mere generation reset (e.g. server restart) keeps the
+      // currently mounted Preview handles alive until their replacement mounts.
       await this.#destroyHost('catalog-generation-changed', true);
       this.#generation = catalog.generation;
       this.#stateSignature = signature;
+      this.#policySignature = policySignature;
+    } else if (this.#generation !== catalog.generation) {
+      this.#generation = catalog.generation;
+      this.#stateSignature = signature;
+      this.#policySignature = policySignature;
+    } else {
+      this.#policySignature = policySignature;
     }
     const signingKeyId = mode === 'preview'
       ? catalog.previewSigningKeyId
@@ -532,6 +564,7 @@ export class CapsuleWidgetHostCoordinator {
     if (signingKey === undefined) {
       throw new Error('Widget Capsule signing authority is unavailable.');
     }
+    const capsule = await capsuleModule();
     const host = await this.#hostFactory.create({
       allowedApis: apis,
       limits: catalog.limits,
@@ -549,10 +582,10 @@ export class CapsuleWidgetHostCoordinator {
         maxJobsPerDrain: 1_000,
         maxEntryDepth: 32,
       },
-      browserPlatform: createDefaultCapsuleBrowserPlatform({
+      browserPlatform: capsule.createDefaultCapsuleBrowserPlatform({
         document: this.#config.document,
       }),
-      artifactCache: new CapsuleMemoryArtifactCache({
+      artifactCache: new capsule.CapsuleMemoryArtifactCache({
         maxEntries: this.#config.artifactCache?.maxEntries ?? 64,
         maxTotalBytes: this.#config.artifactCache?.maxTotalBytes ?? 64 * 1_024 * 1_024,
         maxArtifactBytes: this.#config.artifactCache?.maxArtifactBytes ?? 16 * 1_024 * 1_024,
@@ -601,6 +634,7 @@ export class CapsuleWidgetHostCoordinator {
     this.#states.clear();
     this.#generation = undefined;
     this.#stateSignature = undefined;
+    this.#policySignature = undefined;
     const handles = [...this.#handles];
     this.#handles.clear();
     await Promise.allSettled(handles.map((handle) => (
