@@ -968,8 +968,14 @@ describe('managed composition architecture boundaries', () => {
     expect(rootManifest.scripts?.build).toBe("bun run build:canvas-kernel && bun run --filter '*' build")
     expect(rootManifest.scripts?.['prebuild:single']).toBeUndefined()
     expect(rootManifest.scripts?.predev).toContain('build:canvas-kernel')
-    expect(rootManifest.scripts?.predev).toContain('publish-widget-packages')
-    expect(rootManifest.scripts?.['server:dev']).toContain('publish-widget-packages')
+    // The local-registry widget-package sync is deliberately NOT part of the
+    // dev boot path (D9): in-workspace consumers resolve `@omnidraw/*` via
+    // `workspace:*`, never through the local registry, and the only real
+    // consumer (LocalWidgetPackageRegistrySync) already syncs lazily on first
+    // use. Keeping it out of predev/server:dev keeps `bun run dev` fast and
+    // immune to local-registry version collisions.
+    expect(rootManifest.scripts?.predev).not.toContain('publish-widget-packages')
+    expect(rootManifest.scripts?.['server:dev']).not.toContain('publish-widget-packages')
     expect(rootManifest.scripts?.['registry:publish:widgets']).toContain('publish-widget-packages')
     expect(rootManifest.scripts?.['preclient:dev']).toContain('build:canvas-kernel')
     expect(rootManifest.scripts?.['client:dev']).toContain('scripts/dev-frontend.ts')

@@ -494,7 +494,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
 - [?]: [D7](d/D7.md) - undecided: per-canvas revision is a coarse optimistic concurrency counter
 - [ ]: [D8](d/D8.md) - widgets: headless mount-catalog dry-run in od_widget_validate
-- [ ]: [D9](d/D9.md) - local registry: decouple dev boot from publish, automate the dev-prerelease escape hatch, stop version-bump churn
+- [~]: [D9](d/D9.md) - local registry: decouple dev boot from publish, automate the dev-prerelease escape hatch, stop version-bump churn
 
 ## Pragmatic Code Style
 

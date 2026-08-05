@@ -623,7 +623,46 @@ async function publicIntegrity(name, version) {
   }
 }
 
-async function publishTarball(config, requestedTarball) {
+/**
+ * Decides what a publish attempt must do given what's already on the
+ * registry at the exact same `name@version`.
+ *
+ * - `publish`: nothing occupies that version yet.
+ * - `unchanged`: the exact bytes are already there; this is a no-op.
+ * - `overwrite`: different bytes occupy that version and the caller opted in
+ *   (`allowOverwrite`) to replacing them — the automated form of the "use a
+ *   development prerelease" escape hatch this tool has always documented.
+ * - `reject`: different bytes occupy that version and the caller did not opt
+ *   in; real-npm-style immutability applies and the caller must bump the
+ *   version or use a prerelease.
+ */
+export function publishDecision(existingIntegrity, integrity, allowOverwrite) {
+  if (existingIntegrity === null) return 'publish';
+  if (existingIntegrity === integrity) return 'unchanged';
+  return allowOverwrite ? 'overwrite' : 'reject';
+}
+
+/**
+ * Publishes one tarball to the local registry.
+ *
+ * By default this enforces real-npm-style immutability: publishing different
+ * bytes under an already-occupied `name@version` is a hard failure, and the
+ * caller must bump the version or use a prerelease (this is the contract
+ * `publish`/`bootstrap` rely on for externally-produced tarballs, e.g. the
+ * cangine/capsule artifacts seeded by `bootstrap` — those really are "install
+ * this known-good external artifact" operations, and must stay strict).
+ *
+ * `options.allowOverwrite` relaxes that for the internal workspace-sync path
+ * only (`publishWidgetPackages` → `syncWorkspacePackage` → `packWorkspacePackage`):
+ * the local registry there is an ephemeral, dev-only scratch store rebuilt
+ * from this checkout's own source on every use, so nothing durable depends on
+ * a given local `name@version`'s bytes staying frozen. When bytes differ, the
+ * conflicting version is unpublished and replaced instead of throwing, so an
+ * edit to a workspace package's source never requires a manual `package.json`
+ * version bump just to keep local dev working (D9). See `publishDecision`.
+ */
+async function publishTarball(config, requestedTarball, options = {}) {
+  const allowOverwrite = options.allowOverwrite === true;
   const tarball = resolve(requestedTarball);
   await access(tarball);
   const [{ name, version }, integrity] = await Promise.all([
@@ -631,19 +670,33 @@ async function publishTarball(config, requestedTarball) {
     tarballIntegrity(tarball),
   ]);
   const existingIntegrity = await publishedIntegrity(config, name, version);
-  if (existingIntegrity !== null) {
-    if (existingIntegrity !== integrity) {
-      throw new Error(
-        `${name}@${version} already exists with different bytes `
-        + `(${existingIntegrity} != ${integrity}). Bump the version or use a prerelease.`,
-      );
-    }
+  const decision = publishDecision(existingIntegrity, integrity, allowOverwrite);
+  if (decision === 'unchanged') {
     return Object.freeze({
       name,
       version,
       integrity,
       registryUrl: config.registryUrl,
       status: 'unchanged',
+    });
+  }
+  if (decision === 'reject') {
+    throw new Error(
+      `${name}@${version} already exists with different bytes `
+      + `(${existingIntegrity} != ${integrity}). Bump the version or use a prerelease.`,
+    );
+  }
+  if (decision === 'overwrite') {
+    await run('npm', [
+      'unpublish',
+      `${name}@${version}`,
+      '--registry',
+      config.registryUrl,
+      '--userconfig',
+      config.npmUserConfigPath,
+      '--force',
+    ], {
+      cwd: config.stateDirectory,
     });
   }
   await run('npm', [
@@ -670,7 +723,7 @@ async function publishTarball(config, requestedTarball) {
     version,
     integrity,
     registryUrl: config.registryUrl,
-    status: 'published',
+    status: decision === 'publish' ? 'published' : 'overwritten',
   });
 }
 
@@ -760,7 +813,9 @@ async function packWorkspacePackage(config, entry) {
     if (tarballs.length !== 1) {
       throw new Error(`Packing staged ${entry.name} produced no unique tarball.`);
     }
-    return await publishTarball(config, join(packDirectory, tarballs[0]));
+    // Workspace-local packages are always safe to overwrite in place: see the
+    // `publishTarball` doc comment for why this differs from `publish`/`bootstrap`.
+    return await publishTarball(config, join(packDirectory, tarballs[0]), { allowOverwrite: true });
   } finally {
     await rm(packDirectory, { recursive: true, force: true });
   }

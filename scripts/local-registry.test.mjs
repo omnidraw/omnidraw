@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import {
+  publishDecision,
   widgetPackagePublishOrder,
   widgetPackageSyncSource,
 } from './local-registry.mjs';
@@ -76,5 +77,26 @@ describe('local widget package publication', () => {
     expect(widgetPackageSyncSource('sha512-local', undefined)).toBe('available');
     expect(widgetPackageSyncSource(null, null)).toBe('workspace');
     expect(widgetPackageSyncSource('sha512-local', 'sha512-public')).toBe('workspace');
+  });
+
+  test('publishes an unoccupied version regardless of allowOverwrite (D9)', () => {
+    expect(publishDecision(null, 'sha512-new', false)).toBe('publish');
+    expect(publishDecision(null, 'sha512-new', true)).toBe('publish');
+  });
+
+  test('treats identical bytes at an occupied version as a no-op (D9)', () => {
+    expect(publishDecision('sha512-same', 'sha512-same', false)).toBe('unchanged');
+    expect(publishDecision('sha512-same', 'sha512-same', true)).toBe('unchanged');
+  });
+
+  test('rejects different bytes at an occupied version by default, matching real-npm immutability (D9)', () => {
+    expect(publishDecision('sha512-old', 'sha512-new', false)).toBe('reject');
+  });
+
+  test('overwrites different bytes at an occupied version only when the caller opts in (D9)', () => {
+    // This is what makes an edit to a workspace package's source never
+    // require a manual `package.json` version bump just to unblock
+    // `bun run dev` again: the internal workspace-sync path always opts in.
+    expect(publishDecision('sha512-old', 'sha512-new', true)).toBe('overwrite');
   });
 });
