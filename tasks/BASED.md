@@ -298,6 +298,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A108](a/A108.md) - widgets: manifest v4 and pure filesystem contracts
 - [x]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
 - [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
+- [ ]: [A111](a/A111.md) - widgets: manifest v1 rename, shared draft root, sidebar draft rows, live Preview from creation
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
