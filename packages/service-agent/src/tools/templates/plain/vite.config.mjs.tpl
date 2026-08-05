@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 
-const manifest = JSON.parse(readFileSync(new URL("./omnidraw.json", import.meta.url), "utf8"));
+const manifest = JSON.parse(readFileSync(new URL("./.omnidraw/build-manifest.json", import.meta.url), "utf8"));
 
 export default defineConfig({
   build: {

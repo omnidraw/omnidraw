@@ -50,6 +50,13 @@ const WIDGET_INSTANCE_KEYS = new Set([
   "resourceBindings",
   "uiProps",
 ]);
+const WIDGET_PREVIEW_KEYS = new Set([
+  "schemaVersion",
+  "type",
+  "instanceId",
+  "widgetKey",
+  "uiProps",
+]);
 const WIDGET_RESOURCE_BINDING_KEYS = new Set([
   "resourceId",
   "allowRead",
@@ -313,6 +320,42 @@ function validateWidgetExtension(
           }
         }
       }
+    }
+    return issues;
+  }
+  if (value.type === "widget-preview") {
+    const issues: TCanvasContractIssue[] = [];
+    if (!hasOnlyKeys(value, WIDGET_PREVIEW_KEYS)) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_FIELDS",
+        path,
+        "The widget-preview extension contains unsupported fields.",
+        node.id,
+      ));
+    }
+    if (
+      !isNonEmptyString(value.instanceId)
+      || value.instanceId.length > WIDGET_ID_MAX_LENGTH
+      || value.instanceId.trim() !== value.instanceId
+    ) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_IDENTITY",
+        `${path}/instanceId`,
+        "instanceId must contain 1 to 200 trimmed characters.",
+        node.id,
+      ));
+    }
+    if (
+      !isNonEmptyString(value.widgetKey)
+      || value.widgetKey.length > WIDGET_KEY_MAX_LENGTH
+      || !WIDGET_KEY_PATTERN.test(value.widgetKey)
+    ) {
+      issues.push(issue(
+        "WIDGET_EXTENSION_WIDGET_KEY",
+        `${path}/widgetKey`,
+        "widgetKey must be 1 to 100 lowercase ASCII kebab-case characters.",
+        node.id,
+      ));
     }
     return issues;
   }

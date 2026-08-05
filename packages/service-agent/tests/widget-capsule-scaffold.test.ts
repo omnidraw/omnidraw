@@ -68,6 +68,8 @@ describe('Capsule widget authoring scaffold', () => {
     });
     expect(files.get('/draft/vite.config.mjs')).toContain('entryFileNames: "main.js"');
     expect(files.get('/draft/vite.config.mjs')).not.toContain('preserveSymlinks');
+    expect(files.get('/draft/vite.config.mjs')).toContain('.omnidraw/build-manifest.json');
+    expect(files.get('/draft/vite.config.mjs')).not.toContain('./omnidraw.json');
     expect(JSON.parse(files.get('/draft/tsconfig.json')!)).toMatchObject({
       compilerOptions: { jsx: 'react-jsx' },
       include: expect.arrayContaining(['ui/**/*.ts', 'ui/**/*.tsx']),
@@ -120,6 +122,8 @@ describe('Capsule widget authoring scaffold', () => {
     expect(files.get('/draft/ui/main.tsx')).toContain('createRoot(root).render(<App />)');
     expect(files.get('/draft/ui/styles.css')).toContain('.omnidraw-widget-root,');
     expect(files.get('/draft/ui/styles.css')).toContain('height: 100%');
+    expect(files.get('/draft/vite.config.mjs')).toContain('.omnidraw/build-manifest.json');
+    expect(files.get('/draft/vite.config.mjs')).not.toContain('./omnidraw.json');
     expect(files.has('/draft/ui/main.ts')).toBe(false);
   });
 

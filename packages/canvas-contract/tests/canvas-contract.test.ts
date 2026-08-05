@@ -107,6 +107,48 @@ describe("@omnidraw/canvas-contract", () => {
     ])).toEqual({ valid: true, issues: [] });
   });
 
+  test("accepts an ephemeral widget-preview frame and rejects unsupported fields", () => {
+    expect(fnValidateCanvasItems([
+      widget({
+        schemaVersion: 1,
+        type: "widget-preview",
+        instanceId: "instance-1",
+        widgetKey: "default-app",
+      }),
+    ])).toEqual({ valid: true, issues: [] });
+
+    expect(fnValidateCanvasItems([
+      widget({
+        schemaVersion: 1,
+        type: "widget-preview",
+        instanceId: "instance-1",
+        widgetKey: "default-app",
+        resourceBindings: {
+          todos: {
+            resourceId: "resource-1",
+            allowRead: true,
+            allowWrite: false,
+          },
+        },
+      }),
+    ])).toMatchObject({
+      valid: false,
+      issues: [expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" })],
+    });
+
+    expect(fnValidateCanvasItems([
+      widget({
+        schemaVersion: 1,
+        type: "widget-preview",
+        instanceId: "instance-1",
+        widgetKey: "Default App",
+      }),
+    ])).toMatchObject({
+      valid: false,
+      issues: [expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" })],
+    });
+  });
+
   test("rejects stateDocumentId and runtime-owned scene content", () => {
     const widgetValidation = fnValidateCanvasItems([
       widget({

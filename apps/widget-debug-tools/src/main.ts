@@ -1,4 +1,9 @@
-import { NodeWidgetFilesystemWorkspace } from '@omnidraw/service-agent';
+import {
+  NodeWidgetCatalogFilesystem,
+  NodeWidgetCatalogHash,
+  NodeWidgetFilesystemWorkspace,
+  WidgetFilesystemCatalog,
+} from '@omnidraw/service-agent';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
@@ -15,7 +20,7 @@ const MANAGED_WIDGET_DIRECTORIES = Object.freeze([
 
 type TCommand = Readonly<{
   widgetsRoot: string;
-  action: 'list' | 'inspect';
+  action: 'list' | 'inspect' | 'catalog';
   slug: string | null;
 }>;
 
@@ -24,6 +29,7 @@ function usage(): string {
     'Usage:',
     '  bun run lab -- [--home <path>] list',
     '  bun run lab -- [--home <path>] inspect <slug>',
+    '  bun run lab -- [--home <path>] catalog',
     '',
     'This lab reads only the managed filesystem widget root.',
   ].join('\n');
@@ -48,7 +54,14 @@ function parseCommand(argv: readonly string[]): TCommand {
   if (action === 'inspect' && values.length === 1 && values[0] !== '') {
     return Object.freeze({ widgetsRoot: join(home, 'widgets'), action, slug: values[0]! });
   }
+  if (action === 'catalog' && values.length === 0) {
+    return Object.freeze({ widgetsRoot: join(home, 'widgets'), action, slug: null });
+  }
   throw new Error(usage());
+}
+
+function capsulePortalNeverInspects(): never {
+  throw new Error('The debug lab does not inspect Capsule artifacts.');
 }
 
 async function ensureLayout(widgetsRoot: string): Promise<void> {
@@ -70,6 +83,10 @@ async function run(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ widgetsRoot: workspace.rootPath, drafts }, null, 2)}\n`);
     return;
   }
+  if (command.action === 'catalog') {
+    await runCatalog(command);
+    return;
+  }
   const observation = await workspace.inspectManagedManifest({
     relativePath: `drafts/${command.slug!}`,
     signal,
@@ -80,6 +97,47 @@ async function run(): Promise<void> {
     manifestDigestSha256: observation.manifestDigestSha256,
     treeDigestSha256: observation.treeDigestSha256,
     manifest: observation.manifest,
+  }, null, 2)}\n`);
+}
+
+async function runCatalog(command: TCommand): Promise<void> {
+  const filesystem = new NodeWidgetCatalogFilesystem();
+  const hash = new NodeWidgetCatalogHash();
+  const catalog = new WidgetFilesystemCatalog({
+    rootPath: command.widgetsRoot,
+    filesystem,
+    hash,
+    capsule: {
+      inspectCapsuleArtifact: capsulePortalNeverInspects,
+    },
+  });
+  const snapshot = await catalog.refresh();
+  const summary = Object.fromEntries(Object.values(snapshot.entries).map((entry) => [
+    entry.slug,
+    {
+      health: entry.health,
+      placeable: entry.placeable,
+      draft: entry.draft === null
+        ? null
+        : {
+            health: entry.draft.health,
+            issues: entry.draft.issues,
+          },
+      published: entry.published === null
+        ? null
+        : {
+            health: entry.published.health,
+            issues: entry.published.issues,
+          },
+    },
+  ]));
+  process.stdout.write(`${JSON.stringify({
+    widgetsRoot: command.widgetsRoot,
+    generation: snapshot.generation,
+    digestSha256: snapshot.digestSha256,
+    healthy: snapshot.healthy,
+    issues: snapshot.issues,
+    entries: summary,
   }, null, 2)}\n`);
 }
 
