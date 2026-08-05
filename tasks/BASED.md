@@ -486,6 +486,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [D4](d/D4.md) - canvas: audit and remove unused `@chenglou/pretext` code paths
 - [ ]: [D5](d/D5.md) - packages: publish the managed-service dependency set
 - [x]: [D6](d/D6.md) - widgets: qualify the filesystem-first single-user hard cut
+- [?]: [D7](d/D7.md) - undecided: per-canvas revision is a coarse optimistic concurrency counter
 
 ## Pragmatic Code Style
 
