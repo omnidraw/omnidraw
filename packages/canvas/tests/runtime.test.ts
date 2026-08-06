@@ -4,6 +4,12 @@ import {
 } from '@omnidraw/service-theme';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+type TMockInputDisposition = Readonly<{
+  handled?: boolean;
+  stopRouting?: boolean;
+  stopPropagation?: boolean;
+}>;
+
 const runtimeState = vi.hoisted(() => ({
   documentInstance: null as null | {
     history: object;
@@ -13,7 +19,9 @@ const runtimeState = vi.hoisted(() => ({
   engine: null as unknown,
   engineConfig: null as unknown,
   events: [] as string[],
-  inputListener: null as ((event: unknown) => void) | null,
+  inputListeners: [] as Array<
+    (event: unknown) => TMockInputDisposition | void
+  >,
   transformListener: null as ((event: unknown) => void) | null,
   hoverListener: null as ((event: unknown) => void) | null,
   widgetListener: null as ((event: unknown) => void) | null,
@@ -43,6 +51,18 @@ const runtimeState = vi.hoisted(() => ({
   theme: null as unknown as TThemeDefinition,
   themeListener: null as ((theme: TThemeDefinition) => void) | null,
 }));
+
+/** Mirrors real InputController dispatch: registration order, short-circuits on stopRouting/stopPropagation. */
+function dispatchInput(event: unknown): TMockInputDisposition | undefined {
+  let disposition: TMockInputDisposition | undefined;
+  for (const listener of [...runtimeState.inputListeners]) {
+    const result = listener(event);
+    if (result === undefined) continue;
+    disposition = result;
+    if (result.stopRouting === true || result.stopPropagation === true) break;
+  }
+  return disposition;
+}
 
 vi.mock('@omnidraw/cangine', () => ({
   createInfiniteCanvas: async (config: unknown) => {
@@ -232,7 +252,7 @@ describe('canvas runtime composition', () => {
     runtimeState.dropConfig = null;
     runtimeState.engineConfig = null;
     runtimeState.events.length = 0;
-    runtimeState.inputListener = null;
+    runtimeState.inputListeners.length = 0;
     runtimeState.transformListener = null;
     runtimeState.hoverListener = null;
     runtimeState.widgetListener = null;
@@ -317,12 +337,16 @@ describe('canvas runtime composition', () => {
         },
       },
       input: {
-        subscribe(listener: (event: unknown) => void) {
-          runtimeState.inputListener = listener;
+        subscribe(listener: (event: unknown) => TMockInputDisposition | void) {
+          runtimeState.inputListeners.push(listener);
           return () => {
             runtimeState.events.push('trace:input:release');
-            runtimeState.inputListener = null;
+            const index = runtimeState.inputListeners.indexOf(listener);
+            if (index !== -1) runtimeState.inputListeners.splice(index, 1);
           };
+        },
+        focus() {
+          runtimeState.events.push('input:focus');
         },
       },
       transforms: {
@@ -697,6 +721,120 @@ describe('canvas runtime composition', () => {
     expect(runtime.shell()).toEqual({ kind: 'canvas', widgetId: null });
   });
 
+  test('gates normalized key and wheel events while maximized or content-focused (B80)', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-gate',
+      container,
+      transport: {} as never,
+      createId: () => 'id-gate',
+      wait,
+      themeService,
+    });
+    await runtime.boot();
+
+    const widgets = runtimeState.widgetController as {
+      state: {
+        contentNodeId: string | null;
+        maximizedNodeId: string | null;
+      };
+    };
+    const backspace = Object.freeze({
+      type: 'key-down' as const,
+      key: 'Backspace',
+      code: 'Backspace',
+      repeat: false,
+      composing: false,
+      modifiers: { alt: false, control: false, meta: false, shift: false },
+      timeStamp: 0,
+    });
+    const wheel = Object.freeze({
+      type: 'wheel' as const,
+      viewport: { x: 0, y: 0 },
+      world: { x: 0, y: 0 },
+      delta: { x: 0, y: 1 },
+      deltaMode: 0,
+      modifiers: { alt: false, control: false, meta: false, shift: false },
+      timeStamp: 0,
+    });
+
+    // Neither maximized nor content-focused: nothing is swallowed.
+    expect(dispatchInput(backspace)).toBeUndefined();
+    expect(dispatchInput(wheel)).toBeUndefined();
+
+    // Maximized: keys and wheel are both swallowed before the editor/tools
+    // path (mirroring the engine's own content-focus guard) can act on them.
+    widgets.state.maximizedNodeId = 'widget-active';
+    expect(dispatchInput(backspace)).toEqual({ handled: true, stopRouting: true });
+    expect(dispatchInput(wheel)).toEqual({ handled: true, stopRouting: true });
+    widgets.state.maximizedNodeId = null;
+
+    // Content-focused (contained, not maximized): keys are swallowed as
+    // defense in depth, but wheel stays with the engine's own per-hit guard.
+    widgets.state.contentNodeId = 'widget-active';
+    expect(dispatchInput(backspace)).toEqual({ handled: true, stopRouting: true });
+    expect(dispatchInput(wheel)).toBeUndefined();
+    widgets.state.contentNodeId = null;
+
+    // Pointer and other event types are never touched by the gate.
+    expect(dispatchInput({ type: 'pointer-move' })).toBeUndefined();
+
+    await runtime.shutdown();
+  });
+
+  test('auto-focuses the maximized widget portal and restores canvas focus on exit (B80)', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-focus',
+      container,
+      transport: {} as never,
+      createId: () => 'id-focus',
+      wait,
+      themeService,
+    });
+    await runtime.boot();
+
+    const portalHost = document.createElement('div');
+    portalHost.tabIndex = -1;
+    portalHost.dataset.vibecanvasPortalId = 'portal-active';
+    container.append(portalHost);
+
+    const widgets = runtimeState.widgetController as {
+      state: {
+        frameNodeId: string | null;
+        contentNodeId: string | null;
+        maximizedNodeId: string | null;
+      };
+    };
+    runtimeState.selectedNode = {
+      id: 'widget-active',
+      kind: 'widget-frame',
+      collapsed: false,
+      visibility: 'visible',
+      portal: { portalId: 'portal-active' },
+    };
+
+    expect(container.ownerDocument.activeElement).not.toBe(portalHost);
+    widgets.state.frameNodeId = 'widget-active';
+    widgets.state.maximizedNodeId = 'widget-active';
+    runtimeState.widgetListener?.({});
+    expect(runtime.shell()).toEqual({
+      kind: 'maximized-widget',
+      widgetId: 'widget-active',
+    });
+    expect(container.ownerDocument.activeElement).toBe(portalHost);
+
+    widgets.state.maximizedNodeId = null;
+    runtimeState.events.length = 0;
+    runtimeState.widgetListener?.({});
+    expect(runtime.shell().kind).not.toBe('maximized-widget');
+    expect(runtimeState.events).toContain('input:focus');
+
+    await runtime.shutdown();
+  });
+
   test('installs normalized input before recording and releases active trace subscriptions', async () => {
     const { createReproductionTrace } = await import(
       '../src/debug-trace/createReproductionTrace'
@@ -740,7 +878,8 @@ describe('canvas runtime composition', () => {
     });
     await runtime.boot();
 
-    expect(runtimeState.inputListener).not.toBeNull();
+    // Early trace subscription plus the always-on runtime input gate.
+    expect(runtimeState.inputListeners).toHaveLength(2);
     expect(runtimeState.transformListener).not.toBeNull();
     trace.start();
     expect(runtimeState.transformListener).not.toBeNull();
@@ -768,8 +907,8 @@ describe('canvas runtime composition', () => {
       },
       timeStamp: 0,
     };
-    runtimeState.inputListener?.(idlePointerMove);
-    runtimeState.inputListener?.(idlePointerMove);
+    dispatchInput(idlePointerMove);
+    dispatchInput(idlePointerMove);
     runtimeState.hoverListener?.({
       pointerId: 1,
       pointerType: 'mouse',
@@ -777,7 +916,7 @@ describe('canvas runtime composition', () => {
       cursor: 'default',
     });
     expect(trace.state().retainedEvents).toBe(0);
-    runtimeState.inputListener?.({
+    dispatchInput({
       type: 'pointer-down',
       pointerId: 1,
       pointerType: 'mouse',
@@ -799,7 +938,7 @@ describe('canvas runtime composition', () => {
       },
       timeStamp: 1,
     });
-    runtimeState.inputListener?.({
+    dispatchInput({
       ...idlePointerMove,
       buttons: 1,
       client: { x: 12, y: 22 },
@@ -807,7 +946,7 @@ describe('canvas runtime composition', () => {
       world: { x: 12, y: 22 },
       timeStamp: 1.5,
     });
-    runtimeState.inputListener?.({
+    dispatchInput({
       type: 'key-down',
       key: 's',
       code: 'KeyS',
@@ -822,14 +961,14 @@ describe('canvas runtime composition', () => {
       timeStamp: 2,
     });
     expect(trace.state().retainedEvents).toBe(3);
-    runtimeState.inputListener?.({
+    dispatchInput({
       ...idlePointerMove,
       type: 'pointer-up',
       button: 0,
       timeStamp: 2.5,
     });
     for (let index = 0; index < 19; index += 1) {
-      runtimeState.inputListener?.({
+      dispatchInput({
         ...idlePointerMove,
         client: { x: 20 + index, y: 30 },
         viewport: { x: 20 + index, y: 30 },
@@ -838,7 +977,7 @@ describe('canvas runtime composition', () => {
       });
     }
     expect(trace.state().retainedEvents).toBe(4);
-    runtimeState.inputListener?.({
+    dispatchInput({
       ...idlePointerMove,
       client: { x: 30, y: 30 },
       viewport: { x: 30, y: 30 },
@@ -853,7 +992,7 @@ describe('canvas runtime composition', () => {
     expect(runtimeState.transformListener).not.toBeNull();
     expect(runtimeState.widgetListener).toBeNull();
     await runtime.shutdown();
-    expect(runtimeState.inputListener).toBeNull();
+    expect(runtimeState.inputListeners).toHaveLength(0);
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'trace:transform:release',
       'trace:widget:release',

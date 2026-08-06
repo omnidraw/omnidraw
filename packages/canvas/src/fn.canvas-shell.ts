@@ -55,3 +55,58 @@ export function fnCanvasWidgetShellAvailable(
     && node.collapsed !== true
     && node.visibility !== 'hidden';
 }
+
+export type TArgsCanvasInputGate = Readonly<{
+  maximizedNodeId: string | null;
+  contentNodeId: string | null;
+}>;
+
+/**
+ * Maximized and content-focused widgets own every key while the widget
+ * DOM has it; the runtime input gate swallows normalized key events before
+ * the editor/standard-tools path can turn them into canvas commands.
+ */
+export function fnCanvasInputGateSwallowsKeys(
+  args: TArgsCanvasInputGate,
+): boolean {
+  return args.maximizedNodeId !== null || args.contentNodeId !== null;
+}
+
+/**
+ * A maximized widget covers the whole shell, so any wheel event reaching
+ * the engine while maximized must not pan/zoom the hidden canvas camera.
+ * Content-focused wheel handling stays with the engine's own per-hit guard.
+ */
+export function fnCanvasInputGateSwallowsWheel(
+  args: TArgsCanvasInputGate,
+): boolean {
+  return args.maximizedNodeId !== null;
+}
+
+export type TCanvasShellFocusTransition =
+  | Readonly<{ kind: 'enter-maximized'; widgetId: string }>
+  | Readonly<{ kind: 'exit-maximized'; widgetId: string }>
+  | Readonly<{ kind: 'none' }>;
+
+/**
+ * Detects shell transitions across the maximized boundary so the runtime
+ * can move DOM focus into the widget on entry and back to the canvas on
+ * exit, without the widget or canvas having to coordinate it themselves.
+ */
+export function fnCanvasShellFocusTransition(
+  previous: TCanvasShellState,
+  next: TCanvasShellState,
+): TCanvasShellFocusTransition {
+  if (next.kind === 'maximized-widget') {
+    if (previous.kind === 'maximized-widget' && previous.widgetId === next.widgetId) {
+      return Object.freeze({ kind: 'none' });
+    }
+    // Covers a direct widget-to-widget re-maximize too: focus moves
+    // straight into the newly maximized widget's portal.
+    return Object.freeze({ kind: 'enter-maximized', widgetId: next.widgetId });
+  }
+  if (previous.kind === 'maximized-widget') {
+    return Object.freeze({ kind: 'exit-maximized', widgetId: previous.widgetId });
+  }
+  return Object.freeze({ kind: 'none' });
+}

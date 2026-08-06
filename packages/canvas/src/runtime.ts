@@ -51,10 +51,14 @@ import type {
 } from './debug-trace/typed';
 import type { TCanvasRuntimeConfig } from './types';
 import {
+  fnCanvasInputGateSwallowsKeys,
+  fnCanvasInputGateSwallowsWheel,
+  fnCanvasShellFocusTransition,
   fnCanvasShellOwnsOverlay,
   fnCanvasShellProjection,
   fnCanvasWidgetShellAvailable,
   type TCanvasOverlayOwnership,
+  type TCanvasShellFocusTransition,
   type TCanvasShellState,
 } from './fn.canvas-shell';
 
@@ -145,6 +149,20 @@ function connectorSegmentMode(
     case 'manual':
       return null;
   }
+}
+
+function widgetPortalHost(
+  container: HTMLElement,
+  portalId: string,
+): HTMLElement | null {
+  for (const element of container.querySelectorAll<HTMLElement>(
+    '[data-vibecanvas-portal-id]',
+  )) {
+    if (element.getAttribute('data-vibecanvas-portal-id') === portalId) {
+      return element;
+    }
+  }
+  return null;
 }
 
 function normalizedKeyIdentity(
@@ -505,6 +523,7 @@ export function buildRuntime(
   let releaseThemeChange: (() => void) | null = null;
   let releaseWidgetShell: (() => void) | null = null;
   let releaseEditorShell: (() => void) | null = null;
+  let releaseInputGate: (() => void) | null = null;
   let canvasBackgroundProjection: IRetainedProjectionOwner | null = null;
   let gridVisible = config.initialGridVisible ?? true;
   let shellState: TCanvasShellState = Object.freeze({
@@ -538,6 +557,38 @@ export function buildRuntime(
         contribution,
         fnCanvasShellOwnsOverlay(shellState, contribution.ownership),
       );
+    }
+  };
+  const applyShellFocusTransition = (
+    transition: TCanvasShellFocusTransition,
+  ): void => {
+    if (transition.kind === 'none' || engine === null) return;
+    const node = engine.scene.get(transition.widgetId);
+    const portalId = (node !== null && node.kind === 'widget-frame')
+      ? node.portal?.portalId ?? null
+      : null;
+    const host = portalId === null
+      ? null
+      : widgetPortalHost(config.container, portalId);
+    const activeElement = config.container.ownerDocument.activeElement;
+    if (transition.kind === 'enter-maximized') {
+      if (
+        host === null
+        || (activeElement !== null && host.contains(activeElement))
+      ) return;
+      try {
+        host.focus({ preventScroll: true });
+      } catch (error) {
+        reportTraceCallbackError(config.trace, 'widget-shell-focus', error);
+      }
+      return;
+    }
+    if (
+      host !== null
+      && activeElement !== null
+      && host.contains(activeElement)
+    ) {
+      engine.input.focus();
     }
   };
   const installs: TCanvasRuntimeExtensionInstall[] = [];
@@ -829,6 +880,7 @@ export function buildRuntime(
           next.kind === shellState.kind
           && next.widgetId === shellState.widgetId
         ) return;
+        const focusTransition = fnCanvasShellFocusTransition(shellState, next);
         shellState = next;
         const shouldSuppressSelectionOverlay = shellState.kind === 'maximized-widget';
         if (shouldSuppressSelectionOverlay !== selectionOverlaySuppressed) {
@@ -842,6 +894,7 @@ export function buildRuntime(
         if (imageInput !== null) {
           imageInput.disabled = shellState.kind === 'maximized-widget';
         }
+        applyShellFocusTransition(focusTransition);
         syncShellOverlays();
         for (const listener of [...shellListeners]) listener(shellState);
       };
@@ -900,6 +953,26 @@ export function buildRuntime(
           }),
         }));
       }
+      // Subscribes before `attach()` so this listener runs first in
+      // registration order and can short-circuit the editor/standard-tools
+      // path (which only subscribes once the session attaches below).
+      releaseInputGate = engine.input.subscribe((event) => {
+        if (event.type !== 'key-down' && event.type !== 'key-up' && event.type !== 'wheel') {
+          return;
+        }
+        const session = editorSession;
+        if (session === null) return;
+        const gate = {
+          maximizedNodeId: session.widgets.state.maximizedNodeId,
+          contentNodeId: session.widgets.state.contentNodeId,
+        };
+        if (
+          (event.type === 'key-down' || event.type === 'key-up')
+            ? fnCanvasInputGateSwallowsKeys(gate)
+            : fnCanvasInputGateSwallowsWheel(gate)
+        ) return { handled: true, stopRouting: true };
+        return;
+      });
       editorSession.attach();
       if (config.trace !== undefined && config.trace !== null) {
         const owner = config.trace;
@@ -974,6 +1047,9 @@ export function buildRuntime(
       const editorShell = releaseEditorShell;
       releaseEditorShell = null;
       await attempt(() => editorShell?.());
+      const inputGate = releaseInputGate;
+      releaseInputGate = null;
+      await attempt(() => inputGate?.());
       lastMaximizedWidgetId = null;
       lastWidgetCreationExtension = null;
       normalizingWidgetShell = false;

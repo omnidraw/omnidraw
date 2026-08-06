@@ -97,7 +97,7 @@ function isNativeSpaceControl(target: EventTarget | null): boolean {
 
 function isWidgetContentTarget(target: EventTarget | null): boolean {
   return (
-    eventTargetElement(target)?.closest('[data-omnidraw-portal-id]') ?? null
+    eventTargetElement(target)?.closest('[data-vibecanvas-portal-id]') ?? null
   ) !== null;
 }
 

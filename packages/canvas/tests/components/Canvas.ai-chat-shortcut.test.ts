@@ -202,7 +202,7 @@ describe('Canvas host contributions', () => {
 
     runtimeMocks.runtime.restoreMaximizedWidget.mockClear();
     const widgetContent = document.createElement('button');
-    widgetContent.dataset.omnidrawPortalId = 'widget-1';
+    widgetContent.dataset.vibecanvasPortalId = 'widget-1';
     widgetContent.addEventListener('keydown', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -221,7 +221,7 @@ describe('Canvas host contributions', () => {
     const widgetModalRoot = document.createElement('div');
     widgetModalRoot.setAttribute('role', 'dialog');
     const widgetModal = document.createElement('button');
-    widgetModalRoot.dataset.omnidrawPortalId = 'widget-1';
+    widgetModalRoot.dataset.vibecanvasPortalId = 'widget-1';
     widgetModalRoot.append(widgetModal);
     widgetModal.addEventListener('keydown', (event) => {
       event.preventDefault();
@@ -239,7 +239,7 @@ describe('Canvas host contributions', () => {
 
     const nativeDialog = document.createElement('dialog');
     nativeDialog.open = true;
-    nativeDialog.dataset.omnidrawPortalId = 'widget-1';
+    nativeDialog.dataset.vibecanvasPortalId = 'widget-1';
     const nativeDialogButton = document.createElement('button');
     nativeDialog.append(nativeDialogButton);
     host.querySelector('.vc-canvas-engine-host')?.append(nativeDialog);
@@ -422,7 +422,7 @@ describe('Canvas host contributions', () => {
 
     runtimeMocks.setActiveTool.mockClear();
     const widgetContent = document.createElement('div');
-    widgetContent.dataset.omnidrawPortalId = 'widget-1';
+    widgetContent.dataset.vibecanvasPortalId = 'widget-1';
     canvasSurface?.append(widgetContent);
     widgetContent.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,
@@ -431,6 +431,37 @@ describe('Canvas host contributions', () => {
       key: 'c',
     }));
     expect(runtimeMocks.setActiveTool).not.toHaveBeenCalled();
+  });
+
+  // B80 regression: Cangine stamps `data-vibecanvas-portal-id` on real widget
+  // DOM, not `data-omnidraw-portal-id`. An element carrying only the stale
+  // attribute must not be recognized as widget content.
+  test('does not treat data-omnidraw-portal-id as widget content while content-focused', async () => {
+    runtimeMocks.runtime.widgetContentFocused.mockReturnValue(true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies({ toolbarContributions: [AI_CHAT_TOOL] }),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+    });
+
+    const canvasSurface = host.querySelector<HTMLElement>(
+      '.vc-canvas-engine-host',
+    );
+    const staleWidgetContent = document.createElement('div');
+    staleWidgetContent.dataset.omnidrawPortalId = 'widget-1';
+    canvasSurface?.append(staleWidgetContent);
+    staleWidgetContent.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyC',
+      key: 'c',
+    }));
+    expect(runtimeMocks.setActiveTool).toHaveBeenCalledWith('widget');
   });
 
   test('runs a host action contribution through its primary shortcut', async () => {
