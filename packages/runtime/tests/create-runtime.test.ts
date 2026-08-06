@@ -388,6 +388,57 @@ describe('createRuntime', () => {
     expect(stopCount).toBe(1);
   });
 
+  test('overlapping concurrent shutdown calls join the in-flight shutdown instead of throwing', async () => {
+    const services = createServiceRegistry();
+    let stopCount = 0;
+    let shutdownCallCount = 0;
+    services.provide('service' as never, 10, {
+      name: 'service',
+      async stop() {
+        stopCount += 1;
+      },
+    } as never);
+    const runtime = createRuntime({
+      plugins: [],
+      hooks: {},
+      config: {},
+      services,
+      shutdown: async () => {
+        shutdownCallCount += 1;
+      },
+    });
+
+    await runtime.boot();
+
+    // Simulates a SIGINT immediately followed by a SIGTERM escalation:
+    // both fire runtime.shutdown() before the first has settled.
+    const [first, second] = await Promise.all([runtime.shutdown(), runtime.shutdown()]);
+
+    expect(first).toBeUndefined();
+    expect(second).toBeUndefined();
+    expect(shutdownCallCount).toBe(1);
+    expect(stopCount).toBe(1);
+  });
+
+  test('rejects a shutdown call made while the runtime is still booting', async () => {
+    const services = createServiceRegistry();
+    let releaseBoot!: () => void;
+    const runtime = createRuntime({
+      plugins: [],
+      hooks: {},
+      config: {},
+      services,
+      boot: () => new Promise((resolve) => { releaseBoot = resolve; }),
+    });
+
+    const booted = runtime.boot();
+    await expect(runtime.shutdown()).rejects.toThrow("Runtime cannot shutdown from state 'booting'.");
+
+    releaseBoot();
+    await booted;
+    await runtime.shutdown();
+  });
+
   test('runs application cleanup and stops started services when the boot callback fails', async () => {
     const services = createServiceRegistry();
     const calls: string[] = [];

@@ -98,6 +98,7 @@ export function createRuntime<THooks extends object, TConfig extends object>({
   let bootCallbackEntered = false;
   let shutdownCallbackCompleted = false;
   let state: 'idle' | 'booting' | 'running' | 'stopping' | 'stopped' | 'failed' = 'idle';
+  let shutdownPromise: Promise<void> | null = null;
 
   const stopStartedServices = async (): Promise<unknown[]> => {
     const failures: unknown[] = [];
@@ -166,33 +167,40 @@ export function createRuntime<THooks extends object, TConfig extends object>({
         throw new AggregateError(failures, 'Runtime boot and cleanup failed.');
       }
     },
-    async shutdown() {
-      if (state === 'stopped') return;
+    shutdown() {
+      if (state === 'stopped') return Promise.resolve();
       if (state === 'idle') {
         state = 'stopped';
-        return;
+        return Promise.resolve();
       }
-      if (state === 'booting' || state === 'stopping') {
-        throw new Error(`Runtime cannot shutdown from state '${state}'.`);
+      // A second concurrent/overlapping shutdown call (e.g. SIGINT then a
+      // SIGTERM escalation) joins the in-flight shutdown instead of
+      // throwing on an already-'stopping' state.
+      if (state === 'stopping' && shutdownPromise) return shutdownPromise;
+      if (state === 'booting') {
+        return Promise.reject(new Error(`Runtime cannot shutdown from state '${state}'.`));
       }
       state = 'stopping';
 
-      const failures: unknown[] = [];
-      if (pluginsApplied) {
-        const shutdownFailure = await runShutdownCallback();
-        if (shutdownFailure !== null) failures.push(shutdownFailure);
-      }
-      failures.push(...await stopStartedServices());
+      shutdownPromise = (async () => {
+        const failures: unknown[] = [];
+        if (pluginsApplied) {
+          const shutdownFailure = await runShutdownCallback();
+          if (shutdownFailure !== null) failures.push(shutdownFailure);
+        }
+        failures.push(...await stopStartedServices());
 
-      if (failures.length > 0) {
-        state = 'failed';
-        throw failures[0];
-      }
-      if (startedRegistrations.length > 0 || !shutdownCallbackCompleted && bootCallbackEntered && shutdown) {
-        state = 'failed';
-        throw new Error('Runtime shutdown did not release every started lifecycle.');
-      }
-      state = 'stopped';
+        if (failures.length > 0) {
+          state = 'failed';
+          throw failures[0];
+        }
+        if (startedRegistrations.length > 0 || !shutdownCallbackCompleted && bootCallbackEntered && shutdown) {
+          state = 'failed';
+          throw new Error('Runtime shutdown did not release every started lifecycle.');
+        }
+        state = 'stopped';
+      })();
+      return shutdownPromise;
     },
     services,
     hooks,
