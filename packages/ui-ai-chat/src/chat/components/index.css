@@ -195,7 +195,7 @@
   align-items: center;
   justify-content: center;
   color: var(--foreground);
-  font-size: clamp(22px, 4vw, 44px);
+  font-size: 24px;
   font-weight: 800;
   line-height: 1.15;
   padding: 24px;
@@ -1914,6 +1914,10 @@
     left: 19px;
     right: 19px;
     font-size: 18px;
+  }
+
+  .ai-chat-empty {
+    font-size: 20px;
   }
 
   .ai-chat-composer__controls {

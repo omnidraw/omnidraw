@@ -192,6 +192,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B78](b/B78.md) - Preview does not hot-reload on AI edits; initial bundle is slow
 - [x]: [B79](b/B79.md) - Preview goes white and rebuilds slowly after server restart
 - [x]: [B80](b/B80.md) - widgets: fullscreen widget keyboard leaks to canvas shortcuts (Backspace deletes it)
+- [ ]: [B81](b/B81.md) - cli: shutdown crashes with "Runtime cannot shutdown from state 'stopping'" on Ctrl+C
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
