@@ -50,4 +50,14 @@ describe('agent contract', () => {
       widgetRefs: [{ name: 'Notes Board', source: 'draft' }],
     }).success).toBe(false);
   });
+
+  test('requires opaque entry identity for chat edits', () => {
+    const schema = api().chat.edit['~orpc'].inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    const base = { widgetId: 'chat', sessionId: 'session', text: 'corrected' };
+    expect(schema.safeParse({ ...base, entryId: 'pi-entry-id' }).success).toBe(true);
+    expect(schema.safeParse(base).success).toBe(false);
+    expect(schema.safeParse({ ...base, entryId: '' }).success).toBe(false);
+  });
 });

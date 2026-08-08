@@ -71,9 +71,11 @@ export type TChatComposerProps = {
   defaultThinkingLevel?: TChatComposerThinkingLevel
   isRunning?: boolean
   isCanceling?: boolean
+  isBusy?: boolean
   draftText?: string
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
+  onResolvedPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
   onNewChat?: () => void

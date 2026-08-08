@@ -99,6 +99,16 @@ const ZAgentChatPrompt = ZAgentChatScope.extend({
   path: ['text'],
 })
 
+const ZAgentChatEdit = ZAgentChatScope.extend({
+  entryId: z.string().min(1).max(200),
+  text: z.string(),
+  model: z.object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+  }).optional(),
+  thinkingLevel: ZThinkingLevel.optional(),
+})
+
 const ZAgentChatDbChangeProposal = z.object({
   id: z.string(),
   resourceId: z.string(),
@@ -130,9 +140,14 @@ const ZAgentApproval = z.object({
 
 export type { TAgentEvent } from '@omnidraw/service-event-publisher/IEventPublisherService';
 
+export type TAgentChatHistoryItem = {
+  entryId: string;
+  message: unknown;
+}
+
 export type TAgentChatConnect = {
   vcJson: TWidgetManifestV1 | null;
-  messageHistory: unknown[];
+  messageHistory: TAgentChatHistoryItem[];
 }
 
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
@@ -148,7 +163,9 @@ export const agentContract = oc.router({
   },
   chat: {
     connect: oc.input(ZAgentChatConnectInput).output(orpcType<TAgentChatConnect>()),
+    history: oc.input(ZAgentChatScope).output(orpcType<TAgentChatHistoryItem[]>()),
     prompt: oc.input(ZAgentChatPrompt),
+    edit: oc.input(ZAgentChatEdit).output(orpcType<TAgentChatHistoryItem[]>()),
     dbChange: {
       approve: oc.input(ZAgentChatScope.extend({
         proposalId: z.string().min(1),

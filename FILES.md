@@ -191,6 +191,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/agent/api.chat.connect.ts](packages/api/src/agent/api.chat.connect.ts) |  |
 | [packages/api/src/agent/api.chat.dbChange.approve.ts](packages/api/src/agent/api.chat.dbChange.approve.ts) |  |
 | [packages/api/src/agent/api.chat.dbChange.reject.ts](packages/api/src/agent/api.chat.dbChange.reject.ts) |  |
+| [packages/api/src/agent/api.chat.edit.ts](packages/api/src/agent/api.chat.edit.ts) |  |
+| [packages/api/src/agent/api.chat.history.ts](packages/api/src/agent/api.chat.history.ts) |  |
 | [packages/api/src/agent/api.chat.newSession.ts](packages/api/src/agent/api.chat.newSession.ts) |  |
 | [packages/api/src/agent/api.chat.prompt.ts](packages/api/src/agent/api.chat.prompt.ts) |  |
 | [packages/api/src/agent/api.events.ts](packages/api/src/agent/api.events.ts) |  |
@@ -520,6 +522,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.session-records.ts](packages/service-agent/src/core/tx.session-records.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
+| [packages/service-agent/src/fn.chat-history.ts](packages/service-agent/src/fn.chat-history.ts) | Projects stable active-branch chat history and validates editable user entries. |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
@@ -814,6 +817,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/chat/components/index.css](packages/ui-ai-chat/src/chat/components/index.css) |  |
 | [packages/ui-ai-chat/src/chat/components/index.tsx](packages/ui-ai-chat/src/chat/components/index.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx](packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts) | Pure inline-edit text, image, and optimistic-tail helpers. |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts) |  |

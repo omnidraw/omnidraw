@@ -45,7 +45,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI chat | AI settings |
 | --- | --- |
 | ![AI Chat window open over a Omnidraw canvas](assets/14-canvas-ai-chat.webp) | ![AI Chat settings showing provider connections](assets/15-canvas-ai-settings.webp) |
-| **AI assistant — Chat.** Conversation history, model selector, prompt input, and canvas context. | **AI assistant — Settings.** Provider connection status and API-key actions. |
+| **AI assistant — Chat.** Conversation history, model selector, prompt input, and canvas context. Settled yellow user messages expose a keyboard-accessible **Edit** action; editing stays inside that box with multiline text plus **Cancel** and **Send**, and resending replaces the visible conversation tail without rolling back canvas or workspace state. | **AI assistant — Settings.** Provider connection status and API-key actions. |
 
 | AI draft Preview |
 | --- |

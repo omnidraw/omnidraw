@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { render } from "solid-js/web"
+import { createSignal } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatTab } from "../../../src/chat/components/tabs/ChatTab"
 import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../src/chat/components/ChatComposer/interface"
@@ -134,12 +135,19 @@ function renderChatTab(settings: TRenderChatTabSettings = {
 
   container = document.createElement("div")
   document.body.appendChild(container)
-  disposeRendered = render(() => ChatTab({
+  const historyItems = messageHistory.map((message, index) => ({
+    entryId: `test-entry-${index}`,
+    message: typeof message === "object" && message !== null
+      ? { ...message, __omnidrawMessageFinished: true }
+      : message,
+  }))
+  const chatTabProps = {
     browser: createTestChatBrowser(),
     onLogError: () => {},
     isCanceling: false,
     isRunning: false,
-    messageHistory,
+    messageHistory: historyItems,
+    isEditingHistory: false,
     approvals: [],
     onCancel: () => {},
     onDismissError: () => {},
@@ -148,12 +156,14 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onReportError: () => {},
     onRetryError: () => {},
     onPrompt: async () => {},
+    onEditMessage: async () => true,
     onPreferenceChange: () => {},
     onResolveApproval: async () => {},
     settings,
     mentions: [{ id: "db-1", label: "db", kind: "Database" }],
-    ...overrides,
-  }), container)
+  }
+  Object.defineProperties(chatTabProps, Object.getOwnPropertyDescriptors(overrides))
+  disposeRendered = render(() => ChatTab(chatTabProps), container)
 
   return container
 }
@@ -682,6 +692,115 @@ describe("ChatTab rendered message history", () => {
       ?.click()
 
     expect(onPreferenceChange).toHaveBeenCalledWith({ thinkingLevel: "high" })
+  })
+
+  it("edits one historical user box at a time and restores it on Escape", async () => {
+    const root = renderChatTab()
+    const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    expect(editButtons).toHaveLength(2)
+
+    editButtons[0]?.click()
+    await vi.waitFor(() => expect(root.querySelectorAll(".ai-chat-history__editor")).toHaveLength(1))
+    expect(root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")?.value).toContain("Create a compact launch dashboard")
+
+    editButtons[1]?.click()
+    expect(root.querySelectorAll(".ai-chat-history__editor")).toHaveLength(1)
+    const editor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    expect(editor?.value).toContain("Now make it calmer")
+    editor?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    await vi.waitFor(() => expect(root.querySelector(".ai-chat-history__editor")).toBeNull())
+    expect(root.textContent).toContain("Now make it calmer")
+  })
+
+  it("keeps Enter multiline and sends an inline edit with Cmd/Ctrl+Enter", async () => {
+    const onEditMessage = vi.fn(async () => true)
+    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onEditMessage })
+    const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    editButtons[1]?.click()
+    const editor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!editor) throw new Error("Inline editor did not open")
+    editor.value = "line one\nline two"
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+    expect(onEditMessage).not.toHaveBeenCalled()
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }))
+
+    await vi.waitFor(() => expect(onEditMessage).toHaveBeenCalledWith({
+      entryId: "test-entry-2",
+      text: "line one\nline two",
+      model: { provider: "openai-codex", modelId: "gpt-test" },
+      thinkingLevel: "low",
+    }))
+    await vi.waitFor(() => expect(root.querySelector(".ai-chat-history__editor")).toBeNull())
+  })
+
+  it("preserves the caret position when editing text in the middle", async () => {
+    const root = renderChatTab()
+    const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    editButtons[1]?.click()
+    const editor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!editor) throw new Error("Inline editor did not open")
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+
+    editor.value = "Now\n make it calmer"
+    editor.setSelectionRange(4, 4)
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }))
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+
+    expect(editor.selectionStart).toBe(4)
+    expect(editor.selectionEnd).toBe(4)
+  })
+
+  it("allows empty edits only when the historical message preserves an image", () => {
+    const root = renderChatTab()
+    const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    editButtons[0]?.click()
+    const imageEditor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!imageEditor) throw new Error("Image message editor did not open")
+    imageEditor.value = ""
+    imageEditor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Send")?.disabled).toBe(false)
+
+    Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Cancel")?.click()
+    editButtons[1]?.click()
+    const textEditor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!textEditor) throw new Error("Text message editor did not open")
+    textEditor.value = ""
+    textEditor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Send")?.disabled).toBe(true)
+  })
+
+  it("keeps an open edit draft when another prompt starts or the edit is rejected", async () => {
+    const [isRunning, setIsRunning] = createSignal(false)
+    const onEditMessage = vi.fn(async () => false)
+    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, {
+      get isRunning() { return isRunning() },
+      onEditMessage,
+    })
+    const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    editButtons[1]?.click()
+    const editor = root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!editor) throw new Error("Inline editor did not open")
+    editor.value = "keep this correction"
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+
+    setIsRunning(true)
+    const send = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Send")
+    await vi.waitFor(() => expect(send?.disabled).toBe(true))
+    send?.click()
+    expect(onEditMessage).not.toHaveBeenCalled()
+    expect(editor.value).toBe("keep this correction")
+
+    setIsRunning(false)
+    await vi.waitFor(() => expect(send?.disabled).toBe(false))
+    send?.click()
+    await vi.waitFor(() => expect(onEditMessage).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(root.querySelector(".ai-chat-history__editor")).not.toBeNull())
+    expect(root.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")?.value).toBe("keep this correction")
   })
 
 })
