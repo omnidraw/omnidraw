@@ -9,7 +9,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | Area | Routes | Representative states |
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
-| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, draft Preview, direct widget placement |
+| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, draft Preview/actions, direct widget placement |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
@@ -51,6 +51,11 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
 | **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas — from the sidebar draft row or from the **Open Preview** action on a successful widget create/validate result, placed beside the originating chat. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data, a freshly placed frame builds the current draft bytes on first attach, and only a frame that outlived its host process shows **Preview stopped — build again.** with an explicit rebuild action. Preview server functions run directly against the session's exact server artifact with its selected resources. |
+
+| Preview actions |
+| --- |
+| ![Draft Preview frame with its lifecycle actions menu open](assets/18-canvas-preview-actions.webp) |
+| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the live session without building, **Rebuild** captures and remounts the current draft, **Publish** runs digest-fenced Build and Publish, and destructive **Remove** closes only the Preview frame and its process-owned session. |
 
 | Direct widget placement |
 | --- |

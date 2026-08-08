@@ -6,7 +6,10 @@ import {
   fnCanvasWidgetExtension,
   fnCanvasWidgetMountSignature,
   fnCreateAiWidgetNode,
+  fnCreatePreviewWidgetNode,
   fnCreatePublishedWidgetNode,
+  fnPreviewWidgetAppearanceMatches,
+  fnWithPreviewWidgetAppearance,
   fnWithAiWidgetPayload,
 } from '../../src/canvas-extension/fn.canvas-widget';
 
@@ -18,6 +21,14 @@ const base = {
   size: { width: 360, height: 240 },
   title: 'Widget',
 } as const;
+
+const previewTitleBarColor = {
+  space: 'srgb' as const,
+  r: 217 / 255,
+  g: 119 / 255,
+  b: 6 / 255,
+  a: 1,
+};
 
 describe('direct Cangine widget nodes', () => {
   test('creates a published widget with exact transactional identity', () => {
@@ -62,6 +73,56 @@ describe('direct Cangine widget nodes', () => {
       .not.toBe(fnCanvasWidgetMountSignature(node, { global: 0, widget: 1 }));
     expect(fnCanvasWidgetMountSignature(node, { global: 1, widget: 1 }))
       .not.toBe(fnCanvasWidgetMountSignature(node, { global: 0, widget: 1 }));
+  });
+
+  test('declares the bounded trailing Preview actions dropdown', () => {
+    const node = fnCreatePreviewWidgetNode({
+      ...base,
+      instanceId: 'preview-1',
+      widgetKey: 'counter',
+      titleBarColor: previewTitleBarColor,
+    });
+
+    expect(node.title).toBe('Preview: Widget');
+    expect(node.titleBarColor).toEqual(previewTitleBarColor);
+    expect(node.headerItems).toEqual([{
+      type: 'dropdown',
+      id: 'preview-actions',
+      label: 'Preview actions',
+      content: { type: 'text', text: '•••' },
+      items: [
+        { id: 'reload', text: 'Reload' },
+        { id: 'rebuild', text: 'Rebuild' },
+        { id: 'publish', text: 'Publish' },
+        { id: 'remove', text: 'Remove' },
+      ],
+    }]);
+    expect(JSON.stringify(node)).not.toContain('function');
+  });
+
+  test('normalizes existing Preview chrome without duplicating its prefix', () => {
+    const preview = fnCreatePreviewWidgetNode({
+      ...base,
+      instanceId: 'preview-1',
+      widgetKey: 'counter',
+      titleBarColor: previewTitleBarColor,
+    });
+
+    expect(fnWithPreviewWidgetAppearance(preview, previewTitleBarColor).title)
+      .toBe('Preview: Widget');
+    const legacy = {
+      ...preview,
+      title: 'Legacy title',
+      titleBarColor: undefined,
+    };
+    expect(fnPreviewWidgetAppearanceMatches(preview, previewTitleBarColor))
+      .toBe(true);
+    expect(fnPreviewWidgetAppearanceMatches(legacy, previewTitleBarColor))
+      .toBe(false);
+    expect(fnWithPreviewWidgetAppearance(legacy, previewTitleBarColor)).toMatchObject({
+      title: 'Preview: Legacy title',
+      titleBarColor: previewTitleBarColor,
+    });
   });
 
   test('keeps AI preferences in the namespaced extension', () => {

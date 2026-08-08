@@ -1,4 +1,5 @@
 import type {
+  TColor,
   TJsonValue,
   TSceneNode,
   TWidgetFrameNode,
@@ -8,6 +9,10 @@ import type {
   TCanvasWidgetExtensionV1,
   TCanvasWidgetResourceBindingV1,
 } from '@omnidraw/canvas-contract/types';
+import {
+  PREVIEW_ACTION_IDS,
+  PREVIEW_ACTIONS_HEADER_ID,
+} from './CONSTANTS';
 
 export type TAiWidgetPayload = Readonly<{
   sessionId: string;
@@ -160,6 +165,7 @@ export function fnCreatePreviewWidgetNode(
     position: Readonly<{ x: number; y: number }>;
     size: Readonly<{ width: number; height: number }>;
     title: string;
+    titleBarColor: Readonly<TColor>;
     instanceId: string;
     widgetKey: string;
   }>,
@@ -170,12 +176,57 @@ export function fnCreatePreviewWidgetNode(
     instanceId: args.instanceId,
     widgetKey: args.widgetKey,
   };
-  return {
+  return fnWithPreviewWidgetAppearance({
     ...fnBaseWidgetNode(args),
+    headerItems: [{
+      type: 'dropdown',
+      id: PREVIEW_ACTIONS_HEADER_ID,
+      label: 'Preview actions',
+      content: { type: 'text', text: '•••' },
+      items: [
+        { id: PREVIEW_ACTION_IDS.reload, text: 'Reload' },
+        { id: PREVIEW_ACTION_IDS.rebuild, text: 'Rebuild' },
+        { id: PREVIEW_ACTION_IDS.publish, text: 'Publish' },
+        { id: PREVIEW_ACTION_IDS.remove, text: 'Remove' },
+      ],
+    }],
     extensions: {
       [CANVAS_WIDGET_EXTENSION_KEY]: extension,
     },
+  }, args.titleBarColor);
+}
+
+export function fnWithPreviewWidgetAppearance(
+  node: Readonly<TWidgetFrameNode>,
+  titleBarColor: Readonly<TColor>,
+): TWidgetFrameNode {
+  const extension = fnCanvasWidgetExtension(node);
+  if (extension?.type !== 'widget-preview') return structuredClone(node);
+  const currentTitle = node.title?.trim() ?? '';
+  const title = currentTitle.startsWith('Preview: ')
+    ? currentTitle
+    : `Preview: ${currentTitle || extension.widgetKey}`;
+  return {
+    ...structuredClone(node),
+    title,
+    titleBarColor: { ...titleBarColor },
   };
+}
+
+export function fnPreviewWidgetAppearanceMatches(
+  node: Readonly<TWidgetFrameNode>,
+  titleBarColor: Readonly<TColor>,
+): boolean {
+  if (fnCanvasWidgetExtension(node)?.type !== 'widget-preview') return false;
+  const current = node.titleBarColor;
+  const normalized = fnWithPreviewWidgetAppearance(node, titleBarColor);
+  return node.title === normalized.title
+    && current !== undefined
+    && current.space === titleBarColor.space
+    && current.r === titleBarColor.r
+    && current.g === titleBarColor.g
+    && current.b === titleBarColor.b
+    && current.a === titleBarColor.a;
 }
 
 export function fnCanvasWidgetExtension(

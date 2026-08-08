@@ -793,11 +793,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/ui-ai-chat/package.json](packages/ui-ai-chat/package.json) |  |
 | [packages/ui-ai-chat/README.md](packages/ui-ai-chat/README.md) |  |
+| [packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts](packages/ui-ai-chat/src/canvas-extension/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts](packages/ui-ai-chat/src/canvas-extension/fn.canvas-widget.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/fn.preview-actions.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-actions.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts](packages/ui-ai-chat/src/canvas-extension/fn.preview-diagnostic.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fn.widget-catalog-event.ts](packages/ui-ai-chat/src/canvas-extension/fn.widget-catalog-event.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts](packages/ui-ai-chat/src/canvas-extension/fx.capsule-portal-viewport.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/index.ts](packages/ui-ai-chat/src/canvas-extension/index.ts) |  |
+| [packages/ui-ai-chat/src/canvas-extension/preview-actions.ts](packages/ui-ai-chat/src/canvas-extension/preview-actions.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/preview-owner.ts](packages/ui-ai-chat/src/canvas-extension/preview-owner.ts) |  |
 | [packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts](packages/ui-ai-chat/src/canvas-extension/tx.ai-widget-payload.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/ApprovalList.tsx](packages/ui-ai-chat/src/chat/components/ApprovalList.tsx) |  |

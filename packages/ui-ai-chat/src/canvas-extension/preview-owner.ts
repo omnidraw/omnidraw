@@ -34,6 +34,8 @@ type TCreateWidgetPreviewOwnerArgs = Readonly<{
 export type TWidgetPreviewOwner = Readonly<{
   attach(host: HTMLDivElement, element: Readonly<TWidgetFrameNode>): void;
   setViewport(viewport: Parameters<TWidgetUiRuntimeHandle['setViewport']>[0]): void;
+  reload(): Promise<void>;
+  rebuild(): Promise<void>;
   refresh(): Promise<void>;
   destroy(reason?: string): Promise<void>;
 }>;
@@ -65,6 +67,22 @@ export function createWidgetPreviewOwner(
   let disposed = false;
   let refreshRunning = false;
   let refreshQueued = false;
+  let operationTail = Promise.resolve();
+
+  const serialize = (operation: () => Promise<void>): Promise<void> => {
+    const next = operationTail.then(operation, operation);
+    operationTail = next.catch(() => undefined);
+    return next;
+  };
+
+  const closeSession = async (
+    session: Readonly<TWidgetPreviewRuntimeIdentity>,
+  ): Promise<void> => {
+    await args.transport.api.widget.preview.close({
+      canvasId: session.canvasId,
+      elementId: session.elementId,
+    }).catch(() => undefined);
+  };
 
   const fail = (error: unknown): void => {
     if (disposed || host === null) return;
@@ -73,7 +91,16 @@ export function createWidgetPreviewOwner(
     args.onFatal?.(error);
   };
 
-  const renderStopped = (): void => {
+  const releaseMounted = async (reason: string): Promise<void> => {
+    const mounted = handle;
+    handle = null;
+    mountedDigestSha256 = null;
+    await mounted?.destroy(reason).catch(() => undefined);
+  };
+
+  const renderStopped = async (): Promise<void> => {
+    if (disposed || host === null || identity === null) return;
+    await releaseMounted('preview session stopped');
     if (disposed || host === null || identity === null) return;
     const root = host;
     root.dataset.widgetRuntimeStatus = 'deferred';
@@ -116,9 +143,7 @@ export function createWidgetPreviewOwner(
     });
     // Capsule requires the container to be empty before a new mount, so the
     // previous handle must be destroyed first.
-    const previous = handle;
-    handle = null;
-    await previous?.destroy('preview artifact replaced').catch(() => undefined);
+    await releaseMounted('preview artifact replaced');
     if (disposed || host === null || identity === null) return;
     host.replaceChildren();
     const mounted = await args.mount.mount({
@@ -143,14 +168,22 @@ export function createWidgetPreviewOwner(
   };
 
   const openPreview = async (): Promise<TWidgetPreviewMountResponse> => {
+    const session = identity;
+    if (disposed || session === null) throw new PreviewNotBuildableError();
     const [error, response] = await args.transport.api.widget.preview.open({
-      canvasId: identity!.canvasId,
-      elementId: identity!.elementId,
-      widgetKey: identity!.widgetKey,
+      canvasId: session.canvasId,
+      elementId: session.elementId,
+      widgetKey: session.widgetKey,
     });
+    if (disposed) {
+      // close() may have raced ahead of this server-side open. Close once more
+      // after the response so a late-created process session cannot survive.
+      await closeSession(session);
+      throw new PreviewNotBuildableError();
+    }
     if (error || !response) {
       if (isNotFound(error)) {
-        renderStopped();
+        await renderStopped();
         throw new PreviewNotBuildableError();
       }
       throw error ?? new Error('Preview build failed.');
@@ -158,7 +191,7 @@ export function createWidgetPreviewOwner(
     return response;
   };
 
-  const rebuild = async (): Promise<void> => {
+  const runRebuild = async (): Promise<void> => {
     if (disposed || host === null || identity === null) return;
     host.dataset.widgetRuntimeStatus = 'loading';
     host.textContent = 'Building Preview…';
@@ -171,6 +204,32 @@ export function createWidgetPreviewOwner(
       fail(error);
     }
   };
+
+  const runReload = async (): Promise<void> => {
+    if (disposed || host === null || identity === null) return;
+    host.dataset.widgetRuntimeStatus = 'loading';
+    host.textContent = 'Loading Preview…';
+    try {
+      const [error, response] = await args.transport.api.widget.preview.load({
+        canvasId: identity.canvasId,
+        elementId: identity.elementId,
+        widgetKey: identity.widgetKey,
+      });
+      if (error || !response) {
+        if (isNotFound(error)) {
+          await renderStopped();
+          return;
+        }
+        throw error ?? new Error('Preview runtime is unavailable.');
+      }
+      await mountArtifact(response);
+    } catch (error) {
+      fail(error);
+    }
+  };
+
+  const reload = (): Promise<void> => serialize(runReload);
+  const rebuild = (): Promise<void> => serialize(runRebuild);
 
   /**
    * Rebuilds the live Preview after a draft change. Coalesces concurrent calls:
@@ -192,20 +251,22 @@ export function createWidgetPreviewOwner(
       do {
         refreshQueued = false;
         if (disposed || host === null || identity === null) return;
-        try {
-          const response = await openPreview();
-          if (disposed || host === null || identity === null) return;
-          if (response.artifact.digestSha256 === mountedDigestSha256) {
-            // Same construction reused (e.g. restart): the existing widget is
-            // still mounted and rendering, so do not touch the host.
-            host.dataset.widgetRuntimeStatus = 'ready';
-            continue;
+        await serialize(async () => {
+          try {
+            const response = await openPreview();
+            if (disposed || host === null || identity === null) return;
+            if (response.artifact.digestSha256 === mountedDigestSha256) {
+              // Same construction reused (e.g. restart): the existing widget is
+              // still mounted and rendering, so do not touch the host.
+              host.dataset.widgetRuntimeStatus = 'ready';
+              return;
+            }
+            await mountArtifact(response);
+          } catch (error) {
+            if (error instanceof PreviewNotBuildableError) return;
+            fail(error);
           }
-          await mountArtifact(response);
-        } catch (error) {
-          if (error instanceof PreviewNotBuildableError) return;
-          fail(error);
-        }
+        });
       } while (refreshQueued);
     } finally {
       refreshRunning = false;
@@ -223,7 +284,7 @@ export function createWidgetPreviewOwner(
     });
     root.dataset.widgetRuntimeStatus = 'loading';
     root.textContent = 'Loading Preview…';
-    void (async () => {
+    void serialize(async () => {
       try {
         const [error, response] = await args.transport.api.widget.preview.load({
           canvasId: args.canvasId,
@@ -233,10 +294,10 @@ export function createWidgetPreviewOwner(
         if (error || !response) {
           if (isNotFound(error)) {
             if (args.shouldAutoBuild?.() === true) {
-              await rebuild();
+              await runRebuild();
               return;
             }
-            renderStopped();
+            await renderStopped();
             return;
           }
           throw error ?? new Error('Preview runtime is unavailable.');
@@ -245,7 +306,7 @@ export function createWidgetPreviewOwner(
       } catch (error) {
         fail(error);
       }
-    })();
+    });
   };
 
   return Object.freeze({
@@ -253,23 +314,25 @@ export function createWidgetPreviewOwner(
     setViewport(viewport) {
       void handle?.setViewport(viewport);
     },
+    reload,
+    rebuild,
     refresh,
     async destroy(reason = 'preview owner destroyed') {
       if (disposed) return;
       disposed = true;
+      refreshQueued = false;
       const mounted = handle;
       handle = null;
+      mountedDigestSha256 = null;
       const session = identity;
       identity = null;
-      await mounted?.destroy(reason).catch(() => undefined);
-      if (session !== null) {
-        await args.transport.api.widget.preview.close({
-          canvasId: session.canvasId,
-          elementId: session.elementId,
-        }).catch(() => undefined);
-      }
-      host?.replaceChildren();
+      const root = host;
       host = null;
+      root?.replaceChildren();
+      await Promise.all([
+        mounted?.destroy(reason).catch(() => undefined),
+        session === null ? undefined : closeSession(session),
+      ]);
     },
   });
 }

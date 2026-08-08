@@ -43,6 +43,7 @@ function mountViewForBytes(bytes: Uint8Array) {
 
 function createHarness(args: Readonly<{
   autoBuild?: () => boolean;
+  loadResponses?: ReadonlyArray<readonly [Error | null | undefined, ReturnType<typeof mountView> | undefined]>;
   openResponses?: ReadonlyArray<readonly [Error | null, ReturnType<typeof mountView> | undefined]>;
 }> = {}) {
   const handle = {
@@ -50,12 +51,18 @@ function createHarness(args: Readonly<{
     destroy: vi.fn(async () => undefined),
   };
   const openResponses = args.openResponses ?? [[undefined, mountView()]];
+  const loadResponses = args.loadResponses ?? [stoppedNotFound()];
   let openCall = 0;
+  let loadCall = 0;
   const transport = {
     api: {
       widget: {
         preview: {
-          load: vi.fn(async () => stoppedNotFound()),
+          load: vi.fn(async () => {
+            const response = loadResponses[Math.min(loadCall, loadResponses.length - 1)];
+            loadCall += 1;
+            return response;
+          }),
           open: vi.fn(async () => {
             const response = openResponses[Math.min(openCall, openResponses.length - 1)];
             openCall += 1;
@@ -195,5 +202,154 @@ describe('widget preview owner refresh', () => {
     expect(host.dataset.widgetRuntimeStatus).toBe('ready');
 
     await owner.destroy('test done');
+  });
+});
+
+describe('widget preview owner explicit actions', () => {
+  test('Reload remounts the live artifact without opening or building a Preview', async () => {
+    const { handle, host, mount, owner, transport } = createHarness({
+      autoBuild: () => true,
+      loadResponses: [stoppedNotFound(), [undefined, mountView()]],
+    });
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(transport.api.widget.preview.open).toHaveBeenCalledOnce();
+
+    await owner.reload();
+
+    expect(transport.api.widget.preview.load).toHaveBeenCalledTimes(2);
+    expect(transport.api.widget.preview.open).toHaveBeenCalledOnce();
+    expect(mount.mount).toHaveBeenCalledTimes(2);
+    expect(handle.destroy).toHaveBeenCalledOnce();
+    await owner.destroy('test done');
+  });
+
+  test('Reload keeps a stopped Preview stopped and never falls through to open', async () => {
+    const { host, owner, transport } = createHarness();
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('deferred'));
+
+    await owner.reload();
+
+    expect(host.textContent).toContain('Preview stopped — build again.');
+    expect(transport.api.widget.preview.load).toHaveBeenCalledTimes(2);
+    expect(transport.api.widget.preview.open).not.toHaveBeenCalled();
+    await owner.destroy('test done');
+  });
+
+  test('Reload releases a mounted runtime when its live session disappeared', async () => {
+    const { handle, host, owner } = createHarness({
+      loadResponses: [[undefined, mountView()], stoppedNotFound()],
+    });
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+
+    await owner.reload();
+
+    expect(host.dataset.widgetRuntimeStatus).toBe('deferred');
+    expect(host.textContent).toContain('Preview stopped — build again.');
+    expect(handle.destroy).toHaveBeenCalledOnce();
+    await owner.destroy('test done');
+    expect(handle.destroy).toHaveBeenCalledOnce();
+  });
+
+  test('Rebuild remounts even when construction reuses the mounted digest', async () => {
+    const { handle, host, mount, owner, transport } = createHarness({
+      autoBuild: () => true,
+      openResponses: [
+        [undefined, mountView()],
+        [undefined, mountView()],
+      ],
+    });
+    owner.attach(host, ELEMENT);
+    await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
+
+    await owner.rebuild();
+
+    expect(transport.api.widget.preview.open).toHaveBeenCalledTimes(2);
+    expect(mount.mount).toHaveBeenCalledTimes(2);
+    expect(handle.destroy).toHaveBeenCalledOnce();
+    await owner.destroy('test done');
+  });
+
+  test('serializes repeated explicit rebuilds so mounts never overlap', async () => {
+    let activeMounts = 0;
+    let maximumActiveMounts = 0;
+    const harness = createHarness({ autoBuild: () => true });
+    harness.mount.mount.mockImplementation(async () => {
+      activeMounts += 1;
+      maximumActiveMounts = Math.max(maximumActiveMounts, activeMounts);
+      await Promise.resolve();
+      activeMounts -= 1;
+      return harness.handle;
+    });
+    harness.owner.attach(harness.host, ELEMENT);
+    await vi.waitFor(() => expect(harness.host.dataset.widgetRuntimeStatus).toBe('ready'));
+
+    await Promise.all([
+      harness.owner.rebuild(),
+      harness.owner.rebuild(),
+      harness.owner.rebuild(),
+    ]);
+
+    expect(maximumActiveMounts).toBe(1);
+    expect(harness.mount.mount).toHaveBeenCalledTimes(4);
+    await harness.owner.destroy('test done');
+  });
+
+  test('closes immediately while an attach load remains in flight', async () => {
+    const harness = createHarness();
+    let resolveLoad!: (value: readonly [undefined, ReturnType<typeof mountView>]) => void;
+    harness.transport.api.widget.preview.load.mockImplementation(() => (
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      })
+    ));
+    harness.owner.attach(harness.host, ELEMENT);
+    await vi.waitFor(() => (
+      expect(harness.transport.api.widget.preview.load).toHaveBeenCalledOnce()
+    ));
+
+    let destroyed = false;
+    void harness.owner.destroy('removed').then(() => {
+      destroyed = true;
+    });
+
+    await vi.waitFor(() => expect(destroyed).toBe(true));
+    expect(harness.transport.api.widget.preview.close).toHaveBeenCalledWith({
+      canvasId: 'canvas-1',
+      elementId: 'node-1',
+    });
+    resolveLoad([undefined, mountView()]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.mount.mount).not.toHaveBeenCalled();
+  });
+
+  test('closes again when an in-flight rebuild opens a session after removal', async () => {
+    const harness = createHarness({
+      loadResponses: [[undefined, mountView()]],
+    });
+    harness.owner.attach(harness.host, ELEMENT);
+    await vi.waitFor(() => expect(harness.host.dataset.widgetRuntimeStatus).toBe('ready'));
+    let resolveOpen!: (value: readonly [undefined, ReturnType<typeof mountView>]) => void;
+    harness.transport.api.widget.preview.open.mockImplementation(() => (
+      new Promise((resolve) => {
+        resolveOpen = resolve;
+      })
+    ));
+    void harness.owner.rebuild();
+    await vi.waitFor(() => (
+      expect(harness.transport.api.widget.preview.open).toHaveBeenCalledOnce()
+    ));
+
+    await harness.owner.destroy('removed');
+    expect(harness.transport.api.widget.preview.close).toHaveBeenCalledTimes(1);
+    resolveOpen([undefined, mountView()]);
+
+    await vi.waitFor(() => (
+      expect(harness.transport.api.widget.preview.close).toHaveBeenCalledTimes(2)
+    ));
+    expect(harness.mount.mount).toHaveBeenCalledOnce();
   });
 });

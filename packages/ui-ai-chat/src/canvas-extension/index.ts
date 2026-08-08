@@ -1,6 +1,7 @@
 import {
   createEvenOrderKeys,
   orderKeyBetween,
+  type TColor,
   type TPortalGeometry,
   type TSceneNode,
   type TSerializedSceneCommand,
@@ -44,6 +45,7 @@ import type {
 } from '../widget-runtime/interface';
 import { createWidgetUiArtifactMountPort } from '../widget-runtime/mount-widget-ui-artifact';
 import { createWidgetPreviewOwner, type TWidgetPreviewOwner } from './preview-owner';
+import { createPreviewActions } from './preview-actions';
 import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 import {
   fnAiWidgetPayload,
@@ -52,11 +54,17 @@ import {
   fnCreateAiWidgetNode,
   fnCreatePreviewWidgetNode,
   fnCreatePublishedWidgetNode,
+  fnWithPreviewWidgetAppearance,
   type TAiWidgetPayload,
 } from './fn.canvas-widget';
 import { fxWidgetCapsuleViewport } from './fx.capsule-portal-viewport';
 import { fnReduceWidgetCatalogEvent } from './fn.widget-catalog-event';
 import { txPersistAiWidgetPayload } from './tx.ai-widget-payload';
+
+type TWidgetPreviewTitleBarProjection = Readonly<{
+  color: Readonly<TColor>;
+  projectNode(node: Readonly<TSceneNode>): TSceneNode;
+}>;
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -67,6 +75,10 @@ export type TCreateAiChatCanvasExtensionArgs = {
   widgetCapsuleHostCatalog():
     TWidgetCapsuleHostCatalog | Promise<TWidgetCapsuleHostCatalog>;
   widgetCapsuleTheme: TWidgetCapsuleThemeSource;
+  widgetPreviewTitleBar: Readonly<{
+    read(): TWidgetPreviewTitleBarProjection;
+    subscribe(listener: (projection: TWidgetPreviewTitleBarProjection) => void): () => void;
+  }>;
   widgetCapsuleOutput: TWidgetCapsuleOutputSink;
   widgetPlacement?: TWidgetPlacementCoordinator;
   widgetCollaborativeState?: TWidgetCollaborativeStatePort;
@@ -274,6 +286,7 @@ export function createAiChatCanvasExtension(
       let publishedCatalogEpoch = 0;
       const publishedWidgetEpochs = new Map<string, number>();
       const previewOwnersByWidgetKey = new Map<string, TWidgetPreviewOwner>();
+      const previewOwnersByNodeId = new Map<string, TWidgetPreviewOwner>();
       const previewRefreshTimers = new Map<string, unknown>();
       const portalRegistrationSignature = (
         node: Readonly<TWidgetFrameNode>,
@@ -543,6 +556,7 @@ export function createAiChatCanvasExtension(
               previewOwner = owner;
               const ownedKey = currentExtension.widgetKey;
               previewOwnersByWidgetKey.set(ownedKey, owner);
+              previewOwnersByNodeId.set(node.id, owner);
               owner.attach(host, current);
               updateViewport();
               return async () => {
@@ -551,6 +565,9 @@ export function createAiChatCanvasExtension(
                 previewDisposed = true;
                 if (previewOwnersByWidgetKey.get(ownedKey) === owner) {
                   previewOwnersByWidgetKey.delete(ownedKey);
+                }
+                if (previewOwnersByNodeId.get(node.id) === owner) {
+                  previewOwnersByNodeId.delete(node.id);
                 }
                 const timer = previewRefreshTimers.get(ownedKey);
                 if (timer !== undefined) {
@@ -828,6 +845,7 @@ export function createAiChatCanvasExtension(
               position: placementArgs.position,
               size: placementArgs.bounds,
               title: placementArgs.label,
+              titleBarColor: args.widgetPreviewTitleBar.read().color,
               instanceId: args.widgetBrowser.createId(),
               widgetKey,
             }), 'omnidraw:widget-placement');
@@ -856,6 +874,20 @@ export function createAiChatCanvasExtension(
       });
       const unregisterPlacement = placementCoordinator.register(placement);
       const unsubscribeScene = context.engine.scene.subscribe(reconcilePortals);
+      const syncPreviewWidgetAppearance = (
+        projection: TWidgetPreviewTitleBarProjection,
+      ): void => {
+        context.document.reproject((node) => {
+          const projected = projection.projectNode(node);
+          return projected.kind === 'widget-frame'
+            ? fnWithPreviewWidgetAppearance(projected, projection.color)
+            : projected;
+        });
+      };
+      syncPreviewWidgetAppearance(args.widgetPreviewTitleBar.read());
+      const unsubscribePreviewTitleBar = args.widgetPreviewTitleBar.subscribe(
+        syncPreviewWidgetAppearance,
+      );
       const unsubscribeWidgetCatalog =
         args.application.subscribeCatalogInvalidation?.('widgets', () => {
           publishedCatalogEpoch += 1;
@@ -863,6 +895,25 @@ export function createAiChatCanvasExtension(
         });
       const unsubscribeCamera = context.engine.camera.subscribe(() => {
         context.engine.portals.syncNow();
+      });
+      const removeWidgetFrame = (widgetId: string): void => {
+        if (widgetFrame(context.engine.scene.get(widgetId)) === null) return;
+        context.editor.commitSceneMutation({
+          source: 'omnidraw:widget-close',
+          commands: [{
+            type: 'remove',
+            nodeId: widgetId,
+            descendants: 'remove',
+          }],
+        });
+      };
+      const previewActions = createPreviewActions({
+        transport: args.widgetTransport,
+        menu: context.widgets.menu,
+        notification: context.config.notification,
+        readNode: (widgetId) => context.engine.scene.get(widgetId),
+        readOwner: (widgetId) => previewOwnersByNodeId.get(widgetId) ?? null,
+        remove: removeWidgetFrame,
       });
       const unsubscribeActivation = context.widgets.subscribeActivation(
         (activation) => {
@@ -880,18 +931,15 @@ export function createAiChatCanvasExtension(
             actionHandlers.get(activation.widgetId)?.get(activation.itemId)?.();
             return;
           }
+          if (activation.type === 'dropdown-item') {
+            void previewActions.activate(activation);
+            return;
+          }
           if (
             activation.type === 'traffic-light'
             && activation.control === 'close'
           ) {
-            context.editor.commitSceneMutation({
-              source: 'omnidraw:widget-close',
-              commands: [{
-                type: 'remove',
-                nodeId: activation.widgetId,
-                descendants: 'remove',
-              }],
-            });
+            removeWidgetFrame(activation.widgetId);
           }
         },
       );
@@ -908,11 +956,14 @@ export function createAiChatCanvasExtension(
           }
           previewRefreshTimers.clear();
           previewOwnersByWidgetKey.clear();
+          previewOwnersByNodeId.clear();
           unregisterPlacement();
           placement.destroy();
           unsubscribeActivation();
+          previewActions.destroy();
           unsubscribeCamera();
           unsubscribeScene();
+          unsubscribePreviewTitleBar();
           unsubscribeWidgetCatalog?.();
           for (const registration of registrations.values()) {
             registration.unregister();

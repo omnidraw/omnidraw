@@ -2,7 +2,10 @@ import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toa
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { themeService, txSetThemeAppearance } from "@/services/theme";
 import { widgetCollaborativeStatePort } from "@/services/widget-collaborative-state";
-import { fnWidgetCapsuleTheme } from "@/services/fn.widget-capsule-theme";
+import {
+  fnWidgetCapsuleTheme,
+  fnWidgetPreviewTitleBarColor,
+} from "@/services/fn.widget-capsule-theme";
 import { txRouteWidgetCapsuleOutput } from "@/services/tx.route-widget-capsule-output";
 import { setStore, store } from "@/store";
 import {
@@ -20,7 +23,11 @@ import type {
   TWidgetCapsuleHostCatalog,
   TWidgetCapsulePublicSigningKey,
 } from "@omnidraw/ui-ai-chat/widget-runtime";
-import type { TCanvasImagePort } from "@omnidraw/canvas";
+import {
+  fnProjectSemanticCanvasNode,
+  type TCanvasImagePort,
+} from "@omnidraw/canvas";
+import type { TSceneNode } from "@omnidraw/cangine";
 
 export const catalogInvalidation = createCatalogInvalidation();
 export const widgetPlacementCoordinator = createWidgetPlacementCoordinator();
@@ -170,6 +177,29 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
       subscribe(listener) {
         return themeService.subscribeThemeChange((theme) => {
           listener(fnWidgetCapsuleTheme(theme));
+        });
+      },
+    },
+    widgetPreviewTitleBar: {
+      read() {
+        const theme = themeService.getTheme();
+        return {
+          color: fnWidgetPreviewTitleBarColor(theme),
+          projectNode: (node: Readonly<TSceneNode>) => fnProjectSemanticCanvasNode({
+            node,
+            colors: theme.canvas.colors,
+          }),
+        };
+      },
+      subscribe(listener) {
+        return themeService.subscribeThemeChange((theme) => {
+          listener({
+            color: fnWidgetPreviewTitleBarColor(theme),
+            projectNode: (node: Readonly<TSceneNode>) => fnProjectSemanticCanvasNode({
+              node,
+              colors: theme.canvas.colors,
+            }),
+          });
         });
       },
     },
