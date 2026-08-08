@@ -32,7 +32,12 @@ import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import { fnFindEditableUserMessage, fnProjectActiveChatHistory, type TAgentChatHistoryItem } from './fn.chat-history';
-import type { TWidgetDbChangeProposalRecord, TWidgetPreviewBuildCheck, TWidgetResourceSelection } from './tools/types';
+import type {
+  TWidgetDbChangeProposalRecord,
+  TWidgetPreviewBuildCheck,
+  TWidgetPreviewInspectionCapability,
+  TWidgetResourceSelection,
+} from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 
@@ -52,6 +57,8 @@ export interface IAgentServiceConfig {
   onWidgetDraftsChanged?: () => void;
   /** Runs the real host Preview build for one draft slug during validation. */
   previewBuild?: TWidgetPreviewBuildCheck;
+  /** Runs one exact draft artifact in a fresh isolated browser for agent inspection. */
+  previewInspection?: TWidgetPreviewInspectionCapability;
   eventPublisherService: IEventPublisherService,
   chats: Readonly<{
     get(args: Readonly<{ id: string }>): Promise<Readonly<{ status: 'active' | 'archived' | 'error' }> | null>;
@@ -874,6 +881,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       ...(this.#config.previewBuild === undefined
         ? {}
         : { previewBuild: this.#config.previewBuild }),
+      ...(this.#config.previewInspection === undefined
+        ? {}
+        : { previewInspection: this.#config.previewInspection }),
       takeSensitiveToolArgs: (toolCallId) => {
         const stored = sensitiveToolArgs.get(toolCallId)
         sensitiveToolArgs.delete(toolCallId)

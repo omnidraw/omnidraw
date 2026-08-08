@@ -48,7 +48,9 @@ For Three.js/WebGL widgets:
   \`requestAnimationFrame\` callback so animation speed stays independent of
   frame rate and Capsule scheduling;
 - do not claim the widget renders until the current process has completed a
-  successful browser Preview execution.
+  successful \`od_widget_preview_inspect\` run for the exact draft artifact; that
+  isolated \`artifact_exact\` evidence does not prove normal Preview bindings,
+  guest network, resources, server effects, or full \`preview_exact\` authority.
 `;
 
 const WIDGET_CHAT_SYSTEM_PROMPT_SECTIONS = [

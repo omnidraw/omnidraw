@@ -1,9 +1,13 @@
 import type {
   CapsuleHost,
+  CapsuleMountErrorEvent,
   CapsuleMountDiagnostics,
   CapsuleViewport,
   CreateCapsuleHostOptions,
 } from '@omnidraw/capsule-omnidraw/host';
+import type {
+  CapsuleAuthoringInspectionController,
+} from '@omnidraw/capsule-omnidraw/authoring-inspection';
 import type {
   TOmnidrawCapsuleError,
 } from '@omnidraw/capsule-omnidraw/contract';
@@ -253,6 +257,29 @@ export type TWidgetUiArtifactMountPort = Readonly<{
     onFatal(error: unknown): void;
   }>): Promise<TWidgetUiRuntimeHandle>;
   destroy(reason?: string): Promise<void>;
+}>;
+
+export type TWidgetAuthoringInspectionRuntimeHandle = Readonly<{
+  inspection: CapsuleAuthoringInspectionController;
+  ready(): Promise<void>;
+  diagnostics(): CapsuleMountDiagnostics;
+  destroy(reason?: string): Promise<void>;
+}>;
+
+export type TWidgetAuthoringInspectionMountPort = Readonly<{
+  mount(args: Readonly<{
+    root: HTMLDivElement;
+    identity: TWidgetPreviewRuntimeIdentity;
+    catalog: TWidgetCapsuleHostCatalog;
+    artifact: TVerifiedWidgetUiArtifact;
+    functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
+    browserFunctionDescriptorsDigestSha256: string;
+    functionBridge: TWidgetFunctionHostBridge;
+    props?: TWidgetCapsuleProps;
+    theme: TWidgetCapsuleTheme;
+    onRuntimeEvent(event: CapsuleMountErrorEvent): void;
+    onFatal(error: unknown): void;
+  }>): Promise<TWidgetAuthoringInspectionRuntimeHandle>;
 }>;
 
 export type TWidgetUiRuntimeRenderArgs = Readonly<{

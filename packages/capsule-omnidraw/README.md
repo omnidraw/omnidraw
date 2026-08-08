@@ -8,11 +8,13 @@ Omnidraw integration surfaces for Capsule widget builds and browser hosting.
 - `@omnidraw/capsule-omnidraw/build`: build policy and injected signing.
 - `@omnidraw/capsule-omnidraw/builder`: the supported widget artifact builder.
 - `@omnidraw/capsule-omnidraw/host`: browser-safe Capsule host adapters.
+- `@omnidraw/capsule-omnidraw/authoring-inspection`: the bounded trusted
+  inspection host/controller adapter; ordinary Preview mounts cannot enable it.
 - `@omnidraw/capsule-omnidraw/capabilities`: browser-safe capability schemas.
 - `@omnidraw/capsule-omnidraw/testkit`: supported test-only fixtures and keys.
 
 Builder and signing operations run on a server runtime compatible with
-`@omnidraw/capsule@0.12.0`. Signing keys and cryptographic operations are
+`@omnidraw/capsule@0.13.0`. Signing keys and cryptographic operations are
 injected; no key material or registry configuration is embedded in the
 package. The `host` and `capabilities` entry points do not import the build
 or signing implementation and are safe to bundle for browsers.

@@ -211,6 +211,8 @@ function functionBridge(name: string): TWidgetFunctionHostBridge {
   return Object.freeze({
     identity: Object.freeze({
       kind: 'draft_preview' as const,
+      canvasId: 'capsule-browser-acceptance',
+      elementId: `browser-${name}`,
       widgetKey: `browser-${name}`,
     }),
     async invoke() {
@@ -247,6 +249,8 @@ let previewFunctionProviderDisposed = false;
 const previewFunctionBridge: TWidgetFunctionHostBridge = Object.freeze({
   identity: Object.freeze({
     kind: 'draft_preview' as const,
+    canvasId: 'capsule-browser-acceptance',
+    elementId: 'browser-preview-functions',
     widgetKey: 'browser-preview-functions',
   }),
   async invoke<TOutput>(

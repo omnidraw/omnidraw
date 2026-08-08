@@ -10,6 +10,7 @@ import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 import { fnChatMessageHasImage, fnGetEditableChatMessageText, type TChatHistoryItem } from "./fn.chat-history-edit"
+import { fnGetChatHistoryScrollKey } from "./fn.chat-history-scroll-key"
 import { ApprovalList } from "../ApprovalList"
 import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetToolResultWidgetDraft } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
@@ -109,13 +110,13 @@ function collapseToolResultParts(parts: TChatMessagePart[], lineLimit: number) {
   let truncated = false
 
   for (const part of parts) {
-    if (remainingLines <= 0) {
-      truncated = true
-      break
-    }
-
     if (part.kind === "image") {
       collapsedParts.push(part)
+      continue
+    }
+
+    if (remainingLines <= 0) {
+      truncated = true
       continue
     }
 
@@ -125,7 +126,7 @@ function collapseToolResultParts(parts: TChatMessagePart[], lineLimit: number) {
 
     if (collapsed.truncated) {
       truncated = true
-      break
+      remainingLines = 0
     }
   }
 
@@ -152,14 +153,6 @@ function collapseToolResultParts(parts: TChatMessagePart[], lineLimit: number) {
 
 function isScrolledToBottom(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 24
-}
-
-function getChatHistoryScrollKey(messageHistory: readonly TChatHistoryItem[]) {
-  try {
-    return JSON.stringify(messageHistory)
-  } catch {
-    return String(messageHistory.length)
-  }
 }
 
 function isAllowedPromptImageMimeType(mimeType: string): mimeType is TChatPromptImage["mimeType"] {
@@ -200,6 +193,10 @@ function ChatMessageImage(props: { part: Extract<TChatMessagePart, { kind: "imag
       class="ai-chat-history__image"
       src={props.part.src}
       alt={props.part.alt}
+      width={props.part.width}
+      height={props.part.height}
+      data-byte-size={props.part.byteSize}
+      data-mime-type={props.part.mimeType}
       loading="lazy"
     />
   )
@@ -790,7 +787,7 @@ export function ChatTab(props: IProps) {
   }
 
   const getChatScrollSignal = () => [
-    getChatHistoryScrollKey(visibleMessageHistory()),
+    fnGetChatHistoryScrollKey(visibleMessageHistory()),
     props.isRunning ? "running" : "idle",
     props.isCanceling ? "canceling" : "active",
   ].join(":")

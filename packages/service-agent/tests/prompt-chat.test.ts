@@ -93,7 +93,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not use `THREE.Clock`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('monotonic timestamp passed to each');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('independent of');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('successful browser Preview execution');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('successful `od_widget_preview_inspect` run');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('custom properties and');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`var()` fallbacks');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not part of the signed artifact');
@@ -112,7 +112,10 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_validate`; it performs the frozen install');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_wait');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_test');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('live Preview interaction was not tested');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_preview_inspect`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`artifact_exact`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('bindings are absent and guest');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('isolated live interaction was not tested');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('draft Preview title bar or draft detail page');
@@ -215,7 +218,8 @@ describe('AgentService.promptChat', () => {
     const expectedTools = [
       'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
       'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
-      'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_validate', 'patch', 'read',
+      'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_preview_inspect',
+      'od_widget_validate', 'patch', 'read',
       'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);

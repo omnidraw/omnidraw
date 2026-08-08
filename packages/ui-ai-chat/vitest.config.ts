@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       src: resolve(__dirname, "src"),
+      ws: resolve(__dirname, "node_modules/ws/wrapper.mjs"),
     },
     conditions: ["browser"],
   },

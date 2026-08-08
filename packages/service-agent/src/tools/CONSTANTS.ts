@@ -24,6 +24,7 @@ export const AI_CHAT_TOOL_NAMES = [
   'od_widget_list',
   'od_widget_create',
   'od_widget_validate',
+  'od_widget_preview_inspect',
   'read',
   'edit',
   'patch',

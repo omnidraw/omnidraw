@@ -80,6 +80,12 @@ export class WidgetConstructionCache implements TWidgetFilesystemConstructionCac
     return operation;
   }
 
+  async delete(key: string): Promise<void> {
+    const operation = this.#tail.then(() => this.#deleteEntry(key));
+    this.#tail = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
   async close(): Promise<void> {
     await this.#tail;
   }

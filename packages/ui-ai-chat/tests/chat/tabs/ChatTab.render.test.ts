@@ -8,6 +8,7 @@ import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../sr
 import { createTestChatBrowser } from "../../test-setup"
 
 const AI_CHAT_CSS_PATH = resolve(process.cwd(), "src/chat/components/index.css")
+const SYNTHETIC_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=="
 
 type TRenderChatTabSettings = {
   defaultModel?: string
@@ -186,6 +187,29 @@ afterEach(() => {
 })
 
 describe("ChatTab rendered message history", () => {
+  it("renders a validated tool PNG once with tool-specific accessible metadata", () => {
+    const root = renderChatTab(undefined, [{
+      role: "toolResult",
+      toolCallId: "call_preview",
+      toolName: "od_widget_preview_inspect",
+      content: [
+        { type: "text", text: "Synthetic image transport proof." },
+        { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+      ],
+      details: { width: 2, height: 2 },
+    }])
+
+    const image = root.querySelector<HTMLImageElement>(".ai-chat-history__image")
+    expect(image?.alt).toBe("Image result from od_widget_preview_inspect")
+    expect(image?.getAttribute("width")).toBe("2")
+    expect(image?.getAttribute("height")).toBe("2")
+    expect(image?.dataset.byteSize).toBe("76")
+    expect(image?.dataset.mimeType).toBe("image/png")
+    expect(image?.src).toBe(`data:image/png;base64,${SYNTHETIC_PNG_BASE64}`)
+    expect(root.textContent).toContain("Synthetic image transport proof.")
+    expect(root.textContent).not.toContain(SYNTHETIC_PNG_BASE64)
+  })
+
   it("renders partial assistant content followed by a durable Pi error without exposing diagnostics", () => {
     const onOpenSettings = vi.fn()
     const root = renderChatTab(undefined, [{
@@ -324,6 +348,52 @@ describe("ChatTab rendered message history", () => {
     expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("...")
     expect(message?.textContent).not.toContain("line 6")
+  })
+
+  it("keeps a tool-result screenshot visible when preceding text is collapsed", () => {
+    const root = renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolCallId: "call_inspect",
+        toolName: "od_widget_preview_inspect",
+        content: [
+          { type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" },
+          { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+        ],
+      },
+    ])
+
+    const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
+    const image = message?.querySelector<HTMLImageElement>(".ai-chat-history__image")
+    expect(message?.textContent).not.toContain("line 6")
+    expect(image?.getAttribute("alt")).toBe("Image result from od_widget_preview_inspect")
+    expect(image?.getAttribute("data-mime-type")).toBe("image/png")
+  })
+
+  it("copies image history as metadata without PNG bytes or data URLs", () => {
+    const writeClipboardText = vi.fn(async () => {})
+    const root = renderChatTab(undefined, [{
+      role: "toolResult",
+      toolCallId: "call_inspect",
+      toolName: "od_widget_preview_inspect",
+      content: [
+        { type: "text", text: "Preview complete." },
+        { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+      ],
+    }], {
+      browser: { ...createTestChatBrowser(), writeClipboardText },
+    })
+
+    root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
+    Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.trim() === "Copy chat")
+      ?.click()
+
+    expect(writeClipboardText).toHaveBeenCalledOnce()
+    const markdown = writeClipboardText.mock.calls[0]?.[0] ?? ""
+    expect(markdown).toContain("[Tool-result image: image/png, 2x2, 76 bytes]")
+    expect(markdown).not.toContain(SYNTHETIC_PNG_BASE64)
+    expect(markdown).not.toContain("data:image")
   })
 
   it("renders generic protected resource approvals with redacted structured details", async () => {

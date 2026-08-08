@@ -10,12 +10,14 @@ const EXPECTED_EXPORTS = Object.freeze({
   './builder': './src/builder/index.ts',
   './host': './src/host/index.ts',
   './host/fn.error': './src/host/fn.error.ts',
+  './authoring-inspection': './src/authoring-inspection/index.ts',
   './capabilities': './src/capabilities/index.ts',
   './testkit': './src/testkit/index.ts',
 });
 const CAPSULE_DEPENDENCY = 'catalog:';
 const SUPPORTED_CAPSULE_IMPORTS = new Set([
   '@omnidraw/capsule',
+  '@omnidraw/capsule/authoring-inspection',
   '@omnidraw/capsule/build',
   '@omnidraw/capsule/guest',
   '@omnidraw/capsule/protocol',
@@ -76,7 +78,7 @@ async function resolvedPackageRoot(specifier: string): Promise<string> {
 }
 
 describe('Capsule adapter package boundary', () => {
-  test('exposes only the seven environment-specific adapter subpaths', async () => {
+  test('exposes only the eight environment-specific adapter subpaths', async () => {
     const manifest = JSON.parse(
       await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8'),
     ) as {

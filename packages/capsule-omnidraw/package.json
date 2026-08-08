@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/capsule-omnidraw",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Omnidraw Capsule contracts, widget builds, capabilities, and browser hosting adapters.",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,7 @@
     "./builder": "./src/builder/index.ts",
     "./host": "./src/host/index.ts",
     "./host/fn.error": "./src/host/fn.error.ts",
+    "./authoring-inspection": "./src/authoring-inspection/index.ts",
     "./capabilities": "./src/capabilities/index.ts",
     "./testkit": "./src/testkit/index.ts"
   },

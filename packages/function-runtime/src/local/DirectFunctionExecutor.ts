@@ -179,6 +179,12 @@ export class DirectFunctionExecutor implements IDirectFunctionInvoker {
         );
       }
       const resources = await request.createResources(call);
+      if (cancelled) {
+        return failedResult(
+          'cancelled',
+          failure('cancelled', 'FUNCTION_CANCELLED', 'Function invocation was cancelled.'),
+        );
+      }
       const result = await this.#driver.execute(handle, call, resources);
       if (!Number.isSafeInteger(result.logByteSize) || result.logByteSize < 0) {
         return failedResult(

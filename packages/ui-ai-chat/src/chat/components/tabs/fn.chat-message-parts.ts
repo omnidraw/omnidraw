@@ -1,6 +1,21 @@
+import { fnValidateBoundedPngBase64 } from "@omnidraw/shared-functions/image/fn.png-base64"
+
 export type TChatMessagePart =
-  | { kind: "image"; alt: string; src: string }
+  | {
+    kind: "image"
+    alt: string
+    src: string
+    mimeType?: "image/png"
+    byteSize?: number
+    width?: number
+    height?: number
+  }
   | { kind: "text"; text: string }
+
+type TChatPartArgs = {
+  showThinking: boolean
+  toolResult?: { toolName?: string }
+}
 
 function fnStringifyUnknown(value: unknown) {
   if (typeof value === "string") {
@@ -60,6 +75,40 @@ function fnGetDataImageSrc(args: { data: unknown; mediaType: unknown }) {
   }
 
   return `data:${mediaType};base64,${data}`
+}
+
+function fnIsToolResultImageCandidate(part: Record<string, unknown>) {
+  const type = fnGetString(part.type)?.toLowerCase()
+  const mimeType = fnGetString(part.mimeType)
+    ?? fnGetString(part.mime_type)
+    ?? fnGetString(part.media_type)
+
+  return type?.includes("image") === true || mimeType?.startsWith("image/") === true
+}
+
+function fnGetToolResultImagePart(
+  part: Record<string, unknown>,
+  args: TChatPartArgs,
+): Extract<TChatMessagePart, { kind: "image" }> | undefined {
+  if (fnGetString(part.type)?.toLowerCase() !== "image") {
+    return undefined
+  }
+
+  const validation = fnValidateBoundedPngBase64({
+    mimeType: part.mimeType,
+    data: part.data,
+  })
+  if (!validation.ok) {
+    return undefined
+  }
+
+  const toolName = args.toolResult?.toolName
+  return {
+    kind: "image",
+    src: `data:image/png;base64,${part.data as string}`,
+    alt: toolName ? `Image result from ${toolName}` : "Image tool result",
+    ...validation.metadata,
+  }
 }
 
 function fnGetImageSrc(part: Record<string, unknown>) {
@@ -131,7 +180,7 @@ function fnGetTextBlocks(value: string) {
     .filter((block) => block.length > 0)
 }
 
-function fnGetThinkingTextPart(value: string, args?: { showThinking: boolean }): TChatMessagePart | undefined {
+function fnGetThinkingTextPart(value: string, args?: TChatPartArgs): TChatMessagePart | undefined {
   const blocks = fnGetTextBlocks(value)
   let hasThinkingBlock = false
   const visibleBlocks = blocks.filter((block) => {
@@ -161,7 +210,7 @@ function fnGetThinkingTextPart(value: string, args?: { showThinking: boolean }):
   return text.length > 0 ? { kind: "text", text } : undefined
 }
 
-function fnGetThinkingPart(part: Record<string, unknown>, args?: { showThinking: boolean }): TChatMessagePart | undefined {
+function fnGetThinkingPart(part: Record<string, unknown>, args?: TChatPartArgs): TChatMessagePart | undefined {
   if (!fnIsThinkingPart(part)) {
     return undefined
   }
@@ -169,7 +218,7 @@ function fnGetThinkingPart(part: Record<string, unknown>, args?: { showThinking:
   return args?.showThinking ? { kind: "text", text: "thinking..." } : undefined
 }
 
-function fnGetPartFromObject(part: Record<string, unknown>, args?: { showThinking: boolean }): TChatMessagePart | undefined {
+function fnGetPartFromObject(part: Record<string, unknown>, args?: TChatPartArgs): TChatMessagePart | undefined {
   const thinkingPart = fnGetThinkingPart(part, args)
 
   if (thinkingPart || fnIsThinkingPart(part)) {
@@ -181,6 +230,10 @@ function fnGetPartFromObject(part: Record<string, unknown>, args?: { showThinkin
   }
 
   const type = fnGetString(part.type)?.toLowerCase()
+
+  if (args?.toolResult && fnIsToolResultImageCandidate(part)) {
+    return fnGetToolResultImagePart(part, args)
+  }
 
   const text = fnGetString(part.text)
 
@@ -203,7 +256,7 @@ function fnGetPartFromObject(part: Record<string, unknown>, args?: { showThinkin
   return undefined
 }
 
-function fnGetPart(value: unknown, args?: { showThinking: boolean }): TChatMessagePart | undefined {
+function fnGetPart(value: unknown, args?: TChatPartArgs): TChatMessagePart | undefined {
   if (typeof value === "string") {
     return fnGetThinkingTextPart(value, args)
   }
@@ -215,7 +268,8 @@ function fnGetPart(value: unknown, args?: { showThinking: boolean }): TChatMessa
     return objectPart
   }
 
-  if (object && fnIsHiddenStructuredPart(object)) {
+  if (object && (fnIsHiddenStructuredPart(object)
+    || (args?.toolResult && fnIsToolResultImageCandidate(object)))) {
     return undefined
   }
 
@@ -225,12 +279,18 @@ function fnGetPart(value: unknown, args?: { showThinking: boolean }): TChatMessa
 export function fnGetChatMessageParts(message: unknown): TChatMessagePart[] {
   const content = fnGetContent(message)
   const showThinking = !fnIsFinishedMessage(message)
+  const messageObject = fnGetObject(message)
+  const role = messageObject ? fnGetString(messageObject.role) : undefined
+  const toolResult = role === "toolResult"
+    ? { toolName: messageObject ? fnGetString(messageObject.toolName) : undefined }
+    : undefined
+  const args = { showThinking, toolResult }
 
   if (Array.isArray(content)) {
-    return content.flatMap((part) => fnGetPart(part, { showThinking }) ?? [])
+    return content.flatMap((part) => fnGetPart(part, args) ?? [])
   }
 
-  const part = fnGetPart(content, { showThinking })
+  const part = fnGetPart(content, args)
 
   return part ? [part] : []
 }

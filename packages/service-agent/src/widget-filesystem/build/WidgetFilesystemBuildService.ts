@@ -137,16 +137,21 @@ export class WidgetFilesystemBuildService {
 
     const cache = this.config.constructionCache;
     if (cache !== undefined) {
+      const cacheKey = this.#constructionCacheKey(executableInputDigestSha256);
       const cached = await cache.read(
-        this.#constructionCacheKey(executableInputDigestSha256),
+        cacheKey,
       ).catch(() => null);
       if (
         cached !== null
+        && cached.construction.sourceMapArtifact === null
         && cached.executableInputDigestSha256 === executableInputDigestSha256
         && cached.executableManifestDigestSha256
           === fnWidgetExecutableManifestDigest({ manifest, digestSha256: sha256 })
       ) {
         return cached;
+      }
+      if (cached !== null && cached.construction.sourceMapArtifact !== null) {
+        await cache.delete?.(cacheKey).catch(() => undefined);
       }
     }
 
@@ -193,7 +198,10 @@ export class WidgetFilesystemBuildService {
       distFiles,
     });
     const writeCache = this.config.constructionCache;
-    if (writeCache !== undefined) {
+    if (
+      writeCache !== undefined
+      && result.construction.sourceMapArtifact === null
+    ) {
       await writeCache.write(
         this.#constructionCacheKey(executableInputDigestSha256),
         result,

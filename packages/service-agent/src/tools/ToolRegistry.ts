@@ -8,9 +8,15 @@ import { createBashTool, type TAgentBashCapability } from './tool.bash';
 import { createResourceTools } from './tool.resources';
 import type { TAgentResourceService } from './resource-service';
 import { createWebFetchTool } from './tool.web-fetch';
+import { createWidgetPreviewInspectTool } from './tool.widget-preview-inspect';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
 import { createWorkspaceFileTools } from './tool.workspace-files';
-import type { TToolDefinition, TWidgetDraftChangeHandler, TWidgetPreviewBuildCheck } from './types';
+import type {
+  TToolDefinition,
+  TWidgetDraftChangeHandler,
+  TWidgetPreviewBuildCheck,
+  TWidgetPreviewInspectionCapability,
+} from './types';
 
 type TCreateToolRegistryArgs = {
   chatId: string;
@@ -23,6 +29,7 @@ type TCreateToolRegistryArgs = {
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
   previewBuild?: TWidgetPreviewBuildCheck;
+  previewInspection?: TWidgetPreviewInspectionCapability;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
 };
 
@@ -51,6 +58,12 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       onDraftChanged: args.onDraftChanged
         ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
         : undefined,
+    }),
+    createWidgetPreviewInspectTool({
+      workspace: args.workspace,
+      chatId: args.chatId,
+      authorize: () => authorize('od_widget_preview_inspect'),
+      capability: args.previewInspection,
     }),
     ...createWorkspaceFileTools({
       workspace: args.workspace,

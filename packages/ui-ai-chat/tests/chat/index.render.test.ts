@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { AiChat } from "../../src/chat/components"
 import { createTestApplication, createTestChatBrowser } from "../test-setup"
 
+const SYNTHETIC_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=="
+
 let disposeRendered: (() => void) | undefined
 let container: HTMLDivElement | undefined
 
@@ -118,6 +120,138 @@ afterEach(() => {
 })
 
 describe("AiChat shell", () => {
+  it("renders a live PNG tool event once and preserves it through stream recovery history", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const message = {
+      role: "toolResult",
+      toolCallId: "tool-call-image",
+      toolName: "synthetic_image_transport_proof",
+      content: [
+        { type: "text", text: "Synthetic image transport proof." },
+        { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+      ],
+      details: { fixture: "synthetic-2x2-png" },
+      isError: false,
+      timestamp: 1,
+    }
+    const canonicalHistory = [{ entryId: "tool-entry-image", message }]
+    const history = vi.fn(async () => [undefined, canonicalHistory])
+    apiService.api.agent.chat.history = history
+    let rejectStream: ((error: Error) => void) | undefined
+    let nextCount = 0
+    const eventIterator = {
+      next: vi.fn(() => {
+        nextCount += 1
+        if (nextCount === 1) {
+          return Promise.resolve({
+            done: false as const,
+            value: {
+              widgetId: "surface-1",
+              sessionId: "conversation-1",
+              event: { type: "message_end", message },
+            },
+          })
+        }
+        return new Promise<IteratorResult<never>>((_resolve, reject) => { rejectStream = reject })
+      }),
+      return: vi.fn(async () => ({ done: true as const, value: undefined })),
+    }
+    apiService.api.agent.events = async () => [undefined, {
+      [Symbol.asyncIterator]: () => eventIterator,
+    }]
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: { onAction: () => () => {}, setActionState: () => {} },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.querySelectorAll(".ai-chat-history__image")).toHaveLength(1))
+    expect(container.querySelector<HTMLImageElement>(".ai-chat-history__image")?.alt)
+      .toBe("Image result from synthetic_image_transport_proof")
+    rejectStream?.(new Error("synthetic stream disconnect"))
+    await vi.waitFor(() => expect(history).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(container?.querySelectorAll(".ai-chat-history__image")).toHaveLength(1))
+    expect(container.textContent).not.toContain(SYNTHETIC_PNG_BASE64)
+  })
+
+  it("reconciles a canceled run to canonical PNG tool-result history", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const message = {
+      role: "toolResult",
+      toolCallId: "tool-call-before-cancel",
+      toolName: "synthetic_image_transport_proof",
+      content: [
+        { type: "text", text: "Completed before cancellation." },
+        { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+      ],
+      details: { fixture: "synthetic-2x2-png" },
+      isError: false,
+      timestamp: 1,
+    }
+    const cancel = vi.fn(async () => [undefined, { canceled: true, running: false }])
+    const history = vi.fn(async () => [undefined, [{ entryId: "tool-entry-before-cancel", message }]])
+    apiService.api.agent.chat.cancel = cancel
+    apiService.api.agent.chat.history = history
+    let resolvePending: ((result: IteratorResult<never>) => void) | undefined
+    let nextCount = 0
+    const eventIterator = {
+      next: vi.fn(() => {
+        nextCount += 1
+        if (nextCount === 1) {
+          return Promise.resolve({
+            done: false as const,
+            value: {
+              widgetId: "surface-1",
+              sessionId: "conversation-1",
+              event: { type: "agent_start" },
+            },
+          })
+        }
+        return new Promise<IteratorResult<never>>((resolve) => { resolvePending = resolve })
+      }),
+      return: vi.fn(async () => {
+        resolvePending?.({ done: true, value: undefined as never })
+        return { done: true as const, value: undefined }
+      }),
+    }
+    apiService.api.agent.events = async () => [undefined, {
+      [Symbol.asyncIterator]: () => eventIterator,
+    }]
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: { onAction: () => () => {}, setActionState: () => {} },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    const stopButton = await vi.waitFor(() => {
+      const button = container?.querySelector<HTMLButtonElement>("[aria-label='Stop response']")
+      expect(button).not.toBeNull()
+      return button!
+    })
+    stopButton.click()
+
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledWith({
+      widgetId: "surface-1",
+      sessionId: "conversation-1",
+    }))
+    await vi.waitFor(() => expect(history).toHaveBeenCalledTimes(1))
+    expect(container.querySelectorAll(".ai-chat-history__image")).toHaveLength(1)
+    expect(container.textContent).toContain("Completed before cancellation.")
+    expect(container.textContent).not.toContain(SYNTHETIC_PNG_BASE64)
+  })
+
   it("optimistically truncates an edited tail and restores canonical history after rejection", async () => {
     ensureComponentDomMocks()
     container = document.createElement("div")

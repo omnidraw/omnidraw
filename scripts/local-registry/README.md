@@ -9,7 +9,12 @@ The host has one product-neutral registry state at
 `~/.local/share/verdaccio`, shared by every worktree and project. Override it
 with `LOCAL_NPM_REGISTRY_STATE_DIR`; override the canonical loopback URL with
 `LOCAL_NPM_REGISTRY_URL`. Widget npm commands receive the generated `npmrc`
-through `--userconfig`.
+through `--userconfig`. The loopback registry grants anonymous read/publish
+access to `@omnidraw/*`. npm nevertheless refuses to run `npm publish` unless
+its configuration has an auth-shaped entry, so the generated publish-only
+userconfig contains the fixed, non-secret `omnidraw-local-development`
+sentinel. Verdaccio does not use it as a credential. Repository and widget
+consumer npm configuration remains token-free.
 
 From any Omnidraw worktree:
 

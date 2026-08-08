@@ -17,6 +17,7 @@
     "@tursodatabase/database": "catalog:",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@jridgewell/trace-mapping": "0.3.31",
     "@omnidraw/api": "workspace:*",
     "@omnidraw/canvas-contract": "workspace:*",
     "@omnidraw/capsule-omnidraw": "workspace:*",
@@ -36,6 +37,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "scheduler": "0.27.0",
+    "playwright": "catalog:",
     "zod": "catalog:"
   }
 }

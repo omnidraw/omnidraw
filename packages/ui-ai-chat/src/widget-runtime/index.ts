@@ -4,6 +4,10 @@ export {
   WidgetCollaborativeStateConflictError,
 } from './create-widget-collaborative-state-port';
 export { createWidgetCapsuleCapabilityBindings } from './create-widget-capsule-capability-bindings';
+export {
+  createWidgetCapsuleMountCatalog,
+  verifyWidgetBrowserFunctionDescriptors,
+} from './create-widget-capsule-mount-catalog';
 export { CapsuleWidgetHostCoordinator } from './CapsuleWidgetHostCoordinator';
 export { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
 export {
@@ -34,5 +38,8 @@ export type {
   TWidgetCapsulePublicSigningKey,
 } from '@omnidraw/widget-contract';
 export { createWidgetUiArtifactMountPort } from './mount-widget-ui-artifact';
+export {
+  createWidgetAuthoringInspectionMountPort,
+} from './mount-widget-authoring-inspection';
 export { WidgetUiArtifactCache } from './WidgetUiArtifactCache';
 export { WidgetUiRuntime } from './WidgetUiRuntime';

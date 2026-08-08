@@ -37,6 +37,7 @@
     "apps/cli": {
       "name": "@omnidraw/cli",
       "dependencies": {
+        "@jridgewell/trace-mapping": "0.3.31",
         "@omnidraw/api": "workspace:*",
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/capsule": "catalog:",
@@ -60,6 +61,7 @@
         "@types/react": "19.2.17",
         "@types/react-dom": "19.2.3",
         "csstype": "3.2.3",
+        "playwright": "catalog:",
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "scheduler": "0.27.0",
@@ -101,9 +103,22 @@
         "vite-plugin-wasm": "^3.5.0",
       },
     },
+    "apps/preview-inspection-shell": {
+      "name": "@omnidraw/preview-inspection-shell",
+      "dependencies": {
+        "@omnidraw/capsule-omnidraw": "workspace:*",
+        "@omnidraw/ui-ai-chat": "workspace:*",
+        "@omnidraw/widget-contract": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+        "vite": "^8.1.4",
+      },
+    },
     "apps/widget-debug-tools": {
       "name": "@omnidraw/widget-debug-tools",
       "dependencies": {
+        "@omnidraw/api": "workspace:*",
         "@omnidraw/service-agent": "workspace:*",
       },
       "devDependencies": {
@@ -162,7 +177,7 @@
     },
     "packages/capsule-omnidraw": {
       "name": "@omnidraw/capsule-omnidraw",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "dependencies": {
         "@omnidraw/capsule": "catalog:",
         "@omnidraw/widget-contract": "workspace:*",
@@ -170,7 +185,7 @@
     },
     "packages/function-runtime": {
       "name": "@omnidraw/function-runtime",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "dependencies": {
         "@omnidraw/resource-runtime": "workspace:*",
         "@omnidraw/widget-contract": "workspace:*",
@@ -290,6 +305,9 @@
     },
     "packages/shared-functions": {
       "name": "@omnidraw/shared-functions",
+      "dependencies": {
+        "@jridgewell/trace-mapping": "0.3.31",
+      },
     },
     "packages/tapable": {
       "name": "@omnidraw/tapable",
@@ -335,6 +353,7 @@
         "vite-plugin-top-level-await": "^1.6.0",
         "vite-plugin-wasm": "^3.5.0",
         "vitest": "^4.1.10",
+        "ws": "8.21.1",
       },
     },
     "packages/widget-contract": {
@@ -357,7 +376,7 @@
       "name": "@omnidraw-fixtures/private-managed-composition",
       "version": "0.0.0",
       "dependencies": {
-        "@omnidraw/function-runtime": "0.8.0",
+        "@omnidraw/function-runtime": "0.8.1",
         "@omnidraw/resource-runtime": "0.8.0",
         "@omnidraw/runtime": "0.5.0",
         "@omnidraw/widget-contract": "0.9.0",
@@ -375,13 +394,14 @@
   "catalog": {
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@kobalte/core": "^0.13.12",
-    "@omnidraw/capsule": "0.12.0",
+    "@omnidraw/capsule": "0.13.0",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",
     "@tursodatabase/database": "0.7.2",
     "lucide-solid": "^1.24.0",
     "lucide-static": "1.24.0",
+    "playwright": "1.61.1",
     "solid-js": "^1.9.14",
     "typescript": "7.0.2",
     "zod": "4.4.3",
@@ -765,7 +785,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.12.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-KM0Y9UFWxnRncLCjc2/LeDb0Ynn7owFey+sRI0IIXdGnnl2DTPcv0hFCF3eYTVnSvOBwzqztVCOk/QokCZxcTg=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.13.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-LqWupYnmftW5KFEOZUhDVGR3qzXf8cdPyvT5SVp/ajrNnLhoauonlxA7Q6oRvG8QvZ1T727h114gwMwC3dGzow=="],
 
     "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
 
@@ -780,6 +800,8 @@
     "@omnidraw/function-runtime": ["@omnidraw/function-runtime@workspace:packages/function-runtime"],
 
     "@omnidraw/orpc-client": ["@omnidraw/orpc-client@workspace:packages/orpc-client"],
+
+    "@omnidraw/preview-inspection-shell": ["@omnidraw/preview-inspection-shell@workspace:apps/preview-inspection-shell"],
 
     "@omnidraw/resource-runtime": ["@omnidraw/resource-runtime@workspace:packages/resource-runtime"],
 

@@ -114,22 +114,29 @@ async function runtimeManifest() {
   return Object.freeze({ manifest, version });
 }
 
+export function localNpmUserConfigContents(registryUrl) {
+  const registry = new URL(registryUrl);
+  const registryAuthKey = `//${registry.host}${registry.pathname}`;
+  return [
+    'registry=https://registry.npmjs.org/',
+    `@omnidraw:registry=${registryUrl}`,
+    `${registryAuthKey}:_authToken=omnidraw-local-development`,
+    '',
+  ].join('\n');
+}
+
 async function writeHostConfiguration(config) {
   const { manifest } = await runtimeManifest();
   const runtimeLock = await readFile(RUNTIME_LOCK_PATH, 'utf8');
-  const registry = new URL(config.registryUrl);
-  const registryAuthKey = `//${registry.host}${registry.pathname}`;
   await Promise.all([
     mkdir(config.storageDirectory, { recursive: true, mode: 0o700 }),
     mkdir(dirname(config.logPath), { recursive: true, mode: 0o700 }),
     atomicWrite(config.toolManifestPath, `${JSON.stringify(manifest, null, 2)}\n`),
     atomicWrite(join(config.toolDirectory, 'package-lock.json'), runtimeLock),
-    atomicWrite(config.npmUserConfigPath, [
-      'registry=https://registry.npmjs.org/',
-      `@omnidraw:registry=${config.registryUrl}`,
-      `${registryAuthKey}:_authToken=omnidraw-local-development`,
-      '',
-    ].join('\n')),
+    atomicWrite(
+      config.npmUserConfigPath,
+      localNpmUserConfigContents(config.registryUrl),
+    ),
     atomicWrite(config.widgetNpmUserConfigPath, [
       'registry=https://registry.npmjs.org/',
       '@omnidraw:registry=https://registry.npmjs.org/',
@@ -153,7 +160,7 @@ async function writeHostConfiguration(config) {
         '@omnidraw/*': {
           access: '$all',
           publish: '$all',
-          unpublish: '$authenticated',
+          unpublish: '$all',
           proxy: 'npmjs',
         },
         '**': {

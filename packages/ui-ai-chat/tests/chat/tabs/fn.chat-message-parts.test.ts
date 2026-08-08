@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { fnGetChatMessageParts } from "../../../src/chat/components/tabs/fn.chat-message-parts"
 
+const SYNTHETIC_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=="
+
 describe("fnGetChatMessageParts", () => {
   it("extracts text from structured chat content", () => {
     expect(fnGetChatMessageParts({
@@ -34,6 +36,39 @@ describe("fnGetChatMessageParts", () => {
       role: "assistant",
       content: [{ type: "image", source: { media_type: "image/png", data: "abc" } }],
     })).toEqual([{ kind: "image", src: "data:image/png;base64,abc", alt: "Chat image" }])
+  })
+
+  it("validates PNG tool results and exposes bounded image metadata", () => {
+    expect(fnGetChatMessageParts({
+      role: "toolResult",
+      toolName: "od_widget_preview_inspect",
+      content: [
+        { type: "text", text: "Synthetic image transport proof." },
+        { type: "image", mimeType: "image/png", data: SYNTHETIC_PNG_BASE64 },
+      ],
+    })).toEqual([
+      { kind: "text", text: "Synthetic image transport proof." },
+      {
+        kind: "image",
+        src: `data:image/png;base64,${SYNTHETIC_PNG_BASE64}`,
+        alt: "Image result from od_widget_preview_inspect",
+        mimeType: "image/png",
+        byteSize: 76,
+        width: 2,
+        height: 2,
+      },
+    ])
+  })
+
+  it("drops invalid tool-result images without stringifying their raw payload", () => {
+    expect(fnGetChatMessageParts({
+      role: "toolResult",
+      toolName: "untrusted_tool",
+      content: [
+        { type: "image", mimeType: "image/jpeg", data: SYNTHETIC_PNG_BASE64 },
+        { type: "image", mimeType: "image/png", data: `A${SYNTHETIC_PNG_BASE64.slice(1)}` },
+      ],
+    })).toEqual([])
   })
 
   it("renders unfinished thinking parts as thinking ellipsis", () => {

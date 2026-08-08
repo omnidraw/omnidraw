@@ -74,14 +74,11 @@ export function selectLocalPublishScript(scripts = {}) {
 }
 
 export function npmrcContents(registryUrl) {
-  const registry = new URL(registryUrl);
-  const registryAuthKey = `//${registry.host}${registry.pathname}`;
   return [
     '# Written by `bun run link:local` (see tasks/d/D9.md). Resolves @omnidraw/*',
     '# from the local dev registry instead of real npm for this checkout only.',
     '# Run `bun run link:local:reset` to remove this file.',
     `@omnidraw:registry=${registryUrl}`,
-    `${registryAuthKey}:_authToken=omnidraw-local-development`,
     '',
   ].join('\n');
 }

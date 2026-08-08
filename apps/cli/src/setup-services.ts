@@ -80,6 +80,18 @@ import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorB
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import { WidgetFilesystemRuntimeCatalog } from './services/WidgetFilesystemRuntimeCatalog';
 import { WidgetPreviewService } from './services/WidgetPreviewService';
+import {
+  fnDefaultWidgetPreviewInspectionTheme,
+} from './services/fn.widget-preview-inspection';
+import {
+  PreviewInspectionBrowserService,
+} from './services/preview-inspection/PreviewInspectionBrowserService';
+import {
+  PreviewInspectionShellServer,
+} from './services/preview-inspection/PreviewInspectionShellServer';
+import {
+  resolvePreviewInspectionReleaseRuntime,
+} from './services/preview-inspection/preview-inspection-release-runtime';
 import { WidgetReleaseAttestationService } from './services/WidgetReleaseAttestationService';
 import { LocalWidgetPackageRegistrySync } from './services/LocalWidgetPackageRegistrySync';
 
@@ -115,6 +127,7 @@ export interface IRuntimeServices {
   widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   widgetCatalog: WidgetFilesystemRuntimeCatalog;
+  previewInspectionBrowser: PreviewInspectionBrowserService;
   widgetPreview: WidgetPreviewService;
   functionOwner: FunctionService;
   functionInvocation: IFunctionInvocationApiCapability;
@@ -349,6 +362,24 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     management: { builder: widgetFilesystemBuilder },
   });
   const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
+  const previewInspectionReleaseRuntime = resolvePreviewInspectionReleaseRuntime({
+    compiled: config.compiled,
+    executablePath: process.execPath,
+    sourceCliDir: import.meta.dir,
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const previewInspectionShell = new PreviewInspectionShellServer({
+    distPath: previewInspectionReleaseRuntime.shellPath,
+  });
+  const previewInspectionBrowser = new PreviewInspectionBrowserService({
+    tempRoot: join(config.home.tempRoot, 'preview-inspection-browser'),
+    shell: previewInspectionShell,
+    releaseManifestRequired:
+      previewInspectionReleaseRuntime.releaseManifestRequired,
+    expectedExecutableSha256:
+      previewInspectionReleaseRuntime.expectedExecutableSha256,
+  });
   const writePermits = new EphemeralResourceWritePermitAuthority({
     secret: randomBytes(32),
   });
@@ -405,6 +436,9 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       environmentIdentity: distributionBuildSetup.environmentIdentity,
       capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
     }),
+    hostConfiguration: widgetCapsuleHostConfiguration,
+    inspectionBrowser: previewInspectionBrowser,
+    inspectionTheme: fnDefaultWidgetPreviewInspectionTheme(),
   });
   const agentBashCapability = createBunAgentBashCapability();
   const agentRoot = config.home.agentRoot;
@@ -418,6 +452,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       void widgetCatalog.refresh().catch(() => undefined);
     },
     previewBuild: ({ slug }) => widgetPreview.buildCheck({ widgetKey: slug }),
+    previewInspection: widgetPreview,
     eventPublisherService: eventPublisher,
     chats: dbService.chats,
     resourceService: createAgentResourceService(resourceService),
@@ -435,6 +470,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   );
   services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
   services.provide('widgetCatalog', 57, widgetCatalog);
+  services.provide('previewInspectionBrowser', 58, previewInspectionBrowser);
   services.provide('widgetPreview', 60, widgetPreview);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
@@ -450,6 +486,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     eventPublisher,
     resourceService,
     functionService,
+    previewInspectionBrowser,
     widgetCatalog,
     widgetStateService,
   };

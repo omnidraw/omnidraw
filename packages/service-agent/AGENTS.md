@@ -70,13 +70,13 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 16 tools for its complete lifecycle:
+Every conversation receives exactly these 17 tools for its complete lifecycle:
 
-- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `od_widget_list`, `od_widget_create`, `od_widget_validate`, `od_widget_preview_inspect`, `read`, `edit`, `patch`, `grep`
 - Resources: `od_resource_list`, `od_resource_inspect`, `od_resource_create`, `od_resource_update`, `od_resource_delete`, `od_resource_data_read`, `od_resource_data_write`
 - General: `web_fetch`, `bash`
 
-There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there. Production supplies one stateless host-authority capability backed by a fresh short-lived Bun PTY per call. It streams and retains bounded output, forwards timeout/cancellation, reports exact process settlement metadata, and closes the PTY after the child settles. Higher-level host or OS isolation owns confinement.
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `od_widget_preview_inspect` is a bounded artifact-exact snapshot in a fresh isolated browser; it has no resource bindings, denies guest network, never touches the user's visible Preview, and cannot claim full Preview-policy parity. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there. Production supplies one stateless host-authority capability backed by a fresh short-lived Bun PTY per call. It streams and retains bounded output, forwards timeout/cancellation, reports exact process settlement metadata, and closes the PTY after the child settles. Higher-level host or OS isolation owns confinement.
 
 Chat filesystem ownership:
 

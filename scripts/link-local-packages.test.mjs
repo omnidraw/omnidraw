@@ -65,9 +65,10 @@ describe('link:local publish-script selection', () => {
 });
 
 describe('link:local generated .npmrc', () => {
-  test('scopes @omnidraw to the local registry with a matching auth key', () => {
+  test('scopes @omnidraw to the unauthenticated loopback registry', () => {
     const contents = npmrcContents('http://127.0.0.1:4873/');
     expect(contents).toContain('@omnidraw:registry=http://127.0.0.1:4873/');
-    expect(contents).toContain('//127.0.0.1:4873/:_authToken=omnidraw-local-development');
+    expect(contents).not.toContain('_authToken');
+    expect(contents).not.toContain('always-auth');
   });
 });

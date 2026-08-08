@@ -35,6 +35,32 @@ const REQUIRED_OUTPUTS = Object.freeze([
   'lifecycle:throttled:2',
 ]);
 
+const FORBIDDEN_NETWORK_IMAGE_PATH = '/capsule-network-image.svg';
+
+function recordForbiddenNetworkImageRequest(
+  requestUrl: string,
+  recordedRequests: string[],
+): void {
+  const url = new URL(requestUrl);
+  if (url.pathname === FORBIDDEN_NETWORK_IMAGE_PATH) {
+    recordedRequests.push(url.href);
+  }
+}
+
+test('forbidden network-image requests are recorded by the acceptance assertion', async ({ page }) => {
+  const recordedRequests: string[] = [];
+  page.on('request', (request) => {
+    recordForbiddenNetworkImageRequest(request.url(), recordedRequests);
+  });
+
+  const response = await page.goto(FORBIDDEN_NETWORK_IMAGE_PATH, { waitUntil: 'load' });
+
+  expect(response?.ok()).toBe(true);
+  expect(recordedRequests.map((requestUrl) => new URL(requestUrl).pathname)).toEqual([
+    FORBIDDEN_NETWORK_IMAGE_PATH,
+  ]);
+});
+
 test('fresh signed Capsule guests pass the production browser boundary', async ({ page }) => {
   const pageErrors: string[] = [];
   const networkImageRequests: string[] = [];
@@ -42,7 +68,7 @@ test('fresh signed Capsule guests pass the production browser boundary', async (
     pageErrors.push(`${error.name}: ${error.message}`);
   });
   page.on('request', (request) => {
-    const url = new URL(request.url());
+    recordForbiddenNetworkImageRequest(request.url(), networkImageRequests);
   });
 
   await page.goto('/?pixelHandshake=1', { waitUntil: 'domcontentloaded' });

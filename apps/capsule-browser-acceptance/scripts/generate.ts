@@ -6,7 +6,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { build as viteBuild, version as viteVersion } from 'vite';
 import {
   OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
@@ -526,6 +526,351 @@ subscribeWidgetProps((props) => {
 
 emit('preview-functions-ready');
 `.trim(),
+  previewInspectionRunner: `
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
+
+document.body.style.margin = '0';
+document.body.style.width = '640px';
+document.body.style.height = '480px';
+document.body.style.background = '#f8fafc';
+
+const panel = document.createElement('main');
+panel.style.position = 'relative';
+panel.style.width = '640px';
+panel.style.height = '480px';
+document.body.append(panel);
+
+const status = document.createElement('output');
+status.id = 'inspection-status';
+status.style.display = 'block';
+const records: string[] = [];
+function record(value: string): void {
+  records.push(value);
+  status.textContent = records.join(' | ');
+}
+
+const click = document.createElement('button');
+click.id = 'pointer-target';
+click.type = 'button';
+click.textContent = 'Increment';
+let clicks = 0;
+click.addEventListener('click', () => {
+  clicks += 1;
+  record('click:' + String(clicks));
+});
+panel.append(click);
+
+function labeledInput(id: string, labelText: string): HTMLInputElement {
+  const wrapper = document.createElement('label');
+  wrapper.textContent = labelText;
+  wrapper.style.display = 'block';
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'text';
+  wrapper.append(input);
+  panel.append(wrapper);
+  return input;
+}
+
+const noneInput = labeledInput('none-input', 'None input');
+noneInput.addEventListener('input', () => record('none:' + noneInput.value));
+const blurInput = labeledInput('blur-input', 'Blur input');
+blurInput.addEventListener('blur', () => record('blur:' + blurInput.value));
+const enterInput = labeledInput('enter-input', 'Enter input');
+enterInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') record('enter:' + enterInput.value);
+});
+
+const sensitiveLabel = document.createElement('label');
+sensitiveLabel.textContent = 'Secret input';
+sensitiveLabel.style.display = 'block';
+const sensitive = document.createElement('input');
+sensitive.id = 'sensitive-input';
+sensitive.type = 'password';
+sensitiveLabel.append(sensitive);
+panel.append(sensitiveLabel);
+
+const redirected = labeledInput('focus-redirect-input', 'Redirect input');
+const redirectSink = labeledInput('focus-redirect-sink', 'Redirect sink');
+redirected.addEventListener('focus', () => redirectSink.focus());
+redirectSink.addEventListener('input', () => record('sink:' + redirectSink.value));
+const keyRedirected = labeledInput('keydown-redirect-input', 'Key redirect input');
+keyRedirected.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'a' && (event.metaKey || event.ctrlKey)) {
+    redirectSink.focus();
+  }
+});
+
+const hostileArea = document.createElement('section');
+hostileArea.setAttribute('aria-label', 'Native keyboard guard fixtures');
+hostileArea.style.fontSize = '10px';
+panel.append(hostileArea);
+
+function hostileInput(
+  parent: HTMLElement,
+  id: string,
+  labelText: string,
+): HTMLInputElement {
+  const wrapper = document.createElement('label');
+  wrapper.textContent = labelText;
+  wrapper.style.display = 'inline-block';
+  wrapper.style.width = '100px';
+  wrapper.style.fontSize = '0';
+  wrapper.style.lineHeight = '0';
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'text';
+  input.style.display = 'block';
+  input.style.width = '88px';
+  input.style.height = '14px';
+  input.style.fontSize = '10px';
+  input.style.lineHeight = 'normal';
+  wrapper.append(input);
+  parent.append(wrapper);
+  return input;
+}
+
+const deleteTargetSentinel = 'source';
+const deleteSinkSentinel = 'sink';
+const insertTargetSentinel = 'insert-target-sentinel';
+const insertSinkSentinel = 'insert-sink-sentinel';
+const enterSinkSentinel = 'enter-sink-sentinel';
+const enterPayload = 'enter-guard-payload';
+
+function hostileEditable(id: string, label: string, text: string): HTMLDivElement {
+  const editable = document.createElement('div');
+  editable.id = id;
+  editable.contentEditable = 'true';
+  editable.setAttribute('role', 'textbox');
+  editable.setAttribute('aria-label', label);
+  editable.style.display = 'inline-block';
+  editable.style.width = '88px';
+  editable.style.minHeight = '14px';
+  editable.textContent = text;
+  hostileArea.append(editable);
+  return editable;
+}
+
+const deleteGuardTarget = hostileEditable(
+  'delete-guard-target',
+  'Delete guard target',
+  deleteTargetSentinel,
+);
+const deleteGuardSink = hostileEditable(
+  'delete-guard-sink',
+  'Delete guard sink',
+  deleteSinkSentinel,
+);
+deleteGuardSink.contentEditable = 'false';
+
+const insertGuardTarget = hostileInput(
+  hostileArea,
+  'insert-guard-target',
+  'Insert guard target',
+);
+insertGuardTarget.value = insertTargetSentinel;
+const insertGuardSink = hostileInput(
+  hostileArea,
+  'insert-guard-sink',
+  'Insert guard sink',
+);
+insertGuardSink.value = insertSinkSentinel;
+
+const enterForm = document.createElement('form');
+enterForm.style.display = 'block';
+const enterTargetLabel = document.createElement('label');
+enterTargetLabel.textContent = 'Enter guard target';
+enterTargetLabel.style.display = 'inline-block';
+enterTargetLabel.style.width = '100px';
+enterTargetLabel.style.fontSize = '0';
+enterTargetLabel.style.lineHeight = '0';
+const enterGuardTarget = document.createElement('textarea');
+enterGuardTarget.id = 'enter-guard-target';
+enterGuardTarget.style.display = 'block';
+enterGuardTarget.style.width = '88px';
+enterGuardTarget.style.height = '14px';
+enterGuardTarget.style.fontSize = '10px';
+enterGuardTarget.style.lineHeight = 'normal';
+enterTargetLabel.append(enterGuardTarget);
+enterForm.append(enterTargetLabel);
+const enterGuardSink = hostileInput(
+  enterForm,
+  'enter-guard-sink',
+  'Enter guard sink',
+);
+enterGuardSink.value = enterSinkSentinel;
+hostileArea.append(enterForm);
+
+const hostileStatus = document.createElement('output');
+hostileStatus.id = 'native-keyboard-guard-status';
+hostileStatus.style.display = 'block';
+let hostileSubmitCount = 0;
+function publishHostileStatus(): void {
+  const insertTargetState = insertGuardTarget.value === ''
+    ? 'cleared'
+    : insertGuardTarget.value === insertTargetSentinel
+      ? 'sentinel'
+      : 'changed';
+  const enterTargetState = enterGuardTarget.value === enterPayload
+    ? 'no-newline'
+    : enterGuardTarget.value === ''
+      ? 'empty'
+      : 'changed';
+  hostileStatus.textContent = [
+    'delete-target:' + (deleteGuardTarget.textContent === deleteTargetSentinel ? 'intact' : 'changed'),
+    'delete-sink-state:' + (deleteGuardSink.textContent === deleteSinkSentinel ? 'intact' : 'changed'),
+    'insert-target:' + insertTargetState,
+    'insert-sink-state:' + (insertGuardSink.value === insertSinkSentinel ? 'intact' : 'changed'),
+    'enter-target:' + enterTargetState,
+    'enter-sink-state:' + (enterGuardSink.value === enterSinkSentinel ? 'intact' : 'changed'),
+    'enter-submit:' + (hostileSubmitCount === 0 ? 'none' : 'observed'),
+  ].join(' | ');
+}
+for (const guardedControl of [
+  deleteGuardTarget,
+  deleteGuardSink,
+  insertGuardTarget,
+  insertGuardSink,
+  enterGuardTarget,
+  enterGuardSink,
+]) {
+  guardedControl.addEventListener('input', () => { publishHostileStatus(); });
+}
+deleteGuardTarget.addEventListener('beforeinput', (event) => {
+  if (event.inputType !== 'deleteContentBackward') return;
+  const sinkText = deleteGuardSink.firstChild;
+  const selection = document.getSelection();
+  if (sinkText === null || selection === null) {
+    throw new Error('selection-only delete guard fixture is unavailable');
+  }
+  const sinkOffset = sinkText.textContent?.length ?? 0;
+  selection.setBaseAndExtent(sinkText, sinkOffset, sinkText, sinkOffset);
+  deleteGuardSink.contentEditable = 'true';
+  event.stopImmediatePropagation();
+  publishHostileStatus();
+  throw new Error('intentional delete guard selection escape');
+});
+insertGuardTarget.addEventListener('beforeinput', (event) => {
+  if (event.inputType !== 'insertText') return;
+  insertGuardSink.focus();
+  insertGuardSink.setSelectionRange(0, insertGuardSink.value.length);
+  event.stopImmediatePropagation();
+  publishHostileStatus();
+});
+enterGuardTarget.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  enterGuardSink.focus();
+  enterGuardSink.setSelectionRange(0, enterGuardSink.value.length);
+  event.stopImmediatePropagation();
+  publishHostileStatus();
+});
+enterForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  hostileSubmitCount += 1;
+  publishHostileStatus();
+});
+hostileArea.append(hostileStatus);
+publishHostileStatus();
+
+const occlusion = document.createElement('div');
+occlusion.style.position = 'relative';
+occlusion.style.height = '48px';
+const occluded = document.createElement('button');
+occluded.id = 'occluded-target';
+occluded.type = 'button';
+occluded.textContent = 'Occluded';
+occluded.style.width = '140px';
+occluded.style.height = '40px';
+const cover = document.createElement('span');
+cover.textContent = 'cover';
+cover.style.position = 'absolute';
+cover.style.left = '0';
+cover.style.top = '0';
+cover.style.width = '140px';
+cover.style.height = '40px';
+cover.style.background = 'rgba(15, 23, 42, 0.75)';
+cover.style.color = 'white';
+cover.style.zIndex = '2';
+occlusion.append(occluded, cover);
+panel.append(occlusion);
+
+const stale = document.createElement('button');
+stale.id = 'stale-target';
+stale.type = 'button';
+stale.textContent = 'Stale target';
+panel.append(stale);
+const staleRemover = document.createElement('button');
+staleRemover.id = 'stale-remove-target';
+staleRemover.type = 'button';
+staleRemover.textContent = 'Remove stale target';
+staleRemover.addEventListener('click', () => stale.remove());
+panel.append(staleRemover);
+
+const canvas2d = document.createElement('canvas');
+canvas2d.id = 'canvas-2d';
+canvas2d.width = 96;
+canvas2d.height = 64;
+const context2d = canvas2d.getContext('2d');
+if (context2d === null) throw new Error('Canvas2D unavailable');
+context2d.fillStyle = '#4f46e5';
+context2d.fillRect(0, 0, 96, 64);
+panel.append(canvas2d);
+panel.append(status);
+
+const networkRequest = document.createElement('button');
+networkRequest.id = 'network-request-target';
+networkRequest.type = 'button';
+networkRequest.textContent = 'Request network';
+networkRequest.addEventListener('click', () => {
+  const deniedImage = document.createElement('img');
+  deniedImage.alt = 'Denied network fixture';
+  deniedImage.addEventListener('error', () => record('network:blocked'));
+  deniedImage.src = 'https://preview-inspection.invalid/forbidden.png';
+  panel.append(deniedImage);
+});
+panel.append(networkRequest);
+
+const runtimeError = document.createElement('button');
+runtimeError.id = 'runtime-error-target';
+runtimeError.type = 'button';
+runtimeError.textContent = 'Runtime error';
+runtimeError.addEventListener('click', () => {
+  throw new Error('intentional preview inspection runtime event');
+});
+panel.append(runtimeError);
+
+let frames = 0;
+function animate(): void {
+  frames += 1;
+  status.dataset.frames = String(frames);
+  if (frames < 12) requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+emitWidgetOutput({
+  type: 'notification',
+  tone: 'success',
+  message: 'preview-inspection-runner-ready',
+});
+`.trim(),
+  previewInspectionWebgl: `
+import { emitWidgetOutput } from '@omnidraw/sdk/widget';
+
+document.body.style.margin = '0';
+const canvas = document.createElement('canvas');
+canvas.width = 160;
+canvas.height = 120;
+canvas.setAttribute('aria-label', 'Inspection WebGL surface');
+const context = canvas.getContext('webgl2');
+if (context === null) throw new Error('WebGL2 unavailable');
+context.clearColor(0.1, 0.7, 0.4, 1);
+context.clear(context.COLOR_BUFFER_BIT);
+document.body.append(canvas);
+emitWidgetOutput({
+  type: 'notification',
+  tone: 'success',
+  message: 'preview-inspection-webgl-ready',
+});
+`.trim(),
 });
 
 const SERVER_FUNCTION_DESCRIPTOR = Object.freeze({
@@ -587,6 +932,9 @@ const browserDistributionConfiguration = Object.freeze({
 const buildBrowserDistribution: TOmnidrawDistributionBuild = async (request) => {
   await mkdir(tempRoot, { recursive: true });
   const root = await mkdtemp(join(tempRoot, 'distribution-'));
+  const generatedRootName = basename(root);
+  const normalizeGeneratedText = (value: string): string =>
+    value.replaceAll(generatedRootName, 'distribution');
   try {
     for (const file of request.files) {
       const path = join(root, ...file.path.split('/'));
@@ -635,9 +983,9 @@ const buildBrowserDistribution: TOmnidrawDistributionBuild = async (request) => 
       .map((output) => Object.freeze({
         path: output.fileName,
         bytes: output.type === 'chunk'
-          ? encoder.encode(output.code)
+          ? encoder.encode(normalizeGeneratedText(output.code))
           : typeof output.source === 'string'
-            ? encoder.encode(output.source)
+            ? encoder.encode(normalizeGeneratedText(output.source))
             : new Uint8Array(output.source),
       }))
       .sort((left, right) => left.path.localeCompare(right.path));
@@ -645,7 +993,7 @@ const buildBrowserDistribution: TOmnidrawDistributionBuild = async (request) => 
       .flatMap((output) => output.type === 'chunk' && output.map !== null
         ? [Object.freeze({
             module: output.fileName,
-            bytes: encoder.encode(output.map.toString()),
+            bytes: encoder.encode(normalizeGeneratedText(output.map.toString())),
           })]
         : [])
       .sort((left, right) => left.module.localeCompare(right.module));
@@ -713,29 +1061,67 @@ function manifest(args: TFixtureBuild): TManifest {
   });
 }
 
-async function generateKey(keyId: string): Promise<Readonly<{
+const ED25519_PKCS8_SEED_PREFIX = Uint8Array.from([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+  0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+]);
+
+// Acceptance-only authorities are intentionally public and deterministic. They
+// make independently generated signed fixtures byte-comparable; production
+// Preview/release signing keys never enter this fixture generator.
+const ACCEPTANCE_SIGNING_KEY_SEEDS = Object.freeze({
+  preview: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+  release: '202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f',
+  wrong: '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f',
+});
+
+async function importAcceptanceKey(
+  keyId: string,
+  seedHex: string,
+): Promise<Readonly<{
   signing: CapsuleArtifactSigningKey;
   publicKeyBase64: string;
 }>> {
-  const pair = await webcrypto.subtle.generateKey(
+  const seed = Buffer.from(seedHex, 'hex');
+  if (seed.byteLength !== 32 || seed.toString('hex') !== seedHex) {
+    throw new Error('Acceptance signing seed is invalid.');
+  }
+  const pkcs8 = new Uint8Array(ED25519_PKCS8_SEED_PREFIX.byteLength + seed.byteLength);
+  pkcs8.set(ED25519_PKCS8_SEED_PREFIX);
+  pkcs8.set(seed, ED25519_PKCS8_SEED_PREFIX.byteLength);
+  const privateKey = await webcrypto.subtle.importKey(
+    'pkcs8',
+    pkcs8,
     'Ed25519',
     true,
-    ['sign', 'verify'],
-  ) as CryptoKeyPair;
-  const publicKey = await webcrypto.subtle.exportKey('raw', pair.publicKey);
+    ['sign'],
+  );
+  const jwk = await webcrypto.subtle.exportKey('jwk', privateKey);
+  if (typeof jwk.x !== 'string') {
+    throw new Error('Acceptance signing public key is unavailable.');
+  }
   return Object.freeze({
     signing: Object.freeze({
       keyId,
-      privateKey: pair.privateKey as CryptoKey,
+      privateKey: privateKey as CryptoKey,
     }),
-    publicKeyBase64: Buffer.from(publicKey).toString('base64'),
+    publicKeyBase64: Buffer.from(jwk.x, 'base64url').toString('base64'),
   });
 }
 
 const [previewKey, releaseKey, wrongKey] = await Promise.all([
-  generateKey(OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID),
-  generateKey(OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID),
-  generateKey('capsule-browser-acceptance-wrong-key'),
+  importAcceptanceKey(
+    OMNIDRAW_CAPSULE_PREVIEW_SIGNING_KEY_ID,
+    ACCEPTANCE_SIGNING_KEY_SEEDS.preview,
+  ),
+  importAcceptanceKey(
+    OMNIDRAW_CAPSULE_RELEASE_SIGNING_KEY_ID,
+    ACCEPTANCE_SIGNING_KEY_SEEDS.release,
+  ),
+  importAcceptanceKey(
+    'capsule-browser-acceptance-wrong-key',
+    ACCEPTANCE_SIGNING_KEY_SEEDS.wrong,
+  ),
 ]);
 const keys = Object.freeze({
   preview: previewKey.signing,
@@ -920,6 +1306,20 @@ const artifacts = Object.freeze({
       entry: 'server/index.ts',
       runtimeAbi: 'omnidraw-function-v1',
     }),
+  }),
+  previewInspectionRunner: await build({
+    name: 'Preview inspection managed runner acceptance',
+    slug: 'preview-inspection-runner-acceptance',
+    entry: 'ui/main.ts',
+    files: [{ path: 'ui/main.ts', source: sources.previewInspectionRunner }],
+    apis: ['CANVAS_2D'],
+  }),
+  previewInspectionWebgl: await build({
+    name: 'Preview inspection WebGL metadata acceptance',
+    slug: 'preview-inspection-webgl-acceptance',
+    entry: 'ui/main.ts',
+    files: [{ path: 'ui/main.ts', source: sources.previewInspectionWebgl }],
+    apis: ['WEBGL'],
   }),
 });
 

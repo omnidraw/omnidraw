@@ -1,3 +1,4 @@
+import { fnValidateBoundedPngBase64 } from '@omnidraw/shared-functions/image/fn.png-base64';
 import { TOOL_ERROR_DETAILS_MARKER } from './CONSTANTS';
 
 const MODEL_TEXT_MAX_LENGTH = 128_000;
@@ -20,6 +21,14 @@ export type TToolFailure<TModelData = never, TDetails = TModelData> = {
   modelData?: TModelData;
   details?: TDetails;
 };
+
+export type TToolPngImage = Readonly<{
+  mimeType: 'image/png';
+  data: string;
+}>;
+
+export type TToolSuccessWithPng<TModelData = never, TDetails = TModelData> =
+  TToolSuccess<TModelData, TDetails> & Readonly<{ image: TToolPngImage }>;
 
 type TBoundState = {
   seen: Set<object>;
@@ -81,6 +90,45 @@ export function fnToolSuccess<TModelData = never, TDetails = TModelData>(
   return {
     content: [{ type: 'text' as const, text: content }],
     details: options.details ?? {},
+  };
+}
+
+function fnContainsImageData(value: unknown, imageData: string, seen: Set<object>): boolean {
+  if (typeof value === 'string') return value.includes(imageData);
+  if (typeof value !== 'object' || value === null || seen.has(value)) return false;
+
+  seen.add(value);
+  try {
+    return Object.entries(value).some(([key, item]) => (
+      key.includes(imageData) || fnContainsImageData(item, imageData, seen)
+    ));
+  } finally {
+    seen.delete(value);
+  }
+}
+
+export function fnToolSuccessWithPng<TModelData = never, TDetails = TModelData>(
+  options: TToolSuccessWithPng<TModelData, TDetails>,
+) {
+  const validation = fnValidateBoundedPngBase64(options.image);
+  if (!validation.ok) {
+    throw new TypeError(`Invalid PNG image tool result: ${validation.reason}.`);
+  }
+
+  const seen = new Set<object>();
+  if (fnContainsImageData(options.summary, options.image.data, seen)
+    || fnContainsImageData(options.modelData, options.image.data, seen)
+    || fnContainsImageData(options.details, options.image.data, seen)) {
+    throw new TypeError('PNG image data must only appear in the image content block.');
+  }
+
+  const textResult = fnToolSuccess(options);
+  return {
+    content: [
+      textResult.content[0],
+      { type: 'image' as const, mimeType: 'image/png' as const, data: options.image.data },
+    ],
+    details: textResult.details,
   };
 }
 

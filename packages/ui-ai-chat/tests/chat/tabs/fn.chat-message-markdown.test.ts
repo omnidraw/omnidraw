@@ -48,4 +48,24 @@ describe("fnSerializeChatMessagesAsMarkdown", () => {
       "ok",
     ].join("\n"))
   })
+
+  it("replaces embedded and tool-result image data with safe placeholders", () => {
+    const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=="
+    const markdown = fnSerializeChatMessagesAsMarkdown([
+      {
+        role: "user",
+        content: [{ type: "image", url: `data:image/png;base64,${pngBase64}`, alt: "Reference" }],
+      },
+      {
+        role: "toolResult",
+        toolName: "od_widget_preview_inspect",
+        content: [{ type: "image", mimeType: "image/png", data: pngBase64 }],
+      },
+    ])
+
+    expect(markdown).toContain("[Image omitted]")
+    expect(markdown).toContain("[Tool-result image: image/png, 2x2, 76 bytes]")
+    expect(markdown).not.toContain(pngBase64)
+    expect(markdown).not.toContain("data:image")
+  })
 })

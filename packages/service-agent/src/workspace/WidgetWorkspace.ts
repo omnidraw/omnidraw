@@ -293,10 +293,11 @@ export class WidgetWorkspace {
   async withDraftAuthoringOperation<T>(
     requestedName: string,
     operation: () => Promise<T>,
+    options: Readonly<{ signal?: AbortSignal }> = {},
   ): Promise<T> {
     const name = this.#normalizeName(requestedName);
     const key = await this.#canonicalWriteLaneKey(join(this.draftRoot, name));
-    return this.#withQueue(this.#authoringQueues, key, operation);
+    return this.#withQueue(this.#authoringQueues, key, operation, options.signal);
   }
 
   async withDraftAuthoringOperations<T>(
@@ -650,13 +651,43 @@ export class WidgetWorkspace {
     queues: Map<string, Promise<unknown>>,
     key: string,
     operation: () => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
     const previous = queues.get(key) ?? Promise.resolve();
     let settle: (() => void) | undefined;
     const gate = new Promise<void>((resolveGate) => { settle = resolveGate; });
     const tail = previous.catch(() => undefined).then(() => gate);
     queues.set(key, tail);
-    await previous.catch(() => undefined);
+    let removeAbortListener: (() => void) | undefined;
+    try {
+      await (signal === undefined
+        ? previous.catch(() => undefined)
+        : Promise.race([
+            previous.catch(() => undefined),
+            new Promise<never>((_resolve, reject) => {
+              const rejectAborted = () => reject(new Error(
+                'Draft authoring operation was cancelled before it could start.',
+              ));
+              if (signal.aborted) {
+                rejectAborted();
+                return;
+              }
+              signal.addEventListener('abort', rejectAborted, { once: true });
+              removeAbortListener = () => signal.removeEventListener('abort', rejectAborted);
+            }),
+          ]));
+      if (signal?.aborted) {
+        throw new Error('Draft authoring operation was cancelled before it could start.');
+      }
+    } catch (error) {
+      settle?.();
+      void tail.then(() => {
+        if (queues.get(key) === tail) queues.delete(key);
+      });
+      throw error;
+    } finally {
+      removeAbortListener?.();
+    }
     try {
       return await operation();
     } finally {

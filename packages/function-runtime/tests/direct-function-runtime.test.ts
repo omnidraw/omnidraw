@@ -203,6 +203,38 @@ describe('direct function execution', () => {
     });
     expect(events.at(-1)).toBe('destroy');
   });
+
+  test('does not start execution when cancellation lands during resource creation', async () => {
+    const events: string[] = [];
+    let releaseResources!: () => void;
+    let resourcesStarted!: () => void;
+    const resourceGate = new Promise<void>((resolve) => { releaseResources = resolve; });
+    const resourceStart = new Promise<void>((resolve) => { resourcesStarted = resolve; });
+    const executor = new DirectFunctionExecutor({
+      driver: driver(undefined, events),
+      schemas: new JsonSchemaFunctionValidator(),
+    });
+    const controller = new AbortController();
+    const call = executor.invoke(request({
+      signal: controller.signal,
+      createResources: async () => {
+        events.push('resources');
+        resourcesStarted();
+        await resourceGate;
+        return { call: async () => ({ output: null }) };
+      },
+    }));
+
+    await resourceStart;
+    controller.abort();
+    releaseResources();
+
+    await expect(call).resolves.toMatchObject({
+      status: 'cancelled', failure: { code: 'FUNCTION_CANCELLED' },
+    });
+    expect(events).toEqual(['prepare', 'start', 'resources', 'cancel', 'destroy']);
+    expect(executor.diagnostics().activeCalls).toBe(0);
+  });
 });
 
 describe('ephemeral write permits', () => {

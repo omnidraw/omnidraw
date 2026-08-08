@@ -116,6 +116,19 @@ describe('WidgetConstructionCache', () => {
     await cache.close();
   });
 
+  it('deletes one exact cache entry without affecting the cache directory', async () => {
+    const directory = await root();
+    const cache = new WidgetConstructionCache(directory);
+    await cache.write('mapped-construction', construction());
+    expect(await cache.read('mapped-construction')).not.toBeNull();
+
+    await cache.delete('mapped-construction');
+
+    expect(await cache.read('mapped-construction')).toBeNull();
+    expect(await readdir(directory)).toContain('index.json');
+    await cache.close();
+  });
+
   it('bounds the on-disk entries and writes an index', async () => {
     const directory = await root();
     const cache = new WidgetConstructionCache(directory);

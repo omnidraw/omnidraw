@@ -34,6 +34,7 @@ export type TWidgetFilesystemCapsuleInspector = Readonly<{
 
 export type TWidgetFilesystemConstructionCache = Readonly<{
   read(key: string): Promise<TWidgetFilesystemConstruction | null>;
+  delete?(key: string): Promise<void>;
   write(
     key: string,
     construction: TWidgetFilesystemConstruction,

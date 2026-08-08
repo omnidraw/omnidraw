@@ -2,10 +2,23 @@
 
 import { describe, expect, test } from 'bun:test';
 import {
+  localNpmUserConfigContents,
   publishDecision,
   widgetPackagePublishOrder,
   widgetPackageSyncSource,
 } from './local-registry.mjs';
+
+describe('local registry npm user config', () => {
+  test('routes the owned scope with only the npm publish sentinel', () => {
+    const contents = localNpmUserConfigContents('http://127.0.0.1:4873/');
+    expect(contents).toContain('registry=https://registry.npmjs.org/');
+    expect(contents).toContain('@omnidraw:registry=http://127.0.0.1:4873/');
+    expect(contents).toContain(
+      '//127.0.0.1:4873/:_authToken=omnidraw-local-development',
+    );
+    expect(contents).not.toContain('always-auth');
+  });
+});
 
 function entry(name, dependencies = {}, extras = {}) {
   return Object.freeze({

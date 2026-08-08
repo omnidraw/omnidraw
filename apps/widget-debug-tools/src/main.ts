@@ -71,6 +71,17 @@ async function ensureLayout(widgetsRoot: string): Promise<void> {
   )));
 }
 
+function createCatalog(widgetsRoot: string): WidgetFilesystemCatalog {
+  return new WidgetFilesystemCatalog({
+    rootPath: widgetsRoot,
+    filesystem: new NodeWidgetCatalogFilesystem(),
+    hash: new NodeWidgetCatalogHash(),
+    capsule: {
+      inspectCapsuleArtifact: capsulePortalNeverInspects,
+    },
+  });
+}
+
 async function run(): Promise<void> {
   const command = parseCommand(process.argv.slice(2));
   await ensureLayout(command.widgetsRoot);
@@ -87,10 +98,20 @@ async function run(): Promise<void> {
     await runCatalog(command);
     return;
   }
-  const observation = await workspace.inspectManagedManifest({
-    relativePath: `drafts/${command.slug!}`,
-    signal,
-  });
+  const snapshot = await createCatalog(command.widgetsRoot).refresh();
+  const observation = snapshot.entries[command.slug!]?.draft ?? null;
+  if (
+    observation === null
+    || observation.health !== 'healthy'
+    || observation.manifest === null
+    || observation.manifestDigestSha256 === null
+  ) {
+    const issues = observation?.issues.map((issue) => issue.message).join(' ') ?? '';
+    throw new Error([
+      `Healthy widget draft '${command.slug!}' was not found.`,
+      issues,
+    ].filter(Boolean).join(' '));
+  }
   process.stdout.write(`${JSON.stringify({
     widgetsRoot: workspace.rootPath,
     slug: observation.slug,
@@ -101,17 +122,7 @@ async function run(): Promise<void> {
 }
 
 async function runCatalog(command: TCommand): Promise<void> {
-  const filesystem = new NodeWidgetCatalogFilesystem();
-  const hash = new NodeWidgetCatalogHash();
-  const catalog = new WidgetFilesystemCatalog({
-    rootPath: command.widgetsRoot,
-    filesystem,
-    hash,
-    capsule: {
-      inspectCapsuleArtifact: capsulePortalNeverInspects,
-    },
-  });
-  const snapshot = await catalog.refresh();
+  const snapshot = await createCatalog(command.widgetsRoot).refresh();
   const summary = Object.fromEntries(Object.values(snapshot.entries).map((entry) => [
     entry.slug,
     {

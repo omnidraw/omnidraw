@@ -28,6 +28,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/capsule-browser-acceptance/public/capsule-network-image.svg](apps/capsule-browser-acceptance/public/capsule-network-image.svg) |  |
 | [apps/capsule-browser-acceptance/README.md](apps/capsule-browser-acceptance/README.md) |  |
 | [apps/capsule-browser-acceptance/scripts/generate.ts](apps/capsule-browser-acceptance/scripts/generate.ts) |  |
+| [apps/capsule-browser-acceptance/scripts/verify-generate-determinism.ts](apps/capsule-browser-acceptance/scripts/verify-generate-determinism.ts) | Proves two fresh acceptance-fixture generations are byte-identical. |
 | [apps/capsule-browser-acceptance/src/main.ts](apps/capsule-browser-acceptance/src/main.ts) |  |
 | [apps/capsule-browser-acceptance/tsconfig.json](apps/capsule-browser-acceptance/tsconfig.json) |  |
 | [apps/capsule-browser-acceptance/vite.config.ts](apps/capsule-browser-acceptance/vite.config.ts) |  |
@@ -74,14 +75,27 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/orpc/router.ts](apps/cli/src/plugins/orpc/router.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
+| [apps/cli/src/preview-inspection-packaged-smoke.ts](apps/cli/src/preview-inspection-packaged-smoke.ts) | Compiled-only qualification entry for one hash-pinned signed Preview inspection fixture and its native action/widget PNG evidence. |
 | [apps/cli/src/services/AgentBashCapability.ts](apps/cli/src/services/AgentBashCapability.ts) |  |
 | [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
 | [apps/cli/src/services/fn.redact-build-output.ts](apps/cli/src/services/fn.redact-build-output.ts) |  |
 | [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
+| [apps/cli/src/services/fn.widget-preview-inspection.ts](apps/cli/src/services/fn.widget-preview-inspection.ts) |  |
 | [apps/cli/src/services/fn.widget-ui-entry.ts](apps/cli/src/services/fn.widget-ui-entry.ts) |  |
 | [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
 | [apps/cli/src/services/LocalWidgetPackageRegistrySync.ts](apps/cli/src/services/LocalWidgetPackageRegistrySync.ts) |  |
+| [apps/cli/src/services/preview-inspection/CONSTANTS.ts](apps/cli/src/services/preview-inspection/CONSTANTS.ts) |  |
+| [apps/cli/src/services/preview-inspection/fn.browser-launch.ts](apps/cli/src/services/preview-inspection/fn.browser-launch.ts) |  |
+| [apps/cli/src/services/preview-inspection/fn.png.ts](apps/cli/src/services/preview-inspection/fn.png.ts) |  |
+| [apps/cli/src/services/preview-inspection/fn.validate-browser-job.ts](apps/cli/src/services/preview-inspection/fn.validate-browser-job.ts) |  |
+| [apps/cli/src/services/preview-inspection/fn.validate-browser-result.ts](apps/cli/src/services/preview-inspection/fn.validate-browser-result.ts) |  |
+| [apps/cli/src/services/preview-inspection/interface.ts](apps/cli/src/services/preview-inspection/interface.ts) |  |
+| [apps/cli/src/services/preview-inspection/playwright-runtime-identity.ts](apps/cli/src/services/preview-inspection/playwright-runtime-identity.ts) |  |
+| [apps/cli/src/services/preview-inspection/PlaywrightPreviewInspectionShellDriver.ts](apps/cli/src/services/preview-inspection/PlaywrightPreviewInspectionShellDriver.ts) |  |
+| [apps/cli/src/services/preview-inspection/preview-inspection-release-runtime.ts](apps/cli/src/services/preview-inspection/preview-inspection-release-runtime.ts) |  |
+| [apps/cli/src/services/preview-inspection/PreviewInspectionBrowserService.ts](apps/cli/src/services/preview-inspection/PreviewInspectionBrowserService.ts) |  |
+| [apps/cli/src/services/preview-inspection/PreviewInspectionShellServer.ts](apps/cli/src/services/preview-inspection/PreviewInspectionShellServer.ts) |  |
 | [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
 | [apps/cli/src/services/ResourceServiceCapabilities.ts](apps/cli/src/services/ResourceServiceCapabilities.ts) |  |
@@ -90,6 +104,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/tx.terminate-widget-build-process-tree.ts](apps/cli/src/services/tx.terminate-widget-build-process-tree.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
+| [apps/cli/src/services/WidgetConstructionCache.ts](apps/cli/src/services/WidgetConstructionCache.ts) |  |
 | [apps/cli/src/services/WidgetFilesystemManagementService.ts](apps/cli/src/services/WidgetFilesystemManagementService.ts) |  |
 | [apps/cli/src/services/WidgetFilesystemRuntimeCatalog.ts](apps/cli/src/services/WidgetFilesystemRuntimeCatalog.ts) |  |
 | [apps/cli/src/services/WidgetNpmDistributionBuild.ts](apps/cli/src/services/WidgetNpmDistributionBuild.ts) |  |
@@ -162,11 +177,22 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/tsconfig.json](apps/frontend/tsconfig.json) |  |
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
 
+## apps/preview-inspection-shell
+
+| path | jsdocs |
+|---|---|
+| [apps/preview-inspection-shell/index.html](apps/preview-inspection-shell/index.html) |  |
+| [apps/preview-inspection-shell/package.json](apps/preview-inspection-shell/package.json) |  |
+| [apps/preview-inspection-shell/src/main.ts](apps/preview-inspection-shell/src/main.ts) |  |
+| [apps/preview-inspection-shell/tsconfig.json](apps/preview-inspection-shell/tsconfig.json) |  |
+| [apps/preview-inspection-shell/vite.config.ts](apps/preview-inspection-shell/vite.config.ts) |  |
+
 ## apps/widget-debug-tools
 
 | path | jsdocs |
 |---|---|
 | [apps/widget-debug-tools/package.json](apps/widget-debug-tools/package.json) |  |
+| [apps/widget-debug-tools/src/a114-preview-inspect-scenario.ts](apps/widget-debug-tools/src/a114-preview-inspect-scenario.ts) |  |
 | [apps/widget-debug-tools/src/main.ts](apps/widget-debug-tools/src/main.ts) |  |
 | [apps/widget-debug-tools/tsconfig.json](apps/widget-debug-tools/tsconfig.json) |  |
 
@@ -366,6 +392,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/capsule-omnidraw/LICENSE](packages/capsule-omnidraw/LICENSE) |  |
 | [packages/capsule-omnidraw/package.json](packages/capsule-omnidraw/package.json) |  |
 | [packages/capsule-omnidraw/README.md](packages/capsule-omnidraw/README.md) |  |
+| [packages/capsule-omnidraw/src/authoring-inspection/index.ts](packages/capsule-omnidraw/src/authoring-inspection/index.ts) |  |
 | [packages/capsule-omnidraw/src/build/CONSTANTS.ts](packages/capsule-omnidraw/src/build/CONSTANTS.ts) |  |
 | [packages/capsule-omnidraw/src/build/fn.build-error.ts](packages/capsule-omnidraw/src/build/fn.build-error.ts) |  |
 | [packages/capsule-omnidraw/src/build/fn.error.ts](packages/capsule-omnidraw/src/build/fn.error.ts) |  |
@@ -522,7 +549,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.session-records.ts](packages/service-agent/src/core/tx.session-records.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
-| [packages/service-agent/src/fn.chat-history.ts](packages/service-agent/src/fn.chat-history.ts) | Projects stable active-branch chat history and validates editable user entries. |
+| [packages/service-agent/src/fn.chat-history.ts](packages/service-agent/src/fn.chat-history.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
@@ -542,6 +569,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
 | [packages/service-agent/src/tools/fn.widget-create.ts](packages/service-agent/src/tools/fn.widget-create.ts) |  |
 | [packages/service-agent/src/tools/fn.widget-list.ts](packages/service-agent/src/tools/fn.widget-list.ts) |  |
+| [packages/service-agent/src/tools/fn.widget-preview-inspect.ts](packages/service-agent/src/tools/fn.widget-preview-inspect.ts) |  |
 | [packages/service-agent/src/tools/fx.db-apply.ts](packages/service-agent/src/tools/fx.db-apply.ts) |  |
 | [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
 | [packages/service-agent/src/tools/resource-service.ts](packages/service-agent/src/tools/resource-service.ts) |  |
@@ -564,12 +592,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tool.bash.ts](packages/service-agent/src/tools/tool.bash.ts) |  |
 | [packages/service-agent/src/tools/tool.resources.ts](packages/service-agent/src/tools/tool.resources.ts) |  |
 | [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |
+| [packages/service-agent/src/tools/tool.widget-preview-inspect.ts](packages/service-agent/src/tools/tool.widget-preview-inspect.ts) |  |
 | [packages/service-agent/src/tools/tool.widget-workspace.ts](packages/service-agent/src/tools/tool.widget-workspace.ts) |  |
 | [packages/service-agent/src/tools/tool.workspace-files.ts](packages/service-agent/src/tools/tool.workspace-files.ts) |  |
 | [packages/service-agent/src/tools/ToolRegistry.ts](packages/service-agent/src/tools/ToolRegistry.ts) |  |
 | [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
+| [packages/service-agent/src/widget-filesystem/build/fn.construction-codec.ts](packages/service-agent/src/widget-filesystem/build/fn.construction-codec.ts) | Pure serialization for reusing validated widget constructions. |
 | [packages/service-agent/src/widget-filesystem/build/index.ts](packages/service-agent/src/widget-filesystem/build/index.ts) |  |
 | [packages/service-agent/src/widget-filesystem/build/typed.ts](packages/service-agent/src/widget-filesystem/build/typed.ts) |  |
 | [packages/service-agent/src/widget-filesystem/build/WidgetFilesystemBuildService.ts](packages/service-agent/src/widget-filesystem/build/WidgetFilesystemBuildService.ts) |  |
@@ -755,10 +785,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/shared-functions/src/functional/fn.memoize.ts](packages/shared-functions/src/functional/fn.memoize.ts) |  |
 | [packages/shared-functions/src/functional/fn.pipe.ts](packages/shared-functions/src/functional/fn.pipe.ts) |  |
 | [packages/shared-functions/src/functional/fn.throttle.ts](packages/shared-functions/src/functional/fn.throttle.ts) |  |
+| [packages/shared-functions/src/image/CONSTANTS.ts](packages/shared-functions/src/image/CONSTANTS.ts) |  |
+| [packages/shared-functions/src/image/fn.png-base64.ts](packages/shared-functions/src/image/fn.png-base64.ts) |  |
 | [packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/fn.resolve-omnidraw-home.ts) |  |
 | [packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts](packages/shared-functions/src/omnidraw-config/tx.ensure-omnidraw-home.ts) |  |
 | [packages/shared-functions/src/serialized-operation/CONSTANTS.ts](packages/shared-functions/src/serialized-operation/CONSTANTS.ts) |  |
 | [packages/shared-functions/src/tx.run-serialized-operation.ts](packages/shared-functions/src/tx.run-serialized-operation.ts) |  |
+| [packages/shared-functions/src/widget-source-map/fn.runtime-diagnostic-source.ts](packages/shared-functions/src/widget-source-map/fn.runtime-diagnostic-source.ts) |  |
+| [packages/shared-functions/src/widget-source-map/fx.decode-and-verify-widget-source-map.ts](packages/shared-functions/src/widget-source-map/fx.decode-and-verify-widget-source-map.ts) |  |
 | [packages/shared-functions/tsconfig.json](packages/shared-functions/tsconfig.json) |  |
 
 ## packages/tapable
@@ -817,7 +851,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/chat/components/index.css](packages/ui-ai-chat/src/chat/components/index.css) |  |
 | [packages/ui-ai-chat/src/chat/components/index.tsx](packages/ui-ai-chat/src/chat/components/index.tsx) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx](packages/ui-ai-chat/src/chat/components/tabs/ChatTab.tsx) |  |
-| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts) | Pure inline-edit text, image, and optimistic-tail helpers. |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-edit.ts) |  |
+| [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-scroll-key.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-history-scroll-key.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-label.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-markdown.ts) |  |
 | [packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts](packages/ui-ai-chat/src/chat/components/tabs/fn.chat-message-parts.ts) |  |
@@ -861,6 +896,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts](packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts](packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-mount-catalog.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-mount-catalog.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts](packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts) |  |
@@ -875,6 +911,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-runtime/fx.portal-content-css-size.ts](packages/ui-ai-chat/src/widget-runtime/fx.portal-content-css-size.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/index.ts](packages/ui-ai-chat/src/widget-runtime/index.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/interface.ts](packages/ui-ai-chat/src/widget-runtime/interface.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/mount-widget-authoring-inspection.ts](packages/ui-ai-chat/src/widget-runtime/mount-widget-authoring-inspection.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/mount-widget-ui-artifact.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiArtifactCache.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts](packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts) |  |
@@ -951,13 +988,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/external-composition/tsconfig.json](scripts/fixtures/external-composition/tsconfig.json) |  |
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
+| [scripts/link-local-packages.mjs](scripts/link-local-packages.mjs) | Opt-in cross-repo local linking for `@omnidraw/capsule` and `@omnidraw/cangine` (D9). Off by default: normal `bun install`/`bun run dev` never touch this file and keep resolving both from real npm at the pinned `catalog`/devDependency versions. |
+| [scripts/link-local-packages.test.mjs](scripts/link-local-packages.test.mjs) | Verifies the pure decision helpers behind the opt-in `link:local` command (D9). |
 | [scripts/list-package-deployments.ts](scripts/list-package-deployments.ts) | Report which versioned workspace libraries need manual public npm deployment. |
 | [scripts/local-registry.mjs](scripts/local-registry.mjs) |  |
 | [scripts/local-registry.test.mjs](scripts/local-registry.test.mjs) | Verifies dependency-ordered local publication for generated widget packages. |
 | [scripts/local-registry/package-lock.json](scripts/local-registry/package-lock.json) |  |
 | [scripts/local-registry/package.json](scripts/local-registry/package.json) |  |
 | [scripts/local-registry/README.md](scripts/local-registry/README.md) |  |
+| [scripts/package-preview-inspection-runtime.ts](scripts/package-preview-inspection-runtime.ts) | Builds one acceptance-only darwin-arm64 Omnidraw executable and stages its pinned Preview inspection browser shell and signed qualification fixture. This is not a general application release pipeline. |
 | [scripts/prepare-package-dist.ts](scripts/prepare-package-dist.ts) | Finalize one workspace library's dist directory as a standalone npm package. |
+| [scripts/smoke-preview-inspection-runtime.ts](scripts/smoke-preview-inspection-runtime.ts) | Executes the staged darwin-arm64 Omnidraw CLI's internal qualification path, then independently verifies its native action and widget PNG evidence. |
+| [scripts/stage-preview-inspection-runtime.ts](scripts/stage-preview-inspection-runtime.ts) | Stages the internal inspection shell, runtime identity evidence, and license notices into one compiled-release directory. It never downloads a browser; release builders must provision the pinned Playwright browser first. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable gate for the authoritative canvas and widget-state runtime. |
 | [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
 | [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
@@ -965,6 +1007,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
 | [scripts/test-packed-canvas-kernel.ts](scripts/test-packed-canvas-kernel.ts) | Packs the public canvas kernel and proves a clean external browser consumer. |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
+| [scripts/test-preview-inspection-packaged.ts](scripts/test-preview-inspection-packaged.ts) | Runs the complete acceptance-only packaged Preview inspection qualification in one fresh, automatically cleaned release directory. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the local resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Focused gate for filesystem publications and runtime loading. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable gate for canvas widget identity, state, and Capsule hosting. |

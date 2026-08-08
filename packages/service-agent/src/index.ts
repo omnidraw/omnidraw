@@ -1,5 +1,7 @@
 export { AgentService } from './AgentService';
 export { createWebFetchTool } from './tools/tool.web-fetch';
+export { fnToolSuccessWithPng } from './tools/fn.result';
+export type { TToolPngImage, TToolSuccessWithPng } from './tools/fn.result';
 export type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 export type {
   TAgentBashCapability,
@@ -7,7 +9,31 @@ export type {
   TAgentBashToolResult,
 } from './tools/tool.bash';
 export type { TAgentResource, TAgentResourceDataEntry, TAgentResourceService } from './tools/resource-service';
-export type { TToolEvent } from './tools/types';
+export type {
+  TInspectActionResult,
+  TInspectArtifact,
+  TInspectBounds,
+  TInspectCanvas,
+  TInspectDiagnostic,
+  TInspectElement,
+  TInspectEvidence,
+  TInspectFailure,
+  TInspectFidelity,
+  TInspectIdentity,
+  TInspectScreenshot,
+  TInspectStage,
+  TToolEvent,
+  TWidgetPreviewInspectAction,
+  TWidgetPreviewInspectInput,
+  TWidgetPreviewInspectNormalizedAction,
+  TWidgetPreviewInspectNormalizedInput,
+  TWidgetPreviewInspectResult,
+  TWidgetPreviewInspectTarget,
+  TWidgetPreviewInspectionCapability,
+  TWidgetPreviewInspectionRequest,
+  TWidgetPreviewInspectionResponse,
+  TWidgetPreviewInspectionToolError,
+} from './tools/types';
 export { WidgetFilesystemBuildService } from './widget-filesystem/build';
 export {
   fnDecodeWidgetFilesystemConstruction,

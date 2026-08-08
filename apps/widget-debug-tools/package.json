@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "lab": "bun run src/main.ts",
+    "scenario:a114": "bun run src/a114-preview-inspect-scenario.ts",
+    "test": "bun test tests --timeout=20000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@omnidraw/api": "workspace:*",
     "@omnidraw/service-agent": "workspace:*"
   },
   "devDependencies": {

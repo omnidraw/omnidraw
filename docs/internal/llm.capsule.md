@@ -1,6 +1,6 @@
-# Using the Capsule library — 0.12.0
+# Using the Capsule library — 0.13.0
 
-This is the consumer manual for `@omnidraw/capsule`. Capsule 0.12.0 uses
+This is the consumer manual for `@omnidraw/capsule`. Capsule 0.13.0 uses
 public browser API groups; runtime ABI, DOM profiles, feature profiles, and
 feature grants remain private enforcement details.
 
@@ -1012,7 +1012,7 @@ digest into new manifests.
 
 ## Versioning
 
-The package version is `@omnidraw/capsule` 0.12.0. The group-contract format
+The package version is `@omnidraw/capsule` 0.13.0. The group-contract format
 and bundle digest, artifact envelope, runtime ABI, private ledgers/profiles,
 capability identities, network-policy format, and snapshot schemas are
 independently versioned exact contracts.

@@ -10,7 +10,7 @@
     "scripts/eslint-tooling"
   ],
   "catalog": {
-    "@omnidraw/capsule": "0.12.0",
+    "@omnidraw/capsule": "0.13.0",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",
@@ -21,11 +21,12 @@
     "lucide-solid": "^1.24.0",
     "lucide-static": "1.24.0",
     "solid-js": "^1.9.14",
-    "@tursodatabase/database": "0.7.2"
+    "@tursodatabase/database": "0.7.2",
+    "playwright": "1.61.1"
   },
   "scripts": {
     "pretest": "bun run --filter '@omnidraw/sdk' build && bun run build:canvas-kernel",
-    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/theme-contract' --filter '@omnidraw/widget-contract' test && bun run test:external-composition && bun run test:architecture",
+    "test": "bun run --sequential --filter '@omnidraw/cli' --filter '@omnidraw/frontend' --filter '@omnidraw/ui-ai-chat' --filter '@omnidraw/api' --filter '@omnidraw/canvas' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/capsule-omnidraw' --filter '@omnidraw/function-runtime' --filter '@omnidraw/resource-runtime' --filter '@omnidraw/runtime' --filter '@omnidraw/sdk' --filter '@omnidraw/service-agent' --filter '@omnidraw/service-canvas' --filter '@omnidraw/service-db' --filter '@omnidraw/service-event-publisher' --filter '@omnidraw/service-kv' --filter '@omnidraw/service-theme' --filter '@omnidraw/service-widget-state' --filter '@omnidraw/shared-functions' --filter '@omnidraw/tapable' --filter '@omnidraw/theme-contract' --filter '@omnidraw/widget-contract' test && bun run test:preview-inspection-package && bun run test:external-composition && bun run test:architecture",
     "pretest:canvas-regression": "bun run build:canvas-kernel",
     "test:canvas-regression": "bun run scripts/test-canvas-regression.ts",
     "test:resource-runtime": "bun run scripts/test-resource-runtime.ts",
@@ -33,6 +34,8 @@
     "test:function-runtime": "bun run scripts/test-function-runtime.ts",
     "test:widget-host": "bun run scripts/test-widget-host.ts",
     "test:capsule-browser": "bun run --cwd apps/capsule-browser-acceptance test",
+    "test:preview-inspection-package": "bun test scripts/stage-preview-inspection-runtime.test.ts scripts/package-preview-inspection-runtime.test.ts apps/cli/tests/playwright-runtime-identity.test.ts apps/cli/tests/preview-inspection-release-runtime.test.ts apps/cli/tests/preview-inspection-packaged-smoke.test.ts apps/cli/tests/PreviewInspectionCompiledComposition.test.ts && bun run scripts/test-preview-inspection-packaged.ts --if-supported",
+    "test:preview-inspection-packaged": "bun run scripts/test-preview-inspection-packaged.ts",
     "test:external-composition": "bunx tsc -p scripts/fixtures/external-composition/tsconfig.json --noEmit && bun test scripts/fixtures/external-composition/external-composition.test.ts",
     "pretest:architecture": "bun run build:canvas-kernel",
     "test:architecture": "bunx tsc -p scripts/tsconfig.architecture.json --noEmit && bun test scripts/architecture-boundaries.test.ts scripts/external-composition-api-integration.test.ts scripts/local-registry.test.mjs",
@@ -49,6 +52,8 @@
     "test:ci:docker": "bun run scripts/test-ci-docker.ts",
     "prebuild": "bun run build:canvas-kernel",
     "build": "bun run build:canvas-kernel && bun run --filter '*' build",
+    "package:preview-inspection-runtime": "bun run scripts/package-preview-inspection-runtime.ts",
+    "smoke:preview-inspection-runtime": "bun run scripts/smoke-preview-inspection-runtime.ts",
     "build:canvas-kernel": "bun run --cwd packages/theme-contract build && bun run --cwd packages/canvas-contract build && bun run --cwd packages/service-theme build && bun run --cwd packages/canvas build",
     "lab": "bun run apps/widget-debug-tools/src/main.ts",
     "registry:start": "node scripts/local-registry.mjs start",
