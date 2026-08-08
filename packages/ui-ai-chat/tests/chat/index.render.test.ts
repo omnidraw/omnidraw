@@ -96,6 +96,10 @@ function createApiService() {
             vcJson: null,
           }],
           newSession: async () => [undefined, { started: true }],
+          history: async () => [undefined, []],
+          edit: async () => [undefined, []],
+          prompt: async () => [undefined, undefined],
+          cancel: async () => [undefined, { canceled: false, running: false }],
         },
         events: async () => [undefined, {
           async *[Symbol.asyncIterator]() {},
@@ -114,6 +118,90 @@ afterEach(() => {
 })
 
 describe("AiChat shell", () => {
+  it("optimistically truncates an edited tail and restores canonical history after rejection", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const canonicalHistory = [
+      { entryId: "user-1", message: { role: "user", content: "first prompt" } },
+      { entryId: "assistant-1", message: { role: "assistant", content: "first answer" } },
+      { entryId: "user-2", message: { role: "user", content: "second prompt" } },
+      { entryId: "assistant-2", message: { role: "assistant", content: "old tail answer" } },
+    ]
+    apiService.api.agent.chat.connect = async () => [undefined, { messageHistory: canonicalHistory, vcJson: null }]
+    apiService.api.agent.chat.history = vi.fn(async () => [undefined, canonicalHistory])
+    let resolveEdit: ((value: unknown) => void) | undefined
+    apiService.api.agent.chat.edit = vi.fn(() => new Promise((resolve) => { resolveEdit = resolve }))
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: { onAction: () => () => {}, setActionState: () => {} },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.textContent).toContain("old tail answer"))
+    const editButtons = Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-history__edit-action"))
+    editButtons[1]?.click()
+    const editor = container.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!editor) throw new Error("Inline editor did not open")
+    editor.value = "corrected second prompt"
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Send")?.click()
+
+    await vi.waitFor(() => expect(apiService.api.agent.chat.edit).toHaveBeenCalledWith(expect.objectContaining({
+      entryId: "user-2",
+      text: "corrected second prompt",
+    })))
+    expect(container.querySelectorAll(".ai-chat-history__message")).toHaveLength(3)
+    expect(container.textContent).not.toContain("old tail answer")
+
+    resolveEdit?.([{ message: "target became inactive" }, undefined])
+    await vi.waitFor(() => expect(apiService.api.agent.chat.history).toHaveBeenCalled())
+    await vi.waitFor(() => expect(container?.textContent).toContain("old tail answer"))
+    expect(container?.textContent).toContain("target became inactive")
+  })
+
+  it("leaves history-edit mode after reconciliation transports reject", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const canonicalHistory = [
+      { entryId: "user-1", message: { role: "user", content: "first prompt" } },
+      { entryId: "assistant-1", message: { role: "assistant", content: "first answer" } },
+    ]
+    apiService.api.agent.chat.connect = async () => [undefined, { messageHistory: canonicalHistory, vcJson: null }]
+    apiService.api.agent.chat.edit = async () => [{ message: "edit rejected" }, undefined]
+    apiService.api.agent.chat.history = vi.fn(async () => { throw new Error("history transport failed") })
+    apiService.api.agent.approval.list = vi.fn(async () => { throw new Error("approval transport failed") })
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: { onAction: () => () => {}, setActionState: () => {} },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.textContent).toContain("first answer"))
+    container.querySelector<HTMLButtonElement>(".ai-chat-history__edit-action")?.click()
+    const editor = container.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")
+    if (!editor) throw new Error("Inline editor did not open")
+    editor.value = "corrected prompt"
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-history__editor-actions button"))
+      .find((button) => button.textContent === "Send")?.click()
+
+    await vi.waitFor(() => expect(apiService.api.agent.chat.history).toHaveBeenCalled())
+    await vi.waitFor(() => expect(container?.querySelector<HTMLButtonElement>("[aria-label='Send prompt']")?.disabled).toBe(false))
+    expect(container?.querySelector(".ai-chat-running")).toBeNull()
+    expect(container?.querySelector<HTMLTextAreaElement>(".ai-chat-history__editor textarea")?.value).toBe("corrected prompt")
+  })
+
   it("uses an explicit replacement connect only after settings credentials change", async () => {
     ensureComponentDomMocks()
     container = document.createElement("div")

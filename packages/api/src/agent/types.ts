@@ -12,6 +12,8 @@ type TAgentPromptSelection = Pick<
   TAgentPromptInput,
   'images' | 'model' | 'resourceIds' | 'thinkingLevel' | 'widgetRefs'
 >;
+type TAgentEditInput = TAgentInputs['chat']['edit'];
+type TAgentEditSelection = Pick<TAgentEditInput, 'model' | 'thinkingLevel'>;
 
 /** Chat/auth capability only. Widget authoring is filesystem-owned under `api.widget`. */
 export type TAgentApiCapability = {
@@ -24,12 +26,23 @@ export type TAgentApiCapability = {
     sessionId: TAgentInputs['chat']['connect']['sessionId'],
     mode?: NonNullable<TAgentInputs['chat']['connect']['mode']>,
   ): Promise<TAgentOutputs['chat']['connect']>;
+  getChatHistory(
+    widgetId: TAgentInputs['chat']['history']['widgetId'],
+    sessionId: TAgentInputs['chat']['history']['sessionId'],
+  ): TAgentOutputs['chat']['history'];
   promptChat(
     widgetId: TAgentPromptInput['widgetId'],
     sessionId: TAgentPromptInput['sessionId'],
     text: TAgentPromptInput['text'],
     selection?: TAgentPromptSelection,
   ): Promise<void>;
+  editChatMessage(
+    widgetId: TAgentEditInput['widgetId'],
+    sessionId: TAgentEditInput['sessionId'],
+    entryId: TAgentEditInput['entryId'],
+    text: TAgentEditInput['text'],
+    selection?: TAgentEditSelection,
+  ): Promise<TAgentOutputs['chat']['edit']>;
   approveChatDbChange(
     widgetId: TAgentInputs['chat']['dbChange']['approve']['widgetId'],
     sessionId: TAgentInputs['chat']['dbChange']['approve']['sessionId'],

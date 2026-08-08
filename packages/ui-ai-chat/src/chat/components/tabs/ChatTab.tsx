@@ -9,6 +9,7 @@ import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
+import { fnChatMessageHasImage, fnGetEditableChatMessageText, type TChatHistoryItem } from "./fn.chat-history-edit"
 import { ApprovalList } from "../ApprovalList"
 import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetToolResultWidgetDraft } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
@@ -39,9 +40,10 @@ interface IProps {
   onLogError: (error: unknown) => void
   settings?: TAgentSettings
   aiChatPreference?: TAiChatPreference
-  messageHistory: readonly unknown[]
+  messageHistory: readonly TChatHistoryItem[]
   isRunning: boolean
   isCanceling: boolean
+  isEditingHistory: boolean
   widgetError?: TAiChatWidgetError
   draftText?: string
   onDraftTextChange?: (text: string) => void
@@ -49,6 +51,7 @@ interface IProps {
   mentions?: TChatComposerMention[]
   approvals: readonly TAiChatApproval[]
   onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  onEditMessage: (args: { entryId: string; text: string; model?: TAiChatPreference["model"]; thinkingLevel?: TChatComposerThinkingLevel }) => Promise<boolean>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
   onOpenResource?: (resourceId: string) => void
   onOpenWidgetPreview?: (args: { name: string }) => void | Promise<void>
@@ -151,7 +154,7 @@ function isScrolledToBottom(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 24
 }
 
-function getChatHistoryScrollKey(messageHistory: readonly unknown[]) {
+function getChatHistoryScrollKey(messageHistory: readonly TChatHistoryItem[]) {
   try {
     return JSON.stringify(messageHistory)
   } catch {
@@ -471,27 +474,62 @@ function ToolCallRow(props: {
 
 function ChatHistoryMessage(props: {
   browser: TAiChatBrowserPort
-  message: unknown
+  item: TChatHistoryItem
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
   onOpenResource?: IProps["onOpenResource"]
   onOpenWidgetPreview?: IProps["onOpenWidgetPreview"]
   onReportError: IProps["onReportError"]
   onOpenSettings: IProps["onOpenSettings"]
+  canEdit: boolean
+  isEditing: boolean
+  editPending: boolean
+  editText: string
+  onBeginEdit: () => void
+  onCancelEdit: () => void
+  onEditTextChange: (text: string) => void
+  onSendEdit: () => void
 }) {
+  let editButton: HTMLButtonElement | undefined
+  let editor: HTMLTextAreaElement | undefined
+  let wasEditing = false
   const [isExpanded, setIsExpanded] = createSignal(false)
   const [previewPending, setPreviewPending] = createSignal(false)
-  const role = () => fnGetChatMessageRole(props.message)
-  const label = () => fnGetChatMessageLabel(props.message)
-  const parts = () => fnGetChatMessageParts(props.message)
-  const assistantError = () => fnGetAiChatAssistantError(props.message)
+  const message = () => props.item.message
+  const role = () => fnGetChatMessageRole(message())
+  const label = () => fnGetChatMessageLabel(message())
+  const parts = () => fnGetChatMessageParts(message())
+  const assistantError = () => fnGetAiChatAssistantError(message())
   const kind = () => getMessageKind(role())
-  const toolCalls = () => fnGetChatToolCalls(props.message)
-  const resource = () => props.onOpenResource ? fnGetToolResultResource(props.message) : undefined
-  const widgetDraft = () => props.onOpenWidgetPreview ? fnGetToolResultWidgetDraft(props.message) : undefined
-  const isToolResult = () => isToolResultMessage(props.message)
+  const toolCalls = () => fnGetChatToolCalls(message())
+  const resource = () => props.onOpenResource ? fnGetToolResultResource(message()) : undefined
+  const widgetDraft = () => props.onOpenWidgetPreview ? fnGetToolResultWidgetDraft(message()) : undefined
+  const isToolResult = () => isToolResultMessage(message())
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
+  const canSendEdit = () => props.editText.trim().length > 0 || fnChatMessageHasImage(message())
+  const resizeEditor = () => {
+    if (!editor) return
+    editor.style.height = "auto"
+    editor.style.height = `${editor.scrollHeight}px`
+  }
+  createEffect(() => {
+    const editing = props.isEditing
+    if (editing && !wasEditing) {
+      props.browser.requestAnimationFrame(() => {
+        editor?.focus()
+        editor?.setSelectionRange(editor.value.length, editor.value.length)
+      })
+    } else if (wasEditing) {
+      props.browser.requestAnimationFrame(() => editButton?.focus())
+    }
+    wasEditing = editing
+  })
+  createEffect(() => {
+    if (!props.isEditing) return
+    props.editText
+    props.browser.requestAnimationFrame(resizeEditor)
+  })
   const toggleToolResult = () => {
     if (isToolResult()) {
       setIsExpanded((value) => !value)
@@ -514,6 +552,21 @@ function ChatHistoryMessage(props: {
       <Show when={kind() !== "assistant"}>
         <div class="ai-chat-history__message-header">
           <span class="ai-chat-history__role">{label()}</span>
+          <Show when={kind() === "user" && props.item.entryId}>
+            <button
+              ref={editButton}
+              type="button"
+              class="ai-chat-history__edit-action"
+              disabled={!props.canEdit}
+              aria-label="Edit this user message"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onBeginEdit()
+              }}
+            >
+              Edit
+            </button>
+          </Show>
           <Show when={isToolResult() && (collapsedToolResult().truncated || isExpanded())}>
             <button
               type="button"
@@ -529,11 +582,42 @@ function ChatHistoryMessage(props: {
           </Show>
         </div>
       </Show>
-      <Show
-        when={kind() === "assistant"}
-        fallback={<PlainMessageParts parts={renderedPlainParts()} />}
-      >
-        <AssistantMessageParts parts={parts()} />
+      <Show when={props.isEditing} fallback={(
+        <Show
+          when={kind() === "assistant"}
+          fallback={<PlainMessageParts parts={renderedPlainParts()} />}
+        >
+          <AssistantMessageParts parts={parts()} />
+        </Show>
+      )}>
+        <div class="ai-chat-history__editor" onClick={(event) => event.stopPropagation()}>
+          <textarea
+            ref={editor}
+            value={props.editText}
+            disabled={props.editPending || !props.canEdit}
+            aria-label="Edit user message"
+            rows={1}
+            onInput={(event) => {
+              props.onEditTextChange(event.currentTarget.value)
+              resizeEditor()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                props.onCancelEdit()
+              } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault()
+                if (canSendEdit() && !props.editPending && props.canEdit) props.onSendEdit()
+              }
+            }}
+          />
+          <div class="ai-chat-history__editor-actions">
+            <button type="button" disabled={props.editPending} onClick={props.onCancelEdit}>Cancel</button>
+            <button type="button" disabled={props.editPending || !props.canEdit || !canSendEdit()} onClick={props.onSendEdit}>
+              {props.editPending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
       </Show>
       <Show when={assistantError()}>
         {(error) => <AssistantErrorCard error={error()} onOpenSettings={props.onOpenSettings} />}
@@ -606,7 +690,44 @@ export function ChatTab(props: IProps) {
   let shouldAutoScroll = true
   let scrollAnimationFrame: number | undefined
   const pendingApprovals = () => props.approvals.filter((approval) => approval.status === "pending")
-  const visibleMessageHistory = createMemo(() => props.messageHistory.filter(fnIsChatMessageVisible))
+  const [editingEntryId, setEditingEntryId] = createSignal<string>()
+  const [editText, setEditText] = createSignal("")
+  const [editPending, setEditPending] = createSignal(false)
+  const [resolvedComposerPreference, setResolvedComposerPreference] = createSignal<TChatComposerPreferenceChange>({})
+  const visibleMessageHistory = createMemo(() => props.messageHistory.filter((item) => fnIsChatMessageVisible(item.message)))
+
+  const beginEdit = (item: TChatHistoryItem) => {
+    if (!item.entryId || props.isRunning || props.isCanceling || props.isEditingHistory) return
+    setEditingEntryId(item.entryId)
+    setEditText(fnGetEditableChatMessageText(item.message))
+  }
+
+  const cancelEdit = () => {
+    if (editPending()) return
+    setEditingEntryId(undefined)
+    setEditText("")
+  }
+
+  const sendEdit = async () => {
+    const entryId = editingEntryId()
+    if (!entryId || editPending() || props.isRunning || props.isCanceling || props.isEditingHistory) return
+    setEditPending(true)
+    try {
+      const preference = resolvedComposerPreference()
+      const accepted = await props.onEditMessage({
+        entryId,
+        text: editText(),
+        model: preference.model,
+        thinkingLevel: preference.thinkingLevel,
+      })
+      if (accepted) {
+        setEditingEntryId(undefined)
+        setEditText("")
+      }
+    } finally {
+      setEditPending(false)
+    }
+  }
 
   const scrollToBottom = () => {
     contentRoot.scrollTop = contentRoot.scrollHeight
@@ -657,7 +778,7 @@ export function ChatTab(props: IProps) {
   }
 
   const copyChat = () => {
-    const markdown = fnSerializeChatMessagesAsMarkdown(props.messageHistory)
+    const markdown = fnSerializeChatMessagesAsMarkdown(props.messageHistory.map((item) => item.message))
 
     if (!markdown) {
       return
@@ -710,16 +831,24 @@ export function ChatTab(props: IProps) {
         <Show when={visibleMessageHistory().length > 0}>
           <div class="ai-chat-history" aria-live="polite">
             <For each={visibleMessageHistory()}>
-              {(message) => (
+              {(item) => (
                 <ChatHistoryMessage
                   browser={props.browser}
-                  message={message}
+                  item={item}
                   approvals={props.approvals}
                   onResolveApproval={props.onResolveApproval}
                   onOpenResource={props.onOpenResource}
                   onOpenWidgetPreview={props.onOpenWidgetPreview}
                   onReportError={props.onReportError}
                   onOpenSettings={props.onOpenSettings}
+                  canEdit={!props.isRunning && !props.isCanceling && !props.isEditingHistory && !editPending()}
+                  isEditing={item.entryId !== undefined && editingEntryId() === item.entryId}
+                  editPending={editPending()}
+                  editText={editText()}
+                  onBeginEdit={() => beginEdit(item)}
+                  onCancelEdit={cancelEdit}
+                  onEditTextChange={setEditText}
+                  onSendEdit={() => void sendEdit()}
                 />
               )}
             </For>
@@ -761,9 +890,11 @@ export function ChatTab(props: IProps) {
         defaultThinkingLevel={props.aiChatPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
         isRunning={props.isRunning}
         isCanceling={props.isCanceling}
+        isBusy={props.isEditingHistory}
         draftText={props.draftText}
         onDraftTextChange={props.onDraftTextChange}
         onPreferenceChange={props.onPreferenceChange}
+        onResolvedPreferenceChange={setResolvedComposerPreference}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}

@@ -560,6 +560,14 @@ export function ChatComposer(props: TChatComposerProps) {
   })
 
   createEffect(() => {
+    const model = selectedModel()
+    props.onResolvedPreferenceChange?.({
+      model: model ? { provider: model.provider, modelId: model.id } : undefined,
+      thinkingLevel: thinkingLevel(),
+    })
+  })
+
+  createEffect(() => {
     const provider = activeProvider()
     const allProviders = providers()
 
@@ -670,7 +678,7 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const submit = () => {
-    if (props.isRunning) {
+    if (props.isRunning || props.isBusy) {
       return
     }
 
@@ -702,6 +710,8 @@ export function ChatComposer(props: TChatComposerProps) {
       props.onCancel?.()
       return
     }
+
+    if (props.isBusy) return
 
     submit()
   }
@@ -1377,9 +1387,9 @@ export function ChatComposer(props: TChatComposerProps) {
             <button
               class="ai-chat-composer__send"
               type="button"
-              aria-label={props.isRunning ? "Stop response" : "Send prompt"}
+              aria-label={props.isRunning ? "Stop response" : props.isBusy ? "Chat update in progress" : "Send prompt"}
               aria-busy={props.isCanceling ? "true" : undefined}
-              disabled={props.isRunning && props.isCanceling}
+              disabled={props.isRunning ? props.isCanceling : props.isBusy}
               onClick={activatePrimaryAction}
             >
               <Show when={props.isRunning} fallback={<ArrowUp size={25} />}>

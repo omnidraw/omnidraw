@@ -12,6 +12,8 @@ import { apiChatApprovalGet } from "./api.chat.approval.get";
 import { apiChatApprovalList } from "./api.chat.approval.list";
 import { apiChatApprovalResolve } from "./api.chat.approval.resolve";
 import { apiChatConnect } from "./api.chat.connect";
+import { apiChatEdit } from "./api.chat.edit";
+import { apiChatHistory } from "./api.chat.history";
 import { apiChatDbChangeApprove } from "./api.chat.dbChange.approve";
 import { apiChatDbChangeReject } from "./api.chat.dbChange.reject";
 import { apiChatNewSession } from "./api.chat.newSession";
@@ -40,7 +42,9 @@ const agentHandlers = {
     },
     chat: {
         connect: apiChatConnect,
+        history: apiChatHistory,
         prompt: apiChatPrompt,
+        edit: apiChatEdit,
         dbChange: {
             approve: apiChatDbChangeApprove,
             reject: apiChatDbChangeReject,

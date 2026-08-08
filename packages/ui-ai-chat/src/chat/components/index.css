@@ -390,6 +390,86 @@
   text-transform: uppercase;
 }
 
+.ai-chat-history__edit-action {
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  opacity: 0;
+  padding: 2px 4px;
+  text-transform: uppercase;
+}
+
+.ai-chat-history__message--user:hover .ai-chat-history__edit-action,
+.ai-chat-history__message--user:focus-within .ai-chat-history__edit-action,
+.ai-chat-history__edit-action:focus-visible {
+  opacity: 1;
+}
+
+.ai-chat-history__edit-action:focus-visible,
+.ai-chat-history__editor-actions button:focus-visible,
+.ai-chat-history__editor textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-chat-history__edit-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.ai-chat-history__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.ai-chat-history__editor textarea {
+  width: 100%;
+  max-height: 280px;
+  resize: none;
+  overflow-y: auto;
+  border: 1px solid var(--foreground);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 9px;
+}
+
+.ai-chat-history__editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ai-chat-history__editor-actions button {
+  min-height: 28px;
+  border: 1px solid var(--foreground);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.ai-chat-history__editor-actions button:last-child {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.ai-chat-history__editor-actions button:disabled,
+.ai-chat-history__editor textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .ai-chat-history__tool-result-toggle:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);

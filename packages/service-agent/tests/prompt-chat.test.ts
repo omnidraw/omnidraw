@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
@@ -377,6 +377,229 @@ describe('AgentService.promptChat', () => {
     expect(service.sessionMap[widgetId]).toBeUndefined();
     expect(() => service.listChatApprovals(widgetId, sessionId)).toThrow('No connected agent session');
     await toolResult;
+  });
+
+  test('edits an active middle user turn by entry ID, preserves images, and reconnects to the new branch', async () => {
+    const service = await createService();
+    const externalStateDir = await mkdtemp(join(tmpdir(), 'vc-agent-edit-external-state-'));
+    tempDirs.push(externalStateDir);
+    const externalStatePath = join(externalStateDir, 'workspace-and-canvas-state.json');
+    const externalState = '{"canvasItems":["kept"],"widgetDraft":"kept","resource":"kept"}\n';
+    await writeFile(externalStatePath, externalState);
+    const widgetId = 'widget-edit';
+    const sessionId = 'session-edit';
+    await service.connectChat(widgetId, sessionId);
+    const entry = service.sessionMap[widgetId][sessionId];
+    const manager = entry.sessionManager;
+    const firstUserId = manager.appendMessage({ role: 'user', content: 'duplicate', timestamp: 1 });
+    manager.appendMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'first answer' }],
+      api: 'test',
+      provider: 'test',
+      model: 'test',
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: 'stop',
+      timestamp: 2,
+    });
+    const secondUserId = manager.appendMessage({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'duplicate' },
+        { type: 'image', mimeType: 'image/png', data: 'aW1hZ2U=' },
+      ],
+      timestamp: 3,
+    });
+    manager.appendMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'abandoned answer' }],
+      api: 'test',
+      provider: 'test',
+      model: 'test',
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: 'stop',
+      timestamp: 4,
+    });
+
+    const promptCalls: Array<{ text: string; options?: { images?: unknown[] } }> = [];
+    entry.session.prompt = (async (text: string, options?: { images?: unknown[] }) => {
+      promptCalls.push({ text, options });
+      manager.appendMessage({
+        role: 'user',
+        content: options?.images?.length
+          ? [{ type: 'text', text }, ...(options.images as Array<{ type: 'image'; mimeType: string; data: string }>)]
+          : text,
+        timestamp: 5,
+      });
+      manager.appendMessage({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'replacement answer' }],
+        api: 'test',
+        provider: 'test',
+        model: 'test',
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: 'stop',
+        timestamp: 6,
+      });
+    }) as never;
+
+    const edited = await service.editChatMessage(widgetId, sessionId, secondUserId, 'corrected');
+    expect(promptCalls).toEqual([{
+      text: 'corrected',
+      options: { images: [{ type: 'image', mimeType: 'image/png', data: 'aW1hZ2U=' }] },
+    }]);
+    expect(edited.map((item) => item.entryId)).toContain(firstUserId);
+    expect(edited.map((item) => item.message).some((message) => JSON.stringify(message).includes('abandoned answer'))).toBe(false);
+    expect(manager.getBranch().some((branchEntry) => branchEntry.type === 'branch_summary')).toBe(false);
+
+    const reconnected = await service.connectChat(widgetId, sessionId);
+    expect(reconnected.messageHistory).toEqual(edited);
+    expect(await readFile(externalStatePath, 'utf8')).toBe(externalState);
+    expect(manager.getEntries().some((branchEntry) => (
+      branchEntry.type === 'message'
+      && branchEntry.message.role === 'assistant'
+      && JSON.stringify(branchEntry.message).includes('abandoned answer')
+    ))).toBe(true);
+  });
+
+  test('rejects stale, inactive, assistant, and empty text-only edit targets before branching', async () => {
+    const service = await createService();
+    const widgetId = 'widget-invalid-edit';
+    const sessionId = 'session-invalid-edit';
+    await service.connectChat(widgetId, sessionId);
+    const entry = service.sessionMap[widgetId][sessionId];
+    const manager = entry.sessionManager;
+    const userId = manager.appendMessage({ role: 'user', content: 'keep me', timestamp: 1 });
+    const assistantId = manager.appendMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'answer' }],
+      api: 'test',
+      provider: 'test',
+      model: 'test',
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: 'stop',
+      timestamp: 2,
+    });
+    const leafBefore = manager.getLeafId();
+
+    await expect(service.editChatMessage(widgetId, sessionId, 'foreign', 'changed')).rejects.toThrow('not on the active chat branch');
+    await expect(service.editChatMessage(widgetId, sessionId, assistantId, 'changed')).rejects.toThrow('not on the active chat branch');
+    await expect(service.editChatMessage(widgetId, sessionId, userId, '   ')).rejects.toThrow('at least one preserved image');
+    expect(manager.getLeafId()).toBe(leafBefore);
+  });
+
+  test('rejects prompt, reconnect, new-session, and duplicate-edit races for the same chat', async () => {
+    const service = await createService();
+    const widgetId = 'widget-edit-race';
+    const sessionId = 'session-edit-race';
+    await service.connectChat(widgetId, sessionId);
+    const entry = service.sessionMap[widgetId][sessionId];
+    const manager = entry.sessionManager;
+    const userId = manager.appendMessage({ role: 'user', content: 'original', timestamp: 1 });
+
+    let releasePrompt: (() => void) | undefined;
+    entry.session.prompt = (async (text: string) => {
+      manager.appendMessage({ role: 'user', content: text, timestamp: 2 });
+      await new Promise<void>((resolve) => { releasePrompt = resolve });
+    }) as never;
+
+    const activePrompt = service.promptChat(widgetId, sessionId, 'running prompt');
+    await expect(service.editChatMessage(widgetId, sessionId, userId, 'blocked edit')).rejects.toThrow('operation is already active');
+    await expect(service.connectChat(widgetId, sessionId, 'replace')).rejects.toThrow('operation is already active');
+    await expect(service.newChatSession(widgetId, sessionId)).rejects.toThrow('operation is already active');
+    releasePrompt?.();
+    await activePrompt;
+
+    let releaseEdit: (() => void) | undefined;
+    entry.session.prompt = (async (text: string) => {
+      manager.appendMessage({ role: 'user', content: text, timestamp: 3 });
+      await new Promise<void>((resolve) => { releaseEdit = resolve });
+    }) as never;
+    const activeEdit = service.editChatMessage(widgetId, sessionId, userId, 'first edit');
+    for (let attempt = 0; attempt < 20 && !releaseEdit; attempt += 1) await Promise.resolve();
+    await expect(service.editChatMessage(widgetId, sessionId, userId, 'second edit')).rejects.toThrow('operation is already active');
+    await expect(service.promptChat(widgetId, sessionId, 'racing prompt')).rejects.toThrow('operation is already active');
+    releaseEdit?.();
+    await activeEdit;
+  });
+
+  test('waits for a pre-stream history edit to become abortable before canceling it', async () => {
+    const service = await createService();
+    const widgetId = 'widget-edit-cancel';
+    const sessionId = 'session-edit-cancel';
+    await service.connectChat(widgetId, sessionId);
+    const entry = service.sessionMap[widgetId][sessionId];
+    const manager = entry.sessionManager;
+    const userId = manager.appendMessage({ role: 'user', content: 'original', timestamp: 1 });
+    const navigateTree = entry.session.navigateTree.bind(entry.session);
+    let releaseNavigation: (() => void) | undefined;
+    let navigationStarted = false;
+    entry.session.navigateTree = (async (...args: Parameters<typeof entry.session.navigateTree>) => {
+      navigationStarted = true;
+      await new Promise<void>((resolve) => { releaseNavigation = resolve });
+      return navigateTree(...args);
+    }) as typeof entry.session.navigateTree;
+
+    let streaming = false;
+    let releasePrompt: (() => void) | undefined;
+    let abortCalls = 0;
+    Object.defineProperty(entry.session, 'isStreaming', { configurable: true, get: () => streaming });
+    entry.session.prompt = (async () => {
+      streaming = true;
+      await new Promise<void>((resolve) => { releasePrompt = resolve });
+    }) as never;
+    entry.session.abort = (async () => {
+      abortCalls += 1;
+      streaming = false;
+      releasePrompt?.();
+    }) as never;
+
+    const activeEdit = service.editChatMessage(widgetId, sessionId, userId, 'corrected');
+    for (let attempt = 0; attempt < 20 && !navigationStarted; attempt += 1) await Promise.resolve();
+    const cancel = service.cancelChat(widgetId, sessionId);
+    let cancelSettled = false;
+    void cancel.finally(() => { cancelSettled = true });
+    await Promise.resolve();
+    expect(cancelSettled).toBe(false);
+
+    releaseNavigation?.();
+    await expect(cancel).resolves.toEqual({ canceled: true, running: false });
+    expect(abortCalls).toBe(1);
+    await activeEdit;
+  });
+
+  test('makes pending approvals from the abandoned tail stale when an edit branches', async () => {
+    const service = await createService({
+      createResource: async ({ kind, name }) => ({
+        id: 'resource-abandoned',
+        kind,
+        name,
+        status: 'ready',
+        lastError: null,
+        createdAtSec: '2026-08-08 00:00:00',
+        updatedAtSec: '2026-08-08 00:00:00',
+      }),
+    });
+    const widgetId = 'widget-edit-approval';
+    const sessionId = 'session-edit-approval';
+    await service.connectChat(widgetId, sessionId);
+    const entry = service.sessionMap[widgetId][sessionId];
+    const manager = entry.sessionManager;
+    const userId = manager.appendMessage({ role: 'user', content: 'create a resource', timestamp: 1 });
+    const createTool = entry.session.getToolDefinition('od_resource_create');
+    if (!createTool) throw new Error('Resource create tool was not registered.');
+    const abandonedTool = createTool.execute('tool-abandoned', { kind: 'kv', name: 'Abandoned' }, undefined, undefined, {} as never);
+    await waitForChatApproval(service, widgetId, sessionId);
+    entry.session.prompt = (async (text: string) => {
+      manager.appendMessage({ role: 'user', content: text, timestamp: 2 });
+    }) as never;
+
+    await service.editChatMessage(widgetId, sessionId, userId, 'do something else');
+
+    expect(service.listChatApprovals(widgetId, sessionId)).toEqual([]);
+    const abandonedResult = await abandonedTool;
+    expect((abandonedResult as { isError?: boolean }).isError).toBe(true);
+    expect(JSON.stringify(abandonedResult.content)).toContain('abandoned chat branch');
   });
 
   test('shutdown invalidates in-flight connection generations before they can commit', async () => {

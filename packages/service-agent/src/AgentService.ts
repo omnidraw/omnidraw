@@ -1,4 +1,4 @@
-import { createAgentSessionFromServices, createAgentSessionServices, ModelRuntime, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
+import { createAgentSessionFromServices, createAgentSessionServices, ModelRuntime, SessionManager, sessionEntryToContextMessages, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import type { IEventPublisherService } from '@omnidraw/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@omnidraw/runtime';
 import type { IServiceContext } from '@omnidraw/runtime/interface.ts';
@@ -31,6 +31,7 @@ import type { TAgentResourceService } from './tools/resource-service';
 import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
+import { fnFindEditableUserMessage, fnProjectActiveChatHistory, type TAgentChatHistoryItem } from './fn.chat-history';
 import type { TWidgetDbChangeProposalRecord, TWidgetPreviewBuildCheck, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
@@ -119,7 +120,7 @@ type TLoginSession = {
 
 type TAgentConnectResult = {
   vcJson: TWidgetManifestV1 | null;
-  messageHistory: AgentSession['messages'];
+  messageHistory: TAgentChatHistoryItem[];
 };
 type TAgentCancelResult = {
   canceled: boolean;
@@ -157,6 +158,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #chatConnectionGenerations = new Map<TOmnidrawChatId, number>();
   #chatConnectionLanes = new Map<TOmnidrawChatId, Promise<void>>();
   #chatReplacementGenerations = new Map<TOmnidrawChatId, number>();
+  #chatMutations = new Map<TOmnidrawChatId, { count: number; kind: 'connect' | 'edit' | 'new' | 'prompt' }>();
+  #chatEditPromptStarts = new Map<TOmnidrawChatId, { promise: Promise<boolean>; resolve: (started: boolean) => void }>();
+  #chatCanceling = new Set<TOmnidrawChatId>();
   #isStopping = false;
 
   constructor(config: IAgentServiceConfig) {
@@ -231,6 +235,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#chatConnectionGenerations.clear()
     this.#chatConnectionLanes.clear()
     this.#chatReplacementGenerations.clear()
+    this.#chatMutations.clear()
+    for (const promptStart of this.#chatEditPromptStarts.values()) promptStart.resolve(false)
+    this.#chatEditPromptStarts.clear()
+    this.#chatCanceling.clear()
     try {
       this.#approvals.close()
     } catch (error) {
@@ -245,37 +253,117 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionId: string,
     mode: TChatConnectMode = 'reuse',
   ): Promise<TAgentConnectResult> {
-    const generation = this.#nextChatConnectionGeneration(sessionId)
-    if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
-    const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, generation))
-    if (outcome.status === 'connected') return outcome.result
+    const releaseMutation = this.#claimChatMutation(sessionId, 'connect', true)
+    try {
+      const generation = this.#nextChatConnectionGeneration(sessionId)
+      if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
+      const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, generation))
+      if (outcome.status === 'connected') return outcome.result
 
-    await this.#waitForChatConnectionLaneIdle(sessionId)
-    if (this.#isStopping) throw this.#chatConnectionError('CHAT_SERVICE_STOPPING', 'Agent service is stopping.')
-    if (this.#chatReplacementGenerations.has(sessionId)) {
-      throw this.#chatConnectionError('CHAT_REPLACEMENT_INCOMPLETE', 'The chat runtime replacement did not complete.')
+      await this.#waitForChatConnectionLaneIdle(sessionId)
+      if (this.#isStopping) throw this.#chatConnectionError('CHAT_SERVICE_STOPPING', 'Agent service is stopping.')
+      if (this.#chatReplacementGenerations.has(sessionId)) {
+        throw this.#chatConnectionError('CHAT_REPLACEMENT_INCOMPLETE', 'The chat runtime replacement did not complete.')
+      }
+      const committedEntry = this.#chatWidgetIds.get(sessionId) === id
+        ? this.sessionMap[id]?.[sessionId]
+        : undefined
+      if (!committedEntry) {
+        throw this.#chatConnectionError('CHAT_CONNECTION_SUPERSEDED', 'The chat connection was superseded by another owner.')
+      }
+      return this.#chatConnectResult(id, sessionId, committedEntry)
+    } finally {
+      releaseMutation()
     }
-    const committedEntry = this.#chatWidgetIds.get(sessionId) === id
-      ? this.sessionMap[id]?.[sessionId]
-      : undefined
-    if (!committedEntry) {
-      throw this.#chatConnectionError('CHAT_CONNECTION_SUPERSEDED', 'The chat connection was superseded by another owner.')
-    }
-    return this.#chatConnectResult(id, sessionId, committedEntry)
   }
 
   async newChatSession(id: TWidgetId, sessionId: string): Promise<void> {
-    const generation = this.#nextChatConnectionGeneration(sessionId)
-    await this.#runChatConnectionLane(sessionId, async () => {
-      if (generation !== this.#chatConnectionGenerations.get(sessionId)) return
-      const currentWidgetId = this.#chatWidgetIds.get(sessionId)
-      if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
-      await this.#disposeChatSession(id, sessionId)
-      this.#chatReplacementGenerations.delete(sessionId)
-    })
+    const releaseMutation = this.#claimChatMutation(sessionId, 'new')
+    try {
+      const generation = this.#nextChatConnectionGeneration(sessionId)
+      await this.#runChatConnectionLane(sessionId, async () => {
+        if (generation !== this.#chatConnectionGenerations.get(sessionId)) return
+        const currentWidgetId = this.#chatWidgetIds.get(sessionId)
+        if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
+        await this.#disposeChatSession(id, sessionId)
+        this.#chatReplacementGenerations.delete(sessionId)
+      })
+    } finally {
+      releaseMutation()
+    }
   }
 
   async promptChat(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+    const releaseMutation = this.#claimChatMutation(sessionId, 'prompt')
+    try {
+      await this.#promptChat(id, sessionId, text, promptSelection)
+    } finally {
+      releaseMutation()
+    }
+  }
+
+  getChatHistory(id: TWidgetId, sessionId: string): TAgentChatHistoryItem[] {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry || this.#chatWidgetIds.get(sessionId) !== id) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+    return this.#projectChatHistory(sessionEntry.sessionManager)
+  }
+
+  async editChatMessage(
+    id: TWidgetId,
+    sessionId: string,
+    entryId: string,
+    text: string,
+    selection?: Pick<TPromptSelection, 'model' | 'thinkingLevel'>,
+  ): Promise<TAgentChatHistoryItem[]> {
+    const releaseMutation = this.#claimChatMutation(sessionId, 'edit')
+    const promptStart = this.#createChatEditPromptStart(sessionId)
+    try {
+      const sessionEntry = this.sessionMap[id]?.[sessionId]
+      if (!sessionEntry || this.#chatWidgetIds.get(sessionId) !== id) {
+        throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+      }
+      const session = sessionEntry.session
+      if (this.#chatCanceling.has(sessionId) || session.isIdle === false || session.isStreaming || session.isCompacting || session.isRetrying) {
+        throw this.#chatConnectionError('CHAT_BUSY', 'Stop the current response before editing chat history.')
+      }
+
+      const activeEntries = sessionEntry.sessionManager.buildContextEntries()
+      const editable = fnFindEditableUserMessage(activeEntries, entryId)
+      if (!editable) {
+        throw this.#chatConnectionError('CHAT_EDIT_TARGET_INVALID', 'The selected user message is not on the active chat branch.')
+      }
+      if (text.trim().length === 0 && editable.images.length === 0) {
+        throw this.#chatConnectionError('CHAT_EDIT_EMPTY', 'Prompt text or at least one preserved image is required.')
+      }
+      if (selection?.model && !this.modelRuntime.getModel(selection.model.provider, selection.model.modelId)) {
+        throw new Error(`Model not found: ${selection.model.provider}/${selection.model.modelId}`)
+      }
+
+      const navigation = await session.navigateTree(entryId, { summarize: false })
+      if (navigation.cancelled) throw new Error('Chat history edit was canceled before the branch changed.')
+      this.#approvals.cancelChat(sessionId, 'Approval belongs to an abandoned chat branch.')
+      await this.#promptChat(id, sessionId, text, {
+        images: editable.images,
+        model: selection?.model,
+        thinkingLevel: selection?.thinkingLevel,
+      }, () => promptStart.resolve(true))
+      return this.#projectChatHistory(sessionEntry.sessionManager)
+    } finally {
+      promptStart.resolve(false)
+      if (this.#chatEditPromptStarts.get(sessionId) === promptStart) this.#chatEditPromptStarts.delete(sessionId)
+      releaseMutation()
+    }
+  }
+
+  async #promptChat(
+    id: TWidgetId,
+    sessionId: string,
+    text: string,
+    promptSelection?: TPromptSelection,
+    onPromptStarted?: () => void,
+  ): Promise<void> {
     const connectedEntry = this.sessionMap[id]?.[sessionId]
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
@@ -316,7 +404,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const images = this.#normalizePromptImages(promptSelection?.images)
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
-    await session.prompt(promptText, images.length > 0 ? { images } : undefined)
+    const prompting = session.prompt(promptText, images.length > 0 ? { images } : undefined)
+    onPromptStarted?.()
+    await prompting
   }
 
   async approveChatDbChange(id: TWidgetId, sessionId: TOmnidrawChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
@@ -382,14 +472,26 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async cancelChat(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
-    const session = this.sessionMap[id]?.[sessionId]?.session
+    let session = this.sessionMap[id]?.[sessionId]?.session
     if (!session) {
       return { canceled: false, running: false }
     }
-    if (!session.isStreaming) return { canceled: false, running: false }
+    if (!session.isStreaming) {
+      const promptStart = this.#chatEditPromptStarts.get(sessionId)
+      if (!promptStart) return { canceled: false, running: false }
+      const started = await promptStart.promise
+      session = this.sessionMap[id]?.[sessionId]?.session
+      if (!started || !session) return { canceled: false, running: false }
+    }
 
-    this.#approvals.cancelChat(sessionId, 'Chat prompt was canceled before approval.')
-    await session.abort()
+    if (this.#chatCanceling.has(sessionId)) return { canceled: false, running: session.isStreaming }
+    this.#chatCanceling.add(sessionId)
+    try {
+      this.#approvals.cancelChat(sessionId, 'Chat prompt was canceled before approval.')
+      await session.abort()
+    } finally {
+      this.#chatCanceling.delete(sessionId)
+    }
 
     return { canceled: true, running: session.isStreaming }
   }
@@ -678,7 +780,53 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const vcJson = activeMount ? await this.#readMountedManifest(activeMount).catch(() => null) : null
     return {
       vcJson,
-      messageHistory: sessionEntry.session.messages,
+      messageHistory: this.#projectChatHistory(sessionEntry.sessionManager),
+    }
+  }
+
+  #projectChatHistory(sessionManager: SessionManager): TAgentChatHistoryItem[] {
+    return fnProjectActiveChatHistory(
+      sessionManager.buildContextEntries(),
+      sessionEntryToContextMessages,
+    )
+  }
+
+  #createChatEditPromptStart(sessionId: TOmnidrawChatId): { promise: Promise<boolean>; resolve: (started: boolean) => void } {
+    let settle!: (started: boolean) => void
+    const promise = new Promise<boolean>((resolve) => { settle = resolve })
+    let settled = false
+    const promptStart = {
+      promise,
+      resolve: (started: boolean) => {
+        if (settled) return
+        settled = true
+        settle(started)
+      },
+    }
+    this.#chatEditPromptStarts.set(sessionId, promptStart)
+    return promptStart
+  }
+
+  #claimChatMutation(
+    sessionId: TOmnidrawChatId,
+    kind: 'connect' | 'edit' | 'new' | 'prompt',
+    allowSameKind = false,
+  ): () => void {
+    const current = this.#chatMutations.get(sessionId)
+    if (current && (!allowSameKind || current.kind !== kind)) {
+      throw this.#chatConnectionError('CHAT_BUSY', `Chat ${current.kind} operation is already active.`)
+    }
+    const mutation = current ?? { count: 0, kind }
+    mutation.count += 1
+    this.#chatMutations.set(sessionId, mutation)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      mutation.count -= 1
+      if (mutation.count === 0 && this.#chatMutations.get(sessionId) === mutation) {
+        this.#chatMutations.delete(sessionId)
+      }
     }
   }
 

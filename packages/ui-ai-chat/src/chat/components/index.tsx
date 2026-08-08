@@ -11,6 +11,7 @@ import type { TChatComposerMention, TChatPromptImage } from "./ChatComposer/inte
 import type { TAiChatApiPort, TAiChatApplicationPort, TAiChatBrowserPort } from "../../ports"
 import { refreshMentionCatalog, subscribeMentionCatalog } from "../mention-catalog"
 import { fnIsWidgetCatalogEventKind } from "../mention-catalog/fn.mention-catalog"
+import { fnReplaceChatHistoryTail, type TChatHistoryItem } from "./tabs/fn.chat-history-edit"
 import "./index.css"
 
 type TAiChatThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -56,6 +57,13 @@ function withAgentMessageFinished(message: unknown, finished: boolean) {
   return isAgentMessageRecord(message) ? { ...message, __omnidrawMessageFinished: finished } : message
 }
 
+function withChatHistoryItemFinished(item: unknown): TChatHistoryItem {
+  if (isAgentMessageRecord(item) && typeof item.entryId === "string" && "message" in item) {
+    return { entryId: item.entryId, message: withAgentMessageFinished(item.message, true) }
+  }
+  return { message: withAgentMessageFinished(item, true) }
+}
+
 export function AiChat(props: IProps) {
   let approvalRequestId = 0
   let chatConnectRequestId = 0
@@ -72,7 +80,8 @@ export function AiChat(props: IProps) {
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
   const [mentions, setMentions] = createSignal<TChatComposerMention[]>([])
   const [approvals, setApprovals] = createSignal<TAiChatApproval[]>([])
-  const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
+  const [isEditingHistory, setIsEditingHistory] = createSignal(false)
+  const [messageHistory, setMessageHistory] = createStore<TChatHistoryItem[]>([])
   const [settingState, { refetch: refetchSettings }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([error, data]) => {
     if (error) throw error.message
     return data
@@ -80,18 +89,24 @@ export function AiChat(props: IProps) {
 
   const refreshApprovals = async (currentSessionId: string, connectRequestId: number) => {
     const requestId = ++approvalRequestId
-    const [error, data] = await props.apiService.api.agent.approval.list({ widgetId: props.id, sessionId: currentSessionId })
-    if (requestId !== approvalRequestId || connectRequestId !== chatConnectRequestId || sessionId() !== currentSessionId) return
-    if (error) {
-      reportWidgetError("approval", error)
-      return
+    try {
+      const [error, data] = await props.apiService.api.agent.approval.list({ widgetId: props.id, sessionId: currentSessionId })
+      if (requestId !== approvalRequestId || connectRequestId !== chatConnectRequestId || sessionId() !== currentSessionId) return
+      if (error) {
+        reportWidgetError("approval", error)
+        return
+      }
+      clearWidgetError("approval")
+      setApprovals(data.map((approval) => ({
+        ...approval,
+        resourceId: fnGetApprovalResourceId(approval.details),
+        status: "pending" as const,
+      })))
+    } catch (error) {
+      if (requestId === approvalRequestId && connectRequestId === chatConnectRequestId && sessionId() === currentSessionId) {
+        reportWidgetError("approval", error)
+      }
     }
-    clearWidgetError("approval")
-    setApprovals(data.map((approval) => ({
-      ...approval,
-      resourceId: fnGetApprovalResourceId(approval.details),
-      status: "pending" as const,
-    })))
   }
 
   const setApprovalStatus = (approvalId: string, status: TAiChatApprovalStatus, statusMessage?: string) => {
@@ -129,6 +144,7 @@ export function AiChat(props: IProps) {
     approvalRequestId += 1
     setIsRunning(false)
     setIsCanceling(false)
+    setIsEditingHistory(false)
     clearWidgetError("connection")
     void apiService.api.agent.chat.connect({ sessionId: currentSessionId, widgetId: props.id, mode: connectMode }).then(([error, data]) => {
       if (sessionId() !== currentSessionId || chatConnectRequestId !== currentConnectRequestId) return
@@ -137,7 +153,7 @@ export function AiChat(props: IProps) {
         return
       }
       clearWidgetError("connection")
-      setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
+      setMessageHistory(reconcile(data.messageHistory.map(withChatHistoryItemFinished)))
       void refreshApprovals(currentSessionId, currentConnectRequestId)
     }).catch((error) => {
       if (sessionId() === currentSessionId && chatConnectRequestId === currentConnectRequestId) {
@@ -146,11 +162,29 @@ export function AiChat(props: IProps) {
     })
   })
 
+  const refreshChatHistory = async (currentSessionId: string, connectRequestId = chatConnectRequestId) => {
+    try {
+      const [error, data] = await props.apiService.api.agent.chat.history({ widgetId: props.id, sessionId: currentSessionId })
+      if (sessionId() !== currentSessionId || chatConnectRequestId !== connectRequestId) return false
+      if (error) {
+        reportWidgetError("prompt", error)
+        return false
+      }
+      setMessageHistory(reconcile(data.map(withChatHistoryItemFinished)))
+      return true
+    } catch (error) {
+      if (sessionId() === currentSessionId && chatConnectRequestId === connectRequestId) {
+        reportWidgetError("prompt", error)
+      }
+      return false
+    }
+  }
+
   const upsertMessage = (message: unknown, finished: boolean) => {
     const nextMessage = withAgentMessageFinished(message, finished)
-    const index = findAgentMessageIndex(messageHistory, message)
-    if (index >= 0) setMessageHistory(index, reconcile(nextMessage))
-    else setMessageHistory(messageHistory.length, nextMessage)
+    const index = findAgentMessageIndex(messageHistory.map((item) => item.message), message)
+    if (index >= 0) setMessageHistory(index, "message", reconcile(nextMessage))
+    else setMessageHistory(messageHistory.length, { message: nextMessage })
   }
 
   createEffect(() => {
@@ -199,6 +233,10 @@ export function AiChat(props: IProps) {
             piEvent.messages.forEach((message) => upsertMessage(message, true))
             setIsRunning(piEvent.willRetry)
             if (!piEvent.willRetry) setIsCanceling(false)
+            if (!piEvent.willRetry) {
+              void refreshChatHistory(currentSessionId, chatConnectRequestId)
+                .then(() => refreshApprovals(currentSessionId, chatConnectRequestId))
+            }
           } else if (piEvent.type === "message_start" || piEvent.type === "message_update") {
             setIsRunning(true)
             upsertMessage(piEvent.message, false)
@@ -241,6 +279,7 @@ export function AiChat(props: IProps) {
     }).catch((error) => {
       if (!disposed && eventStreamNonce() === currentEventStreamNonce) {
         reportWidgetError("stream", error)
+        void refreshChatHistory(currentSessionId, chatConnectRequestId)
       }
     })
 
@@ -303,11 +342,13 @@ export function AiChat(props: IProps) {
     setIsRunning(false)
     setIsCanceling(false)
     if (error) reportWidgetError("prompt", error)
+    await refreshChatHistory(currentSessionId)
   }
 
   const cancelPrompt = async () => {
     if (isCanceling()) return
     const currentSessionId = sessionId()
+    const wasRunning = isRunning()
     setIsCanceling(true)
     let error: unknown
     let data: { running: boolean } | undefined
@@ -318,9 +359,53 @@ export function AiChat(props: IProps) {
     }
     if (sessionId() !== currentSessionId) return
     setIsCanceling(false)
-    setIsRunning(error ? false : data?.running ?? false)
+    setIsRunning(error ? wasRunning : data?.running ?? false)
     if (error) reportWidgetError("cancel", error)
     else clearWidgetError("cancel")
+    await refreshChatHistory(currentSessionId)
+    await refreshApprovals(currentSessionId, chatConnectRequestId)
+  }
+
+  const editMessage = async (args: { entryId: string; text: string; model?: TAiChatPreference["model"]; thinkingLevel?: TAiChatThinkingLevel }) => {
+    if (isRunning() || isCanceling() || isEditingHistory()) return false
+    const optimistic = fnReplaceChatHistoryTail(messageHistory, args.entryId, args.text)
+    if (!optimistic) return false
+    const currentSessionId = sessionId()
+    setIsEditingHistory(true)
+    setIsCanceling(false)
+    clearWidgetError("prompt")
+    setMessageHistory(reconcile(optimistic))
+    let error: unknown
+    let data: Array<{ entryId: string; message: unknown }> | undefined
+    try {
+      try {
+        [error, data] = await props.apiService.api.agent.chat.edit({
+          widgetId: props.id,
+          sessionId: currentSessionId,
+          entryId: args.entryId,
+          text: args.text,
+          model: args.model,
+          thinkingLevel: args.thinkingLevel,
+        })
+      } catch (caughtError) {
+        error = caughtError
+      }
+      if (sessionId() !== currentSessionId) return false
+      if (!error && data) {
+        setMessageHistory(reconcile(data.map(withChatHistoryItemFinished)))
+      } else {
+        await refreshChatHistory(currentSessionId)
+      }
+      await refreshApprovals(currentSessionId, chatConnectRequestId)
+      if (error) reportWidgetError("prompt", error)
+      return !error && data !== undefined
+    } finally {
+      if (sessionId() === currentSessionId) {
+        setIsRunning(false)
+        setIsCanceling(false)
+        setIsEditingHistory(false)
+      }
+    }
   }
 
   const newChat = () => {
@@ -328,6 +413,7 @@ export function AiChat(props: IProps) {
     const nextSessionId = props.onResetSessionId()
     setIsRunning(false)
     setIsCanceling(false)
+    setIsEditingHistory(false)
     setChatDraftText("")
     setMessageHistory(reconcile([]))
     setApprovals([])
@@ -393,12 +479,14 @@ export function AiChat(props: IProps) {
                     approvals={approvals()}
                     isRunning={isRunning()}
                     isCanceling={isCanceling()}
+                    isEditingHistory={isEditingHistory()}
                     widgetError={widgetError()}
                     draftText={chatDraftText()}
                     mentions={mentions()}
                     onDraftTextChange={setChatDraftText}
                     onPreferenceChange={updateAiChatPreference}
                     onPrompt={prompt}
+                    onEditMessage={editMessage}
                     onResolveApproval={resolveApproval}
                     onOpenResource={props.application.openResource}
                     onOpenWidgetPreview={props.onOpenWidgetPreview}
