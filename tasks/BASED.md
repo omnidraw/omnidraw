@@ -305,7 +305,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
 - [x]: [A111](a/A111.md) - widgets: manifest v1 rename, shared draft root, sidebar draft rows, live Preview from creation
 - [x]: [A112](a/A112.md) - chat tool: auto-return to select mode after placing a chat widget
-- [ ]: [A113](a/A113.md) - Preview: title-bar actions for reload, rebuild, publish, and remove
+- [x]: [A113](a/A113.md) - Preview: title-bar actions for reload, rebuild, publish, and remove
 - [ ]: [A114](a/A114.md) - AI widgets: inspect exact draft artifact with a Preview screenshot
 - [x]: [A115](a/A115.md) - AI chat: edit and resend a past user message
 - [ ]: [A116](a/A116.md) - Capsule: bounded authoring inspection boundary for Preview tools
