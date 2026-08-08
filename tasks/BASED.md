@@ -305,6 +305,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
 - [x]: [A111](a/A111.md) - widgets: manifest v1 rename, shared draft root, sidebar draft rows, live Preview from creation
 - [x]: [A112](a/A112.md) - chat tool: auto-return to select mode after placing a chat widget
+- [ ]: [A113](a/A113.md) - Preview: title-bar actions for reload, rebuild, publish, and remove
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
