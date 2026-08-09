@@ -785,7 +785,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.14.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.14.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yZLr2/O/Zwb2AAlIIXh0q0Opmjv3yue5HNahEkm6ajSLOAAeBN5iQkm/PGX9n2WR6T16iHK9F1pYpSR5Q8KHqA=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.14.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yZLr2/O/Zwb2AAlIIXh0q0Opmjv3yue5HNahEkm6ajSLOAAeBN5iQkm/PGX9n2WR6T16iHK9F1pYpSR5Q8KHqA=="],
 
     "@omnidraw/capsule-browser-acceptance": ["@omnidraw/capsule-browser-acceptance@workspace:apps/capsule-browser-acceptance"],
 
