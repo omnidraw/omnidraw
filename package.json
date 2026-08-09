@@ -10,7 +10,7 @@
     "scripts/eslint-tooling"
   ],
   "catalog": {
-    "@omnidraw/capsule": "0.13.0",
+    "@omnidraw/capsule": "0.14.0",
     "@orpc/client": "1.14.7",
     "@orpc/contract": "1.14.7",
     "@orpc/server": "1.14.7",

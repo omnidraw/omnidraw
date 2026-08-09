@@ -1076,7 +1076,7 @@ describe('managed composition architecture boundaries', () => {
       catalog: Record<string, string>
     }
     expect(rootPackage.workspaces).toContain('scripts/fixtures/external-composition')
-    expect(rootPackage.catalog['@omnidraw/capsule']).toBe('0.13.0')
+    expect(rootPackage.catalog['@omnidraw/capsule']).toBe('0.14.0')
   })
 
   test('keeps Capsule private profile names out of production source', async () => {
