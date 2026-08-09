@@ -9,6 +9,7 @@ import {
   readlink,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -115,14 +116,24 @@ async function snapshotTree(root: string, includeModificationTimes = true): Prom
   return snapshots;
 }
 
-async function expectRejectedWithoutMutation(
+function durableSnapshotEntry(entry: TSnapshotEntry): TSnapshotEntry {
+  if (entry.kind !== 'file' || !path.basename(entry.path).endsWith('-tshm')) return entry;
+  const { mtimeMs: _coordinationMtime, ...durableEntry } = entry;
+  return durableEntry;
+}
+
+async function snapshotDurableTree(root: string): Promise<readonly TSnapshotEntry[]> {
+  return (await snapshotTree(root)).map(durableSnapshotEntry);
+}
+
+async function expectRejectedWithoutDurableMutation(
   root: string,
   operation: () => Promise<unknown>,
   message: RegExp,
 ): Promise<void> {
-  const before = await snapshotTree(root);
+  const before = await snapshotDurableTree(root);
   await expect(operation()).rejects.toThrow(message);
-  expect(await snapshotTree(root)).toEqual(before);
+  expect(await snapshotDurableTree(root)).toEqual(before);
 }
 
 async function migrationSource(): Promise<{
@@ -343,6 +354,43 @@ afterEach(async () => {
 });
 
 describe('single-user managed database preflight and recovery', () => {
+  test('durable snapshots ignore only Turso coordination mtime drift and detect database and sidecar byte changes', async () => {
+    const root = await temporaryRoot('durable-snapshot');
+    const files = [
+      { name: 'main.db', initial: 'database-before', changed: 'database-after-' },
+      { name: 'main.db-wal', initial: 'wal-before', changed: 'wal-after-' },
+      { name: 'main.db-tshm', initial: 'tshm-before', changed: 'tshm-after-' },
+    ] as const;
+    await Promise.all(files.map((file) => writeFile(path.join(root, file.name), file.initial)));
+
+    const beforeCoordinationTouch = await snapshotDurableTree(root);
+    const coordinationPath = path.join(root, 'main.db-tshm');
+    const coordinationStat = await lstat(coordinationPath);
+    await utimes(
+      coordinationPath,
+      coordinationStat.atime,
+      new Date(coordinationStat.mtimeMs + 60_000),
+    );
+    expect(await snapshotDurableTree(root)).toEqual(beforeCoordinationTouch);
+
+    for (const fileName of ['main.db', 'main.db-wal']) {
+      const beforeMtimeChange = await snapshotDurableTree(root);
+      const filePath = path.join(root, fileName);
+      const fileStat = await lstat(filePath);
+      await utimes(filePath, fileStat.atime, new Date(fileStat.mtimeMs + 60_000));
+      expect(await snapshotDurableTree(root)).not.toEqual(beforeMtimeChange);
+    }
+
+    for (const file of files) {
+      const beforeByteChange = await snapshotDurableTree(root);
+      await writeFile(path.join(root, file.name), file.changed);
+      const afterByteChange = await snapshotDurableTree(root);
+      expect(afterByteChange).not.toEqual(beforeByteChange);
+      expect(afterByteChange.find((entry) => entry.path === file.name)?.digest)
+        .not.toBe(beforeByteChange.find((entry) => entry.path === file.name)?.digest);
+    }
+  });
+
   test('starts a fresh home with exactly one baseline and directly preflights the resulting database', async () => {
     const root = await temporaryRoot('fresh-baseline');
     const home = path.join(root, 'home');
@@ -364,7 +412,7 @@ describe('single-user managed database preflight and recovery', () => {
     });
   });
 
-  test('rejects an old or unknown schema fingerprint through preflight and direct start without touching DB files or sidecars', async () => {
+  test('rejects an old or unknown schema fingerprint without durable DB or sidecar mutation', async () => {
     const root = await temporaryRoot('old-fingerprint');
     const home = path.join(root, 'home');
     await mkdir(path.join(home, 'cache'), { recursive: true });
@@ -374,13 +422,13 @@ describe('single-user managed database preflight and recovery', () => {
     await source.db.exec(`ALTER TABLE canvases ADD COLUMN unexpected_legacy_value TEXT;`);
     await stopService(source);
 
-    await expectRejectedWithoutMutation(
+    await expectRejectedWithoutDurableMutation(
       home,
       () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
       /Refusing to open Omnidraw database:.*whole-schema SHA-256 fingerprint differs.*explicit development database reset/s,
     );
     const rejectedService = serviceFor(home);
-    await expectRejectedWithoutMutation(
+    await expectRejectedWithoutDurableMutation(
       home,
       () => rejectedService.start(),
       /Refusing to open Omnidraw database:.*whole-schema SHA-256 fingerprint differs.*explicit development database reset/s,
@@ -393,7 +441,7 @@ describe('single-user managed database preflight and recovery', () => {
 
     const corruptCoordinator = Buffer.from('corrupt-coordinator-for-rollback');
     await writeFile(`${databasePath}-tshm`, corruptCoordinator);
-    await expectRejectedWithoutMutation(
+    await expectRejectedWithoutDurableMutation(
       home,
       () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
       /read-only preflight failed:.*shared WAL coordination file/s,
@@ -417,7 +465,7 @@ describe('single-user managed database preflight and recovery', () => {
     expect(weakenedSql).not.toBe(migration.sql);
     await createClaimedManagedDatabase({ home, migrationSql: weakenedSql });
 
-    await expectRejectedWithoutMutation(
+    await expectRejectedWithoutDurableMutation(
       home,
       () => preflightDbServiceDatabase({ databasePath: path.join(home, 'main.db'), homeDir: home }),
       /Refusing to open Omnidraw database:.*custom domain definitions differ.*explicit development database reset/s,
@@ -497,7 +545,7 @@ describe('single-user managed database preflight and recovery', () => {
       const home = path.join(root, entry.label);
       await mkdir(home);
       await entry.arrange(home);
-      await expectRejectedWithoutMutation(
+      await expectRejectedWithoutDurableMutation(
         home,
         () => preflightDbServiceDatabase({ databasePath: path.join(home, 'main.db'), homeDir: home }),
         entry.message,
@@ -516,7 +564,7 @@ describe('single-user managed database preflight and recovery', () => {
 
     const corruptCoordinator = Buffer.from('tiny-corrupt-coordinator');
     await writeFile(`${databasePath}-tshm`, corruptCoordinator);
-    await expectRejectedWithoutMutation(
+    await expectRejectedWithoutDurableMutation(
       home,
       () => preflightDbServiceDatabase({ databasePath, homeDir: home }),
       /read-only preflight failed:.*shared WAL coordination file/s,
