@@ -18,6 +18,7 @@ export default defineConfig({
     solidPlugin()
   ],
   server: {
+    host: '0.0.0.0',
     port: frontendPort,
     proxy: {
       '/api': {

@@ -193,6 +193,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B79](b/B79.md) - Preview goes white and rebuilds slowly after server restart
 - [x]: [B80](b/B80.md) - widgets: fullscreen widget keyboard leaks to canvas shortcuts (Backspace deletes it)
 - [x]: [B81](b/B81.md) - cli: shutdown crashes with "Runtime cannot shutdown from state 'stopping'" on Ctrl+C
+- [ ]: [B82](b/B82.md) - ci: Linux Turso preflight changes `.tshm` mtime despite unchanged database bytes
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

@@ -307,7 +307,7 @@ try {
   processes.push(spawnDevProcess({
     name: "frontend-stack",
     cwd: rootDir,
-    cmd: [bunExec, frontendDevScript, "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
+    cmd: [bunExec, frontendDevScript, "--host", "0.0.0.0", "--port", String(frontendLease.port), "--strictPort"],
     env: {
       OMNIDRAW_BACKEND_HOST: "127.0.0.1",
       OMNIDRAW_BACKEND_PORT: String(actualBackendPort),
