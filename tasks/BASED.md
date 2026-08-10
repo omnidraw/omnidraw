@@ -196,7 +196,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B82](b/B82.md) - ci: Linux Turso preflight changes `.tshm` mtime despite unchanged database bytes
 - [R]: [B83](b/B83.md) - AI chat: resolve widget mentions to one safe authoring target (order 2/5)
 - [R]: [B84](b/B84.md) - AI widgets: durable resource intent reaches Preview and placement (order 3/5)
-- [~]: [B85](b/B85.md) - ci: align the canvas release marker with its public runtime changes
+- [x]: [B85](b/B85.md) - ci: align the canvas release marker with its public runtime changes
+- [~]: [B86](b/B86.md) - ci: align the trusted Capsule build identity with 0.14.0
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
