@@ -588,12 +588,18 @@ describe('managed composition architecture boundaries', () => {
     const browserInstall = workflow.indexOf(
       `run: bunx playwright@${playwrightVersion} install --with-deps chromium`,
     )
+    const sandboxSetup = workflow.indexOf('- name: Configure Chromium sandbox')
     const finalAcceptance = workflow.indexOf('run: bun run test:final-acceptance')
 
     expect(playwrightVersion).toMatch(/^\d+\.\d+\.\d+$/)
     expect(dependencyInstall).toBeGreaterThan(-1)
     expect(browserInstall).toBeGreaterThan(dependencyInstall)
-    expect(finalAcceptance).toBeGreaterThan(browserInstall)
+    expect(sandboxSetup).toBeGreaterThan(browserInstall)
+    expect(finalAcceptance).toBeGreaterThan(sandboxSetup)
+    expect(workflow).toContain('sandbox_path="$(dirname "$chromium_path")/chrome_sandbox"')
+    expect(workflow).toContain('sudo chown root:root "$sandbox_path"')
+    expect(workflow).toContain('sudo chmod 4755 "$sandbox_path"')
+    expect(workflow).toContain('echo "CHROME_DEVEL_SANDBOX=$sandbox_path" >> "$GITHUB_ENV"')
   })
 
   test('keeps the consolidated API as the only API package and import namespace', async () => {

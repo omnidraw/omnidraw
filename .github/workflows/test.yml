@@ -38,6 +38,16 @@ jobs:
       - name: Install Playwright Chromium
         run: bunx playwright@1.61.1 install --with-deps chromium
 
+      - name: Configure Chromium sandbox
+        shell: bash
+        run: |
+          chromium_path="$(bun --cwd apps/cli -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
+          sandbox_path="$(dirname "$chromium_path")/chrome_sandbox"
+          test -f "$sandbox_path"
+          sudo chown root:root "$sandbox_path"
+          sudo chmod 4755 "$sandbox_path"
+          echo "CHROME_DEVEL_SANDBOX=$sandbox_path" >> "$GITHUB_ENV"
+
       - name: Run final architecture acceptance
         run: bun run test:final-acceptance
 
