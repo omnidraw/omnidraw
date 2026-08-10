@@ -197,7 +197,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [R]: [B83](b/B83.md) - AI chat: resolve widget mentions to one safe authoring target (order 2/5)
 - [R]: [B84](b/B84.md) - AI widgets: durable resource intent reaches Preview and placement (order 3/5)
 - [x]: [B85](b/B85.md) - ci: align the canvas release marker with its public runtime changes
-- [~]: [B86](b/B86.md) - ci: align the trusted Capsule build identity with 0.14.0
+- [x]: [B86](b/B86.md) - ci: align the trusted Capsule build identity with 0.14.0
+- [~]: [B87](b/B87.md) - ci: install Playwright Chromium before host browser acceptance
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

@@ -578,6 +578,24 @@ function durableSceneWrites(
 }
 
 describe('managed composition architecture boundaries', () => {
+  test('prepares the browser required by host final acceptance in CI', async () => {
+    const workflow = await readFile(join(ROOT, '.github/workflows/test.yml'), 'utf8')
+    const rootManifest = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as {
+      catalog?: { playwright?: string }
+    }
+    const playwrightVersion = rootManifest.catalog?.playwright
+    const dependencyInstall = workflow.indexOf('run: bun install --frozen-lockfile')
+    const browserInstall = workflow.indexOf(
+      `run: bunx playwright@${playwrightVersion} install --with-deps chromium`,
+    )
+    const finalAcceptance = workflow.indexOf('run: bun run test:final-acceptance')
+
+    expect(playwrightVersion).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(dependencyInstall).toBeGreaterThan(-1)
+    expect(browserInstall).toBeGreaterThan(dependencyInstall)
+    expect(finalAcceptance).toBeGreaterThan(browserInstall)
+  })
+
   test('keeps the consolidated API as the only API package and import namespace', async () => {
     const manifests = await packageManifests()
     const oldApiFiles = (await listFiles(join(ROOT, 'packages')))

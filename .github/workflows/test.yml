@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: bunx playwright@1.61.1 install --with-deps chromium
+
       - name: Run final architecture acceptance
         run: bun run test:final-acceptance
 
