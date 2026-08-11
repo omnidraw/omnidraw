@@ -195,7 +195,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B81](b/B81.md) - cli: shutdown crashes with "Runtime cannot shutdown from state 'stopping'" on Ctrl+C
 - [x]: [B82](b/B82.md) - ci: Linux Turso preflight changes `.tshm` mtime despite unchanged database bytes
 - [R]: [B83](b/B83.md) - AI chat: resolve widget mentions to one safe authoring target (order 2/5)
-- [R]: [B84](b/B84.md) - AI widgets: durable resource intent reaches Preview and placement (order 3/5)
+- [R]: [B84](b/B84.md) - AI widgets: make omnidraw.json the concrete resource-binding authority (order 3/5)
 - [x]: [B85](b/B85.md) - ci: align the canvas release marker with its public runtime changes
 - [x]: [B86](b/B86.md) - ci: align the trusted Capsule build identity with 0.14.0
 - [x]: [B87](b/B87.md) - ci: install Playwright Chromium before host browser acceptance
@@ -317,8 +317,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A115](a/A115.md) - AI chat: edit and resend a past user message
 - [x]: [A116](a/A116.md) - Capsule: bounded authoring inspection boundary for Preview tools
 - [x]: [A117](a/A117.md) - Preview inspection: packaged browser runner and image tool results
-- [R]: [A118](a/A118.md) - widget projects: Bash-driven check and scoped runtime diagnostics (order 4/5)
-- [R]: [A119](a/A119.md) - canvas widgets: reconnect existing resource bindings and retry safely (order 5/5)
+- [R]: [A118](a/A118.md) - widget projects: portable SDK-based offline check (order 4/5)
+- [R]: [A119](a/A119.md) - AI Chat: inspect accepted builds and the real Preview runtime (order 5/5)
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -510,7 +510,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [?]: [D7](d/D7.md) - undecided: per-canvas revision is a coarse optimistic concurrency counter
 - [ ]: [D8](d/D8.md) - widgets: headless mount-catalog dry-run in od_widget_validate
 - [~]: [D9](d/D9.md) - local registry: decouple dev boot from publish, automate the dev-prerelease escape hatch, stop version-bump churn
-- [R]: [D10](d/D10.md) - widget drafts: one writer authority for Config, agent edit, Bash, Preview, and publish (order 1/5)
+- [R]: [D10](d/D10.md) - widget repos: portable build receipts and smart Preview refresh (order 1/5)
 
 ## Pragmatic Code Style
 
