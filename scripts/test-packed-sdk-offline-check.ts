@@ -11,6 +11,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 
 type TPackage = Readonly<{ name: string; directory: string }>
@@ -74,7 +75,9 @@ async function pack(entry: TPackage, packRoot: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const testRoot = await mkdtemp('/private/tmp/omnidraw-packed-sdk-check-')
+  const testRoot = await mkdtemp(
+    join(tmpdir(), 'omnidraw-packed-sdk-check-'),
+  )
   const packRoot = join(testRoot, 'packs')
   const consumerRoot = join(testRoot, 'consumer')
   const fakeHome = join(testRoot, 'fake-home')
