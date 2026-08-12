@@ -492,12 +492,37 @@ Small, generic pure helpers may be duplicated between frontend and backend when 
 
 Root tooling survives only when it operates across the repository:
 
-- Keep release staging, package verification, npm/local-registry support, repository dev orchestration, file indexing, architecture boundaries, database verification, and CI entrypoints under `scripts/`.
+- Keep release staging, package verification, npm/local-registry support, repository dev orchestration, architecture boundaries, database verification, and CI entrypoints under `scripts/`.
 - Move backend-specific commands and Preview inspection drivers under `apps/backend`.
 - Move frontend browser harnesses under `apps/frontend` or root integration tests.
 - Move packed consumers to `tests/fixtures/external-composition` and `tests/fixtures/canvas-consumer`; they remain isolated projects and are not root workspaces.
-- Fold `scripts/eslint-tooling` into root lint configuration and remove its workspace-package identity.
-- Replace the root test command's legacy package filter list with gates for the two apps, five packages, functional-core lint, architecture boundaries, schema invariance, packed consumers, backend live/sim conformance, and browser integration.
+- Remove the `scripts/eslint-tooling` workspace-package identity. If an AST parser remains necessary for architecture checks, it is repository tooling rather than a workspace product.
+- Replace the root test command's legacy package filter list with gates for the two apps, five packages, Effect program and architecture boundaries, schema invariance, packed consumers, backend live/sim conformance, and browser integration.
+- Do not maintain a generated repository file index. Contributors use `rg`, `rg --files`, package manifests, and architecture documentation for discovery.
+
+The pre-refactor script audit has this disposition:
+
+- Delete `FILES.md`, `scripts/generate-files-md.ts`, and the `generate:files` root command immediately.
+- Delete the retired portal-era `fn`/`fx`/`tx` ESLint plugin, config, Pi extension, Codex hooks, and root lint commands immediately. New Effect v4 boundary enforcement follows `llm.app-architecture.md`; it must not preserve the old fixed-two-parameter or filename-import-allowlist rules.
+- Retain cross-repository development orchestration, package staging and verification, local npm registry/linking, database invariance, load, architecture, packed-consumer, final-acceptance, and CI scripts while they still protect the migration.
+- Retain helper-app and legacy-package tests until their product assertions pass from the replacement app, conformance, or integration location. Delete each old driver in the same change that activates its replacement gate.
+- Delete the compiled Preview inspection chain only under the coverage-preserving rule in Section 13.
+
+### 12.2 Ambient declaration removal
+
+Delete the repository-root `global.d.ts`. It is not a contract boundary, and
+none of its declarations may be recreated in another repository-wide ambient
+file.
+
+- Remove the compiled-binary flag rather than relocating it.
+- Pass application version/build identity through explicit backend shell
+  configuration rather than an ambient constant.
+- Move reusable error and rollback types to the nearest owning domain or
+  adapter module; keep feature-local types local.
+- Public types required by Canvas, SDK, AI Chat, or Theme belong in the owning
+  public package and must be exported deliberately.
+- Tests that need globals declare them in a test-scoped environment or inject
+  them through an explicit test adapter.
 
 ## 13. Removed Applications and Preserved Coverage
 
@@ -628,6 +653,7 @@ An incomplete or defective release is corrected with new package versions. Publi
 ### Phase 5: Surface collapse
 
 - Delete legacy packages, applications, custom runtime, Tapable orchestration, oRPC, and temporary compatibility adapters.
+- Delete the root ambient declaration file after its surviving types and build identity have explicit owners.
 - Remove old package names from release tooling and mark them retired.
 - Deprecate previously published retired names with SDK migration guidance.
 - Do not publish alias packages or leave final compatibility shims.
@@ -643,6 +669,8 @@ An incomplete or defective release is corrected with new package versions. Publi
 - Public dependency graph is acyclic.
 - Root scripts and test fixtures have no workspace-package identity.
 - Root test and build commands contain no filters or paths for retired packages and applications.
+- `global.d.ts`, `FILES.md`, and their generator or replacement ambient/index files are absent.
+- The portal-era functional-core ESLint plugin, Pi extension, Codex hooks, and root lint commands are absent.
 
 ### Public boundaries
 
@@ -781,4 +809,7 @@ The redesign is complete when:
 - Conformance fixtures ship through test-only Canvas Contract and SDK subpaths, not a sixth package.
 - Capsule owns React, React DOM, Three, and other framework compatibility evidence; those libraries are not Omnidraw fixture dependencies.
 - Repository tooling may remain under root `scripts/` and `tests/`, but only the two apps and five packages are workspaces.
+- Repository discovery uses source search and architecture docs; no generated `FILES.md` index is maintained.
+- Repository-wide ambient declarations are forbidden; types and runtime configuration have explicit owners.
+- Effect v4 architecture checks replace the retired portal-era `fn`/`fx`/`tx` lint system rather than inheriting its call signatures or import allowlists.
 - Migration uses a contract-first release train with no permanent compatibility shims.

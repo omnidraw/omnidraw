@@ -1,197 +1,205 @@
-Monorepo Omnidraw:
+# Omnidraw repository guide
 
-apps/frontend -> solidjs spa, renders webpage
-apps/server -> bun server
-apps/widget-debug-tools -> use when you need to debug local widgets
+Omnidraw is an OSS monorepo with two private applications and five public
+packages.
 
-packages/api -> consolidated oRPC contracts and handlers by domain
-packages/canvas -> Cangine canvas runtime, authoritative document client, and widgets
-packages/canvas-contract -> shared Cangine item, command, event, and query contracts
-packages/function-runtime -> public short-lived function contracts and service interfaces
-packages/orpc-client -> typed browser WebSocket client aggregating the oRPC APIs
-packages/resource-runtime -> public resource capability, provider, and gateway contracts
-packages/runtime -> plugin lifecycle, service registry, and runtime orchestration
-packages/sdk -> publishable widget and actor authoring SDK
-packages/service-agent -> Pi agent sessions, approvals, widget generation, and publishing
-packages/service-canvas -> authoritative canvas commands, snapshots, queries, and events
-packages/service-db -> Turso-backed application data, models, and migrations
-packages/service-event-publisher -> runtime event publication to API subscription streams
-packages/service-kv -> reserved persistent key-value service for planned future use
-packages/service-widget-state -> centralized versioned widget JSON state
-packages/service-theme -> built-in themes and runtime theme synchronization
-packages/shared-functions -> shared functional helpers and Omnidraw config utilities
-packages/tapable -> synchronous and asynchronous lifecycle hook primitives
-packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
-packages/widget-contract -> public widget manifest, artifact, and revision contracts
+```text
+apps/
+  backend/             Bun server, source-run CLI, authorities, persistence,
+                       trusted local execution, Effect runtime, and DST
+  frontend/            Solid SPA, product UI, and browser-side adapters
 
-## Published Package Policy
+packages/
+  canvas-contract/     @omnidraw/canvas-contract
+  canvas/              @omnidraw/canvas
+  sdk/                 @omnidraw/sdk
+  component-ai-chat/   @omnidraw/component-ai-chat
+  theme/               @omnidraw/theme
+```
 
-The `version` field in a package's own `package.json` is the release marker.
-Only packages that are intended to be released may have a package-level
-`version`. Packages without a version are workspace-private and must never be
-selected by package publishing scripts.
+Private product code belongs in the owning application. Do not create another
+workspace package to share private code. Small generic helpers may be
+duplicated when that keeps the public surface smaller and ownership clearer.
 
-Currently published on public npm at `0.5.0` as of 2026-08-01:
+## Architecture authorities
 
-- `@omnidraw/runtime`
-- `@omnidraw/widget-contract`
-- `@omnidraw/resource-runtime`
-- `@omnidraw/function-runtime`
-- `@omnidraw/sdk`
+Read these before changing application architecture or Effect code:
 
-`@omnidraw/tenant-core` was published at `0.5.0` and is retired: the
-application is single-user and the package no longer exists in this workspace.
-It must never be republished or reintroduced.
+- [Application architecture](docs/internal/llm.app-architecture.md) is the
+  authority for core, shell, simulation, conformance, runtime ownership, and
+  deterministic simulation testing.
+- [Effect v4 guide](docs/external/llm.effect.md) is the local API and usage
+  reference. Follow it instead of relying on Effect v3 knowledge.
+- [Redesign PRD](docs/PRD.md) defines the repository surface, public contracts,
+  migration invariants, and fixed product decisions.
+- [Widget system](docs/internal/llm.widget-system.md) defines widget artifacts,
+  host bridges, and execution behavior.
+- [Screen atlas](docs/internal/screens/SCREENS.md) defines existing product
+  surfaces and visual baselines.
 
-Versioned release packages awaiting their first public npm publication:
+Use one exact Effect v4 version across the applications. Public package APIs
+remain Effect-free and transport-neutral.
 
-- `@omnidraw/theme-contract`
-- `@omnidraw/canvas-contract`
-- `@omnidraw/service-theme`
-- `@omnidraw/service-canvas`
-- `@omnidraw/capsule-omnidraw`
-- `@omnidraw/canvas`
+## Public package boundaries
 
-`@omnidraw/service-db` is internal to this OSS workspace. It must remain
-`private`, unversioned, and excluded from all npm release tooling.
+### `@omnidraw/canvas-contract`
 
-Only changes to a versioned package's public/runtime code under `src/` justify
-and require a version bump in that package's workspace `package.json`. Apply
-semantic versioning and regenerate the lockfile. Changes only to scripts,
-tests, documentation, package metadata, build configuration, export staging,
-or repository tooling must not bump the package version. If packaging-only
-work improves a version that is already public, keep the local version equal
-to the public version and wait for a future `src/` release; never republish it.
+Owns the complete serialized Canvas document, commands, queries, snapshots,
+events, versions, schemas, validation, and canonical codecs. It contains no
+authority, reducer, storage, rendering, Cangine, Theme, Solid, Effect, or
+transport implementation, including type-only dependencies on them.
 
-Workspace manifests may use `workspace:*` and `catalog:` for linked
-development. `bun run build` must generate the standalone public package in
-`dist/`; its generated `package.json` must resolve every internal dependency to
-the exact package version and every catalog dependency to its public registry
-range. Publish only that staged directory with `npm publish ./dist`. Never
-publish the workspace package root, and never reuse or overwrite a version
-that has already been published.
+### `@omnidraw/canvas`
 
-We use @tasks/BASED.md to manage our work.
-When you are tasks to generate new task plans. Think if a mockup img is useful.
-When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
+Renders one Omnidraw Canvas. It owns the browser document client, optimistic
+state, Cangine adapter, and Canvas UI. The host injects document transport,
+theme, widget, media, notification, ID, timing, diagnostics, and lifecycle
+capabilities. Canvas never imports an application.
 
-## Communication
+### `@omnidraw/sdk`
 
-- Always explain things in simple, direct language.
-- Lead with the essential point: what happened, why it matters, and what to do.
-- Include technical complexity only when it is necessary to understand the
-  problem, make a decision, or complete the work.
+Is the only widget-authoring entrypoint. It owns the portable manifest,
+artifact, guest ABI, widget state/resource/function contracts, and host bridge.
+It encapsulates Capsule; widget source does not import Capsule or retired
+Omnidraw packages directly.
 
-Canvas persistence is one JSONB `canvas_items` row per authored Cangine node.
-CanvasService is the only durable canvas authority, and WidgetStateService is
-the only widget-instance state authority.
+### `@omnidraw/component-ai-chat`
 
-## Functional Core Directive
+Ships the reusable AI Chat component, injected contract, and narrow Canvas
+extension. Authentication, persistence, provider, metering, and transport
+implementations stay in applications.
 
-We want as much code as possible to be simple functions.
+### `@omnidraw/theme`
 
-Goal:
-- separate logic from state
-- keep business rules in small boring functions
-- push mutable state and side effects to edges
-- make code easier to test, move, and reuse
+Owns public theme values, tokens, CSS, and theme application helpers. It does
+not depend on a registry, lifecycle runtime, application, Canvas, or Effect.
 
-Folder rule:
-- use `/core` within a package for shared functions and shared logic-first code
-- do not move everything into `/core` by default
-- when logic is local to one feature or plugin, prefer sibling `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files next to the orchestrating file
-- if package structure needs it, `/core` may live inside a subfolder instead
-- only do nested `/core` folders when complexity is high and locality is better
-- use one `CONSTANTS.md` file per folder when needed.
-- use one `typed.ts` and or `interface.ts` file per folder only for reusable typings
-- `CONSTANTS.ts` is allowed to be imported by local `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files
-- `types.ts` and `interface.ts` are allowed to be imported by local `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files
-- always put local TPortal* TArgs* types locally
-- always omit suffix in TPortal* TArgs* if you have only one function to export
+## Backend architecture
 
-Local split rule:
-- keep orchestration-heavy files as the main local file when that shape fits the feature, for example plugin files like `Grid.plugin.ts`
-- move pure local logic into sibling `fn.*.ts` files
-- move impure read helpers into sibling `fx.*.ts` files
-- move impure write helpers into sibling `tx.*.ts` files
-- use `CONSTANTS.ts` for local shared constants that are not themselves function files
-- prefer local sibling split over creating a shared `/core` module when the logic is only used by that folder
-- example: `Grid.plugin.ts` may orchestrate behavior while `fn.math.ts`, `tx.draw.ts`, and `CONSTANTS.ts` hold outsourced local pieces by role
+`apps/backend/src` is split by responsibility:
 
-Bias:
-- prefer extracting logic out of UI, services, transport, and stateful orchestration files
-- prefer local sibling `fn/fx/tx` files for feature-local logic
-- prefer `/core` only when logic is shared across features or packages
-- prefer simple functions over classes and hidden state
-- if unsure, choose simpler split: orchestration in the local file, logic in typed function files
+```text
+core/          domain values, pure policy, typed failures, semantic services,
+               and lazy Effect programs
+shell/         live Layers, database/provider/protocol adapters, server and CLI
+               edges, concrete configuration, and ManagedRuntime ownership
+sim/           controlled Layers, virtual time, seeded scheduling, faults,
+               logical nodes, trace capture, and replay
+conformance/   scenarios that run unchanged against live and simulated Layers
+```
 
-## File Type Rules
+The dependency direction is `core <- shell`, `core <- sim`, and
+`core <- conformance`. Core never imports shell, sim, or conformance. Shell
+never imports sim. Runtime edges execute programs; core only describes them.
 
-Print and follow these rules when working on function files.
-Do not guess. Use these rules.
+### Functional core file roles
 
-### fn.*.ts
-- ignore `fn.*.test.ts` files
-- exported functions must start with `fn`
-- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, `tx.`, or is exactly `CONSTANTS`
-- `CONSTANTS.ts` imports are allowed for shared local constants
-- no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
-- do not export classes or other runtime values; only functions and types
-- fn is for pure functions
-- keep fn logic deterministic and state-free
+- `fn.*.ts` exports deterministic, state-free policy functions. Inputs are
+  explicit. It does not import Effect runtime values or touch the world.
+- `fx.*.ts` exports lazy read programs. A program takes zero arguments or one
+  required `args` value, is not `async`, and explicitly returns
+  `Effect.Effect<A, E, R>` through semantic services.
+- `tx.*.ts` has the same program shape for writes and mutations. Atomicity,
+  idempotency, acknowledgement, and transaction semantics belong in the
+  service contract.
 
-### Direct runtime global blocking
-- block free runtime global usage like `crypto.randomUUID()`, `window.location`, `fetch(...)`, `process.env`, `console.log(...)`
-- allow type-only references like `typeof crypto`, `typeof window`, `Request`, `Response` when they are only used in type positions
-- allow injected access like `portal.crypto.randomUUID()` and `portal.window.location`
-- allow portal field typing like `crypto: typeof crypto` and `window: typeof window`
-- rule is about direct runtime global access, not about naming a portal field or using the global in a type-only annotation
+Do not reintroduce `portal` parameters, fixed two-argument helper signatures,
+filename-based runtime-import allowlists, or ambient-global fallbacks. These
+were properties of the retired functional-core tooling, not the Effect v4
+architecture.
 
-### fx.*.ts
-- ignore `fx.*.test.ts` files
-- exported functions must start with `fx`
-- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, or is exactly `CONSTANTS`
-- `CONSTANTS.ts` imports are allowed for shared local constants
-- no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
-- do not export classes or other runtime values; only functions and types
-- every `fx*` function must have exactly 2 params
-- first param must be named `portal` and typed as `TPortal*`
-- second param must be named `args` and typed as `TArgs*`
-- `TPortal` may hold side effects and mutable services objects
-- `TArgs` is usually serializable payload data
-- fx is for impure reads; use brain and prefer tx for impure writes
+Shell adapters own database engines, SQL, filesystems, providers, WebSocket,
+frameworks, configuration, and process/browser globals. Supply world handles
+explicitly when constructing adapters; never make omission fall back silently
+to an ambient live dependency.
 
-### tx.*.ts
-- ignore `tx.*.test.ts` files
-- exported functions must start with `tx`
-- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, `tx.`, or is exactly `CONSTANTS`
-- `CONSTANTS.ts` imports are allowed for shared local constants
-- no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
-- do not export classes or other runtime values; only functions and types
-- every `tx*` function must have exactly 2 params
-- first param must be named `portal` and typed as `TPortal*`
-- second param must be named `args` and typed as `TArgs*`
-- `TPortal` may hold side effects and mutable services objects
-- `TArgs` is usually serializable payload data
-- tx is for impure writes; use brain and prefer tx when code changes external world state
-- tx may runtime-import `fn.*`, `fx.*`, `tx.*`, and `CONSTANTS`
+Every production/simulation pair implements the same semantic service and
+passes the same conformance suite. Simulation must prevent real time, entropy,
+network, host microtasks, uncontrolled driver completion, or module-global
+state from choosing observable order.
 
-## IMPORTANT
-All files are indexed in `@FILES.md`. Read if you need overview.
+## Frontend architecture
 
-## Refs (Only read when needed)
-Architecture overview: docs/internal/llm.architecture.md
+`apps/frontend` keeps deterministic UI policy separate from browser and
+transport mechanics. The frontend owns product composition, navigation,
+sidebars, browser clients, and adapters for Canvas and AI Chat. It does not own
+durable Canvas or widget-state authority and does not run the backend DST
+world.
 
-UI overview: docs/internal/screens/SCREENS.md
+One frontend connection multiplexes private typed RPC calls and streams over a
+native WebSocket. Effect RPC owns physical connection retry. Domain adapters
+own connection generations, resubscription, snapshot/cursor recovery,
+idempotent replay decisions, stale-generation rejection, and cancellation.
+Do not add PartySocket, the `ws` npm package, SSE, or EventSource.
 
-docs/internal/llm.widget-system.md
-docs/internal/llm.architecture.md
+## Persistence and authority
 
-## Vendored Repositories
+The OSS database schema and migration identity are fixed by the redesign. Do
+not change a migration, table, index, constraint, or persisted-row layout for a
+package move or Effect adoption. Raise a separate proposal only if required
+behavior cannot be implemented through an adapter.
 
-This project vendors external repositories under @repos/
+Canvas persistence is one JSONB `canvas_items` row per authored Canvas node.
+The backend Canvas service is the only durable Canvas authority. The backend
+widget-state service is the only widget-instance state authority. Browser
+Canvas state is optimistic and reconciles with that authority.
 
-- Use vendored repositories as read-only reference material when working with related libraries
-- Prefer examples and patterns from the vendored source code over generated guesses or web search results
-- Do not edit files under @repos/ unless explicitly asked
-- Do not import from @repos/ - application code should continue importing from normal package dependencies
+Do not add repository-wide ambient declarations. Types belong in the nearest
+owning module; runtime/build configuration belongs at an application shell
+edge.
+
+## Widget portability and trust
+
+The same SDK widget source and canonical artifact must work in OSS and managed.
+OSS runs widget server/function code as explicitly trusted local host code.
+Managed runs untrusted builds, functions, and coding commands in Microsandbox
+and records private usage evidence. Managed policy, billing, auth, sandbox, and
+storage code never enters the public packages.
+
+Capsule owns React, React DOM, Three, and other framework compatibility
+evidence. Do not duplicate those fixtures in this repository.
+
+## Package publishing
+
+The `version` field in a package's own `package.json` is its release marker.
+Only the five public packages may have package-level versions or be selected by
+release tooling. Applications are private and unversioned.
+
+Workspace manifests may use `workspace:*` and `catalog:`. A public package
+build must stage a standalone `dist/` package whose generated manifest resolves
+internal dependencies to exact package versions and catalog dependencies to
+public registry ranges. Publish only `./dist`, never the workspace root. Never
+overwrite or republish an existing version.
+
+Changes to public runtime code under `src/` require a semantic version bump and
+lockfile regeneration. Tests, docs, scripts, metadata, build configuration,
+and packaging-only changes do not by themselves justify a version bump.
+
+Retired package names, including `@omnidraw/tenant-core`, must never be
+reintroduced or republished.
+
+## Repository workflow
+
+- Use `rg` and `rg --files` for discovery. There is no generated repository
+  file index.
+- Use [tasks/BASED.md](tasks/BASED.md) when creating an implementation task
+  plan. Consider a mockup only when visual behavior changes, and consult the
+  screen atlas first.
+- Keep explanations simple and direct. Lead with what changed, why it matters,
+  and what the next action is.
+- Preserve unrelated worktree changes. Do not overwrite user-owned edits.
+
+## Vendored reference repositories
+
+`repos/effect` is the vendored Effect source and documentation reference.
+
+- Treat vendored references as read-only.
+- Never modify files under `repos/` unless explicitly asked to update the
+  vendored reference.
+- Do not copy a reference implementation verbatim into production code.
+- Use references to understand patterns, then implement the smallest solution
+  that fits Omnidraw's contracts and conventions.
+- When referencing vendored findings in a task or review, record the upstream
+  repository and relevant path or commit.
+
+- `repos/effect`

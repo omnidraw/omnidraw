@@ -11,30 +11,6 @@
             "statusMessage": "Checking worktree branch guidance"
           }
         ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run \"$(git rev-parse --show-toplevel)/.codex/hooks/functional-core-session-start.ts\"",
-            "timeout": 30,
-            "statusMessage": "Loading functional-core rules"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run \"$(git rev-parse --show-toplevel)/.codex/hooks/functional-core-eslint.ts\"",
-            "timeout": 30,
-            "statusMessage": "Running functional-core ESLint"
-          }
-        ]
       }
     ]
   }

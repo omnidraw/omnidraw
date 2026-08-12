@@ -48,7 +48,6 @@ const hostBoundarySuites: readonly TAcceptanceSuite[] = [
   { name: 'Widget npm distribution build', command: ['bun', 'test', 'apps/cli/tests/WidgetNpmDistributionBuild.test.ts'] },
 ];
 const commonSuites: readonly TAcceptanceSuite[] = [
-  { name: 'functional-core lint', command: ['bun', 'run', 'lint:functional-core'] },
   { name: 'complete product test', command: ['bun', 'run', 'test'] },
   { name: 'workspace build', command: ['bun', 'run', 'build'] },
 ];

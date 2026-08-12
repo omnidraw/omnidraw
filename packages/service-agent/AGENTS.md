@@ -125,19 +125,22 @@ Do not:
 - leak Pi SDK object instances through API return values
 - expose API keys, tokens, auth files, or raw Pi auth records
 
-## Functional core guidance
+## Architecture guidance
 
-Follow root functional-core rules.
+This package is migration input for the backend application. Follow the root
+backend architecture guidance and `docs/internal/llm.app-architecture.md` when
+moving it into `apps/backend`.
 
-For new non-trivial logic:
-- extract pure deterministic logic into local `fn.*.ts`
-- extract impure reads into local `fx.*.ts`
-- extract impure writes into local `tx.*.ts`
-- keep `AgentService.ts` focused on orchestration and lifecycle
-- use `src/core` only for shared service-agent logic that is reused across features
-- keep `tool.*.ts` files as thin `defineTool(...)` factories; move shared logic to `fn.*`, `fx.*`, `tx.*`, `CONSTANTS.ts`, or `types.ts`
+- Keep pure deterministic policy in `fn.*.ts` functions.
+- Move provider, filesystem, Pi SDK, process, and persistence mechanics to the
+  backend shell.
+- Express backend reads and writes as lazy Effect `fx`/`tx` programs through
+  semantic services when that domain migrates.
+- Keep orchestration and lifecycle out of pure functions.
+- Keep `tool.*.ts` files as thin `defineTool(...)` factories.
 
-When editing `fn.*.ts`, `fx.*.ts`, or `tx.*.ts`, follow the repository file-type rules from the root `AGENTS.md` and active fn/fx/tx checks.
+Do not preserve the retired portal-shaped `fn`/`fx`/`tx` rules while migrating
+this code.
 
 ## Pi SDK notes
 

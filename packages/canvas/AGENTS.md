@@ -79,5 +79,4 @@ Run:
 bun run --cwd packages/canvas typecheck
 bun run --cwd packages/canvas test
 bun run --cwd packages/canvas build
-bun run .codex/hooks/functional-core-eslint.ts packages/canvas/src/services/fn.scene-reduction.ts packages/canvas/src/services/fn.scene-node-diff.ts
 ```
