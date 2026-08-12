@@ -31,14 +31,16 @@ Read these before changing application architecture or Effect code:
 - [Effect v4 guide](docs/external/llm.effect.md) is the local API and usage
   reference. Follow it instead of relying on Effect v3 knowledge.
 - [Redesign PRD](docs/PRD.md) defines the repository surface, public contracts,
-  migration invariants, and fixed product decisions.
+  replacement policy, and fixed product decisions.
 - [Widget system](docs/internal/llm.widget-system.md) defines widget artifacts,
   host bridges, and execution behavior.
 - [Screen atlas](docs/internal/screens/SCREENS.md) defines existing product
   surfaces and visual baselines.
 
-Use one exact Effect v4 version across the applications. Public package APIs
-remain Effect-free and transport-neutral.
+Use exact `effect@4.0.0-rc.108` across the applications and every public package
+that owns complex side effects, concurrency, streaming, cancellation, retries,
+or resource lifetime. Public package APIs remain Effect-free and
+transport-neutral.
 
 ## Public package boundaries
 
@@ -56,6 +58,9 @@ state, Cangine adapter, and Canvas UI. The host injects document transport,
 theme, widget, media, notification, ID, timing, diagnostics, and lifecycle
 capabilities. Canvas never imports an application.
 
+Canvas owns complex asynchronous state and lifecycle, so it uses exact
+`effect@4.0.0-rc.108` internally without exposing Effect types.
+
 ### `@omnidraw/sdk`
 
 Is the only widget-authoring entrypoint. It owns the portable manifest,
@@ -63,16 +68,30 @@ artifact, guest ABI, widget state/resource/function contracts, and host bridge.
 It encapsulates Capsule; widget source does not import Capsule or retired
 Omnidraw packages directly.
 
+SDK paths that own asynchronous builds, guest channels, cancellation, or scoped
+host resources use exact `effect@4.0.0-rc.108` internally.
+
 ### `@omnidraw/component-ai-chat`
 
 Ships the reusable AI Chat component, injected contract, and narrow Canvas
 extension. Authentication, persistence, provider, metering, and transport
 implementations stay in applications.
 
+AI Chat uses exact `effect@4.0.0-rc.108` internally for streaming,
+cancellation, and lifecycle while its injected contract remains Effect-free.
+
 ### `@omnidraw/theme`
 
 Owns public theme values, tokens, CSS, and theme application helpers. It does
 not depend on a registry, lifecycle runtime, application, Canvas, or Effect.
+
+### Effect rule for public packages
+
+Pure contracts, schemas, codecs, validation, and small synchronous adapters do
+not add Effect merely for uniformity. Complexity plus side effects does require
+Effect: asynchronous state machines, concurrent work, streams, retries,
+cancellation, scoped resources, or lifecycle orchestration use exact
+`effect@4.0.0-rc.108` internally. Effect-owned types never cross a public API.
 
 ## Backend architecture
 
@@ -134,15 +153,19 @@ Do not add PartySocket, the `ws` npm package, SSE, or EventSource.
 
 ## Persistence and authority
 
-The OSS database schema and migration identity are fixed by the redesign. Do
-not change a migration, table, index, constraint, or persisted-row layout for a
-package move or Effect adoption. Raise a separate proposal only if required
-behavior cannot be implemented through an adapter.
+This refactor has zero migration and compatibility support. Replace the
+pre-refactor database and initialize the redesigned schema from scratch. Do not
+add old-schema readers, data converters, dual reads, dual writes, compatibility
+tables, legacy fingerprints, or migration commands.
 
 Canvas persistence is one JSONB `canvas_items` row per authored Canvas node.
 The backend Canvas service is the only durable Canvas authority. The backend
 widget-state service is the only widget-instance state authority. Browser
 Canvas state is optimistic and reconciles with that authority.
+
+`CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"` for the redesigned clean-install
+format. The same literal does not make pre-refactor or unversioned rows
+compatible; those rows and their backups are unsupported.
 
 Do not add repository-wide ambient declarations. Types belong in the nearest
 owning module; runtime/build configuration belongs at an application shell

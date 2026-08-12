@@ -4,7 +4,7 @@
 
 - **Document type:** Product requirements document
 - **Scope:** Omnidraw OSS repository and its public integration boundary with the private managed repository
-- **Database impact:** None. The existing OSS database schema must remain unchanged.
+- **Database impact:** Destructive replacement is expected. Existing databases are not migrated or supported after the refactor.
 - **Primary outcome:** Reduce the OSS workspace to two applications and five public packages while preserving existing product behavior and enabling the managed service to consume Canvas without importing OSS implementation details.
 
 ## 1. Context
@@ -20,7 +20,7 @@ The managed product is not a hosted deployment of the OSS application. It is a s
 - Managed runs untrusted builds, functions, and coding commands through Microsandbox and records usage evidence privately.
 - The two repositories are works in progress and must be able to coevolve through explicit, versioned public contracts.
 
-This redesign adopts Effect v4 for private application orchestration and transport, an imperative shell around a functional core, and backend deterministic simulation testing. It does not move Effect into the public package API.
+This redesign adopts exact `effect@4.0.0-rc.108` for application orchestration and transport, an imperative shell around a functional core, and backend deterministic simulation testing. Public packages with non-trivial side-effect orchestration also use that exact Effect version internally, while their exported APIs remain Effect-free and transport-neutral.
 
 Two external runtimes sit behind the public Omnidraw APIs:
 
@@ -33,13 +33,13 @@ Two external runtimes sit behind the public Omnidraw APIs:
 2. Give the managed Cell the smallest practical, implementation-free Canvas integration boundary.
 3. Keep the same widget source and artifact ABI usable in OSS and managed.
 4. Move private behavior to the application that owns it instead of publishing internal services as workspace packages.
-5. Replace the custom runtime, Tapable orchestration, and oRPC with Effect v4 services, Layers, and private transport.
+5. Replace the custom runtime, Tapable orchestration, and oRPC with exact `effect@4.0.0-rc.108` services, Layers, and private transport.
 6. Separate backend business rules from drivers and mutable infrastructure through `core`, `shell`, and `sim` boundaries.
 7. Add deterministic backend simulation and shared live/sim conformance scenarios.
-8. Preserve all current OSS product behavior except compiled-binary distribution.
-9. Preserve the OSS database schema, migration identity, data layout, indexes, constraints, and recovery behavior exactly.
-10. Establish a contract-first release train so managed can migrate to new public package versions before legacy OSS boundaries are deleted.
-11. Make the persisted Canvas payload format an Omnidraw-owned, versioned contract rather than an implicit Cangine type graph.
+8. Preserve current OSS product behavior except compiled-binary distribution and persisted pre-refactor data.
+9. Replace the OSS database with the schema owned by the redesigned applications; provide no migration, legacy reader, dual-write, or data-conversion path.
+10. Publish and adopt one clean-cut public package set without supporting mixed old/new package combinations.
+11. Make Canvas payloads conform directly to the Omnidraw-owned `CANVAS_SCENE_SCHEMA_VERSION` contract rather than an implicit Cangine type graph.
 
 ## 3. Non-goals
 
@@ -50,10 +50,11 @@ Two external runtimes sit behind the public Omnidraw APIs:
 - Running browser UI code inside Microsandbox. Microsandbox covers managed untrusted builds, functions, and coding commands; browser widget UI continues through the browser host bridge.
 - Re-proving Capsule's React, Three, or other framework compatibility in this repository. Capsule owns that evidence in its own repository; Omnidraw verifies only its SDK and host ABI against Capsule.
 - Redesigning existing screens or product workflows.
+- Migrating or preserving pre-refactor databases, persisted Canvas rows, replay records, widget artifacts, or private runtime state.
 - Maintaining permanent compatibility packages or aliases for retired package names.
 - Exposing Cangine, Capsule, Solid, Effect, or transport-owned types through Omnidraw contract APIs unless a dependency policy below explicitly permits it.
 - Preserving compiled-binary production, embedded binary assets, native-addon packaging, or binary updater behavior.
-- Placing Effect types, Layers, transports, or services in public package interfaces.
+- Placing Effect types, Layers, transports, or services in public package interfaces. Qualifying public packages may use Effect internally.
 
 ## 4. Users and Consumers
 
@@ -116,7 +117,7 @@ It owns:
 - Stable constants required to interpret those values.
 - Strict schemas, validators, and codecs.
 - Canonical serialization needed for boundary and golden tests.
-- `CANVAS_DOCUMENT_FORMAT_VERSION`, the authority for the persisted JSON payload format.
+- `CANVAS_SCENE_SCHEMA_VERSION`, fixed at `"1.0.0"`, as the authority for the redesigned JSON payload format.
 - Canvas-specific semantic style token codes stored in authored nodes.
 - The document transport interface implemented by OSS and managed hosts.
 - Host-facing lifecycle and contribution contracts that are semantically part of Canvas integration.
@@ -130,7 +131,7 @@ It must not contain:
 - Mutable runtime state or service registries.
 - OSS- or managed-specific behavior.
 
-Schemas and codecs are allowed because validation and wire interpretation are contract responsibilities. Reducers are excluded because they are authority implementation. Cangine appears only behind `@omnidraw/canvas`, which maps the Omnidraw document contract to renderer objects. Existing unversioned persisted rows are interpreted as document format `1.0.0`; adding a database column or rewriting existing rows is not permitted.
+Schemas and codecs are allowed because validation and wire interpretation are contract responsibilities. Reducers are excluded because they are authority implementation. Cangine appears only behind `@omnidraw/canvas`, which maps the Omnidraw document contract to renderer objects. `CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"`; it identifies only the redesigned clean-install format and makes no compatibility promise for pre-refactor rows. Existing rows are not decoded, rewritten, or migrated.
 
 ### 6.2 `@omnidraw/theme`
 
@@ -179,7 +180,11 @@ Its host supplies:
 
 Canvas must not import an OSS backend client, database, authentication logic, managed adapter, or application store. Its injected ports use Effect-free types such as promises, async iterables, callbacks, and disposers.
 
-`@omnidraw/cangine` is an exact direct dependency of Canvas. The initial redesign baseline is `0.6.1`. A Cangine update requires contract-adapter tests against persisted payload golden fixtures; a Cangine major does not change the public Canvas document format automatically.
+Canvas owns non-trivial asynchronous state, cancellation, streaming, retries,
+and lifecycle, so its implementation uses exact `effect@4.0.0-rc.108`. Effect
+types and runtime objects do not cross its public API.
+
+`@omnidraw/cangine` is an exact direct dependency of Canvas, initially `0.6.1`. A Cangine update requires contract-adapter tests against the current `CANVAS_SCENE_SCHEMA_VERSION` fixtures; a Cangine major does not change that schema automatically.
 
 The adapter is exhaustive over every authored node discriminant in `canvas-contract`. Cangine runtime-only nodes remain private and are never serialized. Adding a new authored node kind is a Canvas Contract change with its own SemVer impact; adding a renderer-only primitive is not.
 
@@ -212,9 +217,13 @@ The SDK must not implement:
 
 OSS and managed each implement private execution adapters behind the same host bridge. Managed usage collection wraps its adapter and remains invisible to widget code.
 
-`@omnidraw/capsule` is an exact direct implementation dependency of the SDK. The initial redesign baseline is `0.14.0`. New widget scaffolds depend on and import `@omnidraw/sdk` only. A Capsule major requires SDK ABI conformance and artifact-compatibility review before the SDK dependency is updated.
+`@omnidraw/capsule` is an exact direct implementation dependency of the SDK, initially `0.14.0`. New widget scaffolds depend on and import `@omnidraw/sdk` only. A Capsule major requires SDK ABI conformance and artifact-compatibility review before the SDK dependency is updated.
 
 The SDK does not depend on Zod or expose Zod-owned types. Its manifest, artifact, and guest-boundary validators are Omnidraw-owned deterministic functions. `defineServerFunction` accepts the structural runtime-schema capability it needs, such as `parse(unknown)`, so widget authors may independently choose Zod, Valibot, TypeBox, or a custom validator without making that library part of the Omnidraw ABI. Generated widget scaffolds do not install a schema library unless the selected example explicitly uses one.
+
+SDK implementation paths that own asynchronous builds, guest channels,
+cancellation, or scoped host resources use exact `effect@4.0.0-rc.108`.
+Effect is not exposed through the SDK ABI.
 
 ### 6.5 `@omnidraw/component-ai-chat`
 
@@ -239,6 +248,10 @@ It excludes:
 
 The AI Chat DTOs are defined by `@omnidraw/component-ai-chat`; they are not generated from Effect transport, oRPC, database models, or frontend application types. Frontend shell adapters translate between private transport messages and these DTOs.
 
+AI Chat owns non-trivial streaming, cancellation, and lifecycle behavior, so
+its implementation uses exact `effect@4.0.0-rc.108`. Its injected component
+contract remains Effect-free.
+
 ### 6.6 Package dependency rules
 
 The public dependency graph must be acyclic:
@@ -257,15 +270,16 @@ Dependency and singleton policy:
 
 | Consumer package | Dependency | Policy |
 |---|---|---|
-| `canvas` | `solid-js` | Peer `^1.9.14`; development dependency at the same baseline |
-| `component-ai-chat` | `solid-js` | Peer `^1.9.14`; development dependency at the same baseline |
+| `canvas` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
+| `component-ai-chat` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
 | `canvas` | `@omnidraw/cangine` | Exact direct dependency, initially `0.6.1` |
 | `sdk` | `@omnidraw/capsule` | Exact direct dependency, initially `0.14.0`; no Capsule types escape |
+| Side-effectful `canvas`, `sdk`, and `component-ai-chat` implementations | `effect` | Exact direct dependency `4.0.0-rc.108`; no Effect types escape |
 | Public Omnidraw package to public Omnidraw package | Named package | Exact version in staged manifests |
 
 External-consumer qualification must prove that Canvas and AI Chat resolve the host's single Solid runtime. Cangine and Capsule are not blanket peer dependencies: each remains encapsulated by its owning package unless a future public API proposal demonstrates a required shared-instance boundary.
 
-The five packages use independent SemVer. Only a package whose own public/runtime `src` changed is bumped. A tracked root `public-package-set.json` records one qualified exact set of the five Omnidraw package versions plus the Cangine, Capsule, and Solid versions used for qualification. Managed pins the five packages and Solid exactly according to a qualified set.
+The five packages use independent SemVer. Only a package whose own public/runtime `src` changed is bumped. A tracked root `public-package-set.json` records one qualified exact set of the five Omnidraw package versions plus Effect `4.0.0-rc.108` and the Cangine, Capsule, and Solid versions used for qualification. Managed pins the five packages and Solid exactly according to a qualified set.
 
 The publication order is `theme`, `canvas-contract`, and `sdk` first; `canvas` after its Theme and Contract versions exist; and `component-ai-chat` after its Canvas version exists. `public-package-set.json` is committed in OSS and attached to the corresponding release so managed can reproduce the qualified set without a workspace link.
 
@@ -341,9 +355,9 @@ OSS deliberately executes locally built widget server and function code on the o
 ### Existing widget projects
 
 - New scaffolds import only `@omnidraw/sdk`; direct `@omnidraw/capsule` and retired Omnidraw package imports are removed from emitted projects.
-- Widget validation detects imports of retired `@omnidraw/widget-contract`, `@omnidraw/resource-runtime`, `@omnidraw/function-runtime`, and `@omnidraw/runtime` entrypoints and fails with a precise migration message.
-- `omnidraw-widget migrate` provides an explicit migration: it reports planned dependency and import changes by default and writes them only with `--write`. Builds never silently rewrite user projects.
-- Published retired package names are marked deprecated on npm with a link to the retirement and migration guide; widget, function, and resource contract users are directed to SDK entrypoints. They are not republished as compatibility shims.
+- Widget validation rejects imports of retired `@omnidraw/widget-contract`, `@omnidraw/resource-runtime`, `@omnidraw/function-runtime`, and `@omnidraw/runtime` entrypoints as unsupported.
+- There is no widget migration command, compatibility build, or automatic project rewrite.
+- Published retired package names are marked deprecated on npm and point to the current SDK documentation. They are not republished as compatibility shims.
 
 ## 9. Backend Architecture
 
@@ -384,7 +398,7 @@ The shell owns:
 - Environment and configuration loading.
 - The application's single composed `ManagedRuntime`.
 
-Runtime globals and provider SDKs are allowed only at this edge or behind injected test portals where required by repository file rules.
+Runtime globals and provider SDKs are allowed only at this edge or behind explicit test adapters.
 
 ### 9.4 Simulation and deterministic simulation testing
 
@@ -420,9 +434,11 @@ Preview inspection becomes a private secondary frontend entry or feature hosted 
 
 ## 11. Effect v4 and Transport
 
-Effect v4 is used inside the applications, not in public package APIs.
+Exact `effect@4.0.0-rc.108` is used inside the applications and inside public
+packages that own non-trivial side effects. Effect does not appear in public
+package APIs.
 
-The OSS transport replaces oRPC with exact-pinned Effect v4 modules and two explicit transport classes:
+The OSS transport replaces oRPC with modules from exact `effect@4.0.0-rc.108` and two explicit transport classes:
 
 - HTTP API for request/response endpoints, files, and binary media.
 - WebSocket-backed RPC for bidirectional typed procedures and streams such as Canvas events, commands, agent output, cancellation, approvals, notifications, and widget-state traffic.
@@ -497,14 +513,14 @@ Root tooling survives only when it operates across the repository:
 - Move frontend browser harnesses under `apps/frontend` or root integration tests.
 - Move packed consumers to `tests/fixtures/external-composition` and `tests/fixtures/canvas-consumer`; they remain isolated projects and are not root workspaces.
 - Remove the `scripts/eslint-tooling` workspace-package identity. If an AST parser remains necessary for architecture checks, it is repository tooling rather than a workspace product.
-- Replace the root test command's legacy package filter list with gates for the two apps, five packages, Effect program and architecture boundaries, schema invariance, packed consumers, backend live/sim conformance, and browser integration.
+- Replace the root test command's legacy package filter list with gates for the two apps, five packages, Effect program and architecture boundaries, fresh-database schema correctness, packed consumers, backend live/sim conformance, and browser integration.
 - Do not maintain a generated repository file index. Contributors use `rg`, `rg --files`, package manifests, and architecture documentation for discovery.
 
 The pre-refactor script audit has this disposition:
 
 - Delete `FILES.md`, `scripts/generate-files-md.ts`, and the `generate:files` root command immediately.
 - Delete the retired portal-era `fn`/`fx`/`tx` ESLint plugin, config, Pi extension, Codex hooks, and root lint commands immediately. New Effect v4 boundary enforcement follows `llm.app-architecture.md`; it must not preserve the old fixed-two-parameter or filename-import-allowlist rules.
-- Retain cross-repository development orchestration, package staging and verification, local npm registry/linking, database invariance, load, architecture, packed-consumer, final-acceptance, and CI scripts while they still protect the migration.
+- Retain cross-repository development orchestration, package staging and verification, local npm registry/linking, fresh-database correctness, load, architecture, packed-consumer, final-acceptance, and CI scripts while they protect the refactor.
 - Retain helper-app and legacy-package tests until their product assertions pass from the replacement app, conformance, or integration location. Delete each old driver in the same change that activates its replacement gate.
 - Delete the compiled Preview inspection chain only under the coverage-preserving rule in Section 13.
 
@@ -558,105 +574,105 @@ Preserve:
 - Static SPA serving in deployed server environments.
 - Preview inspection in source and normal deployed environments.
 
-## 14. Database Invariance
+## 14. Database Replacement
 
-No database schema change is justified by this redesign.
-
-The current migration defines 14 tables and must remain unchanged:
-
-- `canvas_items`
-- `canvases`
-- `chats`
-- `db_resource_apply_runs`
-- `db_resource_backups`
-- `db_resource_draft_changes`
-- `db_resource_drafts`
-- `key_values`
-- `media_files`
-- `resource_catalog`
-- `resource_encryption_keys`
-- `resource_placements`
-- `schema_migrations`
-- `widget_instance_states`
+This redesign does not preserve or migrate the pre-refactor database. A clean
+database replacement is an accepted and required deployment step.
 
 Requirements:
 
-- Preserve the initial migration's bytes, identity, statement ordering, indexes, constraints, and recovery behavior.
-- Preserve one JSONB `canvas_items` row per authored Canvas node. Format `1.0.0` remains structurally compatible with the existing persisted Cangine-shaped payloads so no row rewrite is needed.
-- Do not add a migration for package moves, renames, Effect adoption, or transport replacement.
-- Do not introduce dual writes, compatibility tables, shadow schemas, or managed schema alignment.
-- Existing databases must open without a new migration and without data rewriting.
-- Add an automated schema fingerprint and migration-identity gate.
-- Managed may retain a different storage model and translate through `canvas-contract`.
+- The redesigned backend owns one new initial schema and may change tables,
+  columns, indexes, constraints, migration identity, and row layout to match its
+  final authorities.
+- Canvas persistence remains one JSONB `canvas_items` row per authored Canvas
+  node, but only rows written by the redesigned system are supported.
+- `CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"`. It is the schema identifier
+  for the redesigned Canvas payload, not a claim that older `1.0.0` or
+  unversioned rows can be read.
+- Startup targets a new or explicitly replaced database. It does not inspect,
+  upgrade, rewrite, import, or recover a pre-refactor database.
+- Do not introduce legacy schema fingerprints, compatibility tables, dual
+  reads, dual writes, shadow schemas, old-row decoders, data converters, or
+  schema migration commands for this refactor.
+- Backups created by the pre-refactor system are unsupported. Backup, restore,
+  and recovery tests apply only to databases created by the redesigned system.
+- Other products may retain different storage models and translate only the
+  current `canvas-contract`; no shared SQL schema is implied.
 
-Database schema invariance and Canvas payload compatibility are separate gates:
+The new initial schema, current Canvas fixtures, and fresh-database recovery
+behavior are tested as current-system correctness. They are not frozen against
+the deleted implementation and are not compatibility gates.
 
-- The repository verification baseline records `CANVAS_DOCUMENT_FORMAT_VERSION` beside the migration and schema fingerprints; it does not add a database column.
-- Existing authored-node JSON fixtures are golden inputs to `canvas-contract` validation and Canvas's Cangine adapter.
-- Existing rows without an embedded payload version are read as format `1.0.0`.
-- Snapshot and transport envelopes expose the current document format version so new consumers reject unsupported future formats explicitly.
-- A Cangine version change must pass the existing-payload adapter suite and include a recorded format review. It cannot change the document format implicitly.
-- Changing `CANVAS_DOCUMENT_FORMAT_VERSION` or requiring a persisted-row rewrite needs a separate compatibility proposal. It does not imply that the SQL schema may change.
-
-Any future proposal to change this schema requires a separate PRD with evidence that the public contract or required product behavior cannot be supported through adapters.
-
-## 15. Migration and Release Strategy
+## 15. Clean-Cut Refactor and Release Strategy
 
 ```mermaid
 flowchart LR
-  B["Freeze behavior and schema baselines"] --> P["Build five public packages"]
+  B["Define final contracts and new database"] --> P["Build five public packages"]
   P --> Q["Pack and external-consumer qualification"]
-  Q --> N["Publish dependency-first npm versions"]
-  N --> M["Update managed exact pins and adapters"]
-  M --> O["Collapse OSS internals into two apps"]
-  O --> D["Delete legacy packages, apps and shims"]
+  Q --> N["Publish one exact package set"]
+  N --> M["Update consumers to the exact set"]
+  M --> O["Replace OSS internals with two apps"]
+  O --> D["Delete all legacy code and data paths"]
 ```
 
-This order is intentional. Managed Cell already consumes exact-pinned Canvas packages while both repositories are evolving. The five final public boundaries are extracted and adopted before OSS deletes the legacy boundaries. Temporary adapters are private migration code, not interim public APIs, and their removal is a final acceptance gate.
+This is a clean-cut refactor, not a compatibility migration. There is no
+behavior or schema freeze, no supported mixed old/new package state, and no
+production period in which old and new authorities coexist. Development may be
+sequenced for review, but the accepted result replaces the old database,
+packages, applications, transports, and runtime composition as one system.
 
-### Phase 1: Baseline freeze
+### Phase 1: Final target definition
 
-- Record the current database fingerprint and migration identity.
-- Inventory current user-visible behavior, CLI commands, streams, package exports, and managed import points.
-- Capture key screen states and the shared widget compatibility fixture.
-- Establish `public-package-set.json` with the public package dependency graph and exact external qualification versions.
-- Record Canvas document-format golden fixtures in addition to the SQL schema baseline.
+- Define the new initial database schema and replacement procedure.
+- Define the complete `CANVAS_SCENE_SCHEMA_VERSION = "1.0.0"` contract without
+  importing or accepting legacy persisted rows.
+- Establish `public-package-set.json` with the final package graph, exact
+  `effect@4.0.0-rc.108`, and exact external qualification versions.
+- Define the final CLI, HTTP, RPC, stream, widget, and public-package entrypoints.
+- Add architecture enforcement for applications and qualifying public packages.
 
-### Phase 2: Public contract extraction
+### Phase 2: Public package implementation
 
-- Create the five final packages alongside temporary internal adapters.
-- Move only portable types, schemas, components, and helpers into them.
+- Build the five final packages directly; do not publish compatibility packages
+  or retain retired entrypoints.
+- Move only portable contracts, components, and helpers into them.
+- Use exact `effect@4.0.0-rc.108` internally in packages that own non-trivial
+  side effects while keeping declarations Effect-free.
 - Establish import-boundary, pack/install, and fake external-consumer tests.
 - Publish Canvas and SDK conformance vectors through their test-only package subpaths.
-- Do not delete old packages while managed still depends on the old package set.
 
-### Phase 3: Public release and managed adoption
+### Phase 3: Exact-set release and consumer cutover
 
 - Query npm immediately before release and select the next unused SemVer for each affected package.
 - Publish from staged `dist` directories in dependency order.
-- Update and qualify the exact `public-package-set.json` release set.
-- Pin the complete compatible package set exactly in managed.
-- Update managed Cell, Frontdoor, and execution adapters.
-- Require cross-repository Canvas and widget conformance before advancing.
+- Qualify and commit one exact `public-package-set.json` release set.
+- Update every consumer directly to the complete set; mixed legacy/final
+  Omnidraw package combinations are unsupported.
+- Require Canvas and widget conformance before accepting the cutover.
 
 An incomplete or defective release is corrected with new package versions. Published versions are immutable and are never overwritten or republished.
 
-### Phase 4: OSS application migration
+### Phase 4: OSS application replacement
 
-- Introduce the backend `core`, `shell`, `sim`, and `conformance` structure.
-- Replace oRPC and custom runtime orchestration incrementally behind adapters.
+- Replace the backend with the `core`, `shell`, `sim`, and `conformance` structure.
+- Replace oRPC and custom runtime orchestration with exact
+  `effect@4.0.0-rc.108`; do not maintain a compatibility transport or second
+  runtime.
 - Move authorities, storage, execution, and product UI to their owning applications.
-- Rename `apps/cli` to `apps/backend` while preserving source-run commands.
-- Move helper-app evidence before deleting each helper app.
+- Replace `apps/cli` with `apps/backend` while retaining the final source-run commands.
+- Move only tests that assert final supported behavior; legacy compatibility
+  assertions are deleted.
+- Initialize and test a fresh database rather than opening the old database.
 - Remove compiled-binary production.
 
-### Phase 5: Surface collapse
+### Phase 5: Legacy deletion and qualification
 
-- Delete legacy packages, applications, custom runtime, Tapable orchestration, oRPC, and temporary compatibility adapters.
-- Delete the root ambient declaration file after its surviving types and build identity have explicit owners.
+- Delete legacy packages, applications, custom runtime, Tapable orchestration,
+  oRPC, old schema code, old persistence fixtures, and compatibility helpers.
+- Delete the root ambient declaration file; surviving current-system types and
+  build identity have explicit owners.
 - Remove old package names from release tooling and mark them retired.
-- Deprecate previously published retired names with SDK migration guidance.
-- Do not publish alias packages or leave final compatibility shims.
+- Do not publish alias packages, migration utilities, or final compatibility shims.
 - Update architecture, package, contributor, and operations documentation to the final topology.
 
 ## 16. Acceptance Criteria
@@ -674,7 +690,11 @@ An incomplete or defective release is corrected with new package versions. Publi
 
 ### Public boundaries
 
-- Boundary checks reject imports from public packages into application, database, authentication, managed-only, Effect, or private transport code.
+- Boundary checks reject imports from public packages into application,
+  database, authentication, product-private, or private transport code.
+- Public package declarations expose no Effect-owned types. Canvas, SDK, and AI
+  Chat use exact `effect@4.0.0-rc.108` internally for their non-trivial
+  side-effect orchestration.
 - `canvas-contract` contains no Cangine, Theme, reducer, persistence, authority, or runtime implementation dependency, including type-only imports.
 - Canvas-specific semantic style tokens and the complete persisted node schema are owned by `canvas-contract`.
 - Managed external-consumer fixtures resolve only published entrypoints and do not use workspace source links.
@@ -689,6 +709,9 @@ An incomplete or defective release is corrected with new package versions. Publi
 - No retired or private package is selected by release tooling.
 - Canvas and AI Chat resolve exactly one host-provided Solid runtime in packed browser consumers.
 - Packed Canvas contains exact Cangine and packed SDK contains exact Capsule, without exposing either package's types through the Omnidraw contract APIs.
+- Every qualifying side-effectful public package contains exact
+  `effect@4.0.0-rc.108`; pure packages do not acquire Effect merely for
+  uniformity.
 - `public-package-set.json` names independently versioned package releases and the exact external versions qualified together.
 - Public package declarations and manifests contain no Zod dependency or Zod-owned public type.
 
@@ -700,14 +723,17 @@ An incomplete or defective release is corrected with new package versions. Publi
 - Managed usage evidence is produced without changing the widget ABI.
 - New generated widgets import only SDK entrypoints and have no direct Capsule or retired Omnidraw dependencies.
 - Default generated widgets have no mandatory schema-library dependency; author-selected examples may add one privately.
-- Legacy widget imports fail with actionable migration output, and the explicit migration command passes preview and `--write` tests.
+- Legacy widget imports fail as unsupported. No migration command or automatic
+  project rewrite is provided.
 - Canvas and SDK conformance subpaths install and run in OSS and managed test environments without a sixth published package.
 - Omnidraw conformance fixtures contain no React, React DOM, Three, or corresponding type-package dependency; Capsule owns framework compatibility evidence.
 
 ### Canvas and transport
 
 - Contract golden tests cover valid values, malformed values, version handling, and canonical serialization.
-- Persisted format `1.0.0` golden rows validate and map to Cangine without loss; unsupported future format versions fail explicitly.
+- Current `CANVAS_SCENE_SCHEMA_VERSION = "1.0.0"` fixtures validate and map to
+  Cangine without loss. Pre-refactor and unversioned rows are not fixtures and
+  are unsupported.
 - The Canvas adapter handles every authored contract node kind exhaustively and rejects serialization of Cangine runtime-only nodes.
 - Canvas tests cover commands, queries, snapshots, event ordering, optimistic updates, resynchronization, cancellation, and lifecycle retirement.
 - Transport tests cover native-WebSocket connection, Effect-owned physical retry, connection generations, explicit resubscription, snapshot/cursor recovery, duplicate delivery, stale-generation rejection, lost acknowledgements, idempotent mutation retry, non-idempotent failure, cancellation recovery, backpressure, binary media, validation errors, and terminal stream errors.
@@ -725,15 +751,20 @@ An incomplete or defective release is corrected with new package versions. Publi
 
 ### Database
 
-- The migration fingerprint and schema fingerprint remain identical to the baseline.
-- The baseline records the Canvas document format version, and its persisted-payload fixtures remain readable independently of the SQL fingerprint.
-- Existing databases open without a new migration or rewrite.
-- Backup, restore, and recovery tests retain current behavior.
-- No dual-write or compatibility schema is introduced.
+- A fresh database initializes the redesigned schema and passes current
+  constraint, authority, backup, restore, and recovery tests.
+- Deployment explicitly replaces any pre-refactor database.
+- The backend does not open, inspect, migrate, import, or rewrite a
+  pre-refactor database or backup.
+- No legacy fingerprint, compatibility schema, dual read/write, converter, or
+  migration command exists.
+- Canvas rows written by the redesigned system use
+  `CANVAS_SCENE_SCHEMA_VERSION = "1.0.0"`; the same literal does not make old
+  rows compatible.
 
 ### Product behavior
 
-- Current server, Canvas command CLI, AI, resources, widgets, Preview inspection, and browser workflows remain functional.
+- Current server, Canvas command CLI, AI, resources, widgets, Preview inspection, and browser workflows remain functional on a fresh database.
 - Key screen states remain visually equivalent except where binary-only presentation is removed.
 - Former helper-app acceptance scenarios pass from their new test locations.
 - No compiled-binary production, updater, embedded-binary asset, or binary-only smoke path remains.
@@ -749,10 +780,11 @@ The redesign is complete when:
 3. Managed backend code uses `canvas-contract` without Canvas implementation dependencies.
 4. Managed Cell renders the public Canvas through private injected adapters.
 5. One widget artifact works in OSS and managed without environment-specific source changes.
-6. OSS retains current product behavior except compiled-binary distribution.
-7. The database migration and schema fingerprints are unchanged.
+6. OSS retains current product behavior on a fresh database except compiled-binary distribution.
+7. Deployment replaces the pre-refactor database and the repository contains no legacy data migration path.
 8. Backend domain programs pass the same live and simulated conformance scenarios.
-9. Public packages contain no Effect or private application dependencies.
+9. Public package declarations contain no Effect or private application types;
+   qualifying package implementations use exact `effect@4.0.0-rc.108`.
 10. Old package names, helper apps, oRPC, the custom runtime, and permanent migration shims are absent.
 11. `canvas-contract` owns the persisted document format and neither imports nor installs Cangine or Theme.
 12. One qualified exact package-set manifest drives OSS release verification and managed pins while the five packages retain independent SemVer.
@@ -763,7 +795,7 @@ The redesign is complete when:
 |---|---|
 | Public packages accidentally retain private dependency closures | Automated import-boundary and staged-package install tests |
 | Contract extraction moves authority logic into `canvas-contract` | Explicit contract/implementation rule plus source inspection gate |
-| Cangine silently changes persisted Canvas payload meaning | Omnidraw-owned document format version, golden persisted rows, and adapter review on every Cangine change |
+| Cangine silently changes current Canvas payload meaning | Omnidraw-owned scene schema, current-system fixtures, and adapter review on every Cangine change |
 | Solid is installed twice across Canvas or AI Chat | Solid peer policy plus duplicate-instance packed-browser tests |
 | Capsule or Cangine types leak through Omnidraw APIs | Declaration inspection and external type-consumer tests |
 | Two socket libraries compete to reconnect | Effect RPC is the sole reconnect owner; PartySocket is forbidden by dependency and import boundaries |
@@ -775,23 +807,26 @@ The redesign is complete when:
 | Helper app removal loses evidence | Move and pass each scenario before deleting its app |
 | Widget behavior diverges between host and Microsandbox | One canonical artifact fixture and shared conformance suite |
 | Operators assume OSS host execution is sandboxed | Explicit trusted-local-execution documentation and product messaging |
-| Package moves alter persistence unintentionally | Byte-identical migration and schema fingerprint gates |
-| Large-bang migration blocks coevolution | Contract-first phased release with temporary internal adapters |
-| Temporary adapters become permanent | Final acceptance requires their deletion and forbids alias packages |
+| Old data is mistaken for supported input | Explicit destructive replacement, fresh-database startup, and rejection of legacy import paths |
+| Mixed old/new packages create an accidental compatibility surface | One exact package set and atomic consumer cutover |
+| Compatibility code survives the refactor | Acceptance forbids aliases, legacy readers, converters, dual transports, and migration commands |
 
 ## 19. Fixed Decisions
 
 - Final OSS surface: two applications and five public packages.
 - `canvas-contract` remains a separate published package.
-- `canvas-contract` owns the complete serialized Canvas document format, its semantic style tokens, and its format version; it has no Cangine or Theme dependency.
+- `canvas-contract` owns the complete serialized Canvas scene schema, its semantic style tokens, and `CANVAS_SCENE_SCHEMA_VERSION = "1.0.0"`; it has no Cangine or Theme dependency.
 - Contract schemas and codecs are allowed; authority and reducer implementation are not.
 - SDK owns the portable guest ABI and host bridge.
 - SDK and Canvas Contract validation is library-neutral; Zod is not an Omnidraw dependency or public type.
 - Cangine is an exact direct dependency of Canvas only; Capsule is an exact direct dependency encapsulated by SDK.
 - Solid is a peer dependency of Canvas and AI Chat, and packed consumers must prove a single runtime instance.
 - The five public packages use independent SemVer and publish qualified exact sets through `public-package-set.json`.
-- Public packages are Effect-free and transport-neutral.
-- Backend adopts Effect v4 core, shell, sim, and conformance boundaries.
+- Public package APIs are Effect-free and transport-neutral. Canvas, SDK, and
+  AI Chat use exact `effect@4.0.0-rc.108` internally because they own complex
+  side effects; pure packages do not add Effect without that need.
+- Backend and frontend adopt exact `effect@4.0.0-rc.108`; backend uses core,
+  shell, sim, and conformance boundaries.
 - DST is backend-only.
 - oRPC is replaced by private Effect transport.
 - Native WebSocket is the canonical bidirectional stream transport; SSE is excluded.
@@ -799,17 +834,20 @@ The redesign is complete when:
 - PartySocket and the `ws` npm package are absent from all final manifests.
 - AI Chat ships as a component, injected contract, and small Canvas extension only.
 - Theme contract and implementation merge into `@omnidraw/theme` without a runtime dependency.
-- Existing OSS product behavior is preserved except compiled-binary distribution.
+- Existing OSS product behavior is preserved on a fresh database except compiled-binary distribution.
 - Managed is a reimplementation based on public packages, not a hosted OSS deployment.
 - Managed Microsandbox execution and usage metering remain private.
 - OSS host execution is an explicitly accepted trusted-local-execution model, not a sandbox guarantee.
 - Managed and OSS storage schemas remain independent.
-- The OSS database schema does not change.
-- Database schema fingerprints and Canvas payload-format compatibility are separate mandatory gates.
+- The pre-refactor database is replaced. Its schema, fingerprints, rows,
+  backups, and migration history are unsupported inputs.
+- `CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"` without legacy-row
+  compatibility; the same literal is not a migration promise.
 - Conformance fixtures ship through test-only Canvas Contract and SDK subpaths, not a sixth package.
 - Capsule owns React, React DOM, Three, and other framework compatibility evidence; those libraries are not Omnidraw fixture dependencies.
 - Repository tooling may remain under root `scripts/` and `tests/`, but only the two apps and five packages are workspaces.
 - Repository discovery uses source search and architecture docs; no generated `FILES.md` index is maintained.
 - Repository-wide ambient declarations are forbidden; types and runtime configuration have explicit owners.
 - Effect v4 architecture checks replace the retired portal-era `fn`/`fx`/`tx` lint system rather than inheriting its call signatures or import allowlists.
-- Migration uses a contract-first release train with no permanent compatibility shims.
+- Refactoring and consumer cutover use one exact package set with zero
+  migration support and no compatibility shims.

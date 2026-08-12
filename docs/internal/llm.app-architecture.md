@@ -1,17 +1,28 @@
 # Application architecture: Effect v4 programs, semantic services, and deterministic runs
 
-**Status:** target implementation standard under [S2](../../tasks/s/S2.md).
-It becomes the repository authority when the atomic Effect v4 cutover is
-accepted and its ledger decision supersedes decision 0018.
+**Status:** authoritative repository implementation standard.
 
-**Scope:** every application under `apps/`. Publishable packages may use a
-different internal layout, but an application-facing package must preserve the
-same semantic boundaries when it participates in an application runtime.
+**Scope:** every application under `apps/` and every public package whose
+implementation owns non-trivial side effects, asynchronous orchestration,
+concurrency, streaming, retries, or resource lifetime. Pure contract and simple
+synchronous packages do not need an Effect runtime, but they preserve the same
+dependency direction and explicit-boundary discipline.
 
-**Effect authority:** one exact-pinned Effect v4 release candidate throughout
-the repository. Effect v3 and v3/v4 compatibility layers are forbidden after
-the cutover. `effect/unstable/*` is allowed only through the reviewed inventory
+**Effect authority:** exact `effect@4.0.0-rc.108` throughout the repository.
+Effect v3, alternate Effect v4 versions, and v3/v4 compatibility layers are
+forbidden. `effect/unstable/*` is allowed only through the reviewed inventory
 and qualification policy defined below.
+
+**Replacement policy:** this refactor has zero migration or compatibility
+support. Existing databases, persisted Canvas rows, replay records, retired
+package entrypoints, and old runtime compositions are not inputs to the new
+system. Development and deployment replace the database and start from the new
+schema. Do not add dual reads, dual writes, legacy decoders, data converters,
+compatibility aliases, or temporary production runtimes.
+
+`CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"` for the redesigned clean-install
+schema. The unchanged literal is not a compatibility promise: pre-refactor and
+unversioned Canvas rows are unsupported because the database is replaced.
 
 ## Intent
 
@@ -147,6 +158,34 @@ Do not adopt unstable SQL merely to replace a sound statement registry, unstable
 RPC merely to replace a stable public protocol, or unstable workflow/cluster
 features merely because they exist. Adoption must delete real complexity or
 provide a required capability.
+
+## Public packages
+
+A public package is not exempt from the architecture because it is published.
+Placement is decided by behavior:
+
+- A package containing only contracts, schemas, codecs, constants, pure
+  validation, or small synchronous projection helpers remains ordinary
+  TypeScript and must not depend on Effect merely for uniformity.
+- A package that owns non-trivial side effects, asynchronous state machines,
+  concurrent work, streams, retries, cancellation, scoped resources, or
+  lifecycle orchestration must use exact `effect@4.0.0-rc.108` internally.
+- Such a package separates pure decisions and lazy programs from browser,
+  provider, engine, and host adapters using the same core/shell meaning as an
+  application. Its folder layout may be package-specific when a full
+  `core/`/`shell/` tree would add ceremony.
+- Public APIs remain implementation-neutral. Do not expose Effect types,
+  Context services, Layers, Scopes, runtimes, or unstable modules through a
+  public declaration. Adapt public Promise, `AsyncIterable`, callback, and
+  disposer ports at the package shell.
+- A stateful public package owns an explicitly scoped runtime per mounted or
+  created instance and disposes it with that instance. It never creates a
+  module-global runtime or asks the host to coordinate a hidden second
+  lifecycle system.
+
+The requirement is conjunctive: complexity plus side effects requires Effect.
+Pure complexity stays pure, and a tiny synchronous side-effect adapter may stay
+an imperative shell function.
 
 ## Core
 
@@ -519,16 +558,18 @@ A failing record includes at least:
 
 Replay consumes recorded choices rather than drawing new ones. Wall timestamps,
 rendered Cause strings, and runtime fiber IDs are excluded. An Effect-version
-change invalidates old records unless an explicit, lossless record migration is
-separately designed and qualified; dual runtimes are never used for replay.
+change invalidates old records. This repository does not migrate replay records
+or run dual runtimes for replay.
 
 ## Runtime ownership
 
-Effect v4 is the application's single local execution and lifecycle substrate:
+Effect v4 is the single local execution and lifecycle substrate for each
+application and each qualifying public package:
 
 - core defines services and programs and never runs them;
 - shell/sim constructs Layer graphs;
-- one `ManagedRuntime` owns each application instance's scoped resources;
+- one `ManagedRuntime` owns each application or stateful package instance's
+  scoped resources;
 - production/framework, conformance, and simulation edges run programs;
 - no second general runtime owns the same registry or lifecycle;
 - app-specific factories may expose small bounded runner interfaces without
@@ -544,6 +585,10 @@ Persistence demonstrates the semantic/mechanical boundary clearly:
   locks, backup, and recovery mechanics;
 - sim provides a controlled engine/driver Layer while preserving the same
   semantic service contract.
+
+For this refactor, the database is replaced and initialized from the new schema.
+The statement and migration layout below describes the new system and future
+changes to it; it is not a migration path from the pre-refactor database.
 
 ### Required layout
 
@@ -681,6 +726,11 @@ Repository lint must enforce:
 12. `effect/unstable/*` imports match the reviewed capability inventory.
 13. Root facades and the one-operation-per-SQL-file registry retain their
     structural guarantees.
+14. Every package with non-trivial side-effect orchestration uses exact
+    `effect@4.0.0-rc.108`, while pure packages do not acquire an unnecessary
+    runtime dependency.
+15. Public declarations contain no Effect-owned type even when package
+    implementation uses Effect internally.
 
 ## Anti-patterns
 
