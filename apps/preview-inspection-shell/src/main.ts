@@ -453,17 +453,18 @@ function snapshot(): TInspectionSnapshot {
     throw new Error('Preview inspection is not mounted.');
   }
   if (inspection === undefined) return failureSnapshot(job);
-  const diagnostics = inspection.diagnostics();
+  const initialDiagnostics = inspection.diagnostics();
   if (
-    diagnostics.state !== 'bound'
-    || diagnostics.runtimeGeneration === undefined
-    || diagnostics.lifecycleGeneration === undefined
+    initialDiagnostics.state !== 'bound'
+    || initialDiagnostics.runtimeGeneration === undefined
+    || initialDiagnostics.lifecycleGeneration === undefined
   ) return failureSnapshot(job);
   const targets = inspection.visibleSummary({ maxResults: 128 }).map(projectTarget);
   const canvases = inspection.canvases({ maxResults: 16 }).map((canvas) => Object.freeze({
     ...canvas,
     bounds: Object.freeze({ ...canvas.bounds }),
   }));
+  const diagnostics = inspection.diagnostics();
   const fencedRuntimeEvents = runtimeEvents.map((event) => fenceRuntimeEventLocation(
     event,
     {
