@@ -1,0 +1,1 @@
+/Users/omarezzat/Workspace/omni/omnidraw/repos/effect/LLMS.md
