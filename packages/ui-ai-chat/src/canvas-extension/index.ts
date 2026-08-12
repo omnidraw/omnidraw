@@ -48,6 +48,7 @@ import { createWidgetPreviewOwner, type TWidgetPreviewOwner } from './preview-ow
 import { createPreviewActions } from './preview-actions';
 import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 import {
+  fnAiChatMountReadiness,
   fnAiWidgetPayload,
   fnCanvasWidgetExtension,
   fnCanvasWidgetMountSignature,
@@ -390,52 +391,79 @@ export function createAiChatCanvasExtension(
         node: Readonly<TWidgetFrameNode>,
       ): (() => void) => {
         root.replaceChildren();
-        const storedPayload = fnAiWidgetPayload(node) ?? {};
-        const initialSessionId = typeof storedPayload.sessionId === 'string'
-          && storedPayload.sessionId.length > 0
-          ? storedPayload.sessionId
-          : createAiSessionId(args);
-        let currentSessionId = initialSessionId;
-        if (storedPayload.sessionId !== initialSessionId) {
-          persistAiPayload(node.id, { sessionId: initialSessionId });
-        }
-        const handlers = new Map<string, () => void>();
-        actionHandlers.set(node.id, handlers);
-        const titleBar = createTitleBarPortal(handlers, {
-          document: args.widgetBrowser.document,
-          widgetId: node.id,
-          schedule: args.widgetBrowser.setTimeout,
-          cancelSchedule: args.widgetBrowser.clearTimeout,
-        });
-        const dispose = render(() => AiChat({
-          apiService: args.chatApi,
-          application: args.application,
-          browser: args.chatBrowser,
-          id: node.id,
-          titleBar,
-          sessionId: initialSessionId,
-          aiChatPreference: storedPayload,
-          onOpenWidgetPreview: ({ name }) => openDraftPreviewBeside(node.id, name),
-          onAiChatPreferenceChange: (preference) => {
-            persistAiPayload(node.id, {
-              ...preference,
-              sessionId: currentSessionId,
-            });
-          },
-          onResetSessionId: () => {
-            const sessionId = createAiSessionId(args);
-            currentSessionId = sessionId;
-            persistAiPayload(node.id, {
-              ...storedPayload,
-              sessionId,
-            });
-            return sessionId;
-          },
-        }), root);
+        let disposed = false;
+        let readinessTimer: unknown;
+        let disposeChat: (() => void) | undefined;
+        let titleBar: TLocalTitleBarPortal | undefined;
+        const mountDurableChat = (): void => {
+          if (disposed || disposeChat !== undefined) return;
+          const projectedNode = context.engine.scene.get(node.id);
+          const readiness = fnAiChatMountReadiness({
+            durable: context.document.item(node.id) !== null,
+            node: projectedNode,
+          });
+          if (readiness === 'wait') {
+            readinessTimer = args.widgetBrowser.setTimeout(mountDurableChat, 25);
+            return;
+          }
+          if (readiness === 'stop') return;
+          const current = widgetFrame(projectedNode)!;
+          const storedPayload = fnAiWidgetPayload(current) ?? {};
+          const initialSessionId = typeof storedPayload.sessionId === 'string'
+            && storedPayload.sessionId.length > 0
+            ? storedPayload.sessionId
+            : createAiSessionId(args);
+          let currentSessionId = initialSessionId;
+          if (storedPayload.sessionId !== initialSessionId) {
+            persistAiPayload(current.id, { sessionId: initialSessionId });
+          }
+          const handlers = new Map<string, () => void>();
+          actionHandlers.set(current.id, handlers);
+          titleBar = createTitleBarPortal(handlers, {
+            document: args.widgetBrowser.document,
+            widgetId: current.id,
+            schedule: args.widgetBrowser.setTimeout,
+            cancelSchedule: args.widgetBrowser.clearTimeout,
+          });
+          const mountedTitleBar = titleBar;
+          disposeChat = render(() => AiChat({
+            apiService: args.chatApi,
+            application: args.application,
+            browser: args.chatBrowser,
+            canvasId: context.config.canvasId,
+            id: current.id,
+            titleBar: mountedTitleBar,
+            sessionId: initialSessionId,
+            aiChatPreference: storedPayload,
+            onOpenWidgetPreview: ({ name }) => openDraftPreviewBeside(current.id, name),
+            onAiChatPreferenceChange: (preference) => {
+              persistAiPayload(current.id, {
+                ...preference,
+                sessionId: currentSessionId,
+              });
+            },
+            onResetSessionId: () => {
+              const sessionId = createAiSessionId(args);
+              currentSessionId = sessionId;
+              persistAiPayload(current.id, {
+                ...storedPayload,
+                sessionId,
+              });
+              return sessionId;
+            },
+          }), root);
+        };
+        root.textContent = 'Connecting AI Chat…';
+        mountDurableChat();
         return () => {
+          disposed = true;
+          if (readinessTimer !== undefined) {
+            args.widgetBrowser.clearTimeout(readinessTimer);
+            readinessTimer = undefined;
+          }
           actionHandlers.delete(node.id);
-          titleBar.destroy();
-          dispose();
+          titleBar?.destroy();
+          disposeChat?.();
           root.replaceChildren();
         };
       };
@@ -728,6 +756,7 @@ export function createAiChatCanvasExtension(
                 next.value,
               );
               lastWidgetCatalogGeneration = update.observedGeneration;
+              refreshChangedPreviews(update.previewWidgetKeys);
               if (update.remount === 'all') {
                 publishedCatalogEpoch += 1;
                 refreshAllPreviews();
@@ -794,7 +823,6 @@ export function createAiChatCanvasExtension(
             title: label,
             instanceId: args.widgetBrowser.createId(),
             widgetKey: validated.descriptor.widgetKey,
-            resourceBindings: validated.descriptor.resourceBindings,
           }), 'omnidraw:widget-placement');
           context.config.notification?.showSuccess(`${label} added to canvas`);
         };

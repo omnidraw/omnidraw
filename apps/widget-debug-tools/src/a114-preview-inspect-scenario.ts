@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 const SCENARIO_NAME = 'a114-public-agent-preview-inspect';
 const WIDGET_ID = 'widget-debug-tools';
 const CHAT_ID = 'a114-preview-inspect';
+const CANVAS_ID = 'a114-preview-canvas';
 const WIDGET_NAME = 'A114 Inspection Fixture';
 const PROVIDER_ID = 'widget-debug-tools-a114';
 const MODEL_ID = 'public-agent-tool-scenario';
@@ -86,14 +87,15 @@ export type TA114PreviewInspectScenarioResult = Readonly<{
   ];
   validation: Readonly<{
     ok: true;
-    previewExecution: 'passed';
+    acceptedArtifactBuild: 'passed';
+    livePreviewRuntime: 'not_exercised';
   }>;
   inspection: Readonly<{
     status: 'completed';
     overall: 'artifact_exact';
     source: 'exact';
     artifact: 'exact';
-    bindings: 'none';
+    bindings: 'unavailable';
     network: 'denied';
     imageCount: 1;
     screenshot: Readonly<{
@@ -216,7 +218,7 @@ function assertInspectionResult(result: TToolResultMessage | undefined): void {
   assertScenario(fidelity?.overall === 'artifact_exact', 'Inspection did not report artifact_exact fidelity.');
   assertScenario(fidelity?.source === 'exact', 'Inspection did not report exact source capture.');
   assertScenario(fidelity?.artifact === 'exact', 'Inspection did not report an exact artifact.');
-  assertScenario(fidelity?.bindings === 'none', 'Inspection unexpectedly reported resource bindings.');
+  assertScenario(fidelity?.bindings === 'unavailable', 'Inspection did not report artifact resources as unavailable.');
   assertScenario(fidelity?.network === 'denied', 'Inspection unexpectedly reported guest network access.');
   assertScenario(screenshot?.mimeType === 'image/png', 'Inspection screenshot metadata was not PNG.');
   assertScenario(screenshot?.width === 160 && screenshot.height === 120, 'Inspection screenshot dimensions changed.');
@@ -258,7 +260,8 @@ function createScenarioProviderStream(_model: unknown, context: TProviderContext
   if (results.length === 2) {
     const details = assertSuccessfulToolResult(results[1], 'od_widget_validate');
     assertScenario(details.ok === true, 'Public validation did not pass.');
-    assertScenario(details.previewExecution === 'passed', 'Public validation did not run the Preview build check.');
+    assertScenario(details.acceptedArtifactBuild === 'passed', 'Public validation did not run the accepted artifact build check.');
+    assertScenario(details.livePreviewRuntime === 'not_exercised', 'Public validation overstated live Preview runtime evidence.');
     return toolCall('od_widget_preview_inspect', 3, {
       name: WIDGET_NAME,
       viewport: { width: 160, height: 120, deviceScaleFactor: 1 },
@@ -321,9 +324,22 @@ function createInspectionCapability(): TWidgetPreviewInspectionCapability {
           source: 'exact' as const,
           artifact: 'exact' as const,
           runtimePolicy: 'narrowed' as const,
-          bindings: 'none' as const,
+          bindings: 'unavailable' as const,
           network: 'denied' as const,
           overall: 'artifact_exact' as const,
+        },
+        verification: {
+          surface: 'artifact' as const,
+          generation: 'current' as const,
+          artifact: 'exact' as const,
+          manifest: 'exact' as const,
+          resources: 'not_available' as const,
+          canvasParity: 'not_claimed' as const,
+          visibleFrame: 'not_claimed' as const,
+          executionTarget: 'diagnostic_clone' as const,
+          previewState: 'not_applicable' as const,
+          nextAction: 'use_preview_mode_for_resources' as const,
+          functional: 'not_exercised' as const,
         },
         screenshot: {
           mimeType: 'image/png' as const,
@@ -367,7 +383,7 @@ function projectScenarioResult(history: readonly Readonly<{ message: unknown }>[
   assertInspectionResult(toolResults[2]);
   assertScenario(create.name === WIDGET_NAME && create.draft === true, 'API history lost mounted-draft evidence.');
   assertScenario(validation.ok === true, 'API history lost validation success.');
-  assertScenario(validation.previewExecution === 'passed', 'API history lost Preview build evidence.');
+  assertScenario(validation.acceptedArtifactBuild === 'passed', 'API history lost accepted artifact build evidence.');
   const inspection = toolResults[2]!.details as Record<string, unknown>;
   const fidelity = inspection.fidelity as Record<string, unknown>;
   const screenshot = inspection.screenshot as Record<string, unknown>;
@@ -380,13 +396,17 @@ function projectScenarioResult(history: readonly Readonly<{ message: unknown }>[
       'od_widget_validate',
       'od_widget_preview_inspect',
     ] as const),
-    validation: Object.freeze({ ok: true, previewExecution: 'passed' }),
+    validation: Object.freeze({
+      ok: true,
+      acceptedArtifactBuild: 'passed',
+      livePreviewRuntime: 'not_exercised',
+    }),
     inspection: Object.freeze({
       status: 'completed',
       overall: fidelity.overall as 'artifact_exact',
       source: fidelity.source as 'exact',
       artifact: fidelity.artifact as 'exact',
-      bindings: fidelity.bindings as 'none',
+      bindings: fidelity.bindings as 'unavailable',
       network: fidelity.network as 'denied',
       imageCount: 1,
       screenshot: Object.freeze({
@@ -410,6 +430,18 @@ export async function runA114PreviewInspectScenario(
       publishAgentEvent: () => 0,
     } as never,
     chats: createChats(),
+    chatScope: {
+      validate: async ({ canvasId, widgetId }) => (
+        canvasId === CANVAS_ID && widgetId === WIDGET_ID
+      ),
+    },
+    widgetReferenceResolver: {
+      resolve: async () => Object.freeze({
+        digestSha256: 'a'.repeat(64),
+        selections: Object.freeze([]),
+      }),
+      assertCurrent: async () => undefined,
+    } as never,
     previewBuild: async () => ({ ok: true, errors: [] }),
     previewInspection: createInspectionCapability(),
   });
@@ -439,10 +471,16 @@ export async function runA114PreviewInspectScenario(
     const connect = apiChatConnect.callable({ context });
     const prompt = apiChatPrompt.callable({ context });
     const history = apiChatHistory.callable({ context });
-    await connect({ widgetId: WIDGET_ID, sessionId: CHAT_ID, mode: 'replace' });
+    await connect({
+      widgetId: WIDGET_ID,
+      sessionId: CHAT_ID,
+      canvasId: CANVAS_ID,
+      mode: 'replace',
+    });
     await prompt({
       widgetId: WIDGET_ID,
       sessionId: CHAT_ID,
+      canvasId: CANVAS_ID,
       text: 'Run the fixed A114 public tool scenario.',
     });
     return projectScenarioResult(await history({ widgetId: WIDGET_ID, sessionId: CHAT_ID }));

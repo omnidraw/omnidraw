@@ -85,7 +85,6 @@ describe('Preview action policy', () => {
       title: 'Camera',
       instanceId: 'instance-1',
       widgetKey: 'camera',
-      resourceBindings: [],
     });
     expect(fnPreviewActionTarget({
       ...published,

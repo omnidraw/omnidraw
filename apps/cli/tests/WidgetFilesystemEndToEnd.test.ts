@@ -233,7 +233,6 @@ describe('clean-home filesystem widget integration', () => {
       kind: 'published',
       widgetKey: 'counter',
       catalogGeneration: 1,
-      resourceBindings: {},
     });
 
     const runtimeElement = fnCreatePublishedWidgetNode({
@@ -245,7 +244,6 @@ describe('clean-home filesystem widget integration', () => {
       title: 'Counter',
       instanceId: INSTANCE_ID,
       widgetKey: placement.widgetKey,
-      resourceBindings: placement.resourceBindings,
     });
     const { portal: _runtimePortal, ...element } = runtimeElement;
     await canvas.execute({

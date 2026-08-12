@@ -5,10 +5,16 @@
 import { z } from 'zod';
 import {
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
+  WIDGET_BUILD_FILE_MAX_BYTES,
+  WIDGET_BUILD_RECEIPT_FORMAT,
+  WIDGET_BUILD_RECEIPT_MAX_BYTES,
+  WIDGET_BUILD_RECEIPT_OUTPUT_COUNT_MAX,
+  WIDGET_BUILD_RECEIPT_PATH,
   WIDGET_MANIFEST_V1_SCHEMA_URL,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_RELEASE_FILE_COUNT_MAX,
   WIDGET_RELEASE_FILE_MAX_BYTES,
+  WIDGET_BUILD_TOTAL_BYTES_MAX,
   WIDGET_RELEASE_FORMAT,
   WIDGET_SLUG_MAX_BYTES,
   WIDGET_TOOL_GROUP_MAX_BYTES,
@@ -26,12 +32,14 @@ import {
 import {
   ZWidgetCapsuleApis,
   ZWidgetCapsuleBudgetRequest,
+  ZWidgetExecutableResourceRequirement,
   ZWidgetResourceRequirement,
 } from '../manifest-schema';
 import { ZWidgetCapsuleRuntimeDescriptor } from '../runtime-descriptor-schema';
 import { ZOmnidrawToolIcon } from '../tool-icon';
 import type {
   TWidgetExecutableManifestProjection,
+  TWidgetBuildReceipt,
   TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetUnsignedReleaseDescriptor,
@@ -45,6 +53,8 @@ const BUILD_ENTRY_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
 
 const ZSha256 = z.string().regex(SHA256_PATTERN);
 const ZCapsuleHash = z.string().regex(CAPSULE_HASH_PATTERN);
+const ZSdkVersion = z.string().min(5).max(100)
+  .regex(/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]{1,80})?$/);
 
 const ZWidgetSlug = z.string().min(1).max(WIDGET_SLUG_MAX_BYTES).regex(SLUG_PATTERN)
   .refine((value) => fnUtf8ByteLength(value) <= WIDGET_SLUG_MAX_BYTES);
@@ -137,7 +147,7 @@ export const ZWidgetExecutableManifest: z.ZodType<TWidgetExecutableManifestProje
   schemaVersion: z.literal(1),
   ui: ZWidgetExecutableUi,
   server: ZWidgetExecutableServer.nullable(),
-  resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
+  resources: z.array(ZWidgetExecutableResourceRequirement).max(64).superRefine((resources, context) => {
     const slots = new Set<string>();
     resources.forEach((requirement, index) => {
       if (slots.has(requirement.slot)) {
@@ -152,6 +162,44 @@ export const ZWidgetExecutableManifest: z.ZodType<TWidgetExecutableManifestProje
   }),
 }).strict()
   .transform((projection) => fnNormalizeWidgetExecutableProjection(projection));
+
+const ZWidgetBuildReceiptOutput = z.object({
+  path: z.string().superRefine((value, context) => {
+    const normalized = fnNormalizeWidgetFilesystemRelativePath(value);
+    if (
+      normalized === null
+      || normalized !== value
+      || !normalized.startsWith('dist/')
+      || normalized === WIDGET_BUILD_RECEIPT_PATH
+    ) context.addIssue({ code: 'custom', message: 'Expected a safe generated dist output path' });
+  }),
+  byteSize: z.number().int().min(0).max(WIDGET_BUILD_FILE_MAX_BYTES),
+  sha256: ZSha256,
+}).strict();
+
+export const ZWidgetBuildReceipt: z.ZodType<TWidgetBuildReceipt> = z.object({
+  format: z.literal(WIDGET_BUILD_RECEIPT_FORMAT),
+  schemaVersion: z.literal(1),
+  sourceDigestSha256: ZSha256,
+  manifestDigestSha256: ZSha256,
+  executableInputDigestSha256: ZSha256,
+  sdkVersion: ZSdkVersion,
+  buildIdentity: ZSha256,
+  outputs: z.array(ZWidgetBuildReceiptOutput).min(1).max(WIDGET_BUILD_RECEIPT_OUTPUT_COUNT_MAX)
+    .superRefine((outputs, context) => {
+      const paths = new Set<string>();
+      let totalBytes = 0;
+      outputs.forEach((output, index) => {
+        const key = output.path.toLowerCase();
+        if (paths.has(key)) context.addIssue({ code: 'custom', message: 'Duplicate build output path', path: [index, 'path'] });
+        paths.add(key);
+        totalBytes += output.byteSize;
+        if (totalBytes > WIDGET_BUILD_TOTAL_BYTES_MAX) {
+          context.addIssue({ code: 'custom', message: 'Build receipt output bytes exceed the limit' });
+        }
+      });
+    }),
+}).strict();
 
 const ZWidgetReleaseRuntimePath = z.string().superRefine((value, context) => {
   const normalized = fnNormalizeWidgetFilesystemRelativePath(value);
@@ -215,4 +263,11 @@ export function parseWidgetReleaseJson(value: string): TWidgetReleaseDescriptor 
     throw new TypeError('release.json exceeds the 2 MiB descriptor limit.');
   }
   return ZWidgetReleaseDescriptor.parse(JSON.parse(value));
+}
+
+export function parseWidgetBuildReceiptJson(value: string): TWidgetBuildReceipt {
+  if (fnUtf8ByteLength(value) > WIDGET_BUILD_RECEIPT_MAX_BYTES) {
+    throw new TypeError('omnidraw.build.json exceeds the 2 MiB receipt limit.');
+  }
+  return ZWidgetBuildReceipt.parse(JSON.parse(value));
 }

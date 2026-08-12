@@ -88,6 +88,21 @@ describe('preview inspection browser job validation', () => {
     })).ok).toBe(false);
     expect(fnValidatePreviewInspectionBrowserJob(job({
       actions: [{
+        type: 'assertText',
+        target: { by: 'label', text: 'Rows' },
+        text: 'Loaded rows',
+        exact: true,
+      }],
+    })).ok).toBe(true);
+    expect(fnValidatePreviewInspectionBrowserJob(job({
+      actions: [{
+        type: 'assertText',
+        target: { by: 'label', text: 'Rows' },
+        text: '',
+      }],
+    })).ok).toBe(false);
+    expect(fnValidatePreviewInspectionBrowserJob(job({
+      actions: [{
         type: 'input',
         target: { by: 'role', role: 'textbox' },
         value: 'x'.repeat(PREVIEW_INSPECTION_LIMITS.maximumInputValueBytes + 1),

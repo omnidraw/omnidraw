@@ -164,6 +164,16 @@ describe('portable widget manifest v1', () => {
       ...MANIFEST,
       resources: [{ ...resource, arbitrarySql: true }],
     }).success).toBe(false);
+    expect(ZWidgetManifestV1.parse({
+      ...MANIFEST,
+      resources: [{ ...resource, resourceId: '4c884964-1ddb-4be7-af8d-4b3e095fcf47' }],
+    }).resources?.[0]?.resourceId).toBe('4c884964-1ddb-4be7-af8d-4b3e095fcf47');
+    for (const resourceId of ['', ' has-space', 'has/slash', 'x'.repeat(129)]) {
+      expect(ZWidgetManifestV1.safeParse({
+        ...MANIFEST,
+        resources: [{ ...resource, resourceId }],
+      }).success).toBe(false);
+    }
   });
 });
 
@@ -190,6 +200,36 @@ describe('canonical widget change classification', () => {
       ...MANIFEST,
       resources: [{ slot: 'todos', kind: 'kv', effect: 'read', required: true }],
     }).class).toBe('resource-contract');
+    const bound = {
+      ...MANIFEST,
+      resources: [{
+        slot: 'todos',
+        kind: 'kv' as const,
+        effect: 'read' as const,
+        required: true,
+        resourceId: 'resource-a',
+      }],
+    };
+    expect(fnClassifyWidgetChange({
+      previous: {
+        manifest: { ...bound, resources: [{ ...bound.resources[0]!, resourceId: 'resource-a' }] },
+        files: FILES,
+        environment: ENVIRONMENT,
+      },
+      next: {
+        valid: true,
+        manifest: { ...bound, resources: [{ ...bound.resources[0]!, resourceId: 'resource-b' }] },
+        files: FILES,
+        environment: ENVIRONMENT,
+      },
+    }).class).toBe('resource-binding');
+    expect(fnWidgetExecutableManifestDigest({
+      manifest: { ...bound, resources: [{ ...bound.resources[0]!, resourceId: 'resource-a' }] },
+      digestSha256: digestString,
+    })).toBe(fnWidgetExecutableManifestDigest({
+      manifest: { ...bound, resources: [{ ...bound.resources[0]!, resourceId: 'resource-b' }] },
+      digestSha256: digestString,
+    }));
     expect(classify({
       ...MANIFEST,
       ui: { ...MANIFEST.ui, budgets: { ...MANIFEST.ui.budgets, cpuMs: 21 } },

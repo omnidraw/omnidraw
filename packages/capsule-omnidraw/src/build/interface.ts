@@ -4,6 +4,7 @@ import type {
   CapsuleSnapshotFile,
 } from '@omnidraw/capsule/build';
 import type { CapsuleBuildInput } from '@omnidraw/capsule/protocol';
+import type { TWidgetExecutableManifestProjection } from '@omnidraw/widget-contract';
 
 export type TOmnidrawCapsuleBuild = (
   request: CapsuleApiGroupBuildRequest,
@@ -16,6 +17,7 @@ export type TOmnidrawDistributionBuildRequest = Readonly<{
   sourceRevision: string;
   entry: string;
   files: readonly CapsuleSnapshotFile[];
+  executableManifest?: TWidgetExecutableManifestProjection;
   workspaceKey?: string;
   signal?: AbortSignal;
   reportProgress?: (phase: 'installing' | 'building') => void;

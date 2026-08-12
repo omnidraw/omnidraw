@@ -30,11 +30,17 @@ import {
   sep,
 } from 'node:path';
 import {
+  WIDGET_BUILD_RECEIPT_PATH,
+  WIDGET_MANIFEST_V1_SCHEMA_URL,
+  type TWidgetExecutableManifestProjection,
+} from '@omnidraw/widget-contract';
+import {
   fnBoundedBuildOutput,
   fnRedactBuildOutput,
   fnWidgetBuildProcessEnvironment,
 } from './fn.redact-build-output';
 import { fnBootstrapWidgetUiEntry } from './fn.widget-ui-entry';
+import { txRefreshMutableRegistryPackageLock } from './tx.mutable-registry-package-lock';
 import { txTerminateWidgetBuildProcessTree } from './tx.terminate-widget-build-process-tree';
 
 const DISTRIBUTION_ENTRY = 'main.js';
@@ -117,6 +123,7 @@ type TConfig = Readonly<{
   buildTimeoutMs?: number;
   npmUserConfigPath: string;
   prepareNpmDependencies?: () => Promise<void>;
+  mutableRegistryUrl?: string;
   maxWarmWorkspaces?: number;
 }>;
 
@@ -269,6 +276,25 @@ function assertWorkspaceKey(workspaceKey: string): void {
   }
 }
 
+function normalizeMutableRegistryUrl(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const url = new URL(value);
+  if (
+    url.protocol !== 'http:'
+    || url.hostname !== '127.0.0.1'
+    || url.username !== ''
+    || url.password !== ''
+    || (url.pathname !== '/' && url.pathname !== '')
+    || url.search !== ''
+    || url.hash !== ''
+  ) {
+    throw new TypeError('Widget mutable npm registry must be an unauthenticated loopback URL.');
+  }
+  if (url.port === '') url.port = '80';
+  url.pathname = '/';
+  return url.href;
+}
+
 function assertProjectPath(path: string): void {
   if (
     path.length === 0
@@ -303,6 +329,33 @@ async function materialize(
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
     await writeFile(destination, file.bytes, { flag: 'wx', mode: 0o600 });
   }
+}
+
+async function materializePortableBuildManifest(
+  root: string,
+  manifest: TWidgetExecutableManifestProjection,
+): Promise<void> {
+  const portableManifest = Object.freeze({
+    $schema: WIDGET_MANIFEST_V1_SCHEMA_URL,
+    schemaVersion: 1 as const,
+    name: 'Omnidraw isolated UI build',
+    slug: 'omnidraw-isolated-ui-build',
+    description: 'Generated manifest for the isolated UI distribution build.',
+    tool: Object.freeze({
+      label: 'Omnidraw isolated UI build',
+      group: null,
+      priority: 0,
+    }),
+    ui: manifest.ui,
+    ...(manifest.resources.length === 0
+      ? {}
+      : { resources: manifest.resources }),
+  });
+  await writeFile(
+    join(root, 'omnidraw.json'),
+    `${JSON.stringify(portableManifest, null, 2)}\n`,
+    { flag: 'wx', mode: 0o600 },
+  );
 }
 
 async function bootstrapWidgetUiEntry(root: string, entry: string): Promise<void> {
@@ -948,6 +1001,7 @@ async function captureDistribution(root: string): Promise<Readonly<{
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+      if (relativePath === WIDGET_BUILD_RECEIPT_PATH.slice('dist/'.length)) continue;
       assertProjectPath(relativePath);
       const folded = relativePath.toLocaleLowerCase('en-US');
       if (seen.has(folded)) {
@@ -1036,6 +1090,7 @@ export function createWidgetNpmDistributionBuild(
 ): TWidgetNpmDistributionBuild {
   const execute = config.runProcess ?? runProcess;
   const runnerIdentity = config.runnerIdentity ?? HOST_RUNNER_IDENTITY;
+  const mutableRegistryUrl = normalizeMutableRegistryUrl(config.mutableRegistryUrl);
   assertRunnerIdentity(runnerIdentity);
   const maxWarmWorkspaces = config.maxWarmWorkspaces ?? 16;
   if (
@@ -1089,8 +1144,19 @@ export function createWidgetNpmDistributionBuild(
   ): Promise<CapsuleBuildInput> => {
     assertActive(request.signal);
     await materialize(root, request.files);
-    await bootstrapWidgetUiEntry(root, request.entry);
+    if (request.executableManifest !== undefined) {
+      await materializePortableBuildManifest(root, request.executableManifest);
+    }
+    if (mutableRegistryUrl !== undefined) {
+      await txRefreshMutableRegistryPackageLock({ join, readFile, writeFile }, {
+        root,
+        registryUrl: mutableRegistryUrl,
+      });
+    }
     const contract = await readPackageContract(root);
+    if (contract.buildScript !== 'omnidraw-widget build .') {
+      await bootstrapWidgetUiEntry(root, request.entry);
+    }
     assertActive(request.signal);
     const npmVersionOutput = await execute('npm', ['--version'], {
       cwd: root,
@@ -1192,8 +1258,12 @@ export function createWidgetNpmDistributionBuild(
       const operation = workspace.tail.then(async () => {
         assertActive(request.signal);
         await clearWarmWorkspace(workspace.root);
-        const installRequired =
-          workspace.dependencyIdentity !== requestedDependencyIdentity;
+        // Development packages can be republished to the loopback registry at
+        // the same semantic version. Their authored lockfile identity therefore
+        // cannot prove that a warm node_modules tree still has the current
+        // bytes.
+        const installRequired = mutableRegistryUrl !== undefined
+          || workspace.dependencyIdentity !== requestedDependencyIdentity;
         let installCompleted = !installRequired;
         try {
           const result = await performBuild(

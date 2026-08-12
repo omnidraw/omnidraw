@@ -9,7 +9,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | Area | Routes | Representative states |
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
-| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, draft Preview/actions, direct widget placement |
+| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, accepted draft Preview/actions, manifest-bound resource failure/recovery/reload, direct no-picker widget placement |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
@@ -50,17 +50,27 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas — from the sidebar draft row or from the **Open Preview** action on a successful widget create/validate result, placed beside the originating chat. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data, a freshly placed frame builds the current draft bytes on first attach, and only a frame that outlived its host process shows **Preview stopped — build again.** with an explicit rebuild action. Preview server functions run directly against the session's exact server artifact with its selected resources. |
+| **AI assistant — Draft Preview.** A draft opens a full-stack Preview frame on the canvas — from the sidebar draft row or from the **Open Preview** action on a successful widget create/build result, placed beside the originating chat. Preview is process-owned and ephemeral: the frame persists only the draft widget key and normal frame data. It displays only the latest host-accepted portable build generation; raw repository edits keep the prior working generation visible. Preview functions resolve concrete resources only from that accepted manifest. |
 
 | Preview actions |
 | --- |
 | ![Draft Preview frame with its lifecycle actions menu open](assets/18-canvas-preview-actions.webp) |
-| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the live session without building, **Rebuild** captures and remounts the current draft, **Publish** runs digest-fenced Build and Publish, and destructive **Remove** closes only the Preview frame and its process-owned session. |
+| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the accepted live session without building, **Rebuild** runs the repository's same portable `npm run build` and waits for host acceptance, **Publish** accepts only one current digest-fenced generation, and destructive **Remove** closes only the Preview frame and its process-owned session. A failed rebuild leaves the previous working Preview visible. AI diagnostics run in a separate process-owned clone, report whether this frame is absent, failed, or ready, and never insert or replace visible canvas layout. |
+
+| Manifest resource failure | Accepted manifest Preview |
+| --- | --- |
+| ![Draft Preview reporting a safe manifest-bound resource failure](assets/19-canvas-preview-manifest-resource-failure.webp) | ![Draft Preview displaying a row loaded through its accepted manifest resource](assets/19-canvas-preview-manifest-resource.webp) |
+| **Fail closed.** An unavailable manifest reference produces a bounded authoring failure without exposing provider details or offering a picker, Connect, or Rebind flow. | **Repaired generation.** After the manifest is repaired and the portable build is accepted, the same Preview observes the real declared function/resource path and renders the controlled row. |
+
+| Preview after hard reload | Published placement after hard reload |
+| --- | --- |
+| ![Manifest-bound draft Preview still displaying its row after hard reload](assets/19-canvas-preview-manifest-resource-reload.webp) | ![Published widget placed without a resource picker and restored after hard reload](assets/19-canvas-published-manifest-resource-reload.webp) |
+| **Preview reload.** Hard reload restores the frame and the current accepted generation without selecting a resource in the browser. | **Published reload.** **Add** places the published widget directly; the canvas item carries no resource-binding map, and the function resolves the published manifest again after reload. |
 
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar — Direct placement.** Each widget shows one published row with **Add** and, only while the draft differs from the publication, one draft row with **Preview**. Published placement follows the current publication; a draft drop or **Preview** click creates an ephemeral Preview frame that builds the current draft bytes on first attach. |
+| **Sidebar — Direct placement.** Each widget shows one published row with **Add** and, only while the draft differs from the publication, one draft row with **Preview**. Published **Add** validates the current manifest and inserts the item directly—there is no resource picker or per-instance binding payload. A draft drop or **Preview** click opens only an already accepted generation (or asks for a rebuild). |
 
 ## Widget inspector
 
@@ -75,9 +85,10 @@ The current inspector tabs are **Overview**, **Config**, **Functions**, **Collab
 
 Draft publication offers two actions. **Publish metadata** atomically replaces
 only the published `omnidraw.json` and preserves every executable byte.
-**Build & publish** rebuilds the current draft source and promotes the exact
-validated construction; existing canvas instances remount while keeping their
-instance state and resource choices.
+**Build & publish** promotes only the current host-validated accepted
+generation; existing canvas instances retain geometry and
+instance state. Concrete resource configuration is shared by the published
+manifest, so a newly published ID is used by every instance on its next call.
 
 | Files | Draft config |
 | --- | --- |

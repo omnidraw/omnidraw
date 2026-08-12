@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./fn.widget-preview-inspect": "./src/tools/fn.widget-preview-inspect.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {

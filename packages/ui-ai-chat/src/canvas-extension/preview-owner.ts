@@ -51,6 +51,44 @@ function isNotFound(error: unknown): boolean {
     && error.code === 'NOT_FOUND';
 }
 
+function isBuildUnavailable(error: unknown): boolean {
+  return error !== null
+    && typeof error === 'object'
+    && 'code' in error
+    && (
+      error.code === 'CONFLICT'
+      || error.code === 'BUILD_REQUIRED'
+      || error.code === 'BUILD_PENDING'
+      || error.code === 'BUILD_IMPORT_FAILED'
+    );
+}
+
+function previewErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim() !== '') return error.message;
+  if (
+    error !== null
+    && typeof error === 'object'
+    && 'message' in error
+    && typeof error.message === 'string'
+    && error.message.trim() !== ''
+  ) {
+    const code = 'capsuleCode' in error && typeof error.capsuleCode === 'string'
+      ? error.capsuleCode
+      : null;
+    const source = 'source' in error && typeof error.source === 'string'
+      ? error.source
+      : null;
+    const line = 'line' in error && typeof error.line === 'number'
+      ? error.line
+      : null;
+    const location = source === null
+      ? ''
+      : ` at ${source}${line === null ? '' : `:${line}`}`;
+    return `${error.message}${code === null ? '' : ` (${code})`}${location}`;
+  }
+  return 'Preview failed.';
+}
+
 /**
  * One browser owner for a process-owned ephemeral Preview. It mounts the exact
  * signed bytes of the live session; a freshly placed frame auto-builds once,
@@ -87,7 +125,7 @@ export function createWidgetPreviewOwner(
   const fail = (error: unknown): void => {
     if (disposed || host === null) return;
     host.dataset.widgetRuntimeStatus = 'error';
-    host.textContent = error instanceof Error ? error.message : 'Preview failed.';
+    host.textContent = previewErrorMessage(error);
     args.onFatal?.(error);
   };
 
@@ -191,16 +229,40 @@ export function createWidgetPreviewOwner(
     return response;
   };
 
+  const rebuildPreview = async (): Promise<TWidgetPreviewMountResponse> => {
+    const session = identity;
+    if (disposed || session === null) throw new PreviewNotBuildableError();
+    const [error, response] = await args.transport.api.widget.preview.rebuild({
+      canvasId: session.canvasId,
+      elementId: session.elementId,
+      widgetKey: session.widgetKey,
+    });
+    if (disposed) {
+      await closeSession(session);
+      throw new PreviewNotBuildableError();
+    }
+    if (error || !response) throw error ?? new Error('Preview build failed.');
+    return response;
+  };
+
   const runRebuild = async (): Promise<void> => {
     if (disposed || host === null || identity === null) return;
-    host.dataset.widgetRuntimeStatus = 'loading';
-    host.textContent = 'Building Preview…';
+    const keepsAcceptedPreview = handle !== null;
+    if (!keepsAcceptedPreview) {
+      host.dataset.widgetRuntimeStatus = 'loading';
+      host.textContent = 'Building Preview…';
+    }
     try {
-      const response = await openPreview();
+      const response = await rebuildPreview();
       if (disposed || host === null || identity === null) return;
       await mountArtifact(response);
     } catch (error) {
       if (error instanceof PreviewNotBuildableError) return;
+      if (keepsAcceptedPreview && handle !== null && host !== null) {
+        host.dataset.widgetRuntimeStatus = 'ready';
+        args.onFatal?.(error);
+        return;
+      }
       fail(error);
     }
   };
@@ -264,6 +326,10 @@ export function createWidgetPreviewOwner(
             await mountArtifact(response);
           } catch (error) {
             if (error instanceof PreviewNotBuildableError) return;
+            if (handle !== null && isBuildUnavailable(error)) {
+              if (host !== null) host.dataset.widgetRuntimeStatus = 'ready';
+              return;
+            }
             fail(error);
           }
         });

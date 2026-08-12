@@ -1,12 +1,25 @@
 export type * from './typed';
 export {
   ZWidgetExecutableManifest,
+  ZWidgetBuildReceipt,
   ZWidgetManifestV1,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
   parseWidgetManifestV1Json,
+  parseWidgetBuildReceiptJson,
   parseWidgetReleaseJson,
 } from './schema';
+export {
+  fnCanonicalizeWidgetBuildReceipt,
+  fnCanonicalizeWidgetBuildReceiptEvidence,
+  fnCanonicalizeWidgetPortableExecutableInput,
+  fnCanonicalizeWidgetPortableSource,
+  fnCreateWidgetBuildReceipt,
+  fnNormalizeWidgetBuildReceiptOutputs,
+  fnWidgetBuildReceiptIdentityMatches,
+  fnWidgetPortableExecutableInputDigest,
+  fnWidgetPortableSourceDigest,
+} from '../core/fn.portable-build-receipt';
 export {
   fnCanonicalizeWidgetExecutableManifest,
   fnCanonicalizeWidgetExecutableProjection,

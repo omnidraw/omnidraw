@@ -5,7 +5,6 @@ import {
   PREVIEW_DEFAULT_MAX_DIAGNOSTICS,
   PREVIEW_DEFAULT_MAX_DIAGNOSTIC_CHARACTERS,
   PREVIEW_DEFAULT_MAX_MOUNTED_HANDLES,
-  PREVIEW_DEFAULT_MAX_SELECTED_RESOURCES,
   PREVIEW_DEFAULT_MAX_SESSIONS,
 } from './CONSTANTS';
 import {
@@ -13,7 +12,6 @@ import {
   fnNormalizePreviewDiagnostic,
   fnNormalizePreviewExecutableInputDigest,
   fnNormalizePreviewConstructionCompatibility,
-  fnNormalizePreviewSelectedResources,
   fnNormalizePreviewSessionId,
   fnNormalizePreviewWidgetKey,
   fnPreviewConstructionCompatibilityKey,
@@ -25,7 +23,6 @@ import type {
   TPreviewOpenArgs,
   TPreviewOpenResult,
   TPreviewPorts,
-  TPreviewSelectedResource,
   TPreviewServiceConfig,
   TPreviewSessionPhase,
   TPreviewSessionView,
@@ -49,7 +46,6 @@ type TPreviewSession<TConstruction, TSignedArtifact, TMountHandle> = {
   constructionReused: boolean;
   diagnostics: TPreviewDiagnostic[];
   droppedDiagnosticCount: number;
-  selectedResources: readonly TPreviewSelectedResource[];
   failureMessage: string | null;
   controller: AbortController;
   externalSignal: AbortSignal | null;
@@ -96,7 +92,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
   readonly #maxMountedHandles: number;
   readonly #maxDiagnosticsPerSession: number;
   readonly #maxDiagnosticCharacters: number;
-  readonly #maxSelectedResources: number;
   readonly #sessions = new Map<
     string,
     TPreviewSession<TConstruction, TSignedArtifact, TMountHandle>
@@ -136,11 +131,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
       'Preview diagnostic character limit',
       65_536,
     );
-    this.#maxSelectedResources = boundedInteger(
-      config.maxSelectedResources ?? PREVIEW_DEFAULT_MAX_SELECTED_RESOURCES,
-      'Preview selected-resource limit',
-      1_024,
-    );
   }
 
   open(
@@ -159,10 +149,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
       args.executableInputDigestSha256,
     );
     const compatibility = fnNormalizePreviewConstructionCompatibility(args.compatibility);
-    const selectedResources = fnNormalizePreviewSelectedResources({
-      resources: args.selectedResources ?? [],
-      maximum: this.#maxSelectedResources,
-    });
     const controller = new AbortController();
     const session: TPreviewSession<TConstruction, TSignedArtifact, TMountHandle> = {
       sessionId,
@@ -174,7 +160,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
       constructionReused: false,
       diagnostics: [],
       droppedDiagnosticCount: 0,
-      selectedResources,
       failureMessage: null,
       controller,
       externalSignal: args.signal ?? null,
@@ -338,7 +323,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
           sessionId: session.sessionId,
           widgetKey: session.widgetKey,
           signedArtifact: session.signedArtifact,
-          selectedResources: session.selectedResources,
           tempRelativePath: session.tempRelativePath,
           signal: session.controller.signal,
         });
@@ -455,7 +439,6 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
       constructionReused: session.constructionReused,
       diagnostics: Object.freeze([...session.diagnostics]),
       droppedDiagnosticCount: session.droppedDiagnosticCount,
-      selectedResources: session.selectedResources,
       mountedHandleCount: session.handles.length,
       failureMessage: session.failureMessage,
     });
@@ -468,7 +451,6 @@ export {
   fnNormalizePreviewConstructionCompatibility,
   fnNormalizePreviewDiagnostic,
   fnNormalizePreviewExecutableInputDigest,
-  fnNormalizePreviewSelectedResources,
   fnNormalizePreviewSessionId,
   fnNormalizePreviewWidgetKey,
   fnPreviewConstructionCompatibilityKey,

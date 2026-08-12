@@ -17,6 +17,8 @@ import {
   apiWidgetPreviewInvoke,
   apiWidgetPreviewLoad,
   apiWidgetPreviewOpen,
+  apiWidgetPreviewRebuild,
+  apiWidgetPreviewRebuildDraft,
 } from './api.preview';
 import { apiWidgetRuntimeLoad } from './api.runtime-load-widget';
 import { apiRuntimeWidgetStateChange } from './api.runtime-widget-state-change';
@@ -45,6 +47,8 @@ const widgetHandlers = {
   },
   preview: {
     open: apiWidgetPreviewOpen,
+    rebuild: apiWidgetPreviewRebuild,
+    rebuildDraft: apiWidgetPreviewRebuildDraft,
     load: apiWidgetPreviewLoad,
     close: apiWidgetPreviewClose,
     invoke: apiWidgetPreviewInvoke,

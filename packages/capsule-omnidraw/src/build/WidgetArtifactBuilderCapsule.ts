@@ -358,6 +358,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         sourceRevision: request.snapshot.digestSha256,
         entry: manifest.ui.entry,
         files: Object.freeze(uiFiles),
+        executableManifest: manifest,
         ...(request.workspaceKey === undefined ? {} : { workspaceKey: request.workspaceKey }),
         ...(request.signal === undefined ? {} : { signal: request.signal }),
         ...(request.reportProgress === undefined

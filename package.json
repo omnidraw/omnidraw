@@ -39,7 +39,7 @@
     "test:external-composition": "bunx tsc -p scripts/fixtures/external-composition/tsconfig.json --noEmit && bun test scripts/fixtures/external-composition/external-composition.test.ts",
     "pretest:architecture": "bun run build:canvas-kernel",
     "test:architecture": "bunx tsc -p scripts/tsconfig.architecture.json --noEmit && bun test scripts/architecture-boundaries.test.ts scripts/external-composition-api-integration.test.ts scripts/local-registry.test.mjs",
-    "test:packed-public-composition": "bun run scripts/test-packed-public-composition.ts",
+    "test:packed-public-composition": "bun run scripts/test-packed-public-composition.ts && bun run scripts/test-packed-sdk-offline-check.ts",
     "test:packed-canvas-kernel": "bun run scripts/test-packed-canvas-kernel.ts",
     "verify:package-dists": "bun run scripts/verify-package-dists.ts",
     "deploy:packages:list": "bun run scripts/list-package-deployments.ts",

@@ -8,6 +8,7 @@ const distDir = path.join(sdkDir, "dist")
 const functionClientSubpathDir = path.join(sdkDir, "function-client")
 const serverSubpathDir = path.join(sdkDir, "server")
 const widgetSubpathDir = path.join(sdkDir, "widget")
+const packageManifest = await Bun.file(path.join(sdkDir, "package.json")).json()
 
 rmSync(distDir, { recursive: true, force: true })
 rmSync(functionClientSubpathDir, { recursive: true, force: true })
@@ -32,6 +33,8 @@ const result = await Bun.build({
     path.join(sdkDir, "src/widget.ts"),
     path.join(sdkDir, "src/function-client.ts"),
     path.join(sdkDir, "src/server.ts"),
+    path.join(sdkDir, "src/fn.portable-build.ts"),
+    path.join(sdkDir, "src/fn.offline-check.ts"),
   ],
   target: "browser",
   format: "esm",
@@ -43,6 +46,22 @@ if (!result.success) {
   for (const log of result.logs) {
     console.error(log)
   }
+  process.exit(1)
+}
+
+const cli = await Bun.build({
+  entrypoints: [path.join(sdkDir, "src/cli.mjs")],
+  target: "node",
+  format: "esm",
+  outdir: distDir,
+  naming: "cli.js",
+  define: {
+    __OMNIDRAW_SDK_VERSION__: JSON.stringify(packageManifest.version),
+  },
+})
+
+if (!cli.success) {
+  for (const log of cli.logs) console.error(log)
   process.exit(1)
 }
 

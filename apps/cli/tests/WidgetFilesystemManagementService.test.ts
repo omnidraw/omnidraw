@@ -17,9 +17,9 @@ import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
 } from '@omnidraw/widget-contract/filesystem';
-import type {
-  TWidgetCatalogCapsuleInspectionPortal,
-  WidgetFilesystemBuildService,
+import {
+  type TWidgetCatalogCapsuleInspectionPortal,
+  type WidgetFilesystemBuildService,
 } from '@omnidraw/service-agent';
 import { WidgetFilesystemRuntimeCatalog } from '../src/services/WidgetFilesystemRuntimeCatalog';
 
@@ -152,7 +152,15 @@ afterEach(async () => {
 describe('WidgetFilesystemRuntimeCatalog management', () => {
   test('saves digest-fenced Config and publishes metadata without construction or executable writes', async () => {
     const root = await createWidgetsRoot();
-    const initial = manifest('Notes Board');
+    const initial: TWidgetManifestV1 = {
+      ...manifest('Notes Board'),
+      resources: [{
+        slot: 'notes',
+        resourceId: 'resource-a',
+        kind: 'db',
+        effect: 'read',
+      }],
+    };
     await Promise.all([writeDraft(root, initial), writePublication(root, initial)]);
 
     let constructCalls = 0;
@@ -172,11 +180,18 @@ describe('WidgetFilesystemRuntimeCatalog management', () => {
       },
     } as unknown as WidgetFilesystemBuildService;
     let operation = 0;
+    let acceptedBuildCalls = 0;
     const catalog = new WidgetFilesystemRuntimeCatalog({
       widgetsRoot: root,
       capsule,
       management: {
         builder,
+        acceptedBuild: {
+          async requireCurrent() {
+            acceptedBuildCalls += 1;
+            throw new Error('metadata publication must not require a new accepted build');
+          },
+        },
         createOperationToken: () => `test_${++operation}`,
       },
     });
@@ -231,6 +246,7 @@ describe('WidgetFilesystemRuntimeCatalog management', () => {
 
     expect(constructCalls).toBe(0);
     expect(preparePublicationCalls).toBe(0);
+    expect(acceptedBuildCalls).toBe(0);
     expect(after.map((value) => value.toString('base64')))
       .toEqual(before.map((value) => value.toString('base64')));
     expect(JSON.parse(await readFile(
@@ -246,6 +262,26 @@ describe('WidgetFilesystemRuntimeCatalog management', () => {
       ['notes-board'],
       ['notes-board'],
     ]);
+
+    const matched = catalog.current();
+    const changedBinding = {
+      ...matched.entries['notes-board']!.draft!.manifest!,
+      resources: [{
+        ...matched.entries['notes-board']!.draft!.manifest!.resources![0]!,
+        resourceId: 'resource-b',
+      }],
+    };
+    await writeFile(
+      join(root, 'drafts', 'notes-board', 'omnidraw.json'),
+      JSON.stringify(changedBinding),
+    );
+    const bindingChanged = await catalog.refresh();
+    await expect(catalog.publishMetadata({
+      widgetKey: 'notes-board',
+      expectedManifestDigestSha256: bindingChanged.entries['notes-board']!.draft!
+        .manifestDigestSha256!,
+      expectedCatalogDigestSha256: bindingChanged.digestSha256,
+    })).rejects.toMatchObject({ code: 'WIDGET_BUILD_REQUIRED' });
     await catalog.stop();
     await catalog.stop();
     expect(closeCalls).toBe(1);

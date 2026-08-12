@@ -1,7 +1,4 @@
 import { createHash } from 'node:crypto';
-import type {
-  TCanvasWidgetResourceBindingV1,
-} from '@omnidraw/canvas-contract';
 import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
@@ -12,6 +9,8 @@ import {
   type TWidgetCatalogCapsuleInspectionPortal,
   type TPinnedWidgetCatalogRoot,
   type TWidgetFilesystemManagementCapability,
+  type TWidgetReferenceInput,
+  type TWidgetReferenceResolution,
   type WidgetFilesystemBuildService,
 } from '@omnidraw/service-agent';
 import type {
@@ -34,7 +33,6 @@ type TWidgetFilesystemPlacementDescriptor = Readonly<{
   widgetKey: string;
   catalogGeneration: number;
   bounds: TWidgetFrameBounds;
-  resourceBindings: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
 }>;
 
 type TWidgetFilesystemRuntimeResolution = Readonly<{
@@ -52,6 +50,7 @@ type TWidgetFilesystemCatalogChange = Readonly<{
   previousGeneration: number | null;
   generation: number;
   changedWidgetKeys: readonly string[];
+  previewWidgetKeys: readonly string[];
 }>;
 
 type TWidgetFilesystemCatalogObservation = Readonly<{
@@ -67,7 +66,30 @@ type TWidgetFilesystemRuntimeCatalogConfig = Readonly<{
   hash?: NodeWidgetCatalogHash;
   management?: Readonly<{
     builder: WidgetFilesystemBuildService;
+    acceptedBuild: Readonly<{
+      requireCurrent(
+        widgetKey: string,
+        signal?: AbortSignal,
+      ): Promise<Readonly<{
+        capture: import('@omnidraw/service-agent').TWidgetWorkspaceDraftBuildCapture;
+        construction: import('@omnidraw/service-agent').TWidgetFilesystemConstruction;
+      }>>;
+    }>;
     createOperationToken?: () => string;
+  }>;
+  buildGenerations?: Readonly<{
+    view(widgetKey: string): Promise<Readonly<{
+      phase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+      acceptedGeneration: number | null;
+      current: boolean;
+    }>>;
+  }>;
+  resources?: Readonly<{
+    getResource(resourceId: string): Promise<Readonly<{
+      id: string;
+      kind: 'kv' | 'secretStore' | 'db';
+      status: string;
+    }> | null>;
   }>;
 }>;
 
@@ -117,45 +139,6 @@ function changedWidgetKeys(
   return Object.freeze([...new Set(changed)].sort());
 }
 
-function normalizeResourceBindings(
-  entry: TWidgetCatalogEntry,
-  input: Readonly<Record<string, TCanvasWidgetResourceBindingV1>> | undefined,
-): Readonly<Record<string, TCanvasWidgetResourceBindingV1>> {
-  const manifest = entry.published?.manifest;
-  if (manifest === null || manifest === undefined) {
-    throw errorWithCode('Published widget is unavailable.', 'WIDGET_MISSING');
-  }
-  const requirements = new Map((manifest.resources ?? []).map((item) => [item.slot, item]));
-  const bindings = input ?? {};
-  const result: Record<string, TCanvasWidgetResourceBindingV1> = {};
-  for (const slot of Object.keys(bindings).sort()) {
-    const requirement = requirements.get(slot);
-    const binding = bindings[slot];
-    if (
-      requirement === undefined
-      || binding === undefined
-      || binding.resourceId.trim().length === 0
-      || (binding.allowRead && requirement.effect !== 'read' && requirement.effect !== 'read_write')
-      || (binding.allowWrite && requirement.effect !== 'write' && requirement.effect !== 'read_write')
-      || (!binding.allowRead && !binding.allowWrite)
-    ) throw errorWithCode('Widget resource selection is invalid.', 'WIDGET_RESOURCE_SELECTION_INVALID');
-    result[slot] = Object.freeze({
-      resourceId: binding.resourceId,
-      allowRead: binding.allowRead,
-      allowWrite: binding.allowWrite,
-    });
-  }
-  for (const requirement of requirements.values()) {
-    if (requirement.required && result[requirement.slot] === undefined) {
-      throw errorWithCode(
-        `Widget resource slot '${requirement.slot}' requires a concrete local choice.`,
-        'WIDGET_RESOURCE_SELECTION_REQUIRED',
-      );
-    }
-  }
-  return Object.freeze(result);
-}
-
 /**
  * Production filesystem authority for discovery, placement, and exact runtime
  * bytes. One immutable scan generation serves every request until refresh.
@@ -168,13 +151,18 @@ export class WidgetFilesystemRuntimeCatalog {
   readonly #root: Promise<TPinnedWidgetCatalogRoot>;
   readonly #catalog: WidgetFilesystemCatalog;
   readonly #management: WidgetFilesystemManagementService | null;
+  readonly #buildGenerations: TWidgetFilesystemRuntimeCatalogConfig['buildGenerations'];
+  readonly #resources: TWidgetFilesystemRuntimeCatalogConfig['resources'];
   readonly #listeners = new Set<(event: TWidgetFilesystemCatalogChange) => void>();
   #startPromise: Promise<void> | null = null;
+  #eventGeneration = 0;
 
   constructor(config: TWidgetFilesystemRuntimeCatalogConfig) {
     this.#filesystem = config.filesystem ?? new NodeWidgetCatalogFilesystem();
     this.#hash = config.hash ?? new NodeWidgetCatalogHash();
     this.#barrier = config.barrier ?? new PublicationReadWriteBarrier();
+    this.#buildGenerations = config.buildGenerations;
+    this.#resources = config.resources;
     this.#root = this.#filesystem.pinRoot({ requestedPath: config.widgetsRoot });
     this.#catalog = new WidgetFilesystemCatalog({
       rootPath: config.widgetsRoot,
@@ -196,6 +184,8 @@ export class WidgetFilesystemRuntimeCatalog {
           hash: this.#hash,
           capsule: config.capsule,
           builder: config.management.builder,
+          acceptedBuild: config.management.acceptedBuild,
+          validateManifestResources: (manifest) => this.#validateManifestResources(manifest),
           ...(config.management.createOperationToken === undefined
             ? {}
             : { createOperationToken: config.management.createOperationToken }),
@@ -233,10 +223,15 @@ export class WidgetFilesystemRuntimeCatalog {
       ? changed.length > 0
       : previous.digestSha256 !== next.digestSha256;
     if (shouldPublish) {
+      const previousGeneration = this.#eventGeneration === 0
+        ? null
+        : this.#eventGeneration;
+      this.#eventGeneration += 1;
       const event = Object.freeze({
-        previousGeneration: previous?.generation ?? null,
-        generation: next.generation,
+        previousGeneration,
+        generation: this.#eventGeneration,
         changedWidgetKeys: changed,
+        previewWidgetKeys: Object.freeze([]),
       });
       for (const listener of [...this.#listeners]) listener(event);
     }
@@ -246,6 +241,117 @@ export class WidgetFilesystemRuntimeCatalog {
   subscribe(listener: (event: TWidgetFilesystemCatalogChange) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  async resolveWidgetReferences(
+    references: readonly TWidgetReferenceInput[],
+  ): Promise<TWidgetReferenceResolution> {
+    if (references.length > 16) {
+      throw errorWithCode('A prompt can mention at most 16 widgets.', 'WIDGET_REFERENCE_AMBIGUOUS');
+    }
+    const deduplicated = references.filter((reference, index) => {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(reference.name)) {
+        throw errorWithCode('Widget reference key is invalid.', 'WIDGET_REFERENCE_STALE');
+      }
+      return references.findIndex((candidate) => (
+        candidate.name === reference.name && candidate.source === reference.source
+      )) === index;
+    });
+    const snapshot = await this.refresh();
+    const resolved = await Promise.all(deduplicated.map(async (reference) => {
+      const entry = snapshot.entries[reference.name];
+      if (entry === undefined) {
+        throw errorWithCode('The mentioned widget no longer exists.', 'WIDGET_REFERENCE_STALE');
+      }
+      const selected = reference.source === 'draft' ? entry.draft : entry.published;
+      if (selected === null) {
+        throw errorWithCode(
+          reference.source === 'draft'
+            ? 'The mentioned widget has no editable draft.'
+            : 'The mentioned widget publication no longer exists.',
+          reference.source === 'draft'
+            ? 'WIDGET_DRAFT_UNAVAILABLE'
+            : 'WIDGET_REFERENCE_STALE',
+        );
+      }
+      if (selected.health !== 'healthy' || selected.manifest === null) {
+        throw errorWithCode('The mentioned widget variant is unhealthy.', 'WIDGET_REFERENCE_UNHEALTHY');
+      }
+      if (selected.manifest.slug !== reference.name) {
+        throw errorWithCode('The mentioned widget identity is ambiguous.', 'WIDGET_REFERENCE_AMBIGUOUS');
+      }
+      const editable = entry.draft?.health === 'healthy' && entry.draft.manifest !== null
+        ? entry.draft
+        : null;
+      const build = editable === null
+        ? null
+        : await this.#buildGenerations?.view(reference.name) ?? {
+            phase: 'unbuilt' as const,
+            acceptedGeneration: null,
+            current: false,
+          };
+      return Object.freeze({
+        widgetKey: reference.name,
+        requestedVariant: reference.source,
+        displayName: selected.manifest.name,
+        health: 'healthy' as const,
+        draftAvailable: editable !== null,
+        publicationAvailable: entry.published?.health === 'healthy',
+        requirements: Object.freeze((selected.manifest.resources ?? []).map((requirement) => Object.freeze({
+          slot: requirement.slot,
+          kind: requirement.kind,
+          effect: requirement.effect,
+          required: requirement.required === true,
+        }))),
+        editableDraft: editable === null || build === null
+          ? null
+          : Object.freeze({
+              name: editable.manifest!.name,
+              slug: editable.manifest!.slug,
+              treeDigestSha256: editable.treeDigestSha256,
+              buildPhase: build.phase,
+              acceptedGeneration: build.acceptedGeneration,
+              acceptedCurrent: build.current,
+            }),
+      });
+    }));
+    return Object.freeze({
+      catalogGeneration: snapshot.generation,
+      catalogDigestSha256: snapshot.digestSha256,
+      references: Object.freeze(resolved),
+    });
+  }
+
+  async assertWidgetReferenceResolutionCurrent(
+    resolution: TWidgetReferenceResolution,
+  ): Promise<void> {
+    const current = await this.resolveWidgetReferences(
+      resolution.references.map((reference) => Object.freeze({
+        name: reference.widgetKey,
+        source: reference.requestedVariant,
+      })),
+    );
+    if (
+      current.catalogDigestSha256 !== resolution.catalogDigestSha256
+      || JSON.stringify(current.references) !== JSON.stringify(resolution.references)
+    ) throw errorWithCode(
+      'Widget reference changed while its editable target was mounted.',
+      'WIDGET_REFERENCE_STALE',
+    );
+  }
+
+  notifyBuildGenerationChanged(widgetKey: string): void {
+    const previousGeneration = this.#eventGeneration === 0
+      ? null
+      : this.#eventGeneration;
+    this.#eventGeneration += 1;
+    const event = Object.freeze({
+      previousGeneration,
+      generation: this.#eventGeneration,
+      changedWidgetKeys: Object.freeze([]),
+      previewWidgetKeys: Object.freeze([widgetKey]),
+    });
+    for (const listener of [...this.#listeners]) listener(event);
   }
 
   saveDraftConfig(
@@ -281,7 +387,7 @@ export class WidgetFilesystemRuntimeCatalog {
   catalogObservation(): TWidgetFilesystemCatalogObservation {
     const snapshot = this.current();
     return Object.freeze({
-      generation: snapshot.generation,
+      generation: this.#eventGeneration,
       widgetKeys: Object.freeze(Object.values(snapshot.entries)
         .filter((entry) => entry.published !== null)
         .map((entry) => entry.slug)
@@ -303,10 +409,9 @@ export class WidgetFilesystemRuntimeCatalog {
       })));
   }
 
-  resolvePlacement(args: Readonly<{
+  async resolvePlacement(args: Readonly<{
     reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'published' }>>;
-    resourceBindings?: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
-  }>): TWidgetFilesystemPlacementDescriptor {
+  }>): Promise<TWidgetFilesystemPlacementDescriptor> {
     const snapshot = this.current();
     if (args.reference.catalogGeneration !== snapshot.generation) {
       throw errorWithCode('Widget catalog generation changed.', 'WIDGET_CATALOG_CHANGED');
@@ -315,13 +420,19 @@ export class WidgetFilesystemRuntimeCatalog {
     if (!entry?.placeable || entry.published?.health !== 'healthy') {
       throw errorWithCode('Published widget is missing or unhealthy.', 'WIDGET_MISSING');
     }
+    if (entry.published.manifest === null) {
+      throw errorWithCode('Published widget manifest is unavailable.', 'WIDGET_MISSING');
+    }
+    await this.#validateManifestResources(entry.published.manifest);
+    if (this.current() !== snapshot) {
+      throw errorWithCode('Widget catalog generation changed.', 'WIDGET_CATALOG_CHANGED');
+    }
     return Object.freeze({
       kind: 'published' as const,
       reference: Object.freeze({ ...args.reference }),
       widgetKey: args.reference.widgetKey,
       catalogGeneration: snapshot.generation,
       bounds: DEFAULT_WIDGET_BOUNDS,
-      resourceBindings: normalizeResourceBindings(entry, args.resourceBindings),
     });
   }
 
@@ -422,6 +533,35 @@ export class WidgetFilesystemRuntimeCatalog {
       && current.generation === resolution.catalogGeneration
       && current.digestSha256 === resolution.catalogDigestSha256
       && current.entries[resolution.widgetKey]?.published?.health === 'healthy';
+  }
+
+  async #validateManifestResources(manifest: TWidgetManifestV1): Promise<void> {
+    for (const requirement of manifest.resources ?? []) {
+      if (requirement.resourceId === undefined) {
+        if (!requirement.required) continue;
+        throw errorWithCode(
+          `Required resource slot '${requirement.slot}' is unconfigured; edit omnidraw.json and rebuild.`,
+          'WIDGET_RESOURCE_BINDING_REQUIRED',
+        );
+      }
+      if (this.#resources === undefined) throw errorWithCode(
+        `Resource validation is unavailable for slot '${requirement.slot}'.`,
+        'WIDGET_RESOURCE_BINDING_STALE',
+      );
+      const resource = await this.#resources.getResource(requirement.resourceId);
+      if (resource === null || resource.id !== requirement.resourceId) throw errorWithCode(
+        `Resource slot '${requirement.slot}' references an unavailable local resource.`,
+        'WIDGET_RESOURCE_BINDING_STALE',
+      );
+      if (resource.status !== 'ready') throw errorWithCode(
+        `Resource slot '${requirement.slot}' is not ready.`,
+        'WIDGET_RESOURCE_NOT_READY',
+      );
+      if (resource.kind !== requirement.kind) throw errorWithCode(
+        `Resource slot '${requirement.slot}' has the wrong resource kind.`,
+        'WIDGET_RESOURCE_KIND_MISMATCH',
+      );
+    }
   }
 
   #requireManagement(): TWidgetFilesystemManagementCapability {

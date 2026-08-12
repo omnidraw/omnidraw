@@ -4,12 +4,9 @@ import type {
   TPreviewConstructionCompatibility,
   TPreviewDiagnostic,
   TPreviewDiagnosticInput,
-  TPreviewSelectedResource,
 } from './typed';
 import {
   PREVIEW_IDENTITY_MAX_LENGTH,
-  PREVIEW_RESOURCE_ID_MAX_LENGTH,
-  PREVIEW_RESOURCE_SLOT_MAX_LENGTH,
   PREVIEW_SESSION_ID_MAX_LENGTH,
   PREVIEW_WIDGET_KEY_MAX_LENGTH,
 } from './CONSTANTS';
@@ -139,34 +136,6 @@ export function fnCanReusePreviewConstruction(args: Readonly<{
     === fnNormalizePreviewExecutableInputDigest(args.requestedExecutableInputDigestSha256)
     && fnPreviewConstructionCompatibilityKey(args.candidateCompatibility)
       === fnPreviewConstructionCompatibilityKey(args.requestedCompatibility);
-}
-
-export function fnNormalizePreviewSelectedResources(args: Readonly<{
-  resources: readonly TPreviewSelectedResource[];
-  maximum: number;
-}>): readonly TPreviewSelectedResource[] {
-  if (args.resources.length > args.maximum) {
-    throw new TypeError(`Preview selected resources exceed the ${args.maximum} entry limit.`);
-  }
-  const slots = new Set<string>();
-  return Object.freeze(args.resources.map((resource) => {
-    const slot = normalizedIdentity(
-      resource.slot,
-      'Preview resource slot',
-      PREVIEW_RESOURCE_SLOT_MAX_LENGTH,
-    );
-    const resourceId = normalizedIdentity(
-      resource.resourceId,
-      'Preview resource ID',
-      PREVIEW_RESOURCE_ID_MAX_LENGTH,
-    );
-    if (resource.effect !== 'read' && resource.effect !== 'read_write') {
-      throw new TypeError(`Preview resource '${slot}' has an invalid effect.`);
-    }
-    if (slots.has(slot)) throw new TypeError(`Duplicate Preview resource slot: ${slot}`);
-    slots.add(slot);
-    return Object.freeze({ slot, resourceId, effect: resource.effect });
-  }));
 }
 
 export function fnNormalizePreviewDiagnostic(args: Readonly<{

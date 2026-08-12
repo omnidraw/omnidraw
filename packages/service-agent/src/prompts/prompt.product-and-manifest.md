@@ -57,7 +57,7 @@ fields the request actually changes.
 - Parking is unavailable in this release. Do not request it.
 - Omit `server` and `resources` for a UI-only widget. This is the default.
 - Add `server: { "entry": "server/main.server.ts", "runtimeAbi": "omnidraw-function-v1" }` only when the request truly needs a short server function. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
-- `resources` is an optional array of host-bound requirements. Each requirement names a stable slot and declares kind, required status, read/write ceiling, and allowed operations. Never put a concrete resource id, path, handle, credential, or secret in the manifest.
+- `resources` is an optional array of host-bound requirements. Each requirement names a stable logical slot, includes the exact local `resourceId` returned by successful resource creation or inspection, and declares kind, required status, read/write ceiling, and allowed operations. Never invent an id or put a path, handle, credential, or secret in the manifest.
 - Source paths are relative, normalized, and contained in the draft. Never use
   absolute paths, `..`, symlinks, dynamic imports, or runtime `require`.
 
@@ -67,30 +67,26 @@ coherent. Editing `package.json` through the file tools runs host-owned
 `npm install` and updates `package-lock.json`; never hand-edit the lockfile.
 The build must emit a bounded `dist/main.js` ES module plus any relative chunks
 and supported static assets. Do not write or import `dist/` as source.
-Package lifecycle hooks and the build script execute with the build-server's
-selected runner authority: the application host by default or an
-operator-selected hardened Docker build runner. Keep them limited to necessary
-compilation; never use them to inspect ambient credentials, host files, or
-unrelated network services.
-
-Validation captures one immutable source snapshot. The draft-private warm workspace runs
-frozen `npm ci` when package or lock inputs change, then runs the
-guest-owned `npm run build`; source-only edits reuse the installed workspace.
-Omnidraw captures only the bounded regular-file `dist/` tree and gives those
-exact bytes to Capsule for closed-distribution validation and artifact
-construction. Capsule does not install dependencies or compile source.
+`npm run check` and `npm run build` are portable repository commands. They do
+not call Omnidraw, inspect host state/resources, or receive canvas/chat/session
+authority. Build atomically emits bounded output and an untrusted receipt.
+Omnidraw observes that receipt, independently reopens and hashes the current
+source, manifest, output, and Capsule construction, and accepts only an exact
+matching generation. Raw edits leave the previous accepted Preview visible but
+make a new build required.
 
 A validated draft appears in the widget catalog sidebar next to its
 publication. The user places an ephemeral Preview frame from the draft row or
 from the Open Preview action on a successful create/validate result; placing
-that frame builds the current draft bytes live and renders them. Publish is a
-separate user action that rechecks the current draft digest, builds the exact
-current source, and promotes that build; it never trusts a stored Preview
-pointer.
+that frame opens only the current host-accepted generation. Initial creation
+performs the first portable build; later edits require the same check/build
+flow, and the manual Rebuild action runs that same repository command. Publish
+is a separate user action that accepts only the current host-validated build
+generation; it never trusts raw source, a receipt alone, or a Preview pointer.
 
-Preview construction, diagnostics, handles, resource choices, and signing are
+Preview construction, diagnostics, handles, and signing are
 owned only by the current process and temporary files. They are not durable
 revision authority. Preview collaborative/local state is authoring state and
-does not become published-instance state. A user Publish action rechecks the
-current draft digest and may reuse an exact compatible construction; it never
-trusts a stored Preview pointer.
+does not become published-instance state. Resource identity comes only from the
+accepted manifest and is revalidated at Preview/function/publication/placement
+boundaries; there is no Preview or per-instance resource choice.

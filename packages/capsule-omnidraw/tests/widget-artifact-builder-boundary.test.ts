@@ -427,7 +427,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     expect(result.uiArtifact.runtimeDescriptor.apiContract.groups).toEqual(['DOM']);
   });
 
-  test('replaces server-function modules with proxies and withholds all other server source', async () => {
+  test('replaces the exact manifest server entry with named proxies and withholds private source', async () => {
     let captured: CapsuleApiGroupBuildRequest | undefined;
     const tempRoot = await mkdtemp(join(tmpdir(), 'capsule-boundary-server-'));
     try {
@@ -435,23 +435,18 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         {
           path: 'ui/main.ts',
           value: [
-            'import { fnHello } from "../server/functions.server";',
+            'import { fnHello } from "../server/main.server";',
             'import { sharedValue } from "../shared/model.shared";',
             'void fnHello; void sharedValue;',
           ].join('\n'),
         },
         {
-          path: 'server/entry.ts',
+          path: 'server/main.server.ts',
           value: [
-            'import "./functions.server";',
             'import "./private.server";',
             'import { sharedValue } from "../shared/model.shared";',
-            'void sharedValue;',
+            'export function fnHello(value: unknown): unknown { return { value, sharedValue }; }',
           ].join('\n'),
-        },
-        {
-          path: 'server/functions.server.ts',
-          value: 'export function fnHello(value: unknown): unknown { return value; }',
         },
         {
           path: 'server/private.server.ts',
@@ -468,7 +463,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       ]);
       const widgetManifest = manifest({
         entry: 'ui/main.ts',
-        serverEntry: 'server/entry.ts',
+        serverEntry: 'server/main.server.ts',
       });
       const artifactBuilder = builder({
         tempRoot,
@@ -487,13 +482,13 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       expect(files.map(({ path }) => path)).toEqual([
         'shared/model.shared.ts',
         'ui/main.ts',
-        'server/functions.server.ts',
+        'server/main.server.ts',
       ]);
       const byPath = new Map(files.map((file) => [file.path, decoder.decode(file.bytes)]));
-      expect(byPath.get('server/functions.server.ts')).toContain(
+      expect(byPath.get('server/main.server.ts')).toContain(
         'createServerFunctionProxy',
       );
-      expect(byPath.get('server/functions.server.ts')).toContain(
+      expect(byPath.get('server/main.server.ts')).toContain(
         'export const fnHello',
       );
       expect([...byPath.values()].join('\n')).not.toContain('must-not-reach-capsule');
@@ -501,6 +496,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       expect([...byPath.values()].join('\n')).not.toContain(
         'function fnHello(value: unknown)',
       );
+      expect([...byPath.values()].join('\n')).not.toContain('registerServerFunction');
       const browserFunctionDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
         result.functionDescriptors,
       );

@@ -668,7 +668,6 @@ describe("ChatTab rendered message history", () => {
     root.querySelector<HTMLButtonElement>("[aria-label='Send prompt']")?.click()
     await vi.waitFor(() => expect(onPrompt).toHaveBeenCalledOnce())
     expect(onPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      resourceIds: [],
       widgetRefs: [{ name: "Weather", source: "draft" }],
     }))
   })

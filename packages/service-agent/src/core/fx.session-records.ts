@@ -1,5 +1,5 @@
-import type { TSessionEntryManager, TWidgetDbChangeProposalRecord, TWidgetResourceSelectionRecord } from '../tools/types';
-import { WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
+import type { TSessionEntryManager, TWidgetDbChangeProposalRecord } from '../tools/types';
+import { WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
 
 export type TPortal = {
   sessionManager: Pick<TSessionEntryManager, 'getEntries'>;
@@ -22,11 +22,6 @@ function fxLatestCustomEntryData<T>(portal: TPortal, customType: string): T | nu
   }
 
   return null;
-}
-
-export function fxLatestWidgetResourceSelectionRecord(portal: TPortal, args: TArgs): TWidgetResourceSelectionRecord | null {
-  void args;
-  return fxLatestCustomEntryData<TWidgetResourceSelectionRecord>(portal, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE);
 }
 
 export type TArgsWidgetDbChangeProposal = {

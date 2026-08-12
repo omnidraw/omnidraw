@@ -18,13 +18,6 @@ export type TCanvasRevision = number;
 export type TCanvasItemRevision = number;
 export type TCanvasJsonPath = readonly (string | number)[];
 
-/** One concrete, host-selected local resource choice for a placed widget. */
-export type TCanvasWidgetResourceBindingV1 = Readonly<{
-  resourceId: string;
-  allowRead: boolean;
-  allowWrite: boolean;
-}>;
-
 export type TCanvasWidgetExtensionV1 =
   | Readonly<{
       schemaVersion: 1;
@@ -38,9 +31,6 @@ export type TCanvasWidgetExtensionV1 =
       type: "widget-instance";
       instanceId: string;
       widgetKey: string;
-      resourceBindings?: Readonly<
-        Record<string, TCanvasWidgetResourceBindingV1>
-      >;
       uiProps?: TJsonValue;
     }>
   | Readonly<{

@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/canvas-contract",
-  "version": "0.7.0",
+  "version": "0.6.0",
   "description": "Portable Omnidraw canvas document contracts and validation.",
   "license": "MIT",
   "repository": {

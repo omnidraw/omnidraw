@@ -1,6 +1,7 @@
 import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';
 import { describe, expect, test } from 'vitest';
 import {
+  fnAiChatMountReadiness,
   fnAiWidgetPayload,
   fnAiWidgetPayloadEquals,
   fnCanvasWidgetExtension,
@@ -31,18 +32,28 @@ const previewTitleBarColor = {
 };
 
 describe('direct Cangine widget nodes', () => {
+  test('mounts AI Chat only after its exact projected node is durable', () => {
+    const node = fnCreateAiWidgetNode({ ...base, sessionId: 'session-1' });
+
+    expect(fnAiChatMountReadiness({ durable: false, node })).toBe('wait');
+    expect(fnAiChatMountReadiness({ durable: true, node })).toBe('mount');
+    expect(fnAiChatMountReadiness({ durable: false, node: null })).toBe('stop');
+    expect(fnAiChatMountReadiness({
+      durable: true,
+      node: fnCreatePreviewWidgetNode({
+        ...base,
+        instanceId: 'preview-1',
+        widgetKey: 'counter',
+        titleBarColor: previewTitleBarColor,
+      }),
+    })).toBe('stop');
+  });
+
   test('creates a published widget with exact transactional identity', () => {
     const node = fnCreatePublishedWidgetNode({
       ...base,
       instanceId: 'instance-1',
       widgetKey: 'counter',
-      resourceBindings: {
-        records: {
-          resourceId: 'resource-1',
-          allowRead: true,
-          allowWrite: false,
-        },
-      },
     });
 
     expect(node.kind).toBe('widget-frame');
@@ -52,13 +63,6 @@ describe('direct Cangine widget nodes', () => {
       type: 'widget-instance',
       instanceId: 'instance-1',
       widgetKey: 'counter',
-      resourceBindings: {
-        records: {
-          resourceId: 'resource-1',
-          allowRead: true,
-          allowWrite: false,
-        },
-      },
     });
   });
 

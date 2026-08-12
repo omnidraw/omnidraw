@@ -25,6 +25,7 @@ import type {
   TCanvasSemanticStyleExtensionV1,
   TCanvasWidgetExtensionV1,
 } from "./types.js";
+import { fnNormalizeLegacyCanvasWidgetBindings } from "./fn.canvas-legacy-widget.js";
 
 const RUNTIME_ONLY_NODE_KINDS = new Set<TSceneNode["kind"]>([
   "background",
@@ -47,7 +48,6 @@ const WIDGET_INSTANCE_KEYS = new Set([
   "type",
   "instanceId",
   "widgetKey",
-  "resourceBindings",
   "uiProps",
 ]);
 const WIDGET_PREVIEW_KEYS = new Set([
@@ -57,16 +57,9 @@ const WIDGET_PREVIEW_KEYS = new Set([
   "widgetKey",
   "uiProps",
 ]);
-const WIDGET_RESOURCE_BINDING_KEYS = new Set([
-  "resourceId",
-  "allowRead",
-  "allowWrite",
-]);
 const WIDGET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const WIDGET_RESOURCE_SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 const WIDGET_KEY_MAX_LENGTH = 100;
 const WIDGET_ID_MAX_LENGTH = 200;
-const WIDGET_RESOURCE_BINDING_MAX_COUNT = 128;
 const AUTHORING_KEYS = new Set([
   "schemaVersion",
   "locked",
@@ -254,72 +247,6 @@ function validateWidgetExtension(
         "widgetKey must be 1 to 100 lowercase ASCII kebab-case characters.",
         node.id,
       ));
-    }
-    if (value.resourceBindings !== undefined) {
-      if (!isRecord(value.resourceBindings)) {
-        issues.push(issue(
-          "WIDGET_EXTENSION_RESOURCE_BINDINGS",
-          `${path}/resourceBindings`,
-          "resourceBindings must be an object keyed by manifest slot.",
-          node.id,
-        ));
-      } else {
-        const bindings = Object.entries(value.resourceBindings);
-        if (bindings.length > WIDGET_RESOURCE_BINDING_MAX_COUNT) {
-          issues.push(issue(
-            "WIDGET_EXTENSION_RESOURCE_BINDING_LIMIT",
-            `${path}/resourceBindings`,
-            `resourceBindings may contain at most ${WIDGET_RESOURCE_BINDING_MAX_COUNT} slots.`,
-            node.id,
-          ));
-        }
-        for (const [slot, binding] of bindings) {
-          const bindingPath = `${path}/resourceBindings/${slot}`;
-          if (
-            !WIDGET_RESOURCE_SLOT_PATTERN.test(slot)
-          ) {
-            issues.push(issue(
-              "WIDGET_EXTENSION_RESOURCE_SLOT",
-              bindingPath,
-              "Resource slot names must match ^[A-Za-z][A-Za-z0-9._-]{0,199}$.",
-              node.id,
-            ));
-          }
-          if (!isRecord(binding) || !hasOnlyKeys(binding, WIDGET_RESOURCE_BINDING_KEYS)) {
-            issues.push(issue(
-              "WIDGET_EXTENSION_RESOURCE_BINDING",
-              bindingPath,
-              "Each resource binding must contain only resourceId, allowRead, and allowWrite.",
-              node.id,
-            ));
-            continue;
-          }
-          if (
-            !isNonEmptyString(binding.resourceId)
-            || binding.resourceId.length > WIDGET_ID_MAX_LENGTH
-            || binding.resourceId.trim() !== binding.resourceId
-          ) {
-            issues.push(issue(
-              "WIDGET_EXTENSION_RESOURCE_ID",
-              `${bindingPath}/resourceId`,
-              "resourceId must contain 1 to 200 trimmed characters.",
-              node.id,
-            ));
-          }
-          if (
-            typeof binding.allowRead !== "boolean"
-            || typeof binding.allowWrite !== "boolean"
-            || (!binding.allowRead && !binding.allowWrite)
-          ) {
-            issues.push(issue(
-              "WIDGET_EXTENSION_RESOURCE_PERMISSIONS",
-              bindingPath,
-              "A resource binding must grant at least one boolean read or write permission.",
-              node.id,
-            ));
-          }
-        }
-      }
     }
     return issues;
   }
@@ -695,9 +622,10 @@ export function fnMaterializeCanvasValidationSnapshot(
 export function fnValidateCanvasItems(
   items: readonly TSceneNode[],
 ): TCanvasContractValidation {
+  const normalizedItems = items.map(fnNormalizeLegacyCanvasWidgetBindings);
   const issues: TCanvasContractIssue[] = [];
   const imageDescriptors = new Map<string, TCanvasImageExtensionV1>();
-  for (const [index, item] of items.entries()) {
+  for (const [index, item] of normalizedItems.entries()) {
     if (RESERVED_RUNTIME_NODE_IDS.has(item.id)) {
       issues.push(issue(
         "RESERVED_ITEM_ID",
@@ -752,7 +680,7 @@ export function fnValidateCanvasItems(
   if (issues.length > 0) return { valid: false, issues };
 
   const sceneValidation = validateSceneSnapshot(
-    fnMaterializeCanvasValidationSnapshot(items),
+    fnMaterializeCanvasValidationSnapshot(normalizedItems),
   );
   const sceneIssues = sceneValidation.errors.map((sceneIssue) => issue(
     sceneIssue.code,
@@ -780,10 +708,11 @@ export function fnAssertValidCanvasItems(
 export function fnReadCanvasWidgetExtension(
   node: TSceneNode,
 ): TCanvasWidgetExtensionV1 | null {
-  const value = node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY];
+  const normalized = fnNormalizeLegacyCanvasWidgetBindings(node);
+  const value = normalized.extensions?.[CANVAS_WIDGET_EXTENSION_KEY];
   if (value === undefined) return null;
   const validation = validateWidgetExtension(
-    node,
+    normalized,
     value,
     `/extensions/${CANVAS_WIDGET_EXTENSION_KEY}`,
   );

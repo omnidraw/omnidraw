@@ -14,6 +14,7 @@ describe('widget catalog event projection', () => {
       generation: 6,
       fullResync: true,
       changedWidgetKeys: [],
+      previewWidgetKeys: [],
     });
   });
 
@@ -25,6 +26,7 @@ describe('widget catalog event projection', () => {
         generation: 2,
         fullResync: false,
         changedWidgetKeys: ['alpha'],
+        previewWidgetKeys: [],
       },
       maxChangedWidgetKeys: 2,
     });
@@ -35,6 +37,7 @@ describe('widget catalog event projection', () => {
         generation: 4,
         fullResync: false,
         changedWidgetKeys: ['beta', 'gamma'],
+        previewWidgetKeys: ['alpha'],
       },
       maxChangedWidgetKeys: 2,
     })).toEqual({
@@ -42,6 +45,33 @@ describe('widget catalog event projection', () => {
       generation: 4,
       fullResync: true,
       changedWidgetKeys: [],
+      previewWidgetKeys: [],
+    });
+  });
+
+  test('coalesces Preview generations without turning them into catalog changes', () => {
+    expect(fnCoalesceWidgetCatalogEvents({
+      pending: {
+        previousGeneration: 1,
+        generation: 2,
+        fullResync: false,
+        changedWidgetKeys: [],
+        previewWidgetKeys: ['alpha'],
+      },
+      next: {
+        previousGeneration: 2,
+        generation: 3,
+        fullResync: false,
+        changedWidgetKeys: ['published'],
+        previewWidgetKeys: ['beta'],
+      },
+      maxChangedWidgetKeys: 4,
+    })).toEqual({
+      previousGeneration: 1,
+      generation: 3,
+      fullResync: false,
+      changedWidgetKeys: ['published'],
+      previewWidgetKeys: ['alpha', 'beta'],
     });
   });
 });

@@ -117,6 +117,17 @@ function fnValidAction(action: unknown): action is TPreviewInspectionBrowserActi
   if (action.type === 'click') {
     return fnExactKeys(action, ['type', 'target']) && fnValidTarget(action.target);
   }
+  if (action.type === 'assertText') {
+    return fnExactKeys(
+      action,
+      ['type', 'target', 'text', ...(action.exact === undefined ? [] : ['exact'])],
+    )
+      && fnValidTarget(action.target)
+      && typeof action.text === 'string'
+      && action.text.length > 0
+      && fnUtf8ByteLength(action.text) <= PREVIEW_INSPECTION_LIMITS.maximumInspectionTextBytes
+      && (action.exact === undefined || typeof action.exact === 'boolean');
+  }
   if (action.type !== 'input') return false;
   return fnExactKeys(
     action,

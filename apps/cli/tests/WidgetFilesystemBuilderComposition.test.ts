@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { TWidgetManifestV1 } from '@omnidraw/widget-contract';
+import { createHash } from 'node:crypto';
+import { NodeWidgetFilesystemWorkspace } from '@omnidraw/service-agent';
+import {
+  fnCanonicalizeWidgetBuildReceipt,
+  fnCreateWidgetBuildReceipt,
+  fnWidgetManifestV1Digest,
+  fnWidgetPortableExecutableInputDigest,
+  fnWidgetPortableSourceDigest,
+  type TWidgetManifestV1,
+} from '@omnidraw/widget-contract';
 import { fnResolveOmnidrawHome } from '@omnidraw/shared-functions/omnidraw-config/fn.resolve-omnidraw-home';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { testWidgetDistributionBuild } from './widget-capsule.fixture';
+import sdkPackage from '../../../packages/sdk/package.json';
 
 const roots: string[] = [];
 
@@ -38,6 +48,53 @@ async function writeDraft(
       '',
     ].join('\n'));
   }
+}
+
+function sha256(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+async function writeAcceptedReceipt(
+  widgetsRoot: string,
+  widgetKey: string,
+): Promise<void> {
+  const workspace = await NodeWidgetFilesystemWorkspace.open({ rootPath: widgetsRoot });
+  const capture = await workspace.captureDraftBuildInput({
+    slug: widgetKey,
+    signal: new AbortController().signal,
+  });
+  const outputBytes = new TextEncoder().encode(
+    'const root=document.createElement("div");document.body.append(root);',
+  );
+  const receipt = fnCreateWidgetBuildReceipt({
+    sourceDigestSha256: fnWidgetPortableSourceDigest({
+      files: capture.files,
+      digestSha256: sha256,
+    }),
+    manifestDigestSha256: fnWidgetManifestV1Digest({
+      manifest: capture.manifest,
+      digestSha256: sha256,
+    }),
+    executableInputDigestSha256: fnWidgetPortableExecutableInputDigest({
+      manifest: capture.manifest,
+      files: capture.files,
+      digestSha256: sha256,
+    }),
+    sdkVersion: sdkPackage.version,
+    outputs: [{
+      path: 'dist/main.js',
+      byteSize: outputBytes.byteLength,
+      sha256: sha256(outputBytes),
+    }],
+    digestSha256: sha256,
+  });
+  const dist = join(widgetsRoot, 'drafts', widgetKey, 'dist');
+  await mkdir(dist, { recursive: true });
+  await writeFile(join(dist, 'main.js'), outputBytes);
+  await writeFile(
+    join(dist, 'omnidraw.build.json'),
+    fnCanonicalizeWidgetBuildReceipt(receipt),
+  );
 }
 
 function manifest(
@@ -95,10 +152,15 @@ describe('production filesystem widget builder composition', () => {
       helpRequested: false,
       versionRequested: false,
     };
-    const { widgetCatalog } = setupServices(config, {
+    const { widgetBuildGeneration, widgetCatalog } = setupServices(config, {
       distributionBuild: testWidgetDistributionBuild,
     });
+    expect((await lstat(join(home.tempRoot, 'function-runtime'))).isDirectory()).toBe(true);
     await widgetCatalog.start();
+    await writeAcceptedReceipt(home.widgetsRoot, 'ui-only');
+    await writeAcceptedReceipt(home.widgetsRoot, 'with-server');
+    await widgetBuildGeneration.view('ui-only');
+    await widgetBuildGeneration.view('with-server');
 
     for (const widgetKey of ['ui-only', 'with-server']) {
       const snapshot = widgetCatalog.current();

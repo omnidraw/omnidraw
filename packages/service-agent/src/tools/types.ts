@@ -2,18 +2,6 @@ import type { SessionManager, ToolDefinition } from '@earendil-works/pi-coding-a
 import type { TValidationResult } from '../core/types';
 export type { TValidationResult } from '../core/types';
 
-export type TWidgetResourceSelection = {
-  id: string;
-  kind: 'kv' | 'secretStore' | 'db';
-  name: string;
-  status: 'created' | 'provisioning' | 'ready' | 'migrating' | 'error' | 'deleting';
-};
-
-export type TWidgetResourceSelectionRecord = {
-  resources: TWidgetResourceSelection[];
-  selectedAt: string;
-};
-
 export type TWidgetDbChangeProposalRecord = {
   id: string;
   resourceId: string;
@@ -44,7 +32,7 @@ export type TWidgetDraftChangeHandler = (
   change: TWidgetDraftChange,
 ) => void | Promise<void>;
 
-/** Runs the real host Preview build for one shared draft slug. */
+/** Runs the real host accepted-artifact build for one shared draft slug. */
 export type TWidgetPreviewBuildCheck = (args: Readonly<{
   slug: string;
 }>) => Promise<Readonly<{ ok: boolean; errors: readonly string[] }>>;
@@ -93,12 +81,20 @@ export type TWidgetPreviewInspectAction =
   | Readonly<{
       type: 'waitFrames';
       count: number;
+    }>
+  | Readonly<{
+      type: 'assertText';
+      target: TWidgetPreviewInspectTarget;
+      text: string;
+      exact?: boolean;
     }>;
 
 /** Frozen, model-facing input accepted by `od_widget_preview_inspect`. */
 export type TWidgetPreviewInspectInput = Readonly<{
   name: string;
+  mode?: 'artifact' | 'preview';
   expectedDraftDigestSha256?: string;
+  expectedAcceptedGeneration?: number;
   viewport?: Readonly<{
     width?: number;
     height?: number;
@@ -121,12 +117,15 @@ export type TWidgetPreviewInspectNormalizedAction =
       value: string;
       commit: 'none' | 'blur' | 'enter';
     }>
-  | Extract<TWidgetPreviewInspectAction, Readonly<{ type: 'waitFrames' }>>;
+  | Extract<TWidgetPreviewInspectAction, Readonly<{ type: 'waitFrames' }>>
+  | Extract<TWidgetPreviewInspectAction, Readonly<{ type: 'assertText' }>>;
 
 /** Fully defaulted input passed to the host capability after mounted-name resolution. */
 export type TWidgetPreviewInspectNormalizedInput = Readonly<{
   name: string;
+  mode: 'artifact' | 'preview';
   expectedDraftDigestSha256?: string;
+  expectedAcceptedGeneration?: number;
   viewport: Readonly<{
     width: number;
     height: number;
@@ -142,6 +141,7 @@ export type TWidgetPreviewInspectNormalizedInput = Readonly<{
 }>;
 
 export type TInspectStage =
+  | 'scope'
   | 'build'
   | 'sign'
   | 'mount'
@@ -177,13 +177,58 @@ export type TInspectScreenshot = Readonly<{
   digestSha256: string;
 }>;
 
-export type TInspectFidelity = Readonly<{
-  source: 'exact';
+export type TInspectFidelity =
+  | Readonly<{
+      source: 'exact';
+      artifact: 'exact';
+      runtimePolicy: 'narrowed';
+      bindings: 'unavailable';
+      network: 'denied';
+      overall: 'artifact_exact';
+    }>
+  | Readonly<{
+      source: 'exact';
+      artifact: 'exact';
+      runtimePolicy: 'preview';
+      bindings: 'manifest';
+      network: 'denied';
+      overall: 'preview_policy_exact';
+    }>;
+
+export type TInspectFunctional =
+  | 'observed'
+  | 'not_exercised'
+  | 'not_verified_missing_reference'
+  | 'blocked_write_approval'
+  | 'failed';
+
+export type TInspectVerification = Readonly<{
+  surface: 'artifact' | 'preview';
+  generation: 'current';
   artifact: 'exact';
-  runtimePolicy: 'narrowed';
-  bindings: 'none';
-  network: 'denied';
-  overall: 'artifact_exact';
+  manifest: 'exact';
+  resources: 'not_available' | 'manifest_bound';
+  canvasParity: 'not_claimed' | 'same_runtime_policy';
+  visibleFrame: 'not_claimed';
+  executionTarget: 'diagnostic_clone';
+  previewState:
+    | 'not_applicable'
+    | 'absent'
+    | 'mounting'
+    | 'failed'
+    | 'ready'
+    | 'retired'
+    | 'ambiguous'
+    | 'generation_mismatch';
+  nextAction:
+    | 'none'
+    | 'repair_visible_preview'
+    | 'retry_after_settle'
+    | 'reopen_preview'
+    | 'remove_duplicate_previews'
+    | 'retry_current_generation'
+    | 'use_preview_mode_for_resources';
+  functional: TInspectFunctional;
 }>;
 
 export type TInspectBounds = Readonly<{
@@ -305,6 +350,7 @@ export type TWidgetPreviewInspectResult =
       identity: TInspectIdentity;
       artifact: TInspectArtifact;
       fidelity: TInspectFidelity;
+      verification: TInspectVerification;
       screenshot: TInspectScreenshot;
       evidence: TInspectEvidence;
       durationMs: number;
@@ -314,6 +360,7 @@ export type TWidgetPreviewInspectResult =
       identity: TInspectIdentity;
       artifact: TInspectArtifact;
       fidelity: TInspectFidelity;
+      verification: TInspectVerification;
       screenshot: TInspectScreenshot;
       evidence: TInspectEvidence;
       durationMs: number;
@@ -323,6 +370,7 @@ export type TWidgetPreviewInspectResult =
       stage: TInspectStage;
       failure: TInspectFailure;
       identity: TInspectIdentity;
+      verification: TInspectVerification;
       artifact?: TInspectArtifact;
       screenshot?: TInspectScreenshot;
       evidence?: Partial<TInspectEvidence>;
@@ -333,6 +381,7 @@ export type TWidgetPreviewInspectResult =
       stage: TInspectStage;
       failure: TInspectFailure;
       identity: TInspectIdentity;
+      verification: TInspectVerification;
       artifact?: TInspectArtifact;
       screenshot?: TInspectScreenshot;
       durationMs: number;
@@ -344,6 +393,10 @@ export type TWidgetPreviewInspectionRequest = Readonly<{
   name: string;
   widgetKey: string;
   input: TWidgetPreviewInspectNormalizedInput;
+  scope?: Readonly<{
+    canvasId: string;
+    aiChatElementId: string;
+  }>;
   signal?: AbortSignal;
 }>;
 
@@ -353,6 +406,9 @@ export type TWidgetPreviewInspectionToolError = Readonly<{
   retryable: boolean;
   /** Safe observed value returned only for a stale draft-digest fence. */
   observedDraftDigestSha256?: string;
+  previewState?: TInspectVerification['previewState'];
+  nextAction?: TInspectVerification['nextAction'];
+  diagnostics?: readonly TInspectDiagnostic[];
 }>;
 
 export type TWidgetPreviewInspectionResponse =

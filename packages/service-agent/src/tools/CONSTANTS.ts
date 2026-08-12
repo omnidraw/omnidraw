@@ -5,7 +5,6 @@ export {
   OMNIDRAW_CAPSULE_AUTHORING_APIS,
 } from '@omnidraw/capsule-omnidraw/contract';
 
-export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetResourceSelection';
 export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'omnidraw.widgetDbChangeProposal';
 export const TOOL_ERROR_DETAILS_MARKER = Symbol('omnidraw.toolError');
 

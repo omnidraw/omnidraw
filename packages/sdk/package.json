@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.9.1",
+  "version": "0.6.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -14,7 +14,18 @@
     "registry": "https://registry.npmjs.org/"
   },
   "type": "module",
+  "bin": {
+    "omnidraw-widget": "./dist/cli.js"
+  },
   "exports": {
+    "./fn.offline-check": {
+      "types": "./dist/fn.offline-check.d.ts",
+      "default": "./dist/fn.offline-check.js"
+    },
+    "./fn.portable-build": {
+      "types": "./dist/fn.portable-build.d.ts",
+      "default": "./dist/fn.portable-build.js"
+    },
     "./widget": {
       "types": "./dist/widget.d.ts",
       "default": "./dist/widget.js"

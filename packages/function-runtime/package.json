@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/function-runtime",
-  "version": "0.8.1",
+  "version": "0.6.0",
   "description": "Portable direct function execution and resource-call contracts for Omnidraw.",
   "license": "MIT",
   "repository": {

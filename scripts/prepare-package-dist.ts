@@ -236,6 +236,18 @@ async function main(): Promise<void> {
     url: 'git+https://github.com/omnidraw/omnidraw.git',
     directory: relative(REPOSITORY_ROOT, PACKAGE_DIRECTORY),
   }
+  if (publicManifest.bin !== undefined) {
+    if (typeof publicManifest.bin === 'string') {
+      publicManifest.bin = publicTarget(publicManifest.bin)
+    } else if (publicManifest.bin !== null && typeof publicManifest.bin === 'object') {
+      publicManifest.bin = Object.fromEntries(
+        Object.entries(publicManifest.bin).map(([name, target]) => [
+          name,
+          typeof target === 'string' ? publicTarget(target) : target,
+        ]),
+      )
+    }
+  }
   publicManifest.publishConfig = {
     access: 'public',
     provenance: true,

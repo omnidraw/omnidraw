@@ -36,6 +36,15 @@ export function fnSafeResource(resource: TAgentResource): TSafeResource {
   };
 }
 
+export function fnSafeManifestResourceLink(resource: TAgentResource) {
+  return {
+    resourceId: resource.id,
+    name: resource.name,
+    kind: resource.kind,
+    status: resource.status,
+  };
+}
+
 export function fnSafeResourceMetadata(resource: TAgentResource) {
   return {
     ...fnSafeResource(resource),

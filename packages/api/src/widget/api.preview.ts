@@ -18,14 +18,21 @@ function mountView(view: Awaited<ReturnType<TWidgetPreviewApiCapability['open']>
 }
 
 function previewError(error: unknown): never {
+  const code = error !== null && typeof error === 'object' && 'code' in error
+    ? error.code
+    : null;
+  if (code === 'BUILD_REQUIRED' || code === 'BUILD_PENDING' || code === 'BUILD_IMPORT_FAILED') {
+    throw new ORPCError('CONFLICT', {
+      message: error instanceof Error ? error.message : 'Widget build is not ready.',
+    });
+  }
   if (
     error instanceof ORPCError
     || (error !== null
       && typeof error === 'object'
-      && 'code' in error
-      && (error.code === 'WIDGET_PREVIEW_NOT_FOUND'
-        || error.code === 'WIDGET_DRAFT_MISSING'
-        || error.code === 'WIDGET_MISSING'))
+      && (code === 'WIDGET_PREVIEW_NOT_FOUND'
+        || code === 'WIDGET_DRAFT_MISSING'
+        || code === 'WIDGET_MISSING'))
   ) throw previewTargetNotFound();
   throw error;
 }
@@ -33,6 +40,22 @@ function previewError(error: unknown): never {
 const apiWidgetPreviewOpen = baseWidgetOs.preview.open.handler(async ({ context, input }) => {
   try {
     return mountView(await context.widgetPreview.open(input));
+  } catch (error) {
+    previewError(error);
+  }
+});
+
+const apiWidgetPreviewRebuild = baseWidgetOs.preview.rebuild.handler(async ({ context, input, signal }) => {
+  try {
+    return mountView(await context.widgetPreview.rebuild(input, signal));
+  } catch (error) {
+    previewError(error);
+  }
+});
+
+const apiWidgetPreviewRebuildDraft = baseWidgetOs.preview.rebuildDraft.handler(async ({ context, input, signal }) => {
+  try {
+    return await context.widgetPreview.rebuildDraft(input, signal);
   } catch (error) {
     previewError(error);
   }
@@ -59,4 +82,6 @@ export {
   apiWidgetPreviewInvoke,
   apiWidgetPreviewLoad,
   apiWidgetPreviewOpen,
+  apiWidgetPreviewRebuild,
+  apiWidgetPreviewRebuildDraft,
 };

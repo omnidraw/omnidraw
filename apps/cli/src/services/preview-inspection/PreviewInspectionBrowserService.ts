@@ -34,6 +34,7 @@ import type {
   TPreviewInspectionBrowserPort,
   TPreviewInspectionBrowserPreflight,
   TPreviewInspectionBrowserResult,
+  TPreviewInspectionBrowserFailureEvidence,
   TPreviewInspectionBrowserTarget,
   TPreviewInspectionFunctionBridge,
   TPreviewInspectionKeyboardGuardResult,
@@ -74,6 +75,7 @@ type TPreviewInspectionServiceError = Error & Readonly<{
   code: string;
   retryable: boolean;
   stage?: TBrowserOperationStage;
+  evidence?: TPreviewInspectionBrowserFailureEvidence;
 }>;
 
 function serviceError(
@@ -81,12 +83,14 @@ function serviceError(
   message: string,
   retryable = false,
   stage?: TBrowserOperationStage,
+  evidence?: TPreviewInspectionBrowserFailureEvidence,
 ): TPreviewInspectionServiceError {
   return Object.assign(new Error(message), {
     [SERVICE_ERROR]: true as const,
     code,
     retryable,
     ...(stage === undefined ? {} : { stage }),
+    ...(evidence === undefined ? {} : { evidence }),
   });
 }
 
@@ -94,6 +98,12 @@ function isServiceError(value: unknown): value is TPreviewInspectionServiceError
   return value instanceof Error
     && SERVICE_ERROR in value
     && value[SERVICE_ERROR] === true;
+}
+
+export function isPreviewInspectionBrowserServiceError(
+  value: unknown,
+): value is TPreviewInspectionServiceError {
+  return isServiceError(value);
 }
 
 function assertInspectionActive(
@@ -811,18 +821,56 @@ implements IService, TPreviewInspectionBrowserPort {
       const closeOnAbort = (): void => { void page?.close().catch(() => undefined); };
       signal.addEventListener('abort', closeOnAbort, { once: true });
       try {
-        await awaitBrowserOperation({
-          operation: this.#driver.mount({
-            page: activePage,
-            url: activeShellLease.url,
-            job,
+        try {
+          await awaitBrowserOperation({
+            operation: this.#driver.mount({
+              page: activePage,
+              url: activeShellLease.url,
+              job,
+              signal,
+            }),
+            failureCode: 'BROWSER_MOUNT_FAILED',
+            failureMessage: 'Preview inspection could not mount the exact artifact in its isolated shell.',
+            stage: 'mount',
             signal,
-          }),
-          failureCode: 'BROWSER_MOUNT_FAILED',
-          failureMessage: 'Preview inspection could not mount the exact artifact in its isolated shell.',
-          stage: 'mount',
-          signal,
-        });
+          });
+        } catch (mountError) {
+          if (!signal.aborted) {
+            try {
+              const untrustedSnapshot = await this.#driver.snapshot({
+                page: activePage,
+                signal,
+              });
+              const snapshotValidation = fnValidatePreviewInspectionShellSnapshot({
+                job,
+                snapshot: untrustedSnapshot,
+              });
+              if (snapshotValidation.ok) {
+                const snapshot = snapshotValidation.snapshot;
+                throw serviceError(
+                  'BROWSER_MOUNT_FAILED',
+                  'Preview inspection could not mount the exact artifact in its isolated shell.',
+                  false,
+                  'mount',
+                  Object.freeze({
+                    capsuleArtifactHash: snapshot.capsuleArtifactHash,
+                    runtimeGeneration: snapshot.runtimeGeneration,
+                    lifecycleGeneration: snapshot.lifecycleGeneration,
+                    runtimeEvents: snapshot.runtimeEvents,
+                    droppedRuntimeEventCount: snapshot.droppedCounts.runtimeEvents,
+                  }),
+                );
+              }
+            } catch (snapshotError) {
+              if (isServiceError(snapshotError) && snapshotError.evidence !== undefined) {
+                throw snapshotError;
+              }
+              // A malformed or unavailable failure snapshot is discarded. The
+              // bounded mount error below remains authoritative.
+            }
+          }
+          throw mountError;
+        }
         assertInspectionActive(signal, 'mount');
         mounted = true;
         onStage('settle');
@@ -1079,6 +1127,32 @@ implements IService, TPreviewInspectionBrowserPort {
       });
     }
     const target = targets[0]!;
+    if (action.type === 'assertText') {
+      if (target.sensitive) {
+        return Object.freeze({
+          index,
+          type: action.type,
+          status: 'unsupported',
+          matchedCount: 1,
+          message: 'Sensitive target text cannot be inspected.',
+          target,
+        });
+      }
+      const observed = target.text ?? target.name ?? '';
+      const passed = action.exact === true
+        ? observed === action.text
+        : observed.includes(action.text);
+      return Object.freeze({
+        index,
+        type: action.type,
+        status: passed ? 'passed' : 'failed',
+        matchedCount: 1,
+        message: passed
+          ? 'Target text assertion passed.'
+          : 'Target text assertion failed.',
+        target,
+      });
+    }
     if (action.type === 'input' && (target.sensitive || !target.editable)) {
       return Object.freeze({
         index,

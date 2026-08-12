@@ -67,7 +67,11 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 ])
 
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
-const ZAgentChatConnectInput = ZAgentChatScope.extend({ mode: z.enum(['reuse', 'replace']).optional() })
+const ZCanvasId = z.string().min(1).max(200)
+const ZAgentChatConnectInput = ZAgentChatScope.extend({
+  canvasId: ZCanvasId,
+  mode: z.enum(['reuse', 'replace']).optional(),
+})
 const ZWidgetKey = z.string().min(1).max(100)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const ZWidgetSource = z.enum(['published', 'draft'])
@@ -85,8 +89,8 @@ const ZAgentChatPromptImage = z.object({
 }).strict()
 
 const ZAgentChatPrompt = ZAgentChatScope.extend({
+  canvasId: ZCanvasId,
   text: z.string(),
-  resourceIds: z.string().min(1).max(128).array().max(16).optional(),
   widgetRefs: ZWidgetVariantRef.array().max(16).optional(),
   images: ZAgentChatPromptImage.array().max(AGENT_CHAT_PROMPT_IMAGE_MAX_COUNT).optional(),
   model: z.object({
@@ -100,6 +104,7 @@ const ZAgentChatPrompt = ZAgentChatScope.extend({
 })
 
 const ZAgentChatEdit = ZAgentChatScope.extend({
+  canvasId: ZCanvasId,
   entryId: z.string().min(1).max(200),
   text: z.string(),
   model: z.object({

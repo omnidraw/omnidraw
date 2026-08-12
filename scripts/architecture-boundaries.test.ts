@@ -842,7 +842,7 @@ describe('managed composition architecture boundaries', () => {
     const releaseVersions = new Map<string, string>([
       ['@omnidraw/cangine', '0.6.1'],
       ['@omnidraw/theme-contract', '0.5.0'],
-      ['@omnidraw/canvas-contract', '0.7.0'],
+      ['@omnidraw/canvas-contract', '0.8.0'],
       ['@omnidraw/service-theme', '0.5.0'],
       ['@omnidraw/canvas', '0.6.1'],
     ])

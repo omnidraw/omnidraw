@@ -20,6 +20,7 @@ import type {
 } from './types';
 
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
+const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9._-]{0,127}$/;
 const CAPSULE_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const CAPSULE_CAPABILITY_ID_PATTERN =
@@ -182,14 +183,19 @@ const ZResourceNamedOperation = z.object({
   result: z.enum(['rows', 'execute']),
 }).strict();
 
-export const ZWidgetResourceRequirement = z.object({
+const ZWidgetExecutableResourceRequirementShape = z.object({
   slot: z.string().regex(SLOT_PATTERN),
   kind: z.enum(['kv', 'secretStore', 'db']),
   effect: z.enum(['read', 'write', 'read_write']),
   required: z.boolean().optional(),
   arbitrarySql: z.boolean().optional(),
   operations: z.record(z.string().regex(NAME_PATTERN), ZResourceNamedOperation).optional(),
-}).strict().superRefine((requirement, context) => {
+}).strict();
+
+function validateWidgetResourceRequirement(
+  requirement: z.infer<typeof ZWidgetExecutableResourceRequirementShape>,
+  context: z.RefinementCtx,
+): void {
   if (
     requirement.kind !== 'db'
     && (requirement.arbitrarySql !== undefined || requirement.operations !== undefined)
@@ -209,4 +215,14 @@ export const ZWidgetResourceRequirement = z.object({
       });
     }
   }
-});
+}
+
+export const ZWidgetResourceId = z.string().min(1).max(128).regex(RESOURCE_ID_PATTERN);
+
+export const ZWidgetExecutableResourceRequirement =
+  ZWidgetExecutableResourceRequirementShape.superRefine(validateWidgetResourceRequirement);
+
+export const ZWidgetResourceRequirement =
+  ZWidgetExecutableResourceRequirementShape.extend({
+    resourceId: ZWidgetResourceId.optional(),
+  }).strict().superRefine(validateWidgetResourceRequirement);

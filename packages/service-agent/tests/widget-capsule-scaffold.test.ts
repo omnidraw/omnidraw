@@ -42,10 +42,12 @@ describe('Capsule widget authoring scaffold', () => {
       },
     });
     expect(changed).toEqual([
+      'README.md',
       'omnidraw.json',
       'package.json',
       'vite.config.mjs',
       'tsconfig.json',
+      'ui/assets.d.ts',
       'ui/main.ts',
       'ui/styles.css',
     ]);
@@ -53,6 +55,10 @@ describe('Capsule widget authoring scaffold', () => {
     expect([...files.entries()].filter(([path]) => path !== '/draft/omnidraw.json')
       .every(([, content]) => !content.includes('__OMNIDRAW_'))).toBe(true);
     expect(JSON.parse(files.get('/draft/package.json')!)).toMatchObject({
+      scripts: {
+        check: 'omnidraw-widget check .',
+        build: 'omnidraw-widget build .',
+      },
       dependencies: {
         '@omnidraw/capsule': '0.10.2',
         '@omnidraw/sdk': '0.1.0',
@@ -79,6 +85,7 @@ describe('Capsule widget authoring scaffold', () => {
     expect(files.get('/draft/ui/styles.css')).toContain('height: 100%');
     expect(files.get('/draft/ui/main.ts')).not.toContain('@omnidraw/capsule/guest');
     expect(files.get('/draft/ui/main.ts')).not.toContain('export default');
+    expect(files.get('/draft/README.md')).toContain('does not prove that a resource id exists');
   });
 
   test('creates a ready React scaffold without a second dependency edit', async () => {

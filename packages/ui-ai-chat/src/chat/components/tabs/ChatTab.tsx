@@ -51,7 +51,7 @@ interface IProps {
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   mentions?: TChatComposerMention[]
   approvals: readonly TAiChatApproval[]
-  onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  onPrompt: (args: { text: string; images: TChatPromptImage[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onEditMessage: (args: { entryId: string; text: string; model?: TAiChatPreference["model"]; thinkingLevel?: TChatComposerThinkingLevel }) => Promise<boolean>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
   onOpenResource?: (resourceId: string) => void
@@ -760,9 +760,6 @@ export function ChatTab(props: IProps) {
       await props.onPrompt({
         text,
         images,
-        resourceIds: submit.mentions.flatMap((mention) => mention.target?.type === "widget"
-          ? []
-          : [mention.target?.type === "resource" ? mention.target.resourceId : mention.id]),
         widgetRefs: submit.mentions.flatMap((mention) => mention.target?.type === "widget"
           ? [{ name: mention.target.name, source: mention.target.source }]
           : []),

@@ -65,7 +65,7 @@ describe('filesystem widget API bounds', () => {
     }).success).toBe(false);
   });
 
-  test('uses strict widget keys and exact bounded resource slot grammar', () => {
+  test('uses strict widget keys and rejects browser-owned placement bindings', () => {
     expect(ZWidgetRuntimeLoadInput.safeParse({
       canvasId: 'canvas-a',
       elementId: 'element-a',
@@ -87,25 +87,10 @@ describe('filesystem widget API bounds', () => {
       widgetKey: 'notes-board',
       catalogGeneration: 1,
     };
-    const binding = { resourceId: 'resource-a', allowRead: true, allowWrite: false };
+    expect(schema.safeParse({ reference }).success).toBe(true);
     expect(schema.safeParse({
       reference,
-      resourceBindings: { [`A${'b'.repeat(199)}`]: binding },
-    }).success).toBe(true);
-    expect(schema.safeParse({
-      reference,
-      resourceBindings: { [`A${'b'.repeat(200)}`]: binding },
-    }).success).toBe(false);
-    expect(schema.safeParse({
-      reference,
-      resourceBindings: { '1invalid': binding },
-    }).success).toBe(false);
-    expect(schema.safeParse({
-      reference,
-      resourceBindings: Object.fromEntries(Array.from(
-        { length: 129 },
-        (_, index) => [`slot_${index}`, binding],
-      )),
+      resourceBindings: { records: { resourceId: 'resource-a' } },
     }).success).toBe(false);
   });
 });

@@ -10,6 +10,7 @@ type TWidgetCatalogEventOutput = {
   generation: number;
   fullResync: boolean;
   changedWidgetKeys: string[];
+  previewWidgetKeys: string[];
 };
 
 const apiWidgetCatalogEvents = baseWidgetOs.catalog.events.handler(async function* ({
@@ -42,7 +43,11 @@ const apiWidgetCatalogEvents = baseWidgetOs.catalog.events.handler(async functio
     });
     if (catchUp !== null) {
       latestGeneration = catchUp.generation;
-      yield { ...catchUp, changedWidgetKeys: [...catchUp.changedWidgetKeys] };
+      yield {
+        ...catchUp,
+        changedWidgetKeys: [...catchUp.changedWidgetKeys],
+        previewWidgetKeys: [...catchUp.previewWidgetKeys],
+      };
     }
     while (!signal?.aborted) {
       if (queue.pending === null) {
@@ -60,6 +65,7 @@ const apiWidgetCatalogEvents = baseWidgetOs.catalog.events.handler(async functio
         generation: event.generation,
         fullResync: event.fullResync,
         changedWidgetKeys: [...event.changedWidgetKeys],
+        previewWidgetKeys: [...event.previewWidgetKeys],
       };
     }
   } finally {

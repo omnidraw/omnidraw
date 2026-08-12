@@ -127,6 +127,8 @@ export type TResourceReference = Readonly<{
 
 export type TResourceRequirement = Readonly<{
   slot: TResourceSlot;
+  /** Exact installation-local resource identity authored in omnidraw.json. */
+  resourceId?: TResourceId;
   kind: TResourceKind;
   effect: TResourceEffect;
   required?: boolean;

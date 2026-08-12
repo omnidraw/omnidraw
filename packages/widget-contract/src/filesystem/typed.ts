@@ -45,12 +45,33 @@ export type TWidgetExecutableManifestProjection = Readonly<{
   schemaVersion: 1;
   ui: TWidgetUiManifest;
   server: TWidgetServerManifest | null;
-  resources: readonly TResourceRequirement[];
+  resources: readonly Omit<TResourceRequirement, 'resourceId'>[];
 }>;
 
 export type TWidgetExecutableInputFile = Readonly<{
   path: string;
   bytes: Uint8Array;
+}>;
+
+export type TWidgetBuildReceiptOutput = Readonly<{
+  path: string;
+  byteSize: number;
+  sha256: string;
+}>;
+
+/**
+ * Portable build completion evidence. The host treats this as untrusted input
+ * and independently recomputes every digest before accepting a generation.
+ */
+export type TWidgetBuildReceipt = Readonly<{
+  format: 'omnidraw.widget-build-receipt.v1';
+  schemaVersion: 1;
+  sourceDigestSha256: string;
+  manifestDigestSha256: string;
+  executableInputDigestSha256: string;
+  sdkVersion: string;
+  buildIdentity: string;
+  outputs: readonly TWidgetBuildReceiptOutput[];
 }>;
 
 export type TWidgetBuildEnvironment = Readonly<{
@@ -83,6 +104,7 @@ export type TWidgetChangeClass =
   | 'executable'
   | 'dependency'
   | 'resource-contract'
+  | 'resource-binding'
   | 'invalid'
   | 'ambiguous';
 

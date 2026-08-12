@@ -1404,6 +1404,68 @@ describe('PreviewInspectionBrowserService', () => {
     await service.stop();
   });
 
+  test('retains only a validated bounded runtime event when shell mount rejects', async () => {
+    const driver: TPreviewInspectionShellDriver = {
+      ...fakes.driver,
+      async mount() {
+        throw new Error('/Users/person/private/widget.ts token=secret-value');
+      },
+      async snapshot() {
+        const value = await fakes.driver.snapshot({} as never);
+        return {
+          ...value,
+          runtimeEvents: [{
+            origin: 'guest.module',
+            phase: 'startup',
+            code: 'GUEST_EXCEPTION',
+            severity: 'error',
+            message: 'guest.module GUEST_EXCEPTION',
+            artifactHash: `sha256:${SHA_A}`,
+            runtimeGeneration: 1,
+            lifecycleGeneration: 2,
+            location: {
+              module: 'chunks/widget-generated.js',
+              line: 7,
+              column: 3,
+            },
+          }],
+        };
+      },
+    };
+    const service = new PreviewInspectionBrowserService({
+      tempRoot: join(root, 'mount-failure-evidence-jobs'),
+      shell: fakes.shell,
+      launcher: fakes.launcher,
+      internals: fakes.internals,
+      driver,
+      digestSha256: () => SHA_A,
+    });
+
+    const failure = await service.run(job({
+      jobId: 'job-mount-failure-evidence',
+      actions: [],
+    })).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: 'BROWSER_MOUNT_FAILED',
+      stage: 'mount',
+      evidence: {
+        capsuleArtifactHash: `sha256:${SHA_A}`,
+        runtimeGeneration: 1,
+        lifecycleGeneration: 2,
+        droppedRuntimeEventCount: 0,
+        runtimeEvents: [{
+          origin: 'guest.module',
+          code: 'GUEST_EXCEPTION',
+          message: 'guest.module GUEST_EXCEPTION',
+        }],
+      },
+    });
+    expect(JSON.stringify(failure)).not.toContain('/Users/person');
+    expect(JSON.stringify(failure)).not.toContain('secret-value');
+    await service.stop();
+  });
+
   test('reports exact settle, actions, and capture failure stages', async () => {
     const settleService = new PreviewInspectionBrowserService({
       tempRoot: join(root, 'settle-stage-jobs'),

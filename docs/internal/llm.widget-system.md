@@ -21,13 +21,19 @@ releases, no artifacts, no Preview records, and no function history.
    widget root. Readers pin one generation; writers refresh it after each
    checked mutation. Generation numbers are process-local and may decrease
    after restart.
-4. **Preview** is a full-stack build owned by the current process. Nothing
-   about it is durable; a stopped canvas Preview frame shows
-   **Preview stopped — build again.**
-5. **Widget instance** is a canvas frame whose extension stores only
-   `widgetKey` and a stable `instanceId` (plus concrete resource choices).
-   It always follows the current healthy publication.
-6. **Server function** is a declared, descriptor-driven export of a published
+4. **Accepted build generation** is the only draft output Preview or Publish
+   may consume. A portable repository-local build writes `dist/` and
+   `dist/omnidraw.build.json` atomically; the host independently validates the
+   current source, manifest, output metadata, compatibility, and Capsule before
+   accepting it. Raw edits leave the last working Preview unchanged.
+5. **Preview** is a full-stack accepted generation owned by the current
+   process. Nothing about the session is durable; a stopped canvas Preview
+   frame shows **Preview stopped — build again.**
+6. **Widget instance** is a canvas frame whose extension stores only
+   `widgetKey` and a stable `instanceId`. It always follows the current healthy
+   publication. Concrete resource references live only in that publication's
+   `omnidraw.json`, never on the canvas item.
+7. **Server function** is a declared, descriptor-driven export of a published
    (or Preview) widget. Calls are one live request and one live response with
    no durable history.
 
@@ -59,7 +65,9 @@ widgets/
 project separately, so metadata-only edits never rebuild executable bytes.
 
 - **Executable projection** (`schemaVersion: 1`, `ui`, `server | null`,
-  `resources`) is the only manifest form the Capsule builder consumes. Its
+  `resources`) is the only manifest form the Capsule builder consumes. Concrete
+  `resourceId` values are removed from this projection while the logical
+  slot/kind/effect/operation contract remains. Its
   canonical JSON digest keys every build and reuse decision together with the
   executable-input digest (manifest + source files + build environment).
 - **`release.json`** is minimal: exact file list with byte sizes and SHA-256,
@@ -76,7 +84,8 @@ project separately, so metadata-only edits never rebuild executable bytes.
 | --- | --- |
 | Save draft Config | Digest-fenced write of presentation/manifest fields into the draft. |
 | Publish metadata | Atomically replaces only `omnidraw.json` in the published folder; executable bytes are byte-identical before and after. No install, construction, Capsule generation, or signing runs. |
-| Build & publish | Full distribution build, descriptor extraction, Capsule construction and release signing, exact release validation, atomic replacement. Existing canvas instances remount against the new current publication while keeping their instance state and resource choices. |
+| Rebuild | Runs the repository's same portable `npm run build`, then waits for independent host acceptance. It does not expose raw source edits. |
+| Build & publish | Requires one current accepted generation, applies release signing and exact release validation, and atomically replaces the publication. A resource-ID-only change may reuse byte-identical executable output, but still needs a fresh receipt and explicit publication. Existing canvas instances keep geometry and instance state and resolve the new published manifest on their next call. |
 
 ## Runtime loading
 
@@ -92,43 +101,54 @@ The browser mounts widgets through the filesystem catalog:
 3. `WidgetStateService` stays the only owner of shared widget-instance JSON
    state, keyed and compare-and-swap fenced against the exact canvas
    identity. Publication changes never touch it.
-4. Resource bindings live on the canvas item. Runtime and function reads
-   re-read the item so binding edits apply without a frame rebuild.
+4. Resource bindings live only in the exact current draft or published
+   manifest. Runtime and function reads re-resolve the manifest declaration,
+   resource lifecycle, kind, effect, operation, and policy. Placement and
+   canvas items accept no binding payload and never open a resource picker.
 
 ## Preview
 
-Preview is full-stack but process-owned. The current process keeps build
-status, temporary Capsule bytes, live diagnostics, selected resources,
-signing work, and mounted handles; nothing survives restart.
+Preview is full-stack but process-owned. The current process keeps accepted
+build state, temporary Capsule bytes, live diagnostics, manifest-owned
+resource references, signing work, and mounted handles; nothing survives
+restart.
 
 - The sidebar renders each catalog entry as one published row (**Add**:
   places the current publication) and, only while the draft differs from the
   publication, one draft row (**Preview**: places an ephemeral Preview frame).
-- A freshly placed Preview frame builds immediately: its first attach falls
-  back from `widget.preview.load` to `widget.preview.open` when no live
-  session exists. The stopped fallback (**Preview stopped — build again.**)
-  remains only for frames that outlived their host process.
-- `widget.preview.open` captures the draft, builds (or reuses the exact
-  validated construction while digest and compatibility policy match),
-  signs with the preview key, and returns mount inputs and diagnostics.
+- Scaffold creation runs the portable build automatically. Later source or
+  manifest edits mark the draft dirty but do not replace the displayed
+  Preview until another portable build receipt is accepted.
+- Filesystem events are a latency hint; bounded polling of active drafts is the
+  correctness fallback. Candidate receipts are deduplicated and re-read around
+  validation so partial, replaced, stale, or forged output never becomes a
+  generation.
+- `widget.preview.open` requires the current accepted generation, validates its
+  exact manifest-owned resource references, signs the independently
+  constructed host Capsule with the Preview key, and returns mount inputs and
+  diagnostics. It accepts no browser-selected resources.
 - `widget.preview.load` returns the live session for one canvas frame or
   fails `NOT_FOUND`.
 - `widget.preview.close` disposes the session; `widget.preview.invoke`
   executes a declared server function against the session's exact server
-  artifact with its selected resources.
+  artifact and accepted manifest references.
 - The canvas Preview frame persists only the draft `widgetKey` and normal
   frame data (`widget-preview` extension). Deleting the frame closes the
   session. One Preview frame per draft is kept per canvas: placing the same
   draft again focuses the existing frame.
-- Publish may reuse the exact validated construction when the draft digest
-  still matches; release signing wraps the same unsigned bytes.
+- Manual **Rebuild** and AI build use the same portable command. A failed build
+  leaves the previous accepted Preview running. Publish rejects dirty,
+  building, failed, stale, or superseded generations.
 
 ## Direct server functions
 
 One call resolves the current canvas item and the current published (or
-Preview) folder, checks the descriptor, input schema, declared resource
-effects, timeout, cancellation, disconnect, and concurrency, then executes in
-one disposable child process and returns one terminal result.
+Preview) manifest, obtains the resource only from its declared `resourceId`,
+then rechecks publication identity, lifecycle, kind, effect, operation,
+descriptor, input schema, policy, timeout, cancellation, disconnect, and
+concurrency. It executes in one disposable child process and returns one
+terminal result. An ID is not a capability, and missing/stale references fail
+closed without display-name or first-compatible fallback.
 
 - Resource writes use process-local, single-use permits. A permit is
   consumed even when the outcome is unclear to the caller, and there is no
@@ -146,11 +166,55 @@ The agent works on the same shared draft root as every other surface:
 created drafts therefore appear in the catalog, the sidebar, Preview, and
 Publish without any bridge. Successful create/validate results offer an
 **Open Preview** action that places a live draft Preview frame beside the
-originating chat. Validation runs the same build pipeline used by Preview
-and Publish and reports whether the Preview build actually ran. Every draft
-change invalidates the widget catalog so sidebar rows and frames refresh
-without a manual reload. Durable chat metadata lives in the `chats` table;
-transcripts stay files.
+originating chat.
+
+The chat connection carries its real canvas identity. Submitted widget refs are
+re-resolved against one server-side catalog snapshot; healthy drafts are
+mounted read/write, published folders remain immutable, and one explicit active
+editable target is injected through Pi's `before_agent_start` context hook.
+Browser labels and stale health are never trusted.
+
+Canvas projection may render a newly inserted AI Chat optimistically, but its
+portal defers mounting and connecting until `CanvasDocumentService` exposes the
+exact accepted item. A rejected, removed, or replaced optimistic node stops the
+wait. The server still revalidates the durable canvas/item pair independently;
+the browser readiness gate is only lifecycle coordination, never authority.
+
+The scaffold scripts are `omnidraw-widget check .` and
+`omnidraw-widget build .` from the public SDK. Check is bounded and read-only;
+it validates only repository syntax/contracts and explicitly reports that
+resource existence and Preview runtime were not checked. Build has no host,
+database, socket, or network capability and atomically emits the receipt the
+host observes. Resource tools may return one exact safe `resourceId`; the agent
+writes it into the target manifest and then checks and builds. There is no
+binding-intent record or picker.
+
+AI Chat is trusted local automation in this single-user application. Once the
+user authorizes the chat workflow, it may run arbitrary host commands through
+`bash` and through draft-owned package scripts, including `npm run build`.
+That command-execution capability is an accepted product risk, not an
+isolation boundary. The portable SDK command itself remains host-independent;
+the surrounding AI Chat process is not claimed to be sandboxed.
+
+`od_widget_preview_inspect` has two truthful modes. `artifact` mounts exact
+accepted bytes in isolation and reports `resources: not_available`,
+`bindings: unavailable`, and no visible-frame claim. `preview` resolves the
+exact active chat/canvas/widget target and accepted generation, then reuses the
+real manifest-owned function bridge in a process-owned diagnostic clone. The
+clone does not mutate canvas layout and never claims to be the visible frame.
+An absent or failed visible frame can still be inspected; the result reports
+`previewState: absent|failed`, `executionTarget: diagnostic_clone`, and the safe
+next action. Mounting, retired, ambiguous, and generation-mismatched states stay
+distinct and fail before diagnostic execution. A failed shell mount retains
+only a validator-accepted, bounded runtime-event snapshot, with raw paths,
+secrets, resource IDs, and provider details still redacted. `od_widget_validate`
+reports `acceptedArtifactBuild` plus `livePreviewRuntime: not_exercised`; build
+acceptance is never runtime or resource evidence.
+Structured build, resource, function, output, or guest failures block success;
+bounded UI evidence can report functional behavior only when it was actually
+observed. Every draft change invalidates the catalog without making raw source
+presentable. Durable chat metadata lives in the `chats` table; transcripts stay
+files.
 
 ## Package map
 
@@ -171,5 +235,8 @@ transcripts stay files.
 - The database has exactly 14 application tables; none store widgets,
   artifacts, Preview, or function history.
 - Preview is ephemeral; only the draft `widgetKey` and frame data persist.
+- Only accepted portable build generations reach Preview or publication.
+- `omnidraw.json` is the only widget-to-resource authority; canvas items carry
+  no resource binding map and placement never asks the user to choose one.
 - Functions are direct and history-free.
 - There is no tenant, organization, account, or membership scope anywhere.

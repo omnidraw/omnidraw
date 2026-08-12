@@ -12,6 +12,7 @@ import {
   fnResourceCapabilities,
   fnSafeDbSchemaObject,
   fnSafeDbSchemaOverview,
+  fnSafeManifestResourceLink,
   fnSafeResource,
   fnSafeResourceError,
   fnSafeResourceMetadata,
@@ -321,7 +322,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const list = defineTool({
     name: 'od_resource_list',
     label: 'List Resources',
-    description: 'Discover resources by public name. Follow with od_resource_inspect using resourceName; internal IDs are never returned.',
+    description: 'Discover resources by public name. Follow with od_resource_inspect to receive the exact safe local resourceId for manifest authoring.',
     parameters: Type.Object({
       kind: Type.Optional(RESOURCE_KIND_SCHEMA),
       cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
@@ -360,7 +361,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const inspect = defineTool({
     name: 'od_resource_inspect',
     label: 'Inspect Resource',
-    description: 'Inspect compact safe metadata by resourceName, including status, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with od_resource_data_read.',
+    description: 'Inspect compact safe metadata by resourceName, including the exact local resourceId for omnidraw.json, lifecycle status, deletability, KV/secret key count only, or the first dense database schema page.',
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('od_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
@@ -370,7 +371,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
         internalResourceId = resource.id;
         const lifecycle = fnResourceCapabilities(resource);
         const base = {
-          resource: fnSafeResourceMetadata(resource),
+          resource: {
+            ...fnSafeResourceMetadata(resource),
+            resourceId: resource.id,
+          },
           ready: lifecycle.ready,
           currentlyDeletable: lifecycle.currentlyDeletable,
           deleteBlockedReason: lifecycle.deleteBlockedReason,
@@ -408,7 +412,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const create = defineTool({
     name: 'od_resource_create',
     label: 'Create Resource',
-    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required; follow success with od_resource_inspect using the returned name.',
+    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required. Success returns the exact local resourceId to write into omnidraw.json.',
     parameters: Type.Union([
       Type.Object({ kind: Type.Literal('kv'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
       Type.Object({ kind: Type.Literal('secretStore'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
@@ -429,7 +433,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           signal,
           execute: async (stored) => args.resourceService!.createResource!({ kind: stored.kind, name: stored.name }),
         });
-        const modelData = { resource: fnSafeResource(resource) };
+        const modelData = { resource: fnSafeManifestResourceLink(resource) };
         return fnToolSuccess({ summary: `Created resource '${resource.name}'.`, modelData, details: modelData });
       } catch (error) {
         return toolResourceError(error);

@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/canvas",
-  "version": "0.6.1",
+  "version": "0.6.0",
   "description": "Portable Solid canvas host, Cangine runtime, and optimistic document client for Omnidraw.",
   "type": "module",
   "license": "MIT",

@@ -75,20 +75,6 @@ const ZWidgetPublishedPlacementReference = z.object({
   widgetKey: ZWidgetKey,
   catalogGeneration: z.number().int().positive(),
 }).strict();
-const ZWidgetResourceBinding = z.object({
-  resourceId: ZIdentifier,
-  allowRead: z.boolean(),
-  allowWrite: z.boolean(),
-}).strict().refine(
-  (binding) => binding.allowRead || binding.allowWrite,
-  'A widget resource binding must grant read or write access.',
-);
-const ZWidgetResourceBindings = z.record(
-  z.string().min(1).max(200).regex(/^[A-Za-z][A-Za-z0-9._-]{0,199}$/),
-  ZWidgetResourceBinding,
-).refine((bindings) => Object.keys(bindings).length <= 128, {
-  message: 'A widget may bind at most 128 resource slots.',
-});
 const ZSignedWidgetCapsuleRuntimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.refine(
   (descriptor) => descriptor.signatureKeyIds.length > 0,
   'Runtime artifact must contain at least one trusted Capsule signature.',
@@ -206,12 +192,6 @@ const ZWidgetPreviewSessionIdentity = z.object({
   canvasId: ZIdentifier,
   elementId: ZIdentifier,
   widgetKey: ZWidgetKey,
-}).strict();
-
-export const ZWidgetPreviewSelectedResource = z.object({
-  slot: z.string().min(1).max(128),
-  resourceId: ZIdentifier,
-  effect: z.enum(['read', 'read_write']),
 }).strict();
 
 export const ZWidgetPreviewDiagnostic = z.object({
@@ -361,6 +341,7 @@ const widgetContract = oc.router({
         generation: z.number().int().positive(),
         fullResync: z.boolean(),
         changedWidgetKeys: z.array(ZWidgetKey).max(4_096),
+        previewWidgetKeys: z.array(ZWidgetKey).max(4_096),
       }).strict())),
   }),
   config: oc.router({
@@ -385,7 +366,6 @@ const widgetContract = oc.router({
   placement: oc.router({
     resolve: oc.input(z.object({
       reference: ZWidgetPublishedPlacementReference,
-      resourceBindings: ZWidgetResourceBindings.optional(),
     }).strict()).output(z.object({
       kind: z.literal('published'),
       reference: ZWidgetPublishedPlacementReference,
@@ -395,13 +375,18 @@ const widgetContract = oc.router({
         width: z.number().int().min(WIDGET_FRAME_MIN_WIDTH).max(WIDGET_FRAME_MAX_WIDTH),
         height: z.number().int().min(WIDGET_FRAME_MIN_HEIGHT).max(WIDGET_FRAME_MAX_HEIGHT),
       }).strict(),
-      resourceBindings: ZWidgetResourceBindings,
     }).strict()),
   }),
   preview: oc.router({
-    open: oc.input(ZWidgetPreviewSessionIdentity.extend({
-      selectedResources: z.array(ZWidgetPreviewSelectedResource).max(64).optional(),
-    }).strict()).output(ZWidgetPreviewMount),
+    open: oc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
+    rebuild: oc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
+    rebuildDraft: oc.input(z.object({
+      widgetKey: ZWidgetKey,
+    }).strict()).output(z.object({
+      widgetKey: ZWidgetKey,
+      acceptedGeneration: z.number().int().positive(),
+      buildIdentity: ZSha256,
+    }).strict()),
     load: oc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
     close: oc.input(z.object({
       canvasId: ZIdentifier,

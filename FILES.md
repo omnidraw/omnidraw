@@ -79,7 +79,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/AgentBashCapability.ts](apps/cli/src/services/AgentBashCapability.ts) |  |
 | [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/fn.mutable-registry-package-lock.ts](apps/cli/src/services/fn.mutable-registry-package-lock.ts) |  |
 | [apps/cli/src/services/fn.redact-build-output.ts](apps/cli/src/services/fn.redact-build-output.ts) |  |
+| [apps/cli/src/services/fn.widget-build-generation.ts](apps/cli/src/services/fn.widget-build-generation.ts) | Pure comparison and bounded diagnostic projection for host-validated widget build generations. |
 | [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
 | [apps/cli/src/services/fn.widget-preview-inspection.ts](apps/cli/src/services/fn.widget-preview-inspection.ts) |  |
 | [apps/cli/src/services/fn.widget-ui-entry.ts](apps/cli/src/services/fn.widget-ui-entry.ts) |  |
@@ -100,8 +102,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
 | [apps/cli/src/services/ResourceServiceCapabilities.ts](apps/cli/src/services/ResourceServiceCapabilities.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
+| [apps/cli/src/services/tx.mutable-registry-package-lock.ts](apps/cli/src/services/tx.mutable-registry-package-lock.ts) |  |
 | [apps/cli/src/services/tx.retire-legacy-agent-drafts.ts](apps/cli/src/services/tx.retire-legacy-agent-drafts.ts) | Dev-only retirement of the obsolete agent-private widget draft root. |
 | [apps/cli/src/services/tx.terminate-widget-build-process-tree.ts](apps/cli/src/services/tx.terminate-widget-build-process-tree.ts) |  |
+| [apps/cli/src/services/WidgetBuildGenerationService.ts](apps/cli/src/services/WidgetBuildGenerationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
 | [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
 | [apps/cli/src/services/WidgetConstructionCache.ts](apps/cli/src/services/WidgetConstructionCache.ts) |  |
@@ -326,6 +330,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas-contract/README.md](packages/canvas-contract/README.md) |  |
 | [packages/canvas-contract/scripts/build.ts](packages/canvas-contract/scripts/build.ts) |  |
 | [packages/canvas-contract/src/CONSTANTS.ts](packages/canvas-contract/src/CONSTANTS.ts) |  |
+| [packages/canvas-contract/src/fn.canvas-legacy-widget.ts](packages/canvas-contract/src/fn.canvas-legacy-widget.ts) | Pure removal of retired per-instance widget resource bindings. |
 | [packages/canvas-contract/src/index.ts](packages/canvas-contract/src/index.ts) |  |
 | [packages/canvas-contract/src/types.ts](packages/canvas-contract/src/types.ts) |  |
 | [packages/canvas-contract/src/validation.ts](packages/canvas-contract/src/validation.ts) |  |
@@ -512,7 +517,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/sdk/server/index.d.ts](packages/sdk/server/index.d.ts) |  |
 | [packages/sdk/server/index.js](packages/sdk/server/index.js) |  |
 | [packages/sdk/server/package.json](packages/sdk/server/package.json) |  |
+| [packages/sdk/src/cli.mjs](packages/sdk/src/cli.mjs) |  |
 | [packages/sdk/src/collaborative-state-client.ts](packages/sdk/src/collaborative-state-client.ts) |  |
+| [packages/sdk/src/fn.offline-check.ts](packages/sdk/src/fn.offline-check.ts) | Pure deterministic reporting for the portable offline widget checker. |
+| [packages/sdk/src/fn.portable-build.ts](packages/sdk/src/fn.portable-build.ts) | Pure source transforms and fixed Vite configuration for the portable widget builder. |
 | [packages/sdk/src/function-client.ts](packages/sdk/src/function-client.ts) | Capsule guest client primitives for generated server-function proxies. |
 | [packages/sdk/src/server.ts](packages/sdk/src/server.ts) | Authoring and registration surface for bounded short-lived server functions. This tiny runtime is bundled into each server artifact. |
 | [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |
@@ -571,9 +579,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/fn.widget-list.ts](packages/service-agent/src/tools/fn.widget-list.ts) |  |
 | [packages/service-agent/src/tools/fn.widget-preview-inspect.ts](packages/service-agent/src/tools/fn.widget-preview-inspect.ts) |  |
 | [packages/service-agent/src/tools/fx.db-apply.ts](packages/service-agent/src/tools/fx.db-apply.ts) |  |
-| [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
 | [packages/service-agent/src/tools/resource-service.ts](packages/service-agent/src/tools/resource-service.ts) |  |
 | [packages/service-agent/src/tools/templates/assets.d.ts](packages/service-agent/src/tools/templates/assets.d.ts) |  |
+| [packages/service-agent/src/tools/templates/assets.d.ts.tpl](packages/service-agent/src/tools/templates/assets.d.ts.tpl) |  |
 | [packages/service-agent/src/tools/templates/CONSTANTS.ts](packages/service-agent/src/tools/templates/CONSTANTS.ts) |  |
 | [packages/service-agent/src/tools/templates/plain/omnidraw.json.tpl](packages/service-agent/src/tools/templates/plain/omnidraw.json.tpl) |  |
 | [packages/service-agent/src/tools/templates/plain/package.json.tpl](packages/service-agent/src/tools/templates/plain/package.json.tpl) |  |
@@ -589,6 +597,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/templates/react/ui/main.tsx.tpl](packages/service-agent/src/tools/templates/react/ui/main.tsx.tpl) |  |
 | [packages/service-agent/src/tools/templates/react/ui/styles.css.tpl](packages/service-agent/src/tools/templates/react/ui/styles.css.tpl) |  |
 | [packages/service-agent/src/tools/templates/react/vite.config.mjs.tpl](packages/service-agent/src/tools/templates/react/vite.config.mjs.tpl) |  |
+| [packages/service-agent/src/tools/templates/README.md.tpl](packages/service-agent/src/tools/templates/README.md.tpl) |  |
 | [packages/service-agent/src/tools/tool.bash.ts](packages/service-agent/src/tools/tool.bash.ts) |  |
 | [packages/service-agent/src/tools/tool.resources.ts](packages/service-agent/src/tools/tool.resources.ts) |  |
 | [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |
@@ -637,6 +646,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/widget-filesystem/workspace/NodeWidgetFilesystemWorkspace.ts](packages/service-agent/src/widget-filesystem/workspace/NodeWidgetFilesystemWorkspace.ts) |  |
 | [packages/service-agent/src/widget-filesystem/workspace/ports.ts](packages/service-agent/src/widget-filesystem/workspace/ports.ts) |  |
 | [packages/service-agent/src/widget-filesystem/workspace/typed.ts](packages/service-agent/src/widget-filesystem/workspace/typed.ts) | Concrete filesystem workspace contracts shared by import and Preview. |
+| [packages/service-agent/src/widget-reference/fn.widget-selection-context.ts](packages/service-agent/src/widget-reference/fn.widget-selection-context.ts) |  |
+| [packages/service-agent/src/widget-reference/index.ts](packages/service-agent/src/widget-reference/index.ts) |  |
+| [packages/service-agent/src/widget-reference/typed.ts](packages/service-agent/src/widget-reference/typed.ts) |  |
 | [packages/service-agent/src/workspace/CONSTANTS.ts](packages/service-agent/src/workspace/CONSTANTS.ts) |  |
 | [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
 | [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
@@ -940,6 +952,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
 | [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure path and resource-requirement normalization shared by widget manifests. |
 | [packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts](packages/widget-contract/src/core/fn.normalize-build-diagnostic.ts) |  |
+| [packages/widget-contract/src/core/fn.portable-build-receipt.ts](packages/widget-contract/src/core/fn.portable-build-receipt.ts) | Pure canonical digests and identity checks for portable widget build receipts. |
 | [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
 | [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
 | [packages/widget-contract/src/diagnostic-schema.ts](packages/widget-contract/src/diagnostic-schema.ts) |  |
@@ -1007,6 +1020,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
 | [scripts/test-packed-canvas-kernel.ts](scripts/test-packed-canvas-kernel.ts) | Packs the public canvas kernel and proves a clean external browser consumer. |
 | [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
+| [scripts/test-packed-sdk-offline-check.ts](scripts/test-packed-sdk-offline-check.ts) | Proves the packed public SDK offline checker in an external consumer. |
 | [scripts/test-preview-inspection-packaged.ts](scripts/test-preview-inspection-packaged.ts) | Runs the complete acceptance-only packaged Preview inspection qualification in one fresh, automatically cleaned release directory. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the local resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Focused gate for filesystem publications and runtime loading. |

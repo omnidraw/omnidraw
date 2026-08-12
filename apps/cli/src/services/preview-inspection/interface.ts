@@ -42,6 +42,12 @@ export type TPreviewInspectionBrowserAction =
       value: string;
       commit?: 'none' | 'blur' | 'enter';
     }>
+  | Readonly<{
+      type: 'assertText';
+      target: TPreviewInspectionTarget;
+      text: string;
+      exact?: boolean;
+    }>
   | Readonly<{ type: 'waitFrames'; count: number }>;
 
 export type TPreviewInspectionFunctionBridge = Readonly<{
@@ -176,6 +182,15 @@ export type TPreviewInspectionBrowserResult = Readonly<{
     canvases: number;
     runtimeEvents: number;
   }>;
+}>;
+
+/** Bounded shell evidence retained only after the process-owned validator accepts it. */
+export type TPreviewInspectionBrowserFailureEvidence = Readonly<{
+  capsuleArtifactHash: `sha256:${string}`;
+  runtimeGeneration: number;
+  lifecycleGeneration: number;
+  runtimeEvents: readonly TPreviewInspectionRuntimeEvent[];
+  droppedRuntimeEventCount: number;
 }>;
 
 export type TPreviewInspectionBrowserPreflight =

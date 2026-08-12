@@ -19,9 +19,11 @@ export type {
   TInspectEvidence,
   TInspectFailure,
   TInspectFidelity,
+  TInspectFunctional,
   TInspectIdentity,
   TInspectScreenshot,
   TInspectStage,
+  TInspectVerification,
   TToolEvent,
   TWidgetPreviewInspectAction,
   TWidgetPreviewInspectInput,
@@ -46,3 +48,4 @@ export * from './widget-filesystem/management';
 export * from './widget-filesystem/preview';
 export * from './widget-filesystem/publication';
 export * from './widget-filesystem/workspace';
+export * from './widget-reference';

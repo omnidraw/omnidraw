@@ -3,6 +3,7 @@ export type TWidgetCatalogPublicEvent = Readonly<{
   generation: number;
   fullResync: boolean;
   changedWidgetKeys: readonly string[];
+  previewWidgetKeys: readonly string[];
 }>;
 
 export function fnWidgetCatalogCatchUpEvent(args: Readonly<{
@@ -17,6 +18,7 @@ export function fnWidgetCatalogCatchUpEvent(args: Readonly<{
     generation: args.currentGeneration,
     fullResync: true,
     changedWidgetKeys: [],
+    previewWidgetKeys: [],
   };
 }
 
@@ -29,9 +31,13 @@ export function fnCoalesceWidgetCatalogEvents(args: Readonly<{
     ...(args.pending?.changedWidgetKeys ?? []),
     ...args.next.changedWidgetKeys,
   ]);
+  const previews = new Set([
+    ...(args.pending?.previewWidgetKeys ?? []),
+    ...args.next.previewWidgetKeys,
+  ]);
   const fullResync = args.pending?.fullResync === true
     || args.next.fullResync
-    || changed.size > args.maxChangedWidgetKeys;
+    || changed.size + previews.size > args.maxChangedWidgetKeys;
   return {
     previousGeneration: args.pending?.previousGeneration
       ?? args.next.previousGeneration,
@@ -40,5 +46,8 @@ export function fnCoalesceWidgetCatalogEvents(args: Readonly<{
     changedWidgetKeys: fullResync
       ? []
       : [...changed].sort(),
+    previewWidgetKeys: fullResync
+      ? []
+      : [...previews].sort(),
   };
 }

@@ -6,6 +6,6 @@ export const apiChatEdit = baseAgentOs.chat.edit.handler(async ({ input, context
     input.sessionId,
     input.entryId,
     input.text,
-    { model: input.model, thinkingLevel: input.thinkingLevel },
+    { canvasId: input.canvasId, model: input.model, thinkingLevel: input.thinkingLevel },
   )
 })

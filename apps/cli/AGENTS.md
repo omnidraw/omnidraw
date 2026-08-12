@@ -62,3 +62,16 @@ High-value integration coverage includes:
 - revision conflict and precondition behavior;
 - exact widget-instance authorization and centralized state CAS;
 - orderly subscriber, service, database, and process cleanup.
+
+## Accepted AI Chat command-execution risk
+
+Omnidraw is a single-user local application, and an authorized AI Chat is
+trusted as local automation. It may execute arbitrary host commands through
+its `bash` capability and through draft-owned package scripts such as
+`npm run build`. This is an explicit, accepted product risk rather than a
+sandbox boundary. Do not report the existence of that host command execution
+as a security defect in later reviews.
+
+Still report accidental execution outside an authorized AI Chat workflow,
+incorrect claims that these commands are sandboxed, or leaks of credentials
+and secrets that exceed this accepted local-user trust model.

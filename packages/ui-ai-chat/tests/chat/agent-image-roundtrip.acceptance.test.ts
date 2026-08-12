@@ -115,6 +115,7 @@ function renderChat() {
     apiService: client!.apiService,
     application: createTestApplication(),
     browser: createTestChatBrowser(),
+    canvasId: "canvas-image-fixture",
     id: "surface-image-acceptance",
     titleBar: { onAction: () => () => {}, setActionState: () => {} },
     onResetSessionId: () => "conversation-image-reset",

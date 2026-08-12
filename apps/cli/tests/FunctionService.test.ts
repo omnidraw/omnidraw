@@ -62,9 +62,7 @@ function descriptor(
   });
 }
 
-function canvasItem(
-  binding: Readonly<{ allowRead: boolean; allowWrite: boolean }> | null,
-): TCanvasItemSnapshot {
+function canvasItem(): TCanvasItemSnapshot {
   return {
     id: input.elementId,
     item: {
@@ -76,15 +74,6 @@ function canvasItem(
           type: 'widget-instance',
           instanceId: input.widgetInstanceId,
           widgetKey: input.widgetKey,
-          ...(binding === null ? {} : {
-            resourceBindings: {
-              store: {
-                resourceId: 'resource-a',
-                allowRead: binding.allowRead,
-                allowWrite: binding.allowWrite,
-              },
-            },
-          }),
         },
       },
     } as TCanvasItemSnapshot['item'],
@@ -96,6 +85,10 @@ function canvasItem(
 
 function runtimeResolution(
   functionDescriptor: TWidgetServerFunctionDescriptor,
+  requirementOverride?: Readonly<{
+    resourceId?: string;
+    kind?: 'kv' | 'db';
+  }>,
 ): TWidgetFilesystemRuntimeResolution {
   const serverEntryBytes = new Uint8Array([1, 2, 3, 4]);
   const resourceEffect = functionDescriptor.resources[0]?.effect;
@@ -111,7 +104,15 @@ function runtimeResolution(
       capabilities: [],
       resources: resourceEffect === undefined
         ? []
-        : [{ slot: 'store', kind: 'kv', effect: resourceEffect, required: true }],
+        : [{
+            slot: 'store',
+            ...(requirementOverride?.resourceId === undefined && requirementOverride !== undefined
+              ? {}
+              : { resourceId: requirementOverride?.resourceId ?? 'resource-a' }),
+            kind: requirementOverride?.kind ?? 'kv',
+            effect: resourceEffect,
+            required: true,
+          }],
     },
     release: {
       schemaVersion: 1,
@@ -147,17 +148,23 @@ function directCall(request: TDirectFunctionInvocationRequest): TDirectFunctionC
 
 function harness(args: Readonly<{
   functionDescriptor: TWidgetServerFunctionDescriptor;
-  binding: Readonly<{ allowRead: boolean; allowWrite: boolean }> | null;
   executor: IDirectFunctionInvoker;
+  requirementOverride?: Readonly<{ resourceId?: string; kind?: 'kv' | 'db' }>;
+  availableResource?: Readonly<{
+    id: string;
+    kind: 'kv' | 'db';
+    status: 'ready' | 'migrating';
+  }> | null;
 }>): Readonly<{
   service: FunctionService;
   canvasQueries: unknown[];
   catalogKeys: string[];
   gatewayCalls: unknown[];
   gatewayRequests: unknown[];
+  resourceReads: string[];
   resolution: TWidgetFilesystemRuntimeResolution;
 }> {
-  const item = canvasItem(args.binding);
+  const item = canvasItem();
   const canvasQueries: unknown[] = [];
   const canvas = {
     queryItems: async (query: unknown) => {
@@ -165,7 +172,7 @@ function harness(args: Readonly<{
       return { items: [item], nextCursor: null };
     },
   } as unknown as ICanvasService;
-  const resolution = runtimeResolution(args.functionDescriptor);
+  const resolution = runtimeResolution(args.functionDescriptor, args.requirementOverride);
   const catalogKeys: string[] = [];
   const catalog = {
     resolveRuntime: async (key: string) => {
@@ -176,8 +183,14 @@ function harness(args: Readonly<{
   } as unknown as WidgetFilesystemRuntimeCatalog;
   const gatewayCalls: unknown[] = [];
   const gatewayRequests: unknown[] = [];
+  const resourceReads: string[] = [];
   const resources = {
-    getResource: async () => ({ id: 'resource-a', kind: 'kv', status: 'ready' }),
+    getResource: async (resourceId: string) => {
+      resourceReads.push(resourceId);
+      return args.availableResource === undefined
+        ? { id: 'resource-a', kind: 'kv', status: 'ready' }
+        : args.availableResource;
+    },
     createFunctionResourceGateway: (request: {
       requirements: readonly { slot: string; required?: boolean }[];
       bindings: readonly {
@@ -218,6 +231,7 @@ function harness(args: Readonly<{
     catalogKeys,
     gatewayCalls,
     gatewayRequests,
+    resourceReads,
     resolution,
   };
 }
@@ -240,7 +254,6 @@ describe('FunctionService direct filesystem invocation', () => {
     };
     const setup = harness({
       functionDescriptor: descriptor('fx', 'read'),
-      binding: { allowRead: true, allowWrite: false },
       executor,
     });
 
@@ -304,7 +317,6 @@ describe('FunctionService direct filesystem invocation', () => {
     };
     const setup = harness({
       functionDescriptor: descriptor('fx', 'write'),
-      binding: { allowRead: false, allowWrite: true },
       executor,
     });
 
@@ -313,6 +325,42 @@ describe('FunctionService direct filesystem invocation', () => {
       message: 'Function resource call denied: fx_write.',
     });
     expect(setup.gatewayCalls).toEqual([]);
+  });
+
+  test('fails each invalid manifest resource link before executor or provider access', async () => {
+    for (const scenario of [
+      { requirementOverride: {}, availableResource: null, code: 'WIDGET_RESOURCE_BINDING_REQUIRED', reads: [] },
+      {
+        requirementOverride: { resourceId: 'missing-a' },
+        availableResource: null,
+        code: 'WIDGET_RESOURCE_BINDING_STALE',
+        reads: ['missing-a'],
+      },
+      {
+        requirementOverride: { resourceId: 'resource-a' },
+        availableResource: { id: 'resource-a', kind: 'kv' as const, status: 'migrating' as const },
+        code: 'WIDGET_RESOURCE_NOT_READY',
+        reads: ['resource-a'],
+      },
+      {
+        requirementOverride: { resourceId: 'resource-a' },
+        availableResource: { id: 'resource-a', kind: 'db' as const, status: 'ready' as const },
+        code: 'WIDGET_RESOURCE_KIND_MISMATCH',
+        reads: ['resource-a'],
+      },
+    ]) {
+      let invoked = false;
+      const setup = harness({
+        functionDescriptor: descriptor('fx'),
+        requirementOverride: scenario.requirementOverride,
+        availableResource: scenario.availableResource,
+        executor: { invoke: async () => { invoked = true; return success; } },
+      });
+      await expect(setup.service.invokeFunction(input)).rejects.toMatchObject({ code: scenario.code });
+      expect(setup.resourceReads).toEqual(scenario.reads);
+      expect(setup.gatewayRequests).toEqual([]);
+      expect(invoked).toBe(false);
+    }
   });
 
   test('forwards live cancellation and returns the direct terminal result', async () => {
@@ -342,7 +390,7 @@ describe('FunctionService direct filesystem invocation', () => {
         });
       },
     };
-    const setup = harness({ functionDescriptor: descriptor('fn'), binding: null, executor });
+    const setup = harness({ functionDescriptor: descriptor('fn'), executor });
     const controller = new AbortController();
     const call = setup.service.invokeFunction(input, controller.signal);
     await started;
@@ -356,8 +404,8 @@ describe('FunctionService direct filesystem invocation', () => {
 
   test('exposes no invocation history, status, logs, usage, or cancellation control after restart', () => {
     const executor: IDirectFunctionInvoker = { invoke: async () => success };
-    const first = harness({ functionDescriptor: descriptor('fn'), binding: null, executor }).service;
-    const restarted = harness({ functionDescriptor: descriptor('fn'), binding: null, executor }).service;
+    const first = harness({ functionDescriptor: descriptor('fn'), executor }).service;
+    const restarted = harness({ functionDescriptor: descriptor('fn'), executor }).service;
     expect(Object.getOwnPropertyNames(FunctionService.prototype).sort()).toEqual([
       'constructor',
       'invokeFunction',

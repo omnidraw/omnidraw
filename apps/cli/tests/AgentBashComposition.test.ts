@@ -36,18 +36,63 @@ describe('production Agent Bash composition', () => {
       helpRequested: false,
       versionRequested: false,
     };
-    const { services } = setupServices(config);
+    const { canvasService, services } = setupServices(config);
     const database = services.require('db');
     const resourceOwner = services.require('resourceOwner');
     const agentOwner = services.require('agent');
     const context = { config: {}, hooks: {} };
 
     await database.start();
+    await database.canvas.create({ id: 'canvas-bash-composition', name: 'Bash canvas' });
+    await canvasService.execute({
+      commandId: 'place-ai-chat',
+      canvasId: 'canvas-bash-composition',
+      baseRevision: 0,
+      operations: [{
+        type: 'insert',
+        item: {
+          id: 'widget-bash-composition',
+          parentId: null,
+          orderKey: 'a',
+          kind: 'widget-frame',
+          transform: {
+            position: { x: 0, y: 0 },
+            rotation: 0,
+            scale: { x: 1, y: 1 },
+            skew: { x: 0, y: 0 },
+            origin: { x: 0, y: 0 },
+          },
+          size: { width: 320, height: 480 },
+          title: 'AI Chat',
+          resizable: true,
+          minSize: { width: 240, height: 160 },
+          headerItems: [{
+            type: 'button',
+            id: 'settings',
+            label: 'Settings',
+            content: { type: 'text', text: 'Settings' },
+          }],
+          extensions: {
+            'omnidraw:widget': {
+              schemaVersion: 1,
+              type: 'ui-widget',
+              kind: 'ai',
+              payload: { sessionId: 'chat-bash-composition' },
+            },
+          },
+        },
+      }],
+      preconditions: [{ type: 'item-absent', itemId: 'widget-bash-composition' }],
+    });
     await resourceOwner.start(context);
     await agentOwner.start(context);
     try {
       const agent = agentOwner;
-      await agent.connectChat('widget-bash-composition', 'chat-bash-composition');
+      await agent.connectChat(
+        'widget-bash-composition',
+        'chat-bash-composition',
+        'canvas-bash-composition',
+      );
       const session = agent.sessionMap['widget-bash-composition']?.['chat-bash-composition']?.session;
       const bash = session?.getToolDefinition('bash');
       if (!bash) throw new Error('Production AgentService did not register Bash.');

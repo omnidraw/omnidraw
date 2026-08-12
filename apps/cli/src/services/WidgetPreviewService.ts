@@ -10,7 +10,6 @@ import type {
 import type {
   TWidgetPreviewDiagnosticView,
   TWidgetPreviewMountView,
-  TWidgetPreviewSelectedResourceInput,
   TWidgetPreviewSessionInput,
 } from '@omnidraw/api/widget';
 import type { IDirectFunctionInvoker } from '@omnidraw/function-runtime';
@@ -28,15 +27,15 @@ import {
 import type { TResourceEffect, TResourceRequirement } from '@omnidraw/resource-runtime';
 import {
   EphemeralPreviewService,
-  NodeWidgetFilesystemWorkspace,
   type TInspectArtifact,
+  type TInspectDiagnostic,
   type TInspectIdentity,
   type TInspectStage,
+  type TInspectVerification,
   type TPreviewConstructionCompatibility,
   type TPreviewPorts,
   type TWidgetPreviewInspectionRequest,
   type TWidgetPreviewInspectionResponse,
-  type TWidgetWorkspaceDraftBuildCapture,
   type TWidgetFilesystemConstruction,
   type WidgetFilesystemBuildService,
 } from '@omnidraw/service-agent';
@@ -58,11 +57,16 @@ import {
 
 import type { ResourceService } from './ResourceService';
 import type { WidgetFilesystemRuntimeCatalog } from './WidgetFilesystemRuntimeCatalog';
+import type {
+  TAcceptedWidgetBuildGeneration,
+  WidgetBuildGenerationService,
+} from './WidgetBuildGenerationService';
 import type { WidgetCapsuleHostConfigurationService } from './WidgetCapsuleHostConfigurationService';
 import {
   fnProjectWidgetPreviewInspectionCompleted,
   fnProjectWidgetPreviewInspectionFailure,
 } from './fn.widget-preview-inspection';
+import { isPreviewInspectionBrowserServiceError } from './preview-inspection/PreviewInspectionBrowserService';
 import {
   PREVIEW_INSPECTION_JOB_FORMAT,
 } from './preview-inspection/CONSTANTS';
@@ -73,7 +77,6 @@ import type {
 } from './preview-inspection/interface';
 
 type TWidgetPreviewOpenInput = TWidgetPreviewSessionInput & Readonly<{
-  selectedResources?: readonly TWidgetPreviewSelectedResourceInput[];
   signal?: AbortSignal;
 }>;
 
@@ -125,6 +128,7 @@ type TWidgetPreviewMountHandle = Readonly<{
 type TWidgetPreviewServiceConfig = Readonly<{
   widgetsRoot: string;
   catalog: WidgetFilesystemRuntimeCatalog;
+  buildGenerations: WidgetBuildGenerationService;
   builder: WidgetFilesystemBuildService;
   resources: ResourceService;
   executor: IDirectFunctionInvoker;
@@ -134,7 +138,30 @@ type TWidgetPreviewServiceConfig = Readonly<{
   hostConfiguration: Pick<WidgetCapsuleHostConfigurationService, 'read'>;
   inspectionBrowser: TPreviewInspectionBrowserPort;
   inspectionTheme: TWidgetCapsuleTheme;
+  inspectionScope?: Readonly<{
+    resolve(args: Readonly<{
+      chatId: string;
+      canvasId: string;
+      aiChatElementId: string;
+      widgetKey: string;
+    }>): Promise<TPreviewInspectionScopeResolution>;
+    assertCurrent(resolution: TPreviewInspectionScopeResolution): Promise<void>;
+  }>;
 }>;
+
+type TPreviewInspectionScopeResolution = Readonly<{
+  chatId: string;
+  canvasId: string;
+  aiChatElementId: string;
+  widgetKey: string;
+}> & (
+  | Readonly<{ previewFrame: 'absent' }>
+  | Readonly<{
+      previewFrame: 'exact';
+      previewElementId: string;
+      previewInstanceId: string;
+    }>
+);
 
 function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
@@ -173,10 +200,14 @@ function awaitInspectionSignal<T>(
     return Promise.reject(inspectionError(
       signal.reason === 'inspection-timeout'
         ? 'PREVIEW_INSPECTION_TIMED_OUT'
-        : 'PREVIEW_INSPECTION_CANCELLED',
+        : signal.reason === 'inspection-generation-changed'
+          ? 'PREVIEW_GENERATION_CHANGED'
+          : 'PREVIEW_INSPECTION_CANCELLED',
       signal.reason === 'inspection-timeout'
         ? 'Preview inspection exceeded its whole-call timeout.'
-        : 'Preview inspection was cancelled.',
+        : signal.reason === 'inspection-generation-changed'
+          ? 'The widget source, accepted generation, or exact Preview changed during inspection.'
+          : 'Preview inspection was cancelled.',
       true,
     ));
   }
@@ -185,10 +216,14 @@ function awaitInspectionSignal<T>(
       reject(inspectionError(
         signal.reason === 'inspection-timeout'
           ? 'PREVIEW_INSPECTION_TIMED_OUT'
-          : 'PREVIEW_INSPECTION_CANCELLED',
+          : signal.reason === 'inspection-generation-changed'
+            ? 'PREVIEW_GENERATION_CHANGED'
+            : 'PREVIEW_INSPECTION_CANCELLED',
         signal.reason === 'inspection-timeout'
           ? 'Preview inspection exceeded its whole-call timeout.'
-          : 'Preview inspection was cancelled.',
+          : signal.reason === 'inspection-generation-changed'
+            ? 'The widget source, accepted generation, or exact Preview changed during inspection.'
+            : 'Preview inspection was cancelled.',
         true,
       ));
     };
@@ -228,6 +263,79 @@ function effectAllows(
   return effect === requested || effect === 'read_write';
 }
 
+function safeInspectionDiagnosticMessage(value: string): string {
+  return value
+    .replace(/(?:file:\/\/)?\/?(?:Users|home|private|tmp|var)\/[A-Za-z0-9_./\\-]+/g, 'widget://project')
+    .replace(/(?:postgres|mysql|libsql|https?):\/\/[^\s]+/gi, '[redacted]')
+    .replace(/\b(token|secret|password|credential)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .slice(0, 2_000);
+}
+
+function buildInspectionDiagnostics(
+  diagnostics: Awaited<ReturnType<WidgetBuildGenerationService['view']>>['diagnostics'],
+): readonly TInspectDiagnostic[] {
+  return Object.freeze(diagnostics.slice(0, 20).map((diagnostic) => {
+    const message = safeInspectionDiagnosticMessage(diagnostic.message);
+    const location = diagnostic.path !== null
+      && /^(?!(?:\.{1,2})(?:\/|$))[A-Za-z0-9@_+.,=~-]+(?:\/(?!(?:\.{1,2})(?:\/|$))[A-Za-z0-9@_+.,=~-]+)*$/u.test(diagnostic.path)
+        ? Object.freeze({ file: `widget://${diagnostic.path}` })
+        : undefined;
+    return Object.freeze({
+      fingerprint: sha256(['build', diagnostic.code, message, diagnostic.path ?? ''].join('\u0000')),
+      origin: 'build' as const,
+      phase: 'receipt_import',
+      code: /^[A-Z][A-Z0-9_]{0,255}$/.test(diagnostic.code)
+        ? diagnostic.code
+        : 'BUILD_IMPORT_FAILED',
+      severity: 'error' as const,
+      message,
+      trust: 'trusted' as const,
+      retryability: 'unknown' as const,
+      occurrenceCount: 1,
+      ...(location === undefined ? {} : { location }),
+    });
+  }));
+}
+
+function buildInspectionBoundary(
+  view: Awaited<ReturnType<WidgetBuildGenerationService['view']>>,
+): Readonly<{
+  code: 'BUILD_REQUIRED' | 'BUILD_PENDING' | 'BUILD_STALE' | 'BUILD_IMPORT_FAILED';
+  message: string;
+  retryable: boolean;
+}> | null {
+  if (view.phase === 'building' || view.phase === 'validating') {
+    return Object.freeze({
+      code: 'BUILD_PENDING',
+      message: 'The portable build is still being observed and validated by the host.',
+      retryable: true,
+    });
+  }
+  if (view.phase === 'rejected') {
+    return Object.freeze({
+      code: 'BUILD_IMPORT_FAILED',
+      message: 'The portable build output was rejected by host validation.',
+      retryable: true,
+    });
+  }
+  if (view.phase === 'ready' && !view.current) {
+    return Object.freeze({
+      code: 'BUILD_STALE',
+      message: 'The accepted build is no longer current for the widget repository.',
+      retryable: true,
+    });
+  }
+  if (view.phase === 'unbuilt' || view.phase === 'build_required' || !view.current) {
+    return Object.freeze({
+      code: 'BUILD_REQUIRED',
+      message: 'The current widget repository has no matching accepted portable build.',
+      retryable: true,
+    });
+  }
+  return null;
+}
+
 /**
  * Process-owned full-stack Preview. Nothing durable is written; a restart
  * leaves only the stopped canvas frame and a clean .preview scratch root.
@@ -235,23 +343,22 @@ function effectAllows(
 class WidgetPreviewService implements IService {
   readonly name = 'widget-preview';
   readonly #config: TWidgetPreviewServiceConfig;
-  readonly #workspace: Promise<NodeWidgetFilesystemWorkspace>;
   readonly #preview: EphemeralPreviewService<
     TWidgetPreviewConstruction,
     TWidgetPreviewSignedArtifact,
     TWidgetPreviewMountHandle
   >;
   readonly #artifacts = new Map<string, TWidgetPreviewSignedArtifact>();
-  readonly #pendingCaptures = new Map<string, TWidgetWorkspaceDraftBuildCapture>();
-  readonly #inspectionSessions = new Set<string>();
-  readonly #inspectionStages = new Map<string, TInspectStage>();
+  readonly #artifactGenerations = new Map<string, Readonly<{
+    generation: number;
+    buildIdentity: string;
+  }>>();
+  readonly #generationReleases = new Map<string, () => void>();
+  readonly #pendingGenerations = new Map<string, TAcceptedWidgetBuildGeneration>();
   #inspectionSequence = 0;
 
   constructor(config: TWidgetPreviewServiceConfig) {
     this.#config = config;
-    this.#workspace = NodeWidgetFilesystemWorkspace.open({
-      rootPath: config.widgetsRoot,
-    });
     const ports: TPreviewPorts<
       TWidgetPreviewConstruction,
       TWidgetPreviewSignedArtifact,
@@ -276,38 +383,21 @@ class WidgetPreviewService implements IService {
         signal,
         reportDiagnostic,
       }) => {
-        const workspace = await awaitInspectionSignal(this.#workspace, signal);
-        const capture = this.#pendingCaptures.get(sessionId)
+        const accepted = this.#pendingGenerations.get(sessionId)
           ?? await awaitInspectionSignal(
-            workspace.captureDraftBuildInput({
-              slug: widgetKey,
-              signal,
-            }),
+            config.buildGenerations.requireCurrent(widgetKey, signal),
             signal,
           );
-        if (capture.slug !== widgetKey) {
-          throw new Error('Preview capture does not match the requested draft.');
+        if (accepted.widgetKey !== widgetKey) {
+          throw new Error('Accepted Preview generation does not match the requested draft.');
         }
-        reportDiagnostic({ severity: 'info', message: 'Building Preview construction…' });
-        const construction = await awaitInspectionSignal(
-          config.builder.construct({
-            manifest: capture.manifest,
-            files: capture.files,
-            expectedExecutableInputDigestSha256: executableInputDigestSha256,
-            workspaceKey: `preview_${widgetKey}`,
-            signal,
-            reportProgress: (phase: 'installing' | 'building' | 'validating') => reportDiagnostic({
-              severity: 'info',
-              message: `Preview build ${phase}.`,
-            }),
-          }),
-          signal,
-        );
-        if (this.#inspectionSessions.has(sessionId)) {
-          this.#inspectionStages.set(sessionId, 'sign');
+        reportDiagnostic({ severity: 'info', message: 'Loading accepted Preview generation…' });
+        const construction = accepted.construction;
+        if (construction.executableInputDigestSha256 !== executableInputDigestSha256) {
+          throw new Error('Accepted Preview construction no longer matches its host digest.');
         }
         return Object.freeze({
-          manifest: capture.manifest,
+          manifest: accepted.capture.manifest,
           construction,
         });
       },
@@ -327,82 +417,118 @@ class WidgetPreviewService implements IService {
         );
         return this.#assembleArtifact(construction, signed);
       },
-      mount: async ({ sessionId }) => {
-        if (this.#inspectionSessions.has(sessionId)) {
-          this.#inspectionStages.set(sessionId, 'mount');
-        }
-        return Object.freeze({ sessionId });
-      },
+      mount: async ({ sessionId }) => Object.freeze({ sessionId }),
       unmount: async () => undefined,
     };
     this.#preview = new EphemeralPreviewService(ports);
   }
 
   async open(args: TWidgetPreviewOpenInput): Promise<TWidgetPreviewMountView> {
-    const snapshot = await this.#config.catalog.refresh();
-    const draft = snapshot.entries[args.widgetKey]?.draft;
-    if (
-      draft?.health !== 'healthy'
-      || draft.manifest === null
-      || draft.executable === null
-    ) throw previewError('WIDGET_DRAFT_MISSING', 'Widget draft is missing or unhealthy.');
+    const sessionId = this.#sessionId(args);
+    if (!this.#generationReleases.has(sessionId)) {
+      this.#generationReleases.set(
+        sessionId,
+        this.#config.buildGenerations.activate(args.widgetKey),
+      );
+    }
+    const accepted = await this.#config.buildGenerations.requireCurrent(
+      args.widgetKey,
+      args.signal,
+    );
     const compatibility = Object.freeze({
       ...this.#config.compatibility,
-      serverRuntimeAbi: draft.manifest.server?.runtimeAbi ?? null,
-    });
-    const workspace = await this.#workspace;
-    const capture = await workspace.captureDraftBuildInput({
-      slug: args.widgetKey,
-      signal: args.signal ?? new AbortController().signal,
+      serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
     });
     const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
-      manifest: capture.manifest,
-      files: capture.files,
+      manifest: accepted.capture.manifest,
+      files: accepted.capture.files,
       environment: Object.freeze({
         ...this.#config.environment,
-        serverRuntimeAbi: capture.manifest.server?.runtimeAbi ?? null,
+        serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
       }),
       digestSha256: sha256,
     });
-    const selectedResources = await this.#resolveBindings(
-      draft.executable.resources,
-      args.selectedResources ?? [],
+    const manifestBindings = await this.#resolveBindings(
+      accepted.capture.manifest.resources ?? [],
     );
-    const sessionId = this.#sessionId(args);
     // Rebuilds replace the live session; the validated construction is reused
     // only while the exact digest and compatibility policy still match.
     await this.#preview.close(sessionId);
-    this.#pendingCaptures.set(sessionId, capture);
+    const retainedArtifact = Object.freeze({
+      ...this.#withServer(this.#assembleArtifact(Object.freeze({
+        manifest: accepted.capture.manifest,
+        construction: accepted.construction,
+      }), accepted.signed), manifestBindings),
+      constructionReused: false,
+    });
+    this.#artifacts.set(sessionId, retainedArtifact);
+    this.#artifactGenerations.set(sessionId, Object.freeze({
+      generation: accepted.generation,
+      buildIdentity: accepted.receipt.buildIdentity,
+    }));
+    this.#pendingGenerations.set(sessionId, accepted);
     try {
       const result = await this.#preview.open({
         sessionId,
         widgetKey: args.widgetKey,
         executableInputDigestSha256,
         compatibility,
-        selectedResources: selectedResources.map((binding) => Object.freeze({
-          slot: binding.slot,
-          resourceId: binding.resourceId,
-          effect: binding.allowWrite ? 'read_write' as const : 'read' as const,
-        })),
         ...(args.signal === undefined ? {} : { signal: args.signal }),
       });
       const artifact = Object.freeze({
-        ...this.#withServer(result.signedArtifact, selectedResources),
+        ...this.#withServer(result.signedArtifact, manifestBindings),
         constructionReused: result.session.constructionReused,
         diagnostics: result.session.diagnostics,
       });
       this.#artifacts.set(sessionId, artifact);
+      this.#artifactGenerations.set(sessionId, Object.freeze({
+        generation: accepted.generation,
+        buildIdentity: accepted.receipt.buildIdentity,
+      }));
       return this.#mountView(args, artifact);
+    } catch (error) {
+      const failedSession = this.#preview.get(sessionId);
+      if (failedSession?.phase === 'failed') {
+        this.#artifacts.set(sessionId, Object.freeze({
+          ...retainedArtifact,
+          constructionReused: failedSession.constructionReused,
+          diagnostics: failedSession.diagnostics,
+        }));
+      }
+      throw error;
     } finally {
-      this.#pendingCaptures.delete(sessionId);
+      this.#pendingGenerations.delete(sessionId);
     }
   }
 
-  /**
-   * Captures one exact draft and runs its exact Preview-signed bytes in the
-   * process-owned, resource-free inspection browser. No visible Preview or
-   * durable widget/canvas authority is created.
-   */
+  async rebuild(
+    args: TWidgetPreviewOpenInput,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewMountView> {
+    await this.#config.buildGenerations.rebuild(args.widgetKey, signal ?? args.signal);
+    return this.open({
+      ...args,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  async rebuildDraft(
+    args: Readonly<{ widgetKey: string }>,
+    signal?: AbortSignal,
+  ): Promise<Readonly<{
+    widgetKey: string;
+    acceptedGeneration: number;
+    buildIdentity: string;
+  }>> {
+    const accepted = await this.#config.buildGenerations.rebuild(args.widgetKey, signal);
+    return Object.freeze({
+      widgetKey: accepted.widgetKey,
+      acceptedGeneration: accepted.generation,
+      buildIdentity: accepted.receipt.buildIdentity,
+    });
+  }
+
+  /** Runs one exact accepted generation in a bounded diagnostic clone. */
   async inspect(
     args: TWidgetPreviewInspectionRequest,
   ): Promise<TWidgetPreviewInspectionResponse> {
@@ -421,43 +547,43 @@ class WidgetPreviewService implements IService {
     );
     let identity: TInspectIdentity | undefined;
     let artifactIdentity: TInspectArtifact | undefined;
-    let sessionId: string | undefined;
+    let stage: TInspectStage = 'build';
+    let jobId: string | undefined;
     let functionBridge: TPreviewInspectionFunctionBridge | undefined;
+    let releaseGeneration: (() => void) | undefined;
+    let releaseGenerationListener: (() => void) | undefined;
+    let generationMonitor: ReturnType<typeof setInterval> | undefined;
+    let buildDiagnostics: readonly TInspectDiagnostic[] | undefined;
+    let previewState: TInspectVerification['previewState'] = args.input.mode === 'artifact'
+      ? 'not_applicable'
+      : 'retired';
+    let retainedRuntimeEvents: readonly TPreviewInspectionRuntimeEvent[] = [];
+    let verifiedSourceMap: TVerifiedWidgetSourceMap | null = null;
     try {
-      const preflight = await awaitInspectionSignal(
-        this.#config.inspectionBrowser.preflight(),
+      releaseGeneration = this.#config.buildGenerations.activate(args.widgetKey);
+      const buildView = await awaitInspectionSignal(
+        this.#config.buildGenerations.view(args.widgetKey),
         controller.signal,
       );
-      if (!preflight.ok) {
+      const buildBoundary = buildInspectionBoundary(buildView);
+      if (buildBoundary !== null) {
+        buildDiagnostics = buildInspectionDiagnostics(buildView.diagnostics);
         return Object.freeze({
           toolError: Object.freeze({
-            code: preflight.code,
-            message: `${preflight.message} ${preflight.remediation}`.slice(0, 2_000),
-            retryable: true,
+            ...buildBoundary,
+            ...(buildDiagnostics.length === 0 ? {} : { diagnostics: buildDiagnostics }),
           }),
         });
       }
-      if (controller.signal.aborted) {
-        throw inspectionError(
-          controller.signal.reason === 'inspection-timeout'
-            ? 'PREVIEW_INSPECTION_TIMED_OUT'
-            : 'PREVIEW_INSPECTION_CANCELLED',
-          'Preview inspection was cancelled before draft capture completed.',
-          true,
-        );
-      }
-      const workspace = await awaitInspectionSignal(this.#workspace, controller.signal);
-      const capture = await awaitInspectionSignal(
-        workspace.captureDraftBuildInput({
-          slug: args.widgetKey,
-          signal: controller.signal,
-        }),
+      const accepted = await awaitInspectionSignal(
+        this.#config.buildGenerations.requireCurrent(args.widgetKey, controller.signal),
         controller.signal,
       );
       if (
-        capture.slug !== args.widgetKey
-        || capture.manifest.slug !== args.widgetKey
-        || capture.manifest.name !== args.name
+        accepted.widgetKey !== args.widgetKey
+        || accepted.capture.slug !== args.widgetKey
+        || accepted.capture.manifest.slug !== args.widgetKey
+        || accepted.capture.manifest.name !== args.name
         || args.input.name !== args.name
       ) {
         throw inspectionError(
@@ -467,71 +593,249 @@ class WidgetPreviewService implements IService {
         );
       }
       if (
+        args.input.expectedAcceptedGeneration !== undefined
+        && args.input.expectedAcceptedGeneration !== accepted.generation
+      ) {
+        throw inspectionError(
+          'PREVIEW_GENERATION_CHANGED',
+          'The accepted Preview generation changed after the requested generation fence was selected.',
+          true,
+        );
+      }
+      if (
         args.input.expectedDraftDigestSha256 !== undefined
-        && args.input.expectedDraftDigestSha256 !== capture.treeDigestSha256
+        && args.input.expectedDraftDigestSha256 !== accepted.capture.treeDigestSha256
       ) {
         return Object.freeze({
           toolError: Object.freeze({
             code: 'WIDGET_DRAFT_DIGEST_STALE',
-            message: 'The widget draft changed after the requested digest fence was selected.',
+            message: 'The accepted widget source differs from the requested digest fence.',
             retryable: true,
-            observedDraftDigestSha256: capture.treeDigestSha256,
+            observedDraftDigestSha256: accepted.capture.treeDigestSha256,
           }),
         });
       }
       const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
-        manifest: capture.manifest,
-        files: capture.files,
+        manifest: accepted.capture.manifest,
+        files: accepted.capture.files,
         environment: Object.freeze({
           ...this.#config.environment,
-          serverRuntimeAbi: capture.manifest.server?.runtimeAbi ?? null,
+          serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
         }),
         digestSha256: sha256,
       });
+      if (executableInputDigestSha256 !== accepted.construction.executableInputDigestSha256) {
+        throw inspectionError(
+          'BUILD_STALE',
+          'The accepted construction does not match the independently verified widget inputs.',
+          true,
+        );
+      }
       identity = Object.freeze({
         name: args.name,
         widgetKey: args.widgetKey,
-        draftDigestSha256: capture.treeDigestSha256,
+        draftDigestSha256: accepted.capture.treeDigestSha256,
         executableInputDigestSha256,
         environmentIdentity: this.#config.compatibility.environmentIdentity,
       });
-      const compatibility = Object.freeze({
-        ...this.#config.compatibility,
-        serverRuntimeAbi: capture.manifest.server?.runtimeAbi ?? null,
+      const acceptedArtifact = this.#assembleArtifact(Object.freeze({
+        manifest: accepted.capture.manifest,
+        construction: accepted.construction,
+      }), accepted.signed);
+      let artifact = acceptedArtifact;
+      let scopeResolution: TPreviewInspectionScopeResolution | undefined;
+      if (args.input.mode === 'preview') {
+        stage = 'scope';
+        if (args.scope === undefined || this.#config.inspectionScope === undefined) {
+          throw inspectionError(
+            'PREVIEW_UNAVAILABLE',
+            'The exact current canvas Preview scope is unavailable.',
+            true,
+          );
+        }
+        scopeResolution = await awaitInspectionSignal(
+          this.#config.inspectionScope.resolve(Object.freeze({
+            chatId: args.chatId,
+            canvasId: args.scope.canvasId,
+            aiChatElementId: args.scope.aiChatElementId,
+            widgetKey: args.widgetKey,
+          })),
+          controller.signal,
+        );
+        if (
+          scopeResolution.chatId !== args.chatId
+          || scopeResolution.canvasId !== args.scope.canvasId
+          || scopeResolution.aiChatElementId !== args.scope.aiChatElementId
+          || scopeResolution.widgetKey !== args.widgetKey
+        ) {
+          throw inspectionError(
+            'PREVIEW_UNAVAILABLE',
+            'The resolved Preview scope did not match the verified AI Chat target.',
+            true,
+          );
+        }
+        let manifestBindings: readonly TWidgetPreviewResourceBinding[];
+        try {
+          manifestBindings = await awaitInspectionSignal(
+            this.#resolveBindings(accepted.capture.manifest.resources ?? []),
+            controller.signal,
+          );
+        } catch (error) {
+          const code = error !== null && typeof error === 'object' && 'code' in error
+            ? error.code
+            : undefined;
+          const mapped = code === 'WIDGET_RESOURCE_BINDING_REQUIRED'
+            ? 'RESOURCE_REFERENCE_REQUIRED'
+            : code === 'WIDGET_RESOURCE_BINDING_STALE'
+              ? 'RESOURCE_REFERENCE_STALE'
+              : code === 'WIDGET_RESOURCE_NOT_READY'
+                ? 'RESOURCE_NOT_READY'
+                : code === 'WIDGET_RESOURCE_KIND_MISMATCH'
+                  ? 'RESOURCE_KIND_MISMATCH'
+                  : 'RESOURCE_PROVIDER_FAILED';
+          throw inspectionError(mapped, 'Manifest resource validation failed safely.', true);
+        }
+        artifact = this.#withServer(acceptedArtifact, manifestBindings);
+        if (scopeResolution.previewFrame === 'absent') {
+          previewState = 'absent';
+        } else {
+          const liveSessionId = this.#sessionId({
+            canvasId: scopeResolution.canvasId,
+            elementId: scopeResolution.previewElementId,
+          });
+          const liveArtifact = this.#artifacts.get(liveSessionId);
+          const liveGeneration = this.#artifactGenerations.get(liveSessionId);
+          const liveSession = this.#preview.get(liveSessionId);
+          if (liveSession === null || liveArtifact === undefined || liveGeneration === undefined) {
+            previewState = 'retired';
+            throw inspectionError(
+              'PREVIEW_SESSION_RETIRED',
+              'The exact visible Preview frame has no current process-owned session.',
+              true,
+            );
+          }
+          if (liveSession.phase === 'cancelled') {
+            previewState = 'retired';
+            throw inspectionError(
+              'PREVIEW_SESSION_RETIRED',
+              'The exact visible Preview session was cancelled or retired.',
+              true,
+            );
+          }
+          if (liveSession.phase !== 'ready' && liveSession.phase !== 'failed') {
+            previewState = 'mounting';
+            throw inspectionError(
+              'PREVIEW_SESSION_MOUNTING',
+              'The exact visible Preview session is still starting.',
+              true,
+            );
+          }
+          if (
+            liveGeneration.generation !== accepted.generation
+            || liveGeneration.buildIdentity !== accepted.receipt.buildIdentity
+            || liveArtifact.artifactDigestSha256 !== acceptedArtifact.artifactDigestSha256
+            || liveArtifact.runtimeDescriptor.capsuleArtifactHash
+              !== acceptedArtifact.runtimeDescriptor.capsuleArtifactHash
+            || liveArtifact.browserFunctionDescriptorsDigestSha256
+              !== acceptedArtifact.browserFunctionDescriptorsDigestSha256
+          ) {
+            previewState = 'generation_mismatch';
+            throw inspectionError(
+              'PREVIEW_GENERATION_CHANGED',
+              'The visible Preview session is not using the selected accepted generation.',
+              true,
+            );
+          }
+          previewState = liveSession.phase;
+          artifact = Object.freeze({
+            ...artifact,
+            constructionReused: liveArtifact.constructionReused,
+          });
+          if (liveSession.phase === 'failed') {
+            retainedRuntimeEvents = Object.freeze(liveSession.diagnostics.slice(0, 20).map(
+              (diagnostic) => Object.freeze({
+                origin: 'lifecycle',
+                phase: 'visible_preview_startup',
+                code: diagnostic.code ?? 'PREVIEW_FAILED',
+                severity: diagnostic.severity,
+                message: diagnostic.message,
+              }),
+            ));
+          }
+        }
+        await awaitInspectionSignal(
+          this.#config.inspectionScope.assertCurrent(scopeResolution),
+          controller.signal,
+        );
+      }
+      const selectedScope = scopeResolution;
+      const assertCurrent = async (): Promise<void> => {
+        const current = await this.#config.buildGenerations.view(args.widgetKey);
+        if (
+          !current.current
+          || current.acceptedGeneration !== accepted.generation
+          || current.acceptedBuildIdentity !== accepted.receipt.buildIdentity
+        ) {
+          throw inspectionError(
+            'PREVIEW_GENERATION_CHANGED',
+            'The widget source or accepted build generation changed during inspection.',
+            true,
+          );
+        }
+        if (selectedScope === undefined) return;
+        if (this.#config.inspectionScope === undefined) {
+          throw inspectionError('PREVIEW_GENERATION_CHANGED', 'The Preview scope was revoked.', true);
+        }
+        await this.#config.inspectionScope.assertCurrent(selectedScope);
+        if (selectedScope.previewFrame === 'absent') return;
+        const liveSessionId = this.#sessionId({
+          canvasId: selectedScope.canvasId,
+          elementId: selectedScope.previewElementId,
+        });
+        const liveGeneration = this.#artifactGenerations.get(liveSessionId);
+        const liveArtifact = this.#artifacts.get(liveSessionId);
+        const liveSession = this.#preview.get(liveSessionId);
+        if (
+          liveGeneration?.generation !== accepted.generation
+          || liveGeneration.buildIdentity !== accepted.receipt.buildIdentity
+          || liveArtifact?.artifactDigestSha256 !== artifact.artifactDigestSha256
+          || liveSession === null
+          || liveSession.phase !== previewState
+        ) {
+          throw inspectionError(
+            'PREVIEW_GENERATION_CHANGED',
+            'The exact Preview frame or host session changed during inspection.',
+            true,
+          );
+        }
+      };
+      await awaitInspectionSignal(assertCurrent(), controller.signal);
+      releaseGenerationListener = this.#config.buildGenerations.subscribe((event) => {
+        if (
+          event.widgetKey === args.widgetKey
+          && (
+            event.generation !== accepted.generation
+            || event.buildIdentity !== accepted.receipt.buildIdentity
+          )
+        ) controller.abort('inspection-generation-changed');
       });
-      sessionId = this.#inspectionSessionId(args);
-      this.#inspectionSessions.add(sessionId);
-      this.#inspectionStages.set(
-        sessionId,
-        this.#preview.reusableConstruction({
-          executableInputDigestSha256,
-          compatibility,
-        }) === null ? 'build' : 'sign',
-      );
-      this.#pendingCaptures.set(sessionId, capture);
-      const preview = await awaitInspectionSignal(
-        this.#preview.open({
-          sessionId,
-          widgetKey: args.widgetKey,
-          executableInputDigestSha256,
-          compatibility,
-          selectedResources: Object.freeze([]),
-          signal: controller.signal,
-        }),
-        controller.signal,
-      );
-      const artifact = Object.freeze({
-        ...preview.signedArtifact,
-        constructionReused: preview.session.constructionReused,
-        diagnostics: preview.session.diagnostics,
-      });
+      let monitorPending = false;
+      generationMonitor = setInterval(() => {
+        if (monitorPending || controller.signal.aborted) return;
+        monitorPending = true;
+        void assertCurrent().catch(() => {
+          controller.abort('inspection-generation-changed');
+        }).finally(() => {
+          monitorPending = false;
+        });
+      }, 250);
+      generationMonitor.unref();
       artifactIdentity = Object.freeze({
         artifactDigestSha256: artifact.artifactDigestSha256,
         capsuleArtifactHash: artifact.runtimeDescriptor.capsuleArtifactHash,
         constructionReused: artifact.constructionReused,
       });
-      this.#inspectionStages.set(sessionId, 'sign');
-      const sourceMap = await awaitInspectionSignal(
+      verifiedSourceMap = await awaitInspectionSignal(
         this.#verifyInspectionSourceMap(artifact),
         controller.signal,
       );
@@ -547,17 +851,46 @@ class WidgetPreviewService implements IService {
               'Preview inspection function bridge is disposed.',
             );
           }
+          await assertCurrent();
+          const invocationArtifact = selectedScope === undefined
+            ? artifact
+            : this.#withServer(
+                artifact,
+                await this.#resolveBindings(accepted.capture.manifest.resources ?? []),
+              );
+          const descriptor = invocationArtifact.server?.descriptors.find(
+            (candidate) => candidate.exportName === request.functionName,
+          );
+          if (descriptor?.effect === 'tx') {
+            throw inspectionError(
+              'INSPECTION_WRITE_APPROVAL_REQUIRED',
+              'The diagnostic write was not executed because normal approval is required.',
+              true,
+            );
+          }
           const invocation = this.#invokeArtifactFunction(
-            artifact,
-            Object.freeze({
-              canvasId: `inspection-${sessionId}`,
-              elementId: `inspection-${sessionId}`,
-              widgetInstanceId: `inspection-${sessionId}`,
-            }),
+            invocationArtifact,
+            selectedScope === undefined || selectedScope.previewFrame === 'absent'
+              ? Object.freeze({
+                  canvasId: `diagnostic-${jobId}`,
+                  elementId: `diagnostic-${jobId}`,
+                  widgetInstanceId: `diagnostic-${jobId}`,
+                })
+                : Object.freeze({
+                  canvasId: selectedScope.canvasId,
+                  elementId: selectedScope.previewElementId,
+                  widgetInstanceId: selectedScope.previewInstanceId,
+                }),
             request.functionName,
             request.input,
-            AbortSignal.any([request.signal, bridgeController.signal]),
-          );
+            AbortSignal.any([request.signal, bridgeController.signal, controller.signal]),
+          ).then(async (result) => {
+            await assertCurrent();
+            if (result.status !== 'succeeded') {
+              throw new Error(result.failure.message);
+            }
+            return result.output;
+          });
           pendingInvocations.add(invocation);
           try {
             return await invocation;
@@ -576,14 +909,27 @@ class WidgetPreviewService implements IService {
       });
       const elapsedMs = Date.now() - startedAtMs;
       const remainingTimeoutMs = Math.max(1, args.input.timeoutMs - elapsedMs);
-      this.#inspectionStages.set(sessionId, 'mount');
+      stage = 'mount';
+      const preflight = await awaitInspectionSignal(
+        this.#config.inspectionBrowser.preflight(),
+        controller.signal,
+      );
+      if (!preflight.ok) {
+        throw inspectionError(
+          preflight.code,
+          `${preflight.message} ${preflight.remediation}`.slice(0, 2_000),
+          true,
+        );
+      }
       const hostConfiguration = await awaitInspectionSignal(
         this.#config.hostConfiguration.read(),
         controller.signal,
       );
+      await awaitInspectionSignal(assertCurrent(), controller.signal);
+      jobId = this.#inspectionSessionId(args);
       const browser = await this.#config.inspectionBrowser.run(Object.freeze({
         format: PREVIEW_INSPECTION_JOB_FORMAT,
-        jobId: sessionId,
+        jobId,
         ownerKey: `chat-${sha256(args.chatId).slice(0, 40)}`,
         widgetKey: args.widgetKey,
         artifact: Object.freeze({
@@ -606,8 +952,9 @@ class WidgetPreviewService implements IService {
         timeoutMs: remainingTimeoutMs,
         signal: controller.signal,
       }));
+      await awaitInspectionSignal(assertCurrent(), controller.signal);
       if (
-        browser.jobId !== sessionId
+        browser.jobId !== jobId
         || browser.artifactDigestSha256 !== artifact.artifactDigestSha256
         || browser.capsuleArtifactHash
           !== artifact.runtimeDescriptor.capsuleArtifactHash
@@ -617,18 +964,29 @@ class WidgetPreviewService implements IService {
           'Preview inspection browser returned mismatched artifact identity.',
         );
       }
+      const projectedBrowser = retainedRuntimeEvents.length === 0
+        ? browser
+        : Object.freeze({
+            ...browser,
+            runtimeEvents: Object.freeze([
+              ...retainedRuntimeEvents,
+              ...browser.runtimeEvents,
+            ]),
+          });
       const result = fnProjectWidgetPreviewInspectionCompleted({
-        browser,
+        surface: args.input.mode,
+        browser: projectedBrowser,
         identity,
         artifact: artifactIdentity,
         page: args.input.viewport,
         durationMs: Date.now() - startedAtMs,
+        previewState,
         digestSha256: sha256,
-        ...(sourceMap === null
+        ...(verifiedSourceMap === null
           ? {}
           : {
               mapLocation: (event: TPreviewInspectionRuntimeEvent) => (
-                this.#mapInspectionRuntimeLocation(sourceMap, event)
+                this.#mapInspectionRuntimeLocation(verifiedSourceMap!, event)
               ),
             }),
       });
@@ -639,10 +997,14 @@ class WidgetPreviewService implements IService {
         ? inspectionError(
             controller.signal.reason === 'inspection-timeout'
               ? 'PREVIEW_INSPECTION_TIMED_OUT'
-              : 'PREVIEW_INSPECTION_CANCELLED',
+              : controller.signal.reason === 'inspection-generation-changed'
+                ? 'PREVIEW_GENERATION_CHANGED'
+                : 'PREVIEW_INSPECTION_CANCELLED',
             controller.signal.reason === 'inspection-timeout'
               ? 'Preview inspection exceeded its whole-call timeout.'
-              : 'Preview inspection was cancelled.',
+              : controller.signal.reason === 'inspection-generation-changed'
+                ? 'The widget source, accepted generation, or exact Preview scope changed during inspection.'
+                : 'Preview inspection was cancelled.',
             true,
           )
         : caught;
@@ -652,6 +1014,67 @@ class WidgetPreviewService implements IService {
         && typeof error.code === 'string'
           ? error.code
           : 'PREVIEW_INSPECTION_UNAVAILABLE';
+      if (
+        /^(?:BUILD_|PREVIEW_(?:UNAVAILABLE|AMBIGUOUS|FRAME_AMBIGUOUS|SCOPE_TOO_LARGE|CHAT_SCOPE_UNAVAILABLE|CHAT_ELEMENT_UNAVAILABLE|SESSION_MOUNTING|SESSION_RETIRED|GENERATION_CHANGED)|RESOURCE_|MANIFEST_INVALID)/.test(code)
+      ) {
+        const messages: Readonly<Record<string, string>> = Object.freeze({
+          BUILD_REQUIRED: 'The current widget repository requires a new portable build.',
+          BUILD_PENDING: 'The portable build is still pending host acceptance.',
+          BUILD_STALE: 'The accepted build is stale for the current widget repository.',
+          BUILD_IMPORT_FAILED: 'The portable build output was rejected by host validation.',
+          PREVIEW_UNAVAILABLE: 'The exact current canvas Preview is unavailable for inspection.',
+          PREVIEW_AMBIGUOUS: 'More than one matching Preview exists on the current canvas.',
+          PREVIEW_FRAME_AMBIGUOUS: 'More than one matching Preview exists on the current canvas.',
+          PREVIEW_SCOPE_TOO_LARGE: 'The current canvas has too many matching candidates to resolve safely.',
+          PREVIEW_CHAT_SCOPE_UNAVAILABLE: 'The verified active chat canvas is unavailable.',
+          PREVIEW_CHAT_ELEMENT_UNAVAILABLE: 'The verified AI Chat canvas element is unavailable.',
+          PREVIEW_SESSION_MOUNTING: 'The exact visible Preview is still starting; retry after it settles.',
+          PREVIEW_SESSION_RETIRED: 'The exact visible Preview session was cancelled or retired; reopen Preview and retry.',
+          PREVIEW_GENERATION_CHANGED: 'The widget source, accepted generation, or exact Preview changed during inspection.',
+          RESOURCE_REFERENCE_REQUIRED: 'A required manifest resource reference is missing; edit omnidraw.json and rebuild.',
+          RESOURCE_REFERENCE_STALE: 'A manifest resource reference is unavailable; fix omnidraw.json or the resource and rebuild.',
+          RESOURCE_NOT_READY: 'A manifest resource is not ready.',
+          RESOURCE_KIND_MISMATCH: 'A manifest resource has the wrong kind.',
+          RESOURCE_EFFECT_DENIED: 'The requested operation exceeds the manifest resource effect.',
+          RESOURCE_PROVIDER_FAILED: 'The resource provider call failed safely.',
+          MANIFEST_INVALID: 'The accepted widget manifest is invalid.',
+        });
+        return Object.freeze({
+          toolError: Object.freeze({
+            code,
+            message: messages[code] ?? 'Preview inspection could not establish the requested exact authority.',
+            retryable: error !== null
+              && typeof error === 'object'
+              && 'retryable' in error
+              && error.retryable === true,
+            ...(() => {
+              const state = code === 'PREVIEW_FRAME_AMBIGUOUS' || code === 'PREVIEW_AMBIGUOUS'
+                ? 'ambiguous' as const
+                : code === 'PREVIEW_SESSION_MOUNTING'
+                  ? 'mounting' as const
+                  : code === 'PREVIEW_GENERATION_CHANGED'
+                    ? 'generation_mismatch' as const
+                    : code === 'PREVIEW_SESSION_RETIRED'
+                      ? 'retired' as const
+                      : undefined;
+              if (state === undefined) return {};
+              return {
+                previewState: state,
+                nextAction: state === 'ambiguous'
+                  ? 'remove_duplicate_previews' as const
+                  : state === 'mounting'
+                    ? 'retry_after_settle' as const
+                    : state === 'generation_mismatch'
+                      ? 'retry_current_generation' as const
+                      : 'reopen_preview' as const,
+              };
+            })(),
+            ...(buildDiagnostics === undefined || buildDiagnostics.length === 0
+              ? {}
+              : { diagnostics: buildDiagnostics }),
+          }),
+        });
+      }
       if (
         identity === undefined
         || /(?:PROTOCOL|RESULT_INVALID|IDENTITY_MISMATCH)/.test(code)
@@ -675,18 +1098,28 @@ class WidgetPreviewService implements IService {
           }),
         });
       }
-      const fallbackStage = sessionId === undefined
-        ? 'build'
-        : this.#inspectionStages.get(sessionId) ?? 'mount';
-      const stage = browserStage
-        ?? (/SCREENSHOT|PNG/.test(code) ? 'capture_screenshot' : fallbackStage);
+      const finalStage = browserStage
+        ?? (/SCREENSHOT|PNG/.test(code) ? 'capture_screenshot' : stage);
       const result = fnProjectWidgetPreviewInspectionFailure({
+        surface: args.input.mode,
         error,
-        stage,
+        stage: finalStage,
         identity,
         ...(artifactIdentity === undefined ? {} : { artifact: artifactIdentity }),
         durationMs: Date.now() - startedAtMs,
         cancelled: code === 'PREVIEW_INSPECTION_CANCELLED',
+        previewState,
+        digestSha256: sha256,
+        ...(isPreviewInspectionBrowserServiceError(error) && error.evidence !== undefined
+          ? { browserEvidence: error.evidence }
+          : {}),
+        ...(verifiedSourceMap === null
+          ? {}
+          : {
+              mapLocation: (event: TPreviewInspectionRuntimeEvent) => (
+                this.#mapInspectionRuntimeLocation(verifiedSourceMap!, event)
+              ),
+            }),
       });
       return Object.freeze({ result });
     } finally {
@@ -695,36 +1128,22 @@ class WidgetPreviewService implements IService {
       if (functionBridge !== undefined) {
         await settleInspectionCleanup(functionBridge.dispose());
       }
-      if (sessionId !== undefined) {
-        this.#pendingCaptures.delete(sessionId);
-        this.#inspectionSessions.delete(sessionId);
-        this.#inspectionStages.delete(sessionId);
-        await this.#preview.close(sessionId).catch(() => undefined);
-      }
+      if (generationMonitor !== undefined) clearInterval(generationMonitor);
+      releaseGenerationListener?.();
+      releaseGeneration?.();
     }
   }
 
   /**
-   * Headless Preview build for agent validation: captures the current shared
-   * draft and runs the same construction pipeline a Preview frame would,
-   * without opening a session or retaining an artifact.
+   * Runs the repository's portable build and waits for host acceptance without
+   * opening a session or replacing the currently mounted artifact.
    */
   async buildCheck(args: Readonly<{
     widgetKey: string;
     signal?: AbortSignal;
   }>): Promise<Readonly<{ ok: boolean; errors: readonly string[] }>> {
     try {
-      const workspace = await this.#workspace;
-      const capture = await workspace.captureDraftBuildInput({
-        slug: args.widgetKey,
-        signal: args.signal ?? new AbortController().signal,
-      });
-      await this.#config.builder.construct({
-        manifest: capture.manifest,
-        files: capture.files,
-        workspaceKey: `preview_${args.widgetKey}`,
-        ...(args.signal === undefined ? {} : { signal: args.signal }),
-      });
+      await this.#config.buildGenerations.rebuild(args.widgetKey, args.signal);
       return Object.freeze({ ok: true, errors: Object.freeze([]) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -748,6 +1167,9 @@ class WidgetPreviewService implements IService {
   async close(args: Readonly<{ canvasId: string; elementId: string }>): Promise<boolean> {
     const sessionId = this.#sessionId(args);
     this.#artifacts.delete(sessionId);
+    this.#artifactGenerations.delete(sessionId);
+    this.#generationReleases.get(sessionId)?.();
+    this.#generationReleases.delete(sessionId);
     return this.#preview.close(sessionId);
   }
 
@@ -762,7 +1184,8 @@ class WidgetPreviewService implements IService {
   ): Promise<TDirectFunctionView> {
     const sessionId = this.#sessionId(args);
     const artifact = this.#artifacts.get(sessionId);
-    if (artifact === undefined) {
+    const session = this.#preview.get(sessionId);
+    if (artifact === undefined || session?.phase !== 'ready') {
       throw previewError('FUNCTION_NOT_FOUND', 'Published function was not found.');
     }
     return this.#invokeArtifactFunction(
@@ -857,10 +1280,11 @@ class WidgetPreviewService implements IService {
   }
 
   async stop(): Promise<void> {
+    for (const release of this.#generationReleases.values()) release();
+    this.#generationReleases.clear();
     this.#artifacts.clear();
-    this.#pendingCaptures.clear();
-    this.#inspectionSessions.clear();
-    this.#inspectionStages.clear();
+    this.#artifactGenerations.clear();
+    this.#pendingGenerations.clear();
     await this.#preview.shutdown();
   }
 
@@ -925,7 +1349,14 @@ class WidgetPreviewService implements IService {
       serverDescriptors,
     );
     if (!validation.valid) {
-      throw new Error('Preview server-function descriptors are invalid.');
+      throw previewError(
+        validation.reason === 'resource_effect_exceeded'
+          ? 'RESOURCE_EFFECT_DENIED'
+          : 'FUNCTION_DESCRIPTOR_INVALID',
+        validation.reason === 'resource_effect_exceeded'
+          ? 'A server function exceeds its manifest resource effect.'
+          : 'Preview server-function descriptors are invalid.',
+      );
     }
     const browserFunctionDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
       serverDescriptors,
@@ -940,9 +1371,22 @@ class WidgetPreviewService implements IService {
       capabilityDigest,
       browserFunctionDescriptors,
       signed.capsule.runtime.capabilityRequests,
-    )) throw new Error('Preview functions do not match the signed Capsule capability request.');
+    )) throw previewError(
+      'FUNCTION_DESCRIPTOR_INVALID',
+      'Preview functions do not match the signed Capsule capability request.',
+    );
 
-    const { server: _server, ...browserManifest } = construction.manifest;
+    const {
+      server: _server,
+      resources: _authoredResources,
+      ...authoredBrowserManifest
+    } = construction.manifest;
+    const browserManifest = Object.freeze({
+      ...authoredBrowserManifest,
+      ...(executableProjection.resources.length === 0
+        ? {}
+        : { resources: executableProjection.resources }),
+    });
     const serverArtifact = construction.construction.construction.serverArtifact;
     const sourceMapArtifact = construction.construction.construction.sourceMapArtifact;
     return Object.freeze({
@@ -979,54 +1423,36 @@ class WidgetPreviewService implements IService {
 
   async #resolveBindings(
     requirements: readonly TResourceRequirement[],
-    selections: readonly TWidgetPreviewSelectedResourceInput[],
   ): Promise<readonly TWidgetPreviewResourceBinding[]> {
-    const bySlot = new Map(requirements.map((item) => [item.slot, item]));
-    const bindings = await Promise.all(selections.map(async (selection) => {
-      const requirement = bySlot.get(selection.slot);
-      const resource = await this.#config.resources.getResource(selection.resourceId);
-      const allowRead = selection.effect === 'read' || selection.effect === 'read_write';
-      const allowWrite = selection.effect === 'read_write';
-      if (
-        requirement === undefined
-        || resource === null
-        || resource.status !== 'ready'
-        || resource.kind !== requirement.kind
-        || (allowRead && !effectAllows(requirement.effect, 'read'))
-        || (allowWrite && !effectAllows(requirement.effect, 'write'))
-      ) throw previewError('FUNCTION_RESOURCE_UNAVAILABLE', 'Preview resource is unavailable.');
-      return Object.freeze({
-        slot: selection.slot,
-        resourceId: selection.resourceId,
-        kind: resource.kind,
-        allowRead,
-        allowWrite,
-      });
-    }));
+    const bindings: TWidgetPreviewResourceBinding[] = [];
     for (const requirement of requirements) {
-      if (
-        requirement.required
-        && !bindings.some((binding) => binding.slot === requirement.slot)
-      ) {
-        const candidates = await this.#config.resources.listResources({
-          kind: requirement.kind,
-          status: 'ready',
-        });
-        if (candidates.length === 1) {
-          bindings.push(Object.freeze({
-            slot: requirement.slot,
-            resourceId: candidates[0]!.id,
-            kind: requirement.kind,
-            allowRead: effectAllows(requirement.effect, 'read'),
-            allowWrite: effectAllows(requirement.effect, 'write'),
-          }));
-          continue;
-        }
+      if (requirement.resourceId === undefined) {
+        if (!requirement.required) continue;
         throw previewError(
-          'FUNCTION_RESOURCE_UNAVAILABLE',
-          `Required Preview resource slot '${requirement.slot}' has no selection.`,
+          'WIDGET_RESOURCE_BINDING_REQUIRED',
+          `Required Preview resource slot '${requirement.slot}' is unconfigured; edit omnidraw.json and rebuild.`,
         );
       }
+      const resource = await this.#config.resources.getResource(requirement.resourceId);
+      if (resource === null) throw previewError(
+        'WIDGET_RESOURCE_BINDING_STALE',
+        `Preview resource slot '${requirement.slot}' references an unavailable local resource.`,
+      );
+      if (resource.status !== 'ready') throw previewError(
+        'WIDGET_RESOURCE_NOT_READY',
+        `Preview resource slot '${requirement.slot}' is not ready.`,
+      );
+      if (resource.kind !== requirement.kind) throw previewError(
+        'WIDGET_RESOURCE_KIND_MISMATCH',
+        `Preview resource slot '${requirement.slot}' has the wrong resource kind.`,
+      );
+      bindings.push(Object.freeze({
+        slot: requirement.slot,
+        resourceId: requirement.resourceId,
+        kind: resource.kind,
+        allowRead: effectAllows(requirement.effect, 'read'),
+        allowWrite: effectAllows(requirement.effect, 'write'),
+      }));
     }
     return Object.freeze(bindings);
   }

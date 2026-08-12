@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build --config vite.config.mjs"
+    "check": "omnidraw-widget check .",
+    "build": "omnidraw-widget build ."
   },
   "dependencies": {
     "@omnidraw/capsule": "__OMNIDRAW_CAPSULE_DEPENDENCY__",

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   fnBoundedBuildOutput,
   fnRedactBuildOutput,
+  fnWidgetBuildProcessEnvironment,
 } from '../src/services/fn.redact-build-output';
 
 describe('fnRedactBuildOutput', () => {
@@ -25,5 +26,24 @@ describe('fnRedactBuildOutput', () => {
     expect(bounded).toStartWith('ui/main.ts:4: error: Expected expression');
     expect(bounded).toContain('build output truncated');
     expect(bounded.length).toBe(400);
+  });
+
+  test('keeps npm home state inside excluded build metadata instead of authored source', () => {
+    expect(fnWidgetBuildProcessEnvironment({
+      PATH: '/bin',
+      OMNIDRAW_TOKEN: 'never-forward',
+    }, '/widgets/drafts/rows/', 'darwin')).toEqual({
+      CI: '1',
+      HOME: '/widgets/drafts/rows/.omnidraw/process-home',
+      NO_COLOR: '1',
+      NPM_CONFIG_FUND: 'false',
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+      PATH: '/bin',
+    });
+    expect(fnWidgetBuildProcessEnvironment(
+      {},
+      'C:\\widgets\\rows\\',
+      'win32',
+    ).HOME).toBe('C:\\widgets\\rows\\.omnidraw\\process-home');
   });
 });

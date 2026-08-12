@@ -1,7 +1,6 @@
 import {
   fnReadCanvasWidgetExtension,
   type TCanvasItemSnapshot,
-  type TCanvasWidgetResourceBindingV1,
 } from '@omnidraw/canvas-contract';
 import type {
   IFunctionInvocationApiCapability,
@@ -80,7 +79,7 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
     };
 
     const firstItem = await readItem();
-    const firstExtension = widgetExtension(firstItem, input);
+    widgetExtension(firstItem, input);
     const resolution = await this.#config.catalog.resolveRuntime(input.widgetKey);
     if (
       resolution.widgetKey !== input.widgetKey
@@ -94,19 +93,12 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
     if (descriptor === undefined) {
       throw functionServiceError('FUNCTION_NOT_FOUND', 'Published function was not found.');
     }
-    const secondItem = await readItem();
-    const extension = widgetExtension(secondItem, input);
-    if (
-      JSON.stringify(extension.resourceBindings ?? {})
-        !== JSON.stringify(firstExtension.resourceBindings ?? {})
-      || !this.#config.catalog.isRuntimeResolutionCurrent(resolution)
-    ) throw functionServiceError('WIDGET_CATALOG_CHANGED', 'Function target changed before execution.');
-
     const requirements = resolution.manifest.resources ?? [];
-    const bindings = await this.#resolveBindings(
-      requirements,
-      extension.resourceBindings ?? {},
-    );
+    const bindings = await this.#resolveBindings(requirements);
+    await readItem();
+    if (!this.#config.catalog.isRuntimeResolutionCurrent(resolution)) {
+      throw functionServiceError('WIDGET_CATALOG_CHANGED', 'Function target changed before execution.');
+    }
     const access = this.#config.resources.createFunctionResourceGateway({
       requirements,
       bindings,
@@ -145,7 +137,6 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
 
   async #resolveBindings(
     requirements: readonly TResourceRequirement[],
-    selections: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>,
   ): Promise<readonly Readonly<{
     slot: string;
     resourceId: string;
@@ -153,32 +144,41 @@ class FunctionService implements IService, IFunctionInvocationApiCapability {
     allowRead: boolean;
     allowWrite: boolean;
   }>[]> {
-    const bySlot = new Map(requirements.map((item) => [item.slot, item]));
-    const result = await Promise.all(Object.keys(selections).sort().map(async (slot) => {
-      const selection = selections[slot]!;
-      const requirement = bySlot.get(slot);
-      const resource = await this.#config.resources.getResource(selection.resourceId);
-      if (
-        requirement === undefined
-        || resource === null
-        || resource.status !== 'ready'
-        || resource.kind !== requirement.kind
-        || (selection.allowRead && !effectAllows(requirement.effect, 'read'))
-        || (selection.allowWrite && !effectAllows(requirement.effect, 'write'))
-        || (!selection.allowRead && !selection.allowWrite)
-      ) throw functionServiceError('FUNCTION_RESOURCE_UNAVAILABLE', 'Function resource is unavailable.');
-      return Object.freeze({
-        slot,
-        resourceId: selection.resourceId,
-        kind: resource.kind,
-        allowRead: selection.allowRead,
-        allowWrite: selection.allowWrite,
-      });
-    }));
+    const result: Array<Readonly<{
+      slot: string;
+      resourceId: string;
+      kind: TResourceRequirement['kind'];
+      allowRead: boolean;
+      allowWrite: boolean;
+    }>> = [];
     for (const requirement of requirements) {
-      if (requirement.required && !selections[requirement.slot]) {
-        throw functionServiceError('FUNCTION_RESOURCE_UNAVAILABLE', 'Required function resource is unavailable.');
+      if (requirement.resourceId === undefined) {
+        if (!requirement.required) continue;
+        throw functionServiceError(
+          'WIDGET_RESOURCE_BINDING_REQUIRED',
+          `Required function resource slot '${requirement.slot}' is unconfigured.`,
+        );
       }
+      const resource = await this.#config.resources.getResource(requirement.resourceId);
+      if (resource === null) throw functionServiceError(
+        'WIDGET_RESOURCE_BINDING_STALE',
+        'Function resource is unavailable.',
+      );
+      if (resource.status !== 'ready') throw functionServiceError(
+        'WIDGET_RESOURCE_NOT_READY',
+        'Function resource is not ready.',
+      );
+      if (resource.kind !== requirement.kind) throw functionServiceError(
+        'WIDGET_RESOURCE_KIND_MISMATCH',
+        'Function resource has the wrong kind.',
+      );
+      result.push(Object.freeze({
+        slot: requirement.slot,
+        resourceId: requirement.resourceId,
+        kind: resource.kind,
+        allowRead: effectAllows(requirement.effect, 'read'),
+        allowWrite: effectAllows(requirement.effect, 'write'),
+      }));
     }
     return Object.freeze(result);
   }

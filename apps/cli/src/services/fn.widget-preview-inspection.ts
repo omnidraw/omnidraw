@@ -5,33 +5,53 @@ import type {
   TInspectEvidence,
   TInspectIdentity,
   TInspectStage,
+  TInspectVerification,
   TWidgetPreviewInspectResult,
 } from '@omnidraw/service-agent';
+import { fnClassifyWidgetPreviewInspection } from '@omnidraw/service-agent/fn.widget-preview-inspect';
 import type { TWidgetCapsuleTheme } from '@omnidraw/widget-contract';
 import type {
   TPreviewInspectionBrowserActionResult,
+  TPreviewInspectionBrowserFailureEvidence,
   TPreviewInspectionBrowserResult,
   TPreviewInspectionRuntimeEvent,
   TPreviewInspectionBrowserTarget,
 } from './preview-inspection/interface';
 
 type TProjectCompletedArgs = Readonly<{
+  surface: 'artifact' | 'preview';
   browser: TPreviewInspectionBrowserResult;
   identity: TInspectIdentity;
   artifact: TInspectArtifact;
   page: TInspectEvidence['page'];
   durationMs: number;
+  previewState: TInspectVerification['previewState'];
   digestSha256(value: string): string;
   mapLocation?(event: TPreviewInspectionRuntimeEvent): TInspectDiagnostic['location'] | undefined;
 }>;
 
 type TProjectFailureArgs = Readonly<{
+  surface: 'artifact' | 'preview';
   error: unknown;
   stage: TInspectStage;
   identity: TInspectIdentity;
   artifact?: TInspectArtifact;
   durationMs: number;
   cancelled: boolean;
+  previewState: TInspectVerification['previewState'];
+  browserEvidence?: TPreviewInspectionBrowserFailureEvidence;
+  digestSha256(value: string): string;
+  mapLocation?(event: TPreviewInspectionRuntimeEvent): TInspectDiagnostic['location'] | undefined;
+}>;
+
+type TProjectRuntimeDiagnosticsArgs = Readonly<{
+  runtimeEvents: readonly TPreviewInspectionRuntimeEvent[];
+  capsuleArtifactHash: string;
+  runtimeGeneration: number;
+  lifecycleGeneration: number;
+  droppedRuntimeEventCount: number;
+  digestSha256(value: string): string;
+  mapLocation?(event: TPreviewInspectionRuntimeEvent): TInspectDiagnostic['location'] | undefined;
 }>;
 
 const ORIGINS: readonly TInspectDiagnostic['origin'][] = Object.freeze([
@@ -66,6 +86,22 @@ function fnDiagnosticOrigin(value: string): TInspectDiagnostic['origin'] {
   return ORIGINS.includes(value as TInspectDiagnostic['origin'])
     ? value as TInspectDiagnostic['origin']
     : 'capsule';
+}
+
+function fnSafeRuntimeMessage(code: string, value: string): string {
+  if (/FUNCTION_INPUT|INPUT_SCHEMA/.test(code)) return 'Function input did not match its declared schema.';
+  if (/FUNCTION_OUTPUT|OUTPUT_SCHEMA/.test(code)) return 'Function output did not match its declared schema.';
+  if (/FUNCTION_DESCRIPTOR|DESCRIPTOR/.test(code)) return 'Function descriptor validation failed.';
+  if (/RESOURCE.*(?:REQUIRED|BINDING_REQUIRED)/.test(code)) return 'A required manifest resource reference is missing.';
+  if (/RESOURCE.*(?:STALE|NOT_FOUND)/.test(code)) return 'A manifest resource reference is unavailable.';
+  if (/RESOURCE.*NOT_READY/.test(code)) return 'A manifest resource is not ready.';
+  if (/RESOURCE.*KIND/.test(code)) return 'A manifest resource has the wrong kind.';
+  if (/(?:WRITE_APPROVAL|APPROVAL_REQUIRED)/.test(code)) return 'The diagnostic write was not executed because approval is required.';
+  if (/RESOURCE|PROVIDER/.test(code)) return 'The resource provider call failed safely.';
+  return fnBoundedText(value, 2_000)
+    .replace(/(?:file:\/\/)?\/?(?:Users|home|private|tmp|var)\/[A-Za-z0-9_./\\-]+/g, 'widget://project')
+    .replace(/(?:postgres|mysql|libsql|https?):\/\/[^\s]+/gi, '[redacted]')
+    .replace(/\b(token|secret|password|credential)\s*[=:]\s*\S+/gi, '$1=[redacted]');
 }
 
 function fnProjectTarget(
@@ -125,6 +161,93 @@ function fnErrorMessage(error: unknown): string {
   return 'Preview inspection failed during isolated execution.';
 }
 
+function fnNextAction(
+  surface: 'artifact' | 'preview',
+  previewState: TInspectVerification['previewState'],
+): TInspectVerification['nextAction'] {
+  if (surface === 'artifact') return 'use_preview_mode_for_resources';
+  if (previewState === 'absent' || previewState === 'failed') return 'repair_visible_preview';
+  if (previewState === 'mounting') return 'retry_after_settle';
+  if (previewState === 'retired') return 'reopen_preview';
+  if (previewState === 'ambiguous') return 'remove_duplicate_previews';
+  if (previewState === 'generation_mismatch') return 'retry_current_generation';
+  return 'none';
+}
+
+export function fnProjectWidgetPreviewRuntimeDiagnostics(
+  args: TProjectRuntimeDiagnosticsArgs,
+): TInspectEvidence['diagnostics'] {
+  let droppedCount = args.droppedRuntimeEventCount;
+  let diagnosticBytes = 0;
+  const diagnosticsByFingerprint = new Map<string, TInspectDiagnostic>();
+  for (const event of args.runtimeEvents) {
+    if (
+      (event.artifactHash !== undefined && event.artifactHash !== args.capsuleArtifactHash)
+      || (event.runtimeGeneration !== undefined
+        && event.runtimeGeneration !== args.runtimeGeneration)
+      || (event.lifecycleGeneration !== undefined
+        && event.lifecycleGeneration !== args.lifecycleGeneration)
+    ) {
+      droppedCount += 1;
+      continue;
+    }
+    const origin = fnDiagnosticOrigin(event.origin);
+    const phase = fnBoundedText(event.phase, 256);
+    const code = fnBoundedText(event.code, 256) || 'CAPSULE_RUNTIME_EVENT';
+    const message = fnSafeRuntimeMessage(code, event.message);
+    const location = args.mapLocation?.(event);
+    const fingerprint = args.digestSha256([
+      origin,
+      phase,
+      code,
+      event.severity,
+      message,
+      location?.file ?? '',
+      String(location?.line ?? ''),
+      String(location?.column ?? ''),
+    ].join('\u0000'));
+    const existing = diagnosticsByFingerprint.get(fingerprint);
+    if (existing !== undefined) {
+      diagnosticsByFingerprint.set(fingerprint, Object.freeze({
+        ...existing,
+        occurrenceCount: existing.occurrenceCount + 1,
+      }));
+      continue;
+    }
+    if (diagnosticsByFingerprint.size >= 100) {
+      droppedCount += 1;
+      continue;
+    }
+    const entryBytes = fnUtf8ByteLength(fingerprint)
+      + fnUtf8ByteLength(phase)
+      + fnUtf8ByteLength(code)
+      + fnUtf8ByteLength(message)
+      + (location === undefined ? 0 : fnUtf8ByteLength(location.file));
+    if (diagnosticBytes + entryBytes > 64 * 1_024) {
+      droppedCount += 1;
+      continue;
+    }
+    diagnosticBytes += entryBytes;
+    diagnosticsByFingerprint.set(fingerprint, Object.freeze({
+      fingerprint,
+      origin,
+      phase,
+      code,
+      severity: event.severity,
+      message,
+      trust: origin === 'guest' ? 'untrusted' : 'trusted',
+      retryability: 'unknown',
+      occurrenceCount: 1,
+      ...(location === undefined ? {} : { location }),
+    }));
+  }
+  return Object.freeze({
+    entries: Object.freeze([...diagnosticsByFingerprint.values()]),
+    droppedCount,
+    truncated: droppedCount > 0,
+  });
+}
+
 export function fnDefaultWidgetPreviewInspectionTheme(): TWidgetCapsuleTheme {
   return Object.freeze({
     format: 'omnidraw.widget-theme.v1',
@@ -151,72 +274,16 @@ export function fnProjectWidgetPreviewInspectionCompleted(
   args: TProjectCompletedArgs,
 ): TWidgetPreviewInspectResult {
   const actions = Object.freeze(args.browser.actionResults.map(fnProjectAction));
-  let mismatchedDiagnostics = 0;
-  let diagnosticBytes = 0;
-  const diagnosticsByFingerprint = new Map<string, TInspectDiagnostic>();
-  for (const event of args.browser.runtimeEvents) {
-    if (
-      (event.artifactHash !== undefined
-        && event.artifactHash !== args.browser.capsuleArtifactHash)
-      || (event.runtimeGeneration !== undefined
-        && event.runtimeGeneration !== args.browser.runtimeGeneration)
-      || (event.lifecycleGeneration !== undefined
-        && event.lifecycleGeneration !== args.browser.lifecycleGeneration)
-    ) {
-      mismatchedDiagnostics += 1;
-      continue;
-    }
-    const origin = fnDiagnosticOrigin(event.origin);
-    const phase = fnBoundedText(event.phase, 256);
-    const code = fnBoundedText(event.code, 256) || 'CAPSULE_RUNTIME_EVENT';
-    const message = fnBoundedText(event.message, 2_000);
-    const location = args.mapLocation?.(event);
-    const fingerprint = args.digestSha256([
-      origin,
-      phase,
-      code,
-      event.severity,
-      message,
-      location?.file ?? '',
-      String(location?.line ?? ''),
-      String(location?.column ?? ''),
-    ].join('\u0000'));
-    const existing = diagnosticsByFingerprint.get(fingerprint);
-    if (existing !== undefined) {
-      diagnosticsByFingerprint.set(fingerprint, Object.freeze({
-        ...existing,
-        occurrenceCount: existing.occurrenceCount + 1,
-      }));
-      continue;
-    }
-    if (diagnosticsByFingerprint.size >= 100) {
-      mismatchedDiagnostics += 1;
-      continue;
-    }
-    const entryBytes = fnUtf8ByteLength(fingerprint)
-      + fnUtf8ByteLength(phase)
-      + fnUtf8ByteLength(code)
-      + fnUtf8ByteLength(message)
-      + (location === undefined ? 0 : fnUtf8ByteLength(location.file));
-    if (diagnosticBytes + entryBytes > 64 * 1_024) {
-      mismatchedDiagnostics += 1;
-      continue;
-    }
-    diagnosticBytes += entryBytes;
-    diagnosticsByFingerprint.set(fingerprint, Object.freeze({
-      fingerprint,
-      origin,
-      phase,
-      code,
-      severity: event.severity,
-      message,
-      trust: origin === 'guest' ? 'untrusted' : 'trusted',
-      retryability: 'unknown',
-      occurrenceCount: 1,
-      ...(location === undefined ? {} : { location }),
-    }));
-  }
-  const diagnostics = Object.freeze([...diagnosticsByFingerprint.values()]);
+  const projectedDiagnostics = fnProjectWidgetPreviewRuntimeDiagnostics({
+    runtimeEvents: args.browser.runtimeEvents,
+    capsuleArtifactHash: args.browser.capsuleArtifactHash,
+    runtimeGeneration: args.browser.runtimeGeneration,
+    lifecycleGeneration: args.browser.lifecycleGeneration,
+    droppedRuntimeEventCount: args.browser.droppedCounts.runtimeEvents,
+    digestSha256: args.digestSha256,
+    ...(args.mapLocation === undefined ? {} : { mapLocation: args.mapLocation }),
+  });
+  const diagnostics = projectedDiagnostics.entries;
   const elements = Object.freeze(args.browser.targets.slice(0, 128).map((target) => {
     const state = Object.freeze({ ...(target.state ?? {}) });
     return Object.freeze({
@@ -256,8 +323,8 @@ export function fnProjectWidgetPreviewInspectionCompleted(
     actions,
     diagnostics: Object.freeze({
       entries: diagnostics,
-      droppedCount: args.browser.droppedCounts.runtimeEvents + mismatchedDiagnostics,
-      truncated: args.browser.droppedCounts.runtimeEvents + mismatchedDiagnostics > 0,
+      droppedCount: projectedDiagnostics.droppedCount,
+      truncated: projectedDiagnostics.truncated,
     }),
     elements: Object.freeze({
       entries: elements,
@@ -271,20 +338,47 @@ export function fnProjectWidgetPreviewInspectionCompleted(
       truncated: canvasOmittedCount > 0,
     }),
   });
-  const completed = actions.every((action) => action.status === 'passed')
-    && diagnostics.every((diagnostic) => diagnostic.severity !== 'error');
+  const functional = fnClassifyWidgetPreviewInspection({
+    actions,
+    diagnostics,
+    elements,
+  });
+  const completed = functional === 'observed' || functional === 'not_exercised';
+  const verification = Object.freeze({
+    surface: args.surface,
+    generation: 'current' as const,
+    artifact: 'exact' as const,
+    manifest: 'exact' as const,
+    resources: args.surface === 'preview' ? 'manifest_bound' as const : 'not_available' as const,
+    canvasParity: args.surface === 'preview' ? 'same_runtime_policy' as const : 'not_claimed' as const,
+    visibleFrame: 'not_claimed' as const,
+    executionTarget: 'diagnostic_clone' as const,
+    previewState: args.previewState,
+    nextAction: fnNextAction(args.surface, args.previewState),
+    functional,
+  });
   return Object.freeze({
     status: completed ? 'completed' : 'completed_with_errors',
     identity: args.identity,
     artifact: args.artifact,
-    fidelity: Object.freeze({
-      source: 'exact',
-      artifact: 'exact',
-      runtimePolicy: 'narrowed',
-      bindings: 'none',
-      network: 'denied',
-      overall: 'artifact_exact',
-    }),
+    fidelity: args.surface === 'preview'
+      ? Object.freeze({
+          source: 'exact' as const,
+          artifact: 'exact' as const,
+          runtimePolicy: 'preview' as const,
+          bindings: 'manifest' as const,
+          network: 'denied' as const,
+          overall: 'preview_policy_exact' as const,
+        })
+      : Object.freeze({
+          source: 'exact' as const,
+          artifact: 'exact' as const,
+          runtimePolicy: 'narrowed' as const,
+          bindings: 'unavailable' as const,
+          network: 'denied' as const,
+          overall: 'artifact_exact' as const,
+        }),
+    verification,
     screenshot: Object.freeze({
       mimeType: 'image/png',
       width: args.browser.screenshotWidth,
@@ -303,6 +397,17 @@ export function fnProjectWidgetPreviewInspectionFailure(
   const code = fnErrorCode(args.error);
   const timedOut = code === 'PREVIEW_INSPECTION_TIMED_OUT';
   const cancelled = args.cancelled || code === 'PREVIEW_INSPECTION_CANCELLED';
+  const diagnostics = args.browserEvidence === undefined
+    ? undefined
+    : fnProjectWidgetPreviewRuntimeDiagnostics({
+        runtimeEvents: args.browserEvidence.runtimeEvents,
+        capsuleArtifactHash: args.browserEvidence.capsuleArtifactHash,
+        runtimeGeneration: args.browserEvidence.runtimeGeneration,
+        lifecycleGeneration: args.browserEvidence.lifecycleGeneration,
+        droppedRuntimeEventCount: args.browserEvidence.droppedRuntimeEventCount,
+        digestSha256: args.digestSha256,
+        ...(args.mapLocation === undefined ? {} : { mapLocation: args.mapLocation }),
+      });
   return Object.freeze({
     status: timedOut ? 'timed_out' : cancelled ? 'cancelled' : 'failed',
     stage: args.stage,
@@ -315,7 +420,23 @@ export function fnProjectWidgetPreviewInspectionFailure(
         && args.error.retryable === true,
     }),
     identity: args.identity,
+    verification: Object.freeze({
+      surface: args.surface,
+      generation: 'current',
+      artifact: 'exact',
+      manifest: 'exact',
+      resources: args.surface === 'preview' ? 'manifest_bound' : 'not_available',
+      canvasParity: args.surface === 'preview' ? 'same_runtime_policy' : 'not_claimed',
+      visibleFrame: 'not_claimed',
+      executionTarget: 'diagnostic_clone',
+      previewState: args.previewState,
+      nextAction: fnNextAction(args.surface, args.previewState),
+      functional: 'failed',
+    }),
     ...(args.artifact === undefined ? {} : { artifact: args.artifact }),
+    ...(diagnostics === undefined
+      ? {}
+      : { evidence: Object.freeze({ diagnostics }) }),
     durationMs: Math.max(0, args.durationMs),
   });
 }

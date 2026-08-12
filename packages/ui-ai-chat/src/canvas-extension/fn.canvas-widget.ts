@@ -7,7 +7,6 @@ import type {
 import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';
 import type {
   TCanvasWidgetExtensionV1,
-  TCanvasWidgetResourceBindingV1,
 } from '@omnidraw/canvas-contract/types';
 import {
   PREVIEW_ACTION_IDS,
@@ -39,8 +38,18 @@ type TArgsAiNode = TArgsNodeBase & Readonly<{
 type TArgsPublishedNode = TArgsNodeBase & Readonly<{
   instanceId: string;
   widgetKey: string;
-  resourceBindings?: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
 }>;
+
+export function fnAiChatMountReadiness(args: Readonly<{
+  durable: boolean;
+  node: Readonly<TSceneNode> | null;
+}>): 'mount' | 'wait' | 'stop' {
+  const extension = fnCanvasWidgetExtension(args.node);
+  if (args.node?.kind !== 'widget-frame' || extension?.type !== 'ui-widget' || extension.kind !== 'ai') {
+    return 'stop';
+  }
+  return args.durable ? 'mount' : 'wait';
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -145,9 +154,6 @@ export function fnCreatePublishedWidgetNode(
     type: 'widget-instance',
     instanceId: args.instanceId,
     widgetKey: args.widgetKey,
-    ...(args.resourceBindings === undefined
-      ? {}
-      : { resourceBindings: args.resourceBindings }),
   };
   return {
     ...fnBaseWidgetNode(args),

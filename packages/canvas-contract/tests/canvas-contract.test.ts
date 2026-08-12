@@ -10,6 +10,7 @@ import {
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   fnMaterializeCanvasValidationSnapshot,
+  fnNormalizeLegacyCanvasWidgetBindings,
   fnReadCanvasImageExtension,
   fnReadCanvasSemanticStyleExtension,
   fnValidateCanvasItems,
@@ -89,9 +90,8 @@ describe("@omnidraw/canvas-contract", () => {
     });
   });
 
-  test("accepts filesystem widget identity and concrete local resources without state", () => {
-    expect(fnValidateCanvasItems([
-      widget({
+  test("accepts filesystem widget identity and strips legacy per-instance bindings", () => {
+    const legacy = widget({
         schemaVersion: 1,
         type: "widget-instance",
         instanceId: "instance-1",
@@ -103,8 +103,15 @@ describe("@omnidraw/canvas-contract", () => {
             allowWrite: false,
           },
         },
-      }),
-    ])).toEqual({ valid: true, issues: [] });
+      });
+    expect(fnValidateCanvasItems([legacy])).toEqual({ valid: true, issues: [] });
+    expect(fnNormalizeLegacyCanvasWidgetBindings(legacy).extensions?.["omnidraw:widget"])
+      .toEqual({
+        schemaVersion: 1,
+        type: "widget-instance",
+        instanceId: "instance-1",
+        widgetKey: "counter",
+      });
   });
 
   test("accepts an ephemeral widget-preview frame and rejects unsupported fields", () => {
@@ -188,7 +195,7 @@ describe("@omnidraw/canvas-contract", () => {
     });
   });
 
-  test("rejects legacy database identity and invalid concrete resource choices", () => {
+  test("rejects legacy database identity while ignoring retired resource choices", () => {
     expect(fnValidateCanvasItems([
       widget({
         schemaVersion: 1,
@@ -210,9 +217,6 @@ describe("@omnidraw/canvas-contract", () => {
       issues: expect.arrayContaining([
         expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" }),
         expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_SLOT" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_PERMISSIONS" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_ID" }),
       ]),
     });
 
@@ -235,7 +239,6 @@ describe("@omnidraw/canvas-contract", () => {
       issues: expect.arrayContaining([
         expect.objectContaining({ code: "WIDGET_EXTENSION_IDENTITY" }),
         expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_RESOURCE_SLOT" }),
       ]),
     });
   });

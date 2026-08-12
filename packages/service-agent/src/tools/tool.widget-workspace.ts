@@ -141,6 +141,12 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           draftCreated = true;
           args.onMounted?.(created.mount);
           await args.onDraftChanged?.({ name: created.mount.name, type: 'created' });
+          if (args.previewBuild !== undefined) {
+            const build = await args.previewBuild({ slug: basename(created.mount.targetPath) });
+            if (!build.ok) {
+              throw new Error(`Initial portable widget build failed: ${build.errors.join('; ')}`);
+            }
+          }
           const template = params.template ?? 'plain';
           const server = params.server === true;
           const editableEntry = template === 'react' ? 'ui/main.tsx' : 'ui/main.ts';
@@ -179,7 +185,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const validate = defineTool({
     name: 'od_widget_validate',
     label: 'Validate Widget',
-    description: 'Validate one widget from the shared draft workspace with the trusted host compiler and SDK declarations, then run the real Preview build when the host provides it. This never publishes.',
+    description: 'Validate one widget from the shared draft workspace with the trusted host compiler and SDK declarations, then run the accepted-artifact build when the host provides it. This does not mount a live Preview, exercise resources, or publish.',
     parameters: Type.Object({
       name: Type.String({ minLength: 1, maxLength: 120 }),
     }, { additionalProperties: false }),
@@ -196,10 +202,10 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             validation.ok = false;
             validation.errors.push(`Published identity is '${mount.name}', but omnidraw.json declares '${String(manifest.name)}'. Create and publish a new widget to rename it.`);
           }
-          let previewExecution: 'passed' | 'failed' | 'not-run' = 'not-run';
+          let acceptedArtifactBuild: 'passed' | 'failed' | 'not-run' = 'not-run';
           if (validation.ok && args.previewBuild) {
             const build = await args.previewBuild({ slug: basename(mount.targetPath) });
-            previewExecution = build.ok ? 'passed' : 'failed';
+            acceptedArtifactBuild = build.ok ? 'passed' : 'failed';
             if (!build.ok) {
               validation.ok = false;
               validation.errors.push(...build.errors);
@@ -215,8 +221,10 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             source: mount.source,
             ok: validation.ok,
             draft: true,
-            validationScope: 'construction' as const,
-            previewExecution,
+            validationScope: 'source_and_accepted_artifact' as const,
+            acceptedArtifactBuild,
+            livePreviewRuntime: 'not_exercised' as const,
+            resources: 'not_exercised' as const,
             publishReady: false,
             errors,
             warnings,
@@ -228,11 +236,11 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           };
           return fnToolSuccess({
             summary: validation.ok
-              ? previewExecution === 'passed'
-                ? `Widget '${mount.name}' construction is valid and the Preview build passed.`
-                : `Widget '${mount.name}' construction is valid. Preview build was not run.`
-              : previewExecution === 'failed'
-                ? `Widget '${mount.name}' Preview build failed.`
+              ? acceptedArtifactBuild === 'passed'
+                ? `Widget '${mount.name}' source is valid and its accepted artifact build passed. Live Preview runtime and resources were not exercised.`
+                : `Widget '${mount.name}' source is valid. Accepted artifact build was not run; live Preview runtime and resources were not exercised.`
+              : acceptedArtifactBuild === 'failed'
+                ? `Widget '${mount.name}' accepted artifact build failed. Live Preview runtime and resources were not exercised.`
                 : `Widget '${mount.name}' construction is invalid.`,
             modelData,
             details: modelData,

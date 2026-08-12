@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { createWidgetPreviewInspectTool } from '../src/tools/tool.widget-preview-inspect';
+import { fnClassifyWidgetPreviewInspection } from '../src/tools/fn.widget-preview-inspect';
 import type {
   TInspectIdentity,
   TWidgetPreviewInspectResult,
@@ -68,6 +69,7 @@ function identityFor(request: TWidgetPreviewInspectionRequest): TInspectIdentity
 }
 
 function completedResponse(request: TWidgetPreviewInspectionRequest): TResultResponse {
+  const preview = request.input.mode === 'preview';
   const screenshotPng = pngForDimensions(
     request.input.viewport.width * request.input.viewport.deviceScaleFactor,
     request.input.viewport.height * request.input.viewport.deviceScaleFactor,
@@ -80,13 +82,37 @@ function completedResponse(request: TWidgetPreviewInspectionRequest): TResultRes
       capsuleArtifactHash: `sha256:${'d'.repeat(64)}`,
       constructionReused: false,
     },
-    fidelity: {
-      source: 'exact',
+    fidelity: preview
+      ? {
+          source: 'exact',
+          artifact: 'exact',
+          runtimePolicy: 'preview',
+          bindings: 'manifest',
+          network: 'denied',
+          overall: 'preview_policy_exact',
+        }
+      : {
+          source: 'exact',
+          artifact: 'exact',
+          runtimePolicy: 'narrowed',
+          bindings: 'unavailable',
+          network: 'denied',
+          overall: 'artifact_exact',
+        },
+    verification: {
+      surface: preview ? 'preview' : 'artifact',
+      generation: 'current',
       artifact: 'exact',
-      runtimePolicy: 'narrowed',
-      bindings: 'none',
-      network: 'denied',
-      overall: 'artifact_exact',
+      manifest: 'exact',
+      resources: preview ? 'manifest_bound' : 'not_available',
+      canvasParity: preview ? 'same_runtime_policy' : 'not_claimed',
+      visibleFrame: 'not_claimed',
+      executionTarget: 'diagnostic_clone',
+      previewState: preview ? 'ready' : 'not_applicable',
+      nextAction: preview ? 'none' : 'use_preview_mode_for_resources',
+      functional: request.input.actions.some((action) => action.type !== 'waitFrames')
+        ? 'observed'
+        : 'not_exercised',
     },
     screenshot: {
       mimeType: 'image/png',
@@ -117,6 +143,10 @@ async function createFixture(args: Readonly<{
   capability?: TWidgetPreviewInspectionCapability;
   authorize?: () => Promise<boolean>;
   configureWorkspace?(workspace: WidgetWorkspace): void;
+  resolvePreviewScope?: () => Promise<Readonly<{
+    canvasId: string;
+    aiChatElementId: string;
+  }> | null>;
 }> = {}) {
   const root = await makeTempDir();
   const workspace = new WidgetWorkspace({
@@ -145,10 +175,50 @@ async function createFixture(args: Readonly<{
     chatId: 'chat-a',
     authorize: args.authorize ?? (async () => true),
     capability: args.capability,
+    ...(args.resolvePreviewScope === undefined
+      ? {}
+      : { resolvePreviewScope: args.resolvePreviewScope }),
   });
 }
 
 describe('od_widget_preview_inspect', () => {
+  test('classifies trusted warning failures and rendered error alerts as blocking', () => {
+    const diagnostic = {
+      fingerprint: 'function-output',
+      origin: 'capability' as const,
+      phase: 'function',
+      code: 'FUNCTION_OUTPUT_INVALID',
+      severity: 'warning' as const,
+      message: 'Output did not match schema.',
+      trust: 'trusted' as const,
+      retryability: 'non-retryable' as const,
+      occurrenceCount: 1,
+    };
+    expect(fnClassifyWidgetPreviewInspection({
+      actions: [{
+        index: 0,
+        type: 'click',
+        status: 'passed',
+        matchedCount: 1,
+        message: 'clicked',
+      }],
+      diagnostics: [diagnostic],
+      elements: [],
+    })).toBe('failed');
+    expect(fnClassifyWidgetPreviewInspection({
+      actions: [],
+      diagnostics: [],
+      elements: [{
+        id: 1,
+        tag: 'div',
+        role: 'alert',
+        text: 'Database failed to load',
+        bounds: { x: 0, y: 0, width: 100, height: 20 },
+        computed: { display: 'block', visibility: 'visible', opacity: '1' },
+      }],
+    })).toBe('failed');
+  });
+
   test('resolves a mounted display name, forwards identity and cancellation, applies defaults, and returns one PNG block', async () => {
     const calls: TWidgetPreviewInspectionRequest[] = [];
     const tool = await createFixture({
@@ -194,7 +264,7 @@ describe('od_widget_preview_inspect', () => {
       status: 'completed',
       fidelity: {
         runtimePolicy: 'narrowed',
-        bindings: 'none',
+        bindings: 'unavailable',
         network: 'denied',
         overall: 'artifact_exact',
       },
@@ -204,6 +274,62 @@ describe('od_widget_preview_inspect', () => {
     expect(result.content[1]).toMatchObject({ type: 'image', mimeType: 'image/png' });
     expect(result.content[0].text).not.toContain(result.content[1].data);
     expect(JSON.stringify(result.details)).not.toContain(result.content[1].data);
+  });
+
+  test('requires exact Preview scope and reports diagnostic-clone parity without leaking scope IDs', async () => {
+    const calls: TWidgetPreviewInspectionRequest[] = [];
+    const tool = await createFixture({
+      resolvePreviewScope: async () => ({
+        canvasId: 'canvas-private-a',
+        aiChatElementId: 'ai-chat-private-a',
+      }),
+      capability: {
+        inspect: async (request) => {
+          calls.push(request);
+          return completedResponse(request);
+        },
+      },
+    });
+    const result = await executeTool(tool, {
+      name: 'Preview Clock',
+      mode: 'preview',
+      expectedAcceptedGeneration: 7,
+      actions: [{
+        type: 'assertText',
+        target: { by: 'label', text: 'Loaded rows' },
+        text: 'Loaded rows',
+      }],
+    });
+
+    expect(calls[0]).toMatchObject({
+      input: { mode: 'preview', expectedAcceptedGeneration: 7 },
+      scope: { canvasId: 'canvas-private-a', aiChatElementId: 'ai-chat-private-a' },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.details).toMatchObject({
+      fidelity: { overall: 'preview_policy_exact', bindings: 'manifest' },
+      verification: {
+        surface: 'preview',
+        resources: 'manifest_bound',
+        canvasParity: 'same_runtime_policy',
+        visibleFrame: 'not_claimed',
+        functional: 'observed',
+      },
+    });
+    expect(result.content[0]?.text).toContain('diagnostic clone');
+    expect(JSON.stringify(result)).not.toContain('canvas-private-a');
+    expect(JSON.stringify(result)).not.toContain('ai-chat-private-a');
+
+    const unavailable = await createFixture({
+      resolvePreviewScope: async () => null,
+      capability: { inspect: async (request) => completedResponse(request) },
+    });
+    const unavailableResult = await executeTool(unavailable, {
+      name: 'Preview Clock',
+      mode: 'preview',
+    });
+    expect(unavailableResult.isError).toBe(true);
+    expect(unavailableResult.content[0]?.text).toContain('PREVIEW_SCOPE_UNAVAILABLE');
   });
 
   test('accepts the trusted source-map filename alphabet without weakening widget URLs', async () => {
@@ -262,6 +388,8 @@ describe('od_widget_preview_inspect', () => {
     });
     const invalidInputs = [
       { name: 'Preview Clock', effectPolicy: 'preview_exact' },
+      { name: 'Preview Clock', mode: 'preview', resourceId: 'resource-private-a' },
+      { name: 'Preview Clock', mode: 'preview', bindings: { store: 'resource-private-a' } },
       { name: 'Preview Clock', viewport: { width: 512, hostSelector: '#app' } },
       { name: 'Preview Clock', actions: [{ type: 'click', target: { by: 'css', selector: 'é'.repeat(257) } }] },
       { name: 'Preview Clock', actions: [{ type: 'input', target: { by: 'role', role: 'textbox' }, value: 'é'.repeat(2_049) }] },
@@ -381,6 +509,19 @@ describe('od_widget_preview_inspect', () => {
               capsuleArtifactHash: `sha256:${'d'.repeat(64)}`,
               constructionReused: true,
             },
+            verification: {
+              surface: 'artifact',
+              generation: 'current',
+              artifact: 'exact',
+              manifest: 'exact',
+              resources: 'not_available',
+              canvasParity: 'not_claimed',
+              visibleFrame: 'not_claimed',
+              executionTarget: 'diagnostic_clone',
+              previewState: 'not_applicable',
+              nextAction: 'use_preview_mode_for_resources',
+              functional: 'failed',
+            },
             durationMs: 30,
           },
         }),
@@ -395,6 +536,19 @@ describe('od_widget_preview_inspect', () => {
       failure: { code: 'CAPSULE_MOUNT_FAILED', message: 'The isolated mount failed.', retryable: true },
       identity: expect.objectContaining({ name: 'Preview Clock', widgetKey: 'preview-clock' }),
       artifact: expect.objectContaining({ constructionReused: true }),
+      verification: {
+        surface: 'artifact',
+        generation: 'current',
+        artifact: 'exact',
+        manifest: 'exact',
+        resources: 'not_available',
+        canvasParity: 'not_claimed',
+        visibleFrame: 'not_claimed',
+        executionTarget: 'diagnostic_clone',
+        previewState: 'not_applicable',
+        nextAction: 'use_preview_mode_for_resources',
+        functional: 'failed',
+      },
       durationMs: 30,
     });
   });
@@ -409,6 +563,8 @@ describe('od_widget_preview_inspect', () => {
             message: 'The draft changed before isolated browser execution.',
             retryable: true,
             observedDraftDigestSha256,
+            previewState: 'generation_mismatch',
+            nextAction: 'retry_current_generation',
           },
         }),
       },
@@ -420,6 +576,8 @@ describe('od_widget_preview_inspect', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('WIDGET_PREVIEW_INSPECT_DRAFT_STALE');
     expect(result.content[0]?.text).toContain(observedDraftDigestSha256);
+    expect(result.content[0]?.text).toContain('generation_mismatch');
+    expect(result.content[0]?.text).toContain('retry_current_generation');
     expect(result.content[0]?.text).not.toContain('screenshotPng');
   });
 
@@ -567,6 +725,19 @@ describe('od_widget_preview_inspect', () => {
                 retryable: true,
               },
               identity: identityFor(request),
+              verification: {
+                surface: 'artifact',
+                generation: 'current',
+                artifact: 'exact',
+                manifest: 'exact',
+                resources: 'not_available',
+                canvasParity: 'not_claimed',
+                visibleFrame: 'not_claimed',
+                executionTarget: 'diagnostic_clone',
+                previewState: 'not_applicable',
+                nextAction: 'use_preview_mode_for_resources',
+                functional: 'failed',
+              },
               durationMs: request.input.timeoutMs,
             },
           };

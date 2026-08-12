@@ -73,13 +73,17 @@ describe('A114 widget-debug-tools black-box scenario', () => {
         'od_widget_validate',
         'od_widget_preview_inspect',
       ],
-      validation: { ok: true, previewExecution: 'passed' },
+      validation: {
+        ok: true,
+        acceptedArtifactBuild: 'passed',
+        livePreviewRuntime: 'not_exercised',
+      },
       inspection: {
         status: 'completed',
         overall: 'artifact_exact',
         source: 'exact',
         artifact: 'exact',
-        bindings: 'none',
+        bindings: 'unavailable',
         network: 'denied',
         imageCount: 1,
         screenshot: {

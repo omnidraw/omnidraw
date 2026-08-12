@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/service-canvas",
-  "version": "0.7.0",
+  "version": "0.6.0",
   "description": "Portable authoritative single-user canvas service with injected persistence.",
   "license": "MIT",
   "repository": {

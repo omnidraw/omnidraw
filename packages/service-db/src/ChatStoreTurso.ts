@@ -12,6 +12,7 @@ export type TChatCreateArgs = Readonly<{
 
 export type TChatUpdateArgs = Readonly<{
   id: string;
+  canvasId?: string;
   name?: string;
   status?: TChat['status'];
 }>;
@@ -121,11 +122,15 @@ export class ChatStoreTurso {
   }
 
   async update(args: TChatUpdateArgs): Promise<TChat | null> {
-    if (args.name === undefined && args.status === undefined) {
-      throw new TypeError('Chat update must change name or status.');
+    if (args.canvasId === undefined && args.name === undefined && args.status === undefined) {
+      throw new TypeError('Chat update must change canvas, name, or status.');
     }
     const assignments: string[] = [];
     const parameters: string[] = [];
+    if (args.canvasId !== undefined) {
+      assignments.push('canvas_id = ?');
+      parameters.push(args.canvasId);
+    }
     if (args.name !== undefined) {
       assignments.push('name = ?');
       parameters.push(args.name);

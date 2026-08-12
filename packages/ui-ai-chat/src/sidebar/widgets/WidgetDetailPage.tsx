@@ -53,7 +53,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [priority, setPriority] = createSignal('0');
   const [iconKind, setIconKind] = createSignal<'none' | 'lucide' | 'custom'>('none');
   const [iconValue, setIconValue] = createSignal('');
-  const [action, setAction] = createSignal<'save' | 'metadata' | 'build' | null>(null);
+  const [action, setAction] = createSignal<'save' | 'rebuild' | 'metadata' | 'build' | null>(null);
   const [actionError, setActionError] = createSignal('');
   let fileListRequest = 0;
   let previewRequest = 0;
@@ -225,6 +225,23 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     application.notifySuccess(kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published');
   };
 
+  const rebuild = async () => {
+    if (action() !== null || props.source !== 'draft' || !props.name || configDirty()) return;
+    setAction('rebuild');
+    setActionError('');
+    const [rebuildError] = await props.controller.apiService.api.widget.preview.rebuildDraft({
+      widgetKey: props.name,
+    });
+    setAction(null);
+    if (rebuildError) {
+      setActionError(rebuildError.message);
+      application.notifyError('Could not rebuild widget', rebuildError.message);
+      return;
+    }
+    await catalogState.refresh();
+    application.notifySuccess('Widget build accepted');
+  };
+
   const configDirty = createMemo(() => {
     const persisted = form()?.config;
     return props.source === 'draft'
@@ -366,6 +383,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                 <div class={`${styles.formActions} ${styles.fullField}`}>
                   <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null} onClick={() => void saveConfig()}>
                     {action() === 'save' ? 'Saving draft…' : 'Save draft'}
+                  </Button>
+                  <Button class={styles.button} disabled={action() !== null || configDirty()} onClick={() => void rebuild()}>
+                    {action() === 'rebuild' ? 'Rebuilding…' : 'Rebuild'}
                   </Button>
                   <span class={styles.fieldHint}>Press Ctrl/⌘+S to save. The manifest digest prevents stale forms from overwriting external edits.</span>
                 </div>

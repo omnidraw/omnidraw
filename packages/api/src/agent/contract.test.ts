@@ -37,6 +37,7 @@ describe('agent contract', () => {
       safeParse(value: unknown): { success: boolean };
     };
     const base = {
+      canvasId: 'canvas-1',
       widgetId: 'chat',
       sessionId: 'session',
       text: 'Inspect this widget',
@@ -55,7 +56,7 @@ describe('agent contract', () => {
     const schema = api().chat.edit['~orpc'].inputSchema as {
       safeParse(value: unknown): { success: boolean };
     };
-    const base = { widgetId: 'chat', sessionId: 'session', text: 'corrected' };
+    const base = { canvasId: 'canvas-1', widgetId: 'chat', sessionId: 'session', text: 'corrected' };
     expect(schema.safeParse({ ...base, entryId: 'pi-entry-id' }).success).toBe(true);
     expect(schema.safeParse(base).success).toBe(false);
     expect(schema.safeParse({ ...base, entryId: '' }).success).toBe(false);

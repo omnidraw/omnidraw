@@ -57,6 +57,7 @@ function normalizeOperations(
 function normalizeRequirement(requirement: TResourceRequirement): TResourceRequirement {
   return {
     slot: requirement.slot,
+    ...(requirement.resourceId === undefined ? {} : { resourceId: requirement.resourceId }),
     kind: requirement.kind,
     effect: requirement.effect,
     ...(requirement.required === undefined ? {} : { required: requirement.required }),
@@ -67,6 +68,14 @@ function normalizeRequirement(requirement: TResourceRequirement): TResourceRequi
       ? {}
       : { operations: normalizeOperations(requirement.operations) }),
   };
+}
+
+function normalizeExecutableRequirement(
+  requirement: TResourceRequirement,
+): Omit<TResourceRequirement, 'resourceId'> {
+  const normalized = normalizeRequirement(requirement);
+  const { resourceId: _resourceId, ...executable } = normalized;
+  return executable;
 }
 
 function normalizeIcon(icon: TOmnidrawToolIcon | undefined): TOmnidrawToolIcon | undefined {
@@ -150,7 +159,7 @@ export function fnProjectWidgetExecutableManifest(
     schemaVersion: 1,
     ui: normalized.ui,
     server: normalized.server ?? null,
-    resources: normalized.resources ?? [],
+    resources: (normalized.resources ?? []).map(normalizeExecutableRequirement),
   };
 }
 
@@ -197,7 +206,7 @@ export function fnNormalizeWidgetExecutableProjection(
         },
     resources: [...projection.resources]
       .sort((left, right) => compareText(left.slot, right.slot))
-      .map(normalizeRequirement),
+      .map(normalizeExecutableRequirement),
   };
 }
 

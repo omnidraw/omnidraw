@@ -10,7 +10,7 @@ import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { fxLatestWidgetDbChangeProposalRecord } from './core/fx.session-records';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
-import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
+import { txAppendWidgetDbChangeProposalRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
 import { ApprovalPolicyStore } from './approval/ApprovalPolicyStore';
@@ -36,10 +36,14 @@ import type {
   TWidgetDbChangeProposalRecord,
   TWidgetPreviewBuildCheck,
   TWidgetPreviewInspectionCapability,
-  TWidgetResourceSelection,
 } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
+import {
+  fnWidgetPromptSelectionMessage,
+  type TWidgetPromptSelectionContext,
+  type TWidgetReferenceResolver,
+} from './widget-reference';
 
 interface IPublicMethods {
   logout(providerId: string): Promise<void>;
@@ -61,7 +65,10 @@ export interface IAgentServiceConfig {
   previewInspection?: TWidgetPreviewInspectionCapability;
   eventPublisherService: IEventPublisherService,
   chats: Readonly<{
-    get(args: Readonly<{ id: string }>): Promise<Readonly<{ status: 'active' | 'archived' | 'error' }> | null>;
+    get(args: Readonly<{ id: string }>): Promise<Readonly<{
+      status: 'active' | 'archived' | 'error';
+      canvasId: string | null;
+    }> | null>;
     create(args: Readonly<{
       id: string;
       canvasId: string | null;
@@ -73,8 +80,14 @@ export interface IAgentServiceConfig {
       id: string;
       name?: string;
       status?: 'active' | 'archived' | 'error';
+      canvasId?: string;
     }>): Promise<unknown>;
   }>;
+  chatScope: Readonly<{
+    defaultCanvasId?: string;
+    validate(args: Readonly<{ canvasId: string; widgetId: string }>): Promise<boolean>;
+  }>;
+  widgetReferenceResolver: TWidgetReferenceResolver;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
   authorizeToolCall?: TToolAuthorizer;
@@ -106,9 +119,9 @@ type TPromptInputImage = {
   mimeType: string;
 };
 type TPromptSelection = {
+  canvasId?: string;
   images?: TPromptInputImage[];
   model?: TPromptModel;
-  resourceIds?: string[];
   widgetRefs?: Array<{ name: string; source: 'draft' | 'published' }>;
   thinkingLevel?: TThinkingLevel;
 };
@@ -162,6 +175,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #approvalPolicy: TApprovalPolicy = Object.freeze({ mode: 'manual' });
   #approvalPolicyStore: NonNullable<IAgentServiceConfig['approvalPolicyStore']>;
   #chatWidgetIds = new Map<TOmnidrawChatId, TWidgetId>();
+  #chatCanvasIds = new Map<TOmnidrawChatId, string>();
+  #promptWidgetSelections = new Map<TOmnidrawChatId, TWidgetPromptSelectionContext>();
   #chatConnectionGenerations = new Map<TOmnidrawChatId, number>();
   #chatConnectionLanes = new Map<TOmnidrawChatId, Promise<void>>();
   #chatReplacementGenerations = new Map<TOmnidrawChatId, number>();
@@ -239,6 +254,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
       .map((result) => result.reason))
     this.#chatWidgetIds.clear()
+    this.#chatCanvasIds.clear()
+    this.#promptWidgetSelections.clear()
     this.#chatConnectionGenerations.clear()
     this.#chatConnectionLanes.clear()
     this.#chatReplacementGenerations.clear()
@@ -258,13 +275,29 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async connectChat(
     id: TWidgetId,
     sessionId: string,
-    mode: TChatConnectMode = 'reuse',
+    canvasIdOrMode?: string,
+    requestedMode?: TChatConnectMode,
   ): Promise<TAgentConnectResult> {
+    const mode = requestedMode
+      ?? (canvasIdOrMode === 'reuse' || canvasIdOrMode === 'replace'
+        ? canvasIdOrMode
+        : 'reuse')
+    const canvasId = requestedMode === undefined
+      && (canvasIdOrMode === undefined || canvasIdOrMode === 'reuse' || canvasIdOrMode === 'replace')
+        ? this.#config.chatScope.defaultCanvasId
+        : canvasIdOrMode
+    if (canvasId === undefined) {
+      throw this.#chatConnectionError('CHAT_CANVAS_REQUIRED', 'Verified canvas scope is required.')
+    }
     const releaseMutation = this.#claimChatMutation(sessionId, 'connect', true)
     try {
       const generation = this.#nextChatConnectionGeneration(sessionId)
       if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
-      const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, generation))
+      await this.#assertVerifiedChatCanvas(id, sessionId, canvasId)
+      const outcome = await this.#runChatConnectionLane(
+        sessionId,
+        () => this.#connectChatGeneration(id, sessionId, canvasId, generation),
+      )
       if (outcome.status === 'connected') return outcome.result
 
       await this.#waitForChatConnectionLaneIdle(sessionId)
@@ -322,7 +355,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionId: string,
     entryId: string,
     text: string,
-    selection?: Pick<TPromptSelection, 'model' | 'thinkingLevel'>,
+    selection?: Pick<TPromptSelection, 'canvasId' | 'model' | 'thinkingLevel'>,
   ): Promise<TAgentChatHistoryItem[]> {
     const releaseMutation = this.#claimChatMutation(sessionId, 'edit')
     const promptStart = this.#createChatEditPromptStart(sessionId)
@@ -352,6 +385,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       if (navigation.cancelled) throw new Error('Chat history edit was canceled before the branch changed.')
       this.#approvals.cancelChat(sessionId, 'Approval belongs to an abandoned chat branch.')
       await this.#promptChat(id, sessionId, text, {
+        canvasId: selection?.canvasId,
         images: editable.images,
         model: selection?.model,
         thinkingLevel: selection?.thinkingLevel,
@@ -375,16 +409,20 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
-    if ((promptSelection?.widgetRefs?.length ?? 0) > 0) {
-      throw new Error('OPERATION_UNAVAILABLE: Filesystem widget mention resolution is not configured.')
+    const canvasId = promptSelection?.canvasId
+      ?? this.#chatCanvasIds.get(sessionId)
+      ?? this.#config.chatScope.defaultCanvasId
+    if (canvasId === undefined) {
+      throw this.#chatConnectionError('CHAT_CANVAS_REQUIRED', 'Verified canvas scope is required for prompting.')
     }
-    if (promptSelection?.resourceIds !== undefined) {
-      const resources = await this.#resolveChatResourceSelections(promptSelection?.resourceIds ?? [])
-      txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
-        resources,
-        selectedAt: new Date().toISOString(),
-      })
-    }
+    await this.#assertVerifiedChatCanvas(id, sessionId, canvasId)
+    const widgetSelection = await this.#resolvePromptWidgetSelection(
+      id,
+      sessionId,
+      canvasId,
+      promptSelection?.widgetRefs ?? [],
+      connectedEntry.sessionManager,
+    )
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
@@ -411,9 +449,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const images = this.#normalizePromptImages(promptSelection?.images)
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
-    const prompting = session.prompt(promptText, images.length > 0 ? { images } : undefined)
-    onPromptStarted?.()
-    await prompting
+    this.#promptWidgetSelections.set(sessionId, widgetSelection)
+    try {
+      const prompting = session.prompt(promptText, images.length > 0 ? { images } : undefined)
+      onPromptStarted?.()
+      await prompting
+    } finally {
+      if (this.#promptWidgetSelections.get(sessionId) === widgetSelection) {
+        this.#promptWidgetSelections.delete(sessionId)
+      }
+    }
   }
 
   async approveChatDbChange(id: TWidgetId, sessionId: TOmnidrawChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
@@ -479,6 +524,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async cancelChat(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
+    this.#promptWidgetSelections.delete(sessionId)
     let session = this.sessionMap[id]?.[sessionId]?.session
     if (!session) {
       return { canceled: false, running: false }
@@ -724,6 +770,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #connectChatGeneration(
     id: TWidgetId,
     sessionId: TOmnidrawChatId,
+    canvasId: string,
     generation: number,
   ): Promise<TChatConnectGenerationResult> {
     if (this.#isStopping) throw new Error('Agent service is stopping.')
@@ -734,14 +781,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       : undefined
     const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
     if (connectedEntry && replacementGeneration === undefined) {
-      await this.#ensureChatMetadata(sessionId)
+      await this.#ensureChatMetadata(sessionId, canvasId)
       return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
     }
 
     const cwd = await this.#workspace.ensureChat(sessionId)
     const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
     await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
-    await this.#ensureChatMetadata(sessionId)
+    await this.#ensureChatMetadata(sessionId, canvasId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
 
@@ -884,6 +931,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       ...(this.#config.previewInspection === undefined
         ? {}
         : { previewInspection: this.#config.previewInspection }),
+      resolvePreviewScope: (name) => this.#resolvePreviewInspectionScope(
+        id,
+        sessionId,
+        name,
+      ),
       takeSensitiveToolArgs: (toolCallId) => {
         const stored = sensitiveToolArgs.get(toolCallId)
         sensitiveToolArgs.delete(toolCallId)
@@ -898,9 +950,27 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       resourceLoaderOptions: {
         systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT,
         noExtensions: true,
-        extensionFactories: [{
-          name: 'omnidraw-secret-redaction',
-          factory: (pi) => {
+        extensionFactories: [
+          {
+            name: 'omnidraw-widget-selection',
+            factory: (pi) => {
+              pi.on('before_agent_start', () => {
+                const selection = this.#promptWidgetSelections.get(sessionId)
+                if (selection === undefined) return undefined
+                this.#promptWidgetSelections.delete(sessionId)
+                return {
+                  message: {
+                    customType: 'omnidraw.widget-selection',
+                    content: fnWidgetPromptSelectionMessage(selection),
+                    display: false,
+                  },
+                }
+              })
+            },
+          },
+          {
+            name: 'omnidraw-secret-redaction',
+            factory: (pi) => {
             pi.on('message_end', (event) => {
               const redacted = fnRedactSecretResourceWriteMessage(event.message)
               for (const captured of redacted.captured) sensitiveToolArgs.set(captured.toolCallId, captured.args)
@@ -915,7 +985,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
               sensitiveToolArgs.delete(event.toolCallId)
             })
           },
-        }],
+          },
+        ],
       }
     });
     const { session } = await createAgentSessionFromServices({
@@ -937,12 +1008,22 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { session, sessionManager, unsub }
   }
 
-  async #ensureChatMetadata(sessionId: TOmnidrawChatId): Promise<void> {
+  async #ensureChatMetadata(sessionId: TOmnidrawChatId, canvasId: string): Promise<void> {
     const existing = await this.#config.chats.get({ id: sessionId })
     if (existing) {
+      if (existing.canvasId !== null && existing.canvasId !== canvasId) {
+        throw this.#chatConnectionError(
+          'CHAT_CANVAS_CONFLICT',
+          'This chat is already attached to a different canvas.',
+        )
+      }
       if (existing.status !== 'active') {
         await this.#config.chats.update({ id: sessionId, status: 'active' })
       }
+      if (existing.canvasId === null) {
+        await this.#config.chats.update({ id: sessionId, canvasId })
+      }
+      this.#chatCanvasIds.set(sessionId, canvasId)
       return
     }
     const portableRelativePath = (path: string) => (
@@ -950,16 +1031,46 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     )
     await this.#config.chats.create({
       id: sessionId,
-      canvasId: null,
+      canvasId,
       name: 'AI Chat',
       workspaceRelativePath: portableRelativePath(this.#workspace.getChatRoot(sessionId)),
       historyRelativePath: portableRelativePath(this.#workspace.getChatHistoryRoot(sessionId)),
     })
+    this.#chatCanvasIds.set(sessionId, canvasId)
+  }
+
+  async #assertVerifiedChatCanvas(
+    widgetId: TWidgetId,
+    sessionId: TOmnidrawChatId,
+    canvasId: string,
+  ): Promise<void> {
+    if (canvasId.length < 1 || canvasId.length > 200) {
+      throw this.#chatConnectionError('CHAT_CANVAS_INVALID', 'Canvas identity is invalid.')
+    }
+    const attached = this.#chatCanvasIds.get(sessionId)
+    if (attached !== undefined && attached !== canvasId) {
+      throw this.#chatConnectionError(
+        'CHAT_CANVAS_CONFLICT',
+        'This chat is attached to a different canvas.',
+      )
+    }
+    if (!await this.#config.chatScope.validate({ canvasId, widgetId })) {
+      throw this.#chatConnectionError(
+        'CHAT_SCOPE_INVALID',
+        'The AI Chat element is not present on the requested canvas.',
+      )
+    }
   }
 
   #flushSessionManager(sessionManager: SessionManager): void {
-    const writableSessionManager = sessionManager as unknown as { _rewriteFile?: () => void }
+    const writableSessionManager = sessionManager as unknown as {
+      _rewriteFile?: () => void;
+      flushed?: boolean;
+    }
     writableSessionManager._rewriteFile?.()
+    if (writableSessionManager._rewriteFile !== undefined) {
+      writableSessionManager.flushed = true
+    }
   }
 
   #recordActiveMount(sessionManager: SessionManager, mount: TWidgetMount): void {
@@ -968,6 +1079,63 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       selectedAt: new Date().toISOString(),
     })
     this.#flushSessionManager(sessionManager)
+  }
+
+  #clearActiveMount(sessionManager: SessionManager): void {
+    sessionManager.appendCustomEntry('omnidraw.activeWidgetMount', {
+      name: null,
+      selectedAt: new Date().toISOString(),
+    })
+    this.#flushSessionManager(sessionManager)
+  }
+
+  async #resolvePromptWidgetSelection(
+    id: TWidgetId,
+    sessionId: TOmnidrawChatId,
+    canvasId: string,
+    references: readonly NonNullable<TPromptSelection['widgetRefs']>[number][],
+    sessionManager: SessionManager,
+  ): Promise<TWidgetPromptSelectionContext> {
+    const resolution = references.length === 0
+      ? null
+      : await this.#config.widgetReferenceResolver.resolve(references)
+    if (resolution !== null) {
+      for (const reference of resolution.references) {
+        if (reference.editableDraft === null) continue
+        const mount = await this.#workspace.loadWidget(sessionId, reference.editableDraft.name)
+        const mountedManifest = await this.#readMountedManifest(mount)
+        if (
+          mountedManifest.slug !== reference.editableDraft.slug
+          || mountedManifest.name !== reference.editableDraft.name
+        ) throw this.#chatConnectionError(
+          'WIDGET_REFERENCE_AMBIGUOUS',
+          'The mounted draft identity does not match the mentioned widget.',
+        )
+      }
+      await this.#config.widgetReferenceResolver.assertCurrent(resolution)
+      if (resolution.references.length === 1 && resolution.references[0]!.editableDraft !== null) {
+        const editable = resolution.references[0]!.editableDraft!
+        const mount = await this.#workspace.findMountedWidget(sessionId, editable.name)
+        this.#recordActiveMount(sessionManager, mount)
+      } else {
+        this.#clearActiveMount(sessionManager)
+      }
+    }
+    const activeMount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    const activeManifest = activeMount === null
+      ? null
+      : await this.#readMountedManifest(activeMount).catch(() => null)
+    return Object.freeze({
+      canvasId,
+      explicitlyMentioned: resolution?.references ?? Object.freeze([]),
+      activeEditableTarget: activeMount === null || activeManifest === null
+        ? null
+        : Object.freeze({
+            widgetKey: activeManifest.slug,
+            name: activeManifest.name,
+            mountedPath: `widgets/${activeManifest.name}`,
+          }),
+    })
   }
 
   #publishWidgetDraftsChanged(): void {
@@ -981,15 +1149,44 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #resolveActiveMount(id: TWidgetId, sessionId: TOmnidrawChatId): Promise<TWidgetMount> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
-    const record = [...sessionEntry.sessionManager.getEntries()].reverse().find((entry) => (
+    const record = [...sessionEntry.sessionManager.buildContextEntries()].reverse().find((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'omnidraw.activeWidgetMount'
+      && entry.data
+      && typeof entry.data === 'object'
+      && (typeof (entry.data as { name?: unknown }).name === 'string'
+        || (entry.data as { name?: unknown }).name === null)
+    ))
+    const name = record?.type === 'custom'
+      ? (record.data as { name: string | null }).name
+      : undefined
+    if (name === null) throw new Error('No active editable widget target is selected.')
+    return this.#workspace.findMountedWidget(sessionId, name)
+  }
+
+  async #resolvePreviewInspectionScope(
+    id: TWidgetId,
+    sessionId: TOmnidrawChatId,
+    name: string,
+  ): Promise<Readonly<{ canvasId: string; aiChatElementId: string }> | null> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    const canvasId = this.#chatCanvasIds.get(sessionId)
+    if (sessionEntry === undefined || canvasId === undefined) return null
+    const record = [...sessionEntry.sessionManager.buildContextEntries()].reverse().find((entry) => (
       entry.type === 'custom'
       && entry.customType === 'omnidraw.activeWidgetMount'
       && entry.data
       && typeof entry.data === 'object'
       && typeof (entry.data as { name?: unknown }).name === 'string'
     ))
-    const name = record?.type === 'custom' ? (record.data as { name: string }).name : undefined
-    return this.#workspace.findMountedWidget(sessionId, name)
+    if (record?.type !== 'custom') return null
+    const activeName = (record.data as { name: string }).name
+    if (activeName !== name) return null
+    const mount = await this.#workspace.findMountedWidget(sessionId, activeName)
+    const manifest = await this.#readMountedManifest(mount)
+    if (manifest.name !== name) return null
+    await this.#assertVerifiedChatCanvas(id, sessionId, canvasId)
+    return Object.freeze({ canvasId, aiChatElementId: id })
   }
 
   async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV1> {
@@ -1002,25 +1199,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
-  }
-
-  async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
-    if (resourceIds.length > 16) throw new Error('A prompt can select at most 16 resources.')
-    const ids = [...new Set(resourceIds)]
-    if (!this.#config.resourceService?.getResource) throw new Error('Resource selection is unavailable in this host.')
-
-    const selected: TWidgetResourceSelection[] = []
-    for (const resourceId of ids) {
-      const resource = await this.#config.resourceService.getResource(resourceId)
-      if (!resource) throw new Error(`Selected resource was not found: ${resourceId}`)
-      selected.push({
-        id: resource.id,
-        kind: resource.kind,
-        name: resource.name,
-        status: resource.status,
-      })
-    }
-    return selected
   }
 
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
@@ -1066,7 +1244,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     this.#approvals.cancelChat(sessionId)
     if (!sessionEntry) {
-      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+      if (this.#chatWidgetIds.get(sessionId) === id) {
+        this.#chatWidgetIds.delete(sessionId)
+        this.#chatCanvasIds.delete(sessionId)
+      }
       return
     }
     this.#releaseChatSessionEntry(id, sessionId, sessionEntry)
@@ -1078,7 +1259,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     if (this.sessionMap[id]?.[sessionId] === sessionEntry) {
       delete this.sessionMap[id][sessionId]
-      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+      if (this.#chatWidgetIds.get(sessionId) === id) {
+        this.#chatWidgetIds.delete(sessionId)
+        this.#chatCanvasIds.delete(sessionId)
+        this.#promptWidgetSelections.delete(sessionId)
+      }
     }
 
     if (this.sessionMap[id] && Object.keys(this.sessionMap[id]).length === 0) {

@@ -30,6 +30,10 @@ type TCreateToolRegistryArgs = {
   onDraftChanged?: TWidgetDraftChangeHandler;
   previewBuild?: TWidgetPreviewBuildCheck;
   previewInspection?: TWidgetPreviewInspectionCapability;
+  resolvePreviewScope?: (name: string) => Promise<Readonly<{
+    canvasId: string;
+    aiChatElementId: string;
+  }> | null>;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
 };
 
@@ -64,6 +68,7 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       chatId: args.chatId,
       authorize: () => authorize('od_widget_preview_inspect'),
       capability: args.previewInspection,
+      resolvePreviewScope: args.resolvePreviewScope,
     }),
     ...createWorkspaceFileTools({
       workspace: args.workspace,

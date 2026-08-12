@@ -352,7 +352,9 @@ async function mount(job: TBrowserMountJob): Promise<void> {
     });
     await handle.ready();
   } catch (error) {
-    activeJob = undefined;
+    // Keep the exact job and any partially-created inspection handle until the
+    // process-owned browser service captures one bounded failure snapshot and
+    // calls destroy. The function bridge is still retired immediately.
     functionBridge.dispose();
     throw error;
   }
@@ -408,23 +410,60 @@ function waitFrames(count: number, timeoutMs: number): Promise<void> {
   });
 }
 
+function failureSnapshot(job: TBrowserMountJob): TInspectionSnapshot {
+  const identityEvent = runtimeEvents.find((event) => (
+    event.artifactHash === job.artifact.capsuleArtifactHash
+    && Number.isSafeInteger(event.runtimeGeneration)
+    && Number.isSafeInteger(event.lifecycleGeneration)
+    && event.runtimeGeneration! >= 1
+    && event.lifecycleGeneration! >= 1
+  ));
+  if (
+    identityEvent?.runtimeGeneration === undefined
+    || identityEvent.lifecycleGeneration === undefined
+  ) throw new Error('Preview inspection failure generation is unavailable.');
+  const expected = Object.freeze({
+    artifactHash: job.artifact.capsuleArtifactHash,
+    runtimeGeneration: identityEvent.runtimeGeneration,
+    lifecycleGeneration: identityEvent.lifecycleGeneration,
+  });
+  return Object.freeze({
+    artifactDigestSha256: job.artifact.digestSha256,
+    capsuleArtifactHash: job.artifact.capsuleArtifactHash,
+    runtimeGeneration: expected.runtimeGeneration,
+    lifecycleGeneration: expected.lifecycleGeneration,
+    scannedElements: 0,
+    targets: Object.freeze([]),
+    canvases: Object.freeze([]),
+    runtimeEvents: Object.freeze(runtimeEvents.map((event) => (
+      fenceRuntimeEventLocation(event, expected)
+    ))),
+    droppedCounts: Object.freeze({
+      targets: 0,
+      canvases: 0,
+      runtimeEvents: droppedRuntimeEvents,
+    }),
+  });
+}
+
 function snapshot(): TInspectionSnapshot {
   const inspection = handle?.inspection;
   const job = activeJob;
-  if (inspection === undefined || job === undefined) {
+  if (job === undefined) {
     throw new Error('Preview inspection is not mounted.');
   }
-  const targets = inspection.visibleSummary({ maxResults: 128 }).map(projectTarget);
-  const canvases = inspection.canvases({ maxResults: 16 }).map((canvas) => Object.freeze({
-    ...canvas,
-    bounds: Object.freeze({ ...canvas.bounds }),
-  }));
+  if (inspection === undefined) return failureSnapshot(job);
   const diagnostics = inspection.diagnostics();
   if (
     diagnostics.state !== 'bound'
     || diagnostics.runtimeGeneration === undefined
     || diagnostics.lifecycleGeneration === undefined
-  ) throw new Error('Preview inspection generation is unavailable.');
+  ) return failureSnapshot(job);
+  const targets = inspection.visibleSummary({ maxResults: 128 }).map(projectTarget);
+  const canvases = inspection.canvases({ maxResults: 16 }).map((canvas) => Object.freeze({
+    ...canvas,
+    bounds: Object.freeze({ ...canvas.bounds }),
+  }));
   const fencedRuntimeEvents = runtimeEvents.map((event) => fenceRuntimeEventLocation(
     event,
     {

@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { AgentService } from '../src/AgentService';
 import { txAppendWidgetDbChangeProposalRecord } from '../src/core/tx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
-import { createTestChats, createTestEvents } from './service.fixture';
+import {
+  createTestChats,
+  createTestChatScope,
+  createTestEvents,
+  createTestWidgetReferenceResolver,
+} from './service.fixture';
 
 const proposal = {
   id: 'proposal-1',
@@ -20,6 +25,8 @@ function createService(resourceService: ConstructorParameters<typeof AgentServic
     widgetDraftsRoot: '/tmp/widgets/drafts',
     eventPublisherService: createTestEvents(),
     chats: createTestChats(),
+    chatScope: createTestChatScope(),
+    widgetReferenceResolver: createTestWidgetReferenceResolver(),
     resourceService,
   });
   const sessionManager = createFakeSessionManager();

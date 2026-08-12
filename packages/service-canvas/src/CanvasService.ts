@@ -1,6 +1,7 @@
 import {
   CANVAS_COMMAND_MAX_OPERATIONS,
   CANVAS_QUERY_MAX_LIMIT,
+  fnNormalizeLegacyCanvasWidgetBindings,
   fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
   fnValidateCanvasItems,
@@ -162,6 +163,11 @@ function clipNodeId(item: TSceneNode): TCanvasItemId | null {
   return clip?.type === 'node' ? clip.nodeId : null;
 }
 
+function normalizeSnapshot(snapshot: TCanvasItemSnapshot): TCanvasItemSnapshot {
+  const item = fnNormalizeLegacyCanvasWidgetBindings(snapshot.item);
+  return item === snapshot.item ? snapshot : Object.freeze({ ...snapshot, item });
+}
+
 export class CanvasService implements ICanvasService {
   readonly name = 'canvas';
 
@@ -212,7 +218,10 @@ export class CanvasService implements ICanvasService {
         );
       }
       this.#synchronizeRevision(state, snapshot.revision);
-      return snapshot;
+      return Object.freeze({
+        ...snapshot,
+        items: Object.freeze(snapshot.items.map(normalizeSnapshot)),
+      });
     });
   }
 
@@ -234,7 +243,10 @@ export class CanvasService implements ICanvasService {
       const revisionBefore = await this.#revision(query.canvasId);
       const page = await this.#store.queryItems(query);
       const revisionAfter = await this.#revision(query.canvasId);
-      if (revisionBefore === revisionAfter) return page;
+      if (revisionBefore === revisionAfter) return Object.freeze({
+        ...page,
+        items: Object.freeze(page.items.map(normalizeSnapshot)),
+      });
     }
     throw new CanvasServiceError(
       'STORE_CONFLICT',
@@ -975,7 +987,7 @@ export class CanvasService implements ICanvasService {
         limit: Math.min(this.#options.queryPageSize, maxResults),
         ...(cursor === undefined ? {} : { cursor }),
       });
-      items.push(...page.items);
+      items.push(...page.items.map(normalizeSnapshot));
       if (items.length > maxResults) {
         throw new CanvasServiceError(
           'LIMIT_EXCEEDED',

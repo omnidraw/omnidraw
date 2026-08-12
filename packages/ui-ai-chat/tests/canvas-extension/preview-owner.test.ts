@@ -45,14 +45,17 @@ function createHarness(args: Readonly<{
   autoBuild?: () => boolean;
   loadResponses?: ReadonlyArray<readonly [Error | null | undefined, ReturnType<typeof mountView> | undefined]>;
   openResponses?: ReadonlyArray<readonly [Error | null, ReturnType<typeof mountView> | undefined]>;
+  rebuildResponses?: ReadonlyArray<readonly [Error | null, ReturnType<typeof mountView> | undefined]>;
 }> = {}) {
   const handle = {
     setViewport: vi.fn(),
     destroy: vi.fn(async () => undefined),
   };
   const openResponses = args.openResponses ?? [[undefined, mountView()]];
+  const rebuildResponses = args.rebuildResponses ?? [[undefined, mountView()]];
   const loadResponses = args.loadResponses ?? [stoppedNotFound()];
   let openCall = 0;
+  let rebuildCall = 0;
   let loadCall = 0;
   const transport = {
     api: {
@@ -66,6 +69,13 @@ function createHarness(args: Readonly<{
           open: vi.fn(async () => {
             const response = openResponses[Math.min(openCall, openResponses.length - 1)];
             openCall += 1;
+            return response;
+          }),
+          rebuild: vi.fn(async () => {
+            const response = rebuildResponses[
+              Math.min(rebuildCall, rebuildResponses.length - 1)
+            ];
+            rebuildCall += 1;
             return response;
           }),
           close: vi.fn(async () => [undefined, { closed: true }]),
@@ -97,7 +107,7 @@ describe('widget preview owner auto-build', () => {
     owner.attach(host, ELEMENT);
 
     await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(transport.api.widget.preview.open).toHaveBeenCalledWith({
+    expect(transport.api.widget.preview.rebuild).toHaveBeenCalledWith({
       canvasId: 'canvas-1',
       elementId: 'node-1',
       widgetKey: 'hello-app',
@@ -119,14 +129,14 @@ describe('widget preview owner auto-build', () => {
 
     await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('deferred'));
     expect(host.textContent).toContain('Preview stopped — build again.');
-    expect(transport.api.widget.preview.open).not.toHaveBeenCalled();
+    expect(transport.api.widget.preview.rebuild).not.toHaveBeenCalled();
 
     const retry = Array.from(host.querySelectorAll('button'))
       .find((button) => button.textContent === 'Build again');
     expect(retry).not.toBeUndefined();
     retry?.click();
     await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(transport.api.widget.preview.open).toHaveBeenCalledOnce();
+    expect(transport.api.widget.preview.rebuild).toHaveBeenCalledOnce();
 
     await owner.destroy('test done');
   });
@@ -146,7 +156,7 @@ describe('widget preview owner auto-build', () => {
     const second = createHarness({ autoBuild: shouldAutoBuild });
     second.owner.attach(second.host, ELEMENT);
     await vi.waitFor(() => expect(second.host.dataset.widgetRuntimeStatus).toBe('deferred'));
-    expect(second.transport.api.widget.preview.open).not.toHaveBeenCalled();
+    expect(second.transport.api.widget.preview.rebuild).not.toHaveBeenCalled();
     await second.owner.destroy('test done');
   });
 });
@@ -157,7 +167,6 @@ describe('widget preview owner refresh', () => {
     const { handle, host, mount, owner } = createHarness({
       autoBuild: () => true,
       openResponses: [
-        [undefined, mountView()],
         [undefined, mountView()],
         [undefined, refreshed],
       ],
@@ -186,7 +195,6 @@ describe('widget preview owner refresh', () => {
     const { host, mount, owner } = createHarness({
       autoBuild: () => true,
       openResponses: [
-        [undefined, mountView()],
         [undefined, v2],
         [undefined, v2],
         [undefined, v2],
@@ -213,12 +221,12 @@ describe('widget preview owner explicit actions', () => {
     });
     owner.attach(host, ELEMENT);
     await vi.waitFor(() => expect(host.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(transport.api.widget.preview.open).toHaveBeenCalledOnce();
+    expect(transport.api.widget.preview.rebuild).toHaveBeenCalledOnce();
 
     await owner.reload();
 
     expect(transport.api.widget.preview.load).toHaveBeenCalledTimes(2);
-    expect(transport.api.widget.preview.open).toHaveBeenCalledOnce();
+    expect(transport.api.widget.preview.rebuild).toHaveBeenCalledOnce();
     expect(mount.mount).toHaveBeenCalledTimes(2);
     expect(handle.destroy).toHaveBeenCalledOnce();
     await owner.destroy('test done');
@@ -256,7 +264,7 @@ describe('widget preview owner explicit actions', () => {
   test('Rebuild remounts even when construction reuses the mounted digest', async () => {
     const { handle, host, mount, owner, transport } = createHarness({
       autoBuild: () => true,
-      openResponses: [
+      rebuildResponses: [
         [undefined, mountView()],
         [undefined, mountView()],
       ],
@@ -266,10 +274,40 @@ describe('widget preview owner explicit actions', () => {
 
     await owner.rebuild();
 
-    expect(transport.api.widget.preview.open).toHaveBeenCalledTimes(2);
+    expect(transport.api.widget.preview.rebuild).toHaveBeenCalledTimes(2);
     expect(mount.mount).toHaveBeenCalledTimes(2);
     expect(handle.destroy).toHaveBeenCalledOnce();
     await owner.destroy('test done');
+  });
+
+  test('reports an error when replacement mounting destroys the prior runtime and then fails', async () => {
+    const harness = createHarness({ autoBuild: () => true });
+    harness.owner.attach(harness.host, ELEMENT);
+    await vi.waitFor(() => expect(harness.host.dataset.widgetRuntimeStatus).toBe('ready'));
+    harness.mount.mount.mockRejectedValueOnce(new Error('Replacement mount failed.'));
+
+    await harness.owner.rebuild();
+
+    expect(harness.handle.destroy).toHaveBeenCalledOnce();
+    expect(harness.host.dataset.widgetRuntimeStatus).toBe('error');
+    expect(harness.host.textContent).toContain('Replacement mount failed.');
+    await harness.owner.destroy('test done');
+  });
+
+  test('renders the mapped message from a structured Capsule failure', async () => {
+    const harness = createHarness({ autoBuild: () => true });
+    harness.mount.mount.mockRejectedValueOnce({
+      capsuleCode: 'CAPSULE_RUNTIME_ERROR',
+      message: 'Guest startup failed at widget://ui/main.ts:12:4.',
+    });
+
+    harness.owner.attach(harness.host, ELEMENT);
+
+    await vi.waitFor(() => expect(harness.host.dataset.widgetRuntimeStatus).toBe('error'));
+    expect(harness.host.textContent).toBe(
+      'Guest startup failed at widget://ui/main.ts:12:4. (CAPSULE_RUNTIME_ERROR)',
+    );
+    await harness.owner.destroy('test done');
   });
 
   test('serializes repeated explicit rebuilds so mounts never overlap', async () => {
@@ -332,20 +370,20 @@ describe('widget preview owner explicit actions', () => {
     });
     harness.owner.attach(harness.host, ELEMENT);
     await vi.waitFor(() => expect(harness.host.dataset.widgetRuntimeStatus).toBe('ready'));
-    let resolveOpen!: (value: readonly [undefined, ReturnType<typeof mountView>]) => void;
-    harness.transport.api.widget.preview.open.mockImplementation(() => (
+    let resolveRebuild!: (value: readonly [undefined, ReturnType<typeof mountView>]) => void;
+    harness.transport.api.widget.preview.rebuild.mockImplementation(() => (
       new Promise((resolve) => {
-        resolveOpen = resolve;
+        resolveRebuild = resolve;
       })
     ));
     void harness.owner.rebuild();
     await vi.waitFor(() => (
-      expect(harness.transport.api.widget.preview.open).toHaveBeenCalledOnce()
+      expect(harness.transport.api.widget.preview.rebuild).toHaveBeenCalledOnce()
     ));
 
     await harness.owner.destroy('removed');
     expect(harness.transport.api.widget.preview.close).toHaveBeenCalledTimes(1);
-    resolveOpen([undefined, mountView()]);
+    resolveRebuild([undefined, mountView()]);
 
     await vi.waitFor(() => (
       expect(harness.transport.api.widget.preview.close).toHaveBeenCalledTimes(2)

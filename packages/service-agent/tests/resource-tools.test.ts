@@ -309,7 +309,7 @@ describe('resource tools', () => {
     });
   });
 
-  test('chains create, inspect, write, read, and delete using the returned name only', async () => {
+  test('chains resource work while returning the exact safe id for manifest authoring', async () => {
     const resources: TAgentResource[] = [];
     const entries = new Map<string, { value: TResourceJson; revision: number }>();
     const resourceService: TAgentResourceService = {
@@ -350,11 +350,16 @@ describe('resource tools', () => {
     const create = executeTool(byName.get('od_resource_create')!, { kind: 'kv', name: 'Team Preferences' });
     const createApproval = await pendingApproval(approvals);
     await approvals.resolve('chat-a', createApproval.id, 'approve');
-    const createdName = providerModelData(await create).resource.name;
+    const createdResult = providerModelData(await create);
+    const createdName = createdResult.resource.name;
     expect(createdName).toBe('Team Preferences');
+    expect(createdResult.resource.resourceId).toBe('internal-chain-id');
 
     const inspected = await executeTool(byName.get('od_resource_inspect')!, { resourceName: createdName });
-    expect(providerModelData(inspected)).toMatchObject({ resource: { name: createdName, kind: 'kv' }, ready: true });
+    expect(providerModelData(inspected)).toMatchObject({
+      resource: { resourceId: 'internal-chain-id', name: createdName, kind: 'kv' },
+      ready: true,
+    });
 
     const write = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: createdName,
@@ -375,10 +380,10 @@ describe('resource tools', () => {
     await approvals.resolve('chat-a', deleteApproval.id, 'approve');
     const removed = await remove;
     expect(providerModelData(removed)).toEqual({ deleted: true, resourceName: createdName });
-    expect(JSON.stringify([inspected, read, removed])).not.toContain('internal-chain-id');
+    expect(JSON.stringify([read, removed])).not.toContain('internal-chain-id');
   });
 
-  test('freezes internal IDs before approvals while returning names only', async () => {
+  test('freezes internal IDs before approvals and reveals only successful create IDs', async () => {
     const resources = [resource('kv-stable-id', 'kv', 'Preferences')];
     const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
@@ -403,17 +408,19 @@ describe('resource tools', () => {
     const { byName } = tools(resourceService, approvals);
 
     for (const input of [
-      { kind: 'kv', name: 'Cache', expectedName: 'Cache' },
-      { kind: 'secretStore', name: 'Tokens', expectedName: 'Tokens' },
-      { kind: 'db', name: ' Reports ', expectedName: 'Reports', engine: 'sqlite' },
+      { kind: 'kv', name: 'Cache', expectedName: 'Cache', expectedId: 'created-1' },
+      { kind: 'secretStore', name: 'Tokens', expectedName: 'Tokens', expectedId: 'created-2' },
+      { kind: 'db', name: ' Reports ', expectedName: 'Reports', expectedId: 'created-3', engine: 'sqlite' },
     ]) {
-      const { expectedName, ...params } = input;
+      const { expectedName, expectedId, ...params } = input;
       const pending = executeTool(byName.get('od_resource_create')!, params);
       const approval = await pendingApproval(approvals);
       expect(approval.toolCallId).toBe('tool-call');
       expect(JSON.stringify(approval)).not.toContain('resourceId');
       await approvals.resolve('chat-a', approval.id, 'approve');
-      expect(providerModelData(await pending)).toEqual({ resource: { name: expectedName, kind: input.kind, status: 'ready' } });
+      expect(providerModelData(await pending)).toEqual({
+        resource: { resourceId: expectedId, name: expectedName, kind: input.kind, status: 'ready' },
+      });
     }
 
     const update = executeTool(byName.get('od_resource_update')!, { resourceName: 'Preferences', newName: 'Settings' });

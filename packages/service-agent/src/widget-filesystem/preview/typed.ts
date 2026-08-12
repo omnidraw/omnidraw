@@ -10,12 +10,6 @@ export type TPreviewConstructionCompatibility = Readonly<{
   serverRuntimeAbi: string | null;
 }>;
 
-export type TPreviewSelectedResource = Readonly<{
-  slot: string;
-  resourceId: string;
-  effect: 'read' | 'read_write';
-}>;
-
 export type TPreviewDiagnosticInput = Readonly<{
   severity: 'info' | 'warning' | 'error';
   message: string;
@@ -49,7 +43,6 @@ export type TPreviewSessionView = Readonly<{
   constructionReused: boolean;
   diagnostics: readonly TPreviewDiagnostic[];
   droppedDiagnosticCount: number;
-  selectedResources: readonly TPreviewSelectedResource[];
   mountedHandleCount: number;
   failureMessage: string | null;
 }>;
@@ -59,7 +52,6 @@ export type TPreviewOpenArgs = Readonly<{
   widgetKey: string;
   executableInputDigestSha256: string;
   compatibility: TPreviewConstructionCompatibility;
-  selectedResources?: readonly TPreviewSelectedResource[];
   signal?: AbortSignal;
 }>;
 
@@ -98,7 +90,6 @@ export type TPreviewPorts<TConstruction, TSignedArtifact, TMountHandle> = Readon
     sessionId: string;
     widgetKey: string;
     signedArtifact: TSignedArtifact;
-    selectedResources: readonly TPreviewSelectedResource[];
     tempRelativePath: string;
     signal: AbortSignal;
   }>): Promise<TMountHandle>;
@@ -114,7 +105,6 @@ export type TPreviewServiceConfig = Readonly<{
   maxMountedHandles?: number;
   maxDiagnosticsPerSession?: number;
   maxDiagnosticCharacters?: number;
-  maxSelectedResources?: number;
 }>;
 
 export type TPreviewOpenResult<TSignedArtifact, TMountHandle> = Readonly<{
@@ -130,4 +120,3 @@ export type TReusablePreviewConstruction<TConstruction> = Readonly<{
   validated: true;
   construction: TConstruction;
 }>;
-

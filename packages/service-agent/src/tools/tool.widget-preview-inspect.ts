@@ -22,6 +22,10 @@ type TCreateWidgetPreviewInspectToolArgs = Readonly<{
   chatId: string;
   authorize: () => Promise<boolean>;
   capability?: TWidgetPreviewInspectionCapability;
+  resolvePreviewScope?(name: string): Promise<Readonly<{
+    canvasId: string;
+    aiChatElementId: string;
+  }> | null>;
 }>;
 
 const SHA256_SCHEMA = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -84,11 +88,19 @@ const ACTION_SCHEMA = Type.Union([
     type: Type.Literal('waitFrames'),
     count: Type.Integer({ minimum: 1, maximum: 120 }),
   }, { additionalProperties: false }),
+  Type.Object({
+    type: Type.Literal('assertText'),
+    target: TARGET_SCHEMA,
+    text: Type.String({ minLength: 1, maxLength: 512 }),
+    exact: Type.Optional(Type.Boolean()),
+  }, { additionalProperties: false }),
 ]);
 
 const WIDGET_PREVIEW_INSPECT_PARAMETERS = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 120 }),
+  mode: Type.Optional(Type.Union([Type.Literal('artifact'), Type.Literal('preview')])),
   expectedDraftDigestSha256: Type.Optional(SHA256_SCHEMA),
+  expectedAcceptedGeneration: Type.Optional(Type.Integer({ minimum: 1 })),
   viewport: Type.Optional(Type.Object({
     width: Type.Optional(Type.Integer({ minimum: 160, maximum: 1_280 })),
     height: Type.Optional(Type.Integer({ minimum: 120, maximum: 1_024 })),
@@ -101,13 +113,6 @@ const WIDGET_PREVIEW_INSPECT_PARAMETERS = Type.Object({
   actions: Type.Optional(Type.Array(ACTION_SCHEMA, { maxItems: 16 })),
   continueOnActionError: Type.Optional(Type.Boolean()),
   timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 180_000 })),
-}, { additionalProperties: false });
-
-const WIDGET_PREVIEW_INSPECTION_TOOL_ERROR_SCHEMA = Type.Object({
-  code: Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Z][A-Z0-9_]*$' }),
-  message: Type.String({ maxLength: 2_000 }),
-  retryable: Type.Boolean(),
-  observedDraftDigestSha256: Type.Optional(SHA256_SCHEMA),
 }, { additionalProperties: false });
 
 const IDENTITY_SCHEMA = Type.Object({
@@ -132,18 +137,65 @@ const SCREENSHOT_SCHEMA = Type.Object({
   digestSha256: SHA256_SCHEMA,
 }, { additionalProperties: false });
 
-const FIDELITY_SCHEMA = Type.Object({
-  source: Type.Literal('exact'),
+const FIDELITY_SCHEMA = Type.Union([
+  Type.Object({
+    source: Type.Literal('exact'),
+    artifact: Type.Literal('exact'),
+    runtimePolicy: Type.Literal('narrowed'),
+    bindings: Type.Literal('unavailable'),
+    network: Type.Literal('denied'),
+    overall: Type.Literal('artifact_exact'),
+  }, { additionalProperties: false }),
+  Type.Object({
+    source: Type.Literal('exact'),
+    artifact: Type.Literal('exact'),
+    runtimePolicy: Type.Literal('preview'),
+    bindings: Type.Literal('manifest'),
+    network: Type.Literal('denied'),
+    overall: Type.Literal('preview_policy_exact'),
+  }, { additionalProperties: false }),
+]);
+
+const VERIFICATION_SCHEMA = Type.Object({
+  surface: Type.Union([Type.Literal('artifact'), Type.Literal('preview')]),
+  generation: Type.Literal('current'),
   artifact: Type.Literal('exact'),
-  runtimePolicy: Type.Literal('narrowed'),
-  bindings: Type.Literal('none'),
-  network: Type.Literal('denied'),
-  overall: Type.Literal('artifact_exact'),
+  manifest: Type.Literal('exact'),
+  resources: Type.Union([Type.Literal('not_available'), Type.Literal('manifest_bound')]),
+  canvasParity: Type.Union([Type.Literal('not_claimed'), Type.Literal('same_runtime_policy')]),
+  visibleFrame: Type.Literal('not_claimed'),
+  executionTarget: Type.Literal('diagnostic_clone'),
+  previewState: Type.Union([
+    Type.Literal('not_applicable'),
+    Type.Literal('absent'),
+    Type.Literal('mounting'),
+    Type.Literal('failed'),
+    Type.Literal('ready'),
+    Type.Literal('retired'),
+    Type.Literal('ambiguous'),
+    Type.Literal('generation_mismatch'),
+  ]),
+  nextAction: Type.Union([
+    Type.Literal('none'),
+    Type.Literal('repair_visible_preview'),
+    Type.Literal('retry_after_settle'),
+    Type.Literal('reopen_preview'),
+    Type.Literal('remove_duplicate_previews'),
+    Type.Literal('retry_current_generation'),
+    Type.Literal('use_preview_mode_for_resources'),
+  ]),
+  functional: Type.Union([
+    Type.Literal('observed'),
+    Type.Literal('not_exercised'),
+    Type.Literal('not_verified_missing_reference'),
+    Type.Literal('blocked_write_approval'),
+    Type.Literal('failed'),
+  ]),
 }, { additionalProperties: false });
 
 const ACTION_RESULT_SCHEMA = Type.Object({
   index: NON_NEGATIVE_INTEGER_SCHEMA,
-  type: Type.Union([Type.Literal('click'), Type.Literal('input'), Type.Literal('waitFrames')]),
+  type: Type.Union([Type.Literal('assertText'), Type.Literal('click'), Type.Literal('input'), Type.Literal('waitFrames')]),
   status: Type.Union([
     Type.Literal('passed'),
     Type.Literal('no_match'),
@@ -202,6 +254,16 @@ const DIAGNOSTIC_SCHEMA = Type.Object({
   }, { additionalProperties: false })),
   capability: Type.Optional(Type.String({ maxLength: 256 })),
   operation: Type.Optional(Type.String({ maxLength: 256 })),
+}, { additionalProperties: false });
+
+const WIDGET_PREVIEW_INSPECTION_TOOL_ERROR_SCHEMA = Type.Object({
+  code: Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Z][A-Z0-9_]*$' }),
+  message: Type.String({ maxLength: 2_000 }),
+  retryable: Type.Boolean(),
+  observedDraftDigestSha256: Type.Optional(SHA256_SCHEMA),
+  previewState: Type.Optional(VERIFICATION_SCHEMA.properties.previewState),
+  nextAction: Type.Optional(VERIFICATION_SCHEMA.properties.nextAction),
+  diagnostics: Type.Optional(Type.Array(DIAGNOSTIC_SCHEMA, { maxItems: 20 })),
 }, { additionalProperties: false });
 
 const ELEMENT_SCHEMA = Type.Object({
@@ -275,6 +337,7 @@ const PARTIAL_EVIDENCE_SCHEMA = Type.Object({
 }, { additionalProperties: false });
 
 const STAGE_SCHEMA = Type.Union([
+  Type.Literal('scope'),
   Type.Literal('build'),
   Type.Literal('sign'),
   Type.Literal('mount'),
@@ -294,6 +357,7 @@ const WIDGET_PREVIEW_INSPECT_RESULT_SCHEMA = Type.Union([
     identity: IDENTITY_SCHEMA,
     artifact: ARTIFACT_SCHEMA,
     fidelity: FIDELITY_SCHEMA,
+    verification: VERIFICATION_SCHEMA,
     screenshot: SCREENSHOT_SCHEMA,
     evidence: EVIDENCE_SCHEMA,
     durationMs: Type.Number({ minimum: 0 }),
@@ -303,6 +367,7 @@ const WIDGET_PREVIEW_INSPECT_RESULT_SCHEMA = Type.Union([
     stage: STAGE_SCHEMA,
     failure: FAILURE_SCHEMA,
     identity: IDENTITY_SCHEMA,
+    verification: VERIFICATION_SCHEMA,
     artifact: Type.Optional(ARTIFACT_SCHEMA),
     screenshot: Type.Optional(SCREENSHOT_SCHEMA),
     evidence: Type.Optional(PARTIAL_EVIDENCE_SCHEMA),
@@ -313,6 +378,7 @@ const WIDGET_PREVIEW_INSPECT_RESULT_SCHEMA = Type.Union([
     stage: STAGE_SCHEMA,
     failure: FAILURE_SCHEMA,
     identity: IDENTITY_SCHEMA,
+    verification: VERIFICATION_SCHEMA,
     artifact: Type.Optional(ARTIFACT_SCHEMA),
     screenshot: Type.Optional(SCREENSHOT_SCHEMA),
     durationMs: Type.Number({ minimum: 0 }),
@@ -359,7 +425,7 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
   return defineTool({
     name: 'od_widget_preview_inspect',
     label: 'Inspect Widget Preview',
-    description: 'Capture the exact mounted draft, run its exact Preview-signed artifact in a fresh isolated browser with no bindings and denied guest network, perform up to 16 declared actions, and return bounded evidence plus one widget-only PNG. This proves artifact_exact execution, never full Preview-policy parity, and never publishes.',
+    description: 'Inspect one host-accepted widget generation with up to 16 bounded actions and one widget-only PNG. mode "artifact" is isolated, cannot exercise resources, and claims no Preview parity. mode "preview" requires the active verified widget target and runs the exact accepted generation with manifest-bound runtime policy in a diagnostic clone even when its visible frame is absent or failed; writes remain approval-blocked. The tool never builds, publishes, or mutates canvas layout.',
     parameters: WIDGET_PREVIEW_INSPECT_PARAMETERS,
     async execute(toolCallId: string, params: unknown, signal?: AbortSignal) {
       const normalized = fnNormalizeWidgetPreviewInspectInput(params);
@@ -458,6 +524,24 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
           if (operationController.signal.aborted) return abortedResult();
           const widgetKey = basename(mount.targetPath);
           const input = Object.freeze({ ...normalized.value, name: mount.name });
+          let scope;
+          if (input.mode === 'preview') {
+            try {
+              scope = await awaitInspectionOperation(
+                args.resolvePreviewScope?.(mount.name) ?? Promise.resolve(null),
+                operationController.signal,
+              );
+            } catch {
+              scope = null;
+            }
+            if (scope === null) {
+              return fnToolError({
+                code: 'PREVIEW_SCOPE_UNAVAILABLE',
+                message: 'Preview mode requires this widget to be the active verified target on the current chat canvas.',
+                retryable: true,
+              });
+            }
+          }
           let response;
           try {
             response = await awaitInspectionOperation(
@@ -467,6 +551,7 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
                 name: mount.name,
                 widgetKey,
                 input,
+                ...(scope === undefined ? {} : { scope }),
                 signal: operationController.signal,
               })),
               operationController.signal,
@@ -505,8 +590,26 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
               message: response.toolError.message,
               retryable: response.toolError.retryable,
               ...(response.toolError.observedDraftDigestSha256 === undefined
+                && response.toolError.previewState === undefined
+                && response.toolError.nextAction === undefined
+                && response.toolError.diagnostics === undefined
                 ? {}
-                : { modelData: { observedDraftDigestSha256: response.toolError.observedDraftDigestSha256 } }),
+                : {
+                    modelData: {
+                      ...(response.toolError.observedDraftDigestSha256 === undefined
+                        ? {}
+                        : { observedDraftDigestSha256: response.toolError.observedDraftDigestSha256 }),
+                      ...(response.toolError.previewState === undefined
+                        ? {}
+                        : { previewState: response.toolError.previewState }),
+                      ...(response.toolError.nextAction === undefined
+                        ? {}
+                        : { nextAction: response.toolError.nextAction }),
+                      ...(response.toolError.diagnostics === undefined
+                        ? {}
+                        : { diagnostics: response.toolError.diagnostics }),
+                    },
+                  }),
             });
           }
           if (
@@ -549,11 +652,14 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
           });
           if (!protocol.ok) return protocolError(protocol.message);
 
+          const surface = result.verification.surface === 'preview'
+            ? 'manifest-bound Preview diagnostic clone'
+            : 'isolated artifact';
           const summary = result.status === 'completed'
-            ? `Widget '${mount.name}' exact isolated artifact rendered successfully.`
+            ? `Widget '${mount.name}' ${surface} completed with functional evidence: ${result.verification.functional}. Visible-frame pixel parity was not claimed.`
             : result.status === 'completed_with_errors'
-              ? `Widget '${mount.name}' exact isolated artifact rendered with action or runtime errors.`
-              : `Widget '${mount.name}' isolated inspection ended with status ${result.status} during ${result.stage}.`;
+              ? `Widget '${mount.name}' ${surface} completed with blocking evidence: ${result.verification.functional}. Visible-frame pixel parity was not claimed.`
+              : `Widget '${mount.name}' ${surface} ended with status ${result.status} during ${result.stage}; functional verification failed.`;
           if (base64 === undefined) {
             return fnToolSuccess({ summary, modelData: result, details: result });
           }

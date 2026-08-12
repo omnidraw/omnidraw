@@ -22,10 +22,13 @@ import {
   type TWidgetFilesystemFileEntry,
   type TWidgetFilesystemFilePreview,
   type TWidgetFilesystemManagementCapability,
+  type TWidgetFilesystemConstruction,
   type WidgetFilesystemBuildService,
+  type TWidgetWorkspaceDraftBuildCapture,
 } from '@omnidraw/service-agent';
 import {
   ZWidgetManifestV1,
+  fnNormalizeWidgetManifestV1,
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
 } from '@omnidraw/widget-contract/filesystem';
@@ -45,6 +48,16 @@ type TConfig = Readonly<{
   hash: NodeWidgetCatalogHash;
   capsule: TWidgetCatalogCapsuleInspectionPortal;
   builder: WidgetFilesystemBuildService;
+  acceptedBuild: Readonly<{
+    requireCurrent(
+      widgetKey: string,
+      signal?: AbortSignal,
+    ): Promise<Readonly<{
+      capture: TWidgetWorkspaceDraftBuildCapture;
+      construction: TWidgetFilesystemConstruction;
+    }>>;
+  }>;
+  validateManifestResources(manifest: import('@omnidraw/widget-contract').TWidgetManifestV1): Promise<void>;
   createOperationToken?: () => string;
 }>;
 
@@ -199,6 +212,16 @@ implements TWidgetFilesystemManagementCapability {
         'WIDGET_BUILD_REQUIRED',
       );
     }
+    if (
+      published.manifest === null
+      || JSON.stringify(fnNormalizeWidgetManifestV1(draft.manifest).resources ?? [])
+        !== JSON.stringify(fnNormalizeWidgetManifestV1(published.manifest).resources ?? [])
+    ) {
+      throw errorWithCode(
+        'Resource bindings changed; use Build and Publish.',
+        'WIDGET_BUILD_REQUIRED',
+      );
+    }
     const workspace = await this.#workspace;
     const capture = await workspace.captureDraftBuildInput({
       slug: args.widgetKey,
@@ -243,27 +266,19 @@ implements TWidgetFilesystemManagementCapability {
     if (draft.manifestDigestSha256 !== args.expectedManifestDigestSha256) {
       throw errorWithCode('Widget draft manifest changed.', 'WIDGET_MANIFEST_CONFLICT');
     }
-    const workspace = await this.#workspace;
     const signal = args.signal ?? new AbortController().signal;
-    const capture = await workspace.captureDraftBuildInput({
-      slug: args.widgetKey,
-      signal,
-    });
+    const accepted = await this.#config.acceptedBuild.requireCurrent(args.widgetKey, signal);
+    const capture = accepted.capture;
     if (capture.manifestDigestSha256 !== args.expectedManifestDigestSha256) {
       throw errorWithCode('Widget draft manifest changed.', 'WIDGET_MANIFEST_CONFLICT');
     }
     if (capture.fileSetDigestSha256 !== draft.treeDigestSha256) {
       throw errorWithCode('Widget draft source changed.', 'WIDGET_CATALOG_CHANGED');
     }
-    const construction = await this.#config.builder.construct({
-      manifest: capture.manifest,
-      files: capture.files,
-      workspaceKey: `filesystem_${args.widgetKey}`,
-      signal,
-    });
+    await this.#config.validateManifestResources(capture.manifest);
     const prepared = await this.#config.builder.preparePublication({
       manifest: capture.manifest,
-      construction,
+      construction: accepted.construction,
     });
     const token = this.#operationToken();
     await txPublishAtomicPublication(await this.#publication, {

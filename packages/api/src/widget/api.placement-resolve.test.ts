@@ -7,16 +7,8 @@ const reference = Object.freeze({
   catalogGeneration: 7,
 });
 
-const resourceBindings = Object.freeze({
-  todos: Object.freeze({
-    resourceId: 'resource-a',
-    allowRead: true,
-    allowWrite: false,
-  }),
-});
-
 describe('filesystem widget placement API', () => {
-  test('delegates the exact catalog reference and concrete local resource choices', async () => {
+  test('delegates only the exact catalog reference', async () => {
     const calls: unknown[] = [];
     const descriptor = Object.freeze({
       kind: 'published' as const,
@@ -24,7 +16,6 @@ describe('filesystem widget placement API', () => {
       widgetKey: reference.widgetKey,
       catalogGeneration: reference.catalogGeneration,
       bounds: Object.freeze({ width: 480, height: 320 }),
-      resourceBindings,
     });
     const context = {
       widgetCatalog: {
@@ -36,8 +27,8 @@ describe('filesystem widget placement API', () => {
     } as never;
     const resolvePlacement = apiWidgetPlacementResolve.callable({ context });
 
-    await expect(resolvePlacement({ reference, resourceBindings })).resolves.toEqual(descriptor);
-    expect(calls).toEqual([{ reference, resourceBindings }]);
+    await expect(resolvePlacement({ reference })).resolves.toEqual(descriptor);
+    expect(calls).toEqual([{ reference }]);
   });
 
   test('maps stale, missing, and invalid resource selections to stable public errors', async () => {
@@ -45,8 +36,10 @@ describe('filesystem widget placement API', () => {
       ['WIDGET_CATALOG_CHANGED', 'CONFLICT'],
       ['WIDGET_MISSING', 'NOT_FOUND'],
       ['WIDGET_CATALOG_NOT_READY', 'NOT_FOUND'],
-      ['WIDGET_RESOURCE_SELECTION_REQUIRED', 'BAD_REQUEST'],
-      ['WIDGET_RESOURCE_SELECTION_INVALID', 'BAD_REQUEST'],
+      ['WIDGET_RESOURCE_BINDING_REQUIRED', 'BAD_REQUEST'],
+      ['WIDGET_RESOURCE_BINDING_STALE', 'BAD_REQUEST'],
+      ['WIDGET_RESOURCE_NOT_READY', 'BAD_REQUEST'],
+      ['WIDGET_RESOURCE_KIND_MISMATCH', 'BAD_REQUEST'],
     ] as const;
 
     for (const [domainCode, apiCode] of cases) {
@@ -62,7 +55,7 @@ describe('filesystem widget placement API', () => {
       const resolvePlacement = apiWidgetPlacementResolve.callable({ context });
 
       try {
-        await resolvePlacement({ reference, resourceBindings });
+        await resolvePlacement({ reference });
         throw new Error('Expected widget placement rejection.');
       } catch (error) {
         expect(error).toMatchObject({ code: apiCode });

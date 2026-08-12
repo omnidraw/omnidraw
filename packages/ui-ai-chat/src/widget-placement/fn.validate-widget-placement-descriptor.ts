@@ -4,7 +4,6 @@ import {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
 } from '@omnidraw/widget-contract/CONSTANTS';
-import type { TCanvasWidgetResourceBindingV1 } from '@omnidraw/canvas-contract';
 import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@omnidraw/widget-contract';
 
 type TPublishedReference = Extract<
@@ -18,7 +17,6 @@ type TPublishedWidgetPlacementDescriptor = Readonly<{
   widgetKey: string;
   catalogGeneration: number;
   bounds: TWidgetFrameBounds;
-  resourceBindings: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
 }>;
 
 type TPreviewWidgetPlacementDescriptor = Readonly<{
@@ -59,13 +57,10 @@ const PUBLISHED_DESCRIPTOR_KEYS = Object.freeze([
   'catalogGeneration',
   'kind',
   'reference',
-  'resourceBindings',
   'widgetKey',
 ]);
 const BOUNDS_KEYS = Object.freeze(['height', 'width']);
-const BINDING_KEYS = Object.freeze(['allowRead', 'allowWrite', 'resourceId']);
 const WIDGET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESOURCE_SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -110,23 +105,6 @@ function isCanonicalBounds(value: unknown): value is TWidgetFrameBounds {
     && isCanonicalDimension(value.height, WIDGET_FRAME_MIN_HEIGHT, WIDGET_FRAME_MAX_HEIGHT);
 }
 
-function isResourceBindings(
-  value: unknown,
-): value is Readonly<Record<string, TCanvasWidgetResourceBindingV1>> {
-  if (!isRecord(value) || Object.keys(value).length > 128) return false;
-  return Object.entries(value).every(([slot, binding]) => (
-    RESOURCE_SLOT_PATTERN.test(slot)
-    && isRecord(binding)
-    && hasExactKeys(binding, BINDING_KEYS)
-    && typeof binding.resourceId === 'string'
-    && binding.resourceId.length > 0
-    && binding.resourceId.length <= 200
-    && typeof binding.allowRead === 'boolean'
-    && typeof binding.allowWrite === 'boolean'
-    && (binding.allowRead || binding.allowWrite)
-  ));
-}
-
 export function fnValidateDirectPublishedWidgetPlacement(
   args: TArgsDirectPublished,
 ): TResultDirectPublished {
@@ -157,7 +135,6 @@ export function fnValidateDirectPublishedWidgetPlacement(
       widgetKey: publishedReference.widgetKey,
       catalogGeneration: publishedReference.catalogGeneration,
       bounds: { width: args.bounds.width, height: args.bounds.height },
-      resourceBindings: {},
     },
   };
 }
@@ -178,7 +155,6 @@ export function fnValidateWidgetPlacementDescriptor(
       || !hasExactKeys(descriptor, PUBLISHED_DESCRIPTOR_KEYS)
       || descriptor.widgetKey !== args.expectedReference.widgetKey
       || descriptor.catalogGeneration !== args.expectedReference.catalogGeneration
-      || !isResourceBindings(descriptor.resourceBindings)
     ) {
       return { ok: false, message: 'The placement resolver returned an invalid published widget identity.' };
     }

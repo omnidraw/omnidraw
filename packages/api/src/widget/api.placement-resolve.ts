@@ -25,13 +25,15 @@ const apiWidgetPlacementResolve = baseWidgetOs.placement.resolve.handler(({
       });
     }
     if (
-      code === 'WIDGET_RESOURCE_SELECTION_INVALID'
-      || code === 'WIDGET_RESOURCE_SELECTION_REQUIRED'
+      code === 'WIDGET_RESOURCE_BINDING_REQUIRED'
+      || code === 'WIDGET_RESOURCE_BINDING_STALE'
+      || code === 'WIDGET_RESOURCE_NOT_READY'
+      || code === 'WIDGET_RESOURCE_KIND_MISMATCH'
     ) {
       throw new ORPCError('BAD_REQUEST', {
         message: error instanceof Error
           ? error.message
-          : 'Widget resource selection is invalid.',
+          : 'Widget manifest resource binding is invalid.',
       });
     }
     throw new ORPCError('INTERNAL_SERVER_ERROR', {

@@ -24,8 +24,9 @@ await shared.change({ count: 1 });
 For optional server work, import a direct named function from a
 `server/*.server.ts` module and call its trusted generated proxy from an event
 handler. Show pending, success, and safe error states. Preview exercises the
-exact process-owned server output with temporary resource choices, including
-permitted side effects. Do not expose invocation ids, Preview or artifact ids,
+exact process-owned server output with the accepted manifest's exact resource
+references and independently validated policy, including permitted side
+effects. Do not expose invocation ids, Preview or artifact ids,
 capability selectors, resource ids,
 internal paths, or server diagnostics in normal UI.
 

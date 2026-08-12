@@ -109,6 +109,14 @@ export function fnClassifyWidgetChange(args: Readonly<{
     || !sameValue(previousExecutable.server, nextExecutable.server)
   ) return { class: 'executable', changedPaths, reason: 'Executable widget input changed.' };
   if (!sameValue(
+    args.previous.manifest.resources ?? [],
+    args.next.manifest.resources ?? [],
+  )) return {
+    class: 'resource-binding',
+    changedPaths,
+    reason: 'Only installation-local resource identities changed.',
+  };
+  if (!sameValue(
     fnProjectWidgetPresentation(args.previous.manifest),
     fnProjectWidgetPresentation(args.next.manifest),
   )) return { class: 'presentation-only', changedPaths, reason: 'Only presentation metadata changed.' };

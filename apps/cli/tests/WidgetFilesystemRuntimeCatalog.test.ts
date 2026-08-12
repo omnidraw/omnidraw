@@ -44,7 +44,7 @@ function runtime(artifactHash: `sha256:${string}`): TWidgetCapsuleRuntimeDescrip
 
 function manifest(
   slug: string,
-  options: Readonly<{ requiredResource?: boolean }> = {},
+  options: Readonly<{ requiredResource?: boolean; resourceId?: string }> = {},
 ): TWidgetManifestV1 {
   return {
     $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
@@ -58,6 +58,7 @@ function manifest(
       ? {
           resources: [{
             slot: 'records',
+            ...(options.resourceId === undefined ? {} : { resourceId: options.resourceId }),
             kind: 'db',
             effect: 'read',
             required: true,
@@ -147,6 +148,59 @@ afterEach(async () => {
 });
 
 describe('WidgetFilesystemRuntimeCatalog', () => {
+  test('resolves exact mention variants from one snapshot and fences mounted drafts', async () => {
+    const root = await widgetsRoot();
+    const value = manifest('mentioned', { requiredResource: true });
+    await Promise.all([
+      writeDraft(root, value),
+      writePublication(root, value, 'signed-mentioned'),
+    ]);
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      widgetsRoot: root,
+      capsule,
+      buildGenerations: {
+        async view() {
+          return {
+            phase: 'ready' as const,
+            acceptedGeneration: 4,
+            current: true,
+          };
+        },
+      },
+    });
+    const resolution = await catalog.resolveWidgetReferences([
+      { name: 'mentioned', source: 'published' },
+      { name: 'mentioned', source: 'published' },
+      { name: 'mentioned', source: 'draft' },
+    ]);
+    expect(resolution.references).toHaveLength(2);
+    expect(resolution.references[0]).toMatchObject({
+      widgetKey: 'mentioned',
+      requestedVariant: 'published',
+      displayName: 'Widget mentioned',
+      draftAvailable: true,
+      publicationAvailable: true,
+      requirements: [{ slot: 'records', kind: 'db', effect: 'read', required: true }],
+      editableDraft: {
+        name: 'Widget mentioned',
+        slug: 'mentioned',
+        buildPhase: 'ready',
+        acceptedGeneration: 4,
+        acceptedCurrent: true,
+      },
+    });
+    await expect(catalog.assertWidgetReferenceResolutionCurrent(resolution)).resolves.toBeUndefined();
+
+    const changed = { ...value, description: 'External edit after resolution.' };
+    await writeFile(join(root, 'drafts', 'mentioned', 'omnidraw.json'), JSON.stringify(changed));
+    await expect(catalog.assertWidgetReferenceResolutionCurrent(resolution)).rejects.toMatchObject({
+      code: 'WIDGET_REFERENCE_STALE',
+    });
+    await expect(catalog.resolveWidgetReferences([
+      { name: 'missing', source: 'published' },
+    ])).rejects.toMatchObject({ code: 'WIDGET_REFERENCE_STALE' });
+  });
+
   test('starts from the filesystem and resolves placement and exact current runtime bytes', async () => {
     const root = await widgetsRoot();
     await writePublication(root, manifest('counter'), 'signed-counter-v1');
@@ -161,11 +215,10 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
       widgetKey: 'counter',
       catalogGeneration: 1,
     });
-    expect(catalog.resolvePlacement({ reference: reference! })).toMatchObject({
+    await expect(catalog.resolvePlacement({ reference: reference! })).resolves.toMatchObject({
       kind: 'published',
       widgetKey: 'counter',
       catalogGeneration: 1,
-      resourceBindings: {},
     });
 
     const resolution = await catalog.resolveRuntime('counter');
@@ -175,28 +228,41 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
     expect(catalog.isRuntimeResolutionCurrent(resolution)).toBe(true);
   });
 
-  test('requires concrete local resource choices and preserves them in the placement descriptor', async () => {
+  test('validates only manifest-owned resource references before placement', async () => {
     const root = await widgetsRoot();
-    await writePublication(root, manifest('records', { requiredResource: true }), 'signed-records');
-    const catalog = new WidgetFilesystemRuntimeCatalog({ widgetsRoot: root, capsule });
-    await catalog.start();
-    const reference = catalog.publishedReferences()[0]!;
-
-    expect(() => catalog.resolvePlacement({ reference })).toThrow('requires a concrete local choice');
-    expect(catalog.resolvePlacement({
-      reference,
-      resourceBindings: {
-        records: { resourceId: 'resource-a', allowRead: true, allowWrite: false },
+    await Promise.all([
+      writePublication(root, manifest('missing-link', { requiredResource: true }), 'signed-missing'),
+      writePublication(root, manifest('records', {
+        requiredResource: true,
+        resourceId: 'resource-a',
+      }), 'signed-records'),
+    ]);
+    const resourceReads: string[] = [];
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      widgetsRoot: root,
+      capsule,
+      resources: {
+        async getResource(resourceId) {
+          resourceReads.push(resourceId);
+          return { id: resourceId, kind: 'db', status: 'ready' };
+        },
       },
-    }).resourceBindings).toEqual({
-      records: { resourceId: 'resource-a', allowRead: true, allowWrite: false },
     });
-    expect(() => catalog.resolvePlacement({
-      reference,
-      resourceBindings: {
-        records: { resourceId: 'resource-a', allowRead: false, allowWrite: true },
-      },
-    })).toThrow('invalid');
+    await catalog.start();
+    const references = Object.fromEntries(catalog.publishedReferences().map((reference) => (
+      [reference.widgetKey, reference]
+    )));
+
+    await expect(catalog.resolvePlacement({ reference: references['missing-link']! }))
+      .rejects.toMatchObject({ code: 'WIDGET_RESOURCE_BINDING_REQUIRED' });
+    await expect(catalog.resolvePlacement({ reference: references.records! })).resolves.toEqual({
+      kind: 'published',
+      reference: references.records,
+      widgetKey: 'records',
+      catalogGeneration: catalog.current().generation,
+      bounds: { width: 480, height: 320 },
+    });
+    expect(resourceReads).toEqual(['resource-a']);
   });
 
   test('fails exact runtime reads clearly when files disappear or change without deleting authority data', async () => {
@@ -210,13 +276,13 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
     await expect(catalog.resolveRuntime('fragile')).rejects.toMatchObject({
       code: 'WIDGET_MISSING',
     });
-    expect(catalog.resolvePlacement({ reference }).widgetKey).toBe('fragile');
+    expect((await catalog.resolvePlacement({ reference })).widgetKey).toBe('fragile');
 
     await catalog.refresh();
     expect(catalog.publishedReferences()).toEqual([]);
-    expect(() => catalog.resolvePlacement({
+    await expect(catalog.resolvePlacement({
       reference: { ...reference, catalogGeneration: catalog.current().generation },
-    })).toThrow('missing or unhealthy');
+    })).rejects.toThrow('missing or unhealthy');
   });
 
   test('publishes immutable generations and invalidates stale placement/runtime observations', async () => {
@@ -233,8 +299,8 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
     await catalog.refresh();
     expect(catalog.current().generation).toBe(2);
     expect(catalog.isRuntimeResolutionCurrent(oldRuntime)).toBe(false);
-    expect(() => catalog.resolvePlacement({ reference: oldReference }))
-      .toThrow('generation changed');
+    await expect(catalog.resolvePlacement({ reference: oldReference }))
+      .rejects.toThrow('generation changed');
     const newReference = catalog.publishedReferences()[0]!;
     const next = await catalog.resolveRuntime('live');
     expect(Buffer.from(next.capsuleBytes).toString('utf8')).toBe('signed-live-v2');
@@ -243,11 +309,13 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
         previousGeneration: null,
         generation: 1,
         changedWidgetKeys: ['live'],
+        previewWidgetKeys: [],
       },
       {
         previousGeneration: 1,
         generation: 2,
         changedWidgetKeys: ['live'],
+        previewWidgetKeys: [],
       },
     ]);
     expect(newReference.catalogGeneration).toBe(2);
@@ -274,10 +342,29 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
       previousGeneration: 1,
       generation: 2,
       changedWidgetKeys: ['first', 'second'],
+      previewWidgetKeys: [],
     }]);
     expect(catalog.publishedReferences()).toEqual([
       { source: 'published', widgetKey: 'first', catalogGeneration: 2 },
       { source: 'published', widgetKey: 'second', catalogGeneration: 2 },
     ]);
+  });
+
+  test('publishes accepted build changes as Preview-only events', async () => {
+    const root = await widgetsRoot();
+    await writePublication(root, manifest('live'), 'signed-live');
+    const catalog = new WidgetFilesystemRuntimeCatalog({ widgetsRoot: root, capsule });
+    await catalog.start();
+    const events: unknown[] = [];
+    catalog.subscribe((event) => events.push(event));
+
+    catalog.notifyBuildGenerationChanged('live');
+
+    expect(events).toEqual([{
+      previousGeneration: 1,
+      generation: 2,
+      changedWidgetKeys: [],
+      previewWidgetKeys: ['live'],
+    }]);
   });
 });

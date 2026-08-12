@@ -26,6 +26,8 @@ import {
   CanvasServiceError,
   type ICanvasService,
 } from '@omnidraw/service-canvas';
+import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';
+import type { TCanvasWidgetExtensionV1 } from '@omnidraw/canvas-contract/types';
 import { CanvasItemStoreTurso } from '@omnidraw/service-db/CanvasItemStoreTurso';
 import { DbServiceTurso } from '@omnidraw/service-db/DbServiceTurso/DbServiceTurso';
 import { ResourceControlStoreTurso } from '@omnidraw/service-db/ResourceControlStoreTurso';
@@ -80,6 +82,7 @@ import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorB
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import { WidgetFilesystemRuntimeCatalog } from './services/WidgetFilesystemRuntimeCatalog';
 import { WidgetPreviewService } from './services/WidgetPreviewService';
+import { WidgetBuildGenerationService } from './services/WidgetBuildGenerationService';
 import {
   fnDefaultWidgetPreviewInspectionTheme,
 } from './services/fn.widget-preview-inspection';
@@ -127,6 +130,7 @@ export interface IRuntimeServices {
   widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   widgetCatalog: WidgetFilesystemRuntimeCatalog;
+  widgetBuildGeneration: WidgetBuildGenerationService;
   previewInspectionBrowser: PreviewInspectionBrowserService;
   widgetPreview: WidgetPreviewService;
   functionOwner: FunctionService;
@@ -151,13 +155,17 @@ type TSetupServicesOptions = Readonly<{
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
   const eventPublisher = new EventPublisherService();
+  const localDevelopment = config.dev && process.env.NODE_ENV !== 'production';
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
     homeDirectory: homedir(),
-    localDevelopment: config.dev && process.env.NODE_ENV !== 'production',
+    localDevelopment,
     stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
     join,
   });
-  const localWidgetPackageRegistry = config.dev && process.env.NODE_ENV !== 'production'
+  const mutableRegistryUrl = localDevelopment
+    ? process.env.LOCAL_NPM_REGISTRY_URL ?? 'http://127.0.0.1:4873/'
+    : undefined;
+  const localWidgetPackageRegistry = localDevelopment
     ? new LocalWidgetPackageRegistrySync({
         repositoryRoot: resolve(import.meta.dir, '..', '..', '..'),
       })
@@ -218,6 +226,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
           scratchDirectory,
           npmUserConfigPath,
           prepareNpmDependencies: prepareWidgetNpmDependencies,
+          mutableRegistryUrl,
           runProcess: runner.runProcess,
           runnerIdentity: runner.identity,
         })
@@ -356,10 +365,44 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     },
     releaseAttestor: widgetReleaseAttestation,
   });
+  let widgetBuildGeneration: WidgetBuildGenerationService | null = null;
+  let resourceService: ResourceService | null = null;
   const widgetCatalog = new WidgetFilesystemRuntimeCatalog({
     widgetsRoot: config.home.widgetsRoot,
     capsule: widgetReleaseAttestation,
-    management: { builder: widgetFilesystemBuilder },
+    management: {
+      builder: widgetFilesystemBuilder,
+      acceptedBuild: {
+        requireCurrent(widgetKey, signal) {
+          if (widgetBuildGeneration === null) {
+            throw new Error('Widget build generation authority is not initialized.');
+          }
+          return widgetBuildGeneration.requireCurrent(widgetKey, signal);
+        },
+      },
+    },
+    buildGenerations: {
+      view(widgetKey) {
+        if (widgetBuildGeneration === null) {
+          throw new Error('Widget build generation authority is not initialized.');
+        }
+        return widgetBuildGeneration.view(widgetKey);
+      },
+    },
+    resources: {
+      getResource(resourceId) {
+        if (resourceService === null) {
+          throw new Error('Resource authority is not initialized.');
+        }
+        return resourceService.getResource(resourceId);
+      },
+    },
+  });
+  widgetBuildGeneration = new WidgetBuildGenerationService({
+    widgetsRoot: config.home.widgetsRoot,
+    catalog: widgetCatalog,
+    builder: widgetFilesystemBuilder,
+    sdkVersion: sdkPackage.version,
   });
   const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
   const previewInspectionReleaseRuntime = resolvePreviewInspectionReleaseRuntime({
@@ -385,7 +428,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   });
   services.provide('db', 20, dbService);
 
-  const resourceService = new ResourceService({
+  resourceService = new ResourceService({
     placement: Object.freeze({
       cellId: DEFAULT_OSS_CELL_ID,
       placementEpoch: 1,
@@ -402,6 +445,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     store: new CanvasItemStoreTurso(dbService.db),
   });
   const functionTempRoot = join(config.home.tempRoot, 'function-runtime');
+  mkdirSync(functionTempRoot, { recursive: true, mode: 0o700 });
   const functionDriver = options.createFunctionSandboxDriver?.({
     compiledExecutable: config.compiled,
     tempRoot: functionTempRoot,
@@ -419,9 +463,91 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     }),
     writePermits,
   });
+  const resolvePreviewInspectionScope = async (args: Readonly<{
+    chatId: string;
+    canvasId: string;
+    aiChatElementId: string;
+    widgetKey: string;
+  }>) => {
+    const chat = await dbService.chats.get({ id: args.chatId });
+    if (
+      chat === null
+      || chat.status !== 'active'
+      || chat.canvasId !== args.canvasId
+    ) {
+      throw Object.assign(new Error('The exact active chat canvas is unavailable.'), {
+        code: 'PREVIEW_CHAT_SCOPE_UNAVAILABLE',
+      });
+    }
+    const aiChatPage = await canvasService.queryItems({
+      canvasId: args.canvasId,
+      filter: { type: 'ids', ids: [args.aiChatElementId] },
+      limit: 1,
+    });
+    const aiChatItem = aiChatPage.items[0]?.item;
+    const aiChatExtension = aiChatItem?.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+      | TCanvasWidgetExtensionV1
+      | undefined;
+    if (
+      aiChatItem?.id !== args.aiChatElementId
+      || aiChatItem.kind !== 'widget-frame'
+      || aiChatExtension?.type !== 'ui-widget'
+      || aiChatExtension.kind !== 'ai'
+    ) {
+      throw Object.assign(new Error('The exact AI Chat canvas element is unavailable.'), {
+        code: 'PREVIEW_CHAT_ELEMENT_UNAVAILABLE',
+      });
+    }
+    const candidates = await canvasService.queryItems({
+      canvasId: args.canvasId,
+      filter: { type: 'widget-key', widgetKey: args.widgetKey },
+      limit: 1_000,
+    });
+    if (candidates.nextCursor !== null) {
+      throw Object.assign(new Error('The exact Preview scope is too large to resolve safely.'), {
+        code: 'PREVIEW_SCOPE_TOO_LARGE',
+      });
+    }
+    const previews = candidates.items.flatMap((snapshot) => {
+      const extension = snapshot.item.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+        | TCanvasWidgetExtensionV1
+        | undefined;
+      return snapshot.item.kind === 'widget-frame'
+        && extension?.type === 'widget-preview'
+        && extension.widgetKey === args.widgetKey
+          ? [{ item: snapshot.item, extension }]
+          : [];
+    });
+    if (previews.length > 1) {
+      throw Object.assign(
+        new Error('More than one matching Preview frame exists on the current canvas.'),
+        { code: 'PREVIEW_FRAME_AMBIGUOUS' },
+      );
+    }
+    if (previews.length === 0) {
+      return Object.freeze({
+        chatId: args.chatId,
+        canvasId: args.canvasId,
+        aiChatElementId: args.aiChatElementId,
+        widgetKey: args.widgetKey,
+        previewFrame: 'absent' as const,
+      });
+    }
+    const preview = previews[0]!;
+    return Object.freeze({
+      chatId: args.chatId,
+      canvasId: args.canvasId,
+      aiChatElementId: args.aiChatElementId,
+      previewFrame: 'exact' as const,
+      previewElementId: preview.item.id,
+      previewInstanceId: preview.extension.instanceId,
+      widgetKey: args.widgetKey,
+    });
+  };
   const widgetPreview = new WidgetPreviewService({
     widgetsRoot: config.home.widgetsRoot,
     catalog: widgetCatalog,
+    buildGenerations: widgetBuildGeneration,
     builder: widgetFilesystemBuilder,
     resources: resourceService,
     executor: new DirectFunctionExecutor({
@@ -439,6 +565,31 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     hostConfiguration: widgetCapsuleHostConfiguration,
     inspectionBrowser: previewInspectionBrowser,
     inspectionTheme: fnDefaultWidgetPreviewInspectionTheme(),
+    inspectionScope: {
+      resolve: resolvePreviewInspectionScope,
+      async assertCurrent(resolution) {
+        const current = await resolvePreviewInspectionScope(resolution);
+        if (
+          current.chatId !== resolution.chatId
+          || current.canvasId !== resolution.canvasId
+          || current.aiChatElementId !== resolution.aiChatElementId
+          || current.widgetKey !== resolution.widgetKey
+          || current.previewFrame !== resolution.previewFrame
+          || (
+            current.previewFrame === 'exact'
+            && resolution.previewFrame === 'exact'
+            && (
+              current.previewElementId !== resolution.previewElementId
+              || current.previewInstanceId !== resolution.previewInstanceId
+            )
+          )
+        ) {
+          throw Object.assign(new Error('The exact Preview scope changed.'), {
+            code: 'PREVIEW_GENERATION_CHANGED',
+          });
+        }
+      },
+    },
   });
   const agentBashCapability = createBunAgentBashCapability();
   const agentRoot = config.home.agentRoot;
@@ -455,6 +606,29 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     previewInspection: widgetPreview,
     eventPublisherService: eventPublisher,
     chats: dbService.chats,
+    chatScope: {
+      async validate({ canvasId, widgetId }) {
+        const page = await canvasService.queryItems({
+          canvasId,
+          filter: { type: 'ids', ids: [widgetId] },
+          limit: 1,
+        });
+        const item = page.items[0]?.item;
+        const extension = item?.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+          | TCanvasWidgetExtensionV1
+          | undefined;
+        return item?.id === widgetId
+          && item.kind === 'widget-frame'
+          && extension?.type === 'ui-widget'
+          && extension.kind === 'ai';
+      },
+    },
+    widgetReferenceResolver: {
+      resolve: (references) => widgetCatalog.resolveWidgetReferences(references),
+      assertCurrent: (resolution) => (
+        widgetCatalog.assertWidgetReferenceResolutionCurrent(resolution)
+      ),
+    },
     resourceService: createAgentResourceService(resourceService),
     bashCapability: agentBashCapability,
   });
@@ -470,6 +644,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   );
   services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
   services.provide('widgetCatalog', 57, widgetCatalog);
+  services.provide('widgetBuildGeneration', 58, widgetBuildGeneration);
   services.provide('previewInspectionBrowser', 58, previewInspectionBrowser);
   services.provide('widgetPreview', 60, widgetPreview);
   services.provide('resourceOwner', 58, resourceService);
@@ -488,6 +663,7 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     functionService,
     previewInspectionBrowser,
     widgetCatalog,
+    widgetBuildGeneration,
     widgetStateService,
   };
 }

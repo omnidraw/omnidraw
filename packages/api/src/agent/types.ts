@@ -10,10 +10,10 @@ type TAgentOutputs = InferContractRouterOutputs<typeof agentContract>;
 type TAgentPromptInput = TAgentInputs['chat']['prompt'];
 type TAgentPromptSelection = Pick<
   TAgentPromptInput,
-  'images' | 'model' | 'resourceIds' | 'thinkingLevel' | 'widgetRefs'
+  'canvasId' | 'images' | 'model' | 'thinkingLevel' | 'widgetRefs'
 >;
 type TAgentEditInput = TAgentInputs['chat']['edit'];
-type TAgentEditSelection = Pick<TAgentEditInput, 'model' | 'thinkingLevel'>;
+type TAgentEditSelection = Pick<TAgentEditInput, 'canvasId' | 'model' | 'thinkingLevel'>;
 
 /** Chat/auth capability only. Widget authoring is filesystem-owned under `api.widget`. */
 export type TAgentApiCapability = {
@@ -24,6 +24,7 @@ export type TAgentApiCapability = {
   connectChat(
     widgetId: TAgentInputs['chat']['connect']['widgetId'],
     sessionId: TAgentInputs['chat']['connect']['sessionId'],
+    canvasId: TAgentInputs['chat']['connect']['canvasId'],
     mode?: NonNullable<TAgentInputs['chat']['connect']['mode']>,
   ): Promise<TAgentOutputs['chat']['connect']>;
   getChatHistory(

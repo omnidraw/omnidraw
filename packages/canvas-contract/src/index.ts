@@ -35,7 +35,6 @@ export type {
   TCanvasSemanticStyleExtensionV1,
   TCanvasSnapshot,
   TCanvasWidgetExtensionV1,
-  TCanvasWidgetResourceBindingV1,
 } from "./types.js";
 export {
   fnAssertValidCanvasItems,
@@ -47,3 +46,4 @@ export {
   fnValidateCanvasItemExtensions,
   fnValidateCanvasItems,
 } from "./validation.js";
+export { fnNormalizeLegacyCanvasWidgetBindings } from "./fn.canvas-legacy-widget.js";

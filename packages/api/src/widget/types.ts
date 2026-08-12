@@ -1,5 +1,4 @@
 import type { ICanvasService } from '@omnidraw/service-canvas';
-import type { TCanvasWidgetResourceBindingV1 } from '@omnidraw/canvas-contract';
 import type { IWidgetStateService } from '@omnidraw/service-widget-state';
 import type {
   TWidgetCatalogSnapshot,
@@ -42,6 +41,7 @@ type TWidgetRuntimeApiCapability = TWidgetFilesystemManagementCapability & Reado
     previousGeneration: number | null;
     generation: number;
     changedWidgetKeys: readonly string[];
+    previewWidgetKeys: readonly string[];
   }>) => void): () => void;
   resolvePlacement(args: Readonly<{
     reference: Readonly<{
@@ -49,8 +49,7 @@ type TWidgetRuntimeApiCapability = TWidgetFilesystemManagementCapability & Reado
       widgetKey: string;
       catalogGeneration: number;
     }>;
-    resourceBindings?: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
-  }>): Readonly<{
+  }>): Promise<Readonly<{
     kind: 'published';
     reference: Readonly<{
       source: 'published';
@@ -60,8 +59,7 @@ type TWidgetRuntimeApiCapability = TWidgetFilesystemManagementCapability & Reado
     widgetKey: string;
     catalogGeneration: number;
     bounds: Readonly<{ width: number; height: number }>;
-    resourceBindings: Readonly<Record<string, TCanvasWidgetResourceBindingV1>>;
-  }>;
+  }>>;
   resolveRuntime(widgetKey: string): Promise<TWidgetRuntimeResolution>;
   isRuntimeResolutionCurrent(
     resolution: Pick<
@@ -84,12 +82,6 @@ type TWidgetRuntimeLoadAdmissionCapability = Readonly<{
 type TWidgetRuntimeLoadCleanupRegistrar = (
   cleanup: () => Promise<void>,
 ) => void;
-
-type TWidgetPreviewSelectedResourceInput = Readonly<{
-  slot: string;
-  resourceId: string;
-  effect: 'read' | 'read_write';
-}>;
 
 type TWidgetPreviewSessionInput = Readonly<{
   canvasId: string;
@@ -149,11 +141,21 @@ type TWidgetPreviewInvokeResult = Readonly<{
 
 type TWidgetPreviewApiCapability = Readonly<{
   open(
-    args: TWidgetPreviewSessionInput & Readonly<{
-      selectedResources?: readonly TWidgetPreviewSelectedResourceInput[];
-    }>,
+    args: TWidgetPreviewSessionInput,
     signal?: AbortSignal,
   ): Promise<TWidgetPreviewMountView>;
+  rebuild(
+    args: TWidgetPreviewSessionInput,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewMountView>;
+  rebuildDraft(
+    args: Readonly<{ widgetKey: string }>,
+    signal?: AbortSignal,
+  ): Promise<Readonly<{
+    widgetKey: string;
+    acceptedGeneration: number;
+    buildIdentity: string;
+  }>>;
   load(
     args: TWidgetPreviewSessionInput,
     signal?: AbortSignal,
@@ -188,7 +190,6 @@ export type {
   TWidgetPreviewDiagnosticView,
   TWidgetPreviewInvokeResult,
   TWidgetPreviewMountView,
-  TWidgetPreviewSelectedResourceInput,
   TWidgetPreviewSessionInput,
   TWidgetRuntimeApiCapability,
   TWidgetRuntimeResolution,

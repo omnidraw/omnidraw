@@ -5,6 +5,10 @@ import type {
   TWidgetPreviewInspectNormalizedInput,
   TWidgetPreviewInspectResult,
   TWidgetPreviewInspectTarget,
+  TInspectDiagnostic,
+  TInspectElement,
+  TInspectFunctional,
+  TInspectActionResult,
 } from './types';
 
 type TNormalizeResult =
@@ -168,13 +172,34 @@ function normalizeAction(value: unknown, index: number): TWidgetPreviewInspectNo
       commit: value.commit === 'none' || value.commit === 'enter' ? value.commit : 'blur',
     });
   }
-  return `${path}.type must be click, input, or waitFrames.`;
+  if (value.type === 'assertText') {
+    if (!hasOnlyKeys(value, ['type', 'target', 'text', 'exact']) || !hasOwn(value, 'target') || !hasOwn(value, 'text')) {
+      return `${path} assertText actions accept only type, target, text, and exact.`;
+    }
+    const target = normalizeTarget(value.target, `${path}.target`);
+    if (typeof target === 'string') return target;
+    if (typeof value.text !== 'string' || utf8ByteLength(value.text) < 1 || utf8ByteLength(value.text) > 512) {
+      return `${path}.text must contain between 1 and 512 UTF-8 bytes.`;
+    }
+    if (hasOwn(value, 'exact') && typeof value.exact !== 'boolean') {
+      return `${path}.exact must be a boolean.`;
+    }
+    return Object.freeze({
+      type: 'assertText' as const,
+      target,
+      text: value.text,
+      ...(typeof value.exact === 'boolean' ? { exact: value.exact } : {}),
+    });
+  }
+  return `${path}.type must be assertText, click, input, or waitFrames.`;
 }
 
 export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalizeResult {
   if (!isRecord(input) || !hasOnlyKeys(input, [
     'name',
+    'mode',
     'expectedDraftDigestSha256',
+    'expectedAcceptedGeneration',
     'viewport',
     'settle',
     'actions',
@@ -190,11 +215,23 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
   const normalizedName = fnNormalizeWidgetName(input.name);
   if (!normalizedName.ok) return { ok: false, message: normalizedName.message };
 
+  const mode = input.mode ?? 'artifact';
+  if (mode !== 'artifact' && mode !== 'preview') {
+    return { ok: false, message: 'mode must be artifact or preview.' };
+  }
+
   if (hasOwn(input, 'expectedDraftDigestSha256') && (
     typeof input.expectedDraftDigestSha256 !== 'string'
     || !/^[a-f0-9]{64}$/.test(input.expectedDraftDigestSha256)
   )) {
     return { ok: false, message: 'expectedDraftDigestSha256 must be one lowercase SHA-256 digest.' };
+  }
+  if (hasOwn(input, 'expectedAcceptedGeneration') && !isIntegerInRange(
+    input.expectedAcceptedGeneration,
+    1,
+    Number.MAX_SAFE_INTEGER,
+  )) {
+    return { ok: false, message: 'expectedAcceptedGeneration must be a positive safe integer.' };
   }
 
   const viewport = input.viewport ?? {};
@@ -251,8 +288,12 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
     ok: true,
     value: Object.freeze({
       name: normalizedName.value,
+      mode,
       ...(typeof input.expectedDraftDigestSha256 === 'string'
         ? { expectedDraftDigestSha256: input.expectedDraftDigestSha256 }
+        : {}),
+      ...(typeof input.expectedAcceptedGeneration === 'number'
+        ? { expectedAcceptedGeneration: input.expectedAcceptedGeneration }
         : {}),
       viewport: Object.freeze({ width, height, deviceScaleFactor }),
       settle: Object.freeze({ frames: settleFrames, timeoutMs: settleTimeoutMs }),
@@ -261,6 +302,35 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
       timeoutMs,
     }),
   };
+}
+
+export function fnClassifyWidgetPreviewInspection(args: Readonly<{
+  actions: readonly TInspectActionResult[];
+  diagnostics: readonly TInspectDiagnostic[];
+  elements: readonly TInspectElement[];
+}>): TInspectFunctional {
+  if (args.actions.some((action) => action.status !== 'passed')) return 'failed';
+  const codes = args.diagnostics.map((diagnostic) => diagnostic.code.toUpperCase());
+  if (codes.some((code) => /(?:WRITE_APPROVAL|APPROVAL_REQUIRED)/.test(code))) {
+    return 'blocked_write_approval';
+  }
+  if (codes.some((code) => /(?:RESOURCE_REFERENCE_REQUIRED|RESOURCE_BINDING_REQUIRED)/.test(code))) {
+    return 'not_verified_missing_reference';
+  }
+  if (args.diagnostics.some((diagnostic, index) => (
+    diagnostic.severity === 'error'
+    || /^(?:FUNCTION|RESOURCE|PROVIDER|CAPABILITY|SCHEMA|GUEST_RUNTIME|GUEST_EXCEPTION|DESCRIPTOR)/.test(codes[index] ?? '')
+  ))) return 'failed';
+  const renderedError = args.elements.some((element) => (
+    element.role === 'alert'
+    && /\b(?:error|failed|failure|unavailable|invalid|not ready|could not)\b/i.test(
+      `${element.name ?? ''} ${element.text ?? ''}`,
+    )
+  ));
+  if (renderedError) return 'failed';
+  return args.actions.some((action) => action.type !== 'waitFrames')
+    ? 'observed'
+    : 'not_exercised';
 }
 
 export function fnValidateWidgetPreviewInspectProtocol(args: TProtocolArgs): TProtocolResult {
@@ -273,6 +343,34 @@ export function fnValidateWidgetPreviewInspectProtocol(args: TProtocolArgs): TPr
   ) {
     return { ok: false, message: 'Inspection result did not satisfy the requested draft digest fence.' };
   }
+  if (args.result.verification.surface !== args.input.mode) {
+    return { ok: false, message: 'Inspection verification surface did not match the requested mode.' };
+  }
+  if (
+    args.result.verification.visibleFrame !== 'not_claimed'
+    || args.result.verification.executionTarget !== 'diagnostic_clone'
+    || args.result.verification.generation !== 'current'
+    || args.result.verification.artifact !== 'exact'
+    || args.result.verification.manifest !== 'exact'
+  ) return { ok: false, message: 'Inspection verification contained an unsupported authority claim.' };
+  if (args.input.mode === 'artifact') {
+    if (
+      args.result.verification.resources !== 'not_available'
+      || args.result.verification.previewState !== 'not_applicable'
+      || args.result.verification.nextAction !== 'use_preview_mode_for_resources'
+      || args.result.verification.canvasParity !== 'not_claimed'
+      || ('fidelity' in args.result && args.result.fidelity.overall !== 'artifact_exact')
+    ) return { ok: false, message: 'Artifact inspection claimed Preview or resource parity.' };
+  } else if (
+    args.result.verification.resources !== 'manifest_bound'
+    || args.result.verification.previewState === 'not_applicable'
+    || args.result.verification.previewState === 'ambiguous'
+    || args.result.verification.previewState === 'mounting'
+    || args.result.verification.previewState === 'retired'
+    || args.result.verification.previewState === 'generation_mismatch'
+    || args.result.verification.canvasParity !== 'same_runtime_policy'
+    || ('fidelity' in args.result && args.result.fidelity.overall !== 'preview_policy_exact')
+  ) return { ok: false, message: 'Preview inspection did not prove its exact runtime policy.' };
 
   const screenshot = args.result.screenshot;
   if ((screenshot === undefined) !== (args.observedPng === undefined)) {
@@ -341,18 +439,30 @@ export function fnValidateWidgetPreviewInspectProtocol(args: TProtocolArgs): TPr
     if (
       evidence === undefined
       || evidence.actions === undefined
+      || evidence.diagnostics === undefined
+      || evidence.elements === undefined
       || evidence.actions.length !== args.input.actions.length
     ) {
       return { ok: false, message: 'Inspection action evidence did not match the requested action count.' };
     }
     const hasActionError = evidence.actions.some((action) => action.status !== 'passed');
     const hasDiagnosticError = evidence.diagnostics?.entries.some((entry) => entry.severity === 'error') ?? false;
-    if (args.result.status === 'completed' && (hasActionError || hasDiagnosticError)) {
+    const classified = fnClassifyWidgetPreviewInspection({
+      actions: evidence.actions,
+      diagnostics: evidence.diagnostics.entries,
+      elements: evidence.elements.entries,
+    });
+    if (args.result.verification.functional !== classified) {
+      return { ok: false, message: 'Inspection functional verification did not match its trusted evidence.' };
+    }
+    if (args.result.status === 'completed' && (hasActionError || hasDiagnosticError || classified === 'failed' || classified === 'blocked_write_approval' || classified === 'not_verified_missing_reference')) {
       return { ok: false, message: 'A completed inspection cannot contain failed actions or error diagnostics.' };
     }
-    if (args.result.status === 'completed_with_errors' && !hasActionError && !hasDiagnosticError) {
+    if (args.result.status === 'completed_with_errors' && !hasActionError && !hasDiagnosticError && classified !== 'failed' && classified !== 'blocked_write_approval' && classified !== 'not_verified_missing_reference') {
       return { ok: false, message: 'A completed_with_errors inspection must contain failed actions or error diagnostics.' };
     }
+  } else if (args.result.verification.functional !== 'failed') {
+    return { ok: false, message: 'A non-completed inspection must report failed functional verification.' };
   }
 
   return { ok: true };

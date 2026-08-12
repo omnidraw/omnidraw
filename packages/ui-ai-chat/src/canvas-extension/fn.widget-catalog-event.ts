@@ -1,6 +1,7 @@
 export type TWidgetCatalogEvent = Readonly<{
   generation: number;
   changedWidgetKeys: readonly string[];
+  previewWidgetKeys: readonly string[];
   fullResync: boolean;
 }>;
 
@@ -8,6 +9,7 @@ export type TWidgetCatalogEventUpdate = Readonly<{
   observedGeneration: number;
   remount: 'all' | 'keys' | 'none';
   widgetKeys: readonly string[];
+  previewWidgetKeys: readonly string[];
 }>;
 
 export function fnReduceWidgetCatalogEvent(
@@ -19,6 +21,7 @@ export function fnReduceWidgetCatalogEvent(
       observedGeneration: event.generation,
       remount: 'all',
       widgetKeys: [],
+      previewWidgetKeys: [],
     };
   }
   if (event.generation <= observedGeneration) {
@@ -26,11 +29,13 @@ export function fnReduceWidgetCatalogEvent(
       observedGeneration,
       remount: 'none',
       widgetKeys: [],
+      previewWidgetKeys: [],
     };
   }
   return {
     observedGeneration: event.generation,
-    remount: 'keys',
+    remount: event.changedWidgetKeys.length === 0 ? 'none' : 'keys',
     widgetKeys: [...event.changedWidgetKeys],
+    previewWidgetKeys: [...event.previewWidgetKeys],
   };
 }

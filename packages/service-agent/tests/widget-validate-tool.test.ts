@@ -61,9 +61,12 @@ describe('od_widget_validate preview execution', () => {
       ok: true,
       draft: true,
       source: 'draft',
-      previewExecution: 'not-run',
+      acceptedArtifactBuild: 'not-run',
+      livePreviewRuntime: 'not_exercised',
+      resources: 'not_exercised',
     });
-    expect(result.content[0]?.text).toContain('Preview build was not run');
+    expect(result.content[0]?.text).toContain('Accepted artifact build was not run');
+    expect(result.content[0]?.text).toContain('live Preview runtime and resources were not exercised');
   });
 
   test('reports a passed preview build through the host build pipeline', async () => {
@@ -75,8 +78,14 @@ describe('od_widget_validate preview execution', () => {
     }), { name: 'Hello App' });
 
     expect(builds).toEqual(['hello-app']);
-    expect(result.details).toMatchObject({ ok: true, previewExecution: 'passed' });
-    expect(result.content[0]?.text).toContain('Preview build passed');
+    expect(result.details).toMatchObject({
+      ok: true,
+      validationScope: 'source_and_accepted_artifact',
+      acceptedArtifactBuild: 'passed',
+      livePreviewRuntime: 'not_exercised',
+    });
+    expect(result.content[0]?.text).toContain('accepted artifact build passed');
+    expect(result.content[0]?.text).toContain('Live Preview runtime and resources were not exercised');
   });
 
   test('fails validation when the real preview build fails', async () => {
@@ -86,9 +95,9 @@ describe('od_widget_validate preview execution', () => {
       errors: ['vite build failed: missing default export'],
     })), { name: 'Hello App' });
 
-    expect(result.details).toMatchObject({ ok: false, previewExecution: 'failed' });
+    expect(result.details).toMatchObject({ ok: false, acceptedArtifactBuild: 'failed' });
     expect(result.details.errors).toContain('vite build failed: missing default export');
-    expect(result.content[0]?.text).toContain('Preview build failed');
+    expect(result.content[0]?.text).toContain('accepted artifact build failed');
   });
 
   test('skips the preview build when construction lint already failed', async () => {
@@ -102,6 +111,6 @@ describe('od_widget_validate preview execution', () => {
     }), { name: 'Hello App' });
 
     expect(builds).toEqual([]);
-    expect(result.details).toMatchObject({ ok: false, previewExecution: 'not-run' });
+    expect(result.details).toMatchObject({ ok: false, acceptedArtifactBuild: 'not-run' });
   });
 });

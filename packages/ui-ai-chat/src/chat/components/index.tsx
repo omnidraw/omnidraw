@@ -23,6 +23,7 @@ type TChatConnectIntent = { request: number; mode: "reuse" | "replace"; sessionI
 
 interface IProps {
   id: string
+  canvasId: string
   apiService: TAiChatApiPort
   application: TAiChatApplicationPort
   browser: TAiChatBrowserPort
@@ -146,7 +147,12 @@ export function AiChat(props: IProps) {
     setIsCanceling(false)
     setIsEditingHistory(false)
     clearWidgetError("connection")
-    void apiService.api.agent.chat.connect({ sessionId: currentSessionId, widgetId: props.id, mode: connectMode }).then(([error, data]) => {
+    void apiService.api.agent.chat.connect({
+      canvasId: props.canvasId,
+      sessionId: currentSessionId,
+      widgetId: props.id,
+      mode: connectMode,
+    }).then(([error, data]) => {
       if (sessionId() !== currentSessionId || chatConnectRequestId !== currentConnectRequestId) return
       if (error) {
         reportWidgetError("connection", error)
@@ -314,7 +320,7 @@ export function AiChat(props: IProps) {
     props.onAiChatPreferenceChange?.(nextPreference)
   }
 
-  const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
+  const prompt = async (args: { text: string; images: TChatPromptImage[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
     const currentSessionId = sessionId()
     clearWidgetError("prompt", "attachment")
     setIsRunning(true)
@@ -326,11 +332,11 @@ export function AiChat(props: IProps) {
     let error: unknown
     try {
       [error] = await props.apiService.api.agent.chat.prompt({
+        canvasId: props.canvasId,
         widgetId: props.id,
         sessionId: currentSessionId,
         text: args.text,
         images: args.images,
-        resourceIds: args.resourceIds,
         widgetRefs: args.widgetRefs,
         model: args.model ? { provider: args.model.provider, modelId: args.model.id } : undefined,
         thinkingLevel: args.thinkingLevel,
@@ -380,6 +386,7 @@ export function AiChat(props: IProps) {
     try {
       try {
         [error, data] = await props.apiService.api.agent.chat.edit({
+          canvasId: props.canvasId,
           widgetId: props.id,
           sessionId: currentSessionId,
           entryId: args.entryId,

@@ -227,12 +227,8 @@ describe('EphemeralPreviewService', () => {
       maxMountedHandles: 1,
       maxDiagnosticsPerSession: 1,
       maxDiagnosticCharacters: 5,
-      maxSelectedResources: 1,
     });
-    const ready = await service.open({
-      ...openArgs('bounded'),
-      selectedResources: [{ slot: 'todos', resourceId: 'resource-1', effect: 'read' }],
-    });
+    const ready = await service.open(openArgs('bounded'));
     expect(ready.session.diagnostics).toEqual([{
       severity: 'warning',
       message: '12345',

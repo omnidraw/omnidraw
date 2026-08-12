@@ -88,6 +88,7 @@ describe('WidgetNpmDistributionBuild', () => {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
         npmUserConfigPath: '/registry/npmrc',
+        mutableRegistryUrl: 'http://127.0.0.1:4873/',
         prepareNpmDependencies: async () => {
           calls.push('registry sync');
         },
@@ -100,6 +101,14 @@ describe('WidgetNpmDistributionBuild', () => {
               platform: 'linux',
               architecture: 'x64',
             });
+          }
+          if (args[0] === 'ci') {
+            const lock = JSON.parse(await readFile(
+              join(options.cwd, 'package-lock.json'),
+              'utf8',
+            ));
+            expect(lock.packages['node_modules/@omnidraw/sdk'].integrity).toBeUndefined();
+            expect(lock.packages['node_modules/zod'].integrity).toBe('sha512-public-zod');
           }
           if (args[0] === 'run') {
             expect(await readFile(join(options.cwd, 'ui', 'main.ts'), 'utf8')).toBe([
@@ -132,7 +141,17 @@ describe('WidgetNpmDistributionBuild', () => {
           })),
           sourceFile('package-lock.json', JSON.stringify({
             lockfileVersion: 3,
-            packages: { '': {} },
+            packages: {
+              '': {},
+              'node_modules/@omnidraw/sdk': {
+                resolved: 'http://127.0.0.1:4873/@omnidraw/sdk/-/sdk-0.10.0.tgz',
+                integrity: 'sha512-stale-sdk',
+              },
+              'node_modules/zod': {
+                resolved: 'https://registry.npmjs.org/zod/-/zod-4.4.3.tgz',
+                integrity: 'sha512-public-zod',
+              },
+            },
           })),
           sourceFile('ui/main.ts', 'document.body.textContent="source";'),
         ],
@@ -163,6 +182,84 @@ describe('WidgetNpmDistributionBuild', () => {
         'main.js',
       ]);
       expect(await readdir(scratchDirectory)).toEqual([]);
+    } finally {
+      await rm(scratchDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('materializes a portable UI-only manifest from the executable projection', async () => {
+    const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-npm-portable-manifest-test-'));
+    try {
+      const build = createWidgetNpmDistributionBuild({
+        scratchDirectory,
+        npmUserConfigPath: '/registry/npmrc',
+        runProcess: async (command, args, options) => {
+          if (command === 'npm' && args[0] === '--version') return '11.0.0';
+          if (command === 'node') {
+            return JSON.stringify({
+              nodeVersion: 'v22.14.0',
+              platform: 'linux',
+              architecture: 'x64',
+            });
+          }
+          if (args[0] !== 'run') return;
+          const manifest = JSON.parse(
+            await readFile(join(options.cwd, 'omnidraw.json'), 'utf8'),
+          );
+          expect(manifest).toMatchObject({
+            $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+            schemaVersion: 1,
+            ui: { runtime: 'capsule', entry: 'ui/main.ts' },
+            resources: [{
+              slot: 'rows',
+              required: true,
+              kinds: ['database'],
+              effect: 'read',
+            }],
+          });
+          expect(manifest.server).toBeUndefined();
+          expect(JSON.stringify(manifest)).not.toContain('resource-local-id');
+          expect(await readFile(join(options.cwd, 'ui', 'main.ts'), 'utf8'))
+            .toBe('document.body.textContent="source";');
+          await expect(readFile(join(options.cwd, '__omnidraw_guest_bridge__.mjs')))
+            .rejects.toMatchObject({ code: 'ENOENT' });
+          await mkdir(join(options.cwd, 'dist'), { recursive: true });
+          await writeFile(join(options.cwd, 'dist', 'main.js'), 'built();');
+        },
+      });
+
+      await expect(build({
+        sourceRevision: 'portable-manifest-source',
+        entry: 'ui/main.ts',
+        executableManifest: {
+          schemaVersion: 1,
+          ui: {
+            runtime: 'capsule',
+            entry: 'ui/main.ts',
+            apis: ['DOM'],
+          },
+          server: {
+            entry: 'server/main.server.ts',
+            runtimeAbi: 'omnidraw.server.v1',
+          },
+          resources: [{
+            slot: 'rows',
+            required: true,
+            kinds: ['database'],
+            effect: 'read',
+          }],
+        },
+        files: [
+          sourceFile('package.json', JSON.stringify({
+            scripts: { build: 'omnidraw-widget build .' },
+          })),
+          sourceFile('package-lock.json', JSON.stringify({
+            lockfileVersion: 3,
+            packages: { '': {} },
+          })),
+          sourceFile('ui/main.ts', 'document.body.textContent="source";'),
+        ],
+      })).resolves.toMatchObject({ entry: 'main.js' });
     } finally {
       await rm(scratchDirectory, { recursive: true, force: true });
     }
@@ -275,6 +372,62 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(installs).toBe(2);
       await build.close();
       expect(await readdir(scratchDirectory)).toEqual([]);
+    } finally {
+      await rm(scratchDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('reinstalls warm dependencies when the mutable registry may replace same-version bytes', async () => {
+    const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-npm-mutable-warm-test-'));
+    let installs = 0;
+    let registrySyncs = 0;
+    try {
+      const build = createWidgetNpmDistributionBuild({
+        scratchDirectory,
+        npmUserConfigPath: '/registry/npmrc',
+        mutableRegistryUrl: 'http://127.0.0.1:4873/',
+        prepareNpmDependencies: async () => {
+          registrySyncs += 1;
+        },
+        runProcess: async (command, args, options) => {
+          if (command === 'npm' && args[0] === '--version') return '11.0.0';
+          if (command === 'node') {
+            return JSON.stringify({
+              nodeVersion: 'v22.14.0',
+              platform: 'linux',
+              architecture: 'x64',
+            });
+          }
+          if (args[0] === 'ci') installs += 1;
+          if (args[0] === 'run') {
+            await mkdir(join(options.cwd, 'dist'), { recursive: true });
+            await writeFile(join(options.cwd, 'dist', 'main.js'), 'built();');
+          }
+        },
+      });
+      const request = {
+        sourceRevision: 'source-one',
+        workspaceKey: 'mutable-draft',
+        entry: 'ui/main.ts',
+        files: [
+          sourceFile('package.json', '{"scripts":{"build":"vite build"}}'),
+          sourceFile('package-lock.json', '{"lockfileVersion":3,"packages":{"":{}}}'),
+          sourceFile('ui/main.ts', 'first();'),
+        ],
+      };
+
+      await build(request);
+      await build({
+        ...request,
+        sourceRevision: 'source-two',
+        files: request.files.map((file) => file.path === 'ui/main.ts'
+          ? sourceFile('ui/main.ts', 'second();')
+          : file),
+      });
+
+      expect(installs).toBe(2);
+      expect(registrySyncs).toBe(2);
+      await build.close();
     } finally {
       await rm(scratchDirectory, { recursive: true, force: true });
     }

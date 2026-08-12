@@ -181,8 +181,11 @@ function textContent(content: unknown): string {
 }
 
 function latestUserText(context: TProviderContext): string {
-  const latest = [...context.messages].reverse().find((message) => message.role === 'user');
-  return textContent(latest?.content);
+  const userMessages = [...context.messages].reverse().filter((message) => message.role === 'user');
+  const fixturePrompt = userMessages.find((message) => (
+    textContent(message.content).toLowerCase().includes('synthetic')
+  ));
+  return textContent(fixturePrompt?.content ?? userMessages[0]?.content);
 }
 
 function latestToolResult(context: TProviderContext) {
@@ -295,7 +298,7 @@ function createChats() {
       records.set(args.id, created);
       return created;
     },
-    async update(args: Readonly<{ id: string; name?: string; status?: TChatRecord['status'] }>) {
+    async update(args: Readonly<{ id: string; canvasId?: string; name?: string; status?: TChatRecord['status'] }>) {
       const current = records.get(args.id);
       if (!current) return null;
       const updated = Object.freeze({ ...current, ...args });
@@ -316,6 +319,20 @@ const service = new AgentService({
   widgetDraftsRoot: join(dataPath, 'widgets', 'drafts'),
   eventPublisherService: eventPublisher,
   chats: createChats(),
+  chatScope: {
+    defaultCanvasId: 'canvas-image-fixture',
+    validate: async () => true,
+  },
+  widgetReferenceResolver: {
+    async resolve() {
+      return {
+        catalogGeneration: 1,
+        catalogDigestSha256: '0'.repeat(64),
+        references: [],
+      };
+    },
+    assertCurrent: async () => undefined,
+  },
   resourceService: resource,
 });
 await service.start({} as never);
@@ -340,8 +357,13 @@ service.settingsManager.setDefaultModelAndProvider(SYNTHETIC_PROVIDER, SYNTHETIC
 const agent = new Proxy(service, {
   get(target, property) {
     if (property === 'connectChat') {
-      return async (widgetId: string, sessionId: string, mode?: 'replace' | 'reuse') => {
-        const result = await target.connectChat(widgetId, sessionId, mode);
+      return async (
+        widgetId: string,
+        sessionId: string,
+        canvasId?: string,
+        mode?: 'replace' | 'reuse',
+      ) => {
+        const result = await target.connectChat(widgetId, sessionId, canvasId, mode);
         injectSyntheticTool(target, widgetId, sessionId);
         return result;
       };

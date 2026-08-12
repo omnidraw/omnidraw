@@ -90,9 +90,11 @@ export function fnWidgetBuildProcessEnvironment(
   const names = platform === 'win32'
     ? [...SAFE_PROCESS_ENVIRONMENT_NAMES, ...SAFE_WINDOWS_PROCESS_ENVIRONMENT_NAMES]
     : SAFE_PROCESS_ENVIRONMENT_NAMES;
+  const separator = platform === 'win32' ? '\\' : '/';
+  const buildHome = `${cwd.replace(/[\\/]+$/u, '')}${separator}.omnidraw${separator}process-home`;
   const safe: Record<string, string> = {
     CI: '1',
-    HOME: cwd,
+    HOME: buildHome,
     NO_COLOR: '1',
     NPM_CONFIG_FUND: 'false',
     NPM_CONFIG_UPDATE_NOTIFIER: 'false',

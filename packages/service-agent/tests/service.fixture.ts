@@ -28,6 +28,7 @@ export function createTestChats() {
     },
     async update(args: Readonly<{
       id: string;
+      canvasId?: string;
       name?: string;
       status?: TChatRecord['status'];
     }>) {
@@ -37,5 +38,34 @@ export function createTestChats() {
       records.set(args.id, updated);
       return updated;
     },
+  };
+}
+
+export function createTestChatScope() {
+  return {
+    defaultCanvasId: 'canvas-test',
+    validate: async () => true,
+  };
+}
+
+export function createTestWidgetReferenceResolver() {
+  return {
+    async resolve(references: readonly Readonly<{ name: string; source: 'draft' | 'published' }>[]) {
+      return {
+        catalogGeneration: 1,
+        catalogDigestSha256: '0'.repeat(64),
+        references: references.map((reference) => ({
+          widgetKey: reference.name,
+          requestedVariant: reference.source,
+          displayName: reference.name,
+          health: 'healthy' as const,
+          draftAvailable: false,
+          publicationAvailable: reference.source === 'published',
+          requirements: [],
+          editableDraft: null,
+        })),
+      };
+    },
+    assertCurrent: async () => undefined,
   };
 }

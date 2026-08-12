@@ -3,10 +3,14 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
-import { fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from '../src/prompts';
-import { createTestChats, createTestEvents } from './service.fixture';
+import {
+  createTestChats,
+  createTestChatScope,
+  createTestEvents,
+  createTestWidgetReferenceResolver,
+} from './service.fixture';
 
 const tempDirs: string[] = [];
 
@@ -27,6 +31,8 @@ async function createService(
     widgetDraftsRoot: join(dataPath, 'widgets', 'drafts'),
     eventPublisherService: createTestEvents(),
     chats,
+    chatScope: createTestChatScope(),
+    widgetReferenceResolver: createTestWidgetReferenceResolver(),
     resourceService,
     authorizeToolCall,
   });
@@ -75,10 +81,10 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`react` and `react-dom` to exactly `19.2.7`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Other npm libraries may be added with exact versions');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Vite compiles `.tsx`/`.jsx`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('frozen `npm ci`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('guest-owned `npm run build`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('does not install dependencies or compile source');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Package lifecycle hooks and the build script execute with the build-server');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portable repository commands');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Build atomically emits');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not call Omnidraw');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('untrusted receipt');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('retain the generated direct');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`@omnidraw/capsule` dependency');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`["DOM", "WEBGL"]`');
@@ -109,15 +115,19 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_validate`; it performs the frozen install');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('run `npm run check` and then');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`npm run build`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('host selection context is authoritative');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_wait');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_test');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `od_widget_preview_inspect`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`artifact_exact`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('bindings are absent and guest');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('isolated live interaction was not tested');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `mode: "preview"`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`mode: "artifact"`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('can never prove that');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not say the real Preview works');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('**Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('draft Preview title bar or draft detail page');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('frame-owned Preview revision');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor');
@@ -170,43 +180,6 @@ describe('AgentService.promptChat', () => {
     await expect(service.promptChat('widget', 'session', 'describe this', {
       images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
-  });
-
-  test('resolves typed resource IDs and persists trusted selection metadata', async () => {
-    const service = await createService({
-      getResource: async (id) => ({
-        id,
-        kind: id === 'kv-1' ? 'kv' : 'db',
-        name: id === 'kv-1' ? 'Preferences' : 'Notes Database',
-        status: 'ready',
-        lastError: null,
-        createdAtSec: '2026-01-01 00:00:00',
-        updatedAtSec: '2026-01-01 00:00:00',
-      }),
-    });
-    const sessionManager = {
-      entries: [] as any[],
-      appendCustomEntry(customType: string, data?: unknown) {
-        this.entries.push({ type: 'custom', customType, data });
-        return String(this.entries.length);
-      },
-      getEntries() { return this.entries; },
-    };
-    service.sessionMap.widget = {
-      session: {
-        unsub: () => {},
-        sessionManager: sessionManager as never,
-        session: { prompt: async () => {} } as never,
-      },
-    };
-
-    await service.promptChat('widget', 'session', 'Use @Notes Database', { resourceIds: ['db-1'] });
-    expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})).toEqual({
-      resources: [{ id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' }],
-      selectedAt: expect.any(String),
-    });
-    await service.promptChat('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
-    expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([]);
   });
 
   test('keeps the exact phase-free registry across reconnect and continuation errors', async () => {
@@ -334,7 +307,7 @@ describe('AgentService.promptChat', () => {
     const created = chats.records.get(sessionId);
     expect(created).toMatchObject({
       id: sessionId,
-      canvasId: null,
+      canvasId: 'canvas-test',
       name: 'AI Chat',
       status: 'active',
     });
@@ -511,6 +484,10 @@ describe('AgentService.promptChat', () => {
     await expect(service.editChatMessage(widgetId, sessionId, userId, 'blocked edit')).rejects.toThrow('operation is already active');
     await expect(service.connectChat(widgetId, sessionId, 'replace')).rejects.toThrow('operation is already active');
     await expect(service.newChatSession(widgetId, sessionId)).rejects.toThrow('operation is already active');
+    for (let attempt = 0; attempt < 50 && !releasePrompt; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    if (!releasePrompt) throw new Error('Prompt did not reach the session runtime.');
     releasePrompt?.();
     await activePrompt;
 
@@ -520,7 +497,10 @@ describe('AgentService.promptChat', () => {
       await new Promise<void>((resolve) => { releaseEdit = resolve });
     }) as never;
     const activeEdit = service.editChatMessage(widgetId, sessionId, userId, 'first edit');
-    for (let attempt = 0; attempt < 20 && !releaseEdit; attempt += 1) await Promise.resolve();
+    for (let attempt = 0; attempt < 50 && !releaseEdit; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    if (!releaseEdit) throw new Error('Edited prompt did not reach the session runtime.');
     await expect(service.editChatMessage(widgetId, sessionId, userId, 'second edit')).rejects.toThrow('operation is already active');
     await expect(service.promptChat(widgetId, sessionId, 'racing prompt')).rejects.toThrow('operation is already active');
     releaseEdit?.();

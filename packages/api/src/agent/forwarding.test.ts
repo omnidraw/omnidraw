@@ -18,10 +18,15 @@ describe('agent API forwarding', () => {
     } as never;
     const connect = apiChatConnect.callable({ context });
 
-    await connect({ widgetId: 'widget-1', sessionId: 'session-1', mode: 'replace' });
+    await connect({
+      canvasId: 'canvas-1',
+      widgetId: 'widget-1',
+      sessionId: 'session-1',
+      mode: 'replace',
+    });
 
     expect(calls).toEqual([
-      ['connect', 'widget-1', 'session-1', 'replace'],
+      ['connect', 'widget-1', 'session-1', 'canvas-1', 'replace'],
     ]);
   });
 
@@ -44,6 +49,7 @@ describe('agent API forwarding', () => {
 
     await history({ widgetId: 'widget-1', sessionId: 'session-1' });
     await edit({
+      canvasId: 'canvas-1',
       widgetId: 'widget-1',
       sessionId: 'session-1',
       entryId: 'entry-1',
@@ -55,6 +61,7 @@ describe('agent API forwarding', () => {
     expect(calls).toEqual([
       ['history', 'widget-1', 'session-1'],
       ['edit', 'widget-1', 'session-1', 'entry-1', 'corrected', {
+        canvasId: 'canvas-1',
         model: { provider: 'openai-codex', modelId: 'gpt-test' },
         thinkingLevel: 'high',
       }],

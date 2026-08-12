@@ -7,12 +7,25 @@ export type * from './types';
 export type * from './filesystem/typed';
 export {
   ZWidgetExecutableManifest,
+  ZWidgetBuildReceipt,
   ZWidgetManifestV1,
   ZWidgetReleaseDescriptor,
   ZWidgetUnsignedReleaseDescriptor,
   parseWidgetManifestV1Json,
+  parseWidgetBuildReceiptJson,
   parseWidgetReleaseJson,
 } from './filesystem/schema';
+export {
+  fnCanonicalizeWidgetBuildReceipt,
+  fnCanonicalizeWidgetBuildReceiptEvidence,
+  fnCanonicalizeWidgetPortableExecutableInput,
+  fnCanonicalizeWidgetPortableSource,
+  fnCreateWidgetBuildReceipt,
+  fnNormalizeWidgetBuildReceiptOutputs,
+  fnWidgetBuildReceiptIdentityMatches,
+  fnWidgetPortableExecutableInputDigest,
+  fnWidgetPortableSourceDigest,
+} from './core/fn.portable-build-receipt';
 export {
   ZWidgetBrowserFunctionDescriptor,
   ZWidgetBrowserFunctionDescriptors,
@@ -27,6 +40,8 @@ export {
   ZWidgetCapsuleChannelContract,
   ZWidgetCapsuleParkability,
   ZWidgetCapsuleSchemaReference,
+  ZWidgetExecutableResourceRequirement,
+  ZWidgetResourceId,
   ZWidgetResourceRequirement,
 } from './manifest-schema';
 export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
@@ -52,6 +67,10 @@ export {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
+  WIDGET_BUILD_RECEIPT_FORMAT,
+  WIDGET_BUILD_RECEIPT_MAX_BYTES,
+  WIDGET_BUILD_RECEIPT_OUTPUT_COUNT_MAX,
+  WIDGET_BUILD_RECEIPT_PATH,
   WIDGET_MANIFEST_V1_SCHEMA_URL,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_TOOL_GROUP_MAX_BYTES,
