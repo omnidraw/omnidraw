@@ -8,12 +8,13 @@ import type {
   TPrivateStreamOutput,
   TPrivateStreamPath,
 } from "@/core/app/private-operation-contract";
+import { PRIVATE_IDEMPOTENCY_INPUT_KEYS } from "@/core/app/private-operation-contract";
 import type { TApiError, TSafeResult } from "../framework/feature/sidebar/ports";
 import type { FrontendRpcConnection } from "./rpc";
 
 /** Operations whose current backend authority durably deduplicates this key. */
 export const FRONTEND_IDEMPOTENT_MUTATION_PATHS: ReadonlySet<TPrivateRequestPath> = new Set([
-  "canvas.execute",
+  ...Object.keys(PRIVATE_IDEMPOTENCY_INPUT_KEYS) as TPrivateRequestPath[],
 ]);
 
 export function frontendIdempotencyKey(
@@ -21,11 +22,14 @@ export function frontendIdempotencyKey(
   input: unknown,
   explicit?: string,
 ): string | undefined {
-  if (!FRONTEND_IDEMPOTENT_MUTATION_PATHS.has(path)) return undefined;
+  const inputKey = PRIVATE_IDEMPOTENCY_INPUT_KEYS[
+    path as keyof typeof PRIVATE_IDEMPOTENCY_INPUT_KEYS
+  ];
+  if (inputKey === undefined) return undefined;
   if (explicit !== undefined) return explicit;
-  if (path === "canvas.execute" && typeof input === "object" && input !== null) {
-    const commandId = (input as Readonly<Record<string, unknown>>).commandId;
-    return typeof commandId === "string" && commandId.length > 0 ? commandId : undefined;
+  if (typeof input === "object" && input !== null) {
+    const value = (input as Readonly<Record<string, unknown>>)[inputKey];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
   }
   return undefined;
 }

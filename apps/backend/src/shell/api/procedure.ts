@@ -64,6 +64,7 @@ type TStreamMarker<TSchema> = Readonly<{
 type TSchemaInput<TSchema> =
   TSchema extends { readonly _zod: { readonly output: infer Value } } ? Value
       : TSchema extends { readonly _input: infer Value } ? Value
+        : TSchema extends { decode(input: unknown): infer Value } ? Value
         : TSchema extends { parse(input: unknown): infer Value } ? Value
         : unknown;
 
@@ -71,6 +72,7 @@ type TSchemaOutput<TSchema> =
   TSchema extends TStreamMarker<infer ItemSchema> ? TSchemaOutput<ItemSchema>
     : TSchema extends { readonly _zod: { readonly output: infer Value } } ? Value
         : TSchema extends { readonly _output: infer Value } ? Value
+          : TSchema extends { decode(input: unknown): infer Value } ? Value
           : TSchema extends { parse(input: unknown): infer Value } ? Value
           : unknown;
 

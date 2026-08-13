@@ -8,12 +8,18 @@ import {
   PrivateStreamRpc as BackendPrivateStreamRpc,
 } from '../../apps/backend/src/shell/transport/rpc-contract'
 import {
+  applyOperationCursor,
+  assertOperationIdempotency,
+  PRIVATE_OPERATION_CONTRACTS,
+  PRIVATE_OPERATION_MANIFEST as BACKEND_OPERATION_MANIFEST,
   PRIVATE_REQUEST_PATHS as BACKEND_REQUEST_PATHS,
   PRIVATE_STREAM_PATHS as BACKEND_STREAM_PATHS,
   PRIVATE_OPERATION_CONTRACTS,
 } from '../../apps/backend/src/shell/transport/operation-contract'
 import { PrivateRpcError as FrontendPrivateRpcError } from '../../apps/frontend/src/core/app/private-rpc-error'
 import {
+  PRIVATE_CURSOR_INPUT_KEYS as FRONTEND_CURSOR_INPUT_KEYS,
+  PRIVATE_IDEMPOTENCY_INPUT_KEYS as FRONTEND_IDEMPOTENCY_INPUT_KEYS,
   PRIVATE_REQUEST_PATHS as FRONTEND_REQUEST_PATHS,
   PRIVATE_STREAM_PATHS as FRONTEND_STREAM_PATHS,
 } from '../../apps/frontend/src/core/app/private-operation-contract'
@@ -43,6 +49,48 @@ describe('private Effect RPC client/server contract parity', () => {
     expect(FRONTEND_STREAM_PATHS).toEqual(BACKEND_STREAM_PATHS)
     expect(new Set(BACKEND_REQUEST_PATHS).size).toBe(BACKEND_REQUEST_PATHS.length)
     expect(new Set(BACKEND_STREAM_PATHS).size).toBe(BACKEND_STREAM_PATHS.length)
+    expect(BACKEND_REQUEST_PATHS).toHaveLength(87)
+    expect(BACKEND_STREAM_PATHS).toHaveLength(6)
+  })
+
+  test('keeps dispatch, codecs, error policy, replay, and cursor metadata on every registry entry', () => {
+    expect(PRIVATE_OPERATION_CONTRACTS.size).toBe(93)
+    for (const entry of PRIVATE_OPERATION_CONTRACTS.values()) {
+      expect(typeof entry.path).toBe('string')
+      expect(entry.procedure).toBeDefined()
+      expect(typeof entry.decodeInput).toBe('function')
+      expect(typeof entry.decodeOutput).toBe('function')
+      expect(typeof entry.errorPolicy).toBe('function')
+      expect(['core', 'procedure']).toContain(entry.adapter.kind)
+      if (entry.mode === 'stream') expect(entry.cursor).not.toBeNull()
+      else expect(entry.cursor).toBeNull()
+    }
+
+    const backendIdempotency = Object.fromEntries(BACKEND_OPERATION_MANIFEST.flatMap((entry) => (
+      entry.idempotencyInputKey === null ? [] : [[entry.path, entry.idempotencyInputKey]]
+    )))
+    const backendCursors = Object.fromEntries(BACKEND_OPERATION_MANIFEST.flatMap((entry) => (
+      entry.cursorInputKey === null ? [] : [[entry.path, entry.cursorInputKey]]
+    )))
+    expect(FRONTEND_IDEMPOTENCY_INPUT_KEYS).toEqual(backendIdempotency)
+    expect(FRONTEND_CURSOR_INPUT_KEYS).toEqual(backendCursors)
+  })
+
+  test('applies every registry cursor and idempotency rule without overriding explicit input', () => {
+    for (const path of BACKEND_STREAM_PATHS) {
+      const operation = PRIVATE_OPERATION_CONTRACTS.get(path)
+      expect(operation).toBeDefined()
+      const cursorKey = operation!.cursor!.inputKey
+      expect(applyOperationCursor(operation!, {}, 17)).toEqual({ [cursorKey]: 17 })
+      expect(applyOperationCursor(operation!, { [cursorKey]: 9 }, 17)).toEqual({ [cursorKey]: 9 })
+    }
+
+    const execute = PRIVATE_OPERATION_CONTRACTS.get('canvas.execute')!
+    expect(() => assertOperationIdempotency(execute, { commandId: 'command-1' }, 'command-1')).not.toThrow()
+    expect(() => assertOperationIdempotency(execute, { commandId: 'command-1' }, 'command-2'))
+      .toThrow('Canvas command idempotency key must equal commandId.')
+    const create = PRIVATE_OPERATION_CONTRACTS.get('canvas.create')!
+    expect(() => assertOperationIdempotency(create, { name: 'Canvas' }, 'ignored-by-policy')).not.toThrow()
   })
 
   test('attaches one correctly classified payload and output codec to every operation', () => {

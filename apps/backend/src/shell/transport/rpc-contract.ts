@@ -3,18 +3,10 @@ import { Rpc, RpcGroup } from 'effect/unstable/rpc';
 import {
   PrivateRequestPath,
   PrivateStreamPath,
-  PrivateWireValue,
 } from './operation-contract';
+import { PrivateRpcError, PrivateWireValue } from './private-rpc-error';
 
-export class PrivateRpcError extends Schema.TaggedError<PrivateRpcError>()(
-  'PrivateRpcError',
-  {
-    code: Schema.String,
-    status: Schema.Number,
-    message: Schema.String,
-    details: PrivateWireValue,
-  },
-) {}
+export { PrivateRpcError } from './private-rpc-error';
 
 export const PrivateRequestRpc = Rpc.make('omnidraw.request.v1', {
   payload: {
