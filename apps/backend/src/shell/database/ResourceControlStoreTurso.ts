@@ -26,6 +26,7 @@ import type {
   TUpdateResourceStateRequest,
 } from '#backend/shell/resources';
 import { fnNormalizeResourceName, fnResourceNameKey } from '#backend/core/database/fn.resource-name';
+import { ResourceError } from '#backend/core/resources/ResourceError';
 import {
   fnResourceControlStoreDbApply,
   fnResourceControlStoreDbBackup,
@@ -50,8 +51,8 @@ const DB_APPLY_LIST_MAX_LIMIT = 100;
 function resourceNameError(
   code: 'RESOURCE_NAME_INVALID' | 'RESOURCE_NAME_CONFLICT',
   message: string,
-): Error {
-  return Object.assign(new Error(message), { code });
+): ResourceError {
+  return new ResourceError(code, message);
 }
 
 function isLeapYear(year: number): boolean {

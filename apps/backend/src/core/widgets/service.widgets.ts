@@ -1,4 +1,11 @@
-import { Context, type Effect, type Stream } from 'effect';
+import { Context, Schema, type Effect, type Stream } from 'effect';
+import {
+  attachSemanticFailureCause,
+  EMPTY_SEMANTIC_FAILURE_DETAILS,
+  SemanticFailureDetails,
+  type TSemanticFailureDetails,
+  type TSemanticFailureFields,
+} from '../semantic-failure';
 
 export type TWidgetCatalogEntry = Readonly<{
   widgetKey: string;
@@ -21,12 +28,33 @@ export type TWidgetPublicationResult = Readonly<{
   published: boolean;
 }>;
 
-export class WidgetProgramError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'WidgetProgramError';
-    this.code = code;
+export const WIDGET_PROGRAM_ERROR_CODES = Object.freeze([
+  'WIDGET_CATALOG_CHANGED',
+  'WIDGET_CURSOR_INVALID',
+  'WIDGET_NOT_FOUND',
+  'WIDGET_UNAVAILABLE',
+] as const);
+
+export type TWidgetProgramErrorCode = typeof WIDGET_PROGRAM_ERROR_CODES[number];
+
+export class WidgetProgramError extends Schema.TaggedError<WidgetProgramError>()(
+  'WidgetProgramError',
+  {
+    code: Schema.Literals(WIDGET_PROGRAM_ERROR_CODES),
+    message: Schema.String,
+    details: SemanticFailureDetails,
+  },
+) {
+  constructor(
+    codeOrFields: TWidgetProgramErrorCode | TSemanticFailureFields<TWidgetProgramErrorCode>,
+    message?: string,
+    details: TSemanticFailureDetails = EMPTY_SEMANTIC_FAILURE_DETAILS,
+    options?: ErrorOptions,
+  ) {
+    super(typeof codeOrFields === 'string'
+      ? { code: codeOrFields, message: message ?? codeOrFields, details }
+      : codeOrFields);
+    attachSemanticFailureCause(this, options?.cause);
   }
 }
 

@@ -519,6 +519,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D12](d/D12.md) - PRD refactor characterization guardrails (order 1/7)
 - [x]: [D13](d/D13.md) - backend: remove ambiguous event and mutation-ledger ownership (order 2/7)
 - [x]: [D14](d/D14.md) - private RPC operation registry authority (order 4/7)
+- [x]: [D15](d/D15.md) - standardize expected semantic failures (order 5/7)
 
 ## Pragmatic Code Style
 

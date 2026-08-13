@@ -37,30 +37,12 @@ import { CanvasAuthorityError } from '#backend/core/canvas/errors';
 
 type TSceneNode = TCanvasItemSnapshot['item'];
 
-export type TCanvasServiceErrorCode =
-  | 'NOT_FOUND'
-  | 'INVALID_COMMAND'
-  | 'LIMIT_EXCEEDED'
-  | 'CONFLICT'
-  | 'STORE_CONFLICT'
-  | 'POST_COMMIT_FAILURE';
-
-export class CanvasServiceError extends Error {
-  readonly code: TCanvasServiceErrorCode;
-  readonly details: Readonly<Record<string, unknown>>;
-
-  constructor(
-    code: TCanvasServiceErrorCode,
-    message: string,
-    details: Readonly<Record<string, unknown>> = {},
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-    this.name = 'CanvasServiceError';
-    this.code = code;
-    this.details = details;
-  }
-}
+export type TCanvasServiceErrorCode = Exclude<
+  import('#backend/core/canvas/errors').TCanvasAuthorityErrorCode,
+  'UNAVAILABLE'
+>;
+export type CanvasServiceError = CanvasAuthorityError;
+export const CanvasServiceError = CanvasAuthorityError;
 
 type TResolvedOptions = Required<TCanvasServiceOptions>;
 

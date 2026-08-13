@@ -10,6 +10,10 @@ import type {
 } from '../types';
 import type { IFunctionSchemaValidator } from './JsonSchemaFunctionValidator';
 import { fnCanonicalJson } from './fn.canonical-json';
+import {
+  FunctionProgramError,
+  type TFunctionProgramErrorCode,
+} from '../../../core/functions/service.functions';
 
 const HARD_TIMEOUT_MS = 30_000;
 const MAX_INPUT_BYTES = 1_048_576;
@@ -28,8 +32,8 @@ export type TDirectFunctionExecutorDiagnostics = Readonly<{
   maxConcurrent: number;
 }>;
 
-function errorWithCode(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code });
+function errorWithCode(code: TFunctionProgramErrorCode, message: string): FunctionProgramError {
+  return new FunctionProgramError(code, message);
 }
 
 function failure(owner: TFunctionFailure['owner'], code: string, message: string): TFunctionFailure {

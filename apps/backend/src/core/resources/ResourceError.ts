@@ -2,23 +2,36 @@
  * @file Stable resource-domain errors and safe serialization at transport boundaries.
  */
 
-import type { TResourceErrorCode, TSafeResourceError } from './types';
+import { Schema } from 'effect';
+import {
+  attachSemanticFailureCause,
+  EMPTY_SEMANTIC_FAILURE_DETAILS,
+  SemanticFailureDetails,
+  type TSemanticFailureDetails,
+  type TSemanticFailureFields,
+} from '../semantic-failure';
+import { RESOURCE_ERROR_CODES, type TResourceErrorCode, type TSafeResourceError } from './types';
 
 const SENSITIVE_DETAIL_KEY = /(?:credential|key_material|parameter|password|path|secret|sql|token|value)/i;
 
-export class ResourceError extends Error {
-  readonly code: TResourceErrorCode;
-  readonly details?: Readonly<Record<string, unknown>>;
-
+export class ResourceError extends Schema.TaggedError<ResourceError>()(
+  'ResourceError',
+  {
+    code: Schema.Literals(RESOURCE_ERROR_CODES),
+    message: Schema.String,
+    details: SemanticFailureDetails,
+  },
+) {
   constructor(
-    code: TResourceErrorCode,
-    message: string,
-    details?: Readonly<Record<string, unknown>>,
+    codeOrFields: TResourceErrorCode | TSemanticFailureFields<TResourceErrorCode>,
+    message?: string,
+    details: TSemanticFailureDetails = EMPTY_SEMANTIC_FAILURE_DETAILS,
+    options?: ErrorOptions,
   ) {
-    super(message);
-    this.name = 'ResourceError';
-    this.code = code;
-    this.details = details;
+    super(typeof codeOrFields === 'string'
+      ? { code: codeOrFields, message: message ?? codeOrFields, details }
+      : codeOrFields);
+    attachSemanticFailureCause(this, options?.cause);
   }
 }
 
@@ -70,12 +83,10 @@ export function toSafeResourceError(error: unknown): TSafeResourceError {
     };
   }
 
-  const details = error.details === undefined
-    ? undefined
-    : safeDetailValue(error.details, new Set()) as Readonly<Record<string, unknown>> | undefined;
+  const details = safeDetailValue(error.details, new Set()) as TSemanticFailureDetails;
   return {
     code: error.code,
     message: error.message,
-    ...(details && Object.keys(details).length > 0 ? { details } : {}),
+    ...(Object.keys(details).length > 0 ? { details } : {}),
   };
 }

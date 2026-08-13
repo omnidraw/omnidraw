@@ -26,7 +26,6 @@ import {
 } from '#backend/shell/widget-runtime/build';
 import {
   CanvasService,
-  CanvasServiceError,
   type ICanvasService,
 } from '#backend/shell/canvas/authority';
 import { CANVAS_WIDGET_EXTENSION_KEY } from '@omnidraw/canvas-contract/CONSTANTS';

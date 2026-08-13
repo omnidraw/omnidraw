@@ -1,6 +1,6 @@
 import { Effect, Layer, Queue, Stream } from 'effect';
 import { fnNormalizeCanonicalJson } from '../../core/fn.canonical-json';
-import { AgentServiceError } from '../../core/agent/error.agent-service';
+import type { TSemanticFailureDetails } from '../../core/semantic-failure';
 import {
   AgentAuthority,
   AgentProgramError,
@@ -21,6 +21,7 @@ import {
   ResourceProgramError,
   type IResourceAuthority,
 } from '../../core/resources/service.resources';
+import { ResourceError, toSafeResourceError } from '../../core/resources/ResourceError';
 import type { TResourceDescriptor, TResourceErrorCode } from '../../core/resources/types';
 import {
   WidgetStateAuthority,
@@ -41,21 +42,24 @@ import {
   LiveWidgetState,
 } from './service.live-mechanics';
 
-function codeOf(error: unknown, fallback: string): string {
-  return typeof error === 'object' && error !== null && 'code' in error
-    && typeof error.code === 'string'
-    ? error.code
-    : fallback;
-}
-
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
 function agentFailure(error: unknown): AgentProgramError {
+  if (error instanceof AgentProgramError) return error;
+  if (error instanceof EventProgramError) {
+    return new AgentProgramError(
+      error.code === 'EVENT_UNAVAILABLE' ? 'AGENT_UNAVAILABLE' : error.code,
+      error.message,
+      error.details,
+      { cause: error },
+    );
+  }
   return new AgentProgramError(
-    error instanceof AgentServiceError ? error.code : codeOf(error, 'AGENT_UNAVAILABLE'),
+    'AGENT_UNAVAILABLE',
     messageOf(error, 'Agent authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -97,9 +101,11 @@ export const layerAgentAuthorityLive = Layer.effect(
 );
 
 function eventFailure(error: unknown): EventProgramError {
+  if (error instanceof EventProgramError) return error;
   return new EventProgramError(
-    codeOf(error, 'EVENT_UNAVAILABLE'),
+    'EVENT_UNAVAILABLE',
     messageOf(error, 'Event authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -136,9 +142,15 @@ export const layerEventAuthorityLive = Layer.effect(
 );
 
 function resourceFailure(error: unknown): ResourceProgramError {
+  if (error instanceof ResourceProgramError) return error;
+  if (error instanceof ResourceError) {
+    const safe = toSafeResourceError(error);
+    return new ResourceProgramError(safe.code, safe.message, safe.details ?? {}, { cause: error });
+  }
   return new ResourceProgramError(
-    codeOf(error, 'RESOURCE_UNAVAILABLE'),
+    'RESOURCE_UNAVAILABLE',
     messageOf(error, 'Resource authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -156,7 +168,7 @@ export function resourceAuthorityFromLive(
         message: value.lastError.message,
         ...('details' in value.lastError && typeof value.lastError.details === 'object'
           && value.lastError.details !== null
-          ? { details: value.lastError.details as Readonly<Record<string, unknown>> }
+          ? { details: fnNormalizeCanonicalJson(value.lastError.details) as TSemanticFailureDetails }
           : {}),
       }
       : null;
@@ -184,9 +196,11 @@ export const layerResourceAuthorityLive = Layer.effect(
 );
 
 function functionFailure(error: unknown): FunctionProgramError {
+  if (error instanceof FunctionProgramError) return error;
   return new FunctionProgramError(
-    codeOf(error, 'FUNCTION_UNAVAILABLE'),
+    'FUNCTION_UNAVAILABLE',
     messageOf(error, 'Function authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -216,9 +230,11 @@ export const layerFunctionAuthorityLive = Layer.effect(
 );
 
 function stateFailure(error: unknown): WidgetStateProgramError {
+  if (error instanceof WidgetStateProgramError) return error;
   return new WidgetStateProgramError(
-    codeOf(error, 'WIDGET_STATE_UNAVAILABLE'),
+    'WIDGET_STATE_UNAVAILABLE',
     messageOf(error, 'Widget state authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -255,9 +271,11 @@ export const layerWidgetStateAuthorityLive = Layer.effect(
 );
 
 function widgetFailure(error: unknown): WidgetProgramError {
+  if (error instanceof WidgetProgramError) return error;
   return new WidgetProgramError(
-    codeOf(error, 'WIDGET_UNAVAILABLE'),
+    'WIDGET_UNAVAILABLE',
     messageOf(error, 'Widget authority is unavailable.'),
+    {},
     { cause: error },
   );
 }
@@ -305,9 +323,14 @@ export function widgetAuthorityFromLive(
           || before.digestSha256 !== request.expectedCatalogDigestSha256
           || draft?.manifestDigestSha256 !== request.expectedManifestDigestSha256
         ) {
-          throw Object.assign(new Error('Widget catalog generation changed.'), {
-            code: 'WIDGET_CATALOG_CHANGED',
-          });
+          throw new WidgetProgramError(
+            'WIDGET_CATALOG_CHANGED',
+            'Widget catalog generation changed.',
+            {
+              expectedGeneration: request.expectedGeneration,
+              observedGeneration: before.generation,
+            },
+          );
         }
         const mutation = await catalog.buildAndPublish({
           widgetKey: request.widgetKey,
@@ -329,6 +352,10 @@ export function widgetAuthorityFromLive(
         return Stream.fail(new WidgetProgramError(
           'WIDGET_CURSOR_INVALID',
           'Widget publication cursor is ahead of authority; refresh the catalog.',
+          {
+            afterGeneration: request.afterGeneration ?? 0,
+            currentGeneration: latestGeneration,
+          },
         ));
       }
       return Stream.callback<TPublication, WidgetProgramError>((queue) => Effect.acquireRelease(

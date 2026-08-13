@@ -1,22 +1,42 @@
-import { Context, type Effect } from 'effect';
+import { Context, Schema, type Effect } from 'effect';
 import type {
   TResourceDescriptor,
   TResourceId,
   TResourceKind,
   TResourceStatus,
 } from './types';
+import { RESOURCE_ERROR_CODES, type TResourceErrorCode } from './types';
+import {
+  attachSemanticFailureCause,
+  EMPTY_SEMANTIC_FAILURE_DETAILS,
+  SemanticFailureDetails,
+  type TSemanticFailureDetails,
+  type TSemanticFailureFields,
+} from '../semantic-failure';
 
 export type TResourceCatalogFilter = Readonly<{
   kind?: TResourceKind;
   status?: TResourceStatus;
 }>;
 
-export class ResourceProgramError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'ResourceProgramError';
-    this.code = code;
+export class ResourceProgramError extends Schema.TaggedError<ResourceProgramError>()(
+  'ResourceProgramError',
+  {
+    code: Schema.Literals(RESOURCE_ERROR_CODES),
+    message: Schema.String,
+    details: SemanticFailureDetails,
+  },
+) {
+  constructor(
+    codeOrFields: TResourceErrorCode | TSemanticFailureFields<TResourceErrorCode>,
+    message?: string,
+    details: TSemanticFailureDetails = EMPTY_SEMANTIC_FAILURE_DETAILS,
+    options?: ErrorOptions,
+  ) {
+    super(typeof codeOrFields === 'string'
+      ? { code: codeOrFields, message: message ?? codeOrFields, details }
+      : codeOrFields);
+    attachSemanticFailureCause(this, options?.cause);
   }
 }
 

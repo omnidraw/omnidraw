@@ -1,4 +1,4 @@
-import { Context, type Effect, type Stream } from 'effect';
+import { Context, Schema, type Effect, type Stream } from 'effect';
 import type {
   TWidgetStateChangeArgs,
   TWidgetStateChangeResult,
@@ -7,13 +7,39 @@ import type {
   TWidgetStateSubscribeArgs,
   TWidgetStateSubscriptionEvent,
 } from './types';
+import {
+  attachSemanticFailureCause,
+  EMPTY_SEMANTIC_FAILURE_DETAILS,
+  SemanticFailureDetails,
+  type TSemanticFailureDetails,
+  type TSemanticFailureFields,
+} from '../semantic-failure';
 
-export class WidgetStateProgramError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'WidgetStateProgramError';
-    this.code = code;
+export const WIDGET_STATE_PROGRAM_ERROR_CODES = Object.freeze([
+  'WIDGET_STATE_CAPACITY_UNAVAILABLE',
+  'WIDGET_STATE_UNAVAILABLE',
+] as const);
+
+export type TWidgetStateProgramErrorCode = typeof WIDGET_STATE_PROGRAM_ERROR_CODES[number];
+
+export class WidgetStateProgramError extends Schema.TaggedError<WidgetStateProgramError>()(
+  'WidgetStateProgramError',
+  {
+    code: Schema.Literals(WIDGET_STATE_PROGRAM_ERROR_CODES),
+    message: Schema.String,
+    details: SemanticFailureDetails,
+  },
+) {
+  constructor(
+    codeOrFields: TWidgetStateProgramErrorCode | TSemanticFailureFields<TWidgetStateProgramErrorCode>,
+    message?: string,
+    details: TSemanticFailureDetails = EMPTY_SEMANTIC_FAILURE_DETAILS,
+    options?: ErrorOptions,
+  ) {
+    super(typeof codeOrFields === 'string'
+      ? { code: codeOrFields, message: message ?? codeOrFields, details }
+      : codeOrFields);
+    attachSemanticFailureCause(this, options?.cause);
   }
 }
 

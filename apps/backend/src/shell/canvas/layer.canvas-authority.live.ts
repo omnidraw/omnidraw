@@ -1,6 +1,5 @@
 import {
   CanvasService,
-  CanvasServiceError,
   type ICanvasService,
   type ICanvasStore,
 } from '#backend/shell/canvas/authority';
@@ -14,9 +13,6 @@ import { LiveCanvas } from '../runtime/service.live-mechanics';
 
 function mapCanvasError(error: unknown): CanvasAuthorityError {
   if (error instanceof CanvasAuthorityError) return error;
-  if (error instanceof CanvasServiceError) {
-    return new CanvasAuthorityError(error.code, error.message, error.details, { cause: error });
-  }
   return new CanvasAuthorityError('UNAVAILABLE', 'Canvas authority adapter failed.', {}, { cause: error });
 }
 

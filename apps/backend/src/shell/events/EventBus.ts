@@ -1,4 +1,5 @@
 import type { TSequencedEvent } from '#backend/shell/events/types';
+import { EventProgramError } from '#backend/core/events/service.events';
 
 type TEventRecord<TEvent> = Readonly<{
   event: TEvent;
@@ -17,27 +18,33 @@ type TSubscriber<TEvent> = {
   queue: TEventRecord<TEvent>[];
 };
 
-export class EventSubscriberOverflowError extends Error {
-  readonly code = 'EVENT_SUBSCRIBER_OVERFLOW';
+export class EventSubscriberOverflowError extends EventProgramError {
   constructor(readonly capacity: number) {
-    super(`Event subscriber exceeded its bounded capacity of ${capacity}.`);
-    this.name = 'EventSubscriberOverflowError';
+    super(
+      'EVENT_SUBSCRIBER_OVERFLOW',
+      `Event subscriber exceeded its bounded capacity of ${capacity}.`,
+      { capacity },
+    );
   }
 }
 
-export class EventCursorInvalidError extends Error {
-  readonly code = 'EVENT_CURSOR_INVALID';
+export class EventCursorInvalidError extends EventProgramError {
   constructor(readonly afterSequence: number, readonly currentSequence: number) {
-    super(`Event cursor ${afterSequence} is ahead of authority ${currentSequence}; resync is required.`);
-    this.name = 'EventCursorInvalidError';
+    super(
+      'EVENT_CURSOR_INVALID',
+      `Event cursor ${afterSequence} is ahead of authority ${currentSequence}; resync is required.`,
+      { afterSequence, currentSequence },
+    );
   }
 }
 
-export class EventReplayUnavailableError extends Error {
-  readonly code = 'EVENT_REPLAY_UNAVAILABLE';
+export class EventReplayUnavailableError extends EventProgramError {
   constructor(readonly afterSequence: number, readonly earliestSequence: number) {
-    super(`Events after cursor ${afterSequence} are no longer retained; resync from ${earliestSequence} is required.`);
-    this.name = 'EventReplayUnavailableError';
+    super(
+      'EVENT_REPLAY_UNAVAILABLE',
+      `Events after cursor ${afterSequence} are no longer retained; resync from ${earliestSequence} is required.`,
+      { afterSequence, earliestSequence },
+    );
   }
 }
 

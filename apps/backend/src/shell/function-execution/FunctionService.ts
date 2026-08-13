@@ -16,6 +16,10 @@ import type { ICanvasService } from '#backend/shell/canvas/authority';
 import type { TResourceRequirement } from '#backend/shell/resources';
 import type { WidgetFilesystemRuntimeCatalog } from '../widget/WidgetFilesystemRuntimeCatalog';
 import type { ResourceService } from '../resources/ResourceService';
+import {
+  FunctionProgramError,
+  type TFunctionProgramErrorCode,
+} from '../../core/functions/service.functions';
 
 type TFunctionServiceConfig = Readonly<{
   canvas: ICanvasService;
@@ -26,8 +30,8 @@ type TFunctionServiceConfig = Readonly<{
   nowMs: () => number;
 }>;
 
-function functionServiceError(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code });
+function functionServiceError(code: TFunctionProgramErrorCode, message: string): FunctionProgramError {
+  return new FunctionProgramError(code, message);
 }
 
 function widgetExtension(

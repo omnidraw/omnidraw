@@ -558,6 +558,49 @@ describe('application and import boundaries', () => {
     expect(violations).toEqual([])
   })
 
+  test('keeps expected backend semantic failures schema-backed and explicitly mapped', async () => {
+    const featureFailures = [
+      'apps/backend/src/core/agent/service.agent.ts',
+      'apps/backend/src/core/canvas/errors.ts',
+      'apps/backend/src/core/database/service.database.ts',
+      'apps/backend/src/core/events/service.events.ts',
+      'apps/backend/src/core/functions/service.functions.ts',
+      'apps/backend/src/core/resources/ResourceError.ts',
+      'apps/backend/src/core/resources/service.resources.ts',
+      'apps/backend/src/core/widget-state/service.widget-state.ts',
+      'apps/backend/src/core/widgets/service.widgets.ts',
+    ]
+    for (const relativePath of featureFailures) {
+      const source = await readFile(join(ROOT, relativePath), 'utf8')
+      expect(source, `${relativePath} does not own a schema-tagged failure`).toContain('Schema.TaggedError')
+      expect(source, `${relativePath} does not bound its failure codes`).toContain('Schema.Literals')
+      expect(source, `${relativePath} accepts an arbitrary failure code`).not.toContain('readonly code: string')
+    }
+
+    const coreSources = await Promise.all(
+      (await sourceFiles(join(ROOT, 'apps/backend/src/core')))
+        .filter((file) => !isTestSource(file))
+        .map((file) => readFile(file, 'utf8')),
+    )
+    expect(coreSources.join('\n')).not.toMatch(/class\s+\w*Error\s+extends\s+Error\b/)
+
+    const mapper = await readFile(
+      join(ROOT, 'apps/backend/src/shell/transport/semantic-failure.ts'),
+      'utf8',
+    )
+    expect(mapper).toContain('Readonly<Record<TResourceErrorCode, number>>')
+    expect(mapper).toContain('semanticFailureLogFields')
+    expect(mapper).toContain('semanticFailureToPrivateRpcError')
+    expect(mapper).not.toMatch(/error\.code\.(?:includes|startsWith|endsWith)\s*\(/)
+
+    const dispatcher = await readFile(
+      join(ROOT, 'apps/backend/src/shell/transport/layer.rpc-dispatcher.live.ts'),
+      'utf8',
+    )
+    expect(dispatcher).toContain('semanticFailureToPrivateRpcError(error)')
+    expect(dispatcher).not.toMatch(/error\.code\.(?:includes|startsWith|endsWith)\s*\(/)
+  })
+
   test('runs substantive live and simulated conformance for every application domain', async () => {
     const required = Object.freeze({
       'apps/backend': [
