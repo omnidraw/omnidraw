@@ -365,7 +365,7 @@ function parseOutput(procedure: PrivateProcedure, output: unknown): unknown {
   }
 }
 
-function assertIdempotencyKey(
+export function assertIdempotencyKey(
   path: string,
   input: unknown,
   idempotencyKey: string | undefined,
@@ -382,7 +382,7 @@ function assertIdempotencyKey(
   }
 }
 
-function resumeInput(path: string, input: unknown, afterCursor: number | undefined): unknown {
+export function resumeInput(path: string, input: unknown, afterCursor: number | undefined): unknown {
   if (
     afterCursor === undefined
     || typeof input !== 'object'

@@ -17,6 +17,7 @@ describe('agent simulation conformance', () => {
     expect(result).toEqual({
       historyCount: 1,
       eventSequence: 1,
+      eventKind: 'widget-catalog',
       terminalCode: 'EVENT_CURSOR_INVALID',
     });
   });

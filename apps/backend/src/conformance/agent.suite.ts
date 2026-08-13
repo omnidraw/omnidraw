@@ -4,8 +4,22 @@ import { fxAgentEvents } from '../core/agent/fx.events';
 import { fxReadAgentHistory } from '../core/agent/fx.history';
 import type { AgentAuthority } from '../core/agent/service.agent';
 
+const agentEventKind = (event: unknown): string => (
+  typeof event === 'object'
+    && event !== null
+    && 'kind' in event
+    && typeof event.kind === 'string'
+    ? event.kind
+    : 'chat'
+);
+
 export function runAgentConformance(): Effect.Effect<
-  Readonly<{ historyCount: number; eventSequence: number; terminalCode: string }>,
+  Readonly<{
+    historyCount: number;
+    eventSequence: number;
+    eventKind: string;
+    terminalCode: string;
+  }>,
   unknown,
   AgentAuthority
 > {
@@ -24,15 +38,18 @@ export function runAgentConformance(): Effect.Effect<
     const future = yield* fxAgentEvents({ afterSequence: 100 });
     const terminal = yield* Effect.flip(Stream.runHead(future));
     if (
-      history.length !== connected.messageHistory.length
-      || reconnected.messageHistory.length !== connected.messageHistory.length
+      JSON.stringify(history) !== JSON.stringify(connected.messageHistory)
+      || JSON.stringify(reconnected.messageHistory) !== JSON.stringify(connected.messageHistory)
       || record._tag !== 'Some'
+      || record.value.sequence !== 1
+      || agentEventKind(record.value.event) !== 'widget-catalog'
     ) {
       return yield* Effect.die('Agent authority violated connect/history/cursor semantics.');
     }
     return {
       historyCount: history.length,
       eventSequence: record.value.sequence,
+      eventKind: agentEventKind(record.value.event),
       terminalCode: terminal.code,
     };
   });

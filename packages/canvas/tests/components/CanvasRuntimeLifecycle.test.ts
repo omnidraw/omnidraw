@@ -151,6 +151,48 @@ describe("CanvasRuntimeLifecycle", () => {
     expect(lifecycle.activeRuntime).toBeNull();
   });
 
+  test("disposal invalidates a pending boot and resolves after its cleanup", async () => {
+    const boot = deferred();
+    const bootStarted = deferred();
+    const shutdown = deferred();
+    const active = runtime("active");
+    active.bootEffect.mockImplementation(() => Effect.tryPromise({
+      try: () => {
+        bootStarted.resolve();
+        return boot.promise;
+      },
+      catch: (cause) => cause,
+    }));
+    active.shutdownEffect.mockImplementation(() => Effect.tryPromise({
+      try: () => shutdown.promise,
+      catch: (cause) => cause,
+    }));
+    const onBootSuccess = vi.fn();
+    const onBootError = vi.fn();
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: () => active,
+      onBootSuccess,
+      onBootError,
+    });
+
+    const replacement = lifecycle.replace("active");
+    await bootStarted.promise;
+    let disposeSettled = false;
+    const disposal = lifecycle.dispose().finally(() => {
+      disposeSettled = true;
+    });
+    boot.resolve();
+    await vi.waitFor(() => expect(active.shutdownEffect).toHaveBeenCalledTimes(1));
+
+    expect(disposeSettled).toBe(false);
+    shutdown.resolve();
+    await Promise.all([replacement, disposal]);
+    expect(onBootSuccess).not.toHaveBeenCalled();
+    expect(onBootError).not.toHaveBeenCalled();
+    expect(active.shutdownEffect).toHaveBeenCalledTimes(1);
+    expect(lifecycle.activeRuntime).toBeNull();
+  });
+
   test("isolates shutdown failures and continues replacement", async () => {
     const first = runtime("first");
     first.shutdownEffect.mockReturnValueOnce(Effect.fail(new Error("cleanup failed")));

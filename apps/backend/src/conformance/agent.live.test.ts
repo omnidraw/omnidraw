@@ -43,6 +43,7 @@ describe('agent live conformance', () => {
       expect(result).toEqual({
         historyCount: 0,
         eventSequence: 1,
+        eventKind: 'widget-catalog',
         terminalCode: 'EVENT_CURSOR_INVALID',
       });
     } finally {

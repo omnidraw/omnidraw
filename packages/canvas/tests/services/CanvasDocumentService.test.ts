@@ -568,6 +568,37 @@ describe('CanvasDocumentService', () => {
     await service.dispose();
   });
 
+  test('releases partial startup ownership and can reacquire after snapshot failure', async () => {
+    const failure = new Error('initial snapshot unavailable');
+    const queue = eventQueue();
+    const getSnapshot = vi.fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(snapshot([]));
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('not used');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+
+    await expect(service.start(fake.engine)).rejects.toBe(failure);
+    expect(fake.destroyRegistrations).toHaveBeenCalledTimes(1);
+    expect(service.revision).toBe(0);
+
+    await expect(service.start(fake.engine)).resolves.toBeUndefined();
+    expect(getSnapshot).toHaveBeenCalledTimes(2);
+    await service.dispose();
+    expect(fake.destroyRegistrations).toHaveBeenCalledTimes(2);
+  });
+
   test('reprojects semantic paint without a durable edit and preserves authored fallback', async () => {
     const semantic = rect('semantic');
     semantic.fill = {

@@ -10,8 +10,11 @@ describe('events simulation conformance', () => {
     ));
     expect(result).toEqual({
       firstSequence: 1,
-      replayedSequence: 1,
-      cursorCount: 1,
+      replayed: [
+        { sequence: 1, kind: 'widget-catalog' },
+        { sequence: 2, kind: 'widgetupdate' },
+      ],
+      afterCursor: [{ sequence: 2, kind: 'widgetupdate' }],
       terminalCode: 'EVENT_CURSOR_INVALID',
     });
   });

@@ -224,6 +224,7 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
 }));
 
 import { buildRuntime } from '../src/runtime';
+import { CanvasRuntimeLifecycle } from '../src/components/CanvasRuntimeLifecycle';
 import {
   fnCanvasBackgroundProjection,
 } from '../src/fn.canvas-background-projection';
@@ -615,6 +616,64 @@ describe('canvas runtime composition', () => {
     runtimeState.theme = BUILTIN_THEMES[1]!;
     lateThemeChange?.(BUILTIN_THEMES[1]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
+  });
+
+  test('releases only acquired resources after partial startup fails', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const bootFailure = new Error('initial document snapshot failed');
+    const onBootError = vi.fn();
+    runtimeState.documentStartHook = () => {
+      throw bootFailure;
+    };
+    const runtime = buildRuntime({
+      canvasId: 'canvas-partial',
+      container,
+      transport: {} as never,
+      createId: () => 'id-partial',
+      wait,
+      themeService,
+    });
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: () => runtime,
+      onBootError,
+    });
+
+    await lifecycle.replace('partial');
+
+    expect(onBootError).toHaveBeenCalledWith(bootFailure, 'partial');
+    expect(lifecycle.activeRuntime).toBeNull();
+    expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'engine:create',
+      'projection:create',
+      'fonts:preload',
+      'document:create',
+      'document:start',
+      'theme:release',
+      'projection:dispose',
+      'document:dispose',
+      'engine:destroy',
+    ]));
+    expect(runtimeState.events).not.toEqual(expect.arrayContaining([
+      'editor:create',
+      'image-drop:create',
+      'selection-style:create',
+    ]));
+    expect(runtimeState.events.filter((event) => [
+      'theme:release',
+      'projection:dispose',
+      'document:dispose',
+      'engine:destroy',
+    ].includes(event))).toEqual([
+      'theme:release',
+      'projection:dispose',
+      'document:dispose',
+      'engine:destroy',
+    ]);
+    expect(container.childNodes).toHaveLength(0);
+
+    await lifecycle.dispose();
+    expect(runtimeState.events.filter((event) => event === 'engine:destroy')).toHaveLength(1);
   });
 
   test('projects one exclusive widget shell and centrally mounts only owned overlays', async () => {
@@ -1053,6 +1112,54 @@ describe('canvas runtime composition', () => {
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'image-drop:destroy',
       'editor:destroy',
+      'document:dispose',
+      'engine:destroy',
+    ]));
+    expect(container.childNodes).toHaveLength(0);
+  });
+
+  test('aggregates cleanup errors in teardown order and still releases later owners', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      wait,
+      themeService,
+    }, [{
+      name: 'throwing',
+      install() {
+        return {
+          dispose() {
+            runtimeState.events.push('extension:throwing:dispose');
+            throw new Error('extension teardown failed');
+          },
+        };
+      },
+    }]);
+    await Effect.runPromise(runtime.bootEffect());
+    runtimeState.styleDestroyError = new Error('style teardown failed');
+
+    let failure: unknown;
+    try {
+      await Effect.runPromise(runtime.shutdownEffect());
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).message).toBe('Canvas runtime teardown failed.');
+    expect((failure as AggregateError).errors.map((error) => (
+      error instanceof Error ? error.message : String(error)
+    ))).toEqual([
+      'extension teardown failed',
+      'style teardown failed',
+    ]);
+    expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'editor:destroy',
+      'projection:dispose',
       'document:dispose',
       'engine:destroy',
     ]));

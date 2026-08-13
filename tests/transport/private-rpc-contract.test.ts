@@ -10,6 +10,7 @@ import {
 import {
   PRIVATE_REQUEST_PATHS as BACKEND_REQUEST_PATHS,
   PRIVATE_STREAM_PATHS as BACKEND_STREAM_PATHS,
+  PRIVATE_OPERATION_CONTRACTS,
 } from '../../apps/backend/src/shell/transport/operation-contract'
 import { PrivateRpcError as FrontendPrivateRpcError } from '../../apps/frontend/src/core/app/private-rpc-error'
 import {
@@ -42,6 +43,27 @@ describe('private Effect RPC client/server contract parity', () => {
     expect(FRONTEND_STREAM_PATHS).toEqual(BACKEND_STREAM_PATHS)
     expect(new Set(BACKEND_REQUEST_PATHS).size).toBe(BACKEND_REQUEST_PATHS.length)
     expect(new Set(BACKEND_STREAM_PATHS).size).toBe(BACKEND_STREAM_PATHS.length)
+  })
+
+  test('attaches one correctly classified payload and output codec to every operation', () => {
+    const requestPaths = new Set<string>(BACKEND_REQUEST_PATHS)
+    const streamPaths = new Set<string>(BACKEND_STREAM_PATHS)
+    const noInputPaths = new Set([
+      'agent.settings.get',
+      'canvas.list',
+      'widget.catalog.get',
+      'widget.runtime.config',
+    ])
+
+    expect([...requestPaths].filter((path) => streamPaths.has(path))).toEqual([])
+    expect(PRIVATE_OPERATION_CONTRACTS.size).toBe(requestPaths.size + streamPaths.size)
+    for (const [path, operation] of PRIVATE_OPERATION_CONTRACTS) {
+      expect(operation.path).toBe(path)
+      expect(operation.stream).toBe(streamPaths.has(path))
+      expect(operation.procedure.contract.streamOutput).toBe(operation.stream)
+      expect(operation.procedure.contract.outputSchema).toBeDefined()
+      expect(operation.procedure.contract.inputSchema === undefined).toBe(noInputPaths.has(path))
+    }
   })
 
   test('cross-decodes typed backend and frontend failures without Never drift', () => {
