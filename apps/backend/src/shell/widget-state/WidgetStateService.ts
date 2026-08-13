@@ -10,11 +10,16 @@ import {
 import type {
   IWidgetStateService,
   IWidgetStateStore,
+  TWidgetStateServiceOptions,
   TWidgetStateSubscribeResult,
 } from '#backend/shell/widget-state/IWidgetStateService';
-import { WidgetStateMutationRateLimiter } from '#backend/core/widget-state/WidgetStateMutationRateLimiter';
 import { WidgetStateVersionStream } from './WidgetStateVersionStream';
 import { fnNormalizeWidgetStateJson } from '#backend/core/widget-state/fn.widget-state-json';
+import {
+  fnTransitionWidgetStateMutationRate,
+  type TWidgetStateMutationAdmission,
+  type TWidgetStateMutationRateLedger,
+} from '#backend/core/widget-state/fn.mutation-rate';
 import {
   fnAssertWidgetStateCursor,
   fnAssertWidgetStateVersion,
@@ -29,7 +34,6 @@ import type {
   TWidgetStateInstanceIdentity,
   TWidgetStateReleaseArgs,
   TWidgetStateServiceMetrics,
-  TWidgetStateServiceOptions,
   TWidgetStateSnapshot,
   TWidgetStateStoredSnapshot,
   TWidgetStateSubscribeArgs,
@@ -61,7 +65,10 @@ export class WidgetStateService implements IWidgetStateService {
   readonly #replayCapacity: number;
   readonly #subscriberQueueCapacity: number;
   readonly #maxActiveStreams: number;
-  readonly #rateLimiter: WidgetStateMutationRateLimiter;
+  readonly #mutationRateLimit: number;
+  readonly #mutationRateWindowMs: number;
+  readonly #maxMutationRateLedgers: number;
+  readonly #mutationRateLedgers = new Map<string, TWidgetStateMutationRateLedger>();
   readonly #streams = new Map<string, WidgetStateVersionStream>();
   readonly #metrics: TMetricCounters = {
     getAttempts: 0,
@@ -119,11 +126,9 @@ export class WidgetStateService implements IWidgetStateService {
     this.#replayCapacity = replayCapacity;
     this.#subscriberQueueCapacity = subscriberQueueCapacity;
     this.#maxActiveStreams = maxActiveStreams;
-    this.#rateLimiter = new WidgetStateMutationRateLimiter(
-      mutationRateLimit,
-      mutationRateWindowMs,
-      maxMutationRateLedgers,
-    );
+    this.#mutationRateLimit = mutationRateLimit;
+    this.#mutationRateWindowMs = mutationRateWindowMs;
+    this.#maxMutationRateLedgers = maxMutationRateLedgers;
   }
 
   async get(args: TWidgetStateGetArgs): Promise<TWidgetStateGetResult> {
@@ -149,11 +154,7 @@ export class WidgetStateService implements IWidgetStateService {
     fnAssertWidgetStateVersion(args.expectedVersion);
     const state = fnNormalizeWidgetStateJson(args.state);
 
-    const now = this.#readClock();
-    const admission = this.#rateLimiter.admit(
-      this.#mutationRateScope(identity),
-      now,
-    );
+    const admission = this.#admitMutation(identity);
     if (!admission.allowed) {
       this.#metrics.rateLimited += 1;
       return Object.freeze({
@@ -219,7 +220,7 @@ export class WidgetStateService implements IWidgetStateService {
     const stream = this.#streams.get(this.#streamScope(identity));
     stream?.close();
     this.#streams.delete(this.#streamScope(identity));
-    this.#rateLimiter.release(this.#mutationRateScope(identity));
+    this.#mutationRateLedgers.delete(this.#mutationRateScope(identity));
     this.#metrics.releases += 1;
   }
 
@@ -232,7 +233,7 @@ export class WidgetStateService implements IWidgetStateService {
     this.#disposed = true;
     for (const stream of this.#streams.values()) stream.close();
     this.#streams.clear();
-    this.#rateLimiter.clear();
+    this.#mutationRateLedgers.clear();
   }
 
   getMetrics(): TWidgetStateServiceMetrics {
@@ -247,7 +248,7 @@ export class WidgetStateService implements IWidgetStateService {
       activeStreams: this.#streams.size,
       activeSubscribers,
       replayEvents,
-      mutationRateLedgers: this.#rateLimiter.size,
+      mutationRateLedgers: this.#mutationRateLedgers.size,
       ...this.#metrics,
     });
   }
@@ -262,6 +263,24 @@ export class WidgetStateService implements IWidgetStateService {
       throw new TypeError('Widget state service clock must return a finite number.');
     }
     return now;
+  }
+
+  #admitMutation(
+    identity: TWidgetStateInstanceIdentity,
+  ): TWidgetStateMutationAdmission {
+    const transition = fnTransitionWidgetStateMutationRate({
+      scope: this.#mutationRateScope(identity),
+      now: this.#readClock(),
+      limit: this.#mutationRateLimit,
+      windowMs: this.#mutationRateWindowMs,
+      maxLedgers: this.#maxMutationRateLedgers,
+      ledgers: [...this.#mutationRateLedgers.entries()],
+    });
+    this.#mutationRateLedgers.clear();
+    for (const [scope, ledger] of transition.ledgers) {
+      this.#mutationRateLedgers.set(scope, ledger);
+    }
+    return transition.admission;
   }
 
   #unavailable(): TWidgetStateGetResult & TWidgetStateChangeResult {

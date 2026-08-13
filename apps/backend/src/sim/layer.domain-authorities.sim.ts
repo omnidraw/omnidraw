@@ -22,6 +22,15 @@ import type { TResourceDescriptor } from '../core/resources/types';
 import {
   WidgetStateAuthority,
 } from '../core/widget-state/service.widget-state';
+import {
+  DEFAULT_WIDGET_STATE_MAX_MUTATION_RATE_LEDGERS,
+  WIDGET_STATE_MUTATION_RATE_LIMIT,
+  WIDGET_STATE_MUTATION_RATE_WINDOW_MS,
+} from '../core/widget-state/CONSTANTS';
+import {
+  fnTransitionWidgetStateMutationRate,
+  type TWidgetStateMutationRateLedger,
+} from '../core/widget-state/fn.mutation-rate';
 import type {
   TWidgetStateInstanceIdentity,
   TWidgetStateJson,
@@ -38,7 +47,6 @@ import {
 /** All simulation inputs are explicit; no clock, entropy, driver, or global is consulted. */
 export function layerAgentAuthoritySim(args: Readonly<{
   connection: TAgentConnection;
-  events?: readonly TSequencedEvent<TAgentEvent>[];
 }>) {
   const history = new Map<string, readonly TAgentHistoryEntry[]>();
   return Layer.succeed(AgentAuthority, AgentAuthority.of({
@@ -52,19 +60,6 @@ export function layerAgentAuthoritySim(args: Readonly<{
         ? Effect.fail(new AgentProgramError('CHAT_SCOPE_INVALID', 'Simulated chat is not connected.'))
         : Effect.succeed(value);
     }),
-    events: (request) => {
-      const records = args.events ?? [];
-      return Effect.succeed(
-        (request.afterSequence ?? 0) > (records.at(-1)?.sequence ?? 0)
-          ? Stream.fail(new AgentProgramError(
-              'EVENT_CURSOR_INVALID',
-              'Simulated agent-event cursor is ahead of authority; resync is required.',
-            ))
-          : Stream.fromIterable(
-              records.filter((record) => record.sequence > (request.afterSequence ?? 0)),
-            ),
-      );
-    },
   }));
 }
 
@@ -118,9 +113,35 @@ function identityKey(identity: TWidgetStateInstanceIdentity): string {
 export function layerWidgetStateAuthoritySim(args: Readonly<{
   initialState: TWidgetStateJson;
   initialVersion?: number;
+  now: () => number;
+  mutationRateLimit?: number;
+  mutationRateWindowMs?: number;
+  maxMutationRateLedgers?: number;
 }>) {
   const snapshots = new Map<string, TWidgetStateSnapshot>();
   const history = new Map<string, TWidgetStateSubscriptionEvent[]>();
+  const mutationRateLedgers = new Map<string, TWidgetStateMutationRateLedger>();
+  const mutationRateLimit = args.mutationRateLimit
+    ?? WIDGET_STATE_MUTATION_RATE_LIMIT;
+  const mutationRateWindowMs = args.mutationRateWindowMs
+    ?? WIDGET_STATE_MUTATION_RATE_WINDOW_MS;
+  const maxMutationRateLedgers = args.maxMutationRateLedgers
+    ?? DEFAULT_WIDGET_STATE_MAX_MUTATION_RATE_LEDGERS;
+  const admitMutation = (identity: TWidgetStateInstanceIdentity) => {
+    const transition = fnTransitionWidgetStateMutationRate({
+      scope: JSON.stringify([identity.widgetInstanceId]),
+      now: args.now(),
+      limit: mutationRateLimit,
+      windowMs: mutationRateWindowMs,
+      maxLedgers: maxMutationRateLedgers,
+      ledgers: [...mutationRateLedgers.entries()],
+    });
+    mutationRateLedgers.clear();
+    for (const [scope, ledger] of transition.ledgers) {
+      mutationRateLedgers.set(scope, ledger);
+    }
+    return transition.admission;
+  };
   const snapshotFor = (identity: TWidgetStateInstanceIdentity): TWidgetStateSnapshot => {
     const key = identityKey(identity);
     const existing = snapshots.get(key);
@@ -137,6 +158,13 @@ export function layerWidgetStateAuthoritySim(args: Readonly<{
   return Layer.succeed(WidgetStateAuthority, WidgetStateAuthority.of({
     get: ({ identity }) => Effect.sync(() => ({ status: 'found', snapshot: snapshotFor(identity) })),
     change: (request) => Effect.sync(() => {
+      const admission = admitMutation(request.identity);
+      if (!admission.allowed) {
+        return {
+          status: 'rate-limited' as const,
+          retryAfterMs: admission.retryAfterMs,
+        };
+      }
       const current = snapshotFor(request.identity);
       if (current.version !== request.expectedVersion) {
         return { status: 'conflict' as const, snapshot: current };

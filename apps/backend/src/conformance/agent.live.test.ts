@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { Effect } from 'effect';
 import { runAgentConformance } from './agent.suite';
 import { createLiveMechanicsConformanceRuntime } from './tests/live-mechanics.fixture';
-import { LiveCanvas, LiveDatabase, LiveEventPublisher } from '../shell/runtime/service.live-mechanics';
+import { LiveCanvas, LiveDatabase } from '../shell/runtime/service.live-mechanics';
 
 describe('agent live conformance', () => {
   test('runs the shared core program against the scoped production AgentService graph', async () => {
@@ -11,7 +11,6 @@ describe('agent live conformance', () => {
       const result = await fixture.runtime.runPromise(Effect.gen(function*() {
         const database = yield* LiveDatabase;
         const canvas = yield* LiveCanvas;
-        const events = yield* LiveEventPublisher;
         yield* Effect.promise(() => database.canvas.create({ id: 'canvas-1', name: 'Conformance canvas' }));
         yield* Effect.promise(() => canvas.execute({
           commandId: 'place-chat',
@@ -37,15 +36,9 @@ describe('agent live conformance', () => {
           }],
           preconditions: [{ type: 'item-absent', itemId: 'chat-1' }],
         }));
-        events.publishAgentEvent({ kind: 'widget-catalog', type: 'changed' });
         return yield* runAgentConformance();
       }));
-      expect(result).toEqual({
-        historyCount: 0,
-        eventSequence: 1,
-        eventKind: 'widget-catalog',
-        terminalCode: 'EVENT_CURSOR_INVALID',
-      });
+      expect(result).toEqual({ historyCount: 0 });
     } finally {
       await fixture.dispose();
     }

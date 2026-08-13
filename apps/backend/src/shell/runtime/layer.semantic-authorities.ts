@@ -60,13 +60,12 @@ function agentFailure(error: unknown): AgentProgramError {
   );
 }
 
-export function agentAuthorityFromLive(args: Readonly<{
-  agent: typeof LiveAgent.Service;
-  events: typeof LiveEventPublisher.Service;
-}>): IAgentAuthority {
+export function agentAuthorityFromLive(
+  agent: typeof LiveAgent.Service,
+): IAgentAuthority {
   return AgentAuthority.of({
     connect: (request) => Effect.tryPromise({
-      try: () => args.agent.connectChat(
+      try: () => agent.connectChat(
         request.widgetId,
         request.sessionId,
         request.canvasId,
@@ -83,30 +82,18 @@ export function agentAuthorityFromLive(args: Readonly<{
       })),
     }))),
     history: (request) => Effect.tryPromise({
-      try: () => args.agent.getChatHistory(request.widgetId, request.sessionId),
+      try: () => agent.getChatHistory(request.widgetId, request.sessionId),
       catch: agentFailure,
     }).pipe(Effect.map((history) => history.map((entry) => ({
       entryId: entry.entryId,
       message: fnNormalizeCanonicalJson(entry.message),
-    })))),
-    events: (request) => Effect.sync(() => Stream.fromAsyncIterable(
-      args.events.subscribeAgentEventRecords(request),
-      agentFailure,
-    ).pipe(Stream.map((record) => ({
-      sequence: record.sequence,
-      event: fnNormalizeCanonicalJson(record.event) as typeof record.event,
     })))),
   });
 }
 
 export const layerAgentAuthorityLive = Layer.effect(
   AgentAuthority,
-  Effect.gen(function*() {
-    return agentAuthorityFromLive({
-      agent: yield* LiveAgent,
-      events: yield* LiveEventPublisher,
-    });
-  }),
+  Effect.map(LiveAgent, agentAuthorityFromLive),
 );
 
 function eventFailure(error: unknown): EventProgramError {
@@ -128,7 +115,10 @@ export function eventAuthorityFromLive(
     agent: (request) => Effect.sync(() => Stream.fromAsyncIterable(
       events.subscribeAgentEventRecords(request),
       eventFailure,
-    )),
+    ).pipe(Stream.map((record) => ({
+      sequence: record.sequence,
+      event: fnNormalizeCanonicalJson(record.event) as typeof record.event,
+    })))),
     db: (request) => Effect.sync(() => Stream.fromAsyncIterable(
       events.subscribeDbEventRecords(request.canvasId, request),
       eventFailure,

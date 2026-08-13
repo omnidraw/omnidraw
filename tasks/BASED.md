@@ -516,6 +516,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D10](d/D10.md) - widget repos: portable build receipts and smart Preview refresh (order 1/5)
 - [x]: [D11](d/D11.md) - Effect v4 two-app/five-package clean-cut refactor
 - [x]: [D12](d/D12.md) - PRD refactor characterization guardrails (order 1/7)
+- [x]: [D13](d/D13.md) - backend: remove ambiguous event and mutation-ledger ownership (order 2/7)
 
 ## Pragmatic Code Style
 

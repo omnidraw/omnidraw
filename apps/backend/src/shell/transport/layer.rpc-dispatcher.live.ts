@@ -9,7 +9,6 @@ import type { Json } from 'effect/Schema';
 import { CanvasAuthorityError } from '../../core/canvas/errors';
 import { AgentServiceError } from '../../core/agent/error.agent-service';
 import { fxConnectAgent } from '../../core/agent/fx.connect';
-import { fxAgentEvents } from '../../core/agent/fx.events';
 import { fxReadAgentHistory } from '../../core/agent/fx.history';
 import {
   AgentAuthority,
@@ -24,6 +23,7 @@ import {
   type ICanvasAuthority,
 } from '../../core/canvas/service.canvas-authority';
 import { txExecuteCanvasCommand } from '../../core/canvas/tx.execute-command';
+import { fxAgentEventRecords } from '../../core/events/fx.agent-events';
 import { fxDbEventRecords } from '../../core/events/fx.db-events';
 import { fxNotificationEventRecords } from '../../core/events/fx.notification-events';
 import {
@@ -293,8 +293,8 @@ function coreSemanticStream(
   const normalized = normalizePath(path).join('.');
   const request = input as Readonly<Record<string, unknown>>;
   if (normalized === 'agent.events') {
-    return fxAgentEvents(input as Parameters<typeof fxAgentEvents>[0]).pipe(
-      Effect.provideService(AgentAuthority, authorities.agent),
+    return fxAgentEventRecords(input as Parameters<typeof fxAgentEventRecords>[0]).pipe(
+      Effect.provideService(EventAuthority, authorities.events),
       Effect.map((stream) => stream.pipe(
         Stream.map((record) => ({ ...record.event, sequence: record.sequence })),
         Stream.mapError(rpcError),

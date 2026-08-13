@@ -3,6 +3,7 @@ import type {
   TWidgetStateChangeResult,
   TWidgetStateGetArgs,
   TWidgetStateGetResult,
+  TWidgetStateJson,
   TWidgetStateReleaseArgs,
   TWidgetStateServiceMetrics,
   TWidgetStateStoreCompareAndSwapArgs,
@@ -12,6 +13,18 @@ import type {
   TWidgetStateSubscribeArgs,
   TWidgetStateSubscriptionEvent,
 } from '../../core/widget-state/types';
+
+export type TWidgetStateServiceOptions = Readonly<{
+  now: () => number;
+  initialVersion?: number;
+  initialState?: TWidgetStateJson;
+  replayCapacity?: number;
+  subscriberQueueCapacity?: number;
+  maxActiveStreams?: number;
+  mutationRateLimit?: number;
+  mutationRateWindowMs?: number;
+  maxMutationRateLedgers?: number;
+}>;
 
 export type TWidgetStateSubscribeResult =
   | Readonly<{

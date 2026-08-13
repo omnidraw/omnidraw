@@ -124,15 +124,3 @@ export type TWidgetStateServiceMetrics = Readonly<{
   subscriptions: number;
   releases: number;
 }>;
-
-export type TWidgetStateServiceOptions = Readonly<{
-  now: () => number;
-  initialVersion?: number;
-  initialState?: TWidgetStateJson;
-  replayCapacity?: number;
-  subscriberQueueCapacity?: number;
-  maxActiveStreams?: number;
-  mutationRateLimit?: number;
-  mutationRateWindowMs?: number;
-  maxMutationRateLedgers?: number;
-}>;

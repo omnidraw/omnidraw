@@ -22,6 +22,16 @@ export {
   fnNormalizeWidgetStateIdentity,
   fnWidgetStateSnapshotsMatch,
 } from './fn.widget-state-values';
+export {
+  fnTransitionWidgetStateMutationRate,
+} from './fn.mutation-rate';
+export type {
+  TArgsTransitionWidgetStateMutationRate,
+  TWidgetStateMutationAdmission,
+  TWidgetStateMutationRateLedger,
+  TWidgetStateMutationRateLedgerEntry,
+  TWidgetStateMutationRateTransition,
+} from './fn.mutation-rate';
 export type {
   TWidgetStateChangeArgs,
   TWidgetStateChangeResult,
@@ -31,7 +41,6 @@ export type {
   TWidgetStateJson,
   TWidgetStateReleaseArgs,
   TWidgetStateServiceMetrics,
-  TWidgetStateServiceOptions,
   TWidgetStateSnapshot,
   TWidgetStateStoredSnapshot,
   TWidgetStateStoreCompareAndSwapArgs,

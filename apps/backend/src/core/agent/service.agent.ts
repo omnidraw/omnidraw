@@ -1,5 +1,4 @@
-import { Context, type Effect, type Stream } from 'effect';
-import type { TAgentEvent, TSequencedEvent } from '../events/events';
+import { Context, type Effect } from 'effect';
 
 export type TAgentConnectRequest = Readonly<{
   canvasId: string;
@@ -39,9 +38,6 @@ export interface IAgentAuthority {
   readonly history: (
     args: TAgentHistoryRequest,
   ) => Effect.Effect<readonly TAgentHistoryEntry[], AgentProgramError>;
-  readonly events: (
-    args: Readonly<{ afterSequence?: number }>,
-  ) => Effect.Effect<Stream.Stream<TSequencedEvent<TAgentEvent>, AgentProgramError>, AgentProgramError>;
 }
 
 export class AgentAuthority extends Context.Service<AgentAuthority, IAgentAuthority>()(
