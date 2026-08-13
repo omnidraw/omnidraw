@@ -13,7 +13,7 @@ import {
   type Context,
 } from 'node:vm';
 import type { TResourceCall, TResourceCallResult } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 import type { TFunctionFailure, TFunctionUsageMetrics } from '../types';
 import { fnFunctionArtifactAdmission } from './fn.artifact-admission';
 import type {

@@ -3,7 +3,7 @@ import type { IEventPublisherService } from '#backend/shell/events/types';
 import {
   ZWidgetManifestV1,
   type TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { fnLatestWidgetDbChangeProposalRecord } from '../../core/agent/fn.session-records';

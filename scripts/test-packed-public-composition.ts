@@ -206,11 +206,9 @@ async function main(): Promise<void> {
   const testRoot = await mkdtemp(join(tmpdir(), 'omnidraw-packed-public-composition-'))
   const packRoot = join(testRoot, 'packs')
   const consumerRoot = join(testRoot, 'consumer')
-  const installCache = join(testRoot, 'install-cache')
   await Promise.all([
     mkdir(packRoot, { recursive: true }),
     mkdir(consumerRoot, { recursive: true }),
-    mkdir(installCache, { recursive: true }),
   ])
 
   try {
@@ -249,19 +247,13 @@ async function main(): Promise<void> {
       cp(join(FIXTURE_ROOT, 'tsconfig.json'), join(consumerRoot, 'tsconfig.json')),
     ])
 
-    const installEnvironment = {
-      ...process.env,
-      BUN_INSTALL_CACHE_DIR: installCache,
-    }
     await runCommand(
       [process.execPath, 'install', '--ignore-scripts', '--lockfile-only'],
       consumerRoot,
-      installEnvironment,
     )
     await runCommand(
       [process.execPath, 'install', '--ignore-scripts', '--frozen-lockfile'],
       consumerRoot,
-      installEnvironment,
     )
     await assertInstalledPackagesAreExternal(consumerRoot, versions)
 

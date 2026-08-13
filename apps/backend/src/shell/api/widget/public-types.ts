@@ -4,7 +4,7 @@ import type {
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetPresentationProjection,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export type TWidgetPublicIssue = Readonly<{
   code: string;

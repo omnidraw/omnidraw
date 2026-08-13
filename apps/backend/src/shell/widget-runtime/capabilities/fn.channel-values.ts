@@ -1,6 +1,6 @@
 import type {
-  TWidgetCapsuleNotificationOutput,
-} from '#backend/core/widget-domain';
+  TWidgetNotificationOutput,
+} from '@omnidraw/sdk/contract';
 
 function isExactRecord(
   value: unknown,
@@ -22,7 +22,7 @@ function isExactRecord(
  */
 export function fnOmnidrawWidgetNotificationOutput(
   value: unknown,
-): TWidgetCapsuleNotificationOutput {
+): TWidgetNotificationOutput {
   if (
     !isExactRecord(value, ['message', 'tone', 'type'])
     || value.type !== 'notification'

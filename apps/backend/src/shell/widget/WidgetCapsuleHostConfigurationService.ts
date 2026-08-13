@@ -1,5 +1,5 @@
 import type { IWidgetCapsuleHostConfigurationReader } from '#backend/shell/widget';
-import type { TWidgetCapsuleHostConfiguration } from '#backend/core/widget-domain';
+import type { TWidgetHostConfiguration } from '@omnidraw/sdk/contract';
 import {
   OMNIDRAW_CAPSULE_ALLOWED_APIS,
   OMNIDRAW_CAPSULE_HOST_LIMITS,
@@ -18,16 +18,16 @@ import { WidgetCapsuleSigningKeyStore } from './WidgetCapsuleSigningKeyStore';
 export class WidgetCapsuleHostConfigurationService
 implements IWidgetCapsuleHostConfigurationReader {
   readonly name = 'widget-capsule-host-configuration';
-  #configuration: Promise<TWidgetCapsuleHostConfiguration> | undefined;
+  #configuration: Promise<TWidgetHostConfiguration> | undefined;
 
   constructor(readonly signingKeys: WidgetCapsuleSigningKeyStore) {}
 
-  read(): Promise<TWidgetCapsuleHostConfiguration> {
+  read(): Promise<TWidgetHostConfiguration> {
     this.#configuration ??= this.#read();
     return this.#configuration;
   }
 
-  async #read(): Promise<TWidgetCapsuleHostConfiguration> {
+  async #read(): Promise<TWidgetHostConfiguration> {
     const signingKeys = Object.freeze([
       ...await this.signingKeys.publicSigningKeys(),
     ].sort((left, right) => left.keyId.localeCompare(right.keyId)));

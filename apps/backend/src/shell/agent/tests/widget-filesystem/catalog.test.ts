@@ -16,20 +16,20 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnCanonicalizeWidgetServerFunctionDescriptors,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type {
   TWidgetManifestV1,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
   fnWidgetReleaseDirectoryDigest,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
@@ -70,10 +70,10 @@ function manifest(slug: string, name = 'Counter'): TWidgetManifestV1 {
 function runtime(
   artifactHash: `sha256:${string}`,
   functionsDigestSha256?: string,
-): TWidgetCapsuleRuntimeDescriptor {
+): TWidgetRuntimeDescriptor {
   return {
     format: 'omnidraw.capsule-runtime.v2',
-    capsuleArtifactHash: artifactHash,
+    artifactHash,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: ['DOM'],
@@ -104,7 +104,7 @@ function capsuleEffects(
       expect(args.releaseAttestation).toEqual(RELEASE_ATTESTATION);
       expect(args.canonicalUnsignedReleaseJson).not.toContain('releaseAttestation');
       return {
-        artifactHash: args.expectedRuntime.capsuleArtifactHash,
+        artifactHash: args.expectedRuntime.artifactHash,
         runtime: args.expectedRuntime,
       };
     },

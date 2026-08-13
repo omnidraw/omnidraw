@@ -6,7 +6,7 @@ import type {
   TWidgetSourceArtifact,
   TWidgetSourceFile,
   TWidgetSourceSnapshot,
-} from '#backend/core/widget-domain/types';
+} from '@omnidraw/sdk/contract';
 import {
   WIDGET_SOURCE_MAX_FILES,
   WIDGET_SOURCE_MAX_FILE_BYTES,

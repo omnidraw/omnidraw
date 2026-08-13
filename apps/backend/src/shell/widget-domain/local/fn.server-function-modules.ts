@@ -1,6 +1,6 @@
 /** @file Pure server-function export mapping and synthetic entry generation. */
 
-import type { TWidgetServerFunctionDescriptor } from '#backend/core/widget-domain/types';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 
 export type TServerFunctionModule = Readonly<{
   path: string;

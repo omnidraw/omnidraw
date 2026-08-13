@@ -17,7 +17,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   ZWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { fnChatStorageSegments } from '#backend/core/agent/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';

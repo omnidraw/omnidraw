@@ -12,7 +12,7 @@ import type {
 } from '#backend/shell/widget';
 import type {
   TWidgetReleaseAttestation,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID,
 } from './CONSTANTS';
@@ -141,7 +141,7 @@ implements TWidgetCatalogCapsuleInspectionEffects {
     );
     if (!valid) throw new Error('Widget release attestation is not trusted.');
     return Object.freeze({
-      artifactHash: args.expectedRuntime.capsuleArtifactHash,
+      artifactHash: args.expectedRuntime.artifactHash,
       runtime: args.expectedRuntime,
     });
   }

@@ -5,7 +5,7 @@ import type {
 import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type {
   TWidgetPublicCatalog,
   TWidgetPublicCatalogForm,

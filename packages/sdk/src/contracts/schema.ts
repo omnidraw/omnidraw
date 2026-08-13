@@ -233,7 +233,7 @@ function icon(value: unknown, path: TSdkValidationPath): TOmnidrawToolIcon {
   return Object.freeze({ ...(lucidIcon === undefined ? {} : { lucidIcon }), ...(svgIcon === undefined ? {} : { svgIcon }) });
 }
 
-function capsuleApis(value: unknown, path: TSdkValidationPath): readonly TWidgetRuntimeApiGroup[] {
+function allowedCapsuleApis(value: unknown, path: TSdkValidationPath): readonly TWidgetRuntimeApiGroup[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > WIDGET_RUNTIME_API_GROUPS.length) {
     return fail(path, 'Capsule API groups must be a non-empty bounded array.', 'invalid_type');
   }
@@ -242,8 +242,14 @@ function capsuleApis(value: unknown, path: TSdkValidationPath): readonly TWidget
     if (typeof entry !== 'string' || !allowed.has(entry)) fail([...path, index], 'Unknown Capsule API group.');
     return entry as TWidgetRuntimeApiGroup;
   });
+  if (new Set(apis).size !== apis.length) fail(path, 'Capsule API groups must be unique.', 'duplicate');
+  if (!apis.includes('DOM')) fail(path, 'Capsule API groups must explicitly include DOM.');
+  return Object.freeze(WIDGET_RUNTIME_API_GROUPS.filter((api) => apis.includes(api)));
+}
+
+function capsuleApis(value: unknown, path: TSdkValidationPath): readonly TWidgetRuntimeApiGroup[] {
   try {
-    return Object.freeze(fnNormalizeWidgetRuntimeApis(apis));
+    return Object.freeze(fnNormalizeWidgetRuntimeApis(allowedCapsuleApis(value, path)));
   } catch (error) {
     return fail(path, error instanceof Error ? error.message : 'Invalid Capsule API group selection.');
   }
@@ -784,6 +790,7 @@ export const WidgetExecutableResourceRequirementValidator = validator<Omit<TWidg
   return Object.freeze(requirement);
 });
 export const WidgetRuntimeApisValidator = validator<readonly TWidgetRuntimeApiGroup[]>((value) => capsuleApis(value, []));
+export const WidgetRuntimeAllowedApisValidator = validator<readonly TWidgetRuntimeApiGroup[]>((value) => allowedCapsuleApis(value, []));
 export const WidgetRuntimeBudgetRequestValidator = validator<TWidgetRuntimeBudgetRequest>((value) => budgets(value, []));
 export const WidgetRuntimeBudgetsValidator = validator<TWidgetRuntimeBudgets>((value) => completeBudgets(value, []));
 export const WidgetSchemaReferenceValidator = validator<TWidgetSchemaReference>((value) => schemaReference(value, []));
@@ -811,7 +818,7 @@ export const ZWidgetReleaseDescriptor = WidgetReleaseDescriptorValidator;
 export const ZWidgetUnsignedReleaseDescriptor = WidgetUnsignedReleaseDescriptorValidator;
 export const ZWidgetResourceRequirement = WidgetResourceRequirementValidator;
 export const ZWidgetExecutableResourceRequirement = WidgetExecutableResourceRequirementValidator;
-export const ZWidgetRuntimeAllowedApis = WidgetRuntimeApisValidator;
+export const ZWidgetRuntimeAllowedApis = WidgetRuntimeAllowedApisValidator;
 export const ZWidgetRuntimeApis = WidgetRuntimeApisValidator;
 export const ZWidgetRuntimeBudgetRequest = WidgetRuntimeBudgetRequestValidator;
 export const ZWidgetRuntimeBudgets = WidgetRuntimeBudgetsValidator;

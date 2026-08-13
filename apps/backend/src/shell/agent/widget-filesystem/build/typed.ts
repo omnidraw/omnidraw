@@ -10,7 +10,7 @@ import type {
   TWidgetReleaseAttestation,
   TWidgetReleaseServer,
   TWidgetSourceFile,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export type TWidgetFilesystemConstructionPort = Readonly<{
   construct(

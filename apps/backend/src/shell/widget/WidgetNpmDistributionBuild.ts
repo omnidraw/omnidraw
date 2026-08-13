@@ -33,7 +33,7 @@ import {
   WIDGET_BUILD_RECEIPT_PATH,
   WIDGET_MANIFEST_V1_SCHEMA_URL,
   type TWidgetExecutableManifestProjection,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnBoundedBuildOutput,
   fnRedactBuildOutput,

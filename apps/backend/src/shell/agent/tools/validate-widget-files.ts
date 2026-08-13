@@ -1,4 +1,4 @@
-import type { TWidgetManifestV1 } from '#backend/core/widget-domain';
+import type { TWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import type { TValidationResult } from './types';
 import { walkFiles } from '../workspace/walk-files';
 import { fnLintRequiredWidgetFiles } from '../../../core/agent/lint/fn.required-widget-files';

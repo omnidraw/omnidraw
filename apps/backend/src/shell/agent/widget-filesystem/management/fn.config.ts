@@ -6,7 +6,7 @@ import type {
 } from './typed';
 import type {
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export function fnApplyWidgetDraftConfig(
   manifest: TWidgetManifestV1,

@@ -11,11 +11,11 @@ import type {
   TWidgetReleaseFile,
   TWidgetReleaseObservation,
   TWidgetReleaseValidation,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export type TWidgetCatalogForm = 'draft' | 'published';
 
@@ -94,7 +94,7 @@ export type TWidgetCatalogPublished = Readonly<{
   release: TWidgetReleaseDescriptor | null;
   releaseDescriptorDigestSha256: string | null;
   releaseValidation: TWidgetReleaseValidation | null;
-  capsuleRuntime: TWidgetCapsuleRuntimeDescriptor | null;
+  capsuleRuntime: TWidgetRuntimeDescriptor | null;
   functions: readonly TWidgetServerFunctionDescriptor[] | null;
   issues: readonly TWidgetCatalogIssue[];
 }>;
@@ -181,13 +181,13 @@ export type TWidgetCatalogCapsuleInspectionEffects = Readonly<{
   inspectCapsuleArtifact(args: Readonly<{
     bytes: Uint8Array;
     expectedApis: TWidgetManifestV1['ui']['apis'];
-    expectedRuntime: TWidgetCapsuleRuntimeDescriptor;
+    expectedRuntime: TWidgetRuntimeDescriptor;
     expectedCapsuleFile: TWidgetReleaseFile;
     canonicalUnsignedReleaseJson: string;
     releaseAttestation: TWidgetReleaseAttestation;
   }>): Promise<Readonly<{
     artifactHash: `sha256:${string}`;
-    runtime: TWidgetCapsuleRuntimeDescriptor;
+    runtime: TWidgetRuntimeDescriptor;
   }>>;
 }>;
 

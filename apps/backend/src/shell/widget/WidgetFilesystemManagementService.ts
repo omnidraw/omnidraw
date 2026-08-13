@@ -31,7 +31,7 @@ import {
   fnNormalizeWidgetManifestV1,
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 
 const FILE_PREVIEW_MAX_BYTES = 256 * 1_024;
 
@@ -57,7 +57,7 @@ type TConfig = Readonly<{
       construction: TWidgetFilesystemConstruction;
     }>>;
   }>;
-  validateManifestResources(manifest: import('#backend/core/widget-domain').TWidgetManifestV1): Promise<void>;
+  validateManifestResources(manifest: import('@omnidraw/sdk/contract').TWidgetManifestV1): Promise<void>;
   createOperationToken: () => string;
 }>;
 

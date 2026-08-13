@@ -4,7 +4,7 @@ import {
   ZWidgetDiagnostic,
   fnNormalizeWidgetBuildError,
   fnWidgetDiagnosticFingerprint,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 
 const base = {
   origin: 'build' as const,

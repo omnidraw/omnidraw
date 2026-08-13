@@ -4,7 +4,7 @@ import type {
   TWidgetReleaseDescriptor,
   TWidgetReleaseObservation,
   TWidgetReleaseValidation,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 import {
   fnCanonicalizeWidgetReleaseDirectoryFiles,
   ZWidgetReleaseDescriptor,
@@ -13,7 +13,7 @@ import {
   fnValidateWidgetRelease,
   fnWidgetReleaseDirectoryDigest,
   parseWidgetReleaseJson,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 import {
   CAPSULE_API_CONTRACT,
   CAPSULE_HASH_A,

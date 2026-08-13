@@ -1,5 +1,5 @@
 import type { CapsuleArtifactSigningKey } from '#backend/shell/widget-runtime/builder';
-import type { TWidgetCapsulePublicSigningKey } from '#backend/core/widget-domain';
+import type { TWidgetPublicSigningKey } from '@omnidraw/sdk/contract';
 import { webcrypto, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
 import { link, lstat, mkdir, open, unlink, writeFile } from 'node:fs/promises';
@@ -32,7 +32,7 @@ type TStoredKeyFile = Readonly<{
 
 type TLoadedKey = Readonly<{
   signing: CapsuleArtifactSigningKey;
-  publicKey: TWidgetCapsulePublicSigningKey;
+  publicKey: TWidgetPublicSigningKey;
 }>;
 
 type TLoadedKeys = Readonly<{
@@ -243,7 +243,7 @@ export class WidgetCapsuleSigningKeyStore {
     return this.#load().then((keys) => Object.freeze([keys[purpose].signing]));
   }
 
-  publicSigningKeys(): Promise<readonly TWidgetCapsulePublicSigningKey[]> {
+  publicSigningKeys(): Promise<readonly TWidgetPublicSigningKey[]> {
     return this.#load().then((keys) => Object.freeze([
       keys.preview.publicKey,
       keys.release.publicKey,

@@ -2,12 +2,12 @@ import type {
   CapsuleArtifactSigningKey,
 } from '@omnidraw/capsule/sign';
 import type {
-  TWidgetCapsuleArtifactSigningPurpose,
-  TWidgetCapsuleHash,
-} from '#backend/core/widget-domain';
+  TWidgetArtifactSigningPurpose,
+  TWidgetArtifactHash,
+} from '@omnidraw/sdk/contract';
 
 export type TEffects = Readonly<{
-  loadKeys(purpose: TWidgetCapsuleArtifactSigningPurpose):
+  loadKeys(purpose: TWidgetArtifactSigningPurpose):
   Promise<readonly CapsuleArtifactSigningKey[]>;
   sign(
     bytes: Uint8Array,
@@ -17,8 +17,8 @@ export type TEffects = Readonly<{
 
 export type TArgs = Readonly<{
   bytes: Uint8Array;
-  capsuleArtifactHash: TWidgetCapsuleHash;
-  purpose: TWidgetCapsuleArtifactSigningPurpose;
+  capsuleArtifactHash: TWidgetArtifactHash;
+  purpose: TWidgetArtifactSigningPurpose;
 }>;
 
 export async function signOmnidrawCapsuleArtifact(

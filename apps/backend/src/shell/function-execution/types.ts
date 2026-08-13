@@ -1,7 +1,7 @@
 /** @file Public contracts for one bounded, synchronous server-function call. */
 
 import type { IResourceGateway } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 
 export type TFunctionMemoryTier = 'small' | 'medium' | 'large';
 

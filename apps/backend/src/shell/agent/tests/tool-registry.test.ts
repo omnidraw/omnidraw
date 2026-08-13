@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ZWidgetManifestV1 } from '#backend/core/widget-domain';
+import { ZWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
 import { AI_CHAT_TOOL_NAMES } from '../tools/CONSTANTS';
 import { fnIsStructuredToolErrorDetails } from '../tools/fn.result';

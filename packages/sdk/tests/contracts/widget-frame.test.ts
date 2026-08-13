@@ -5,7 +5,7 @@ import {
   fnNormalizeWidgetFrame,
   fnWidgetPlacementRefKey,
   fnWidgetPlacementToolId,
-} from '../index'
+} from '@omnidraw/sdk/contract'
 
 describe('neutral widget frame and tool contract', () => {
   test('normalizes frame metadata without runtime ownership', () => {

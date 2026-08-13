@@ -28,8 +28,7 @@ describe('@omnidraw/sdk/host', () => {
       bytes,
       digestSha256: digest,
       artifactHash: artifactHash,
-      // Existing transports used this name; the SDK normalizes it at the edge.
-      runtimeDescriptor: {
+      runtime: {
         format: 'omnidraw.capsule-runtime.v2',
         artifactHash: artifactHash,
         apiContract: {
@@ -49,7 +48,7 @@ describe('@omnidraw/sdk/host', () => {
     expect([...artifact.bytes]).toEqual([1, 2, 3]);
     expect(artifact.runtime.artifactHash).toBe(artifactHash);
 
-    const legacy = await host.validateArtifact({
+    await expect(host.validateArtifact({
       ...artifact,
       artifactHash: undefined,
       capsuleArtifactHash: artifactHash,
@@ -58,10 +57,7 @@ describe('@omnidraw/sdk/host', () => {
         artifactHash: undefined,
         capsuleArtifactHash: artifactHash,
       },
-    });
-    expect(legacy.artifactHash).toBe(artifactHash);
-    expect(legacy.runtime.artifactHash).toBe(artifactHash);
-    expect('capsuleArtifactHash' in legacy).toBe(false);
+    })).rejects.toThrow('runtime hash');
 
     await expect(host.validateArtifact({ ...artifact, digestSha256: 'c'.repeat(64) }))
       .rejects.toThrow('digest verification');

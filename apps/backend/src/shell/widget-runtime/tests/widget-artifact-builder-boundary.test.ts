@@ -19,11 +19,11 @@ import {
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnProjectWidgetBrowserFunctionDescriptors,
   type TWidgetBuildRequest,
-  type TWidgetCapsuleBuildIdentity,
+  type TWidgetRuntimeBuildIdentity,
   type TWidgetExecutableManifestProjection,
   type TWidgetServerFunctionDescriptor,
   type TWidgetSourceSnapshot,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   WidgetArtifactBuilderCapsule,
@@ -39,7 +39,7 @@ const sha256 = (value: Uint8Array | string): string => (
 const BUILDER_IDENTITY = 'capsule-boundary-test';
 const CAPSULE_ARTIFACT_HASH =
   `sha256:${'a'.repeat(64)}` as const;
-const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
+const CAPSULE_BUILD_IDENTITY: TWidgetRuntimeBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
   packageVersion: '0.10.2',
   packageDigest: `sha256:${'b'.repeat(64)}`,
@@ -356,7 +356,7 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       'styles/theme.css',
       'pixel.png',
     ]);
-    expect(result.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.uiArtifact.artifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'CAPSULE_EXTERNAL_DISTRIBUTION_INGESTED',
     }));
@@ -658,10 +658,10 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       expect(release.sourceSnapshotId).toBe(construction.sourceSnapshotId);
       expect(preview.sourceDigestSha256).toBe(construction.sourceDigestSha256);
       expect(release.sourceDigestSha256).toBe(construction.sourceDigestSha256);
-      expect(preview.uiArtifact.capsuleArtifactHash)
-        .toBe(construction.uiArtifact.capsuleArtifactHash);
-      expect(release.uiArtifact.capsuleArtifactHash)
-        .toBe(construction.uiArtifact.capsuleArtifactHash);
+      expect(preview.uiArtifact.artifactHash)
+        .toBe(construction.uiArtifact.artifactHash);
+      expect(release.uiArtifact.artifactHash)
+        .toBe(construction.uiArtifact.artifactHash);
       expect(preview.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
       expect(release.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
       expect(preview.functionDescriptors).toEqual(construction.functionDescriptors);

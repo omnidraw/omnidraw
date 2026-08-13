@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 const PORTABLE_FILES = [
-  '../filesystem/typed.ts',
-  '../filesystem/schema.ts',
-  '../filesystem/index.ts',
-  '../fn.filesystem-path.ts',
-  '../fn.filesystem-manifest.ts',
-  '../fn.filesystem-input.ts',
-  '../fn.filesystem-change.ts',
-  '../fn.filesystem-release.ts',
+  '../../src/contracts/filesystem/typed.ts',
+  '../../src/contracts/schema.ts',
+  '../../src/contracts/index.ts',
+  '../../src/contracts/core/fn.filesystem-path.ts',
+  '../../src/contracts/core/fn.filesystem-manifest.ts',
+  '../../src/contracts/core/fn.filesystem-input.ts',
+  '../../src/contracts/core/fn.filesystem-change.ts',
+  '../../src/contracts/core/fn.filesystem-release.ts',
 ] as const;
 
 describe('filesystem widget contract package boundary', () => {

@@ -1,12 +1,12 @@
 /** @file Types for ephemeral, process-owned filesystem widget Preview. */
 
-import type { TWidgetCapsuleBuildIdentity } from '#backend/core/widget-domain';
+import type { TWidgetRuntimeBuildIdentity } from '@omnidraw/sdk/contract';
 
 export type TPreviewConstructionCompatibility = Readonly<{
   builderIdentity: string;
   buildPolicyId: string;
   environmentIdentity: string;
-  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
   serverRuntimeAbi: string | null;
 }>;
 

@@ -1,5 +1,5 @@
 import { createCapsuleSchemaResource } from '@omnidraw/capsule/schema';
-import type { TWidgetBrowserFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/sdk/contract';
 import {
   fnOmnidrawCapabilityGrant,
   fnOmnidrawCapabilityRequest,

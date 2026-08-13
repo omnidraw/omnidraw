@@ -6,18 +6,18 @@ import type {
 } from '#backend/shell/agent';
 import type {
   TWidgetBrowserFunctionDescriptor,
-  TWidgetCapsuleRuntimeDescriptor,
-} from '#backend/core/widget-domain';
+  TWidgetRuntimeDescriptor,
+} from '@omnidraw/sdk/contract';
 import type {
-  TWidgetCapsuleHostConfiguration,
-  TWidgetCapsulePublicSigningKey,
+  TWidgetHostConfiguration,
+  TWidgetPublicSigningKey,
   TWidgetManifestV1,
   TWidgetReleaseDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type { IWidgetCapsuleHostConfigurationReader } from '#backend/shell/widget';
 
-type TWidgetCapsuleHostConfigurationCapability =
+type TWidgetHostConfigurationCapability =
   IWidgetCapsuleHostConfigurationReader;
 
 type TWidgetRuntimeResolution = Readonly<{
@@ -107,7 +107,7 @@ type TWidgetPreviewMountView = Readonly<{
     byteSize: number;
     bytesBase64: string;
   }>;
-  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+  runtimeDescriptor: TWidgetRuntimeDescriptor;
   functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   constructionReused: boolean;
@@ -177,15 +177,15 @@ type TWidgetApiContext = Readonly<{
   widgetCatalog: TWidgetRuntimeApiCapability;
   widgetPreview: TWidgetPreviewApiCapability;
   widgetState: IWidgetStateService;
-  widgetCapsuleHostConfiguration: TWidgetCapsuleHostConfigurationCapability;
+  widgetCapsuleHostConfiguration: TWidgetHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;
 }>;
 
 export type {
   TWidgetApiContext,
-  TWidgetCapsuleHostConfiguration,
-  TWidgetCapsuleHostConfigurationCapability,
-  TWidgetCapsulePublicSigningKey,
+  TWidgetHostConfiguration,
+  TWidgetHostConfigurationCapability,
+  TWidgetPublicSigningKey,
   TWidgetPreviewApiCapability,
   TWidgetPreviewDiagnosticView,
   TWidgetPreviewInvokeResult,

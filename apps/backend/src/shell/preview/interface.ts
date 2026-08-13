@@ -1,11 +1,11 @@
 import type { Browser, BrowserContext, Page } from 'playwright';
 import type {
   TWidgetBrowserFunctionDescriptor,
-  TWidgetCapsuleHostConfiguration,
-  TWidgetCapsuleProps,
-  TWidgetCapsuleRuntimeDescriptor,
-  TWidgetCapsuleTheme,
-} from '#backend/core/widget-domain';
+  TWidgetHostConfiguration,
+  TWidgetProps,
+  TWidgetRuntimeDescriptor,
+  TWidgetTheme,
+} from '@omnidraw/sdk/contract';
 import type {
   TPlaywrightRuntimeExecutableEvidence,
   TPlaywrightRuntimeIdentity,
@@ -68,14 +68,14 @@ export type TPreviewInspectionBrowserJob = Readonly<{
     bytes: Uint8Array;
     digestSha256: string;
     artifactHash: `sha256:${string}`;
-    runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+    runtimeDescriptor: TWidgetRuntimeDescriptor;
   }>;
-  hostConfiguration: TWidgetCapsuleHostConfiguration;
+  hostConfiguration: TWidgetHostConfiguration;
   functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   functionBridge: TPreviewInspectionFunctionBridge;
-  props?: TWidgetCapsuleProps;
-  theme: TWidgetCapsuleTheme;
+  props?: TWidgetProps;
+  theme: TWidgetTheme;
   viewport: Readonly<{
     width: number;
     height: number;

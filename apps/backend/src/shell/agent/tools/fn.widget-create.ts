@@ -1,4 +1,4 @@
-import { WIDGET_MANIFEST_V1_SCHEMA_URL, type TWidgetManifestV1 } from '#backend/core/widget-domain';
+import { WIDGET_MANIFEST_V1_SCHEMA_URL, type TWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import type { TWidgetCreateInput } from '../workspace/types';
 import {
   OMNIDRAW_CAPSULE_AUTHORING_APIS,

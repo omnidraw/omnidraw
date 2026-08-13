@@ -3,11 +3,11 @@ import type {
   TWidgetReleaseDescriptor,
   TWidgetReleaseFile,
   TWidgetReleaseValidation,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   WIDGET_CATALOG_CAPSULE_PATH,
   WIDGET_CATALOG_DRAFT_EXCLUDED_DIRECTORIES,
@@ -568,7 +568,7 @@ async function scanPublished(
   let release: TWidgetReleaseDescriptor | null = null;
   let releaseDescriptorDigestSha256: string | null = null;
   let releaseValidation: TWidgetReleaseValidation | null = null;
-  let capsuleRuntime: TWidgetCapsuleRuntimeDescriptor | null = null;
+  let capsuleRuntime: TWidgetRuntimeDescriptor | null = null;
   let functions: readonly TWidgetServerFunctionDescriptor[] | null = null;
   const releaseBytes = tree.selectedBytes.get(WIDGET_CATALOG_RELEASE_PATH);
   if (releaseBytes === undefined) {

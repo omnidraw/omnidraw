@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       },
       dependencies: {
         '@omnidraw/sdk': fileDependencies['@omnidraw/sdk'],
-        typescript: '6.0.3',
+        typescript: '5.9.3',
       },
     }, null, 2)}\n`)
     await writeFile(join(consumerRoot, 'omnidraw.json'), `${JSON.stringify({

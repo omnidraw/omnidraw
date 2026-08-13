@@ -5,7 +5,7 @@ import {
   fnWidgetSourceSnapshotIdentityMatches,
   type TWidgetBuildIntegrityArgs,
   type TWidgetBuildResult,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 
 const digest = 'a'.repeat(64);
 const capsuleBuildIdentity = {

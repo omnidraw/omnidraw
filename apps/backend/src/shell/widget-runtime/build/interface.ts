@@ -4,7 +4,7 @@ import type {
   CapsuleSnapshotFile,
 } from '@omnidraw/capsule/build';
 import type { CapsuleBuildInput } from '@omnidraw/capsule/protocol';
-import type { TWidgetExecutableManifestProjection } from '#backend/core/widget-domain';
+import type { TWidgetExecutableManifestProjection } from '@omnidraw/sdk/contract';
 
 export type TOmnidrawCapsuleBuild = (
   request: CapsuleApiGroupBuildRequest,

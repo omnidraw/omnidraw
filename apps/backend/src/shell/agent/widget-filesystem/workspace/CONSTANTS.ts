@@ -2,7 +2,7 @@ import {
   WIDGET_BUILD_FILE_COUNT_MAX,
   WIDGET_BUILD_FILE_MAX_BYTES,
   WIDGET_BUILD_TOTAL_BYTES_MAX,
-} from '#backend/core/widget-domain/CONSTANTS';
+} from '@omnidraw/sdk/contract';
 import type { TWidgetWorkspaceLimits } from './typed';
 
 export const WIDGET_WORKSPACE_DIRECTORY_MODE = 0o700;

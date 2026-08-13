@@ -48,7 +48,7 @@ async function createProject(root: string): Promise<void> {
   await mkdir(join(root, 'ui'), { recursive: true });
   await mkdir(join(root, 'node_modules'), { recursive: true });
   await symlink(
-    await storedPackage('typescript@6.0.3', 'typescript'),
+    await storedPackage('typescript@5.9.3', 'typescript'),
     join(root, 'node_modules/typescript'),
     'dir',
   );
@@ -61,7 +61,7 @@ async function createProject(root: string): Promise<void> {
       build: 'omnidraw-widget build .',
     },
     dependencies: { '@omnidraw/sdk': '0.9.1' },
-    devDependencies: { typescript: '6.0.3' },
+    devDependencies: { typescript: '5.9.3' },
   }, null, 2)}\n`);
   await writeFile(join(root, 'tsconfig.json'), `${JSON.stringify({
     compilerOptions: {

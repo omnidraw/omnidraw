@@ -233,7 +233,7 @@ function job(override: Partial<TPreviewInspectionBrowserJob> = {}): TPreviewInsp
       digestSha256: SHA_A,
       artifactHash: `sha256:${SHA_A}`,
       runtimeDescriptor: {
-        capsuleArtifactHash: `sha256:${SHA_A}`,
+        artifactHash: `sha256:${SHA_A}`,
       } as TPreviewInspectionBrowserJob['artifact']['runtimeDescriptor'],
     },
     hostConfiguration: {} as TPreviewInspectionBrowserJob['hostConfiguration'],

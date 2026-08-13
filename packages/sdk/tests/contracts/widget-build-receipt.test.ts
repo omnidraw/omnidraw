@@ -9,7 +9,7 @@ import {
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
   type TWidgetManifestV1,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 
 const digest = (value: string | Uint8Array): string => createHash('sha256').update(value).digest('hex');
 const files = Object.freeze([

@@ -6,23 +6,23 @@ import type {
   TWidgetArtifactConstructionRequest,
   TWidgetArtifactConstructionResult,
   TWidgetArtifactConstructionSignRequest,
-  TWidgetCapsuleArtifactInspectionRequest,
-  TWidgetCapsuleArtifactInspectionResult,
-  TWidgetCapsuleArtifactSignRequest,
-  TWidgetCapsuleArtifactSignResult,
-  TWidgetCapsuleHostConfiguration,
-  TWidgetCapsuleRuntimeDescriptor,
-  TWidgetCapsuleRuntimeDescriptorCreateRequest,
-  TWidgetCapsuleUiArtifact,
-  TWidgetCapsuleUiBuildRequest,
+  TWidgetArtifactInspectionRequest,
+  TWidgetArtifactInspectionResult,
+  TWidgetArtifactSignRequest,
+  TWidgetArtifactSignResult,
+  TWidgetHostConfiguration,
+  TWidgetRuntimeDescriptor,
+  TWidgetRuntimeDescriptorCreateRequest,
+  TWidgetUiArtifact,
+  TWidgetUiBuildRequest,
   TWidgetBuildRequest,
   TWidgetBuildResult,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
-} from '../../core/widget-domain/types';
+} from '@omnidraw/sdk/contract';
 
 export interface IWidgetCapsuleHostConfigurationReader {
-  read(): Promise<TWidgetCapsuleHostConfiguration>;
+  read(): Promise<TWidgetHostConfiguration>;
 }
 
 export interface IWidgetArtifactBuilder {
@@ -54,28 +54,28 @@ export interface IWidgetArtifactConstructionBuilder
 /** Trusted build port; implementations map Omnidraw inputs to public Capsule build APIs. */
 export interface IWidgetCapsuleUiArtifactBuilder {
   buildCapsuleUiArtifact(
-    request: TWidgetCapsuleUiBuildRequest,
-  ): Promise<TWidgetCapsuleUiArtifact>;
+    request: TWidgetUiBuildRequest,
+  ): Promise<TWidgetUiArtifact>;
 }
 
 /** Trusted bytes-in/bytes-out signing port. Private signing material is never part of this contract. */
 export interface IWidgetCapsuleArtifactSigner {
   signCapsuleArtifact(
-    request: TWidgetCapsuleArtifactSignRequest,
-  ): Promise<TWidgetCapsuleArtifactSignResult>;
+    request: TWidgetArtifactSignRequest,
+  ): Promise<TWidgetArtifactSignResult>;
 }
 
 /** Verifies exact signed bytes and returns only serializable Capsule runtime metadata. */
 export interface IWidgetCapsuleArtifactInspector {
   inspectCapsuleArtifact(
-    request: TWidgetCapsuleArtifactInspectionRequest,
-  ): Promise<TWidgetCapsuleArtifactInspectionResult>;
+    request: TWidgetArtifactInspectionRequest,
+  ): Promise<TWidgetArtifactInspectionResult>;
 }
 
 export interface IWidgetCapsuleRuntimeDescriptorFactory {
   createCapsuleRuntimeDescriptor(
-    request: TWidgetCapsuleRuntimeDescriptorCreateRequest,
-  ): TWidgetCapsuleRuntimeDescriptor;
+    request: TWidgetRuntimeDescriptorCreateRequest,
+  ): TWidgetRuntimeDescriptor;
 }
 
 /**

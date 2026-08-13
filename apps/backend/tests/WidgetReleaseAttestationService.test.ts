@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TWidgetCapsuleRuntimeDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetRuntimeDescriptor } from '@omnidraw/sdk/contract';
 import { OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST } from '#backend/shell/widget-runtime/contract';
 import { WidgetCapsuleHostConfigurationService } from '../src/shell/widget/WidgetCapsuleHostConfigurationService';
 import { WidgetCapsuleSigningKeyStore } from '../src/shell/widget/WidgetCapsuleSigningKeyStore';
@@ -11,9 +11,9 @@ import { WidgetReleaseAttestationService } from '../src/shell/widget/WidgetRelea
 
 const roots: string[] = [];
 const HASH = `sha256:${'a'.repeat(64)}` as const;
-const RUNTIME: TWidgetCapsuleRuntimeDescriptor = Object.freeze({
+const RUNTIME: TWidgetRuntimeDescriptor = Object.freeze({
   format: 'omnidraw.capsule-runtime.v2',
-  capsuleArtifactHash: HASH,
+  artifactHash: HASH,
   apiContract: Object.freeze({
     format: 'capsule-api-groups-v1',
     groups: Object.freeze(['DOM'] as const),

@@ -10,7 +10,7 @@ import type {
 } from '#backend/shell/function-execution';
 import { EphemeralResourceWritePermitAuthority } from '#backend/shell/function-execution/local';
 import type { ICanvasService } from '#backend/shell/canvas/authority';
-import type { TWidgetServerFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 import { FunctionService } from '../src/shell/function-execution/FunctionService';
 import type {
   TWidgetFilesystemRuntimeResolution,

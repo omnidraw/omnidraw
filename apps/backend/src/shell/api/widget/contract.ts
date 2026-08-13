@@ -12,24 +12,25 @@ import {
   WIDGET_FRAME_MAX_WIDTH,
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
-  ZOmnidrawToolIcon,
-  ZWidgetBrowserFunctionDescriptors,
-  ZWidgetCapsuleAllowedApis,
-  ZWidgetCapsuleBudgetRequest,
-  ZWidgetCapsuleRuntimeDescriptor,
-  ZWidgetManifestV1,
-  ZWidgetResourceRequirement,
-} from '#backend/core/widget-domain';
+  ZOmnidrawToolIcon as OmnidrawToolIconValidator,
+  ZWidgetBrowserFunctionDescriptors as WidgetBrowserFunctionDescriptorsValidator,
+  ZWidgetRuntimeAllowedApis as WidgetRuntimeAllowedApisValidator,
+  ZWidgetRuntimeBudgetRequest as WidgetRuntimeBudgetRequestValidator,
+  ZWidgetRuntimeDescriptor as WidgetRuntimeDescriptorValidator,
+  ZWidgetManifestV1 as WidgetManifestV1Validator,
+  ZWidgetResourceRequirement as WidgetResourceRequirementValidator,
+} from '@omnidraw/sdk/contract';
 import {
   WIDGET_DESCRIPTION_MAX_CHARACTERS,
   WIDGET_NAME_MAX_CHARACTERS,
   WIDGET_TOOL_GROUP_MAX_BYTES,
   WIDGET_TOOL_LABEL_MAX_CHARACTERS,
-} from '#backend/core/widget-domain/CONSTANTS';
+} from '@omnidraw/sdk/contract';
 import { z } from 'zod';
+import { sdkSchema } from '../sdk-schema';
 import type {
-  TWidgetCapsuleHostConfiguration,
-  TWidgetCapsulePublicSigningKey,
+  TWidgetHostConfiguration,
+  TWidgetPublicSigningKey,
 } from './types';
 import type {
   TWidgetPublicCatalog,
@@ -52,6 +53,13 @@ const ZWidgetKey = z.string().min(1).max(100)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const ZSha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const ZWidgetSource = z.enum(['draft', 'published']);
+const ZOmnidrawToolIcon = sdkSchema(OmnidrawToolIconValidator);
+const ZWidgetBrowserFunctionDescriptors = sdkSchema(WidgetBrowserFunctionDescriptorsValidator);
+const ZWidgetRuntimeAllowedApis = sdkSchema(WidgetRuntimeAllowedApisValidator);
+const ZWidgetRuntimeBudgetRequest = sdkSchema(WidgetRuntimeBudgetRequestValidator);
+const ZWidgetRuntimeDescriptor = sdkSchema(WidgetRuntimeDescriptorValidator);
+const ZWidgetManifestV1 = sdkSchema(WidgetManifestV1Validator);
+const ZWidgetResourceRequirement = sdkSchema(WidgetResourceRequirementValidator);
 const ZWidgetFilePath = z.string().min(1).max(512).refine((value) => (
   !value.startsWith('/')
   && !value.includes('\\')
@@ -76,12 +84,12 @@ const ZWidgetPublishedPlacementReference = z.object({
   widgetKey: ZWidgetKey,
   catalogGeneration: z.number().int().positive(),
 }).strict();
-const ZSignedWidgetCapsuleRuntimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.refine(
+const ZSignedWidgetCapsuleRuntimeDescriptor = ZWidgetRuntimeDescriptor.refine(
   (descriptor) => descriptor.signatureKeyIds.length > 0,
   'Runtime artifact must contain at least one trusted Capsule signature.',
 );
 export const ZWidgetCapsulePublicSigningKey: z.ZodType<
-  TWidgetCapsulePublicSigningKey
+  TWidgetPublicSigningKey
 > = z.object({
   keyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   algorithm: z.literal('Ed25519'),
@@ -90,11 +98,11 @@ export const ZWidgetCapsulePublicSigningKey: z.ZodType<
 }).strict();
 
 export const ZWidgetCapsuleHostConfiguration: z.ZodType<
-  TWidgetCapsuleHostConfiguration
+  TWidgetHostConfiguration
 > = z.object({
   generation: z.string().regex(/^[0-9a-f]{64}$/),
-  allowedApis: ZWidgetCapsuleAllowedApis,
-  limits: ZWidgetCapsuleBudgetRequest,
+  allowedApis: ZWidgetRuntimeAllowedApis,
+  limits: ZWidgetRuntimeBudgetRequest,
   previewSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   releaseSigningKeyId: z.string().regex(CAPSULE_SIGNING_KEY_ID_PATTERN),
   signingKeys: z.array(ZWidgetCapsulePublicSigningKey).min(2).max(32),

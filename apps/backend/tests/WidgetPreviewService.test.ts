@@ -10,10 +10,10 @@ import {
   fnProjectWidgetBrowserFunctionDescriptors,
   fnProjectWidgetExecutableManifest,
   fnWidgetExecutableInputDigest,
-  type TWidgetCapsuleRuntimeDescriptor,
+  type TWidgetRuntimeDescriptor,
   type TWidgetManifestV1,
   type TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { EphemeralResourceWritePermitAuthority } from '#backend/shell/function-execution/local';
 import type { IDirectFunctionInvoker } from '#backend/shell/function-execution';
 import {
@@ -73,14 +73,14 @@ const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
 function runtimeDescriptor(
   capsuleBytes: Uint8Array,
   functions: readonly TWidgetServerFunctionDescriptor[] = [],
-): TWidgetCapsuleRuntimeDescriptor {
+): TWidgetRuntimeDescriptor {
   const descriptorDigest = sha256(
     fnCanonicalizeWidgetServerFunctionDescriptors(functions),
   );
   const browserFunctions = fnProjectWidgetBrowserFunctionDescriptors(functions);
   return {
     format: 'omnidraw.capsule-runtime.v2',
-    capsuleArtifactHash: `sha256:${sha256(capsuleBytes)}`,
+    artifactHash: `sha256:${sha256(capsuleBytes)}`,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: ['DOM'],

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ZWidgetCapsuleRuntimeDescriptor } from '../browser';
+import { ZWidgetRuntimeDescriptor } from '@omnidraw/sdk/contract';
 import {
   CAPSULE_HASH_B,
   CAPSULE_RUNTIME_DESCRIPTOR,
@@ -7,7 +7,7 @@ import {
 
 describe('browser Capsule runtime descriptor', () => {
   test('strictly decodes and normalizes trusted runtime metadata', () => {
-    const parsed = ZWidgetCapsuleRuntimeDescriptor.parse({
+    const parsed = ZWidgetRuntimeDescriptor.parse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       apiContract: {
         ...CAPSULE_RUNTIME_DESCRIPTOR.apiContract,
@@ -25,19 +25,19 @@ describe('browser Capsule runtime descriptor', () => {
   });
 
   test('rejects malformed hashes, unknown fields, duplicates, and parking', () => {
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       capsuleArtifactHash: 'not-a-capsule-hash',
     }).success).toBe(false);
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       extra: true,
     }).success).toBe(false);
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       signatureKeyIds: ['same', 'same'],
     }).success).toBe(false);
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       parkability: {
         parkable: true,
@@ -54,11 +54,11 @@ describe('browser Capsule runtime descriptor', () => {
       required: true,
       operations: ['send'],
     };
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       capabilityRequests: [request, request],
     }).success).toBe(false);
-    expect(ZWidgetCapsuleRuntimeDescriptor.safeParse({
+    expect(ZWidgetRuntimeDescriptor.safeParse({
       ...CAPSULE_RUNTIME_DESCRIPTOR,
       budgets: { ...CAPSULE_RUNTIME_DESCRIPTOR.budgets, diskBytes: 1 },
     }).success).toBe(false);

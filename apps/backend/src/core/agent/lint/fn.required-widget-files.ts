@@ -1,4 +1,4 @@
-import type { TWidgetManifestV1 } from '#backend/core/widget-domain';
+import type { TWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import type { TValidationResult } from '../types';
 
 export function fnNormalizeRelativeFilePath(path: string): string {

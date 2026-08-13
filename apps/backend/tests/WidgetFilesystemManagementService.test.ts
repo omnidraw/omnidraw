@@ -10,13 +10,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
@@ -52,10 +52,10 @@ function manifest(name: string): TWidgetManifestV1 {
   };
 }
 
-function runtime(artifactHash: `sha256:${string}`): TWidgetCapsuleRuntimeDescriptor {
+function runtime(artifactHash: `sha256:${string}`): TWidgetRuntimeDescriptor {
   return {
     format: 'omnidraw.capsule-runtime.v2',
-    capsuleArtifactHash: artifactHash,
+    artifactHash,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: ['DOM'],
@@ -72,7 +72,7 @@ function runtime(artifactHash: `sha256:${string}`): TWidgetCapsuleRuntimeDescrip
 const capsule: TWidgetCatalogCapsuleInspectionEffects = {
   async inspectCapsuleArtifact(args) {
     return {
-      artifactHash: args.expectedRuntime.capsuleArtifactHash,
+      artifactHash: args.expectedRuntime.artifactHash,
       runtime: args.expectedRuntime,
     };
   },

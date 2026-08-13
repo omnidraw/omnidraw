@@ -31,6 +31,7 @@ if (tsc.exitCode !== 0) {
 const result = await Bun.build({
   entrypoints: [
     path.join(sdkDir, "src/index.ts"),
+    path.join(sdkDir, "src/contract.ts"),
     path.join(sdkDir, "src/manifest.ts"),
     path.join(sdkDir, "src/artifact.ts"),
     path.join(sdkDir, "src/guest.ts"),

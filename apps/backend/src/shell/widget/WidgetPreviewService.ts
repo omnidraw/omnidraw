@@ -48,11 +48,11 @@ import {
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBrowserFunctionDescriptor,
   type TWidgetBuildEnvironment,
-  type TWidgetCapsuleRuntimeDescriptor,
-  type TWidgetCapsuleTheme,
+  type TWidgetRuntimeDescriptor,
+  type TWidgetTheme,
   type TWidgetManifestV1,
   type TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 import type { ResourceService } from '../resources/ResourceService';
 import type { WidgetFilesystemRuntimeCatalog } from './WidgetFilesystemRuntimeCatalog';
@@ -91,7 +91,7 @@ type TWidgetPreviewServerMount = Readonly<{
   runtimeAbi: string;
   entryBytes: Uint8Array;
   artifactDigestSha256: string;
-  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+  runtimeDescriptor: TWidgetRuntimeDescriptor;
   descriptors: readonly TWidgetServerFunctionDescriptor[];
   requirements: readonly TResourceRequirement[];
   bindings: readonly TWidgetPreviewResourceBinding[];
@@ -102,7 +102,7 @@ type TWidgetPreviewSignedArtifact = Readonly<{
   manifest: Omit<TWidgetManifestV1, 'server'>;
   capsuleBytes: Uint8Array;
   artifactDigestSha256: string;
-  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+  runtimeDescriptor: TWidgetRuntimeDescriptor;
   browserFunctionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   constructionReused: boolean;
@@ -137,7 +137,7 @@ type TWidgetPreviewServiceConfig = Readonly<{
   compatibility: Omit<TPreviewConstructionCompatibility, 'serverRuntimeAbi'>;
   hostConfiguration: Pick<WidgetCapsuleHostConfigurationService, 'read'>;
   inspectionBrowser: TPreviewInspectionBrowserPort;
-  inspectionTheme: TWidgetCapsuleTheme;
+  inspectionTheme: TWidgetTheme;
   inspectionScope?: Readonly<{
     resolve(args: Readonly<{
       chatId: string;
@@ -734,8 +734,8 @@ class WidgetPreviewService {
             liveGeneration.generation !== accepted.generation
             || liveGeneration.buildIdentity !== accepted.receipt.buildIdentity
             || liveArtifact.artifactDigestSha256 !== acceptedArtifact.artifactDigestSha256
-            || liveArtifact.runtimeDescriptor.capsuleArtifactHash
-              !== acceptedArtifact.runtimeDescriptor.capsuleArtifactHash
+            || liveArtifact.runtimeDescriptor.artifactHash
+              !== acceptedArtifact.runtimeDescriptor.artifactHash
             || liveArtifact.browserFunctionDescriptorsDigestSha256
               !== acceptedArtifact.browserFunctionDescriptorsDigestSha256
           ) {
@@ -832,7 +832,7 @@ class WidgetPreviewService {
       generationMonitor.unref();
       artifactIdentity = Object.freeze({
         artifactDigestSha256: artifact.artifactDigestSha256,
-        artifactHash: artifact.runtimeDescriptor.capsuleArtifactHash,
+        artifactHash: artifact.runtimeDescriptor.artifactHash,
         constructionReused: artifact.constructionReused,
       });
       verifiedSourceMap = await awaitInspectionSignal(
@@ -935,7 +935,7 @@ class WidgetPreviewService {
         artifact: Object.freeze({
           bytes: artifact.capsuleBytes,
           digestSha256: artifact.artifactDigestSha256,
-          artifactHash: artifact.runtimeDescriptor.capsuleArtifactHash,
+          artifactHash: artifact.runtimeDescriptor.artifactHash,
           runtimeDescriptor: artifact.runtimeDescriptor,
         }),
         hostConfiguration,
@@ -957,7 +957,7 @@ class WidgetPreviewService {
         browser.jobId !== jobId
         || browser.artifactDigestSha256 !== artifact.artifactDigestSha256
         || browser.artifactHash
-          !== artifact.runtimeDescriptor.capsuleArtifactHash
+          !== artifact.runtimeDescriptor.artifactHash
       ) {
         throw inspectionError(
           'BROWSER_RESULT_INVALID',
@@ -1259,7 +1259,7 @@ class WidgetPreviewService {
       parseSourceMap: (value) => new TraceMap(value),
     }, {
       expectedDigestSha256: artifact.sourceMap.digestSha256,
-      expectedCapsuleArtifactHash: artifact.runtimeDescriptor.capsuleArtifactHash,
+      expectedCapsuleArtifactHash: artifact.runtimeDescriptor.artifactHash,
       expectedSourceRevision: artifact.sourceMap.sourceRevision,
       bytes: artifact.sourceMap.bytes,
     });

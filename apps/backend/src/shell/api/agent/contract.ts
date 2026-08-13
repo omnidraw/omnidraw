@@ -1,7 +1,13 @@
 import { eventIterator, pc } from '../procedure';
-import { ZWidgetManifestV1, type TWidgetManifestV1 } from '#backend/core/widget-domain';
+import {
+  ZWidgetManifestV1 as WidgetManifestV1Validator,
+  type TWidgetManifestV1,
+} from '@omnidraw/sdk/contract';
 import type { TAgentEvent } from '#backend/shell/events/types';
 import { z } from 'zod';
+import { sdkSchema } from '../sdk-schema';
+
+const ZWidgetManifestV1 = sdkSchema(WidgetManifestV1Validator);
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
 

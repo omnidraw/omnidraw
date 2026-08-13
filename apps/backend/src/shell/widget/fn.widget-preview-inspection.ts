@@ -9,7 +9,7 @@ import type {
   TWidgetPreviewInspectResult,
 } from '#backend/shell/agent';
 import { fnClassifyWidgetPreviewInspection } from '#backend/shell/agent/tools/fn.widget-preview-inspect';
-import type { TWidgetCapsuleTheme } from '#backend/core/widget-domain';
+import type { TWidgetTheme } from '@omnidraw/sdk/contract';
 import type {
   TPreviewInspectionBrowserActionResult,
   TPreviewInspectionBrowserFailureEvidence,
@@ -248,7 +248,7 @@ export function fnProjectWidgetPreviewRuntimeDiagnostics(
   });
 }
 
-export function fnDefaultWidgetPreviewInspectionTheme(): TWidgetCapsuleTheme {
+export function fnDefaultWidgetPreviewInspectionTheme(): TWidgetTheme {
   return Object.freeze({
     format: 'omnidraw.widget-theme.v1',
     appearance: 'light',

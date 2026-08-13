@@ -4,7 +4,7 @@ import type {
   TWidgetBuildEnvironment,
   TWidgetExecutableInputFile,
   TWidgetManifestV1,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 import {
   ZWidgetManifestV1,
   fnCanonicalizeWidgetExecutableInput,
@@ -15,7 +15,7 @@ import {
   fnWidgetExecutableInputDigest,
   fnWidgetExecutableManifestDigest,
   parseWidgetManifestV1Json,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 import { CAPSULE_BUILD_IDENTITY } from './capsule.fixture';
 
 const digestString = (value: string): string => createHash('sha256').update(value).digest('hex');

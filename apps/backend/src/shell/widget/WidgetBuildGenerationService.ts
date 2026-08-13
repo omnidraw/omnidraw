@@ -23,7 +23,7 @@ import {
   parseWidgetBuildReceiptJson,
   type TWidgetBuildReceipt,
   type TWidgetBuildReceiptOutput,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnWidgetBuildGenerationDiagnostic,
   fnWidgetBuildGenerationPollOrder,

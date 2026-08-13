@@ -5,7 +5,7 @@ import type {
   TWidgetBuildEnvironment,
   TWidgetBuildResult,
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { WidgetArtifactBuilderCapsule } from '#backend/shell/widget-runtime/build';
 import { WidgetSourceSnapshot } from '#backend/shell/widget-domain/local';
 import { WidgetFilesystemBuildService } from '../widget-filesystem/build';
@@ -26,7 +26,7 @@ const CAPSULE_BUILD_IDENTITY = Object.freeze({
 });
 const RUNTIME = Object.freeze({
   format: 'omnidraw.capsule-runtime.v2' as const,
-  capsuleArtifactHash: CAPSULE_HASH,
+  artifactHash: CAPSULE_HASH,
   apiContract: Object.freeze({
     format: 'capsule-api-groups-v1' as const,
     groups: Object.freeze(['DOM'] as const),
@@ -98,7 +98,7 @@ function fixture() {
       kind: 'unsigned-ui',
       digestSha256: RAW_A,
       unsignedBytes,
-      capsuleArtifactHash: CAPSULE_HASH,
+      artifactHash: CAPSULE_HASH,
       runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
       builderIdentity: 'builder-v1',
       capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
@@ -113,7 +113,7 @@ function fixture() {
       kind: 'ui',
       digestSha256: RAW_B,
       bytes: signedBytes,
-      capsuleArtifactHash: CAPSULE_HASH,
+      artifactHash: CAPSULE_HASH,
       runtimeDescriptor: RUNTIME,
       builderIdentity: 'builder-v1',
       capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
@@ -204,14 +204,14 @@ describe('filesystem widget build service', () => {
           kind: 'unsigned-ui',
           digestSha256: RAW_A,
           unsignedBytes: new Uint8Array([9, 8, 7]),
-          capsuleArtifactHash: CAPSULE_HASH,
+          artifactHash: CAPSULE_HASH,
           runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
           builderIdentity: 'builder-v1',
           capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
         },
         serverArtifact: null,
         diagnostics: [],
-      } as unknown as import('#backend/core/widget-domain').TWidgetArtifactConstructionResult,
+      } as unknown as import('@omnidraw/sdk/contract').TWidgetArtifactConstructionResult,
       distFiles: [{ path: 'dist/main.js', bytes: new TextEncoder().encode('browser') }],
     });
     const decoded = fnDecodeWidgetFilesystemConstruction(encoded);
@@ -255,7 +255,7 @@ describe('filesystem widget build service', () => {
           kind: 'unsigned-ui',
           digestSha256: RAW_A,
           unsignedBytes,
-          capsuleArtifactHash: CAPSULE_HASH,
+          artifactHash: CAPSULE_HASH,
           runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
           builderIdentity: 'builder-v1',
           capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
@@ -352,7 +352,7 @@ describe('filesystem widget build service', () => {
         kind: 'unsigned-ui',
         digestSha256: RAW_A,
         unsignedBytes: new TextEncoder().encode('unsigned'),
-        capsuleArtifactHash: CAPSULE_HASH,
+        artifactHash: CAPSULE_HASH,
         runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
         builderIdentity: 'builder-v1',
         capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
@@ -532,11 +532,11 @@ describe('filesystem widget build service', () => {
         request: TWidgetArtifactConstructionRequest,
       ) => Promise<TWidgetArtifactConstructionResult>,
       async signConstruction(
-        request: import('#backend/core/widget-domain').TWidgetArtifactConstructionSignRequest,
+        request: import('@omnidraw/sdk/contract').TWidgetArtifactConstructionSignRequest,
       ) {
         const build = await artifactBuilder.signConstruction(request);
         inspection = {
-          artifactHash: build.uiArtifact.capsuleArtifactHash as typeof CAPSULE_HASH,
+          artifactHash: build.uiArtifact.artifactHash as typeof CAPSULE_HASH,
           runtime: build.uiArtifact.runtimeDescriptor as typeof RUNTIME,
         };
         return build;

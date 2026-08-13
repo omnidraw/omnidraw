@@ -15,7 +15,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TWidgetManifestV1 } from '#backend/core/widget-domain/filesystem';
+import type { TWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import {
   NodeWidgetFilesystemWorkspace,
   createWidgetImportWorkspacePorts,

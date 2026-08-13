@@ -4,9 +4,9 @@ import type {
   CapsuleBudgetRequest,
 } from '@omnidraw/capsule/protocol';
 import type {
-  TWidgetCapsuleApiGroup,
-  TWidgetCapsuleBudgetRequest,
-} from '#backend/core/widget-domain';
+  TWidgetRuntimeApiGroup,
+  TWidgetRuntimeBudgetRequest,
+} from '@omnidraw/sdk/contract';
 import { fnMapCapsuleApis } from '#backend/shell/widget-runtime/contract/fn.apis';
 import { fnMapCapsuleBudgetRequest } from '#backend/shell/widget-runtime/contract/fn.budgets';
 import {
@@ -15,13 +15,13 @@ import {
 } from './CONSTANTS';
 
 export function fnOmnidrawCapsuleApis(
-  apis: readonly TWidgetCapsuleApiGroup[],
+  apis: readonly TWidgetRuntimeApiGroup[],
 ): readonly CapsuleApiGroup[] {
   return fnMapCapsuleApis(apis);
 }
 
 export function fnOmnidrawCapsuleBudgetRequest(
-  request: TWidgetCapsuleBudgetRequest,
+  request: TWidgetRuntimeBudgetRequest,
 ): CapsuleBudgetRequest {
   const result = fnMapCapsuleBudgetRequest(request);
   for (const [key, value] of Object.entries(result)) {

@@ -16,7 +16,7 @@ const CAPSULE_BUILD_IDENTITY = Object.freeze({
 });
 const RUNTIME = Object.freeze({
   format: 'omnidraw.capsule-runtime.v2' as const,
-  capsuleArtifactHash: CAPSULE_HASH,
+  artifactHash: CAPSULE_HASH,
   apiContract: Object.freeze({
     format: 'capsule-api-groups-v1' as const,
     groups: Object.freeze(['DOM'] as const),
@@ -75,14 +75,14 @@ function construction() {
         kind: 'unsigned-ui',
         digestSha256: RAW_A,
         unsignedBytes: new Uint8Array([9, 8, 7]),
-        capsuleArtifactHash: CAPSULE_HASH,
+        artifactHash: CAPSULE_HASH,
         runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
         builderIdentity: 'builder-v1',
         capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
       },
       serverArtifact: null,
       diagnostics: [],
-    } as unknown as import('#backend/core/widget-domain').TWidgetArtifactConstructionResult,
+    } as unknown as import('@omnidraw/sdk/contract').TWidgetArtifactConstructionResult,
     distFiles: [{ path: 'dist/main.js', bytes: new TextEncoder().encode('browser') }],
   };
 }

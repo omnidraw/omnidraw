@@ -8,7 +8,7 @@ import {
 import {
   WidgetManifestValidator,
   fnCanonicalizeWidgetManifestV1,
-} from '@omnidraw/sdk/manifest'
+} from '@omnidraw/sdk/contract'
 import {
   WIDGET_SDK_CONFORMANCE_FIXTURE,
 } from '@omnidraw/sdk/conformance'

@@ -373,7 +373,7 @@ export function layerLiveMechanics(args: Readonly<{
         const build = await capsuleBuilder.signConstruction(request);
         signedCapsuleInspections.set(build.uiArtifact.bytes, Object.freeze({
           bytesDigestSha256: sha256(build.uiArtifact.bytes),
-          artifactHash: build.uiArtifact.capsuleArtifactHash,
+          artifactHash: build.uiArtifact.artifactHash,
           runtime: build.uiArtifact.runtimeDescriptor,
         }));
         return build;

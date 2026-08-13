@@ -1,7 +1,7 @@
 import {
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnCanonicalizeWidgetPresentation,
   fnCanonicalizeWidgetUnsignedReleaseDescriptor,
@@ -14,7 +14,7 @@ import {
   fnWidgetReleaseDirectoryDigest,
   parseWidgetManifestV1Json,
   parseWidgetReleaseJson,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import type { TWidgetCatalogContractEffects } from './typed';
 
 /** A109's edge adapter over the pure A108 contract surface. */

@@ -4,7 +4,7 @@ import {
   WIDGET_BUILD_TOTAL_BYTES_MAX,
   WIDGET_RELEASE_FILE_COUNT_MAX,
   WIDGET_RELEASE_FILE_MAX_BYTES,
-} from '#backend/core/widget-domain/CONSTANTS';
+} from '@omnidraw/sdk/contract';
 import type { TWidgetCatalogScanLimits } from './typed';
 
 export const WIDGET_CATALOG_MANIFEST_PATH = 'omnidraw.json';

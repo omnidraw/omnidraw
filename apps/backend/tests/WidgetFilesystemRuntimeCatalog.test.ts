@@ -4,13 +4,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
@@ -30,10 +30,10 @@ function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function runtime(artifactHash: `sha256:${string}`): TWidgetCapsuleRuntimeDescriptor {
+function runtime(artifactHash: `sha256:${string}`): TWidgetRuntimeDescriptor {
   return {
     format: 'omnidraw.capsule-runtime.v2',
-    capsuleArtifactHash: artifactHash,
+    artifactHash,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: ['DOM'],
@@ -76,7 +76,7 @@ function manifest(
 const capsule: TWidgetCatalogCapsuleInspectionEffects = {
   async inspectCapsuleArtifact(args) {
     return {
-      artifactHash: args.expectedRuntime.capsuleArtifactHash,
+      artifactHash: args.expectedRuntime.artifactHash,
       runtime: args.expectedRuntime,
     };
   },

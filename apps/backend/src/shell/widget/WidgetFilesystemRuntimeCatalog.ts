@@ -19,7 +19,7 @@ import type {
   TWidgetPlacementRef,
   TWidgetReleaseDescriptor,
   TWidgetServerFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { WidgetFilesystemManagementService } from './WidgetFilesystemManagementService';
 
 const DEFAULT_WIDGET_BOUNDS: TWidgetFrameBounds = Object.freeze({

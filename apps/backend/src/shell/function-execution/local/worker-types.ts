@@ -1,7 +1,7 @@
 /** @file Private serializable protocol between the Bun host driver and one child. */
 
 import type { TResourceCall, TResourceCallResult } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 import type {
   TDirectFunctionSubject,
   TFunctionFailure,

@@ -4,7 +4,7 @@ import type {
   TWidgetExecutableInputFile,
   TWidgetManifestV1,
   TWidgetReleaseFile,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import type {
   TWidgetImportTreeEntry,
 } from '../import/typed';

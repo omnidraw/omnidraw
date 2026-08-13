@@ -29,7 +29,7 @@ function job(): TPreviewInspectionBrowserJob {
       digestSha256: SHA,
       artifactHash: `sha256:${SHA}`,
       runtimeDescriptor: {
-        capsuleArtifactHash: `sha256:${SHA}`,
+        artifactHash: `sha256:${SHA}`,
       } as TPreviewInspectionBrowserJob['artifact']['runtimeDescriptor'],
     },
     hostConfiguration: {} as TPreviewInspectionBrowserJob['hostConfiguration'],

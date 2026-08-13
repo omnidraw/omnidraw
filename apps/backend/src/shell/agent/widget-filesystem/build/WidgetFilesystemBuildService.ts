@@ -17,7 +17,7 @@ import {
   type TWidgetReleaseFile,
   type TWidgetSourceFile,
   type TWidgetSourceSnapshot,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type {
   TWidgetFilesystemBuildServiceConfig,
   TWidgetFilesystemConstruction,
@@ -224,9 +224,9 @@ export class WidgetFilesystemBuildService {
     });
     const inspected = await this.config.capsuleInspector.inspect(build.uiArtifact.bytes);
     if (
-      inspected.artifactHash !== build.uiArtifact.capsuleArtifactHash
+      inspected.artifactHash !== build.uiArtifact.artifactHash
       || !sameValue(inspected.runtime, build.uiArtifact.runtimeDescriptor)
-      || inspected.artifactHash !== construction.construction.uiArtifact.capsuleArtifactHash
+      || inspected.artifactHash !== construction.construction.uiArtifact.artifactHash
     ) throw new Error('Signed Capsule bytes failed exact host inspection.');
     return Object.freeze({
       executableInputDigestSha256: construction.executableInputDigestSha256,
@@ -241,7 +241,7 @@ export class WidgetFilesystemBuildService {
   }
 
   async preparePublication(args: Readonly<{
-    manifest: import('#backend/core/widget-domain').TWidgetManifestV1;
+    manifest: import('@omnidraw/sdk/contract').TWidgetManifestV1;
     construction: TWidgetFilesystemConstruction;
   }>): Promise<TWidgetFilesystemPreparedPublication> {
     const manifest = ZWidgetManifestV1.parse(args.manifest);

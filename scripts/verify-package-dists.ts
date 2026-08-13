@@ -278,7 +278,9 @@ async function assertCleanConsumer(packed: readonly TPacked[], temporaryRoot: st
     browserOnlyPackages.has(entry.name)
       ? []
       : publicJsSubpaths(entry.manifest).filter((specifier) => (
-        entry.name !== '@omnidraw/sdk' || specifier === '@omnidraw/sdk/server'
+        entry.name !== '@omnidraw/sdk'
+        || specifier === '@omnidraw/sdk/server'
+        || specifier === '@omnidraw/sdk/contract'
       ))
   ))
   const bunSmokePath = join(consumer, 'smoke-bun.mjs')
@@ -316,7 +318,6 @@ async function main(): Promise<void> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'omnidraw-package-dists-'))
   const packDirectory = join(temporaryRoot, 'packs')
   process.env.npm_config_cache = join(temporaryRoot, 'npm-cache')
-  process.env.BUN_INSTALL_CACHE_DIR = join(temporaryRoot, 'bun-cache')
   process.env.TMPDIR = join(temporaryRoot, 'tmp')
   await Promise.all([
     mkdir(packDirectory, { recursive: true }),

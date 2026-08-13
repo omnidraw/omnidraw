@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import type {
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type { IWidgetServerFunctionDescriptorExtractor } from '#backend/shell/widget';
 import {
   type TBunChildCage,

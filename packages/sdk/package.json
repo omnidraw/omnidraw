@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -25,6 +25,10 @@
     "./manifest": {
       "types": "./dist/manifest.d.ts",
       "default": "./dist/manifest.js"
+    },
+    "./contract": {
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
     },
     "./artifact": {
       "types": "./dist/artifact.d.ts",
@@ -94,6 +98,7 @@
     "lucide-static": "1.24.0"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "typescript-widget-compiler": "npm:typescript@5.9.3"
   }
 }

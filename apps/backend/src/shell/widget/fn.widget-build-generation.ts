@@ -3,7 +3,7 @@
 import type {
   TWidgetBuildReceipt,
   TWidgetBuildReceiptOutput,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export type TWidgetBuildGenerationDiagnostic = Readonly<{
   code: string;

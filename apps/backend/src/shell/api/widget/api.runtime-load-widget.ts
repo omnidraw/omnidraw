@@ -12,7 +12,7 @@ import {
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBrowserFunctionDescriptor,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
   WIDGET_RUNTIME_LOAD_CAPACITY_ERROR_CODE,

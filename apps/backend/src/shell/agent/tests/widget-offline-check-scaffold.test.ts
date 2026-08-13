@@ -71,7 +71,7 @@ describe('generated widget offline check scripts', () => {
           template,
           server: false,
         });
-        await linkPackage(root, await storedPackage('typescript@6.0.3', 'typescript'), 'typescript');
+        await linkPackage(root, await storedPackage('typescript@5.9.3', 'typescript'), 'typescript');
         if (template === 'react') {
           await linkPackage(root, await storedPackage('react@19.2.7', 'react'), 'react');
           await linkPackage(root, await storedPackage('react-dom@19.2.7', 'react-dom'), 'react-dom');

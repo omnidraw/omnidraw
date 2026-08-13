@@ -1,7 +1,7 @@
 import type {
   IWidgetServerFunctionDescriptorExtractor,
   TWidgetServerFunctionDescriptor,
-} from '../index';
+} from '@omnidraw/sdk/contract';
 
 export const TEST_SERVER_FUNCTION_DESCRIPTOR: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,

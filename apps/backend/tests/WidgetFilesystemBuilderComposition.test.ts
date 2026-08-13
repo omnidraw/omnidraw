@@ -11,7 +11,7 @@ import {
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
   type TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { fnResolveOmnidrawHome } from '#backend/shell/config/fn.resolve-omnidraw-home';
 import type { ICliConfig } from '../src/shell/cli/config';
 import { layerLiveMechanics } from '../src/shell/runtime/layer.live-mechanics';

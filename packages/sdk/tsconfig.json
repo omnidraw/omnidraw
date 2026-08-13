@@ -9,6 +9,7 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@omnidraw/sdk": ["./src/index.ts"],
+      "@omnidraw/sdk/contract": ["./src/contract.ts"],
       "@omnidraw/sdk/manifest": ["./src/manifest.ts"],
       "@omnidraw/sdk/artifact": ["./src/artifact.ts"],
       "@omnidraw/sdk/guest": ["./src/guest.ts"],

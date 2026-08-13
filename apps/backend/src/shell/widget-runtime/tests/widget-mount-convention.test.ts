@@ -16,11 +16,11 @@ import {
   fnWidgetBrowserFunctionCapabilityRequestMatches,
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBuildRequest,
-  type TWidgetCapsuleBuildIdentity,
+  type TWidgetRuntimeBuildIdentity,
   type TWidgetExecutableManifestProjection,
   type TWidgetServerFunctionDescriptor,
   type TWidgetSourceSnapshot,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
   WidgetArtifactBuilderCapsule,
@@ -38,7 +38,7 @@ const sha256 = (value: Uint8Array | string): string => (
   createHash('sha256').update(value).digest('hex')
 );
 const BUILDER_IDENTITY = 'e42-mount-convention-test';
-const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
+const CAPSULE_BUILD_IDENTITY: TWidgetRuntimeBuildIdentity = Object.freeze({
   packageName: '@omnidraw/capsule',
   packageVersion: '0.10.2',
   packageDigest: `sha256:${'b'.repeat(64)}`,

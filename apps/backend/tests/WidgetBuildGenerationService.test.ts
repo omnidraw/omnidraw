@@ -14,7 +14,7 @@ import {
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
   type TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import { WidgetBuildGenerationService } from '../src/shell/widget/WidgetBuildGenerationService';
 import { fnWidgetBuildGenerationPollOrder } from '../src/shell/widget/fn.widget-build-generation';
 

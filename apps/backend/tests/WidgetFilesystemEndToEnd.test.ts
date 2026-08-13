@@ -11,13 +11,13 @@ import {
   type TWidgetFrameNode,
 } from '@omnidraw/canvas-contract';
 import type {
-  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetRuntimeDescriptor,
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
@@ -127,10 +127,10 @@ function runtimeTarget(args: Readonly<{
 
 function capsuleRuntime(
   artifactHash: `sha256:${string}`,
-): TWidgetCapsuleRuntimeDescriptor {
+): TWidgetRuntimeDescriptor {
   return {
     format: 'omnidraw.capsule-runtime.v2',
-    capsuleArtifactHash: artifactHash,
+    artifactHash,
     apiContract: {
       format: 'capsule-api-groups-v1',
       groups: ['DOM'],
@@ -147,7 +147,7 @@ function capsuleRuntime(
 const capsule: TWidgetCatalogCapsuleInspectionEffects = {
   async inspectCapsuleArtifact(args) {
     return {
-      artifactHash: args.expectedRuntime.capsuleArtifactHash,
+      artifactHash: args.expectedRuntime.artifactHash,
       runtime: args.expectedRuntime,
     };
   },
@@ -325,7 +325,7 @@ describe('clean-home filesystem widget integration', () => {
     expect(mountIdentity).toMatchObject(target);
     const mountBytes = Buffer.from(loaded.artifact.bytesBase64, 'base64');
     expect(sha256(mountBytes)).toBe(loaded.artifact.digestSha256);
-    expect(loaded.runtimeDescriptor.capsuleArtifactHash).toBe(
+    expect(loaded.runtimeDescriptor.artifactHash).toBe(
       `sha256:${loaded.artifact.digestSha256}`,
     );
     expect(mountBytes.toString('utf8')).toBe('signed-counter-v1');

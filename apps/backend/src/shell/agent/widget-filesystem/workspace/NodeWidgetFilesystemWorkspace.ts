@@ -21,7 +21,7 @@ import {
   fnCanonicalizeWidgetManifestV1,
   fnWidgetManifestV1Digest,
   parseWidgetManifestV1Json,
-} from '#backend/core/widget-domain/filesystem';
+} from '@omnidraw/sdk/contract';
 import type { TWidgetImportTreeEntry } from '../import/typed';
 import { fnCanonicalizeWidgetObservedFileSet } from '#backend/core/widget-filesystem/fn.file-set';
 import {

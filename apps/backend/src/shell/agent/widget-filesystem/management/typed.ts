@@ -4,7 +4,7 @@ import type {
 import type {
   TOmnidrawToolIcon,
   TWidgetManifestV1,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 
 export type TWidgetDraftConfig = Readonly<{
   name: string;

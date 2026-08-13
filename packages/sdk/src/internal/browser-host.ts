@@ -200,26 +200,16 @@ function captureArtifact(input: unknown): TWidgetBrowserArtifact {
   if (typeof value.digestSha256 !== 'string' || !SHA256_PATTERN.test(value.digestSha256)) {
     throw new TypeError('Widget browser artifact digest must be lowercase SHA-256.');
   }
-  // Transport adapters may still carry the underlying runtime's legacy key.
-  // It is accepted only at this unknown-input boundary and never escapes the SDK.
-  const artifactHash = value.artifactHash ?? value.capsuleArtifactHash;
+  const artifactHash = value.artifactHash;
   if (typeof artifactHash !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(artifactHash)) {
     throw new TypeError('Widget browser artifact runtime hash is invalid.');
   }
-  const rawRuntime = value.runtime ?? value.runtimeDescriptor;
-  const normalizedRuntime = rawRuntime !== null && typeof rawRuntime === 'object' && !Array.isArray(rawRuntime)
-    ? (() => {
-        const runtime = rawRuntime as Readonly<Record<string, unknown>>;
-        if (runtime.artifactHash !== undefined || runtime.capsuleArtifactHash === undefined) return runtime;
-        const { capsuleArtifactHash: legacyArtifactHash, ...rest } = runtime;
-        return Object.freeze({ ...rest, artifactHash: legacyArtifactHash });
-      })()
-    : rawRuntime;
+  const rawRuntime = value.runtime;
   return Object.freeze({
     bytes: Uint8Array.from(value.bytes),
     digestSha256: value.digestSha256,
     artifactHash: artifactHash as `sha256:${string}`,
-    runtime: WidgetRuntimeDescriptorValidator.parse(normalizedRuntime),
+    runtime: WidgetRuntimeDescriptorValidator.parse(rawRuntime),
     functions: WidgetBrowserFunctionDescriptorsValidator.parse(value.functions ?? []),
   });
 }

@@ -12,8 +12,8 @@ import {
 import {
   ZWidgetExecutableManifest,
   ZWidgetServerFunctionDescriptors,
-  fnCanonicalizeWidgetCapsuleCapabilityRequests,
-  fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeWidgetCapabilityRequests,
+  fnCanonicalizeWidgetChannelContract,
   fnCanonicalizeWidgetConstructionContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetExecutableProjection,
@@ -25,17 +25,17 @@ import {
   type TWidgetArtifactConstructionResult,
   type TWidgetArtifactConstructionSignRequest,
   type TWidgetBuildResult,
-  type TWidgetCapsuleBuildIdentity,
-  type TWidgetCapsuleCapabilityRequest,
-  type TWidgetCapsuleChannelContract,
-  type TWidgetCapsuleHash,
+  type TWidgetRuntimeBuildIdentity,
+  type TWidgetCapabilityRequest,
+  type TWidgetChannelContract,
+  type TWidgetArtifactHash,
   type TWidgetBuildRequest,
   type TWidgetDistributionBuildProvenance,
   type TWidgetServerBuildArtifact,
   type TWidgetServerFunctionDescriptor,
   type TWidgetServerFunctionDescriptorExtractionRequest,
   type TWidgetSourceSnapshot,
-} from '#backend/core/widget-domain';
+} from '@omnidraw/sdk/contract';
 import type {
   IWidgetArtifactConstructionBuilder,
   IWidgetServerFunctionDescriptorExtractor,
@@ -87,7 +87,7 @@ const EXPORT_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
 export type TWidgetArtifactBuilderCapsuleConfig = Readonly<{
   tempRoot: string;
   builderIdentity: string;
-  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
   buildPolicyId?: string;
   snapshotService: WidgetSourceSnapshot;
   functionDescriptorExtractor: IWidgetServerFunctionDescriptorExtractor;
@@ -192,7 +192,7 @@ function serverFunctionModules(
   return Object.freeze(modules);
 }
 
-function capsuleHash(digest: string): TWidgetCapsuleHash {
+function capsuleHash(digest: string): TWidgetArtifactHash {
   return `sha256:${digest}`;
 }
 
@@ -391,22 +391,22 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     }
     const runtimeDescriptor = Object.freeze({
       format: 'omnidraw.capsule-runtime.v2' as const,
-      capsuleArtifactHash: built.artifactHash,
+      artifactHash: built.artifactHash,
       apiContract: Object.freeze({
         format: OMNIDRAW_CAPSULE_API_CONTRACT_FORMAT,
         groups: Object.freeze([...capsuleApis]),
         bundleDigest: OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST,
       }),
       budgets: requestedBudgets,
-      capabilityRequests: capabilityRequests as readonly TWidgetCapsuleCapabilityRequest[],
-      channels: channels.declaration as TWidgetCapsuleChannelContract,
+      capabilityRequests: capabilityRequests as readonly TWidgetCapabilityRequest[],
+      channels: channels.declaration as TWidgetChannelContract,
       parkability: Object.freeze({ parkable: false as const }),
     });
     const capabilityContractDigestSha256 = sha256(
-      fnCanonicalizeWidgetCapsuleCapabilityRequests(runtimeDescriptor.capabilityRequests),
+      fnCanonicalizeWidgetCapabilityRequests(runtimeDescriptor.capabilityRequests),
     );
     const channelContractDigestSha256 = sha256(
-      fnCanonicalizeWidgetCapsuleChannelContract(runtimeDescriptor.channels),
+      fnCanonicalizeWidgetChannelContract(runtimeDescriptor.channels),
     );
     const sourceArtifact = this.#snapshotService.encodeArtifact(request.snapshot, {
       builderIdentity: request.builderIdentity,
@@ -434,7 +434,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         sourceMapArtifactDigestSha256: sourceMapArtifact?.digestSha256 ?? null,
         canonicalManifestJson: request.canonicalManifestJson,
         unsignedUiDigestSha256,
-        capsuleArtifactHash: built.artifactHash,
+        artifactHash: built.artifactHash,
         apiContract: runtimeDescriptor.apiContract,
         budgets: runtimeDescriptor.budgets,
         capabilityContractDigestSha256,
@@ -471,7 +471,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         kind: 'unsigned-ui' as const,
         digestSha256: unsignedUiDigestSha256,
         unsignedBytes: new Uint8Array(built.artifactBytes),
-        capsuleArtifactHash: built.artifactHash,
+        artifactHash: built.artifactHash,
         runtimeDescriptor,
         builderIdentity: request.builderIdentity,
         capsuleBuildIdentity: request.capsuleBuildIdentity,
@@ -491,7 +491,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       sign: async (bytes, keys) => await this.#capsuleSign(bytes, keys),
     }, {
       bytes: construction.uiArtifact.unsignedBytes,
-      capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+      capsuleArtifactHash: construction.uiArtifact.artifactHash,
       purpose: request.signingPurpose,
     });
     const runtimeDescriptor = Object.freeze({
@@ -502,7 +502,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     const contractDigestSha256 = sha256(fnCanonicalizeWidgetContractPayload({
       canonicalManifestJson: construction.canonicalManifestJson,
       uiDigestSha256,
-      capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
+      artifactHash: runtimeDescriptor.artifactHash,
       apiContract: runtimeDescriptor.apiContract,
       budgets: runtimeDescriptor.budgets,
       capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
@@ -537,7 +537,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         kind: 'ui' as const,
         digestSha256: uiDigestSha256,
         bytes: signed.signedBytes,
-        capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+        artifactHash: construction.uiArtifact.artifactHash,
         runtimeDescriptor,
         builderIdentity: construction.builderIdentity,
         capsuleBuildIdentity: construction.capsuleBuildIdentity,
@@ -569,8 +569,8 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       || construction.uiArtifact.builderIdentity !== construction.builderIdentity
       || JSON.stringify(construction.uiArtifact.capsuleBuildIdentity)
         !== JSON.stringify(construction.capsuleBuildIdentity)
-      || construction.uiArtifact.capsuleArtifactHash
-        !== construction.uiArtifact.runtimeDescriptor.capsuleArtifactHash
+      || construction.uiArtifact.artifactHash
+        !== construction.uiArtifact.runtimeDescriptor.artifactHash
       || construction.distributionProvenance.sourceRevision
         !== construction.sourceDigestSha256
       || sha256(construction.uiArtifact.unsignedBytes)
@@ -624,10 +624,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       || sha256(fnCanonicalizeWidgetServerFunctionDescriptors(
         construction.functionDescriptors,
       )) !== construction.functionDescriptorsDigestSha256
-      || sha256(fnCanonicalizeWidgetCapsuleCapabilityRequests(
+      || sha256(fnCanonicalizeWidgetCapabilityRequests(
         construction.uiArtifact.runtimeDescriptor.capabilityRequests,
       )) !== construction.capabilityContractDigestSha256
-      || sha256(fnCanonicalizeWidgetCapsuleChannelContract(
+      || sha256(fnCanonicalizeWidgetChannelContract(
         construction.uiArtifact.runtimeDescriptor.channels,
       )) !== construction.channelContractDigestSha256
       || sha256(fnCanonicalizeWidgetConstructionContractPayload({
@@ -638,7 +638,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
           construction.sourceMapArtifact?.digestSha256 ?? null,
         canonicalManifestJson: construction.canonicalManifestJson,
         unsignedUiDigestSha256: construction.uiArtifact.digestSha256,
-        capsuleArtifactHash: construction.uiArtifact.capsuleArtifactHash,
+        artifactHash: construction.uiArtifact.artifactHash,
         apiContract: construction.uiArtifact.runtimeDescriptor.apiContract,
         budgets: construction.uiArtifact.runtimeDescriptor.budgets,
         capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
@@ -658,11 +658,11 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
 
   #sourceMapArtifact(args: Readonly<{
     sourceRevision: string;
-    capsuleArtifactHash: TWidgetCapsuleHash;
+    capsuleArtifactHash: TWidgetArtifactHash;
     authoredPaths: readonly string[];
     generatedModules: readonly string[];
     sourceMaps: readonly Readonly<{ module: string; bytes: Uint8Array }>[];
-  }>): import('#backend/core/widget-domain').TWidgetSourceMapArtifact | null {
+  }>): import('@omnidraw/sdk/contract').TWidgetSourceMapArtifact | null {
     if (args.sourceMaps.length === 0) return null;
     const generatedModules = new Set(args.generatedModules);
     if (args.sourceMaps.some(({ module, bytes }) => (

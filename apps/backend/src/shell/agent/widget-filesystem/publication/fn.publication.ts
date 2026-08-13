@@ -2,11 +2,11 @@ import {
   PUBLICATION_MANIFEST_FILE,
   PUBLICATION_RELEASE_FILE,
 } from './CONSTANTS';
-import { WIDGET_SLUG_MAX_BYTES } from '#backend/core/widget-domain/CONSTANTS';
+import { WIDGET_SLUG_MAX_BYTES } from '@omnidraw/sdk/contract';
 import {
   fnNormalizeWidgetFilesystemRelativePath,
   fnUtf8ByteLength,
-} from '#backend/core/widget-domain/fn.filesystem-path';
+} from '@omnidraw/sdk/contract';
 import type {
   TAtomicPublicationInput,
   TMetadataPublicationInput,

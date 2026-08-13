@@ -6,6 +6,7 @@ import type {
   IWidgetResourceHostPort,
   IWidgetStateHostPort,
 } from '@omnidraw/sdk/host'
+import type { TWidgetManifestV1 } from '@omnidraw/sdk/contract'
 import type { IThemeService } from '@omnidraw/theme'
 
 /**
@@ -19,6 +20,7 @@ export type TManagedPublicComposition = Readonly<{
   theme: IThemeService
   widget: Readonly<{
     functions: IWidgetFunctionHostPort
+    manifest: TWidgetManifestV1
     resources: IWidgetResourceHostPort
     state: IWidgetStateHostPort
   }>

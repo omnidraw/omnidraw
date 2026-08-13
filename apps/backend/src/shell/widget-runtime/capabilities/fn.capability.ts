@@ -4,7 +4,7 @@ import type {
   CapsuleCapabilityRequest,
   CapsuleSchemaReference,
 } from '@omnidraw/capsule/protocol';
-import type { TWidgetBrowserFunctionDescriptor } from '#backend/core/widget-domain';
+import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/sdk/contract';
 import {
   OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
   OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,

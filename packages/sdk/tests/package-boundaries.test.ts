@@ -24,7 +24,7 @@ async function files(root: string): Promise<string[]> {
 describe('@omnidraw/sdk package boundaries', () => {
   test('uses exact implementation dependencies and no retired packages', async () => {
     const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-    expect(manifest.version).toBe('0.7.0');
+    expect(manifest.version).toBe('0.8.0');
     expect(manifest.dependencies).toEqual({
       '@omnidraw/capsule': '0.14.0',
       effect: '4.0.0-rc.108',
@@ -46,6 +46,8 @@ describe('@omnidraw/sdk package boundaries', () => {
 
     const hostDeclaration = await readFile(join(packageRoot, 'dist', 'host.d.ts'), 'utf8');
     expect(hostDeclaration).not.toMatch(/TWidgetCapsule|capsuleArtifactHash/);
+    const contractRuntime = await readFile(join(packageRoot, 'dist', 'contract.js'), 'utf8');
+    expect(contractRuntime).not.toMatch(/capsule:bridge|from ['"](?:@omnidraw\/capsule|effect|zod)['"]/);
     const typesDeclaration = await readFile(join(packageRoot, 'dist', 'contracts', 'types.d.ts'), 'utf8');
     for (const retiredPublicName of [
       'TWidgetCapsuleHostConfiguration',

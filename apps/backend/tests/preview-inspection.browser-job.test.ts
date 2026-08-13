@@ -26,7 +26,7 @@ function job(
       digestSha256: SHA,
       artifactHash: `sha256:${SHA}`,
       runtimeDescriptor: {
-        capsuleArtifactHash: `sha256:${SHA}`,
+        artifactHash: `sha256:${SHA}`,
       } as TPreviewInspectionBrowserJob['artifact']['runtimeDescriptor'],
     },
     hostConfiguration: {} as TPreviewInspectionBrowserJob['hostConfiguration'],
@@ -164,7 +164,7 @@ describe('preview inspection browser job validation', () => {
         ...job().artifact,
         runtimeDescriptor: {
           ...job().artifact.runtimeDescriptor,
-          capsuleArtifactHash: `sha256:${'b'.repeat(64)}`,
+          artifactHash: `sha256:${'b'.repeat(64)}`,
         },
       },
     })).ok).toBe(false);

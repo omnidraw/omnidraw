@@ -462,6 +462,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S136](s/S136.md) - widgets: switch runtime authority to files and delete widget control tables
 - [x]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
 - [x]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
+- [x]: [S139](s/S139.md) - widgets: make SDK the portable contract authority (order 3/7)
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

@@ -207,7 +207,7 @@ export function fnValidatePreviewInspectionBrowserJob(
     || typeof job.artifact.artifactHash !== 'string'
     || !ARTIFACT_HASH_PATTERN.test(job.artifact.artifactHash)
     || !fnRecord(job.artifact.runtimeDescriptor)
-    || job.artifact.runtimeDescriptor.capsuleArtifactHash
+    || job.artifact.runtimeDescriptor.artifactHash
       !== job.artifact.artifactHash
   ) return fail('Preview inspection artifact identity is invalid.');
   if (

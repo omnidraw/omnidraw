@@ -1,4 +1,4 @@
-import { ZWidgetManifestV1 } from '#backend/core/widget-domain';
+import { ZWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 export {
