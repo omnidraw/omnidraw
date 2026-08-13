@@ -7,11 +7,11 @@ find the full documentation for it [in our repository](https://github.com/change
 We have a quick list of common questions to get you started engaging with this project in
 [our documentation](https://github.com/changesets/changesets/blob/main/docs/common-questions.md).
 
-## How this repo uses it ([D9](../tasks/d/D9.md))
+## How this repo uses it
 
-Scoped to the currently-public `packages/*` only — see `config.json`'s
-`ignore` list for everything excluded (private packages, all `apps/*`, and
-internal-only workspaces).
+Only the five versioned packages listed in `public-package-set.json` are
+publishable. The two applications are private and unversioned, so Changesets
+automatically excludes them from releases.
 
 - While working, record intent as you go: `bun run changeset:add`. This never
   touches a `package.json` version — it just writes a small markdown file
@@ -19,6 +19,6 @@ internal-only workspaces).
 - When a batch is actually ready to release: `bun run changeset:version`,
   once. This bumps exactly the touched packages' `package.json` versions and
   writes changelog entries, as a single reviewable commit.
-- Nothing forces a version bump before that point — `bun run dev` and the
-  local registry never require one (see D9). The only reason to bump a
-  version is a deliberate release.
+- Public runtime source changes require the package's release marker to move
+  before qualification. Publish the staged `dist/` package, never the
+  workspace root.

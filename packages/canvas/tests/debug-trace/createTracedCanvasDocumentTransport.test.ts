@@ -32,10 +32,12 @@ describe('traced canvas document transport', () => {
     const emitted: TReproductionTraceEventInput[] = [];
     const base: TCanvasDocumentTransport = {
       getSnapshot: vi.fn(async () => ({
+        schemaVersion: '1.0.0',
         canvasId: 'canvas-a',
         revision: 1,
         items: [],
       })),
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async (command) => event(command.commandId)),
       subscribe: vi.fn(() => events([event('remote-a')])),
     };
@@ -49,6 +51,11 @@ describe('traced canvas document transport', () => {
     });
 
     await traced.getSnapshot({ canvasId: 'canvas-a' });
+    await traced.query({
+      canvasId: 'canvas-a',
+      filter: { type: 'kind', kind: 'text' },
+      limit: 20,
+    });
     await traced.execute({
       canvasId: 'canvas-a',
       commandId: 'command-a',
@@ -83,6 +90,8 @@ describe('traced canvas document transport', () => {
     expect(emitted.map((entry) => entry.type)).toEqual([
       'snapshot-dispatched',
       'snapshot-received',
+      'query-dispatched',
+      'query-received',
       'execute-dispatched',
       'execute-received',
       'events-subscribed',
@@ -93,6 +102,7 @@ describe('traced canvas document transport', () => {
     expect(serialized).not.toContain('private canvas text');
     expect(serialized).toContain('"operationTypes":["insert"]');
     expect(serialized).toContain('"affectedNodeIds":["node-a"]');
+    expect(serialized).toContain('"filterType":"kind"');
   });
 
   test('normalizes execute failures and preserves the original rejection', async () => {

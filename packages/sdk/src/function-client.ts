@@ -2,10 +2,10 @@
 
 import {
   callCapabilityAsync,
-  type CapsuleCapabilitySelector,
 } from '@omnidraw/capsule/guest';
+import type { TWidgetCapabilitySelector } from './contracts/types';
 
-export type TWidgetCapabilitySelector = CapsuleCapabilitySelector;
+export type { TWidgetCapabilitySelector } from './contracts/types';
 
 export type TWidgetCapabilityCallOptions = Readonly<{
   signal?: AbortSignal;

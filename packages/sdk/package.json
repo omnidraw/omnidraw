@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -18,6 +18,42 @@
     "omnidraw-widget": "./dist/cli.js"
   },
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    },
+    "./artifact": {
+      "types": "./dist/artifact.d.ts",
+      "default": "./dist/artifact.js"
+    },
+    "./guest": {
+      "types": "./dist/guest.d.ts",
+      "default": "./dist/guest.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    },
+    "./resource": {
+      "types": "./dist/resource.d.ts",
+      "default": "./dist/resource.js"
+    },
+    "./function": {
+      "types": "./dist/function.d.ts",
+      "default": "./dist/function.js"
+    },
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "default": "./dist/state.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance.d.ts",
+      "default": "./dist/conformance.js"
+    },
     "./fn.offline-check": {
       "types": "./dist/fn.offline-check.d.ts",
       "default": "./dist/fn.offline-check.js"
@@ -37,7 +73,8 @@
     "./function-client": {
       "types": "./dist/function-client.d.ts",
       "default": "./dist/function-client.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -52,8 +89,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "catalog:",
-    "@omnidraw/widget-contract": "workspace:*"
+    "@omnidraw/capsule": "0.14.0",
+    "effect": "4.0.0-rc.108",
+    "lucide-static": "1.24.0"
   },
   "devDependencies": {
     "typescript": "7.0.2"

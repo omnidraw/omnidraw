@@ -869,16 +869,15 @@ this design.
 
 | Area | Main owner |
 | --- | --- |
-| Manifest, release, scan, and digest rules | `packages/widget-contract` |
-| Capsule build and runtime policy | `packages/capsule-omnidraw` |
-| Draft workspaces, publish, Preview, catalog | `packages/service-agent` |
-| Filesystem runtime composition and direct functions | `apps/cli` |
-| Canvas item commands and lookup | `packages/service-canvas` |
-| Shared instance JSON state | `packages/service-widget-state` |
-| Resource catalog and data | `packages/resource-runtime`, `apps/cli` resource service |
-| Database migration and kept stores | `packages/service-db` |
-| Widget inspector, sidebar, Preview host | `packages/ui-ai-chat` |
-| Transport only | `packages/api`, `packages/orpc-client` |
+| Portable manifest, artifact, guest ABI, function/resource/state contracts, and Capsule host bridge | `packages/sdk` |
+| Draft workspaces, scan, build, publication, ephemeral Preview authority, signing, and trusted local functions | `apps/backend` |
+| Canvas document, command, query, snapshot, event, and widget-frame codecs | `packages/canvas-contract` |
+| Canvas browser client, optimistic state, rendering, and widget extension seam | `packages/canvas` |
+| Shared instance JSON state, resource catalog/data, database schema, and persistence | `apps/backend` |
+| Widget inspector, sidebar, placement, Preview mounting, and browser transport adapters | `apps/frontend` |
+| Reusable AI Chat UI and narrow Canvas contribution | `packages/component-ai-chat` |
+| Public theme tokens, CSS, and scoped DOM projection | `packages/theme` |
+| Private request/stream transport | `apps/backend` Effect RPC server and `apps/frontend` multiplexed WebSocket client |
 
 Portable rules should be small pure functions. Filesystem reads belong at the
 edge. Atomic writes, process launch, signing, and database changes are explicit

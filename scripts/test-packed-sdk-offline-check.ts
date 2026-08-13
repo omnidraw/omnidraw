@@ -18,8 +18,6 @@ type TPackage = Readonly<{ name: string; directory: string }>
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const PACKAGES: readonly TPackage[] = Object.freeze([
-  { name: '@omnidraw/resource-runtime', directory: 'packages/resource-runtime' },
-  { name: '@omnidraw/widget-contract', directory: 'packages/widget-contract' },
   { name: '@omnidraw/sdk', directory: 'packages/sdk' },
 ])
 
@@ -103,14 +101,8 @@ async function main(): Promise<void> {
         build: 'omnidraw-widget build .',
       },
       dependencies: {
-        '@omnidraw/capsule': '0.14.0',
         '@omnidraw/sdk': fileDependencies['@omnidraw/sdk'],
         typescript: '6.0.3',
-        zod: '4.4.3',
-      },
-      overrides: {
-        '@omnidraw/resource-runtime': fileDependencies['@omnidraw/resource-runtime'],
-        '@omnidraw/widget-contract': fileDependencies['@omnidraw/widget-contract'],
       },
     }, null, 2)}\n`)
     await writeFile(join(consumerRoot, 'omnidraw.json'), `${JSON.stringify({

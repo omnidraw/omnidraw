@@ -9,7 +9,7 @@ import type {
 import {
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
 } from '@omnidraw/canvas-contract';
-import { BUILTIN_THEMES } from '@omnidraw/service-theme';
+import { BUILTIN_THEMES } from '@omnidraw/theme';
 import { describe, expect, test } from 'vitest';
 import {
   fnAuthoredSemanticCanvasNode,

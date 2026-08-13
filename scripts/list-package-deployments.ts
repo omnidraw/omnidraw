@@ -2,8 +2,12 @@
 
 /** Report which versioned workspace libraries need manual public npm deployment. */
 
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
+import {
+  assertFinalWorkspaceSurface,
+  readQualifiedPublicPackages,
+} from './public-packages'
 
 export type TPackageManifest = Record<string, unknown> & {
   name?: string
@@ -45,7 +49,6 @@ export type TPackageBuilder = (
 ) => Promise<void>
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
-const PACKAGES_DIRECTORY = join(REPOSITORY_ROOT, 'packages')
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org'
 const ANSI = Object.freeze({
   bold: '\u001b[1m',
@@ -249,24 +252,13 @@ export function dependencyManifestDrift(
 }
 
 async function workspacePackages(): Promise<readonly TWorkspacePackage[]> {
-  const entries = await readdir(PACKAGES_DIRECTORY, { withFileTypes: true })
-  const packages: TWorkspacePackage[] = []
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const directory = join(PACKAGES_DIRECTORY, entry.name)
-    let manifest: TPackageManifest
-    try {
-      manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as TPackageManifest
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-      throw error
-    }
-    if (manifest.version === undefined) continue
-    if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
-      throw new Error(`${relative(REPOSITORY_ROOT, directory)} has an invalid versioned package manifest.`)
-    }
-    packages.push({ directory, manifest, name: manifest.name, version: manifest.version })
-  }
+  await assertFinalWorkspaceSurface(REPOSITORY_ROOT)
+  const packages = (await readQualifiedPublicPackages(REPOSITORY_ROOT)).map((entry) => ({
+    directory: entry.directory,
+    manifest: entry.manifest,
+    name: entry.name,
+    version: entry.version,
+  }))
   return packageOrder(packages)
 }
 

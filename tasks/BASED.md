@@ -513,6 +513,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [D8](d/D8.md) - widgets: headless mount-catalog dry-run in od_widget_validate
 - [~]: [D9](d/D9.md) - local registry: decouple dev boot from publish, automate the dev-prerelease escape hatch, stop version-bump churn
 - [x]: [D10](d/D10.md) - widget repos: portable build receipts and smart Preview refresh (order 1/5)
+- [x]: [D11](d/D11.md) - Effect v4 two-app/five-package clean-cut refactor
 
 ## Pragmatic Code Style
 

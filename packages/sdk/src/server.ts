@@ -9,7 +9,7 @@ import type {
   TWidgetServerFunctionEffect,
   TWidgetServerFunctionLimits,
   TWidgetServerFunctionResourceAccess,
-} from '@omnidraw/widget-contract';
+} from './contracts/types';
 
 export type TServerFunctionRuntimeSchema<TValue> = Readonly<{
   parse(value: unknown): TValue;

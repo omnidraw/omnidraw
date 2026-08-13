@@ -21,7 +21,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port: frontendPort,
     proxy: {
-      '/api': {
+      '/rpc': {
         target: backendTarget,
         ws: true
       },
@@ -35,6 +35,12 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    rollupOptions: {
+      input: {
+        app: resolve(__dirname, './index.html'),
+        inspection: resolve(__dirname, './inspection.html'),
+      },
+    },
   },
   resolve: {
     alias: {

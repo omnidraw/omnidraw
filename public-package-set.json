@@ -1,0 +1,23 @@
+{
+  "format": "omnidraw.public-package-set.v1",
+  "packages": {
+    "@omnidraw/canvas-contract": "1.0.0",
+    "@omnidraw/canvas": "1.1.0",
+    "@omnidraw/sdk": "0.7.0",
+    "@omnidraw/component-ai-chat": "0.7.0",
+    "@omnidraw/theme": "0.6.0"
+  },
+  "qualification": {
+    "effect": "4.0.0-rc.108",
+    "@omnidraw/cangine": "0.6.1",
+    "@omnidraw/capsule": "0.14.0",
+    "solid-js": "1.9.14"
+  },
+  "publicationOrder": [
+    "@omnidraw/theme",
+    "@omnidraw/canvas-contract",
+    "@omnidraw/sdk",
+    "@omnidraw/canvas",
+    "@omnidraw/component-ai-chat"
+  ]
+}

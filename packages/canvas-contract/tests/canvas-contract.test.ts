@@ -1,20 +1,40 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  TImageNode,
-  TRectNode,
-  TSceneNode,
-  TWidgetFrameNode,
-} from "@omnidraw/cangine";
 import {
   CANVAS_IMAGE_EXTENSION_KEY,
-  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
-  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-  fnMaterializeCanvasValidationSnapshot,
-  fnNormalizeLegacyCanvasWidgetBindings,
-  fnReadCanvasImageExtension,
-  fnReadCanvasSemanticStyleExtension,
+  CANVAS_SCENE_SCHEMA_VERSION,
+  CANVAS_WIDGET_EXTENSION_KEY,
+  CanvasCommandCodec,
+  CanvasContractDecodeError,
+  CanvasDocumentCodec,
+  CanvasDocumentSchema,
+  CanvasEventCodec,
+  CanvasItemPageCodec,
+  CanvasQueryCodec,
+  CanvasSceneNodeCodec,
+  fnCanonicalCanvasJson,
+  fnReadCanvasWidgetExtension,
+  fnStringifyCanonicalCanvasJson,
+  fnValidateCanvasCommand,
+  fnValidateCanvasDocument,
+  fnValidateCanvasEvent,
+  fnValidateCanvasItemPage,
   fnValidateCanvasItems,
-} from "../src";
+  fnValidateCanvasQuery,
+  fnValidateCanvasSceneNode,
+} from "../src/index.js";
+import {
+  CANVAS_CONFORMANCE_AUTHORED_NODES,
+  CANVAS_CONFORMANCE_CANONICAL_JSON,
+  CANVAS_CONFORMANCE_DOCUMENT,
+  CANVAS_CONFORMANCE_INVALID_DOCUMENTS,
+} from "../src/conformance.js";
+import type {
+  TCanvasCommand,
+  TCanvasEvent,
+  TCanvasItemPage,
+  TCanvasItemQuery,
+  TCanvasSceneNode,
+} from "../src/types.js";
 
 const transform = {
   position: { x: 0, y: 0 },
@@ -24,7 +44,7 @@ const transform = {
   origin: { x: 0, y: 0 },
 };
 
-function rect(id: string, parentId: string | null = null): TRectNode {
+function rect(id: string, parentId: string | null = null): TCanvasSceneNode {
   return {
     id,
     parentId,
@@ -35,419 +55,243 @@ function rect(id: string, parentId: string | null = null): TRectNode {
   };
 }
 
-function widget(extension: Record<string, unknown>): TWidgetFrameNode {
-  return {
-    id: "widget",
-    parentId: null,
-    orderKey: "B",
-    kind: "widget-frame",
-    transform,
-    size: { width: 320, height: 240 },
-    extensions: {
-      "omnidraw:widget": extension as never,
-    },
-  };
-}
-
-describe("@omnidraw/canvas-contract", () => {
-  test("materializes top-level authored nodes beneath a synthetic content layer", () => {
-    const snapshot = fnMaterializeCanvasValidationSnapshot([
-      rect("root"),
-      rect("child", "root"),
+describe("authored Canvas document", () => {
+  test("owns and validates every authored node kind", () => {
+    expect(CANVAS_CONFORMANCE_AUTHORED_NODES.map((node) => node.kind)).toEqual([
+      "group",
+      "rect",
+      "ellipse",
+      "polygon",
+      "path",
+      "image",
+      "connector",
+      "widget-frame",
+      "text",
     ]);
-
-    expect(snapshot.rootLayerIds).toEqual([CANVAS_SYNTHETIC_CONTENT_LAYER_ID]);
-    expect(snapshot.nodes[0]).toMatchObject({
-      id: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-      kind: "layer",
-      parentId: null,
+    for (const node of CANVAS_CONFORMANCE_AUTHORED_NODES) {
+      expect(fnValidateCanvasSceneNode(node)).toEqual({ valid: true, issues: [] });
+    }
+    expect(fnValidateCanvasDocument(CANVAS_CONFORMANCE_DOCUMENT)).toEqual({
+      valid: true,
+      issues: [],
     });
-    expect(snapshot.nodes[1]).toMatchObject({
-      id: "root",
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-    });
-    expect(snapshot.nodes[2]).toMatchObject({
-      id: "child",
-      parentId: "root",
-    });
+    expect(CanvasDocumentSchema.is(CANVAS_CONFORMANCE_DOCUMENT)).toBe(true);
   });
 
-  test("validates authored hierarchy with the public Cangine validator", () => {
-    expect(fnValidateCanvasItems([
-      {
-        id: "group",
-        parentId: null,
-        orderKey: "A",
-        kind: "group",
-        transform,
-      },
-      rect("child", "group"),
-    ])).toEqual({ valid: true, issues: [] });
-
-    expect(fnValidateCanvasItems([rect("orphan", "missing")])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "PARENT_NOT_FOUND" })],
-    });
-  });
-
-  test("accepts filesystem widget identity and strips legacy per-instance bindings", () => {
-    const legacy = widget({
-        schemaVersion: 1,
-        type: "widget-instance",
-        instanceId: "instance-1",
-        widgetKey: "counter",
-        resourceBindings: {
-          todos: {
-            resourceId: "resource-1",
-            allowRead: true,
-            allowWrite: false,
-          },
-        },
-      });
-    expect(fnValidateCanvasItems([legacy])).toEqual({ valid: true, issues: [] });
-    expect(fnNormalizeLegacyCanvasWidgetBindings(legacy).extensions?.["omnidraw:widget"])
-      .toEqual({
-        schemaVersion: 1,
-        type: "widget-instance",
-        instanceId: "instance-1",
-        widgetKey: "counter",
-      });
-  });
-
-  test("accepts an ephemeral widget-preview frame and rejects unsupported fields", () => {
-    expect(fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-preview",
-        instanceId: "instance-1",
-        widgetKey: "default-app",
-      }),
-    ])).toEqual({ valid: true, issues: [] });
-
-    expect(fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-preview",
-        instanceId: "instance-1",
-        widgetKey: "default-app",
-        resourceBindings: {
-          todos: {
-            resourceId: "resource-1",
-            allowRead: true,
-            allowWrite: false,
-          },
-        },
-      }),
-    ])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" })],
-    });
-
-    expect(fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-preview",
-        instanceId: "instance-1",
-        widgetKey: "Default App",
-      }),
-    ])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" })],
-    });
-  });
-
-  test("rejects stateDocumentId and runtime-owned scene content", () => {
-    const widgetValidation = fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-instance",
-        instanceId: "instance-1",
-        widgetKey: "counter",
-        stateDocumentId: "forbidden",
-      }),
-    ]);
-    expect(widgetValidation).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" })],
-    });
-
-    expect(fnValidateCanvasItems([{
-      id: "layer",
-      parentId: null,
-      orderKey: "A",
-      kind: "layer",
-      role: "content",
-      coordinateSpace: "world",
-      transform,
-    }])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "RUNTIME_ONLY_NODE_KIND" })],
-    });
-
-    expect(fnValidateCanvasItems([{
-      id: "background",
-      parentId: null,
-      orderKey: "A",
-      kind: "background",
-    } as TSceneNode])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "RUNTIME_ONLY_NODE_KIND" })],
-    });
-  });
-
-  test("rejects legacy database identity while ignoring retired resource choices", () => {
-    expect(fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-instance",
-        instanceId: "instance-1",
-        widgetKey: "Counter",
-        definitionId: "legacy-definition",
-        revisionId: "legacy-revision",
-        resourceBindings: {
-          "9bad": {
-            resourceId: "r".repeat(201),
-            allowRead: false,
-            allowWrite: false,
-          },
-        },
-      }),
-    ])).toMatchObject({
-      valid: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "WIDGET_EXTENSION_FIELDS" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
-      ]),
-    });
-
-    expect(fnValidateCanvasItems([
-      widget({
-        schemaVersion: 1,
-        type: "widget-instance",
-        instanceId: "i".repeat(201),
-        widgetKey: "c".repeat(101),
-        resourceBindings: {
-          ["a".repeat(201)]: {
-            resourceId: "resource-1",
-            allowRead: true,
-            allowWrite: false,
-          },
-        },
-      }),
-    ])).toMatchObject({
-      valid: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "WIDGET_EXTENSION_IDENTITY" }),
-        expect.objectContaining({ code: "WIDGET_EXTENSION_WIDGET_KEY" }),
-      ]),
-    });
-  });
-
-  test("rejects malformed authoring samples and the synthetic content ID", () => {
-    const malformed = rect(CANVAS_SYNTHETIC_CONTENT_LAYER_ID);
-    malformed.extensions = {
-      "omnidraw:authoring": {
-        schemaVersion: 1,
-        penSource: {
-          points: [{ x: 0, y: 0 }],
-          pressures: [],
-          simulatePressure: true,
-        },
-      },
-    };
-
-    const validation = fnValidateCanvasItems([malformed]);
-    expect(validation.valid).toBe(false);
-    expect(validation.issues.map((entry) => entry.code)).toEqual(
-      expect.arrayContaining(["RESERVED_ITEM_ID", "AUTHORING_EXTENSION_PEN_LENGTH"]),
+  test("requires the clean-install document schema version", () => {
+    expect(CANVAS_SCENE_SCHEMA_VERSION).toBe("1.0.0");
+    expect(CANVAS_CONFORMANCE_DOCUMENT.schemaVersion).toBe("1.0.0");
+    const missing = { ...CANVAS_CONFORMANCE_DOCUMENT } as Record<string, unknown>;
+    delete missing.schemaVersion;
+    expect(fnValidateCanvasDocument(missing).issues).toContainEqual(
+      expect.objectContaining({ code: "UNSUPPORTED_SCHEMA_VERSION", path: "/schemaVersion" }),
     );
   });
 
-  test("validates and reads durable image descriptors", () => {
-    const image: TImageNode = {
-      id: "image-a",
+  test("rejects every shared invalid conformance vector deterministically", () => {
+    for (const vector of CANVAS_CONFORMANCE_INVALID_DOCUMENTS) {
+      const first = fnValidateCanvasDocument(vector.value);
+      const second = fnValidateCanvasDocument(vector.value);
+      expect(first, vector.name).toEqual(second);
+      expect(first.valid, vector.name).toBe(false);
+      expect(first.issues.map((issue) => issue.code), vector.name)
+        .toContain(vector.expectedIssueCode);
+    }
+  });
+
+  test("rejects runtime-only and unsupported renderer node kinds", () => {
+    for (const kind of ["layer", "background", "html-portal"]) {
+      expect(fnValidateCanvasSceneNode({
+        id: kind,
+        parentId: null,
+        orderKey: "A",
+        kind,
+        transform,
+      }).issues).toContainEqual(expect.objectContaining({
+        code: "RUNTIME_ONLY_NODE_KIND",
+        path: "/kind",
+      }));
+    }
+    expect(fnValidateCanvasSceneNode({
+      id: "view",
       parentId: null,
       orderKey: "A",
-      kind: "image",
+      kind: "view-3d",
       transform,
-      resourceId: "resource-a",
-      size: { width: 80, height: 60 },
+      size: { width: 10, height: 10 },
+      sceneId: "scene",
+      cameraId: "camera",
+    }).issues).toContainEqual(expect.objectContaining({
+      code: "UNSUPPORTED_AUTHORED_NODE_KIND",
+    }));
+  });
+
+  test("strictly rejects unknown fields and malformed primitive data", () => {
+    expect(fnValidateCanvasSceneNode({ ...rect("a"), rendererCache: true }).issues)
+      .toContainEqual(expect.objectContaining({
+        code: "UNEXPECTED_FIELD",
+        path: "/rendererCache",
+      }));
+    expect(fnValidateCanvasSceneNode({ ...rect("a"), opacity: 1.1 }).issues)
+      .toContainEqual(expect.objectContaining({ code: "NUMBER_TOO_LARGE" }));
+    expect(fnValidateCanvasSceneNode({
+      ...rect("a"),
+      transform: { ...transform, rotation: Number.POSITIVE_INFINITY },
+    }).issues).toContainEqual(expect.objectContaining({ code: "NON_FINITE_NUMBER" }));
+    expect(fnValidateCanvasSceneNode({ ...rect("a"), size: { width: -1, height: 2 } }).valid)
+      .toBe(false);
+    expect(fnValidateCanvasSceneNode({ ...rect("a"), parentId: undefined }).valid)
+      .toBe(false);
+  });
+
+  test("rejects duplicate IDs, missing parents, cycles, and missing references", () => {
+    expect(fnValidateCanvasItems([rect("same"), rect("same")]).issues)
+      .toContainEqual(expect.objectContaining({ code: "DUPLICATE_ITEM_ID" }));
+    expect(fnValidateCanvasItems([rect("orphan", "missing")]).issues)
+      .toContainEqual(expect.objectContaining({ code: "PARENT_NOT_FOUND" }));
+    expect(fnValidateCanvasItems([rect("a", "b"), rect("b", "a")]).issues)
+      .toContainEqual(expect.objectContaining({ code: "HIERARCHY_CYCLE" }));
+    expect(fnValidateCanvasItems([{
+      ...rect("clipped"),
+      clip: { type: "node", nodeId: "missing" },
+    }]).issues).toContainEqual(expect.objectContaining({ code: "NODE_REFERENCE_NOT_FOUND" }));
+  });
+
+  test("rejects legacy widget bindings instead of normalizing them", () => {
+    const widget = {
+      ...CANVAS_CONFORMANCE_AUTHORED_NODES.find((node) => node.kind === "widget-frame")!,
       extensions: {
-        [CANVAS_IMAGE_EXTENSION_KEY]: {
+        [CANVAS_WIDGET_EXTENSION_KEY]: {
           schemaVersion: 1,
-          url: "https://media.test/image-a.png",
-          mimeType: "image/png",
+          type: "widget-instance",
+          instanceId: "instance-a",
+          widgetKey: "counter",
+          resourceBindings: {},
         },
       },
-    };
+    } as TCanvasSceneNode;
+    const result = fnValidateCanvasSceneNode(widget);
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "UNEXPECTED_FIELD",
+      path: `/extensions/${CANVAS_WIDGET_EXTENSION_KEY}/resourceBindings`,
+    }));
+    expect(fnReadCanvasWidgetExtension(widget)).toBeNull();
+  });
 
-    expect(fnValidateCanvasItems([image])).toEqual({ valid: true, issues: [] });
-    expect(fnReadCanvasImageExtension(image)).toEqual({
-      schemaVersion: 1,
-      url: "https://media.test/image-a.png",
-      mimeType: "image/png",
-    });
-
-    const sourceLess: TImageNode = {
-      ...image,
-      extensions: undefined,
-    };
-    expect(fnValidateCanvasItems([sourceLess])).toMatchObject({
-      valid: false,
-      issues: [
-        expect.objectContaining({ code: "IMAGE_EXTENSION_REQUIRED" }),
-      ],
-    });
-
-    image.extensions![CANVAS_IMAGE_EXTENSION_KEY] = {
-      schemaVersion: 1,
-      url: "",
-      mimeType: "image/svg+xml",
-    };
-    expect(fnValidateCanvasItems([image])).toMatchObject({
-      valid: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "IMAGE_EXTENSION_URL" }),
-        expect.objectContaining({ code: "IMAGE_EXTENSION_MIME_TYPE" }),
-      ]),
-    });
-
-    const wrongKind = rect("rect-with-image");
-    wrongKind.extensions = {
-      [CANVAS_IMAGE_EXTENSION_KEY]: {
-        schemaVersion: 1,
-        url: "https://media.test/image-a.png",
-        mimeType: "image/png",
-      },
-    };
-    expect(fnValidateCanvasItems([wrongKind])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({ code: "IMAGE_EXTENSION_NODE_KIND" })],
-    });
-
-    const conflictingClone: TImageNode = {
-      ...sourceLess,
-      id: "image-b",
-      orderKey: "B",
-      extensions: {
-        [CANVAS_IMAGE_EXTENSION_KEY]: {
-          schemaVersion: 1,
-          url: "https://media.test/image-b.png",
-          mimeType: "image/png",
-        },
-      },
-    };
-    const originalWithDescriptor: TImageNode = {
-      ...sourceLess,
-      extensions: {
-        [CANVAS_IMAGE_EXTENSION_KEY]: {
-          schemaVersion: 1,
-          url: "https://media.test/image-a.png",
-          mimeType: "image/png",
-        },
-      },
-    };
+  test("requires durable image descriptors and rejects descriptor conflicts", () => {
+    const image = CANVAS_CONFORMANCE_AUTHORED_NODES.find((node) => node.kind === "image")!;
+    expect(fnValidateCanvasSceneNode({ ...image, extensions: {} }).issues)
+      .toContainEqual(expect.objectContaining({ code: "IMAGE_EXTENSION_REQUIRED" }));
     expect(fnValidateCanvasItems([
-      originalWithDescriptor,
-      conflictingClone,
-    ])).toMatchObject({
-      valid: false,
-      issues: [
-        expect.objectContaining({
-          code: "IMAGE_RESOURCE_DESCRIPTOR_CONFLICT",
-          itemId: "image-b",
-        }),
-      ],
-    });
+      image,
+      {
+        ...image,
+        id: "image-b",
+        extensions: {
+          [CANVAS_IMAGE_EXTENSION_KEY]: {
+            schemaVersion: 1,
+            url: "https://example.invalid/other.png",
+            mimeType: "image/png",
+          },
+        },
+      },
+    ]).issues).toContainEqual(expect.objectContaining({
+      code: "IMAGE_RESOURCE_DESCRIPTOR_CONFLICT",
+    }));
+  });
+});
+
+describe("strict codecs and canonical JSON", () => {
+  test("canonicalizes object keys recursively and preserves array order", () => {
+    for (const vector of CANVAS_CONFORMANCE_CANONICAL_JSON) {
+      expect(fnStringifyCanonicalCanvasJson(vector.value), vector.name)
+        .toBe(vector.canonical);
+    }
+    expect(fnCanonicalCanvasJson({ b: 1, a: -0 })).toEqual({ a: 0, b: 1 });
   });
 
-  test("validates and reads bounded semantic canvas style intent", () => {
-    const semantic = rect("semantic");
-    semantic.fill = {
-      type: "solid",
-      color: { space: "srgb", r: 0.1, g: 0.2, b: 0.3, a: 1 },
-    };
-    semantic.stroke = {
-      paint: {
-        type: "solid",
-        color: { space: "srgb", r: 0.8, g: 0.7, b: 0.6, a: 1 },
-      },
-      width: 2,
-    };
-    semantic.extensions = {
-      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
-        schemaVersion: 1,
-        background: "green",
-        ink: "blue",
-      },
-    };
-
-    expect(fnValidateCanvasItems([semantic])).toEqual({ valid: true, issues: [] });
-    expect(fnReadCanvasSemanticStyleExtension(semantic)).toEqual({
-      schemaVersion: 1,
-      background: "green",
-      ink: "blue",
-    });
-
-    semantic.extensions[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
-      schemaVersion: 1,
-      background: "primary",
-      ink: "transparent",
-      extra: true,
-    } as never;
-    expect(fnValidateCanvasItems([semantic])).toMatchObject({
-      valid: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "SEMANTIC_STYLE_EXTENSION_FIELDS" }),
-        expect.objectContaining({ code: "SEMANTIC_STYLE_BACKGROUND_CODE" }),
-        expect.objectContaining({ code: "SEMANTIC_STYLE_INK_CODE" }),
-      ]),
-    });
+  test("document codec is stable, detached, and rejects malformed input", () => {
+    const canonical = CanvasDocumentCodec.stringify(CANVAS_CONFORMANCE_DOCUMENT);
+    expect(CanvasDocumentCodec.stringify(CanvasDocumentCodec.parse(canonical))).toBe(canonical);
+    const decoded = CanvasDocumentCodec.decode(CANVAS_CONFORMANCE_DOCUMENT);
+    expect(decoded).toEqual(CANVAS_CONFORMANCE_DOCUMENT);
+    expect(decoded).not.toBe(CANVAS_CONFORMANCE_DOCUMENT);
+    expect(() => CanvasDocumentCodec.decode({
+      ...CANVAS_CONFORMANCE_DOCUMENT,
+      schemaVersion: "2.0.0",
+    })).toThrow(CanvasContractDecodeError);
+    expect(() => CanvasDocumentCodec.parse("{"))
+      .toThrow(CanvasContractDecodeError);
   });
 
-  test("supports widget title-bar background intent but rejects widget ink", () => {
-    const semanticWidget = widget({
-      schemaVersion: 1,
-      type: "ui-widget",
-      kind: "example",
-    });
-    semanticWidget.extensions![CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
-      schemaVersion: 1,
-      background: "neutral",
-    };
-    semanticWidget.titleBarColor = {
-      space: "srgb", r: 0.2, g: 0.3, b: 0.4, a: 1,
-    };
-    expect(fnValidateCanvasItems([semanticWidget]))
-      .toEqual({ valid: true, issues: [] });
-    semanticWidget.extensions![CANVAS_SEMANTIC_STYLE_EXTENSION_KEY] = {
-      schemaVersion: 1,
-      ink: "neutral",
-    };
-    expect(fnValidateCanvasItems([semanticWidget])).toMatchObject({
-      valid: false,
-      issues: [expect.objectContaining({
-        code: "SEMANTIC_STYLE_INK_NODE_KIND",
-      })],
-    });
+  test("canonical JSON rejects cycles, sparse arrays, nonfinite values, and class objects", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const sparse = Array(1);
+    class Example { value = 1; }
+    expect(() => fnCanonicalCanvasJson(cyclic)).toThrow("Cyclic value");
+    expect(() => fnCanonicalCanvasJson(sparse)).toThrow("Sparse array");
+    expect(() => fnCanonicalCanvasJson(Number.NaN)).toThrow("Non-finite number");
+    expect(() => fnCanonicalCanvasJson(new Example())).toThrow("Non-plain object");
   });
 
-  test("requires concrete old-client paint fallbacks for semantic intent", () => {
-    const semantic = rect("semantic-without-fallback");
-    semantic.extensions = {
-      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
-        schemaVersion: 1,
-        background: "green",
-        ink: "blue",
-      },
-    };
+  test("scene-node codec round-trips all authored kinds", () => {
+    for (const node of CANVAS_CONFORMANCE_AUTHORED_NODES) {
+      const text = CanvasSceneNodeCodec.stringify(node);
+      expect(CanvasSceneNodeCodec.parse(text)).toEqual(node);
+    }
+  });
+});
 
-    expect(fnValidateCanvasItems([semantic])).toMatchObject({
-      valid: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "SEMANTIC_STYLE_BACKGROUND_FALLBACK" }),
-        expect.objectContaining({ code: "SEMANTIC_STYLE_INK_FALLBACK" }),
-      ]),
-    });
+describe("commands, queries, pages, and events", () => {
+  const command: TCanvasCommand = {
+    commandId: "command-a",
+    canvasId: "canvas-a",
+    baseRevision: 0,
+    operations: [{ type: "insert", item: rect("rect-a") }],
+    preconditions: [{ type: "item-absent", itemId: "rect-a" }],
+  };
+  const query: TCanvasItemQuery = {
+    canvasId: "canvas-a",
+    filter: { type: "parent", parentId: null },
+    limit: 25,
+    cursor: { type: "parent-order", orderKey: "A", id: "rect-a" },
+  };
+  const page: TCanvasItemPage = {
+    items: [CANVAS_CONFORMANCE_DOCUMENT.items[0]!],
+    nextCursor: { type: "id", id: "group-a" },
+  };
+  const event: TCanvasEvent = {
+    type: "items-changed",
+    canvasId: "canvas-a",
+    commandId: "command-a",
+    revision: 1,
+    changedItems: [CANVAS_CONFORMANCE_DOCUMENT.items[0]!],
+    deletedItemIds: [],
+  };
+
+  test("validates and round-trips each protocol value", () => {
+    expect(fnValidateCanvasCommand(command).valid).toBe(true);
+    expect(fnValidateCanvasQuery(query).valid).toBe(true);
+    expect(fnValidateCanvasItemPage(page).valid).toBe(true);
+    expect(fnValidateCanvasEvent(event).valid).toBe(true);
+    expect(CanvasCommandCodec.parse(CanvasCommandCodec.stringify(command))).toEqual(command);
+    expect(CanvasQueryCodec.parse(CanvasQueryCodec.stringify(query))).toEqual(query);
+    expect(CanvasItemPageCodec.parse(CanvasItemPageCodec.stringify(page))).toEqual(page);
+    expect(CanvasEventCodec.parse(CanvasEventCodec.stringify(event))).toEqual(event);
+  });
+
+  test("enforces command bounds and cursor/filter compatibility", () => {
+    expect(fnValidateCanvasCommand({ ...command, operations: [] }).valid).toBe(false);
+    expect(fnValidateCanvasCommand({ ...command, baseRevision: -1 }).valid).toBe(false);
+    expect(fnValidateCanvasQuery({
+      canvasId: "canvas-a",
+      filter: { type: "parent", parentId: null },
+      cursor: { type: "id", id: "rect-a" },
+    }).issues).toContainEqual(expect.objectContaining({
+      code: "QUERY_CURSOR_FILTER_MISMATCH",
+    }));
+    expect(fnValidateCanvasQuery({ ...query, limit: 1001 }).valid).toBe(false);
   });
 });

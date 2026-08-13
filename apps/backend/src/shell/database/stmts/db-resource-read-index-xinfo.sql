@@ -1,0 +1,1 @@
+PRAGMA index_xinfo(__INDEX_IDENTIFIER__)

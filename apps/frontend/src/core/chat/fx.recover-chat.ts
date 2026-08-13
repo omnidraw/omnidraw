@@ -1,0 +1,39 @@
+import { Context, Effect } from "effect";
+import type { TFrontendTransportFailure } from "../app/service.frontend-transport";
+
+export type TChatScope = Readonly<{
+  canvasId: string;
+  componentId: string;
+  sessionId: string;
+}>;
+
+export class ChatRecoveryBackend extends Context.Service<ChatRecoveryBackend, {
+  connectReuse(scope: TChatScope): Effect.Effect<void, TFrontendTransportFailure>;
+  history(scope: Omit<TChatScope, "canvasId">): Effect.Effect<readonly unknown[], TFrontendTransportFailure>;
+}>()("omnidraw/frontend/core/chat/ChatRecoveryBackend") {}
+
+export type TRecoveredChatEvent = Readonly<{
+  kind: "recovered-history";
+  componentId: string;
+  sessionId: string;
+  history: readonly unknown[];
+}>;
+
+/** Re-establishes backend session ownership before reading recovery history. */
+export function fxRecoverChat(
+  scope: TChatScope,
+): Effect.Effect<TRecoveredChatEvent, TFrontendTransportFailure, ChatRecoveryBackend> {
+  return ChatRecoveryBackend.use((backend) => Effect.gen(function*() {
+    yield* backend.connectReuse(scope);
+    const history = yield* backend.history({
+      componentId: scope.componentId,
+      sessionId: scope.sessionId,
+    });
+    return Object.freeze({
+      kind: "recovered-history" as const,
+      componentId: scope.componentId,
+      sessionId: scope.sessionId,
+      history,
+    });
+  }));
+}

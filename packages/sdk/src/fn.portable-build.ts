@@ -18,8 +18,8 @@ export function fnBootstrapWidgetUiEntry(
 
 export function fnWidgetGuestBridgeBootstrapSource(): string {
   return [
-    "import { subscribeHostLifecycle } from '@omnidraw/capsule/guest';",
-    'subscribeHostLifecycle(() => undefined).unsubscribe();',
+    "import { subscribeWidgetLifecycle } from '@omnidraw/sdk';",
+    'subscribeWidgetLifecycle(() => undefined)();',
     '',
   ].join('\n');
 }

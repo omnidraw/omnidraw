@@ -1,31 +1,31 @@
-@import '@omnidraw/service-theme/canvas-default.css';
+@import '@omnidraw/theme/canvas.css';
 
-.vc-canvas-host {
+.omnidraw-canvas-host {
   color-scheme: light;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-display: var(--font-mono);
-  --text-muted: var(--muted-foreground);
+  --omnidraw-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --omnidraw-font-display: var(--omnidraw-font-mono);
+  --omnidraw-text-muted: var(--omnidraw-muted-foreground);
 
   line-height: 1.5;
   tab-size: 4;
   -webkit-text-size-adjust: 100%;
 }
 
-.vc-canvas-host,
-.vc-canvas-host *,
-.vc-canvas-host *::before,
-.vc-canvas-host *::after {
+.omnidraw-canvas-host,
+.omnidraw-canvas-host *,
+.omnidraw-canvas-host *::before,
+.omnidraw-canvas-host *::after {
   box-sizing: border-box;
 }
 
-.vc-canvas-host :where(button, input, textarea, select) {
+.omnidraw-canvas-host :where(button, input, textarea, select) {
   margin: 0;
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
 }
 
-.vc-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']) {
+.omnidraw-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']) {
   appearance: button;
   border: 0 solid transparent;
   background-color: transparent;
@@ -34,40 +34,40 @@
   -webkit-appearance: button;
 }
 
-.vc-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']):not(:disabled) {
+.omnidraw-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']):not(:disabled) {
   cursor: pointer;
 }
 
-.vc-canvas-host :where(input, textarea, select) {
+.omnidraw-canvas-host :where(input, textarea, select) {
   border: 0 solid transparent;
   border-radius: 0;
 }
 
-.vc-canvas-host :where(input:not([type='checkbox']):not([type='radio']), textarea, select) {
+.omnidraw-canvas-host :where(input:not([type='checkbox']):not([type='radio']), textarea, select) {
   appearance: none;
   -webkit-appearance: none;
 }
 
-.vc-canvas-host :where(h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd, pre) {
+.omnidraw-canvas-host :where(h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd, pre) {
   margin: 0;
 }
 
-.vc-canvas-host :where(ol, ul, menu) {
+.omnidraw-canvas-host :where(ol, ul, menu) {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.vc-canvas-host :where(fieldset, legend) {
+.omnidraw-canvas-host :where(fieldset, legend) {
   margin: 0;
   padding: 0;
 }
 
-.vc-canvas-host :where(img, picture, video, canvas, svg, iframe) {
+.omnidraw-canvas-host :where(img, picture, video, canvas, svg, iframe) {
   display: block;
   vertical-align: middle;
 }
 
-.vc-canvas-host [hidden]:where(:not([hidden='until-found'])) {
+.omnidraw-canvas-host [hidden]:where(:not([hidden='until-found'])) {
   display: none !important;
 }

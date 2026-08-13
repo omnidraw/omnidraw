@@ -12,7 +12,7 @@ import type {
   TThemePathAppearance,
   TThemeSelectionAppearance,
   TThemeSrgbColor,
-} from '@omnidraw/theme-contract';
+} from '@omnidraw/theme';
 
 function fnPaint(color: TThemeSrgbColor): TPaint {
   return { type: 'solid', color: { ...color } };

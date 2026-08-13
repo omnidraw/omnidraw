@@ -4,25 +4,8 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "access": "restricted",
+  "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "@omnidraw/api",
-    "@omnidraw/orpc-client",
-    "@omnidraw/service-agent",
-    "@omnidraw/service-db",
-    "@omnidraw/service-event-publisher",
-    "@omnidraw/service-kv",
-    "@omnidraw/service-widget-state",
-    "@omnidraw/shared-functions",
-    "@omnidraw/tapable",
-    "@omnidraw/ui-ai-chat",
-    "@omnidraw/capsule-browser-acceptance",
-    "@omnidraw/cli",
-    "@omnidraw/frontend",
-    "@omnidraw/widget-debug-tools",
-    "@omnidraw-fixtures/private-managed-composition",
-    "@omnidraw/eslint-tooling"
-  ]
+  "ignore": []
 }

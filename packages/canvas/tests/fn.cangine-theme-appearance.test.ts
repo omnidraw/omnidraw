@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES } from '@omnidraw/service-theme';
+import { BUILTIN_THEMES } from '@omnidraw/theme';
 import { describe, expect, test } from 'vitest';
 import {
   fnCanginePathAppearance,

@@ -30,6 +30,15 @@ if (tsc.exitCode !== 0) {
 
 const result = await Bun.build({
   entrypoints: [
+    path.join(sdkDir, "src/index.ts"),
+    path.join(sdkDir, "src/manifest.ts"),
+    path.join(sdkDir, "src/artifact.ts"),
+    path.join(sdkDir, "src/guest.ts"),
+    path.join(sdkDir, "src/host.ts"),
+    path.join(sdkDir, "src/resource.ts"),
+    path.join(sdkDir, "src/function.ts"),
+    path.join(sdkDir, "src/state.ts"),
+    path.join(sdkDir, "src/conformance.ts"),
     path.join(sdkDir, "src/widget.ts"),
     path.join(sdkDir, "src/function-client.ts"),
     path.join(sdkDir, "src/server.ts"),
@@ -38,7 +47,16 @@ const result = await Bun.build({
   ],
   target: "browser",
   format: "esm",
-  external: ["@omnidraw/capsule/guest", "@omnidraw/widget-contract"],
+  root: path.join(sdkDir, "src"),
+  external: [
+    "@omnidraw/capsule",
+    "@omnidraw/capsule/authoring-inspection",
+    "@omnidraw/capsule/guest",
+    "@omnidraw/capsule/protocol",
+    "@omnidraw/capsule/schema",
+    "effect",
+    "lucide-static",
+  ],
   outdir: distDir,
 })
 
@@ -49,6 +67,12 @@ if (!result.success) {
   process.exit(1)
 }
 
+// Internal adapter declarations may name implementation dependencies. They are
+// bundled into host.js and are deliberately absent from the published type ABI.
+rmSync(path.join(distDir, "internal/capsule"), { recursive: true, force: true })
+rmSync(path.join(distDir, "internal/browser-host.d.ts"), { force: true })
+rmSync(path.join(distDir, "internal/effect-runtime.d.ts"), { force: true })
+
 const cli = await Bun.build({
   entrypoints: [path.join(sdkDir, "src/cli.mjs")],
   target: "node",
@@ -58,6 +82,7 @@ const cli = await Bun.build({
   define: {
     __OMNIDRAW_SDK_VERSION__: JSON.stringify(packageManifest.version),
   },
+  external: ["effect", "lucide-static"],
 })
 
 if (!cli.success) {

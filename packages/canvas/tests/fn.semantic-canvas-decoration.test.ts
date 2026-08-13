@@ -3,7 +3,7 @@ import {
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
   fnValidateCanvasItems,
 } from '@omnidraw/canvas-contract';
-import { BUILTIN_THEMES } from '@omnidraw/service-theme';
+import { BUILTIN_THEMES } from '@omnidraw/theme';
 import { describe, expect, test } from 'vitest';
 import {
   fnDecorateSemanticCanvasCreation,

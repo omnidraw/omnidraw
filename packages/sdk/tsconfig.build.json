@@ -6,14 +6,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": [
-    "src/widget.ts",
-    "src/function-client.ts",
-    "src/collaborative-state-client.ts",
-    "src/widget-channels.ts",
-    "src/server.ts",
-    "src/fn.offline-check.ts",
-    "src/shared.ts",
-    "src/fn.portable-build.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

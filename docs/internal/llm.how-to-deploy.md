@@ -3,26 +3,27 @@
 Reference only:
 
 - `.github/workflows/test.yml`
-- `tasks/d/D5.md`
+- `public-package-set.json`
+- `scripts/public-packages.ts`
 
 Merging to `main` does not publish npm packages. Versioned `@omnidraw/*`
-libraries are built and published manually from a maintainer machine. The app
-is not published, and CI verifies releases without publishing them.
+libraries are built and published manually from a maintainer machine. The two
+apps are not published, and CI verifies releases without publishing them.
 
 ## Library packages
 
 ### Source manifests versus public packages
 
-The `package.json` in each workspace package is the development manifest. It
-may contain `workspace:*` and `catalog:` references so packages link correctly
-while several packages are edited together.
+The `package.json` in each of the five public packages is the development
+manifest. It may contain `workspace:*` and `catalog:` references so packages
+link correctly while several packages are edited together.
 
 Never publish the workspace package root.
 
 Each versioned package's `build` script creates its standalone npm package in
-the ignored `dist/` directory. The root `bun run build` runs the canvas-kernel
-build first and then builds every workspace package that provides a build
-script. Each generated `dist/package.json`:
+the ignored `dist/` directory. The root `bun run build:public` builds the five
+public packages in dependency order; `bun run build` then checks the private
+backend and builds the private frontend. Each generated `dist/package.json`:
 
 - retains the package name and release version;
 - converts internal dependencies to exact package versions;
@@ -60,14 +61,14 @@ Before publishing the Omnidraw closure, exact external dependencies must be
 available from the public npm registry:
 
 - `@omnidraw/cangine@0.6.1`, published from its owning repository;
-- `@omnidraw/capsule@0.13.0`.
+- `@omnidraw/capsule@0.14.0`.
 
 Local Verdaccio packages and the repository lockfile do not satisfy this gate.
 Check the public registry explicitly:
 
 ```sh
 npm view @omnidraw/cangine@0.6.1 version dist.integrity --registry=https://registry.npmjs.org/
-npm view @omnidraw/capsule@0.13.0 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/capsule@0.14.0 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 Stop if either exact version cannot be resolved publicly.
@@ -78,19 +79,17 @@ Publish one wave completely and verify it on npm before starting the next.
 Packages within one wave have no dependency edge between them and may still be
 published sequentially for a simpler manual release.
 
-1. Foundation contracts:
-   `tenant-core`, `runtime`, and `theme-contract`.
-2. First dependents:
-   `resource-runtime`, `canvas-contract`, and `service-theme`.
-3. Product boundaries:
-   `widget-contract`, `service-canvas`, and `canvas`.
-4. Final dependents:
-   `function-runtime`, `sdk`, and `capsule-omnidraw`.
+1. Foundations with no internal dependency edge between them:
+   `@omnidraw/theme`, `@omnidraw/canvas-contract`, and `@omnidraw/sdk`.
+2. Canvas:
+   `@omnidraw/canvas` after Theme and Canvas Contract are available.
+3. AI Chat:
+   `@omnidraw/component-ai-chat` after Canvas is available.
 
 After each publication, query the exact version rather than `latest`:
 
 ```sh
-npm view @omnidraw/tenant-core@0.5.0 version dist.integrity time --registry=https://registry.npmjs.org/
+npm view '@omnidraw/theme@<exact-version>' version dist.integrity time --registry=https://registry.npmjs.org/
 ```
 
 Do not advance to a dependent package until npm returns the exact dependency
@@ -104,9 +103,9 @@ After a long-running change, run this from the repository root:
 bun run deploy:packages:list
 ```
 
-The command is read-only. It scans versioned packages under `packages/` and
-never selects apps or unversioned workspace packages. For every library it
-checks the public npm registry and reports:
+The command is read-only. It checks exactly the five packages declared by the
+qualified public package set and never selects either private app. For every
+library it checks the public npm registry and reports:
 
 - `CURRENT` when the intended tag already matches the local exact version;
 - `DEPLOY` when npm returns 404 or the local version is newer and unpublished;
@@ -136,20 +135,21 @@ the repository root:
 ```sh
 bun install --frozen-lockfile
 bun run build
+bun run test:architecture
 bun run verify:package-dists
 bun run test:packed-public-composition
-bun run test:packed-canvas-kernel
+bun run test:browser
 ```
 
-`verify:package-dists` discovers every versioned workspace library, orders the
-build by its dependency graph, builds and inspects every `dist` package, runs
+`verify:package-dists` reads the qualified five-package set, orders the build
+by its dependency graph, builds and inspects every `dist` package, runs
 npm's dry-run pack, creates isolated tarballs, installs the complete closure in
 a clean temporary consumer, and runs Bun and portable Node ESM import smokes.
 It does not publish anything.
 
-The canvas-kernel gate additionally performs the production browser build and
-browser smokes required for the browser-only canvas entry points, CSS, fonts,
-and single-Solid-runtime contract.
+The browser gate packs the qualified Canvas closure, performs the production
+consumer build, and runs browser smokes for Canvas entry points, CSS, fonts,
+and the single-Solid-runtime contract.
 
 ### Version changes
 

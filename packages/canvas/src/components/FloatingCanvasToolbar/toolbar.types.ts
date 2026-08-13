@@ -1,7 +1,18 @@
-import type { TStandardEditorToolId } from '@omnidraw/cangine/editor';
 import type { Component } from 'solid-js';
 
-export type TCanvasToolId = Exclude<TStandardEditorToolId, 'widget'>;
+export type TCanvasStandardToolId =
+  | 'select'
+  | 'hand'
+  | 'rect'
+  | 'ellipse'
+  | 'pen'
+  | 'text'
+  | 'connector'
+  | 'arrow'
+  | 'widget'
+  | 'eraser';
+
+export type TCanvasToolId = Exclude<TCanvasStandardToolId, 'widget'>;
 
 export type TCanvasToolDefinition = Readonly<{
   id: TCanvasToolId;
@@ -30,7 +41,7 @@ type TCanvasToolbarContributionBase = Readonly<{
 export type TCanvasToolbarToolContribution =
   TCanvasToolbarContributionBase & Readonly<{
     kind: 'tool';
-    toolId: TStandardEditorToolId;
+    toolId: TCanvasStandardToolId;
   }>;
 
 /** A host-owned action. Persistent actions remain visible when tools collapse. */

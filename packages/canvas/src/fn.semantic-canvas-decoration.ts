@@ -11,23 +11,21 @@ import type {
   TStandardCreationKind,
 } from '@omnidraw/cangine/editor';
 import type {
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
   TCanvasSemanticStyleExtensionV1,
 } from '@omnidraw/canvas-contract';
 import {
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
 } from '@omnidraw/canvas-contract/CONSTANTS';
-import type {
-  TCanvasFillColorCode,
-  TCanvasInkColorCode,
-  TThemeCanvasColorPalette,
-} from '@omnidraw/theme-contract';
+import type { TThemeCanvasColorPalette } from '@omnidraw/theme';
 import {
   fnIsCanvasColorCode,
   fnIsCanvasInkColorCode,
-} from '@omnidraw/theme-contract/fn.validation';
+} from '@omnidraw/theme';
 import type {
   TThemeBuiltinStyleScopeId,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
 import { fnCanvasSemanticStyleIntent } from './fn.semantic-canvas-style';
 
 export type TCanvasSemanticColorMutationIntent = Readonly<{

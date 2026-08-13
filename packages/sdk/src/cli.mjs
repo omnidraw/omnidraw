@@ -39,12 +39,12 @@ import {
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
   parseWidgetManifestV1Json,
-} from '@omnidraw/widget-contract';
+} from './contracts/index.js';
 import {
   WIDGET_BUILD_FILE_COUNT_MAX,
   WIDGET_BUILD_FILE_MAX_BYTES,
   WIDGET_BUILD_TOTAL_BYTES_MAX,
-} from '@omnidraw/widget-contract/CONSTANTS';
+} from './contracts/CONSTANTS.js';
 import {
   fnCreateOfflineCheckDiagnostic,
   fnCreateOfflineCheckReport,
@@ -57,6 +57,7 @@ import {
   fnWidgetGuestBridgeBootstrapSource,
   fnWidgetPortableViteConfigSource,
 } from './fn.portable-build.js';
+import { runSdkAsync } from './internal/effect-runtime.js';
 
 const SDK_VERSION = __OMNIDRAW_SDK_VERSION__;
 const INTERNAL_DIRECTORY = '.omnidraw';
@@ -1027,7 +1028,7 @@ async function main(argv) {
   throw Object.assign(new Error(`Unknown command '${command}'.`), { code: 'CLI_INVALID' });
 }
 
-main(process.argv.slice(2)).then(
+runSdkAsync(() => main(process.argv.slice(2))).then(
   (code) => { process.exitCode = code; },
   (error) => {
     const code = typeof error?.code === 'string' ? `${error.code}: ` : '';

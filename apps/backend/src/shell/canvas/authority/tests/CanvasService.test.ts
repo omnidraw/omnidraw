@@ -1,0 +1,377 @@
+import { describe, expect, test } from 'bun:test';
+import {
+  CANVAS_SCENE_SCHEMA_VERSION,
+  fnReadCanvasImageExtension,
+  fnReadCanvasWidgetExtension,
+} from '@omnidraw/canvas-contract';
+import type {
+  TCanvasCommand,
+  TCanvasItemPage,
+  TCanvasItemQuery,
+  TCanvasItemSnapshot,
+  TCanvasSnapshot,
+} from '@omnidraw/canvas-contract';
+import { CanvasService } from '../CanvasService';
+import type {
+  ICanvasStore,
+  TCanvasStoreApplyArgs,
+  TCanvasStoreApplyResult,
+} from '../ICanvasService';
+
+type TSceneNode = TCanvasItemSnapshot['item'];
+
+const transform = {
+  position: { x: 0, y: 0 },
+  rotation: 0,
+  scale: { x: 1, y: 1 },
+  skew: { x: 0, y: 0 },
+  origin: { x: 0, y: 0 },
+};
+
+function rect(id: string): TSceneNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: id,
+    kind: 'rect',
+    transform,
+    size: { width: 100, height: 60 },
+  };
+}
+
+function image(id: string, resourceId: string, url: string): TSceneNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: id,
+    kind: 'image',
+    transform,
+    resourceId,
+    size: { width: 80, height: 60 },
+    extensions: {
+      'omnidraw:image': {
+        schemaVersion: 1,
+        url,
+        mimeType: 'image/png',
+      },
+    },
+  };
+}
+
+function widget(id: string, instanceId: string, widgetKey = 'counter'): TSceneNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: id,
+    kind: 'widget-frame',
+    transform,
+    size: { width: 320, height: 240 },
+    extensions: {
+      'omnidraw:widget': {
+        schemaVersion: 1,
+        type: 'widget-instance',
+        instanceId,
+        widgetKey,
+      },
+    },
+  };
+}
+
+type TMemoryCanvas = {
+  revision: number;
+  rows: Map<string, TCanvasItemSnapshot>;
+};
+
+const CREATED_AT_SEC = '2026-08-04T00:00:00Z';
+const UPDATED_AT_SEC = '2026-08-04T00:00:01Z';
+
+class MemoryCanvasStore implements ICanvasStore {
+  readonly canvases = new Map<string, TMemoryCanvas>();
+  readonly queryFilters: string[] = [];
+  failNextApply = false;
+  readonly commandResults = new Map<string, Extract<TCanvasStoreApplyResult, { status: 'committed' }>>();
+
+  async getCommandResult(args: Readonly<{ canvasId: string; commandId: string }>) {
+    return structuredClone(this.commandResults.get(`${args.canvasId}\u0000${args.commandId}`) ?? null);
+  }
+
+  createCanvas(canvasId: string, items: readonly TSceneNode[] = []): void {
+    const rows = new Map<string, TCanvasItemSnapshot>();
+    for (const item of items) {
+      rows.set(item.id, {
+        id: item.id,
+        item: structuredClone(item),
+        itemRevision: 1,
+        createdAtSec: CREATED_AT_SEC,
+        updatedAtSec: CREATED_AT_SEC,
+      });
+    }
+    this.canvases.set(canvasId, { revision: 0, rows });
+  }
+
+  async getRevision(args: Readonly<{ canvasId: string }>): Promise<number | null> {
+    return this.canvases.get(args.canvasId)?.revision ?? null;
+  }
+
+  async getSnapshot(args: Readonly<{ canvasId: string }>): Promise<TCanvasSnapshot | null> {
+    const canvas = this.canvases.get(args.canvasId);
+    if (canvas === undefined) return null;
+    return {
+      schemaVersion: CANVAS_SCENE_SCHEMA_VERSION,
+      canvasId: args.canvasId,
+      revision: canvas.revision,
+      items: [...canvas.rows.values()].map((entry) => structuredClone(entry)),
+    };
+  }
+
+  async queryItems(query: TCanvasItemQuery): Promise<TCanvasItemPage> {
+    this.queryFilters.push(query.filter.type);
+    const canvas = this.canvases.get(query.canvasId);
+    if (canvas === undefined) return { items: [], nextCursor: null };
+    let rows = [...canvas.rows.values()];
+    if (query.filter.type === 'ids') {
+      const ids = new Set(query.filter.ids);
+      rows = rows.filter((row) => ids.has(row.id));
+    } else if (query.filter.type === 'parent') {
+      const filter = query.filter;
+      rows = rows.filter((row) => row.item.parentId === filter.parentId);
+    } else if (query.filter.type === 'widget-instance') {
+      const filter = query.filter;
+      rows = rows.filter((row) => {
+        const extension = fnReadCanvasWidgetExtension(row.item);
+        return extension?.type === 'widget-instance'
+          && extension.instanceId === filter.instanceId;
+      });
+    } else if (query.filter.type === 'widget-key') {
+      const filter = query.filter;
+      rows = rows.filter((row) => {
+        const extension = fnReadCanvasWidgetExtension(row.item);
+        return extension?.type === 'widget-instance'
+          && extension.widgetKey === filter.widgetKey;
+      });
+    } else if (query.filter.type === 'kind') {
+      const filter = query.filter;
+      rows = rows.filter((row) => row.item.kind === filter.kind);
+    }
+    rows.sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      items: rows.map((entry) => structuredClone(entry)),
+      nextCursor: null,
+    };
+  }
+
+  async queryImageResourceClaims(args: Readonly<{
+    canvasId: string;
+    resourceIds: readonly string[];
+    excludeItemIds: readonly string[];
+    limit: number;
+  }>) {
+    const canvas = this.canvases.get(args.canvasId);
+    if (canvas === undefined) return [];
+    const resourceIds = new Set(args.resourceIds);
+    const excluded = new Set(args.excludeItemIds);
+    const claims = [];
+    for (const row of canvas.rows.values()) {
+      if (excluded.has(row.id) || row.item.kind !== 'image') continue;
+      if (!resourceIds.has(row.item.resourceId)) continue;
+      const descriptor = fnReadCanvasImageExtension(row.item);
+      if (descriptor === null) continue;
+      claims.push({
+        resourceId: row.item.resourceId,
+        url: descriptor.url,
+        mimeType: descriptor.mimeType,
+      });
+      if (claims.length >= args.limit) break;
+    }
+    return claims;
+  }
+
+  async applyMutations(args: TCanvasStoreApplyArgs): Promise<TCanvasStoreApplyResult> {
+    if (this.failNextApply) {
+      this.failNextApply = false;
+      throw new Error('injected pre-commit failure');
+    }
+    const canvas = this.canvases.get(args.canvasId);
+    if (canvas === undefined) return { status: 'revision-conflict', revision: null };
+    if (canvas.revision !== args.expectedCanvasRevision) {
+      return { status: 'revision-conflict', revision: canvas.revision };
+    }
+
+    const changedItems: TCanvasItemSnapshot[] = [];
+    const deletedItemIds: string[] = [];
+    for (const mutation of args.mutations) {
+      if (mutation.type === 'delete') {
+        canvas.rows.delete(mutation.itemId);
+        deletedItemIds.push(mutation.itemId);
+        continue;
+      }
+      const current = canvas.rows.get(mutation.item.id);
+      const snapshot: TCanvasItemSnapshot = {
+        id: mutation.item.id,
+        item: structuredClone(mutation.item),
+        itemRevision: current === undefined ? 1 : current.itemRevision + 1,
+        createdAtSec: current?.createdAtSec ?? CREATED_AT_SEC,
+        updatedAtSec: UPDATED_AT_SEC,
+      };
+      canvas.rows.set(snapshot.id, snapshot);
+      changedItems.push(structuredClone(snapshot));
+    }
+    canvas.revision += 1;
+    const result = {
+      status: 'committed',
+      revision: canvas.revision,
+      changedItems,
+      deletedItemIds,
+    } as const;
+    this.commandResults.set(`${args.canvasId}\u0000${args.commandId}`, structuredClone(result));
+    return result;
+  }
+}
+
+function service(store: ICanvasStore, maxReplayEvents = 256): CanvasService {
+  return new CanvasService({ store, options: { maxReplayEvents } });
+}
+
+function insertCommand(
+  commandId: string,
+  canvasId: string,
+  baseRevision: number,
+  item: TSceneNode,
+): TCanvasCommand {
+  return {
+    commandId,
+    canvasId,
+    baseRevision,
+    operations: [{ type: 'insert', item }],
+    preconditions: [{ type: 'item-absent', itemId: item.id }],
+  };
+}
+
+function patchPosition(commandId: string, coordinate: 'x' | 'y', expected: number, value: number): TCanvasCommand {
+  const path = ['transform', 'position', coordinate] as const;
+  return {
+    commandId,
+    canvasId: 'canvas-a',
+    baseRevision: 0,
+    operations: [{
+      type: 'patch',
+      itemId: 'item-a',
+      patches: [{ type: 'set', path, value }],
+    }],
+    preconditions: [{
+      type: 'path-value',
+      itemId: 'item-a',
+      path,
+      value: expected,
+    }],
+  };
+}
+
+describe('CanvasService', () => {
+  test('accepts disjoint stale paths and rejects a stale same-path command', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [rect('item-a')]);
+    const canvas = service(store);
+
+    expect((await canvas.execute(patchPosition('x', 'x', 0, 10))).revision).toBe(1);
+    const second = await canvas.execute(patchPosition('y', 'y', 0, 20));
+    expect(second.changedItems[0]?.item.transform.position).toEqual({ x: 10, y: 20 });
+    await expect(canvas.execute(patchPosition('stale-x', 'x', 0, 30)))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(store.queryFilters).toEqual(['ids']);
+  });
+
+  test('keeps widget identity stable and unique on one canvas', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [widget('widget-a', 'instance-a')]);
+    const canvas = service(store);
+
+    await expect(canvas.execute(insertCommand(
+      'duplicate',
+      'canvas-a',
+      0,
+      widget('widget-b', 'instance-a'),
+    ))).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    await expect(canvas.execute({
+      commandId: 'replace-key',
+      canvasId: 'canvas-a',
+      baseRevision: 0,
+      operations: [{
+        type: 'replace',
+        item: widget('widget-a', 'instance-a', 'different-widget'),
+      }],
+      preconditions: [{
+        type: 'item-revision',
+        itemId: 'widget-a',
+        itemRevision: 1,
+      }],
+    })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  test('rejects conflicting descriptors for one durable image resource', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [
+      image('image-a', 'resource-a', 'https://media.test/a.png'),
+    ]);
+    const canvas = service(store);
+
+    await expect(canvas.execute(insertCommand(
+      'image-b',
+      'canvas-a',
+      0,
+      image('image-b', 'resource-a', 'https://media.test/b.png'),
+    ))).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
+  });
+
+  test('publishes committed events and resyncs when replay history has a gap', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const canvas = service(store, 1);
+    const live = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    const next = live.next();
+    const first = await canvas.execute(insertCommand('a', 'canvas-a', 0, rect('a')));
+    expect(await next).toEqual({ done: false, value: first });
+    await canvas.execute(insertCommand('b', 'canvas-a', 0, rect('b')));
+    await live.return?.();
+
+    const replay = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    expect(await replay.next()).toEqual({
+      done: false,
+      value: { type: 'resync-required', canvasId: 'canvas-a', revision: 2 },
+    });
+    await replay.return?.();
+  });
+
+  test('forces resync after an unclear store failure and admits a safe retry', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const canvas = service(store);
+    const command = insertCommand('a', 'canvas-a', 0, rect('a'));
+    store.failNextApply = true;
+
+    await expect(canvas.execute(command)).rejects.toMatchObject({ code: 'STORE_CONFLICT' });
+    expect((await canvas.execute(command)).revision).toBe(1);
+    expect((await canvas.getSnapshot({ canvasId: 'canvas-a' })).items).toHaveLength(1);
+  });
+
+  test('emits an explicit resync after authority restart when volatile replay is gone', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const beforeRestart = service(store);
+    await beforeRestart.execute(insertCommand('a', 'canvas-a', 0, rect('a')));
+    await beforeRestart.stop();
+
+    const restarted = service(store);
+    const events = restarted.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    expect(await events.next()).toEqual({
+      done: false,
+      value: { type: 'resync-required', canvasId: 'canvas-a', revision: 1 },
+    });
+    await events.return?.();
+    await restarted.stop();
+  });
+});

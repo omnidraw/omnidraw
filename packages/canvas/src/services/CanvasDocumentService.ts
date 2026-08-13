@@ -22,20 +22,25 @@ import type {
   TPreparedImageImportRequest,
 } from '@omnidraw/cangine/editor';
 import {
+  CanvasDocumentCodec,
+  CanvasEventCodec,
+  CanvasItemPageCodec,
+  CanvasQueryCodec,
   CANVAS_IMAGE_EXTENSION_KEY,
-  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-  fnMaterializeCanvasValidationSnapshot,
   fnReadCanvasImageExtension,
   type TCanvasCommand,
   type TCanvasDocumentTransport,
   type TCanvasEvent,
   type TCanvasImageExtensionV1,
+  type TCanvasItemPage,
+  type TCanvasItemQuery,
   type TCanvasItemSnapshot,
   type TCanvasItemsChangedEvent,
   type TCanvasOperation,
   type TCanvasPrecondition,
   type TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
+import { Deferred, Effect } from 'effect';
 import type {
   TCanvasImagePort,
   TCanvasWaitHandle,
@@ -57,6 +62,11 @@ import {
 import {
   fnAuthoredSemanticCanvasNode,
 } from '../fn.semantic-canvas-style';
+import {
+  CANVAS_RUNTIME_CONTENT_LAYER_ID,
+  fnCanvasNodesToCangineSnapshot,
+} from '../internal/cangine-contract-adapter';
+import { CanvasEffectRuntime } from '../internal/CanvasEffectRuntime';
 
 const SERVER_SCENE_SOURCE = 'omnidraw:server';
 const SNAPSHOT_SCENE_SOURCE = 'omnidraw:snapshot';
@@ -136,7 +146,7 @@ type TCommandPlan = Readonly<{
 }>;
 
 type TMediaGate = Readonly<{
-  wait: Promise<void>;
+  wait: Effect.Effect<void>;
   release(): void;
 }>;
 
@@ -411,8 +421,9 @@ export class CanvasDocumentService
   readonly #localImages = new Map<TResourceId, TLocalImage>();
   readonly #activeImports = new Map<string, TPreparedImport>();
   readonly #inFlightTransactions = new Set<TPendingTransaction>();
-  readonly #mediaTasks = new Set<Promise<void>>();
   readonly #activeWaits = new Set<TCanvasWaitHandle>();
+  readonly #authoredListeners = new Set<() => void>();
+  readonly #effects = new CanvasEffectRuntime();
   #imageNodeCounts = new Map<string, number>();
   #imageDescriptorCounts = new Map<
     string,
@@ -430,9 +441,9 @@ export class CanvasDocumentService
   #reloading = false;
   #outboxGeneration = 0;
   #generation = 0;
-  #commandTail: Promise<void> = Promise.resolve();
-  #recoveryTask: Promise<void> | null = null;
+  #recoveryGate: Deferred.Deferred<void> | null = null;
   #eventIterator: AsyncIterator<TCanvasEvent> | null = null;
+  #cancelEventStream: (() => void) | null = null;
   constructor(options: TCanvasDocumentServiceOptions) {
     this.#canvasId = options.canvasId;
     this.#transport = options.transport;
@@ -483,6 +494,27 @@ export class CanvasDocumentService
     return this.#authoredNodes.get(nodeId) ?? null;
   }
 
+  authoredNodes(): readonly Readonly<TSceneNode>[] {
+    return Object.freeze([...this.#authoredNodes.values()]);
+  }
+
+  /** Internal coherent-document signal used by renderer-neutral extensions. */
+  subscribeAuthored(listener: () => void): () => void {
+    if (this.#disposed) return () => undefined;
+    this.#authoredListeners.add(listener);
+    return () => { this.#authoredListeners.delete(listener); };
+  }
+
+  async query(query: TCanvasItemQuery): Promise<TCanvasItemPage> {
+    const admitted = CanvasQueryCodec.decode(query);
+    if (admitted.canvasId !== this.#canvasId) {
+      throw new RangeError(
+        `Canvas query targets '${admitted.canvasId}', expected '${this.#canvasId}'.`,
+      );
+    }
+    return CanvasItemPageCodec.decode(await this.#transport.query(admitted));
+  }
+
   /** Re-resolves semantic paint without changing the durable canvas revision. */
   reproject(projectNode: (node: TSceneNode) => TSceneNode): boolean {
     if (this.#disposed) {
@@ -529,7 +561,7 @@ export class CanvasDocumentService
       this.#resourceRegistrations = engine.resources.createRegistrationOwner(
         DOCUMENT_IMAGE_REGISTRATION_OWNER,
       );
-      await this.#reload(true);
+      await this.#effects.run(this.#reloadEffect(true));
     } catch (error) {
       try {
         this.#resourceRegistrations?.destroy();
@@ -542,7 +574,10 @@ export class CanvasDocumentService
       throw error;
     }
     const generation = ++this.#generation;
-    void this.#consumeEvents(generation);
+    this.#cancelEventStream = this.#effects.fork(
+      this.#consumeEventsEffect(generation),
+      (error) => this.#reportError(error),
+    );
   }
 
   commit(
@@ -718,12 +753,16 @@ export class CanvasDocumentService
     this.#disposed = true;
     this.#generation += 1;
     this.#outboxGeneration += 1;
+    const cancelEventStream = this.#cancelEventStream;
+    this.#cancelEventStream = null;
+    cancelEventStream?.();
     const queuedOwnedMedia = [...this.#pendingByTransactionId.values()]
       .filter((pending) => pending.dispatchState === 'queued');
     this.#invalidatePending();
-    for (const pending of queuedOwnedMedia) {
-      void this.#deletePendingOwnedMedia(pending);
-    }
+    await this.#effects.run(Effect.all(
+      queuedOwnedMedia.map((pending) => this.#deletePendingOwnedMediaEffect(pending)),
+      { concurrency: 'unbounded', discard: true },
+    ));
     const iterator = this.#eventIterator;
     this.#eventIterator = null;
     for (const wait of [...this.#activeWaits]) wait.cancel();
@@ -746,10 +785,12 @@ export class CanvasDocumentService
     this.#acceptedItems.clear();
     this.#optimisticNodes = new Map();
     this.#authoredNodes = new Map();
+    this.#authoredListeners.clear();
     this.#projection = null;
     this.#imageNodeCounts.clear();
     this.#imageDescriptorCounts.clear();
     this.#engine = null;
+    await this.#effects.dispose();
   }
 
   #commitMutation(
@@ -906,6 +947,7 @@ export class CanvasDocumentService
           request.coalesceKey,
         );
         this.#applyAuthoredNodeImages(authoredAfter);
+        this.#publishAuthoredChange();
       } catch (error) {
         this.#scheduleRecovery(error);
         throw error;
@@ -1118,21 +1160,27 @@ export class CanvasDocumentService
 
   #enqueuePending(pending: TPendingTransaction): void {
     const outboxGeneration = this.#outboxGeneration;
-    const operation = async (): Promise<void> => {
-      if (pending.mediaGate !== null) await pending.mediaGate.wait;
-      if (this.#disposed) {
-        await this.#deletePendingOwnedMedia(pending);
+    const self = this;
+    const operation = Effect.gen(function*() {
+      if (pending.mediaGate !== null) {
+        yield* pending.mediaGate.wait;
+      }
+      if (self.#disposed) {
+        yield* self.#deletePendingOwnedMediaEffect(pending);
         return;
       }
       if (
-        outboxGeneration !== this.#outboxGeneration
-        || this.#pendingByTransactionId.get(pending.transactionId) !== pending
+        outboxGeneration !== self.#outboxGeneration
+        || self.#pendingByTransactionId.get(pending.transactionId) !== pending
       ) return;
       pending.dispatchState = 'executing';
-      this.#inFlightTransactions.add(pending);
-      try {
-        const command = this.#commandForPending(pending);
-        this.#observe({
+      self.#inFlightTransactions.add(pending);
+      const command = yield* Effect.try({
+        try: () => self.#commandForPending(pending),
+        catch: (cause) => cause,
+      });
+      yield* Effect.sync(() => {
+        self.#observe({
           phase: 'command-dispatched',
           priority: 'critical',
           transactionId: pending.transactionId,
@@ -1143,40 +1191,54 @@ export class CanvasDocumentService
             operationCount: command.operations.length,
           },
         });
-        const event = await this.#transport.execute(command);
-        if (this.#disposed) {
-          this.#inFlightTransactions.delete(pending);
-          return;
-        }
-        if (
-          outboxGeneration !== this.#outboxGeneration
-          || this.#pendingByTransactionId.get(pending.transactionId) !== pending
-        ) {
-          await this.#acceptLateCommittedEvent(event);
-        } else {
-          try {
-            this.#acceptEvent(event, pending);
-          } catch (error) {
-            this.#observe({
+      });
+      const rawEvent = yield* Effect.tryPromise({
+        try: () => self.#transport.execute(command),
+        catch: (cause) => cause,
+      });
+      const event = yield* Effect.try({
+        try: () => CanvasEventCodec.decode(rawEvent),
+        catch: (cause) => cause,
+      });
+      if (event.type !== 'items-changed') {
+        return yield* Effect.fail(
+          new TypeError('Canvas command acknowledgement must change items.'),
+        );
+      }
+      if (self.#disposed) return;
+      if (
+        outboxGeneration !== self.#outboxGeneration
+        || self.#pendingByTransactionId.get(pending.transactionId) !== pending
+      ) {
+        yield* self.#acceptLateCommittedEventEffect(event);
+      } else {
+        const accepted = yield* Effect.result(Effect.try({
+          try: () => self.#acceptEvent(event, pending),
+          catch: (cause) => cause,
+        }));
+        if (accepted._tag === 'Failure') {
+          yield* Effect.sync(() => {
+            self.#observe({
               phase: 'acknowledgement-rejected',
               priority: 'critical',
               transactionId: pending.transactionId,
               commandId: pending.commandId,
               nodeIds: pending.affectedNodeIds,
               data: {
-                errorMessage: error instanceof Error
-                  ? error.message
-                  : String(error),
+                errorMessage: accepted.failure instanceof Error
+                  ? accepted.failure.message
+                  : String(accepted.failure),
               },
             });
-            this.#scheduleRecovery(error);
-            await (this.#recoveryTask ?? Promise.resolve());
-          }
+            self.#scheduleRecovery(accepted.failure);
+          });
+          yield* self.#awaitRecoveryEffect();
         }
-        this.#inFlightTransactions.delete(pending);
-        this.#releaseOrphanLocalImages(true);
-      } catch (error) {
-        this.#observe({
+      }
+      yield* Effect.sync(() => self.#releaseOrphanLocalImages(true));
+    }).pipe(
+      Effect.catch((error) => Effect.gen(function*() {
+        yield* Effect.sync(() => self.#observe({
           phase: 'acknowledgement-rejected',
           priority: 'critical',
           transactionId: pending.transactionId,
@@ -1185,49 +1247,61 @@ export class CanvasDocumentService
           data: {
             errorMessage: error instanceof Error ? error.message : String(error),
           },
-        });
-        if (this.#disposed) {
-          this.#inFlightTransactions.delete(pending);
-          await this.#deletePendingOwnedMedia(pending);
+        }));
+        if (self.#disposed) {
+          yield* self.#deletePendingOwnedMediaEffect(pending);
           return;
         }
-        if (outboxGeneration === this.#outboxGeneration) {
-          this.#scheduleRecovery(error);
+        if (outboxGeneration === self.#outboxGeneration) {
+          yield* Effect.sync(() => self.#scheduleRecovery(error));
         }
-        await (this.#recoveryTask ?? Promise.resolve());
-        this.#inFlightTransactions.delete(pending);
-        this.#releaseOrphanLocalImages(true);
-      }
-    };
-    this.#commandTail = this.#commandTail.then(operation, operation);
+        yield* self.#awaitRecoveryEffect();
+        yield* Effect.sync(() => self.#releaseOrphanLocalImages(true));
+      })),
+      Effect.ensuring(Effect.sync(() => {
+        self.#inFlightTransactions.delete(pending);
+      })),
+    );
+    this.#effects.forkSerial(
+      operation,
+      (error) => this.#reportError(error),
+    );
   }
 
-  async #acceptLateCommittedEvent(
+  #acceptLateCommittedEventEffect(
     event: TCanvasItemsChangedEvent,
-  ): Promise<void> {
-    await (this.#recoveryTask ?? Promise.resolve());
-    if (this.#disposed) return;
-    try {
-      this.#acceptEvent(event, null);
-    } catch (error) {
-      this.#scheduleRecovery(error);
-      await (this.#recoveryTask ?? Promise.resolve());
-    }
+  ): Effect.Effect<void> {
+    const self = this;
+    return this.#awaitRecoveryEffect().pipe(
+      Effect.andThen(Effect.suspend(() => {
+        if (self.#disposed) return Effect.void;
+        return Effect.try({
+          try: () => self.#acceptEvent(event, null),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) => Effect.sync(() => {
+            self.#scheduleRecovery(error);
+          }).pipe(Effect.andThen(self.#awaitRecoveryEffect()))),
+        );
+      })),
+    );
   }
 
-  async #deletePendingOwnedMedia(
+  #deletePendingOwnedMediaEffect(
     pending: TPendingTransaction,
-  ): Promise<void> {
-    if (pending.ownedMediaCleanupScheduled) return;
-    pending.ownedMediaCleanupScheduled = true;
-    const ownedResources = new Set(pending.ownedImageResourceIds);
-    const urls = new Set<string>();
-    for (const node of pending.after.values()) {
-      if (node?.kind !== 'image' || !ownedResources.has(node.resourceId)) continue;
-      const extension = fnReadCanvasImageExtension(node);
-      if (extension !== null) urls.add(extension.url);
-    }
-    await this.#deleteUploadedUrls([...urls]);
+  ): Effect.Effect<void> {
+    return Effect.suspend(() => {
+      if (pending.ownedMediaCleanupScheduled) return Effect.void;
+      pending.ownedMediaCleanupScheduled = true;
+      const ownedResources = new Set(pending.ownedImageResourceIds);
+      const urls = new Set<string>();
+      for (const node of pending.after.values()) {
+        if (node?.kind !== 'image' || !ownedResources.has(node.resourceId)) continue;
+        const extension = fnReadCanvasImageExtension(node);
+        if (extension !== null) urls.add(extension.url);
+      }
+      return this.#deleteUploadedUrlsEffect([...urls]);
+    });
   }
 
   #commandForPending(pending: TPendingTransaction): TCanvasCommand {
@@ -1432,6 +1506,7 @@ export class CanvasDocumentService
     this.#acceptedCommandIds.add(event.commandId);
     this.#applyImageIndexPatch(imageIndexPatch);
     if (imageIndexPatch.registrationsChanged) this.#syncDurableResources();
+    this.#publishAuthoredChange();
     if (clearHistory) this.#history.clear();
     this.#observe({
       phase: pending === null
@@ -1620,6 +1695,16 @@ export class CanvasDocumentService
     }
   }
 
+  #publishAuthoredChange(): void {
+    for (const listener of [...this.#authoredListeners]) {
+      try {
+        listener();
+      } catch (error) {
+        this.#reportError(error);
+      }
+    }
+  }
+
   #pendingAffectedIds(except: TPendingTransaction | null): Set<string> {
     const result = new Set<string>();
     for (const pending of this.#pendingByTransactionId.values()) {
@@ -1647,56 +1732,65 @@ export class CanvasDocumentService
     pending: TPendingTransaction,
     images: readonly TLocalImage[],
   ): void {
-    const operation = this.#uploadPreparedImport(importId, pending, images);
-    this.#mediaTasks.add(operation);
-    void operation.then(
-      () => this.#mediaTasks.delete(operation),
+    this.#effects.fork(
+      this.#uploadPreparedImportEffect(importId, pending, images),
       (error) => {
-        this.#mediaTasks.delete(operation);
         this.#reportError(error);
         this.#scheduleRecovery();
       },
     );
   }
 
-  async #uploadPreparedImport(
+  #uploadPreparedImportEffect(
     importId: string,
     pending: TPendingTransaction,
     images: readonly TLocalImage[],
-  ): Promise<void> {
+  ): Effect.Effect<void> {
+    const self = this;
     const uploaded: Array<Readonly<{
       image: TLocalImage;
       url: string;
     }>> = [];
-    try {
+    const uploadedUrls = (): readonly string[] => (
+      uploaded.map((entry) => entry.url)
+    );
+    const program = Effect.gen(function*() {
       for (const image of images) {
-        const data = new Uint8Array(await image.blob.arrayBuffer());
-        const result = await this.#image!.uploadImage({
-          data,
-          mime_type: image.mimeType,
+        const buffer = yield* Effect.tryPromise({
+          try: () => image.blob.arrayBuffer(),
+          catch: (cause) => cause,
+        });
+        const result = yield* Effect.tryPromise({
+          try: () => self.#image!.uploadImage({
+            data: new Uint8Array(buffer),
+            mime_type: image.mimeType,
+          }),
+          catch: (cause) => cause,
         });
         if (
           typeof result.url !== 'string'
           || result.url.trim().length === 0
         ) {
-          throw new TypeError('Canvas image upload returned an invalid URL.');
+          return yield* Effect.fail(
+            new TypeError('Canvas image upload returned an invalid URL.'),
+          );
         }
         uploaded.push({ image, url: result.url });
       }
       if (
-        this.#disposed
-        || this.#activeImports.get(importId)?.transactionId
+        self.#disposed
+        || self.#activeImports.get(importId)?.transactionId
           !== pending.transactionId
-        || this.#pendingByTransactionId.get(pending.transactionId) !== pending
+        || self.#pendingByTransactionId.get(pending.transactionId) !== pending
       ) {
-        await this.#deleteUploadedUrls(uploaded.map((entry) => entry.url));
+        self.#scheduleUploadedUrlDeletion(uploadedUrls());
         return;
       }
 
       const promotions = new Map<string, TImagePromotion>();
       const commands: TSerializedSceneCommand[] = [];
       for (const entry of uploaded) {
-        const matchingNodes = [...this.#optimisticNodes.values()].filter(
+        const matchingNodes = [...self.#optimisticNodes.values()].filter(
           (node): node is TImageNode => (
             node.kind === 'image'
             && node.resourceId === entry.image.resourceId
@@ -1730,32 +1824,37 @@ export class CanvasDocumentService
           .map((command) => command.node.id)
           .sort(codePointCompare),
       );
-      this.#commitMutation({
-        transactionId: `image-promotion:${this.#createCommandId()}`,
-        basisSceneRevision: this.projectedSceneRevision,
-        source: IMAGE_PROMOTION_SOURCE,
-        commands,
-        affectedNodeIds,
-      }, {
-        persist: false,
-        recordHistory: false,
+      yield* Effect.try({
+        try: () => self.#commitMutation({
+          transactionId: `image-promotion:${self.#createCommandId()}`,
+          basisSceneRevision: self.projectedSceneRevision,
+          source: IMAGE_PROMOTION_SOURCE,
+          commands,
+          affectedNodeIds,
+        }, {
+          persist: false,
+          recordHistory: false,
+        }),
+        catch: (cause) => cause,
       });
-      this.#promotePendingImages(promotions);
-      this.#history.promoteImages(promotions);
-      for (const entry of uploaded) {
-        entry.image.durableUrl = entry.url;
-      }
-      this.#activeImports.delete(importId);
-      pending.mediaGate?.release();
-    } catch (error) {
-      const uploadedUrls = uploaded.map((entry) => entry.url);
-      void this.#deleteUploadedUrls(uploadedUrls);
-      if (!this.#disposed) {
-        this.#activeImports.delete(importId);
-        this.#reportError(error);
-        this.#scheduleRecovery();
-      }
-    }
+      yield* Effect.sync(() => {
+        self.#promotePendingImages(promotions);
+        self.#history.promoteImages(promotions);
+        for (const entry of uploaded) entry.image.durableUrl = entry.url;
+        self.#activeImports.delete(importId);
+        pending.mediaGate?.release();
+      });
+    });
+    return program.pipe(
+      Effect.catch((error) => Effect.sync(() => {
+        self.#scheduleUploadedUrlDeletion(uploadedUrls());
+        if (self.#disposed) return;
+        self.#activeImports.delete(importId);
+        self.#reportError(error);
+        self.#scheduleRecovery();
+      })),
+      Effect.onInterrupt(() => self.#deleteUploadedUrlsEffect(uploadedUrls())),
+    );
   }
 
   #promotePendingImages(
@@ -1778,15 +1877,29 @@ export class CanvasDocumentService
     }
   }
 
-  async #deleteUploadedUrls(urls: readonly string[]): Promise<void> {
-    if (this.#image === null) return;
-    await Promise.all(urls.map(async (url) => {
-      try {
-        await this.#image!.deleteImage({ url });
-      } catch {
+  #scheduleUploadedUrlDeletion(urls: readonly string[]): void {
+    if (urls.length === 0 || this.#image === null) return;
+    try {
+      this.#effects.fork(this.#deleteUploadedUrlsEffect(urls));
+    } catch (error) {
+      if (!this.#disposed) this.#reportError(error);
+    }
+  }
+
+  #deleteUploadedUrlsEffect(urls: readonly string[]): Effect.Effect<void> {
+    const image = this.#image;
+    if (image === null || urls.length === 0) return Effect.void;
+    return Effect.forEach(
+      new Set(urls),
+      (url) => Effect.tryPromise({
+        try: () => image.deleteImage({ url }),
+        catch: (cause) => cause,
+      }).pipe(
         // Deletion is best effort; a failed cleanup must not strand recovery.
-      }
-    }));
+        Effect.catch(() => Effect.void),
+      ),
+      { concurrency: 'unbounded', discard: true },
+    );
   }
 
   #scheduleRecovery(cause?: unknown): void {
@@ -1804,36 +1917,57 @@ export class CanvasDocumentService
     this.#recoveryPending = true;
     this.#outboxGeneration += 1;
     this.#invalidatePending();
-    this.#commandTail = Promise.resolve();
-    const task = this.#reloadUntilRecovered();
-    this.#recoveryTask = task;
-    void task.then(() => {
-      if (this.#recoveryTask === task) this.#recoveryTask = null;
-    });
+    this.#effects.resetSerial();
+    const gate = Deferred.makeUnsafe<void>();
+    this.#recoveryGate = gate;
+    this.#effects.fork(
+      this.#reloadUntilRecoveredEffect().pipe(
+        Effect.ensuring(Effect.sync(() => {
+          Deferred.doneUnsafe(gate, Effect.void);
+          if (this.#recoveryGate === gate) this.#recoveryGate = null;
+        })),
+      ),
+      (error) => {
+        if (this.#disposed) return;
+        this.#recoveryPending = false;
+        this.#scheduleRecovery(error);
+      },
+    );
   }
 
-  async #reloadUntilRecovered(): Promise<void> {
-    while (!this.#disposed && this.#recoveryPending) {
+  #awaitRecoveryEffect(): Effect.Effect<void> {
+    const gate = this.#recoveryGate;
+    return gate === null || this.#disposed ? Effect.void : Deferred.await(gate);
+  }
+
+  #reloadUntilRecoveredEffect(): Effect.Effect<void, unknown> {
+    return Effect.suspend(() => {
+      if (this.#disposed || !this.#recoveryPending) return Effect.void;
       this.#observe({ phase: 'recovery-started', priority: 'critical' });
-      try {
-        await this.#reload(true);
-        this.#recoveryPending = false;
-        this.#observe({ phase: 'recovery-completed', priority: 'critical' });
-        return;
-      } catch (error) {
-        if (this.#disposed) return;
-        this.#recoveryPending = true;
-        this.#observe({
-          phase: 'recovery-failed',
-          priority: 'critical',
-          data: {
-            errorMessage: error instanceof Error ? error.message : String(error),
-          },
-        });
-        this.#reportError(error);
-        await this.#waitBeforeRetry(250);
-      }
-    }
+      return this.#reloadEffect(true).pipe(
+        Effect.tap(() => Effect.sync(() => {
+          this.#recoveryPending = false;
+          this.#observe({ phase: 'recovery-completed', priority: 'critical' });
+        })),
+        Effect.catch((error) => {
+          if (this.#disposed) return Effect.void;
+          return Effect.sync(() => {
+            this.#recoveryPending = true;
+            this.#observe({
+              phase: 'recovery-failed',
+              priority: 'critical',
+              data: {
+                errorMessage: error instanceof Error ? error.message : String(error),
+              },
+            });
+            this.#reportError(error);
+          }).pipe(
+            Effect.andThen(this.#waitBeforeRetryEffect(250)),
+            Effect.andThen(this.#reloadUntilRecoveredEffect()),
+          );
+        }),
+      );
+    });
   }
 
   #invalidatePending(): void {
@@ -1856,9 +1990,9 @@ export class CanvasDocumentService
     }
   }
 
-  async #reload(clearHistory: boolean): Promise<void> {
+  #reloadEffect(clearHistory: boolean): Effect.Effect<void, unknown> {
     if (this.#reloading) {
-      throw new RangeError('Canvas reconciliation is already in progress.');
+      return Effect.fail(new RangeError('Canvas reconciliation is already in progress.'));
     }
     this.#reloading = true;
     this.#observe({
@@ -1866,8 +2000,32 @@ export class CanvasDocumentService
       priority: 'high',
       data: { clearHistory },
     });
-    try {
-      const snapshot = await this.#transport.getSnapshot({ canvasId: this.#canvasId });
+    return Effect.tryPromise({
+      try: () => this.#transport.getSnapshot({ canvasId: this.#canvasId }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.map((snapshot) => CanvasDocumentCodec.decode(snapshot)),
+      Effect.flatMap((snapshot) => Effect.try({
+        try: () => this.#installSnapshot(snapshot, clearHistory),
+        catch: (cause) => cause,
+      })),
+      Effect.catch((error) => Effect.sync(() => {
+        this.#observe({
+          phase: 'reload-failed',
+          priority: 'critical',
+          data: {
+            clearHistory,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }).pipe(Effect.andThen(Effect.fail(error)))),
+      Effect.ensuring(Effect.sync(() => {
+        this.#reloading = false;
+      })),
+    );
+  }
+
+  #installSnapshot(snapshot: TCanvasSnapshot, clearHistory: boolean): void {
       if (this.#disposed) return;
       if (this.#committing) {
         throw new RangeError('Cannot reload the canvas during a local commit.');
@@ -1879,13 +2037,15 @@ export class CanvasDocumentService
         snapshot.items.map((item) => [item.id, item]),
       );
       const authoredReductionState = createSceneReductionState(
-        fnMaterializeCanvasValidationSnapshot(
-          snapshot.items.map((item) => fnRuntimeCanvasNode(item.item)),
+        fnCanvasNodesToCangineSnapshot(
+          snapshot.items.map((item) => item.item),
         ),
       );
       const authoredSnapshot = sceneReductionStateSnapshot(authoredReductionState);
       const authoredNodes = new Map(
-        authoredSnapshot.nodes.map((node) => [node.id, node]),
+        authoredSnapshot.nodes
+          .filter((node) => node.id !== CANVAS_RUNTIME_CONTENT_LAYER_ID)
+          .map((node) => [node.id, node]),
       );
       const admittedSnapshot = {
         ...authoredSnapshot,
@@ -1934,6 +2094,7 @@ export class CanvasDocumentService
         }
         throw error;
       }
+      this.#publishAuthoredChange();
       if (clearHistory) this.#history.clear();
       this.#releaseOrphanLocalImages(true);
       this.#observe({
@@ -1944,19 +2105,6 @@ export class CanvasDocumentService
           itemCount: this.#acceptedItems.size,
         },
       });
-    } catch (error) {
-      this.#observe({
-        phase: 'reload-failed',
-        priority: 'critical',
-        data: {
-          clearHistory,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-      });
-      throw error;
-    } finally {
-      this.#reloading = false;
-    }
   }
 
   #buildImageDocumentIndex(
@@ -2121,7 +2269,13 @@ export class CanvasDocumentService
       });
     }
     owner.replace(claims);
-    void owner.preload().catch((error) => this.#reportError(error));
+    this.#effects.fork(
+      Effect.tryPromise({
+        try: () => owner.preload(),
+        catch: (cause) => cause,
+      }),
+      (error) => this.#reportError(error),
+    );
   }
 
   #localImageReachable(resourceId: string): boolean {
@@ -2165,88 +2319,125 @@ export class CanvasDocumentService
       && image.durableUrl !== null
       && this.#image !== null
     ) {
-      try {
-        void this.#image.deleteImage({ url: image.durableUrl }).catch(
-          (error) => this.#reportError(error),
-        );
-      } catch (error) {
-        this.#reportError(error);
-      }
+      this.#scheduleUploadedUrlDeletion([image.durableUrl]);
     }
   }
 
-  async #consumeEvents(generation: number): Promise<void> {
-    while (!this.#disposed && generation === this.#generation) {
+  #consumeEventsEffect(generation: number): Effect.Effect<void, unknown> {
+    const current = () => !this.#disposed && generation === this.#generation;
+    const consume = (): Effect.Effect<void, unknown> => Effect.suspend(() => {
+      if (!current()) return Effect.void;
       if (this.#recoveryPending || this.#reloading) {
-        await (this.#recoveryTask ?? Promise.resolve());
-        continue;
+        return this.#awaitRecoveryEffect().pipe(Effect.andThen(consume()));
       }
-      let restartForRecovery = false;
-      let iterator: AsyncIterator<TCanvasEvent> | null = null;
-      try {
-        const iterable = this.#transport.subscribe({
-          canvasId: this.#canvasId,
-          afterRevision: this.#acceptedRevision,
-        });
-        iterator = iterable[Symbol.asyncIterator]();
-        this.#eventIterator = iterator;
-        while (!this.#disposed && generation === this.#generation) {
-          const next = await iterator.next();
-          if (next.done) break;
-          if (this.#recoveryPending || this.#reloading) {
-            restartForRecovery = true;
-            break;
+      const subscription = Effect.acquireRelease(
+        Effect.try({
+          try: () => {
+            const iterable = this.#transport.subscribe({
+              canvasId: this.#canvasId,
+              afterRevision: this.#acceptedRevision,
+            });
+            const iterator = iterable[Symbol.asyncIterator]();
+            this.#eventIterator = iterator;
+            return iterator;
+          },
+          catch: (cause) => cause,
+        }),
+        (iterator) => Effect.tryPromise({
+          try: async () => { await iterator.return?.(); },
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch(() => Effect.void),
+          Effect.ensuring(Effect.sync(() => {
+            if (this.#eventIterator === iterator) this.#eventIterator = null;
+          })),
+        ),
+      ).pipe(
+        Effect.flatMap((iterator) => this.#consumeEventIteratorEffect(iterator, generation)),
+        Effect.scoped,
+        Effect.matchEffect({
+          onFailure: (error) => Effect.sync(() => {
+            if (current()) this.#reportError(error);
+            return 'retry' as const;
+          }),
+          onSuccess: (result) => Effect.succeed(result),
+        }),
+      );
+      return subscription.pipe(
+        Effect.flatMap((result) => {
+          if (!current()) return Effect.void;
+          if (result === 'recovery') {
+            return this.#awaitRecoveryEffect().pipe(Effect.andThen(consume()));
           }
-          const event = next.value;
-          if (event.type === 'items-changed') {
-            try {
-              this.#acceptEvent(event, null);
-            } catch (error) {
-              if (!this.#disposed) {
-                this.#scheduleRecovery(error);
-                restartForRecovery = true;
-              }
-            }
-            if (restartForRecovery) break;
-            continue;
-          }
-          this.#scheduleRecovery();
-          restartForRecovery = true;
-          break;
-        }
-      } catch (error) {
-        if (!this.#disposed && generation === this.#generation) {
-          this.#reportError(error);
-        }
-      } finally {
-        if (this.#eventIterator === iterator) this.#eventIterator = null;
-        if (restartForRecovery && iterator !== null) {
-          try {
-            await iterator.return?.();
-          } catch {
-            // Recovery proceeds from a fresh subscription even if close fails.
-          }
-        }
-      }
-      if (!this.#disposed && generation === this.#generation) {
-        if (restartForRecovery) {
-          await (this.#recoveryTask ?? Promise.resolve());
-          continue;
-        }
-        await this.#waitBeforeRetry(250);
-      }
-    }
+          return this.#waitBeforeRetryEffect(250).pipe(Effect.andThen(consume()));
+        }),
+      );
+    });
+    return consume();
   }
 
-  async #waitBeforeRetry(delayMs: number): Promise<void> {
-    if (this.#disposed) return;
-    const wait = this.#wait.wait(delayMs);
-    this.#activeWaits.add(wait);
-    try {
-      await wait.promise;
-    } finally {
-      this.#activeWaits.delete(wait);
-    }
+  #consumeEventIteratorEffect(
+    iterator: AsyncIterator<TCanvasEvent>,
+    generation: number,
+  ): Effect.Effect<'ended' | 'recovery' | 'stopped', unknown> {
+    return Effect.suspend(() => {
+      if (this.#disposed || generation !== this.#generation) {
+        return Effect.succeed('stopped' as const);
+      }
+      return Effect.tryPromise({
+        try: () => iterator.next(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.flatMap((next) => {
+          if (next.done) return Effect.succeed('ended' as const);
+          if (this.#recoveryPending || this.#reloading) {
+            return Effect.succeed('recovery' as const);
+          }
+          return Effect.try({
+            try: () => CanvasEventCodec.decode(next.value),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.flatMap((event) => Effect.sync(() => {
+              if (event.type === 'items-changed') {
+                try {
+                  this.#acceptEvent(event, null);
+                  return false;
+                } catch (error) {
+                  if (!this.#disposed) this.#scheduleRecovery(error);
+                  return true;
+                }
+              }
+              this.#scheduleRecovery();
+              return true;
+            })),
+            Effect.flatMap((recover) => recover
+              ? Effect.succeed('recovery' as const)
+              : this.#consumeEventIteratorEffect(iterator, generation)),
+          );
+        }),
+      );
+    });
+  }
+
+  #waitBeforeRetryEffect(delayMs: number): Effect.Effect<void, unknown> {
+    if (this.#disposed) return Effect.void;
+    return Effect.acquireRelease(
+      Effect.sync(() => {
+        const wait = this.#wait.wait(delayMs);
+        this.#activeWaits.add(wait);
+        return wait;
+      }),
+      (wait) => Effect.sync(() => {
+        this.#activeWaits.delete(wait);
+        wait.cancel();
+      }),
+    ).pipe(
+      Effect.flatMap((wait) => Effect.tryPromise({
+        try: () => wait.promise,
+        catch: (cause) => cause,
+      })),
+      Effect.scoped,
+    );
   }
 
   #reportError(error: unknown): void {
@@ -2301,7 +2492,7 @@ export class CanvasDocumentService
 
   #assertAuthoredMutation(request: TEditorSceneMutationRequest): void {
     if (
-      request.affectedNodeIds.includes(CANVAS_SYNTHETIC_CONTENT_LAYER_ID)
+      request.affectedNodeIds.includes(CANVAS_RUNTIME_CONTENT_LAYER_ID)
     ) {
       throw new RangeError('Editor mutations cannot target runtime canvas nodes.');
     }
@@ -2374,17 +2565,11 @@ function assertCompatibleImageDescriptors(
 }
 
 function createMediaGate(): TMediaGate {
-  let released = false;
-  let releaseWait!: () => void;
-  const wait = new Promise<void>((resolve) => {
-    releaseWait = resolve;
-  });
+  const deferred = Deferred.makeUnsafe<void>();
   return Object.freeze({
-    wait,
+    wait: Deferred.await(deferred),
     release() {
-      if (released) return;
-      released = true;
-      releaseWait();
+      Deferred.doneUnsafe(deferred, Effect.void);
     },
   });
 }

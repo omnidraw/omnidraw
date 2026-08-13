@@ -4,12 +4,12 @@
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Database } from '../packages/service-db/src/DbServiceTurso/turso-native';
+import { Database } from '../apps/backend/src/shell/database/DbServiceTurso/turso-native';
 import {
   EXPECTED_APPLICATION_TABLES,
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
-} from '../packages/service-db/src/schema/expected-schema';
-import { txRunMigrations } from '../packages/service-db/src/DbServiceTurso/tx.migrations';
+} from '../apps/backend/src/shell/database/schema/expected-schema';
+import { txRunMigrations } from '../apps/backend/src/shell/database/DbServiceTurso/tx.migrations';
 
 const EVIDENCE_APPLIED_AT_MS = Date.UTC(2026, 6, 21);
 const EVIDENCE_APPLICATION_VERSION = 'm1-evidence';

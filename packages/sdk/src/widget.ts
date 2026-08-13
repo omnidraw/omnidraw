@@ -34,8 +34,8 @@ export {
   subscribeWidgetTheme,
 } from './widget-channels';
 export type {
-  TWidgetCapsuleNotificationOutput,
-  TWidgetCapsuleTheme,
+  TWidgetNotificationOutput,
+  TWidgetTheme,
   TWidgetLifecycleEvent,
   TWidgetSnapshotHooks,
 } from './widget-channels';
@@ -50,4 +50,4 @@ export type {
   TWidgetReleaseDescriptor,
   TWidgetReleaseAttestation,
   TWidgetUnsignedReleaseDescriptor,
-} from '@omnidraw/widget-contract/filesystem';
+} from './contracts/filesystem/typed';

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { Effect } from "effect";
 import {
   CanvasRuntimeLifecycle,
   type TManagedCanvasRuntime,
@@ -23,8 +24,11 @@ function deferred(): TDeferred {
 function runtime(name: string, bootPromise: Promise<void> = Promise.resolve()) {
   return {
     name,
-    boot: vi.fn(() => bootPromise),
-    shutdown: vi.fn(async () => undefined),
+    bootEffect: vi.fn(() => Effect.tryPromise({
+      try: () => bootPromise,
+      catch: (cause) => cause,
+    })),
+    shutdownEffect: vi.fn(() => Effect.void),
   };
 }
 
@@ -35,12 +39,12 @@ describe("CanvasRuntimeLifecycle", () => {
     const lifecycle = new CanvasRuntimeLifecycle<string>({
       createRuntime: (source) => {
         const instance = {
-          boot: vi.fn(async () => {
+          bootEffect: vi.fn(() => Effect.sync(() => {
             events.push(`boot:${source}`);
-          }),
-          shutdown: vi.fn(async () => {
+          })),
+          shutdownEffect: vi.fn(() => Effect.sync(() => {
             events.push(`shutdown:${source}`);
-          }),
+          })),
         };
         runtimes.set(source, instance);
         return instance;
@@ -59,10 +63,13 @@ describe("CanvasRuntimeLifecycle", () => {
     const firstBootStarted = deferred();
     const created: string[] = [];
     const first = runtime("a");
-    first.boot.mockImplementation(() => {
+    first.bootEffect.mockImplementation(() => Effect.tryPromise({
+      try: () => {
       firstBootStarted.resolve();
       return firstBoot.promise;
-    });
+      },
+      catch: (cause) => cause,
+    }));
     const lifecycle = new CanvasRuntimeLifecycle<string>({
       createRuntime: (source) => {
         created.push(source);
@@ -83,7 +90,7 @@ describe("CanvasRuntimeLifecycle", () => {
     ]);
 
     expect(created).toEqual(["a", "c"]);
-    expect(first.shutdown).toHaveBeenCalledTimes(1);
+    expect(first.shutdownEffect).toHaveBeenCalledTimes(1);
   });
 
   test("reports a current boot failure and tears its runtime down", async () => {
@@ -98,7 +105,7 @@ describe("CanvasRuntimeLifecycle", () => {
     await lifecycle.replace("failed");
 
     expect(onBootError).toHaveBeenCalledWith(failure, "failed");
-    expect(failed.shutdown).toHaveBeenCalledTimes(1);
+    expect(failed.shutdownEffect).toHaveBeenCalledTimes(1);
     expect(lifecycle.activeRuntime).toBeNull();
   });
 
@@ -139,14 +146,14 @@ describe("CanvasRuntimeLifecycle", () => {
     await Promise.all([lifecycle.dispose(), lifecycle.dispose()]);
     await lifecycle.replace("late");
 
-    expect(active.shutdown).toHaveBeenCalledTimes(1);
+    expect(active.shutdownEffect).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(lifecycle.activeRuntime).toBeNull();
   });
 
   test("isolates shutdown failures and continues replacement", async () => {
     const first = runtime("first");
-    first.shutdown.mockRejectedValueOnce(new Error("cleanup failed"));
+    first.shutdownEffect.mockReturnValueOnce(Effect.fail(new Error("cleanup failed")));
     const second = runtime("second");
     const onShutdownError = vi.fn();
     const lifecycle = new CanvasRuntimeLifecycle<string>({
@@ -158,7 +165,7 @@ describe("CanvasRuntimeLifecycle", () => {
     await lifecycle.replace("second");
 
     expect(onShutdownError).toHaveBeenCalledTimes(1);
-    expect(second.boot).toHaveBeenCalledTimes(1);
+    expect(second.bootEffect).toHaveBeenCalledTimes(1);
     expect(lifecycle.activeRuntime).toBe(second);
   });
 });

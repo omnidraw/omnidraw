@@ -1,0 +1,14 @@
+.omnidraw-tool-icon-picker { position: relative; }
+.omnidraw-tool-icon-picker__label { display: block; margin-bottom: .375rem; color: var(--omnidraw-foreground); font-size: .75rem; font-weight: 600; }
+.omnidraw-tool-icon-picker__trigger { display: flex; width: 100%; min-height: 2.375rem; align-items: center; justify-content: space-between; padding: .375rem .625rem; border: 1px solid var(--omnidraw-input); background: var(--omnidraw-background); color: var(--omnidraw-foreground); font: inherit; }
+.omnidraw-tool-icon-picker__value,.omnidraw-tool-icon-picker__option { display: flex; align-items: center; gap: .5rem; }
+.omnidraw-tool-icon-picker__menu { position: absolute; z-index: 80; top: calc(100% + .25rem); width: 100%; max-height: 16rem; overflow: auto; border: 1px solid var(--omnidraw-border); background: var(--omnidraw-popover); box-shadow: 6px 6px 0 color-mix(in srgb,var(--omnidraw-foreground) 72%,var(--omnidraw-background)); }
+.omnidraw-tool-icon-picker__search { position: sticky; top: 0; z-index: 1; width: 100%; padding: .5rem; border: 0; border-bottom: 1px solid var(--omnidraw-border); background: var(--omnidraw-background); color: var(--omnidraw-foreground); }
+.omnidraw-tool-icon-picker__option { width: 100%; min-height: 2.125rem; padding: .375rem .5rem; border: 1px solid transparent; background: transparent; color: var(--omnidraw-foreground); font: inherit; font-size: .75rem; text-align: left; }
+.omnidraw-tool-icon-picker__option:hover,.omnidraw-tool-icon-picker__option--selected { border-color: var(--omnidraw-primary); background: var(--omnidraw-accent); }
+.omnidraw-tool-icon-picker__glyph,.omnidraw-tool-icon-picker__glyph svg,.omnidraw-tool-icon-picker__text { display: inline-flex; width: 1.375rem; height: 1.375rem; flex: 0 0 auto; align-items: center; justify-content: center; }
+.omnidraw-tool-icon-picker__text { overflow: hidden; font-size: 1rem; }
+.omnidraw-tool-icon-picker__custom { display: block; margin-top: 1rem; }
+.omnidraw-tool-icon-picker__textarea { width: 100%; min-height: 5rem; padding: .5rem .75rem; resize: vertical; border: 1px solid var(--omnidraw-input); background: var(--omnidraw-background); color: var(--omnidraw-foreground); font-family: var(--omnidraw-font-mono); }
+.omnidraw-tool-icon-picker__help { margin-top: .375rem; color: var(--omnidraw-muted-foreground); font-size: .6875rem; }
+.omnidraw-tool-icon-picker button:focus-visible,.omnidraw-tool-icon-picker input:focus-visible,.omnidraw-tool-icon-picker textarea:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--omnidraw-ring); }

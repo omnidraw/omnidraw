@@ -1,0 +1,137 @@
+.list {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 20rem;
+}
+
+.toast {
+  border: 1px solid var(--omnidraw-border);
+  padding: 0.75rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  color: var(--omnidraw-foreground);
+  animation: toast-enter 200ms ease-out;
+}
+
+.default {
+  background: var(--omnidraw-card);
+}
+
+.error {
+  background: color-mix(in srgb, var(--omnidraw-destructive) 10%, var(--omnidraw-card));
+  border-color: var(--omnidraw-destructive);
+}
+
+.success {
+  background: color-mix(in srgb, var(--omnidraw-success) 10%, var(--omnidraw-card));
+  border-color: var(--omnidraw-success);
+}
+
+.warning {
+  background: color-mix(in srgb, var(--omnidraw-warning) 10%, var(--omnidraw-card));
+  border-color: var(--omnidraw-warning);
+}
+
+.contentRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+
+.titleDefault,
+.titleSuccess {
+  color: var(--omnidraw-foreground);
+}
+
+.titleError {
+  color: var(--omnidraw-destructive);
+}
+
+.titleWarning {
+  color: var(--omnidraw-warning);
+}
+
+.description {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--omnidraw-muted-foreground);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.25rem;
+  color: var(--omnidraw-muted-foreground);
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.closeButton:hover {
+  background: var(--omnidraw-accent);
+}
+
+.closeButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--omnidraw-ring);
+}
+
+.closeIcon {
+  color: var(--omnidraw-muted-foreground);
+}
+
+.progressTrack {
+  height: 0.125rem;
+  margin-top: 0.5rem;
+  background: color-mix(in srgb, var(--omnidraw-accent) 20%, transparent);
+}
+
+.progressFill {
+  height: 100%;
+}
+
+.progressDefault {
+  background: var(--omnidraw-muted-foreground);
+}
+
+.progressError {
+  background: var(--omnidraw-destructive);
+}
+
+.progressSuccess {
+  background: var(--omnidraw-success);
+}
+
+.progressWarning {
+  background: var(--omnidraw-warning);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

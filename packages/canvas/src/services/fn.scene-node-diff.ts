@@ -2,9 +2,14 @@ import type {
   TCanvasItemPatch,
   TCanvasJsonPath,
   TCanvasPrecondition,
+  TCanvasSceneNode,
+  TJsonValue,
 } from '@omnidraw/canvas-contract';
-import type { TJsonValue, TSceneNode } from '@omnidraw/cangine';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract/CONSTANTS';
+import type { TSceneNode } from '@omnidraw/cangine';
+import {
+  fnCanvasContractNodeToCangine,
+  fnCangineNodeToAuthoredCanvasContract,
+} from '../internal/cangine-contract-adapter';
 
 type TCanvasNodeDiff = Readonly<{
   patches: readonly TCanvasItemPatch[];
@@ -176,34 +181,14 @@ export function fnApplySceneNodePatches(
   return root as unknown as TSceneNode;
 }
 
-export function fnRuntimeCanvasNode(node: TSceneNode): TSceneNode {
-  const runtimeNode = node.parentId === null
-    ? { ...cloneJson(node), parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID }
-    : cloneJson(node);
-  if (runtimeNode.kind !== 'widget-frame' || runtimeNode.portal !== undefined) {
-    return runtimeNode;
-  }
-  return {
-    ...runtimeNode,
-    portal: {
-      portalId: `omnidraw:widget:${runtimeNode.id}`,
-      interactive: true,
-      scaleMode: 'world',
-      suspendWhenOffscreen: true,
-      overscan: 96,
-    },
-  };
+export function fnRuntimeCanvasNode(node: TCanvasSceneNode): TSceneNode {
+  return fnCanvasContractNodeToCangine(node);
 }
 
-export function fnAuthoredCanvasNode(node: TSceneNode): TSceneNode {
-  const authoredNode = node.parentId === CANVAS_SYNTHETIC_CONTENT_LAYER_ID
-    ? { ...cloneJson(node), parentId: null }
-    : cloneJson(node);
-  if (authoredNode.kind !== 'widget-frame' || authoredNode.portal === undefined) {
-    return authoredNode;
-  }
-  const { portal: _runtimePortal, ...persistedNode } = authoredNode;
-  return persistedNode as TSceneNode;
+export function fnAuthoredCanvasNode(node: TSceneNode): TCanvasSceneNode {
+  return fnCangineNodeToAuthoredCanvasContract(node, {
+    allowPendingImageDescriptor: true,
+  });
 }
 
 export type { TCanvasNodeDiff, TCanvasNodeStructureDiff };

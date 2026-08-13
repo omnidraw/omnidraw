@@ -1,4 +1,4 @@
-.vc-canvas-toolbar-anchor {
+.omnidraw-canvas-toolbar-anchor {
   position: absolute;
   top: 0.625rem;
   right: 0.625rem;
@@ -10,63 +10,63 @@
   gap: 0.3rem;
 }
 
-.vc-canvas-toolbar-panel {
+.omnidraw-canvas-toolbar-panel {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   overflow: visible;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--card-foreground);
+  border: 1px solid var(--omnidraw-border);
+  background: var(--omnidraw-card);
+  color: var(--omnidraw-card-foreground);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
-.vc-canvas-toolbar-collapse {
+.omnidraw-canvas-toolbar-collapse {
   width: 2.125rem;
   padding: 0.15rem 0.2rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted-foreground);
-  font-family: var(--font-display);
+  border-bottom: 1px solid var(--omnidraw-border);
+  color: var(--omnidraw-muted-foreground);
+  font-family: var(--omnidraw-font-display);
   font-size: 9px;
   letter-spacing: 0.025em;
   text-align: center;
 }
 
-.vc-canvas-toolbar-list {
+.omnidraw-canvas-toolbar-list {
   display: flex;
   flex-direction: column;
 }
 
-.vc-toolbar-button,
-.vc-canvas-toolbar-persistent-action {
+.omnidraw-toolbar-button,
+.omnidraw-canvas-toolbar-persistent-action {
   position: relative;
   display: flex;
   width: 2.125rem;
   height: 1.8rem;
   align-items: center;
   justify-content: center;
-  color: var(--muted-foreground);
+  color: var(--omnidraw-muted-foreground);
   transition: background-color 150ms ease, color 150ms ease;
 }
 
-.vc-toolbar-button:hover,
-.vc-canvas-toolbar-persistent-action:hover,
-.vc-canvas-toolbar-collapse:hover {
-  background: var(--hover);
-  color: var(--hover-foreground);
+.omnidraw-toolbar-button:hover,
+.omnidraw-canvas-toolbar-persistent-action:hover,
+.omnidraw-canvas-toolbar-collapse:hover {
+  background: var(--omnidraw-hover);
+  color: var(--omnidraw-hover-foreground);
 }
 
-.vc-toolbar-button:disabled {
+.omnidraw-toolbar-button:disabled {
   cursor: not-allowed;
   opacity: 0.28;
 }
 
-.vc-toolbar-button--active {
-  background: color-mix(in srgb, var(--primary) 15%, transparent);
-  color: var(--foreground);
+.omnidraw-toolbar-button--active {
+  background: color-mix(in srgb, var(--omnidraw-primary) 15%, transparent);
+  color: var(--omnidraw-foreground);
 }
 
-.vc-toolbar-button__icon {
+.omnidraw-toolbar-button__icon {
   display: inline-flex;
   width: 14px;
   height: 14px;
@@ -74,7 +74,7 @@
   justify-content: center;
 }
 
-.vc-toolbar-button__shortcuts {
+.omnidraw-toolbar-button__shortcuts {
   position: absolute;
   right: 2px;
   bottom: 1px;
@@ -83,75 +83,75 @@
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
-  font-family: var(--font-mono);
+  color: color-mix(in srgb, var(--omnidraw-muted-foreground) 80%, transparent);
+  font-family: var(--omnidraw-font-mono);
   font-size: 6px;
   font-weight: 500;
   line-height: 1;
 }
 
-.vc-toolbar-button__shortcuts span:first-child:not(:last-child) {
+.omnidraw-toolbar-button__shortcuts span:first-child:not(:last-child) {
   margin-right: auto;
 }
 
-.vc-canvas-toolbar-divider {
+.omnidraw-canvas-toolbar-divider {
   height: 1px;
   margin: 0.125rem 0.35rem;
-  background: var(--border);
+  background: var(--omnidraw-border);
 }
 
-.vc-canvas-toolbar-persistent-action {
-  border-top: 1px solid var(--border);
+.omnidraw-canvas-toolbar-persistent-action {
+  border-top: 1px solid var(--omnidraw-border);
 }
 
-.vc-toolbar-button--attention {
-  background: color-mix(in srgb, var(--warning) 20%, transparent);
-  color: var(--warning);
+.omnidraw-toolbar-button--attention {
+  background: color-mix(in srgb, var(--omnidraw-warning) 20%, transparent);
+  color: var(--omnidraw-warning);
 }
 
-.vc-canvas-toolbar-hints {
+.omnidraw-canvas-toolbar-hints {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
   padding-top: 0.125rem;
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
+  color: var(--omnidraw-muted-foreground);
+  font-family: var(--omnidraw-font-mono);
   font-size: 9px;
   opacity: 0.55;
 }
 
-.vc-canvas-toolbar-hints span {
+.omnidraw-canvas-toolbar-hints span {
   display: flex;
   align-items: center;
   gap: 0.25rem;
 }
 
-.vc-canvas-toolbar-hints kbd {
+.omnidraw-canvas-toolbar-hints kbd {
   display: inline-flex;
   width: 2.125rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid var(--omnidraw-border);
+  background: var(--omnidraw-card);
   padding: 0.125rem 0.25rem;
   font-size: 8px;
 }
 
-.vc-trace-button--recording {
-  color: var(--destructive);
+.omnidraw-trace-button--recording {
+  color: var(--omnidraw-destructive);
 }
 
-.vc-trace-button--marked {
-  background: color-mix(in srgb, var(--warning) 22%, transparent);
-  color: var(--warning);
+.omnidraw-trace-button--marked {
+  background: color-mix(in srgb, var(--omnidraw-warning) 22%, transparent);
+  color: var(--omnidraw-warning);
 }
 
-.vc-trace-control {
+.omnidraw-trace-control {
   position: relative;
   width: 2.125rem;
 }
 
-.vc-trace-panel {
+.omnidraw-trace-panel {
   position: absolute;
   right: calc(100% + 0.5rem);
   bottom: -0.25rem;
@@ -160,190 +160,190 @@
   width: min(12.5rem, calc(100vw - 4.5rem));
   max-height: calc(100vh - 1.25rem);
   overflow-y: auto;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--card-foreground);
+  border: 1px solid var(--omnidraw-border);
+  background: var(--omnidraw-card);
+  color: var(--omnidraw-card-foreground);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-  font-family: var(--font-mono);
+  font-family: var(--omnidraw-font-mono);
   font-size: 10px;
 }
 
-.vc-trace-panel header,
-.vc-trace-panel footer,
-.vc-trace-actions,
-.vc-trace-mode {
+.omnidraw-trace-panel header,
+.omnidraw-trace-panel footer,
+.omnidraw-trace-actions,
+.omnidraw-trace-mode {
   display: flex;
   align-items: center;
   gap: 0.35rem;
 }
 
-.vc-trace-panel header {
+.omnidraw-trace-panel header {
   justify-content: space-between;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--omnidraw-border);
   padding: 0.35rem 0.45rem;
 }
 
-.vc-trace-panel header > div {
+.omnidraw-trace-panel header > div {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-.vc-trace-status {
-  border: 1px solid var(--border);
+.omnidraw-trace-status {
+  border: 1px solid var(--omnidraw-border);
   padding: 0.08rem 0.25rem;
-  color: var(--muted-foreground);
+  color: var(--omnidraw-muted-foreground);
   font-size: 8px;
   text-transform: uppercase;
 }
 
-.vc-trace-status--recording,
-.vc-trace-status--marked {
+.omnidraw-trace-status--recording,
+.omnidraw-trace-status--marked {
   border-color: currentColor;
-  color: var(--destructive);
+  color: var(--omnidraw-destructive);
 }
 
-.vc-trace-status--marked {
-  color: var(--warning);
+.omnidraw-trace-status--marked {
+  color: var(--omnidraw-warning);
 }
 
-.vc-trace-actions,
-.vc-trace-mode,
-.vc-trace-panel footer {
+.omnidraw-trace-actions,
+.omnidraw-trace-mode,
+.omnidraw-trace-panel footer {
   padding: 0.35rem 0.45rem;
 }
 
-.vc-trace-actions {
+.omnidraw-trace-actions {
   justify-content: space-between;
 }
 
-.vc-trace-actions > button {
+.omnidraw-trace-actions > button {
   flex: 1;
 }
 
-.vc-trace-panel button {
+.omnidraw-trace-panel button {
   display: inline-flex;
   min-height: 1.65rem;
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--omnidraw-border);
   padding: 0.2rem 0.4rem;
-  color: var(--foreground);
+  color: var(--omnidraw-foreground);
 }
 
-.vc-trace-panel button:hover:not(:disabled),
-.vc-trace-panel button.active {
-  background: var(--hover);
+.omnidraw-trace-panel button:hover:not(:disabled),
+.omnidraw-trace-panel button.active {
+  background: var(--omnidraw-hover);
 }
 
-.vc-trace-panel button:disabled {
+.omnidraw-trace-panel button:disabled {
   cursor: not-allowed;
   opacity: 0.35;
 }
 
-.vc-trace-metrics {
+.omnidraw-trace-metrics {
   display: flex;
   justify-content: space-between;
   margin: 0;
-  border-block: 1px solid var(--border);
+  border-block: 1px solid var(--omnidraw-border);
   padding: 0.3rem 0.45rem;
 }
 
-.vc-trace-metrics div {
+.omnidraw-trace-metrics div {
   display: flex;
   gap: 0.2rem;
 }
 
-.vc-trace-metrics dt {
-  color: var(--muted-foreground);
+.omnidraw-trace-metrics dt {
+  color: var(--omnidraw-muted-foreground);
   font-size: 8px;
   text-transform: uppercase;
 }
 
-.vc-trace-metrics dd {
+.omnidraw-trace-metrics dd {
   margin: 0;
   order: -1;
 }
 
-.vc-trace-mode {
+.omnidraw-trace-mode {
   padding-bottom: 0.25rem;
 }
 
-.vc-trace-mode button {
+.omnidraw-trace-mode button {
   flex: 1;
 }
 
-.vc-trace-mode-description {
+.omnidraw-trace-mode-description {
   margin: 0;
   padding: 0 0.45rem 0.35rem;
-  color: var(--muted-foreground);
+  color: var(--omnidraw-muted-foreground);
   line-height: 1.45;
 }
 
-.vc-trace-tail-note {
+.omnidraw-trace-tail-note {
   flex: 1;
-  color: var(--warning);
+  color: var(--omnidraw-warning);
   line-height: 1.35;
   text-align: right;
 }
 
-.vc-trace-channels {
+.omnidraw-trace-channels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.3rem;
-  border-block: 1px solid var(--border);
+  border-block: 1px solid var(--omnidraw-border);
   padding: 0.4rem 0.45rem;
 }
 
-.vc-trace-channels legend {
+.omnidraw-trace-channels legend {
   padding: 0 0.2rem;
-  color: var(--muted-foreground);
+  color: var(--omnidraw-muted-foreground);
   font-size: 8px;
 }
 
-.vc-trace-channels label {
+.omnidraw-trace-channels label {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 0.25rem;
 }
 
-.vc-trace-channels span {
+.omnidraw-trace-channels span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.vc-trace-panel footer {
+.omnidraw-trace-panel footer {
   display: grid;
   grid-template-columns: 1fr 0.72fr 0.52fr;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--omnidraw-border);
 }
 
-.vc-trace-panel footer button {
+.omnidraw-trace-panel footer button {
   min-width: 0;
   padding-inline: 0.3rem;
 }
 
-.vc-trace-new-hint {
+.omnidraw-trace-new-hint {
   margin: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--omnidraw-border);
   padding: 0.3rem 0.45rem;
-  color: var(--muted-foreground);
+  color: var(--omnidraw-muted-foreground);
 }
 
 @media (max-height: 30rem) {
-  .vc-canvas-toolbar-list {
+  .omnidraw-canvas-toolbar-list {
     display: grid;
     grid-template-columns: repeat(2, 2.125rem);
   }
 
-  .vc-canvas-toolbar-divider {
+  .omnidraw-canvas-toolbar-divider {
     grid-column: 1 / -1;
   }
 
-  .vc-canvas-toolbar-collapse,
-  .vc-canvas-toolbar-persistent-action {
+  .omnidraw-canvas-toolbar-collapse,
+  .omnidraw-canvas-toolbar-persistent-action {
     width: 100%;
   }
 }

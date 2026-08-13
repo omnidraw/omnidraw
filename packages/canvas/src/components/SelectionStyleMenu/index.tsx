@@ -8,11 +8,11 @@ import type {
 import type {
   TCanvasFillColorCode,
   TCanvasInkColorCode,
-} from '@omnidraw/theme-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   TThemeColorPickerPalette,
   TThemeStrokeWidthOption,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
 import { For, Show, createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import {
   fnCanvasColorToCss,
@@ -85,14 +85,14 @@ function ChoiceSection(props: Readonly<{
   const key = (value: TChoice | null) => JSON.stringify(value);
   return (
     <Show when={props.control}>
-      <section class="vc-selection-style-section">
+      <section class="omnidraw-selection-style-section">
         <span>{props.section.label}</span>
-        <div class="vc-selection-style-choices" data-property={props.section.id}>
+        <div class="omnidraw-selection-style-choices" data-property={props.section.id}>
           <For each={options()}>
             {(option) => (
               <button
                 type="button"
-                class="vc-selection-style-choice"
+                class="omnidraw-selection-style-choice"
                 aria-pressed={key(props.value) === key(option.value)}
                 disabled={props.section.id === 'font-size' && props.value === null}
                 onClick={() => props.onSelect(option.value)}
@@ -115,20 +115,20 @@ function ColorSection(props: Readonly<{
   onSelect(swatch: TColorSwatch): void;
 }>) {
   return (
-    <section class="vc-selection-style-section">
+    <section class="omnidraw-selection-style-section">
       <span>{props.label}</span>
-      <div class="vc-selection-style-colors">
+      <div class="omnidraw-selection-style-colors">
         <For each={props.swatches}>
           {(swatch) => (
             <button
               type="button"
-              class="vc-style-color"
+              class="omnidraw-style-color"
               aria-label={`${props.label} ${swatch.label}`}
               aria-pressed={props.semanticCode === undefined
                 ? props.value === swatch.color
                 : props.semanticCode === swatch.code}
               title={swatch.label}
-              style={{ '--vc-style-color': swatch.color }}
+              style={{ '--omnidraw-style-color': swatch.color }}
               onClick={() => props.onSelect(swatch)}
             />
           )}
@@ -223,7 +223,7 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
 
   return (
     <aside
-      class="vc-selection-style-menu"
+      class="omnidraw-selection-style-menu"
       aria-label="Selection styles"
       on:pointerdown={(event) => event.stopPropagation()}
       on:pointermove={(event) => event.stopPropagation()}
@@ -274,8 +274,8 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
       </Show>
       <Show when={control('opacity')}>
         {(control) => (
-          <section class="vc-selection-style-section">
-            <label for="vc-selection-opacity">
+          <section class="omnidraw-selection-style-section">
+            <label for="omnidraw-selection-opacity">
               <span>OPACITY</span>
               <output>
                 {fnSelectionStyleSharedValue<number>(control()) === null
@@ -285,13 +285,13 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
               </output>
             </label>
             <input
-              id="vc-selection-opacity"
+              id="omnidraw-selection-opacity"
               type="range"
               min="0"
               max="1"
               step="0.01"
               value={opacityValue()}
-              style={{ '--vc-style-opacity': `${opacityValue() * 100}%` }}
+              style={{ '--omnidraw-style-opacity': `${opacityValue() * 100}%` }}
               on:pointerdown={beginOpacity}
               on:pointerup={endOpacity}
               on:pointercancel={endOpacity}

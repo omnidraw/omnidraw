@@ -28,12 +28,13 @@ type TCommandResult = Readonly<{
 }>
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
-const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'scripts', 'fixtures', 'external-composition')
+const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'tests', 'fixtures', 'external-composition')
 const PUBLIC_PACKAGES: readonly TPublicPackage[] = Object.freeze([
-  { name: '@omnidraw/resource-runtime', directory: 'packages/resource-runtime' },
-  { name: '@omnidraw/widget-contract', directory: 'packages/widget-contract' },
-  { name: '@omnidraw/function-runtime', directory: 'packages/function-runtime' },
-  { name: '@omnidraw/runtime', directory: 'packages/runtime' },
+  { name: '@omnidraw/theme', directory: 'packages/theme' },
+  { name: '@omnidraw/canvas-contract', directory: 'packages/canvas-contract' },
+  { name: '@omnidraw/sdk', directory: 'packages/sdk' },
+  { name: '@omnidraw/canvas', directory: 'packages/canvas' },
+  { name: '@omnidraw/component-ai-chat', directory: 'packages/component-ai-chat' },
 ])
 const SOURCE_MODULE_EXTENSION = /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/
 
@@ -213,9 +214,10 @@ async function main(): Promise<void> {
   ])
 
   try {
-    const packed = await Promise.all(PUBLIC_PACKAGES.map((entry) => (
-      packPublicPackage(entry, packRoot, versions)
-    )))
+    const packed: Array<Readonly<{ entry: TPublicPackage; tarball: string }>> = []
+    for (const entry of PUBLIC_PACKAGES) {
+      packed.push(await packPublicPackage(entry, packRoot, versions))
+    }
     const dependencies = Object.fromEntries(packed.map(({ entry, tarball }) => [
       entry.name,
       `file:${tarball}`,
@@ -225,7 +227,10 @@ async function main(): Promise<void> {
       version: '0.0.0',
       private: true,
       type: 'module',
-      dependencies,
+      dependencies: {
+        ...dependencies,
+        'solid-js': '1.9.14',
+      },
       // Exact transitive @omnidraw dependencies normally resolve from npm.
       // The isolated acceptance consumer substitutes only the five tarballs it
       // just packed; no workspace link or source directory participates.
@@ -266,11 +271,18 @@ async function main(): Promise<void> {
       throw new Error('The packed consumer lockfile retained workspace source resolution.')
     }
     const installedScope = await readdir(join(consumerRoot, 'node_modules', '@omnidraw'))
-    if (installedScope.sort().join(',') !== PUBLIC_PACKAGES
-      .map((entry) => entry.name.split('/')[1]!)
-      .sort()
-      .join(',')) {
+    const allowedScope = new Set([
+      ...PUBLIC_PACKAGES.map((entry) => entry.name.split('/')[1]!),
+      'cangine',
+      'capsule',
+    ])
+    if (installedScope.some((name) => !allowedScope.has(name))) {
       throw new Error('The packed consumer installed an unexpected @omnidraw package set.')
+    }
+    for (const entry of PUBLIC_PACKAGES) {
+      if (!installedScope.includes(entry.name.split('/')[1]!)) {
+        throw new Error(`The packed consumer omitted ${entry.name}.`)
+      }
     }
 
     await runCommand([

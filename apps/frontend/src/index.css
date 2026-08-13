@@ -1,9 +1,9 @@
-@import '@omnidraw/service-theme/default.css';
+@import '@omnidraw/theme/default.css';
 
 :root {
   color-scheme: light;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-display: var(--font-mono);
+  --omnidraw-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --omnidraw-font-display: var(--omnidraw-font-mono);
 }
 
 html {
@@ -21,9 +21,9 @@ body,
 body {
   margin: 0;
   line-height: inherit;
-  font-family: var(--font-mono);
-  background-color: var(--background);
-  color: var(--foreground);
+  font-family: var(--omnidraw-font-mono);
+  background-color: var(--omnidraw-background);
+  color: var(--omnidraw-foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -32,7 +32,7 @@ body {
 *::before,
 *::after {
   box-sizing: border-box;
-  border-color: var(--border);
+  border-color: var(--omnidraw-border);
   touch-action: none;
   overscroll-behavior: none;
 }

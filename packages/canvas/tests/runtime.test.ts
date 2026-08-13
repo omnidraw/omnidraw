@@ -1,7 +1,8 @@
 import {
   BUILTIN_THEMES,
   type TThemeDefinition,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
+import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type TMockInputDisposition = Readonly<{
@@ -13,6 +14,7 @@ type TMockInputDisposition = Readonly<{
 const runtimeState = vi.hoisted(() => ({
   documentInstance: null as null | {
     history: object;
+    subscribeAuthored(listener: () => void): () => void;
   },
   documentOptions: null as unknown,
   dropConfig: null as unknown,
@@ -209,6 +211,15 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
       return true;
     }
 
+    item(): null { return null; }
+    items(): readonly never[] { return []; }
+    authoredNode(): null { return null; }
+    authoredNodes(): readonly never[] { return []; }
+    query(): Promise<{ items: never[]; nextCursor: null }> {
+      return Promise.resolve({ items: [], nextCursor: null });
+    }
+    subscribeAuthored(): () => void { return () => undefined; }
+
   },
 }));
 
@@ -220,6 +231,9 @@ import {
   fnCanginePathAppearance,
   fnCangineSelectionAppearance,
 } from '../src/fn.cangine-theme-appearance';
+import {
+  fnCanvasContractNodeToCangine,
+} from '../src/internal/cangine-contract-adapter';
 
 const themeService = {
   getTheme: () => runtimeState.theme,
@@ -324,6 +338,12 @@ describe('canvas runtime composition', () => {
           };
         },
       },
+      portals: {
+        register: vi.fn(() => () => undefined),
+        subscribe: vi.fn(() => () => {
+          runtimeState.events.push('portal-state:release');
+        }),
+      },
       resources: {
         register(
           descriptor: Record<string, unknown>,
@@ -426,7 +446,10 @@ describe('canvas runtime composition', () => {
       runtimeState.theme = BUILTIN_THEMES[3]!;
       runtimeState.themeListener?.(BUILTIN_THEMES[3]!);
     };
-    await runtime.boot();
+    const boot = runtime.bootEffect();
+    expect(runtimeState.engineConfig).toBeNull();
+    expect(runtimeState.events).toEqual([]);
+    await Effect.runPromise(boot);
 
     const engineConfig = runtimeState.engineConfig as Record<string, unknown>;
     const sessionConfig = runtimeState.sessionConfig as {
@@ -558,7 +581,7 @@ describe('canvas runtime composition', () => {
     );
 
     const lateThemeChange = runtimeState.themeListener;
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
 
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'extension:second:dispose',
@@ -625,7 +648,7 @@ describe('canvas runtime composition', () => {
         return {};
       },
     }]);
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const widgets = runtimeState.widgetController as {
       state: {
@@ -714,7 +737,7 @@ describe('canvas runtime composition', () => {
     expect(widgets.restore).toHaveBeenCalledWith('widget-active');
     expect(runtime.shell()).toEqual({ kind: 'canvas', widgetId: null });
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
     expect(canvasOverlayStates.at(-1)).toBe(false);
     expect(activeWidgetOverlayStates.at(-1)).toBe(false);
     expect(siblingWidgetOverlayStates.at(-1)).toBe(false);
@@ -732,7 +755,7 @@ describe('canvas runtime composition', () => {
       wait,
       themeService,
     });
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const widgets = runtimeState.widgetController as {
       state: {
@@ -780,7 +803,7 @@ describe('canvas runtime composition', () => {
     // Pointer and other event types are never touched by the gate.
     expect(dispatchInput({ type: 'pointer-move' })).toBeUndefined();
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('auto-focuses the maximized widget portal and restores canvas focus on exit (B80)', async () => {
@@ -794,7 +817,7 @@ describe('canvas runtime composition', () => {
       wait,
       themeService,
     });
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const portalHost = document.createElement('div');
     portalHost.tabIndex = -1;
@@ -832,7 +855,7 @@ describe('canvas runtime composition', () => {
     expect(runtime.shell().kind).not.toBe('maximized-widget');
     expect(runtimeState.events).toContain('input:focus');
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('installs normalized input before recording and releases active trace subscriptions', async () => {
@@ -876,7 +899,7 @@ describe('canvas runtime composition', () => {
       },
       trace,
     });
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     // Early trace subscription plus the always-on runtime input gate.
     expect(runtimeState.inputListeners).toHaveLength(2);
@@ -991,7 +1014,7 @@ describe('canvas runtime composition', () => {
     expect(trace.artifacts()?.copy.text).not.toContain('"code":"KeyS"');
     expect(runtimeState.transformListener).not.toBeNull();
     expect(runtimeState.widgetListener).toBeNull();
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
     expect(runtimeState.inputListeners).toHaveLength(0);
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'trace:transform:release',
@@ -1021,9 +1044,11 @@ describe('canvas runtime composition', () => {
         };
       },
     }]);
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
-    await expect(runtime.shutdown()).rejects.toThrow('extension teardown failed');
+    await expect(Effect.runPromise(runtime.shutdownEffect())).rejects.toThrow(
+      'extension teardown failed',
+    );
 
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'image-drop:destroy',
@@ -1051,7 +1076,7 @@ describe('canvas runtime composition', () => {
         showSuccess: vi.fn(),
       },
     });
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const styleConfig = runtimeState.styleConfig as {
       onCallbackError(error: unknown): void;
@@ -1063,7 +1088,9 @@ describe('canvas runtime composition', () => {
     );
 
     runtimeState.styleDestroyError = new Error('style teardown failed');
-    await expect(runtime.shutdown()).rejects.toThrow('style teardown failed');
+    await expect(Effect.runPromise(runtime.shutdownEffect())).rejects.toThrow(
+      'style teardown failed',
+    );
     expect(runtime.selectionStyles()).toBeNull();
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'selection-style:destroy',
@@ -1072,7 +1099,7 @@ describe('canvas runtime composition', () => {
       'engine:destroy',
     ]));
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
     expect(runtimeState.events.filter(
       (event) => event === 'selection-style:destroy',
     )).toHaveLength(1);
@@ -1089,7 +1116,7 @@ describe('canvas runtime composition', () => {
       wait,
       themeService,
     });
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     runtimeState.selectedNodeIds.push('connector-a');
     runtimeState.selectedNode = {
@@ -1150,7 +1177,7 @@ describe('canvas runtime composition', () => {
     runtime.setSelectedConnectorSegmentMode('elbow');
 
     expect(runtimeState.segmentModes).toEqual(['smooth', 'elbow']);
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('returns to select tool after one-shot widget creation commits', async () => {
@@ -1158,7 +1185,17 @@ describe('canvas runtime composition', () => {
     document.body.append(container);
     const chatNode = Object.freeze({
       id: 'widget-chat',
+      parentId: null,
+      orderKey: 'A',
       kind: 'widget-frame',
+      transform: {
+        position: { x: 0, y: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1 },
+        skew: { x: 0, y: 0 },
+        origin: { x: 0, y: 0 },
+      },
+      size: { width: 320, height: 240 },
     });
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
@@ -1173,7 +1210,7 @@ describe('canvas runtime composition', () => {
       createWidgetNodes: () => [chatNode as never],
       install: () => ({}),
     }]);
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const sessionConfig = runtimeState.sessionConfig as {
       editor: {
@@ -1190,14 +1227,22 @@ describe('canvas runtime composition', () => {
       setActiveTool(toolId: string): void;
     };
     editor.setActiveTool('widget');
-    expect(sessionConfig.editor.creation.factories.widget({}))
-      .toEqual([chatNode]);
+    const creation = {
+      nodeId: 'widget-chat',
+      parentId: 'omnidraw:runtime:content',
+      draft: {
+        worldBounds: { minX: 0, minY: 0, maxX: 320, maxY: 240 },
+        belowThreshold: false,
+      },
+    };
+    expect(sessionConfig.editor.creation.factories.widget(creation))
+      .toEqual([fnCanvasContractNodeToCangine(chatNode as never)]);
     sessionConfig.editor.onWidgetCreated('widget-chat');
 
     expect(editor.state.activeToolId).toBe('select');
     expect(runtimeState.activeToolIds).toEqual(['widget', 'select']);
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('keeps sticky widget tool for extensions without one-shot opt-in', async () => {
@@ -1205,7 +1250,17 @@ describe('canvas runtime composition', () => {
     document.body.append(container);
     const stickyNode = Object.freeze({
       id: 'widget-sticky',
+      parentId: null,
+      orderKey: 'A',
       kind: 'widget-frame',
+      transform: {
+        position: { x: 0, y: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1 },
+        skew: { x: 0, y: 0 },
+        origin: { x: 0, y: 0 },
+      },
+      size: { width: 320, height: 240 },
     });
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
@@ -1219,7 +1274,7 @@ describe('canvas runtime composition', () => {
       createWidgetNodes: () => [stickyNode as never],
       install: () => ({}),
     }]);
-    await runtime.boot();
+    await Effect.runPromise(runtime.bootEffect());
 
     const sessionConfig = runtimeState.sessionConfig as {
       editor: {
@@ -1236,8 +1291,16 @@ describe('canvas runtime composition', () => {
       setActiveTool(toolId: string): void;
     };
     editor.setActiveTool('widget');
-    expect(sessionConfig.editor.creation.factories.widget({}))
-      .toEqual([stickyNode]);
+    const creation = {
+      nodeId: 'widget-sticky',
+      parentId: 'omnidraw:runtime:content',
+      draft: {
+        worldBounds: { minX: 0, minY: 0, maxX: 320, maxY: 240 },
+        belowThreshold: false,
+      },
+    };
+    expect(sessionConfig.editor.creation.factories.widget(creation))
+      .toEqual([fnCanvasContractNodeToCangine(stickyNode as never)]);
     sessionConfig.editor.onWidgetCreated('widget-sticky');
 
     expect(editor.state.activeToolId).toBe('widget');
@@ -1246,6 +1309,6 @@ describe('canvas runtime composition', () => {
     sessionConfig.editor.onWidgetCreated('widget-sticky');
     expect(runtimeState.activeToolIds).toEqual(['widget']);
 
-    await runtime.shutdown();
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 });

@@ -1,6 +1,9 @@
+import { Cause, Effect } from 'effect';
+import { CanvasEffectRuntime } from '../internal/CanvasEffectRuntime';
+
 export type TManagedCanvasRuntime = {
-  boot(): void | Promise<void>;
-  shutdown(): void | Promise<void>;
+  bootEffect(): Effect.Effect<void, unknown>;
+  shutdownEffect(): Effect.Effect<void, unknown>;
 };
 
 export type TCanvasRuntimeLifecyclePortal<TSource> = {
@@ -12,14 +15,15 @@ export type TCanvasRuntimeLifecyclePortal<TSource> = {
 };
 
 /**
- * Serializes canvas runtime replacement so one host never owns overlapping
- * engine instances, observers, portal roots, or input subscriptions.
+ * Serializes runtime replacement through an instance-owned Effect semaphore so
+ * one host never overlaps engines, observers, portal roots, or input scopes.
  */
 export class CanvasRuntimeLifecycle<TSource> {
   #activeRuntime: TManagedCanvasRuntime | null = null;
   #generation = 0;
-  #queue: Promise<void> = Promise.resolve();
   #disposed = false;
+  #disposePromise: Promise<void> | null = null;
+  readonly #effects = new CanvasEffectRuntime();
 
   constructor(
     private readonly portal: TCanvasRuntimeLifecyclePortal<TSource>,
@@ -29,84 +33,109 @@ export class CanvasRuntimeLifecycle<TSource> {
     return this.#activeRuntime;
   }
 
-  replace(source: TSource | null) {
-    if (this.#disposed && source !== null) {
-      return this.#queue;
-    }
-
+  replace(source: TSource | null): Promise<void> {
+    if (this.#disposed && source !== null) return Promise.resolve();
     this.#generation += 1;
     const generation = this.#generation;
-    const run = async () => {
-      await this.#shutdownActive();
+    return this.#effects.runSerial(this.#replaceEffect(source, generation));
+  }
+
+  dispose(): Promise<void> {
+    if (this.#disposePromise !== null) return this.#disposePromise;
+    this.#disposed = true;
+    this.#disposePromise = this.replace(null).then(
+      () => this.#effects.dispose(),
+      (error) => this.#effects.dispose().then(() => Promise.reject(error)),
+    );
+    return this.#disposePromise;
+  }
+
+  #replaceEffect(
+    source: TSource | null,
+    generation: number,
+  ): Effect.Effect<void, never> {
+    const self = this;
+    return Effect.gen(function*() {
+      yield* self.#shutdownActiveEffect();
       if (
         source === null
-        || this.#disposed
-        || generation !== this.#generation
-      ) {
-        return;
-      }
+        || self.#disposed
+        || generation !== self.#generation
+      ) return;
 
       let runtime: TManagedCanvasRuntime | null = null;
-      try {
-        runtime = this.portal.createRuntime(source);
-        this.#activeRuntime = runtime;
-        this.portal.onBootStart?.(source);
-        await runtime.boot();
-      } catch (error) {
+      const boot = Effect.gen(function*() {
+        runtime = yield* Effect.try({
+          try: () => self.portal.createRuntime(source),
+          catch: (cause) => cause,
+        });
+        self.#activeRuntime = runtime;
+        yield* Effect.try({
+          try: () => self.portal.onBootStart?.(source),
+          catch: (cause) => cause,
+        });
+        yield* runtime!.bootEffect();
+      });
+
+      const exit = yield* Effect.exit(boot);
+      if (exit._tag === 'Failure') {
+        const error = Cause.squash(exit.cause);
         if (
-          (runtime === null || this.#activeRuntime === runtime)
-          && generation === this.#generation
-          && !this.#disposed
+          (runtime === null || self.#activeRuntime === runtime)
+          && generation === self.#generation
+          && !self.#disposed
         ) {
-          this.portal.onBootError?.(error, source);
+          try {
+            self.portal.onBootError?.(error, source);
+          } catch {
+            // Host diagnostics cannot prevent owned runtime teardown.
+          }
         }
-        if (runtime !== null) {
-          await this.#shutdownRuntime(runtime);
-        }
+        if (runtime !== null) yield* self.#shutdownRuntimeEffect(runtime);
         return;
       }
 
       if (
-        generation !== this.#generation
-        || this.#disposed
-        || this.#activeRuntime !== runtime
+        generation !== self.#generation
+        || self.#disposed
+        || self.#activeRuntime !== runtime
       ) {
-        await this.#shutdownRuntime(runtime);
+        yield* self.#shutdownRuntimeEffect(runtime!);
         return;
       }
-      this.portal.onBootSuccess?.(source);
-    };
-
-    this.#queue = this.#queue.then(run, run);
-    return this.#queue;
+      try {
+        self.portal.onBootSuccess?.(source);
+      } catch {
+        // Host diagnostics do not own runtime lifetime.
+      }
+    });
   }
 
-  dispose() {
-    if (this.#disposed) {
-      return this.#queue;
-    }
-
-    this.#disposed = true;
-    return this.replace(null);
+  #shutdownActiveEffect(): Effect.Effect<void, never> {
+    const self = this;
+    return Effect.gen(function*() {
+      const runtime = self.#activeRuntime;
+      self.#activeRuntime = null;
+      if (runtime !== null) yield* self.#shutdownRuntimeEffect(runtime);
+    });
   }
 
-  async #shutdownActive() {
-    const runtime = this.#activeRuntime;
-    this.#activeRuntime = null;
-    if (runtime) {
-      await this.#shutdownRuntime(runtime);
-    }
-  }
-
-  async #shutdownRuntime(runtime: TManagedCanvasRuntime) {
-    if (this.#activeRuntime === runtime) {
-      this.#activeRuntime = null;
-    }
-
-    try {
-      await runtime.shutdown();
-    } catch (error) {
-      this.portal.onShutdownError?.(error);
-    }
+  #shutdownRuntimeEffect(
+    runtime: TManagedCanvasRuntime,
+  ): Effect.Effect<void, never> {
+    if (this.#activeRuntime === runtime) this.#activeRuntime = null;
+    return Effect.exit(runtime.shutdownEffect()).pipe(
+      Effect.flatMap((exit) => {
+        if (exit._tag === 'Success') return Effect.void;
+        const error = Cause.squash(exit.cause);
+        return Effect.sync(() => {
+        try {
+          this.portal.onShutdownError?.(error);
+        } catch {
+          // Host diagnostics stay isolated from teardown.
+        }
+        });
+      }),
+    );
   }
 }

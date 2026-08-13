@@ -269,7 +269,7 @@ describe('SelectionStyleMenu controls', () => {
     if (input) input.value = '0.4';
     input?.dispatchEvent(new InputEvent('input', { bubbles: true }));
     expect(host.querySelector('output')?.textContent).toBe('40%');
-    expect(input?.style.getPropertyValue('--vc-style-opacity')).toBe('40%');
+    expect(input?.style.getPropertyValue('--omnidraw-style-opacity')).toBe('40%');
     setCurrentState(opacityState('second'));
     expect(callbacks.onEndOpacity).toHaveBeenCalledTimes(1);
 

@@ -14,17 +14,17 @@ export function ToolButton(props: TToolButtonProps) {
   return (
     <button
       type="button"
-      class="vc-toolbar-button"
-      classList={{ 'vc-toolbar-button--active': props.active }}
+      class="omnidraw-toolbar-button"
+      classList={{ 'omnidraw-toolbar-button--active': props.active }}
       aria-label={props.label}
       aria-pressed={props.active}
       title={props.label}
       onClick={() => props.onSelect(props.toolId)}
     >
-      <span class="vc-toolbar-button__icon">
+      <span class="omnidraw-toolbar-button__icon">
         <props.Icon size={14} />
       </span>
-      <span class="vc-toolbar-button__shortcuts">
+      <span class="omnidraw-toolbar-button__shortcuts">
         <For each={props.shortcuts}>
           {(shortcut) => <span>{shortcut}</span>}
         </For>

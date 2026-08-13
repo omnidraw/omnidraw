@@ -1,13 +1,13 @@
-.vc-canvas-engine-host:focus {
+.omnidraw-canvas-engine-host:focus {
   outline: none;
 }
 
-.vc-canvas-host--space-held .vc-canvas-engine-host,
-.vc-canvas-host--space-held .vc-canvas-engine-host * {
+.omnidraw-canvas-host--space-held .omnidraw-canvas-engine-host,
+.omnidraw-canvas-host--space-held .omnidraw-canvas-engine-host * {
   cursor: grab !important;
 }
 
-.vc-canvas-host--space-dragging .vc-canvas-engine-host,
-.vc-canvas-host--space-dragging .vc-canvas-engine-host * {
+.omnidraw-canvas-host--space-dragging .omnidraw-canvas-engine-host,
+.omnidraw-canvas-host--space-dragging .omnidraw-canvas-engine-host * {
   cursor: grabbing !important;
 }

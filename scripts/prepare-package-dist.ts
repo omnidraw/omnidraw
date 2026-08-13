@@ -10,6 +10,10 @@
 
 import { copyFile, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
+import {
+  PUBLIC_PACKAGE_DIRECTORIES,
+  readPublicPackageSet,
+} from './public-packages'
 
 type TManifest = Record<string, unknown> & {
   name?: string
@@ -59,15 +63,14 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function workspacePackages(): Promise<ReadonlyMap<string, TManifest>> {
-  const packagesDirectory = join(REPOSITORY_ROOT, 'packages')
-  const entries = await readdir(packagesDirectory, { withFileTypes: true })
   const manifests = new Map<string, TManifest>()
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const manifestPath = join(packagesDirectory, entry.name, 'package.json')
-    if (!await pathExists(manifestPath)) continue
+  for (const [expectedName, directory] of Object.entries(PUBLIC_PACKAGE_DIRECTORIES)) {
+    const manifestPath = join(REPOSITORY_ROOT, directory, 'package.json')
     const manifest = await readJson(manifestPath)
-    if (typeof manifest.name === 'string') manifests.set(manifest.name, manifest)
+    if (manifest.name !== expectedName || typeof manifest.version !== 'string') {
+      throw new Error(`${directory}/package.json has an invalid public package identity.`)
+    }
+    manifests.set(expectedName, manifest)
   }
   return manifests
 }
@@ -211,6 +214,19 @@ async function main(): Promise<void> {
   if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
     throw new Error(`${relative(REPOSITORY_ROOT, PACKAGE_DIRECTORY)} must have a public name and version.`)
   }
+  const packageSet = await readPublicPackageSet(REPOSITORY_ROOT)
+  const expectedDirectory = PUBLIC_PACKAGE_DIRECTORIES[
+    manifest.name as keyof typeof PUBLIC_PACKAGE_DIRECTORIES
+  ]
+  if (expectedDirectory === undefined) {
+    throw new Error(`${manifest.name} is not one of the five public Omnidraw packages.`)
+  }
+  if (resolve(REPOSITORY_ROOT, expectedDirectory) !== PACKAGE_DIRECTORY) {
+    throw new Error(`${manifest.name} must be staged from ${expectedDirectory}.`)
+  }
+  if (packageSet.packages[manifest.name as keyof typeof packageSet.packages] !== manifest.version) {
+    throw new Error(`${manifest.name}@${manifest.version} is not the qualified public-package-set version.`)
+  }
   if (!await pathExists(DIST_DIRECTORY)) throw new Error(`${manifest.name} build did not create dist/.`)
 
   const rootManifest = await readJson(join(REPOSITORY_ROOT, 'package.json'))
@@ -218,7 +234,9 @@ async function main(): Promise<void> {
   const workspaces = await workspacePackages()
   const publicManifest: TManifest = {}
   for (const field of PUBLIC_MANIFEST_FIELDS) {
-    if (manifest[field] !== undefined) publicManifest[field] = manifest[field]
+    if (manifest[field] !== undefined) {
+      (publicManifest as Record<string, unknown>)[field] = manifest[field]
+    }
   }
   if (typeof publicManifest.sideEffects === 'string') {
     publicManifest.sideEffects = publicTarget(publicManifest.sideEffects)

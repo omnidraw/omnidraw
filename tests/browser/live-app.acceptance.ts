@@ -1,0 +1,1900 @@
+#!/usr/bin/env bun
+
+/**
+ * Browser acceptance for the real Omnidraw applications.
+ *
+ * The packed public-package browser gate remains separate. This suite starts
+ * the source-run backend and the actual Vite frontend against an isolated
+ * Omnidraw home, then exercises the route families recorded in the screen
+ * atlas and the frontend's native WebSocket generation fence.
+ */
+
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { chromium, type Page } from 'playwright';
+
+type TPortReservation = Readonly<{
+  port: number;
+  release(): Promise<void>;
+}>;
+
+type TManagedProcess = Readonly<{
+  child: ReturnType<typeof Bun.spawn>;
+  label: string;
+  stderr: Promise<string>;
+  stdout: Promise<string>;
+}>;
+
+type TRpcConnectionEvidence = Readonly<{
+  actualMessagesAfterNewerOpen: number;
+  closeCode: number | null;
+  closed: boolean;
+  id: number;
+  incomingFrameCount: number;
+  incomingFrames: readonly string[];
+  openSequence: number | null;
+  opened: boolean;
+  outgoingFrames: readonly string[];
+  outgoingFrameCount: number;
+  url: string;
+}>;
+
+type TTransportEvidence = Readonly<{
+  rpcConnections: readonly TRpcConnectionEvidence[];
+  rpcOpenCount: number;
+}>;
+
+type TRpcWireRequest = Readonly<{
+  complete: boolean;
+  connectionId: number;
+  exit: null | Readonly<{ _tag?: string; cause?: unknown; value?: unknown }>;
+  input: unknown;
+  path: string;
+  requestId: number;
+}>;
+
+type TCreatedResource = Readonly<{
+  id: string;
+  kind: 'db' | 'kv' | 'secretStore';
+  name: string;
+  status: string;
+}>;
+
+type TCreatedCanvas = Readonly<{
+  id: string;
+  name: string;
+}>;
+
+type TFakeProviderRequest = Readonly<{
+  authorization: string | null;
+  messageText: string;
+  model: unknown;
+  path: string;
+  reasoningEffort: unknown;
+  stream: unknown;
+}>;
+
+type TFakeProvider = Readonly<{
+  baseUrl: string;
+  requests: readonly TFakeProviderRequest[];
+  releaseResponse(): void;
+  stop(): void;
+}>;
+
+const ROOT = resolve(import.meta.dir, '../..');
+const BACKEND_ROOT = join(ROOT, 'apps/backend');
+const FRONTEND_ROOT = join(ROOT, 'apps/frontend');
+const VITE_BIN = join(FRONTEND_ROOT, 'node_modules/vite/bin/vite.js');
+const ROUTE_TIMEOUT_MS = 20_000;
+const FAKE_PROVIDER_ID = 'browser-local';
+const FAKE_MODEL_ID = 'browser-stream-model';
+const FAKE_MODEL_NAME = 'Browser Streaming Model';
+const PROMPT_TEXT = 'Return the deterministic browser acceptance reply.';
+const PARTIAL_RESPONSE_TEXT = 'Browser acceptance';
+const COMPLETE_RESPONSE_TEXT = 'Browser acceptance streamed reply.';
+
+function failMessage(error: unknown): string {
+  return error instanceof Error ? error.stack ?? error.message : String(error);
+}
+
+async function reservePort(): Promise<TPortReservation> {
+  const server = createServer();
+  const port = await new Promise<number>((resolvePort, reject) => {
+    server.once('error', reject);
+    server.listen({ host: '127.0.0.1', port: 0 }, () => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        reject(new Error('Could not reserve a TCP port for browser acceptance.'));
+        return;
+      }
+      resolvePort(address.port);
+    });
+  });
+  let released = false;
+  return Object.freeze({
+    port,
+    release: () => new Promise<void>((resolveRelease, reject) => {
+      if (released) {
+        resolveRelease();
+        return;
+      }
+      released = true;
+      server.close((error) => error ? reject(error) : resolveRelease());
+    }),
+  });
+}
+
+function startFakeProvider(): TFakeProvider {
+  const encoder = new TextEncoder();
+  const requests: TFakeProviderRequest[] = [];
+  const pendingResponseReleases: Array<() => void> = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    idleTimeout: 30,
+    async fetch(request) {
+      const url = new URL(request.url);
+      if (request.method !== 'POST' || url.pathname !== '/v1/chat/completions') {
+        return Response.json({ error: { message: 'Unknown deterministic provider route.' } }, { status: 404 });
+      }
+      const payload = record(await request.json());
+      requests.push(Object.freeze({
+        authorization: request.headers.get('authorization'),
+        messageText: JSON.stringify(payload.messages ?? null),
+        model: payload.model,
+        path: url.pathname,
+        reasoningEffort: payload.reasoning_effort,
+        stream: payload.stream,
+      }));
+      let releaseResponse!: () => void;
+      const responseGate = new Promise<void>((resolveResponse) => {
+        releaseResponse = resolveResponse;
+      });
+      pendingResponseReleases.push(releaseResponse);
+      const chunk = (content: unknown) => encoder.encode(`data: ${JSON.stringify(content)}\n\n`);
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(chunk({
+            id: 'chatcmpl-browser-acceptance',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: FAKE_MODEL_ID,
+            choices: [{ index: 0, delta: { role: 'assistant', content: PARTIAL_RESPONSE_TEXT }, finish_reason: null }],
+          }));
+          await responseGate;
+          controller.enqueue(chunk({
+            id: 'chatcmpl-browser-acceptance',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: FAKE_MODEL_ID,
+            choices: [{ index: 0, delta: { content: ' streamed reply.' }, finish_reason: null }],
+          }));
+          controller.enqueue(chunk({
+            id: 'chatcmpl-browser-acceptance',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: FAKE_MODEL_ID,
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          }));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'text/event-stream',
+        },
+      });
+    },
+  });
+  return Object.freeze({
+    baseUrl: `http://127.0.0.1:${server.port}/v1`,
+    requests,
+    releaseResponse() {
+      const release = pendingResponseReleases.shift();
+      assert.ok(release !== undefined, 'The deterministic provider had no pending streamed response to release.');
+      release();
+    },
+    stop() {
+      server.stop(true);
+    },
+  });
+}
+
+async function seedAgentModel(home: string, providerBaseUrl: string): Promise<void> {
+  const agentRoot = join(home, 'agent/pi/agent');
+  await mkdir(agentRoot, { recursive: true, mode: 0o700 });
+  await writeFile(join(agentRoot, 'models.json'), `${JSON.stringify({
+    providers: {
+      [FAKE_PROVIDER_ID]: {
+        name: 'Browser Local Provider',
+        baseUrl: providerBaseUrl,
+        apiKey: 'browser-acceptance-key',
+        api: 'openai-completions',
+        compat: {
+          supportsDeveloperRole: false,
+          supportsReasoningEffort: true,
+          supportsUsageInStreaming: false,
+          maxTokensField: 'max_tokens',
+        },
+        models: [{
+          id: FAKE_MODEL_ID,
+          name: FAKE_MODEL_NAME,
+          reasoning: true,
+          thinkingLevelMap: { xhigh: 'xhigh' },
+          input: ['text'],
+          contextWindow: 32_000,
+          maxTokens: 1_024,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        }],
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+}
+
+function spawnProcess(args: Readonly<{
+  command: readonly string[];
+  cwd: string;
+  env?: Readonly<Record<string, string | undefined>>;
+  label: string;
+}>): TManagedProcess {
+  const child = Bun.spawn([...args.command], {
+    cwd: args.cwd,
+    env: { ...process.env, ...args.env },
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  return Object.freeze({
+    child,
+    label: args.label,
+    stdout: new Response(child.stdout).text(),
+    stderr: new Response(child.stderr).text(),
+  });
+}
+
+async function processFailure(process: TManagedProcess): Promise<Error> {
+  const [stdout, stderr] = await Promise.all([process.stdout, process.stderr]);
+  return new Error([
+    `${process.label} exited before browser acceptance completed (exit ${process.child.exitCode}).`,
+    stdout.trim(),
+    stderr.trim(),
+  ].filter(Boolean).join('\n'));
+}
+
+async function stopProcess(process: TManagedProcess): Promise<void> {
+  if (process.child.exitCode === null) process.child.kill('SIGTERM');
+  await Promise.race([process.child.exited, Bun.sleep(2_000)]);
+  if (process.child.exitCode === null) process.child.kill('SIGKILL');
+  await process.child.exited;
+  await Promise.all([process.stdout, process.stderr]);
+}
+
+async function waitForHttp(url: string, process: TManagedProcess): Promise<void> {
+  const deadline = Date.now() + ROUTE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (process.child.exitCode !== null) throw await processFailure(process);
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (response.ok) return;
+    } catch {
+      // The listener is still starting.
+    }
+    await Bun.sleep(100);
+  }
+  throw new Error(`Timed out waiting for ${process.label} at ${url}.`);
+}
+
+async function waitForBrowserState<T>(args: Readonly<{
+  label: string;
+  read(): Promise<T>;
+  ready(value: T): boolean;
+}>): Promise<T> {
+  const deadline = Date.now() + ROUTE_TIMEOUT_MS;
+  let latest: T | undefined;
+  let latestNavigationError: string | undefined;
+  while (Date.now() < deadline) {
+    try {
+      latest = await args.read();
+      latestNavigationError = undefined;
+    } catch (error) {
+      const message = failMessage(error);
+      if (!/(?:execution context was destroyed|most likely because of a navigation|cannot find context with specified id|frame was detached)/iu.test(message)) {
+        throw error;
+      }
+      latestNavigationError = message;
+      await Bun.sleep(100);
+      continue;
+    }
+    if (args.ready(latest)) return latest;
+    await Bun.sleep(100);
+  }
+  throw new Error(
+    `Timed out waiting for ${args.label}. Last evidence: ${JSON.stringify(latest)}`
+    + (latestNavigationError === undefined ? '' : ` Last navigation race: ${latestNavigationError}`),
+  );
+}
+
+async function assertDraftGuestMounted(
+  page: Page,
+  portal: ReturnType<Page['locator']>,
+  label: string,
+): Promise<void> {
+  await waitForBrowserState({
+    label: `${label} host content`,
+    read: () => portal.evaluate((element) => element.childElementCount),
+    ready: (childCount) => childCount > 0,
+  });
+  try {
+    await waitForBrowserState({
+      label: `${label} painted guest marker`,
+      read: async () => {
+        const bounds = await portal.boundingBox();
+        if (bounds === null) return { darkPixels: 0, height: 0, width: 0 };
+        const viewportImage = await page.screenshot();
+        const encoded = viewportImage.toString('base64');
+        return page.evaluate(async ({ imageBase64, portalBounds }) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${imageBase64}`;
+          await image.decode();
+          const canvas = document.createElement('canvas');
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (context === null) return { darkPixels: 0, height: 0, width: 0 };
+          context.drawImage(image, 0, 0);
+          const x = Math.max(0, Math.floor(portalBounds.x));
+          const y = Math.max(0, Math.floor(portalBounds.y));
+          const width = Math.max(0, Math.min(Math.ceil(portalBounds.width), canvas.width - x));
+          const height = Math.max(0, Math.min(96, Math.ceil(portalBounds.height), canvas.height - y));
+          const pixels = context.getImageData(x, y, width, height).data;
+          let darkPixels = 0;
+          for (let offset = 0; offset < pixels.length; offset += 4) {
+            if (pixels[offset]! < 96 && pixels[offset + 1]! < 96 && pixels[offset + 2]! < 96 && pixels[offset + 3]! > 200) {
+              darkPixels += 1;
+            }
+          }
+          return { darkPixels, height, width };
+        }, { imageBase64: encoded, portalBounds: bounds });
+      },
+      ready: (marker) => marker.darkPixels >= 40,
+    });
+  } catch (error) {
+    await mkdir(join(ROOT, 'tests/artifacts'), { recursive: true });
+    await page.screenshot({
+      path: join(ROOT, 'tests/artifacts/live-draft-preview-optical-failure.png'),
+      fullPage: true,
+    });
+    throw error;
+  }
+  assert.equal(
+    await page.getByText('Browser Acceptance Widget mounted', { exact: true }).count(),
+    0,
+    `${label} leaked guest DOM through the closed Capsule boundary.`,
+  );
+}
+
+async function assertDraftPreviewTitlebar(
+  page: Page,
+  label: string,
+  nodeId: string,
+): Promise<void> {
+  const titlebar = page.locator('[data-vibecanvas-widget-titlebar]').filter({
+    has: page.getByText('Preview: Browser Acceptance Widget', { exact: true }),
+  });
+  await titlebar.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.equal(await titlebar.count(), 1, `${label} rendered more than one Preview titlebar.`);
+  assert.equal(
+    await titlebar.locator('[data-omnidraw-widget-extension-titlebar]').count(),
+    0,
+    `${label} retained the overlapping extension titlebar surface.`,
+  );
+  const title = titlebar.getByText('Preview: Browser Acceptance Widget', { exact: true });
+  assert.equal(await title.count(), 1, `${label} did not render exactly one Preview title.`);
+  const actions = titlebar.locator(
+    '[data-widget-control-part="header-item:preview-actions"]'
+      + '[aria-label="Preview actions"][aria-haspopup="menu"]',
+  );
+  assert.equal(await actions.count(), 1, `${label} did not render one compact Preview actions control.`);
+  assert.equal((await actions.innerText()).trim(), '•••', `${label} did not retain the compact Preview action glyph.`);
+  const [titlebarBounds, titleBounds, actionBounds] = await Promise.all([
+    titlebar.boundingBox(),
+    title.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  assert.ok(titlebarBounds !== null && titleBounds !== null && actionBounds !== null, `${label} titlebar geometry is unavailable.`);
+  const tolerance = 1;
+  assert.ok(titleBounds.x >= titlebarBounds.x - tolerance, `${label} title escaped the titlebar left edge.`);
+  assert.ok(titleBounds.x + titleBounds.width <= titlebarBounds.x + titlebarBounds.width + tolerance, `${label} title escaped the titlebar right edge.`);
+  assert.ok(actionBounds.x >= titlebarBounds.x - tolerance, `${label} action escaped the titlebar left edge.`);
+  assert.ok(actionBounds.x + actionBounds.width <= titlebarBounds.x + titlebarBounds.width + tolerance, `${label} action escaped the titlebar right edge.`);
+  assert.ok(
+    titleBounds.x + titleBounds.width <= actionBounds.x + tolerance,
+    `${label} Preview title overlaps its compact action (${JSON.stringify({ actionBounds, titleBounds })}).`,
+  );
+  await actions.click();
+  for (const action of ['Reload', 'Rebuild', 'Build and Publish', 'Remove']) {
+    const menuItem = page.getByRole('menuitem', { name: action, exact: true });
+    await menuItem.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    assert.equal(await menuItem.count(), 1, `${label} menu did not expose exactly one '${action}' action.`);
+  }
+  const previewOpenBeforeReload = (await readRpcRequests(page, 'widget.preview.open')).length;
+  await page.getByRole('menuitem', { name: 'Reload', exact: true }).click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: previewOpenBeforeReload,
+    label: `${label} native Reload action`,
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === nodeId,
+  });
+}
+
+function summarizeTransport(transport: TTransportEvidence): unknown {
+  return transport.rpcConnections.map((connection) => ({
+    actualMessagesAfterNewerOpen: connection.actualMessagesAfterNewerOpen,
+    closeCode: connection.closeCode,
+    id: connection.id,
+    incomingFrameCount: connection.incomingFrameCount,
+    openSequence: connection.openSequence,
+    outgoing: connection.outgoingFrames.map((frame) => {
+      try {
+        const value = JSON.parse(frame) as {
+          _tag?: string;
+          payload?: { path?: string };
+          requestId?: number;
+        };
+        return value.payload?.path ?? `${value._tag ?? 'frame'}:${value.requestId ?? ''}`;
+      } catch {
+        return 'unparseable';
+      }
+    }),
+  }));
+}
+
+async function seedDraftWidget(home: string): Promise<string> {
+  const widgetRoot = join(home, 'widgets/drafts/browser-acceptance');
+  const toolsRoot = join(home, 'browser-acceptance-tools');
+  const sdkCli = join(ROOT, 'packages/sdk/dist/cli.js');
+  const viteModuleUrl = new URL(
+    '../dist/node/index.js',
+    `file://${VITE_BIN}`,
+  ).href;
+  const sdkWidgetModuleUrl = new URL(
+    'src/widget.ts',
+    `file://${join(ROOT, 'packages/sdk/')}`,
+  ).href;
+  const viteWrapperSource = [
+    '#!/usr/bin/env node',
+    'const { readFile, writeFile } = await import("node:fs/promises");',
+    'const args = process.argv.slice(2);',
+    'const configPath = args[args.indexOf("--config") + 1];',
+    'if (!configPath) throw new Error("Missing portable Vite config path.");',
+    'let source = await readFile(configPath, "utf8");',
+    `source = source.replace('from "vite"', 'from ${JSON.stringify(viteModuleUrl)}');`,
+    'await writeFile(configPath, source);',
+    'const bridgePath = new URL("../__omnidraw_guest_bridge__.mjs", `file://${configPath}`).pathname;',
+    'let bridge = await readFile(bridgePath, "utf8");',
+    `bridge = bridge.replace("from '@omnidraw/sdk'", 'from ${JSON.stringify(sdkWidgetModuleUrl)}');`,
+    'await writeFile(bridgePath, bridge);',
+    `await import(${JSON.stringify(VITE_BIN)});`,
+    '',
+  ].join('\n');
+  await mkdir(join(widgetRoot, 'ui'), { recursive: true, mode: 0o700 });
+  await mkdir(join(widgetRoot, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
+  await mkdir(toolsRoot, { recursive: true, mode: 0o700 });
+  const manifest = {
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
+    name: 'Browser Acceptance Widget',
+    slug: 'browser-acceptance',
+    description: 'A deterministic draft used only by the live browser suite.',
+    tool: {
+      label: 'Browser Acceptance Widget',
+      group: 'acceptance',
+      priority: 0,
+    },
+    ui: {
+      runtime: 'capsule',
+      entry: 'ui/main.ts',
+      apis: ['DOM'],
+    },
+  } as const;
+  await Promise.all([
+    writeFile(join(widgetRoot, 'omnidraw.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(widgetRoot, 'ui/main.ts'), [
+      'const root = document.createElement("section");',
+      'root.setAttribute("data-browser-acceptance-widget", "mounted");',
+      'root.textContent = "Browser Acceptance Widget mounted";',
+      'document.body.append(root);',
+      '',
+    ].join('\n'), { mode: 0o600 }),
+    writeFile(join(widgetRoot, 'package.json'), `${JSON.stringify({
+      name: 'browser-acceptance',
+      version: '1.0.0',
+      private: true,
+      type: 'module',
+      scripts: { build: 'omnidraw-widget build .' },
+      devDependencies: { vite: '8.1.4' },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(widgetRoot, 'package-lock.json'), `${JSON.stringify({
+      name: 'browser-acceptance',
+      version: '1.0.0',
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': {
+          name: 'browser-acceptance',
+          version: '1.0.0',
+          devDependencies: { vite: '8.1.4' },
+        },
+      },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(
+      join(widgetRoot, 'node_modules/vite/bin/vite.js'),
+      viteWrapperSource,
+      { mode: 0o700 },
+    ),
+    writeFile(join(toolsRoot, 'npm'), [
+      '#!/usr/bin/env node',
+      'const { spawnSync } = await import("node:child_process");',
+      'const { mkdir, writeFile } = await import("node:fs/promises");',
+      'const { join } = await import("node:path");',
+      'const args = process.argv.slice(2);',
+      'if (args[0] === "--version") { process.stdout.write("10.0.0\\n"); process.exit(0); }',
+      'if (args[0] === "ci") {',
+      '  const viteBin = join(process.cwd(), "node_modules/vite/bin/vite.js");',
+      '  await mkdir(join(process.cwd(), "node_modules/vite/bin"), { recursive: true });',
+      `  await writeFile(viteBin, ${JSON.stringify(viteWrapperSource)}, { mode: 0o700 });`,
+      '  process.exit(0);',
+      '}',
+      'if (args[0] === "run" && args[1] === "build") {',
+      `  const result = spawnSync(${JSON.stringify(process.execPath)}, [${JSON.stringify(sdkCli)}, "build", "."], {`,
+      '    cwd: process.cwd(), env: process.env, stdio: "inherit",',
+      '  });',
+      '  process.exit(result.status ?? 1);',
+      '}',
+      'process.stderr.write(`Unexpected browser acceptance npm invocation: ${args.join(" ")}\\n`);',
+      'process.exit(2);',
+      '',
+    ].join('\n'), { mode: 0o700 }),
+  ]);
+
+  const build = Bun.spawn([process.execPath, sdkCli, 'build', '.'], {
+    cwd: widgetRoot,
+    env: process.env,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    build.exited,
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+  ]);
+  assert.equal(exitCode, 0, `Could not prebuild the deterministic Preview fixture.\n${stdout}\n${stderr}`);
+  return toolsRoot;
+}
+
+async function installWebSocketEvidence(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type TConnectionRecord = {
+      actualMessagesAfterNewerOpen: number;
+      closeCode: number | null;
+      closed: boolean;
+      id: number;
+      incoming: string[];
+      openSequence: number | null;
+      opened: boolean;
+      outgoing: string[];
+      outgoingFrameCount: number;
+      socket: WebSocket;
+      url: string;
+    };
+
+    const NativeWebSocket = window.WebSocket;
+    const records: TConnectionRecord[] = [];
+    let nextId = 1;
+    let rpcOpenCount = 0;
+
+    const isRpc = (url: string) => {
+      try {
+        return new URL(url, window.location.href).pathname === '/rpc';
+      } catch {
+        return false;
+      }
+    };
+
+    const TrackedWebSocket = new Proxy(NativeWebSocket, {
+      construct(target, args) {
+        const socket = Reflect.construct(target, args, target) as WebSocket;
+        const record: TConnectionRecord = {
+          actualMessagesAfterNewerOpen: 0,
+          closeCode: null,
+          closed: false,
+          id: nextId++,
+          incoming: [],
+          openSequence: null,
+          opened: false,
+          outgoing: [],
+          outgoingFrameCount: 0,
+          socket,
+          url: socket.url,
+        };
+        records.push(record);
+        const nativeSend = socket.send.bind(socket);
+        socket.send = ((data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+          record.outgoingFrameCount += 1;
+          if (typeof data === 'string') record.outgoing.push(data);
+          nativeSend(data as Parameters<WebSocket['send']>[0]);
+        }) as WebSocket['send'];
+        socket.addEventListener('open', () => {
+          record.opened = true;
+          if (isRpc(record.url)) record.openSequence = ++rpcOpenCount;
+        });
+        socket.addEventListener('message', (event) => {
+          if (!isRpc(record.url)) return;
+          if (typeof event.data === 'string') record.incoming.push(event.data);
+          const newestOpen = records.reduce((latest, candidate) => (
+            isRpc(candidate.url) ? Math.max(latest, candidate.openSequence ?? 0) : latest
+          ), 0);
+          if ((record.openSequence ?? 0) < newestOpen) {
+            record.actualMessagesAfterNewerOpen += 1;
+          }
+        });
+        socket.addEventListener('close', (event) => {
+          record.closed = true;
+          record.closeCode = event.code;
+        });
+        return socket;
+      },
+    });
+
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: TrackedWebSocket,
+      writable: true,
+    });
+
+    const harness = {
+      forceRpcDisconnect() {
+        const active = records.findLast((record) => (
+          isRpc(record.url) && record.socket.readyState === NativeWebSocket.OPEN
+        ));
+        if (!active) throw new Error('No open native /rpc WebSocket is available to disconnect.');
+        active.socket.close(4001, 'browser-acceptance-reconnect');
+        return {
+          id: active.id,
+          incomingFrameCount: active.incoming.length,
+          openSequence: active.openSequence,
+        };
+      },
+      snapshot(): TTransportEvidence {
+        return {
+          rpcConnections: records.filter((record) => isRpc(record.url)).map((record) => ({
+            actualMessagesAfterNewerOpen: record.actualMessagesAfterNewerOpen,
+            closeCode: record.closeCode,
+            closed: record.closed,
+            id: record.id,
+            incomingFrameCount: record.incoming.length,
+            incomingFrames: record.incoming,
+            openSequence: record.openSequence,
+            opened: record.opened,
+            outgoingFrames: record.outgoing,
+            outgoingFrameCount: record.outgoingFrameCount,
+            url: record.url,
+          })),
+          rpcOpenCount,
+        };
+      },
+    };
+    Object.defineProperty(window, '__omnidrawBrowserAcceptance', {
+      configurable: false,
+      value: harness,
+      writable: false,
+    });
+  });
+}
+
+async function waitForRpcConnection(page: Page): Promise<TTransportEvidence> {
+  return await waitForBrowserState({
+    label: 'the frontend native RPC connection',
+    read: () => page.evaluate(() => (
+      (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot()
+    )),
+    ready: (state) => state.rpcConnections.some((connection) => (
+      connection.opened && !connection.closed && connection.incomingFrameCount > 0
+    )),
+  });
+}
+
+async function readRpcRequests(page: Page, path: string): Promise<readonly TRpcWireRequest[]> {
+  return await page.evaluate((selectedPath) => {
+    const transport = (window as unknown as {
+      __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+    }).__omnidrawBrowserAcceptance.snapshot();
+    return transport.rpcConnections.flatMap((connection) => {
+      const exits = new Map<number, Readonly<{ _tag?: string; cause?: unknown; value?: unknown }>>();
+      for (const chunk of connection.incomingFrames) {
+        for (const frame of chunk.split('\n')) {
+          if (!frame.trim()) continue;
+          try {
+            const value = JSON.parse(frame) as {
+              _tag?: string;
+              exit?: Readonly<{ _tag?: string; cause?: unknown; value?: unknown }>;
+              requestId?: number;
+            };
+            if (value._tag === 'Exit' && typeof value.requestId === 'number' && value.exit !== undefined) {
+              exits.set(value.requestId, value.exit);
+            }
+          } catch {
+            // Invalid frames remain visible to the transport-level parse checks.
+          }
+        }
+      }
+      return connection.outgoingFrames.flatMap((chunk) => chunk.split('\n')).flatMap((frame) => {
+        if (!frame.trim()) return [];
+        try {
+          const value = JSON.parse(frame) as {
+            _tag?: string;
+            id?: number;
+            payload?: { input?: unknown; path?: string };
+          };
+          if (
+            value._tag !== 'Request'
+            || typeof value.id !== 'number'
+            || value.payload?.path !== selectedPath
+          ) return [];
+          const exit = exits.get(value.id);
+          return [{
+            complete: exit !== undefined,
+            connectionId: connection.id,
+            exit: exit ?? null,
+            input: value.payload.input,
+            path: selectedPath,
+            requestId: value.id,
+          }];
+        } catch {
+          return [];
+        }
+      });
+    });
+  }, path);
+}
+
+async function waitForSuccessfulRpcRequest(args: Readonly<{
+  afterCount: number;
+  label: string;
+  page: Page;
+  path: string;
+  predicate?(request: TRpcWireRequest): boolean;
+}>): Promise<TRpcWireRequest> {
+  const requests = await waitForBrowserState<readonly TRpcWireRequest[]>({
+    label: args.label,
+    read: () => readRpcRequests(args.page, args.path),
+    ready: (values) => values.slice(args.afterCount).some((request) => (
+      request.complete && (args.predicate?.(request) ?? true)
+    )),
+  });
+  const request = requests.slice(args.afterCount).findLast((candidate) => (
+    candidate.complete && (args.predicate?.(candidate) ?? true)
+  ));
+  assert.ok(request !== undefined, `No completed ${args.path} request matched ${args.label}.`);
+  assert.equal(
+    request.exit?._tag,
+    'Success',
+    `${args.path} failed: ${JSON.stringify(request.exit)}`,
+  );
+  return request;
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : {};
+}
+
+function canvasCommandWidgetNode(request: TRpcWireRequest): Readonly<Record<string, unknown>> | null {
+  const changedItems = Array.isArray(record(request.exit?.value).changedItems)
+    ? record(request.exit?.value).changedItems as readonly unknown[]
+    : [];
+  for (const candidate of changedItems) {
+    const item = record(record(candidate).item);
+    if (item.kind === 'widget-frame') return item;
+  }
+  const input = record(request.input);
+  const operations = Array.isArray(input.operations) ? input.operations : [];
+  for (const candidate of operations) {
+    const operation = record(candidate);
+    if (operation.type !== 'insert' && operation.type !== 'replace') continue;
+    const item = record(operation.item);
+    if (item.kind === 'widget-frame') return item;
+  }
+  return null;
+}
+
+function canvasWidgetExtension(node: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const extensions = record(node.extensions);
+  return record(extensions['omnidraw:widget']);
+}
+
+async function assertNoHandledErrorAlerts(page: Page, context: string): Promise<void> {
+  const alerts = await page.locator('[role="alert"]:visible').allTextContents();
+  const errors = alerts.map((value) => value.trim()).filter((value) => (
+    /(?:could not|failed|failure|invalid|expected never|internal server error)/iu.test(value)
+  ));
+  assert.deepEqual(errors, [], `${context} exposed handled UI errors:\n${errors.join('\n')}`);
+}
+
+async function forceDisconnectAndWaitForReconnect(page: Page): Promise<Readonly<{
+  retiredConnectionId: number;
+  transport: TTransportEvidence;
+}>> {
+  const initialTransport = await waitForRpcConnection(page);
+  const initialOpenCount = initialTransport.rpcOpenCount;
+
+  const retired = await page.evaluate(() => (
+    (window as unknown as {
+      __omnidrawBrowserAcceptance: {
+        forceRpcDisconnect(): Readonly<{ id: number; incomingFrameCount: number; openSequence: number | null }>;
+      };
+    }).__omnidrawBrowserAcceptance.forceRpcDisconnect()
+  ));
+  assert.ok(retired.openSequence !== null, 'The disconnected native socket never reached open state.');
+  assert.ok(retired.incomingFrameCount > 0, 'The retired RPC generation had no server frames to fence.');
+
+  const transport = await waitForBrowserState<TTransportEvidence>({
+    label: 'a replacement native frontend RPC connection',
+    read: () => page.evaluate(() => (
+      (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot()
+    )),
+    ready: (evidence) => evidence.rpcOpenCount > initialOpenCount
+      && evidence.rpcConnections.some((connection) => (
+        (connection.openSequence ?? 0) > initialOpenCount
+        && connection.opened
+        && !connection.closed
+        && connection.incomingFrameCount > 0
+      )),
+  });
+  await page.waitForTimeout(1_000);
+  console.log('[browser:live] reconnect evidence', JSON.stringify(summarizeTransport(transport)));
+  assert.ok(
+    transport.rpcOpenCount > initialOpenCount,
+    'The browser did not open a replacement native /rpc WebSocket.',
+  );
+
+  return Object.freeze({
+    retiredConnectionId: retired.id,
+    transport,
+  });
+}
+
+async function createCanvas(page: Page, name: string): Promise<TCreatedCanvas> {
+  await page.getByRole('button', { name: 'Add canvas' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Your Canvas' });
+  await dialog.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await dialog.getByLabel('Canvas Title').fill(name);
+  await dialog.getByRole('button', { name: 'Create Canvas' }).click();
+  await page.getByText(name, { exact: true }).first().waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await page.waitForURL((url) => /^\/c\/[^/]+$/.test(url.pathname), { timeout: ROUTE_TIMEOUT_MS });
+  return Object.freeze({
+    id: new URL(page.url()).pathname.split('/').at(-1) ?? '',
+    name,
+  });
+}
+
+async function placeShortAiChatWidget(page: Page): Promise<Readonly<{
+  sessionId: string;
+  widgetId: string;
+}>> {
+  const knownRegressionMessages = [
+    'Canvas failed to start:',
+    'standard widget decoration is invalid',
+    'transient projection failed',
+    'Canvas event invalid',
+    'itemRevision is 0',
+  ] as const;
+  const host = page.locator('.omnidraw-canvas-engine-host');
+  await host.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.equal(
+    await host.count(),
+    1,
+    'Sidebar placement must target the one connected Canvas engine host.',
+  );
+  const canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  const connectBefore = (await readRpcRequests(page, 'agent.chat.connect')).length;
+  await page.getByRole('button', { name: 'AI Chat', exact: true }).click();
+  const bounds = await host.boundingBox();
+  assert.ok(bounds !== null, 'The Canvas engine did not expose drawable bounds.');
+  const start = {
+    x: bounds.x + bounds.width * 0.55,
+    y: bounds.y + bounds.height * 0.35,
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 80, start.y + 60, { steps: 6 });
+  await page.mouse.up();
+
+  const evidence = await waitForBrowserState<Readonly<{ bodyText: string; shells: number }>>({
+    label: 'the short-drag AI Chat portal to mount before reload',
+    read: async () => ({
+      bodyText: await page.locator('body').innerText(),
+      shells: await page.locator('.omnidraw-ai-chat-shell').count(),
+    }),
+    ready: (value) => value.shells > 0 || knownRegressionMessages.some((message) => (
+      value.bodyText.includes(message)
+    )),
+  });
+  for (const message of knownRegressionMessages) {
+    if (evidence.bodyText.includes(message)) {
+      const transport = await page.evaluate(() => (
+        (window as unknown as {
+          __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+        }).__omnidrawBrowserAcceptance.snapshot()
+      ));
+      console.log('[browser:live] Canvas startup failure wire evidence', JSON.stringify(transport.rpcConnections.map((connection) => ({
+        id: connection.id,
+        incomingFrames: connection.incomingFrames,
+        outgoingFrames: connection.outgoingFrames,
+      }))));
+    }
+    assert.equal(
+      evidence.bodyText.includes(message),
+      false,
+      `AI Chat placement surfaced the regression message '${message}'.`,
+    );
+  }
+  assert.equal(evidence.shells, 1, 'AI Chat placement left a durable frame without its portal.');
+  await page.locator('.omnidraw-ai-chat-shell').waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const command = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the accepted AI Chat Canvas command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const extension = node === null ? {} : canvasWidgetExtension(node);
+      return extension.type === 'ui-widget' && extension.kind === 'ai-chat';
+    },
+  });
+  const aiNode = canvasCommandWidgetNode(command);
+  assert.ok(aiNode !== null, 'AI Chat command did not contain its widget-frame node.');
+  assert.deepEqual(record(aiNode.size), { width: 240, height: 160 });
+  const aiPosition = record(record(aiNode.transform).position);
+  assert.ok(Number.isFinite(aiPosition.x), 'AI Chat x position is not finite.');
+  assert.ok(Number.isFinite(aiPosition.y), 'AI Chat y position is not finite.');
+  const connect = await waitForSuccessfulRpcRequest({
+    afterCount: connectBefore,
+    label: 'a successful agent.chat.connect response for the mounted widget',
+    page,
+    path: 'agent.chat.connect',
+    predicate: (request) => record(request.input).widgetId === aiNode.id,
+  });
+  const connectInput = record(connect.input);
+  assert.equal(connectInput.widgetId, aiNode.id);
+  assert.equal(connectInput.canvasId, record(command.input).canvasId);
+  assert.ok(typeof connectInput.sessionId === 'string' && connectInput.sessionId.length > 0);
+  assert.equal(
+    await page.getByText('Could not connect to AI chat', { exact: true }).count(),
+    0,
+    'The mounted AI Chat rendered a handled connection failure.',
+  );
+  assert.equal(
+    await page.locator('[data-vibecanvas-widget-titlebar] button[aria-label="Settings"]').count(),
+    1,
+    'AI Chat must expose exactly one Settings titlebar action.',
+  );
+  await page.waitForTimeout(500);
+  const settledBodyText = await page.locator('body').innerText();
+  for (const message of knownRegressionMessages) {
+    assert.equal(
+      settledBodyText.includes(message),
+      false,
+      `AI Chat placement surfaced the delayed regression message '${message}'.`,
+    );
+  }
+  await assertNoHandledErrorAlerts(page, 'AI Chat placement');
+  return Object.freeze({
+    sessionId: connectInput.sessionId as string,
+    widgetId: aiNode.id as string,
+  });
+}
+
+function aiChatPayload(node: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return record(canvasWidgetExtension(node).payload);
+}
+
+async function showChatComposer(page: Page): Promise<void> {
+  const actions = page.getByRole('button', { name: 'Chat actions' });
+  if (await actions.isVisible()) return;
+  const titlebarAction = page.getByRole('button', { name: /^(?:Settings|Back to chat)$/ }).first();
+  await titlebarAction.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await titlebarAction.click();
+  await actions.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+}
+
+async function persistAiChatStateAcrossReload(
+  page: Page,
+  initial: Readonly<{ sessionId: string; widgetId: string }>,
+): Promise<Readonly<{ sessionId: string; widgetId: string }>> {
+  await showChatComposer(page);
+  const modelButton = page.locator('.omnidraw-ai-chat-composer__pill');
+  await modelButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  let canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  assert.equal(
+    await modelButton.isEnabled(),
+    true,
+    'The isolated deterministic model provider did not enable the AI Chat model picker.',
+  );
+  await modelButton.click();
+  const models = page.getByRole('group', { name: 'AI models' })
+    .locator('.omnidraw-ai-chat-composer__model-option');
+  await models.first().waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const selectedModel = models.filter({ hasText: FAKE_MODEL_NAME });
+  assert.equal(await selectedModel.count(), 1, 'AI Chat did not list the deterministic browser model exactly once.');
+  const selectedModelName = (await selectedModel.locator('strong').innerText()).trim();
+  assert.equal(selectedModelName, FAKE_MODEL_NAME);
+  await selectedModel.click();
+  const modelCommand = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the durable AI Chat model preference',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const model = node === null ? {} : record(aiChatPayload(node).model);
+      return node?.id === initial.widgetId
+        && model.provider === FAKE_PROVIDER_ID
+        && model.modelId === FAKE_MODEL_ID;
+    },
+  });
+  const selectedModelIdentity = record(aiChatPayload(canvasCommandWidgetNode(modelCommand)!).model);
+  assert.deepEqual(selectedModelIdentity, { provider: FAKE_PROVIDER_ID, modelId: FAKE_MODEL_ID });
+
+  canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  await modelButton.click();
+  await page.getByRole('group', { name: 'AI model settings' })
+    .getByRole('button', { name: 'Thinking', exact: true })
+    .click();
+  await page.getByRole('group', { name: 'AI models' })
+    .getByRole('button', { name: 'Xhigh', exact: true })
+    .click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the durable AI Chat thinking preference',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const payload = node === null ? {} : aiChatPayload(node);
+      return node?.id === initial.widgetId
+        && payload.thinkingLevel === 'xhigh'
+        && record(payload.model).provider === selectedModelIdentity.provider
+        && record(payload.model).modelId === selectedModelIdentity.modelId;
+    },
+  });
+
+  const connectBefore = (await readRpcRequests(page, 'agent.chat.connect')).length;
+  const resetBefore = (await readRpcRequests(page, 'agent.chat.newSession')).length;
+  canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.getByRole('button', { name: 'Chat actions' }).click();
+  await page.getByRole('menuitem', { name: 'New chat', exact: true }).click();
+  const nextConnect = await waitForSuccessfulRpcRequest({
+    afterCount: connectBefore,
+    label: 'the replacement New Chat session',
+    page,
+    path: 'agent.chat.connect',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === initial.widgetId && input.sessionId !== initial.sessionId;
+    },
+  });
+  const nextSessionId = record(nextConnect.input).sessionId;
+  assert.ok(typeof nextSessionId === 'string' && nextSessionId.length > 0);
+  await waitForSuccessfulRpcRequest({
+    afterCount: resetBefore,
+    label: 'the retired previous AI Chat session',
+    page,
+    path: 'agent.chat.newSession',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === initial.widgetId && input.sessionId === initial.sessionId;
+    },
+  });
+  const persistedNewChat = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the Canvas-authored New Chat session and preferences',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const payload = node === null ? {} : aiChatPayload(node);
+      const model = record(payload.model);
+      return node?.id === initial.widgetId && payload.sessionId === nextSessionId
+        && payload.thinkingLevel === 'xhigh'
+        && model.provider === selectedModelIdentity.provider
+        && model.modelId === selectedModelIdentity.modelId;
+    },
+  });
+  assert.equal(aiChatPayload(canvasCommandWidgetNode(persistedNewChat)!).sessionId, nextSessionId);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await page.locator('.omnidraw-ai-chat-shell').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await waitForRpcConnection(page);
+  await waitForSuccessfulRpcRequest({
+    afterCount: 0,
+    label: 'the persisted New Chat session after reload',
+    page,
+    path: 'agent.chat.connect',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === initial.widgetId && input.sessionId === nextSessionId;
+    },
+  });
+  await showChatComposer(page);
+  const preferenceText = (await modelButton.innerText()).replace(/\s+/gu, ' ').trim();
+  assert.ok(
+    preferenceText.includes(selectedModelName.replace(/^GPT-/iu, '')),
+    `Reload lost model preference '${selectedModelName}': ${preferenceText}`,
+  );
+  assert.ok(preferenceText.includes('Xhigh'), `Reload lost xhigh preference: ${preferenceText}`);
+  await assertNoHandledErrorAlerts(page, 'New Chat and preference reload');
+  return Object.freeze({ sessionId: nextSessionId as string, widgetId: initial.widgetId });
+}
+
+async function exerciseDeterministicPrompt(args: Readonly<{
+  chat: Readonly<{ sessionId: string; widgetId: string }>;
+  page: Page;
+  provider: TFakeProvider;
+}>): Promise<void> {
+  await showChatComposer(args.page);
+  const maximize = args.page.getByRole('button', { name: 'Maximize AI Chat', exact: true });
+  await maximize.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await maximize.click();
+  await args.page.getByRole('button', { name: 'Restore AI Chat', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const promptBefore = (await readRpcRequests(args.page, 'agent.chat.prompt')).length;
+  const historyBefore = (await readRpcRequests(args.page, 'agent.chat.history')).length;
+  const providerBefore = args.provider.requests.length;
+  const editor = args.page.getByRole('combobox', {
+    name: 'Ask about your canvas. Type @ to add context',
+    exact: true,
+  });
+  await editor.click();
+  await editor.pressSequentially(PROMPT_TEXT, { delay: 1 });
+  assert.equal(
+    (await editor.innerText()).trim(),
+    PROMPT_TEXT,
+    'Visible ProseMirror prompt text diverged before submission.',
+  );
+  const send = args.page.getByRole('button', { name: 'Send prompt', exact: true });
+  await send.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.equal(await send.isEnabled(), true, 'Visible prompt send action was disabled.');
+  await editor.press('Enter');
+  const startedPrompts = await waitForBrowserState({
+    label: 'the visible agent.chat.prompt Request',
+    read: () => readRpcRequests(args.page, 'agent.chat.prompt'),
+    ready: (requests) => requests.slice(promptBefore).some((request) => (
+      record(request.input).text === PROMPT_TEXT
+    )),
+  });
+  const startedPrompt = startedPrompts.slice(promptBefore).findLast((request) => (
+    record(request.input).text === PROMPT_TEXT
+  ));
+  assert.ok(startedPrompt !== undefined, 'The visible prompt did not enter the private RPC wire.');
+  assert.equal(record(startedPrompt.input).widgetId, args.chat.widgetId);
+  assert.equal(record(startedPrompt.input).sessionId, args.chat.sessionId);
+  assert.deepEqual(record(startedPrompt.input).model, {
+    provider: FAKE_PROVIDER_ID,
+    modelId: FAKE_MODEL_ID,
+  });
+  assert.equal(record(startedPrompt.input).thinkingLevel, 'xhigh');
+  await waitForBrowserState({
+    label: 'the deterministic provider request',
+    read: async () => args.provider.requests.length,
+    ready: (count) => count > providerBefore,
+  });
+  const providerRequest = args.provider.requests.at(-1);
+  assert.ok(providerRequest !== undefined);
+  assert.equal(providerRequest.path, '/v1/chat/completions');
+  assert.equal(providerRequest.authorization, 'Bearer browser-acceptance-key');
+  assert.equal(providerRequest.model, FAKE_MODEL_ID);
+  assert.equal(providerRequest.reasoningEffort, 'xhigh');
+  assert.equal(providerRequest.stream, true);
+  assert.ok(
+    providerRequest.messageText.includes(PROMPT_TEXT),
+    'The local provider request omitted the visible browser prompt.',
+  );
+  assert.ok(
+    (await readRpcRequests(args.page, 'agent.events')).length > 0,
+    'AI Chat did not establish its typed event stream.',
+  );
+  await waitForBrowserState({
+    label: 'the partial assistant response on the agent event stream',
+    read: () => args.page.evaluate((marker) => {
+      const transport = (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot();
+      return transport.rpcConnections.some((connection) => connection.incomingFrames.some((frame) => (
+        frame.includes(marker)
+      )));
+    }, PARTIAL_RESPONSE_TEXT),
+    ready: Boolean,
+  });
+  await args.page.getByText(PROMPT_TEXT, { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await args.page.getByText(PARTIAL_RESPONSE_TEXT, { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await args.page.getByRole('button', { name: 'Stop response', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+
+  args.provider.releaseResponse();
+  await args.page.getByText(COMPLETE_RESPONSE_TEXT, { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await waitForSuccessfulRpcRequest({
+    afterCount: promptBefore,
+    label: 'the visible deterministic prompt completion',
+    page: args.page,
+    path: 'agent.chat.prompt',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === args.chat.widgetId
+        && input.sessionId === args.chat.sessionId
+        && input.text === PROMPT_TEXT
+        && record(input.model).provider === FAKE_PROVIDER_ID
+        && record(input.model).modelId === FAKE_MODEL_ID
+        && input.thinkingLevel === 'xhigh';
+    },
+  });
+  const history = await waitForSuccessfulRpcRequest({
+    afterCount: historyBefore,
+    label: 'the post-stream authoritative chat history refresh',
+    page: args.page,
+    path: 'agent.chat.history',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === args.chat.widgetId && input.sessionId === args.chat.sessionId;
+    },
+  });
+  const historyText = JSON.stringify(history.exit?.value);
+  assert.ok(historyText.includes(PROMPT_TEXT), 'Authoritative chat history omitted the visible user prompt.');
+  assert.ok(historyText.includes(COMPLETE_RESPONSE_TEXT), 'Authoritative chat history omitted the streamed assistant response.');
+  await mkdir(join(ROOT, 'tests/artifacts'), { recursive: true });
+  await args.page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-ai-chat-stream-complete.png'),
+    fullPage: true,
+  });
+  await assertNoHandledErrorAlerts(args.page, 'deterministic prompt and history');
+}
+
+async function placeDraftPreviewWidget(page: Page): Promise<Readonly<{
+  nodeId: string;
+}>> {
+  const host = page.locator('.omnidraw-canvas-engine-host');
+  await host.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
+  if (await expand.count()) await expand.click();
+  const row = page.getByRole('button', {
+    name: 'Browser Acceptance Widget, draft, healthy.',
+    exact: true,
+  });
+  await row.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await page.getByRole('button', {
+    name: 'Preview Browser Acceptance Widget on canvas',
+    exact: true,
+  }).waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const [hostBounds, rowBounds] = await Promise.all([host.boundingBox(), row.boundingBox()]);
+  assert.ok(hostBounds !== null, 'Canvas bounds are unavailable for sidebar placement.');
+  assert.ok(rowBounds !== null, 'Draft widget row bounds are unavailable.');
+  const target = {
+    x: hostBounds.x + hostBounds.width * 0.38,
+    y: hostBounds.y + hostBounds.height * 0.28,
+  };
+  const rowOrigin = {
+    x: rowBounds.x + rowBounds.width / 2,
+    y: rowBounds.y + rowBounds.height / 2,
+  };
+  const canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  const previewOpenBefore = (await readRpcRequests(page, 'widget.preview.open')).length;
+  const canvasPathBeforeDrag = new URL(page.url()).pathname;
+  await page.mouse.move(rowOrigin.x, rowOrigin.y);
+  await page.mouse.down();
+  await page.mouse.move(rowOrigin.x + 12, rowOrigin.y + 8, { steps: 3 });
+  await page.mouse.move(target.x, target.y, { steps: 12 });
+  assert.equal(
+    await page.locator('body').evaluate((body) => body.style.userSelect),
+    'none',
+    'Sidebar pointer movement never crossed the production drag threshold.',
+  );
+  await page.mouse.up();
+  assert.equal(
+    await page.locator('body').evaluate((body) => body.style.userSelect),
+    '',
+    'Sidebar placement did not restore document selection after pointerup.',
+  );
+  assert.equal(
+    new URL(page.url()).pathname,
+    canvasPathBeforeDrag,
+    'Completing a sidebar pointer-drag navigated away from the Canvas instead of suppressing the row click.',
+  );
+
+  const command = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the accepted draft Preview placement command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const extension = node === null ? {} : canvasWidgetExtension(node);
+      return extension.type === 'widget-preview' && extension.widgetKey === 'browser-acceptance';
+    },
+  });
+  const node = canvasCommandWidgetNode(command);
+  assert.ok(node !== null && typeof node.id === 'string');
+  assert.deepEqual(record(node.size), { width: 360, height: 320 });
+  const position = record(record(node.transform).position);
+  assert.ok(Number.isFinite(position.x), 'Draft Preview x position is not finite.');
+  assert.ok(Number.isFinite(position.y), 'Draft Preview y position is not finite.');
+  assert.ok(
+    Math.abs(Number(position.x) - target.x) > 50,
+    'Sidebar placement committed raw client x instead of Canvas world coordinates.',
+  );
+  const previewOpen = await waitForSuccessfulRpcRequest({
+    afterCount: previewOpenBefore,
+    label: 'the mounted draft Preview artifact',
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === node.id,
+  });
+  assert.equal(record(previewOpen.input).widgetKey, 'browser-acceptance');
+  const portalSelector = `[data-vibecanvas-portal-id="omnidraw:widget:${node.id}"]`;
+  const portal = page.locator(portalSelector);
+  await portal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.ok(
+    await portal.evaluate((element) => element.childElementCount) > 0,
+    'Draft Preview portal is visible but has no mounted host content.',
+  );
+  const portalBounds = await portal.boundingBox();
+  assert.ok(portalBounds !== null, 'Draft Preview portal did not expose visible bounds.');
+  assert.ok(portalBounds.width >= 300 && portalBounds.height >= 260, 'Draft Preview portal collapsed below its authored frame.');
+  assert.ok(portalBounds.x >= hostBounds.x - 2, 'Draft Preview escaped the Canvas left edge.');
+  assert.ok(portalBounds.y >= hostBounds.y - 2, 'Draft Preview escaped the Canvas top edge.');
+  assert.ok(
+    portalBounds.x + portalBounds.width <= hostBounds.x + hostBounds.width + 2,
+    'Draft Preview escaped the Canvas right edge.',
+  );
+  assert.ok(
+    portalBounds.y + portalBounds.height <= hostBounds.y + hostBounds.height + 2,
+    'Draft Preview escaped the Canvas bottom edge.',
+  );
+  await assertDraftPreviewTitlebar(page, 'draft Preview placement', node.id);
+  await assertDraftGuestMounted(page, portal, 'draft Preview placement');
+  await mkdir(join(ROOT, 'tests/artifacts'), { recursive: true });
+  await page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-draft-preview-mounted.png'),
+    fullPage: true,
+  });
+  await assertNoHandledErrorAlerts(page, 'draft Preview placement');
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await waitForRpcConnection(page);
+  await waitForSuccessfulRpcRequest({
+    afterCount: 0,
+    label: 'the persisted draft Preview artifact after reload',
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === node.id,
+  });
+  const reloadedPortal = page.locator(portalSelector);
+  await reloadedPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await assertDraftGuestMounted(page, reloadedPortal, 'draft Preview reload');
+  await assertNoHandledErrorAlerts(page, 'draft Preview reload');
+  return Object.freeze({ nodeId: node.id });
+}
+
+async function restartBackendWithMountedChat(args: Readonly<{
+  expectedHistoryText: string;
+  page: Page;
+  restartBackend(): Promise<void>;
+}>): Promise<void> {
+  const before = await args.page.evaluate(() => (
+    (window as unknown as {
+      __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+    }).__omnidrawBrowserAcceptance.snapshot()
+  ));
+  await args.restartBackend();
+  const recovered = await waitForBrowserState<Readonly<{
+    complete: boolean;
+    exit: null | Readonly<{ _tag?: string; cause?: unknown; value?: unknown }>;
+    rpcOpenCount: number;
+  }>>({
+    label: 'AI Chat to reconnect after a backend process restart',
+    read: () => args.page.evaluate((previousOpenCount) => {
+      const transport = (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot();
+      const connection = transport.rpcConnections.findLast((candidate) => (
+        (candidate.openSequence ?? 0) > previousOpenCount
+      ));
+      if (connection === undefined) {
+        return { complete: false, exit: null, rpcOpenCount: transport.rpcOpenCount };
+      }
+      const connectRequests = connection.outgoingFrames.flatMap((chunk) => chunk.split('\n')).flatMap((frame) => {
+        if (!frame.trim()) return [];
+        try {
+          const value = JSON.parse(frame) as { id?: number; payload?: { path?: string } };
+          return value.payload?.path === 'agent.chat.connect' && typeof value.id === 'number'
+            ? [value.id]
+            : [];
+        } catch {
+          return [];
+        }
+      });
+      const requestId = connectRequests.at(-1);
+      if (requestId === undefined) {
+        return { complete: false, exit: null, rpcOpenCount: transport.rpcOpenCount };
+      }
+      const exits = connection.incomingFrames.flatMap((chunk) => chunk.split('\n')).flatMap((frame) => {
+        if (!frame.trim()) return [];
+        try {
+          const value = JSON.parse(frame) as {
+            _tag?: string;
+            exit?: { _tag?: string; cause?: unknown; value?: unknown };
+            requestId?: number;
+          };
+          return value._tag === 'Exit' && value.requestId === requestId ? [value.exit ?? null] : [];
+        } catch {
+          return [];
+        }
+      });
+      return {
+        complete: exits.length > 0,
+        exit: exits.at(-1) ?? null,
+        rpcOpenCount: transport.rpcOpenCount,
+      };
+    }, before.rpcOpenCount),
+    ready: (value) => value.complete,
+  });
+  assert.ok(
+    recovered.rpcOpenCount > before.rpcOpenCount,
+    'Restarting the backend did not create a new native RPC connection.',
+  );
+  assert.equal(
+    recovered.exit?._tag,
+    'Success',
+    `AI Chat did not reconnect after backend restart: ${JSON.stringify(recovered.exit)}`,
+  );
+  assert.ok(
+    JSON.stringify(recovered.exit?.value).includes(args.expectedHistoryText),
+    'AI Chat reconnect succeeded after backend restart but omitted the persisted response history.',
+  );
+  await args.page.locator('.omnidraw-ai-chat-shell').waitFor({ state: 'visible' });
+  await args.page.getByText(args.expectedHistoryText, { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  assert.equal(
+    await args.page.getByText('Could not connect to AI chat', { exact: true }).count(),
+    0,
+    'AI Chat showed a connection alert after backend process recovery.',
+  );
+}
+
+async function createResources(page: Page): Promise<readonly TCreatedResource[]> {
+  const inputs = [
+    { kind: 'kv', name: 'Browser KV' },
+    { kind: 'secretStore', name: 'Browser Secrets' },
+    { kind: 'db', name: 'Browser Database' },
+  ] as const;
+  const created: TCreatedResource[] = [];
+  for (const input of inputs) {
+    await page.getByRole('button', { name: 'Add resource' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create resource' });
+    await dialog.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await dialog.getByLabel('Resource type').selectOption(input.kind);
+    await dialog.getByLabel('Name').fill(input.name);
+    await dialog.getByRole('button', { name: 'Create resource' }).click();
+    await dialog.waitFor({ state: 'hidden', timeout: ROUTE_TIMEOUT_MS });
+    const item = page.locator('aside[aria-label="Canvas navigation"] button').filter({ hasText: input.name });
+    await item.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await waitForBrowserState<string | null>({
+      label: `${input.name} to become ready`,
+      read: () => item.getAttribute('title'),
+      ready: (title) => title?.endsWith(' · ready') === true,
+    });
+    await item.click();
+    await page.waitForURL((url) => /^\/resources\/[^/]+$/.test(url.pathname), {
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+    created.push(Object.freeze({
+      id: new URL(page.url()).pathname.split('/').at(-1) ?? '',
+      kind: input.kind,
+      name: input.name,
+      status: 'ready',
+    }));
+  }
+  return Object.freeze(created);
+}
+
+async function assertRoute(
+  page: Page,
+  baseUrl: string,
+  route: string,
+  visibleText: string,
+): Promise<void> {
+  await page.goto(new URL(route, baseUrl).toString(), { waitUntil: 'domcontentloaded' });
+  await page.getByText(visibleText, { exact: true }).first().waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const expected = new URL(route, baseUrl);
+  const actual = new URL(page.url());
+  assert.equal(actual.pathname, expected.pathname, `Route '${route}' changed its pathname.`);
+  assert.equal(
+    actual.searchParams.get('tab'),
+    expected.searchParams.get('tab'),
+    `Route '${route}' changed its selected tab.`,
+  );
+}
+
+async function exerciseWidgetInspectorRoutes(page: Page, baseUrl: string): Promise<void> {
+  await assertRoute(
+    page,
+    baseUrl,
+    '/widgets/draft/browser-acceptance?tab=overview',
+    'Browser Acceptance Widget',
+  );
+
+  const selectTab = async (name: string, value: string, visibleText: string): Promise<void> => {
+    await page.getByRole('tab', { name, exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.get('tab') === value, {
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+    await page.getByText(visibleText, { exact: true }).first().waitFor({
+      state: 'visible',
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+  };
+
+  await selectTab('Config', 'config', 'Widget Config');
+  const saveBefore = (await readRpcRequests(page, 'widget.config.saveDraft')).length;
+  const description = page.getByLabel('Description', { exact: true });
+  await description.fill('A deterministic draft exercised through the live widget inspector.');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: saveBefore,
+    label: 'the visible widget Config save action',
+    page,
+    path: 'widget.config.saveDraft',
+  });
+
+  await selectTab('Functions', 'functions', 'Browser-safe function descriptors');
+  await selectTab('Collaborative State', 'collaborative-state', 'Instance-scoped collaborative state');
+  await selectTab('Resources', 'resources', 'Portable resource requirements');
+  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await page.waitForURL((url) => url.searchParams.get('tab') === 'files', {
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const fileTree = page.locator('[aria-label="Widget files"]');
+  await fileTree.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const sourceFile = fileTree.getByRole('button').filter({ hasText: 'main.ts' });
+  await sourceFile.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await sourceFile.click();
+  await page.getByText('ui/main.ts', { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+}
+
+async function exerciseResourceWorkbenches(
+  page: Page,
+  baseUrl: string,
+  resources: Readonly<Record<TCreatedResource['kind'], TCreatedResource>>,
+): Promise<void> {
+  await page.goto(new URL(`/resources/${resources.kv.id}?tab=data`, baseUrl).toString(), {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Add value', exact: true }).click();
+  const valueDialog = page.getByRole('dialog', { name: 'Add value', exact: true });
+  await valueDialog.getByLabel('Key', { exact: true }).fill('acceptance/value');
+  await valueDialog.getByLabel('JSON value', { exact: true }).fill('{"verified":true}');
+  await valueDialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByText('acceptance/value', { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-resource-kv.png'),
+    fullPage: true,
+  });
+
+  await page.goto(new URL(`/resources/${resources.secretStore.id}?tab=data`, baseUrl).toString(), {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Add secret', exact: true }).click();
+  const secretDialog = page.getByRole('dialog', { name: 'Add secret', exact: true });
+  await secretDialog.getByLabel('Secret name', { exact: true }).fill('acceptance/secret');
+  await secretDialog.getByLabel('Secret value', { exact: true }).fill('browser-secret-value');
+  await secretDialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByText('acceptance/secret', { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await page.getByRole('button', { name: 'Reveal secret value', exact: true }).click();
+  await page.getByText('browser-secret-value', { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-resource-secret-reveal.png'),
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: 'Hide secret value', exact: true }).click();
+  assert.equal(await page.getByText('browser-secret-value', { exact: true }).count(), 0);
+
+  await page.goto(new URL(`/resources/${resources.db.id}?tab=overview`, baseUrl).toString(), {
+    waitUntil: 'domcontentloaded',
+  });
+  for (const [name, value, visibleText] of [
+    ['Schema', 'schema', 'Live schema'],
+    ['Data', 'data', 'No user tables.'],
+    ['SQL', 'sql', 'Live SQL console'],
+  ] as const) {
+    await page.getByRole('tab', { name, exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.get('tab') === value, {
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+    await page.getByText(visibleText, { exact: true }).first().waitFor({
+      state: 'visible',
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+  }
+  await page.getByLabel('One SQLite-compatible statement', { exact: true }).fill('SELECT 42 AS answer;');
+  await page.getByRole('button', { name: 'Run against live', exact: true }).click();
+  await page.getByRole('columnheader', { name: 'answer', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await page.getByRole('cell', { name: '42', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-resource-database-sql.png'),
+    fullPage: true,
+  });
+}
+
+async function runBrowserSuite(
+  baseUrl: string,
+  restartBackend: () => Promise<void>,
+  provider: TFakeProvider,
+): Promise<void> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const browserErrors: string[] = [];
+  const badResponses: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+  });
+  page.on('pageerror', (error) => browserErrors.push(`page: ${error.message}`));
+  page.on('response', (response) => {
+    if (response.status() >= 400) badResponses.push(`${response.status()} ${response.url()}`);
+  });
+  await installWebSocketEvidence(page);
+
+  try {
+    console.log('[browser:live] app shell, Canvas, and native WebSocket reconnect');
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForURL((url) => url.pathname.startsWith('/c/'), { timeout: ROUTE_TIMEOUT_MS });
+    await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await page.getByRole('button', { name: 'Select', exact: true }).waitFor({ state: 'visible' });
+    await waitForRpcConnection(page);
+    const initialCanvasId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    assert.ok(initialCanvasId.length > 0, 'Startup did not create the clean-home Canvas.');
+
+    console.log('[browser:live] fresh AI Chat widget short-drag portal and connection');
+    const initialChat = await placeShortAiChatWidget(page);
+
+    console.log('[browser:live] New Chat, model, and thinking persistence across reload');
+    const persistedChat = await persistAiChatStateAcrossReload(page, initialChat);
+
+    console.log('[browser:live] visible prompt, deterministic provider stream, and authoritative history');
+    await exerciseDeterministicPrompt({ chat: persistedChat, page, provider });
+
+    console.log('[browser:live] mounted AI Chat recovery after a real backend process restart');
+    await restartBackendWithMountedChat({
+      expectedHistoryText: COMPLETE_RESPONSE_TEXT,
+      page,
+      restartBackend,
+    });
+    await page.getByRole('button', { name: 'Restore AI Chat', exact: true }).click();
+    await page.getByRole('button', { name: 'Maximize AI Chat', exact: true }).waitFor({
+      state: 'visible',
+      timeout: ROUTE_TIMEOUT_MS,
+    });
+
+    console.log('[browser:live] real sidebar pointer-drag draft Preview portal and reload');
+    const preview = await placeDraftPreviewWidget(page);
+    const beforePreviewRestart = await page.evaluate(() => (
+      (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot()
+    ));
+    console.log('[browser:live] mounted draft Preview recovery after a real backend process restart');
+    await restartBackend();
+    await waitForBrowserState({
+      label: 'a replacement native RPC connection for the mounted draft Preview',
+      read: () => page.evaluate(() => (
+        (window as unknown as {
+          __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+        }).__omnidrawBrowserAcceptance.snapshot()
+      )),
+      ready: (transport) => transport.rpcOpenCount > beforePreviewRestart.rpcOpenCount
+        && transport.rpcConnections.some((connection) => (
+          (connection.openSequence ?? 0) > beforePreviewRestart.rpcOpenCount
+          && connection.opened
+          && !connection.closed
+          && connection.incomingFrameCount > 0
+        )),
+    });
+    const restartedPreviewPortal = page.locator(
+      `[data-vibecanvas-portal-id="omnidraw:widget:${preview.nodeId}"]`,
+    );
+    await restartedPreviewPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await assertDraftGuestMounted(page, restartedPreviewPortal, 'draft Preview backend restart');
+    await assertNoHandledErrorAlerts(page, 'backend restart recovery');
+
+    console.log('[browser:live] screen-atlas app and widget route families');
+    await assertRoute(page, baseUrl, '/', 'Welcome to Omnidraw');
+    await exerciseWidgetInspectorRoutes(page, baseUrl);
+
+    console.log('[browser:live] screen-atlas resource route families');
+    await waitForRpcConnection(page);
+    const resources = await createResources(page);
+    assert.deepEqual(resources.map((resource) => resource.kind), ['kv', 'secretStore', 'db']);
+    const byKind = Object.fromEntries(resources.map((resource) => [resource.kind, resource])) as Record<
+      TCreatedResource['kind'],
+      TCreatedResource
+    >;
+
+    await exerciseResourceWorkbenches(page, baseUrl, byKind);
+
+    console.log('[browser:live] native WebSocket disconnect, reconnect, and stale-generation fencing');
+    await page.goto(new URL(`/c/${initialCanvasId}`, baseUrl).toString(), { waitUntil: 'domcontentloaded' });
+    await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await waitForRpcConnection(page);
+    await page.waitForTimeout(2_000);
+    const reconnect = await forceDisconnectAndWaitForReconnect(page);
+    const currentCanvasName = 'Reconnect Current';
+    const currentCanvas = await createCanvas(page, currentCanvasName);
+    assert.notEqual(currentCanvas.id, initialCanvasId, 'Post-reconnect Canvas reused the initial identity.');
+    assert.equal(new URL(page.url()).pathname, `/c/${currentCanvas.id}`, 'Visible Canvas creation did not navigate.');
+    assert.equal(await page.getByText('Untitled Canvas', { exact: true }).count(), 1);
+    assert.equal(await page.getByText(currentCanvasName, { exact: true }).count(), 1);
+    const finalTransport = await page.evaluate(() => (
+      (window as unknown as {
+        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
+      }).__omnidrawBrowserAcceptance.snapshot()
+    ));
+    const retiredTransport = finalTransport.rpcConnections.find((entry) => (
+      entry.id === reconnect.retiredConnectionId
+    ));
+    assert.equal(retiredTransport?.closed, true, 'The retired native socket remained open.');
+    assert.equal(
+      retiredTransport?.actualMessagesAfterNewerOpen,
+      0,
+      'The retired native socket delivered a real server frame after replacement opened.',
+    );
+
+    const toleratedDisconnectErrors = browserErrors.filter((message) => !(
+      message.includes('/rpc') && message.includes('WebSocket')
+    ));
+    assert.deepEqual(toleratedDisconnectErrors, [], browserErrors.join('\n'));
+    assert.deepEqual(badResponses, [], badResponses.join('\n'));
+    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview usability, durable preferences, restart recovery, and WebSocket fencing passed');
+  } finally {
+    await page.close();
+    await browser.close();
+  }
+}
+
+const home = await mkdtemp(join(tmpdir(), 'omnidraw-live-browser-home-'));
+const reservations = await Promise.all([reservePort(), reservePort()]);
+const processes: TManagedProcess[] = [];
+const provider = startFakeProvider();
+
+try {
+  await seedAgentModel(home, provider.baseUrl);
+  const browserTools = await seedDraftWidget(home);
+  const backendEnvironment = Object.freeze({
+    NODE_ENV: 'production',
+    OMNIDRAW_HOME: home,
+    OMNIDRAW_VERSION: 'browser-acceptance',
+    PATH: `${browserTools}:${process.env.PATH ?? ''}`,
+  });
+  const [backendPort, frontendPort] = reservations;
+  assert.notEqual(backendPort!.port, frontendPort!.port, 'Browser acceptance reserved the same port twice.');
+
+  await backendPort!.release();
+  let backend = spawnProcess({
+    label: 'backend',
+    cwd: BACKEND_ROOT,
+    command: [process.execPath, 'src/main.ts', 'serve', '--port', String(backendPort!.port)],
+    env: backendEnvironment,
+  });
+  processes.push(backend);
+  await waitForHttp(`http://127.0.0.1:${backendPort!.port}/health`, backend);
+  const restartBackend = async (): Promise<void> => {
+    await stopProcess(backend);
+    backend = spawnProcess({
+      label: 'backend-restart',
+      cwd: BACKEND_ROOT,
+      command: [process.execPath, 'src/main.ts', 'serve', '--port', String(backendPort!.port)],
+      env: backendEnvironment,
+    });
+    processes.push(backend);
+    await waitForHttp(`http://127.0.0.1:${backendPort!.port}/health`, backend);
+  };
+
+  await frontendPort!.release();
+  const frontend = spawnProcess({
+    label: 'frontend',
+    cwd: FRONTEND_ROOT,
+    command: [
+      'node',
+      VITE_BIN,
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(frontendPort!.port),
+      '--strictPort',
+    ],
+    env: {
+      OMNIDRAW_BACKEND_HOST: '127.0.0.1',
+      OMNIDRAW_BACKEND_PORT: String(backendPort!.port),
+      OMNIDRAW_FRONTEND_PORT: String(frontendPort!.port),
+    },
+  });
+  processes.push(frontend);
+  const baseUrl = `http://127.0.0.1:${frontendPort!.port}/`;
+  await waitForHttp(baseUrl, frontend);
+  await runBrowserSuite(baseUrl, restartBackend, provider);
+} catch (error) {
+  await Promise.allSettled(processes.map(stopProcess));
+  for (const process of processes) {
+    const [stdout, stderr] = await Promise.all([process.stdout, process.stderr]);
+    const evidence = `${stdout}\n${stderr}`.trim();
+    if (evidence !== '') {
+      console.error(`[browser:live] ${process.label} output before failure:\n${evidence.slice(-20_000)}`);
+    }
+  }
+  throw error;
+} finally {
+  provider.stop();
+  await Promise.allSettled(reservations.map((reservation) => reservation.release()));
+  await Promise.allSettled(processes.reverse().map(stopProcess));
+  await rm(home, { recursive: true, force: true });
+}

@@ -9,7 +9,7 @@ import os from "os"
 import path from "path"
 
 const rootDir = path.resolve(import.meta.dir, "..")
-const cliDir = path.join(rootDir, "apps/cli")
+const backendDir = path.join(rootDir, "apps/backend")
 const frontendDevScript = path.join(rootDir, "scripts/dev-frontend.ts")
 const lockRootDir = path.join(os.tmpdir(), "omnidraw-dev-ports")
 const bunExec = process.execPath
@@ -22,6 +22,10 @@ type TPortLease = {
 type TDevProcess = {
   name: string
   process: ReturnType<typeof Bun.spawn>
+}
+
+function readableProcessStream(value: unknown): ReadableStream<Uint8Array> | null {
+  return value instanceof ReadableStream ? value as ReadableStream<Uint8Array> : null
 }
 
 function parsePortEnv(name: string, fallback: number): number {
@@ -193,7 +197,7 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
 
   const portPromise = new Promise<number>((resolve, reject) => {
     const readLine = (line: string) => {
-      const match = line.match(/Server listening on http:\/\/localhost:(\d+)/)
+      const match = line.match(/Listening on http:\/\/(?:127\.0\.0\.1|localhost):(\d+)/)
       if (!match) return
 
       resolved = true
@@ -202,21 +206,21 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
 
     void pipeLines({
       child,
-      stream: child.process.stdout,
+      stream: readableProcessStream(child.process.stdout),
       sink: readLine,
       write: (text) => process.stdout.write(text),
     })
 
     void pipeLines({
       child,
-      stream: child.process.stderr,
+      stream: readableProcessStream(child.process.stderr),
       sink: readLine,
       write: (text) => process.stderr.write(text),
     })
 
     child.process.exited.then((exitCode) => {
       if (resolved) return
-      reject(new Error(`[dev] cli exited before the backend became ready with code ${exitCode}`))
+      reject(new Error(`[dev] backend exited before it became ready with code ${exitCode}`))
     })
   })
 
@@ -280,21 +284,19 @@ try {
   const backendLease = await acquirePortLease("backend", backendPort)
   leases.push(backendLease)
 
-  const cliProcess = spawnDevProcess({
-    name: "cli",
-    cwd: cliDir,
+  const backendProcess = spawnDevProcess({
+    name: "backend",
+    cwd: backendDir,
     cmd: [bunExec, "run", "--watch", "./src/main.ts", "serve", "--port", String(backendLease.port)],
     env: {
       NODE_ENV: "development",
-      OMNIDRAW_COMPILED: "false",
-      OMNIDRAW_HOME: path.join(rootDir, ".omnidraw"),
-      OMNIDRAW_VERSION: "0.0.0",
+      OMNIDRAW_HOME: process.env.OMNIDRAW_HOME ?? path.join(rootDir, ".omnidraw"),
     },
     output: "pipe",
   })
-  processes.push(cliProcess)
+  processes.push(backendProcess)
 
-  const actualBackendPort = await waitForBackendPort(cliProcess)
+  const actualBackendPort = await waitForBackendPort(backendProcess)
   const frontendLease = await acquirePortLease("frontend", frontendPort)
   leases.push(frontendLease)
 

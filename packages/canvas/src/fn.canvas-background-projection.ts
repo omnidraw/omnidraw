@@ -1,5 +1,5 @@
 import type { TRetainedProjectionSnapshot } from '@omnidraw/cangine';
-import type { TThemeCanvasViewport } from '@omnidraw/theme-contract';
+import type { TThemeCanvasViewport } from '@omnidraw/theme';
 
 type TArgs = Readonly<{
   viewport: TThemeCanvasViewport;

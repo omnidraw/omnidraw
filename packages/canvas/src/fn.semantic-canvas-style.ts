@@ -7,21 +7,19 @@ import type {
   TSceneSnapshot,
   TStrokeStyle,
 } from '@omnidraw/cangine';
-import type {
-  TCanvasSemanticStyleExtensionV1,
-} from '@omnidraw/canvas-contract';
+import type { TCanvasSemanticStyleExtensionV1 } from '@omnidraw/canvas-contract';
 import {
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
 } from '@omnidraw/canvas-contract/CONSTANTS';
 import {
   fnIsCanvasColorCode,
   fnIsCanvasInkColorCode,
-} from '@omnidraw/theme-contract/fn.validation';
+} from '@omnidraw/theme';
 import type {
   TThemeCanvasColorPalette,
   TThemeSnapshot,
   TThemeSrgbColor,
-} from '@omnidraw/theme-contract';
+} from '@omnidraw/theme';
 
 type TArgsNode = Readonly<{
   node: TSceneNode;

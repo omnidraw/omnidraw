@@ -1,0 +1,1 @@
+PRAGMA index_list(__TABLE_IDENTIFIER__)

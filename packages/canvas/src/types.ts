@@ -2,11 +2,11 @@ import type {
   TCanvasDescriptor,
   TCanvasDocumentTransport,
 } from '@omnidraw/canvas-contract';
-import type { IThemeService } from '@omnidraw/service-theme';
+import type { IThemeService } from '@omnidraw/theme';
 import type {
   TReproductionTraceOwner,
 } from './debug-trace/typed';
-import type { ICanvasRuntimeExtension } from './extension';
+import type { ICanvasExtension } from './extension';
 import type {
   TCanvasToolbarContribution,
 } from './components/FloatingCanvasToolbar/toolbar.types';
@@ -49,15 +49,15 @@ export type TCanvasWaitPort = Readonly<{
 /** Optional host-owned diagnostics capability consumed by canvas UI/runtime. */
 export type TCanvasDiagnosticsPort = TReproductionTraceOwner;
 
-/** One mounted canvas runtime retirement registered with its owning host. */
-export type TCanvasRuntimeRetirement = () => Promise<void>;
+/** One mounted Canvas retirement registered with its owning host. */
+export type TCanvasHostRetirement = () => Promise<void>;
 
 /**
  * Optional host lifecycle boundary used to await complete canvas shutdown
- * before the host retires runtime infrastructure.
+ * before the host retires its injected infrastructure.
  */
-export type TCanvasRuntimeRetirementPort = Readonly<{
-  register(retire: TCanvasRuntimeRetirement): () => void;
+export type TCanvasHostRetirementPort = Readonly<{
+  register(retire: TCanvasHostRetirement): () => void;
 }>;
 
 /**
@@ -72,28 +72,17 @@ export type TCanvasDependencies = Readonly<{
   createId(): string;
   wait: TCanvasWaitPort;
   diagnostics?: TCanvasDiagnosticsPort | null;
-  runtimeRetirement?: TCanvasRuntimeRetirementPort;
-  runtimeExtensions?: readonly ICanvasRuntimeExtension[];
+  hostRetirement?: TCanvasHostRetirementPort;
+  extensions?: readonly ICanvasExtension[];
   toolbarContributions?: readonly TCanvasToolbarContribution[];
 }>;
 
 /** Minimal public composition boundary for the Solid canvas host. */
 export type TCanvasProps = Readonly<{
   canvas: TCanvasDescriptor;
+  /** Opaque stable identity for the host-owned capability scope. */
+  hostScopeKey: string;
   dependencies: TCanvasDependencies;
-}>;
-
-export type TCanvasRuntimeConfig = Readonly<{
-  canvasId: string;
-  container: HTMLDivElement;
-  transport: TCanvasDocumentTransport;
-  createId(): string;
-  wait: TCanvasWaitPort;
-  themeService: IThemeService;
-  initialGridVisible?: boolean;
-  image: TCanvasImagePort;
-  notification: TCanvasNotificationPort;
-  trace?: TReproductionTraceOwner | null;
 }>;
 
 export type TCanvasDiagnostics = TCanvasDiagnosticsPort;

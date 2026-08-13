@@ -4,7 +4,8 @@ import {
   BUILTIN_THEMES,
   THEME_ID_DARK,
   ThemeService,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
+import { Effect } from 'effect';
 import { createReproductionTrace } from '../../src/debug-trace/createReproductionTrace';
 import type { TCanvasDependencies } from '../../src/types';
 
@@ -30,7 +31,7 @@ const runtimeMocks = vi.hoisted(() => {
     subscribe: vi.fn(() => () => {}),
   };
   const runtime = {
-    boot: vi.fn(async () => {}),
+    bootEffect: vi.fn(),
     document: vi.fn(() => null),
     editor: vi.fn(() => editor),
     engine: vi.fn(() => null),
@@ -44,7 +45,7 @@ const runtimeMocks = vi.hoisted(() => {
       return () => { shellListener = null; };
     }),
     setGridVisible: vi.fn(() => true),
-    shutdown: vi.fn(async () => {}),
+    shutdownEffect: vi.fn(),
     widgetContentFocused: vi.fn(() => false),
   };
   return {
@@ -61,9 +62,12 @@ const runtimeMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../src/runtime', () => ({
-  buildRuntime: vi.fn(() => runtimeMocks.runtime),
-}));
+vi.mock('../../src/runtime', async () => {
+  const { Effect: MockEffect } = await import('effect');
+  runtimeMocks.runtime.bootEffect.mockImplementation(() => MockEffect.void);
+  runtimeMocks.runtime.shutdownEffect.mockImplementation(() => MockEffect.void);
+  return { buildRuntime: vi.fn(() => runtimeMocks.runtime) };
+});
 
 import { Canvas } from '../../src/components/Canvas';
 
@@ -175,14 +179,14 @@ describe('Canvas host contributions', () => {
       hostScopeKey: 'test-scope',
       dependencies: dependencies(),
     }), host);
-    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).not.toBeNull());
+    await vi.waitFor(() => expect(host.querySelector('.omnidraw-canvas-toolbar-anchor')).not.toBeNull());
 
     runtimeMocks.setShell({ kind: 'maximized-widget', widgetId: 'widget-1' });
-    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).toBeNull());
-    expect(host.querySelector('.vc-selection-style-menu')).toBeNull();
+    await vi.waitFor(() => expect(host.querySelector('.omnidraw-canvas-toolbar-anchor')).toBeNull());
+    expect(host.querySelector('.omnidraw-selection-style-menu')).toBeNull();
 
     const drop = new Event('drop', { bubbles: true, cancelable: true });
-    host.querySelector('.vc-canvas-host')?.dispatchEvent(drop);
+    host.querySelector('.omnidraw-canvas-host')?.dispatchEvent(drop);
     expect(drop.defaultPrevented).toBe(true);
 
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -207,7 +211,7 @@ describe('Canvas host contributions', () => {
       event.preventDefault();
       event.stopPropagation();
     });
-    host.querySelector('.vc-canvas-engine-host')?.append(widgetContent);
+    host.querySelector('.omnidraw-canvas-engine-host')?.append(widgetContent);
     widgetContent.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -227,7 +231,7 @@ describe('Canvas host contributions', () => {
       event.preventDefault();
       event.stopPropagation();
     });
-    host.querySelector('.vc-canvas-engine-host')?.append(widgetModalRoot);
+    host.querySelector('.omnidraw-canvas-engine-host')?.append(widgetModalRoot);
     widgetModal.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -242,7 +246,7 @@ describe('Canvas host contributions', () => {
     nativeDialog.dataset.vibecanvasPortalId = 'widget-1';
     const nativeDialogButton = document.createElement('button');
     nativeDialog.append(nativeDialogButton);
-    host.querySelector('.vc-canvas-engine-host')?.append(nativeDialog);
+    host.querySelector('.omnidraw-canvas-engine-host')?.append(nativeDialog);
     nativeDialogButton.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -253,7 +257,7 @@ describe('Canvas host contributions', () => {
     expect(runtimeMocks.runtime.restoreMaximizedWidget).not.toHaveBeenCalled();
 
     runtimeMocks.setShell({ kind: 'canvas', widgetId: null });
-    await vi.waitFor(() => expect(host.querySelector('.vc-canvas-toolbar-anchor')).not.toBeNull());
+    await vi.waitFor(() => expect(host.querySelector('.omnidraw-canvas-toolbar-anchor')).not.toBeNull());
   });
 
   test('renders and uses core tools without product extensions', async () => {
@@ -265,7 +269,7 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies(),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     expect(host.querySelector('[aria-label="AI Chat"]')).toBeNull();
@@ -295,7 +299,7 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies({ diagnostics: createTrace() }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
     document.dispatchEvent(new KeyboardEvent('keydown', {
       bubbles: true,
@@ -315,38 +319,38 @@ describe('Canvas host contributions', () => {
       ?.click();
     await Promise.resolve();
 
-    const canvasRoot = host.querySelector<HTMLElement>('.vc-canvas-host');
+    const canvasRoot = host.querySelector<HTMLElement>('.omnidraw-canvas-host');
     expect(canvasRoot).not.toBeNull();
     canvasRoot!.hasPointerCapture = () => false;
     [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Stop'))
       ?.dispatchEvent(pointerEvent('pointerdown', 1, 5));
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('0');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
     for (let index = 0; index < 19; index += 1) {
       canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, index));
     }
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('0');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 9));
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('0');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
 
     canvasRoot?.dispatchEvent(pointerEvent('pointerdown', 1, 10));
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 1, 11));
     canvasRoot?.dispatchEvent(pointerEvent('pointerup', 0, 12));
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('2');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
 
     for (let index = 0; index < 19; index += 1) {
       canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 20 + index));
     }
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('2');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
 
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 30));
     await Promise.resolve();
-    expect(host.querySelector('.vc-trace-metrics dd')?.textContent).toBe('2');
+    expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
   });
 
   test('does not install trace capture listeners without diagnostics', async () => {
@@ -362,14 +366,14 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies(),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     const rootCalls = addEventListener.mock.calls.filter((_, index) => {
       const target = addEventListener.mock.contexts[index];
       return (
         target instanceof HTMLDivElement
-        && target.classList.contains('vc-canvas-host')
+        && target.classList.contains('omnidraw-canvas-host')
       );
     });
     expect(rootCalls.some(([type]) => type === 'gotpointercapture')).toBe(false);
@@ -387,7 +391,7 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies({ toolbarContributions: [AI_CHAT_TOOL] }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     const event = new KeyboardEvent('keydown', {
@@ -405,7 +409,7 @@ describe('Canvas host contributions', () => {
     runtimeMocks.setActiveTool.mockClear();
     runtimeMocks.runtime.widgetContentFocused.mockReturnValue(true);
     const canvasSurface = host.querySelector<HTMLElement>(
-      '.vc-canvas-engine-host',
+      '.omnidraw-canvas-engine-host',
     );
     expect(canvasSurface).not.toBeNull();
     const canvasKeydown = vi.fn();
@@ -446,11 +450,11 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies({ toolbarContributions: [AI_CHAT_TOOL] }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     const canvasSurface = host.querySelector<HTMLElement>(
-      '.vc-canvas-engine-host',
+      '.omnidraw-canvas-engine-host',
     );
     const staleWidgetContent = document.createElement('div');
     staleWidgetContent.dataset.omnidrawPortalId = 'widget-1';
@@ -484,7 +488,7 @@ describe('Canvas host contributions', () => {
       }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     const event = new KeyboardEvent('keydown', {
@@ -536,10 +540,10 @@ describe('Canvas host contributions', () => {
       disposeA();
     };
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledTimes(2);
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledTimes(2);
     });
 
-    hostA.querySelector<HTMLElement>('.vc-canvas-host')?.dispatchEvent(
+    hostA.querySelector<HTMLElement>('.omnidraw-canvas-host')?.dispatchEvent(
       pointerEvent('pointerdown', 1, 10),
     );
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -551,7 +555,7 @@ describe('Canvas host contributions', () => {
     expect(activateA).toHaveBeenCalledOnce();
     expect(activateB).not.toHaveBeenCalled();
 
-    hostB.querySelector<HTMLElement>('.vc-canvas-host')?.dispatchEvent(
+    hostB.querySelector<HTMLElement>('.omnidraw-canvas-host')?.dispatchEvent(
       pointerEvent('pointerdown', 1, 20),
     );
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -581,7 +585,7 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies(),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     expect(addDocumentListener).toHaveBeenCalledWith(
@@ -626,19 +630,19 @@ describe('Canvas host contributions', () => {
       dependencies: dependencies({ themeService: instanceTheme }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
-    const canvasRoot = host.querySelector<HTMLElement>('.vc-canvas-host')!;
+    const canvasRoot = host.querySelector<HTMLElement>('.omnidraw-canvas-host')!;
 
     instanceTheme.setTheme(THEME_ID_DARK);
 
-    expect(canvasRoot.dataset.themeId).toBe(THEME_ID_DARK);
-    expect(canvasRoot.dataset.themeAppearance).toBe('dark');
-    expect(canvasRoot.style.getPropertyValue('--background')).toBe(
+    expect(canvasRoot.dataset.omnidrawThemeId).toBe(THEME_ID_DARK);
+    expect(canvasRoot.dataset.omnidrawThemeAppearance).toBe('dark');
+    expect(canvasRoot.style.getPropertyValue('--omnidraw-background')).toBe(
       instanceTheme.getTheme().ui.background,
     );
     expect(shell.dataset.themeId).toBeUndefined();
-    expect(shell.style.getPropertyValue('--background')).toBe('');
+    expect(shell.style.getPropertyValue('--omnidraw-background')).toBe('');
     expect(shell.classList.contains('dark')).toBe(false);
   });
 
@@ -649,14 +653,19 @@ describe('Canvas host contributions', () => {
       releaseShutdown = resolve;
     });
     const unregister = vi.fn();
-    runtimeMocks.runtime.shutdown.mockImplementationOnce(() => shutdownBlocked);
+    runtimeMocks.runtime.shutdownEffect.mockImplementationOnce(() => (
+      Effect.tryPromise({
+        try: () => shutdownBlocked,
+        catch: (cause) => cause,
+      })
+    ));
     const host = document.createElement('div');
     document.body.append(host);
     dispose = render(() => Canvas({
       canvas: { id: 'canvas-1' },
       hostScopeKey: 'test-scope',
       dependencies: dependencies({
-        runtimeRetirement: {
+        hostRetirement: {
           register: (retire) => {
             retireRuntime = retire;
             return unregister;
@@ -665,7 +674,7 @@ describe('Canvas host contributions', () => {
       }),
     }), host);
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.boot).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
     });
 
     let retirementComplete = false;
@@ -673,7 +682,7 @@ describe('Canvas host contributions', () => {
       retirementComplete = true;
     });
     await vi.waitFor(() => {
-      expect(runtimeMocks.runtime.shutdown).toHaveBeenCalledOnce();
+      expect(runtimeMocks.runtime.shutdownEffect).toHaveBeenCalledOnce();
     });
     expect(retirementComplete).toBe(false);
 

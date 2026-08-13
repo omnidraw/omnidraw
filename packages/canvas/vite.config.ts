@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import solid from 'vite-plugin-solid';
 import { defineConfig } from 'vite';
 
-const externalPackage = /^(?:@omnidraw\/cangine|@omnidraw\/canvas-contract|@omnidraw\/service-theme|lucide-solid|solid-js)(?:\/|$)/;
+const externalPackage = /^(?:@omnidraw\/cangine|@omnidraw\/canvas-contract|@omnidraw\/theme|effect|lucide-solid|solid-js)(?:\/|$)/;
 
 export default defineConfig(({ mode }) => ({
   base: './',
@@ -19,8 +19,6 @@ export default defineConfig(({ mode }) => ({
         index: resolve(__dirname, 'src/index.ts'),
         'debug-trace/index': resolve(__dirname, 'src/debug-trace/index.ts'),
         extension: resolve(__dirname, 'src/extension.ts'),
-        runtime: resolve(__dirname, 'src/runtime.ts'),
-        'services/index': resolve(__dirname, 'src/services/index.ts'),
         styles: resolve(__dirname, 'src/styles.css'),
         types: resolve(__dirname, 'src/types.ts'),
       },

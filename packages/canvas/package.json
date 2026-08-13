@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/canvas",
-  "version": "0.6.0",
+  "version": "1.1.0",
   "description": "Portable Solid canvas host, Cangine runtime, and optimistic document client for Omnidraw.",
   "type": "module",
   "license": "MIT",
@@ -43,16 +43,6 @@
       "import": "./dist/extension.js",
       "default": "./dist/extension.js"
     },
-    "./runtime": {
-      "types": "./dist/runtime.d.ts",
-      "import": "./dist/runtime.js",
-      "default": "./dist/runtime.js"
-    },
-    "./services": {
-      "types": "./dist/services/index.d.ts",
-      "import": "./dist/services/index.js",
-      "default": "./dist/services/index.js"
-    },
     "./types": {
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js",
@@ -60,7 +50,7 @@
     }
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.build.json && bun run ../../scripts/prepare-package-dist.ts",
+    "build": "vite build && tsc -p tsconfig.build.json && bun run scripts/prune-private-declarations.ts && bun run ../../scripts/prepare-package-dist.ts",
     "dev:bundle": "vite build --watch --mode kernel-watch",
     "dev:types": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "prepack": "bun run build",
@@ -71,8 +61,8 @@
   "dependencies": {
     "@omnidraw/cangine": "0.6.1",
     "@omnidraw/canvas-contract": "workspace:*",
-    "@omnidraw/service-theme": "workspace:*",
-    "@omnidraw/theme-contract": "workspace:*",
+    "@omnidraw/theme": "workspace:*",
+    "effect": "4.0.0-rc.108",
     "lucide-solid": "^1.24.0"
   },
   "peerDependencies": {

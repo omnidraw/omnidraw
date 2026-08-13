@@ -216,18 +216,17 @@ observed. Every draft change invalidates the catalog without making raw source
 presentable. Durable chat metadata lives in the `chats` table; transcripts stay
 files.
 
-## Package map
+## Ownership map
 
-| Package | Role |
+| Owner | Role |
 | --- | --- |
-| `packages/widget-contract` | Manifest v1, executable projection, release descriptor, runtime descriptor, canonical digests, Capsule identity, function descriptors. |
-| `packages/capsule-omnidraw` | Omnidraw policy bridge for Capsule: capabilities, budgets, signing, guest build, and the executable-projection artifact builder. |
-| `packages/function-runtime` | Direct descriptor-driven invocation, disposable child driver, schema validation, ephemeral write permits. |
-| `packages/resource-runtime` | Resource gateway/store contracts and local kv/secret/db providers. |
-| `packages/service-agent` | Widget root workspace, bounded catalog scans, atomic publication, ephemeral Preview orchestration, agent sessions and tools. |
-| `apps/cli` | Singleton composition: catalog, build service, preview service, function service, resource store, signing keys, host configuration. |
-| `packages/api` | oRPC contracts and handlers for catalog, Config, publication, placement, runtime load, preview, state, and functions. |
-| `packages/ui-ai-chat` | Sidebar catalog, Config inspector, runtime and preview mounting, function bridge, placement. |
+| `packages/sdk` | Portable manifest and artifact contracts, guest ABI, widget state/resource/function contracts, authoring entrypoints, and the browser host bridge that encapsulates Capsule. |
+| `packages/canvas-contract` | Serialized Canvas documents, widget-frame extension data, commands, queries, snapshots, events, versions, and canonical codecs. |
+| `packages/canvas` | Canvas rendering, optimistic browser document state, and the injected widget-extension host seam. |
+| `packages/component-ai-chat` | Reusable AI Chat UI, its injected transport-neutral port, and its narrow Canvas extension. |
+| `packages/theme` | Public theme values, namespaced CSS, tokens, and caller-scoped theme application helpers. |
+| `apps/backend` | Filesystem workspaces and catalog, build and publication, ephemeral Preview authority, trusted local function execution, resources, widget-instance state, signing, persistence, and private RPC handlers. |
+| `apps/frontend` | Product navigation and sidebar, widget placement, SDK browser-host composition, Preview and inspection UI, AI Chat adapters, and the multiplexed browser RPC client. |
 
 ## Invariants
 

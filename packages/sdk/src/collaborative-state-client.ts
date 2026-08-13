@@ -11,6 +11,7 @@ import type {
   TUnsubscribe,
   TOmnidrawJsonValue,
 } from './shared';
+import { SdkEffectRuntime } from './internal/effect-runtime';
 
 export type TCollaborativeStateSnapshot<
   TValue extends TOmnidrawJsonValue = TOmnidrawJsonValue,
@@ -190,6 +191,7 @@ export async function changeCollaborativeState<
 function startCollaborativeStateSubscription<
   TValue extends TOmnidrawJsonValue,
 >(
+  runtime: SdkEffectRuntime,
   selector: TWidgetCapabilitySelector,
   listener: (value: TValue) => void,
   options: TCollaborativeStateSubscriptionOptions,
@@ -221,6 +223,8 @@ function startCollaborativeStateSubscription<
   );
   let active = true;
   let lastVersion: number | undefined;
+  let taskFinished = false;
+  let cancelTask = (): void => undefined;
 
   const unsubscribe = (): void => {
     if (!active) return;
@@ -229,6 +233,7 @@ function startCollaborativeStateSubscription<
     try {
       stream.cancel();
     } finally {
+      if (!taskFinished) cancelTask();
       onStopped();
     }
   };
@@ -240,7 +245,9 @@ function startCollaborativeStateSubscription<
     throw error;
   }
 
-  void (async (): Promise<void> => {
+  cancelTask = runtime.fork(async (signal): Promise<void> => {
+    const cancelStream = (): void => stream.cancel();
+    signal.addEventListener('abort', cancelStream, { once: true });
     try {
       while (active) {
         const next = await stream.next();
@@ -258,9 +265,18 @@ function startCollaborativeStateSubscription<
         }
       }
     } finally {
+      taskFinished = true;
+      signal.removeEventListener('abort', cancelStream);
       unsubscribe();
     }
-  })();
+  }, (error) => {
+    if (!active) return;
+    try {
+      options.onError?.(error);
+    } catch {
+      // Error observers are isolated from subscription cleanup.
+    }
+  });
 
   return unsubscribe;
 }
@@ -271,11 +287,13 @@ export function subscribeCollaborativeState<
   listener: (value: TValue) => void,
   options: TCollaborativeStateSubscriptionOptions = {},
 ): TUnsubscribe {
+  const runtime = new SdkEffectRuntime();
   return startCollaborativeStateSubscription(
+    runtime,
     COLLABORATIVE_STATE_CAPABILITY,
     listener,
     options,
-    () => undefined,
+    () => { void runtime.dispose(); },
   );
 }
 
@@ -289,6 +307,7 @@ export function createCollaborativeStateClient<
   const capability = COLLABORATIVE_STATE_CAPABILITY;
   const pendingCalls = new Set<TAbortRelay>();
   const subscriptions = new Set<TUnsubscribe>();
+  const runtime = new SdkEffectRuntime();
   let disposed = false;
 
   const runCall = async <TResult>(
@@ -347,6 +366,7 @@ export function createCollaborativeStateClient<
         subscriptions.delete(unsubscribe);
       };
       unsubscribe = startCollaborativeStateSubscription(
+        runtime,
         capability,
         listener,
         options,
@@ -362,6 +382,7 @@ export function createCollaborativeStateClient<
       for (const unsubscribe of [...subscriptions]) unsubscribe();
       pendingCalls.clear();
       subscriptions.clear();
+      void runtime.dispose();
     },
   });
 }

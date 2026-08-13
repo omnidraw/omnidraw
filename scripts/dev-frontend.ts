@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @file Runs the frontend together with live canvas-kernel package builds.
+ * @file Runs the frontend with live builds for its public UI dependencies.
  */
 
 import path from "node:path"
@@ -71,18 +71,13 @@ process.on("SIGTERM", () => {
 
 try {
   processes.push(spawnDevProcess({
-    name: "theme-contract",
-    cwd: path.join(rootDir, "packages/theme-contract"),
-    command: [bunExec, "run", "dev"],
-  }))
-  processes.push(spawnDevProcess({
     name: "canvas-contract",
     cwd: path.join(rootDir, "packages/canvas-contract"),
     command: [bunExec, "run", "dev"],
   }))
   processes.push(spawnDevProcess({
-    name: "service-theme",
-    cwd: path.join(rootDir, "packages/service-theme"),
+    name: "theme",
+    cwd: path.join(rootDir, "packages/theme"),
     command: [bunExec, "run", "dev"],
   }))
   processes.push(spawnDevProcess({
@@ -94,6 +89,16 @@ try {
     name: "canvas-types",
     cwd: path.join(rootDir, "packages/canvas"),
     command: [bunExec, "run", "dev:types"],
+  }))
+  processes.push(spawnDevProcess({
+    name: "ai-chat-bundle",
+    cwd: path.join(rootDir, "packages/component-ai-chat"),
+    command: [bunExec, "x", "vite", "build", "--watch", "--mode", "dev-watch"],
+  }))
+  processes.push(spawnDevProcess({
+    name: "ai-chat-types",
+    cwd: path.join(rootDir, "packages/component-ai-chat"),
+    command: [bunExec, "x", "tsc", "-p", "tsconfig.build.json", "--watch", "--preserveWatchOutput"],
   }))
   processes.push(spawnDevProcess({
     name: "frontend",

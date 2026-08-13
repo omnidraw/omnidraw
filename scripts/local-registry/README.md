@@ -21,8 +21,8 @@ From any Omnidraw worktree:
 ```sh
 bun run registry:bootstrap -- \
   --cangine /path/to/omnidraw-cangine-0.6.1.tgz \
-  --capsule /path/to/omnidraw-capsule-0.11.0.tgz
-bun run registry:publish:widgets
+  --capsule /path/to/omnidraw-capsule-0.14.0.tgz
+bun run registry:publish:sdk
 bun install --frozen-lockfile
 ```
 
@@ -33,24 +33,24 @@ tarball, use `bun run link:local -- capsule cangine` (see "Opt-in cross-repo
 local linking" below) — `bootstrap` and `link:local` both end up publishing
 into the same registry, they just differ in where the bytes come from.
 
-`registry:publish:widgets` discovers the current SDK's versioned workspace
+`registry:publish:sdk` discovers the current SDK's qualified workspace
 dependency closure, then makes each exact version available in dependency
-order. Today that is `resource-runtime`, `widget-contract`, then `sdk`. A
+order. Today that closure is only `sdk`; Capsule is an exact registry dependency. A
 version already available from npmjs is left on the proxy path; an unpublished
 workspace version is built, packed, and published locally. Verdaccio therefore
 serves local-only versions first and proxies npmjs for everything else.
 
 **`bun run dev` does not run this on its own (D9).** Every in-workspace
-consumer (`apps/cli`, `apps/frontend`, `apps/capsule-browser-acceptance`)
+consumer (`apps/backend` or `apps/frontend`)
 resolves `@omnidraw/*` via plain `workspace:*` linking, never through the
 local registry — the only real consumer is a widget-author's isolated
-`npm ci`, and `apps/cli`'s `LocalWidgetPackageRegistrySync` already syncs this
+`npm ci`, and the backend's `LocalWidgetPackageRegistrySync` already syncs this
 closure lazily, exactly once, the first time that's actually requested during
-a dev session. Run `bun run registry:publish:widgets` yourself to warm the
+a dev session. Run `bun run registry:publish:sdk` yourself to warm the
 registry ahead of time if you want to.
 
 A locally occupied name/version whose stored bytes differ from what a fresh
-`registry:publish:widgets` would produce is **not** rejected: this sync path
+`registry:publish:sdk` would produce is **not** rejected: this sync path
 always publishes with `allowOverwrite: true` (see `publishTarball` /
 `publishDecision` in `../local-registry.mjs`), so it unpublishes and replaces
 the conflicting local version automatically. Editing a workspace package's
@@ -62,8 +62,7 @@ strict immutability because they install externally-produced, known-good
 artifacts rather than this checkout's own in-flux source.
 
 Concurrent development processes serialize publication through the shared
-registry state directory. `registry:publish:sdk` remains as a compatibility
-alias. Lifecycle commands are `registry:start`, `registry:ensure`,
+registry state directory. Lifecycle commands are `registry:start`, `registry:ensure`,
 `registry:status`, and `registry:stop`. Use `registry:start:foreground` to
 keep Verdaccio attached to the current terminal and stop it with Ctrl+C.
 

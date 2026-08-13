@@ -14,7 +14,7 @@ import {
   WIDGET_BUILD_RECEIPT_PATH,
   fnWidgetBuildReceiptIdentityMatches,
   parseWidgetBuildReceiptJson,
-} from '@omnidraw/widget-contract';
+} from '../src/artifact';
 
 const repositoryRoot = resolve(import.meta.dir, '../../..');
 const cliPath = join(repositoryRoot, 'packages/sdk/dist/cli.js');
@@ -36,8 +36,8 @@ async function createProject(root: string): Promise<void> {
     'dir',
   );
   await symlink(
-    await storedPackage('@omnidraw+capsule@0.14.0', '@omnidraw/capsule'),
-    join(root, 'node_modules/@omnidraw/capsule'),
+    join(repositoryRoot, 'packages/sdk'),
+    join(root, 'node_modules/@omnidraw/sdk'),
     'dir',
   );
   await writeFile(join(root, 'package.json'), `${JSON.stringify({
@@ -45,7 +45,7 @@ async function createProject(root: string): Promise<void> {
     private: true,
     type: 'module',
     scripts: { build: 'omnidraw-widget build .' },
-    dependencies: { '@omnidraw/capsule': '0.14.0', '@omnidraw/sdk': '0.9.1' },
+    dependencies: { '@omnidraw/sdk': '0.7.0' },
     devDependencies: { vite: '8.1.4' },
   }, null, 2)}\n`);
   await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify({

@@ -2,6 +2,7 @@ import type {
   TGroupNode,
   IInfiniteCanvasEngine,
   TImageNode,
+  TPortalRegistration,
   TRectNode,
   TSceneNode,
   TSceneSnapshot,
@@ -17,19 +18,24 @@ import type {
   TPreparedImageImportRequest,
 } from '@omnidraw/cangine/editor';
 import {
+  CANVAS_WIDGET_EXTENSION_KEY,
   CANVAS_IMAGE_EXTENSION_KEY,
   CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
-  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
   type TCanvasCommand,
   type TCanvasDocumentTransport,
   type TCanvasEvent,
   type TCanvasItemSnapshot,
   type TCanvasItemsChangedEvent,
   type TCanvasSnapshot,
+  type TWidgetFrameNode,
 } from '@omnidraw/canvas-contract';
-import { BUILTIN_THEMES } from '@omnidraw/service-theme';
+import { BUILTIN_THEMES } from '@omnidraw/theme';
 import { describe, expect, test, vi } from 'vitest';
 import { fnProjectSemanticCanvasNode } from '../../src/fn.semantic-canvas-style';
+import {
+  CANVAS_RUNTIME_CONTENT_LAYER_ID,
+} from '../../src/internal/cangine-contract-adapter';
+import { CanvasExtensionBridge } from '../../src/internal/CanvasExtensionBridge';
 import {
   CanvasDocumentService as CanvasDocumentServiceImplementation,
   type TCanvasDocumentObservation,
@@ -101,6 +107,26 @@ function group(id = 'group-a'): TGroupNode {
   };
 }
 
+function chatWidget(id = 'widget-live'): TWidgetFrameNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'm',
+    kind: 'widget-frame',
+    transform,
+    size: { width: 360, height: 280 },
+    title: 'AI Chat',
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        type: 'ui-widget',
+        kind: 'ai-chat',
+        payload: { sessionId: 'session-live' },
+      },
+    },
+  };
+}
+
 function projectRectRed(red: number): (node: TSceneNode) => TSceneNode {
   return (node) => (
     node.kind === 'rect'
@@ -118,7 +144,7 @@ function projectRectRed(red: number): (node: TSceneNode) => TSceneNode {
 function runtimeNode<T extends TSceneNode>(node: T): T {
   return {
     ...node,
-    parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+    parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
   };
 }
 
@@ -130,8 +156,8 @@ function item(
     id: node.id,
     item: node,
     itemRevision,
-    createdAtMs: 1,
-    updatedAtMs: itemRevision,
+    createdAtSec: '2026-01-01 00:00:00',
+    updatedAtSec: '2026-01-01 00:00:00',
   };
 }
 
@@ -140,6 +166,7 @@ function snapshot(
   revision = 0,
 ): TCanvasSnapshot {
   return {
+    schemaVersion: '1.0.0',
     canvasId: 'canvas-a',
     revision,
     items,
@@ -219,6 +246,8 @@ function fakeEngine(): Readonly<{
   replaceRegistrations: ReturnType<typeof vi.fn>;
   preloadRegistrations: ReturnType<typeof vi.fn>;
   destroyRegistrations: ReturnType<typeof vi.fn>;
+  registerPortal: ReturnType<typeof vi.fn>;
+  portalHost: HTMLDivElement;
   seedResource(resourceId: string): void;
   rejectNextApply(): void;
   rejectNextRegistrationReplace(): void;
@@ -240,6 +269,10 @@ function fakeEngine(): Readonly<{
   let applyHook: (
     (commands: readonly TSerializedSceneCommand[]) => void
   ) | null = null;
+  const sceneListeners = new Set<() => void>();
+  const portalListeners = new Set<() => void>();
+  const portalHost = document.createElement('div');
+  let portalCleanup: (() => void | Promise<void>) | null = null;
   const apply = vi.fn((commands: readonly TSerializedSceneCommand[]) => {
     applyHook?.(commands);
     if (rejectApply) {
@@ -250,6 +283,7 @@ function fakeEngine(): Readonly<{
     if (reduction.state !== sceneState) {
       sceneState = reduction.state;
       revision += nextApplyRevisionDelta;
+      for (const listener of [...sceneListeners]) listener();
     }
     nextApplyRevisionDelta = 1;
   });
@@ -261,6 +295,7 @@ function fakeEngine(): Readonly<{
     if (reduction.state === sceneState) return;
     sceneState = reduction.state;
     revision += 1;
+    for (const listener of [...sceneListeners]) listener();
   });
   const retain = vi.fn((resourceId: string) => {
     if (!resourceIds.has(resourceId)) throw new Error('resource is not registered');
@@ -287,6 +322,31 @@ function fakeEngine(): Readonly<{
       snapshot: () => sceneReductionStateSnapshot(sceneState),
       apply,
       replace,
+      subscribe(listener: () => void) {
+        sceneListeners.add(listener);
+        return () => { sceneListeners.delete(listener); };
+      },
+    },
+    portals: {
+      register: vi.fn((registration: TPortalRegistration) => {
+        const mounted = registration.mount({
+          portalId: registration.portalId,
+          host: portalHost,
+          engine,
+        });
+        void Promise.resolve(mounted).then((cleanup) => {
+          portalCleanup = cleanup ?? null;
+        });
+        return () => {
+          const cleanup = portalCleanup;
+          portalCleanup = null;
+          void cleanup?.();
+        };
+      }),
+      subscribe(listener: () => void) {
+        portalListeners.add(listener);
+        return () => { portalListeners.delete(listener); };
+      },
     },
     resources: {
       createRegistrationOwner: () => ({
@@ -303,6 +363,7 @@ function fakeEngine(): Readonly<{
       release,
     },
   } as unknown as IInfiniteCanvasEngine;
+  const registerPortal = engine.portals.register as ReturnType<typeof vi.fn>;
   return {
     engine,
     apply,
@@ -312,6 +373,8 @@ function fakeEngine(): Readonly<{
     replaceRegistrations,
     preloadRegistrations,
     destroyRegistrations,
+    registerPortal,
+    portalHost,
     seedResource: (resourceId) => resourceIds.add(resourceId),
     rejectNextApply: () => {
       rejectApply = true;
@@ -343,6 +406,7 @@ function transportWith(
   return {
     transport: {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: executeSpy,
       subscribe: vi.fn(() => queue.iterable),
     },
@@ -374,7 +438,7 @@ function expectProjectionMatchesReadModel(
 ): void {
   const projected = engine.scene.snapshot();
   const expectedIds = [
-    CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+    CANVAS_RUNTIME_CONTENT_LAYER_ID,
     ...service.items().map((snapshot) => snapshot.id),
   ].sort();
   expect(projected.nodes.map((node) => node.id).sort()).toEqual(expectedIds);
@@ -384,6 +448,90 @@ function expectProjectionMatchesReadModel(
 }
 
 describe('CanvasDocumentService', () => {
+  test('mounts accepted widget content immediately after acknowledgement without reload', async () => {
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(snapshot([]), async () => acknowledgement.promise);
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-widget-live',
+    });
+    await service.start(fake.engine);
+
+    let transaction = 0;
+    const bridge = new CanvasExtensionBridge({
+      config: {
+        canvasId: 'canvas-a',
+        container: document.createElement('div'),
+        notification: {
+          showError: vi.fn(),
+          showInfo: vi.fn(),
+          showSuccess: vi.fn(),
+        },
+      },
+      document: service,
+      editor: {
+        commitSceneMutation(request) {
+          transaction += 1;
+          service.commit(mutation(
+            fake.engine,
+            `extension-widget-${transaction}`,
+            request.commands,
+            request.commands.flatMap((command) => (
+              command.type === 'upsert' ? [command.node.id] : [command.nodeId]
+            )),
+            request.source,
+          ));
+        },
+        setSelection: vi.fn(),
+      } as never,
+      engine: fake.engine,
+      trace: null,
+      shell: {
+        state: () => ({ kind: 'canvas', widgetId: null }),
+        owns: () => true,
+        subscribe: () => () => undefined,
+        registerOverlay: () => () => undefined,
+      },
+      subscribeWidgetActions: () => () => undefined,
+      onError: vi.fn(),
+    });
+    bridge.context.widgets.register({
+      id: 'ai-chat-live',
+      match: (node) => node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY]
+        !== undefined,
+      mount: ({ container }) => {
+        const content = container.ownerDocument.createElement('div');
+        content.dataset.testWidgetContent = 'mounted';
+        container.append(content);
+        return () => content.remove();
+      },
+    });
+
+    bridge.context.document.commit({
+      source: 'extension:test-widget-live',
+      commands: [{ type: 'upsert', node: chatWidget() }],
+    });
+
+    expect(fake.registerPortal).not.toHaveBeenCalled();
+    expect(fake.portalHost.querySelector('[data-test-widget-content="mounted"]'))
+      .toBeNull();
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    acknowledgement.resolve(event('command-widget-live', 1, [
+      item(chatWidget() as unknown as TSceneNode),
+    ]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(fake.registerPortal).toHaveBeenCalledTimes(1);
+    expect(fake.portalHost.querySelector('[data-test-widget-content="mounted"]'))
+      .not.toBeNull();
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+
+    await bridge.dispose();
+    await service.dispose();
+  });
+
   test('retains the latest projector while the initial snapshot is loading', async () => {
     const authored = rect('semantic');
     const snapshotGate = deferred<TCanvasSnapshot>();
@@ -391,6 +539,7 @@ describe('CanvasDocumentService', () => {
     const getSnapshot = vi.fn(async () => snapshotGate.promise);
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('not used');
       }),
@@ -820,7 +969,7 @@ describe('CanvasDocumentService', () => {
       commands: [{
         type: 'reparent',
         nodeId: 'missing',
-        parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+        parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       }],
       affectedNodeIds: ['missing'],
     })).toThrow('Stale editor transaction basis');
@@ -830,10 +979,10 @@ describe('CanvasDocumentService', () => {
       'synthetic-layer',
       [{
         type: 'remove',
-        nodeId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+        nodeId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
         descendants: 'remove',
       }],
-      [CANVAS_SYNTHETIC_CONTENT_LAYER_ID],
+      [CANVAS_RUNTIME_CONTENT_LAYER_ID],
     ))).toThrow('Editor mutations cannot target runtime canvas nodes.');
 
     fake.rejectNextApply();
@@ -1141,6 +1290,7 @@ describe('CanvasDocumentService', () => {
     const getSnapshot = vi.fn(async () => currentSnapshot);
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('unexpected execute');
       }),
@@ -1433,6 +1583,7 @@ describe('CanvasDocumentService', () => {
       .mockImplementationOnce(async () => recoverySnapshot.promise);
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('server rejected');
       }),
@@ -1482,6 +1633,7 @@ describe('CanvasDocumentService', () => {
       .mockImplementationOnce(async () => recoverySnapshot.promise);
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('mismatched projection must not execute');
       }),
@@ -1531,6 +1683,7 @@ describe('CanvasDocumentService', () => {
     });
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('server rejected');
       }),
@@ -1599,6 +1752,7 @@ describe('CanvasDocumentService', () => {
     const queue = eventQueue();
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => {
         throw new Error('unexpected execute');
       }),
@@ -1651,6 +1805,7 @@ describe('CanvasDocumentService', () => {
     const getSnapshot = vi.fn(async () => authoritative);
     const transport: TCanvasDocumentTransport = {
       getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => neverSettles.promise),
       subscribe: vi.fn(() => queue.iterable),
     };
@@ -1766,11 +1921,11 @@ describe('CanvasDocumentService', () => {
     expect(service.item(child.id)?.item.parentId).toBeNull();
     expect(service.node(parent.id)).toBeNull();
     expect(service.node(child.id)?.parentId).toBe(
-      CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      CANVAS_RUNTIME_CONTENT_LAYER_ID,
     );
     expect(fake.engine.scene.get(parent.id)).toBeNull();
     expect(fake.engine.scene.get(child.id)?.parentId).toBe(
-      CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      CANVAS_RUNTIME_CONTENT_LAYER_ID,
     );
     await service.dispose();
   });
@@ -1870,7 +2025,7 @@ describe('CanvasDocumentService', () => {
     const node: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -1912,7 +2067,7 @@ describe('CanvasDocumentService', () => {
     const imageA: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -1977,7 +2132,7 @@ describe('CanvasDocumentService', () => {
     const imageNode: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'B',
       transform,
       resourceId: 'resource-a',
@@ -2050,7 +2205,7 @@ describe('CanvasDocumentService', () => {
     const imageNode: TImageNode = {
       ...existingImage,
       id: 'image-new',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'B',
       extensions: undefined,
     };
@@ -2102,7 +2257,7 @@ describe('CanvasDocumentService', () => {
     const imageNode: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'B',
       transform,
       resourceId: 'resource-a',
@@ -2165,7 +2320,7 @@ describe('CanvasDocumentService', () => {
     const node: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2260,7 +2415,7 @@ describe('CanvasDocumentService', () => {
     const node: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2325,7 +2480,7 @@ describe('CanvasDocumentService', () => {
     const imageA: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2380,6 +2535,93 @@ describe('CanvasDocumentService', () => {
     await service.dispose();
   });
 
+  test('interrupts a partial prepared upload and deletes every completed upload on disposal', async () => {
+    const secondUpload = deferred<Readonly<{ url: string }>>();
+    const imagePort = {
+      uploadImage: vi.fn()
+        .mockResolvedValueOnce({ url: 'https://media.test/image-a.png' })
+        .mockImplementationOnce(async () => secondUpload.promise),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('interrupted prepared import must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    fake.seedResource('resource-b');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const imageA: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const imageB: TImageNode = {
+      ...imageA,
+      id: 'image-b',
+      resourceId: 'resource-b',
+      orderKey: 'B',
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'upsert', node: imageA },
+          { type: 'upsert', node: imageB },
+        ],
+        [imageA.id, imageB.id],
+      ),
+      images: [
+        {
+          node: imageA,
+          blob: new Blob(['image-a'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+        {
+          node: imageB,
+          blob: new Blob(['image-b'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+      ],
+    });
+    await vi.waitFor(() => expect(imagePort.uploadImage).toHaveBeenCalledTimes(2));
+
+    await service.dispose();
+
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(imagePort.deleteImage).toHaveBeenCalledTimes(1);
+    expect(imagePort.deleteImage).toHaveBeenCalledWith({
+      url: 'https://media.test/image-a.png',
+    });
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-a',
+      'omnidraw:document-images',
+    );
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-b',
+      'omnidraw:document-images',
+    );
+  });
+
   test('retains promoted media across resync while its persistence outcome is unknown', async () => {
     const acknowledgement = deferred<TCanvasItemsChangedEvent>();
     const imagePort = {
@@ -2408,7 +2650,7 @@ describe('CanvasDocumentService', () => {
     const imageNode: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2494,6 +2736,7 @@ describe('CanvasDocumentService', () => {
     const queue = eventQueue();
     const transport: TCanvasDocumentTransport = {
       getSnapshot: vi.fn(async () => snapshot([])),
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async (command) => {
         executed.push(command);
         const insertion = command.operations.find(
@@ -2531,7 +2774,7 @@ describe('CanvasDocumentService', () => {
     const node: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2643,7 +2886,7 @@ describe('CanvasDocumentService', () => {
     const original: TImageNode = {
       id: 'image-a',
       kind: 'image',
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       orderKey: 'A',
       transform,
       resourceId: 'resource-a',
@@ -2820,6 +3063,7 @@ describe('CanvasDocumentService', () => {
     };
     const transport: TCanvasDocumentTransport = {
       getSnapshot: vi.fn(async () => snapshot([])),
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
       execute: vi.fn(async () => event('unexpected', 1, [])),
       subscribe: () => ({
         [Symbol.asyncIterator]: () => ({

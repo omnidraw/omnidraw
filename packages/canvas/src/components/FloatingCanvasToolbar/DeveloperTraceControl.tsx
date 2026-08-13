@@ -91,22 +91,22 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
 
   return (
     <>
-      <div class="vc-canvas-toolbar-divider" />
-      <div ref={controlRef} class="vc-trace-control">
+      <div class="omnidraw-canvas-toolbar-divider" />
+      <div ref={controlRef} class="omnidraw-trace-control">
         <button
           type="button"
-          class="vc-toolbar-button vc-trace-button"
+          class="omnidraw-toolbar-button omnidraw-trace-button"
           classList={{
-            'vc-trace-button--recording': state().status === 'recording',
-            'vc-trace-button--marked': state().status === 'marked',
-            'vc-toolbar-button--active': open(),
+            'omnidraw-trace-button--recording': state().status === 'recording',
+            'omnidraw-trace-button--marked': state().status === 'marked',
+            'omnidraw-toolbar-button--active': open(),
           }}
           aria-label={`Developer trace: ${state().status}`}
           aria-expanded={open()}
           title="Developer reproduction trace"
           onClick={() => setOpen((value) => !value)}
         >
-          <span class="vc-toolbar-button__icon">
+          <span class="omnidraw-toolbar-button__icon">
             <Show when={state().status !== 'recording'} fallback={<Radio size={14} />}>
               <Bug size={14} />
             </Show>
@@ -114,21 +114,21 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
         </button>
         <Show when={open()}>
           <section
-            class="vc-trace-panel"
+            class="omnidraw-trace-panel"
             aria-label="Developer reproduction trace"
             on:pointerdown={(event) => event.stopPropagation()}
           >
             <header>
               <div>
                 <strong>DEV TRACE</strong>
-                <span class={`vc-trace-status vc-trace-status--${state().status}`}>
+                <span class={`omnidraw-trace-status omnidraw-trace-status--${state().status}`}>
                   {state().status}
                 </span>
               </div>
               <time>{formatElapsed(state().elapsedMs)}</time>
             </header>
             <Show when={state().status === 'idle'}>
-              <div class="vc-trace-actions">
+              <div class="omnidraw-trace-actions">
                 <button
                   type="button"
                   disabled={!state().canStart || channels().length === 0}
@@ -140,7 +140,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                   <Radio size={13} /> Record
                 </button>
               </div>
-              <div class="vc-trace-mode">
+              <div class="omnidraw-trace-mode">
                 <button
                   type="button"
                   classList={{ active: !advanced() }}
@@ -159,7 +159,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                   Advanced
                 </button>
               </div>
-              <p class="vc-trace-mode-description">
+              <p class="omnidraw-trace-mode-description">
                 <Show
                   when={!advanced()}
                   fallback="Selected raw technical channels."
@@ -169,7 +169,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                 </Show>
               </p>
               <Show when={advanced()}>
-                <fieldset class="vc-trace-channels">
+                <fieldset class="omnidraw-trace-channels">
                   <legend>Technical channels</legend>
                   <For each={REPRODUCTION_TRACE_CHANNELS}>
                     {(channel) => (
@@ -187,7 +187,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
               </Show>
             </Show>
             <Show when={state().status === 'recording'}>
-              <div class="vc-trace-actions">
+              <div class="omnidraw-trace-actions">
                 <button type="button" onClick={() => props.trace.stop()}>
                   <CircleStop size={13} /> Stop
                 </button>
@@ -201,17 +201,17 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
               </div>
             </Show>
             <Show when={state().status === 'marked'}>
-              <div class="vc-trace-actions">
+              <div class="omnidraw-trace-actions">
                 <button type="button" onClick={() => props.trace.stop()}>
                   <CircleStop size={13} /> Stop now
                 </button>
-                <span class="vc-trace-tail-note" aria-live="polite">
+                <span class="omnidraw-trace-tail-note" aria-live="polite">
                   Capturing 5s tail…
                 </span>
               </div>
             </Show>
             <Show when={state().status !== 'idle'}>
-              <dl class="vc-trace-metrics">
+              <dl class="omnidraw-trace-metrics">
                 <div><dd>{state().retainedEvents}</dd><dt>events</dt></div>
                 <div><dd>{state().omittedEvents}</dd><dt>dropped</dt></div>
                 <div><dd>{formatBytes(state().estimatedBytes)}</dd><dt>raw</dt></div>
@@ -241,7 +241,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                   <Trash2 size={13} /> Clear
                 </button>
               </footer>
-              <p class="vc-trace-new-hint">
+              <p class="omnidraw-trace-new-hint">
                 Clear to record again.
               </p>
             </Show>

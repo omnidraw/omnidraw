@@ -42,4 +42,6 @@ COPY . .
 RUN test ! -e node_modules \
     && bun install --frozen-lockfile
 
+RUN bunx playwright@1.61.1 install --with-deps chromium
+
 CMD ["bun", "run", "scripts/test-final-acceptance.ts", "--clean-snapshot"]

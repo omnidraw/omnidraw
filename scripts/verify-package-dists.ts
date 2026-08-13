@@ -14,6 +14,10 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
+import {
+  assertFinalWorkspaceSurface,
+  readQualifiedPublicPackages,
+} from './public-packages'
 
 type TManifest = Record<string, unknown> & {
   name?: string
@@ -34,7 +38,6 @@ export type TPackage = Readonly<{
 type TPacked = Readonly<TPackage & { tarball: string }>
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
-const PACKAGES_DIRECTORY = join(REPOSITORY_ROOT, 'packages')
 const FORBIDDEN_PROTOCOL = /['"](?:workspace|catalog|file|link):/
 const TEXT_FILE = /\.(?:css|d\.ts|js|json|map|md|txt)$/
 
@@ -69,21 +72,13 @@ async function run(command: readonly string[], cwd: string): Promise<string> {
 }
 
 async function versionedPackages(): Promise<readonly TPackage[]> {
-  const entries = await readdir(PACKAGES_DIRECTORY, { withFileTypes: true })
-  const packages: TPackage[] = []
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const directory = join(PACKAGES_DIRECTORY, entry.name)
-    const manifestPath = join(directory, 'package.json')
-    if (!await pathExists(manifestPath)) continue
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as TManifest
-    if (manifest.version === undefined) continue
-    if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
-      throw new Error(`${relative(REPOSITORY_ROOT, manifestPath)} has an invalid release identity.`)
-    }
-    packages.push({ directory, manifest, name: manifest.name, version: manifest.version })
-  }
-  return packages.sort((left, right) => left.name.localeCompare(right.name))
+  await assertFinalWorkspaceSurface(REPOSITORY_ROOT)
+  return (await readQualifiedPublicPackages(REPOSITORY_ROOT)).map((entry) => ({
+    directory: entry.directory,
+    manifest: entry.manifest,
+    name: entry.name,
+    version: entry.version,
+  }))
 }
 
 function dependencyNames(manifest: TManifest): readonly string[] {
@@ -272,8 +267,15 @@ async function assertCleanConsumer(packed: readonly TPacked[], temporaryRoot: st
   }, null, 2)}\n`)
   await run(['bun', 'install', '--ignore-scripts'], consumer)
 
+  // The two Solid renderers are exercised from their packed tarballs by the
+  // real browser-composition gate. Importing their browser-compiled entrypoints
+  // under Bun/Node selects Solid's intentionally non-DOM server condition.
+  const browserOnlyPackages = new Set([
+    '@omnidraw/canvas',
+    '@omnidraw/component-ai-chat',
+  ])
   const imports = packed.flatMap((entry) => (
-    entry.name === '@omnidraw/canvas'
+    browserOnlyPackages.has(entry.name)
       ? []
       : publicJsSubpaths(entry.manifest).filter((specifier) => (
         entry.name !== '@omnidraw/sdk' || specifier === '@omnidraw/sdk/server'

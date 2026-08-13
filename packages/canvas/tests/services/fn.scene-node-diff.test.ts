@@ -1,8 +1,8 @@
 import type { TPathNode, TRectNode, TWidgetFrameNode } from '@omnidraw/cangine';
 import { describe, expect, test } from 'vitest';
 import {
-  CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
-} from '@omnidraw/canvas-contract/CONSTANTS';
+  CANVAS_RUNTIME_CONTENT_LAYER_ID,
+} from '../../src/internal/cangine-contract-adapter';
 import {
   fnApplySceneNodePatches,
   fnAuthoredCanvasNode,
@@ -111,7 +111,7 @@ describe('scene node diff', () => {
     const authored = rect();
     const runtime = fnRuntimeCanvasNode(authored);
 
-    expect(runtime.parentId).toBe(CANVAS_SYNTHETIC_CONTENT_LAYER_ID);
+    expect(runtime.parentId).toBe(CANVAS_RUNTIME_CONTENT_LAYER_ID);
     expect(fnAuthoredCanvasNode(runtime)).toEqual(authored);
     expect(authored.parentId).toBeNull();
   });
@@ -154,7 +154,7 @@ describe('scene node diff', () => {
     const runtime = fnRuntimeCanvasNode(authored);
 
     expect(runtime).toMatchObject({
-      parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
       portal: { portalId: 'omnidraw:widget:widget-a' },
     });
     expect(fnAuthoredCanvasNode(runtime)).toEqual(authored);

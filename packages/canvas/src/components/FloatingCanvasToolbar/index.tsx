@@ -67,21 +67,21 @@ function ToolbarActionButton(props: TToolbarActionButtonProps) {
   return (
     <button
       type="button"
-      class="vc-toolbar-button"
+      class="omnidraw-toolbar-button"
       classList={{
-        'vc-canvas-toolbar-persistent-action': props.persistent === true,
-        'vc-toolbar-button--active': props.contribution.active?.() ?? false,
-        'vc-toolbar-button--attention': props.contribution.attention?.() ?? false,
+        'omnidraw-canvas-toolbar-persistent-action': props.persistent === true,
+        'omnidraw-toolbar-button--active': props.contribution.active?.() ?? false,
+        'omnidraw-toolbar-button--attention': props.contribution.attention?.() ?? false,
       }}
       aria-label={props.contribution.label}
       aria-pressed={props.contribution.active?.()}
       title={props.contribution.label}
       onClick={props.contribution.onActivate}
     >
-      <span class="vc-toolbar-button__icon">
+      <span class="omnidraw-toolbar-button__icon">
         <props.contribution.Icon size={14} />
       </span>
-      <span class="vc-toolbar-button__shortcuts">
+      <span class="omnidraw-toolbar-button__shortcuts">
         <For each={props.contribution.shortcuts}>
           {(shortcut) => <span>{shortcut.label}</span>}
         </For>
@@ -110,7 +110,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
 
   return (
     <div
-      class="vc-canvas-toolbar-anchor"
+      class="omnidraw-canvas-toolbar-anchor"
       on:pointerdown={(event) => event.stopPropagation()}
       on:pointermove={(event) => event.stopPropagation()}
       on:pointerup={(event) => event.stopPropagation()}
@@ -119,10 +119,10 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
       on:keydown={(event) => event.stopPropagation()}
       on:keyup={(event) => event.stopPropagation()}
     >
-      <div class="vc-canvas-toolbar-panel">
+      <div class="omnidraw-canvas-toolbar-panel">
         <button
           type="button"
-          class="vc-canvas-toolbar-collapse"
+          class="omnidraw-canvas-toolbar-collapse"
           aria-expanded={!collapsed()}
           title={collapsed() ? 'Expand tools' : 'Collapse tools'}
           onClick={() => setCollapsed((value) => !value)}
@@ -130,7 +130,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
           TOOLS
         </button>
         <Show when={!collapsed()}>
-          <div class="vc-canvas-toolbar-list">
+          <div class="omnidraw-canvas-toolbar-list">
             <ToolButton
               {...HAND_TOOL}
               active={props.activeToolId === HAND_TOOL.id}
@@ -163,24 +163,24 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
             </For>
             <button
               type="button"
-              class="vc-toolbar-button"
+              class="omnidraw-toolbar-button"
               aria-label="Import image"
               title="Import image"
               onClick={props.onImportImage}
             >
-              <span class="vc-toolbar-button__icon"><ImageIcon size={14} /></span>
+              <span class="omnidraw-toolbar-button__icon"><ImageIcon size={14} /></span>
             </button>
             <button
               type="button"
-              class="vc-toolbar-button"
-              classList={{ 'vc-toolbar-button--active': props.gridVisible }}
+              class="omnidraw-toolbar-button"
+              classList={{ 'omnidraw-toolbar-button--active': props.gridVisible }}
               aria-label="Grid"
               aria-pressed={props.gridVisible}
               title="Toggle grid"
               onClick={props.onToggleGrid}
             >
-              <span class="vc-toolbar-button__icon"><Grid2x2 size={14} /></span>
-              <span class="vc-toolbar-button__shortcuts">
+              <span class="omnidraw-toolbar-button__icon"><Grid2x2 size={14} /></span>
+              <span class="omnidraw-toolbar-button__shortcuts">
                 <span>G</span>
               </span>
             </button>
@@ -189,26 +189,26 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
                 <ToolbarActionButton contribution={contribution} />
               )}
             </For>
-            <div class="vc-canvas-toolbar-divider" />
+            <div class="omnidraw-canvas-toolbar-divider" />
             <button
               type="button"
-              class="vc-toolbar-button"
+              class="omnidraw-toolbar-button"
               disabled={!props.canUndo}
               aria-label="Undo"
               title="Undo"
               onClick={props.onUndo}
             >
-              <span class="vc-toolbar-button__icon"><Undo2 size={14} /></span>
+              <span class="omnidraw-toolbar-button__icon"><Undo2 size={14} /></span>
             </button>
             <button
               type="button"
-              class="vc-toolbar-button"
+              class="omnidraw-toolbar-button"
               disabled={!props.canRedo}
               aria-label="Redo"
               title="Redo"
               onClick={props.onRedo}
             >
-              <span class="vc-toolbar-button__icon"><Redo2 size={14} /></span>
+              <span class="omnidraw-toolbar-button__icon"><Redo2 size={14} /></span>
             </button>
             <Show when={props.trace}>
               {(trace) => (
@@ -228,7 +228,7 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
         </For>
       </div>
       <Show when={!collapsed()}>
-        <div class="vc-canvas-toolbar-hints" aria-hidden="true">
+        <div class="omnidraw-canvas-toolbar-hints" aria-hidden="true">
           <span><kbd>Middle</kbd> Pan</span>
           <span><kbd>Space</kbd> Drag</span>
         </div>

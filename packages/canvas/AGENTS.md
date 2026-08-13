@@ -25,10 +25,10 @@ document, but is not a document or persistence authority.
 - `TCanvasProps` and `TCanvasDependencies` are the only Solid composition
   boundary. Hosts supply descriptor, opaque scope, transport, theme, media,
   notifications, IDs, cancelable waits, diagnostics, extensions, and the
-  optional lifecycle-only runtime retirement registration port. Tenant-aware
-  hosts await registered runtime disposal before retiring tenant services.
+  optional lifecycle-only host-retirement registration port. Hosts await
+  registered runtime disposal before retiring their injected services.
 
-Keep server concurrency rules in `@omnidraw/service-canvas` and shared wire
+Keep server concurrency rules in `apps/backend` and shared wire
 types in `@omnidraw/canvas-contract`.
 
 ## Boundaries
@@ -52,8 +52,8 @@ types in `@omnidraw/canvas-contract`.
 - Adopt prepared image Blobs before projection, retain their resources, and
   media-gate server persistence until durable URL metadata is promoted.
 - Runtime replacement and disposal must remain serialized and idempotent.
-- Optional widget behavior belongs behind `ICanvasRuntimeExtension`.
-- Tenant identity, API/oRPC clients, database models, browser export effects,
+- Optional widget behavior belongs behind `ICanvasExtension`.
+- Product identity, transport clients, database models, browser export effects,
   sidebars, and product tool names belong in the host composition root.
 - Keep toolbar contributions narrow, ordered, and host-owned. Base canvas must
   not name AI Chat or a shell sidebar.
@@ -61,7 +61,7 @@ types in `@omnidraw/canvas-contract`.
   `defaultView`; do not assume the ambient document realm.
 - Do not dispose injected diagnostics owners. The host constructs and owns
   them; canvas only emits through the capability.
-- Keep CSS selectors below `.vc-canvas-host`. Package fonts and assets must use
+- Keep CSS selectors below `.omnidraw-canvas-host`. Package fonts and assets must use
   distribution-relative URLs; never add a `/fonts` or host-root convention.
 
 ## Functional files

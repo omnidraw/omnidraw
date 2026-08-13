@@ -20,8 +20,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      OMNIDRAW_LEGACY_ACTOR_ENABLED: "0"
-      OMNIDRAW_REQUIRE_FD_INSPECTION: "1"
       VITEST_MAX_WORKERS: "2"
     steps:
       - name: Checkout
@@ -41,7 +39,7 @@ jobs:
       - name: Configure Chromium sandbox
         shell: bash
         run: |
-          chromium_path="$(bun --cwd apps/cli -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
+          chromium_path="$(bun --cwd apps/backend -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
           sandbox_path="$(dirname "$chromium_path")/chrome_sandbox"
           test -f "$sandbox_path"
           sudo chown root:root "$sandbox_path"

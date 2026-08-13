@@ -1,0 +1,1 @@
+PRAGMA table_info(_omnidraw_resource_metadata)

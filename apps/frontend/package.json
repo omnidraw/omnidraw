@@ -6,38 +6,34 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "bun test src"
+    "test:unit": "bun test src && bun ./node_modules/vitest/vitest.mjs --run",
+    "test": "bun run typecheck && bun run test:unit && bun run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "rollup": "^4.59.0",
     "typescript": "catalog:",
     "vite": "^8.1.4",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
     "vite-plugin-solid": "^2.11.10",
+    "vitest": "^4.1.10",
     "solid-devtools": "^0.34.3",
     "esbuild": "^0.27.0"
   },
   "dependencies": {
-    "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
-    "@solid-primitives/scheduled": "^1.5.3",
-    "@solidjs/router": "^0.15.4",
-    "@omnidraw/api": "workspace:*",
-    "@omnidraw/ui-ai-chat": "workspace:*",
-    "@omnidraw/widget-contract": "workspace:*",
     "@omnidraw/canvas": "workspace:*",
     "@omnidraw/canvas-contract": "workspace:*",
-    "@omnidraw/orpc-client": "workspace:*",
-    "@omnidraw/service-db": "workspace:*",
-    "@omnidraw/service-theme": "workspace:*",
+    "@omnidraw/component-ai-chat": "workspace:*",
+    "@omnidraw/sdk": "workspace:*",
+    "@omnidraw/theme": "workspace:*",
+    "@solidjs/router": "^0.15.4",
+    "effect": "4.0.0-rc.108",
     "dompurify": "^3.3.3",
     "lucide-static": "catalog:",
-    "partysocket": "^1.3.0",
-    "perfect-freehand": "^1.2.2",
     "@kobalte/core": "catalog:",
     "lucide-solid": "catalog:",
-    "solid-js": "catalog:",
-    "zod": "catalog:"
+    "solid-js": "catalog:"
   }
 }

@@ -39,19 +39,12 @@ describe('local widget package publication', () => {
     const packages = [
       entry('@omnidraw/sdk', {
         '@omnidraw/capsule': '0.11.0',
-        '@omnidraw/widget-contract': 'workspace:*',
       }),
-      entry('@omnidraw/widget-contract', {
-        '@omnidraw/resource-runtime': 'workspace:*',
-        zod: '4.4.3',
-      }),
-      entry('@omnidraw/resource-runtime'),
+      entry('@omnidraw/canvas-contract'),
       entry('@omnidraw/unrelated'),
     ];
 
     expect(widgetPackagePublishOrder(packages).map(({ name }) => name)).toEqual([
-      '@omnidraw/resource-runtime',
-      '@omnidraw/widget-contract',
       '@omnidraw/sdk',
     ]);
   });
@@ -79,8 +72,8 @@ describe('local widget package publication', () => {
   test('rejects a missing root or a versioned dependency cycle', () => {
     expect(() => widgetPackagePublishOrder([])).toThrow('is not a versioned workspace package');
     expect(() => widgetPackagePublishOrder([
-      entry('@omnidraw/sdk', { '@omnidraw/widget-contract': 'workspace:*' }),
-      entry('@omnidraw/widget-contract', { '@omnidraw/sdk': 'workspace:*' }),
+      entry('@omnidraw/sdk', { '@omnidraw/theme': 'workspace:*' }),
+      entry('@omnidraw/theme', { '@omnidraw/sdk': 'workspace:*' }),
     ])).toThrow('dependency cycle');
   });
 

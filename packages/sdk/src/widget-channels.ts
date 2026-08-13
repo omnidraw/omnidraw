@@ -11,45 +11,25 @@ import {
   subscribeHostLifecycle,
   subscribeHostProps,
   subscribeHostTheme,
-  type CapsuleGuestLifecycleEvent,
-  type CapsuleGuestSnapshotHooksV1,
   type CapsuleGuestSubscription,
 } from '@omnidraw/capsule/guest';
+import type {
+  TWidgetNotificationOutput,
+  TWidgetTheme,
+  TWidgetLifecycleEvent,
+  TWidgetSnapshotHooks,
+} from './contracts/types';
 import type {
   TUnsubscribe,
   TOmnidrawJsonValue,
 } from './shared';
 
-/** Fixed semantic theme projection exposed by the Omnidraw host. */
-export type TWidgetCapsuleTheme = Readonly<{
-  format: 'omnidraw.widget-theme.v1';
-  appearance: 'light' | 'dark';
-  tokens: Readonly<{
-    background: string;
-    foreground: string;
-    surface: string;
-    surfaceForeground: string;
-    muted: string;
-    mutedForeground: string;
-    primary: string;
-    primaryForeground: string;
-    accent: string;
-    accentForeground: string;
-    destructive: string;
-    success: string;
-    border: string;
-  }>;
-}>;
-
-/** The sole bounded first-release guest output action. */
-export type TWidgetCapsuleNotificationOutput = Readonly<{
-  type: 'notification';
-  tone: 'info' | 'success' | 'error';
-  message: string;
-}>;
-
-export type TWidgetLifecycleEvent = CapsuleGuestLifecycleEvent;
-export type TWidgetSnapshotHooks = CapsuleGuestSnapshotHooksV1;
+export type {
+  TWidgetNotificationOutput,
+  TWidgetTheme,
+  TWidgetLifecycleEvent,
+  TWidgetSnapshotHooks,
+} from './contracts/types';
 
 function disposableSubscription(
   subscription: CapsuleGuestSubscription,
@@ -78,26 +58,29 @@ export function subscribeWidgetProps<
   }));
 }
 
-export function getWidgetTheme(): TWidgetCapsuleTheme {
-  return getHostTheme() as TWidgetCapsuleTheme;
+export function getWidgetTheme(): TWidgetTheme {
+  return getHostTheme() as TWidgetTheme;
 }
 
 export function subscribeWidgetTheme(
-  listener: (theme: TWidgetCapsuleTheme) => void,
+  listener: (theme: TWidgetTheme) => void,
 ): TUnsubscribe {
   return disposableSubscription(subscribeHostTheme((value) => {
-    listener(value as TWidgetCapsuleTheme);
+    listener(value as TWidgetTheme);
   }));
 }
 
 export function subscribeWidgetLifecycle(
   listener: (event: TWidgetLifecycleEvent) => void,
 ): TUnsubscribe {
-  return disposableSubscription(subscribeHostLifecycle(listener));
+  return disposableSubscription(subscribeHostLifecycle((event) => listener(Object.freeze({
+    state: event.state,
+    generation: event.generation,
+  }))));
 }
 
 export function emitWidgetOutput(
-  output: TWidgetCapsuleNotificationOutput,
+  output: TWidgetNotificationOutput,
 ): void {
   emitHostOutput(output);
 }
@@ -125,5 +108,8 @@ export function listWidgetLocalStateKeys(): readonly string[] {
 export function registerWidgetSnapshotHooks(
   hooks: TWidgetSnapshotHooks,
 ): void {
-  registerSnapshotHooks(CAPSULE_GUEST_SNAPSHOT_PROTOCOL, hooks);
+  registerSnapshotHooks(
+    CAPSULE_GUEST_SNAPSHOT_PROTOCOL,
+    hooks as unknown as Parameters<typeof registerSnapshotHooks>[1],
+  );
 }

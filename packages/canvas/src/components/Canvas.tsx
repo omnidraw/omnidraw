@@ -1,16 +1,16 @@
 import type {
   TCanvasFillColorCode,
   TCanvasInkColorCode,
-} from '@omnidraw/theme-contract';
+} from '@omnidraw/canvas-contract';
 import type {
   IStandardCanvasEditor,
   TSelectionStyleChange,
   TSelectionStyleState,
 } from '@omnidraw/cangine/editor';
 import {
-  txApplyThemeToElement,
+  applyThemeToElement,
   type TThemeColorPickerPalette,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
 import {
   Match,
   Show,
@@ -220,7 +220,7 @@ export function Canvas(props: TCanvasProps) {
   });
 
   const source = (): TCanvasSource => ({
-    key: props.canvas.id,
+    key: JSON.stringify([props.hostScopeKey, props.canvas.id]),
     canvasId: props.canvas.id,
   });
 
@@ -237,7 +237,7 @@ export function Canvas(props: TCanvasProps) {
         notification: props.dependencies.notification,
         themeService: props.dependencies.themeService,
         trace: trace(),
-      }, props.dependencies.runtimeExtensions);
+      }, props.dependencies.extensions);
       return activeRuntime;
     },
     onBootStart: () => {
@@ -309,8 +309,8 @@ export function Canvas(props: TCanvasProps) {
       );
     },
   });
-  const unregisterRuntimeRetirement = (
-    props.dependencies.runtimeRetirement?.register(() => lifecycle.dispose())
+  const unregisterHostRetirement = (
+    props.dependencies.hostRetirement?.register(() => lifecycle.dispose())
     ?? null
   );
 
@@ -329,21 +329,21 @@ export function Canvas(props: TCanvasProps) {
 
   const ownsKeyboardEvent = (event: KeyboardEvent): boolean => {
     const targetCanvas = eventTargetElement(event.target)
-      ?.closest('.vc-canvas-host') ?? null;
+      ?.closest('.omnidraw-canvas-host') ?? null;
     if (targetCanvas !== null) return targetCanvas === canvasRootRef;
     if (keyboardActive) return true;
-    return keyboardDocument?.querySelectorAll('.vc-canvas-host').length === 1;
+    return keyboardDocument?.querySelectorAll('.omnidraw-canvas-host').length === 1;
   };
 
   const updateKeyboardActivity = (event: Event) => {
     keyboardActive = eventTargetElement(event.target)
-      ?.closest('.vc-canvas-host') === canvasRootRef;
+      ?.closest('.omnidraw-canvas-host') === canvasRootRef;
   };
 
   const handleKeyboardShortcut = (event: KeyboardEvent) => {
     if (!ownsKeyboardEvent(event)) return;
     const traceControlTarget = (
-      eventTargetElement(event.target)?.closest('.vc-trace-control') ?? null
+      eventTargetElement(event.target)?.closest('.omnidraw-trace-control') ?? null
     ) !== null;
     if (trace() !== null && !traceControlTarget) {
       const identity = traceKeyboardIdentity(event);
@@ -484,7 +484,7 @@ export function Canvas(props: TCanvasProps) {
       return;
     }
     const traceControlTarget = (
-      eventTargetElement(event.target)?.closest('.vc-trace-control') ?? null
+      eventTargetElement(event.target)?.closest('.omnidraw-trace-control') ?? null
     ) !== null;
     if (trace() !== null && !traceControlTarget) {
       const identity = traceKeyboardIdentity(event);
@@ -575,7 +575,7 @@ export function Canvas(props: TCanvasProps) {
 
   const traceDomPointer = (event: PointerEvent) => {
     if ((
-      eventTargetElement(event.target)?.closest('.vc-trace-control') ?? null
+      eventTargetElement(event.target)?.closest('.omnidraw-trace-control') ?? null
     ) !== null) return;
     const type = event.type === 'pointerdown'
       ? 'pointer-down'
@@ -693,11 +693,11 @@ export function Canvas(props: TCanvasProps) {
     if (!containerReady()) return;
     const themeService = props.dependencies.themeService;
     releaseThemeChange?.();
-    txApplyThemeToElement(canvasRootRef, themeService.getTheme());
+    applyThemeToElement(canvasRootRef, themeService.getTheme());
     setThemeRevision((revision) => revision + 1);
     releaseThemeChange = themeService.subscribeThemeChange(
       (theme) => {
-        txApplyThemeToElement(canvasRootRef, theme);
+        applyThemeToElement(canvasRootRef, theme);
         setThemeRevision((revision) => revision + 1);
       },
     );
@@ -754,8 +754,8 @@ export function Canvas(props: TCanvasProps) {
     setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
     activeRuntime = null;
     void lifecycle.dispose().then(
-      () => unregisterRuntimeRetirement?.(),
-      () => unregisterRuntimeRetirement?.(),
+      () => unregisterHostRetirement?.(),
+      () => unregisterHostRetirement?.(),
     );
   });
 
@@ -833,10 +833,11 @@ export function Canvas(props: TCanvasProps) {
   return (
     <div
       ref={canvasRootRef}
-      class="vc-canvas-host"
+      data-omnidraw-theme-scope=""
+      class="omnidraw-canvas-host"
       classList={{
-        'vc-canvas-host--space-held': spaceHeld(),
-        'vc-canvas-host--space-dragging': spaceDragging(),
+        'omnidraw-canvas-host--space-held': spaceHeld(),
+        'omnidraw-canvas-host--space-dragging': spaceDragging(),
       }}
       style={{
         position: 'relative',
@@ -847,7 +848,7 @@ export function Canvas(props: TCanvasProps) {
     >
       <div
         ref={containerRef}
-        class="vc-canvas-engine-host"
+        class="omnidraw-canvas-engine-host"
         style={{ position: 'absolute', inset: '0' }}
       />
       <Show when={shellState().kind !== 'maximized-widget'}>

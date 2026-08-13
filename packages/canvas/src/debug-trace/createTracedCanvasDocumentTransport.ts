@@ -87,6 +87,43 @@ export function createTracedCanvasDocumentTransport(
         throw error;
       }
     },
+    async query(query) {
+      const startedAt = trace.elapsedMs();
+      trace.emit({
+        channel: 'transport',
+        type: 'query-dispatched',
+        priority: 'high',
+        correlation: { canvasId: query.canvasId },
+        data: { filterType: query.filter.type, limit: query.limit ?? null },
+      });
+      try {
+        const page = await transport.query(query);
+        trace.emit({
+          channel: 'transport',
+          type: 'query-received',
+          priority: 'high',
+          correlation: { canvasId: query.canvasId },
+          data: {
+            durationMs: trace.elapsedMs() - startedAt,
+            itemCount: page.items.length,
+            hasNextCursor: page.nextCursor !== null,
+          },
+        });
+        return page;
+      } catch (error) {
+        trace.emit({
+          channel: 'transport',
+          type: 'query-failed',
+          priority: 'critical',
+          correlation: { canvasId: query.canvasId },
+          data: {
+            durationMs: trace.elapsedMs() - startedAt,
+            error: errorFacts(error),
+          },
+        });
+        throw error;
+      }
+    },
     async execute(command) {
       const startedAt = trace.elapsedMs();
       trace.emit({

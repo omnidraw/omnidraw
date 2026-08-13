@@ -38,6 +38,13 @@ const RUNTIME_LOCK_PATH = join(
 );
 const OWNED_SCOPES = Object.freeze(['@omnidraw/']);
 const WIDGET_PACKAGE_ROOT = '@omnidraw/sdk';
+const PUBLIC_PACKAGE_DIRECTORIES = Object.freeze({
+  '@omnidraw/canvas-contract': 'packages/canvas-contract',
+  '@omnidraw/canvas': 'packages/canvas',
+  '@omnidraw/sdk': 'packages/sdk',
+  '@omnidraw/component-ai-chat': 'packages/component-ai-chat',
+  '@omnidraw/theme': 'packages/theme',
+});
 const START_TIMEOUT_MS = 20_000;
 const STOP_TIMEOUT_MS = 8_000;
 
@@ -741,23 +748,24 @@ function workspaceDependencyNames(entry, byName) {
 }
 
 async function versionedWorkspacePackages() {
-  const packagesDirectory = join(REPOSITORY_ROOT, 'packages');
-  const entries = await readdir(packagesDirectory, { withFileTypes: true });
+  const packageSet = JSON.parse(
+    await readFile(join(REPOSITORY_ROOT, 'public-package-set.json'), 'utf8'),
+  );
+  const qualifiedNames = Object.keys(packageSet.packages ?? {}).sort();
+  const expectedNames = Object.keys(PUBLIC_PACKAGE_DIRECTORIES).sort();
+  if (JSON.stringify(qualifiedNames) !== JSON.stringify(expectedNames)) {
+    throw new Error('public-package-set.json must qualify exactly the five public packages.');
+  }
   const packages = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const directory = join(packagesDirectory, entry.name);
+  for (const [expectedName, relativeDirectory] of Object.entries(PUBLIC_PACKAGE_DIRECTORIES)) {
+    const directory = join(REPOSITORY_ROOT, relativeDirectory);
     const manifest = await readFile(join(directory, 'package.json'), 'utf8')
       .then((source) => JSON.parse(source))
-      .catch((error) => {
-        if (error?.code === 'ENOENT') return null;
-        throw error;
-      });
-    if (manifest === null || manifest.version === undefined) continue;
     if (
-      typeof manifest.name !== 'string'
+      manifest.name !== expectedName
       || typeof manifest.version !== 'string'
       || manifest.private === true
+      || manifest.version !== packageSet.packages[expectedName]
     ) {
       throw new Error(`${directory}/package.json has an invalid public package identity.`);
     }

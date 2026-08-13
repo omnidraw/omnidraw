@@ -34,7 +34,15 @@ describe("TCanvasDocumentTransport", () => {
     };
     const transport: TCanvasDocumentTransport = {
       async getSnapshot({ canvasId }) {
-        return { canvasId, revision: 0, items: [] };
+        return {
+          schemaVersion: "1.0.0",
+          canvasId,
+          revision: 0,
+          items: [],
+        };
+      },
+      async query() {
+        return { items: [], nextCursor: null };
       },
       async execute(command) {
         return {
@@ -60,5 +68,29 @@ describe("TCanvasDocumentTransport", () => {
 
     expect(closeCount).toBe(1);
     expect(await pending).toEqual({ done: true, value: undefined });
+  });
+
+  test("includes querying in the protocol-neutral transport", async () => {
+    const transport: TCanvasDocumentTransport = {
+      async getSnapshot({ canvasId }) {
+        return { schemaVersion: "1.0.0", canvasId, revision: 0, items: [] };
+      },
+      async query() {
+        return { items: [], nextCursor: null };
+      },
+      async execute(command) {
+        return {
+          type: "items-changed",
+          canvasId: command.canvasId,
+          commandId: command.commandId,
+          revision: command.baseRevision + 1,
+          changedItems: [],
+          deletedItemIds: [],
+        };
+      },
+      async *subscribe() {}
+    };
+    expect(await transport.query({ canvasId: "canvas-a", filter: { type: "all" } }))
+      .toEqual({ items: [], nextCursor: null });
   });
 });

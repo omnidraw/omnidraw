@@ -1,0 +1,475 @@
+import { Button } from '@kobalte/core/button';
+import * as Tabs from '@kobalte/core/tabs';
+import type {
+  TWidgetPublicFileEntry,
+  TWidgetPublicFilePreview,
+} from '../ports';
+import File from 'lucide-solid/icons/file';
+import Folder from 'lucide-solid/icons/folder';
+import PanelLeft from 'lucide-solid/icons/panel-left';
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  type Component,
+} from 'solid-js';
+import { useWidgetCatalog } from './WidgetCatalogProvider';
+import { WidgetIcon } from './components/WidgetIcon';
+import styles from './WidgetDetailPage.module.css';
+import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
+import type { TWidgetSource } from './types';
+
+export type TWidgetDetailPageProps = {
+  source: TWidgetSource | null;
+  name: string | null;
+  controller: TSidebarController;
+  query: TWidgetDetailQueryPort;
+};
+
+type TTab = 'overview' | 'config' | 'functions' | 'collaborative-state' | 'resources' | 'files';
+
+const TABS = Object.freeze([
+  { value: 'overview', label: 'Overview' },
+  { value: 'config', label: 'Config' },
+  { value: 'functions', label: 'Functions' },
+  { value: 'collaborative-state', label: 'Collaborative State' },
+  { value: 'resources', label: 'Resources' },
+  { value: 'files', label: 'Files' },
+] satisfies readonly Readonly<{ value: TTab; label: string }>[]);
+
+export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
+  const application = props.controller.application;
+  const catalogState = useWidgetCatalog();
+  const [files, setFiles] = createSignal<readonly TWidgetPublicFileEntry[] | null>(null);
+  const [filesTruncated, setFilesTruncated] = createSignal(false);
+  const [filesError, setFilesError] = createSignal('');
+  const [preview, setPreview] = createSignal<TWidgetPublicFilePreview | null>(null);
+  const [previewError, setPreviewError] = createSignal('');
+  const [name, setName] = createSignal('');
+  const [description, setDescription] = createSignal('');
+  const [label, setLabel] = createSignal('');
+  const [group, setGroup] = createSignal('');
+  const [priority, setPriority] = createSignal('0');
+  const [iconKind, setIconKind] = createSignal<'none' | 'lucide' | 'custom'>('none');
+  const [iconValue, setIconValue] = createSignal('');
+  const [action, setAction] = createSignal<'save' | 'rebuild' | 'metadata' | 'build' | null>(null);
+  const [actionError, setActionError] = createSignal('');
+  let fileListRequest = 0;
+  let previewRequest = 0;
+
+  const entry = createMemo(() => (
+    catalogState.catalog()?.entries.find((candidate) => candidate.widgetKey === props.name) ?? null
+  ));
+  const form = createMemo(() => {
+    const selected = entry();
+    return props.source === 'draft' ? selected?.draft ?? null : selected?.published ?? null;
+  });
+  const selectedPath = () => props.query.path() ?? '';
+  const activeTab = (): TTab => {
+    const requested = props.query.tab();
+    return TABS.some((tab) => tab.value === requested) ? requested as TTab : 'overview';
+  };
+
+  createEffect(() => {
+    const config = form()?.config;
+    setFiles(null);
+    setPreview(null);
+    setActionError('');
+    if (!config) return;
+    setName(config.name);
+    setDescription(config.description);
+    setLabel(config.tool.label);
+    setGroup(config.tool.group ?? '');
+    setPriority(String(config.tool.priority));
+    if (config.tool.icon?.lucidIcon) {
+      setIconKind('lucide');
+      setIconValue(config.tool.icon.lucidIcon);
+    } else if (config.tool.icon?.svgIcon) {
+      setIconKind('custom');
+      setIconValue(config.tool.icon.svgIcon);
+    } else {
+      setIconKind('none');
+      setIconValue('');
+    }
+  });
+
+  const loadFiles = async () => {
+    if (!props.source || !props.name) return;
+    const request = ++fileListRequest;
+    setFilesError('');
+    const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.list({
+      widgetKey: props.name,
+      source: props.source,
+    });
+    if (request !== fileListRequest) return;
+    if (loadError || !value) {
+      setFiles(null);
+      setFilesError(loadError?.message ?? "Widget files are unavailable.");
+      return;
+    }
+    setFiles(value.entries);
+    setFilesTruncated(value.truncated);
+  };
+
+  const loadPreview = async (path: string) => {
+    if (!props.source || !props.name || !path) {
+      setPreview(null);
+      return;
+    }
+    const request = ++previewRequest;
+    setPreview(null);
+    setPreviewError('');
+    const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.read({
+      widgetKey: props.name,
+      source: props.source,
+      path,
+    });
+    if (request !== previewRequest) return;
+    if (loadError || !value) {
+      setPreviewError(loadError?.message ?? "The widget file preview is unavailable.");
+      return;
+    }
+    setPreview(value);
+  };
+
+  createEffect(() => {
+    if (activeTab() !== 'files' || files() !== null) return;
+    void loadFiles();
+  });
+  createEffect(() => {
+    if (activeTab() !== 'files') return;
+    void loadPreview(selectedPath());
+  });
+
+  const selectTab = (value: string) => {
+    const tab = TABS.find((candidate) => candidate.value === value)?.value ?? 'overview';
+    props.query.set(tab === 'files'
+      ? { tab, path: selectedPath() || undefined }
+      : { tab, path: undefined });
+  };
+
+  const configInput = () => {
+    const icon = iconKind() === 'none'
+      ? null
+      : iconKind() === 'lucide'
+        ? { lucidIcon: iconValue().trim() }
+        : { svgIcon: iconValue() };
+    return {
+      name: name().trim(),
+      description: description().trim(),
+      tool: {
+        label: label().trim(),
+        icon,
+        group: group().trim() || null,
+        priority: Number(priority()),
+      },
+    };
+  };
+
+  const saveConfig = async () => {
+    const selected = form();
+    if (
+      action() !== null
+      || props.source !== 'draft'
+      || !props.name
+      || !selected?.manifestDigestSha256
+    ) return;
+    setAction('save');
+    setActionError('');
+    const [saveError] = await props.controller.apiService.api.widget.config.saveDraft({
+      widgetKey: props.name,
+      expectedManifestDigestSha256: selected.manifestDigestSha256,
+      config: configInput(),
+    });
+    setAction(null);
+    if (saveError) {
+      setActionError(saveError.message);
+      application.notifyError('Could not save widget Config', saveError.message);
+      return;
+    }
+    await catalogState.refresh();
+    application.notifySuccess('Widget draft Config saved');
+  };
+
+  const publish = async (kind: 'metadata' | 'build') => {
+    const catalog = catalogState.catalog();
+    const selected = form();
+    if (
+      action() !== null
+      || props.source !== 'draft'
+      || !props.name
+      || !catalog
+      || !selected?.manifestDigestSha256
+    ) return;
+    setAction(kind);
+    setActionError('');
+    const input = {
+      widgetKey: props.name,
+      expectedManifestDigestSha256: selected.manifestDigestSha256,
+      expectedCatalogDigestSha256: catalog.catalogDigestSha256,
+    };
+    const [publishError] = kind === 'metadata'
+      ? await props.controller.apiService.api.widget.publication.publishMetadata(input)
+      : await props.controller.apiService.api.widget.publication.buildAndPublish(input);
+    setAction(null);
+    if (publishError) {
+      setActionError(publishError.message);
+      application.notifyError(
+        kind === 'metadata' ? 'Could not publish metadata' : 'Could not build and publish',
+        publishError.message,
+      );
+      return;
+    }
+    await catalogState.refresh();
+    application.notifySuccess(kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published');
+  };
+
+  const rebuild = async () => {
+    if (action() !== null || props.source !== 'draft' || !props.name || configDirty()) return;
+    setAction('rebuild');
+    setActionError('');
+    const [rebuildError] = await props.controller.apiService.api.widget.preview.rebuildDraft({
+      widgetKey: props.name,
+    });
+    setAction(null);
+    if (rebuildError) {
+      setActionError(rebuildError.message);
+      application.notifyError('Could not rebuild widget', rebuildError.message);
+      return;
+    }
+    await catalogState.refresh();
+    application.notifySuccess('Widget build accepted');
+  };
+
+  const configDirty = createMemo(() => {
+    const persisted = form()?.config;
+    return props.source === 'draft'
+      && persisted !== null
+      && persisted !== undefined
+      && JSON.stringify(configInput()) !== JSON.stringify({
+        name: persisted.name,
+        description: persisted.description,
+        tool: persisted.tool,
+      });
+  });
+
+  const metadataUnavailableReason = createMemo(() => {
+    if (configDirty()) return 'Save the draft Config before publishing.';
+    if (form()?.health !== 'healthy' || entry()?.published?.health !== 'healthy') {
+      return 'Metadata publication requires healthy draft and published folders.';
+    }
+    if (entry()?.differences.executableManifest !== 'same') {
+      return 'Executable Config differs; use Build and Publish.';
+    }
+    if (entry()?.differences.presentation !== 'different') {
+      return 'Published Config already matches the draft.';
+    }
+    return null;
+  });
+  const metadataAvailable = createMemo(() => (
+    props.source === 'draft' && metadataUnavailableReason() === null
+  ));
+
+  return <Show
+    when={!catalogState.loading() && entry() && form()}
+    fallback={<div class={styles.routeState} role="status">
+      <p>{catalogState.error() || 'Widget source was not found.'}</p>
+    </div>}
+  >
+    <Tabs.Root
+      class={styles.page}
+      value={activeTab()}
+      onChange={selectTab}
+      onKeyDown={(event) => {
+        if (
+          activeTab() === 'config'
+          && props.source === 'draft'
+          && (event.metaKey || event.ctrlKey)
+          && event.key.toLowerCase() === 's'
+        ) {
+          event.preventDefault();
+          void saveConfig();
+        }
+      }}
+    >
+      <header class={styles.header}>
+        <div class={styles.titleBlock}>
+          <WidgetIcon icon={form()!.config?.tool.icon ?? null} class={styles.headerIcon} />
+          <div>
+            <p class={styles.eyebrow}>{props.source === 'published' ? 'Published widget' : 'Widget draft'}</p>
+            <h2>{form()!.config?.name ?? props.name}</h2>
+          </div>
+        </div>
+        <div class={styles.headerActions}>
+          <Show when={props.source === 'draft'}>
+            <Button
+              class={styles.button}
+              disabled={!metadataAvailable() || action() !== null}
+              title={metadataAvailable()
+                ? 'Publish presentation Config without rebuilding executable files.'
+                : metadataUnavailableReason() ?? undefined}
+              onClick={() => void publish('metadata')}
+            >{action() === 'metadata' ? 'Publishing metadata…' : 'Publish metadata'}</Button>
+            <Button
+              class={`${styles.button} ${styles.primary}`}
+              disabled={action() !== null || form()!.health !== 'healthy' || configDirty()}
+              title={configDirty() ? 'Save the draft Config before building.' : undefined}
+              onClick={() => void publish('build')}
+            >{action() === 'build' ? 'Building and publishing…' : 'Build and Publish'}</Button>
+          </Show>
+          <Button
+            class={`${styles.button} ${styles.iconButton}`}
+            aria-label="Toggle sidebar"
+            onClick={application.toggleSidebar}
+          ><PanelLeft size={15} /></Button>
+        </div>
+      </header>
+      <Show when={actionError()}>{(message) => (
+        <p class={styles.validationError} role="alert">{message()}</p>
+      )}</Show>
+      <Tabs.List class={styles.tabs}>
+        <For each={TABS}>{(tab) => (
+          <Tabs.Trigger class={styles.tab} value={tab.value}>{tab.label}</Tabs.Trigger>
+        )}</For>
+      </Tabs.List>
+
+      <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
+        <section class={styles.panel}>
+          <h3>Filesystem catalog</h3>
+          <dl class={styles.definitionList}>
+            <dt>Widget key</dt><dd>{entry()!.widgetKey}</dd>
+            <dt>Source</dt><dd>{props.source}</dd>
+            <dt>Health</dt><dd class={form()!.health === 'healthy' ? styles.healthy : styles.problem}>{form()!.health}</dd>
+            <dt>Draft and publication</dt><dd>{entry()!.differences.status}</dd>
+            <dt>Presentation</dt><dd>{entry()!.differences.presentation}</dd>
+            <dt>Executable Config</dt><dd>{entry()!.differences.executableManifest}</dd>
+            <dt>Files</dt><dd>{form()!.fileCount}</dd>
+          </dl>
+        </section>
+        <section class={styles.panel}>
+          <h3>Presentation</h3>
+          <p>{form()!.config?.description ?? 'Structured Config is unavailable.'}</p>
+          <dl class={styles.definitionList}>
+            <dt>Tool label</dt><dd>{form()!.config?.tool.label ?? '—'}</dd>
+            <dt>Group</dt><dd>{form()!.config?.tool.group ?? 'Ungrouped'}</dd>
+            <dt>Priority</dt><dd>{form()!.config?.tool.priority ?? '—'}</dd>
+          </dl>
+        </section>
+        <For each={form()!.issues}>{(issue) => <section class={styles.problemPanel}>
+          <h3>{issue.code}</h3><p>{issue.message}</p>
+        </section>}</For>
+      </div></Tabs.Content>
+
+      <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
+        <section class={styles.panel}>
+          <h3>Widget Config</h3>
+          <Show when={form()!.config} fallback={<p class={styles.validationError}>Repair omnidraw.json in the Files workspace before editing structured Config.</p>}>
+            <Show when={props.source === 'draft'} fallback={<>
+              <p class={styles.muted}>Published Config is read-only. Edit the draft folder to change it.</p>
+              <pre class={styles.code}>{JSON.stringify(form()!.config, null, 2)}</pre>
+            </>}>
+              <div class={styles.formGrid}>
+                <label>Name<input class={styles.input} value={name()} maxlength={200} onInput={(event) => setName(event.currentTarget.value)} /></label>
+                <label>Tool label<input class={styles.input} value={label()} maxlength={120} onInput={(event) => setLabel(event.currentTarget.value)} /></label>
+                <label class={styles.fullField}>Description<textarea class={`${styles.input} ${styles.textarea}`} value={description()} maxlength={2000} onInput={(event) => setDescription(event.currentTarget.value)} /></label>
+                <label>Group<input class={styles.input} value={group()} maxlength={100} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="utilities" onInput={(event) => setGroup(event.currentTarget.value)} /></label>
+                <label>Priority<input class={styles.input} type="number" min="-1000" max="1000" step="1" value={priority()} onInput={(event) => setPriority(event.currentTarget.value)} /></label>
+                <label>Icon type<select class={styles.input} value={iconKind()} onChange={(event) => {
+                  setIconKind(event.currentTarget.value as 'none' | 'lucide' | 'custom');
+                  setIconValue('');
+                }}><option value="none">None</option><option value="lucide">Lucide name</option><option value="custom">SVG or one grapheme</option></select></label>
+                <label>Icon value<input class={styles.input} value={iconValue()} maxlength={16384} disabled={iconKind() === 'none'} onInput={(event) => setIconValue(event.currentTarget.value)} /></label>
+                <div class={`${styles.formActions} ${styles.fullField}`}>
+                  <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null} onClick={() => void saveConfig()}>
+                    {action() === 'save' ? 'Saving draft…' : 'Save draft'}
+                  </Button>
+                  <Button class={styles.button} disabled={action() !== null || configDirty()} onClick={() => void rebuild()}>
+                    {action() === 'rebuild' ? 'Rebuilding…' : 'Rebuild'}
+                  </Button>
+                  <span class={styles.fieldHint}>Press Ctrl/⌘+S to save. The manifest digest prevents stale forms from overwriting external edits.</span>
+                </div>
+              </div>
+            </Show>
+          </Show>
+        </section>
+      </div></Tabs.Content>
+
+      <Tabs.Content class={styles.content} value="functions"><div class={styles.contentInner}>
+        <section class={styles.panel}><h3>Browser-safe function descriptors</h3>
+          <For each={form()!.functions} fallback={<p class={styles.muted}>This source exposes no published browser-safe functions.</p>}>
+            {(descriptor) => <article class={styles.inspectorCard}>
+              <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
+              <dl class={styles.definitionList}>
+                <dt>Resources</dt><dd>{descriptor.resources.map((resource) => `${resource.slot} (${resource.effect})`).join(', ') || 'None'}</dd>
+                <dt>Timeout</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
+                <dt>Memory</dt><dd>{descriptor.limits.memoryTier}</dd>
+                <dt>Output limit</dt><dd>{descriptor.limits.outputByteLimit} bytes</dd>
+                <dt>Log limit</dt><dd>{descriptor.limits.logByteLimit} bytes</dd>
+              </dl>
+            </article>}
+          </For>
+        </section>
+      </div></Tabs.Content>
+
+      <Tabs.Content class={styles.content} value="collaborative-state"><div class={styles.contentInner}>
+        <section class={styles.panel}>
+          <h3>Instance-scoped collaborative state</h3>
+          <p class={styles.messageIntro}>Each placed widget instance owns centralized versioned JSON state scoped to its Canvas, element, and stable widget instance identity. Publication changes preserve that state.</p>
+          <dl class={styles.definitionList}>
+            <dt>Authority</dt><dd>Backend widget-state service</dd>
+            <dt>Identity</dt><dd><code>canvasId + elementId + widgetInstanceId</code></dd>
+            <dt>Lifecycle</dt><dd>Created lazily and changed through compare-and-swap updates.</dd>
+            <dt>Source manifest</dt><dd><code>{form()!.manifestDigestSha256 ?? 'Unavailable'}</code></dd>
+          </dl>
+        </section>
+        <section class={styles.panel}>
+          <h3>Published placement</h3>
+          <Show when={entry()!.placement} fallback={<p class={styles.muted}>No published placement descriptor is available for this widget.</p>}>
+            {(placement) => <dl class={styles.definitionList}>
+              <dt>Source</dt><dd>{placement().reference.source}</dd>
+              <dt>Widget key</dt><dd><code>{placement().reference.widgetKey}</code></dd>
+              <dt>Catalog generation</dt><dd>{placement().reference.catalogGeneration}</dd>
+              <dt>Frame</dt><dd>{placement().bounds.width} × {placement().bounds.height}</dd>
+            </dl>}
+          </Show>
+        </section>
+      </div></Tabs.Content>
+
+      <Tabs.Content class={styles.content} value="resources"><div class={styles.contentInner}>
+        <section class={styles.panel}><h3>Portable resource requirements</h3>
+          <For each={form()!.resources} fallback={<p class={styles.muted}>This widget declares no resource requirements.</p>}>
+            {(requirement) => <article class={styles.inspectorCard}>
+              <div class={styles.inspectorCardHeader}><code>{requirement.slot}</code><span class={styles.badge}>{requirement.kind}</span></div>
+              <dl class={styles.definitionList}>
+                <dt>Effect ceiling</dt><dd>{requirement.effect}</dd>
+                <dt>Required</dt><dd>{requirement.required ? 'Yes' : 'No'}</dd>
+              </dl>
+            </article>}
+          </For>
+        </section>
+      </div></Tabs.Content>
+
+      <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files">
+        <div class={styles.fileWorkbench}>
+          <aside class={styles.fileTree} aria-label="Widget files">
+            <Show when={filesError()}>{(message) => <p class={styles.validationError} role="alert">{message()}</p>}</Show>
+            <Show when={filesTruncated()}><p class={styles.validationWarning}>The bounded file list was truncated.</p></Show>
+            <For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>
+              {(file) => file.kind === 'directory'
+                ? <div class={styles.directory} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }}><Folder size={12} /> {file.path.split('/').at(-1)}</div>
+                : <Button class={`${styles.fileRow} ${selectedPath() === file.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: file.path })}><File size={12} /><span>{file.path.split('/').at(-1)}</span><small>{file.byteSize} B</small></Button>}
+            </For>
+          </aside>
+          <section class={styles.preview}>
+            <Show when={previewError()}>{(message) => <p class={styles.validationError} role="alert">{message()}</p>}</Show>
+            <Show when={preview()} fallback={<p class={styles.muted}>Select a file to inspect it.</p>}>
+              {(file) => <><div class={styles.previewHeader}><strong>{file().path}</strong><span>{file().byteSize} bytes{file().truncated ? ' · preview omitted by limit' : ''}</span></div>{file().binary ? <p class={styles.muted}>Binary file. Content preview is unavailable.</p> : file().text === null ? <p class={styles.muted}>Content preview is unavailable.</p> : <pre class={styles.code}>{file().text}</pre>}</>}
+            </Show>
+          </section>
+        </div>
+      </Tabs.Content>
+    </Tabs.Root>
+  </Show>;
+};

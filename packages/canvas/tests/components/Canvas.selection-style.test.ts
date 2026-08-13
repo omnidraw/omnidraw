@@ -2,7 +2,7 @@ import type { TSelectionStyleState } from '@omnidraw/cangine/editor';
 import {
   BUILTIN_THEMES,
   type TThemeDefinition,
-} from '@omnidraw/service-theme';
+} from '@omnidraw/theme';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -47,8 +47,9 @@ const runtimeMocks = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock('../../src/runtime', () => ({
-  buildRuntime: vi.fn(() => {
+vi.mock('../../src/runtime', async () => {
+  const { Effect } = await import('effect');
+  return { buildRuntime: vi.fn(() => {
     const unsubscribe = vi.fn();
     const controller = {
       state: controllerState('background'),
@@ -81,7 +82,7 @@ vi.mock('../../src/runtime', () => ({
       subscribe: vi.fn(() => () => undefined),
     };
     const runtime = {
-      boot: vi.fn(async () => undefined),
+      bootEffect: vi.fn(() => Effect.void),
       document: vi.fn(() => null),
       editor: vi.fn(() => editor),
       engine: vi.fn(() => null),
@@ -92,13 +93,13 @@ vi.mock('../../src/runtime', () => ({
       shell: vi.fn(() => ({ kind: 'canvas', widgetId: null })),
       subscribeShell: vi.fn(() => () => undefined),
       setGridVisible: vi.fn(() => true),
-      shutdown: vi.fn(async () => undefined),
+      shutdownEffect: vi.fn(() => Effect.void),
       widgetContentFocused: vi.fn(() => false),
     };
     runtimeMocks.instances.push({ controller, runtime });
     return runtime;
-  }),
-}));
+  }) };
+});
 
 import { Canvas } from '../../src/components/Canvas';
 
@@ -200,7 +201,7 @@ describe('Canvas selection style binding', () => {
     await vi.waitFor(() => {
       expect(host.querySelector<HTMLElement>(
         '[aria-label="BACKGROUND Red"]',
-      )?.style.getPropertyValue('--vc-style-color')).toBe('#ef4444');
+      )?.style.getPropertyValue('--omnidraw-style-color')).toBe('#ef4444');
     });
 
     const oldController = runtimeMocks.instances[0]?.controller;

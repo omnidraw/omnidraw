@@ -8,9 +8,9 @@ scope key, and one readonly dependency bundle:
 ```text
 OSS shell or managed-style host
   -> host scope + descriptor
-  -> document transport (snapshot / execute / async event stream)
+  -> document transport (snapshot / query / execute / async event stream)
   -> theme, image, notification, ID, and cancelable wait ports
-  -> optional runtime retirement registration, diagnostics owner, extensions,
+  -> optional host retirement registration, diagnostics owner, extensions,
      and toolbar contributions
   -> Canvas
        -> CanvasRuntimeLifecycle
@@ -23,8 +23,8 @@ export effects, shell state, and product tools. Canvas has no API, oRPC,
 database, frontend, AI, sidebar, or managed implementation dependency. A scope
 key or canvas-ID change replaces the runtime serially.
 
-When a host supplies the lifecycle-only runtime retirement port, Canvas
-registers its async lifecycle disposal. A tenant-aware host awaits every
+When a host supplies the lifecycle-only host retirement port, Canvas registers
+its async lifecycle disposal. A tenant-aware host awaits every
 registration before disconnecting old tenant infrastructure or activating the
 next scope; this is a narrow lifecycle seam, not a service locator.
 
@@ -35,7 +35,9 @@ promptly close its underlying event stream. Disposal also cancels each active
 host wait; cancellation must settle the wait promise so recovery cannot remain
 parked after teardown.
 
-The package has one local-document boundary:
+The package has one local-document boundary. Its asynchronous lifecycle and
+event consumption run on one instance-owned Effect runtime; Effect types do not
+cross the public API:
 
 ```text
 pointer / keyboard / product intent
@@ -44,7 +46,7 @@ pointer / keyboard / product intent
      -> authored fallback map + optimistic runtime-node map + custom history + pending ledger
      -> exactly one Cangine scene.apply projection
      -> immediate successor-revision receipt
-  -> asynchronous CanvasService command
+  -> asynchronous Canvas command
   <- ordered acknowledgement / remote event / resync
   -> accepted rows, then optimistic document, then Cangine projection
 ```
@@ -68,7 +70,7 @@ not the source of document truth.
 
 The pure local reducer applies public serialized command semantics before any
 mutable publication and returns only affected before/after node images. The
-document service converts those images to authored `CanvasService` operations,
+document service converts those images to authored Canvas operations,
 installs the optimistic state and pending record, projects the exact editor
 commands once, and schedules persistence without waiting.
 
@@ -89,7 +91,7 @@ host resize ownership. Style mutations still commit through the controlled
 editor port into `CanvasDocumentService`; the controller is not a second scene
 writer. Shutdown destroys it before the editor session.
 Theme changes update the mounted editor selection and path appearance through
-Cangine 0.6.0 setters without rebuilding that session. Cangine's creation
+Cangine 0.6.1 setters without rebuilding that session. Cangine's creation
 decorator adds resolved concrete fallback plus semantic intent for every
 standard tool. Its extension-only style-mutation decorator adds or removes the
 same intent after Cangine has resolved compatible leaves, so the finalized
@@ -97,12 +99,12 @@ concrete and extension changes stay in one exact batch.
 `CanvasRuntimeLifecycle` ensures two runtime instances never own the same host
 concurrently.
 
-Theme variables are applied to the individual `.vc-canvas-host` element from
+Theme variables are applied to the individual `.omnidraw-canvas-host` element from
 the injected `IThemeService`. Package CSS never resets the surrounding shell,
 and both CSS and Cangine resolve fonts from assets emitted with this package.
 Semantic paint is resolved from an immutable theme snapshot into concrete
 Cangine values. Theme reprojection updates only runtime nodes; stored concrete
-fallbacks, accepted CanvasService revision, pending plans, and history remain
+fallbacks, accepted Canvas revision, pending plans, and history remain
 unchanged. Literal paint bypasses this projection.
 The host owns and disposes an injected diagnostics owner; canvas only installs
 temporary subscriptions while its runtime is active.

@@ -61,25 +61,25 @@ describe('packageDecision', () => {
   test('requires a version bump when the built dist changed published dependency pins', () => {
     const drift = dependencyManifestDrift(
       {
-        dependencies: { '@omnidraw/resource-runtime': '0.5.2' },
+        dependencies: { '@omnidraw/theme': '0.6.1' },
         peerDependencies: { '@tursodatabase/database': '0.7.2' },
       },
       {
-        dependencies: { '@omnidraw/resource-runtime': '0.5.0' },
+        dependencies: { '@omnidraw/theme': '0.6.0' },
         peerDependencies: { '@tursodatabase/database': '0.6.1' },
       },
     )
     const decision = packageDecision(
-      { name: '@omnidraw/function-runtime', version: '0.5.0' },
-      registry('0.5.0', ['0.5.0']),
+      { name: '@omnidraw/component-ai-chat', version: '0.6.0' },
+      registry('0.6.0', ['0.6.0']),
       drift,
     )
 
     expect(decision.action).toBe('bump-dependencies')
     expect(decision.explanation).toContain('catalog mismatch')
-    expect(decision.explanation).toContain('npm uses @omnidraw/resource-runtime@0.5.0, but the new build uses @omnidraw/resource-runtime@0.5.2')
+    expect(decision.explanation).toContain('npm uses @omnidraw/theme@0.6.0, but the new build uses @omnidraw/theme@0.6.1')
     expect(decision.explanation).toContain('npm uses @tursodatabase/database@0.6.1, but the new build uses @tursodatabase/database@0.7.2')
-    expect(decision.explanation).toContain('update @omnidraw/function-runtime to 0.5.1 and build again')
+    expect(decision.explanation).toContain('update @omnidraw/component-ai-chat to 0.6.1 and build again')
   })
 })
 
@@ -165,13 +165,13 @@ describe('buildPackages', () => {
 describe('publishCommand', () => {
   test('prints one locally executable command forced to public npm without provenance', () => {
     const command = publishCommand({
-      directory: '/repo/packages/theme-contract',
-      manifest: { name: '@omnidraw/theme-contract', version: '0.5.0' },
-      name: '@omnidraw/theme-contract',
-      version: '0.5.0',
+      directory: '/repo/packages/theme',
+      manifest: { name: '@omnidraw/theme', version: '0.6.0' },
+      name: '@omnidraw/theme',
+      version: '0.6.0',
     })
 
-    expect(command).toStartWith("echo 'Publishing @omnidraw/theme-contract@0.5.0' && cd ")
+    expect(command).toStartWith("echo 'Publishing @omnidraw/theme@0.6.0' && cd ")
     expect(command.match(/--provenance=false/g)).toHaveLength(2)
     expect(command.match(/--registry=https:\/\/registry\.npmjs\.org\//g)).toHaveLength(2)
     expect(command.match(/'--@omnidraw:registry=https:\/\/registry\.npmjs\.org\/'/g)).toHaveLength(2)

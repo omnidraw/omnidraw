@@ -5,10 +5,10 @@ describe('resolveDependencySpec', () => {
   const workspaces = new Map<string, { version?: string }>()
 
   test('resolves both Bun catalog spellings to a public version', () => {
-    const catalog = { zod: '4.4.3' }
+    const catalog = { 'lucide-static': '1.24.0' }
 
-    expect(resolveDependencySpec('zod', 'catalog', catalog, workspaces)).toBe('4.4.3')
-    expect(resolveDependencySpec('zod', 'catalog:', catalog, workspaces)).toBe('4.4.3')
+    expect(resolveDependencySpec('lucide-static', 'catalog', catalog, workspaces)).toBe('1.24.0')
+    expect(resolveDependencySpec('lucide-static', 'catalog:', catalog, workspaces)).toBe('1.24.0')
   })
 
   test('rejects unresolved local dependency protocols', () => {

@@ -1,0 +1,1 @@
+PRAGMA foreign_key_list(__TABLE_IDENTIFIER__)

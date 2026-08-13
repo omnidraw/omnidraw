@@ -160,7 +160,7 @@ describe('FloatingCanvasToolbar', () => {
     expect([...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Copy for Agent'))
       ?.disabled).toBe(false);
-    expect(host.querySelector('.vc-trace-panel')?.parentElement?.classList)
-      .toContain('vc-trace-control');
+    expect(host.querySelector('.omnidraw-trace-panel')?.parentElement?.classList)
+      .toContain('omnidraw-trace-control');
   });
 });

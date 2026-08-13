@@ -17,11 +17,13 @@ import {
   type IStandardEditorSession,
   type TPathSegmentMode,
 } from '@omnidraw/cangine/editor';
-import { CANVAS_SYNTHETIC_CONTENT_LAYER_ID } from '@omnidraw/canvas-contract';
+import type { TCanvasDocumentTransport } from '@omnidraw/canvas-contract';
+import type { IThemeService } from '@omnidraw/theme';
+import { Effect } from 'effect';
 import type {
-  ICanvasRuntimeExtension,
+  ICanvasExtension,
   TCanvasOverlayContribution,
-  TCanvasRuntimeExtensionInstall,
+  TCanvasExtensionInstall,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
 import {
@@ -47,9 +49,14 @@ import {
 } from './debug-trace/CONSTANTS';
 import type {
   TReproductionTraceEventInput,
+  TReproductionTraceOwner,
   TReproductionTraceSink,
 } from './debug-trace/typed';
-import type { TCanvasRuntimeConfig } from './types';
+import type {
+  TCanvasImagePort,
+  TCanvasNotificationPort,
+  TCanvasWaitPort,
+} from './types';
 import {
   fnCanvasInputGateSwallowsKeys,
   fnCanvasInputGateSwallowsWheel,
@@ -61,6 +68,24 @@ import {
   type TCanvasShellFocusTransition,
   type TCanvasShellState,
 } from './fn.canvas-shell';
+import {
+  CANVAS_RUNTIME_CONTENT_LAYER_ID,
+  fnCanvasContractNodeToCangine,
+} from './internal/cangine-contract-adapter';
+import { CanvasExtensionBridge } from './internal/CanvasExtensionBridge';
+
+type TCanvasRuntimeConfig = Readonly<{
+  canvasId: string;
+  container: HTMLDivElement;
+  transport: TCanvasDocumentTransport;
+  createId(): string;
+  wait: TCanvasWaitPort;
+  themeService: IThemeService;
+  initialGridVisible?: boolean;
+  image: TCanvasImagePort;
+  notification: TCanvasNotificationPort;
+  trace?: TReproductionTraceOwner | null;
+}>;
 
 const IMAGE_FILE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
@@ -120,8 +145,9 @@ const FONT_RESOURCES = FONT_FAMILIES.flatMap(([
 ));
 
 export type TCanvasRuntime = Readonly<{
-  boot(): Promise<void>;
-  shutdown(): Promise<void>;
+  /** Lazy package-internal programs executed by CanvasRuntimeLifecycle. */
+  bootEffect(): Effect.Effect<void, unknown>;
+  shutdownEffect(): Effect.Effect<void, unknown>;
   editor(): IStandardCanvasEditor | null;
   engine(): IInfiniteCanvasEngine | null;
   document(): CanvasDocumentService | null;
@@ -509,7 +535,7 @@ function installEarlyEngineTraceSubscriptions(
 
 export function buildRuntime(
   config: TCanvasRuntimeConfig,
-  extensions: readonly ICanvasRuntimeExtension[] = [],
+  extensions: readonly ICanvasExtension[] = [],
 ): TCanvasRuntime {
   let engine: IInfiniteCanvasEngine | null = null;
   let editorSession: IStandardEditorSession | null = null;
@@ -524,6 +550,7 @@ export function buildRuntime(
   let releaseWidgetShell: (() => void) | null = null;
   let releaseEditorShell: (() => void) | null = null;
   let releaseInputGate: (() => void) | null = null;
+  let extensionBridge: CanvasExtensionBridge | null = null;
   let canvasBackgroundProjection: IRetainedProjectionOwner | null = null;
   let gridVisible = config.initialGridVisible ?? true;
   let shellState: TCanvasShellState = Object.freeze({
@@ -531,7 +558,7 @@ export function buildRuntime(
     widgetId: null,
   });
   let lastMaximizedWidgetId: string | null = null;
-  let lastWidgetCreationExtension: ICanvasRuntimeExtension | null = null;
+  let lastWidgetCreationExtension: ICanvasExtension | null = null;
   let normalizingWidgetShell = false;
   let selectionOverlaySuppressed = false;
   const shellSelectionOverlayOwner = Object.freeze({});
@@ -591,7 +618,7 @@ export function buildRuntime(
       engine.input.focus();
     }
   };
-  const installs: TCanvasRuntimeExtensionInstall[] = [];
+  const installs: TCanvasExtensionInstall[] = [];
   const syncCanvasBackgroundProjection = (nextGridVisible: boolean) =>
     canvasBackgroundProjection?.replace(fnCanvasBackgroundProjection({
       viewport: config.themeService.getSnapshot().definition.canvas.viewport,
@@ -599,17 +626,21 @@ export function buildRuntime(
     }));
 
   return Object.freeze({
-    async boot() {
+    bootEffect() {
+      return Effect.gen(function*() {
       if (engine) throw new Error('Canvas runtime is already running.');
-      engine = await createInfiniteCanvas({
-        host: config.container,
-        renderProfile: {
-          vector2D: 'webgl2',
-          threeD: 'disabled',
-          portals: 'dom',
-          fallbackOrder: ['webgl2', 'svg'],
-          antialias: true,
-        },
+      engine = yield* Effect.tryPromise({
+        try: () => createInfiniteCanvas({
+          host: config.container,
+          renderProfile: {
+            vector2D: 'webgl2',
+            threeD: 'disabled',
+            portals: 'dom',
+            fallbackOrder: ['webgl2', 'svg'],
+            antialias: true,
+          },
+        }),
+        catch: (cause) => cause,
       });
       canvasBackgroundProjection = engine.projections.createOwner(
         'omnidraw:canvas-background',
@@ -644,7 +675,12 @@ export function buildRuntime(
       for (const font of FONT_RESOURCES) {
         engine.resources.register(font.descriptor, font.source);
       }
-      await engine.resources.preload(FONT_RESOURCES.map((font) => font.descriptor.id));
+      yield* Effect.tryPromise({
+        try: () => engine!.resources.preload(
+          FONT_RESOURCES.map((font) => font.descriptor.id),
+        ),
+        catch: (cause) => cause,
+      });
       documentService = new CanvasDocumentService({
         canvasId: config.canvasId,
         transport: createTracedCanvasDocumentTransport(
@@ -692,12 +728,15 @@ export function buildRuntime(
           );
         },
       });
-      await documentService.start(engine);
+      yield* Effect.tryPromise({
+        try: () => documentService!.start(engine!),
+        catch: (cause) => cause,
+      });
       editorSession = createStandardEditorSession({
         engine,
         host: config.container,
         editor: {
-          contentParentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+          contentParentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
           selectionAppearance: fnCangineSelectionAppearance(
             config.themeService.getSnapshot().definition.canvas.selection,
           ),
@@ -730,13 +769,26 @@ export function buildRuntime(
                     widget: (creation) => {
                       for (const extension of extensions) {
                         const nodes = extension.createWidgetNodes?.({
-                          config,
-                          creation,
-                          engine: engine!,
+                          kind: 'widget',
+                          nodeId: creation.nodeId,
+                          parentId: creation.parentId === CANVAS_RUNTIME_CONTENT_LAYER_ID
+                            ? null
+                            : creation.parentId,
+                          draft: {
+                            worldBounds: {
+                              x: creation.draft.worldBounds.minX,
+                              y: creation.draft.worldBounds.minY,
+                              width: creation.draft.worldBounds.maxX
+                                - creation.draft.worldBounds.minX,
+                              height: creation.draft.worldBounds.maxY
+                                - creation.draft.worldBounds.minY,
+                            },
+                            belowThreshold: creation.draft.belowThreshold,
+                          },
                         });
                         if (nodes !== undefined && nodes !== null) {
                           lastWidgetCreationExtension = extension;
-                          return nodes;
+                          return nodes.map(fnCanvasContractNodeToCangine);
                         }
                       }
                       lastWidgetCreationExtension = null;
@@ -772,7 +824,7 @@ export function buildRuntime(
           ),
         },
         clipboardImage: {
-          parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+          parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
           imageImportPort: documentService,
           onError: (error) => {
             reportTraceCallbackError(config.trace, 'clipboard-image', error);
@@ -913,7 +965,7 @@ export function buildRuntime(
         editor: editorSession.editor,
         dropTarget: config.container,
         fileInput: imageInput,
-        parentId: CANVAS_SYNTHETIC_CONTENT_LAYER_ID,
+        parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
         imageImportPort: documentService,
         onError: (error) => {
           reportTraceCallbackError(config.trace, 'image-import', error);
@@ -923,36 +975,58 @@ export function buildRuntime(
           );
         },
       });
-      for (const extension of extensions) {
-        installs.push(await extension.install({
-          config,
-          document: documentService,
-          editor: editorSession.editor,
-          engine,
-          trace: config.trace ?? null,
-          widgets: editorSession.widgets,
-          shell: Object.freeze({
-            state: () => shellState,
-            owns: (ownership: TCanvasOverlayOwnership) =>
-              fnCanvasShellOwnsOverlay(shellState, ownership),
-            subscribe(listener: (state: TCanvasShellState) => void) {
-              shellListeners.add(listener);
-              return () => { shellListeners.delete(listener); };
-            },
-            registerOverlay(contribution: TCanvasOverlayContribution) {
-              shellOverlays.add(contribution);
-              setOverlayMounted(
-                contribution,
-                fnCanvasShellOwnsOverlay(shellState, contribution.ownership),
-              );
-              return () => {
-                if (!shellOverlays.delete(contribution)) return;
-                setOverlayMounted(contribution, false);
-              };
-            },
-          }),
-        }));
-      }
+      const extensionShell = Object.freeze({
+        state: () => shellState,
+        owns: (ownership: TCanvasOverlayOwnership) =>
+          fnCanvasShellOwnsOverlay(shellState, ownership),
+        subscribe(listener: (state: TCanvasShellState) => void) {
+          shellListeners.add(listener);
+          return () => { shellListeners.delete(listener); };
+        },
+        registerOverlay(contribution: TCanvasOverlayContribution) {
+          shellOverlays.add(contribution);
+          setOverlayMounted(
+            contribution,
+            fnCanvasShellOwnsOverlay(shellState, contribution.ownership),
+          );
+          return () => {
+            if (!shellOverlays.delete(contribution)) return;
+            setOverlayMounted(contribution, false);
+          };
+        },
+      });
+      extensionBridge = new CanvasExtensionBridge({
+        config: Object.freeze({
+          canvasId: config.canvasId,
+          container: config.container,
+          notification: config.notification,
+        }),
+        document: documentService,
+        editor: editorSession.editor,
+        engine,
+        trace: config.trace ?? null,
+        shell: extensionShell,
+        subscribeWidgetActions: (listener) => (
+          editorSession!.widgets.subscribeActivation(listener)
+        ),
+        onError: (error) => {
+          reportTraceCallbackError(config.trace, 'extension', error);
+          config.notification?.showError(
+            'Canvas extension failed',
+            error instanceof Error ? error.message : String(error),
+          );
+        },
+      });
+      yield* Effect.forEach(
+        extensions,
+        (extension) => Effect.tryPromise({
+          try: () => Promise.resolve(extension.install(extensionBridge!.context)),
+          catch: (cause) => cause,
+        }).pipe(Effect.tap((install) => Effect.sync(() => {
+          installs.push(install);
+        }))),
+        { discard: true },
+      );
       // Subscribes before `attach()` so this listener runs first in
       // registration order and can short-circuit the editor/standard-tools
       // path (which only subscribes once the session attaches below).
@@ -1020,83 +1094,96 @@ export function buildRuntime(
         },
       });
       selectionStyleController.attach();
+      });
     },
-    async shutdown() {
+    shutdownEffect() {
+      return Effect.gen(function*() {
       const errors: unknown[] = [];
-      const attempt = async (
+      const attempt = (
         operation: () => void | Promise<void>,
-      ): Promise<void> => {
-        try {
-          await operation();
-        } catch (error) {
+      ): Effect.Effect<void> => Effect.tryPromise({
+        try: () => Promise.resolve(operation()),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch((error) => Effect.sync(() => {
           errors.push(error);
-        }
-      };
+        })),
+      );
       const traceLifecycle = releaseTraceLifecycle;
       releaseTraceLifecycle = null;
-      await attempt(() => traceLifecycle?.());
+      yield* attempt(() => traceLifecycle?.());
       const traceSubscriptions = releaseTraceSubscriptions;
       releaseTraceSubscriptions = null;
-      await attempt(() => traceSubscriptions?.());
+      yield* attempt(() => traceSubscriptions?.());
       const earlyEngineTrace = releaseEarlyEngineTrace;
       releaseEarlyEngineTrace = null;
-      await attempt(() => earlyEngineTrace?.());
+      yield* attempt(() => earlyEngineTrace?.());
       const widgetShell = releaseWidgetShell;
       releaseWidgetShell = null;
-      await attempt(() => widgetShell?.());
+      yield* attempt(() => widgetShell?.());
       const editorShell = releaseEditorShell;
       releaseEditorShell = null;
-      await attempt(() => editorShell?.());
+      yield* attempt(() => editorShell?.());
       const inputGate = releaseInputGate;
       releaseInputGate = null;
-      await attempt(() => inputGate?.());
-      lastMaximizedWidgetId = null;
-      lastWidgetCreationExtension = null;
-      normalizingWidgetShell = false;
-      if (selectionOverlaySuppressed) {
-        selectionOverlaySuppressed = false;
-        editorSession?.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
-      }
+      yield* attempt(() => inputGate?.());
+      yield* attempt(() => {
+        lastMaximizedWidgetId = null;
+        lastWidgetCreationExtension = null;
+        normalizingWidgetShell = false;
+        if (selectionOverlaySuppressed) {
+          selectionOverlaySuppressed = false;
+          editorSession?.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
+        }
+      });
       for (const contribution of shellOverlays) {
-        setOverlayMounted(contribution, false);
+        yield* attempt(() => setOverlayMounted(contribution, false));
       }
       shellOverlays.clear();
       if (shellState.kind !== 'canvas') {
         shellState = Object.freeze({ kind: 'canvas', widgetId: null });
-        for (const listener of [...shellListeners]) listener(shellState);
+        for (const listener of [...shellListeners]) {
+          yield* attempt(() => listener(shellState));
+        }
       }
       const backgroundProjection = canvasBackgroundProjection;
       canvasBackgroundProjection = null;
       const themeChange = releaseThemeChange;
       releaseThemeChange = null;
-      await attempt(() => themeChange?.());
+      yield* attempt(() => themeChange?.());
       for (const install of installs.splice(0).reverse()) {
-        await attempt(() => install.dispose?.());
+        yield* attempt(() => install.dispose?.());
       }
+      const bridge = extensionBridge;
+      extensionBridge = null;
+      yield* attempt(() => bridge?.dispose());
       const dropController = imageDropController;
       imageDropController = null;
-      await attempt(() => dropController?.destroy());
+      yield* attempt(() => dropController?.destroy());
       const input = imageInput;
       imageInput = null;
-      await attempt(() => input?.remove());
+      yield* attempt(() => input?.remove());
       const styles = selectionStyleController;
       selectionStyleController = null;
-      await attempt(() => styles?.destroy());
+      yield* attempt(() => styles?.destroy());
       const session = editorSession;
       editorSession = null;
-      await attempt(() => session?.destroy());
-      await attempt(() => backgroundProjection?.dispose());
+      yield* attempt(() => session?.destroy());
+      yield* attempt(() => backgroundProjection?.dispose());
       const document = documentService;
       documentService = null;
-      await attempt(() => document?.dispose());
+      yield* attempt(() => document?.dispose());
       const canvasEngine = engine;
       engine = null;
-      await attempt(() => canvasEngine?.destroy());
-      await attempt(() => config.container.replaceChildren());
-      if (errors.length === 1) throw errors[0];
+      yield* attempt(() => canvasEngine?.destroy());
+      yield* attempt(() => config.container.replaceChildren());
+      if (errors.length === 1) return yield* Effect.fail(errors[0]);
       if (errors.length > 1) {
-        throw new AggregateError(errors, 'Canvas runtime teardown failed.');
+        return yield* Effect.fail(
+          new AggregateError(errors, 'Canvas runtime teardown failed.'),
+        );
       }
+      });
     },
     editor: () => editorSession?.editor ?? null,
     engine: () => engine,
