@@ -48,14 +48,6 @@ function messageOf(error: unknown, fallback: string): string {
 
 function agentFailure(error: unknown): AgentProgramError {
   if (error instanceof AgentProgramError) return error;
-  if (error instanceof EventProgramError) {
-    return new AgentProgramError(
-      error.code === 'EVENT_UNAVAILABLE' ? 'AGENT_UNAVAILABLE' : error.code,
-      error.message,
-      error.details,
-      { cause: error },
-    );
-  }
   return new AgentProgramError(
     'AGENT_UNAVAILABLE',
     messageOf(error, 'Agent authority is unavailable.'),

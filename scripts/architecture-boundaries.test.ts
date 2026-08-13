@@ -607,12 +607,13 @@ describe('application and import boundaries', () => {
     expect(mapper).toContain('semanticFailureToPrivateRpcError')
     expect(mapper).not.toMatch(/error\.code\.(?:includes|startsWith|endsWith)\s*\(/)
 
-    const dispatcher = await readFile(
-      join(ROOT, 'apps/backend/src/shell/transport/layer.rpc-dispatcher.live.ts'),
+    const registryErrorPolicy = await readFile(
+      join(ROOT, 'apps/backend/src/shell/transport/private-rpc-error.ts'),
       'utf8',
     )
-    expect(dispatcher).toContain('semanticFailureToPrivateRpcError(error)')
-    expect(dispatcher).not.toMatch(/error\.code\.(?:includes|startsWith|endsWith)\s*\(/)
+    expect(registryErrorPolicy).toContain('isSemanticFailure(error)')
+    expect(registryErrorPolicy).toContain('semanticFailureStatus(error)')
+    expect(registryErrorPolicy).not.toMatch(/error\.code\.(?:includes|startsWith|endsWith)\s*\(/)
   })
 
   test('runs substantive live and simulated conformance for every application domain', async () => {

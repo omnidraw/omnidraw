@@ -107,8 +107,9 @@ describe('private Effect RPC client/server contract parity', () => {
     expect(PRIVATE_OPERATION_CONTRACTS.size).toBe(requestPaths.size + streamPaths.size)
     for (const [path, operation] of PRIVATE_OPERATION_CONTRACTS) {
       expect(operation.path).toBe(path)
-      expect(operation.stream).toBe(streamPaths.has(path))
-      expect(operation.procedure.contract.streamOutput).toBe(operation.stream)
+      const stream = operation.mode === 'stream'
+      expect(stream).toBe(streamPaths.has(path))
+      expect(operation.procedure.contract.streamOutput).toBe(stream)
       expect(operation.procedure.contract.outputSchema).toBeDefined()
       expect(operation.procedure.contract.inputSchema === undefined).toBe(noInputPaths.has(path))
     }

@@ -10,7 +10,6 @@ import { fnReduceCanvasCommand } from '../src/core/canvas/fn.reduce-command';
 import { fnCanonicalJson } from '../src/core/fn.canonical-json';
 import {
   fnTransitionWidgetStateMutationLedger,
-  type TWidgetStateMutationRateLedger,
 } from '../src/core/widget-state/fn.mutation-rate';
 import { CanvasItemStoreTurso } from '../src/shell/database/CanvasItemStoreTurso';
 import { DbServiceTurso } from '../src/shell/database/DbServiceTurso/DbServiceTurso';
@@ -241,12 +240,15 @@ async function main(): Promise<void> {
       warmups: 2,
       operationsPerSample: 1_000,
     }, () => {
-      const ledgers = new Map<string, TWidgetStateMutationRateLedger>();
+      const ledgers = new Map<string, {
+        lastSeenAt: number;
+        timestamps: number[];
+      }>();
       for (let index = 0; index < 2_048; index += 1) {
-        ledgers.set(`scope-${index}`, Object.freeze({
+        ledgers.set(`scope-${index}`, {
           lastSeenAt: 0,
-          timestamps: Object.freeze([0]),
-        }));
+          timestamps: [0],
+        });
       }
       let allowed = 0;
       for (let index = 0; index < 1_000; index += 1) {
@@ -257,7 +259,14 @@ async function main(): Promise<void> {
           limit: 2_000,
           windowMs: 1_000,
         });
-        ledgers.set(scope, transition.ledger);
+        const ledger = ledgers.get(scope)!;
+        if (transition.firstRetained > 0) {
+          ledger.timestamps.splice(0, transition.firstRetained);
+        }
+        ledger.lastSeenAt = transition.lastSeenAt;
+        if (transition.appendTimestamp !== undefined) {
+          ledger.timestamps.push(transition.appendTimestamp);
+        }
         if (transition.admission.allowed) allowed += 1;
       }
       return allowed ^ ledgers.size;

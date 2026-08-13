@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  fnTransitionWidgetStateMutationLedger,
   fnTransitionWidgetStateMutationRate,
   type TWidgetStateMutationRateLedgerEntry,
 } from './fn.mutation-rate';
@@ -25,6 +26,24 @@ function transition(
 }
 
 describe('widget-state mutation-rate transition', () => {
+  test('describes one hot-ledger mutation without copying its timestamps', () => {
+    const timestamps = Object.freeze([0, 500]);
+    const transition = fnTransitionWidgetStateMutationLedger({
+      ledger: Object.freeze({ lastSeenAt: 500, timestamps }),
+      now: 1_000,
+      limit: 2,
+      windowMs: 1_000,
+    });
+
+    expect(transition).toEqual({
+      admission: { allowed: true },
+      firstRetained: 1,
+      lastSeenAt: 1_000,
+      appendTimestamp: 1_000,
+    });
+    expect(timestamps).toEqual([0, 500]);
+  });
+
   test('preserves fixed-window admission and exact retry timing', () => {
     const first = transition([], 'instance-a', 0);
     const second = transition(first.ledgers, 'instance-a', 0);

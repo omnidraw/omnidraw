@@ -95,28 +95,36 @@ export function fnTransitionWidgetStateMutationLedger(args: Readonly<{
   windowMs: number;
 }>): Readonly<{
   admission: TWidgetStateMutationAdmission;
-  ledger: TWidgetStateMutationRateLedger;
+  firstRetained: number;
+  lastSeenAt: number;
+  appendTimestamp?: number;
 }> {
-  const retained = args.ledger === undefined
-    ? null
-    : fnPruneWidgetStateMutationRateLedger(args.ledger, args.now, args.windowMs);
-  const timestamps = retained?.timestamps ?? Object.freeze([]);
-  const lastSeenAt = Math.max(retained?.lastSeenAt ?? args.now, args.now);
-  if (timestamps.length >= args.limit) {
+  const timestamps = args.ledger?.timestamps ?? [];
+  const cutoff = args.now - args.windowMs;
+  let firstRetained = 0;
+  while (
+    firstRetained < timestamps.length
+    && timestamps[firstRetained]! <= cutoff
+  ) firstRetained += 1;
+  const lastSeenAt = Math.max(args.ledger?.lastSeenAt ?? args.now, args.now);
+  if (timestamps.length - firstRetained >= args.limit) {
     return Object.freeze({
       admission: Object.freeze({
         allowed: false,
-        retryAfterMs: Math.max(1, timestamps[0]! + args.windowMs - args.now),
+        retryAfterMs: Math.max(
+          1,
+          timestamps[firstRetained]! + args.windowMs - args.now,
+        ),
       }),
-      ledger: Object.freeze({ lastSeenAt, timestamps }),
+      firstRetained,
+      lastSeenAt,
     });
   }
   return Object.freeze({
     admission: Object.freeze({ allowed: true }),
-    ledger: Object.freeze({
-      lastSeenAt,
-      timestamps: Object.freeze([...timestamps, args.now]),
-    }),
+    firstRetained,
+    lastSeenAt,
+    appendTimestamp: args.now,
   });
 }
 

@@ -31,7 +31,6 @@ import {
   fnPruneWidgetStateMutationRateLedger,
   fnTransitionWidgetStateMutationLedger,
   fnWidgetStateMutationCapacityRetryAfter,
-  type TWidgetStateMutationRateLedger,
 } from '../core/widget-state/fn.mutation-rate';
 import type {
   TWidgetStateInstanceIdentity,
@@ -122,7 +121,10 @@ export function layerWidgetStateAuthoritySim(args: Readonly<{
 }>) {
   const snapshots = new Map<string, TWidgetStateSnapshot>();
   const history = new Map<string, TWidgetStateSubscriptionEvent[]>();
-  const mutationRateLedgers = new Map<string, TWidgetStateMutationRateLedger>();
+  const mutationRateLedgers = new Map<string, {
+    lastSeenAt: number;
+    timestamps: number[];
+  }>();
   const mutationRateLimit = args.mutationRateLimit
     ?? WIDGET_STATE_MUTATION_RATE_LIMIT;
   const mutationRateWindowMs = args.mutationRateWindowMs
@@ -141,7 +143,12 @@ export function layerWidgetStateAuthoritySim(args: Readonly<{
           mutationRateWindowMs,
         );
         if (retained === null) mutationRateLedgers.delete(candidateScope);
-        else if (retained !== candidate) mutationRateLedgers.set(candidateScope, retained);
+        else if (retained !== candidate) {
+          mutationRateLedgers.set(candidateScope, {
+            lastSeenAt: retained.lastSeenAt,
+            timestamps: [...retained.timestamps],
+          });
+        }
       }
       ledger = mutationRateLedgers.get(scope);
     }
@@ -161,7 +168,15 @@ export function layerWidgetStateAuthoritySim(args: Readonly<{
       limit: mutationRateLimit,
       windowMs: mutationRateWindowMs,
     });
-    mutationRateLedgers.set(scope, transition.ledger);
+    const next = ledger ?? { lastSeenAt: transition.lastSeenAt, timestamps: [] };
+    if (transition.firstRetained > 0) {
+      next.timestamps.splice(0, transition.firstRetained);
+    }
+    next.lastSeenAt = transition.lastSeenAt;
+    if (transition.appendTimestamp !== undefined) {
+      next.timestamps.push(transition.appendTimestamp);
+    }
+    mutationRateLedgers.set(scope, next);
     return transition.admission;
   };
   const snapshotFor = (identity: TWidgetStateInstanceIdentity): TWidgetStateSnapshot => {

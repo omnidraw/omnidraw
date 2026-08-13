@@ -20,7 +20,6 @@ import {
   fnTransitionWidgetStateMutationLedger,
   fnWidgetStateMutationCapacityRetryAfter,
   type TWidgetStateMutationAdmission,
-  type TWidgetStateMutationRateLedger,
 } from '#backend/core/widget-state/fn.mutation-rate';
 import {
   fnAssertWidgetStateCursor,
@@ -70,7 +69,10 @@ export class WidgetStateService implements IWidgetStateService {
   readonly #mutationRateLimit: number;
   readonly #mutationRateWindowMs: number;
   readonly #maxMutationRateLedgers: number;
-  readonly #mutationRateLedgers = new Map<string, TWidgetStateMutationRateLedger>();
+  readonly #mutationRateLedgers = new Map<string, {
+    lastSeenAt: number;
+    timestamps: number[];
+  }>();
   readonly #streams = new Map<string, WidgetStateVersionStream>();
   readonly #metrics: TMetricCounters = {
     getAttempts: 0,
@@ -281,7 +283,12 @@ export class WidgetStateService implements IWidgetStateService {
           this.#mutationRateWindowMs,
         );
         if (retained === null) this.#mutationRateLedgers.delete(candidateScope);
-        else if (retained !== candidate) this.#mutationRateLedgers.set(candidateScope, retained);
+        else if (retained !== candidate) {
+          this.#mutationRateLedgers.set(candidateScope, {
+            lastSeenAt: retained.lastSeenAt,
+            timestamps: [...retained.timestamps],
+          });
+        }
       }
       ledger = this.#mutationRateLedgers.get(scope);
     }
@@ -301,7 +308,15 @@ export class WidgetStateService implements IWidgetStateService {
       limit: this.#mutationRateLimit,
       windowMs: this.#mutationRateWindowMs,
     });
-    this.#mutationRateLedgers.set(scope, transition.ledger);
+    const next = ledger ?? { lastSeenAt: transition.lastSeenAt, timestamps: [] };
+    if (transition.firstRetained > 0) {
+      next.timestamps.splice(0, transition.firstRetained);
+    }
+    next.lastSeenAt = transition.lastSeenAt;
+    if (transition.appendTimestamp !== undefined) {
+      next.timestamps.push(transition.appendTimestamp);
+    }
+    this.#mutationRateLedgers.set(scope, next);
     return transition.admission;
   }
 
