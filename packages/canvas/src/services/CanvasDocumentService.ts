@@ -30,27 +30,16 @@ import {
   fnReadCanvasImageExtension,
   type TCanvasCommand,
   type TCanvasDocumentTransport,
-  type TCanvasEvent,
   type TCanvasImageExtensionV1,
   type TCanvasItemPage,
   type TCanvasItemQuery,
   type TCanvasItemSnapshot,
   type TCanvasItemsChangedEvent,
-  type TCanvasOperation,
-  type TCanvasPrecondition,
   type TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
 import { Deferred, Effect } from 'effect';
-import type {
-  TCanvasImagePort,
-  TCanvasWaitHandle,
-  TCanvasWaitPort,
-  TImageUploadFormat,
-} from '../types';
+import type { TCanvasImagePort, TCanvasWaitPort, TImageUploadFormat } from '../types';
 import {
-  fnAuthoredCanvasNode,
-  fnDiffSceneNodeStructure,
-  fnDiffSceneNodes,
   fnRuntimeCanvasNode,
   fnSceneNodesEqual,
 } from './fn.scene-node-diff';
@@ -66,7 +55,18 @@ import {
   CANVAS_RUNTIME_CONTENT_LAYER_ID,
   fnCanvasNodesToCangineSnapshot,
 } from '../internal/cangine-contract-adapter';
-import { CanvasEffectRuntime } from '../internal/CanvasEffectRuntime';
+import {
+  fnAssertCompatibleImageDescriptors,
+  fnBuildImageDocumentIndex,
+  fnPlanCanvasOperations,
+  fnPlanSceneNodeImages,
+  fnStageImageIndexChanges,
+  type TCanvasCommandPlan,
+  type TImageDocumentIndex,
+  type TImageIndexPatch,
+  type TIndexedImageDescriptor,
+} from './fn.document-policy';
+import { CanvasSyncSupervisor } from './CanvasSyncSupervisor';
 
 const SERVER_SCENE_SOURCE = 'omnidraw:server';
 const SNAPSHOT_SCENE_SOURCE = 'omnidraw:snapshot';
@@ -140,11 +140,6 @@ type TIncrementalSceneReduction = Extract<
   Readonly<{ mode: 'incremental' }>
 >;
 
-type TCommandPlan = Readonly<{
-  operations: readonly TCanvasOperation[];
-  preconditions: readonly TCanvasPrecondition[];
-}>;
-
 type TMediaGate = Readonly<{
   wait: Effect.Effect<void>;
   release(): void;
@@ -162,7 +157,7 @@ type TPendingTransaction = {
   ownedMediaCleanupScheduled: boolean;
   before: Map<string, TSceneNodeImage>;
   after: Map<string, TSceneNodeImage>;
-  plan: TCommandPlan;
+  plan: TCanvasCommandPlan;
 };
 
 type TLocalImage = {
@@ -181,22 +176,6 @@ type TPreparedImport = Readonly<{
 type TImagePromotion = Readonly<{
   resourceId: string;
   extension: TCanvasImageExtensionV1;
-}>;
-
-type TIndexedImageDescriptor = {
-  extension: TCanvasImageExtensionV1;
-  count: number;
-};
-
-type TImageDocumentIndex = Readonly<{
-  nodeCounts: Map<string, number>;
-  descriptorCounts: Map<string, Map<string, TIndexedImageDescriptor>>;
-}>;
-
-type TImageIndexPatch = Readonly<{
-  nodeCounts: Map<string, number>;
-  descriptorCounts: Map<string, Map<string, TIndexedImageDescriptor>>;
-  registrationsChanged: boolean;
 }>;
 
 type TCommitOptions = Readonly<{
@@ -407,7 +386,6 @@ export class CanvasDocumentService
   readonly #canvasId: string;
   readonly #transport: TCanvasDocumentTransport;
   readonly #createCommandId: () => string;
-  readonly #wait: TCanvasWaitPort;
   readonly #image: TCanvasImagePort | null;
   #projectNode: (node: TSceneNode) => TSceneNode;
   readonly #onError: (error: unknown) => void;
@@ -421,9 +399,8 @@ export class CanvasDocumentService
   readonly #localImages = new Map<TResourceId, TLocalImage>();
   readonly #activeImports = new Map<string, TPreparedImport>();
   readonly #inFlightTransactions = new Set<TPendingTransaction>();
-  readonly #activeWaits = new Set<TCanvasWaitHandle>();
   readonly #authoredListeners = new Set<() => void>();
-  readonly #effects = new CanvasEffectRuntime();
+  readonly #sync: CanvasSyncSupervisor;
   #imageNodeCounts = new Map<string, number>();
   #imageDescriptorCounts = new Map<
     string,
@@ -439,20 +416,26 @@ export class CanvasDocumentService
   #committing = false;
   #recoveryPending = false;
   #reloading = false;
-  #outboxGeneration = 0;
-  #generation = 0;
   #recoveryGate: Deferred.Deferred<void> | null = null;
-  #eventIterator: AsyncIterator<TCanvasEvent> | null = null;
-  #cancelEventStream: (() => void) | null = null;
   constructor(options: TCanvasDocumentServiceOptions) {
     this.#canvasId = options.canvasId;
     this.#transport = options.transport;
     this.#createCommandId = options.createCommandId;
-    this.#wait = options.wait;
     this.#image = options.image ?? null;
     this.#projectNode = options.projectNode ?? ((node) => node);
     this.#onError = options.onError ?? (() => undefined);
     this.#observeDocument = options.observe ?? null;
+    this.#sync = new CanvasSyncSupervisor({
+      canvasId: this.#canvasId,
+      transport: this.#transport,
+      wait: options.wait,
+      acceptedRevision: () => this.#acceptedRevision,
+      recoveryActive: () => this.#recoveryPending || this.#reloading,
+      awaitRecoveryEffect: () => this.#awaitRecoveryEffect(),
+      acceptEvent: (event) => this.#acceptEvent(event, null),
+      scheduleRecovery: (cause) => this.#scheduleRecovery(cause),
+      reportError: (error) => this.#reportError(error),
+    });
     this.#history = new CanvasDocumentHistory(
       (entry, direction) => {
         this.#performHistory(entry, direction);
@@ -561,7 +544,7 @@ export class CanvasDocumentService
       this.#resourceRegistrations = engine.resources.createRegistrationOwner(
         DOCUMENT_IMAGE_REGISTRATION_OWNER,
       );
-      await this.#effects.run(this.#reloadEffect(true));
+      await this.#sync.run(this.#reloadEffect(true));
     } catch (error) {
       try {
         this.#resourceRegistrations?.destroy();
@@ -573,11 +556,7 @@ export class CanvasDocumentService
       this.#engine = null;
       throw error;
     }
-    const generation = ++this.#generation;
-    this.#cancelEventStream = this.#effects.fork(
-      this.#consumeEventsEffect(generation),
-      (error) => this.#reportError(error),
-    );
+    this.#sync.startEventStream();
   }
 
   commit(
@@ -751,27 +730,14 @@ export class CanvasDocumentService
   async dispose(): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
-    this.#generation += 1;
-    this.#outboxGeneration += 1;
-    const cancelEventStream = this.#cancelEventStream;
-    this.#cancelEventStream = null;
-    cancelEventStream?.();
+    this.#sync.invalidateOutbox();
     const queuedOwnedMedia = [...this.#pendingByTransactionId.values()]
       .filter((pending) => pending.dispatchState === 'queued');
     this.#invalidatePending();
-    await this.#effects.run(Effect.all(
+    await this.#sync.run(Effect.all(
       queuedOwnedMedia.map((pending) => this.#deletePendingOwnedMediaEffect(pending)),
       { concurrency: 'unbounded', discard: true },
     ));
-    const iterator = this.#eventIterator;
-    this.#eventIterator = null;
-    for (const wait of [...this.#activeWaits]) wait.cancel();
-    try {
-      const closing = iterator?.return?.();
-      await closing;
-    } catch {
-      // Stream cancellation failures cannot prevent local teardown.
-    }
     this.#history.destroy();
     try {
       this.#resourceRegistrations?.destroy();
@@ -790,7 +756,7 @@ export class CanvasDocumentService
     this.#imageNodeCounts.clear();
     this.#imageDescriptorCounts.clear();
     this.#engine = null;
-    await this.#effects.dispose();
+    await this.#sync.dispose();
   }
 
   #commitMutation(
@@ -884,11 +850,8 @@ export class CanvasDocumentService
         authoredAfter,
         new Set(options.preparedImageResourceIds ?? []),
       );
-      const imageIndexPatch = this.#stageImageIndexChanges(
-        authoredBefore,
-        authoredAfter,
-      );
-      const plan = this.#planFromNodes(authoredBefore, authoredAfter);
+      const imageIndexPatch = this.#stageImageIndexChanges(authoredBefore, authoredAfter);
+      const plan = fnPlanCanvasOperations(authoredBefore, authoredAfter);
       if (plan.operations.length === 0) {
         throw new RangeError('Editor transaction has no durable canvas operation.');
       }
@@ -1026,7 +989,11 @@ export class CanvasDocumentService
     direction: 'undo' | 'redo',
   ): void {
     const desired = direction === 'undo' ? entry.before : entry.after;
-    const planned = this.#commandsForNodeImages(desired);
+    const planned = fnPlanSceneNodeImages({
+      desired,
+      current: this.#authoredNodes,
+      projectNode: this.#projectNode,
+    });
     const request: TEditorSceneMutationRequest = {
       transactionId: `history:${this.#createCommandId()}`,
       basisSceneRevision: this.projectedSceneRevision,
@@ -1037,95 +1004,6 @@ export class CanvasDocumentService
     this.#commitMutation(request, {
       persist: true,
       recordHistory: false,
-    });
-  }
-
-  #commandsForNodeImages(
-    desired: ReadonlyMap<string, TSceneNodeImage>,
-  ): Readonly<{
-    commands: readonly TSerializedSceneCommand[];
-    affectedNodeIds: readonly string[];
-  }> {
-    const upserts: TSerializedSceneCommand[] = [];
-    const removals: TSerializedSceneCommand[] = [];
-    const affectedNodeIds: string[] = [];
-    for (const nodeId of [...desired.keys()].sort(codePointCompare)) {
-      const target = desired.get(nodeId) ?? null;
-      const current = this.#authoredNodes.get(nodeId) ?? null;
-      if (fnSceneNodesEqual(current, target)) continue;
-      affectedNodeIds.push(nodeId);
-      if (target === null) {
-        removals.push({
-          type: 'remove',
-          nodeId,
-          descendants: 'remove',
-        });
-      } else {
-        upserts.push({ type: 'upsert', node: this.#projectNode(target) });
-      }
-    }
-    const commands = Object.freeze([...upserts, ...removals]);
-    if (commands.length === 0) {
-      throw new RangeError('History step has no local document change.');
-    }
-    return Object.freeze({
-      commands,
-      affectedNodeIds: Object.freeze(affectedNodeIds),
-    });
-  }
-
-  #planFromNodes(
-    before: ReadonlyMap<string, TSceneNodeImage>,
-    after: ReadonlyMap<string, TSceneNodeImage>,
-  ): TCommandPlan {
-    const operations: TCanvasOperation[] = [];
-    const preconditions: TCanvasPrecondition[] = [];
-    for (const id of new Set([...before.keys(), ...after.keys()])) {
-      const previousImage = before.get(id) ?? null;
-      const nextImage = after.get(id) ?? null;
-      const previous = previousImage === null
-        ? null
-        : fnAuthoredCanvasNode(previousImage);
-      const next = nextImage === null
-        ? null
-        : fnAuthoredCanvasNode(nextImage);
-      if (fnSceneNodesEqual(previous, next)) continue;
-      if (previous === null && next !== null) {
-        operations.push({ type: 'insert', item: next });
-        preconditions.push({ type: 'item-absent', itemId: id });
-        continue;
-      }
-      if (previous !== null && next === null) {
-        operations.push({ type: 'delete', itemId: id });
-        continue;
-      }
-      if (previous === null || next === null) continue;
-      if (previous.id !== id || next.id !== id) {
-        throw new TypeError(`Canvas transaction '${id}' contains a mismatched node ID.`);
-      }
-      const structure = fnDiffSceneNodeStructure(previous, next);
-      if (structure.parentChanged) {
-        operations.push({
-          type: 'reparent',
-          itemId: id,
-          parentId: next.parentId,
-          ...(structure.orderChanged ? { orderKey: next.orderKey } : {}),
-        });
-      } else if (structure.orderChanged) {
-        operations.push({
-          type: 'reorder',
-          itemId: id,
-          orderKey: next.orderKey,
-        });
-      }
-      const diff = fnDiffSceneNodes(previous, next);
-      if (diff.patches.length === 0) continue;
-      operations.push({ type: 'patch', itemId: id, patches: diff.patches });
-      preconditions.push(...diff.preconditions);
-    }
-    return Object.freeze({
-      operations: Object.freeze(operations),
-      preconditions: Object.freeze(preconditions),
     });
   }
 
@@ -1159,7 +1037,7 @@ export class CanvasDocumentService
   }
 
   #enqueuePending(pending: TPendingTransaction): void {
-    const outboxGeneration = this.#outboxGeneration;
+    const outboxGeneration = this.#sync.outboxGeneration;
     const self = this;
     const operation = Effect.gen(function*() {
       if (pending.mediaGate !== null) {
@@ -1170,7 +1048,7 @@ export class CanvasDocumentService
         return;
       }
       if (
-        outboxGeneration !== self.#outboxGeneration
+        !self.#sync.isOutboxGeneration(outboxGeneration)
         || self.#pendingByTransactionId.get(pending.transactionId) !== pending
       ) return;
       pending.dispatchState = 'executing';
@@ -1207,7 +1085,7 @@ export class CanvasDocumentService
       }
       if (self.#disposed) return;
       if (
-        outboxGeneration !== self.#outboxGeneration
+        !self.#sync.isOutboxGeneration(outboxGeneration)
         || self.#pendingByTransactionId.get(pending.transactionId) !== pending
       ) {
         yield* self.#acceptLateCommittedEventEffect(event);
@@ -1252,7 +1130,7 @@ export class CanvasDocumentService
           yield* self.#deletePendingOwnedMediaEffect(pending);
           return;
         }
-        if (outboxGeneration === self.#outboxGeneration) {
+        if (self.#sync.isOutboxGeneration(outboxGeneration)) {
           yield* Effect.sync(() => self.#scheduleRecovery(error));
         }
         yield* self.#awaitRecoveryEffect();
@@ -1262,7 +1140,7 @@ export class CanvasDocumentService
         self.#inFlightTransactions.delete(pending);
       })),
     );
-    this.#effects.forkSerial(
+    this.#sync.forkSerial(
       operation,
       (error) => this.#reportError(error),
     );
@@ -1732,7 +1610,7 @@ export class CanvasDocumentService
     pending: TPendingTransaction,
     images: readonly TLocalImage[],
   ): void {
-    this.#effects.fork(
+    this.#sync.fork(
       this.#uploadPreparedImportEffect(importId, pending, images),
       (error) => {
         this.#reportError(error);
@@ -1873,14 +1751,14 @@ export class CanvasDocumentService
     for (const pending of this.#pendingByTransactionId.values()) {
       rewrite(pending.before);
       rewrite(pending.after);
-      pending.plan = this.#planFromNodes(pending.before, pending.after);
+      pending.plan = fnPlanCanvasOperations(pending.before, pending.after);
     }
   }
 
   #scheduleUploadedUrlDeletion(urls: readonly string[]): void {
     if (urls.length === 0 || this.#image === null) return;
     try {
-      this.#effects.fork(this.#deleteUploadedUrlsEffect(urls));
+      this.#sync.fork(this.#deleteUploadedUrlsEffect(urls));
     } catch (error) {
       if (!this.#disposed) this.#reportError(error);
     }
@@ -1915,12 +1793,11 @@ export class CanvasDocumentService
       },
     });
     this.#recoveryPending = true;
-    this.#outboxGeneration += 1;
+    this.#sync.invalidateOutbox();
     this.#invalidatePending();
-    this.#effects.resetSerial();
     const gate = Deferred.makeUnsafe<void>();
     this.#recoveryGate = gate;
-    this.#effects.fork(
+    this.#sync.fork(
       this.#reloadUntilRecoveredEffect().pipe(
         Effect.ensuring(Effect.sync(() => {
           Deferred.doneUnsafe(gate, Effect.void);
@@ -1962,7 +1839,7 @@ export class CanvasDocumentService
             });
             this.#reportError(error);
           }).pipe(
-            Effect.andThen(this.#waitBeforeRetryEffect(250)),
+            Effect.andThen(this.#sync.waitBeforeRetryEffect(250)),
             Effect.andThen(this.#reloadUntilRecoveredEffect()),
           );
         }),
@@ -2055,7 +1932,7 @@ export class CanvasDocumentService
       const optimisticNodes = new Map(
         admittedSnapshot.nodes.map((node) => [node.id, node]),
       );
-      const nextImageIndex = this.#buildImageDocumentIndex(authoredNodes);
+      const nextImageIndex = fnBuildImageDocumentIndex(authoredNodes);
 
       const previousRevision = this.#acceptedRevision;
       const previousItems = new Map(this.#acceptedItems);
@@ -2107,116 +1984,19 @@ export class CanvasDocumentService
       });
   }
 
-  #buildImageDocumentIndex(
-    nodes: ReadonlyMap<string, TSceneNode>,
-  ): TImageDocumentIndex {
-    const index: TImageDocumentIndex = {
-      nodeCounts: new Map(),
-      descriptorCounts: new Map(),
-    };
-    for (const node of nodes.values()) {
-      if (node.kind !== 'image') continue;
-      adjustCount(index.nodeCounts, node.resourceId, 1);
-      const extension = fnReadCanvasImageExtension(node);
-      if (extension === null) continue;
-      adjustDescriptorCount(
-        index.descriptorCounts,
-        node.resourceId,
-        extension,
-        1,
-      );
-    }
-    assertCompatibleImageDescriptors(index.descriptorCounts);
-    return index;
-  }
-
   #stageImageIndexChanges(
     before: ReadonlyMap<string, TSceneNodeImage>,
     after: ReadonlyMap<string, TSceneNodeImage>,
   ): TImageIndexPatch {
-    const touchedResourceIds = new Set<string>();
-    for (const node of before.values()) {
-      if (node?.kind === 'image') touchedResourceIds.add(node.resourceId);
-    }
-    for (const node of after.values()) {
-      if (node?.kind === 'image') touchedResourceIds.add(node.resourceId);
-    }
-
-    const nodeCounts = new Map<string, number>();
-    const descriptorCounts = new Map<
-      string,
-      Map<string, TIndexedImageDescriptor>
-    >();
-    const registeredBefore = new Map<string, string | null>();
-    for (const resourceId of touchedResourceIds) {
-      nodeCounts.set(resourceId, this.#imageNodeCounts.get(resourceId) ?? 0);
-      descriptorCounts.set(
-        resourceId,
-        cloneDescriptorBucket(this.#imageDescriptorCounts.get(resourceId)),
-      );
-      registeredBefore.set(
-        resourceId,
-        this.#registeredDescriptorKey(
-          resourceId,
-          this.#imageDescriptorCounts.get(resourceId),
-        ),
-      );
-    }
-
-    const removeNode = (node: TSceneNodeImage): void => {
-      if (node?.kind !== 'image') return;
-      adjustCount(nodeCounts, node.resourceId, -1);
-      const extension = fnReadCanvasImageExtension(node);
-      if (extension !== null) {
-        adjustDescriptorCount(
-          descriptorCounts,
-          node.resourceId,
-          extension,
-          -1,
-        );
-      }
-    };
-    const addNode = (node: TSceneNodeImage): void => {
-      if (node?.kind !== 'image') return;
-      adjustCount(nodeCounts, node.resourceId, 1);
-      const extension = fnReadCanvasImageExtension(node);
-      if (extension !== null) {
-        adjustDescriptorCount(
-          descriptorCounts,
-          node.resourceId,
-          extension,
-          1,
-        );
-      }
-    };
-    for (const node of before.values()) removeNode(node);
-    for (const node of after.values()) addNode(node);
-    for (const resourceId of touchedResourceIds) {
-      if (!nodeCounts.has(resourceId)) nodeCounts.set(resourceId, 0);
-      if (!descriptorCounts.has(resourceId)) {
-        descriptorCounts.set(resourceId, new Map());
-      }
-    }
-    assertCompatibleImageDescriptors(descriptorCounts);
-
-    let registrationsChanged = false;
-    for (const resourceId of touchedResourceIds) {
-      if (
-        registeredBefore.get(resourceId)
-        !== this.#registeredDescriptorKey(
-          resourceId,
-          descriptorCounts.get(resourceId),
-        )
-      ) {
-        registrationsChanged = true;
-        break;
-      }
-    }
-    return {
-      nodeCounts,
-      descriptorCounts,
-      registrationsChanged,
-    };
+    return fnStageImageIndexChanges({
+      before,
+      after,
+      current: {
+        nodeCounts: this.#imageNodeCounts,
+        descriptorCounts: this.#imageDescriptorCounts,
+      },
+      localResourceIds: new Set(this.#localImages.keys()),
+    });
   }
 
   #applyImageIndexPatch(patch: TImageIndexPatch): void {
@@ -2228,14 +2008,6 @@ export class CanvasDocumentService
       if (bucket.size === 0) this.#imageDescriptorCounts.delete(resourceId);
       else this.#imageDescriptorCounts.set(resourceId, bucket);
     }
-  }
-
-  #registeredDescriptorKey(
-    resourceId: string,
-    bucket: ReadonlyMap<string, TIndexedImageDescriptor> | undefined,
-  ): string | null {
-    if (this.#localImages.has(resourceId) || bucket?.size !== 1) return null;
-    return bucket.keys().next().value ?? null;
   }
 
   #syncDurableResources(
@@ -2254,7 +2026,7 @@ export class CanvasDocumentService
         mimeType: string;
       };
     }> = [];
-    assertCompatibleImageDescriptors(index.descriptorCounts);
+    fnAssertCompatibleImageDescriptors(index.descriptorCounts);
     for (const [resourceId, bucket] of index.descriptorCounts) {
       if (this.#localImages.has(resourceId) || bucket.size === 0) continue;
       const indexed = bucket.values().next().value;
@@ -2269,7 +2041,7 @@ export class CanvasDocumentService
       });
     }
     owner.replace(claims);
-    this.#effects.fork(
+    this.#sync.fork(
       Effect.tryPromise({
         try: () => owner.preload(),
         catch: (cause) => cause,
@@ -2321,123 +2093,6 @@ export class CanvasDocumentService
     ) {
       this.#scheduleUploadedUrlDeletion([image.durableUrl]);
     }
-  }
-
-  #consumeEventsEffect(generation: number): Effect.Effect<void, unknown> {
-    const current = () => !this.#disposed && generation === this.#generation;
-    const consume = (): Effect.Effect<void, unknown> => Effect.suspend(() => {
-      if (!current()) return Effect.void;
-      if (this.#recoveryPending || this.#reloading) {
-        return this.#awaitRecoveryEffect().pipe(Effect.andThen(consume()));
-      }
-      const subscription = Effect.acquireRelease(
-        Effect.try({
-          try: () => {
-            const iterable = this.#transport.subscribe({
-              canvasId: this.#canvasId,
-              afterRevision: this.#acceptedRevision,
-            });
-            const iterator = iterable[Symbol.asyncIterator]();
-            this.#eventIterator = iterator;
-            return iterator;
-          },
-          catch: (cause) => cause,
-        }),
-        (iterator) => Effect.tryPromise({
-          try: async () => { await iterator.return?.(); },
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch(() => Effect.void),
-          Effect.ensuring(Effect.sync(() => {
-            if (this.#eventIterator === iterator) this.#eventIterator = null;
-          })),
-        ),
-      ).pipe(
-        Effect.flatMap((iterator) => this.#consumeEventIteratorEffect(iterator, generation)),
-        Effect.scoped,
-        Effect.matchEffect({
-          onFailure: (error) => Effect.sync(() => {
-            if (current()) this.#reportError(error);
-            return 'retry' as const;
-          }),
-          onSuccess: (result) => Effect.succeed(result),
-        }),
-      );
-      return subscription.pipe(
-        Effect.flatMap((result) => {
-          if (!current()) return Effect.void;
-          if (result === 'recovery') {
-            return this.#awaitRecoveryEffect().pipe(Effect.andThen(consume()));
-          }
-          return this.#waitBeforeRetryEffect(250).pipe(Effect.andThen(consume()));
-        }),
-      );
-    });
-    return consume();
-  }
-
-  #consumeEventIteratorEffect(
-    iterator: AsyncIterator<TCanvasEvent>,
-    generation: number,
-  ): Effect.Effect<'ended' | 'recovery' | 'stopped', unknown> {
-    return Effect.suspend(() => {
-      if (this.#disposed || generation !== this.#generation) {
-        return Effect.succeed('stopped' as const);
-      }
-      return Effect.tryPromise({
-        try: () => iterator.next(),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.flatMap((next) => {
-          if (next.done) return Effect.succeed('ended' as const);
-          if (this.#recoveryPending || this.#reloading) {
-            return Effect.succeed('recovery' as const);
-          }
-          return Effect.try({
-            try: () => CanvasEventCodec.decode(next.value),
-            catch: (cause) => cause,
-          }).pipe(
-            Effect.flatMap((event) => Effect.sync(() => {
-              if (event.type === 'items-changed') {
-                try {
-                  this.#acceptEvent(event, null);
-                  return false;
-                } catch (error) {
-                  if (!this.#disposed) this.#scheduleRecovery(error);
-                  return true;
-                }
-              }
-              this.#scheduleRecovery();
-              return true;
-            })),
-            Effect.flatMap((recover) => recover
-              ? Effect.succeed('recovery' as const)
-              : this.#consumeEventIteratorEffect(iterator, generation)),
-          );
-        }),
-      );
-    });
-  }
-
-  #waitBeforeRetryEffect(delayMs: number): Effect.Effect<void, unknown> {
-    if (this.#disposed) return Effect.void;
-    return Effect.acquireRelease(
-      Effect.sync(() => {
-        const wait = this.#wait.wait(delayMs);
-        this.#activeWaits.add(wait);
-        return wait;
-      }),
-      (wait) => Effect.sync(() => {
-        this.#activeWaits.delete(wait);
-        wait.cancel();
-      }),
-    ).pipe(
-      Effect.flatMap((wait) => Effect.tryPromise({
-        try: () => wait.promise,
-        catch: (cause) => cause,
-      })),
-      Effect.scoped,
-    );
   }
 
   #reportError(error: unknown): void {
@@ -2496,71 +2151,6 @@ export class CanvasDocumentService
     ) {
       throw new RangeError('Editor mutations cannot target runtime canvas nodes.');
     }
-  }
-}
-
-function imageDescriptorKey(extension: TCanvasImageExtensionV1): string {
-  return JSON.stringify([extension.url, extension.mimeType]);
-}
-
-function cloneDescriptorBucket(
-  bucket: ReadonlyMap<string, TIndexedImageDescriptor> | undefined,
-): Map<string, TIndexedImageDescriptor> {
-  return new Map(
-    [...(bucket ?? [])].map(([key, indexed]) => [
-      key,
-      { extension: indexed.extension, count: indexed.count },
-    ]),
-  );
-}
-
-function adjustCount(
-  counts: Map<string, number>,
-  resourceId: string,
-  delta: 1 | -1,
-): void {
-  const next = (counts.get(resourceId) ?? 0) + delta;
-  if (next < 0) {
-    throw new RangeError(
-      `Image resource '${resourceId}' has an invalid document reference count.`,
-    );
-  }
-  if (next === 0) counts.delete(resourceId);
-  else counts.set(resourceId, next);
-}
-
-function adjustDescriptorCount(
-  descriptors: Map<string, Map<string, TIndexedImageDescriptor>>,
-  resourceId: string,
-  extension: TCanvasImageExtensionV1,
-  delta: 1 | -1,
-): void {
-  const bucket = descriptors.get(resourceId) ?? new Map();
-  const key = imageDescriptorKey(extension);
-  const existing = bucket.get(key);
-  const next = (existing?.count ?? 0) + delta;
-  if (next < 0) {
-    throw new RangeError(
-      `Image resource '${resourceId}' has an invalid descriptor reference count.`,
-    );
-  }
-  if (next === 0) bucket.delete(key);
-  else bucket.set(key, { extension, count: next });
-  if (bucket.size === 0) descriptors.delete(resourceId);
-  else descriptors.set(resourceId, bucket);
-}
-
-function assertCompatibleImageDescriptors(
-  descriptors: ReadonlyMap<
-    string,
-    ReadonlyMap<string, TIndexedImageDescriptor>
-  >,
-): void {
-  for (const [resourceId, bucket] of descriptors) {
-    if (bucket.size <= 1) continue;
-    throw new Error(
-      `Image resource '${resourceId}' has conflicting durable descriptors.`,
-    );
   }
 }
 

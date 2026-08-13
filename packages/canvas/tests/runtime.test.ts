@@ -50,6 +50,7 @@ const runtimeState = vi.hoisted(() => ({
   projectionDisposed: false,
   projectionReplaceError: null as Error | null,
   documentStartHook: null as (() => void) | null,
+  fontPreloadPromise: null as Promise<void> | null,
   theme: null as unknown as TThemeDefinition,
   themeListener: null as ((theme: TThemeDefinition) => void) | null,
 }));
@@ -224,7 +225,6 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
 }));
 
 import { buildRuntime } from '../src/runtime';
-import { CanvasRuntimeLifecycle } from '../src/components/CanvasRuntimeLifecycle';
 import {
   fnCanvasBackgroundProjection,
 } from '../src/fn.canvas-background-projection';
@@ -291,6 +291,7 @@ describe('canvas runtime composition', () => {
     runtimeState.projectionDisposed = false;
     runtimeState.projectionReplaceError = null;
     runtimeState.documentStartHook = null;
+    runtimeState.fontPreloadPromise = null;
     runtimeState.theme = BUILTIN_THEMES[0]!;
     runtimeState.themeListener = null;
     runtimeState.engine = {
@@ -355,6 +356,7 @@ describe('canvas runtime composition', () => {
         async preload(resourceIds: string[]) {
           runtimeState.fontPreloads.push(...resourceIds);
           runtimeState.events.push('fonts:preload');
+          await runtimeState.fontPreloadPromise;
         },
       },
       input: {
@@ -616,64 +618,6 @@ describe('canvas runtime composition', () => {
     runtimeState.theme = BUILTIN_THEMES[1]!;
     lateThemeChange?.(BUILTIN_THEMES[1]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
-  });
-
-  test('releases only acquired resources after partial startup fails', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const bootFailure = new Error('initial document snapshot failed');
-    const onBootError = vi.fn();
-    runtimeState.documentStartHook = () => {
-      throw bootFailure;
-    };
-    const runtime = buildRuntime({
-      canvasId: 'canvas-partial',
-      container,
-      transport: {} as never,
-      createId: () => 'id-partial',
-      wait,
-      themeService,
-    });
-    const lifecycle = new CanvasRuntimeLifecycle<string>({
-      createRuntime: () => runtime,
-      onBootError,
-    });
-
-    await lifecycle.replace('partial');
-
-    expect(onBootError).toHaveBeenCalledWith(bootFailure, 'partial');
-    expect(lifecycle.activeRuntime).toBeNull();
-    expect(runtimeState.events).toEqual(expect.arrayContaining([
-      'engine:create',
-      'projection:create',
-      'fonts:preload',
-      'document:create',
-      'document:start',
-      'theme:release',
-      'projection:dispose',
-      'document:dispose',
-      'engine:destroy',
-    ]));
-    expect(runtimeState.events).not.toEqual(expect.arrayContaining([
-      'editor:create',
-      'image-drop:create',
-      'selection-style:create',
-    ]));
-    expect(runtimeState.events.filter((event) => [
-      'theme:release',
-      'projection:dispose',
-      'document:dispose',
-      'engine:destroy',
-    ].includes(event))).toEqual([
-      'theme:release',
-      'projection:dispose',
-      'document:dispose',
-      'engine:destroy',
-    ]);
-    expect(container.childNodes).toHaveLength(0);
-
-    await lifecycle.dispose();
-    expect(runtimeState.events.filter((event) => event === 'engine:destroy')).toHaveLength(1);
   });
 
   test('projects one exclusive widget shell and centrally mounts only owned overlays', async () => {
@@ -1118,7 +1062,7 @@ describe('canvas runtime composition', () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
-  test('aggregates cleanup errors in teardown order and still releases later owners', async () => {
+  test('closes partial acquisition when a later extension install fails', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const runtime = buildRuntime({
@@ -1128,37 +1072,68 @@ describe('canvas runtime composition', () => {
       createId: () => 'id-a',
       wait,
       themeService,
-    }, [{
-      name: 'throwing',
-      install() {
-        return {
-          dispose() {
-            runtimeState.events.push('extension:throwing:dispose');
-            throw new Error('extension teardown failed');
-          },
-        };
+      image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
+      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
+    }, [
+      {
+        name: 'acquired',
+        install: () => ({
+          dispose: () => { runtimeState.events.push('extension:acquired:dispose'); },
+        }),
       },
-    }]);
-    await Effect.runPromise(runtime.bootEffect());
-    runtimeState.styleDestroyError = new Error('style teardown failed');
-
-    let failure: unknown;
-    try {
-      await Effect.runPromise(runtime.shutdownEffect());
-    } catch (error) {
-      failure = error;
-    }
-
-    expect(failure).toBeInstanceOf(AggregateError);
-    expect((failure as AggregateError).message).toBe('Canvas runtime teardown failed.');
-    expect((failure as AggregateError).errors.map((error) => (
-      error instanceof Error ? error.message : String(error)
-    ))).toEqual([
-      'extension teardown failed',
-      'style teardown failed',
+      {
+        name: 'failed',
+        install: () => { throw new Error('extension install failed'); },
+      },
     ]);
+
+    await expect(Effect.runPromise(runtime.bootEffect())).rejects.toThrow(
+      'extension install failed',
+    );
     expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'extension:acquired:dispose',
+      'image-drop:destroy',
+      'selection-style:destroy',
       'editor:destroy',
+      'document:dispose',
+      'engine:destroy',
+    ]));
+    const teardownCount = runtimeState.events.filter((event) => (
+      event.includes(':dispose') || event.includes(':destroy')
+    )).length;
+    await Effect.runPromise(runtime.shutdownEffect());
+    await Effect.runPromise(runtime.shutdownEffect());
+    expect(runtimeState.events.filter((event) => (
+      event.includes(':dispose') || event.includes(':destroy')
+    ))).toHaveLength(teardownCount);
+  });
+
+  test('interruption closes resources acquired before font preload settles', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    runtimeState.fontPreloadPromise = new Promise(() => undefined);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      wait,
+      themeService,
+      image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
+      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
+    });
+    const controller = new AbortController();
+    const boot = Effect.runPromiseExit(runtime.bootEffect(), {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(runtimeState.events).toContain('fonts:preload'));
+
+    controller.abort();
+    const exit = await boot;
+
+    expect(exit._tag).toBe('Failure');
+    expect(runtimeState.events).toEqual(expect.arrayContaining([
+      'theme:release',
       'projection:dispose',
       'document:dispose',
       'engine:destroy',

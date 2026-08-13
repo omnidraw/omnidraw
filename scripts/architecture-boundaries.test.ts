@@ -687,8 +687,17 @@ describe('application and import boundaries', () => {
       'utf8',
     )
     expect(canvasDocument).toContain('#reloadEffect(')
-    expect(canvasDocument).toContain('#consumeEventsEffect(')
-    expect(canvasDocument).not.toMatch(/async\s+#(?:reloadUntilRecovered|consumeEvents|waitBeforeRetry)\s*\(/)
+    expect(canvasDocument).toContain('CanvasSyncSupervisor')
+    expect(canvasDocument).not.toContain('#consumeEventsEffect(')
+    expect(canvasDocument).not.toMatch(/async\s+#reloadUntilRecovered\s*\(/)
+
+    const canvasSyncSupervisor = await readFile(
+      join(ROOT, 'packages/canvas/src/services/CanvasSyncSupervisor.ts'),
+      'utf8',
+    )
+    expect(canvasSyncSupervisor).toContain('#consumeEventsEffect(')
+    expect(canvasSyncSupervisor).toContain('waitBeforeRetryEffect(')
+    expect(canvasSyncSupervisor).not.toMatch(/async\s+#consumeEventsEffect\s*\(/)
 
     const chatLifecycle = await readFile(
       join(ROOT, 'packages/component-ai-chat/src/internal/stream-lifecycle.ts'),

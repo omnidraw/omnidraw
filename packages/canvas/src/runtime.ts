@@ -1,5 +1,4 @@
 import {
-  createInfiniteCanvas,
   type IInfiniteCanvasEngine,
   type IRetainedProjectionOwner,
   type TConnectorRouting,
@@ -8,10 +7,8 @@ import {
   type TTransformGestureEvent,
 } from '@omnidraw/cangine';
 import {
-  createImageDropController,
   createSelectionStyleController,
   createStandardEditorSession,
-  type IImageDropController,
   type ISelectionStyleController,
   type IStandardCanvasEditor,
   type IStandardEditorSession,
@@ -19,11 +16,10 @@ import {
 } from '@omnidraw/cangine/editor';
 import type { TCanvasDocumentTransport } from '@omnidraw/canvas-contract';
 import type { IThemeService } from '@omnidraw/theme';
-import { Effect } from 'effect';
+import { Effect, Exit, type Scope } from 'effect';
 import type {
   ICanvasExtension,
   TCanvasOverlayContribution,
-  TCanvasExtensionInstall,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
 import {
@@ -73,6 +69,17 @@ import {
   fnCanvasContractNodeToCangine,
 } from './internal/cangine-contract-adapter';
 import { CanvasExtensionBridge } from './internal/CanvasExtensionBridge';
+import { CanvasInstanceScope } from './internal/CanvasInstanceScope';
+import { CanvasScopeGeneration } from './internal/CanvasScopeGeneration';
+import {
+  createCanvasBackgroundOwner,
+  createCanvasEngine,
+} from './internal/CanvasCangineAdapter';
+import {
+  createCanvasImageInput,
+  findCanvasWidgetPortalHost,
+} from './internal/CanvasDomAdapter';
+import { createCanvasImageDropAdapter } from './internal/CanvasMediaAdapter';
 
 type TCanvasRuntimeConfig = Readonly<{
   canvasId: string;
@@ -87,7 +94,6 @@ type TCanvasRuntimeConfig = Readonly<{
   trace?: TReproductionTraceOwner | null;
 }>;
 
-const IMAGE_FILE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
 const FONT_FAMILIES = [
   [
@@ -175,20 +181,6 @@ function connectorSegmentMode(
     case 'manual':
       return null;
   }
-}
-
-function widgetPortalHost(
-  container: HTMLElement,
-  portalId: string,
-): HTMLElement | null {
-  for (const element of container.querySelectorAll<HTMLElement>(
-    '[data-vibecanvas-portal-id]',
-  )) {
-    if (element.getAttribute('data-vibecanvas-portal-id') === portalId) {
-      return element;
-    }
-  }
-  return null;
 }
 
 function normalizedKeyIdentity(
@@ -326,13 +318,23 @@ function reportTraceCallbackError(
   });
 }
 
-function installTraceSubscriptions(
+function acquireSyncRelease(
+  subscribe: () => () => void,
+): Effect.Effect<void, unknown, Scope.Scope> {
+  return Effect.acquireRelease(
+    Effect.try({ try: subscribe, catch: (cause) => cause }),
+    (release) => Effect.sync(release),
+  ).pipe(Effect.asVoid);
+}
+
+function acquireTraceSubscriptions(
   trace: TReproductionTraceSink,
   engine: IInfiniteCanvasEngine,
   session: IStandardEditorSession,
-): () => void {
-  const releases = [
-    session.editor.subscribe((state) => {
+): Effect.Effect<void, unknown, Scope.Scope> {
+  return Effect.gen(function*() {
+    yield* acquireSyncRelease(() => session.editor.subscribe((state) => {
+      if (!trace.isRecording()) return;
       trace.emit({
         channel: 'editor',
         type: 'state-observed',
@@ -350,8 +352,9 @@ function installTraceSubscriptions(
           canRedo: state.canRedo,
         },
       });
-    }),
-    session.widgets.subscribe((state) => {
+    }));
+    yield* acquireSyncRelease(() => session.widgets.subscribe((state) => {
+      if (!trace.isRecording()) return;
       trace.emit({
         channel: 'widget-host',
         type: 'interaction-state-observed',
@@ -368,8 +371,9 @@ function installTraceSubscriptions(
           pressed: state.pressed,
         },
       });
-    }),
-    session.widgets.subscribeActivation((activation) => {
+    }));
+    yield* acquireSyncRelease(() => session.widgets.subscribeActivation((activation) => {
+      if (!trace.isRecording()) return;
       trace.emit({
         channel: 'widget-host',
         type: 'control-activated',
@@ -377,8 +381,9 @@ function installTraceSubscriptions(
         correlation: { widgetId: activation.widgetId },
         data: activation,
       });
-    }),
-    engine.scene.subscribe((change) => {
+    }));
+    yield* acquireSyncRelease(() => engine.scene.subscribe((change) => {
+      if (!trace.isRecording()) return;
       trace.emit({
         channel: 'editor',
         type: 'scene-publication-observed',
@@ -388,23 +393,26 @@ function installTraceSubscriptions(
           source: 'source' in change ? String(change.source) : 'unknown',
         },
       });
-    }),
-  ];
-  return () => {
-    for (const release of releases.reverse()) release();
-  };
+    }));
+  });
 }
 
-function installEarlyEngineTraceSubscriptions(
+function acquireEarlyEngineTraceSubscriptions(
+  lifetime: CanvasInstanceScope,
   trace: TReproductionTraceSink,
   engine: IInfiniteCanvasEngine,
-): () => void {
+): Effect.Effect<void, unknown> {
   const activePointerIds = new Set<number>();
   const hitByPointerId = new Map<number, string>();
   const passiveMoveCountByPointerId = new Map<number, number>();
   let hoverIdentity = '';
-  const releases = [
-    engine.input.subscribe((event) => {
+  return Effect.gen(function*() {
+    yield* lifetime.addFinalizer(() => {
+      activePointerIds.clear();
+      hitByPointerId.clear();
+      passiveMoveCountByPointerId.clear();
+    });
+    yield* lifetime.acquireSync(() => engine.input.subscribe((event) => {
       if (!trace.isRecording()) return;
       const isPointer = (
         event.type.startsWith('pointer-')
@@ -492,11 +500,11 @@ function installEarlyEngineTraceSubscriptions(
         hitByPointerId.delete(event.pointerId);
         passiveMoveCountByPointerId.delete(event.pointerId);
       }
-    }),
-    engine.transforms.subscribe((event) => {
+    }), (release) => release());
+    yield* lifetime.acquireSync(() => engine.transforms.subscribe((event) => {
       if (trace.isRecording()) trace.emit(transformTraceEvent(event));
-    }),
-    engine.transforms.subscribeHover((hover) => {
+    }), (release) => release());
+    yield* lifetime.acquireSync(() => engine.transforms.subscribeHover((hover) => {
       if (!trace.isRecording() || activePointerIds.size === 0) return;
       const nextIdentity = hover === null
         ? 'none'
@@ -523,33 +531,21 @@ function installEarlyEngineTraceSubscriptions(
               cursor: hover.cursor,
             },
       });
-    }),
-  ];
-  return () => {
-    activePointerIds.clear();
-    hitByPointerId.clear();
-    passiveMoveCountByPointerId.clear();
-    for (const release of releases.reverse()) release();
-  };
+    }), (release) => release());
+  });
 }
 
 export function buildRuntime(
   config: TCanvasRuntimeConfig,
   extensions: readonly ICanvasExtension[] = [],
 ): TCanvasRuntime {
+  const lifetime = new CanvasInstanceScope();
   let engine: IInfiniteCanvasEngine | null = null;
   let editorSession: IStandardEditorSession | null = null;
   let selectionStyleController: ISelectionStyleController | null = null;
   let documentService: CanvasDocumentService | null = null;
-  let imageDropController: IImageDropController | null = null;
+  let imageDropController: ReturnType<typeof createCanvasImageDropAdapter> | null = null;
   let imageInput: HTMLInputElement | null = null;
-  let releaseTraceSubscriptions: (() => void) | null = null;
-  let releaseTraceLifecycle: (() => void) | null = null;
-  let releaseEarlyEngineTrace: (() => void) | null = null;
-  let releaseThemeChange: (() => void) | null = null;
-  let releaseWidgetShell: (() => void) | null = null;
-  let releaseEditorShell: (() => void) | null = null;
-  let releaseInputGate: (() => void) | null = null;
   let extensionBridge: CanvasExtensionBridge | null = null;
   let canvasBackgroundProjection: IRetainedProjectionOwner | null = null;
   let gridVisible = config.initialGridVisible ?? true;
@@ -596,7 +592,7 @@ export function buildRuntime(
       : null;
     const host = portalId === null
       ? null
-      : widgetPortalHost(config.container, portalId);
+        : findCanvasWidgetPortalHost(config.container, portalId);
     const activeElement = config.container.ownerDocument.activeElement;
     if (transition.kind === 'enter-maximized') {
       if (
@@ -618,7 +614,6 @@ export function buildRuntime(
       engine.input.focus();
     }
   };
-  const installs: TCanvasExtensionInstall[] = [];
   const syncCanvasBackgroundProjection = (nextGridVisible: boolean) =>
     canvasBackgroundProjection?.replace(fnCanvasBackgroundProjection({
       viewport: config.themeService.getSnapshot().definition.canvas.viewport,
@@ -627,32 +622,81 @@ export function buildRuntime(
 
   return Object.freeze({
     bootEffect() {
-      return Effect.gen(function*() {
+      const boot = Effect.gen(function*() {
       if (engine) throw new Error('Canvas runtime is already running.');
-      engine = yield* Effect.tryPromise({
-        try: () => createInfiniteCanvas({
-          host: config.container,
-          renderProfile: {
-            vector2D: 'webgl2',
-            threeD: 'disabled',
-            portals: 'dom',
-            fallbackOrder: ['webgl2', 'svg'],
-            antialias: true,
+      yield* lifetime.addFinalizer(() => config.container.replaceChildren());
+      engine = yield* lifetime.acquirePromise(
+        () => createCanvasEngine(config.container),
+        async (canvasEngine) => {
+          if (engine === canvasEngine) engine = null;
+          await canvasEngine.destroy();
+        },
+      );
+      documentService = yield* lifetime.acquireSync(
+        () => new CanvasDocumentService({
+          canvasId: config.canvasId,
+          transport: createTracedCanvasDocumentTransport(
+            config.transport,
+            config.trace ?? null,
+          ),
+          createCommandId: config.createId,
+          wait: config.wait,
+          image: config.image,
+          projectNode: (node: TSceneNode) => fnProjectSemanticCanvasNode({
+            node,
+            colors: config.themeService.getSnapshot().definition.canvas.colors,
+          }),
+          observe: config.trace === undefined || config.trace === null
+            ? undefined
+            : (observation) => config.trace?.emit({
+                channel: 'document',
+                type: observation.phase,
+                priority: observation.priority,
+                correlation: {
+                  canvasId: config.canvasId,
+                  ...(observation.transactionId === undefined
+                    ? {}
+                    : { transactionId: observation.transactionId }),
+                  ...(observation.commandId === undefined
+                    ? {}
+                    : { commandId: observation.commandId }),
+                  ...(observation.nodeIds?.length === 1
+                    ? { nodeId: observation.nodeIds[0] }
+                    : {}),
+                },
+                data: {
+                  acceptedRevision: observation.acceptedRevision,
+                  projectedSceneRevision: observation.projectedSceneRevision,
+                  pendingCount: observation.pendingCount,
+                  nodeIds: observation.nodeIds ?? [],
+                  ...observation.data,
+                },
+              }),
+          onError: (error) => {
+            reportTraceCallbackError(config.trace, 'document', error);
+            config.notification?.showError(
+              'Canvas synchronization failed',
+              error instanceof Error ? error.message : String(error),
+            );
           },
         }),
-        catch: (cause) => cause,
-      });
-      canvasBackgroundProjection = engine.projections.createOwner(
-        'omnidraw:canvas-background',
-        {
-          band: 'background',
-          orderKey: '1000000000000000',
-          hitTest: 'none',
+        async (document) => {
+          if (documentService === document) documentService = null;
+          await document.dispose();
+        },
+      );
+      canvasBackgroundProjection = yield* lifetime.acquireSync(
+        () => createCanvasBackgroundOwner(engine!),
+        (projection) => {
+          if (canvasBackgroundProjection === projection) {
+            canvasBackgroundProjection = null;
+          }
+          projection.dispose();
         },
       );
       syncCanvasBackgroundProjection(gridVisible);
-      releaseThemeChange = config.themeService.subscribeThemeChange(
-        (theme) => {
+      yield* lifetime.acquireSync(
+        () => config.themeService.subscribeThemeChange((theme) => {
           syncCanvasBackgroundProjection(gridVisible);
           editorSession?.editor.setSelectionAppearance(
             fnCangineSelectionAppearance(theme.canvas.selection),
@@ -664,10 +708,12 @@ export function buildRuntime(
             node,
             colors: theme.canvas.colors,
           }));
-        },
+        }),
+        (release) => release(),
       );
       if (config.trace !== undefined && config.trace !== null) {
-        releaseEarlyEngineTrace = installEarlyEngineTraceSubscriptions(
+        yield* acquireEarlyEngineTraceSubscriptions(
+          lifetime,
           config.trace,
           engine,
         );
@@ -681,59 +727,17 @@ export function buildRuntime(
         ),
         catch: (cause) => cause,
       });
-      documentService = new CanvasDocumentService({
-        canvasId: config.canvasId,
-        transport: createTracedCanvasDocumentTransport(
-          config.transport,
-          config.trace ?? null,
-        ),
-        createCommandId: config.createId,
-        wait: config.wait,
-        image: config.image,
-        projectNode: (node: TSceneNode) => fnProjectSemanticCanvasNode({
-          node,
-          colors: config.themeService.getSnapshot().definition.canvas.colors,
-        }),
-        observe: config.trace === undefined || config.trace === null
-          ? undefined
-          : (observation) => config.trace?.emit({
-              channel: 'document',
-              type: observation.phase,
-              priority: observation.priority,
-              correlation: {
-                canvasId: config.canvasId,
-                ...(observation.transactionId === undefined
-                  ? {}
-                  : { transactionId: observation.transactionId }),
-                ...(observation.commandId === undefined
-                  ? {}
-                  : { commandId: observation.commandId }),
-                ...(observation.nodeIds?.length === 1
-                  ? { nodeId: observation.nodeIds[0] }
-                  : {}),
-              },
-              data: {
-                acceptedRevision: observation.acceptedRevision,
-                projectedSceneRevision: observation.projectedSceneRevision,
-                pendingCount: observation.pendingCount,
-                nodeIds: observation.nodeIds ?? [],
-                ...observation.data,
-              },
-            }),
-        onError: (error) => {
-          reportTraceCallbackError(config.trace, 'document', error);
-          config.notification?.showError(
-            'Canvas synchronization failed',
-            error instanceof Error ? error.message : String(error),
-          );
-        },
-      });
       yield* Effect.tryPromise({
         try: () => documentService!.start(engine!),
         catch: (cause) => cause,
       });
-      editorSession = createStandardEditorSession({
-        engine,
+      const canvasEngine = engine;
+      const document = documentService;
+      if (canvasEngine === null || document === null) {
+        return yield* Effect.fail(new Error('Canvas runtime acquisition was interrupted.'));
+      }
+      editorSession = yield* lifetime.acquireSync(() => createStandardEditorSession({
+        engine: canvasEngine,
         host: config.container,
         editor: {
           contentParentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
@@ -741,8 +745,8 @@ export function buildRuntime(
             config.themeService.getSnapshot().definition.canvas.selection,
           ),
           createNodeId: config.createId,
-          sceneMutationPort: documentService,
-          history: { kind: 'custom', adapter: documentService.history },
+          sceneMutationPort: document,
+          history: { kind: 'custom', adapter: document.history },
           creation: {
             textFontFamilies: [FONT_FAMILIES[0][0], FONT_FAMILIES[0][1]],
             decorate: (context, node) => {
@@ -825,7 +829,7 @@ export function buildRuntime(
         },
         clipboardImage: {
           parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
-          imageImportPort: documentService,
+          imageImportPort: document,
           onError: (error) => {
             reportTraceCallbackError(config.trace, 'clipboard-image', error);
             config.notification?.showError(
@@ -841,7 +845,52 @@ export function buildRuntime(
             error instanceof Error ? error.message : String(error),
           );
         },
+      }), (session) => {
+        if (editorSession === session) editorSession = null;
+        session.destroy();
       });
+      const session = editorSession;
+      if (session === null) {
+        return yield* Effect.fail(new Error('Canvas editor acquisition was interrupted.'));
+      }
+      const ownerWindow = config.container.ownerDocument.defaultView;
+      if (ownerWindow === null) {
+        return yield* Effect.fail(
+          new Error('Canvas selection styles require an owning window.'),
+        );
+      }
+      selectionStyleController = yield* lifetime.acquireSync(
+        () => createSelectionStyleController({
+          editor: session.editor,
+          fontFamilies: FONT_FAMILIES.map(
+            ([family, fallback]) => [family, fallback],
+          ),
+          continuousClock: {
+            requestFrame: ownerWindow.requestAnimationFrame.bind(ownerWindow),
+            cancelFrame: ownerWindow.cancelAnimationFrame.bind(ownerWindow),
+          },
+          decorateMutation: ({ after, change, intent }) => (
+            fnDecorateSemanticCanvasStyleMutation({
+              node: after,
+              propertyId: change.propertyId,
+              intent,
+            })
+          ),
+          onCallbackError: (error) => {
+            reportTraceCallbackError(config.trace, 'selection-style', error);
+            config.notification?.showError(
+              'Selection style failed',
+              error instanceof Error ? error.message : String(error),
+            );
+          },
+        }),
+        (controller) => {
+          if (selectionStyleController === controller) {
+            selectionStyleController = null;
+          }
+          controller.destroy();
+        },
+      );
       const projectShell = (): void => {
         const session = editorSession;
         if (session === null || engine === null) return;
@@ -950,31 +999,66 @@ export function buildRuntime(
         syncShellOverlays();
         for (const listener of [...shellListeners]) listener(shellState);
       };
-      releaseWidgetShell = editorSession.widgets.subscribe(projectShell);
-      releaseEditorShell = editorSession.editor.subscribe(projectShell);
-      projectShell();
-      imageInput = config.container.ownerDocument.createElement('input');
-      imageInput.type = 'file';
-      imageInput.accept = IMAGE_FILE_ACCEPT;
-      imageInput.multiple = true;
-      imageInput.hidden = true;
-      imageInput.disabled = shellState.kind === 'maximized-widget';
-      imageInput.dataset.omnidrawImageInput = '';
-      config.container.append(imageInput);
-      imageDropController = createImageDropController({
-        editor: editorSession.editor,
-        dropTarget: config.container,
-        fileInput: imageInput,
-        parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
-        imageImportPort: documentService,
-        onError: (error) => {
-          reportTraceCallbackError(config.trace, 'image-import', error);
-          config.notification?.showError(
-            'Image import failed',
-            error instanceof Error ? error.message : String(error),
+      yield* lifetime.addFinalizerEffect(Effect.gen(function*() {
+        lastMaximizedWidgetId = null;
+        lastWidgetCreationExtension = null;
+        normalizingWidgetShell = false;
+        if (selectionOverlaySuppressed) {
+          selectionOverlaySuppressed = false;
+          editorSession?.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
+        }
+        for (const contribution of [...shellOverlays]) {
+          yield* lifetime.attempt(
+            () => setOverlayMounted(contribution, false),
           );
+        }
+        shellOverlays.clear();
+        if (shellState.kind !== 'canvas') {
+          shellState = Object.freeze({ kind: 'canvas', widgetId: null });
+          for (const listener of [...shellListeners]) {
+            yield* lifetime.attempt(() => listener(shellState));
+          }
+        }
+        shellListeners.clear();
+      }));
+      yield* lifetime.acquireSync(
+        () => editorSession!.widgets.subscribe(projectShell),
+        (release) => release(),
+      );
+      yield* lifetime.acquireSync(
+        () => editorSession!.editor.subscribe(projectShell),
+        (release) => release(),
+      );
+      projectShell();
+      imageInput = yield* lifetime.acquireSync(
+        () => createCanvasImageInput(
+          config.container,
+          shellState.kind === 'maximized-widget',
+        ),
+        (input) => {
+        if (imageInput === input) imageInput = null;
+        input.remove();
         },
-      });
+      );
+      imageDropController = yield* lifetime.acquireSync(
+        () => createCanvasImageDropAdapter({
+          editor: editorSession!.editor,
+          container: config.container,
+          input: imageInput!,
+          imageImportPort: documentService!,
+          onError: (error) => {
+            reportTraceCallbackError(config.trace, 'image-import', error);
+            config.notification?.showError(
+              'Image import failed',
+              error instanceof Error ? error.message : String(error),
+            );
+          },
+        }),
+        (controller) => {
+          if (imageDropController === controller) imageDropController = null;
+          controller.destroy();
+        },
+      );
       const extensionShell = Object.freeze({
         state: () => shellState,
         owns: (ownership: TCanvasOverlayOwnership) =>
@@ -995,15 +1079,15 @@ export function buildRuntime(
           };
         },
       });
-      extensionBridge = new CanvasExtensionBridge({
+      extensionBridge = yield* lifetime.acquireSync(() => new CanvasExtensionBridge({
         config: Object.freeze({
           canvasId: config.canvasId,
           container: config.container,
           notification: config.notification,
         }),
-        document: documentService,
-        editor: editorSession.editor,
-        engine,
+        document,
+        editor: session.editor,
+        engine: canvasEngine,
         trace: config.trace ?? null,
         shell: extensionShell,
         subscribeWidgetActions: (listener) => (
@@ -1016,21 +1100,22 @@ export function buildRuntime(
             error instanceof Error ? error.message : String(error),
           );
         },
+      }), async (bridge) => {
+        if (extensionBridge === bridge) extensionBridge = null;
+        await bridge.dispose();
       });
       yield* Effect.forEach(
         extensions,
-        (extension) => Effect.tryPromise({
-          try: () => Promise.resolve(extension.install(extensionBridge!.context)),
-          catch: (cause) => cause,
-        }).pipe(Effect.tap((install) => Effect.sync(() => {
-          installs.push(install);
-        }))),
+        (extension) => lifetime.acquirePromise(
+          () => Promise.resolve(extension.install(extensionBridge!.context)),
+          (install) => Promise.resolve(install.dispose?.()),
+        ),
         { discard: true },
       );
       // Subscribes before `attach()` so this listener runs first in
       // registration order and can short-circuit the editor/standard-tools
       // path (which only subscribes once the session attaches below).
-      releaseInputGate = engine.input.subscribe((event) => {
+      yield* lifetime.acquireSync(() => engine!.input.subscribe((event) => {
         if (event.type !== 'key-down' && event.type !== 'key-up' && event.type !== 'wheel') {
           return;
         }
@@ -1046,144 +1131,37 @@ export function buildRuntime(
             : fnCanvasInputGateSwallowsWheel(gate)
         ) return { handled: true, stopRouting: true };
         return;
-      });
+      }), (release) => release());
       editorSession.attach();
       if (config.trace !== undefined && config.trace !== null) {
-        const owner = config.trace;
-        const updateTraceSubscriptions = (recording: boolean) => {
-          releaseTraceSubscriptions?.();
-          releaseTraceSubscriptions = null;
-          if (recording && engine !== null && editorSession !== null) {
-            releaseTraceSubscriptions = installTraceSubscriptions(
-              owner,
-              engine,
-              editorSession,
+        const trace = config.trace;
+        yield* lifetime.acquireSync(
+          () => {
+            const generation = new CanvasScopeGeneration(
+              () => acquireTraceSubscriptions(trace, canvasEngine, session),
+              (error) => reportTraceCallbackError(trace, 'trace-subscription', error),
             );
-          }
-        };
-        releaseTraceLifecycle = owner.subscribeLifecycle(
-          updateTraceSubscriptions,
+            const releaseLifecycle = trace.subscribeLifecycle(
+              (recording) => generation.replace(recording),
+            );
+            return { generation, releaseLifecycle };
+          },
+          ({ generation, releaseLifecycle }) => {
+            releaseLifecycle();
+            generation.dispose();
+          },
         );
       }
-      const ownerWindow = config.container.ownerDocument.defaultView;
-      if (ownerWindow === null) {
-        throw new Error('Canvas selection styles require an owning window.');
-      }
-      selectionStyleController = createSelectionStyleController({
-        editor: editorSession.editor,
-        fontFamilies: FONT_FAMILIES.map(
-          ([family, fallback]) => [family, fallback],
-        ),
-        continuousClock: {
-          requestFrame: ownerWindow.requestAnimationFrame.bind(ownerWindow),
-          cancelFrame: ownerWindow.cancelAnimationFrame.bind(ownerWindow),
-        },
-        decorateMutation: ({ after, change, intent }) => (
-          fnDecorateSemanticCanvasStyleMutation({
-            node: after,
-            propertyId: change.propertyId,
-            intent,
-          })
-        ),
-        onCallbackError: (error) => {
-          reportTraceCallbackError(config.trace, 'selection-style', error);
-          config.notification?.showError(
-            'Selection style failed',
-            error instanceof Error ? error.message : String(error),
-          );
-        },
-      });
       selectionStyleController.attach();
       });
+      return boot.pipe(
+        Effect.onExit((exit) => Exit.isFailure(exit)
+          ? lifetime.close(exit)
+          : Effect.void),
+      );
     },
     shutdownEffect() {
-      return Effect.gen(function*() {
-      const errors: unknown[] = [];
-      const attempt = (
-        operation: () => void | Promise<void>,
-      ): Effect.Effect<void> => Effect.tryPromise({
-        try: () => Promise.resolve(operation()),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.catch((error) => Effect.sync(() => {
-          errors.push(error);
-        })),
-      );
-      const traceLifecycle = releaseTraceLifecycle;
-      releaseTraceLifecycle = null;
-      yield* attempt(() => traceLifecycle?.());
-      const traceSubscriptions = releaseTraceSubscriptions;
-      releaseTraceSubscriptions = null;
-      yield* attempt(() => traceSubscriptions?.());
-      const earlyEngineTrace = releaseEarlyEngineTrace;
-      releaseEarlyEngineTrace = null;
-      yield* attempt(() => earlyEngineTrace?.());
-      const widgetShell = releaseWidgetShell;
-      releaseWidgetShell = null;
-      yield* attempt(() => widgetShell?.());
-      const editorShell = releaseEditorShell;
-      releaseEditorShell = null;
-      yield* attempt(() => editorShell?.());
-      const inputGate = releaseInputGate;
-      releaseInputGate = null;
-      yield* attempt(() => inputGate?.());
-      yield* attempt(() => {
-        lastMaximizedWidgetId = null;
-        lastWidgetCreationExtension = null;
-        normalizingWidgetShell = false;
-        if (selectionOverlaySuppressed) {
-          selectionOverlaySuppressed = false;
-          editorSession?.editor.restoreSelectionOverlay(shellSelectionOverlayOwner);
-        }
-      });
-      for (const contribution of shellOverlays) {
-        yield* attempt(() => setOverlayMounted(contribution, false));
-      }
-      shellOverlays.clear();
-      if (shellState.kind !== 'canvas') {
-        shellState = Object.freeze({ kind: 'canvas', widgetId: null });
-        for (const listener of [...shellListeners]) {
-          yield* attempt(() => listener(shellState));
-        }
-      }
-      const backgroundProjection = canvasBackgroundProjection;
-      canvasBackgroundProjection = null;
-      const themeChange = releaseThemeChange;
-      releaseThemeChange = null;
-      yield* attempt(() => themeChange?.());
-      for (const install of installs.splice(0).reverse()) {
-        yield* attempt(() => install.dispose?.());
-      }
-      const bridge = extensionBridge;
-      extensionBridge = null;
-      yield* attempt(() => bridge?.dispose());
-      const dropController = imageDropController;
-      imageDropController = null;
-      yield* attempt(() => dropController?.destroy());
-      const input = imageInput;
-      imageInput = null;
-      yield* attempt(() => input?.remove());
-      const styles = selectionStyleController;
-      selectionStyleController = null;
-      yield* attempt(() => styles?.destroy());
-      const session = editorSession;
-      editorSession = null;
-      yield* attempt(() => session?.destroy());
-      yield* attempt(() => backgroundProjection?.dispose());
-      const document = documentService;
-      documentService = null;
-      yield* attempt(() => document?.dispose());
-      const canvasEngine = engine;
-      engine = null;
-      yield* attempt(() => canvasEngine?.destroy());
-      yield* attempt(() => config.container.replaceChildren());
-      if (errors.length === 1) return yield* Effect.fail(errors[0]);
-      if (errors.length > 1) {
-        return yield* Effect.fail(
-          new AggregateError(errors, 'Canvas runtime teardown failed.'),
-        );
-      }
-      });
+      return lifetime.close();
     },
     editor: () => editorSession?.editor ?? null,
     engine: () => engine,
