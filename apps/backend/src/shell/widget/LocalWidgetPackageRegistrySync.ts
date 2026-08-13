@@ -1,16 +1,38 @@
 import { execFile } from 'node:child_process';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-type TExecute = (
+export type TLocalWidgetPackageRegistryExecute = (
   command: string,
   args: readonly string[],
   options: Readonly<{ cwd: string; timeout: number; maxBuffer: number }>,
 ) => Promise<void>;
 
+type TStat = (path: string) => Promise<Readonly<{ isFile(): boolean }>>;
+
 type TConfig = Readonly<{
   repositoryRoot: string;
-  execute?: TExecute;
+  execute?: TLocalWidgetPackageRegistryExecute;
+  stat?: TStat;
 }>;
+
+function quoteCommandPart(value: string): string {
+  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(value)
+    ? value
+    : JSON.stringify(value);
+}
+
+function processFailureSummary(error: Readonly<{
+  name: string;
+  code?: string | number;
+  killed?: boolean;
+  signal?: NodeJS.Signals | null;
+}>): string {
+  if (error.signal) return `terminated by signal ${error.signal}`;
+  if (error.code !== undefined) return `failed with code ${error.code}`;
+  if (error.killed) return 'was killed';
+  return `failed (${error.name || 'unknown process error'})`;
+}
 
 function execute(
   command: string,
@@ -23,14 +45,19 @@ function execute(
         resolve();
         return;
       }
-      const output = [String(stdout).trim(), String(stderr).trim()]
-        .filter(Boolean)
-        .join('\n');
-      reject(Object.assign(new Error(
-        output === ''
-          ? `Local widget package synchronization failed: ${error.message}`
-          : `Local widget package synchronization failed: ${error.message}\n${output}`,
-      ), { code: 'LOCAL_WIDGET_PACKAGE_SYNC_FAILED' }));
+      const attemptedCommand = [command, ...args].map(quoteCommandPart).join(' ');
+      const stdoutText = String(stdout).trim();
+      const stderrText = String(stderr).trim();
+      const details = [
+        'Local widget package synchronization failed.',
+        `Command: ${attemptedCommand}`,
+        `Process ${processFailureSummary(error)}.`,
+        ...(stdoutText === '' ? [] : [`stdout:\n${stdoutText}`]),
+        ...(stderrText === '' ? [] : [`stderr:\n${stderrText}`]),
+      ];
+      reject(Object.assign(new Error(details.join('\n')), {
+        code: 'LOCAL_WIDGET_PACKAGE_SYNC_FAILED',
+      }));
     });
   });
 }
@@ -38,27 +65,21 @@ function execute(
 /** Serializes the development-only workspace package publication boundary. */
 export class LocalWidgetPackageRegistrySync {
   readonly #repositoryRoot: string;
-  readonly #execute: TExecute;
+  readonly #execute: TLocalWidgetPackageRegistryExecute;
+  readonly #stat: TStat;
   #active: Promise<void> | null = null;
   #synchronized = false;
 
   constructor(config: TConfig) {
     this.#repositoryRoot = config.repositoryRoot;
     this.#execute = config.execute ?? execute;
+    this.#stat = config.stat ?? stat;
   }
 
   sync(): Promise<void> {
     if (this.#synchronized) return Promise.resolve();
     if (this.#active !== null) return this.#active;
-    const operation = this.#execute(
-      'node',
-      [join(this.#repositoryRoot, 'scripts', 'local-registry.mjs'), 'publish-widget-packages'],
-      {
-        cwd: this.#repositoryRoot,
-        timeout: 5 * 60_000,
-        maxBuffer: 2 * 1024 * 1024,
-      },
-    );
+    const operation = this.#run();
     const tracked = operation
       .then(() => {
         this.#synchronized = true;
@@ -68,5 +89,24 @@ export class LocalWidgetPackageRegistrySync {
       });
     this.#active = tracked;
     return tracked;
+  }
+
+  async #run(): Promise<void> {
+    const scriptPath = join(this.#repositoryRoot, 'scripts', 'local-registry.mjs');
+    const script = await this.#stat(scriptPath).catch(() => null);
+    if (script === null || !script.isFile()) {
+      throw Object.assign(new Error(
+        `Local widget package synchronization is unavailable: expected the registry script at '${scriptPath}'. Use a complete Omnidraw development checkout and configure its repository root at the backend runtime edge.`,
+      ), { code: 'LOCAL_WIDGET_PACKAGE_SYNC_CONFIG_INVALID' });
+    }
+    await this.#execute(
+      'node',
+      [scriptPath, 'publish-widget-packages'],
+      {
+        cwd: this.#repositoryRoot,
+        timeout: 5 * 60_000,
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
   }
 }

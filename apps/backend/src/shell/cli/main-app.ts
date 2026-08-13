@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { buildCliConfig, SOURCE_APPLICATION_VERSION } from './build-config';
 import { fnBuildHomePreflightError } from '../../core/cli/fn.home-preflight-error';
 import { CliArgvError, parseCliArgv } from './parse-argv';
@@ -8,6 +9,10 @@ import { createBackendRuntime } from '../runtime/managed-runtime';
 import { LiveEventPublisher } from '../runtime/service.live-mechanics';
 import { setupSignals } from '../runtime/setup-signals';
 import { checkWidgetPrerequisites } from './widget-prerequisites/check-widget-prerequisites';
+
+export const SOURCE_REPOSITORY_ROOT = fileURLToPath(
+  new URL('../../../../../', import.meta.url),
+);
 
 export async function runCliMain() {
   const rawArgv = Bun.argv
@@ -59,7 +64,10 @@ export async function runCliMain() {
   ]);
   ensureOmnidrawHome({ mkdirSync }, { home: config.home });
 
-  const runtime = createBackendRuntime({ config });
+  const runtime = createBackendRuntime({
+    config,
+    repositoryRoot: SOURCE_REPOSITORY_ROOT,
+  });
   const eventPublisher = await runtime.runPromise(LiveEventPublisher);
 
   void checkWidgetPrerequisites({

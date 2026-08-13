@@ -8,8 +8,12 @@ import { layerSemanticAuthoritiesLive } from './layer.semantic-authorities';
 /** Exactly one ManagedRuntime is constructed for each backend process. */
 export function createBackendRuntime(args: Readonly<{
   config: ICliConfig;
+  repositoryRoot: string;
 }>) {
-  const mechanics = layerLiveMechanics({ config: args.config });
+  const mechanics = layerLiveMechanics({
+    config: args.config,
+    repositoryRoot: args.repositoryRoot,
+  });
   const canvasAuthority = layerCanvasAuthorityFromLive.pipe(
     Layer.provide(mechanics),
   );

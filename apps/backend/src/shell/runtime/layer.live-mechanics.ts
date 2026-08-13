@@ -44,7 +44,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'node:url';
 import { ensureOmnidrawHome } from '#backend/shell/config/ensure-omnidraw-home';
 import sdkPackage from '@omnidraw/sdk/package.json';
@@ -107,7 +107,10 @@ import {
   resolvePreviewInspectionReleaseRuntime,
 } from '../preview/preview-inspection-release-runtime';
 import { WidgetReleaseAttestationService } from '../widget/WidgetReleaseAttestationService';
-import { LocalWidgetPackageRegistrySync } from '../widget/LocalWidgetPackageRegistrySync';
+import {
+  LocalWidgetPackageRegistrySync,
+  type TLocalWidgetPackageRegistryExecute,
+} from '../widget/LocalWidgetPackageRegistrySync';
 import { WidgetSourceSnapshot } from '../widget-domain/local';
 import { Context, Effect, Layer } from 'effect';
 import {
@@ -152,13 +155,32 @@ export type TLiveMechanicsOptions = Readonly<{
   capsuleBuild?: TOmnidrawCapsuleBuild;
   distributionBuild?: TOmnidrawDistributionBuild;
   distributionBuildEnvironmentIdentity?: string;
+  localWidgetPackageRegistryExecute?: TLocalWidgetPackageRegistryExecute;
   createFunctionSandboxDriver?: (args: Readonly<{
     tempRoot: string;
   }>) => BunChildSandboxDriver;
 }>;
 
+export function createLiveLocalWidgetPackageRegistrySync(args: Readonly<{
+  localDevelopment: boolean;
+  repositoryRoot?: string;
+  execute?: TLocalWidgetPackageRegistryExecute;
+}>): LocalWidgetPackageRegistrySync | null {
+  if (!args.localDevelopment) return null;
+  if (args.repositoryRoot === undefined) {
+    throw new Error(
+      'Local widget package synchronization requires the Omnidraw repository root from the backend runtime edge.',
+    );
+  }
+  return new LocalWidgetPackageRegistrySync({
+    repositoryRoot: args.repositoryRoot,
+    ...(args.execute === undefined ? {} : { execute: args.execute }),
+  });
+}
+
 export function layerLiveMechanics(args: Readonly<{
   config: ICliConfig;
+  repositoryRoot?: string;
   options?: TLiveMechanicsOptions;
 }>) {
   return Layer.effectContext(Effect.gen(function*() {
@@ -175,11 +197,11 @@ export function layerLiveMechanics(args: Readonly<{
   const mutableRegistryUrl = localDevelopment
     ? process.env.LOCAL_NPM_REGISTRY_URL ?? 'http://127.0.0.1:4873/'
     : undefined;
-  const localWidgetPackageRegistry = localDevelopment
-    ? new LocalWidgetPackageRegistrySync({
-        repositoryRoot: resolve(import.meta.dir, '..', '..', '..'),
-      })
-    : null;
+  const localWidgetPackageRegistry = createLiveLocalWidgetPackageRegistrySync({
+    localDevelopment,
+    repositoryRoot: args.repositoryRoot,
+    execute: options.localWidgetPackageRegistryExecute,
+  });
   const prepareWidgetNpmDependencies = localWidgetPackageRegistry === null
     ? undefined
     : () => localWidgetPackageRegistry.sync();

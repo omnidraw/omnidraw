@@ -202,6 +202,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B88](b/B88.md) - ci: configure the Chromium sandbox for Preview inspection
 - [x]: [B89](b/B89.md) - AI Chat: first connection races durable canvas insertion
 - [x]: [B90](b/B90.md) - AI widget Preview: failed mounts are uninspectable and diagnostics collapse
+- [x]: [B91](b/B91.md) - AI widget creation: local registry sync resolves a missing backend script
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
