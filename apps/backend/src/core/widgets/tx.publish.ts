@@ -6,11 +6,9 @@ import {
   type WidgetProgramError,
 } from './service.widgets';
 
-export function txPublishWidget(
+export const txPublishWidget = Effect.fn('txPublishWidget')(function*(
   args: TWidgetPublicationRequest,
-): Effect.Effect<TWidgetPublicationResult, WidgetProgramError, WidgetAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* WidgetAuthority;
-    return yield* authority.publish(args);
-  });
-}
+): Effect.fn.Return<TWidgetPublicationResult, WidgetProgramError, WidgetAuthority> {
+  const authority = yield* WidgetAuthority;
+  return yield* authority.publish(args);
+});

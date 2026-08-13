@@ -9,7 +9,7 @@ type TArgsRenameById = { id: string; name: string };
 type TArgsDeleteById = { id: string };
 
 export async function createCanvasRow(effects: TEffects, args: TArgsCreate): Promise<TCanvas> {
-  await (await effects.db.prepare(DATABASE_STATEMENTS.canvasWriteInsertCanvases)).run(args.id, args.name);
+  await (await effects.db.prepare(DATABASE_STATEMENTS.canvasInsert)).run(args.id, args.name);
   const created = await findCanvasRowById(effects, { id: args.id });
   if (!created) throw new Error('Failed to create canvas.');
   return created;
@@ -19,7 +19,7 @@ export async function renameCanvasRowById(
   effects: TEffects,
   args: TArgsRenameById,
 ): Promise<TCanvas | null> {
-  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasWriteUpdateCanvases)).run(args.name, args.id);
+  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasUpdateName)).run(args.name, args.id);
   return result.changes === 0 ? null : findCanvasRowById(effects, { id: args.id });
 }
 
@@ -29,6 +29,6 @@ export async function deleteCanvasRowById(
 ): Promise<TCanvas[]> {
   const existing = await findCanvasRowById(effects, { id: args.id });
   if (!existing) return [];
-  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasWriteDeleteCanvases)).run(args.id);
+  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasDelete)).run(args.id);
   return result.changes === 0 ? [] : [existing];
 }

@@ -28,7 +28,9 @@ import {
   WIDGET_STATE_MUTATION_RATE_WINDOW_MS,
 } from '../core/widget-state/CONSTANTS';
 import {
-  fnTransitionWidgetStateMutationRate,
+  fnPruneWidgetStateMutationRateLedger,
+  fnTransitionWidgetStateMutationLedger,
+  fnWidgetStateMutationCapacityRetryAfter,
   type TWidgetStateMutationRateLedger,
 } from '../core/widget-state/fn.mutation-rate';
 import type {
@@ -128,18 +130,38 @@ export function layerWidgetStateAuthoritySim(args: Readonly<{
   const maxMutationRateLedgers = args.maxMutationRateLedgers
     ?? DEFAULT_WIDGET_STATE_MAX_MUTATION_RATE_LEDGERS;
   const admitMutation = (identity: TWidgetStateInstanceIdentity) => {
-    const transition = fnTransitionWidgetStateMutationRate({
-      scope: JSON.stringify([identity.widgetInstanceId]),
-      now: args.now(),
+    const scope = JSON.stringify([identity.widgetInstanceId]);
+    const now = args.now();
+    let ledger = mutationRateLedgers.get(scope);
+    if (ledger === undefined && mutationRateLedgers.size >= maxMutationRateLedgers) {
+      for (const [candidateScope, candidate] of mutationRateLedgers) {
+        const retained = fnPruneWidgetStateMutationRateLedger(
+          candidate,
+          now,
+          mutationRateWindowMs,
+        );
+        if (retained === null) mutationRateLedgers.delete(candidateScope);
+        else if (retained !== candidate) mutationRateLedgers.set(candidateScope, retained);
+      }
+      ledger = mutationRateLedgers.get(scope);
+    }
+    if (ledger === undefined && mutationRateLedgers.size >= maxMutationRateLedgers) {
+      return Object.freeze({
+        allowed: false as const,
+        retryAfterMs: fnWidgetStateMutationCapacityRetryAfter(
+          [...mutationRateLedgers.entries()],
+          now,
+          mutationRateWindowMs,
+        ),
+      });
+    }
+    const transition = fnTransitionWidgetStateMutationLedger({
+      ledger,
+      now,
       limit: mutationRateLimit,
       windowMs: mutationRateWindowMs,
-      maxLedgers: maxMutationRateLedgers,
-      ledgers: [...mutationRateLedgers.entries()],
     });
-    mutationRateLedgers.clear();
-    for (const [scope, ledger] of transition.ledgers) {
-      mutationRateLedgers.set(scope, ledger);
-    }
+    mutationRateLedgers.set(scope, transition.ledger);
     return transition.admission;
   };
   const snapshotFor = (identity: TWidgetStateInstanceIdentity): TWidgetStateSnapshot => {

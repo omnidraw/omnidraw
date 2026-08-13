@@ -493,8 +493,22 @@ describe('application and import boundaries', () => {
           if (/\bportal\b/.test(source)) {
             violations.push(`${path} retains a portal parameter or dependency`)
           }
-          if (!/Effect\.Effect\s*</.test(source)) {
+          if (!/Effect\.(?:Effect|fn\.Return)\s*</.test(source)) {
             violations.push(`${path} does not declare an explicit Effect.Effect result`)
+          }
+          const namedPrograms = [...source.matchAll(
+            /export\s+const\s+((?:fx|tx)[A-Z]\w*)\s*=\s*Effect\.fn\(\s*['"]([^'"]+)['"]\s*\)/g,
+          )]
+          if (namedPrograms.length === 0) {
+            violations.push(`${path} does not export a named Effect.fn program`)
+          }
+          for (const program of namedPrograms) {
+            if (program[1] !== program[2]) {
+              violations.push(`${path} names ${program[1]} with Effect.fn span ${program[2]}`)
+            }
+          }
+          if (/\bEffect\.gen\s*\(/.test(source)) {
+            violations.push(`${path} wraps a core entrypoint in Effect.gen instead of Effect.fn`)
           }
         }
         if (/^fn\./.test(basename) && /from\s+['"]effect(?:\/|['"])/.test(source)) {

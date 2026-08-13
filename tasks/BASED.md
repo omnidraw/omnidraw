@@ -521,6 +521,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D14](d/D14.md) - private RPC operation registry authority (order 4/7)
 - [x]: [D15](d/D15.md) - standardize expected semantic failures (order 5/7)
 - [x]: [D16](d/D16.md) - canvas: structured lifetime ownership and orchestration split (order 6/7)
+- [x]: [D17](d/D17.md) - measured performance and low-risk cleanup (order 7/7)
 
 ## Pragmatic Code Style
 

@@ -16,7 +16,9 @@ import type {
 import { WidgetStateVersionStream } from './WidgetStateVersionStream';
 import { fnNormalizeWidgetStateJson } from '#backend/core/widget-state/fn.widget-state-json';
 import {
-  fnTransitionWidgetStateMutationRate,
+  fnPruneWidgetStateMutationRateLedger,
+  fnTransitionWidgetStateMutationLedger,
+  fnWidgetStateMutationCapacityRetryAfter,
   type TWidgetStateMutationAdmission,
   type TWidgetStateMutationRateLedger,
 } from '#backend/core/widget-state/fn.mutation-rate';
@@ -268,18 +270,38 @@ export class WidgetStateService implements IWidgetStateService {
   #admitMutation(
     identity: TWidgetStateInstanceIdentity,
   ): TWidgetStateMutationAdmission {
-    const transition = fnTransitionWidgetStateMutationRate({
-      scope: this.#mutationRateScope(identity),
-      now: this.#readClock(),
+    const scope = this.#mutationRateScope(identity);
+    const now = this.#readClock();
+    let ledger = this.#mutationRateLedgers.get(scope);
+    if (ledger === undefined && this.#mutationRateLedgers.size >= this.#maxMutationRateLedgers) {
+      for (const [candidateScope, candidate] of this.#mutationRateLedgers) {
+        const retained = fnPruneWidgetStateMutationRateLedger(
+          candidate,
+          now,
+          this.#mutationRateWindowMs,
+        );
+        if (retained === null) this.#mutationRateLedgers.delete(candidateScope);
+        else if (retained !== candidate) this.#mutationRateLedgers.set(candidateScope, retained);
+      }
+      ledger = this.#mutationRateLedgers.get(scope);
+    }
+    if (ledger === undefined && this.#mutationRateLedgers.size >= this.#maxMutationRateLedgers) {
+      return Object.freeze({
+        allowed: false,
+        retryAfterMs: fnWidgetStateMutationCapacityRetryAfter(
+          [...this.#mutationRateLedgers.entries()],
+          now,
+          this.#mutationRateWindowMs,
+        ),
+      });
+    }
+    const transition = fnTransitionWidgetStateMutationLedger({
+      ledger,
+      now,
       limit: this.#mutationRateLimit,
       windowMs: this.#mutationRateWindowMs,
-      maxLedgers: this.#maxMutationRateLedgers,
-      ledgers: [...this.#mutationRateLedgers.entries()],
     });
-    this.#mutationRateLedgers.clear();
-    for (const [scope, ledger] of transition.ledgers) {
-      this.#mutationRateLedgers.set(scope, ledger);
-    }
+    this.#mutationRateLedgers.set(scope, transition.ledger);
     return transition.admission;
   }
 

@@ -5,9 +5,7 @@ import {
   type TCanvasRecord,
 } from './service.database';
 
-export function fxListCanvases(): Effect.Effect<readonly TCanvasRecord[], DatabaseProgramError, DatabaseAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* DatabaseAuthority;
-    return yield* authority.listCanvases();
-  });
-}
+export const fxListCanvases = Effect.fn('fxListCanvases')(function*(): Effect.fn.Return<readonly TCanvasRecord[], DatabaseProgramError, DatabaseAuthority> {
+  const authority = yield* DatabaseAuthority;
+  return yield* authority.listCanvases();
+});

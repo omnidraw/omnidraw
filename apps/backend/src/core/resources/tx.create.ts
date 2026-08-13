@@ -4,11 +4,9 @@ import { ResourceAuthority, type ResourceProgramError } from './service.resource
 
 export type TArgsCreateResource = Readonly<{ kind: TResourceKind; name: string }>;
 
-export function txCreateResource(
+export const txCreateResource = Effect.fn('txCreateResource')(function*(
   args: TArgsCreateResource,
-): Effect.Effect<TResourceDescriptor, ResourceProgramError, ResourceAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* ResourceAuthority;
-    return yield* authority.create(args);
-  });
-}
+): Effect.fn.Return<TResourceDescriptor, ResourceProgramError, ResourceAuthority> {
+  const authority = yield* ResourceAuthority;
+  return yield* authority.create(args);
+});

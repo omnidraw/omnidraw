@@ -53,6 +53,7 @@ export class AiChatEffectRuntime {
   readonly #runtime = ManagedRuntime.make(Layer.empty);
   readonly #latestTasks = new Map<string, () => void>();
   #disposed = false;
+  #disposePromise: Promise<void> | null = null;
 
   /**
    * Runs one replaceable action per semantic key. Replacing or closing an
@@ -66,7 +67,7 @@ export class AiChatEffectRuntime {
     if (this.#disposed) throw new Error("The AI Chat lifecycle runtime is disposed.");
     this.#latestTasks.get(key)?.();
     let active = true;
-    let interrupt: (interruptor?: number) => void = () => undefined;
+    let interrupt: () => void = () => undefined;
     const close = () => {
       if (!active) return;
       active = false;
@@ -158,7 +159,7 @@ export class AiChatEffectRuntime {
     if (this.#disposed) throw new Error("The AI Chat lifecycle runtime is disposed.");
     this.#latestTasks.get(key)?.();
     let active = true;
-    let cancel: (interruptor?: number) => void = () => undefined;
+    let cancel: () => void = () => undefined;
     const close = () => {
       if (!active) return;
       active = false;
@@ -192,10 +193,11 @@ export class AiChatEffectRuntime {
   }
 
   dispose(): Promise<void> {
-    if (this.#disposed) return Promise.resolve();
+    if (this.#disposePromise !== null) return this.#disposePromise;
     this.#disposed = true;
     for (const close of [...this.#latestTasks.values()]) close();
     this.#latestTasks.clear();
-    return this.#runtime.dispose();
+    this.#disposePromise = this.#runtime.dispose();
+    return this.#disposePromise;
   }
 }

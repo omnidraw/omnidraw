@@ -8,7 +8,7 @@ type TArgsCreate = Pick<TMediaFile, 'id' | 'canvasId' | 'hash' | 'digestSha256' 
 type TArgsDeleteById = { id: string };
 
 export async function createMediaFileRow(effects: TEffects, args: TArgsCreate): Promise<TMediaFile> {
-  await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileWriteInsertMediaFiles)).run(
+  await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileInsert)).run(
     args.id,
     args.canvasId,
     args.hash,
@@ -23,5 +23,5 @@ export async function createMediaFileRow(effects: TEffects, args: TArgsCreate): 
 }
 
 export async function deleteMediaFileRowById(effects: TEffects, args: TArgsDeleteById): Promise<void> {
-  await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileWriteDeleteMediaFiles)).run(args.id);
+  await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileDelete)).run(args.id);
 }

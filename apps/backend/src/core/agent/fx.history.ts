@@ -6,11 +6,9 @@ import {
   type TAgentHistoryRequest,
 } from './service.agent';
 
-export function fxReadAgentHistory(
+export const fxReadAgentHistory = Effect.fn('fxReadAgentHistory')(function*(
   args: TAgentHistoryRequest,
-): Effect.Effect<readonly TAgentHistoryEntry[], AgentProgramError, AgentAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* AgentAuthority;
-    return yield* authority.history(args);
-  });
-}
+): Effect.fn.Return<readonly TAgentHistoryEntry[], AgentProgramError, AgentAuthority> {
+  const authority = yield* AgentAuthority;
+  return yield* authority.history(args);
+});

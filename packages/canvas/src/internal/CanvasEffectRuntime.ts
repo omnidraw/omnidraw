@@ -5,6 +5,7 @@ export class CanvasEffectRuntime {
   readonly #runtime = ManagedRuntime.make(Layer.empty);
   #serial = Semaphore.makeUnsafe(1);
   #disposed = false;
+  #disposePromise: Promise<void> | null = null;
 
   run<A, E>(program: Effect.Effect<A, E>): Promise<A> {
     if (this.#disposed) throw new Error('The Canvas lifecycle runtime is disposed.');
@@ -59,8 +60,9 @@ export class CanvasEffectRuntime {
   }
 
   dispose(): Promise<void> {
-    if (this.#disposed) return Promise.resolve();
+    if (this.#disposePromise !== null) return this.#disposePromise;
     this.#disposed = true;
-    return this.#runtime.dispose();
+    this.#disposePromise = this.#runtime.dispose();
+    return this.#disposePromise;
   }
 }

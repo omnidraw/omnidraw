@@ -116,7 +116,7 @@ async function runMigrations(effects: TEffects, args: TArgs): Promise<{ applied:
 
       for (const migration of migrations) {
         await effects.db.exec(migration.sql);
-        await (await effects.db.prepare(DATABASE_STATEMENTS.migrationWriteInsertSchemaMigrations)).run(
+        await (await effects.db.prepare(DATABASE_STATEMENTS.migrationInsertLedgerEntry)).run(
           migration.version,
           migration.name,
           migration.checksumSha256,

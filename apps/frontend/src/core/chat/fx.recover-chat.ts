@@ -20,20 +20,19 @@ export type TRecoveredChatEvent = Readonly<{
 }>;
 
 /** Re-establishes backend session ownership before reading recovery history. */
-export function fxRecoverChat(
+export const fxRecoverChat = Effect.fn('fxRecoverChat')(function*(
   scope: TChatScope,
-): Effect.Effect<TRecoveredChatEvent, TFrontendTransportFailure, ChatRecoveryBackend> {
-  return ChatRecoveryBackend.use((backend) => Effect.gen(function*() {
-    yield* backend.connectReuse(scope);
-    const history = yield* backend.history({
-      componentId: scope.componentId,
-      sessionId: scope.sessionId,
-    });
-    return Object.freeze({
-      kind: "recovered-history" as const,
-      componentId: scope.componentId,
-      sessionId: scope.sessionId,
-      history,
-    });
-  }));
-}
+): Effect.fn.Return<TRecoveredChatEvent, TFrontendTransportFailure, ChatRecoveryBackend> {
+  const backend = yield* ChatRecoveryBackend;
+  yield* backend.connectReuse(scope);
+  const history = yield* backend.history({
+    componentId: scope.componentId,
+    sessionId: scope.sessionId,
+  });
+  return Object.freeze({
+    kind: "recovered-history" as const,
+    componentId: scope.componentId,
+    sessionId: scope.sessionId,
+    history,
+  });
+});

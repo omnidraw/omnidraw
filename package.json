@@ -43,6 +43,8 @@
     "db:constraints:test": "bun test apps/backend/src/shell/database/verification/baseline-constraints.test.ts",
     "db:recovery:test": "bun test apps/backend/src/shell/database/tests/BunServiceTurso/fx.migration-file.test.ts apps/backend/src/shell/database/tests/BunServiceTurso/tx.migrations.test.ts apps/backend/src/shell/database/verification/baseline-recovery.test.ts",
     "db:evidence:capture": "bun run scripts/capture-m1-database-evidence.ts",
+    "prebenchmark:order-7": "bun run build:public",
+    "benchmark:order-7": "bun run --cwd apps/backend benchmark:order-7",
     "test:ci:docker": "bun run scripts/test-ci-docker.ts",
     "build": "bun run build:public && bun run --sequential --filter '@omnidraw/backend' --filter '@omnidraw/frontend' build",
     "build:public": "bun run --cwd packages/theme build && bun run --cwd packages/canvas-contract build && bun run --cwd packages/sdk build && bun run --cwd packages/canvas build && bun run --cwd packages/component-ai-chat build",

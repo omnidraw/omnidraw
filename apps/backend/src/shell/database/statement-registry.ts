@@ -6,43 +6,43 @@ import canvasItemReadCanvasesSql from '../../shell/database/stmts/canvas-item-re
 import canvasItemReadKeyValuesSql from '../../shell/database/stmts/canvas-item-read-key-values.sql' with { type: 'text' };
 import canvasItemUpdateCanvasItemsSql from '../../shell/database/stmts/canvas-item-update-canvas-items.sql' with { type: 'text' };
 import canvasItemUpdateCanvasesSql from '../../shell/database/stmts/canvas-item-update-canvases.sql' with { type: 'text' };
-import canvasReadCanvasesSql from '../../shell/database/stmts/canvas-read-canvases.sql' with { type: 'text' };
-import canvasReadCanvases2Sql from '../../shell/database/stmts/canvas-read-canvases2.sql' with { type: 'text' };
-import canvasReadCanvases3Sql from '../../shell/database/stmts/canvas-read-canvases3.sql' with { type: 'text' };
-import canvasWriteDeleteCanvasesSql from '../../shell/database/stmts/canvas-write-delete-canvases.sql' with { type: 'text' };
-import canvasWriteInsertCanvasesSql from '../../shell/database/stmts/canvas-write-insert-canvases.sql' with { type: 'text' };
-import canvasWriteUpdateCanvasesSql from '../../shell/database/stmts/canvas-write-update-canvases.sql' with { type: 'text' };
+import canvasListSql from '../../shell/database/stmts/canvas-list.sql' with { type: 'text' };
+import canvasReadByNameSql from '../../shell/database/stmts/canvas-read-by-name.sql' with { type: 'text' };
+import canvasReadByIdSql from '../../shell/database/stmts/canvas-read-by-id.sql' with { type: 'text' };
+import canvasDeleteSql from '../../shell/database/stmts/canvas-delete.sql' with { type: 'text' };
+import canvasInsertSql from '../../shell/database/stmts/canvas-insert.sql' with { type: 'text' };
+import canvasUpdateNameSql from '../../shell/database/stmts/canvas-update-name.sql' with { type: 'text' };
 import chatInsertChatsSql from '../../shell/database/stmts/chat-insert-chats.sql' with { type: 'text' };
 import chatReadChatsSql from '../../shell/database/stmts/chat-read-chats.sql' with { type: 'text' };
 import databaseCheckReadPragmaIntegrityCheckSql from '../../shell/database/stmts/database-check-read-pragma-integrity-check.sql' with { type: 'text' };
 import databaseCheckReadPragmaQuickCheckSql from '../../shell/database/stmts/database-check-read-pragma-quick-check.sql' with { type: 'text' };
-import dbResourceReadReadDbResourceApplyRunsSql from '../../shell/database/stmts/db-resource-read-read-db-resource-apply-runs.sql' with { type: 'text' };
-import dbResourceReadReadDbResourceDraftChangesSql from '../../shell/database/stmts/db-resource-read-read-db-resource-draft-changes.sql' with { type: 'text' };
-import dbResourceReadReadDbResourceDraftsSql from '../../shell/database/stmts/db-resource-read-read-db-resource-drafts.sql' with { type: 'text' };
-import dbResourceReadReadDbResourceDrafts2Sql from '../../shell/database/stmts/db-resource-read-read-db-resource-drafts2.sql' with { type: 'text' };
-import dbResourceWriteInsertDbResourceApplyRunsSql from '../../shell/database/stmts/db-resource-write-insert-db-resource-apply-runs.sql' with { type: 'text' };
-import dbResourceWriteInsertDbResourceDraftChangesSql from '../../shell/database/stmts/db-resource-write-insert-db-resource-draft-changes.sql' with { type: 'text' };
-import dbResourceWriteInsertDbResourceDraftsSql from '../../shell/database/stmts/db-resource-write-insert-db-resource-drafts.sql' with { type: 'text' };
-import dbResourceWriteReadDbResourceDraftChangesSql from '../../shell/database/stmts/db-resource-write-read-db-resource-draft-changes.sql' with { type: 'text' };
-import dbResourceWriteReadDbResourceDraftChanges2Sql from '../../shell/database/stmts/db-resource-write-read-db-resource-draft-changes2.sql' with { type: 'text' };
-import dbResourceWriteReadResourceCatalogSql from '../../shell/database/stmts/db-resource-write-read-resource-catalog.sql' with { type: 'text' };
-import dbResourceWriteUpdateDbResourceDraftsSql from '../../shell/database/stmts/db-resource-write-update-db-resource-drafts.sql' with { type: 'text' };
-import dbResourceWriteUpdateDbResourceDrafts2Sql from '../../shell/database/stmts/db-resource-write-update-db-resource-drafts2.sql' with { type: 'text' };
-import encryptionKeyReadReadResourceEncryptionKeysSql from '../../shell/database/stmts/encryption-key-read-read-resource-encryption-keys.sql' with { type: 'text' };
-import encryptionKeyWriteInsertResourceEncryptionKeysSql from '../../shell/database/stmts/encryption-key-write-insert-resource-encryption-keys.sql' with { type: 'text' };
-import keyValueReadReadKeyValuesSql from '../../shell/database/stmts/key-value-read-read-key-values.sql' with { type: 'text' };
-import keyValueWriteDeleteKeyValuesSql from '../../shell/database/stmts/key-value-write-delete-key-values.sql' with { type: 'text' };
-import keyValueWriteInsertKeyValuesSql from '../../shell/database/stmts/key-value-write-insert-key-values.sql' with { type: 'text' };
-import mediaFileReadReadMediaFilesSql from '../../shell/database/stmts/media-file-read-read-media-files.sql' with { type: 'text' };
-import mediaFileReadReadMediaFiles2Sql from '../../shell/database/stmts/media-file-read-read-media-files2.sql' with { type: 'text' };
-import mediaFileWriteDeleteMediaFilesSql from '../../shell/database/stmts/media-file-write-delete-media-files.sql' with { type: 'text' };
-import mediaFileWriteInsertMediaFilesSql from '../../shell/database/stmts/media-file-write-insert-media-files.sql' with { type: 'text' };
+import dbResourceReadApplyRunSql from '../../shell/database/stmts/db-resource-read-apply-run.sql' with { type: 'text' };
+import dbResourceListDraftChangesSql from '../../shell/database/stmts/db-resource-list-draft-changes.sql' with { type: 'text' };
+import dbResourceReadDraftSql from '../../shell/database/stmts/db-resource-read-draft.sql' with { type: 'text' };
+import dbResourceReadActiveDraftSql from '../../shell/database/stmts/db-resource-read-active-draft.sql' with { type: 'text' };
+import dbResourceInsertApplyRunSql from '../../shell/database/stmts/db-resource-insert-apply-run.sql' with { type: 'text' };
+import dbResourceInsertDraftChangeSql from '../../shell/database/stmts/db-resource-insert-draft-change.sql' with { type: 'text' };
+import dbResourceInsertDraftSql from '../../shell/database/stmts/db-resource-insert-draft.sql' with { type: 'text' };
+import dbResourceReadNextDraftChangeSequenceSql from '../../shell/database/stmts/db-resource-read-next-draft-change-sequence.sql' with { type: 'text' };
+import dbResourceReadDraftChangeSql from '../../shell/database/stmts/db-resource-read-draft-change.sql' with { type: 'text' };
+import dbResourceReadResourceKindStatusSql from '../../shell/database/stmts/db-resource-read-resource-kind-status.sql' with { type: 'text' };
+import dbResourceUpdateDraftNameSql from '../../shell/database/stmts/db-resource-update-draft-name.sql' with { type: 'text' };
+import dbResourceDiscardDraftSql from '../../shell/database/stmts/db-resource-discard-draft.sql' with { type: 'text' };
+import encryptionKeyReadByResourceSql from '../../shell/database/stmts/encryption-key-read-by-resource.sql' with { type: 'text' };
+import encryptionKeyInsertForResourceSql from '../../shell/database/stmts/encryption-key-insert-for-resource.sql' with { type: 'text' };
+import keyValueReadByNameSql from '../../shell/database/stmts/key-value-read-by-name.sql' with { type: 'text' };
+import keyValueDeleteSql from '../../shell/database/stmts/key-value-delete.sql' with { type: 'text' };
+import keyValueUpsertSql from '../../shell/database/stmts/key-value-upsert.sql' with { type: 'text' };
+import mediaFileListSql from '../../shell/database/stmts/media-file-list.sql' with { type: 'text' };
+import mediaFileReadByIdSql from '../../shell/database/stmts/media-file-read-by-id.sql' with { type: 'text' };
+import mediaFileDeleteSql from '../../shell/database/stmts/media-file-delete.sql' with { type: 'text' };
+import mediaFileInsertSql from '../../shell/database/stmts/media-file-insert.sql' with { type: 'text' };
 import migrationStateReadPragmaApplicationIdSql from '../../shell/database/stmts/migration-state-read-pragma-application-id.sql' with { type: 'text' };
 import migrationStateReadPragmaTableListSql from '../../shell/database/stmts/migration-state-read-pragma-table-list.sql' with { type: 'text' };
 import migrationStateReadPragmaUserVersionSql from '../../shell/database/stmts/migration-state-read-pragma-user-version.sql' with { type: 'text' };
 import migrationStateReadSchemaMigrationsSql from '../../shell/database/stmts/migration-state-read-schema-migrations.sql' with { type: 'text' };
 import migrationStateReadSqliteSchemaSql from '../../shell/database/stmts/migration-state-read-sqlite-schema.sql' with { type: 'text' };
-import migrationWriteInsertSchemaMigrationsSql from '../../shell/database/stmts/migration-write-insert-schema-migrations.sql' with { type: 'text' };
+import migrationInsertLedgerEntrySql from '../../shell/database/stmts/migration-insert-ledger-entry.sql' with { type: 'text' };
 import pragmaReadPragmaBusyTimeoutSql from '../../shell/database/stmts/pragma-read-pragma-busy-timeout.sql' with { type: 'text' };
 import pragmaReadPragmaCacheSizeSql from '../../shell/database/stmts/pragma-read-pragma-cache-size.sql' with { type: 'text' };
 import pragmaReadPragmaForeignKeysSql from '../../shell/database/stmts/pragma-read-pragma-foreign-keys.sql' with { type: 'text' };
@@ -60,25 +60,25 @@ import resourceControlInsertDbResourceDraftsSql from '../../shell/database/stmts
 import resourceControlInsertResourceCatalogSql from '../../shell/database/stmts/resource-control-insert-resource-catalog.sql' with { type: 'text' };
 import resourceControlInsertResourcePlacementsSql from '../../shell/database/stmts/resource-control-insert-resource-placements.sql' with { type: 'text' };
 import resourceControlReadDbResourceApplyRunsSql from '../../shell/database/stmts/resource-control-read-db-resource-apply-runs.sql' with { type: 'text' };
-import resourceControlReadDbResourceBackupsSql from '../../shell/database/stmts/resource-control-read-db-resource-backups.sql' with { type: 'text' };
-import resourceControlReadDbResourceBackups2Sql from '../../shell/database/stmts/resource-control-read-db-resource-backups2.sql' with { type: 'text' };
+import resourceControlReadBackupByApplySql from '../../shell/database/stmts/resource-control-read-backup-by-apply.sql' with { type: 'text' };
+import resourceControlListBackupsSql from '../../shell/database/stmts/resource-control-list-backups.sql' with { type: 'text' };
 import resourceControlReadDbResourceDraftChangesSql from '../../shell/database/stmts/resource-control-read-db-resource-draft-changes.sql' with { type: 'text' };
-import resourceControlReadDbResourceDraftsSql from '../../shell/database/stmts/resource-control-read-db-resource-drafts.sql' with { type: 'text' };
-import resourceControlReadDbResourceDrafts2Sql from '../../shell/database/stmts/resource-control-read-db-resource-drafts2.sql' with { type: 'text' };
-import resourceControlReadResourceCatalogSql from '../../shell/database/stmts/resource-control-read-resource-catalog.sql' with { type: 'text' };
-import resourceControlReadResourceCatalog2Sql from '../../shell/database/stmts/resource-control-read-resource-catalog2.sql' with { type: 'text' };
-import resourceControlReadResourceCatalog3Sql from '../../shell/database/stmts/resource-control-read-resource-catalog3.sql' with { type: 'text' };
+import resourceControlListDraftsSql from '../../shell/database/stmts/resource-control-list-drafts.sql' with { type: 'text' };
+import resourceControlListDraftsByStatusSql from '../../shell/database/stmts/resource-control-list-drafts-by-status.sql' with { type: 'text' };
+import resourceControlReadResourceSql from '../../shell/database/stmts/resource-control-read-resource.sql' with { type: 'text' };
+import resourceControlReadDeletingResourceSql from '../../shell/database/stmts/resource-control-read-deleting-resource.sql' with { type: 'text' };
+import resourceControlListResourceIdentitiesSql from '../../shell/database/stmts/resource-control-list-resource-identities.sql' with { type: 'text' };
 import resourceControlReadResourcePlacementsSql from '../../shell/database/stmts/resource-control-read-resource-placements.sql' with { type: 'text' };
 import resourceControlUpdateDbResourceApplyRunsSql from '../../shell/database/stmts/resource-control-update-db-resource-apply-runs.sql' with { type: 'text' };
 import resourceControlUpdateDbResourceBackupsSql from '../../shell/database/stmts/resource-control-update-db-resource-backups.sql' with { type: 'text' };
 import resourceControlUpdateResourceCatalogSql from '../../shell/database/stmts/resource-control-update-resource-catalog.sql' with { type: 'text' };
 import resourceControlUpdateResourcePlacementsSql from '../../shell/database/stmts/resource-control-update-resource-placements.sql' with { type: 'text' };
-import schemaContractReadSqliteSchemaSql from '../../shell/database/stmts/schema-contract-read-sqlite-schema.sql' with { type: 'text' };
-import schemaContractReadSqliteSchema2Sql from '../../shell/database/stmts/schema-contract-read-sqlite-schema2.sql' with { type: 'text' };
-import schemaContractReadSqliteSchema3Sql from '../../shell/database/stmts/schema-contract-read-sqlite-schema3.sql' with { type: 'text' };
+import schemaContractListObjectsSql from '../../shell/database/stmts/schema-contract-list-objects.sql' with { type: 'text' };
+import schemaContractReadTableSqlSql from '../../shell/database/stmts/schema-contract-read-table-sql.sql' with { type: 'text' };
+import schemaContractListExplicitIndexesSql from '../../shell/database/stmts/schema-contract-list-explicit-indexes.sql' with { type: 'text' };
 import schemaContractReadTursoInternalTypesSql from '../../shell/database/stmts/schema-contract-read-turso-internal-types.sql' with { type: 'text' };
-import transactionSetPragmaForeignKeysSql from '../../shell/database/stmts/transaction-set-pragma-foreign-keys.sql' with { type: 'text' };
-import transactionSetPragmaForeignKeys2Sql from '../../shell/database/stmts/transaction-set-pragma-foreign-keys2.sql' with { type: 'text' };
+import transactionDisableForeignKeysSql from '../../shell/database/stmts/transaction-disable-foreign-keys.sql' with { type: 'text' };
+import transactionEnableForeignKeysSql from '../../shell/database/stmts/transaction-enable-foreign-keys.sql' with { type: 'text' };
 import widgetStateInsertWidgetInstanceStatesSql from '../../shell/database/stmts/widget-state-insert-widget-instance-states.sql' with { type: 'text' };
 import widgetStateReadCanvasItemsSql from '../../shell/database/stmts/widget-state-read-canvas-items.sql' with { type: 'text' };
 import widgetStateReadWidgetInstanceStatesSql from '../../shell/database/stmts/widget-state-read-widget-instance-states.sql' with { type: 'text' };
@@ -122,10 +122,10 @@ import dbResourceReadListDraftsSql from '../../shell/database/stmts/db-resource-
 import dbResourceReadListDraftsBeforeSql from '../../shell/database/stmts/db-resource-read-list-drafts-before.sql' with { type: 'text' };
 import dbResourceReadListDraftsByStatusSql from '../../shell/database/stmts/db-resource-read-list-drafts-by-status.sql' with { type: 'text' };
 import dbResourceReadListDraftsByStatusBeforeSql from '../../shell/database/stmts/db-resource-read-list-drafts-by-status-before.sql' with { type: 'text' };
-import dbResourceWriteUpdateApplySql from '../../shell/database/stmts/db-resource-write-update-apply.sql' with { type: 'text' };
-import dbResourceWriteUpdateApplyExpectedSql from '../../shell/database/stmts/db-resource-write-update-apply-expected.sql' with { type: 'text' };
-import dbResourceWriteUpdateDraftStatusSql from '../../shell/database/stmts/db-resource-write-update-draft-status.sql' with { type: 'text' };
-import dbResourceWriteUpdateDraftStatusExpectedSql from '../../shell/database/stmts/db-resource-write-update-draft-status-expected.sql' with { type: 'text' };
+import dbResourceUpdateApplySql from '../../shell/database/stmts/db-resource-update-apply.sql' with { type: 'text' };
+import dbResourceUpdateApplyExpectedSql from '../../shell/database/stmts/db-resource-update-apply-expected.sql' with { type: 'text' };
+import dbResourceUpdateDraftStatusSql from '../../shell/database/stmts/db-resource-update-draft-status.sql' with { type: 'text' };
+import dbResourceUpdateDraftStatusExpectedSql from '../../shell/database/stmts/db-resource-update-draft-status-expected.sql' with { type: 'text' };
 import migrationSetApplicationIdSql from '../../shell/database/stmts/migration-set-application-id.sql' with { type: 'text' };
 import migrationSetUserVersionSql from '../../shell/database/stmts/migration-set-user-version.sql' with { type: 'text' };
 import pragmaSetBusyTimeoutSql from '../../shell/database/stmts/pragma-set-busy-timeout.sql' with { type: 'text' };
@@ -217,43 +217,43 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'canvasItemReadKeyValues',
   'canvasItemUpdateCanvasItems',
   'canvasItemUpdateCanvases',
-  'canvasReadCanvases',
-  'canvasReadCanvases2',
-  'canvasReadCanvases3',
-  'canvasWriteDeleteCanvases',
-  'canvasWriteInsertCanvases',
-  'canvasWriteUpdateCanvases',
+  'canvasList',
+  'canvasReadByName',
+  'canvasReadById',
+  'canvasDelete',
+  'canvasInsert',
+  'canvasUpdateName',
   'chatInsertChats',
   'chatReadChats',
   'databaseCheckReadPragmaIntegrityCheck',
   'databaseCheckReadPragmaQuickCheck',
-  'dbResourceReadReadDbResourceApplyRuns',
-  'dbResourceReadReadDbResourceDraftChanges',
-  'dbResourceReadReadDbResourceDrafts',
-  'dbResourceReadReadDbResourceDrafts2',
-  'dbResourceWriteInsertDbResourceApplyRuns',
-  'dbResourceWriteInsertDbResourceDraftChanges',
-  'dbResourceWriteInsertDbResourceDrafts',
-  'dbResourceWriteReadDbResourceDraftChanges',
-  'dbResourceWriteReadDbResourceDraftChanges2',
-  'dbResourceWriteReadResourceCatalog',
-  'dbResourceWriteUpdateDbResourceDrafts',
-  'dbResourceWriteUpdateDbResourceDrafts2',
-  'encryptionKeyReadReadResourceEncryptionKeys',
-  'encryptionKeyWriteInsertResourceEncryptionKeys',
-  'keyValueReadReadKeyValues',
-  'keyValueWriteDeleteKeyValues',
-  'keyValueWriteInsertKeyValues',
-  'mediaFileReadReadMediaFiles',
-  'mediaFileReadReadMediaFiles2',
-  'mediaFileWriteDeleteMediaFiles',
-  'mediaFileWriteInsertMediaFiles',
+  'dbResourceReadApplyRun',
+  'dbResourceListDraftChanges',
+  'dbResourceReadDraft',
+  'dbResourceReadActiveDraft',
+  'dbResourceInsertApplyRun',
+  'dbResourceInsertDraftChange',
+  'dbResourceInsertDraft',
+  'dbResourceReadNextDraftChangeSequence',
+  'dbResourceReadDraftChange',
+  'dbResourceReadResourceKindStatus',
+  'dbResourceUpdateDraftName',
+  'dbResourceDiscardDraft',
+  'encryptionKeyReadByResource',
+  'encryptionKeyInsertForResource',
+  'keyValueReadByName',
+  'keyValueDelete',
+  'keyValueUpsert',
+  'mediaFileList',
+  'mediaFileReadById',
+  'mediaFileDelete',
+  'mediaFileInsert',
   'migrationStateReadPragmaApplicationId',
   'migrationStateReadPragmaTableList',
   'migrationStateReadPragmaUserVersion',
   'migrationStateReadSchemaMigrations',
   'migrationStateReadSqliteSchema',
-  'migrationWriteInsertSchemaMigrations',
+  'migrationInsertLedgerEntry',
   'pragmaReadPragmaBusyTimeout',
   'pragmaReadPragmaCacheSize',
   'pragmaReadPragmaForeignKeys',
@@ -271,25 +271,25 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'resourceControlInsertResourceCatalog',
   'resourceControlInsertResourcePlacements',
   'resourceControlReadDbResourceApplyRuns',
-  'resourceControlReadDbResourceBackups',
-  'resourceControlReadDbResourceBackups2',
+  'resourceControlReadBackupByApply',
+  'resourceControlListBackups',
   'resourceControlReadDbResourceDraftChanges',
-  'resourceControlReadDbResourceDrafts',
-  'resourceControlReadDbResourceDrafts2',
-  'resourceControlReadResourceCatalog',
-  'resourceControlReadResourceCatalog2',
-  'resourceControlReadResourceCatalog3',
+  'resourceControlListDrafts',
+  'resourceControlListDraftsByStatus',
+  'resourceControlReadResource',
+  'resourceControlReadDeletingResource',
+  'resourceControlListResourceIdentities',
   'resourceControlReadResourcePlacements',
   'resourceControlUpdateDbResourceApplyRuns',
   'resourceControlUpdateDbResourceBackups',
   'resourceControlUpdateResourceCatalog',
   'resourceControlUpdateResourcePlacements',
-  'schemaContractReadSqliteSchema',
-  'schemaContractReadSqliteSchema2',
-  'schemaContractReadSqliteSchema3',
+  'schemaContractListObjects',
+  'schemaContractReadTableSql',
+  'schemaContractListExplicitIndexes',
   'schemaContractReadTursoInternalTypes',
-  'transactionSetPragmaForeignKeys',
-  'transactionSetPragmaForeignKeys2',
+  'transactionDisableForeignKeys',
+  'transactionEnableForeignKeys',
   'widgetStateInsertWidgetInstanceStates',
   'widgetStateReadCanvasItems',
   'widgetStateReadWidgetInstanceStates',
@@ -332,10 +332,10 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'dbResourceReadListDraftsBefore',
   'dbResourceReadListDraftsByStatus',
   'dbResourceReadListDraftsByStatusBefore',
-  'dbResourceWriteUpdateApply',
-  'dbResourceWriteUpdateApplyExpected',
-  'dbResourceWriteUpdateDraftStatus',
-  'dbResourceWriteUpdateDraftStatusExpected',
+  'dbResourceUpdateApply',
+  'dbResourceUpdateApplyExpected',
+  'dbResourceUpdateDraftStatus',
+  'dbResourceUpdateDraftStatusExpected',
   'migrationSetApplicationId',
   'migrationSetUserVersion',
   'pragmaSetBusyTimeout',
@@ -430,43 +430,43 @@ export const DATABASE_STATEMENTS = Object.freeze({
   canvasItemReadKeyValues: canvasItemReadKeyValuesSql,
   canvasItemUpdateCanvasItems: canvasItemUpdateCanvasItemsSql,
   canvasItemUpdateCanvases: canvasItemUpdateCanvasesSql,
-  canvasReadCanvases: canvasReadCanvasesSql,
-  canvasReadCanvases2: canvasReadCanvases2Sql,
-  canvasReadCanvases3: canvasReadCanvases3Sql,
-  canvasWriteDeleteCanvases: canvasWriteDeleteCanvasesSql,
-  canvasWriteInsertCanvases: canvasWriteInsertCanvasesSql,
-  canvasWriteUpdateCanvases: canvasWriteUpdateCanvasesSql,
+  canvasList: canvasListSql,
+  canvasReadByName: canvasReadByNameSql,
+  canvasReadById: canvasReadByIdSql,
+  canvasDelete: canvasDeleteSql,
+  canvasInsert: canvasInsertSql,
+  canvasUpdateName: canvasUpdateNameSql,
   chatInsertChats: chatInsertChatsSql,
   chatReadChats: chatReadChatsSql,
   databaseCheckReadPragmaIntegrityCheck: databaseCheckReadPragmaIntegrityCheckSql,
   databaseCheckReadPragmaQuickCheck: databaseCheckReadPragmaQuickCheckSql,
-  dbResourceReadReadDbResourceApplyRuns: dbResourceReadReadDbResourceApplyRunsSql,
-  dbResourceReadReadDbResourceDraftChanges: dbResourceReadReadDbResourceDraftChangesSql,
-  dbResourceReadReadDbResourceDrafts: dbResourceReadReadDbResourceDraftsSql,
-  dbResourceReadReadDbResourceDrafts2: dbResourceReadReadDbResourceDrafts2Sql,
-  dbResourceWriteInsertDbResourceApplyRuns: dbResourceWriteInsertDbResourceApplyRunsSql,
-  dbResourceWriteInsertDbResourceDraftChanges: dbResourceWriteInsertDbResourceDraftChangesSql,
-  dbResourceWriteInsertDbResourceDrafts: dbResourceWriteInsertDbResourceDraftsSql,
-  dbResourceWriteReadDbResourceDraftChanges: dbResourceWriteReadDbResourceDraftChangesSql,
-  dbResourceWriteReadDbResourceDraftChanges2: dbResourceWriteReadDbResourceDraftChanges2Sql,
-  dbResourceWriteReadResourceCatalog: dbResourceWriteReadResourceCatalogSql,
-  dbResourceWriteUpdateDbResourceDrafts: dbResourceWriteUpdateDbResourceDraftsSql,
-  dbResourceWriteUpdateDbResourceDrafts2: dbResourceWriteUpdateDbResourceDrafts2Sql,
-  encryptionKeyReadReadResourceEncryptionKeys: encryptionKeyReadReadResourceEncryptionKeysSql,
-  encryptionKeyWriteInsertResourceEncryptionKeys: encryptionKeyWriteInsertResourceEncryptionKeysSql,
-  keyValueReadReadKeyValues: keyValueReadReadKeyValuesSql,
-  keyValueWriteDeleteKeyValues: keyValueWriteDeleteKeyValuesSql,
-  keyValueWriteInsertKeyValues: keyValueWriteInsertKeyValuesSql,
-  mediaFileReadReadMediaFiles: mediaFileReadReadMediaFilesSql,
-  mediaFileReadReadMediaFiles2: mediaFileReadReadMediaFiles2Sql,
-  mediaFileWriteDeleteMediaFiles: mediaFileWriteDeleteMediaFilesSql,
-  mediaFileWriteInsertMediaFiles: mediaFileWriteInsertMediaFilesSql,
+  dbResourceReadApplyRun: dbResourceReadApplyRunSql,
+  dbResourceListDraftChanges: dbResourceListDraftChangesSql,
+  dbResourceReadDraft: dbResourceReadDraftSql,
+  dbResourceReadActiveDraft: dbResourceReadActiveDraftSql,
+  dbResourceInsertApplyRun: dbResourceInsertApplyRunSql,
+  dbResourceInsertDraftChange: dbResourceInsertDraftChangeSql,
+  dbResourceInsertDraft: dbResourceInsertDraftSql,
+  dbResourceReadNextDraftChangeSequence: dbResourceReadNextDraftChangeSequenceSql,
+  dbResourceReadDraftChange: dbResourceReadDraftChangeSql,
+  dbResourceReadResourceKindStatus: dbResourceReadResourceKindStatusSql,
+  dbResourceUpdateDraftName: dbResourceUpdateDraftNameSql,
+  dbResourceDiscardDraft: dbResourceDiscardDraftSql,
+  encryptionKeyReadByResource: encryptionKeyReadByResourceSql,
+  encryptionKeyInsertForResource: encryptionKeyInsertForResourceSql,
+  keyValueReadByName: keyValueReadByNameSql,
+  keyValueDelete: keyValueDeleteSql,
+  keyValueUpsert: keyValueUpsertSql,
+  mediaFileList: mediaFileListSql,
+  mediaFileReadById: mediaFileReadByIdSql,
+  mediaFileDelete: mediaFileDeleteSql,
+  mediaFileInsert: mediaFileInsertSql,
   migrationStateReadPragmaApplicationId: migrationStateReadPragmaApplicationIdSql,
   migrationStateReadPragmaTableList: migrationStateReadPragmaTableListSql,
   migrationStateReadPragmaUserVersion: migrationStateReadPragmaUserVersionSql,
   migrationStateReadSchemaMigrations: migrationStateReadSchemaMigrationsSql,
   migrationStateReadSqliteSchema: migrationStateReadSqliteSchemaSql,
-  migrationWriteInsertSchemaMigrations: migrationWriteInsertSchemaMigrationsSql,
+  migrationInsertLedgerEntry: migrationInsertLedgerEntrySql,
   pragmaReadPragmaBusyTimeout: pragmaReadPragmaBusyTimeoutSql,
   pragmaReadPragmaCacheSize: pragmaReadPragmaCacheSizeSql,
   pragmaReadPragmaForeignKeys: pragmaReadPragmaForeignKeysSql,
@@ -484,25 +484,25 @@ export const DATABASE_STATEMENTS = Object.freeze({
   resourceControlInsertResourceCatalog: resourceControlInsertResourceCatalogSql,
   resourceControlInsertResourcePlacements: resourceControlInsertResourcePlacementsSql,
   resourceControlReadDbResourceApplyRuns: resourceControlReadDbResourceApplyRunsSql,
-  resourceControlReadDbResourceBackups: resourceControlReadDbResourceBackupsSql,
-  resourceControlReadDbResourceBackups2: resourceControlReadDbResourceBackups2Sql,
+  resourceControlReadBackupByApply: resourceControlReadBackupByApplySql,
+  resourceControlListBackups: resourceControlListBackupsSql,
   resourceControlReadDbResourceDraftChanges: resourceControlReadDbResourceDraftChangesSql,
-  resourceControlReadDbResourceDrafts: resourceControlReadDbResourceDraftsSql,
-  resourceControlReadDbResourceDrafts2: resourceControlReadDbResourceDrafts2Sql,
-  resourceControlReadResourceCatalog: resourceControlReadResourceCatalogSql,
-  resourceControlReadResourceCatalog2: resourceControlReadResourceCatalog2Sql,
-  resourceControlReadResourceCatalog3: resourceControlReadResourceCatalog3Sql,
+  resourceControlListDrafts: resourceControlListDraftsSql,
+  resourceControlListDraftsByStatus: resourceControlListDraftsByStatusSql,
+  resourceControlReadResource: resourceControlReadResourceSql,
+  resourceControlReadDeletingResource: resourceControlReadDeletingResourceSql,
+  resourceControlListResourceIdentities: resourceControlListResourceIdentitiesSql,
   resourceControlReadResourcePlacements: resourceControlReadResourcePlacementsSql,
   resourceControlUpdateDbResourceApplyRuns: resourceControlUpdateDbResourceApplyRunsSql,
   resourceControlUpdateDbResourceBackups: resourceControlUpdateDbResourceBackupsSql,
   resourceControlUpdateResourceCatalog: resourceControlUpdateResourceCatalogSql,
   resourceControlUpdateResourcePlacements: resourceControlUpdateResourcePlacementsSql,
-  schemaContractReadSqliteSchema: schemaContractReadSqliteSchemaSql,
-  schemaContractReadSqliteSchema2: schemaContractReadSqliteSchema2Sql,
-  schemaContractReadSqliteSchema3: schemaContractReadSqliteSchema3Sql,
+  schemaContractListObjects: schemaContractListObjectsSql,
+  schemaContractReadTableSql: schemaContractReadTableSqlSql,
+  schemaContractListExplicitIndexes: schemaContractListExplicitIndexesSql,
   schemaContractReadTursoInternalTypes: schemaContractReadTursoInternalTypesSql,
-  transactionSetPragmaForeignKeys: transactionSetPragmaForeignKeysSql,
-  transactionSetPragmaForeignKeys2: transactionSetPragmaForeignKeys2Sql,
+  transactionDisableForeignKeys: transactionDisableForeignKeysSql,
+  transactionEnableForeignKeys: transactionEnableForeignKeysSql,
   widgetStateInsertWidgetInstanceStates: widgetStateInsertWidgetInstanceStatesSql,
   widgetStateReadCanvasItems: widgetStateReadCanvasItemsSql,
   widgetStateReadWidgetInstanceStates: widgetStateReadWidgetInstanceStatesSql,
@@ -545,10 +545,10 @@ export const DATABASE_STATEMENTS = Object.freeze({
   dbResourceReadListDraftsBefore: dbResourceReadListDraftsBeforeSql,
   dbResourceReadListDraftsByStatus: dbResourceReadListDraftsByStatusSql,
   dbResourceReadListDraftsByStatusBefore: dbResourceReadListDraftsByStatusBeforeSql,
-  dbResourceWriteUpdateApply: dbResourceWriteUpdateApplySql,
-  dbResourceWriteUpdateApplyExpected: dbResourceWriteUpdateApplyExpectedSql,
-  dbResourceWriteUpdateDraftStatus: dbResourceWriteUpdateDraftStatusSql,
-  dbResourceWriteUpdateDraftStatusExpected: dbResourceWriteUpdateDraftStatusExpectedSql,
+  dbResourceUpdateApply: dbResourceUpdateApplySql,
+  dbResourceUpdateApplyExpected: dbResourceUpdateApplyExpectedSql,
+  dbResourceUpdateDraftStatus: dbResourceUpdateDraftStatusSql,
+  dbResourceUpdateDraftStatusExpected: dbResourceUpdateDraftStatusExpectedSql,
   migrationSetApplicationId: migrationSetApplicationIdSql,
   migrationSetUserVersion: migrationSetUserVersionSql,
   pragmaSetBusyTimeout: pragmaSetBusyTimeoutSql,

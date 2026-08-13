@@ -128,7 +128,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   }
 
   async getResource(resourceId: TResourceId): Promise<TResourceDescriptor | null> {
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadResourceCatalog)).get(resourceId);
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadResource)).get(resourceId);
     return row ? fnResourceControlStoreDescriptor(row) : null;
   }
 
@@ -192,7 +192,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   async deleteResource(resourceId: TResourceId): Promise<boolean> {
     return runDatabaseTransaction({ database: this.database }, {
       operation: async () => {
-        const eligible = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadResourceCatalog2)).get(resourceId);
+        const eligible = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadDeletingResource)).get(resourceId);
         if (!eligible) return false;
         await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlDeleteDbResourceBackups)).run(resourceId);
         await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlUpdateDbResourceApplyRuns)).run(resourceId);
@@ -267,7 +267,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   }
 
   async getDbDraft(draftId: string): Promise<TDbResourceDraft | null> {
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceDrafts)).get(draftId);
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadDraft)).get(draftId);
     return row ? fnResourceControlStoreDbDraft(row) : null;
   }
 
@@ -281,8 +281,8 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
       'DB resource draft',
     );
     const rows = request.status === undefined
-      ? await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadDbResourceDrafts)).all(request.resourceId, limit)
-      : await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadDbResourceDrafts2)).all(request.resourceId, request.status, limit);
+      ? await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlListDrafts)).all(request.resourceId, limit)
+      : await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlListDraftsByStatus)).all(request.resourceId, request.status, limit);
     return rows.map(fnResourceControlStoreDbDraft);
   }
 
@@ -314,7 +314,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     change: TCreateDbResourceDraftChangeRequest,
   ): Promise<TDbResourceDraftChange> {
     await this.#runWrite(async () => (
-      (await this.database.prepare(DATABASE_STATEMENTS.dbResourceWriteInsertDbResourceDraftChanges)).run(
+      (await this.database.prepare(DATABASE_STATEMENTS.dbResourceInsertDraftChange)).run(
         change.draftId,
         change.sequence,
         change.kind,
@@ -322,7 +322,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
         change.sql,
       )
     ));
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceWriteReadDbResourceDraftChanges2)).get(change.draftId, change.sequence);
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadDraftChange)).get(change.draftId, change.sequence);
     if (!row) throw new Error(`Failed to append DB resource draft change '${change.sequence}'.`);
     return fnResourceControlStoreDbDraftChange(row);
   }
@@ -355,7 +355,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   }
 
   async getDbApply(applyId: string): Promise<TDbResourceApplyRun | null> {
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceApplyRuns)).get(applyId);
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadApplyRun)).get(applyId);
     return row ? fnResourceControlStoreDbApply(row) : null;
   }
 
@@ -428,12 +428,12 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   async getDbBackup(
     request: Readonly<{ resourceId: TResourceId; applyRunId: string }>,
   ): Promise<TDbResourceBackup | null> {
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadDbResourceBackups)).get(request.resourceId, request.applyRunId);
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadBackupByApply)).get(request.resourceId, request.applyRunId);
     return row ? fnResourceControlStoreDbBackup(row) : null;
   }
 
   async listDbBackups(resourceId: TResourceId): Promise<readonly TDbResourceBackup[]> {
-    const rows = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadDbResourceBackups2)).all(resourceId);
+    const rows = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlListBackups)).all(resourceId);
     return rows.map(fnResourceControlStoreDbBackup);
   }
 
@@ -466,7 +466,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   ): Promise<string> {
     const normalized = fnNormalizeResourceName(candidate);
     if (!normalized.ok) throw resourceNameError(normalized.code, normalized.message);
-    const rows = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlReadResourceCatalog3)).all() as { id: string; name: string }[];
+    const rows = await (await this.database.prepare(DATABASE_STATEMENTS.resourceControlListResourceIdentities)).all() as { id: string; name: string }[];
     if (rows.some((row) => (
       row.id !== excludingResourceId
       && fnResourceNameKey(row.name) === normalized.value.key
@@ -480,7 +480,7 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   }
 
   async #assertDbResource(resourceId: TResourceId, allowedStatuses: readonly string[]): Promise<void> {
-    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceWriteReadResourceCatalog)).get(resourceId) as { kind?: unknown; status?: unknown } | null;
+    const row = await (await this.database.prepare(DATABASE_STATEMENTS.dbResourceReadResourceKindStatus)).get(resourceId) as { kind?: unknown; status?: unknown } | null;
     if (
       row?.kind !== 'db'
       || typeof row.status !== 'string'

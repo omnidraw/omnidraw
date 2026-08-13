@@ -6,11 +6,9 @@ import {
   type TFunctionInvokeResult,
 } from './service.functions';
 
-export function txInvokeFunction(
+export const txInvokeFunction = Effect.fn('txInvokeFunction')(function*(
   args: TFunctionInvokeRequest,
-): Effect.Effect<TFunctionInvokeResult, FunctionProgramError, FunctionAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* FunctionAuthority;
-    return yield* authority.invoke(args);
-  });
-}
+): Effect.fn.Return<TFunctionInvokeResult, FunctionProgramError, FunctionAuthority> {
+  const authority = yield* FunctionAuthority;
+  return yield* authority.invoke(args);
+});

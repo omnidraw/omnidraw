@@ -3,12 +3,17 @@ import type { TFrontendTransportFailure } from "../app/service.frontend-transpor
 import { NotificationSink } from "../notifications/service.notification-sink";
 
 /** Keeps terminal database-stream failure presentation explicit and testable. */
-export function txDatabaseEventError(args: Readonly<{
+export type TArgsDatabaseEventError = Readonly<{
   error: TFrontendTransportFailure;
-}>): Effect.Effect<void, never, NotificationSink> {
-  return NotificationSink.use((notifications) => notifications.show({
+}>;
+
+export const txDatabaseEventError = Effect.fn('txDatabaseEventError')(function*(
+  args: TArgsDatabaseEventError,
+): Effect.fn.Return<void, never, NotificationSink> {
+  const notifications = yield* NotificationSink;
+  return yield* notifications.show({
     tone: "error",
     title: "Database updates disconnected",
     description: args.error.message,
-  }));
-}
+  });
+});

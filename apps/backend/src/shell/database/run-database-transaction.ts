@@ -83,11 +83,11 @@ export function runDatabaseTransaction<TResult>(
   const run = async () => {
     if (args.foreignKeyEnforcement !== 'disabled') return runTransaction();
 
-    await effects.database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys);
+    await effects.database.exec(DATABASE_STATEMENTS.transactionDisableForeignKeys);
     try {
       return await runTransaction();
     } finally {
-      await effects.database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys2);
+      await effects.database.exec(DATABASE_STATEMENTS.transactionEnableForeignKeys);
     }
   };
   return runSerializedOperation({ scope: effects.database as object }, {

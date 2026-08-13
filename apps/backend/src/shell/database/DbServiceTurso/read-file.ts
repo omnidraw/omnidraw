@@ -29,7 +29,7 @@ function parseMediaFileRow(row: unknown): TMediaFile {
 
 export async function listMediaFileRows(effects: TEffects, args: TArgs): Promise<TMediaFile[]> {
   void args;
-  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileReadReadMediaFiles)).all();
+  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileList)).all();
   return rows.map(parseMediaFileRow);
 }
 
@@ -37,6 +37,6 @@ export async function getMediaFileRowById(
   effects: TEffects,
   args: TArgsGetById,
 ): Promise<TMediaFile | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileReadReadMediaFiles2)).get(args.id);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.mediaFileReadById)).get(args.id);
   return row ? parseMediaFileRow(row) : null;
 }

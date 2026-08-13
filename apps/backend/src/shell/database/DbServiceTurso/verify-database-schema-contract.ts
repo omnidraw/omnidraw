@@ -166,7 +166,7 @@ async function verifyDatabaseSchemaContract(
   args: TArgs,
 ): Promise<TResult> {
   const [schemaObjects, domainRows] = await Promise.all([
-    (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractReadSqliteSchema)).all() as Promise<TSchemaObjectRow[]>,
+    (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractListObjects)).all() as Promise<TSchemaObjectRow[]>,
     (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractReadTursoInternalTypes)).all() as Promise<TDomainRow[]>,
   ]);
   const actualDomains = domainRows.map((row) => `${row.name}\u0000${row.sql}`);
@@ -266,7 +266,7 @@ async function verifyDatabaseSchemaContract(
     }
 
     if ((expected.requiredSqlFragments?.length ?? 0) > 0) {
-      const row = await (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractReadSqliteSchema2)).get(table) as { sql?: unknown } | undefined;
+      const row = await (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractReadTableSql)).get(table) as { sql?: unknown } | undefined;
       const normalizedSql = typeof row?.sql === 'string' ? row.sql.replace(/\s+/g, '') : '';
       for (const fragment of expected.requiredSqlFragments ?? []) {
         if (!normalizedSql.includes(fragment.replace(/\s+/g, ''))) {
@@ -279,7 +279,7 @@ async function verifyDatabaseSchemaContract(
     }
   }
 
-  const explicitIndexes = await (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractReadSqliteSchema3)).all() as Array<{ name: string; table_name: string }>;
+  const explicitIndexes = await (await effects.db.prepare(DATABASE_STATEMENTS.schemaContractListExplicitIndexes)).all() as Array<{ name: string; table_name: string }>;
   const expectedIndexNames = Object.keys(args.expectedIndexes).toSorted();
   if (!sameStrings(explicitIndexes.map((index) => index.name), expectedIndexNames)) {
     return { valid: false, reason: 'explicit index name manifest differs' };

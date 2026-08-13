@@ -3,6 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { CanvasEffectRuntime } from '../../src/internal/CanvasEffectRuntime';
 
 describe('CanvasEffectRuntime', () => {
+  it('shares one idempotent disposal completion', async () => {
+    const runtime = new CanvasEffectRuntime();
+    const disposal = runtime.dispose();
+    expect(runtime.dispose()).toBe(disposal);
+    await disposal;
+    expect(() => runtime.run(Effect.void)).toThrow('disposed');
+  });
+
   it('opens a new serial generation without abandoning supervision of old work', async () => {
     const runtime = new CanvasEffectRuntime();
     let obsoleteSignal: AbortSignal | undefined;

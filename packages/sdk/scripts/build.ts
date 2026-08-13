@@ -39,6 +39,7 @@ const result = await Bun.build({
     path.join(sdkDir, "src/resource.ts"),
     path.join(sdkDir, "src/function.ts"),
     path.join(sdkDir, "src/state.ts"),
+    path.join(sdkDir, "src/tool-icon.ts"),
     path.join(sdkDir, "src/conformance.ts"),
     path.join(sdkDir, "src/widget.ts"),
     path.join(sdkDir, "src/function-client.ts"),

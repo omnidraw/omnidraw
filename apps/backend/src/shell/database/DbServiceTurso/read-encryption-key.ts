@@ -38,6 +38,6 @@ export async function getResourceEncryptionKey(
   effects: TEffects,
   args: TArgs,
 ): Promise<TEncryptionKey | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.encryptionKeyReadReadResourceEncryptionKeys)).get(args.resourceId);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.encryptionKeyReadByResource)).get(args.resourceId);
   return row ? parseEncryptionKey(row) : null;
 }

@@ -4,6 +4,18 @@ import { TestClock } from 'effect/testing';
 import { AiChatEffectRuntime, fxPollAiChat } from '../../src/internal/stream-lifecycle.js';
 
 describe('AiChatEffectRuntime', () => {
+  it('shares one idempotent disposal completion', async () => {
+    const runtime = new AiChatEffectRuntime();
+    const disposal = runtime.dispose();
+    expect(runtime.dispose()).toBe(disposal);
+    await disposal;
+    expect(() => runtime.startLatest('retired', {
+      run: async () => undefined,
+      onSuccess: () => undefined,
+      onError: () => undefined,
+    })).toThrow('disposed');
+  });
+
   it('polls on the Effect Clock and stops at the first terminal value', async () => {
     let attempts = 0;
     const values: number[] = [];

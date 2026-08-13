@@ -47,9 +47,9 @@ function recoveryFailureIsRetriable(error: TFrontendTransportFailure): boolean {
  * Transient failures use the active Effect Clock; a connection change returns
  * control to the stream supervisor instead of publishing stale recovery data.
  */
-export function fxRecoverAfterReconnect<T>(
+export const fxRecoverAfterReconnect = Effect.fn('fxRecoverAfterReconnect')(function*<T>(
   args: TArgsRecoverAfterReconnect<T>,
-): Effect.Effect<TRecoverAfterReconnectResult<T>, TFrontendTransportFailure> {
+): Effect.fn.Return<TRecoverAfterReconnectResult<T>, TFrontendTransportFailure> {
   const changedResult: TRecoverAfterReconnectResult<T> = Object.freeze({
     _tag: "GenerationChanged",
   });
@@ -81,8 +81,8 @@ export function fxRecoverAfterReconnect<T>(
   const recoverCurrentGeneration = Effect.flatMap(args.observeGeneration, (observed) =>
     generationIsCurrent(args.expectedGeneration, observed) ? attempt(0) : changed);
 
-  return Effect.raceFirst(
+  return yield* Effect.raceFirst(
     recoverCurrentGeneration,
     Effect.as(args.awaitGenerationChange, changedResult),
   );
-}
+});

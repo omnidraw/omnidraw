@@ -40,6 +40,6 @@ function parseKeyValue(row: unknown): TKeyValue {
 }
 
 export async function getKeyValueRow(effects: TEffects, args: TArgs): Promise<TKeyValue | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueReadReadKeyValues)).get(args.name);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueReadByName)).get(args.name);
   return row ? parseKeyValue(row) : null;
 }

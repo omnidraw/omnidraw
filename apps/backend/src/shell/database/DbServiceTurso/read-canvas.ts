@@ -41,7 +41,7 @@ function parseCanvasRow(row: TCanvasStorageRow): TCanvas {
 
 export async function listCanvasRows(effects: TEffects, args: TArgs): Promise<TCanvas[]> {
   void args;
-  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasReadCanvases)).all() as TCanvasStorageRow[];
+  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasList)).all() as TCanvasStorageRow[];
   return rows.map(parseCanvasRow);
 }
 
@@ -49,7 +49,7 @@ export async function findCanvasRowByName(
   effects: TEffects,
   args: TArgsFindByName,
 ): Promise<TCanvas | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasReadCanvases2)).get(args.name) as TCanvasStorageRow | undefined;
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasReadByName)).get(args.name) as TCanvasStorageRow | undefined;
   return row ? parseCanvasRow(row) : null;
 }
 
@@ -57,6 +57,6 @@ export async function findCanvasRowById(
   effects: TEffects,
   args: TArgsFindById,
 ): Promise<TCanvas | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasReadCanvases3)).get(args.id) as TCanvasStorageRow | undefined;
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.canvasReadById)).get(args.id) as TCanvasStorageRow | undefined;
   return row ? parseCanvasRow(row) : null;
 }

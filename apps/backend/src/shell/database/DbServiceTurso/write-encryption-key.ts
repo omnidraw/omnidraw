@@ -31,7 +31,7 @@ export async function getOrCreateResourceEncryptionKey(
     operation: async () => {
       const existing = await getResourceEncryptionKey(effects, { resourceId: args.resourceId });
       if (existing) return existing;
-      await (await effects.db.prepare(DATABASE_STATEMENTS.encryptionKeyWriteInsertResourceEncryptionKeys)).run(
+      await (await effects.db.prepare(DATABASE_STATEMENTS.encryptionKeyInsertForResource)).run(
         args.keyId,
         args.purpose,
         args.algorithm,

@@ -1014,7 +1014,7 @@ export class DbResource implements ILocalResourceProvider {
       const sql = prepared.sql;
       const baselineForeignKeys = await this.#foreignKeyViolations(database);
       const rebuild = sql.includes('__omnidraw_rebuild');
-      if (rebuild) await database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys);
+      if (rebuild) await database.exec(DATABASE_STATEMENTS.transactionDisableForeignKeys);
       const apply = database.transaction(async (): Promise<TDbDraftChangeEvidence> => {
         await database.exec(DATABASE_STATEMENTS.dbResourceCreateDraftEvidenceTable, { queryTimeout: QUERY_TIMEOUT_MS });
         const rows = await this.#queryNative(database, DATABASE_STATEMENTS.dbResourceReadNextDraftSequence, []);
@@ -1049,7 +1049,7 @@ export class DbResource implements ILocalResourceProvider {
       try {
         applySqliteDbResourcePragmas(database);
         const rebuild = sql.includes('__omnidraw_rebuild');
-        if (rebuild) database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys);
+        if (rebuild) database.exec(DATABASE_STATEMENTS.transactionDisableForeignKeys);
         const apply = database.transaction(() => {
           database.exec(DATABASE_STATEMENTS.dbResourceCreateDraftEvidenceTable);
           const row = database.query(DATABASE_STATEMENTS.dbResourceReadNextDraftSequence).get() as { next_sequence?: number | bigint } | null;
@@ -1157,7 +1157,7 @@ export class DbResource implements ILocalResourceProvider {
             this.#applyChangesWithSqlite(livePath, orderedChanges, applyId, rebuild);
           } else {
             const database = await this.#open(resourceId, true);
-            if (rebuild) await database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys);
+            if (rebuild) await database.exec(DATABASE_STATEMENTS.transactionDisableForeignKeys);
             const transaction = database.transaction(async () => {
               for (const change of orderedChanges) {
                 const sql = boundedDraftSql(change.sql);
@@ -1205,7 +1205,7 @@ export class DbResource implements ILocalResourceProvider {
     const database = new SQLiteDatabase(databasePath, { create: false, readwrite: true });
     try {
       applySqliteDbResourcePragmas(database);
-      if (rebuild) database.exec(DATABASE_STATEMENTS.transactionSetPragmaForeignKeys);
+      if (rebuild) database.exec(DATABASE_STATEMENTS.transactionDisableForeignKeys);
       const apply = database.transaction(() => {
         for (const change of changes) {
           const sql = boundedDraftSql(change.sql);

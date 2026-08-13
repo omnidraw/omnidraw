@@ -245,7 +245,6 @@ export class AgentService implements IPublicMethods {
       await this.#approvalPolicyStore.load(),
     )
     await this.#workspace.init()
-    console.log('start', this.name)
   }
 
   async stop(): Promise<void> {
@@ -283,7 +282,6 @@ export class AgentService implements IPublicMethods {
     } catch (error) {
       failures.push(error)
     }
-    console.log('stop', this.name)
     if (failures.length > 0) throw new AggregateError(failures, 'Agent service shutdown failed.')
   }
 

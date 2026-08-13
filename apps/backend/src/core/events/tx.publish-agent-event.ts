@@ -4,11 +4,9 @@ import { EventAuthority, type EventProgramError } from './service.events';
 
 export type TArgsPublishAgentEvent = Readonly<{ event: TAgentEvent }>;
 
-export function txPublishAgentEvent(
+export const txPublishAgentEvent = Effect.fn('txPublishAgentEvent')(function*(
   args: TArgsPublishAgentEvent,
-): Effect.Effect<number, EventProgramError, EventAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* EventAuthority;
-    return yield* authority.publishAgent(args.event);
-  });
-}
+): Effect.fn.Return<number, EventProgramError, EventAuthority> {
+  const authority = yield* EventAuthority;
+  return yield* authority.publishAgent(args.event);
+});

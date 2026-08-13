@@ -25,12 +25,12 @@ function columnValues(
 
 export async function addKeyValueRow(effects: TEffects, args: TArgsAdd): Promise<TKeyValue> {
   const [text, json, number, bool, blob] = columnValues(args);
-  await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueWriteInsertKeyValues)).run(args.name, args.type, text, json, number, bool, blob);
+  await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueUpsert)).run(args.name, args.type, text, json, number, bool, blob);
   const stored = await getKeyValueRow(effects, { name: args.name });
   if (!stored) throw new Error('Failed to store key value.');
   return stored;
 }
 
 export async function removeKeyValueRow(effects: TEffects, args: TArgsRemove): Promise<void> {
-  await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueWriteDeleteKeyValues)).run(args.name);
+  await (await effects.db.prepare(DATABASE_STATEMENTS.keyValueDelete)).run(args.name);
 }

@@ -18,86 +18,86 @@ import type { TFrontendTransportFailure } from "../app/service.frontend-transpor
 import { DbResources, dbResourceRead } from "./service.db-resources";
 
 export type TArgsResource = { resourceId: string };
-export function fxResource(args: TArgsResource): Effect.Effect<TResource, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.resources.get", { resourceId: args.resourceId });
-}
+export const fxResource = Effect.fn('fxResource')(function*(args: TArgsResource): Effect.fn.Return<TResource, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.resources.get", { resourceId: args.resourceId });
+});
 
 export type TArgsImpact = { resourceId: string };
-export function fxImpact(args: TArgsImpact): Effect.Effect<TDbImpact, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbResources.impact", { resourceId: args.resourceId });
-}
+export const fxImpact = Effect.fn('fxImpact')(function*(args: TArgsImpact): Effect.fn.Return<TDbImpact, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbResources.impact", { resourceId: args.resourceId });
+});
 
 export type TArgsInspectLive = { resourceId: string };
-export function fxInspectLive(args: TArgsInspectLive): Effect.Effect<TDbInspection | null, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbResources.inspect", { resourceId: args.resourceId, target: "live" });
-}
+export const fxInspectLive = Effect.fn('fxInspectLive')(function*(args: TArgsInspectLive): Effect.fn.Return<TDbInspection | null, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbResources.inspect", { resourceId: args.resourceId, target: "live" });
+});
 
 export type TArgsDrafts = { resourceId: string };
-export function fxDrafts(args: TArgsDrafts): Effect.Effect<readonly TDbDraft[], TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbDrafts.list", { resourceId: args.resourceId });
-}
+export const fxDrafts = Effect.fn('fxDrafts')(function*(args: TArgsDrafts): Effect.fn.Return<readonly TDbDraft[], TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbDrafts.list", { resourceId: args.resourceId });
+});
 
 export type TArgsDraft = { draftId: string };
-export function fxDraft(args: TArgsDraft): Effect.Effect<TDbDraftDetails, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbDrafts.get", { draftId: args.draftId });
-}
+export const fxDraft = Effect.fn('fxDraft')(function*(args: TArgsDraft): Effect.fn.Return<TDbDraftDetails, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbDrafts.get", { draftId: args.draftId });
+});
 
 export type TArgsActiveDraft = { resourceId: string };
-export function fxActiveDraft(args: TArgsActiveDraft): Effect.Effect<TDbDraftDetails | null, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbDrafts.active", { resourceId: args.resourceId });
-}
+export const fxActiveDraft = Effect.fn('fxActiveDraft')(function*(args: TArgsActiveDraft): Effect.fn.Return<TDbDraftDetails | null, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbDrafts.active", { resourceId: args.resourceId });
+});
 
 export type TArgsInspectDraft = { resourceId: string; draftId: string };
-export function fxInspectDraft(args: TArgsInspectDraft): Effect.Effect<TDbInspection | null, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbDrafts.inspect", args);
-}
+export const fxInspectDraft = Effect.fn('fxInspectDraft')(function*(args: TArgsInspectDraft): Effect.fn.Return<TDbInspection | null, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbDrafts.inspect", args);
+});
 
 export type TArgsRows = { resourceId: string; objectName: string; cursor?: TDbRowIdentity; limit: number };
-export function fxRows(args: TArgsRows): Effect.Effect<TDbRowPage, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbRows.list", {
+export const fxRows = Effect.fn('fxRows')(function*(args: TArgsRows): Effect.fn.Return<TDbRowPage, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbRows.list", {
     resourceId: args.resourceId,
     object: args.objectName,
     ...(args.cursor === undefined ? {} : { cursor: args.cursor }),
     limit: args.limit,
   });
-}
+});
 
 export type TArgsRow = { resourceId: string; objectName: string; identity: TDbRowIdentity; columns?: string[] };
-export function fxRow(args: TArgsRow): Effect.Effect<TDbRow, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbRows.get", {
+export const fxRow = Effect.fn('fxRow')(function*(args: TArgsRow): Effect.fn.Return<TDbRow, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbRows.get", {
     resourceId: args.resourceId,
     object: args.objectName,
     identity: args.identity,
     ...(args.columns === undefined ? {} : { columns: args.columns }),
   });
-}
+});
 
 export type TArgsApplies = { resourceId: string; limit: number };
-export function fxApplies(args: TArgsApplies): Effect.Effect<readonly TDbApplyRun[], TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbApplies.list", args);
-}
+export const fxApplies = Effect.fn('fxApplies')(function*(args: TArgsApplies): Effect.fn.Return<readonly TDbApplyRun[], TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbApplies.list", args);
+});
 
 export type TArgsApplyPreview = { draftId: string };
-export function fxApplyPreview(args: TArgsApplyPreview): Effect.Effect<TDbApplyPreview, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbApplies.preview", args);
-}
+export const fxApplyPreview = Effect.fn('fxApplyPreview')(function*(args: TArgsApplyPreview): Effect.fn.Return<TDbApplyPreview, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbApplies.preview", args);
+});
 
 export type TArgsApply = { applyId: string };
-export function fxApply(args: TArgsApply): Effect.Effect<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbApplies.get", args);
-}
+export const fxApply = Effect.fn('fxApply')(function*(args: TArgsApply): Effect.fn.Return<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbApplies.get", args);
+});
 
 export type TArgsBackup = { resourceId: string };
-export function fxBackup(args: TArgsBackup): Effect.Effect<TDbBackup, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbBackups.get", args);
-}
+export const fxBackup = Effect.fn('fxBackup')(function*(args: TArgsBackup): Effect.fn.Return<TDbBackup, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbBackups.get", args);
+});
 
 export type TArgsRestorePreview = { resourceId: string; applyId: string };
-export function fxRestorePreview(args: TArgsRestorePreview): Effect.Effect<TDbRestorePreview, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbBackups.previewRestore", args);
-}
+export const fxRestorePreview = Effect.fn('fxRestorePreview')(function*(args: TArgsRestorePreview): Effect.fn.Return<TDbRestorePreview, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbBackups.previewRestore", args);
+});
 
 export type TArgsRestore = { restoreId: string };
-export function fxRestore(args: TArgsRestore): Effect.Effect<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
-  return dbResourceRead("resource.dbBackups.restoreStatus", args);
-}
+export const fxRestore = Effect.fn('fxRestore')(function*(args: TArgsRestore): Effect.fn.Return<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
+  return yield* dbResourceRead("resource.dbBackups.restoreStatus", args);
+});

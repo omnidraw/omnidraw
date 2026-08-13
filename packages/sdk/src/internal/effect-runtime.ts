@@ -15,6 +15,7 @@ export type TSdkTask = (signal: AbortSignal) => Promise<void>;
 export class SdkEffectRuntime {
   readonly #runtime = ManagedRuntime.make(Layer.empty);
   #disposed = false;
+  #disposePromise: Promise<void> | null = null;
 
   async run<TValue>(
     task: (signal: AbortSignal) => Promise<TValue>,
@@ -55,9 +56,10 @@ export class SdkEffectRuntime {
   }
 
   dispose(): Promise<void> {
-    if (this.#disposed) return Promise.resolve();
+    if (this.#disposePromise !== null) return this.#disposePromise;
     this.#disposed = true;
-    return this.#runtime.dispose();
+    this.#disposePromise = this.#runtime.dispose();
+    return this.#disposePromise;
   }
 }
 

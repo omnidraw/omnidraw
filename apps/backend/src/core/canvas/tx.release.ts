@@ -4,11 +4,9 @@ import { CanvasAuthority } from './service.canvas-authority';
 
 export type TArgsReleaseCanvas = Readonly<{ canvasId: string }>;
 
-export function txReleaseCanvas(
+export const txReleaseCanvas = Effect.fn('txReleaseCanvas')(function*(
   args: TArgsReleaseCanvas,
-): Effect.Effect<void, CanvasAuthorityError, CanvasAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* CanvasAuthority;
-    return yield* authority.release(args);
-  });
-}
+): Effect.fn.Return<void, CanvasAuthorityError, CanvasAuthority> {
+  const authority = yield* CanvasAuthority;
+  return yield* authority.release(args);
+});

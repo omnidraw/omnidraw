@@ -5,11 +5,9 @@ import { CanvasAuthority } from './service.canvas-authority';
 
 export type TArgsGetCanvasSnapshot = Readonly<{ canvasId: string }>;
 
-export function fxGetCanvasSnapshot(
+export const fxGetCanvasSnapshot = Effect.fn('fxGetCanvasSnapshot')(function*(
   args: TArgsGetCanvasSnapshot,
-): Effect.Effect<TCanvasSnapshot, CanvasAuthorityError, CanvasAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* CanvasAuthority;
-    return yield* authority.getSnapshot(args);
-  });
-}
+): Effect.fn.Return<TCanvasSnapshot, CanvasAuthorityError, CanvasAuthority> {
+  const authority = yield* CanvasAuthority;
+  return yield* authority.getSnapshot(args);
+});

@@ -65,7 +65,7 @@ async function requireDbResource(
   resourceId: string,
   allowedStatuses: readonly string[],
 ): Promise<void> {
-  const resource = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteReadResourceCatalog)).get(resourceId) as { kind?: unknown; status?: unknown } | null;
+  const resource = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadResourceKindStatus)).get(resourceId) as { kind?: unknown; status?: unknown } | null;
   if (!resource || resource.kind !== 'db' || !allowedStatuses.includes(String(resource.status))) {
     throw new Error(`Resource '${resourceId}' is not an available DbResource.`);
   }
@@ -76,7 +76,7 @@ export async function createDbResourceDraft(
   args: TArgsDraftCreate,
 ): Promise<TDbResourceDraft> {
   await requireDbResource(effects, args.resourceId, ['ready']);
-  await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteInsertDbResourceDrafts)).run(args.id, args.resourceId, args.name);
+  await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceInsertDraft)).run(args.id, args.resourceId, args.name);
   const draft = await getDbResourceDraft(effects, { id: args.id });
   if (!draft) throw new Error(`Failed to create DbResource draft '${args.id}'.`);
   return draft;
@@ -86,7 +86,7 @@ export async function renameDbResourceDraft(
   effects: TEffects,
   args: TArgsDraftRename,
 ): Promise<TDbResourceDraft | null> {
-  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteUpdateDbResourceDrafts)).run(args.name, args.id);
+  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceUpdateDraftName)).run(args.name, args.id);
   return result.changes === 0 ? null : getDbResourceDraft(effects, { id: args.id });
 }
 
@@ -105,8 +105,8 @@ export async function updateDbResourceDraftStatus(
   }
   const result = await (await effects.db.prepare(
     args.expectedStatus === undefined
-      ? DATABASE_STATEMENTS.dbResourceWriteUpdateDraftStatus
-      : DATABASE_STATEMENTS.dbResourceWriteUpdateDraftStatusExpected,
+      ? DATABASE_STATEMENTS.dbResourceUpdateDraftStatus
+      : DATABASE_STATEMENTS.dbResourceUpdateDraftStatusExpected,
   )).run(...parameters);
   return result.changes === 0 ? null : getDbResourceDraft(effects, { id: args.id });
 }
@@ -122,18 +122,18 @@ export async function appendDbResourceDraftChange(
       if (!draft || draft.status !== 'editing') {
         throw new Error(`DbResource draft '${args.draftId}' is not editable.`);
       }
-      const sequenceRow = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteReadDbResourceDraftChanges)).get(args.draftId) as { next_sequence: number } | undefined;
+      const sequenceRow = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadNextDraftChangeSequence)).get(args.draftId) as { next_sequence: number } | undefined;
       if ((sequenceRow?.next_sequence ?? 1) !== args.sequence) {
         throw new Error(`DbResource draft '${args.draftId}' physical and control sequences diverged.`);
       }
-      await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteInsertDbResourceDraftChanges)).run(
+      await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceInsertDraftChange)).run(
         args.draftId,
         args.sequence,
         args.kind,
         serializedJson(args.operation),
         args.sql,
       );
-      const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteReadDbResourceDraftChanges2)).get(args.draftId, args.sequence);
+      const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadDraftChange)).get(args.draftId, args.sequence);
       if (row == null) throw new Error('Failed to persist DbResource draft change.');
       return fnParseDbResourceDraftChangeRow(row);
     },
@@ -144,7 +144,7 @@ export async function discardDbResourceDraft(
   effects: TEffects,
   args: TArgsDraftDiscard,
 ): Promise<TDbResourceDraft | null> {
-  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteUpdateDbResourceDrafts2)).run(serializedJson(args.lastError), args.id);
+  const result = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceDiscardDraft)).run(serializedJson(args.lastError), args.id);
   return result.changes === 0 ? null : getDbResourceDraft(effects, { id: args.id });
 }
 
@@ -169,7 +169,7 @@ export async function createDbResourceApply(
     throw new Error('DbResource work cannot be both a draft apply and a backup restore.');
   }
   const status = args.status ?? 'preparing';
-  await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceWriteInsertDbResourceApplyRuns)).run(
+  await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceInsertApplyRun)).run(
     args.id,
     args.resourceId,
     args.draftId ?? null,
@@ -258,8 +258,8 @@ export async function updateDbResourceApply(
   }
   const result = await (await effects.db.prepare(
     args.expectedStatus === undefined
-      ? DATABASE_STATEMENTS.dbResourceWriteUpdateApply
-      : DATABASE_STATEMENTS.dbResourceWriteUpdateApplyExpected,
+      ? DATABASE_STATEMENTS.dbResourceUpdateApply
+      : DATABASE_STATEMENTS.dbResourceUpdateApplyExpected,
   )).run(...parameters);
   return result.changes === 0 ? null : getDbResourceApply(effects, { id: args.id });
 }

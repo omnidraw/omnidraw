@@ -5,11 +5,11 @@ import {
   type WidgetProgramError,
 } from './service.widgets';
 
-export function fxWidgetEvents(
-  args: Readonly<{ afterGeneration?: number }>,
-): Effect.Effect<Stream.Stream<TWidgetPublicationResult, WidgetProgramError>, WidgetProgramError, WidgetAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* WidgetAuthority;
-    return yield* authority.events(args);
-  });
-}
+export type TArgsWidgetEvents = Readonly<{ afterGeneration?: number }>;
+
+export const fxWidgetEvents = Effect.fn('fxWidgetEvents')(function*(
+  args: TArgsWidgetEvents,
+): Effect.fn.Return<Stream.Stream<TWidgetPublicationResult, WidgetProgramError>, WidgetProgramError, WidgetAuthority> {
+  const authority = yield* WidgetAuthority;
+  return yield* authority.events(args);
+});

@@ -5,9 +5,7 @@ import {
   type WidgetProgramError,
 } from './service.widgets';
 
-export function fxWidgetCatalog(): Effect.Effect<readonly TWidgetCatalogEntry[], WidgetProgramError, WidgetAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* WidgetAuthority;
-    return yield* authority.catalog();
-  });
-}
+export const fxWidgetCatalog = Effect.fn('fxWidgetCatalog')(function*(): Effect.fn.Return<readonly TWidgetCatalogEntry[], WidgetProgramError, WidgetAuthority> {
+  const authority = yield* WidgetAuthority;
+  return yield* authority.catalog();
+});

@@ -38,7 +38,7 @@ export async function getDbResourceDraft(
   effects: TEffects,
   args: TArgsDraftGet,
 ): Promise<TDbResourceDraft | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceDrafts)).get(args.id);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadDraft)).get(args.id);
   return row == null ? null : fnParseDbResourceDraftRow(row);
 }
 
@@ -73,7 +73,7 @@ export async function getActiveDbResourceDraft(
   effects: TEffects,
   args: TArgsDraftGetActive,
 ): Promise<TDbResourceDraft | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceDrafts2)).get(args.resourceId);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadActiveDraft)).get(args.resourceId);
   return row == null ? null : fnParseDbResourceDraftRow(row);
 }
 
@@ -81,7 +81,7 @@ export async function listDbResourceDraftChanges(
   effects: TEffects,
   args: TArgsDraftChangeList,
 ): Promise<TDbResourceDraftChange[]> {
-  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceDraftChanges)).all(args.draftId);
+  const rows = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceListDraftChanges)).all(args.draftId);
   return rows.map(fnParseDbResourceDraftChangeRow);
 }
 
@@ -89,7 +89,7 @@ export async function getDbResourceApply(
   effects: TEffects,
   args: TArgsApplyGet,
 ): Promise<TDbResourceApplyRun | null> {
-  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadReadDbResourceApplyRuns)).get(args.id);
+  const row = await (await effects.db.prepare(DATABASE_STATEMENTS.dbResourceReadApplyRun)).get(args.id);
   return row == null ? null : fnParseDbResourceApplyRunRow(row);
 }
 

@@ -4,11 +4,9 @@ import { EventAuthority, type EventProgramError } from './service.events';
 
 export type TArgsAgentEventRecords = Readonly<{ afterSequence?: number }>;
 
-export function fxAgentEventRecords(
+export const fxAgentEventRecords = Effect.fn('fxAgentEventRecords')(function*(
   args: TArgsAgentEventRecords,
-): Effect.Effect<Stream.Stream<TSequencedEvent<TAgentEvent>, EventProgramError>, EventProgramError, EventAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* EventAuthority;
-    return yield* authority.agent(args);
-  });
-}
+): Effect.fn.Return<Stream.Stream<TSequencedEvent<TAgentEvent>, EventProgramError>, EventProgramError, EventAuthority> {
+  const authority = yield* EventAuthority;
+  return yield* authority.agent(args);
+});

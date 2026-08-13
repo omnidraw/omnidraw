@@ -13,9 +13,9 @@ export type TArgsPollDbOperation = Readonly<{
 }>;
 
 /** Polls one coordinated database operation on the Effect Clock until terminal. */
-export function fxPollDbOperation(
+export const fxPollDbOperation = Effect.fn('fxPollDbOperation')(function*(
   args: TArgsPollDbOperation,
-): Effect.Effect<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
+): Effect.fn.Return<TDbApplyDetails, TFrontendTransportFailure, DbResources> {
   const poll: Effect.Effect<TDbApplyDetails, TFrontendTransportFailure, DbResources> = Effect.suspend(() => {
     const read = args.kind === "apply"
       ? fxApply({ applyId: args.operationId })
@@ -31,5 +31,5 @@ export function fxPollDbOperation(
       }),
     );
   });
-  return poll;
-}
+  return yield* poll;
+});

@@ -27,6 +27,12 @@ if (result.exitCode !== 0) process.exit(result.exitCode);
 const defaultTheme = BUILTIN_THEMES[0];
 const scopedDefaults = fnThemeCssRule(defaultTheme);
 await Promise.all([
-  Bun.write(path.join(outputDirectory, "default.css"), scopedDefaults),
-  Bun.write(path.join(outputDirectory, "canvas.css"), scopedDefaults),
+  Bun.write(
+    path.join(outputDirectory, "default.css"),
+    `/* Application-shell default variables for an explicit Omnidraw theme scope. */\n${scopedDefaults}`,
+  ),
+  Bun.write(
+    path.join(outputDirectory, "canvas.css"),
+    `/* Canvas-host default variables; intentionally isolated from application stylesheet ownership. */\n${scopedDefaults}`,
+  ),
 ]);

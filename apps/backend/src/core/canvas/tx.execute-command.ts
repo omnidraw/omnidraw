@@ -5,11 +5,9 @@ import { CanvasAuthority } from './service.canvas-authority';
 
 export type TArgsExecuteCanvasCommand = TCanvasCommand;
 
-export function txExecuteCanvasCommand(
+export const txExecuteCanvasCommand = Effect.fn('txExecuteCanvasCommand')(function*(
   args: TArgsExecuteCanvasCommand,
-): Effect.Effect<TCanvasItemsChangedEvent, CanvasAuthorityError, CanvasAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* CanvasAuthority;
-    return yield* authority.execute(args);
-  });
-}
+): Effect.fn.Return<TCanvasItemsChangedEvent, CanvasAuthorityError, CanvasAuthority> {
+  const authority = yield* CanvasAuthority;
+  return yield* authority.execute(args);
+});

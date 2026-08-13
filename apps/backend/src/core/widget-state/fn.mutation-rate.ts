@@ -60,6 +60,66 @@ function fnEarliestMutationRetryAfter(
   return retryAfterMs;
 }
 
+export function fnPruneWidgetStateMutationRateLedger(
+  ledger: TWidgetStateMutationRateLedger,
+  now: number,
+  windowMs: number,
+): TWidgetStateMutationRateLedger | null {
+  const cutoff = now - windowMs;
+  let firstRetained = 0;
+  while (
+    firstRetained < ledger.timestamps.length
+    && ledger.timestamps[firstRetained]! <= cutoff
+  ) firstRetained += 1;
+  if (firstRetained === ledger.timestamps.length) return null;
+  if (firstRetained === 0) return ledger;
+  return Object.freeze({
+    lastSeenAt: ledger.lastSeenAt,
+    timestamps: Object.freeze(ledger.timestamps.slice(firstRetained)),
+  });
+}
+
+export function fnWidgetStateMutationCapacityRetryAfter(
+  ledgers: readonly TWidgetStateMutationRateLedgerEntry[],
+  now: number,
+  windowMs: number,
+): number {
+  return fnEarliestMutationRetryAfter(ledgers, now, windowMs);
+}
+
+/** Hot-scope policy: the shell owns lookup and this transition touches one ledger. */
+export function fnTransitionWidgetStateMutationLedger(args: Readonly<{
+  ledger: TWidgetStateMutationRateLedger | undefined;
+  now: number;
+  limit: number;
+  windowMs: number;
+}>): Readonly<{
+  admission: TWidgetStateMutationAdmission;
+  ledger: TWidgetStateMutationRateLedger;
+}> {
+  const retained = args.ledger === undefined
+    ? null
+    : fnPruneWidgetStateMutationRateLedger(args.ledger, args.now, args.windowMs);
+  const timestamps = retained?.timestamps ?? Object.freeze([]);
+  const lastSeenAt = Math.max(retained?.lastSeenAt ?? args.now, args.now);
+  if (timestamps.length >= args.limit) {
+    return Object.freeze({
+      admission: Object.freeze({
+        allowed: false,
+        retryAfterMs: Math.max(1, timestamps[0]! + args.windowMs - args.now),
+      }),
+      ledger: Object.freeze({ lastSeenAt, timestamps }),
+    });
+  }
+  return Object.freeze({
+    admission: Object.freeze({ allowed: true }),
+    ledger: Object.freeze({
+      lastSeenAt,
+      timestamps: Object.freeze([...timestamps, args.now]),
+    }),
+  });
+}
+
 /** Fixed-window admission with no clock, lifecycle, or mutable ledger ownership. */
 export function fnTransitionWidgetStateMutationRate(
   args: TArgsTransitionWidgetStateMutationRate,

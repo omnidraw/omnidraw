@@ -6,11 +6,9 @@ import {
   type TResourceCatalogFilter,
 } from './service.resources';
 
-export function fxListResources(
+export const fxListResources = Effect.fn('fxListResources')(function*(
   args: TResourceCatalogFilter,
-): Effect.Effect<readonly TResourceDescriptor[], ResourceProgramError, ResourceAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* ResourceAuthority;
-    return yield* authority.list(args);
-  });
-}
+): Effect.fn.Return<readonly TResourceDescriptor[], ResourceProgramError, ResourceAuthority> {
+  const authority = yield* ResourceAuthority;
+  return yield* authority.list(args);
+});

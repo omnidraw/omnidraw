@@ -80,6 +80,7 @@ describe('production database statement registry', () => {
     expect(new Set(DATABASE_STATEMENT_NAMES).size).toBe(DATABASE_STATEMENT_NAMES.length);
     expect(Object.keys(DATABASE_STATEMENTS).sort()).toEqual(registeredNames);
     expect(fileStatementNames).toEqual(registeredNames);
+    expect(files.filter((fileName) => /\d+\.sql$|-read-read-|-write-(?:read|insert|update|delete)-/.test(fileName))).toEqual([]);
 
     for (const fileName of files) {
       const name = statementNameForFile(fileName) as TDatabaseStatementName;
@@ -91,10 +92,11 @@ describe('production database statement registry', () => {
   test('keeps exactly one operation in each SQL asset', () => {
     for (const [name, sql] of Object.entries(DATABASE_STATEMENTS)) {
       expect(sql.trim().length, name).toBeGreaterThan(0);
-      expect(sql.trimStart(), name).toMatch(
+      const operationSql = sql.replace(/^(?:\s*--[^\n]*(?:\n|$))+/, '').trimStart();
+      expect(operationSql, name).toMatch(
         /^(?:ALTER|BEGIN|COMMIT|CREATE|DELETE|DROP|INSERT|PRAGMA|ROLLBACK|SELECT|UPDATE)\b/i,
       );
-      const expectedInternalSemicolons = /^CREATE\s+TRIGGER\b/i.test(sql.trimStart()) ? 1 : 0;
+      const expectedInternalSemicolons = /^CREATE\s+TRIGGER\b/i.test(operationSql) ? 1 : 0;
       expect(topLevelSemicolons(sql), name).toBe(expectedInternalSemicolons);
     }
   });

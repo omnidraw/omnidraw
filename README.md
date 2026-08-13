@@ -56,6 +56,29 @@ bun run apps/backend/src/main.ts --help
 bun run apps/backend/src/main.ts canvas --help
 ```
 
+## Test runners
+
+The repository intentionally uses two runners. `bun test` owns backend,
+contract, SDK, theme, transport, architecture, database, conformance, and pure
+frontend tests. Vitest owns Solid component and browser-like DOM suites because
+those packages use the same Vite transforms and jsdom setup as their builds:
+`apps/frontend`, `packages/canvas`, and `packages/component-ai-chat` invoke it
+from their package scripts.
+
+Use the owning package's `bun run test` script instead of invoking a runner
+against an arbitrary repository path. The root `bun run test` command composes
+both runner families with type, package, database, and live-browser gates. The
+runner split is about environment ownership, not two levels of correctness;
+moving a test requires moving its environment setup and package script in the
+same change.
+
+The order-7 performance workloads are separate from correctness gates so timing
+variance cannot make CI flaky. Run them explicitly with:
+
+```bash
+bun run benchmark:order-7
+```
+
 ## Database
 
 - Omnidraw keeps one home at `~/.omnidraw`; its primary Turso database is `~/.omnidraw/main.db`.

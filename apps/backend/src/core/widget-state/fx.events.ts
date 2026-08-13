@@ -2,11 +2,9 @@ import { Effect, type Stream } from 'effect';
 import type { TWidgetStateSubscribeArgs, TWidgetStateSubscriptionEvent } from './types';
 import { WidgetStateAuthority, type WidgetStateProgramError } from './service.widget-state';
 
-export function fxWidgetStateEvents(
+export const fxWidgetStateEvents = Effect.fn('fxWidgetStateEvents')(function*(
   args: TWidgetStateSubscribeArgs,
-): Effect.Effect<Stream.Stream<TWidgetStateSubscriptionEvent, WidgetStateProgramError>, WidgetStateProgramError, WidgetStateAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* WidgetStateAuthority;
-    return yield* authority.events(args);
-  });
-}
+): Effect.fn.Return<Stream.Stream<TWidgetStateSubscriptionEvent, WidgetStateProgramError>, WidgetStateProgramError, WidgetStateAuthority> {
+  const authority = yield* WidgetStateAuthority;
+  return yield* authority.events(args);
+});

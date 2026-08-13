@@ -54,6 +54,10 @@
       "types": "./dist/state.d.ts",
       "default": "./dist/state.js"
     },
+    "./tool-icon": {
+      "types": "./dist/tool-icon.d.ts",
+      "default": "./dist/tool-icon.js"
+    },
     "./conformance": {
       "types": "./dist/conformance.d.ts",
       "default": "./dist/conformance.js"
@@ -99,6 +103,7 @@
   },
   "devDependencies": {
     "typescript": "7.0.2",
-    "typescript-widget-compiler": "npm:typescript@5.9.3"
+    "typescript-widget-compiler": "npm:typescript@5.9.3",
+    "typescript-widget-fixture": "npm:typescript@6.0.3"
   }
 }

@@ -5,11 +5,9 @@ import { CanvasAuthority } from './service.canvas-authority';
 
 export type TArgsQueryCanvasItems = TCanvasItemQuery;
 
-export function fxQueryCanvasItems(
+export const fxQueryCanvasItems = Effect.fn('fxQueryCanvasItems')(function*(
   args: TArgsQueryCanvasItems,
-): Effect.Effect<TCanvasItemPage, CanvasAuthorityError, CanvasAuthority> {
-  return Effect.gen(function*() {
-    const authority = yield* CanvasAuthority;
-    return yield* authority.queryItems(args);
-  });
-}
+): Effect.fn.Return<TCanvasItemPage, CanvasAuthorityError, CanvasAuthority> {
+  const authority = yield* CanvasAuthority;
+  return yield* authority.queryItems(args);
+});
