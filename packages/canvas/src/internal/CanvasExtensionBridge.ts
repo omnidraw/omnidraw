@@ -623,6 +623,25 @@ export class CanvasExtensionBridge {
   }
 
   #handleActivation(activation: TWidgetActivation): void {
+    if (activation.type === 'traffic-light') {
+      const node = this.#widgetNode(activation.widgetId);
+      if (node === null) return;
+      if (activation.control === 'close') {
+        this.#options.editor.commitSceneMutation({
+          source: 'omnidraw.widget-frame.close',
+          commands: [{ type: 'remove', nodeId: node.id, descendants: 'remove' }],
+        });
+        return;
+      }
+      this.#options.editor.commitSceneMutation({
+        source: 'omnidraw.widget-frame.minimize',
+        commands: [mapSceneCommand({
+          type: 'upsert',
+          node: { ...node, collapsed: node.collapsed !== true },
+        })],
+      });
+      return;
+    }
     if (activation.type !== 'header-button' && activation.type !== 'dropdown-item') {
       return;
     }

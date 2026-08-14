@@ -260,6 +260,49 @@ describe('Canvas extension bridge', () => {
     await test.bridge.dispose();
   });
 
+  test('commits shared widget traffic-light controls without an extension handler', async () => {
+    const test = harness();
+
+    test.action({
+      type: 'traffic-light',
+      widgetId: 'widget-a',
+      control: 'close',
+    });
+    expect(test.commitSceneMutation).toHaveBeenNthCalledWith(1, {
+      source: 'omnidraw.widget-frame.close',
+      commands: [{ type: 'remove', nodeId: 'widget-a', descendants: 'remove' }],
+    });
+
+    test.action({
+      type: 'traffic-light',
+      widgetId: 'widget-a',
+      control: 'minimize',
+    });
+    expect(test.commitSceneMutation).toHaveBeenNthCalledWith(2, {
+      source: 'omnidraw.widget-frame.minimize',
+      commands: [expect.objectContaining({
+        type: 'upsert',
+        node: expect.objectContaining({ id: 'widget-a', collapsed: true }),
+      })],
+    });
+
+    test.publish(fnCanvasContractNodeToCangine({ ...widget(), collapsed: true }));
+    test.action({
+      type: 'traffic-light',
+      widgetId: 'widget-a',
+      control: 'minimize',
+    });
+    expect(test.commitSceneMutation).toHaveBeenNthCalledWith(3, {
+      source: 'omnidraw.widget-frame.minimize',
+      commands: [expect.objectContaining({
+        type: 'upsert',
+        node: expect.objectContaining({ id: 'widget-a', collapsed: false }),
+      })],
+    });
+
+    await test.bridge.dispose();
+  });
+
   test('forwards query/selection and admits commands only through the contract', async () => {
     const test = harness();
     const query: TCanvasItemQuery = {
