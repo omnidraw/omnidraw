@@ -63,6 +63,58 @@ describe('LocalWidgetPackageRegistrySync', () => {
     expect(calls).toBe(2);
   });
 
+  test('cancels one waiter without aborting the coalesced process-local synchronization', async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    let executing!: () => void;
+    const started = new Promise<void>((resolve) => { executing = resolve; });
+    const sync = new LocalWidgetPackageRegistrySync({
+      repositoryRoot: '/workspace',
+      stat: async () => ({ isFile: () => true }),
+      execute: async () => {
+        executing();
+        await blocked;
+      },
+    });
+    const controller = new AbortController();
+    const cancelled = sync.sync(controller.signal);
+    const retained = sync.sync();
+    await started;
+    controller.abort();
+
+    await expect(cancelled).rejects.toThrow('synchronization was cancelled');
+    release();
+    await expect(retained).resolves.toBeUndefined();
+    await expect(sync.sync()).resolves.toBeUndefined();
+  });
+
+  test('aborts the registry process when its only waiter is cancelled', async () => {
+    let observedSignal: AbortSignal | undefined;
+    let executing!: () => void;
+    const started = new Promise<void>((resolve) => { executing = resolve; });
+    const sync = new LocalWidgetPackageRegistrySync({
+      repositoryRoot: '/workspace',
+      stat: async () => ({ isFile: () => true }),
+      execute: async (_command, _args, options) => {
+        observedSignal = options.signal;
+        executing();
+        await new Promise<void>((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => reject(new Error('process aborted')), {
+            once: true,
+          });
+        });
+      },
+    });
+    const controller = new AbortController();
+    const pending = sync.sync(controller.signal);
+    await started;
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('synchronization was cancelled');
+    expect(observedSignal?.aborted).toBe(true);
+    await Promise.resolve();
+  });
+
   test('rejects a missing registry script before spawning with one actionable path', async () => {
     let executed = false;
     const sync = new LocalWidgetPackageRegistrySync({

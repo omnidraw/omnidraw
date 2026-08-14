@@ -1,5 +1,6 @@
 import { Cause, Effect } from 'effect';
 import { CanvasEffectRuntime } from '../internal/CanvasEffectRuntime';
+import type { TCanvasWaitHandle } from '../types';
 
 export type TManagedCanvasRuntime = {
   bootEffect(): Effect.Effect<void, unknown>;
@@ -11,6 +12,8 @@ export type TCanvasRuntimeLifecyclePortal<TSource> = {
   onBootStart?(source: TSource): void;
   onBootSuccess?(source: TSource): void;
   onBootError?(error: unknown, source: TSource): void;
+  onBootRecoveryWait?(error: unknown, source: TSource): void;
+  recoverBoot?(error: unknown, source: TSource): TCanvasWaitHandle | null;
   onShutdownError?(error: unknown): void;
 };
 
@@ -23,6 +26,7 @@ export class CanvasRuntimeLifecycle<TSource> {
   #generation = 0;
   #disposed = false;
   #disposePromise: Promise<void> | null = null;
+  #pendingBootRecovery: TCanvasWaitHandle | null = null;
   readonly #effects = new CanvasEffectRuntime();
 
   constructor(
@@ -36,6 +40,7 @@ export class CanvasRuntimeLifecycle<TSource> {
   replace(source: TSource | null): Promise<void> {
     if (this.#disposed && source !== null) return Promise.resolve();
     this.#generation += 1;
+    this.#pendingBootRecovery?.cancel();
     const generation = this.#generation;
     return this.#effects.runSerial(this.#replaceEffect(source, generation));
   }
@@ -63,6 +68,17 @@ export class CanvasRuntimeLifecycle<TSource> {
         || generation !== self.#generation
       ) return;
 
+      yield* self.#bootUntilSettledEffect(source, generation);
+    });
+  }
+
+  #bootUntilSettledEffect(
+    source: TSource,
+    generation: number,
+  ): Effect.Effect<void, never> {
+    const self = this;
+    return Effect.suspend(() => Effect.gen(function*() {
+      if (self.#disposed || generation !== self.#generation) return;
       let runtime: TManagedCanvasRuntime | null = null;
       const boot = Effect.gen(function*() {
         runtime = yield* Effect.try({
@@ -76,39 +92,67 @@ export class CanvasRuntimeLifecycle<TSource> {
         });
         yield* runtime!.bootEffect();
       });
-
       const exit = yield* Effect.exit(boot);
-      if (exit._tag === 'Failure') {
-        const error = Cause.squash(exit.cause);
+      if (exit._tag === 'Success') {
         if (
-          (runtime === null || self.#activeRuntime === runtime)
-          && generation === self.#generation
-          && !self.#disposed
+          generation !== self.#generation
+          || self.#disposed
+          || self.#activeRuntime !== runtime
         ) {
-          try {
-            self.portal.onBootError?.(error, source);
-          } catch {
-            // Host diagnostics cannot prevent owned runtime teardown.
-          }
+          if (runtime !== null) yield* self.#shutdownRuntimeEffect(runtime);
+          return;
         }
-        if (runtime !== null) yield* self.#shutdownRuntimeEffect(runtime);
+        try {
+          self.portal.onBootSuccess?.(source);
+        } catch {
+          // Host diagnostics do not own runtime lifetime.
+        }
         return;
       }
 
-      if (
-        generation !== self.#generation
-        || self.#disposed
-        || self.#activeRuntime !== runtime
-      ) {
-        yield* self.#shutdownRuntimeEffect(runtime!);
+      const error = Cause.squash(exit.cause);
+      if (runtime !== null) yield* self.#shutdownRuntimeEffect(runtime);
+      if (self.#disposed || generation !== self.#generation) return;
+
+      let recovery: TCanvasWaitHandle | null = null;
+      try {
+        recovery = self.portal.recoverBoot?.(error, source) ?? null;
+      } catch {
+        recovery = null;
+      }
+      if (recovery === null) {
+        try {
+          self.portal.onBootError?.(error, source);
+        } catch {
+          // Host diagnostics cannot prevent owned runtime teardown.
+        }
         return;
       }
+      self.#pendingBootRecovery = recovery;
       try {
-        self.portal.onBootSuccess?.(source);
+        self.portal.onBootRecoveryWait?.(error, source);
       } catch {
-        // Host diagnostics do not own runtime lifetime.
+        // Recovery ownership remains with the lifecycle.
       }
-    });
+      const recoveryExit = yield* Effect.exit(Effect.tryPromise({
+        try: () => recovery!.promise,
+        catch: (cause) => cause,
+      }).pipe(Effect.ensuring(Effect.sync(() => {
+        if (self.#pendingBootRecovery === recovery) self.#pendingBootRecovery = null;
+        recovery?.cancel();
+      }))));
+      if (self.#disposed || generation !== self.#generation) return;
+      if (recoveryExit._tag === 'Failure') {
+        const recoveryError = Cause.squash(recoveryExit.cause);
+        try {
+          self.portal.onBootError?.(recoveryError, source);
+        } catch {
+          // Host diagnostics cannot prevent owned runtime teardown.
+        }
+        return;
+      }
+      yield* self.#bootUntilSettledEffect(source, generation);
+    }));
   }
 
   #shutdownActiveEffect(): Effect.Effect<void, never> {

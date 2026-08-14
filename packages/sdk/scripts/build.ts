@@ -4,10 +4,26 @@ import path from "path"
 import { mkdirSync, rmSync } from "fs"
 
 const sdkDir = path.join(import.meta.dir, "..")
-const distDir = path.join(sdkDir, "dist")
-const functionClientSubpathDir = path.join(sdkDir, "function-client")
-const serverSubpathDir = path.join(sdkDir, "server")
-const widgetSubpathDir = path.join(sdkDir, "widget")
+const stagedDistRoot = process.env.OMNIDRAW_PACKAGE_DIST_ROOT
+const stageBuild = process.env.OMNIDRAW_PACKAGE_STAGE === "1"
+if (stageBuild !== (stagedDistRoot !== undefined)) {
+  throw new Error("SDK stage builds require both OMNIDRAW_PACKAGE_STAGE=1 and OMNIDRAW_PACKAGE_DIST_ROOT.")
+}
+const distDir = stagedDistRoot === undefined
+  ? path.join(sdkDir, "dist")
+  : path.resolve(stagedDistRoot)
+if (stageBuild) {
+  const relativeToRepository = path.relative(path.join(sdkDir, "..", ".."), distDir)
+  if (relativeToRepository === "" || (!relativeToRepository.startsWith(`..${path.sep}`) && relativeToRepository !== "..")) {
+    throw new Error("SDK stage output must be outside the source repository.")
+  }
+}
+const fallbackRoot = stageBuild
+  ? path.join(path.dirname(distDir), "workspace-fallback")
+  : sdkDir
+const functionClientSubpathDir = path.join(fallbackRoot, "function-client")
+const serverSubpathDir = path.join(fallbackRoot, "server")
+const widgetSubpathDir = path.join(fallbackRoot, "widget")
 const packageManifest = await Bun.file(path.join(sdkDir, "package.json")).json()
 
 rmSync(distDir, { recursive: true, force: true })
@@ -18,7 +34,7 @@ rmSync(widgetSubpathDir, { recursive: true, force: true })
 const typescriptPackagePath = Bun.resolveSync("typescript/package.json", path.join(sdkDir, "package.json"))
 const tscPath = path.join(path.dirname(typescriptPackagePath), "bin", "tsc")
 const tsc = Bun.spawnSync({
-  cmd: ["bun", tscPath, "-p", "tsconfig.build.json"],
+  cmd: ["bun", tscPath, "-p", "tsconfig.build.json", "--outDir", distDir],
   cwd: sdkDir,
   stdout: "inherit",
   stderr: "inherit",
@@ -94,13 +110,15 @@ if (!cli.success) {
 
 async function writeSubpathFallback(subpathDir: string, distName: string) {
   mkdirSync(subpathDir, { recursive: true })
+  const runtimeTarget = path.relative(subpathDir, path.join(distDir, `${distName}.js`)).split(path.sep).join("/")
+  const declarationTarget = path.relative(subpathDir, path.join(distDir, distName)).split(path.sep).join("/")
   await Bun.write(path.join(subpathDir, "package.json"), JSON.stringify({
     type: "module",
     main: "./index.js",
     types: "./index.d.ts",
   }, null, 2))
-  await Bun.write(path.join(subpathDir, "index.js"), `export * from "../dist/${distName}.js";\n`)
-  await Bun.write(path.join(subpathDir, "index.d.ts"), `export * from "../dist/${distName}";\n`)
+  await Bun.write(path.join(subpathDir, "index.js"), `export * from "${runtimeTarget.startsWith(".") ? runtimeTarget : `./${runtimeTarget}`}";\n`)
+  await Bun.write(path.join(subpathDir, "index.d.ts"), `export * from "${declarationTarget.startsWith(".") ? declarationTarget : `./${declarationTarget}`}";\n`)
 }
 
 await writeSubpathFallback(functionClientSubpathDir, "function-client")

@@ -87,7 +87,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
     label: 'Create Widget Draft',
     description: 'Create and mount one complete browser-first manifest v1 Capsule widget draft in the shared widgets/drafts root. Choose template "react" for a ready React/TypeScript starter with dependencies already installed; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Keep the scaffolded manifest v1 fields ($schema, schemaVersion 1, tool) intact. Read only files you need to change, edit them, then call od_widget_validate.',
     parameters: WIDGET_CREATE_PARAMETERS,
-    async execute(_toolCallId, params: any) {
+    async execute(_toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('od_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       if (!Check(WIDGET_CREATE_PARAMETERS, params)) {
         return fnToolError({
@@ -113,7 +113,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
               template: selectedTemplate,
               server: server === true,
             });
-            await args.workspace.prepareNpmDependencies();
+            await args.workspace.prepareNpmDependencies(signal);
             const installed = await (args.npmInstall
               ? args.npmInstall(cwd)
               : tryNpmInstall({ access, execFile, join }, {
@@ -167,7 +167,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             modelData,
             details: modelData,
           });
-        });
+        }, { signal });
       } catch (error) {
         return fnToolError({
           code: 'WIDGET_CREATE_FAILED',

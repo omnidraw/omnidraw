@@ -1,12 +1,25 @@
 /** @file Verifies dependency-ordered local publication for generated widget packages. */
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  assertWidgetPackageStageSupport,
+  buildWorkspacePackageStage,
   localNpmUserConfigContents,
   publishDecision,
+  withWorkspacePackageStage,
   widgetPackagePublishOrder,
   widgetPackageSyncSource,
 } from './local-registry.mjs';
+
+const temporaryRoots = [];
+
+afterEach(async () => {
+  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 describe('local registry npm user config', () => {
   test('routes the owned scope with only the npm publish sentinel', () => {
@@ -104,5 +117,149 @@ describe('local widget package publication', () => {
     // require a manual `package.json` version bump just to unblock
     // `bun run dev` again: the internal workspace-sync path always opts in.
     expect(publishDecision('sha512-old', 'sha512-new', true)).toBe('overwrite');
+  });
+
+  test('rejects unsupported dependency-closure growth before invoking a build', async () => {
+    let built = false;
+    const unsupported = entry('@omnidraw/sdk');
+    expect(() => assertWidgetPackageStageSupport([unsupported])).toThrow('does not declare scripts.build:stage');
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-unsupported-stage-'));
+    temporaryRoots.push(root);
+    await expect(buildWorkspacePackageStage(unsupported, root, async () => {
+      built = true;
+    })).rejects.toThrow('will not fall back to a workspace build');
+    expect(built).toBe(false);
+  });
+
+  test.each(['build', 'pack', 'registry', 'timeout', 'cancellation'])(
+    'removes an isolated stage after %s failure',
+    async (phase) => {
+      const root = await mkdtemp(join(tmpdir(), `omnidraw-${phase}-stage-`));
+      temporaryRoots.push(root);
+      const stageDirectory = join(root, 'staging');
+      const stagedEntry = entry('@omnidraw/sdk', {}, {
+        scripts: { 'build:stage': 'stage' },
+      });
+      const runner = async (_command, _args, options) => {
+        if (phase === 'build' || phase === 'timeout' || phase === 'cancellation') {
+          throw new Error(`${phase} failed`);
+        }
+        const dist = options.env.OMNIDRAW_PACKAGE_DIST_ROOT;
+        await mkdir(dist, { recursive: true });
+        await Promise.all([
+          writeFile(join(dist, 'index.js'), 'export const staged = true;\n'),
+          writeFile(join(dist, 'package.json'), `${JSON.stringify({
+            name: stagedEntry.name,
+            version: stagedEntry.version,
+            exports: { '.': './index.js' },
+          })}\n`),
+        ]);
+      };
+      await expect(withWorkspacePackageStage(
+        stageDirectory,
+        stagedEntry,
+        async () => { throw new Error(`${phase} failed`); },
+        runner,
+      )).rejects.toThrow(`${phase} failed`);
+      expect(await readdir(stageDirectory)).toEqual([]);
+    },
+  );
+
+  test('builds the SDK from current source into a standalone stage without changing live outputs', async () => {
+    const repositoryRoot = join(import.meta.dir, '..');
+    const sdkRoot = join(repositoryRoot, 'packages', 'sdk');
+    const manifest = JSON.parse(await readFile(join(sdkRoot, 'package.json'), 'utf8'));
+    const stagedEntry = Object.freeze({
+      name: manifest.name,
+      version: manifest.version,
+      directory: sdkRoot,
+      manifest,
+    });
+    const outputPaths = [
+      join(sdkRoot, 'dist'),
+      join(sdkRoot, 'function-client'),
+      join(sdkRoot, 'server'),
+      join(sdkRoot, 'widget'),
+    ];
+    const snapshot = async () => {
+      const hash = createHash('sha256');
+      const walk = async (path) => {
+        const details = await lstat(path).catch(() => null);
+        if (details === null) {
+          hash.update(`${path}:missing\n`);
+          return;
+        }
+        hash.update(`${path}:${details.mode}:${details.size}:${details.mtimeMs}\n`);
+        if (details.isFile()) {
+          hash.update(await readFile(path));
+          return;
+        }
+        if (!details.isDirectory() || details.isSymbolicLink()) return;
+        for (const child of (await readdir(path)).sort()) await walk(join(path, child));
+      };
+      for (const path of outputPaths) await walk(path);
+      return hash.digest('hex');
+    };
+    const before = await snapshot();
+    const root = await mkdtemp(join(tmpdir(), 'omnidraw-sdk-current-source-stage-'));
+    temporaryRoots.push(root);
+    const staged = await buildWorkspacePackageStage(stagedEntry, root);
+    const stagedManifest = JSON.parse(await readFile(join(staged.distDirectory, 'package.json'), 'utf8'));
+
+    const byteSnapshot = async (directory) => {
+      const files = new Map();
+      const walk = async (path, relative = '') => {
+        for (const child of (await readdir(path)).sort()) {
+          const childPath = join(path, child);
+          const childRelative = relative === '' ? child : `${relative}/${child}`;
+          const details = await lstat(childPath);
+          if (details.isDirectory()) await walk(childPath, childRelative);
+          else if (details.isFile()) files.set(childRelative, createHash('sha256').update(await readFile(childPath)).digest('hex'));
+        }
+      };
+      await walk(directory);
+      return [...files];
+    };
+
+    expect(await snapshot()).toBe(before);
+    expect(await byteSnapshot(staged.distDirectory)).toEqual(await byteSnapshot(join(sdkRoot, 'dist')));
+    expect(stagedManifest).toMatchObject({
+      name: '@omnidraw/sdk',
+      version: manifest.version,
+      bin: { 'omnidraw-widget': './cli.js' },
+      dependencies: {
+        '@omnidraw/capsule': '0.14.0',
+        effect: '4.0.0-rc.108',
+        'lucide-static': '1.24.0',
+      },
+    });
+    for (const file of ['contract.js', 'contract.d.ts', 'cli.js', 'LICENSE', 'README.md']) {
+      expect((await lstat(join(staged.distDirectory, file))).isFile()).toBe(true);
+    }
+    for (const subpath of ['function-client', 'server', 'widget']) {
+      expect((await lstat(join(root, 'workspace-fallback', subpath, 'index.js'))).isFile()).toBe(true);
+    }
+    const sourceConstants = await readFile(join(sdkRoot, 'src', 'contracts', 'CONSTANTS.ts'), 'utf8');
+    const schemaUrl = sourceConstants.match(/WIDGET_MANIFEST_V1_SCHEMA_URL = '([^']+)'/)?.[1];
+    expect(schemaUrl).toBeTruthy();
+    expect(await readFile(join(staged.distDirectory, 'contract.js'), 'utf8')).toContain(schemaUrl);
+
+    const packDirectory = join(root, 'pack');
+    await mkdir(packDirectory);
+    const packed = Bun.spawnSync({
+      cmd: ['npm', 'pack', staged.distDirectory, '--pack-destination', packDirectory, '--ignore-scripts'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    expect(packed.exitCode, new TextDecoder().decode(packed.stderr)).toBe(0);
+    const tarballs = (await readdir(packDirectory)).filter((name) => name.endsWith('.tgz'));
+    expect(tarballs).toHaveLength(1);
+    const tarContract = Bun.spawnSync({
+      cmd: ['tar', '-xOf', join(packDirectory, tarballs[0]), 'package/contract.js'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    expect(tarContract.exitCode, new TextDecoder().decode(tarContract.stderr)).toBe(0);
+    expect(new TextDecoder().decode(tarContract.stdout)).toContain(schemaUrl);
   });
 });

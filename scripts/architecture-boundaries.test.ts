@@ -12,6 +12,11 @@ import {
 } from './public-packages'
 
 const ROOT = resolve(import.meta.dir, '..')
+
+async function readTsconfig(path: string): Promise<Record<string, any>> {
+  const source = await readFile(path, 'utf8')
+  return JSON.parse(source.replace(/^\s*\/\/.*$/gm, '')) as Record<string, any>
+}
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.cts', '.js', '.jsx', '.mjs', '.mts', '.ts', '.tsx'])
 const APPLICATION_SOURCE_DIRECTORIES = new Set(['core', 'shell', 'sim', 'conformance'])
 const FORBIDDEN_APPLICATION_OWNERSHIP_DIRECTORIES = new Set(['plugins', 'private', 'services'])
@@ -399,6 +404,52 @@ describe('application and import boundaries', () => {
     }
     for (const dependency of FORBIDDEN_DIRECT_DEPENDENCIES) {
       expect(root.catalog?.[dependency]).toBeUndefined()
+    }
+  })
+
+  test('source-run applications map only supported public entrypoints away from mutable dist outputs', async () => {
+    const backend = await readTsconfig(join(ROOT, 'apps/backend/tsconfig.json'))
+    const frontend = await readTsconfig(join(ROOT, 'apps/frontend/tsconfig.json'))
+    const backendPaths = (backend.compilerOptions?.paths ?? {}) as Record<string, readonly string[]>
+    const frontendPaths = (frontend.compilerOptions?.paths ?? {}) as Record<string, readonly string[]>
+    expect(Object.keys(backendPaths).filter((key) => key.startsWith('@omnidraw/')).sort()).toEqual([
+      '@omnidraw/canvas-contract',
+      '@omnidraw/canvas-contract/CONSTANTS',
+      '@omnidraw/canvas-contract/types',
+      '@omnidraw/sdk',
+      '@omnidraw/sdk/contract',
+      '@omnidraw/sdk/package.json',
+      '@omnidraw/sdk/server',
+      '@omnidraw/sdk/widget',
+    ])
+    expect(Object.keys(frontendPaths).filter((key) => key.startsWith('@omnidraw/')).sort()).toEqual([
+      '@omnidraw/canvas',
+      '@omnidraw/canvas-contract',
+      '@omnidraw/component-ai-chat',
+      '@omnidraw/sdk',
+      '@omnidraw/sdk/host',
+      '@omnidraw/theme',
+    ])
+    for (const paths of [backendPaths, frontendPaths]) {
+      expect(Object.keys(paths).some((key) => key.startsWith('@omnidraw/') && key.includes('*'))).toBe(false)
+      for (const [specifier, targets] of Object.entries(paths)) {
+        if (!specifier.startsWith('@omnidraw/')) continue
+        expect(targets).toHaveLength(1)
+        expect(targets[0]).not.toContain('/dist/')
+      }
+    }
+    const vite = await readFile(join(ROOT, 'apps/frontend/vite.config.ts'), 'utf8')
+    expect(vite).toContain('omnidraw-source-theme-css')
+    expect(vite).toContain("packages/canvas/src/styles.css")
+    expect(vite).toContain("packages/component-ai-chat/src/styles.css")
+    expect(vite).not.toMatch(/find:\s*\/\^@omnidraw\\\/.+\.\*\//)
+
+    for (const directory of Object.values(PUBLIC_PACKAGE_DIRECTORIES)) {
+      const manifest = await readJson(join(ROOT, directory, 'package.json'))
+      for (const target of exportedTargets(manifest.exports)) {
+        if (target.includes('*') || !target.endsWith('.js')) continue
+        expect(target, `${manifest.name} external exports must remain dist-owned`).toContain('./dist/')
+      }
     }
   })
 

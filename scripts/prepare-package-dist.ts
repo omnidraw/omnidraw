@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 
 /**
- * Finalize one workspace library's dist directory as a standalone npm package.
+ * Finalize one workspace library distribution as a standalone npm package.
  *
- * Run from a versioned package after its compiler/bundler has populated dist/.
- * The workspace manifest remains optimized for local linking; the generated
- * dist/package.json is the only manifest intended for npm publication.
+ * With no arguments this preserves the release-build convention of finalizing
+ * `<cwd>/dist`. Registry staging supplies both `--package-root` and
+ * `--dist-root`; the package root stays the source/configuration authority while
+ * every generated file remains below the caller-owned staging directory.
  */
 
-import { copyFile, readFile, readdir, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { copyFile, lstat, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import {
   PUBLIC_PACKAGE_DIRECTORIES,
   readPublicPackageSet,
@@ -24,9 +25,7 @@ type TManifest = Record<string, unknown> & {
   peerDependencies?: Record<string, string>
 }
 
-const PACKAGE_DIRECTORY = resolve(process.cwd())
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
-const DIST_DIRECTORY = join(PACKAGE_DIRECTORY, 'dist')
 const PROTOCOL_PATTERN = /['"](?:workspace|catalog|file|link):/
 const PROTOCOL_SPECIFIER = /^(?:workspace|catalog|file|link):/
 const PUBLIC_MANIFEST_FIELDS = Object.freeze([
@@ -62,10 +61,54 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-async function workspacePackages(): Promise<ReadonlyMap<string, TManifest>> {
+export type TPackageDistDirectories = Readonly<{
+  packageDirectory: string
+  distDirectory: string
+  explicit: boolean
+}>
+
+function optionValue(args: readonly string[], name: string): string | undefined {
+  const index = args.indexOf(name)
+  if (index === -1) return undefined
+  const value = args[index + 1]
+  if (value === undefined || value.startsWith('--')) throw new Error(`${name} requires a directory.`)
+  return value
+}
+
+function isInside(root: string, candidate: string): boolean {
+  const nested = relative(root, candidate)
+  return nested === '' || (!nested.startsWith(`..${sep}`) && nested !== '..' && !isAbsolute(nested))
+}
+
+export function packageDistDirectories(
+  args: readonly string[],
+  cwd = process.cwd(),
+  repositoryRoot = REPOSITORY_ROOT,
+): TPackageDistDirectories {
+  const packageRoot = optionValue(args, '--package-root')
+  const distRoot = optionValue(args, '--dist-root')
+  if ((packageRoot === undefined) !== (distRoot === undefined)) {
+    throw new Error('--package-root and --dist-root must be supplied together.')
+  }
+  const packageDirectory = resolve(cwd, packageRoot ?? '.')
+  const distDirectory = resolve(cwd, distRoot ?? 'dist')
+  if (distDirectory === parse(distDirectory).root || distDirectory === packageDirectory) {
+    throw new Error('The package distribution root must be a dedicated child directory.')
+  }
+  const explicit = packageRoot !== undefined
+  if (explicit && isInside(repositoryRoot, distDirectory)) {
+    throw new Error('An explicit package distribution root must be outside the source repository.')
+  }
+  if (!explicit && distDirectory !== join(packageDirectory, 'dist')) {
+    throw new Error('The default package distribution root must be <package>/dist.')
+  }
+  return Object.freeze({ packageDirectory, distDirectory, explicit })
+}
+
+async function workspacePackages(repositoryRoot: string): Promise<ReadonlyMap<string, TManifest>> {
   const manifests = new Map<string, TManifest>()
   for (const [expectedName, directory] of Object.entries(PUBLIC_PACKAGE_DIRECTORIES)) {
-    const manifestPath = join(REPOSITORY_ROOT, directory, 'package.json')
+    const manifestPath = join(repositoryRoot, directory, 'package.json')
     const manifest = await readJson(manifestPath)
     if (manifest.name !== expectedName || typeof manifest.version !== 'string') {
       throw new Error(`${directory}/package.json has an invalid public package identity.`)
@@ -203,35 +246,47 @@ async function rewriteLocalEsmSpecifiers(path: string): Promise<void> {
   await writeFile(path, source)
 }
 
-async function copyDocumentation(name: 'LICENSE' | 'README.md'): Promise<void> {
-  const packagePath = join(PACKAGE_DIRECTORY, name)
-  const sourcePath = await pathExists(packagePath) ? packagePath : join(REPOSITORY_ROOT, name)
-  await copyFile(sourcePath, join(DIST_DIRECTORY, name))
+async function copyDocumentation(
+  repositoryRoot: string,
+  packageDirectory: string,
+  distDirectory: string,
+  name: 'LICENSE' | 'README.md',
+): Promise<void> {
+  const packagePath = join(packageDirectory, name)
+  const sourcePath = await pathExists(packagePath) ? packagePath : join(repositoryRoot, name)
+  await copyFile(sourcePath, join(distDirectory, name))
 }
 
-async function main(): Promise<void> {
-  const manifest = await readJson(join(PACKAGE_DIRECTORY, 'package.json'))
+export async function preparePackageDist(
+  directories: TPackageDistDirectories,
+  repositoryRoot = REPOSITORY_ROOT,
+): Promise<void> {
+  const { packageDirectory, distDirectory } = directories
+  const manifest = await readJson(join(packageDirectory, 'package.json'))
   if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
-    throw new Error(`${relative(REPOSITORY_ROOT, PACKAGE_DIRECTORY)} must have a public name and version.`)
+    throw new Error(`${relative(repositoryRoot, packageDirectory)} must have a public name and version.`)
   }
-  const packageSet = await readPublicPackageSet(REPOSITORY_ROOT)
+  const packageSet = await readPublicPackageSet(repositoryRoot)
   const expectedDirectory = PUBLIC_PACKAGE_DIRECTORIES[
     manifest.name as keyof typeof PUBLIC_PACKAGE_DIRECTORIES
   ]
   if (expectedDirectory === undefined) {
     throw new Error(`${manifest.name} is not one of the five public Omnidraw packages.`)
   }
-  if (resolve(REPOSITORY_ROOT, expectedDirectory) !== PACKAGE_DIRECTORY) {
+  if (resolve(repositoryRoot, expectedDirectory) !== packageDirectory) {
     throw new Error(`${manifest.name} must be staged from ${expectedDirectory}.`)
   }
   if (packageSet.packages[manifest.name as keyof typeof packageSet.packages] !== manifest.version) {
     throw new Error(`${manifest.name}@${manifest.version} is not the qualified public-package-set version.`)
   }
-  if (!await pathExists(DIST_DIRECTORY)) throw new Error(`${manifest.name} build did not create dist/.`)
+  const distStat = await lstat(distDirectory).catch(() => null)
+  if (distStat === null || !distStat.isDirectory() || distStat.isSymbolicLink()) {
+    throw new Error(`${manifest.name} build did not create a regular distribution root.`)
+  }
 
-  const rootManifest = await readJson(join(REPOSITORY_ROOT, 'package.json'))
+  const rootManifest = await readJson(join(repositoryRoot, 'package.json'))
   const rootCatalog = (rootManifest.catalog ?? {}) as Record<string, string>
-  const workspaces = await workspacePackages()
+  const workspaces = await workspacePackages(repositoryRoot)
   const publicManifest: TManifest = {}
   for (const field of PUBLIC_MANIFEST_FIELDS) {
     if (manifest[field] !== undefined) {
@@ -252,7 +307,7 @@ async function main(): Promise<void> {
   publicManifest.repository = manifest.repository ?? {
     type: 'git',
     url: 'git+https://github.com/omnidraw/omnidraw.git',
-    directory: relative(REPOSITORY_ROOT, PACKAGE_DIRECTORY),
+    directory: relative(repositoryRoot, packageDirectory),
   }
   if (publicManifest.bin !== undefined) {
     if (typeof publicManifest.bin === 'string') {
@@ -285,25 +340,33 @@ async function main(): Promise<void> {
   if (rootModule !== undefined) publicManifest.module = rootModule
   if (rootTypes !== undefined) publicManifest.types = rootTypes
 
-  await Promise.all([copyDocumentation('LICENSE'), copyDocumentation('README.md')])
-  const emittedFiles = await filesBelow(DIST_DIRECTORY)
+  await Promise.all([
+    copyDocumentation(repositoryRoot, packageDirectory, distDirectory, 'LICENSE'),
+    copyDocumentation(repositoryRoot, packageDirectory, distDirectory, 'README.md'),
+  ])
+  const emittedFiles = await filesBelow(distDirectory)
   await Promise.all(emittedFiles.map(rewriteLocalEsmSpecifiers))
 
   const manifestText = `${JSON.stringify(publicManifest, null, 2)}\n`
-  if (PROTOCOL_PATTERN.test(manifestText) || manifestText.includes(REPOSITORY_ROOT)) {
+  if (PROTOCOL_PATTERN.test(manifestText) || manifestText.includes(repositoryRoot)) {
     throw new Error(`${manifest.name} generated a non-portable public manifest.`)
   }
-  await writeFile(join(DIST_DIRECTORY, 'package.json'), manifestText)
+  await writeFile(join(distDirectory, 'package.json'), manifestText)
 
   for (const target of exportedTargets(publicManifest.exports)) {
     if (target.includes('*')) continue
-    const targetPath = resolve(DIST_DIRECTORY, target)
-    if (!targetPath.startsWith(`${DIST_DIRECTORY}${sep}`) || !await pathExists(targetPath)) {
+    const targetPath = resolve(distDirectory, target)
+    if (!targetPath.startsWith(`${distDirectory}${sep}`) || !await pathExists(targetPath)) {
       throw new Error(`${manifest.name} export target does not exist in dist: ${target}`)
     }
   }
 
-  console.log(`[package-dist] ${manifest.name}@${manifest.version} is ready at ${relative(REPOSITORY_ROOT, DIST_DIRECTORY)}`)
+  const displayDirectory = directories.explicit
+    ? distDirectory
+    : relative(repositoryRoot, distDirectory)
+  console.log(`[package-dist] ${manifest.name}@${manifest.version} is ready at ${displayDirectory}`)
 }
 
-if (import.meta.main) await main()
+if (import.meta.main) {
+  await preparePackageDist(packageDistDirectories(process.argv.slice(2)))
+}

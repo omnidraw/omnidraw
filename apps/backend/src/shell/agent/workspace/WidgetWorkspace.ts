@@ -40,7 +40,7 @@ type TWidgetWorkspaceConfig = {
   platform: NodeJS.Platform;
   createId: () => string;
   npmUserConfigPath?: string;
-  prepareNpmDependencies?: () => Promise<void>;
+  prepareNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
 };
 
 type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
@@ -64,7 +64,7 @@ export class WidgetWorkspace {
   readonly npmUserConfigPath?: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
-  readonly #prepareNpmDependencies?: () => Promise<void>;
+  readonly #prepareNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #authoringQueues = new Map<string, Promise<unknown>>();
 
@@ -79,8 +79,8 @@ export class WidgetWorkspace {
     this.#prepareNpmDependencies = config.prepareNpmDependencies;
   }
 
-  prepareNpmDependencies(): Promise<void> {
-    return this.#prepareNpmDependencies?.() ?? Promise.resolve();
+  prepareNpmDependencies(signal?: AbortSignal): Promise<void> {
+    return this.#prepareNpmDependencies?.(signal) ?? Promise.resolve();
   }
 
   async init(): Promise<void> {
@@ -89,6 +89,7 @@ export class WidgetWorkspace {
       mkdir(this.draftRoot, { recursive: true }),
       mkdir(this.transientRoot, { recursive: true }),
     ]);
+    await this.#reclaimInterruptedCreates();
   }
 
   getChatRoot(chatId: string): string {
@@ -603,6 +604,27 @@ export class WidgetWorkspace {
     if (!candidateStat?.isDirectory() || candidateStat.isSymbolicLink()) return false;
     const [resolvedRoot, resolvedCandidate] = await Promise.all([realpath(root), realpath(candidate)]);
     return dirname(resolvedCandidate) === resolvedRoot;
+  }
+
+  /**
+   * Reclaims only direct entries with the exact backend create-scaffold
+   * identity. Symlinks are unlinked without resolving them; regular files,
+   * special entries, malformed names, nested entries, and drafts are ignored.
+   */
+  async #reclaimInterruptedCreates(): Promise<void> {
+    const entries = await readdir(this.transientRoot).catch(() => [] as string[]);
+    for (const name of entries) {
+      if (!/^create-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(name)) continue;
+      const path = join(this.transientRoot, name);
+      const entry = await lstat(path).catch(() => null);
+      if (entry === null) continue;
+      if (entry.isSymbolicLink()) {
+        await rm(path, { force: true });
+        continue;
+      }
+      if (!entry.isDirectory()) continue;
+      await rm(path, { recursive: true, force: true });
+    }
   }
 
   async #mountLinkTarget(mountPath: string, targetPath: string): Promise<string> {
