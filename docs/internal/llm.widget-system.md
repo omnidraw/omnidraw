@@ -16,7 +16,11 @@ releases, no artifacts, no Preview records, and no function history.
 2. **Published widget** is an immutable folder under `published/<slug>/`
    written by one atomic publication: the exact `omnidraw.json`, the exact
    `release.json`, and every exact runtime file (browser `dist/`, signed
-   `capsule.artifact`, optional `server-dist/` and `functions.json`).
+   `capsule.artifact`, optional `server-dist/` and `functions.json`). Build and
+   Publish also retains the build's immutable source artifact at the reserved,
+   release-attested `dist/.omnidraw-authoring-source.artifact` path. Runtime
+   loading never returns that artifact; only the widget authority may decode it
+   to create a new draft after an explicit edit/load request.
 3. **Catalog** is a bounded, immutable in-memory scan generation of the
    widget root. Readers pin one generation; writers refresh it after each
    checked mutation. Generation numbers are process-local and may decrease
@@ -75,6 +79,11 @@ project separately, so metadata-only edits never rebuild executable bytes.
   with `runtimeAbi` and the functions digest, the executable-manifest digest,
   and the host release attestation. It is validated exactly before a folder
   counts as published.
+- The reserved authoring-source artifact is covered by that same exact file
+  list and release attestation. It is not a browser distribution input, is
+  never writable, and is decoded only into an absent draft by a
+  catalog-digest-fenced widget-domain operation. Metadata publication supplies
+  the current exact published manifest when that draft is materialized.
 - Exactly one manifest version exists: v1. There is no legacy reader, no
   migration, no revision ID, no pinning, and no rollback.
 
@@ -168,6 +177,17 @@ Publish without any bridge. Successful create/validate results offer an
 **Open Preview** action that places a live draft Preview frame beside the
 originating chat.
 
+New chats start with an empty `workspace/widgets/` directory. `ensureChat`
+preserves valid mounts already owned by that chat and may remove stale owned
+links, but it never scans the shared draft catalog to add mounts. Discovery via
+`od_widget_list` projects one bounded application-catalog snapshot and inspects
+the existing mount set without writes. `od_widget_load({ name })`, widget
+creation, and a verified human widget selection are the only paths that add an
+editable mount. Loading one existing draft is idempotent; loading a healthy
+published-only widget first asks the widget authority to atomically materialize
+its exact release-attested source, then mounts that draft. An unhealthy draft
+blocks implicit replacement from a publication.
+
 The chat connection carries its real canvas identity. Submitted widget refs are
 re-resolved against one server-side catalog snapshot; healthy drafts are
 mounted read/write, published folders remain immutable, and one explicit active
@@ -183,18 +203,22 @@ the browser readiness gate is only lifecycle coordination, never authority.
 The scaffold scripts are `omnidraw-widget check .` and
 `omnidraw-widget build .` from the public SDK. Check is bounded and read-only;
 it validates only repository syntax/contracts and explicitly reports that
-resource existence and Preview runtime were not checked. Build has no host,
-database, socket, or network capability and atomically emits the receipt the
-host observes. Resource tools may return one exact safe `resourceId`; the agent
+resource existence and Preview runtime were not checked. The host-owned build
+uses the fixed SDK build script in a private scratch checkout with a sanitized
+environment and atomically emits the receipt the host observes. Dependency
+lock generation accepts exact registry versions only and disables lifecycle
+scripts. Resource tools may return one exact safe `resourceId`; the agent
 writes it into the target manifest and then checks and builds. There is no
 binding-intent record or picker.
 
-AI Chat is trusted local automation in this single-user application. Once the
-user authorizes the chat workflow, it may run arbitrary host commands through
-`bash` and through draft-owned package scripts, including `npm run build`.
-That command-execution capability is an accepted product risk, not an
-isolation boundary. The portable SDK command itself remains host-independent;
-the surrounding AI Chat process is not claimed to be sandboxed.
+AI Chat exposes no general shell or generic URL fetch. Its structured file
+tools enter only through validated explicit draft mounts, and
+`od_widget_validate` owns the bounded check/build workflow. Consequently the
+model receives no host filesystem, environment credential, executable lookup,
+local network, publication root, or publication API capability. Direct
+frontend Publish and Republish calls remain the only publication entrypoints.
+The standalone Bash process adapter may remain covered for non-agent uses, but
+it is absent from the fixed AI Chat tool registry and live composition.
 
 `od_widget_preview_inspect` has two truthful modes. `artifact` mounts exact
 accepted bytes in isolation and reports `resources: not_available`,

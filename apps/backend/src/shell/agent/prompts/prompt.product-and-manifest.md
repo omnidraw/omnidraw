@@ -64,7 +64,9 @@ fields the request actually changes.
 The draft is an authoritative npm project. Keep its `package.json`,
 package-lock format 3, `vite.config.mjs`, source, and non-empty `build` script
 coherent. Editing `package.json` through the file tools runs host-owned
-`npm install` and updates `package-lock.json`; never hand-edit the lockfile.
+bounded dependency lock generation and updates `package-lock.json`; never
+hand-edit the lockfile. Only exact registry versions are accepted and package
+lifecycle scripts are disabled.
 The build must emit a bounded `dist/main.js` ES module plus any relative chunks
 and supported static assets. Do not write or import `dist/` as source.
 `npm run check` and `npm run build` are portable repository commands. They do

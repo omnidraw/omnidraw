@@ -37,6 +37,7 @@ export type {
   TWidgetPreviewInspectionToolError,
 } from './tools/types';
 export { WidgetFilesystemBuildService } from './widget-filesystem/build';
+export { WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH } from './widget-filesystem/build';
 export {
   fnDecodeWidgetFilesystemConstruction,
   fnEncodeWidgetFilesystemConstruction,

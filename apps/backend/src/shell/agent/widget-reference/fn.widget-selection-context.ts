@@ -30,7 +30,7 @@ export function fnWidgetPromptSelectionMessage(
     instructions: [
       'This host selection is authoritative over display labels in user prose.',
       'Published widget files are immutable; edits apply only to the mounted draft.',
-      'After source or manifest edits, run npm run check and npm run build before claiming Preview changed.',
+      'After source or manifest edits, run od_widget_validate before claiming Preview changed.',
       'Only a user-controlled Publish action changes the published runtime.',
       'A widget mention does not select or bind a resource.',
     ],

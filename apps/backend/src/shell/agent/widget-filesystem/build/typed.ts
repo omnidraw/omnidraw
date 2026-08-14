@@ -9,7 +9,9 @@ import type {
   TWidgetReleaseDescriptor,
   TWidgetReleaseAttestation,
   TWidgetReleaseServer,
+  TWidgetSourceArtifact,
   TWidgetSourceFile,
+  TWidgetSourceSnapshot,
 } from '@omnidraw/sdk/contract';
 
 export type TWidgetFilesystemConstructionPort = Readonly<{
@@ -19,6 +21,7 @@ export type TWidgetFilesystemConstructionPort = Readonly<{
   signConstruction(
     request: TWidgetArtifactConstructionSignRequest,
   ): Promise<TWidgetBuildResult>;
+  decodeSourceArtifact?(artifact: TWidgetSourceArtifact): TWidgetSourceSnapshot;
   closeWorkspace?(request: Readonly<{ workspaceKey: string }>): Promise<void>;
   close?(): Promise<void>;
 }>;

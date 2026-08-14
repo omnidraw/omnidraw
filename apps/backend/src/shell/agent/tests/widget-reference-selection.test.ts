@@ -89,9 +89,11 @@ describe('AgentService widget reference selection', () => {
     const draftRoot = join(dataPath, 'widgets', 'drafts');
     const draftPath = join(draftRoot, 'notes-board');
     const comparisonDraftPath = join(draftRoot, 'tasks-board');
+    const staleDraftPath = join(draftRoot, 'stale-board');
     await Promise.all([
       mkdir(join(draftPath, 'ui'), { recursive: true }),
       mkdir(join(comparisonDraftPath, 'ui'), { recursive: true }),
+      mkdir(join(staleDraftPath, 'ui'), { recursive: true }),
     ]);
     await Promise.all([
       writeFile(join(draftPath, 'omnidraw.json'), JSON.stringify({
@@ -114,10 +116,21 @@ describe('AgentService widget reference selection', () => {
         ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
       })),
       writeFile(join(comparisonDraftPath, 'ui', 'main.ts'), 'export default 2;\n'),
+      writeFile(join(staleDraftPath, 'omnidraw.json'), JSON.stringify({
+        $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+        schemaVersion: 1,
+        name: 'Stale Board',
+        slug: 'stale-board',
+        description: 'Stale frontend reference fixture.',
+        tool: { label: 'Stale Board', group: null, priority: 0 },
+        ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
+      })),
+      writeFile(join(staleDraftPath, 'ui', 'main.ts'), 'export default 4;\n'),
     ]);
     const chats = createTestChats();
     const modelContexts: unknown[] = [];
     let fenceChecks = 0;
+    let publishedMaterialized = false;
     const service = new AgentService({
       world: testAgentWorld(),
       dataPath,
@@ -135,11 +148,13 @@ describe('AgentService widget reference selection', () => {
             catalogGeneration: 7,
             catalogDigestSha256: 'a'.repeat(64),
             references: references.map((reference) => {
-              const isPublishedOnly = reference.name === 'published-only';
+              const isPublishedKey = reference.name === 'published-only';
+              const isPublishedOnly = isPublishedKey && !publishedMaterialized;
               const isTasks = reference.name === 'tasks-board';
-              const name = isPublishedOnly
+              const isStale = reference.name === 'stale-board';
+              const name = isPublishedKey
                 ? 'Published Only'
-                : isTasks ? 'Tasks Board' : 'Notes Board';
+                : isTasks ? 'Tasks Board' : isStale ? 'Stale Board' : 'Notes Board';
               return {
                 widgetKey: reference.name,
                 requestedVariant: reference.source,
@@ -160,9 +175,58 @@ describe('AgentService widget reference selection', () => {
             }),
           };
         },
-        async assertCurrent() {
+        async assertCurrent(resolution) {
           fenceChecks += 1;
+          if (resolution.references.some((reference) => reference.widgetKey === 'stale-board')) {
+            throw Object.assign(new Error('Frontend widget reference is stale.'), {
+              code: 'WIDGET_REFERENCE_STALE',
+            });
+          }
         },
+      },
+      widgetAuthoringAuthority: {
+        async catalog() {
+          return {
+            catalogGeneration: 7,
+            catalogDigestSha256: 'a'.repeat(64),
+            entries: [],
+          };
+        },
+        async ensureEditableDraft({ name }) {
+          const displayName = name === 'published-only'
+            ? 'Published Only'
+            : name === 'tasks-board'
+              ? 'Tasks Board'
+              : name === 'stale-board' ? 'Stale Board' : 'Notes Board';
+          const path = join(draftRoot, name);
+          if (name === 'published-only' && !publishedMaterialized) {
+            await mkdir(join(path, 'ui'), { recursive: true });
+            await Promise.all([
+              writeFile(join(path, 'omnidraw.json'), JSON.stringify({
+                $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+                schemaVersion: 1,
+                name: displayName,
+                slug: name,
+                description: 'Materialized publication fixture.',
+                tool: { label: displayName, group: null, priority: 0 },
+                ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
+              })),
+              writeFile(join(path, 'ui', 'main.ts'), 'export default 3;\n'),
+            ]);
+            publishedMaterialized = true;
+          }
+          return {
+            widgetKey: name,
+            displayName,
+            slug: name,
+            treeDigestSha256: 'b'.repeat(64),
+            sourceDecision: name === 'published-only'
+              ? 'materialized-publication' as const
+              : 'existing-draft' as const,
+            materialized: name === 'published-only',
+          };
+        },
+        assertEditableDraftCurrent: async () => undefined,
       },
     });
     await service.start({} as never);
@@ -188,12 +252,34 @@ describe('AgentService widget reference selection', () => {
     service.settingsManager.setDefaultModelAndProvider(PROVIDER, MODEL);
 
     await service.connectChat('chat-element', sessionId, 'canvas-a');
+    expect(await readdir(join(
+      dataPath,
+      'pi',
+      'agent',
+      'chats',
+      sessionId,
+      'workspace',
+      'widgets',
+    ))).toEqual([]);
+    await expect(service.promptChat('chat-element', sessionId, 'Use this stale selection.', {
+      canvasId: 'canvas-a',
+      widgetRefs: [{ name: 'stale-board', source: 'draft' }],
+    })).rejects.toMatchObject({ code: 'WIDGET_REFERENCE_STALE' });
+    expect(await readdir(join(
+      dataPath,
+      'pi',
+      'agent',
+      'chats',
+      sessionId,
+      'workspace',
+      'widgets',
+    ))).toEqual([]);
     await service.promptChat('chat-element', sessionId, 'Fix the mentioned widget.', {
       canvasId: 'canvas-a',
       widgetRefs: [{ name: 'notes-board', source: 'published' }],
     });
 
-    expect(fenceChecks).toBe(1);
+    expect(fenceChecks).toBe(2);
     expect(await realpath(join(
       dataPath,
       'pi',
@@ -263,9 +349,32 @@ describe('AgentService widget reference selection', () => {
       findWidgetSelection(modelContexts[4]),
     ).replaceAll('\\', '');
     expect(publishedOnlyContext).toContain('"requestedVariant":"published"');
-    expect(publishedOnlyContext).toContain('"editableVariant":null');
-    expect(publishedOnlyContext).toContain('"activeEditableTarget":null');
-    expect(fenceChecks).toBe(3);
+    expect(publishedOnlyContext).toContain('"editableVariant":"draft"');
+    expect(publishedOnlyContext).toContain('"mountedPath":"widgets/Published Only"');
+    expect((await readdir(join(
+      dataPath,
+      'pi',
+      'agent',
+      'chats',
+      sessionId,
+      'workspace',
+      'widgets',
+    ))).sort()).toEqual(['Notes Board', 'Published Only', 'Tasks Board']);
+    expect(fenceChecks).toBe(4);
+
+    await service.promptChat('chat-element', sessionId, 'Continue editing it.', {
+      canvasId: 'canvas-a',
+      widgetRefs: [{ name: 'published-only', source: 'published' }],
+    });
+    const activePublishedRecords = [
+      ...service.sessionMap['chat-element']![sessionId]!.sessionManager.buildContextEntries(),
+    ].filter((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'omnidraw.activeWidgetMount'
+      && (entry.data as { name?: unknown } | undefined)?.name === 'Published Only'
+    ));
+    expect(activePublishedRecords).toHaveLength(1);
+    expect(fenceChecks).toBe(5);
 
     await expect(service.connectChat(
       'chat-element',

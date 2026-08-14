@@ -54,7 +54,6 @@ import type {
 import { DEFAULT_OSS_CELL_ID } from '#backend/shell/database/CONSTANTS';
 import type { ICliConfig } from '../cli/config';
 import { fnLocalRegistryNpmUserConfig } from '../registry/fn.local-registry-npm-userconfig';
-import { createBunAgentBashCapability } from '../agent/AgentBashCapability';
 import { fnWidgetCapsuleBuilderIdentity } from '../widget/fn.widget-capsule-builder-identity';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
@@ -368,6 +367,7 @@ export function layerLiveMechanics(args: Readonly<{
     constructionCache: widgetConstructionCache,
     construction: {
       construct: (request) => capsuleBuilder.construct(request),
+      decodeSourceArtifact: (artifact) => capsuleBuilder.decodeSourceArtifact(artifact),
       signConstruction: async (request) => {
         const build = await capsuleBuilder.signConstruction(request);
         signedCapsuleInspections.set(build.uiArtifact.bytes, Object.freeze({
@@ -657,7 +657,6 @@ export function layerLiveMechanics(args: Readonly<{
       },
     },
   });
-  const agentBashCapability = createBunAgentBashCapability();
   const agentRoot = config.home.agentRoot;
   mkdirSync(agentRoot, { recursive: true });
   const agentService = new AgentService({
@@ -700,8 +699,14 @@ export function layerLiveMechanics(args: Readonly<{
         widgetCatalog.assertWidgetReferenceResolutionCurrent(resolution)
       ),
     },
+    widgetAuthoringAuthority: {
+      catalog: () => widgetCatalog.agentCatalog(),
+      ensureEditableDraft: (args) => widgetCatalog.ensureAgentEditableDraft(args),
+      assertEditableDraftCurrent: (resolution) => (
+        widgetCatalog.assertAgentEditableDraftCurrent(resolution)
+      ),
+    },
     resourceService: createAgentResourceService(resourceService),
-    bashCapability: agentBashCapability,
   });
   const widgetStateService = new WidgetStateService(
     new WidgetInstanceStateStoreTurso(dbService.db),

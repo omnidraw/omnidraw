@@ -75,10 +75,9 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`template: "react"`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`server: true`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read only files you need to change');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not call `bash`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('not a confinement boundary');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain("Omnidraw host process's filesystem");
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Shell access does not manufacture approval');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('AI Chat intentionally has no general shell');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('unmounted sibling drafts, publications, host credentials');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('od_widget_load({ name })');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('React is the pre-tested component-library path');
@@ -119,8 +118,8 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not edit it manually');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('run `npm run check` and then');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`npm run build`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('run `od_widget_validate`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('host performs the bounded');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('host selection context is authoritative');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_wait');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_preview_test');
@@ -193,11 +192,10 @@ describe('AgentService.promptChat', () => {
     await service.connectChat(widgetId, sessionId);
 
     const expectedTools = [
-      'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
+      'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
       'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
-      'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_preview_inspect',
+      'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_load', 'od_widget_preview_inspect',
       'od_widget_validate', 'patch', 'read',
-      'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
 

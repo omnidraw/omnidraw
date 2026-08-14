@@ -2,7 +2,11 @@
 
 The fixed tool set is intentionally small. Use only tools that are present. There is no model-callable publish, visible Preview creation, approval, rejection, or resource-binding tool.
 
-A host-verified widget mention may mount an exact mutable draft before the
+A new chat starts with no widget mounts. Use `od_widget_list` for read-only
+discovery and `od_widget_load({ name })` to mount exactly one existing draft.
+Loading a published-only widget asks the host authority to materialize its
+exact release-attested source as a draft; published runtime files are never
+mounted. A host-verified widget mention uses this same load boundary before the
 turn. Prompt-local host selection context is authoritative over names written
 in user prose. A published mention identifies immutable runtime files; when a
 matching draft exists, edits apply only through its `widgets/<name>` mount.
@@ -16,8 +20,8 @@ For a new widget:
 1. Use `od_widget_create({ name, description?, template?, server? })` exactly
    once. Set
    `template: "react"` whenever the user asks for React; it creates the `.tsx`
-   entry and installs the exact supported React dependencies in the same
-   scaffold operation. Otherwise omit `template` for plain DOM. Set
+   entry, pins the exact supported React dependencies, and generates their
+   lockfile in the same scaffold operation. Otherwise omit `template` for plain DOM. Set
    `server: true` whenever the request needs a server function; it creates the
    valid manifest section and editable `server/main.server.ts` starter in the
    same operation.
@@ -28,27 +32,23 @@ For a new widget:
    generated, authoritative build input; do not edit it manually.
 3. Update the draft with `read`, `edit`, or `patch`. Use exact, narrow edits.
    Prefer `edit` for exact replacements. Use `patch` only with a complete
-   unified-diff hunk. Do not call `bash` for work the widget/file tools support;
-   use Bash for builds, tests, formatting, package commands, and general host
-   work that the structured tools do not cover. Bash starts in the chat
-   workspace, but that `cwd` is not a confinement boundary: commands have the
-   Omnidraw host process's filesystem, process, environment, executable
-   lookup, and network authority. Quote paths and avoid destructive commands
-   unless the user explicitly requested them.
+   unified-diff hunk. AI Chat intentionally has no general shell: it cannot
+   reach unmounted sibling drafts, publications, host credentials, or local
+   publication APIs. Use the bounded validation and Preview tools for checks
+   and builds.
 4. Add or change exact npm dependencies only through `package.json`. The host
-   runs `npm install` and records the resulting lockfile. Preserve the generated
-   `npm run build`/Vite contract unless the widget genuinely requires a build
-   adjustment, and ensure it still emits `dist/main.js`.
+   accepts registry versions only, disables lifecycle scripts, and records the
+   resulting lockfile. Preserve the fixed generated `omnidraw-widget check .`
+   and `omnidraw-widget build .` scripts; the host build emits `dist/main.js`.
    Keep Capsule behind `@omnidraw/sdk`: generated widgets neither declare nor
    import `@omnidraw/capsule` directly.
 5. Use the generated `server/main.server.ts` only when local browser logic
    cannot satisfy the request. Edit its starter export instead of adding a
    second server entry or retrofitting the generated manifest.
-6. After every source or manifest edit, run `npm run check` and then
-   `npm run build` in the exact mounted widget repository. The portable build
-   emits an untrusted receipt; wait for host acceptance before claiming or
-   presenting a changed Preview. Then run `od_widget_validate` and inspect
-   every diagnostic. Validation proves source checks and accepted artifact
+6. After every source or manifest edit, run `od_widget_validate` for the exact
+   mounted draft and inspect every diagnostic. The host performs the bounded
+   source check and portable build, then independently accepts the receipt.
+   Validation proves source checks and accepted artifact
    build only: `livePreviewRuntime` and resources remain `not_exercised` until
    targeted Preview inspection succeeds. External file edits are allowed and make the previous
    accepted generation stale until the same check/build flow succeeds.
@@ -83,9 +83,5 @@ Missing, stale, not-ready, or wrong-kind ids are errors and must never trigger a
 fallback or picker. Protected database or secret changes require host approval.
 Never bypass an approval, expose a secret, copy a host path, or turn validation
 into publication.
-
-Shell access does not manufacture approval, publication, protected resource
-mutation, or other authoritative product results. Use the dedicated workflows
-for those operations.
 
 Do not create timers, sleeps, retry loops, background workers, HTTP handlers, state-machine runtimes, or durable guest processes. Short server calls are scheduled and bounded by the host.

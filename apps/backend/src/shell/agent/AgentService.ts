@@ -5,7 +5,7 @@ import {
   type TWidgetManifestV1,
 } from '@omnidraw/sdk/contract';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { fnLatestWidgetDbChangeProposalRecord } from '../../core/agent/fn.session-records';
 import { normalizeSessionCwd } from './workspace/normalize-session-cwd';
 import { appendWidgetDbChangeProposalRecord } from './session-records';
@@ -30,7 +30,6 @@ import type {
 } from './approval/types';
 import { createToolRegistry } from './tools/ToolRegistry';
 import type { TAgentResourceService } from './tools/resource-service';
-import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import { fnFindEditableUserMessage, fnProjectActiveChatHistory, type TAgentChatHistoryItem } from './fn.chat-history';
@@ -45,7 +44,10 @@ import {
   fnWidgetPromptSelectionMessage,
   type TWidgetPromptSelectionContext,
   type TWidgetReferenceResolver,
+  type TAgentEditableDraftResolution,
+  type TAgentWidgetAuthoringAuthority,
 } from './widget-reference';
+import type { TAvailableWidget } from './workspace/types';
 
 interface IPublicMethods {
   logout(providerId: string): Promise<void>;
@@ -95,8 +97,8 @@ export interface IAgentServiceConfig {
     validate(args: Readonly<{ canvasId: string; widgetId: string }>): Promise<boolean>;
   }>;
   widgetReferenceResolver: TWidgetReferenceResolver;
+  widgetAuthoringAuthority?: TAgentWidgetAuthoringAuthority;
   resourceService?: TAgentResourceService;
-  bashCapability?: TAgentBashCapability;
   authorizeToolCall?: TToolAuthorizer;
   approvalReviewer?: TApprovalReviewer;
   approvalPolicyStore?: Readonly<{
@@ -969,7 +971,8 @@ export class AgentService implements IPublicMethods {
       workspace: this.#workspace,
       approvals: this.#approvals,
       resourceService: this.#config.resourceService,
-      bashCapability: this.#config.bashCapability,
+      listAvailableWidgets: () => this.#listAvailableWidgets(sessionId),
+      loadWidget: (name) => this.#loadWidgetForChat(sessionId, name),
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
       onDraftChanged: () => this.#publishWidgetDraftsChanged(),
       ...(this.#config.previewBuild === undefined
@@ -1121,6 +1124,18 @@ export class AgentService implements IPublicMethods {
   }
 
   #recordActiveMount(sessionManager: SessionManager, mount: TWidgetMount): void {
+    const current = [...sessionManager.buildContextEntries()].reverse().find((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'omnidraw.activeWidgetMount'
+      && entry.data
+      && typeof entry.data === 'object'
+      && (typeof (entry.data as { name?: unknown }).name === 'string'
+        || (entry.data as { name?: unknown }).name === null)
+    ))
+    if (
+      current?.type === 'custom'
+      && (current.data as { name: string | null }).name === mount.name
+    ) return
     sessionManager.appendCustomEntry('omnidraw.activeWidgetMount', {
       name: mount.name,
       selectedAt: new Date().toISOString(),
@@ -1143,23 +1158,52 @@ export class AgentService implements IPublicMethods {
     references: readonly NonNullable<TPromptSelection['widgetRefs']>[number][],
     sessionManager: SessionManager,
   ): Promise<TWidgetPromptSelectionContext> {
-    const resolution = references.length === 0
+    let resolution = references.length === 0
       ? null
       : await this.#config.widgetReferenceResolver.resolve(references)
     if (resolution !== null) {
-      for (const reference of resolution.references) {
-        if (reference.editableDraft === null) continue
-        const mount = await this.#workspace.loadWidget(sessionId, reference.editableDraft.name)
-        const mountedManifest = await this.#readMountedManifest(mount)
-        if (
-          mountedManifest.slug !== reference.editableDraft.slug
-          || mountedManifest.name !== reference.editableDraft.name
-        ) throw this.#chatConnectionError(
-          'WIDGET_REFERENCE_AMBIGUOUS',
-          'The mounted draft identity does not match the mentioned widget.',
-        )
+      const priorMountNames = new Set(
+        (await this.#workspace.inspectMounts(sessionId)).map((mount) => mount.name),
+      )
+      const addedMountNames: string[] = []
+      try {
+        for (const reference of resolution.references) {
+          if (
+            reference.editableDraft === null
+            && this.#config.widgetAuthoringAuthority === undefined
+          ) continue
+          const loaded = this.#config.widgetAuthoringAuthority === undefined
+            ? {
+                mount: await this.#workspace.loadWidget(
+                  sessionId,
+                  reference.editableDraft!.name,
+                ),
+              }
+            : await this.#loadWidgetForChat(sessionId, reference.widgetKey)
+          const mount = loaded.mount
+          if (!priorMountNames.has(mount.name)) addedMountNames.push(mount.name)
+          const mountedManifest = await this.#readMountedManifest(mount)
+          if (
+            mountedManifest.slug !== reference.widgetKey
+            || (
+              reference.editableDraft !== null
+              && mountedManifest.name !== reference.editableDraft.name
+            )
+          ) throw this.#chatConnectionError(
+            'WIDGET_REFERENCE_AMBIGUOUS',
+            'The mounted draft identity does not match the mentioned widget.',
+          )
+        }
+        if (this.#config.widgetAuthoringAuthority !== undefined) {
+          resolution = await this.#config.widgetReferenceResolver.resolve(references)
+        }
+        await this.#config.widgetReferenceResolver.assertCurrent(resolution)
+      } catch (error) {
+        await Promise.all(addedMountNames.map(
+          (name) => this.#workspace.removeMount(sessionId, name).catch(() => undefined),
+        ))
+        throw error
       }
-      await this.#config.widgetReferenceResolver.assertCurrent(resolution)
       if (resolution.references.length === 1 && resolution.references[0]!.editableDraft !== null) {
         const editable = resolution.references[0]!.editableDraft!
         const mount = await this.#workspace.findMountedWidget(sessionId, editable.name)
@@ -1191,6 +1235,65 @@ export class AgentService implements IPublicMethods {
       type: 'changed',
     })
     this.#config.onWidgetDraftsChanged?.()
+  }
+
+  async #listAvailableWidgets(sessionId: TOmnidrawChatId): Promise<TAvailableWidget[]> {
+    const authority = this.#config.widgetAuthoringAuthority
+    if (authority === undefined) return this.#workspace.listAvailableWidgets(sessionId)
+    const [catalog, mounts] = await Promise.all([
+      authority.catalog(),
+      this.#workspace.inspectMounts(sessionId),
+    ])
+    const mountedKeys = new Set(mounts.map((mount) => basename(mount.targetPath)))
+    return catalog.entries.map((entry) => ({
+      widgetKey: entry.widgetKey,
+      name: entry.displayName,
+      kind: entry.kind,
+      hasDraft: entry.hasDraft,
+      hasPublished: entry.hasPublished,
+      draftHealth: entry.draftHealth,
+      publishedHealth: entry.publishedHealth,
+      mountedInThisChat: mountedKeys.has(entry.widgetKey),
+      problemCode: entry.problemCode,
+    }))
+  }
+
+  async #loadWidgetForChat(
+    sessionId: TOmnidrawChatId,
+    name: string,
+  ): Promise<Readonly<{
+    mount: TWidgetMount;
+    resolution: TAgentEditableDraftResolution;
+  }>> {
+    const authority = this.#config.widgetAuthoringAuthority
+    if (authority === undefined) {
+      const mount = await this.#workspace.loadWidget(sessionId, name)
+      return Object.freeze({
+        mount,
+        resolution: Object.freeze({
+          widgetKey: basename(mount.targetPath),
+          displayName: mount.name,
+          slug: basename(mount.targetPath),
+          treeDigestSha256: '',
+          sourceDecision: 'existing-draft' as const,
+          materialized: false,
+        }),
+      })
+    }
+    const resolution = await authority.ensureEditableDraft({ name })
+    const mounted = await this.#workspace.mountResolvedDraft(sessionId, {
+      name: resolution.displayName,
+      slug: resolution.slug,
+    })
+    try {
+      await authority.assertEditableDraftCurrent(resolution)
+    } catch (error) {
+      if (mounted.created) {
+        await this.#workspace.removeMount(sessionId, mounted.mount.name).catch(() => undefined)
+      }
+      throw error
+    }
+    return Object.freeze({ mount: mounted.mount, resolution })
   }
 
   async #resolveActiveMount(id: TWidgetId, sessionId: TOmnidrawChatId): Promise<TWidgetMount> {

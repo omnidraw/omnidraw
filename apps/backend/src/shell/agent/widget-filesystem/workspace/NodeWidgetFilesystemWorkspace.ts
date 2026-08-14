@@ -21,6 +21,7 @@ import {
   fnCanonicalizeWidgetManifestV1,
   fnWidgetManifestV1Digest,
   parseWidgetManifestV1Json,
+  type TWidgetSourceFile,
 } from '@omnidraw/sdk/contract';
 import type { TWidgetImportTreeEntry } from '../import/typed';
 import { fnCanonicalizeWidgetObservedFileSet } from '#backend/core/widget-filesystem/fn.file-set';
@@ -242,6 +243,125 @@ export class NodeWidgetFilesystemWorkspace {
     const managed = this.#requireManagedRoot(args.relativePath, 'staging');
     assertNotAborted(args.signal);
     await this.#createExclusiveManagedDirectory(managed, args.signal);
+  }
+
+  /**
+   * Materializes authority-captured regular files into an already-created
+   * staging directory. Published paths are never exposed to the chat
+   * workspace; only validated bytes cross this widget-domain boundary.
+   */
+  async materializeStagedSource(args: Readonly<{
+    destinationRelativePath: string;
+    files: readonly TWidgetSourceFile[];
+    signal: AbortSignal;
+  }>): Promise<TWidgetWorkspaceTreeCapture> {
+    const destination = this.#requireManagedRoot(args.destinationRelativePath, 'staging');
+    const destinationPath = await this.#assertManagedDirectory(destination);
+    const before = await this.captureManagedTree({
+      relativePath: destination.rootRelativePath,
+      signal: args.signal,
+    });
+    if (before.entries.length !== 0) {
+      throw errorWithCode(
+        'Widget source staging directory must be empty before materialization.',
+        'WIDGET_WORKSPACE_STAGING_NOT_EMPTY',
+      );
+    }
+    if (args.files.length < 1 || args.files.length > this.#limits.maxFiles) {
+      throw errorWithCode('Widget source exceeds its file limit.', 'WIDGET_WORKSPACE_FILE_LIMIT');
+    }
+
+    const folded = new Map<string, string>();
+    const directories = new Set<string>();
+    let totalBytes = 0;
+    const sourceFiles: TCapturedSourceFile[] = [];
+    for (const file of args.files) {
+      assertNotAborted(args.signal);
+      const normalized = fnNormalizeWidgetWorkspaceRelativePath(
+        file.path,
+        this.#limits.maxPathBytes,
+      );
+      if (normalized === null || normalized !== file.path) {
+        throw errorWithCode(
+          `Unsafe materialized widget path '${file.path}'.`,
+          'WIDGET_WORKSPACE_PATH_UNSAFE',
+        );
+      }
+      const prior = folded.get(normalized.toLowerCase());
+      if (prior !== undefined) {
+        throw errorWithCode(
+          `Materialized widget paths '${prior}' and '${normalized}' collide.`,
+          'WIDGET_WORKSPACE_CASE_COLLISION',
+        );
+      }
+      folded.set(normalized.toLowerCase(), normalized);
+      if (file.bytes.byteLength > this.#limits.maxFileBytes) {
+        throw errorWithCode('Widget source file exceeds its byte limit.', 'WIDGET_WORKSPACE_FILE_SIZE_LIMIT');
+      }
+      totalBytes += file.bytes.byteLength;
+      if (totalBytes > this.#limits.maxTotalBytes) {
+        throw errorWithCode('Widget source exceeds its total byte limit.', 'WIDGET_WORKSPACE_TOTAL_SIZE_LIMIT');
+      }
+      const segments = normalized.split('/');
+      if (segments.length - 1 > this.#limits.maxDepth) {
+        throw errorWithCode('Widget source exceeds its depth limit.', 'WIDGET_WORKSPACE_DEPTH_LIMIT');
+      }
+      for (let index = 1; index < segments.length; index += 1) {
+        directories.add(segments.slice(0, index).join('/'));
+      }
+      sourceFiles.push(Object.freeze({
+        path: normalized,
+        bytes: new Uint8Array(file.bytes),
+        executable: false,
+      }));
+    }
+    if (directories.size + 1 > this.#limits.maxDirectories) {
+      throw errorWithCode('Widget source exceeds its directory limit.', 'WIDGET_WORKSPACE_DIRECTORY_LIMIT');
+    }
+
+    const entries = Object.freeze([
+      ...[...directories].map((path) => Object.freeze({
+        path,
+        kind: 'directory' as const,
+      })),
+      ...sourceFiles.map((file) => Object.freeze({
+        path: file.path,
+        kind: 'file' as const,
+      })),
+    ].sort((left, right) => compareText(left.path, right.path)));
+    const observedFiles = Object.freeze(sourceFiles.map((file) => Object.freeze({
+      path: file.path,
+      byteSize: file.bytes.byteLength,
+      sha256: sha256(file.bytes),
+    })).sort((left, right) => compareText(left.path, right.path)));
+    const head = Object.freeze({
+      format: 'omnidraw.widget-managed-tree.v1' as const,
+      entries,
+      files: observedFiles,
+      fileCount: observedFiles.length,
+      directoryCount: directories.size + 1,
+      byteSize: totalBytes,
+    });
+    const captured: TInternalTreeCapture = Object.freeze({
+      capture: Object.freeze({
+        ...head,
+        rootRelativePath: destination.rootRelativePath,
+        digestSha256: sha256(fnCanonicalizeWidgetWorkspaceTreeCapture(head)),
+      }),
+      sourceFiles: Object.freeze(sourceFiles),
+    });
+    await this.#materializeCapturedTree(destinationPath, captured, args.signal);
+    const materialized = await this.captureManagedTree({
+      relativePath: destination.rootRelativePath,
+      signal: args.signal,
+    });
+    if (materialized.digestSha256 !== captured.capture.digestSha256) {
+      throw errorWithCode(
+        'Materialized widget source does not match the captured publication bytes.',
+        'WIDGET_WORKSPACE_COPY_DIGEST_MISMATCH',
+      );
+    }
+    return materialized;
   }
 
   async prepareTempPath(args: Readonly<{

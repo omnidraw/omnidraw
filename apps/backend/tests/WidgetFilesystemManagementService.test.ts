@@ -25,6 +25,7 @@ import {
   type WidgetFilesystemBuildService,
 } from '#backend/shell/agent';
 import { WidgetFilesystemRuntimeCatalog } from '../src/shell/widget/WidgetFilesystemRuntimeCatalog';
+import { WidgetSourceSnapshot } from '../src/shell/widget-domain/local/WidgetSourceSnapshot';
 
 const temporaryRoots: string[] = [];
 
@@ -110,11 +111,36 @@ async function writeDraft(root: string, value: TWidgetManifestV1): Promise<void>
   ]);
 }
 
-async function writePublication(root: string, value: TWidgetManifestV1): Promise<void> {
+async function writePublication(
+  root: string,
+  value: TWidgetManifestV1,
+  options: Readonly<{ includeSource?: boolean }> = {},
+): Promise<void> {
   const path = join(root, 'published', value.slug);
   const distribution = new Uint8Array(Buffer.from('export default 1;\n', 'utf8'));
   const capsuleBytes = new Uint8Array(Buffer.from('signed capsule bytes', 'utf8'));
   const artifactHash = `sha256:${sha256(capsuleBytes)}` as const;
+  let sourceArtifactBytes: Uint8Array | null = null;
+  if (options.includeSource) {
+    const sourceRoot = join(root, '.staging', 'publication-source-fixture');
+    await mkdir(join(sourceRoot, 'ui'), { recursive: true });
+    await Promise.all([
+      writeFile(join(sourceRoot, 'package.json'), '{"private":true}\n'),
+      writeFile(join(sourceRoot, 'ui', 'main.ts'), 'export default function mount() {}\n'),
+    ]);
+    const sourceSnapshots = new WidgetSourceSnapshot({ nowMs: () => 0 });
+    const snapshot = await sourceSnapshots.capture(sourceRoot, { createdAtMs: 0 });
+    sourceArtifactBytes = sourceSnapshots.encodeArtifact(snapshot, {
+      builderIdentity: 'management-test-builder',
+    }).bytes;
+    await rm(sourceRoot, { recursive: true, force: true });
+  }
+  const sourceFiles = options.includeSource
+    ? [{
+        path: 'dist/.omnidraw-authoring-source.artifact',
+        bytes: sourceArtifactBytes!,
+      }]
+    : [];
   const release = fnCreateWidgetReleaseDescriptor({
     executableManifestDigestSha256: fnWidgetExecutableManifestDigest({
       manifest: value,
@@ -131,6 +157,11 @@ async function writePublication(root: string, value: TWidgetManifestV1): Promise
         byteSize: distribution.byteLength,
         sha256: sha256(distribution),
       },
+      ...sourceFiles.map((file) => ({
+        path: file.path,
+        byteSize: file.bytes.byteLength,
+        sha256: sha256(file.bytes),
+      })),
     ],
     capsule: {
       path: 'capsule.artifact',
@@ -144,12 +175,15 @@ async function writePublication(root: string, value: TWidgetManifestV1): Promise
       signatureBase64: Buffer.alloc(64, 1).toString('base64'),
     },
   });
-  await mkdir(join(path, 'dist'), { recursive: true });
+  await Promise.all([
+    mkdir(join(path, 'dist'), { recursive: true }),
+  ]);
   await Promise.all([
     writeFile(join(path, 'omnidraw.json'), JSON.stringify(value)),
     writeFile(join(path, 'capsule.artifact'), capsuleBytes),
     writeFile(join(path, 'dist', 'main.js'), distribution),
     writeFile(join(path, 'release.json'), JSON.stringify(release)),
+    ...sourceFiles.map((file) => writeFile(join(path, ...file.path.split('/')), file.bytes)),
   ]);
 }
 
@@ -161,6 +195,134 @@ afterEach(async () => {
 });
 
 describe('WidgetFilesystemRuntimeCatalog management', () => {
+  test('materializes one exact published source artifact and then preserves the existing draft', async () => {
+    const root = await createWidgetsRoot();
+    const published = manifest('Notes Board');
+    await writePublication(root, published, { includeSource: true });
+    const sourceSnapshots = new WidgetSourceSnapshot({ nowMs: () => 0 });
+    const builder = {
+      async close() {},
+      decodePublishedSourceArtifact(bytes: Uint8Array) {
+        return sourceSnapshots.decodeArtifact({
+          kind: 'source',
+          digestSha256: sha256(bytes),
+          bytes,
+        }).files;
+      },
+    } as unknown as WidgetFilesystemBuildService;
+    let operation = 0;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder,
+        acceptedBuild: {
+          async requireCurrent() {
+            throw new Error('materialization must not build or publish');
+          },
+        },
+        createOperationToken: () => `materialize_${++operation}`,
+      },
+    });
+    await catalog.start();
+
+    const before = await catalog.agentCatalog();
+    expect(before.entries).toEqual([expect.objectContaining({
+      widgetKey: 'notes-board',
+      displayName: 'Notes Board',
+      hasDraft: false,
+      hasPublished: true,
+      publishedHealth: 'healthy',
+    })]);
+    const first = await catalog.ensureAgentEditableDraft({ name: 'Notes Board' });
+    expect(first).toMatchObject({
+      widgetKey: 'notes-board',
+      displayName: 'Notes Board',
+      sourceDecision: 'materialized-publication',
+      materialized: true,
+    });
+    expect(await readFile(
+      join(root, 'drafts', 'notes-board', 'ui', 'main.ts'),
+      'utf8',
+    )).toBe('export default function mount() {}\n');
+    await expect(catalog.assertAgentEditableDraftCurrent(first)).resolves.toBeUndefined();
+
+    const second = await catalog.ensureAgentEditableDraft({ name: 'notes-board' });
+    expect(second).toMatchObject({
+      sourceDecision: 'existing-draft',
+      materialized: false,
+      treeDigestSha256: first.treeDigestSha256,
+    });
+
+    await writeFile(join(root, 'drafts', 'notes-board', 'omnidraw.json'), '{}');
+    await expect(catalog.ensureAgentEditableDraft({ name: 'notes-board' }))
+      .rejects.toMatchObject({ code: 'WIDGET_DRAFT_UNHEALTHY' });
+    await catalog.stop();
+  });
+
+  test('fails closed when the publication changes during source materialization', async () => {
+    const root = await createWidgetsRoot();
+    const published = manifest('Notes Board');
+    await writePublication(root, published, { includeSource: true });
+    const filesystem = new NodeWidgetCatalogFilesystem();
+    const originalReadFile = filesystem.readFile.bind(filesystem);
+    let armed = false;
+    let armedSourceReads = 0;
+    filesystem.readFile = async (...args: Parameters<NodeWidgetCatalogFilesystem['readFile']>) => {
+      const bytes = await originalReadFile(...args);
+      if (
+        armed
+        && args[1].relativePath.endsWith('dist/.omnidraw-authoring-source.artifact')
+      ) {
+        armedSourceReads += 1;
+        if (armedSourceReads === 2) {
+          armed = false;
+          await writeFile(
+            join(root, 'published', 'notes-board', 'dist', '.omnidraw-authoring-source.artifact'),
+            'changed source artifact',
+          );
+        }
+      }
+      return bytes;
+    };
+    const sourceSnapshots = new WidgetSourceSnapshot({ nowMs: () => 0 });
+    const builder = {
+      async close() {},
+      decodePublishedSourceArtifact(bytes: Uint8Array) {
+        return sourceSnapshots.decodeArtifact({
+          kind: 'source',
+          digestSha256: sha256(bytes),
+          bytes,
+        }).files;
+      },
+    } as unknown as WidgetFilesystemBuildService;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      filesystem,
+      hash: new NodeWidgetCatalogHash(),
+      barrier: new PublicationReadWriteBarrier(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder,
+        acceptedBuild: {
+          async requireCurrent() {
+            throw new Error('materialization must not build or publish');
+          },
+        },
+        createOperationToken: () => 'materialize_race',
+      },
+    });
+    await catalog.start();
+    armed = true;
+
+    await expect(catalog.ensureAgentEditableDraft({ name: 'Notes Board' }))
+      .rejects.toMatchObject({ code: 'WIDGET_CATALOG_CHANGED' });
+    await expect(readFile(join(root, 'drafts', 'notes-board', 'omnidraw.json')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await catalog.stop();
+  });
+
   test('saves digest-fenced Config and publishes metadata without construction or executable writes', async () => {
     const root = await createWidgetsRoot();
     const initial: TWidgetManifestV1 = {

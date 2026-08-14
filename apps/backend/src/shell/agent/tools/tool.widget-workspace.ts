@@ -8,6 +8,8 @@ import { validateWidgetFiles } from './validate-widget-files';
 import { SDK_PACKAGE_DEPENDENCY } from '../workspace/CONSTANTS';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
+import type { TAvailableWidget } from '../workspace/types';
+import type { TAgentEditableDraftResolution } from '../widget-reference';
 import { fnBuildWidgetCreateManifest } from './fn.widget-create';
 import {
   fnCreateWidgetListCursor,
@@ -23,7 +25,12 @@ import type { TToolDefinition, TWidgetDraftChangeHandler, TWidgetPreviewBuildChe
 type TCreateWidgetWorkspaceToolsArgs = {
   workspace: WidgetWorkspace;
   chatId: string;
-  authorize: (toolName: 'od_widget_list' | 'od_widget_create' | 'od_widget_validate') => Promise<boolean>;
+  authorize: (toolName: 'od_widget_list' | 'od_widget_load' | 'od_widget_create' | 'od_widget_validate') => Promise<boolean>;
+  listAvailableWidgets?: () => Promise<TAvailableWidget[]>;
+  loadWidget?: (name: string) => Promise<Readonly<{
+    mount: TWidgetMount;
+    resolution: TAgentEditableDraftResolution;
+  }>>;
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
   previewBuild?: TWidgetPreviewBuildCheck;
@@ -44,7 +51,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const list = defineTool({
     name: 'od_widget_list',
     label: 'List Widgets',
-    description: 'List bounded safe metadata for every shared draft and published widget without reading source files. Each result reports hasDraft and hasPublished. File tools can access shared drafts; published-only entries require a user-controlled frontend workflow.',
+    description: 'List bounded safe metadata for every shared draft and published widget without reading source files or changing this chat\'s mounts. Each result reports draft/publication availability and health. Use od_widget_load to open exactly one editable draft.',
     parameters: Type.Object({
       cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
@@ -52,7 +59,9 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('od_widget_list')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
-        const widgets = fnSortAvailableWidgets(await args.workspace.listAvailableWidgets(args.chatId));
+        const widgets = fnSortAvailableWidgets(await (
+          args.listAvailableWidgets?.() ?? args.workspace.listAvailableWidgets(args.chatId)
+        ));
         const fingerprint = fnWidgetListFingerprint(widgets);
         const parsedCursor = params.cursor
           ? fnParseWidgetListCursor(params.cursor, fingerprint)
@@ -82,10 +91,59 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
     },
   }) as TToolDefinition;
 
+  const load = defineTool({
+    name: 'od_widget_load',
+    label: 'Load Widget Draft',
+    description: 'Explicitly load exactly one widget into this chat for editing. An existing healthy draft is mounted unchanged. A healthy published-only widget is materialized by the host from its exact release-attested source and then mounted. This never publishes, republishes, deletes, unloads, or mounts published runtime files.',
+    parameters: Type.Object({
+      name: Type.String({ minLength: 1, maxLength: 120 }),
+    }, { additionalProperties: false }),
+    async execute(_toolCallId, params: any) {
+      if (!await args.authorize('od_widget_load')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      if (args.loadWidget === undefined) {
+        return fnToolError({
+          code: 'WIDGET_LOAD_UNAVAILABLE',
+          message: 'Authoritative widget loading is unavailable in this host composition.',
+        });
+      }
+      try {
+        const loaded = await args.loadWidget(params.name);
+        args.onMounted?.(loaded.mount);
+        const modelData = {
+          widgetKey: loaded.resolution.widgetKey,
+          name: loaded.resolution.displayName,
+          sourceDecision: loaded.resolution.sourceDecision,
+          mountedPath: `widgets/${loaded.mount.name}`,
+          materialized: loaded.resolution.materialized,
+          recommendedReads: [
+            `widgets/${loaded.mount.name}/omnidraw.json`,
+            `widgets/${loaded.mount.name}/package.json`,
+          ],
+        };
+        return fnToolSuccess({
+          summary: loaded.resolution.materialized
+            ? `Materialized and mounted editable draft '${loaded.mount.name}' from the exact current publication source.`
+            : `Mounted existing editable draft '${loaded.mount.name}' without changing it.`,
+          modelData,
+          details: modelData,
+        });
+      } catch (error) {
+        const code = error !== null && typeof error === 'object' && 'code' in error
+          && typeof error.code === 'string'
+          ? error.code
+          : 'WIDGET_LOAD_FAILED';
+        return fnToolError({
+          code,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  }) as TToolDefinition;
+
   const create = defineTool({
     name: 'od_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create and mount one complete browser-first manifest v1 Capsule widget draft in the shared widgets/drafts root. Choose template "react" for a ready React/TypeScript starter with dependencies already installed; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Keep the scaffolded manifest v1 fields ($schema, schemaVersion 1, tool) intact. Read only files you need to change, edit them, then call od_widget_validate.',
+    description: 'Create and mount one complete browser-first manifest v1 Capsule widget draft in the shared widgets/drafts root. Choose template "react" for a ready React/TypeScript starter with exact dependencies and a generated lockfile; omit it for plain DOM. Set server true when the request needs a valid short server-function starter and manifest section. Keep the scaffolded manifest v1 fields ($schema, schemaVersion 1, tool) intact. Read only files you need to change, edit them, then call od_widget_validate.',
     parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('od_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
@@ -116,15 +174,15 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             await args.workspace.prepareNpmDependencies();
             const installed = await (args.npmInstall
               ? args.npmInstall(cwd)
-              : tryNpmInstall({ access, execFile, join }, {
+              : tryNpmInstall({ access, readFile, execFile, join }, {
                   cwd,
                   userConfigPath: args.workspace.npmUserConfigPath,
                 }));
             if (installed.status !== 'success') {
               throw new Error(
                 installed.status === 'error'
-                  ? `Generated widget dependency installation failed: ${installed.message}`
-                  : `Generated widget dependency installation was skipped: ${installed.reason}`,
+                  ? `Generated widget dependency lock failed: ${installed.message}`
+                  : `Generated widget dependency lock was skipped: ${installed.reason}`,
               );
             }
             files.push('package-lock.json');
@@ -248,5 +306,5 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
     },
   }) as TToolDefinition;
 
-  return [list, create, validate];
+  return [list, load, create, validate];
 }
