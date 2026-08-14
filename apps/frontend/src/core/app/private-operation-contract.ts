@@ -46,6 +46,22 @@ type TOperation<Input, Output> = Readonly<{
   output: Output;
 }>;
 
+export type TCanvasDeletionPlan = Readonly<{
+  canvas: Required<TBackendCanvas>;
+  itemCount: number;
+  mediaCount: number;
+  retainedChatCount: number;
+}>;
+
+export type TCanvasDeletionResult = Readonly<{
+  canvas: Required<TBackendCanvas>;
+  cleanup: Readonly<{
+    itemCount: number;
+    mediaCount: number;
+    retainedChatCount: number;
+  }>;
+}>;
+
 type TChatScope = Readonly<{ widgetId: string; sessionId: string }>;
 type TThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type TModelRef = Readonly<{ provider: string; modelId: string }>;
@@ -194,7 +210,8 @@ export type TPrivateRequestOperations = Readonly<{
   "canvas.get": TOperation<Readonly<{ params: Readonly<{ id: string }> }>, Readonly<{ canvas: readonly TBackendCanvas[] }>>;
   "canvas.create": TOperation<Readonly<{ name: string }>, TBackendCanvas>;
   "canvas.update": TOperation<Readonly<{ params: Readonly<{ id: string }>; body: Readonly<{ name?: string }> }>, TBackendCanvas>;
-  "canvas.remove": TOperation<Readonly<{ params: Readonly<{ id: string }> }>, TBackendCanvas>;
+  "canvas.deletionPlan": TOperation<Readonly<{ canvasId: string }>, TCanvasDeletionPlan>;
+  "canvas.remove": TOperation<Readonly<{ deletionId: string; plan: TCanvasDeletionPlan }>, TCanvasDeletionResult>;
   "canvas.snapshot": TOperation<Readonly<{ canvasId: string }>, TCanvasSnapshot>;
   "canvas.query": TOperation<TCanvasItemQuery, TCanvasItemPage>;
   "canvas.execute": TOperation<TCanvasCommand, TCanvasItemsChangedEvent>;

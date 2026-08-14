@@ -24,15 +24,17 @@ if (false) {
 }
 
 test("every request operation has one explicit replay classification", () => {
-  expect([...FRONTEND_IDEMPOTENT_MUTATION_PATHS]).toEqual(["canvas.execute"]);
+  expect([...FRONTEND_IDEMPOTENT_MUTATION_PATHS]).toEqual(["canvas.remove", "canvas.execute"]);
   for (const path of PRIVATE_REQUEST_PATHS) {
     expect(typeof FRONTEND_IDEMPOTENT_MUTATION_PATHS.has(path)).toBe("boolean");
   }
 });
 
-test("canvas commands reuse commandId while non-deduplicated calls never receive replay keys", () => {
+test("Canvas commands and deletion reuse their authority keys while other calls never receive replay keys", () => {
   expect(frontendIdempotencyKey("canvas.execute", { commandId: "command-1" })).toBe("command-1");
   expect(frontendIdempotencyKey("canvas.execute", { commandId: "command-1" }, "command-1")).toBe("command-1");
+  expect(frontendIdempotencyKey("canvas.remove", { deletionId: "deletion-1" })).toBe("deletion-1");
+  expect(frontendIdempotencyKey("canvas.remove", { deletionId: "deletion-1" }, "deletion-1")).toBe("deletion-1");
   expect(frontendIdempotencyKey("canvas.execute", {})).toBeUndefined();
   expect(frontendIdempotencyKey("resource.resources.create", {}, "unsafe-key")).toBeUndefined();
   expect(frontendIdempotencyKey("agent.chat.prompt", {}, "unsafe-key")).toBeUndefined();

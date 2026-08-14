@@ -41,6 +41,7 @@ import {
 } from './heal-database-coordinator';
 import { runMigrations } from "./run-migrations";
 import { runDatabaseWrite } from "../run-database-transaction";
+import { CanvasDeletionStoreTurso } from '../CanvasDeletionStoreTurso';
 import { Database } from "./turso-native";
 import type {
   TDatabasePreflightResult,
@@ -321,6 +322,7 @@ export class DbServiceTurso {
   #database: Database
   #databaseEffects: Database
   #isConnected = false
+  readonly canvasDeletion: CanvasDeletionStoreTurso
 
   constructor(private config: IDbConfig) {
     if (
@@ -339,6 +341,7 @@ export class DbServiceTurso {
         Reflect.set(this.#database, property, value, this.#database)
       ),
     });
+    this.canvasDeletion = new CanvasDeletionStoreTurso(this.#databaseEffects);
   }
 
   get db(): Database {

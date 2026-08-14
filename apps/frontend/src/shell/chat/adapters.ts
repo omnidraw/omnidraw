@@ -405,7 +405,9 @@ export function createFrontendSidebarController(runtime: TFrontendRuntime, args:
   const api = {
     canvas: {
       create: (input) => runtime.api.safeRequest("canvas.create", input),
+      list: (input = {}) => runtime.api.safeRequest("canvas.list", input),
       update: (input) => runtime.api.safeRequest("canvas.update", input),
+      deletionPlan: (input) => runtime.api.safeRequest("canvas.deletionPlan", input),
       remove: (input) => runtime.api.safeRequest("canvas.remove", input),
     },
     resource: {
@@ -458,8 +460,7 @@ export function createFrontendSidebarController(runtime: TFrontendRuntime, args:
       navigate: args.navigate,
       canvasCreated: (canvas) => runtime.store.set("canvases", (current) => [...current, canvas]),
       canvasUpdated: (canvas) => runtime.store.set("canvases", (current) => current.map((item) => item.id === canvas.id ? canvas : item)),
-      canvasDeleted: (canvas) => runtime.store.set("canvases", (current) => current.filter((item) => item.id !== canvas.id)),
-      evictCanvas: () => undefined,
+      canvasesReplaced: (canvases) => runtime.store.set("canvases", [...canvases]),
       themeAppearance: () => {
         void runtime.store.state.theme;
         return runtime.theme.service.getTheme().appearance;

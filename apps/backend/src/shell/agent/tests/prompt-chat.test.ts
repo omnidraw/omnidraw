@@ -650,4 +650,74 @@ describe('AgentService.promptChat', () => {
     await stopping;
     expect(service.sessionMap).toEqual({});
   });
+
+  test('Canvas disposal fences an initial connection already waiting on scope validation', async () => {
+    let validationStarted!: () => void;
+    const started = new Promise<void>((resolve) => { validationStarted = resolve; });
+    let releaseValidation!: () => void;
+    const validation = new Promise<void>((resolve) => { releaseValidation = resolve; });
+    const service = await createService(undefined, undefined, createTestChats(), {
+      defaultCanvasId: 'canvas-test',
+      validate: async () => {
+        validationStarted();
+        await validation;
+        return true;
+      },
+    });
+    const connecting = service.connectChat(
+      'widget-deleting-connect',
+      testChatId('canvas-delete-connecting'),
+      'canvas-test',
+    );
+    await started;
+
+    const disposal = service.disposeCanvasChats({ canvasId: 'canvas-test' });
+    releaseValidation();
+
+    await expect(connecting).rejects.toMatchObject({ code: 'CHAT_CANVAS_DELETING' });
+    await disposal;
+    expect(service.sessionMap).toEqual({});
+  });
+
+  test('disposes every live chat runtime for a Canvas and rejects reconnection until recovery', async () => {
+    const chats = createTestChats();
+    const service = await createService({
+      createResource: async ({ kind, name }) => ({
+        id: 'resource-delete',
+        kind,
+        name,
+        status: 'ready',
+        lastError: null,
+        createdAtSec: '2026-08-14 00:00:00',
+        updatedAtSec: '2026-08-14 00:00:00',
+      }),
+    }, undefined, chats);
+    const first = testChatId('canvas-delete-first');
+    const second = testChatId('canvas-delete-second');
+    await service.connectChat('widget-first', first, 'canvas-test');
+    await service.connectChat('widget-second', second, 'canvas-test');
+    expect(Object.keys(service.sessionMap)).toHaveLength(2);
+    const createTool = service.sessionMap['widget-first'][first].session.getToolDefinition('od_resource_create');
+    if (!createTool) throw new Error('Resource create tool was not registered.');
+    const pendingApproval = createTool.execute(
+      'tool-delete',
+      { kind: 'kv', name: 'Delete fence' },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    await waitForChatApproval(service, 'widget-first', first);
+
+    await service.disposeCanvasChats({ canvasId: 'canvas-test' });
+    expect(service.sessionMap).toEqual({});
+    expect(JSON.stringify((await pendingApproval).content)).toContain('Canvas owning this chat');
+    expect(chats.records.get(first)?.canvasId).toBe('canvas-test');
+    expect(chats.records.get(second)?.canvasId).toBe('canvas-test');
+    await expect(service.connectChat('widget-late', testChatId('canvas-delete-late'), 'canvas-test'))
+      .rejects.toMatchObject({ code: 'CHAT_CANVAS_DELETING' });
+
+    service.resumeCanvasChats({ canvasId: 'canvas-test' });
+    await expect(service.connectChat('widget-recovered', first, 'canvas-test'))
+      .resolves.toMatchObject({ messageHistory: [] });
+  });
 });

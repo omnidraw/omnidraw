@@ -39,6 +39,18 @@ export function canvasAuthorityFromService(service: ICanvasService): ICanvasAuth
       try: () => service.release(request),
       catch: mapCanvasError,
     }),
+    beginDeletion: (request) => Effect.tryPromise({
+      try: () => service.beginDeletion(request),
+      catch: mapCanvasError,
+    }),
+    abortDeletion: (request) => Effect.tryPromise({
+      try: () => service.abortDeletion(request),
+      catch: mapCanvasError,
+    }),
+    commitDeletion: (request) => Effect.tryPromise({
+      try: () => service.commitDeletion(request),
+      catch: mapCanvasError,
+    }),
   });
 }
 

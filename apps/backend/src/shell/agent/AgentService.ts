@@ -87,7 +87,7 @@ export interface IAgentServiceConfig {
       id: string;
       name?: string;
       status?: 'active' | 'archived' | 'error';
-      canvasId?: string;
+      canvasId?: string | null;
     }>): Promise<unknown>;
   }>;
   chatScope: Readonly<{
@@ -186,6 +186,7 @@ export class AgentService implements IPublicMethods {
   #promptWidgetSelections = new Map<TOmnidrawChatId, TWidgetPromptSelectionContext>();
   #chatConnectionGenerations = new Map<TOmnidrawChatId, number>();
   #chatConnectionLanes = new Map<TOmnidrawChatId, Promise<void>>();
+  #chatConnectionCanvasScopes = new Map<TOmnidrawChatId, Map<string, number>>();
   #chatReplacementGenerations = new Map<TOmnidrawChatId, number>();
   #chatMutations = new Map<TOmnidrawChatId, {
     count: number;
@@ -195,6 +196,7 @@ export class AgentService implements IPublicMethods {
   }>();
   #chatEditPromptStarts = new Map<TOmnidrawChatId, { promise: Promise<boolean>; resolve: (started: boolean) => void }>();
   #chatCanceling = new Set<TOmnidrawChatId>();
+  #retiringCanvasIds = new Set<string>();
   #isStopping = false;
 
   constructor(config: IAgentServiceConfig) {
@@ -272,11 +274,13 @@ export class AgentService implements IPublicMethods {
     this.#promptWidgetSelections.clear()
     this.#chatConnectionGenerations.clear()
     this.#chatConnectionLanes.clear()
+    this.#chatConnectionCanvasScopes.clear()
     this.#chatReplacementGenerations.clear()
     this.#chatMutations.clear()
     for (const promptStart of this.#chatEditPromptStarts.values()) promptStart.resolve(false)
     this.#chatEditPromptStarts.clear()
     this.#chatCanceling.clear()
+    this.#retiringCanvasIds.clear()
     try {
       this.#approvals.close()
     } catch (error) {
@@ -302,7 +306,9 @@ export class AgentService implements IPublicMethods {
     if (canvasId === undefined) {
       throw this.#chatConnectionError('CHAT_CANVAS_REQUIRED', 'Verified canvas scope is required.')
     }
+    this.#assertCanvasNotRetiring(canvasId)
     const releaseMutation = this.#claimChatMutation(sessionId, 'connect', true)
+    const releaseCanvasScope = this.#trackChatConnectionCanvasScope(sessionId, canvasId)
     try {
       const generation = this.#nextChatConnectionGeneration(sessionId)
       if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
@@ -329,6 +335,7 @@ export class AgentService implements IPublicMethods {
       return this.#chatConnectResult(id, sessionId, committedEntry)
     } finally {
       releaseMutation()
+      releaseCanvasScope()
     }
   }
 
@@ -436,6 +443,7 @@ export class AgentService implements IPublicMethods {
       throw this.#chatConnectionError('CHAT_CANVAS_REQUIRED', 'Verified canvas scope is required for prompting.')
     }
     await this.#assertVerifiedChatCanvas(id, sessionId, canvasId)
+    this.#assertCanvasNotRetiring(canvasId)
     const widgetSelection = await this.#resolvePromptWidgetSelection(
       id,
       sessionId,
@@ -443,6 +451,7 @@ export class AgentService implements IPublicMethods {
       promptSelection?.widgetRefs ?? [],
       connectedEntry.sessionManager,
     )
+    this.#assertCanvasNotRetiring(canvasId)
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
@@ -459,6 +468,7 @@ export class AgentService implements IPublicMethods {
 
       if (session.model?.provider !== model.provider || session.model?.id !== model.id) {
         await session.setModel(model)
+        this.#assertCanvasNotRetiring(canvasId)
       }
     }
 
@@ -469,6 +479,7 @@ export class AgentService implements IPublicMethods {
     const images = this.#normalizePromptImages(promptSelection?.images)
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
+    this.#assertCanvasNotRetiring(canvasId)
     this.#promptWidgetSelections.set(sessionId, widgetSelection)
     try {
       const prompting = session.prompt(promptText, images.length > 0 ? { images } : undefined)
@@ -573,6 +584,47 @@ export class AgentService implements IPublicMethods {
     }
 
     return { canceled: true, running: session.isStreaming }
+  }
+
+  async disposeCanvasChats(args: Readonly<{ canvasId: string }>): Promise<void> {
+    this.#retiringCanvasIds.add(args.canvasId)
+    const chatIds = new Set([...this.#chatCanvasIds.entries()]
+      .filter(([, canvasId]) => canvasId === args.canvasId)
+      .map(([chatId]) => chatId))
+    for (const [chatId, scopes] of this.#chatConnectionCanvasScopes) {
+      if (scopes.has(args.canvasId)) chatIds.add(chatId)
+    }
+    const retiringChatIds = [...chatIds]
+
+    for (const chatId of retiringChatIds) {
+      this.#nextChatConnectionGeneration(chatId)
+      this.#chatReplacementGenerations.delete(chatId)
+      this.#promptWidgetSelections.delete(chatId)
+      this.#approvals.cancelChat(chatId, 'The Canvas owning this chat is being deleted.')
+      this.#chatEditPromptStarts.get(chatId)?.resolve(false)
+      this.#chatEditPromptStarts.delete(chatId)
+      const entry = this.#chatSessionEntry(chatId)
+      if (entry?.session.isStreaming) await entry.session.abort()
+    }
+
+    await Promise.all(retiringChatIds.map((chatId) => this.#waitForChatConnectionLaneIdle(chatId)))
+    await Promise.all(retiringChatIds.map(async (chatId) => {
+      const mutation = this.#chatMutations.get(chatId)
+      if (mutation !== undefined) await mutation.settled
+      this.#promptWidgetSelections.delete(chatId)
+      this.#approvals.cancelChat(chatId, 'The Canvas owning this chat was deleted.')
+      const widgetId = this.#chatWidgetIds.get(chatId)
+      if (widgetId !== undefined) await this.#disposeChatSession(widgetId, chatId)
+      this.#chatCanvasIds.delete(chatId)
+      this.#chatWidgetIds.delete(chatId)
+      this.#chatConnectionLanes.delete(chatId)
+      this.#chatMutations.delete(chatId)
+      this.#chatCanceling.delete(chatId)
+    }))
+  }
+
+  resumeCanvasChats(args: Readonly<{ canvasId: string }>): void {
+    this.#retiringCanvasIds.delete(args.canvasId)
   }
 
   listChatApprovals(id: TWidgetId, sessionId: TOmnidrawChatId): TApprovalView[] {
@@ -800,6 +852,7 @@ export class AgentService implements IPublicMethods {
     generation: number,
   ): Promise<TChatConnectGenerationResult> {
     if (this.#isStopping) throw new Error('Agent service is stopping.')
+    this.#assertCanvasNotRetiring(canvasId)
     if (generation !== this.#chatConnectionGenerations.get(sessionId)) return { status: 'superseded' }
 
     const connectedEntry = this.#chatWidgetIds.get(sessionId) === id
@@ -808,15 +861,24 @@ export class AgentService implements IPublicMethods {
     const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
     if (connectedEntry && replacementGeneration === undefined) {
       await this.#ensureChatMetadata(sessionId, canvasId)
+      this.#assertCanvasNotRetiring(canvasId)
       return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
     }
 
     const cwd = await this.#workspace.ensureChat(sessionId)
+    this.#assertCanvasNotRetiring(canvasId)
     const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
     await normalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
     await this.#ensureChatMetadata(sessionId, canvasId)
+    this.#assertCanvasNotRetiring(canvasId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
+    try {
+      this.#assertCanvasNotRetiring(canvasId)
+    } catch (error) {
+      this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      throw error
+    }
 
     if (this.#isStopping) {
       this.#releaseUnpublishedChatSessionEntry(sessionEntry)
@@ -913,6 +975,26 @@ export class AgentService implements IPublicMethods {
       if (mutation.count === 0 && this.#chatMutations.get(sessionId) === mutation) {
         this.#chatMutations.delete(sessionId)
         mutation.settle()
+      }
+    }
+  }
+
+  #trackChatConnectionCanvasScope(
+    sessionId: TOmnidrawChatId,
+    canvasId: string,
+  ): () => void {
+    const scopes = this.#chatConnectionCanvasScopes.get(sessionId) ?? new Map<string, number>()
+    scopes.set(canvasId, (scopes.get(canvasId) ?? 0) + 1)
+    this.#chatConnectionCanvasScopes.set(sessionId, scopes)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const remaining = (scopes.get(canvasId) ?? 1) - 1
+      if (remaining === 0) scopes.delete(canvasId)
+      else scopes.set(canvasId, remaining)
+      if (scopes.size === 0 && this.#chatConnectionCanvasScopes.get(sessionId) === scopes) {
+        this.#chatConnectionCanvasScopes.delete(sessionId)
       }
     }
   }
@@ -1091,6 +1173,7 @@ export class AgentService implements IPublicMethods {
     sessionId: TOmnidrawChatId,
     canvasId: string,
   ): Promise<void> {
+    this.#assertCanvasNotRetiring(canvasId)
     if (canvasId.length < 1 || canvasId.length > 200) {
       throw this.#chatConnectionError('CHAT_CANVAS_INVALID', 'Canvas identity is invalid.')
     }
@@ -1106,6 +1189,12 @@ export class AgentService implements IPublicMethods {
         'CHAT_SCOPE_INVALID',
         'The AI Chat element is not present on the requested canvas.',
       )
+    }
+  }
+
+  #assertCanvasNotRetiring(canvasId: string): void {
+    if (this.#retiringCanvasIds.has(canvasId)) {
+      throw this.#chatConnectionError('CHAT_CANVAS_DELETING', 'This Canvas is being deleted.')
     }
   }
 

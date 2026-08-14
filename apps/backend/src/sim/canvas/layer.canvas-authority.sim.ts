@@ -178,6 +178,9 @@ export function layerCanvasAuthoritySim(args: Readonly<{
           );
           return Stream.fromIterable<TCanvasEvent>(replay).pipe(Stream.concat(live));
         }),
+        beginDeletion: () => Effect.void,
+        abortDeletion: () => Effect.void,
+        commitDeletion: () => Effect.void,
         release: () => Effect.void,
       });
     }),

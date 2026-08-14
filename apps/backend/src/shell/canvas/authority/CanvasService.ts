@@ -251,6 +251,56 @@ export class CanvasService implements ICanvasService {
     };
   }
 
+  async beginDeletion(args: Readonly<{ canvasId: string }>): Promise<void> {
+    const state = this.#state(args.canvasId);
+    if (state.releasing || state.released) {
+      throw new CanvasServiceError(
+        'CONFLICT',
+        'Canvas deletion is already in progress.',
+        { canvasId: args.canvasId },
+      );
+    }
+    // Claim before entering the queue so later commands and lazy subscriber
+    // initialization cannot pass the lifecycle boundary.
+    state.releasing = true;
+    try {
+      await this.#enqueue(state, async () => {
+        await this.#revision(args.canvasId);
+      });
+    } catch (error) {
+      state.releasing = false;
+      throw error;
+    }
+  }
+
+  async abortDeletion(args: Readonly<{ canvasId: string }>): Promise<void> {
+    const state = this.#states.get(this.#stateKey(args.canvasId));
+    if (state === undefined || state.released) return;
+    await this.#enqueue(state, async () => {
+      state.releasing = false;
+      state.items.clear();
+      state.events.length = 0;
+      state.revision = null;
+    });
+  }
+
+  async commitDeletion(args: Readonly<{ canvasId: string }>): Promise<void> {
+    const key = this.#stateKey(args.canvasId);
+    const state = this.#states.get(key);
+    if (state === undefined) return;
+    state.releasing = true;
+    await this.#enqueue(state, async () => {
+      for (const subscriber of [...state.subscribers]) {
+        this.#closeSubscriber(state, subscriber);
+      }
+      state.items.clear();
+      state.events.length = 0;
+      state.revision = null;
+      state.released = true;
+      if (this.#states.get(key) === state) this.#states.delete(key);
+    });
+  }
+
   async release(args: Readonly<{ canvasId: string }>): Promise<void> {
     const key = this.#stateKey(args.canvasId);
     const state = this.#states.get(key);

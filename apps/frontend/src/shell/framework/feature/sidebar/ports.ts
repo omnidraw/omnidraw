@@ -69,7 +69,9 @@ export type TSidebarApiPort = Readonly<{
   api: Readonly<{
     canvas: Readonly<{
       create: TSafeOperation<"canvas.create">;
+      list: (input?: TPrivateRequestInput<"canvas.list">) => Promise<TSafeResult<TPrivateRequestOutput<"canvas.list">>>;
       update: TSafeOperation<"canvas.update">;
+      deletionPlan: TSafeOperation<"canvas.deletionPlan">;
       remove: TSafeOperation<"canvas.remove">;
     }>;
     resource: Readonly<{ resources: Readonly<{
@@ -101,8 +103,7 @@ export type TSidebarApplicationPort = {
   navigate(path: string, options?: { replace?: boolean }): void;
   canvasCreated(canvas: TSidebarCanvas): void;
   canvasUpdated(canvas: TSidebarCanvas): void;
-  canvasDeleted(canvas: TSidebarCanvas): void;
-  evictCanvas(canvasId: string): void;
+  canvasesReplaced(canvases: readonly TSidebarCanvas[]): void;
   themeAppearance(): "light" | "dark";
   setThemeAppearance(appearance: "light" | "dark"): void;
   toggleSidebar(): void;

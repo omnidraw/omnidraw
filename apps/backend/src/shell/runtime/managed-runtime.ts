@@ -4,6 +4,7 @@ import { layerCanvasAuthorityFromLive } from '../canvas/layer.canvas-authority.l
 import { layerLiveMechanics } from './layer.live-mechanics';
 import { layerBackendServer } from '../server/layer.server';
 import { layerSemanticAuthoritiesLive } from './layer.semantic-authorities';
+import { layerCanvasDeletionLive } from '../canvas/layer.canvas-deletion.live';
 
 /** Exactly one ManagedRuntime is constructed for each backend process. */
 export function createBackendRuntime(args: Readonly<{
@@ -20,9 +21,10 @@ export function createBackendRuntime(args: Readonly<{
   const semanticAuthorities = layerSemanticAuthoritiesLive.pipe(
     Layer.provide(mechanics),
   );
+  const canvasDeletion = layerCanvasDeletionLive.pipe(Layer.provide(mechanics));
   const runtimeServices = Layer.merge(
     mechanics,
-    Layer.merge(canvasAuthority, semanticAuthorities),
+    Layer.mergeAll(canvasAuthority, semanticAuthorities, canvasDeletion),
   );
   const server = layerBackendServer(args.config).pipe(Layer.provide(runtimeServices));
   return ManagedRuntime.make(Layer.merge(runtimeServices, server));

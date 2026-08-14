@@ -89,6 +89,8 @@ class MemoryCanvasStore implements ICanvasStore {
   readonly canvases = new Map<string, TMemoryCanvas>();
   readonly queryFilters: string[] = [];
   failNextApply = false;
+  applyGate: Promise<void> | null = null;
+  onApplyStarted: (() => void) | null = null;
   readonly commandResults = new Map<string, Extract<TCanvasStoreApplyResult, { status: 'committed' }>>();
 
   async getCommandResult(args: Readonly<{ canvasId: string; commandId: string }>) {
@@ -187,6 +189,8 @@ class MemoryCanvasStore implements ICanvasStore {
   }
 
   async applyMutations(args: TCanvasStoreApplyArgs): Promise<TCanvasStoreApplyResult> {
+    this.onApplyStarted?.();
+    if (this.applyGate !== null) await this.applyGate;
     if (this.failNextApply) {
       this.failNextApply = false;
       throw new Error('injected pre-commit failure');
@@ -373,5 +377,60 @@ describe('CanvasService', () => {
     });
     await events.return?.();
     await restarted.stop();
+  });
+
+  test('serializes deletion with commands and closes subscriptions at the claimed boundary', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const canvas = service(store);
+    const events = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    const pendingEvent = events.next();
+    await Promise.resolve();
+
+    await canvas.beginDeletion({ canvasId: 'canvas-a' });
+    const lateEvents = canvas.subscribe({ canvasId: 'canvas-a', afterRevision: 0 })
+      [Symbol.asyncIterator]();
+    await expect(lateEvents.next()).rejects.toMatchObject({ code: 'STORE_CONFLICT' });
+    await expect(canvas.beginDeletion({ canvasId: 'canvas-a' }))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(canvas.execute(insertCommand('after-claim', 'canvas-a', 0, rect('late'))))
+      .rejects.toMatchObject({ code: 'STORE_CONFLICT' });
+
+    await canvas.abortDeletion({ canvasId: 'canvas-a' });
+    const recovered = await canvas.execute(insertCommand('after-abort', 'canvas-a', 0, rect('safe')));
+    expect(recovered.revision).toBe(1);
+    expect(await pendingEvent).toEqual({ done: false, value: recovered });
+    const pendingClose = events.next();
+
+    await canvas.beginDeletion({ canvasId: 'canvas-a' });
+    store.canvases.delete('canvas-a');
+    await canvas.commitDeletion({ canvasId: 'canvas-a' });
+    expect(await pendingClose).toEqual({ done: true, value: undefined });
+    await expect(canvas.execute(insertCommand('after-commit', 'canvas-a', 1, rect('never'))))
+      .rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  test('waits for an already-owned command before deletion ownership settles', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const canvas = service(store);
+    let releaseApply!: () => void;
+    let markStarted!: () => void;
+    store.applyGate = new Promise<void>((resolve) => { releaseApply = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    store.onApplyStarted = markStarted;
+
+    const command = canvas.execute(insertCommand('before-delete', 'canvas-a', 0, rect('owned')));
+    await started;
+    const deletion = canvas.beginDeletion({ canvasId: 'canvas-a' });
+    let deletionSettled = false;
+    void deletion.finally(() => { deletionSettled = true; });
+    await Promise.resolve();
+    expect(deletionSettled).toBe(false);
+
+    releaseApply();
+    await expect(command).resolves.toMatchObject({ commandId: 'before-delete', revision: 1 });
+    await expect(deletion).resolves.toBeUndefined();
   });
 });

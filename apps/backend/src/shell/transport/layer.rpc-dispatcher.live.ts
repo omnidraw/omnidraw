@@ -9,6 +9,10 @@ import {
   CanvasAuthority,
 } from '../../core/canvas/service.canvas-authority';
 import {
+  CanvasChatLifecycle,
+  CanvasDeletionStore,
+} from '../../core/canvas/service.canvas-deletion';
+import {
   EventAuthority,
 } from '../../core/events/service.events';
 import {
@@ -93,6 +97,8 @@ export const layerLiveRpcDispatcher = Layer.effect(
     const widgetRuntimeLoadAdmission = yield* LiveWidgetLoadAdmission;
     const widgetState = yield* LiveWidgetState;
     const canvasAuthority = yield* CanvasAuthority;
+    const canvasDeletionStore = yield* CanvasDeletionStore;
+    const canvasChatLifecycle = yield* CanvasChatLifecycle;
     const agentAuthority = yield* AgentAuthority;
     const eventAuthority = yield* EventAuthority;
     const functionAuthority = yield* FunctionAuthority;
@@ -116,6 +122,8 @@ export const layerLiveRpcDispatcher = Layer.effect(
       context,
       agent: agentAuthority,
       canvas: canvasAuthority,
+      canvasDeletionStore,
+      canvasChatLifecycle,
       events: eventAuthority,
       functions: functionAuthority,
       resources: resourceAuthority,
