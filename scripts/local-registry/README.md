@@ -21,7 +21,7 @@ From any Omnidraw worktree:
 ```sh
 bun run registry:bootstrap -- \
   --cangine /path/to/omnidraw-cangine-0.6.1.tgz \
-  --capsule /path/to/omnidraw-capsule-0.14.0.tgz
+  --capsule /path/to/omnidraw-capsule-0.15.0.tgz
 bun run registry:publish:sdk
 bun install --frozen-lockfile
 ```

@@ -8,7 +8,7 @@ describe('widget Capsule build identity', () => {
     expect(WIDGET_CAPSULE_BUILD_IDENTITY).toEqual({
       packageName: '@omnidraw/capsule',
       packageVersion: rootPackage.catalog['@omnidraw/capsule'],
-      packageDigest: 'sha256:8ec771e3253c1c9e574285c34dac33003a982c9aa3b4d39f8c41f67b84ad3bed',
+      packageDigest: 'sha256:2239eca75b6564091194883972a3b45852373bbae5f55c13b1c0742426985d95',
       buildApiVersion: CAPSULE_BUILD_API_VERSION,
       runtimeBuildDigest: 'sha256:e7c239a3853ff6918c22dc5cea4246e863a89938f75fccbab0dd8e76023c775d',
     });

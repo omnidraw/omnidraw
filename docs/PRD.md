@@ -217,7 +217,7 @@ The SDK must not implement:
 
 OSS and managed each implement private execution adapters behind the same host bridge. Managed usage collection wraps its adapter and remains invisible to widget code.
 
-`@omnidraw/capsule` is an exact direct implementation dependency of the SDK, initially `0.14.0`. New widget scaffolds depend on and import `@omnidraw/sdk` only. A Capsule major requires SDK ABI conformance and artifact-compatibility review before the SDK dependency is updated.
+`@omnidraw/capsule` is an exact direct implementation dependency of the SDK, currently `0.15.0`. New widget scaffolds depend on and import `@omnidraw/sdk` only. A Capsule major requires SDK ABI conformance and artifact-compatibility review before the SDK dependency is updated.
 
 The SDK does not depend on Zod or expose Zod-owned types. Its manifest, artifact, and guest-boundary validators are Omnidraw-owned deterministic functions. `defineServerFunction` accepts the structural runtime-schema capability it needs, such as `parse(unknown)`, so widget authors may independently choose Zod, Valibot, TypeBox, or a custom validator without making that library part of the Omnidraw ABI. Generated widget scaffolds do not install a schema library unless the selected example explicitly uses one.
 
@@ -273,7 +273,7 @@ Dependency and singleton policy:
 | `canvas` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
 | `component-ai-chat` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
 | `canvas` | `@omnidraw/cangine` | Exact direct dependency, initially `0.6.1` |
-| `sdk` | `@omnidraw/capsule` | Exact direct dependency, initially `0.14.0`; no Capsule types escape |
+| `sdk` | `@omnidraw/capsule` | Exact direct dependency, currently `0.15.0`; no Capsule types escape |
 | Side-effectful `canvas`, `sdk`, and `component-ai-chat` implementations | `effect` | Exact direct dependency `4.0.0-rc.108`; no Effect types escape |
 | Public Omnidraw package to public Omnidraw package | Named package | Exact version in staged manifests |
 

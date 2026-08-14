@@ -134,7 +134,7 @@
         "omnidraw-widget": "./dist/cli.js",
       },
       "dependencies": {
-        "@omnidraw/capsule": "0.14.0",
+        "@omnidraw/capsule": "0.15.0",
         "effect": "4.0.0-rc.108",
         "lucide-static": "1.24.0",
       },
@@ -165,7 +165,7 @@
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@effect/platform-bun": "4.0.0-rc.108",
     "@kobalte/core": "^0.13.12",
-    "@omnidraw/capsule": "0.14.0",
+    "@omnidraw/capsule": "0.15.0",
     "@tursodatabase/database": "0.7.2",
     "effect": "4.0.0-rc.108",
     "lucide-solid": "^1.24.0",
@@ -488,7 +488,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.14.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-yZLr2/O/Zwb2AAlIIXh0q0Opmjv3yue5HNahEkm6ajSLOAAeBN5iQkm/PGX9n2WR6T16iHK9F1pYpSR5Q8KHqA=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.15.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-q10uWYnq2qp/LCUt8yGe+4EHXGOMd0xq0XU0AtxyyZAei53dY5J3QyhEJZzZu7DcEKAw72a9iNgDeRcw0qjKhg=="],
 
     "@omnidraw/component-ai-chat": ["@omnidraw/component-ai-chat@workspace:packages/component-ai-chat"],
 
