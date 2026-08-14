@@ -15,6 +15,7 @@ import {
   fnWidgetReleaseDirectoryDigest,
   fnProjectWidgetExecutableManifest,
   type TWidgetReleaseFile,
+  type TWidgetSourceArtifact,
   type TWidgetSourceFile,
   type TWidgetSourceSnapshot,
 } from '@omnidraw/sdk/contract';
@@ -25,6 +26,7 @@ import type {
   TWidgetFilesystemPreparedPublication,
   TWidgetFilesystemSignedConstruction,
 } from './typed';
+import { WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH } from './CONSTANTS';
 
 const GENERATED_BUILD_MANIFEST_PATH = '.omnidraw/build-manifest.json';
 const SERVER_ARTIFACT_PATH = 'server-dist/main.artifact';
@@ -266,7 +268,20 @@ export class WidgetFilesystemBuildService {
     });
     const serverArtifact = signed.build.serverArtifact;
     let server: TWidgetFilesystemPreparedPublication['server'] = null;
-    const runtimeFiles: TWidgetSourceFile[] = [...browserFiles, capsuleFile];
+    const sourceArtifact = args.construction.construction.sourceArtifact;
+    const sourceArtifactFile = Object.freeze({
+      path: WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH,
+      bytes: new Uint8Array(sourceArtifact.bytes),
+    });
+    const occupiedPaths = new Set(browserFiles.map((file) => file.path.toLowerCase()));
+    if (occupiedPaths.has(sourceArtifactFile.path.toLowerCase())) {
+      throw new Error('Widget distribution conflicts with the reserved authoring-source artifact.');
+    }
+    const runtimeFiles: TWidgetSourceFile[] = [
+      ...browserFiles,
+      sourceArtifactFile,
+      capsuleFile,
+    ];
     if (serverArtifact !== null) {
       const serverFiles = immutableFiles([{
         path: SERVER_ARTIFACT_PATH,
@@ -360,6 +375,23 @@ export class WidgetFilesystemBuildService {
 
   closeWorkspace(workspaceKey: string): Promise<void> {
     return this.config.construction.closeWorkspace?.({ workspaceKey }) ?? Promise.resolve();
+  }
+
+  decodePublishedSourceArtifact(bytes: Uint8Array): readonly TWidgetSourceFile[] {
+    const decode = this.config.construction.decodeSourceArtifact;
+    if (decode === undefined) {
+      throw new Error('Widget source artifact decoding is unavailable.');
+    }
+    const artifact: TWidgetSourceArtifact = Object.freeze({
+      kind: 'source',
+      digestSha256: sha256(bytes),
+      bytes: new Uint8Array(bytes),
+    });
+    const snapshot = decode.call(this.config.construction, artifact);
+    return immutableFiles(snapshot.files.filter((file) => (
+      file.path !== GENERATED_BUILD_MANIFEST_PATH
+      && file.path !== 'omnidraw.json'
+    )));
   }
 
   close(): Promise<void> {

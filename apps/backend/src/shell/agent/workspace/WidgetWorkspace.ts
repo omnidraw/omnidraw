@@ -53,8 +53,9 @@ const MUTATION_FILE_BYTE_LIMIT = 5_000_000;
 /**
  * Chat-facing workspace over the one app-owned widget draft root. Drafts are
  * stored as `<draftRoot>/<slug>/` next to the catalog, Preview, and Publish
- * authorities; every chat mounts them by display name through symlinks under
- * `workspace/widgets/<name>`.
+ * authorities. A chat receives a draft symlink under
+ * `workspace/widgets/<name>` only after an explicit load or creation in that
+ * chat; initialization never discovers shared drafts.
  */
 export class WidgetWorkspace {
   readonly agentRoot: string;
@@ -109,7 +110,7 @@ export class WidgetWorkspace {
     const root = storage.workspace;
     await this.#withWidgetWrite(root, async () => {
       await mkdir(join(root, 'widgets'), { recursive: true });
-      await this.#reconcileSharedMounts(root);
+      await this.#removeStaleOwnedMounts(root);
     });
     return root;
   }
@@ -149,8 +150,29 @@ export class WidgetWorkspace {
 
   async loadWidget(chatId: string, requestedName: string): Promise<TWidgetMount> {
     const name = this.#normalizeName(requestedName);
+    const slug = await this.#draftSlugForName(name);
+    if (slug === null) throw new Error(`Widget draft '${name}' does not exist.`);
+    return (await this.mountResolvedDraft(chatId, { name, slug })).mount;
+  }
+
+  async mountResolvedDraft(
+    chatId: string,
+    resolved: Readonly<{ name: string; slug: string }>,
+  ): Promise<Readonly<{ mount: TWidgetMount; created: boolean }>> {
+    const name = this.#normalizeName(resolved.name);
+    if (!fnIsWidgetDraftSlug(resolved.slug)) {
+      throw new Error('Resolved widget draft slug is invalid.');
+    }
     const chatRoot = await this.ensureChat(chatId);
-    const targetPath = await this.#resolveDraftTarget(name);
+    const draftPath = join(this.draftRoot, resolved.slug);
+    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+      throw new Error(`Widget draft '${name}' does not exist.`);
+    }
+    const targetPath = await realpath(draftPath);
+    const identity = await this.#readDraftIdentity(targetPath);
+    if (identity?.name !== name || identity.slug !== resolved.slug) {
+      throw new Error(`Resolved widget draft '${name}' no longer matches its catalog identity.`);
+    }
     const mountPath = join(chatRoot, 'widgets', name);
     await this.#assertNoCaseCollision(join(chatRoot, 'widgets'), name);
 
@@ -159,14 +181,20 @@ export class WidgetWorkspace {
       if (!existing.isSymbolicLink()) throw new Error(`Widget mount '${name}' conflicts with an existing filesystem entry.`);
       const existingTarget = await realpath(mountPath).catch(() => null);
       if (existingTarget === targetPath) {
-        return { name, source: 'draft', chatRoot, mountPath, targetPath };
+        return {
+          mount: { name, source: 'draft', chatRoot, mountPath, targetPath },
+          created: false,
+        };
       }
       throw new Error(`Widget mount '${name}' already points to a different target.`);
     }
 
     const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
     await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
-    return { name, source: 'draft', chatRoot, mountPath, targetPath };
+    return {
+      mount: { name, source: 'draft', chatRoot, mountPath, targetPath },
+      created: true,
+    };
   }
 
   async listMounts(chatId: string): Promise<TWidgetMount[]> {
@@ -205,7 +233,7 @@ export class WidgetWorkspace {
   }
 
   async listAvailableWidgets(chatId: string): Promise<TAvailableWidget[]> {
-    const mounts = await this.listMounts(chatId);
+    const mounts = await this.inspectMounts(chatId);
     return readWidgetCatalog({
       readdir,
       lstat,
@@ -471,17 +499,11 @@ export class WidgetWorkspace {
     return { name, slug };
   }
 
-  async #resolveDraftTarget(name: string): Promise<string> {
-    const slug = await this.#draftSlugForName(name);
-    if (slug === null) throw new Error(`Widget draft '${name}' does not exist.`);
-    const draft = join(this.draftRoot, slug);
-    if (!await this.#isDirectDirectory(this.draftRoot, draft)) {
-      throw new Error(`Widget draft '${name}' does not exist.`);
-    }
-    return realpath(draft);
-  }
-
-  async #reconcileSharedMounts(root: string): Promise<void> {
+  /**
+   * Keeps reconnect cleanup narrow: valid explicit mounts survive, stale
+   * backend-owned links are removed, and catalog entries are never mounted.
+   */
+  async #removeStaleOwnedMounts(root: string): Promise<void> {
     const widgetsRoot = join(root, 'widgets');
     const mounts = await readdir(widgetsRoot, { withFileTypes: true }).catch(() => []);
     for (const entry of mounts) {
@@ -492,21 +514,6 @@ export class WidgetWorkspace {
       const ownedKind = await this.#ownedMountKind(mountPath, entry.name).catch(() => null);
       if (ownedKind === 'draft') continue;
       if (ownedKind === 'stale') await rm(mountPath, { force: true });
-    }
-
-    const drafts = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
-    for (const entry of drafts) {
-      if (!entry.isDirectory() || entry.isSymbolicLink() || !fnIsWidgetDraftSlug(entry.name)) continue;
-      const identity = await this.#readDraftIdentity(join(this.draftRoot, entry.name));
-      if (identity === null || identity.slug !== entry.name) continue;
-      const targetPath = await realpath(join(this.draftRoot, entry.name));
-      const mountPath = join(widgetsRoot, identity.name);
-      const existing = await lstat(mountPath).catch(() => null);
-      if (existing) {
-        continue;
-      }
-      const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
-      await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
     }
   }
 

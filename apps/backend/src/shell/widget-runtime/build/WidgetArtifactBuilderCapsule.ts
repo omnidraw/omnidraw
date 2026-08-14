@@ -34,6 +34,7 @@ import {
   type TWidgetServerBuildArtifact,
   type TWidgetServerFunctionDescriptor,
   type TWidgetServerFunctionDescriptorExtractionRequest,
+  type TWidgetSourceArtifact,
   type TWidgetSourceSnapshot,
 } from '@omnidraw/sdk/contract';
 import type {
@@ -227,6 +228,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     this.#capsuleSign = config.capsuleSign;
     this.#bunBuild = config.bunBuild;
     this.#resolveTrustedPackageImport = config.resolveTrustedPackageImport;
+  }
+
+  decodeSourceArtifact(artifact: TWidgetSourceArtifact): TWidgetSourceSnapshot {
+    return this.#snapshotService.decodeArtifact(artifact);
   }
 
   async build(request: TWidgetBuildRequest): Promise<TWidgetBuildResult> {

@@ -22,7 +22,7 @@ export function fnSortAvailableWidgets(widgets: readonly TAvailableWidget[]): TA
 
 export function fnWidgetListFingerprint(widgets: readonly TAvailableWidget[]): string {
   return checksum(widgets.map((widget) => (
-    `${widgetNameKey(widget.name)}\u0000${widget.kind ?? ''}\u0000${Number(widget.hasDraft)}${Number(widget.hasPublished)}${Number(widget.mountedInThisChat)}\u0000${widget.problemCode ?? ''}`
+    `${widget.widgetKey}\u0000${widgetNameKey(widget.name)}\u0000${widget.kind ?? ''}\u0000${Number(widget.hasDraft)}${Number(widget.hasPublished)}${Number(widget.mountedInThisChat)}\u0000${widget.draftHealth ?? ''}\u0000${widget.publishedHealth ?? ''}\u0000${widget.problemCode ?? ''}`
   )).join('\u0001'));
 }
 

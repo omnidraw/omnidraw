@@ -28,10 +28,13 @@ export type TWidgetCreateInput = {
 };
 
 export type TAvailableWidget = {
+  widgetKey: string;
   name: string;
   kind: 'widget' | null;
   hasDraft: boolean;
   hasPublished: boolean;
+  draftHealth: 'healthy' | 'unhealthy' | null;
+  publishedHealth: 'healthy' | 'unhealthy' | null;
   mountedInThisChat: boolean;
   problemCode: string | null;
 };

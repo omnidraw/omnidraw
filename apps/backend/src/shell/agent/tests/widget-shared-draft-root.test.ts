@@ -9,6 +9,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   writeFile,
@@ -90,6 +91,41 @@ function createCatalog(widgetsRoot: string): WidgetFilesystemCatalog {
 }
 
 describe('shared agent draft root', () => {
+  test('new chats stay empty and reconnect preserves only explicitly loaded drafts', async () => {
+    const { widgetsRoot, workspace } = await createHome();
+    await Promise.all([
+      scaffoldHelloDraft(join(widgetsRoot, 'drafts', 'hello-app')),
+      scaffoldHelloDraft(
+        join(widgetsRoot, 'drafts', 'other-app'),
+        'Other App',
+        'other-app',
+      ),
+    ]);
+
+    const firstRoot = await workspace.ensureChat(CHAT_ID);
+    expect(await readdir(join(firstRoot, 'widgets'))).toEqual([]);
+    const beforeList = await readdir(join(firstRoot, 'widgets'));
+    const available = await workspace.listAvailableWidgets(CHAT_ID);
+    expect(available.map((entry) => entry.name)).toEqual(['Hello App', 'Other App']);
+    expect(await readdir(join(firstRoot, 'widgets'))).toEqual(beforeList);
+
+    await workspace.loadWidget(CHAT_ID, 'Hello App');
+    await workspace.loadWidget(CHAT_ID, 'Hello App');
+    expect((await workspace.listMounts(CHAT_ID)).map((mount) => mount.name)).toEqual(['Hello App']);
+    await expect(workspace.resolveMountedPath(
+      CHAT_ID,
+      'widgets/Other App/ui/main.ts',
+    )).rejects.toThrow("Widget 'Other App' is not a backend mount.");
+    await workspace.ensureChat(CHAT_ID);
+    expect((await workspace.listMounts(CHAT_ID)).map((mount) => mount.name)).toEqual(['Hello App']);
+
+    const secondRoot = await workspace.ensureChat(SECOND_CHAT_ID);
+    expect(await readdir(join(secondRoot, 'widgets'))).toEqual([]);
+    await workspace.loadWidget(SECOND_CHAT_ID, 'Hello App');
+    expect((await workspace.listMounts(SECOND_CHAT_ID)).map((mount) => mount.name)).toEqual(['Hello App']);
+    expect((await workspace.listMounts(CHAT_ID)).map((mount) => mount.name)).toEqual(['Hello App']);
+  });
+
   test('a chat-created draft lands in the shared root and appears in the app catalog, Preview, and Publish inputs', async () => {
     const { widgetsRoot, workspace } = await createHome();
     const created = await workspace.createDraft(
@@ -122,16 +158,19 @@ describe('shared agent draft root', () => {
 
     const available = await workspace.listAvailableWidgets(CHAT_ID);
     expect(available).toEqual([{
+      widgetKey: 'hello-app',
       name: 'Hello App',
       kind: 'widget',
       hasDraft: true,
       hasPublished: false,
+      draftHealth: 'healthy',
+      publishedHealth: null,
       mountedInThisChat: true,
       problemCode: null,
     }]);
   });
 
-  test('mounts follow the manifest display name across a rename while the slug folder stays', async () => {
+  test('reconnect removes a stale owned mount and only an explicit load mounts the renamed draft', async () => {
     const { widgetsRoot, workspace } = await createHome();
     await workspace.createDraft(
       CHAT_ID,
@@ -143,10 +182,13 @@ describe('shared agent draft root', () => {
     await writeFile(join(draftPath, 'omnidraw.json'), scaffoldManifest('Renamed App', 'hello-app'));
 
     const chatRoot = await workspace.ensureChat(CHAT_ID);
+    expect(await workspace.listMounts(CHAT_ID)).toEqual([]);
+    expect(await lstat(join(chatRoot, 'widgets', 'Hello App')).catch(() => null)).toBeNull();
+
+    await workspace.loadWidget(CHAT_ID, 'Renamed App');
     const mounts = await workspace.listMounts(CHAT_ID);
     expect(mounts.map((mount) => mount.name)).toEqual(['Renamed App']);
     expect(mounts[0]?.targetPath).toBe(await realpath(draftPath));
-    expect(await lstat(join(chatRoot, 'widgets', 'Hello App')).catch(() => null)).toBeNull();
 
     const resolved = await workspace.resolveMountedPath(CHAT_ID, 'widgets/Renamed App/ui/main.ts');
     expect(await readFile(resolved.absolutePath, 'utf8')).toBe('export default 1;\n');
@@ -174,7 +216,7 @@ describe('shared agent draft root', () => {
       SECOND_CHAT_ID,
       { name: 'hello app' },
       ({ cwd }) => scaffoldHelloDraft(cwd, 'hello app'),
-    )).rejects.toThrow('collides with existing');
+    )).rejects.toThrow("Widget name 'hello app' is already in use.");
 
     await expect(workspace.createDraft(
       SECOND_CHAT_ID,

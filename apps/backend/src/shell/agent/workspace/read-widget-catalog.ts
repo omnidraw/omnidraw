@@ -81,10 +81,13 @@ export async function readWidgetCatalog(effects: TEffects, args: TArgs): Promise
     const parsed = manifest ? effects.parseManifest(manifest) : { ok: false as const };
     if (!parsed.ok) {
       widgets.push({
+        widgetKey: folder,
         name: folder,
         kind: null,
         hasDraft: true,
         hasPublished: false,
+        draftHealth: 'unhealthy',
+        publishedHealth: null,
         mountedInThisChat: false,
         problemCode: 'WIDGET_MANIFEST_INVALID',
       });
@@ -93,10 +96,13 @@ export async function readWidgetCatalog(effects: TEffects, args: TArgs): Promise
     const normalizedName = fnNormalizeWidgetName(parsed.name);
     const mountable = normalizedName.ok && normalizedName.value === parsed.name;
     widgets.push({
+      widgetKey: folder,
       name: mountable ? parsed.name : folder,
       kind: parsed.kind,
       hasDraft: true,
       hasPublished: false,
+      draftHealth: mountable && parsed.slug === folder ? 'healthy' : 'unhealthy',
+      publishedHealth: null,
       mountedInThisChat: mountable && mounted.has(normalizedName.caseKey),
       problemCode: parsed.slug !== folder
         ? 'WIDGET_DIRECTORY_NAME_INVALID'

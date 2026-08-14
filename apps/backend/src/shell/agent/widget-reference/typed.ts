@@ -41,6 +41,41 @@ export type TWidgetReferenceResolver = Readonly<{
   assertCurrent(resolution: TWidgetReferenceResolution): Promise<void>;
 }>;
 
+export type TAgentWidgetCatalogEntry = Readonly<{
+  widgetKey: string;
+  displayName: string;
+  kind: 'widget' | null;
+  hasDraft: boolean;
+  hasPublished: boolean;
+  draftHealth: 'healthy' | 'unhealthy' | null;
+  publishedHealth: 'healthy' | 'unhealthy' | null;
+  problemCode: string | null;
+}>;
+
+export type TAgentWidgetCatalogSnapshot = Readonly<{
+  catalogGeneration: number;
+  catalogDigestSha256: string;
+  entries: readonly TAgentWidgetCatalogEntry[];
+}>;
+
+export type TAgentEditableDraftResolution = Readonly<{
+  widgetKey: string;
+  displayName: string;
+  slug: string;
+  treeDigestSha256: string;
+  sourceDecision: 'existing-draft' | 'materialized-publication';
+  materialized: boolean;
+}>;
+
+/** Widget-domain authority exposed narrowly to AI Chat authoring. */
+export type TAgentWidgetAuthoringAuthority = Readonly<{
+  catalog(): Promise<TAgentWidgetCatalogSnapshot>;
+  ensureEditableDraft(args: Readonly<{
+    name: string;
+  }>): Promise<TAgentEditableDraftResolution>;
+  assertEditableDraftCurrent(resolution: TAgentEditableDraftResolution): Promise<void>;
+}>;
+
 export type TWidgetPromptSelectionContext = Readonly<{
   canvasId: string;
   explicitlyMentioned: readonly TResolvedWidgetReference[];

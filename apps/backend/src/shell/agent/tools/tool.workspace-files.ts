@@ -48,14 +48,14 @@ async function installManifestChange(
   await args.workspace.prepareNpmDependencies();
   const result = await (args.npmInstall
     ? args.npmInstall(mount.targetPath)
-    : tryNpmInstall({ access, execFile, join }, {
+    : tryNpmInstall({ access, readFile: (path, encoding) => readFile(path, encoding), execFile, join }, {
         cwd: mount.targetPath,
         userConfigPath: args.workspace.npmUserConfigPath,
       }));
   if (result.status !== 'success') {
     throw new Error(result.status === 'error'
-      ? `Dependency installation failed: ${result.message}`
-      : `Dependency installation was skipped: ${result.reason}`);
+      ? `Dependency lock generation failed: ${result.message}`
+      : `Dependency lock generation was skipped: ${result.reason}`);
   }
 }
 

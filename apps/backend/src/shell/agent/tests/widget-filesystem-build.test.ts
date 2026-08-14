@@ -454,8 +454,10 @@ describe('filesystem widget build service', () => {
     expect(prepared.manifestJson).toContain('Presentation changed safely.');
     expect(prepared.files.map((file) => file.path)).toEqual([
       'capsule.artifact',
+      'dist/.omnidraw-authoring-source.artifact',
       'dist/main.js',
     ]);
+    expect(prepared.browser.files.map((file) => file.path)).toEqual(['dist/main.js']);
     expect(prepared.release.descriptor.complete).toBe(true);
     expect(prepared.release.canonicalJson).not.toContain('Presentation changed safely.');
   });
@@ -531,6 +533,7 @@ describe('filesystem widget build service', () => {
       construct: artifactBuilder.construct.bind(artifactBuilder) as (
         request: TWidgetArtifactConstructionRequest,
       ) => Promise<TWidgetArtifactConstructionResult>,
+      decodeSourceArtifact: artifactBuilder.decodeSourceArtifact.bind(artifactBuilder),
       async signConstruction(
         request: import('@omnidraw/sdk/contract').TWidgetArtifactConstructionSignRequest,
       ) {
@@ -577,6 +580,12 @@ describe('filesystem widget build service', () => {
     }]);
     expect(signed.capsule.artifactBytes).toEqual(new Uint8Array([4, 5, 6, 0xff]));
     expect(signed.capsule.runtime.signatureKeyIds).toEqual(['release-key']);
+    expect(service.decodePublishedSourceArtifact(
+      construction.construction.sourceArtifact.bytes,
+    )).toEqual([{
+      path: 'src/main.ts',
+      bytes: new TextEncoder().encode('export default 1;'),
+    }]);
     await service.close();
   });
 });

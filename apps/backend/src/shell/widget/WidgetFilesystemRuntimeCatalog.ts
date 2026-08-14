@@ -9,6 +9,8 @@ import {
   type TWidgetCatalogCapsuleInspectionEffects,
   type TPinnedWidgetCatalogRoot,
   type TWidgetFilesystemManagementCapability,
+  type TAgentEditableDraftResolution,
+  type TAgentWidgetCatalogSnapshot,
   type TWidgetReferenceInput,
   type TWidgetReferenceResolution,
   type WidgetFilesystemBuildService,
@@ -335,6 +337,129 @@ export class WidgetFilesystemRuntimeCatalog {
     ) throw errorWithCode(
       'Widget reference changed while its editable target was mounted.',
       'WIDGET_REFERENCE_STALE',
+    );
+  }
+
+  async agentCatalog(): Promise<TAgentWidgetCatalogSnapshot> {
+    const snapshot = await this.refresh();
+    return Object.freeze({
+      catalogGeneration: snapshot.generation,
+      catalogDigestSha256: snapshot.digestSha256,
+      entries: Object.freeze(Object.values(snapshot.entries).map((entry) => {
+        const manifest = entry.draft?.manifest ?? entry.published?.manifest;
+        const draftProblem = entry.draft?.health === 'unhealthy'
+          ? 'WIDGET_DRAFT_UNHEALTHY'
+          : null;
+        const publishedProblem = entry.published?.health === 'unhealthy'
+          ? 'WIDGET_PUBLICATION_UNHEALTHY'
+          : null;
+        return Object.freeze({
+          widgetKey: entry.slug,
+          displayName: manifest?.name ?? entry.slug,
+          kind: manifest === null || manifest === undefined ? null : 'widget' as const,
+          hasDraft: entry.draft !== null,
+          hasPublished: entry.published !== null,
+          draftHealth: entry.draft?.health ?? null,
+          publishedHealth: entry.published?.health ?? null,
+          problemCode: draftProblem ?? publishedProblem,
+        });
+      }).sort((left, right) => left.displayName.localeCompare(right.displayName, 'en-US')
+        || left.widgetKey.localeCompare(right.widgetKey, 'en-US'))),
+    });
+  }
+
+  async ensureAgentEditableDraft(args: Readonly<{
+    name: string;
+  }>): Promise<TAgentEditableDraftResolution> {
+    const requested = args.name.normalize('NFKC').trim();
+    if (requested.length < 1 || requested.length > 120) {
+      throw errorWithCode('Widget name is invalid.', 'WIDGET_LOAD_INPUT_INVALID');
+    }
+    const snapshot = await this.refresh();
+    const folded = requested.toLocaleLowerCase('en-US');
+    const matches = Object.values(snapshot.entries).filter((entry) => {
+      const names = new Set([
+        entry.slug,
+        entry.draft?.manifest?.name,
+        entry.published?.manifest?.name,
+      ].filter((value): value is string => typeof value === 'string'));
+      return [...names].some((value) => (
+        value === requested || value.toLocaleLowerCase('en-US') === folded
+      ));
+    });
+    if (matches.length === 0) {
+      throw errorWithCode(`Widget '${requested}' was not found.`, 'WIDGET_LOAD_NOT_FOUND');
+    }
+    if (matches.length !== 1) {
+      throw errorWithCode(
+        `Widget name '${requested}' is ambiguous. Load it by its exact widget key.`,
+        'WIDGET_LOAD_AMBIGUOUS',
+      );
+    }
+    const selected = matches[0]!;
+    if (selected.draft !== null) {
+      if (selected.draft.health !== 'healthy' || selected.draft.manifest === null) {
+        throw errorWithCode(
+          `Widget '${selected.slug}' has an unhealthy draft. Repair or remove that draft before loading it.`,
+          'WIDGET_DRAFT_UNHEALTHY',
+        );
+      }
+      return Object.freeze({
+        widgetKey: selected.slug,
+        displayName: selected.draft.manifest.name,
+        slug: selected.slug,
+        treeDigestSha256: selected.draft.treeDigestSha256,
+        sourceDecision: 'existing-draft' as const,
+        materialized: false,
+      });
+    }
+    if (selected.published?.health !== 'healthy' || selected.published.manifest === null) {
+      throw errorWithCode(
+        `Widget '${selected.slug}' has no healthy editable or published form.`,
+        'WIDGET_LOAD_UNHEALTHY',
+      );
+    }
+    if (this.#management === null) {
+      throw errorWithCode(
+        'Published widget source materialization is unavailable.',
+        'WIDGET_MANAGEMENT_UNAVAILABLE',
+      );
+    }
+    const result = await this.#management.materializePublishedDraft({
+      widgetKey: selected.slug,
+      expectedCatalogDigestSha256: snapshot.digestSha256,
+    });
+    const draft = result.snapshot.entries[selected.slug]?.draft;
+    if (draft?.health !== 'healthy' || draft.manifest === null) {
+      throw errorWithCode(
+        'Materialized widget draft did not become healthy.',
+        'WIDGET_DRAFT_UNHEALTHY',
+      );
+    }
+    return Object.freeze({
+      widgetKey: selected.slug,
+      displayName: draft.manifest.name,
+      slug: selected.slug,
+      treeDigestSha256: draft.treeDigestSha256,
+      sourceDecision: 'materialized-publication' as const,
+      materialized: true,
+    });
+  }
+
+  async assertAgentEditableDraftCurrent(
+    resolution: TAgentEditableDraftResolution,
+  ): Promise<void> {
+    const current = await this.refresh();
+    const draft = current.entries[resolution.widgetKey]?.draft;
+    if (
+      draft?.health !== 'healthy'
+      || draft.manifest === null
+      || draft.manifest.name !== resolution.displayName
+      || draft.manifest.slug !== resolution.slug
+      || draft.treeDigestSha256 !== resolution.treeDigestSha256
+    ) throw errorWithCode(
+      'Widget draft changed while it was being loaded.',
+      'WIDGET_CATALOG_CHANGED',
     );
   }
 

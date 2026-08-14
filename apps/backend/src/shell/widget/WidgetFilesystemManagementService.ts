@@ -3,6 +3,7 @@ import { relative, sep } from 'node:path';
 import {
   NodeWidgetFilesystemWorkspace,
   NodeWidgetPublicationFilesystem,
+  WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH,
   WIDGET_CATALOG_CONTRACTS,
   scanWidgetCatalog,
   scanPublishedWidgetFolder,
@@ -28,6 +29,7 @@ import {
 } from '#backend/shell/agent';
 import {
   ZWidgetManifestV1,
+  fnCanonicalizeWidgetManifestV1,
   fnNormalizeWidgetManifestV1,
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
@@ -298,6 +300,154 @@ implements TWidgetFilesystemManagementCapability {
       releaseJson: prepared.release.canonicalJson,
       barrier: this.#config.barrier,
     });
+    return immutableResult(args.widgetKey, await this.#config.catalog.refresh());
+  }
+
+  /**
+   * Creates a mutable draft from the exact release-attested source artifact of
+   * a healthy published-only widget. The publication is read through the
+   * widget authority and is never mounted into AI Chat.
+   */
+  async materializePublishedDraft(args: Readonly<{
+    widgetKey: string;
+    expectedCatalogDigestSha256: string;
+    signal?: AbortSignal;
+  }>): Promise<TWidgetFilesystemCatalogMutationResult> {
+    const snapshot = await this.#refreshAndFence(args.expectedCatalogDigestSha256);
+    const entry = snapshot.entries[args.widgetKey];
+    if (entry === undefined) {
+      throw errorWithCode('Widget does not exist.', 'WIDGET_MISSING');
+    }
+    if (entry.draft !== null) {
+      throw errorWithCode(
+        entry.draft.health === 'healthy'
+          ? 'Widget already has an editable draft.'
+          : 'Widget has an unhealthy draft that must be repaired before loading.',
+        entry.draft.health === 'healthy'
+          ? 'WIDGET_DRAFT_EXISTS'
+          : 'WIDGET_DRAFT_UNHEALTHY',
+      );
+    }
+    const published = entry.published;
+    if (
+      published?.health !== 'healthy'
+      || published.manifest === null
+      || published.release === null
+    ) throw errorWithCode(
+      'Published widget is missing or unhealthy.',
+      'WIDGET_PUBLICATION_UNHEALTHY',
+    );
+
+    const sourceObservation = published.files.find(
+      (file) => file.path === WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH,
+    );
+    if (sourceObservation === undefined) {
+      throw errorWithCode(
+        'The current publication has no editable source artifact. Build and Publish it again before loading it into AI Chat.',
+        'WIDGET_PUBLISHED_SOURCE_UNAVAILABLE',
+      );
+    }
+    const releasePaths = new Set(published.release.files.map((file) => file.path));
+    if (!releasePaths.has(sourceObservation.path)) {
+      throw errorWithCode(
+        'Published source artifact is not release-attested.',
+        'WIDGET_PUBLISHED_SOURCE_UNHEALTHY',
+      );
+    }
+    const root = await this.#root;
+    const sourceArtifactBytes = await this.#config.filesystem.readFile(root, {
+      relativePath: `${published.relativePath}/${sourceObservation.path}`,
+      maxBytes: sourceObservation.byteSize,
+    });
+    if (
+      sourceArtifactBytes.byteLength !== sourceObservation.byteSize
+      || sha256(sourceArtifactBytes) !== sourceObservation.sha256
+    ) {
+      throw errorWithCode(
+        'Published source artifact changed after catalog resolution.',
+        'WIDGET_CATALOG_CHANGED',
+      );
+    }
+    let decodedSourceFiles;
+    try {
+      decodedSourceFiles = this.#config.builder.decodePublishedSourceArtifact(
+        sourceArtifactBytes,
+      );
+    } catch (error) {
+      throw errorWithCode(
+        `Published source artifact is invalid: ${error instanceof Error ? error.message : String(error)}`,
+        'WIDGET_PUBLISHED_SOURCE_UNHEALTHY',
+      );
+    }
+    const sourceFiles = Object.freeze([
+      ...decodedSourceFiles,
+      Object.freeze({
+        path: 'omnidraw.json',
+        bytes: new TextEncoder().encode(fnCanonicalizeWidgetManifestV1(published.manifest)),
+      }),
+    ]);
+
+    const signal = args.signal ?? new AbortController().signal;
+    const token = this.#operationToken();
+    const stagingRelativePath = `.staging/import-materialize-${token}`;
+    const effects = await this.#publication;
+    const lease = await acquireWidgetRootWriterLease(effects, {
+      widgetRoot: await this.#widgetsRoot,
+      operationToken: token,
+      ownerToken: `materialize_${token}`,
+      purpose: 'draft',
+    });
+    const workspace = await this.#workspace;
+    try {
+      await this.#config.barrier.withWrite(async () => {
+        const current = await this.#scanCurrent();
+        const currentPublished = current.entries[args.widgetKey]?.published;
+        if (
+          current.digestSha256 !== snapshot.digestSha256
+          || currentPublished?.health !== 'healthy'
+          || currentPublished.treeDigestSha256 !== published.treeDigestSha256
+          || currentPublished.releaseDescriptorDigestSha256
+            !== published.releaseDescriptorDigestSha256
+        ) throw errorWithCode(
+          'Widget catalog changed while published source was materialized.',
+          'WIDGET_CATALOG_CHANGED',
+        );
+        await workspace.prepareStaging({
+          relativePath: stagingRelativePath,
+          expectedAbsent: true,
+          signal,
+        });
+        try {
+          const staged = await workspace.materializeStagedSource({
+            destinationRelativePath: stagingRelativePath,
+            files: sourceFiles,
+            signal,
+          });
+          const manifest = await workspace.inspectManagedManifest({
+            relativePath: stagingRelativePath,
+            signal,
+          });
+          if (
+            manifest.slug !== args.widgetKey
+            || manifest.manifest.name !== published.manifest!.name
+          ) throw errorWithCode(
+            'Published source snapshot identity does not match its catalog entry.',
+            'WIDGET_REFERENCE_AMBIGUOUS',
+          );
+          await workspace.promoteStaging({
+            stagingRelativePath,
+            draftRelativePath: `drafts/${args.widgetKey}`,
+            expectedDraftAbsent: true,
+            expectedTreeDigestSha256: staged.digestSha256,
+            signal,
+          });
+        } finally {
+          await workspace.removeManagedPath({ relativePath: stagingRelativePath });
+        }
+      });
+    } finally {
+      await lease.release();
+    }
     return immutableResult(args.widgetKey, await this.#config.catalog.refresh());
   }
 

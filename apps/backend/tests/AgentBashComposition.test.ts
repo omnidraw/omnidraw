@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fnResolveOmnidrawHome } from '#backend/shell/config/fn.resolve-omnidraw-home';
@@ -10,7 +10,6 @@ import {
   LiveCanvas,
   LiveDatabase,
 } from '../src/shell/runtime/service.live-mechanics';
-import type { TAgentBashProcessDetails } from '../src/shell/agent/AgentBashCapability';
 import type { AgentService } from '../src/shell/agent/AgentService';
 import { Effect, ManagedRuntime } from 'effect';
 
@@ -20,8 +19,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe('production Agent Bash composition', () => {
-  test('provides Bun PTY Bash through the source-run AgentService registry', async () => {
+describe('production Agent shell isolation', () => {
+  test('omits unrestricted Bash while retaining bounded widget authoring tools', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omnidraw-agent-bash-composition-'));
     roots.push(root);
     const home = fnResolveOmnidrawHome({ join, resolve }, {
@@ -103,29 +102,10 @@ describe('production Agent Bash composition', () => {
         canvasId,
       );
       const session = agent.sessionMap[widgetId]?.[chatId]?.session;
-      const bash = session?.getToolDefinition('bash');
-      if (!bash) throw new Error('Production AgentService did not register Bash.');
-
-      const result = await bash.execute(
-        'bash-composition-call',
-        { command: 'pwd' },
-        undefined,
-        undefined,
-        {} as never,
-      );
-      const details = result.details as TAgentBashProcessDetails;
-      expect(result.content[0]?.type).toBe('text');
-      expect(result.content[0]?.type === 'text' ? result.content[0].text : '').not.toContain(
-        'BASH_RUNTIME_UNAVAILABLE',
-      );
-      expect(details).toMatchObject({
-        status: 'succeeded',
-        exitCode: 0,
-        terminalCreated: true,
-        terminalClosed: true,
-      });
-      expect(details.output.trim()).toBe(await realpath(details.cwd));
-      expect(details.cwd).toContain(chatId);
+      expect(session?.getToolDefinition('bash')).toBeUndefined();
+      expect(session?.getToolDefinition('od_widget_load')).toBeDefined();
+      expect(session?.getToolDefinition('od_widget_validate')).toBeDefined();
+      expect(session?.getActiveToolNames()).not.toContain('bash');
     } finally {
       await runtime.dispose();
     }
