@@ -1520,12 +1520,6 @@ async function provePersistentPreGuestPreviewFailure(page: Page): Promise<void> 
   });
   await failure.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
   await assertDraftGuestMounted(page, portal, 'lockfile-only draft Rebuild');
-  const titlebar = page.locator('[data-vibecanvas-widget-titlebar]').filter({
-    has: page.getByText('Preview: Browser Unbuilt Widget', { exact: true }),
-  });
-  await titlebar.locator('[aria-label="Preview actions"]').click();
-  await page.getByRole('menuitem', { name: 'Remove', exact: true }).click();
-  await portal.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
 }
 
 async function restartBackendWithMountedChat(args: Readonly<{
@@ -1880,6 +1874,12 @@ async function runBrowserSuite(
     await restartedPreviewPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
     await assertDraftGuestMounted(page, restartedPreviewPortal, 'draft Preview backend restart');
     await assertNoHandledErrorAlerts(page, 'backend restart recovery');
+    const restartedPreviewTitlebar = page.locator('[data-vibecanvas-widget-titlebar]').filter({
+      has: page.getByText('Preview: Browser Acceptance Widget', { exact: true }),
+    });
+    await restartedPreviewTitlebar.locator('[aria-label="Preview actions"]').click();
+    await page.getByRole('menuitem', { name: 'Remove', exact: true }).click();
+    await restartedPreviewPortal.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
 
     console.log('[browser:live] persistent non-blank pre-guest Preview build failure');
     await provePersistentPreGuestPreviewFailure(page);
