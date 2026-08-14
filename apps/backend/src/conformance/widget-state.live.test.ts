@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { Effect } from 'effect';
-import { LiveCanvas, LiveDatabase } from '../shell/runtime/service.live-mechanics';
+import { CanvasItemStoreTurso } from '../shell/database/CanvasItemStoreTurso';
+import { LiveDatabase } from '../shell/runtime/service.live-mechanics';
 import {
   WIDGET_STATE_CONFORMANCE_IDENTITY,
   runWidgetStateConformance,
@@ -13,20 +14,19 @@ describe('widget-state live conformance', () => {
     try {
       const result = await fixture.runtime.runPromise(Effect.gen(function*() {
         const database = yield* LiveDatabase;
-        const canvas = yield* LiveCanvas;
         yield* Effect.promise(() => database.canvas.create({
           id: WIDGET_STATE_CONFORMANCE_IDENTITY.canvasId,
           name: 'Widget-state conformance',
         }));
-        yield* Effect.promise(() => canvas.execute({
+        // Seed the persisted identity directly. This conformance scenario owns
+        // widget-state CAS/replay semantics, not catalog-backed placement
+        // admission, which has its own live and causal coverage.
+        const items = new CanvasItemStoreTurso(database.db);
+        yield* Effect.promise(() => items.applyMutations({
           commandId: 'place-widget-state-fixture',
           canvasId: WIDGET_STATE_CONFORMANCE_IDENTITY.canvasId,
-          baseRevision: 0,
-          preconditions: [{
-            type: 'item-absent',
-            itemId: WIDGET_STATE_CONFORMANCE_IDENTITY.elementId,
-          }],
-          operations: [{
+          expectedCanvasRevision: 0,
+          mutations: [{
             type: 'insert',
             item: {
               id: WIDGET_STATE_CONFORMANCE_IDENTITY.elementId,

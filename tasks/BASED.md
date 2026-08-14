@@ -203,6 +203,10 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B89](b/B89.md) - AI Chat: first connection races durable canvas insertion
 - [x]: [B90](b/B90.md) - AI widget Preview: failed mounts are uninspectable and diagnostics collapse
 - [x]: [B91](b/B91.md) - AI widget creation: local registry sync resolves a missing backend script
+- [x]: [B92](b/B92.md) - AI Chat workspaces: restore explicit widget loading and hard publication isolation
+- [x]: [B93](b/B93.md) - Widgets: restore source-aware deletion for drafts and publications
+- [x]: [B94](b/B94.md) - Canvas sidebar: make deletion reachable and coordinate retained chats
+- [x]: [B95](b/B95.md) - AI widget create: registry SDK rebuild crashes the live backend
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
