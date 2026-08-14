@@ -211,6 +211,8 @@ describe('shared agent draft root', () => {
       ({ cwd, name }) => scaffoldHelloDraft(cwd, name, 'other-app'),
     );
     await workspace.ensureChat(SECOND_CHAT_ID);
+    await workspace.loadWidget(SECOND_CHAT_ID, 'Hello App');
+    await workspace.loadWidget(SECOND_CHAT_ID, 'Other App');
 
     const planned = await workspace.observeDraftMounts('hello-app');
     expect(planned.map((mount) => mount.chatId).sort()).toEqual([CHAT_ID, SECOND_CHAT_ID].sort());
