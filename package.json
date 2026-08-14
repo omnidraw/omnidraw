@@ -34,7 +34,7 @@
     "test:frontend:conformance": "bun test apps/frontend/src/conformance apps/frontend/src/sim",
     "test:db": "bun run db:schema:verify && bun run db:constraints:test && bun run db:recovery:test",
     "test:packed-public-composition": "bun run scripts/test-packed-public-composition.ts && bun run scripts/test-packed-sdk-offline-check.ts",
-    "test:browser": "bun run test:browser:typecheck && bun run scripts/test-packed-canvas.ts && bun run test:browser:live",
+    "test:browser": "bun run test:browser:typecheck && bun run --cwd apps/frontend build && bun run scripts/test-preview-inspection-built-shell.ts && bun run scripts/test-packed-canvas.ts && bun run test:browser:live",
     "test:browser:typecheck": "bun x tsc --noEmit -p tests/browser/tsconfig.json",
     "test:browser:live": "bun run tests/browser/live-app.acceptance.ts",
     "verify:package-dists": "bun run scripts/verify-package-dists.ts",

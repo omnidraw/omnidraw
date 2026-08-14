@@ -12,7 +12,7 @@ import type {
   TWidgetInspectionTarget,
   TWidgetTheme,
 } from "@omnidraw/sdk";
-import { createWidgetBrowserHost } from "@omnidraw/sdk/host";
+import { createWidgetBrowserHost, WidgetHostError } from "@omnidraw/sdk/host";
 
 type TBrowserMountJob = Readonly<{
   jobId: string;
@@ -20,6 +20,7 @@ type TBrowserMountJob = Readonly<{
   artifact: Readonly<{
     bytesBase64: string;
     digestSha256: string;
+    artifactHash: `sha256:${string}`;
     runtime?: unknown;
     runtimeDescriptor?: unknown;
   } & Record<string, unknown>>;
@@ -151,6 +152,22 @@ function recordDiagnostic(diagnostic: TWidgetHostDiagnostic): void {
   }));
 }
 
+function recordShellFailure(code: string): void {
+  if (runtimeEvents.length >= 100) return;
+  runtimeEvents.push(Object.freeze({
+    origin: "shell",
+    phase: "mount",
+    code,
+    severity: "error",
+    message: `shell ${code}`,
+    ...(activeArtifactHash === undefined ? {} : {
+      artifactHash: activeArtifactHash,
+      runtimeGeneration: 1,
+      lifecycleGeneration: 1,
+    }),
+  }));
+}
+
 async function mount(job: TBrowserMountJob): Promise<void> {
   if (activeJob !== undefined) throw new Error("Preview inspection shell is single-use.");
   const bytes = decodeBase64(job.artifact.bytesBase64);
@@ -160,6 +177,7 @@ async function mount(job: TBrowserMountJob): Promise<void> {
   root.style.width = `${job.viewport.width}px`;
   root.style.height = `${job.viewport.height}px`;
   activeJob = job;
+  activeArtifactHash = job.artifact.artifactHash;
   const functions: IWidgetFunctionHostPort = {
     async invoke(request) {
       const invoke = window.__OMNIDRAW_PREVIEW_INSPECTION_INVOKE__;
@@ -167,58 +185,85 @@ async function mount(job: TBrowserMountJob): Promise<void> {
       return await invoke({ functionName: request.functionName, input: request.input }) as never;
     },
   };
-  const browserHost = await createWidgetBrowserHost({
-    document,
-    catalog: job.hostConfiguration,
-    createId: () => crypto.randomUUID(),
-    digestSha256,
-  });
+  let browserHost: IWidgetBrowserHost;
+  try {
+    browserHost = await createWidgetBrowserHost({
+      document,
+      catalog: job.hostConfiguration,
+      createId: () => crypto.randomUUID(),
+      digestSha256,
+    });
+  } catch (error) {
+    recordShellFailure("INSPECTION_CREATE_HOST_FAILED");
+    throw error;
+  }
   host = browserHost;
   const runtime = job.artifact.runtime ?? job.artifact.runtimeDescriptor;
   if (runtime === undefined) throw new Error("Inspection runtime metadata is unavailable.");
-  const artifact = await browserHost.validateArtifact({
-    ...job.artifact,
-    ...record(runtime),
-    bytes,
-    digestSha256: job.artifact.digestSha256,
-    runtime,
-    functions: job.functionDescriptors,
-  });
+  let artifact: Awaited<ReturnType<IWidgetBrowserHost["validateArtifact"]>>;
+  try {
+    artifact = await browserHost.validateArtifact({
+      ...job.artifact,
+      ...record(runtime),
+      bytes,
+      digestSha256: job.artifact.digestSha256,
+      runtime,
+      functions: job.functionDescriptors,
+    });
+  } catch (error) {
+    recordShellFailure("INSPECTION_VALIDATE_ARTIFACT_FAILED");
+    throw error;
+  }
   activeArtifactHash = artifact.artifactHash;
-  const mounted = await browserHost.inspect({
-    mode: "preview",
-    artifact,
-    container: root,
-    subject: {
-      canvasId: `inspection-${job.jobId}`,
-      elementId: `inspection-${job.jobId}`,
-      widgetInstanceId: `inspection-${job.jobId}`,
-      widgetKey: job.widgetKey,
-    },
-    viewport: {
-      width: job.viewport.width,
-      height: job.viewport.height,
-      scale: 1,
-      visibility: "visible",
-      distance: 0,
-      priority: 1,
-      occlusion: 0,
-    },
-    props: job.props ?? {},
-    theme: job.theme,
-    functions,
-    onDiagnostic: recordDiagnostic,
-    onFatal: () => recordDiagnostic({
-      format: "omnidraw.widget-host-diagnostic.v1",
-      phase: "runtime",
-      category: "lifecycle",
-      code: "INSPECTION_FATAL",
-      fatal: true,
-      message: "The inspection widget failed.",
-    }),
-  });
+  let mounted: IWidgetBrowserInspectionMount;
+  try {
+    mounted = await browserHost.inspect({
+      mode: "preview",
+      artifact,
+      container: root,
+      subject: {
+        canvasId: `inspection-${job.jobId}`,
+        elementId: `inspection-${job.jobId}`,
+        widgetInstanceId: `inspection-${job.jobId}`,
+        widgetKey: job.widgetKey,
+      },
+      viewport: {
+        width: job.viewport.width,
+        height: job.viewport.height,
+        scale: 1,
+        visibility: "visible",
+        distance: 0,
+        priority: 1,
+        occlusion: 0,
+      },
+      props: job.props ?? {},
+      theme: job.theme,
+      functions,
+      onDiagnostic: recordDiagnostic,
+      onFatal: () => recordDiagnostic({
+        format: "omnidraw.widget-host-diagnostic.v1",
+        phase: "runtime",
+        category: "lifecycle",
+        code: "INSPECTION_FATAL",
+        fatal: true,
+        message: "The inspection widget failed.",
+      }),
+    });
+  } catch (error) {
+    recordShellFailure(error instanceof WidgetHostError
+      ? error.code
+      : "INSPECTION_CAPSULE_MOUNT_FAILED");
+    throw error;
+  }
   mountHandle = mounted;
-  await mounted.ready();
+  try {
+    await mounted.ready();
+  } catch (error) {
+    recordShellFailure(error instanceof WidgetHostError
+      ? error.code
+      : "INSPECTION_READY_FAILED");
+    throw error;
+  }
 }
 
 function query(target: TInspectionTargetInput) {

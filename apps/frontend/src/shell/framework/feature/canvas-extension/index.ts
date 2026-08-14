@@ -28,6 +28,7 @@ import {
   fnWidgetPreviewActionId,
 } from "@/core/widgets/fn.placed-widget-node";
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
+import { fnWidgetViewport } from "@/core/widgets/fn.widget-viewport";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
@@ -75,9 +76,15 @@ function previewFailurePresentation(error: unknown): TPreviewFailurePresentation
       });
     }
   }
+  const code = Predicate.isObject(error) && typeof error.code === "string"
+    && /^[A-Z][A-Z0-9_]{0,127}$/.test(error.code)
+      ? error.code
+      : undefined;
   return Object.freeze({
     title: "Preview failed",
-    message: "The accepted Preview could not start. Repair and rebuild the widget, or remove this frame.",
+    message: code === undefined
+      ? "The accepted Preview could not start. Repair and rebuild the widget, or remove this frame."
+      : `The accepted Preview could not start (${code}). Repair and rebuild the widget, or remove this frame.`,
     rebuildDisabled: false,
   });
 }
@@ -93,18 +100,6 @@ function subject(
     elementId: node.id,
     widgetInstanceId: extension.instanceId,
     widgetKey: extension.widgetKey,
-  };
-}
-
-function viewport(node: Readonly<TWidgetFrameNode>) {
-  return {
-    width: node.size.width,
-    height: node.size.height,
-    scale: Math.max(0.0001, node.transform.scale.x),
-    visibility: node.visibility === "hidden" ? "hidden" as const : "visible" as const,
-    distance: 0,
-    priority: 1,
-    occlusion: 0,
   };
 }
 
@@ -242,7 +237,7 @@ export function createFrontendWidgetExtension(
                   mode: extension.type === "widget-preview" ? "preview" : "published",
                   container: args.container,
                   subject: exactSubject,
-                  viewport: viewport(activeNode),
+                  viewport: fnWidgetViewport(activeNode),
                   theme: fnWidgetHostTheme(application.theme.service.getTheme()),
                   props: extension.uiProps,
                   signal: args.signal,
@@ -276,7 +271,7 @@ export function createFrontendWidgetExtension(
           await open();
           const unsubscribeNode = args.onNodeChange?.((node) => {
             activeNode = node;
-            mount?.setViewport(viewport(node));
+            mount?.setViewport(fnWidgetViewport(node));
             const next = fnReadCanvasWidgetExtension(node);
             if (next?.uiProps !== undefined && typeof next.uiProps === "object" && next.uiProps !== null && !Array.isArray(next.uiProps)) {
               mount?.setProps(next.uiProps);

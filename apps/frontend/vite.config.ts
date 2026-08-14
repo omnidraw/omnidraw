@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import devtools from 'solid-devtools/vite';
 import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve } from "node:path";
 import { BUILTIN_THEMES } from "../../packages/theme/src/builtins";
 import { fnThemeCssRule } from "../../packages/theme/src/dom";
@@ -16,7 +15,6 @@ const sourceThemeCss = `/* Source-run theme defaults; release builds generate th
 export default defineConfig({
   plugins: [
     wasm(),
-    topLevelAwait(),
     {
       name: 'omnidraw-source-theme-css',
       enforce: 'pre',
@@ -53,7 +51,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: resolve(__dirname, './index.html'),
-        inspection: resolve(__dirname, './inspection.html'),
       },
     },
   },

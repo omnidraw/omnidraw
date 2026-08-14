@@ -15,6 +15,6 @@ export function resolvePreviewInspectionReleaseRuntime(
   args: TPreviewInspectionReleaseRuntimeArgs,
 ): TPreviewInspectionReleaseRuntime {
   return Object.freeze({
-    shellPath: resolve(args.sourceCliDir, '..', '..', '..', 'frontend', 'dist', 'inspection'),
+    shellPath: resolve(args.sourceCliDir, '..', '..', '..', '..', 'frontend', 'dist', 'inspection'),
   });
 }
