@@ -38,6 +38,7 @@ const RUNTIME_LOCK_PATH = join(
 );
 const OWNED_SCOPES = Object.freeze(['@omnidraw/']);
 const WIDGET_PACKAGE_ROOT = '@omnidraw/sdk';
+const WIDGET_PACKAGE_SYNC_TAG = 'omnidraw-workspace';
 const PUBLIC_PACKAGE_DIRECTORIES = Object.freeze({
   '@omnidraw/canvas-contract': 'packages/canvas-contract',
   '@omnidraw/canvas': 'packages/canvas',
@@ -644,15 +645,24 @@ async function tarballIntegrity(tarball) {
   return `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
 }
 
-async function publishedIntegrity(config, name, version) {
+async function publishedPackageState(config, name, version) {
   const packageUrl = new URL(encodeURIComponent(name), config.registryUrl);
   const response = await fetch(packageUrl);
-  if (response.status === 404) return null;
+  if (response.status === 404) {
+    return Object.freeze({ integrity: null, latestVersion: null });
+  }
   if (!response.ok) {
     throw new Error(`Registry metadata request failed (${response.status}) for ${name}.`);
   }
   const metadata = await response.json();
-  return metadata.versions?.[version]?.dist?.integrity ?? null;
+  return Object.freeze({
+    integrity: metadata.versions?.[version]?.dist?.integrity ?? null,
+    latestVersion: metadata['dist-tags']?.latest ?? null,
+  });
+}
+
+async function publishedIntegrity(config, name, version) {
+  return (await publishedPackageState(config, name, version)).integrity;
 }
 
 async function publicIntegrity(name, version) {
@@ -691,6 +701,20 @@ export function publishDecision(existingIntegrity, integrity, allowOverwrite) {
 }
 
 /**
+ * Keeps a shared local registry's existing `latest` owner stable while making
+ * this checkout's exact workspace version installable. A first publication,
+ * or an overwrite of the version that already owns `latest`, preserves npm's
+ * normal `latest` behavior. Another version uses a development-only tag so a
+ * lower-version worktree cannot move `latest` backwards (and npm will accept
+ * the otherwise-valid exact-version publication).
+ */
+export function widgetPackagePublishTag(latestVersion, version) {
+  return latestVersion === null || latestVersion === version
+    ? 'latest'
+    : WIDGET_PACKAGE_SYNC_TAG;
+}
+
+/**
  * Publishes one tarball to the local registry.
  *
  * By default this enforces real-npm-style immutability: publishing different
@@ -717,7 +741,8 @@ async function publishTarball(config, requestedTarball, options = {}) {
     tarballManifest(tarball),
     tarballIntegrity(tarball),
   ]);
-  const existingIntegrity = await publishedIntegrity(config, name, version);
+  const published = await publishedPackageState(config, name, version);
+  const existingIntegrity = published.integrity;
   const decision = publishDecision(existingIntegrity, integrity, allowOverwrite);
   if (decision === 'unchanged') {
     return Object.freeze({
@@ -747,6 +772,9 @@ async function publishTarball(config, requestedTarball, options = {}) {
       cwd: config.stateDirectory,
     });
   }
+  const tag = options.preserveLatest === true
+    ? widgetPackagePublishTag(published.latestVersion, version)
+    : null;
   await run('npm', [
     'publish',
     tarball,
@@ -756,6 +784,7 @@ async function publishTarball(config, requestedTarball, options = {}) {
     config.npmUserConfigPath,
     '--ignore-scripts',
     '--provenance=false',
+    ...(tag === null ? [] : ['--tag', tag]),
     '--json',
   ], {
     cwd: config.stateDirectory,
@@ -936,7 +965,10 @@ async function packWorkspacePackage(config, entry) {
     }
     // Workspace-local packages are always safe to overwrite in place: see the
     // `publishTarball` doc comment for why this differs from `publish`/`bootstrap`.
-    return await publishTarball(config, join(packDirectory, tarballs[0]), { allowOverwrite: true });
+    return await publishTarball(config, join(packDirectory, tarballs[0]), {
+      allowOverwrite: true,
+      preserveLatest: true,
+    });
   });
 }
 

@@ -61,6 +61,12 @@ for the explicit `publish`/`bootstrap` commands below, which still enforce
 strict immutability because they install externally-produced, known-good
 artifacts rather than this checkout's own in-flux source.
 
+Because the registry is shared by worktrees, synchronizing an exact workspace
+version does not take the `latest` tag from a different version. The sync uses
+the development-only `omnidraw-workspace` tag in that case; isolated widget
+installs request the manifest's exact SDK version and do not depend on either
+tag.
+
 Concurrent development processes serialize publication through the shared
 registry state directory. Lifecycle commands are `registry:start`, `registry:ensure`,
 `registry:status`, and `registry:stop`. Use `registry:start:foreground` to

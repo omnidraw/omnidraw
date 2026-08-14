@@ -12,6 +12,7 @@ import {
   publishDecision,
   withWorkspacePackageStage,
   widgetPackagePublishOrder,
+  widgetPackagePublishTag,
   widgetPackageSyncSource,
 } from './local-registry.mjs';
 
@@ -117,6 +118,13 @@ describe('local widget package publication', () => {
     // require a manual `package.json` version bump just to unblock
     // `bun run dev` again: the internal workspace-sync path always opts in.
     expect(publishDecision('sha512-old', 'sha512-new', true)).toBe('overwrite');
+  });
+
+  test('publishes an exact workspace version without taking latest from another version', () => {
+    expect(widgetPackagePublishTag('0.10.0', '0.8.0')).toBe('omnidraw-workspace');
+    expect(widgetPackagePublishTag('0.7.0', '0.8.0')).toBe('omnidraw-workspace');
+    expect(widgetPackagePublishTag('0.8.0', '0.8.0')).toBe('latest');
+    expect(widgetPackagePublishTag(null, '0.8.0')).toBe('latest');
   });
 
   test('rejects unsupported dependency-closure growth before invoking a build', async () => {
