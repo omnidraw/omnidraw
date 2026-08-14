@@ -28,7 +28,7 @@ import {
   fnWidgetPreviewActionId,
 } from "@/core/widgets/fn.placed-widget-node";
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
-import { fnWidgetViewport } from "@/core/widgets/fn.widget-viewport";
+import { createWidgetViewportSync } from "./widget-viewport-sync";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
@@ -152,10 +152,16 @@ export function createFrontendWidgetExtension(
           // Preview title and actions are authored once on the widget frame.
           // Cangine then owns their responsive title lane and compact overflow
           // menu; an extension titlebar here would overlay that same chrome.
-          let activeNode = args.node;
           let mount: IWidgetBrowserMount | undefined;
           let failureSurface: HTMLElement | null = null;
           let opening: Promise<boolean> | null = null;
+          const ownerWindow = application.ownerWindow as Window & typeof globalThis;
+          const viewportSync = createWidgetViewportSync({
+            container: args.container,
+            createResizeObserver: (callback) => new ownerWindow.ResizeObserver(callback),
+            devicePixelRatio: () => ownerWindow.devicePixelRatio,
+            node: args.node,
+          });
           const removePreview = (): void => {
             context.document.commit({
               source: "omnidraw.widget-preview.remove",
@@ -232,12 +238,13 @@ export function createFrontendWidgetExtension(
             opening = (async () => {
               const previous = mount;
               let next: IWidgetBrowserMount | undefined;
+              const initialViewport = viewportSync.current();
               try {
                 next = await runtime.mount({
                   mode: extension.type === "widget-preview" ? "preview" : "published",
                   container: args.container,
                   subject: exactSubject,
-                  viewport: fnWidgetViewport(activeNode),
+                  viewport: initialViewport,
                   theme: fnWidgetHostTheme(application.theme.service.getTheme()),
                   props: extension.uiProps,
                   signal: args.signal,
@@ -259,6 +266,7 @@ export function createFrontendWidgetExtension(
               failureSurface?.remove();
               failureSurface = null;
               mount = next;
+              viewportSync.attach(next, initialViewport);
               mounts.set(args.node.id, next);
               await previous?.dispose("replaced");
               return true;
@@ -270,8 +278,7 @@ export function createFrontendWidgetExtension(
           reloadByNode.set(args.node.id, open);
           await open();
           const unsubscribeNode = args.onNodeChange?.((node) => {
-            activeNode = node;
-            mount?.setViewport(fnWidgetViewport(node));
+            viewportSync.updateNode(node);
             const next = fnReadCanvasWidgetExtension(node);
             if (next?.uiProps !== undefined && typeof next.uiProps === "object" && next.uiProps !== null && !Array.isArray(next.uiProps)) {
               mount?.setProps(next.uiProps);
@@ -281,6 +288,7 @@ export function createFrontendWidgetExtension(
             mount?.setTheme(fnWidgetHostTheme(theme));
           });
           return async () => {
+            viewportSync.disconnect();
             unsubscribeNode?.();
             unsubscribeTheme();
             reloadByNode.delete(args.node.id);
