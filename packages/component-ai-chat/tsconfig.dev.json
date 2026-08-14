@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@omnidraw/canvas": ["../canvas/src/index.ts"],
+      "@omnidraw/canvas-contract": ["../canvas-contract/src/index.ts"],
+      "@omnidraw/canvas-contract/CONSTANTS": ["../canvas-contract/src/CONSTANTS.ts"],
+      "@omnidraw/theme": ["../theme/src/index.ts"]
+    }
+  }
+}

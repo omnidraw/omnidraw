@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(import.meta.dir, '..');
 const BACKEND = join(ROOT, 'apps/backend');
 const FRONTEND = join(ROOT, 'apps/frontend');
+const AI_CHAT = join(ROOT, 'packages/component-ai-chat');
 const backendEntries = Object.freeze([
   '@omnidraw/canvas-contract',
   '@omnidraw/canvas-contract/CONSTANTS',
@@ -36,6 +37,36 @@ const ready = new Promise<Readonly<{ port: number; pid: number }>>((resolveReady
 });
 let consumerOutput = '';
 let buildProcess: ReturnType<typeof Bun.spawn> | null = null;
+let aiChatWatcherOutput = '';
+let aiChatWatcherReadyResolve!: () => void;
+const aiChatWatcherReady = new Promise<void>((resolveReady) => {
+  aiChatWatcherReadyResolve = resolveReady;
+});
+const aiChatWatcher = Bun.spawn([
+  'bun',
+  'x',
+  'tsc',
+  '-p',
+  'tsconfig.dev.json',
+  '--watch',
+  '--preserveWatchOutput',
+], {
+  cwd: AI_CHAT,
+  stdout: 'pipe',
+  stderr: 'pipe',
+});
+const consumeAiChatWatcher = (async () => {
+  const reader = aiChatWatcher.stdout.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    aiChatWatcherOutput += decoder.decode(value, { stream: true });
+    if (aiChatWatcherOutput.includes('Watching for file changes.')) {
+      aiChatWatcherReadyResolve();
+    }
+  }
+})();
 const consumer = Bun.spawn([
   'bun',
   '--watch',
@@ -66,12 +97,15 @@ const consumeStdout = (async () => {
 })();
 
 try {
-  const healthy = await Promise.race([
-    ready,
+  const [healthy] = await Promise.race([
+    Promise.all([ready, aiChatWatcherReady]),
     Bun.sleep(10_000).then(() => {
-      throw new Error('Timed out waiting for the source-run backend import consumer.');
+      throw new Error('Timed out waiting for the source-run consumers.');
     }),
   ]);
+  if (!aiChatWatcherOutput.includes('Found 0 errors.')) {
+    throw new Error(`AI Chat dev type watcher did not start cleanly.\n${aiChatWatcherOutput}`);
+  }
   const build = Bun.spawn(['bun', 'run', 'build:public'], {
     cwd: ROOT,
     stdout: 'pipe',
@@ -121,7 +155,10 @@ try {
   if (readyCount !== 1 || healthChecks < 2) {
     throw new Error(`Expected one uninterrupted source-run process and repeated health checks; got ${readyCount} starts and ${healthChecks} checks.`);
   }
-  console.log(`[source-run-imports] one backend process stayed healthy across build:public (${healthChecks} checks)`);
+  if (aiChatWatcher.exitCode !== null || /error TS\d+|Cannot find module '@omnidraw\/canvas'/.test(aiChatWatcherOutput)) {
+    throw new Error(`AI Chat dev type watcher failed during build:public.\n${aiChatWatcherOutput}`);
+  }
+  console.log(`[source-run-imports] backend and AI Chat dev types stayed healthy across build:public (${healthChecks} checks)`);
 } finally {
   try {
     buildProcess?.kill('SIGTERM');
@@ -129,10 +166,15 @@ try {
     // A completed build no longer has a process to signal.
   }
   await buildProcess?.exited;
+  aiChatWatcher.kill('SIGTERM');
+  await aiChatWatcher.exited;
+  await consumeAiChatWatcher;
   consumer.kill('SIGTERM');
   await consumer.exited;
   await consumeStdout;
   const stderr = await outputText(consumer.stderr);
+  const aiChatWatcherStderr = await outputText(aiChatWatcher.stderr);
   if (consumerOutput !== '' && readyCount === 0) process.stderr.write(consumerOutput);
   if (stderr !== '') process.stderr.write(stderr);
+  if (aiChatWatcherStderr !== '') process.stderr.write(aiChatWatcherStderr);
 }

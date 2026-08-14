@@ -453,6 +453,27 @@ describe('application and import boundaries', () => {
     }
   })
 
+  test('AI Chat dev typechecking resolves Canvas source without changing release resolution', async () => {
+    const dev = await readTsconfig(join(ROOT, 'packages/component-ai-chat/tsconfig.dev.json'))
+    const devPaths = (dev.compilerOptions?.paths ?? {}) as Record<string, readonly string[]>
+    expect(dev.extends).toBe('./tsconfig.json')
+    expect(devPaths).toEqual({
+      '@omnidraw/canvas': ['../canvas/src/index.ts'],
+      '@omnidraw/canvas-contract': ['../canvas-contract/src/index.ts'],
+      '@omnidraw/canvas-contract/CONSTANTS': ['../canvas-contract/src/CONSTANTS.ts'],
+      '@omnidraw/theme': ['../theme/src/index.ts'],
+    })
+
+    const regular = await readTsconfig(join(ROOT, 'packages/component-ai-chat/tsconfig.json'))
+    const build = await readTsconfig(join(ROOT, 'packages/component-ai-chat/tsconfig.build.json'))
+    expect(regular.compilerOptions?.paths).toBeUndefined()
+    expect(build.compilerOptions?.paths).toBeUndefined()
+
+    const devFrontend = await readFile(join(ROOT, 'scripts/dev-frontend.ts'), 'utf8')
+    expect(devFrontend).toContain('"tsconfig.dev.json"')
+    expect(devFrontend).not.toContain('"tsconfig.build.json", "--watch"')
+  })
+
   test('keeps public imports on their declared graph and all source off retired packages', async () => {
     const violations: string[] = []
     const roots = [

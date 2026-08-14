@@ -98,7 +98,7 @@ try {
   processes.push(spawnDevProcess({
     name: "ai-chat-types",
     cwd: path.join(rootDir, "packages/component-ai-chat"),
-    command: [bunExec, "x", "tsc", "-p", "tsconfig.build.json", "--watch", "--preserveWatchOutput"],
+    command: [bunExec, "x", "tsc", "-p", "tsconfig.dev.json", "--watch", "--preserveWatchOutput"],
   }))
   processes.push(spawnDevProcess({
     name: "frontend",
