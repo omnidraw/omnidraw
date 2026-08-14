@@ -33,6 +33,7 @@ import type {
   TWidgetMount,
   TWorkspaceGrepResult,
 } from './types';
+import type { TWidgetDeletionMount } from '../widget-filesystem/management/typed';
 
 type TWidgetWorkspaceConfig = {
   dataPath: string;
@@ -241,6 +242,70 @@ export class WidgetWorkspace {
     await this.#assertOwnedMountLink(mountPath, name);
     await rm(mountPath, { force: true });
     return true;
+  }
+
+  async observeDraftMounts(widgetKey: string): Promise<readonly TWidgetDeletionMount[]> {
+    if (!fnIsWidgetDraftSlug(widgetKey)) throw new TypeError('Widget draft key is invalid.');
+    const target = resolve(await realpath(this.draftRoot), widgetKey);
+    const chats = await readdir(this.chatRoot, { withFileTypes: true }).catch(() => []);
+    const mounts: TWidgetDeletionMount[] = [];
+    for (const chat of chats) {
+      if (!chat.isDirectory() || chat.isSymbolicLink()) continue;
+      try {
+        fnChatStorageSegments(chat.name);
+      } catch {
+        continue;
+      }
+      const widgetsRoot = join(this.chatRoot, chat.name, 'workspace', 'widgets');
+      const entries = await readdir(widgetsRoot, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (!entry.isSymbolicLink()) continue;
+        const normalized = fnNormalizeWidgetName(entry.name);
+        if (!normalized.ok || normalized.value !== entry.name) continue;
+        const mountPath = join(widgetsRoot, entry.name);
+        const linkTarget = await readlink(mountPath).catch(() => null);
+        if (linkTarget === null) continue;
+        const lexicalTarget = resolve(await realpath(dirname(mountPath)), linkTarget);
+        if (lexicalTarget !== target) continue;
+        mounts.push(Object.freeze({
+          chatId: chat.name,
+          name: entry.name,
+          relativePath: relative(this.agentRoot, mountPath).split(sep).join('/'),
+          linkTarget,
+        }));
+      }
+    }
+    return Object.freeze(mounts.sort((left, right) => (
+      left.relativePath.localeCompare(right.relativePath)
+    )));
+  }
+
+  async removeDraftMount(
+    widgetKey: string,
+    mount: TWidgetDeletionMount,
+  ): Promise<void> {
+    if (!fnIsWidgetDraftSlug(widgetKey)) throw new TypeError('Widget draft key is invalid.');
+    const expectedRelative = `chats/${mount.chatId}/workspace/widgets/${mount.name}`;
+    if (mount.relativePath !== expectedRelative) {
+      throw new Error('Widget chat mount identity is unsafe.');
+    }
+    fnChatStorageSegments(mount.chatId);
+    const normalized = fnNormalizeWidgetName(mount.name);
+    if (!normalized.ok || normalized.value !== mount.name) {
+      throw new Error('Widget chat mount name is unsafe.');
+    }
+    const mountPath = join(this.agentRoot, ...mount.relativePath.split('/'));
+    const target = resolve(await realpath(this.draftRoot), widgetKey);
+    const entry = await lstat(mountPath).catch(() => null);
+    if (entry === null) return;
+    if (!entry.isSymbolicLink()) throw new Error('Widget chat mount was replaced by a non-link entry.');
+    const linkTarget = await readlink(mountPath);
+    const lexicalTarget = resolve(await realpath(dirname(mountPath)), linkTarget);
+    if (
+      linkTarget !== mount.linkTarget
+      || lexicalTarget !== target
+    ) throw new Error('Widget chat mount changed after deletion was planned.');
+    await rm(mountPath, { force: true });
   }
 
   async resolveMountedPath(chatId: string, lexicalPath: string, options: { allowMissing?: boolean } = {}): Promise<TResolvedMountedPath> {

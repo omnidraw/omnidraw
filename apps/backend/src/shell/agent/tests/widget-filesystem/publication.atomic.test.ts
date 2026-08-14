@@ -511,7 +511,7 @@ describe('atomic filesystem widget publication', () => {
     expect(await readPublicationWriterLock(effects, { widgetRoot: root })).toBeNull();
   });
 
-  test('shares the exact root writer lease protocol with import and Preview mutations', async () => {
+  test('shares the exact root writer lease protocol with import, Preview, and deletion mutations', async () => {
     const root = await createRoot();
     const effects = createEffects();
     const lease = await acquireWidgetRootWriterLease(effects, {
@@ -531,6 +531,18 @@ describe('atomic filesystem widget publication', () => {
     )).rejects.toMatchObject({ code: 'WRITER_LOCK_HELD' });
     await lease.release();
     expect(await readPublicationWriterLock(effects, { widgetRoot: root })).toBeNull();
+    const deletionLease = await acquireWidgetRootWriterLease(effects, {
+      widgetRoot: root,
+      operationToken: 'delete-operation',
+      ownerToken: 'delete-owner',
+      purpose: 'delete',
+    });
+    expect((await readPublicationWriterLock(effects, { widgetRoot: root }))?.record).toEqual({
+      format: 'omnidraw.widget-writer-lock.v1',
+      ownerToken: 'delete-owner',
+      purpose: 'delete',
+    });
+    await deletionLease.release();
     await publishAtomicPublication(
       effects,
       publicationInput(root, new PublicationReadWriteBarrier(), 'v1', 'after-preview'),

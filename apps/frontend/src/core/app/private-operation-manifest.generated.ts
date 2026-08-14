@@ -75,6 +75,8 @@ export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "widget.catalog.files.list",
   "widget.catalog.files.read",
   "widget.config.saveDraft",
+  "widget.deletion.plan",
+  "widget.deletion.commit",
   "widget.publication.publishMetadata",
   "widget.publication.buildAndPublish",
   "widget.placement.resolve",
@@ -101,6 +103,7 @@ export const PRIVATE_STREAM_PATHS = Object.freeze([
 
 export const PRIVATE_IDEMPOTENCY_INPUT_KEYS = Object.freeze({
   "canvas.execute": "commandId",
+  "widget.deletion.commit": "operationId",
 } as const);
 
 export const PRIVATE_CURSOR_INPUT_KEYS = Object.freeze({

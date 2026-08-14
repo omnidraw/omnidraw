@@ -654,6 +654,24 @@ describe('WidgetPreviewService', () => {
     await service.stop();
   });
 
+  test('retires every live session and cached construction for one deleted widget', async () => {
+    const { builds, service } = await harness();
+    await service.open(sessionTarget);
+    await service.close(sessionTarget);
+    await service.open(sessionTarget);
+    expect(builds).toEqual(['counter']);
+
+    await service.retireWidget('counter');
+
+    await expect(service.load(sessionTarget)).rejects.toMatchObject({
+      code: 'WIDGET_PREVIEW_NOT_FOUND',
+    });
+    const reopened = await service.open(sessionTarget);
+    expect(reopened.constructionReused).toBe(false);
+    expect(builds).toEqual(['counter']);
+    await service.stop();
+  });
+
   test('requires a healthy draft and reports a stopped session after restart', async () => {
     const missing = await harness({ withDraft: false });
     await expect(missing.service.open(sessionTarget)).rejects.toMatchObject({

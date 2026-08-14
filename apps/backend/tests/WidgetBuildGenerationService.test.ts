@@ -55,6 +55,7 @@ async function createHarness() {
   ]);
   const outputBytes = new TextEncoder().encode('export default 1;\n');
   const independentlyBuiltBytes = new TextEncoder().encode('export default "host validated";\n');
+  const closedWorkspaces: string[] = [];
   const builder = {
     async construct() {
       return {
@@ -68,6 +69,9 @@ async function createHarness() {
     },
     async sign(construction: unknown) {
       return { construction };
+    },
+    async closeWorkspace(workspaceId: string) {
+      closedWorkspaces.push(workspaceId);
     },
   } as unknown as WidgetFilesystemBuildService;
   let refreshes = 0;
@@ -122,7 +126,14 @@ async function createHarness() {
     );
     return receipt;
   };
-  return { service, widgetRoot, writeReceipt, changed, refreshes: () => refreshes };
+  return {
+    service,
+    widgetRoot,
+    writeReceipt,
+    changed,
+    closedWorkspaces,
+    refreshes: () => refreshes,
+  };
 }
 
 afterEach(async () => {
@@ -193,6 +204,19 @@ describe('WidgetBuildGenerationService', () => {
     expect(rejected.current).toBe(false);
     expect(harness.service.accepted(manifest.slug)?.receipt.buildIdentity)
       .toBe(acceptedReceipt.buildIdentity);
+    await harness.service.stop();
+  });
+
+  test('retires accepted state and its construction workspace for a deleted draft', async () => {
+    const harness = await createHarness();
+    await harness.writeReceipt();
+    expect((await harness.service.requireCurrent(manifest.slug)).generation).toBe(1);
+    expect(harness.service.accepted(manifest.slug)).not.toBeNull();
+
+    await harness.service.retire(manifest.slug);
+
+    expect(harness.service.accepted(manifest.slug)).toBeNull();
+    expect(harness.closedWorkspaces).toEqual([`generation_${manifest.slug}`]);
     await harness.service.stop();
   });
 });

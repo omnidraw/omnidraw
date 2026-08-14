@@ -41,6 +41,7 @@ import type {
 } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
+import type { TWidgetDeletionMount } from './widget-filesystem/management/typed';
 import {
   fnWidgetPromptSelectionMessage,
   type TWidgetPromptSelectionContext,
@@ -245,6 +246,47 @@ export class AgentService implements IPublicMethods {
       await this.#approvalPolicyStore.load(),
     )
     await this.#workspace.init()
+  }
+
+  observeWidgetDraftMounts(widgetKey: string): Promise<readonly TWidgetDeletionMount[]> {
+    return this.#workspace.observeDraftMounts(widgetKey)
+  }
+
+  async removeWidgetDraftMount(
+    widgetKey: string,
+    mount: TWidgetDeletionMount,
+  ): Promise<void> {
+    await this.#workspace.removeDraftMount(widgetKey, mount)
+    let manager: SessionManager | null = null
+    for (const sessions of Object.values(this.sessionMap)) {
+      const entry = sessions[mount.chatId]
+      if (entry !== undefined) {
+        manager = entry.sessionManager
+        break
+      }
+    }
+    if (manager === null) {
+      try {
+        manager = SessionManager.continueRecent(
+          this.#workspace.getChatRoot(mount.chatId),
+          this.#workspace.getChatHistoryRoot(mount.chatId),
+        )
+      } catch {
+        return
+      }
+    }
+    const active = [...manager.buildContextEntries()].reverse().find((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'omnidraw.activeWidgetMount'
+      && entry.data
+      && typeof entry.data === 'object'
+      && (typeof (entry.data as { name?: unknown }).name === 'string'
+        || (entry.data as { name?: unknown }).name === null)
+    ))
+    if (
+      active?.type === 'custom'
+      && (active.data as { name: string | null }).name === mount.name
+    ) this.#clearActiveMount(manager)
   }
 
   async stop(): Promise<void> {
@@ -1147,18 +1189,28 @@ export class AgentService implements IPublicMethods {
       ? null
       : await this.#config.widgetReferenceResolver.resolve(references)
     if (resolution !== null) {
-      for (const reference of resolution.references) {
-        if (reference.editableDraft === null) continue
-        const mount = await this.#workspace.loadWidget(sessionId, reference.editableDraft.name)
-        const mountedManifest = await this.#readMountedManifest(mount)
-        if (
-          mountedManifest.slug !== reference.editableDraft.slug
-          || mountedManifest.name !== reference.editableDraft.name
-        ) throw this.#chatConnectionError(
-          'WIDGET_REFERENCE_AMBIGUOUS',
-          'The mounted draft identity does not match the mentioned widget.',
-        )
+      const mountDrafts = async () => {
+        for (const reference of resolution.references) {
+          if (reference.editableDraft === null) continue
+          const mount = await this.#workspace.loadWidget(sessionId, reference.editableDraft.name)
+          const mountedManifest = await this.#readMountedManifest(mount)
+          if (
+            mountedManifest.slug !== reference.editableDraft.slug
+            || mountedManifest.name !== reference.editableDraft.name
+          ) throw this.#chatConnectionError(
+            'WIDGET_REFERENCE_AMBIGUOUS',
+            'The mounted draft identity does not match the mentioned widget.',
+          )
+        }
       }
+      const widgetKeys = resolution.references.flatMap((reference) => (
+        reference.editableDraft === null ? [] : [reference.editableDraft.slug]
+      ))
+      if (
+        widgetKeys.length > 0
+        && this.#config.widgetReferenceResolver.withDraftMountAdmission !== undefined
+      ) await this.#config.widgetReferenceResolver.withDraftMountAdmission(widgetKeys, mountDrafts)
+      else await mountDrafts()
       await this.#config.widgetReferenceResolver.assertCurrent(resolution)
       if (resolution.references.length === 1 && resolution.references[0]!.editableDraft !== null) {
         const editable = resolution.references[0]!.editableDraft!

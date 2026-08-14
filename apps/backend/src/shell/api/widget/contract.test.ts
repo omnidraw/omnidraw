@@ -93,4 +93,26 @@ describe('filesystem widget API bounds', () => {
       resourceBindings: { records: { resourceId: 'resource-a' } },
     }).success).toBe(false);
   });
+
+  test('keeps deletion planning source-explicit and commit identity opaque', () => {
+    const plan = widgetContract.deletion.plan.inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    const commit = widgetContract.deletion.commit.inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    expect(plan.safeParse({ widgetKey: 'notes-board', source: 'draft' }).success).toBe(true);
+    expect(plan.safeParse({ widgetKey: 'notes-board', source: 'published' }).success).toBe(true);
+    expect(plan.safeParse({ widgetKey: 'notes-board' }).success).toBe(false);
+    expect(plan.safeParse({ widgetKey: '../notes-board', source: 'draft' }).success).toBe(false);
+    expect(plan.safeParse({ widgetKey: 'notes-board', source: 'draft', path: '/tmp' }).success)
+      .toBe(false);
+    expect(commit.safeParse({ planToken: 'plan_123', operationId: 'operation_123' }).success)
+      .toBe(true);
+    expect(commit.safeParse({ planToken: 'plan 123', operationId: 'operation_123' }).success)
+      .toBe(false);
+    expect(commit.safeParse({
+      planToken: 'plan_123', operationId: 'operation_123', widgetKey: 'notes-board',
+    }).success).toBe(false);
+  });
 });

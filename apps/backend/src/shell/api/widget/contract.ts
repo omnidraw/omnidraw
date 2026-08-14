@@ -40,6 +40,8 @@ import type {
   TWidgetPublicFilePreview,
   TWidgetPublicIssue,
   TWidgetPublicMutationResult,
+  TWidgetPublicDeletionPlan,
+  TWidgetPublicDeletionResult,
 } from './public-types';
 
 const IDENTIFIER_MAX_LENGTH = 200;
@@ -53,6 +55,7 @@ const ZWidgetKey = z.string().min(1).max(100)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const ZSha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const ZWidgetSource = z.enum(['draft', 'published']);
+const ZWidgetOperationToken = z.string().min(1).max(96).regex(/^[A-Za-z0-9_-]+$/);
 const ZOmnidrawToolIcon = sdkSchema(OmnidrawToolIconValidator);
 const ZWidgetBrowserFunctionDescriptors = sdkSchema(WidgetBrowserFunctionDescriptorsValidator);
 const ZWidgetRuntimeAllowedApis = sdkSchema(WidgetRuntimeAllowedApisValidator);
@@ -346,6 +349,29 @@ const ZWidgetPublicMutationResult: z.ZodType<TWidgetPublicMutationResult> = z.ob
   generation: z.number().int().positive(),
   catalogDigestSha256: ZSha256,
 }).strict();
+const ZWidgetPublicDeletionPlan: z.ZodType<TWidgetPublicDeletionPlan> = z.object({
+  planToken: ZWidgetOperationToken,
+  widgetKey: ZWidgetKey,
+  source: ZWidgetSource,
+  catalogDigestSha256: ZSha256,
+  pairedDraftPresent: z.boolean(),
+  placementCount: z.number().int().nonnegative().max(20_000),
+  previewPlacementCount: z.number().int().nonnegative().max(20_000),
+  publishedPlacementCount: z.number().int().nonnegative().max(20_000),
+  chatMountCount: z.number().int().nonnegative().max(20_000),
+  resourcesPreserved: z.literal(true),
+}).strict();
+const ZWidgetPublicDeletionResult: z.ZodType<TWidgetPublicDeletionResult> = z.object({
+  status: z.literal('committed'),
+  operationId: ZWidgetOperationToken,
+  widgetKey: ZWidgetKey,
+  source: ZWidgetSource,
+  generation: z.number().int().positive(),
+  catalogDigestSha256: ZSha256,
+  removedPlacementCount: z.number().int().nonnegative().max(20_000),
+  removedChatMountCount: z.number().int().nonnegative().max(20_000),
+  resourcesPreserved: z.literal(true),
+}).strict();
 const ZWidgetPublicFileEntry = z.object({
   path: ZWidgetFilePath,
   kind: z.enum(['file', 'directory']),
@@ -396,6 +422,16 @@ const widgetContract = pc.router({
       expectedManifestDigestSha256: ZSha256,
       config: ZWidgetDraftConfig,
     }).strict()).output(ZWidgetPublicMutationResult),
+  }),
+  deletion: pc.router({
+    plan: pc.input(z.object({
+      widgetKey: ZWidgetKey,
+      source: ZWidgetSource,
+    }).strict()).output(ZWidgetPublicDeletionPlan),
+    commit: pc.input(z.object({
+      planToken: ZWidgetOperationToken,
+      operationId: ZWidgetOperationToken,
+    }).strict()).output(ZWidgetPublicDeletionResult),
   }),
   publication: pc.router({
     publishMetadata: pc.input(z.object({

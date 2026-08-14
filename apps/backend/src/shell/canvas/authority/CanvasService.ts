@@ -138,11 +138,13 @@ export class CanvasService implements ICanvasService {
 
   readonly #store: ICanvasStore;
   readonly #options: TResolvedOptions;
+  readonly #widgetPlacementAdmission: TCanvasServiceDependencies['widgetPlacementAdmission'];
   readonly #states = new Map<string, TCanvasState>();
 
   constructor(dependencies: TCanvasServiceDependencies) {
     this.#store = dependencies.store;
     this.#options = resolveOptions(dependencies.options);
+    this.#widgetPlacementAdmission = dependencies.widgetPlacementAdmission;
   }
 
   async stop(): Promise<void> {
@@ -232,11 +234,21 @@ export class CanvasService implements ICanvasService {
       );
     }
     const state = this.#state(command.canvasId);
-    return this.#enqueue(
+    const execute = () => this.#enqueue(
       state,
       () => this.#executeSerialized(command, state),
       true,
     );
+    const placements = command.operations.flatMap((operation) => {
+      if (operation.type !== 'insert' && operation.type !== 'replace') return [];
+      const extension = fnReadCanvasWidgetExtension(operation.item);
+      return extension?.type === 'widget-instance' || extension?.type === 'widget-preview'
+        ? [Object.freeze({ widgetKey: extension.widgetKey, type: extension.type })]
+        : [];
+    });
+    return placements.length > 0 && this.#widgetPlacementAdmission?.withAdmission !== undefined
+      ? this.#widgetPlacementAdmission.withAdmission(placements, execute)
+      : execute();
   }
 
   subscribe(args: TCanvasSubscribeArgs): AsyncIterable<TCanvasEvent> {
@@ -676,6 +688,15 @@ export class CanvasService implements ICanvasService {
       const originalExtension = original === undefined || original === null
         ? null
         : fnReadCanvasWidgetExtension(original.item);
+      if (
+        originalExtension === null
+        && (extension?.type === 'widget-instance' || extension?.type === 'widget-preview')
+      ) {
+        await this.#widgetPlacementAdmission?.assertAllowed({
+          widgetKey: extension.widgetKey,
+          type: extension.type,
+        });
+      }
       if (
         originalExtension?.type === 'widget-instance'
         && (

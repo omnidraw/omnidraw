@@ -41,6 +41,25 @@ describe('filesystem widget catalog projection', () => {
     ]));
     expect(changed.groups[0]?.rows.map((row) => row.source))
       .toEqual(['published', 'draft']);
+
+    const unavailable = fnProjectWidgetCatalog(publicCatalog([
+      {
+        ...publicEntry('camera', { status: 'unavailable' }),
+        health: 'unhealthy',
+        differences: {
+          ...publicEntry('camera', { status: 'unavailable' }).differences,
+          manifest: 'unavailable',
+        },
+        draft: {
+          ...publicForm('draft', { health: 'unhealthy' }),
+          manifestDigestSha256: null,
+          config: null,
+          issues: [{ code: 'MANIFEST_INVALID', message: 'Unreadable manifest.' }],
+        },
+      },
+    ]));
+    expect(unavailable.ungrouped.map((row) => [row.source, row.widgetKey]))
+      .toContainEqual(['draft', 'camera']);
   });
 
   test('orders implicit-group rows by ascending priority before name and source', () => {

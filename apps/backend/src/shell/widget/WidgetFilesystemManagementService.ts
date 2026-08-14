@@ -8,15 +8,24 @@ import {
   scanPublishedWidgetFolder,
   fnApplyWidgetDraftConfig,
   acquireWidgetRootWriterLease,
+  clearStalePublicationWriterLock,
   publishAtomicPublication,
   publishWidgetMetadata,
+  readPublicationWriterLock,
   type NodeWidgetCatalogFilesystem,
   type NodeWidgetCatalogHash,
   type PublicationReadWriteBarrier,
   type TPublicationEffects,
   type TWidgetCatalogCapsuleInspectionEffects,
+  type TWidgetCatalogDraft,
+  type TWidgetCatalogPublished,
   type TWidgetCatalogScanEffects,
   type TWidgetCatalogSnapshot,
+  type TWidgetDeletionCleanupCapability,
+  type TWidgetDeletionCleanupObservation,
+  type TWidgetDeletionPlan,
+  type TWidgetDeletionResult,
+  type TWidgetDeletionSource,
   type TWidgetDraftConfig,
   type TWidgetFilesystemCatalogMutationResult,
   type TWidgetFilesystemFileEntry,
@@ -32,6 +41,10 @@ import {
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
 } from '@omnidraw/sdk/contract';
+import {
+  WidgetDeletionJournalStore,
+  type TWidgetDeletionJournal,
+} from './WidgetDeletionJournalStore';
 
 const FILE_PREVIEW_MAX_BYTES = 256 * 1_024;
 
@@ -59,10 +72,36 @@ type TConfig = Readonly<{
   }>;
   validateManifestResources(manifest: import('@omnidraw/sdk/contract').TWidgetManifestV1): Promise<void>;
   createOperationToken: () => string;
+  deletion?: Readonly<{
+    cleanup: TWidgetDeletionCleanupCapability;
+    begin(widgetKey: string): void;
+    end(widgetKey: string): void;
+  }>;
 }>;
 
-function errorWithCode(message: string, code: string): Error {
-  return Object.assign(new Error(message), { code });
+type TDeletionForm = TWidgetCatalogDraft | TWidgetCatalogPublished;
+
+type TPendingDeletionPlan = Readonly<{
+  public: TWidgetDeletionPlan;
+  forms: readonly TDeletionForm[];
+  cleanup: TWidgetDeletionCleanupObservation;
+}>;
+
+const UNSAFE_DELETION_ISSUES = new Set([
+  'layout_case_collision',
+  'slug_case_collision',
+  'widget_entry_not_directory',
+  'unsafe_path',
+  'path_case_collision',
+  'symlink_not_allowed',
+  'special_file_not_allowed',
+]);
+
+function errorWithCode(message: string, code: string, cause?: unknown): Error {
+  return Object.assign(
+    new Error(message, cause === undefined ? undefined : { cause }),
+    { code },
+  );
 }
 
 function sha256(value: string | Uint8Array): string {
@@ -117,7 +156,9 @@ implements TWidgetFilesystemManagementCapability {
   readonly #root: ReturnType<NodeWidgetCatalogFilesystem['pinRoot']>;
   readonly #scanEffects: TWidgetCatalogScanEffects;
   readonly #publication: Promise<TPublicationEffects>;
+  readonly #deletionStore: Promise<WidgetDeletionJournalStore>;
   readonly #createOperationToken: () => string;
+  readonly #pendingDeletionPlans = new Map<string, TPendingDeletionPlan>();
   #closePromise: Promise<void> | null = null;
 
   constructor(config: TConfig) {
@@ -133,6 +174,191 @@ implements TWidgetFilesystemManagementCapability {
       contracts: WIDGET_CATALOG_CONTRACTS,
     });
     this.#publication = this.#createPublicationEffects();
+    this.#deletionStore = WidgetDeletionJournalStore.open(config.widgetsRoot);
+  }
+
+  async planDeletion(args: Readonly<{
+    widgetKey: string;
+    source: TWidgetDeletionSource;
+  }>): Promise<TWidgetDeletionPlan> {
+    const deletion = this.#requireDeletion();
+    const snapshot = await this.#config.catalog.refresh();
+    const forms = this.#deletionForms(snapshot, args.widgetKey, args.source);
+    const deleteDraft = forms.some((form) => form.kind === 'draft');
+    const cleanup = this.#normalizeCleanup(await deletion.cleanup.observe({
+      widgetKey: args.widgetKey,
+      source: args.source,
+      deleteDraft,
+    }));
+    const planToken = this.#operationToken();
+    const previewPlacementCount = cleanup.placements.filter((item) => (
+      item.type === 'widget-preview'
+    )).length;
+    const publishedPlacementCount = cleanup.placements.length - previewPlacementCount;
+    const plan = Object.freeze({
+      planToken,
+      widgetKey: args.widgetKey,
+      source: args.source,
+      catalogDigestSha256: snapshot.digestSha256,
+      pairedDraftPresent: args.source === 'published'
+        && forms.some((form) => form.kind === 'draft'),
+      placementCount: cleanup.placements.length,
+      previewPlacementCount,
+      publishedPlacementCount,
+      chatMountCount: cleanup.mounts.length,
+      resourcesPreserved: true as const,
+    });
+    this.#pendingDeletionPlans.set(planToken, Object.freeze({
+      public: plan,
+      forms: Object.freeze([...forms]),
+      cleanup,
+    }));
+    while (this.#pendingDeletionPlans.size > 128) {
+      const oldest = this.#pendingDeletionPlans.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.#pendingDeletionPlans.delete(oldest);
+    }
+    return plan;
+  }
+
+  async commitDeletion(args: Readonly<{
+    planToken: string;
+    operationId: string;
+    signal?: AbortSignal;
+  }>): Promise<TWidgetDeletionResult> {
+    if (!/^[A-Za-z0-9_-]{1,96}$/.test(args.planToken)) {
+      throw errorWithCode('Widget deletion plan token is invalid.', 'WIDGET_DELETION_STALE_PLAN');
+    }
+    if (!/^[A-Za-z0-9_-]{1,96}$/.test(args.operationId)) {
+      throw new TypeError('Widget deletion operation ID is invalid.');
+    }
+    const store = await this.#deletionStore;
+    let pending = this.#pendingDeletionPlans.get(args.planToken) ?? null;
+    let journal = (await store.list()).find((candidate) => (
+      candidate.plan.planToken === args.planToken
+    )) ?? null;
+    if (journal?.phase === 'committed') {
+      if (journal.operationId !== args.operationId || journal.result === null) {
+        throw errorWithCode('Widget deletion operation identity changed.', 'WIDGET_DELETION_STALE_PLAN');
+      }
+      return journal.result;
+    }
+    if (journal !== null && journal.operationId !== args.operationId) {
+      throw errorWithCode('Widget deletion operation identity changed.', 'WIDGET_DELETION_STALE_PLAN');
+    }
+    if (pending === null && journal === null) {
+      throw errorWithCode(
+        'Widget deletion plan is missing or expired; review the current source again.',
+        'WIDGET_DELETION_STALE_PLAN',
+      );
+    }
+    if (args.signal?.aborted) throw errorWithCode('Widget deletion was cancelled.', 'ABORT_ERR');
+
+    const plan = pending?.public ?? journal!.plan;
+    const effects = await this.#publication;
+    const lease = await acquireWidgetRootWriterLease(effects, {
+      widgetRoot: await this.#widgetsRoot,
+      operationToken: args.operationId,
+      ownerToken: args.operationId,
+      purpose: 'delete',
+    });
+    const deletion = this.#requireDeletion();
+    deletion.begin(plan.widgetKey);
+    let operationError: unknown;
+    try {
+      if (journal === null) {
+        pending = pending!;
+        await this.#assertPendingPlanCurrent(pending);
+        journal = Object.freeze({
+          format: 'omnidraw.widget-deletion.v1' as const,
+          plan,
+          operationId: args.operationId,
+          phase: 'prepared' as const,
+          forms: Object.freeze(pending.forms.map((form) => Object.freeze({
+            source: form.kind,
+            relativePath: form.relativePath,
+            treeDigestSha256: form.treeDigestSha256,
+            trashName: `${plan.widgetKey}.${plan.planToken}.${form.kind}.deleted`,
+          }))),
+          placements: pending.cleanup.placements,
+          mounts: pending.cleanup.mounts,
+          completedPlacementKeys: Object.freeze([]),
+          completedMountPaths: Object.freeze([]),
+          result: null,
+        });
+        await store.create(journal);
+      }
+      const result = await this.#resumeDeletion(journal, args.signal);
+      this.#pendingDeletionPlans.delete(args.planToken);
+      return result;
+    } catch (error) {
+      operationError = error;
+      if (journal !== null && this.#errorCode(error) === 'WIDGET_DELETION_STALE_PLAN') {
+        const sourceMoved = (await Promise.all(
+          journal.forms.map((form) => store.trashExists(form.trashName)),
+        )).some(Boolean);
+        if (!sourceMoved) {
+          await store.discardPrepared(journal);
+          this.#pendingDeletionPlans.delete(args.planToken);
+          throw error;
+        }
+      }
+      if (journal !== null) {
+        throw errorWithCode(
+          'Widget deletion is durably pending recovery; retry the same confirmed operation.',
+          'WIDGET_DELETION_RECOVERY_PENDING',
+          error,
+        );
+      }
+      if (this.#errorCode(error) === 'WIDGET_DELETION_STALE_PLAN') {
+        this.#pendingDeletionPlans.delete(args.planToken);
+      }
+      throw error;
+    } finally {
+      deletion.end(plan.widgetKey);
+      try {
+        await lease.release();
+      } catch (releaseError) {
+        if (operationError === undefined) throw releaseError;
+      }
+    }
+  }
+
+  async recoverDeletions(): Promise<void> {
+    const store = await this.#deletionStore;
+    const journals = await store.list();
+    const effects = await this.#publication;
+    const widgetsRoot = await this.#widgetsRoot;
+    const writerLock = await readPublicationWriterLock(effects, { widgetRoot: widgetsRoot });
+    if (writerLock !== null && writerLock.record.purpose === 'delete') {
+      const matchingJournal = journals.find((journal) => (
+        writerLock.record.ownerToken === journal.operationId
+      ));
+      if (matchingJournal === undefined) {
+        throw errorWithCode(
+          'A deletion writer lock has no matching durable journal.',
+          'WIDGET_DELETION_RECOVERY_PENDING',
+        );
+      }
+      await clearStalePublicationWriterLock(effects, {
+        widgetRoot: widgetsRoot,
+        expectedSerializedLock: writerLock.serialized,
+        operationToken: matchingJournal.operationId,
+        confirmation: 'explicitly-confirmed-no-live-writer',
+      });
+    }
+    for (const journal of journals) {
+      if (journal.phase === 'committed') {
+        for (const form of journal.forms) {
+          await store.purgeTrash(form.trashName);
+        }
+        continue;
+      }
+      await this.commitDeletion({
+        planToken: journal.plan.planToken,
+        operationId: journal.operationId,
+      });
+    }
   }
 
   async saveDraftConfig(args: Readonly<{
@@ -373,6 +599,233 @@ implements TWidgetFilesystemManagementCapability {
       truncated: false,
       text: decoded.text,
     });
+  }
+
+  async #resumeDeletion(
+    initial: TWidgetDeletionJournal,
+    signal?: AbortSignal,
+  ): Promise<TWidgetDeletionResult> {
+    const store = await this.#deletionStore;
+    const deletion = this.#requireDeletion();
+    let journal = initial;
+    if (journal.phase === 'committed') return journal.result!;
+
+    await this.#config.barrier.withWrite(async () => {
+      if (journal.phase === 'prepared') {
+        const observedCleanup = this.#normalizeCleanup(await deletion.cleanup.observe({
+          widgetKey: journal.plan.widgetKey,
+          source: journal.plan.source,
+          deleteDraft: journal.forms.some((form) => form.source === 'draft'),
+        }));
+        if (JSON.stringify(observedCleanup) !== JSON.stringify({
+          placements: journal.placements,
+          mounts: journal.mounts,
+        })) throw errorWithCode(
+          'Widget placements or chat mounts changed after deletion was confirmed.',
+          'WIDGET_DELETION_STALE_PLAN',
+        );
+        const snapshot = await this.#scanCurrent();
+        for (const expected of journal.forms) {
+          if (await store.trashExists(expected.trashName)) continue;
+          const entry = snapshot.entries[journal.plan.widgetKey];
+          const current = expected.source === 'draft' ? entry?.draft : entry?.published;
+          if (
+            current === null
+            || current === undefined
+            || current.relativePath !== expected.relativePath
+            || current.treeDigestSha256 !== expected.treeDigestSha256
+          ) throw errorWithCode(
+            'Widget source changed after deletion was confirmed.',
+            'WIDGET_DELETION_STALE_PLAN',
+          );
+          this.#assertDeletionFormSafe(current, journal.plan.widgetKey);
+        }
+        for (const form of journal.forms) {
+          if (signal?.aborted) throw errorWithCode('Widget deletion was cancelled.', 'ABORT_ERR');
+          await store.moveSource({
+            widgetKey: journal.plan.widgetKey,
+            planToken: journal.plan.planToken,
+            source: form.source,
+            relativePath: form.relativePath,
+            trashName: form.trashName,
+          });
+        }
+        journal = Object.freeze({ ...journal, phase: 'sources-moved' as const });
+        await store.update(journal);
+      }
+
+      if (journal.forms.some((form) => form.source === 'draft')) {
+        await deletion.cleanup.retireDraft(journal.plan.widgetKey);
+      }
+      if (journal.phase !== 'cleanup') {
+        journal = Object.freeze({ ...journal, phase: 'cleanup' as const });
+        await store.update(journal);
+      }
+
+      const completedPlacements = new Set(journal.completedPlacementKeys);
+      for (const placement of journal.placements) {
+        if (signal?.aborted) throw errorWithCode('Widget deletion was cancelled.', 'ABORT_ERR');
+        const key = WidgetDeletionJournalStore.placementKey(placement);
+        if (completedPlacements.has(key)) continue;
+        await deletion.cleanup.removePlacement({
+          operationId: journal.operationId,
+          widgetKey: journal.plan.widgetKey,
+          placement,
+        });
+        completedPlacements.add(key);
+        journal = Object.freeze({
+          ...journal,
+          completedPlacementKeys: Object.freeze([...completedPlacements].sort()),
+        });
+        await store.update(journal);
+      }
+
+      const completedMounts = new Set(journal.completedMountPaths);
+      for (const mount of journal.mounts) {
+        if (signal?.aborted) throw errorWithCode('Widget deletion was cancelled.', 'ABORT_ERR');
+        if (completedMounts.has(mount.relativePath)) continue;
+        await deletion.cleanup.removeMount({
+          widgetKey: journal.plan.widgetKey,
+          mount,
+        });
+        completedMounts.add(mount.relativePath);
+        journal = Object.freeze({
+          ...journal,
+          completedMountPaths: Object.freeze([...completedMounts].sort()),
+        });
+        await store.update(journal);
+      }
+    });
+
+    // Install one coherent catalog observation only after every planned
+    // cross-authority effect has converged and while admission remains fenced.
+    const snapshot = await this.#config.catalog.refresh();
+    const result = Object.freeze({
+      status: 'committed' as const,
+      operationId: journal.operationId,
+      widgetKey: journal.plan.widgetKey,
+      source: journal.plan.source,
+      generation: snapshot.generation,
+      catalogDigestSha256: snapshot.digestSha256,
+      removedPlacementCount: journal.placements.length,
+      removedChatMountCount: journal.mounts.length,
+      resourcesPreserved: true as const,
+    });
+    journal = Object.freeze({ ...journal, phase: 'committed' as const, result });
+    await store.update(journal);
+    for (const form of journal.forms) {
+      await store.purgeTrash(form.trashName).catch(() => undefined);
+    }
+    return result;
+  }
+
+  async #assertPendingPlanCurrent(pending: TPendingDeletionPlan): Promise<void> {
+    const snapshot = await this.#config.catalog.refresh();
+    if (snapshot.digestSha256 !== pending.public.catalogDigestSha256) {
+      throw errorWithCode(
+        'Widget catalog changed after deletion was reviewed.',
+        'WIDGET_DELETION_STALE_PLAN',
+      );
+    }
+    const forms = this.#deletionForms(
+      snapshot,
+      pending.public.widgetKey,
+      pending.public.source,
+    );
+    if (JSON.stringify(forms.map(this.#formIdentity)) !== JSON.stringify(
+      pending.forms.map(this.#formIdentity),
+    )) throw errorWithCode(
+      'Widget source changed after deletion was reviewed.',
+      'WIDGET_DELETION_STALE_PLAN',
+    );
+    const cleanup = this.#normalizeCleanup(await this.#requireDeletion().cleanup.observe({
+      widgetKey: pending.public.widgetKey,
+      source: pending.public.source,
+      deleteDraft: pending.forms.some((form) => form.kind === 'draft'),
+    }));
+    if (JSON.stringify(cleanup) !== JSON.stringify(pending.cleanup)) {
+      throw errorWithCode(
+        'Widget placements or chat mounts changed after deletion was reviewed.',
+        'WIDGET_DELETION_STALE_PLAN',
+      );
+    }
+  }
+
+  #deletionForms(
+    snapshot: TWidgetCatalogSnapshot,
+    widgetKey: string,
+    source: TWidgetDeletionSource,
+  ): readonly TDeletionForm[] {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(widgetKey)) {
+      throw errorWithCode('Widget deletion key is unsafe.', 'WIDGET_DELETION_UNSAFE_PATH');
+    }
+    const entry = snapshot.entries[widgetKey];
+    const selected = source === 'draft' ? entry?.draft : entry?.published;
+    if (selected === null || selected === undefined) {
+      throw errorWithCode('The exact widget source was not found.', 'WIDGET_DELETION_NOT_FOUND');
+    }
+    const forms = source === 'draft'
+      ? [selected]
+      : [selected, ...(entry?.draft === null || entry?.draft === undefined ? [] : [entry.draft])];
+    for (const form of forms) this.#assertDeletionFormSafe(form, widgetKey);
+    return Object.freeze(forms);
+  }
+
+  #assertDeletionFormSafe(form: TDeletionForm, widgetKey: string): void {
+    const expected = `${form.kind === 'draft' ? 'drafts' : 'published'}/${widgetKey}`;
+    if (
+      form.slug !== widgetKey
+      || form.relativePath !== expected
+      || form.issues.some((issue) => UNSAFE_DELETION_ISSUES.has(issue.code))
+    ) throw errorWithCode(
+      'Widget source is not a safe direct child of its configured root.',
+      'WIDGET_DELETION_UNSAFE_PATH',
+    );
+  }
+
+  #normalizeCleanup(value: TWidgetDeletionCleanupObservation): TWidgetDeletionCleanupObservation {
+    if (value.placements.length > 20_000 || value.mounts.length > 20_000) {
+      throw errorWithCode('Widget deletion blast radius exceeds its bounded limit.', 'WIDGET_DELETION_TOO_LARGE');
+    }
+    const placements = [...value.placements].sort((left, right) => (
+      left.canvasId.localeCompare(right.canvasId)
+      || left.itemId.localeCompare(right.itemId)
+    ));
+    const mounts = [...value.mounts].sort((left, right) => (
+      left.relativePath.localeCompare(right.relativePath)
+    ));
+    if (
+      new Set(placements.map(WidgetDeletionJournalStore.placementKey)).size !== placements.length
+      || new Set(mounts.map((mount) => mount.relativePath)).size !== mounts.length
+    ) throw errorWithCode('Widget deletion cleanup identities are ambiguous.', 'WIDGET_DELETION_UNSAFE_PATH');
+    return Object.freeze({
+      placements: Object.freeze(placements.map((item) => Object.freeze({ ...item }))),
+      mounts: Object.freeze(mounts.map((item) => Object.freeze({ ...item }))),
+    });
+  }
+
+  #formIdentity = (form: TDeletionForm) => Object.freeze({
+    kind: form.kind,
+    slug: form.slug,
+    relativePath: form.relativePath,
+    treeDigestSha256: form.treeDigestSha256,
+  });
+
+  #requireDeletion(): NonNullable<TConfig['deletion']> {
+    if (this.#config.deletion === undefined) {
+      throw errorWithCode(
+        'Widget deletion authority is unavailable.',
+        'WIDGET_MANAGEMENT_UNAVAILABLE',
+      );
+    }
+    return this.#config.deletion;
+  }
+
+  #errorCode(error: unknown): string | null {
+    return error !== null && typeof error === 'object' && 'code' in error
+      && typeof error.code === 'string'
+      ? error.code
+      : null;
   }
 
   close(): Promise<void> {

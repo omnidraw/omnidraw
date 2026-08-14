@@ -272,6 +272,24 @@ describe('AgentService widget reference selection', () => {
       sessionId,
       'canvas-b',
     )).rejects.toMatchObject({ code: 'CHAT_CANVAS_CONFLICT' });
+
+    await service.promptChat('chat-element', sessionId, 'Return to notes.', {
+      canvasId: 'canvas-a',
+      widgetRefs: [{ name: 'notes-board', source: 'draft' }],
+    });
+    const plannedMounts = await service.observeWidgetDraftMounts('notes-board');
+    expect(plannedMounts).toHaveLength(1);
+    await rm(draftPath, { recursive: true });
+    await service.removeWidgetDraftMount('notes-board', plannedMounts[0]!);
+    const activeRecords = service.sessionMap['chat-element']![sessionId]!.sessionManager
+      .buildContextEntries()
+      .filter((entry) => entry.type === 'custom'
+        && entry.customType === 'omnidraw.activeWidgetMount');
+    expect(activeRecords.at(-1)).toMatchObject({
+      type: 'custom',
+      customType: 'omnidraw.activeWidgetMount',
+      data: { name: null },
+    });
     await service.stop();
   });
 });

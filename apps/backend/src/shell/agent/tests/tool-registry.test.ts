@@ -32,6 +32,10 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).toEqual([...AI_CHAT_TOOL_NAMES]);
     expect(registry.customTools.map((tool) => tool.name)).toEqual([...AI_CHAT_TOOL_NAMES]);
     expect(registry.toolNames).not.toContain('od_publish_widget');
+    expect(registry.toolNames).not.toContain('od_republish_widget');
+    expect(registry.toolNames).not.toContain('od_delete_widget');
+    expect(registry.toolNames).not.toContain('od_remove_widget');
+    expect(registry.toolNames).not.toContain('od_unload_widget');
     expect(registry.toolNames).not.toContain('od_approve_actor_candidate');
     expect(registry.toolNames).toContain('bash');
     expect(registry.toolNames).not.toContain('vc_widget_preview_status');

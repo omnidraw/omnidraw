@@ -76,7 +76,7 @@ type TStreamCoreAdapter = (
 ) => Effect.Effect<Stream.Stream<unknown, unknown>, unknown>;
 
 type TIdempotencyMetadata = Readonly<{
-  inputKey: 'commandId';
+  inputKey: 'commandId' | 'operationId';
   frontendReplay: true;
 }>;
 
@@ -228,6 +228,7 @@ const streamCoreAdapters = Object.freeze({
 
 const idempotencyByPath = Object.freeze({
   'canvas.execute': Object.freeze({ inputKey: 'commandId', frontendReplay: true }),
+  'widget.deletion.commit': Object.freeze({ inputKey: 'operationId', frontendReplay: true }),
 } satisfies Partial<Record<TPrivateRequestPath, TIdempotencyMetadata>>);
 
 const cursorByPath = Object.freeze({

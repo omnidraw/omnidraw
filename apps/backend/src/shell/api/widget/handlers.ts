@@ -8,6 +8,10 @@ import {
 } from './api.catalog-files';
 import { apiWidgetConfigSaveDraft } from './api.config-save';
 import {
+  apiWidgetDeletionCommit,
+  apiWidgetDeletionPlan,
+} from './api.deletion';
+import {
   apiWidgetBuildAndPublish,
   apiWidgetPublishMetadata,
 } from './api.publication';
@@ -37,6 +41,10 @@ const widgetHandlers = {
   },
   config: {
     saveDraft: apiWidgetConfigSaveDraft,
+  },
+  deletion: {
+    plan: apiWidgetDeletionPlan,
+    commit: apiWidgetDeletionCommit,
   },
   publication: {
     publishMetadata: apiWidgetPublishMetadata,
