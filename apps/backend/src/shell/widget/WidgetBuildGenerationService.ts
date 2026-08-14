@@ -11,7 +11,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
-  NodeWidgetFilesystemWorkspace,
+  type NodeWidgetFilesystemWorkspace,
   type TWidgetFilesystemConstruction,
   type TWidgetFilesystemPortableBuild,
   type TWidgetFilesystemSignedConstruction,
@@ -42,6 +42,11 @@ const ACTIVE_POLL_INTERVAL_MS = 750;
 const RECENT_DRAFT_RETENTION_MS = 30_000;
 const MAX_POLLS_PER_TICK = 16;
 const HOST_BUILD_STAGE_PREFIX = 'preview-build-';
+const HOST_BUILD_PROJECTION_MARKER = 'projection.json';
+const HOST_BUILD_PROJECTION_FORMAT = 'omnidraw.preview-build-projection.v1';
+const HOST_BUILD_COMMIT_MARKER = 'commit.json';
+const HOST_BUILD_COMMIT_FORMAT = 'omnidraw.preview-build-commit.v1';
+const HOST_BUILD_MARKER_MAX_BYTES = 512;
 
 type TMarkerIdentity = Readonly<{
   device: number;
@@ -91,6 +96,7 @@ type TCatalogPort = Readonly<{
 
 type TConfig = Readonly<{
   widgetsRoot: string;
+  workspace: Promise<Pick<NodeWidgetFilesystemWorkspace, 'captureDraftBuildInput'>>;
   catalog: TCatalogPort;
   builder: WidgetFilesystemBuildService;
   sdkVersion: string;
@@ -167,7 +173,7 @@ function generationError(code: string, message: string): Error {
 export class WidgetBuildGenerationService {
   readonly name = 'widget-build-generation';
   readonly #config: TConfig;
-  readonly #workspace: Promise<NodeWidgetFilesystemWorkspace>;
+  readonly #workspace: Promise<Pick<NodeWidgetFilesystemWorkspace, 'captureDraftBuildInput'>>;
   readonly #entries = new Map<string, TEntry>();
   readonly #rebuilds = new Map<string, TRebuildOperation>();
   readonly #listeners = new Set<(event: TWidgetBuildGenerationEvent) => void>();
@@ -179,7 +185,7 @@ export class WidgetBuildGenerationService {
 
   constructor(config: TConfig) {
     this.#config = config;
-    this.#workspace = NodeWidgetFilesystemWorkspace.open({ rootPath: config.widgetsRoot });
+    this.#workspace = config.workspace;
     this.#now = config.now;
   }
 
@@ -358,11 +364,11 @@ export class WidgetBuildGenerationService {
       signal,
     });
     this.#assertReceiptMatchesCapture(built.receipt, confirmedCapture);
-    const marker = await this.#projectPortableBuild(entry, built, signal);
-    entry.lastMarker = marker;
+    const projected = await this.#projectPortableBuild(entry, built, signal);
+    entry.lastMarker = projected.marker;
     return this.#acceptGeneration(entry, {
       receipt: built.receipt,
-      capture: confirmedCapture,
+      capture: projected.capture,
       construction: built.construction,
       signed,
     });
@@ -397,7 +403,10 @@ export class WidgetBuildGenerationService {
     entry: TEntry,
     built: TWidgetFilesystemPortableBuild,
     signal: AbortSignal,
-  ): Promise<TMarkerIdentity> {
+  ): Promise<Readonly<{
+    marker: TMarkerIdentity;
+    capture: TWidgetWorkspaceDraftBuildCapture;
+  }>> {
     const operationId = this.#config.createId();
     if (!/^[A-Za-z0-9_-]{1,96}$/.test(operationId)) {
       throw new TypeError('Widget build operation ID is invalid.');
@@ -444,6 +453,8 @@ export class WidgetBuildGenerationService {
       );
       const draftRoot = dirname(liveDist);
       const backup = join(stageRoot, 'previous-dist');
+      const projectionMarkerPath = join(stageRoot, HOST_BUILD_PROJECTION_MARKER);
+      const commitMarkerPath = join(stageRoot, HOST_BUILD_COMMIT_MARKER);
       const existing = await lstat(liveDist).catch((error) => (
         error?.code === 'ENOENT' ? null : Promise.reject(error)
       ));
@@ -453,6 +464,16 @@ export class WidgetBuildGenerationService {
         if (!existing.isDirectory() || existing.isSymbolicLink()) {
           throw generationError('BUILD_OUTPUT_INVALID', 'Existing widget dist is not a real directory.');
         }
+      }
+      await writeFile(projectionMarkerPath, `${JSON.stringify({
+        format: HOST_BUILD_PROJECTION_FORMAT,
+        widgetKey: entry.widgetKey,
+        buildIdentity: built.receipt.buildIdentity,
+        previousDist: existing !== null,
+      })}\n`, { flag: 'wx', mode: 0o600 });
+      await this.#syncFile(projectionMarkerPath);
+      await this.#syncDirectory(stageRoot);
+      if (existing !== null) {
         await rename(liveDist, backup);
         previousMoved = true;
       }
@@ -465,8 +486,8 @@ export class WidgetBuildGenerationService {
         this.#assertActive(signal);
         await rename(stagedDist, liveDist);
         projected = true;
-        // The rename is the commit point. Cancellation after it cannot turn a
-        // complete exact output into an unaccepted partial generation.
+        // Projection remains reversible until output verification, source
+        // recapture, and the durable commit marker all complete.
         await this.#syncDirectory(draftRoot);
       } catch (error) {
         try {
@@ -481,6 +502,7 @@ export class WidgetBuildGenerationService {
         throw error;
       }
       let projectedMarker: TMarkerIdentity;
+      let projectedCapture: TWidgetWorkspaceDraftBuildCapture;
       try {
         const projectedReceiptPath = join(
           liveDist,
@@ -500,6 +522,20 @@ export class WidgetBuildGenerationService {
           'BUILD_OUTPUT_MISMATCH',
           'Atomically projected build output does not match its receipt.',
         );
+        const workspace = await this.#workspace;
+        projectedCapture = await workspace.captureDraftBuildInput({
+          slug: entry.widgetKey,
+          signal,
+        });
+        this.#assertReceiptMatchesCapture(built.receipt, projectedCapture);
+        this.#assertActive(signal);
+        await writeFile(commitMarkerPath, `${JSON.stringify({
+          format: HOST_BUILD_COMMIT_FORMAT,
+          widgetKey: entry.widgetKey,
+          buildIdentity: built.receipt.buildIdentity,
+        })}\n`, { flag: 'wx', mode: 0o600 });
+        await this.#syncFile(commitMarkerPath);
+        await this.#syncDirectory(stageRoot);
       } catch (error) {
         try {
           await rollback();
@@ -518,7 +554,7 @@ export class WidgetBuildGenerationService {
           entry.recovered = false;
         });
       }
-      return projectedMarker;
+      return Object.freeze({ marker: projectedMarker, capture: projectedCapture });
     } finally {
       if (!preserveStageForRecovery) {
         await rm(stageRoot, { recursive: true, force: true });
@@ -583,6 +619,79 @@ export class WidgetBuildGenerationService {
     }
   }
 
+  async #committedStageMatchesLive(
+    entry: TEntry,
+    stageRoot: string,
+    liveDist: string,
+  ): Promise<boolean> {
+    try {
+      const live = await lstat(liveDist);
+      if (!live.isDirectory() || live.isSymbolicLink()) return false;
+      const marker = await this.#readStableFile(
+        join(stageRoot, HOST_BUILD_COMMIT_MARKER),
+        HOST_BUILD_MARKER_MAX_BYTES,
+        1,
+      );
+      const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)) as unknown;
+      if (
+        value === null
+        || typeof value !== 'object'
+        || Array.isArray(value)
+        || !('format' in value)
+        || value.format !== HOST_BUILD_COMMIT_FORMAT
+        || !('widgetKey' in value)
+        || value.widgetKey !== entry.widgetKey
+        || !('buildIdentity' in value)
+        || typeof value.buildIdentity !== 'string'
+        || !/^[0-9a-f]{64}$/.test(value.buildIdentity)
+      ) return false;
+      const receiptFile = await this.#readStableFile(
+        join(liveDist, WIDGET_BUILD_RECEIPT_PATH.slice('dist/'.length)),
+        WIDGET_BUILD_RECEIPT_MAX_BYTES,
+        1,
+      );
+      const receipt = parseWidgetBuildReceiptJson(
+        new TextDecoder('utf-8', { fatal: true }).decode(receiptFile.bytes),
+      );
+      if (
+        receipt.sdkVersion !== this.#config.sdkVersion
+        || receipt.buildIdentity !== value.buildIdentity
+        || !fnWidgetBuildReceiptIdentityMatches({ receipt, digestSha256: sha256 })
+      ) return false;
+      return fnWidgetBuildReceiptOutputsMatch({
+        receipt,
+        observedOutputs: await this.#observeOutputs(entry.widgetKey),
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  async #projectionStageStarted(entry: TEntry, stageRoot: string): Promise<boolean> {
+    try {
+      const marker = await this.#readStableFile(
+        join(stageRoot, HOST_BUILD_PROJECTION_MARKER),
+        HOST_BUILD_MARKER_MAX_BYTES,
+        1,
+      );
+      const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)) as unknown;
+      return value !== null
+        && typeof value === 'object'
+        && !Array.isArray(value)
+        && 'format' in value
+        && value.format === HOST_BUILD_PROJECTION_FORMAT
+        && 'widgetKey' in value
+        && value.widgetKey === entry.widgetKey
+        && 'buildIdentity' in value
+        && typeof value.buildIdentity === 'string'
+        && /^[0-9a-f]{64}$/.test(value.buildIdentity)
+        && 'previousDist' in value
+        && typeof value.previousDist === 'boolean';
+    } catch {
+      return false;
+    }
+  }
+
   async #recoverHostBuildStages(entry: TEntry): Promise<void> {
     if (entry.recovered) return;
     const stagingRoot = join(this.#config.widgetsRoot, '.staging');
@@ -601,15 +710,46 @@ export class WidgetBuildGenerationService {
         throw generationError('BUILD_STAGING_INVALID', 'Widget build staging entry is unsafe.');
       }
       const backup = join(stageRoot, 'previous-dist');
-      const [live, previous] = await Promise.all([
+      const stagedDist = join(stageRoot, 'dist');
+      const [live, previous, staged, projectionMarker, commitMarker] = await Promise.all([
         lstat(liveDist).catch((error) => error?.code === 'ENOENT' ? null : Promise.reject(error)),
         lstat(backup).catch((error) => error?.code === 'ENOENT' ? null : Promise.reject(error)),
+        lstat(stagedDist).catch((error) => error?.code === 'ENOENT' ? null : Promise.reject(error)),
+        lstat(join(stageRoot, HOST_BUILD_PROJECTION_MARKER))
+          .catch((error) => error?.code === 'ENOENT' ? null : Promise.reject(error)),
+        lstat(join(stageRoot, HOST_BUILD_COMMIT_MARKER))
+          .catch((error) => error?.code === 'ENOENT' ? null : Promise.reject(error)),
       ]);
-      if (live === null && previous !== null) {
-        if (!previous.isDirectory() || previous.isSymbolicLink()) {
-          throw generationError('BUILD_STAGING_INVALID', 'Widget build backup is unsafe.');
+      if (staged !== null && (!staged.isDirectory() || staged.isSymbolicLink())) {
+        throw generationError('BUILD_STAGING_INVALID', 'Widget build staged output is unsafe.');
+      }
+      if (previous !== null && (!previous.isDirectory() || previous.isSymbolicLink())) {
+        throw generationError('BUILD_STAGING_INVALID', 'Widget build backup is unsafe.');
+      }
+      const committed = commitMarker !== null
+        && await this.#committedStageMatchesLive(entry, stageRoot, liveDist);
+      const projectionStarted = projectionMarker !== null
+        && await this.#projectionStageStarted(entry, stageRoot);
+      if (!committed && previous !== null) {
+        if (live !== null) {
+          if (!live.isDirectory() || live.isSymbolicLink()) {
+            throw generationError('BUILD_STAGING_INVALID', 'Projected widget build output is unsafe.');
+          }
+          await rm(liveDist, { recursive: true, force: true });
         }
         await rename(backup, liveDist);
+        await this.#syncDirectory(dirname(liveDist));
+      } else if (
+        !committed
+        && projectionStarted
+        && previous === null
+        && staged === null
+        && live !== null
+      ) {
+        if (!live.isDirectory() || live.isSymbolicLink()) {
+          throw generationError('BUILD_STAGING_INVALID', 'Projected widget build output is unsafe.');
+        }
+        await rm(liveDist, { recursive: true, force: true });
         await this.#syncDirectory(dirname(liveDist));
       }
       await rm(stageRoot, { recursive: true, force: true });

@@ -57,6 +57,7 @@ async function createHarness() {
   const outputBytes = new TextEncoder().encode('export default 1;\n');
   const independentlyBuiltBytes = new TextEncoder().encode('export default "host validated";\n');
   const hostBuiltBytes = new TextEncoder().encode('export default "private host build";\n');
+  let portableOutputBytes = hostBuiltBytes;
   const closedWorkspaces: string[] = [];
   const portableBuildFiles: string[][] = [];
   let portableFailure: unknown;
@@ -87,8 +88,8 @@ async function createHarness() {
       if (request.signal?.aborted) throw Object.assign(new Error('cancelled'), { code: 'ABORT_ERR' });
       const outputs = [{
         path: 'dist/main.js',
-        byteSize: hostBuiltBytes.byteLength,
-        sha256: sha256(hostBuiltBytes),
+        byteSize: portableOutputBytes.byteLength,
+        sha256: sha256(portableOutputBytes),
       }];
       const receipt = fnCreateWidgetBuildReceipt({
         sourceDigestSha256: fnWidgetPortableSourceDigest({
@@ -111,7 +112,7 @@ async function createHarness() {
       return {
         construction: await this.construct(),
         receipt: corruptPortableReceipt ? { ...receipt, sdkVersion: '9.9.9' } : receipt,
-        distFiles: [{ path: 'dist/main.js', bytes: hostBuiltBytes }],
+        distFiles: [{ path: 'dist/main.js', bytes: portableOutputBytes }],
       };
     },
     async closeWorkspace(workspaceId: string) {
@@ -121,8 +122,18 @@ async function createHarness() {
   let refreshes = 0;
   let operationId = 0;
   const changed: string[] = [];
+  const workspace = await NodeWidgetFilesystemWorkspace.open({ rootPath: root });
+  let captureCount = 0;
+  let beforeCapture: ((captureNumber: number) => Promise<void>) | undefined;
   const service = new WidgetBuildGenerationService({
     widgetsRoot: root,
+    workspace: Promise.resolve({
+      async captureDraftBuildInput(args) {
+        captureCount += 1;
+        await beforeCapture?.(captureCount);
+        return workspace.captureDraftBuildInput(args);
+      },
+    }),
     builder,
     sdkVersion: '1.2.3',
     createId: () => `test-${operationId += 1}`,
@@ -138,7 +149,6 @@ async function createHarness() {
     scheduleInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
     cancelInterval: (timer) => clearInterval(timer),
   });
-  const workspace = await NodeWidgetFilesystemWorkspace.open({ rootPath: root });
   const writeReceipt = async () => {
     const capture = await workspace.captureDraftBuildInput({
       slug: manifest.slug,
@@ -182,8 +192,15 @@ async function createHarness() {
     setBeforePortableReturn(value: (() => Promise<void>) | undefined) {
       beforePortableReturn = value;
     },
+    captures: () => captureCount,
+    setBeforeCapture(value: ((captureNumber: number) => Promise<void>) | undefined) {
+      beforeCapture = value;
+    },
     setPortableFailure(value: unknown) {
       portableFailure = value;
+    },
+    setPortableOutput(value: string) {
+      portableOutputBytes = new TextEncoder().encode(value);
     },
     corruptPortableReceipt() {
       corruptPortableReceipt = true;
@@ -284,6 +301,87 @@ describe('WidgetBuildGenerationService', () => {
     await harness.service.stop();
   });
 
+  test('an incomplete stage created before projection cannot remove live output', async () => {
+    const harness = await createHarness();
+    const liveReceipt = await harness.writeReceipt();
+    const stageRoot = join(
+      dirname(harness.widgetRoot),
+      '..',
+      '.staging',
+      'preview-build-generation-fixture-before-projection',
+    );
+    await mkdir(stageRoot, { recursive: false });
+
+    expect(await harness.service.view(manifest.slug)).toMatchObject({
+      phase: 'ready',
+      acceptedBuildIdentity: liveReceipt.buildIdentity,
+      current: true,
+    });
+    expect(await readFile(join(harness.widgetRoot, 'dist', 'main.js'), 'utf8'))
+      .toBe('export default 1;\n');
+    await expect(access(stageRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    await harness.service.stop();
+  });
+
+  test('restores last-known-good after a post-projection pre-verification crash', async () => {
+    const harness = await createHarness();
+    const lastKnownGood = await harness.writeReceipt();
+    const stagingRoot = join(dirname(harness.widgetRoot), '..', '.staging');
+    const stageRoot = join(stagingRoot, 'preview-build-generation-fixture-post-projection');
+    await mkdir(stageRoot, { recursive: false });
+    await rename(join(harness.widgetRoot, 'dist'), join(stageRoot, 'previous-dist'));
+    await mkdir(join(harness.widgetRoot, 'dist'), { recursive: false });
+    await Promise.all([
+      writeFile(join(harness.widgetRoot, 'dist', 'main.js'), 'export default "interrupted";\n'),
+      writeFile(join(harness.widgetRoot, 'dist', 'omnidraw.build.json'), '{"format":'),
+    ]);
+
+    expect(await harness.service.view(manifest.slug)).toMatchObject({
+      phase: 'ready',
+      acceptedGeneration: 1,
+      acceptedBuildIdentity: lastKnownGood.buildIdentity,
+      current: true,
+    });
+    expect(await readFile(join(harness.widgetRoot, 'dist', 'main.js'), 'utf8'))
+      .toBe('export default 1;\n');
+    expect(JSON.parse(await readFile(
+      join(harness.widgetRoot, 'dist', 'omnidraw.build.json'),
+      'utf8',
+    )).buildIdentity).toBe(lastKnownGood.buildIdentity);
+    await expect(access(stageRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    await harness.service.stop();
+  });
+
+  test('keeps independently valid live output after a durable commit marker', async () => {
+    const harness = await createHarness();
+    const committed = await harness.writeReceipt();
+    const stageRoot = join(
+      dirname(harness.widgetRoot),
+      '..',
+      '.staging',
+      'preview-build-generation-fixture-committed',
+    );
+    await mkdir(join(stageRoot, 'previous-dist'), { recursive: true });
+    await Promise.all([
+      writeFile(join(stageRoot, 'previous-dist', 'main.js'), 'export default "older";\n'),
+      writeFile(join(stageRoot, 'commit.json'), `${JSON.stringify({
+        format: 'omnidraw.preview-build-commit.v1',
+        widgetKey: manifest.slug,
+        buildIdentity: committed.buildIdentity,
+      })}\n`),
+    ]);
+
+    expect(await harness.service.view(manifest.slug)).toMatchObject({
+      phase: 'ready',
+      acceptedBuildIdentity: committed.buildIdentity,
+      current: true,
+    });
+    expect(await readFile(join(harness.widgetRoot, 'dist', 'main.js'), 'utf8'))
+      .toBe('export default 1;\n');
+    await expect(access(stageRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    await harness.service.stop();
+  });
+
   test('coalesces concurrent callers onto one exact private build', async () => {
     const harness = await createHarness();
     let releaseBuild!: () => void;
@@ -364,6 +462,39 @@ describe('WidgetBuildGenerationService', () => {
     expect(await readFile(join(drifted.widgetRoot, 'dist', 'main.js'), 'utf8'))
       .toBe('export default 1;\n');
     await drifted.service.stop();
+  });
+
+  test('source drift after projection rolls back the candidate before acceptance', async () => {
+    const harness = await createHarness();
+    const lastKnownGood = await harness.service.rebuild(manifest.slug);
+    await writeFile(join(harness.widgetRoot, 'ui', 'main.ts'), 'export default 2;\n');
+    harness.setPortableOutput('export default "stale projected candidate";\n');
+    const capturesBeforeRebuild = harness.captures();
+    harness.setBeforeCapture(async (captureNumber) => {
+      if (captureNumber === capturesBeforeRebuild + 3) {
+        await writeFile(
+          join(harness.widgetRoot, 'ui', 'main.ts'),
+          'export default "drifted during projection";\n',
+        );
+      }
+    });
+
+    await expect(harness.service.rebuild(manifest.slug)).rejects.toMatchObject({
+      code: 'BUILD_STALE',
+    });
+    expect(harness.captures()).toBe(capturesBeforeRebuild + 3);
+    expect(harness.service.accepted(manifest.slug)?.generation).toBe(lastKnownGood.generation);
+    expect(harness.service.accepted(manifest.slug)?.receipt.buildIdentity)
+      .toBe(lastKnownGood.receipt.buildIdentity);
+    expect(await readFile(join(harness.widgetRoot, 'dist', 'main.js'), 'utf8'))
+      .toBe('export default "private host build";\n');
+    expect(JSON.parse(await readFile(
+      join(harness.widgetRoot, 'dist', 'omnidraw.build.json'),
+      'utf8',
+    )).buildIdentity).toBe(lastKnownGood.receipt.buildIdentity);
+    expect((await readdir(join(dirname(harness.widgetRoot), '..', '.staging')))
+      .filter((name) => name.startsWith('preview-build-generation-fixture-'))).toEqual([]);
+    await harness.service.stop();
   });
 
   test('rejects partial and stale receipts without replacing the accepted generation', async () => {

@@ -10,6 +10,7 @@ import {
 } from '#backend/shell/function-execution/local';
 import {
   AgentService,
+  NodeWidgetFilesystemWorkspace,
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
   PublicationReadWriteBarrier,
@@ -547,6 +548,7 @@ export function layerLiveMechanics(args: Readonly<{
   });
   widgetBuildGeneration = new WidgetBuildGenerationService({
     widgetsRoot: config.home.widgetsRoot,
+    workspace: NodeWidgetFilesystemWorkspace.open({ rootPath: config.home.widgetsRoot }),
     catalog: widgetCatalog,
     builder: widgetFilesystemBuilder,
     sdkVersion: sdkPackage.version,
