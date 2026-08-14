@@ -128,6 +128,13 @@ restart.
 - Scaffold creation runs the portable build automatically. Later source or
   manifest edits mark the draft dirty but do not replace the displayed
   Preview until another portable build receipt is accepted.
+- Shared drafts retain exact source and `package-lock.json`, never a persistent
+  dependency tree. Creation, validation, manual **Rebuild**, and **Build &
+  Publish** all capture that same input and join the host-owned private build
+  boundary. It performs the exact-lock install under the configured registry
+  policy, then atomically projects only a complete `dist/` plus receipt into
+  the generation observer. Cancellation, source drift, or failure cleans the
+  private work and cannot replace the last accepted generation.
 - Filesystem events are a latency hint; bounded polling of active drafts is the
   correctness fallback. Candidate receipts are deduplicated and re-read around
   validation so partial, replaced, stale, or forged output never becomes a
@@ -148,6 +155,11 @@ restart.
 - Manual **Rebuild** and AI build use the same portable command. A failed build
   leaves the previous accepted Preview running. Publish rejects dirty,
   building, failed, stale, or superseded generations.
+- When a frame has no accepted generation, the content host remains mounted
+  without executing guest code and shows the backend generation's bounded
+  **Build required**, **Building**, or **Build failed** state with **Rebuild**
+  and **Remove** controls. A toast may supplement this state but never replaces
+  it or leaves an unexplained blank frame.
 
 ## Direct server functions
 

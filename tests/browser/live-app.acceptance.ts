@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -457,6 +457,7 @@ function summarizeTransport(transport: TTransportEvidence): unknown {
 
 async function seedDraftWidget(home: string): Promise<string> {
   const widgetRoot = join(home, 'widgets/drafts/browser-acceptance');
+  const unbuiltWidgetRoot = join(home, 'widgets/drafts/browser-unbuilt');
   const toolsRoot = join(home, 'browser-acceptance-tools');
   const sdkCli = join(ROOT, 'packages/sdk/dist/cli.js');
   const viteModuleUrl = new URL(
@@ -485,6 +486,7 @@ async function seedDraftWidget(home: string): Promise<string> {
   ].join('\n');
   await mkdir(join(widgetRoot, 'ui'), { recursive: true, mode: 0o700 });
   await mkdir(join(widgetRoot, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
+  await mkdir(join(unbuiltWidgetRoot, 'ui'), { recursive: true, mode: 0o700 });
   await mkdir(toolsRoot, { recursive: true, mode: 0o700 });
   const manifest = {
     $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
@@ -501,6 +503,17 @@ async function seedDraftWidget(home: string): Promise<string> {
       runtime: 'capsule',
       entry: 'ui/main.ts',
       apis: ['DOM'],
+    },
+  } as const;
+  const unbuiltManifest = {
+    ...manifest,
+    name: 'Browser Unbuilt Widget',
+    slug: 'browser-unbuilt',
+    description: 'A valid lockfile-only draft used to prove persistent pre-guest failure UI.',
+    tool: {
+      ...manifest.tool,
+      label: 'Browser Unbuilt Widget',
+      priority: 1,
     },
   } as const;
   await Promise.all([
@@ -528,6 +541,35 @@ async function seedDraftWidget(home: string): Promise<string> {
       packages: {
         '': {
           name: 'browser-acceptance',
+          version: '1.0.0',
+          devDependencies: { vite: '8.1.4' },
+        },
+      },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(unbuiltWidgetRoot, 'omnidraw.json'), `${JSON.stringify(unbuiltManifest, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(unbuiltWidgetRoot, 'ui/main.ts'), [
+      'const root = document.createElement("section");',
+      'root.setAttribute("data-browser-unbuilt-widget", "mounted");',
+      'root.textContent = "This guest must not mount before an accepted build.";',
+      'document.body.append(root);',
+      '',
+    ].join('\n'), { mode: 0o600 }),
+    writeFile(join(unbuiltWidgetRoot, 'package.json'), `${JSON.stringify({
+      name: 'browser-unbuilt',
+      version: '1.0.0',
+      private: true,
+      type: 'module',
+      scripts: { build: 'omnidraw-widget build .' },
+      devDependencies: { vite: '8.1.4' },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(unbuiltWidgetRoot, 'package-lock.json'), `${JSON.stringify({
+      name: 'browser-unbuilt',
+      version: '1.0.0',
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': {
+          name: 'browser-unbuilt',
           version: '1.0.0',
           devDependencies: { vite: '8.1.4' },
         },
@@ -1414,6 +1456,78 @@ async function placeDraftPreviewWidget(page: Page): Promise<Readonly<{
   return Object.freeze({ nodeId: node.id });
 }
 
+async function provePersistentPreGuestPreviewFailure(page: Page): Promise<void> {
+  const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
+  if (await expand.count()) await expand.click();
+  const previewButton = page.getByRole('button', {
+    name: 'Preview Browser Unbuilt Widget on canvas',
+    exact: true,
+  });
+  await previewButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  await previewButton.click();
+  const command = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the lockfile-only unbuilt Preview placement command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const extension = node === null ? {} : canvasWidgetExtension(node);
+      return extension.type === 'widget-preview' && extension.widgetKey === 'browser-unbuilt';
+    },
+  });
+  const node = canvasCommandWidgetNode(command);
+  assert.ok(node !== null && typeof node.id === 'string');
+  const portal = page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${node.id}"]`);
+  await portal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const failure = portal.locator('[data-omnidraw-widget-preview-failure]');
+  await failure.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await failure.getByRole('heading', { name: 'Build required', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  await failure.getByRole('button', { name: 'Rebuild', exact: true }).waitFor({ state: 'visible' });
+  const remove = failure.getByRole('button', { name: 'Remove', exact: true });
+  await remove.waitFor({ state: 'visible' });
+  assert.ok(
+    await portal.evaluate((element) => element.childElementCount) > 0,
+    'A pre-guest Preview build failure left the authored frame blank.',
+  );
+  await mkdir(join(ROOT, 'tests/artifacts'), { recursive: true });
+  await page.screenshot({
+    path: join(ROOT, 'tests/artifacts/live-draft-preview-build-required.png'),
+    fullPage: true,
+  });
+  const expectedToast = page.locator('[role="alert"]', { hasText: 'Build required' });
+  if (await expectedToast.count()) await expectedToast.locator('button').click();
+  const rebuildDraftBefore = (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length;
+  const previewOpenBefore = (await readRpcRequests(page, 'widget.preview.open')).length;
+  await failure.getByRole('button', { name: 'Rebuild', exact: true }).click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: rebuildDraftBefore,
+    label: 'the private exact-lock rebuild for the lockfile-only draft',
+    page,
+    path: 'widget.preview.rebuildDraft',
+    predicate: (request) => record(request.input).widgetKey === 'browser-unbuilt',
+  });
+  await waitForSuccessfulRpcRequest({
+    afterCount: previewOpenBefore,
+    label: 'the accepted lockfile-only draft guest after Rebuild',
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === node.id,
+  });
+  await failure.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
+  await assertDraftGuestMounted(page, portal, 'lockfile-only draft Rebuild');
+  const titlebar = page.locator('[data-vibecanvas-widget-titlebar]').filter({
+    has: page.getByText('Preview: Browser Unbuilt Widget', { exact: true }),
+  });
+  await titlebar.locator('[aria-label="Preview actions"]').click();
+  await page.getByRole('menuitem', { name: 'Remove', exact: true }).click();
+  await portal.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
+}
+
 async function restartBackendWithMountedChat(args: Readonly<{
   expectedHistoryText: string;
   page: Page;
@@ -1767,6 +1881,9 @@ async function runBrowserSuite(
     await assertDraftGuestMounted(page, restartedPreviewPortal, 'draft Preview backend restart');
     await assertNoHandledErrorAlerts(page, 'backend restart recovery');
 
+    console.log('[browser:live] persistent non-blank pre-guest Preview build failure');
+    await provePersistentPreGuestPreviewFailure(page);
+
     console.log('[browser:live] screen-atlas app and widget route families');
     await assertRoute(page, baseUrl, '/', 'Welcome to Omnidraw');
     await exerciseWidgetInspectorRoutes(page, baseUrl);
@@ -1814,7 +1931,7 @@ async function runBrowserSuite(
     ));
     assert.deepEqual(toleratedDisconnectErrors, [], browserErrors.join('\n'));
     assert.deepEqual(badResponses, [], badResponses.join('\n'));
-    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview usability, durable preferences, restart recovery, and WebSocket fencing passed');
+    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
   } finally {
     await page.close();
     await browser.close();
@@ -1882,6 +1999,11 @@ try {
   const baseUrl = `http://127.0.0.1:${frontendPort!.port}/`;
   await waitForHttp(baseUrl, frontend);
   await runBrowserSuite(baseUrl, restartBackend, provider);
+  await assert.rejects(
+    access(join(home, 'widgets/drafts/browser-unbuilt/node_modules')),
+    { code: 'ENOENT' },
+    'The host-owned Preview build persisted dependencies in the shared draft.',
+  );
 } catch (error) {
   await Promise.allSettled(processes.map(stopProcess));
   for (const process of processes) {

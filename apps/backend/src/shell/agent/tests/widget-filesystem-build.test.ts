@@ -172,6 +172,28 @@ describe('filesystem widget build service', () => {
     expect(construction.distFiles.map((file) => file.path)).toEqual(['dist/main.js']);
   });
 
+  test('returns an exact portable receipt with the private construction bytes', async () => {
+    const harness = fixture();
+    const portable = await harness.service.buildPortable({
+      manifest: MANIFEST,
+      files: [
+        { path: 'package-lock.json', bytes: new TextEncoder().encode('{"lockfileVersion":3}') },
+        { path: 'package.json', bytes: new TextEncoder().encode('{}') },
+        { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+      ],
+      workspaceKey: 'generation_counter',
+    });
+
+    expect(portable.receipt.sdkVersion).toBe(ENVIRONMENT.sdkVersion);
+    expect(portable.receipt.outputs).toEqual([{
+      path: 'dist/main.js',
+      byteSize: 7,
+      sha256: 'd4c3e8a11256ab82a4fc72560eb4a2b0e87bad820c290dd9b03616de240aa6db',
+    }]);
+    expect(portable.receipt.buildIdentity).toMatch(/^[0-9a-f]{64}$/);
+    expect(portable.distFiles[0]?.bytes).toEqual(new TextEncoder().encode('browser'));
+  });
+
   test('serializes and restores a construction with exact bytes', () => {
     const encoded = fnEncodeWidgetFilesystemConstruction({
       executableInputDigestSha256: RAW_A,
