@@ -100,6 +100,8 @@ describe("Canvas sidebar menu handoff", () => {
     const trigger = await openMenu();
     await choose("Rename", "pointer");
     await vi.waitFor(() => expect(document.body.textContent).toContain("Rename Canvas"));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
     expect(document.querySelector('[role="menu"]')).toBeNull();
     const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent === "Cancel")!;

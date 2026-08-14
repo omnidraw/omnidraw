@@ -1,5 +1,5 @@
 import { Button } from "@kobalte/core/button";
-import { Dialog } from "@kobalte/core/dialog";
+import * as Dialog from "@kobalte/core/dialog";
 import { createSignal, type Component } from "solid-js";
 import styles from "./SidebarDialog.module.css";
 
@@ -26,7 +26,7 @@ export const CreateCanvasDialog: Component<CreateCanvasDialogProps> = (props) =>
   const isValid = () => title().trim().length > 0;
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay class={styles.overlay} />
         <Dialog.Content class={contentClass}>
@@ -61,7 +61,7 @@ export const CreateCanvasDialog: Component<CreateCanvasDialogProps> = (props) =>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
-    </Dialog>
+    </Dialog.Root>
   );
 };
 
