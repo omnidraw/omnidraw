@@ -19,8 +19,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe('production Agent shell isolation', () => {
-  test('omits unrestricted Bash while retaining bounded widget authoring tools', async () => {
+describe('production Agent host shell', () => {
+  test('exposes host Bash alongside bounded widget authoring tools', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omnidraw-agent-bash-composition-'));
     roots.push(root);
     const home = fnResolveOmnidrawHome({ join, resolve }, {
@@ -102,10 +102,13 @@ describe('production Agent shell isolation', () => {
         canvasId,
       );
       const session = agent.sessionMap[widgetId]?.[chatId]?.session;
-      expect(session?.getToolDefinition('bash')).toBeUndefined();
+      const bash = session?.getToolDefinition('bash');
+      expect(bash).toBeDefined();
+      const result = await bash!.execute('bash-host-smoke', { command: 'pwd' });
+      expect(result.isError).not.toBe(true);
       expect(session?.getToolDefinition('od_widget_load')).toBeDefined();
       expect(session?.getToolDefinition('od_widget_validate')).toBeDefined();
-      expect(session?.getActiveToolNames()).not.toContain('bash');
+      expect(session?.getActiveToolNames()).toContain('bash');
     } finally {
       await runtime.dispose();
     }

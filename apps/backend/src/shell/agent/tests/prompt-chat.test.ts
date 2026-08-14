@@ -75,8 +75,8 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`template: "react"`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`server: true`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read only files you need to change');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('AI Chat intentionally has no general shell');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('unmounted sibling drafts, publications, host credentials');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Host Bash is available');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('confinement boundary');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('od_widget_load({ name })');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('generated manifest, package, lockfile, Vite config');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
@@ -192,7 +192,7 @@ describe('AgentService.promptChat', () => {
     await service.connectChat(widgetId, sessionId);
 
     const expectedTools = [
-      'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
+      'bash', 'edit', 'grep', 'od_resource_create', 'od_resource_data_read',
       'od_resource_data_write', 'od_resource_delete', 'od_resource_inspect', 'od_resource_list',
       'od_resource_update', 'od_widget_create', 'od_widget_list', 'od_widget_load', 'od_widget_preview_inspect',
       'od_widget_validate', 'patch', 'read',

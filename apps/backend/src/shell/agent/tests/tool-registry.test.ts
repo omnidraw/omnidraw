@@ -35,14 +35,14 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).not.toContain('od_remove_widget');
     expect(registry.toolNames).not.toContain('od_unload_widget');
     expect(registry.toolNames).not.toContain('od_approve_actor_candidate');
-    expect(registry.toolNames).not.toContain('bash');
+    expect(registry.toolNames).toContain('bash');
     expect(registry.toolNames).toContain('od_widget_load');
     expect(registry.toolNames).not.toContain('vc_widget_preview_status');
     expect(registry.toolNames).not.toContain('vc_widget_preview_wait');
     expect(registry.toolNames).not.toContain('vc_widget_preview_test');
     expect(registry.toolNames).toContain('od_widget_preview_inspect');
     expect(registry.toolNames).not.toContain('write');
-    expect(registry.toolNames).toHaveLength(16);
+    expect(registry.toolNames).toHaveLength(17);
   });
 
   test('does not rewrite unsupported private-target draft source', async () => {

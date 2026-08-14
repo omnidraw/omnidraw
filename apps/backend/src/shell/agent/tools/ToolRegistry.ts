@@ -5,6 +5,7 @@ import type { TWidgetMount } from '../workspace/types';
 import { AI_CHAT_TOOL_NAMES } from './CONSTANTS';
 import { createResourceTools } from './tool.resources';
 import type { TAgentResourceService } from './resource-service';
+import { createBashTool, type TAgentBashCapability } from './tool.bash';
 import { createWidgetPreviewInspectTool } from './tool.widget-preview-inspect';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
 import { createWorkspaceFileTools } from './tool.workspace-files';
@@ -22,6 +23,7 @@ type TCreateToolRegistryArgs = {
   workspace: WidgetWorkspace;
   approvals: ApprovalCoordinator;
   resourceService?: TAgentResourceService;
+  bashCapability?: TAgentBashCapability;
   listAvailableWidgets?: Parameters<typeof createWidgetWorkspaceTools>[0]['listAvailableWidgets'];
   loadWidget?: Parameters<typeof createWidgetWorkspaceTools>[0]['loadWidget'];
   onMounted?: (mount: TWidgetMount) => void;
@@ -74,6 +76,16 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       approvals: args.approvals,
       authorize,
       takeSensitiveToolArgs: args.takeSensitiveToolArgs,
+    }),
+    createBashTool({
+      authorize: () => authorize('bash'),
+      capability: args.bashCapability,
+      chatId: args.chatId,
+      cwd: args.cwd,
+      workspace: args.workspace,
+      onDraftChanged: args.onDraftChanged
+        ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
+        : undefined,
     }),
   ];
   const definitions = new Map(tools.map((tool) => [tool.name, tool]));

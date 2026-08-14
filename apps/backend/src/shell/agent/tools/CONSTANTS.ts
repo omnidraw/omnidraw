@@ -13,8 +13,9 @@ export const Z_OMNIDRAW_JSON = ZWidgetManifestV1;
 export const AJV = new Ajv({ allErrors: true, strict: false });
 addFormats(AJV);
 
-// Retained for the standalone process adapter tests. AI Chat does not expose
-// Bash because a host process cannot enforce the draft/publication boundary.
+// Bash starts in the chat workspace but is deliberately not isolated there.
+// The child retains the Omnidraw host process's filesystem, environment,
+// executable lookup, subprocess, and network authority.
 export const BASH_DEFAULT_TIMEOUT_SECONDS = 120;
 export const BASH_MAX_TIMEOUT_SECONDS = 600;
 
@@ -35,4 +36,5 @@ export const AI_CHAT_TOOL_NAMES = [
   'od_resource_delete',
   'od_resource_data_read',
   'od_resource_data_write',
+  'bash',
 ] as const;

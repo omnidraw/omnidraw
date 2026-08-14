@@ -30,6 +30,7 @@ import type {
 } from './approval/types';
 import { createToolRegistry } from './tools/ToolRegistry';
 import type { TAgentResourceService } from './tools/resource-service';
+import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import { fnFindEditableUserMessage, fnProjectActiveChatHistory, type TAgentChatHistoryItem } from './fn.chat-history';
@@ -100,6 +101,7 @@ export interface IAgentServiceConfig {
   widgetReferenceResolver: TWidgetReferenceResolver;
   widgetAuthoringAuthority?: TAgentWidgetAuthoringAuthority;
   resourceService?: TAgentResourceService;
+  bashCapability?: TAgentBashCapability;
   authorizeToolCall?: TToolAuthorizer;
   approvalReviewer?: TApprovalReviewer;
   approvalPolicyStore?: Readonly<{
@@ -1095,6 +1097,7 @@ export class AgentService implements IPublicMethods {
       workspace: this.#workspace,
       approvals: this.#approvals,
       resourceService: this.#config.resourceService,
+      bashCapability: this.#config.bashCapability,
       listAvailableWidgets: () => this.#listAvailableWidgets(sessionId),
       loadWidget: (name) => this.#loadWidgetForChat(sessionId, name),
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),

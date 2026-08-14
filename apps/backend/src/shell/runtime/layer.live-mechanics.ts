@@ -84,6 +84,7 @@ import {
 import { readBunChildCpuMs } from '../function-execution/local/BunChildSandboxDriver';
 import { ResourceService } from '../resources/ResourceService';
 import { createAgentResourceService } from '../agent/AgentResourceService';
+import { createBunAgentBashCapability } from '../agent/AgentBashCapability';
 import {
   createResourceServiceCapabilities,
 } from '../resources/ResourceServiceCapabilities';
@@ -781,6 +782,7 @@ export function layerLiveMechanics(args: Readonly<{
     },
   });
   const agentRoot = config.home.agentRoot;
+  const agentBashCapability = createBunAgentBashCapability();
   mkdirSync(agentRoot, { recursive: true });
   agentService = new AgentService({
     world: {
@@ -833,6 +835,7 @@ export function layerLiveMechanics(args: Readonly<{
       ),
     },
     resourceService: createAgentResourceService(resourceService),
+    bashCapability: agentBashCapability,
   });
   const widgetStateService = new WidgetStateService(
     new WidgetInstanceStateStoreTurso(dbService.db),

@@ -211,14 +211,14 @@ scripts. Resource tools may return one exact safe `resourceId`; the agent
 writes it into the target manifest and then checks and builds. There is no
 binding-intent record or picker.
 
-AI Chat exposes no general shell or generic URL fetch. Its structured file
-tools enter only through validated explicit draft mounts, and
-`od_widget_validate` owns the bounded check/build workflow. Consequently the
-model receives no host filesystem, environment credential, executable lookup,
-local network, publication root, or publication API capability. Direct
-frontend Publish and Republish calls remain the only publication entrypoints.
-The standalone Bash process adapter may remain covered for non-agent uses, but
-it is absent from the fixed AI Chat tool registry and live composition.
+AI Chat exposes host-authority Bash but no generic URL fetch. Bash starts in
+the chat workspace and is intentionally not a confinement boundary: it retains
+the host process's filesystem, environment, executable lookup, subprocess, and
+network authority. This is an explicit OSS trusted-host product decision, not
+a security boundary. Structured file tools still enter only through validated
+explicit draft mounts, `od_widget_validate` owns the bounded accepted-artifact
+workflow, and direct frontend Publish and Republish remain the supported
+publication actions.
 
 `od_widget_preview_inspect` has two truthful modes. `artifact` mounts exact
 accepted bytes in isolation and reports `resources: not_available`,

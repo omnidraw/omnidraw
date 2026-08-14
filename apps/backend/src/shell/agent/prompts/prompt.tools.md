@@ -32,10 +32,11 @@ For a new widget:
    generated, authoritative build input; do not edit it manually.
 3. Update the draft with `read`, `edit`, or `patch`. Use exact, narrow edits.
    Prefer `edit` for exact replacements. Use `patch` only with a complete
-   unified-diff hunk. AI Chat intentionally has no general shell: it cannot
-   reach unmounted sibling drafts, publications, host credentials, or local
-   publication APIs. Use the bounded validation and Preview tools for checks
-   and builds.
+   unified-diff hunk. Host Bash is available for normal shell discovery,
+   checks, and package commands. It starts in the chat workspace but is not a
+   confinement boundary: it retains the host process's filesystem,
+   environment, executable lookup, subprocess, and network authority. Prefer
+   the structured tools for mounted-widget edits and lifecycle operations.
 4. Add or change exact npm dependencies only through `package.json`. The host
    accepts registry versions only, disables lifecycle scripts, and records the
    resulting lockfile. Preserve the fixed generated `omnidraw-widget check .`
