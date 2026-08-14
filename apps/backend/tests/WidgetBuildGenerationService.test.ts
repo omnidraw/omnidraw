@@ -385,12 +385,17 @@ describe('WidgetBuildGenerationService', () => {
   test('coalesces concurrent callers onto one exact private build', async () => {
     const harness = await createHarness();
     let releaseBuild!: () => void;
+    let signalBuildStarted!: () => void;
     const blocked = new Promise<void>((resolve) => { releaseBuild = resolve; });
-    harness.setBeforePortableReturn(() => blocked);
+    const buildStarted = new Promise<void>((resolve) => { signalBuildStarted = resolve; });
+    harness.setBeforePortableReturn(() => {
+      signalBuildStarted();
+      return blocked;
+    });
 
     const first = harness.service.rebuild(manifest.slug);
     const second = harness.service.rebuild(manifest.slug);
-    await Bun.sleep(5);
+    await buildStarted;
     expect(harness.portableBuildFiles).toHaveLength(1);
     releaseBuild();
     const [left, right] = await Promise.all([first, second]);
