@@ -25,6 +25,15 @@ export interface ICanvasAuthority {
   readonly release: (
     args: Readonly<{ canvasId: string }>,
   ) => Effect.Effect<void, CanvasAuthorityError>;
+  readonly beginDeletion: (
+    args: Readonly<{ canvasId: string }>,
+  ) => Effect.Effect<void, CanvasAuthorityError>;
+  readonly abortDeletion: (
+    args: Readonly<{ canvasId: string }>,
+  ) => Effect.Effect<void, CanvasAuthorityError>;
+  readonly commitDeletion: (
+    args: Readonly<{ canvasId: string }>,
+  ) => Effect.Effect<void, CanvasAuthorityError>;
 }
 
 export class CanvasAuthority extends Context.Service<CanvasAuthority, ICanvasAuthority>()(

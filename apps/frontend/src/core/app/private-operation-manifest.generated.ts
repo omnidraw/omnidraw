@@ -27,6 +27,7 @@ export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "canvas.get",
   "canvas.create",
   "canvas.update",
+  "canvas.deletionPlan",
   "canvas.remove",
   "canvas.snapshot",
   "canvas.query",
@@ -102,6 +103,7 @@ export const PRIVATE_STREAM_PATHS = Object.freeze([
 ] as const);
 
 export const PRIVATE_IDEMPOTENCY_INPUT_KEYS = Object.freeze({
+  "canvas.remove": "deletionId",
   "canvas.execute": "commandId",
   "widget.deletion.commit": "operationId",
 } as const);

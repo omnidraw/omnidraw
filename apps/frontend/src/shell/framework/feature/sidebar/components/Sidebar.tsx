@@ -7,6 +7,8 @@ import Plus from "lucide-solid/icons/plus";
 import Sun from "lucide-solid/icons/sun";
 import type { Component } from "solid-js";
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import type { TCanvasDeletionResult } from "@/core/app/private-operation-contract";
+import { fnCanvasDeletionRoute } from "@/core/navigation/fn.canvas-deletion-route";
 import { WidgetsSidebarSection } from "../widgets/components/WidgetsSidebarSection";
 import type { TSidebarCanvas, TSidebarController } from "../ports";
 import { CreateCanvasDialog } from "./CreateCanvasDialog";
@@ -41,6 +43,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = createSignal(false);
   const [canvasToDelete, setCanvasToDelete] = createSignal<TSidebarCanvas | null>(null);
+  const [deleteDialogTrigger, setDeleteDialogTrigger] = createSignal<HTMLButtonElement | null>(null);
 
   const [createDialogOpen, setCreateDialogOpen] = createSignal(false);
   const [canvasesExpanded, setCanvasesExpanded] = createSignal(true);
@@ -79,8 +82,9 @@ const Sidebar: Component<SidebarProps> = (props) => {
     setRenameDialogOpen(true);
   };
 
-  const handleOpenDeleteDialog = (canvas: TSidebarCanvas) => {
+  const handleOpenDeleteDialog = (canvas: TSidebarCanvas, trigger: HTMLButtonElement) => {
     setCanvasToDelete(canvas);
+    setDeleteDialogTrigger(trigger);
     setDeleteDialogOpen(true);
   };
 
@@ -95,18 +99,26 @@ const Sidebar: Component<SidebarProps> = (props) => {
     }
   };
 
-  const handleDelete = async () => {
-    const canvas = canvasToDelete();
-    if (canvas) {
-      const isActive = activeCanvasId() === canvas.id;
-      const [err, data] = await props.controller.apiService.api.canvas.remove({ params: { id: canvas.id } });
-      if (err) application.notifyError(err.message);
-      if (data) {
-        application.evictCanvas(data.id);
-        application.canvasDeleted(data);
-        if (isActive) application.navigate("/");
-      }
+  const handleDeleted = async (result: TCanvasDeletionResult) => {
+    const [listError, listed] = await props.controller.apiService.api.canvas.list();
+    const remaining = listed ?? application.canvases().filter((canvas) => canvas.id !== result.canvas.id);
+    application.canvasesReplaced(remaining);
+    if (listError) {
+      application.notifyError(
+        "Canvas deleted, but the Canvas list could not be refreshed.",
+        listError.message,
+      );
     }
+    const nextRoute = fnCanvasDeletionRoute({
+      pathname: application.pathname(),
+      deletedCanvasId: result.canvas.id,
+      remainingCanvases: remaining,
+    });
+    if (nextRoute !== null) application.navigate(nextRoute, { replace: true });
+    application.notifySuccess(
+      "Canvas deleted",
+      `${result.cleanup.retainedChatCount} retained chat histories were archived.`,
+    );
   };
 
   const handleCreateCanvas = async (title: string) => {
@@ -176,7 +188,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
                   selected={activeCanvasId() === canvas.id}
                   onClick={() => application.navigate(`/c/${canvas.id}`)}
                   onRename={() => handleOpenRenameDialog(canvas.id, canvas.name)}
-                  onDelete={() => handleOpenDeleteDialog(canvas)}
+                  onDelete={(trigger) => handleOpenDeleteDialog(canvas, trigger)}
                 />
               )}
             </For>
@@ -247,7 +259,11 @@ const Sidebar: Component<SidebarProps> = (props) => {
         open={deleteDialogOpen()}
         onOpenChange={setDeleteDialogOpen}
         canvas={canvasToDelete()}
-        onDelete={handleDelete}
+        createDeletionId={props.controller.browser.createIdempotencyKey}
+        onPlan={(canvasId) => props.controller.apiService.api.canvas.deletionPlan({ canvasId })}
+        onDelete={(args) => props.controller.apiService.api.canvas.remove(args)}
+        onDeleted={handleDeleted}
+        returnFocus={deleteDialogTrigger}
       />
 
       <CreateCanvasDialog

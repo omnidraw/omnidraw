@@ -14,6 +14,9 @@ const canvasHandlers = {
   get: apiGetCanvas,
   create: apiCreateCanvas,
   update: apiUpdateCanvas,
+  deletionPlan: baseCanvasOs.deletionPlan.handler(() => {
+    throw new Error('Canvas deletion planning is owned by the semantic transport adapter.');
+  }),
   remove: apiRemoveCanvas,
   snapshot: apiGetCanvasSnapshot,
   query: apiQueryCanvasItems,

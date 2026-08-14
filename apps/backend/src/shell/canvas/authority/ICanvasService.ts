@@ -131,6 +131,9 @@ export interface ICanvasService {
   queryItems(query: TCanvasItemQuery): Promise<TCanvasItemPage>;
   execute(command: TCanvasCommand): Promise<TCanvasItemsChangedEvent>;
   subscribe(args: TCanvasSubscribeArgs): AsyncIterable<TCanvasEvent>;
+  beginDeletion(args: Readonly<{ canvasId: string }>): Promise<void>;
+  abortDeletion(args: Readonly<{ canvasId: string }>): Promise<void>;
+  commitDeletion(args: Readonly<{ canvasId: string }>): Promise<void>;
   release(args: Readonly<{ canvasId: string }>): Promise<void>;
   getMetrics(): TCanvasServiceMetrics;
 }

@@ -21,6 +21,22 @@ const updateCanvasInputSchema = z.object({
   name: z.string().optional(),
 });
 
+const canvasDeletionPlanSchema = z.object({
+  canvas: ZCanvas,
+  itemCount: z.number().int().nonnegative(),
+  mediaCount: z.number().int().nonnegative(),
+  retainedChatCount: z.number().int().nonnegative(),
+});
+
+const canvasDeletionResultSchema = z.object({
+  canvas: ZCanvas,
+  cleanup: z.object({
+    itemCount: z.number().int().nonnegative(),
+    mediaCount: z.number().int().nonnegative(),
+    retainedChatCount: z.number().int().nonnegative(),
+  }),
+});
+
 const canvasContract = pc.router({
   list: pc.output(ZCanvas.array()),
 
@@ -36,9 +52,16 @@ const canvasContract = pc.router({
     .input(z.object({ params: z.object({ id: z.string() }), body: updateCanvasInputSchema }))
     .output(ZCanvas),
 
+  deletionPlan: pc
+    .input(z.object({ canvasId: z.string().min(1) }))
+    .output(canvasDeletionPlanSchema),
+
   remove: pc
-    .input(z.object({ params: z.object({ id: z.string() }) }))
-    .output(ZCanvas),
+    .input(z.object({
+      deletionId: z.string().min(1),
+      plan: canvasDeletionPlanSchema,
+    }))
+    .output(canvasDeletionResultSchema),
 
   snapshot: pc
     .input(z.object({ canvasId: z.string().min(1) }))

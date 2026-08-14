@@ -1,5 +1,6 @@
 import { AgentProgramError, type TAgentProgramErrorCode } from '../../core/agent/service.agent';
 import { CanvasAuthorityError, type TCanvasAuthorityErrorCode } from '../../core/canvas/errors';
+import { CanvasDeletionError, type TCanvasDeletionErrorCode } from '../../core/canvas/service.canvas-deletion';
 import { DatabaseProgramError, type TDatabaseProgramErrorCode } from '../../core/database/service.database';
 import { EventProgramError, type TEventProgramErrorCode } from '../../core/events/service.events';
 import { FunctionProgramError, type TFunctionProgramErrorCode } from '../../core/functions/service.functions';
@@ -17,6 +18,7 @@ import { PrivateRpcError } from './private-rpc-error-schema';
 export type TSemanticFailure =
   | AgentProgramError
   | CanvasAuthorityError
+  | CanvasDeletionError
   | DatabaseProgramError
   | EventProgramError
   | FunctionProgramError
@@ -31,6 +33,7 @@ const AGENT_STATUS: Readonly<Record<TAgentProgramErrorCode, number>> = Object.fr
   CHAT_CANVAS_CONFLICT: 409,
   CHAT_CANVAS_INVALID: 400,
   CHAT_CANVAS_REQUIRED: 400,
+  CHAT_CANVAS_DELETING: 409,
   CHAT_CONNECTION_SUPERSEDED: 409,
   CHAT_EDIT_EMPTY: 400,
   CHAT_EDIT_TARGET_INVALID: 409,
@@ -48,6 +51,13 @@ const CANVAS_STATUS: Readonly<Record<TCanvasAuthorityErrorCode, number>> = Objec
   STORE_CONFLICT: 409,
   POST_COMMIT_FAILURE: 500,
   UNAVAILABLE: 503,
+});
+
+const CANVAS_DELETION_STATUS: Readonly<Record<TCanvasDeletionErrorCode, number>> = Object.freeze({
+  CANVAS_DELETE_NOT_FOUND: 404,
+  CANVAS_DELETE_STALE: 409,
+  CANVAS_DELETE_BUSY: 409,
+  CANVAS_DELETE_COORDINATION_FAILED: 503,
 });
 
 const DATABASE_STATUS: Readonly<Record<TDatabaseProgramErrorCode, number>> = Object.freeze({
@@ -171,6 +181,7 @@ const RESOURCE_STATUS: Readonly<Record<TResourceErrorCode, number>> = Object.fre
 export function isSemanticFailure(error: unknown): error is TSemanticFailure {
   return error instanceof AgentProgramError
     || error instanceof CanvasAuthorityError
+    || error instanceof CanvasDeletionError
     || error instanceof DatabaseProgramError
     || error instanceof EventProgramError
     || error instanceof FunctionProgramError
@@ -183,6 +194,7 @@ export function isSemanticFailure(error: unknown): error is TSemanticFailure {
 export function semanticFailureStatus(error: TSemanticFailure): number {
   if (error instanceof AgentProgramError) return AGENT_STATUS[(error as AgentProgramError).code];
   if (error instanceof CanvasAuthorityError) return CANVAS_STATUS[(error as CanvasAuthorityError).code];
+  if (error instanceof CanvasDeletionError) return CANVAS_DELETION_STATUS[(error as CanvasDeletionError).code];
   if (error instanceof DatabaseProgramError) return DATABASE_STATUS[(error as DatabaseProgramError).code];
   if (error instanceof EventProgramError) return EVENT_STATUS[(error as EventProgramError).code];
   if (error instanceof FunctionProgramError) return FUNCTION_STATUS[(error as FunctionProgramError).code];

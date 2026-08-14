@@ -6,6 +6,14 @@ import { fxCanvasEvents } from '../../core/canvas/fx.events';
 import { fxGetCanvasSnapshot } from '../../core/canvas/fx.get-snapshot';
 import { fxQueryCanvasItems } from '../../core/canvas/fx.query-items';
 import { CanvasAuthority, type ICanvasAuthority } from '../../core/canvas/service.canvas-authority';
+import { fxPlanCanvasDeletion } from '../../core/canvas/fx.plan-deletion';
+import { txDeleteCanvas } from '../../core/canvas/tx.delete-canvas';
+import {
+  CanvasChatLifecycle,
+  CanvasDeletionStore,
+  type ICanvasChatLifecycle,
+  type ICanvasDeletionStore,
+} from '../../core/canvas/service.canvas-deletion';
 import { txExecuteCanvasCommand } from '../../core/canvas/tx.execute-command';
 import { fxAgentEventRecords } from '../../core/events/fx.agent-events';
 import { fxDbEventRecords } from '../../core/events/fx.db-events';
@@ -60,6 +68,8 @@ export type TPrivateOperationRuntime = Readonly<{
   context: TApiContext;
   agent: IAgentAuthority;
   canvas: ICanvasAuthority;
+  canvasDeletionStore: ICanvasDeletionStore;
+  canvasChatLifecycle: ICanvasChatLifecycle;
   events: IEventAuthority;
   functions: IFunctionAuthority;
   resources: IResourceAuthority;
@@ -76,7 +86,7 @@ type TStreamCoreAdapter = (
 ) => Effect.Effect<Stream.Stream<unknown, unknown>, unknown>;
 
 type TIdempotencyMetadata = Readonly<{
-  inputKey: 'commandId' | 'operationId';
+  inputKey: 'commandId' | 'deletionId' | 'operationId';
   frontendReplay: true;
 }>;
 
@@ -141,6 +151,18 @@ const requestCoreAdapters = Object.freeze({
   )),
   'canvas.execute': requestAdapter(handlers.canvas.execute, (input, runtime) => (
     txExecuteCanvasCommand(input).pipe(Effect.provideService(CanvasAuthority, runtime.canvas))
+  )),
+  'canvas.deletionPlan': requestAdapter(handlers.canvas.deletionPlan, (input, runtime) => (
+    fxPlanCanvasDeletion(input).pipe(
+      Effect.provideService(CanvasDeletionStore, runtime.canvasDeletionStore),
+    )
+  )),
+  'canvas.remove': requestAdapter(handlers.canvas.remove, (input, runtime) => (
+    txDeleteCanvas(input).pipe(
+      Effect.provideService(CanvasAuthority, runtime.canvas),
+      Effect.provideService(CanvasDeletionStore, runtime.canvasDeletionStore),
+      Effect.provideService(CanvasChatLifecycle, runtime.canvasChatLifecycle),
+    )
   )),
   'function.invoke': requestAdapter(handlers.function.invoke, (input, runtime) => (
     txInvokeFunction({
@@ -227,6 +249,7 @@ const streamCoreAdapters = Object.freeze({
 } satisfies Partial<Record<TPrivateStreamPath, TStreamCoreAdapter>>);
 
 const idempotencyByPath = Object.freeze({
+  'canvas.remove': Object.freeze({ inputKey: 'deletionId', frontendReplay: true }),
   'canvas.execute': Object.freeze({ inputKey: 'commandId', frontendReplay: true }),
   'widget.deletion.commit': Object.freeze({ inputKey: 'operationId', frontendReplay: true }),
 } satisfies Partial<Record<TPrivateRequestPath, TIdempotencyMetadata>>);

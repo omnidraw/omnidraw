@@ -21,6 +21,8 @@ type TAgentEditSelection = Pick<TAgentEditInput, 'canvasId' | 'model' | 'thinkin
 
 /** Chat/auth capability only. Widget authoring is filesystem-owned under `api.widget`. */
 export type TAgentApiCapability = {
+  disposeCanvasChats(args: Readonly<{ canvasId: string }>): Promise<void>;
+  resumeCanvasChats(args: Readonly<{ canvasId: string }>): void;
   settings(): Promise<TAgentOutputs['settings']['get']>;
   updateApprovalPolicy(
     policy: TAgentInputs['settings']['approvalPolicy']['update'],

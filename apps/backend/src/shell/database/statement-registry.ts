@@ -10,6 +10,9 @@ import canvasListSql from '../../shell/database/stmts/canvas-list.sql' with { ty
 import canvasReadByNameSql from '../../shell/database/stmts/canvas-read-by-name.sql' with { type: 'text' };
 import canvasReadByIdSql from '../../shell/database/stmts/canvas-read-by-id.sql' with { type: 'text' };
 import canvasDeleteSql from '../../shell/database/stmts/canvas-delete.sql' with { type: 'text' };
+import canvasDeletionCountItemsSql from '../../shell/database/stmts/canvas-deletion-count-items.sql' with { type: 'text' };
+import canvasDeletionCountMediaSql from '../../shell/database/stmts/canvas-deletion-count-media.sql' with { type: 'text' };
+import canvasDeletionCountChatsSql from '../../shell/database/stmts/canvas-deletion-count-chats.sql' with { type: 'text' };
 import canvasInsertSql from '../../shell/database/stmts/canvas-insert.sql' with { type: 'text' };
 import canvasUpdateNameSql from '../../shell/database/stmts/canvas-update-name.sql' with { type: 'text' };
 import chatInsertChatsSql from '../../shell/database/stmts/chat-insert-chats.sql' with { type: 'text' };
@@ -114,6 +117,7 @@ import chatUpdateCanvasNameAndStatusSql from '../../shell/database/stmts/chat-up
 import chatUpdateNameSql from '../../shell/database/stmts/chat-update-name.sql' with { type: 'text' };
 import chatUpdateNameAndStatusSql from '../../shell/database/stmts/chat-update-name-and-status.sql' with { type: 'text' };
 import chatUpdateStatusSql from '../../shell/database/stmts/chat-update-status.sql' with { type: 'text' };
+import chatDetachArchiveByCanvasSql from '../../shell/database/stmts/chat-detach-archive-by-canvas.sql' with { type: 'text' };
 import dbResourceReadListAppliesSql from '../../shell/database/stmts/db-resource-read-list-applies.sql' with { type: 'text' };
 import dbResourceReadListAppliesBeforeSql from '../../shell/database/stmts/db-resource-read-list-applies-before.sql' with { type: 'text' };
 import dbResourceReadListAppliesByStatusSql from '../../shell/database/stmts/db-resource-read-list-applies-by-status.sql' with { type: 'text' };
@@ -221,6 +225,9 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'canvasReadByName',
   'canvasReadById',
   'canvasDelete',
+  'canvasDeletionCountItems',
+  'canvasDeletionCountMedia',
+  'canvasDeletionCountChats',
   'canvasInsert',
   'canvasUpdateName',
   'chatInsertChats',
@@ -324,6 +331,7 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'chatUpdateName',
   'chatUpdateNameAndStatus',
   'chatUpdateStatus',
+  'chatDetachArchiveByCanvas',
   'dbResourceReadListApplies',
   'dbResourceReadListAppliesBefore',
   'dbResourceReadListAppliesByStatus',
@@ -434,6 +442,9 @@ export const DATABASE_STATEMENTS = Object.freeze({
   canvasReadByName: canvasReadByNameSql,
   canvasReadById: canvasReadByIdSql,
   canvasDelete: canvasDeleteSql,
+  canvasDeletionCountItems: canvasDeletionCountItemsSql,
+  canvasDeletionCountMedia: canvasDeletionCountMediaSql,
+  canvasDeletionCountChats: canvasDeletionCountChatsSql,
   canvasInsert: canvasInsertSql,
   canvasUpdateName: canvasUpdateNameSql,
   chatInsertChats: chatInsertChatsSql,
@@ -537,6 +548,7 @@ export const DATABASE_STATEMENTS = Object.freeze({
   chatUpdateName: chatUpdateNameSql,
   chatUpdateNameAndStatus: chatUpdateNameAndStatusSql,
   chatUpdateStatus: chatUpdateStatusSql,
+  chatDetachArchiveByCanvas: chatDetachArchiveByCanvasSql,
   dbResourceReadListApplies: dbResourceReadListAppliesSql,
   dbResourceReadListAppliesBefore: dbResourceReadListAppliesBeforeSql,
   dbResourceReadListAppliesByStatus: dbResourceReadListAppliesByStatusSql,
