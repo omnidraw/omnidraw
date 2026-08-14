@@ -6,12 +6,16 @@ import {
   fnCanonicalizeWidgetReleaseDescriptor,
   fnCanonicalizeWidgetUnsignedReleaseDescriptor,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnCreateWidgetBuildReceipt,
   fnCreateWidgetReleaseDescriptor,
   fnCreateWidgetUnsignedReleaseDescriptor,
   fnNormalizeWidgetFilesystemRelativePath,
   fnValidateWidgetRelease,
   fnWidgetExecutableInputDigest,
   fnWidgetExecutableManifestDigest,
+  fnWidgetManifestV1Digest,
+  fnWidgetPortableExecutableInputDigest,
+  fnWidgetPortableSourceDigest,
   fnWidgetReleaseDirectoryDigest,
   fnProjectWidgetExecutableManifest,
   type TWidgetReleaseFile,
@@ -24,6 +28,7 @@ import type {
   TWidgetFilesystemConstruction,
   TWidgetFilesystemConstructionRequest,
   TWidgetFilesystemPreparedPublication,
+  TWidgetFilesystemPortableBuild,
   TWidgetFilesystemSignedConstruction,
 } from './typed';
 import { WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH } from './CONSTANTS';
@@ -210,6 +215,42 @@ export class WidgetFilesystemBuildService {
       ).catch(() => undefined);
     }
     return result;
+  }
+
+  /**
+   * Runs the portable SDK distribution build through the configured private
+   * workspace and returns only immutable `dist/` bytes plus their canonical
+   * receipt. The caller remains responsible for source revalidation and
+   * atomic projection into the observed draft generation boundary.
+   */
+  async buildPortable(
+    request: TWidgetFilesystemConstructionRequest,
+  ): Promise<TWidgetFilesystemPortableBuild> {
+    const construction = await this.construct(request);
+    const distFiles = immutableFiles(construction.distFiles);
+    const receipt = fnCreateWidgetBuildReceipt({
+      sourceDigestSha256: fnWidgetPortableSourceDigest({
+        files: request.files,
+        digestSha256: sha256,
+      }),
+      manifestDigestSha256: fnWidgetManifestV1Digest({
+        manifest: request.manifest,
+        digestSha256: sha256,
+      }),
+      executableInputDigestSha256: fnWidgetPortableExecutableInputDigest({
+        manifest: request.manifest,
+        files: request.files,
+        digestSha256: sha256,
+      }),
+      sdkVersion: this.config.environment.sdkVersion,
+      outputs: distFiles.map((file) => Object.freeze({
+        path: file.path,
+        byteSize: file.bytes.byteLength,
+        sha256: sha256(file.bytes),
+      })),
+      digestSha256: sha256,
+    });
+    return Object.freeze({ construction, receipt, distFiles });
   }
 
   #constructionCacheKey(executableInputDigestSha256: string): string {

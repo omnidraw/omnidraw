@@ -10,6 +10,7 @@ import {
 } from '#backend/shell/function-execution/local';
 import {
   AgentService,
+  NodeWidgetFilesystemWorkspace,
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
   PublicationReadWriteBarrier,
@@ -417,7 +418,7 @@ export function layerLiveMechanics(args: Readonly<{
           if (widgetBuildGeneration === null) {
             throw new Error('Widget build generation authority is not initialized.');
           }
-          return widgetBuildGeneration.requireCurrent(widgetKey, signal);
+          return widgetBuildGeneration.ensureCurrent(widgetKey, signal);
         },
       },
       deletion: {
@@ -547,9 +548,11 @@ export function layerLiveMechanics(args: Readonly<{
   });
   widgetBuildGeneration = new WidgetBuildGenerationService({
     widgetsRoot: config.home.widgetsRoot,
+    workspace: NodeWidgetFilesystemWorkspace.open({ rootPath: config.home.widgetsRoot }),
     catalog: widgetCatalog,
     builder: widgetFilesystemBuilder,
     sdkVersion: sdkPackage.version,
+    createId: randomUUID,
     now: Date.now,
     scheduleInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
     cancelInterval: clearInterval,

@@ -140,6 +140,16 @@ type TWidgetPreviewInvokeResult = Readonly<{
 }>;
 
 type TWidgetPreviewApiCapability = Readonly<{
+  buildState(widgetKey: string): Promise<Readonly<{
+    phase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+    acceptedGeneration: number | null;
+    current: boolean;
+    diagnostics: readonly Readonly<{
+      code: string;
+      message: string;
+      path: string | null;
+    }>[];
+  }>>;
   open(
     args: TWidgetPreviewSessionInput,
     signal?: AbortSignal,

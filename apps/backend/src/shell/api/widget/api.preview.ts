@@ -17,15 +17,12 @@ function mountView(view: Awaited<ReturnType<TWidgetPreviewApiCapability['open']>
   };
 }
 
-function previewError(error: unknown): never {
+type TPreviewBuildState = Awaited<ReturnType<TWidgetPreviewApiCapability['buildState']>>;
+
+function previewError(error: unknown, buildState?: TPreviewBuildState): never {
   const code = error !== null && typeof error === 'object' && 'code' in error
     ? error.code
     : null;
-  if (code === 'BUILD_REQUIRED' || code === 'BUILD_PENDING' || code === 'BUILD_IMPORT_FAILED') {
-    throw new ProcedureError('CONFLICT', {
-      message: error instanceof Error ? error.message : 'Widget build is not ready.',
-    });
-  }
   if (
     error instanceof ProcedureError
     || (error !== null
@@ -34,6 +31,23 @@ function previewError(error: unknown): never {
         || code === 'WIDGET_DRAFT_MISSING'
         || code === 'WIDGET_MISSING'))
   ) throw previewTargetNotFound();
+  if (
+    code === 'BUILD_REQUIRED'
+    || code === 'BUILD_PENDING'
+    || code === 'BUILD_IMPORT_FAILED'
+    || (buildState !== undefined && buildState.phase !== 'ready')
+  ) {
+    throw new ProcedureError('CONFLICT', {
+      message: error instanceof Error ? error.message : 'Widget build is not ready.',
+      data: buildState === undefined ? null : {
+        kind: 'widget-preview-build-state',
+        phase: buildState.phase,
+        acceptedGeneration: buildState.acceptedGeneration,
+        current: buildState.current,
+        diagnostics: buildState.diagnostics.map((diagnostic) => ({ ...diagnostic })),
+      },
+    });
+  }
   throw error;
 }
 
@@ -41,7 +55,7 @@ const apiWidgetPreviewOpen = baseWidgetOs.preview.open.handler(async ({ context,
   try {
     return mountView(await context.widgetPreview.open(input));
   } catch (error) {
-    previewError(error);
+    previewError(error, await context.widgetPreview.buildState(input.widgetKey).catch(() => undefined));
   }
 });
 
@@ -49,7 +63,7 @@ const apiWidgetPreviewRebuild = baseWidgetOs.preview.rebuild.handler(async ({ co
   try {
     return mountView(await context.widgetPreview.rebuild(input, signal));
   } catch (error) {
-    previewError(error);
+    previewError(error, await context.widgetPreview.buildState(input.widgetKey).catch(() => undefined));
   }
 });
 
@@ -57,7 +71,7 @@ const apiWidgetPreviewRebuildDraft = baseWidgetOs.preview.rebuildDraft.handler(a
   try {
     return await context.widgetPreview.rebuildDraft(input, signal);
   } catch (error) {
-    previewError(error);
+    previewError(error, await context.widgetPreview.buildState(input.widgetKey).catch(() => undefined));
   }
 });
 

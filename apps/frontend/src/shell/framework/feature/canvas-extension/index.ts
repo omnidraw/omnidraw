@@ -1,4 +1,5 @@
 import type { ICanvasExtension, TCanvasExternalWidgetPreview } from "@omnidraw/canvas";
+import { Predicate } from "effect";
 import {
   CANVAS_WIDGET_EXTENSION_KEY,
   fnReadCanvasWidgetExtension,
@@ -27,12 +28,59 @@ import {
   fnWidgetPreviewActionId,
 } from "@/core/widgets/fn.placed-widget-node";
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
+import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
   runtime: TFrontendRuntime;
   placement: TWidgetPlacementCoordinator;
   invalidateWidgets(): void;
 }>;
+
+type TPreviewFailurePresentation = Readonly<{
+  title: "Build required" | "Building" | "Build failed" | "Preview failed";
+  message: string;
+  rebuildDisabled: boolean;
+}>;
+
+function previewFailurePresentation(error: unknown): TPreviewFailurePresentation {
+  if (isPrivateRpcError(error) && Predicate.isObject(error.details)) {
+    const details = error.details;
+    if (details.kind === "widget-preview-build-state") {
+      const phase = details.phase;
+      const diagnostics = Array.isArray(details.diagnostics) ? details.diagnostics : [];
+      const diagnostic = diagnostics.find((candidate) => Predicate.isObject(candidate)
+        && typeof candidate.message === "string");
+      if (phase === "building" || phase === "validating") {
+        return Object.freeze({
+          title: "Building",
+          message: phase === "validating"
+            ? "The exact widget build is being validated. Select Rebuild to join it and open Preview when it is ready."
+            : "The exact widget dependencies and source are being built. Select Rebuild to join it and open Preview when it is ready.",
+          rebuildDisabled: false,
+        });
+      }
+      if (phase === "rejected") {
+        return Object.freeze({
+          title: "Build failed",
+          message: typeof diagnostic?.message === "string"
+            ? diagnostic.message.slice(0, 600)
+            : "The host rejected the current widget build. Repair the draft, then rebuild it.",
+          rebuildDisabled: false,
+        });
+      }
+      return Object.freeze({
+        title: "Build required",
+        message: "This draft has no accepted build for its current files. Rebuild it to open Preview.",
+        rebuildDisabled: false,
+      });
+    }
+  }
+  return Object.freeze({
+    title: "Preview failed",
+    message: "The accepted Preview could not start. Repair and rebuild the widget, or remove this frame.",
+    rebuildDisabled: false,
+  });
+}
 
 function subject(
   canvasId: string,
@@ -98,7 +146,7 @@ export function createFrontendWidgetExtension(
         },
       });
       const mounts = new Map<string, IWidgetBrowserMount>();
-      const reloadByNode = new Map<string, () => Promise<void>>();
+      const reloadByNode = new Map<string, () => Promise<boolean>>();
       const unregisterWidgetHost = context.widgets.register({
         id: "omnidraw.frontend-widgets",
         match: (node) => subject(context.config.canvasId, node) !== null,
@@ -111,8 +159,80 @@ export function createFrontendWidgetExtension(
           // menu; an extension titlebar here would overlay that same chrome.
           let activeNode = args.node;
           let mount: IWidgetBrowserMount | undefined;
-          let opening: Promise<void> | null = null;
-          const open = async (): Promise<void> => {
+          let failureSurface: HTMLElement | null = null;
+          let opening: Promise<boolean> | null = null;
+          const removePreview = (): void => {
+            context.document.commit({
+              source: "omnidraw.widget-preview.remove",
+              commands: [{ type: "remove", nodeId: args.node.id, descendants: "remove" }],
+            });
+          };
+          const renderFailure = (error: unknown): void => {
+            if (extension.type !== "widget-preview" || mount !== undefined) return;
+            failureSurface?.remove();
+            const presentation = previewFailurePresentation(error);
+            const surface = args.container.ownerDocument.createElement("section");
+            surface.dataset.omnidrawWidgetPreviewFailure = presentation.title;
+            surface.setAttribute("aria-live", "polite");
+            surface.setAttribute("aria-label", `Preview ${presentation.title}`);
+            Object.assign(surface.style, {
+              alignItems: "center",
+              background: "var(--omnidraw-color-surface, #fff)",
+              boxSizing: "border-box",
+              color: "var(--omnidraw-color-text, #171717)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              gridArea: "1 / 1",
+              height: "100%",
+              justifyContent: "center",
+              minHeight: "0",
+              padding: "24px",
+              textAlign: "center",
+              width: "100%",
+              zIndex: "2",
+            });
+            const title = surface.ownerDocument.createElement("h3");
+            title.textContent = presentation.title;
+            title.style.cssText = "font:600 16px/22px system-ui,sans-serif;margin:0";
+            const message = surface.ownerDocument.createElement("p");
+            message.textContent = presentation.message;
+            message.style.cssText = "font:400 13px/19px system-ui,sans-serif;margin:0;max-width:32rem;overflow-wrap:anywhere";
+            const controls = surface.ownerDocument.createElement("div");
+            controls.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center";
+            const rebuild = surface.ownerDocument.createElement("button");
+            rebuild.type = "button";
+            rebuild.textContent = presentation.rebuildDisabled ? "Building…" : "Rebuild";
+            rebuild.disabled = presentation.rebuildDisabled;
+            rebuild.style.cssText = "appearance:none;border:1px solid currentColor;border-radius:7px;background:transparent;color:inherit;cursor:pointer;font:600 13px/18px system-ui,sans-serif;padding:6px 11px";
+            rebuild.addEventListener("click", () => {
+              void (async () => {
+                rebuild.disabled = true;
+                rebuild.textContent = "Building…";
+                try {
+                  await application.rpc.request("widget.preview.rebuildDraft", {
+                    widgetKey: extension.widgetKey,
+                  }, { signal: args.signal });
+                  options.invalidateWidgets();
+                  if (await open()) showSuccessToast("Widget draft rebuilt");
+                } catch (rebuildError) {
+                  renderFailure(rebuildError);
+                  const failed = previewFailurePresentation(rebuildError);
+                  showErrorToast(failed.title, failed.message);
+                }
+              })();
+            });
+            const remove = surface.ownerDocument.createElement("button");
+            remove.type = "button";
+            remove.textContent = "Remove";
+            remove.style.cssText = rebuild.style.cssText;
+            remove.addEventListener("click", removePreview);
+            controls.append(rebuild, remove);
+            surface.append(title, message, controls);
+            args.container.append(surface);
+            failureSurface = surface;
+          };
+          const open = async (): Promise<boolean> => {
             if (opening !== null) return opening;
             opening = (async () => {
               const previous = mount;
@@ -136,11 +256,17 @@ export function createFrontendWidgetExtension(
                 await next.ready();
               } catch (error) {
                 await next?.dispose("replacement-failed").catch(() => undefined);
-                throw error;
+                if (previous === undefined) renderFailure(error);
+                const failed = previewFailurePresentation(error);
+                showErrorToast(failed.title, failed.message);
+                return false;
               }
+              failureSurface?.remove();
+              failureSurface = null;
               mount = next;
               mounts.set(args.node.id, next);
               await previous?.dispose("replaced");
+              return true;
             })().finally(() => {
               opening = null;
             });
@@ -164,6 +290,7 @@ export function createFrontendWidgetExtension(
             unsubscribeTheme();
             reloadByNode.delete(args.node.id);
             mounts.delete(args.node.id);
+            failureSurface?.remove();
             await mount?.dispose("canvas-unmount");
           };
         },
@@ -172,10 +299,7 @@ export function createFrontendWidgetExtension(
           if (extension?.type !== "widget-preview") return;
           const previewActionId = fnWidgetPreviewActionId(actionId);
           if (previewActionId === "remove") {
-            context.document.commit({
-              source: "omnidraw.widget-preview.remove",
-              commands: [{ type: "remove", nodeId: node.id, descendants: "remove" }],
-            });
+            context.document.commit({ source: "omnidraw.widget-preview.remove", commands: [{ type: "remove", nodeId: node.id, descendants: "remove" }] });
             return;
           }
           if (previewActionId === "reload") {
@@ -185,8 +309,7 @@ export function createFrontendWidgetExtension(
           if (previewActionId === "rebuild") {
             await application.rpc.request("widget.preview.rebuildDraft", { widgetKey: extension.widgetKey }, { signal });
             options.invalidateWidgets();
-            await reloadByNode.get(node.id)?.();
-            showSuccessToast("Widget draft rebuilt");
+            if (await reloadByNode.get(node.id)?.()) showSuccessToast("Widget draft rebuilt");
             return;
           }
           if (previewActionId === "publish") {

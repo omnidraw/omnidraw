@@ -528,6 +528,10 @@ class WidgetPreviewService {
     });
   }
 
+  buildState(widgetKey: string): ReturnType<WidgetBuildGenerationService['view']> {
+    return this.#config.buildGenerations.view(widgetKey);
+  }
+
   /** Runs one exact accepted generation in a bounded diagnostic clone. */
   async inspect(
     args: TWidgetPreviewInspectionRequest,

@@ -55,7 +55,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Preview actions |
 | --- |
 | ![Draft Preview frame with its lifecycle actions menu open](assets/18-canvas-preview-actions.webp) |
-| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the accepted live session without building, **Rebuild** runs the repository's same portable `npm run build` and waits for host acceptance, **Publish** accepts only one current digest-fenced generation, and destructive **Remove** closes only the Preview frame and its process-owned session. A failed rebuild leaves the previous working Preview visible. AI diagnostics run in a separate process-owned clone, report whether this frame is absent, failed, or ready, and never insert or replace visible canvas layout. |
+| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the accepted live session without building, **Rebuild** runs the host-owned exact-lock build and waits for acceptance, **Publish** accepts only one current digest-fenced generation, and destructive **Remove** closes only the Preview frame and its process-owned session. A failed rebuild leaves the previous working Preview visible. With no accepted generation, the content area persistently shows accessible **Build required**, **Building**, or **Build failed** copy with **Rebuild** and **Remove** instead of a blank frame; guest code does not run. AI diagnostics run in a separate process-owned clone, report whether this frame is absent, failed, or ready, and never insert or replace visible canvas layout. |
 
 | Manifest resource failure | Accepted manifest Preview |
 | --- | --- |
@@ -70,7 +70,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar — Direct placement.** Each widget shows one published row with **Add** and, only while the draft differs from the publication, one draft row with **Preview**. Published **Add** validates the current manifest and inserts the item directly—there is no resource picker or per-instance binding payload. A draft drop or **Preview** click opens only an already accepted generation (or asks for a rebuild). |
+| **Sidebar — Direct placement.** Each widget shows one published row with **Add** and, only while the draft differs from the publication, one draft row with **Preview**. Published **Add** validates the current manifest and inserts the item directly—there is no resource picker or per-instance binding payload. Draft source health and Preview build state remain distinct: a draft drop or **Preview** click mounts an accepted generation, or retains the authored frame with its exact bounded build-required/failed state and next action. |
 
 ## Widget inspector
 

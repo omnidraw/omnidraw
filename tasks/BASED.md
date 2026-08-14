@@ -207,7 +207,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B93](b/B93.md) - Widgets: restore source-aware deletion for drafts and publications
 - [x]: [B94](b/B94.md) - Canvas sidebar: make deletion reachable and coordinate retained chats
 - [x]: [B95](b/B95.md) - AI widget create: registry SDK rebuild crashes the live backend
-- [~]: [B96](b/B96.md) - AI widget Preview: lockfile-only drafts cannot build and leave blank frames
+- [x]: [B96](b/B96.md) - AI widget Preview: lockfile-only drafts cannot build and leave blank frames
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

@@ -3,6 +3,7 @@ import type {
   TWidgetArtifactConstructionResult,
   TWidgetArtifactConstructionSignRequest,
   TWidgetBuildEnvironment,
+  TWidgetBuildReceipt,
   TWidgetBuildResult,
   TWidgetExecutableInputFile,
   TWidgetManifestV1,
@@ -78,6 +79,13 @@ export type TWidgetFilesystemConstruction = Readonly<{
   canonicalExecutableManifestJson: string;
   distributionDigestSha256: string;
   construction: TWidgetArtifactConstructionResult;
+  distFiles: readonly TWidgetSourceFile[];
+}>;
+
+/** Exact portable output produced inside the host-owned private build workspace. */
+export type TWidgetFilesystemPortableBuild = Readonly<{
+  construction: TWidgetFilesystemConstruction;
+  receipt: TWidgetBuildReceipt;
   distFiles: readonly TWidgetSourceFile[];
 }>;
 
