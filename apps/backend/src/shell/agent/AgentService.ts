@@ -65,7 +65,7 @@ export interface IAgentServiceConfig {
   dataPath: string;
   widgetDraftsRoot: string;
   npmUserConfigPath?: string;
-  prepareWidgetNpmDependencies?: () => Promise<void>;
+  prepareWidgetNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
   /** Notified after any agent-owned draft change so the app can rescan the
    * shared widget root and invalidate catalogs. */
   onWidgetDraftsChanged?: () => void;

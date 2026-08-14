@@ -16,7 +16,13 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ]
+      ],
+      "@omnidraw/canvas": ["../../packages/canvas/src/index.ts"],
+      "@omnidraw/canvas-contract": ["../../packages/canvas-contract/src/index.ts"],
+      "@omnidraw/component-ai-chat": ["../../packages/component-ai-chat/src/index.ts"],
+      "@omnidraw/sdk": ["../../packages/sdk/src/index.ts"],
+      "@omnidraw/sdk/host": ["../../packages/sdk/src/host.ts"],
+      "@omnidraw/theme": ["../../packages/theme/src/index.ts"]
     },
     "strict": true,
     "skipLibCheck": true,

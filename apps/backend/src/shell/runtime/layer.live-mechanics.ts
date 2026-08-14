@@ -202,7 +202,7 @@ export function layerLiveMechanics(args: Readonly<{
   });
   const prepareWidgetNpmDependencies = localWidgetPackageRegistry === null
     ? undefined
-    : () => localWidgetPackageRegistry.sync();
+    : (signal?: AbortSignal) => localWidgetPackageRegistry.sync(signal);
   const distributionBuildSetup = (() => {
     const injected = options.distributionBuild;
     if (injected !== undefined) {

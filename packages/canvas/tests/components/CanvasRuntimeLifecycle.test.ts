@@ -32,6 +32,12 @@ function runtime(name: string, bootPromise: Promise<void> = Promise.resolve()) {
   };
 }
 
+function recoveryWait() {
+  const gate = deferred();
+  const cancel = vi.fn(() => gate.resolve());
+  return { handle: { promise: gate.promise, cancel }, resolve: gate.resolve, cancel };
+}
+
 describe("CanvasRuntimeLifecycle", () => {
   test("shuts down the previous runtime before starting its replacement", async () => {
     const events: string[] = [];
@@ -106,6 +112,80 @@ describe("CanvasRuntimeLifecycle", () => {
 
     expect(onBootError).toHaveBeenCalledWith(failure, "failed");
     expect(failed.shutdownEffect).toHaveBeenCalledTimes(1);
+    expect(lifecycle.activeRuntime).toBeNull();
+  });
+
+  test("retries a transient initial boot only after the host accepts a newer connection generation", async () => {
+    const failure = new Error("SocketCloseError: 1006");
+    const first = runtime("first", Promise.reject(failure));
+    const second = runtime("second");
+    const recovery = recoveryWait();
+    const onBootError = vi.fn();
+    const onBootSuccess = vi.fn();
+    const onBootRecoveryWait = vi.fn();
+    let attempts = 0;
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: () => attempts++ === 0 ? first : second,
+      recoverBoot: (error) => error === failure ? recovery.handle : null,
+      onBootRecoveryWait,
+      onBootError,
+      onBootSuccess,
+    });
+
+    const replacement = lifecycle.replace("canvas-a");
+    await vi.waitFor(() => expect(onBootRecoveryWait).toHaveBeenCalledWith(failure, "canvas-a"));
+    expect(attempts).toBe(1);
+    expect(first.shutdownEffect).toHaveBeenCalledTimes(1);
+    expect(onBootError).not.toHaveBeenCalled();
+
+    recovery.resolve();
+    await replacement;
+
+    expect(attempts).toBe(2);
+    expect(second.bootEffect).toHaveBeenCalledTimes(1);
+    expect(onBootSuccess).toHaveBeenCalledTimes(1);
+    expect(lifecycle.activeRuntime).toBe(second);
+  });
+
+  test("a source replacement cancels pending boot recovery and cannot boot a stale retry", async () => {
+    const failed = runtime("failed", Promise.reject(new Error("transport closed")));
+    const current = runtime("current");
+    const recovery = recoveryWait();
+    const created: string[] = [];
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: (source) => {
+        created.push(source);
+        return source === "old" ? failed : current;
+      },
+      recoverBoot: () => recovery.handle,
+    });
+
+    const old = lifecycle.replace("old");
+    await vi.waitFor(() => expect(failed.shutdownEffect).toHaveBeenCalledTimes(1));
+    const next = lifecycle.replace("new");
+    await Promise.all([old, next]);
+
+    expect(recovery.cancel).toHaveBeenCalled();
+    expect(created).toEqual(["old", "new"]);
+    expect(current.bootEffect).toHaveBeenCalledTimes(1);
+    expect(lifecycle.activeRuntime).toBe(current);
+  });
+
+  test("shutdown cancels a pending boot-generation wait without creating another runtime", async () => {
+    const failed = runtime("failed", Promise.reject(new Error("transport closed")));
+    const recovery = recoveryWait();
+    const createRuntime = vi.fn(() => failed);
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime,
+      recoverBoot: () => recovery.handle,
+    });
+
+    const replacement = lifecycle.replace("canvas-a");
+    await vi.waitFor(() => expect(failed.shutdownEffect).toHaveBeenCalledTimes(1));
+    await Promise.all([replacement, lifecycle.dispose()]);
+
+    expect(recovery.cancel).toHaveBeenCalled();
+    expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(lifecycle.activeRuntime).toBeNull();
   });
 

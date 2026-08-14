@@ -23,11 +23,12 @@
   },
   "scripts": {
     "pretest": "bun run build:public",
-    "test": "bun run test:typecheck && bun run test:workspace && bun run test:architecture && bun run test:conformance && bun run test:db && bun run test:packed-public-composition && bun run test:browser",
+    "test": "bun run test:typecheck && bun run test:workspace && bun run test:architecture && bun run test:source-run-build-stability && bun run test:conformance && bun run test:db && bun run test:packed-public-composition && bun run test:browser",
     "test:typecheck": "bun run --sequential --filter '@omnidraw/backend' --filter '@omnidraw/frontend' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/canvas' --filter '@omnidraw/sdk' --filter '@omnidraw/component-ai-chat' --filter '@omnidraw/theme' typecheck",
     "test:workspace": "bun run --sequential --filter '@omnidraw/backend' --filter '@omnidraw/frontend' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/canvas' --filter '@omnidraw/sdk' --filter '@omnidraw/component-ai-chat' --filter '@omnidraw/theme' test",
     "pretest:architecture": "bun run build:public",
     "test:architecture": "bun test scripts/public-packages.test.ts scripts/architecture-boundaries.test.ts scripts/prepare-package-dist.test.ts scripts/verify-package-dists.test.ts scripts/list-package-deployments.test.ts scripts/local-registry.test.mjs scripts/link-local-packages.test.mjs",
+    "test:source-run-build-stability": "bun run scripts/test-source-run-public-imports.ts",
     "test:conformance": "bun run scripts/generate-private-operation-manifest.ts && bun test tests/transport && bun run test:backend:conformance && bun run test:frontend:conformance",
     "test:backend:conformance": "bun test apps/backend/src/conformance apps/backend/src/sim",
     "test:frontend:conformance": "bun test apps/frontend/src/conformance apps/frontend/src/sim",

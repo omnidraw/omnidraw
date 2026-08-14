@@ -46,6 +46,15 @@ export type TCanvasWaitPort = Readonly<{
   wait(delayMs: number): TCanvasWaitHandle;
 }>;
 
+/**
+ * Optional host-owned classification and connection-generation wait used only
+ * when the first authoritative snapshot fails. Returning null makes the
+ * failure terminal; a returned handle must settle promptly when cancelled.
+ */
+export type TCanvasInitialBootRecoveryPort = Readonly<{
+  waitForRecovery(error: unknown): TCanvasWaitHandle | null;
+}>;
+
 /** Optional host-owned diagnostics capability consumed by canvas UI/runtime. */
 export type TCanvasDiagnosticsPort = TReproductionTraceOwner;
 
@@ -71,6 +80,7 @@ export type TCanvasDependencies = Readonly<{
   notification: TCanvasNotificationPort;
   createId(): string;
   wait: TCanvasWaitPort;
+  initialBootRecovery?: TCanvasInitialBootRecoveryPort;
   diagnostics?: TCanvasDiagnosticsPort | null;
   hostRetirement?: TCanvasHostRetirementPort;
   extensions?: readonly ICanvasExtension[];

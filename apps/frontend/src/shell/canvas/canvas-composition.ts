@@ -14,7 +14,10 @@ import {
   createFrontendAiChatExtension,
 } from '../chat/adapters';
 import { createFrontendWidgetExtension } from '../framework/feature/canvas-extension';
-import { createFrontendCanvasDocumentTransport } from './canvas-document-transport';
+import {
+  createFrontendCanvasDocumentTransport,
+  createFrontendCanvasInitialBootRecovery,
+} from './canvas-document-transport';
 import type { TFrontendRuntime } from '../runtime/frontend-runtime';
 import { startFrontendDatabaseEvents } from '../browser/database-events';
 
@@ -162,6 +165,7 @@ export function createFrontendCanvasComposition(
     }),
     createId: () => ownerWindow.crypto.randomUUID(),
     wait: createBrowserWaitPort(ownerWindow),
+    initialBootRecovery: createFrontendCanvasInitialBootRecovery(args.runtime),
     hostRetirement:
       args.runtime.canvasHostRetirement.registration,
     ...(diagnostics === undefined ? {} : { diagnostics }),

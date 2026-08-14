@@ -19,7 +19,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { createConnection } from 'node:net';
 import { spawn } from 'node:child_process';
 
@@ -47,6 +47,8 @@ const PUBLIC_PACKAGE_DIRECTORIES = Object.freeze({
 });
 const START_TIMEOUT_MS = 20_000;
 const STOP_TIMEOUT_MS = 8_000;
+const activeChildren = new Set();
+const activeStageDirectories = new Set();
 
 function sleep(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
@@ -93,6 +95,7 @@ function settings() {
     widgetNpmUserConfigPath: join(stateDirectory, 'npmjs.npmrc'),
     startLockPath: join(stateDirectory, 'start.lock'),
     publishLockPath: join(stateDirectory, 'publish.lock'),
+    stageDirectory: join(stateDirectory, 'package-staging'),
     toolDirectory,
     toolManifestPath: join(toolDirectory, 'package.json'),
     verdaccioBin: join(toolDirectory, 'node_modules', 'verdaccio', 'bin', 'verdaccio'),
@@ -195,7 +198,9 @@ function run(command, args, options = {}) {
       cwd: options.cwd ?? REPOSITORY_ROOT,
       env: options.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
     });
+    activeChildren.add(child);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => {
@@ -204,8 +209,12 @@ function run(command, args, options = {}) {
     child.stderr.on('data', (chunk) => {
       stderr += chunk.toString('utf8');
     });
-    child.once('error', reject);
+    child.once('error', (error) => {
+      activeChildren.delete(child);
+      reject(error);
+    });
     child.once('close', (code, signal) => {
+      activeChildren.delete(child);
       if (code === 0) {
         resolvePromise(Object.freeze({ stdout, stderr }));
         return;
@@ -217,6 +226,31 @@ function run(command, args, options = {}) {
       ].filter(Boolean).join('\n')));
     });
   });
+}
+
+function installProcessCleanup() {
+  let exiting = false;
+  const terminate = (signal) => {
+    if (exiting) return;
+    exiting = true;
+    for (const child of activeChildren) {
+      try {
+        if (process.platform !== 'win32' && child.pid !== undefined) {
+          process.kill(-child.pid, signal);
+        } else {
+          child.kill(signal);
+        }
+      } catch {
+        // The child may have completed between enumeration and termination.
+      }
+    }
+    for (const directory of activeStageDirectories) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  };
+  process.once('SIGINT', () => terminate('SIGINT'));
+  process.once('SIGTERM', () => terminate('SIGTERM'));
 }
 
 async function installRuntime(config) {
@@ -811,13 +845,85 @@ export function widgetPackagePublishOrder(packages, rootName = WIDGET_PACKAGE_RO
   return Object.freeze(ordered);
 }
 
-async function packWorkspacePackage(config, entry) {
-  await run('bun', ['run', '--filter', entry.name, 'build']);
-  const packDirectory = await mkdtemp(join(config.stateDirectory, 'widget-package-pack-'));
+export function assertWidgetPackageStageSupport(entries) {
+  for (const entry of entries) {
+    if (typeof entry.manifest.scripts?.['build:stage'] !== 'string') {
+      throw new Error(
+        `${entry.name} is in the widget package dependency closure but does not declare scripts.build:stage. `
+        + 'Registry synchronization will not fall back to a workspace build.',
+      );
+    }
+  }
+}
+
+function exportedTargets(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(exportedTargets);
+  if (value === null || typeof value !== 'object') return [];
+  return Object.values(value).flatMap(exportedTargets);
+}
+
+export async function verifyStagedWorkspacePackage(entry, distDirectory) {
+  const manifest = JSON.parse(await readFile(join(distDirectory, 'package.json'), 'utf8'));
+  if (manifest.name !== entry.name || manifest.version !== entry.version) {
+    throw new Error(
+      `Staged package identity ${String(manifest.name)}@${String(manifest.version)} does not match `
+      + `${entry.name}@${entry.version}.`,
+    );
+  }
+  for (const target of exportedTargets(manifest.exports)) {
+    if (target.includes('*')) continue;
+    const targetPath = resolve(distDirectory, target);
+    if (!targetPath.startsWith(`${distDirectory}${sep}`)) {
+      throw new Error(`${entry.name} staged export escapes its distribution root: ${target}`);
+    }
+    const targetStat = await stat(targetPath).catch(() => null);
+    if (targetStat === null || (!targetStat.isFile() && !targetStat.isDirectory())) {
+      throw new Error(`${entry.name} staged export target does not exist: ${target}`);
+    }
+  }
+  return Object.freeze({ manifest, distDirectory });
+}
+
+export async function buildWorkspacePackageStage(entry, stageRoot, runner = run) {
+  assertWidgetPackageStageSupport([entry]);
+  const distDirectory = join(stageRoot, 'package');
+  await runner('bun', ['run', 'build:stage'], {
+    cwd: entry.directory,
+    env: {
+      ...process.env,
+      OMNIDRAW_PACKAGE_STAGE: '1',
+      OMNIDRAW_PACKAGE_DIST_ROOT: distDirectory,
+    },
+  });
+  return verifyStagedWorkspacePackage(entry, distDirectory);
+}
+
+export async function withWorkspacePackageStage(
+  stageDirectory,
+  entry,
+  consume,
+  runner = run,
+) {
+  await mkdir(stageDirectory, { recursive: true, mode: 0o700 });
+  const stageRoot = await mkdtemp(join(stageDirectory, 'widget-package-'));
+  activeStageDirectories.add(stageRoot);
   try {
+    const staged = await buildWorkspacePackageStage(entry, stageRoot, runner);
+    return await consume(Object.freeze({ ...staged, stageRoot }));
+  } finally {
+    activeStageDirectories.delete(stageRoot);
+    await rm(stageRoot, { recursive: true, force: true });
+  }
+}
+
+async function packWorkspacePackage(config, entry) {
+  return withWorkspacePackageStage(config.stageDirectory, entry, async ({ distDirectory, stageRoot }) => {
+    const packDirectory = join(stageRoot, 'pack');
+    await mkdir(packDirectory, { mode: 0o700 });
     await run('npm', [
       'pack',
-      join(entry.directory, 'dist'),
+      distDirectory,
       '--pack-destination',
       packDirectory,
       '--ignore-scripts',
@@ -831,9 +937,7 @@ async function packWorkspacePackage(config, entry) {
     // Workspace-local packages are always safe to overwrite in place: see the
     // `publishTarball` doc comment for why this differs from `publish`/`bootstrap`.
     return await publishTarball(config, join(packDirectory, tarballs[0]), { allowOverwrite: true });
-  } finally {
-    await rm(packDirectory, { recursive: true, force: true });
-  }
+  });
 }
 
 export function widgetPackageSyncSource(registryIntegrity, npmIntegrity) {
@@ -866,6 +970,9 @@ async function publishWidgetPackages(config) {
   try {
     const packages = await versionedWorkspacePackages();
     const ordered = widgetPackagePublishOrder(packages);
+    // Reject unsupported closure growth before running any package build. A
+    // normal workspace build is never a fallback for isolated publication.
+    assertWidgetPackageStageSupport(ordered);
     const results = [];
     for (const entry of ordered) results.push(await syncWorkspacePackage(config, entry));
     return Object.freeze(results);
@@ -885,6 +992,9 @@ function flagValue(args, flag) {
 async function main() {
   const config = settings();
   const [command = 'status', ...args] = process.argv.slice(2);
+  if (command === 'publish-widget-packages' || command === 'publish-sdk') {
+    installProcessCleanup();
+  }
   if (command === 'status') {
     console.log(JSON.stringify(await registryStatus(config), null, 2));
     return;

@@ -103,7 +103,7 @@ function isWidgetContentTarget(target: EventTarget | null): boolean {
 
 function isWidgetEscapeConsumer(event: KeyboardEvent): boolean {
   return event.composedPath().some((target) => {
-    const element = eventTargetElement(target);
+    const element = eventTargetElement(target ?? null);
     if (element === null) return false;
     const role = element.getAttribute('role');
     return (
@@ -117,7 +117,7 @@ function isWidgetEscapeConsumer(event: KeyboardEvent): boolean {
 
 function isOpenNativeDialogTarget(event: KeyboardEvent): boolean {
   return event.composedPath().some((target) => {
-    const element = eventTargetElement(target);
+    const element = eventTargetElement(target ?? null);
     return element?.tagName.toLowerCase() === 'dialog'
       && element.hasAttribute('open');
   });
@@ -284,6 +284,20 @@ export function Canvas(props: TCanvasProps) {
       trace()?.emit({
         channel: 'system',
         type: 'runtime-ready',
+        priority: 'critical',
+        correlation: { canvasId: props.canvas.id },
+      });
+    },
+    recoverBoot: (error) => (
+      props.dependencies.initialBootRecovery?.waitForRecovery(error) ?? null
+    ),
+    onBootRecoveryWait: () => {
+      activeRuntime = null;
+      setBooting(true);
+      setBootError(null);
+      trace()?.emit({
+        channel: 'system',
+        type: 'runtime-recovery-waiting',
         priority: 'critical',
         correlation: { canvasId: props.canvas.id },
       });

@@ -5,7 +5,12 @@ import { join } from 'node:path';
 export type TLocalWidgetPackageRegistryExecute = (
   command: string,
   args: readonly string[],
-  options: Readonly<{ cwd: string; timeout: number; maxBuffer: number }>,
+  options: Readonly<{
+    cwd: string;
+    timeout: number;
+    maxBuffer: number;
+    signal?: AbortSignal;
+  }>,
 ) => Promise<void>;
 
 type TStat = (path: string) => Promise<Readonly<{ isFile(): boolean }>>;
@@ -37,7 +42,12 @@ function processFailureSummary(error: Readonly<{
 function execute(
   command: string,
   args: readonly string[],
-  options: Readonly<{ cwd: string; timeout: number; maxBuffer: number }>,
+  options: Readonly<{
+    cwd: string;
+    timeout: number;
+    maxBuffer: number;
+    signal?: AbortSignal;
+  }>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(command, args, options, (error, stdout, stderr) => {
@@ -67,7 +77,12 @@ export class LocalWidgetPackageRegistrySync {
   readonly #repositoryRoot: string;
   readonly #execute: TLocalWidgetPackageRegistryExecute;
   readonly #stat: TStat;
-  #active: Promise<void> | null = null;
+  #active: Readonly<{
+    promise: Promise<void>;
+    controller: AbortController;
+    waiters: Set<object>;
+    settled: { value: boolean };
+  }> | null = null;
   #synchronized = false;
 
   constructor(config: TConfig) {
@@ -76,22 +91,52 @@ export class LocalWidgetPackageRegistrySync {
     this.#stat = config.stat ?? stat;
   }
 
-  sync(): Promise<void> {
+  sync(signal?: AbortSignal): Promise<void> {
     if (this.#synchronized) return Promise.resolve();
-    if (this.#active !== null) return this.#active;
-    const operation = this.#run();
-    const tracked = operation
-      .then(() => {
-        this.#synchronized = true;
-      })
-      .finally(() => {
-        if (this.#active === tracked) this.#active = null;
-      });
-    this.#active = tracked;
-    return tracked;
+    if (this.#active === null) {
+      const controller = new AbortController();
+      const waiters = new Set<object>();
+      const settled = { value: false };
+      const operation = this.#run(controller.signal);
+      const tracked = operation
+        .then(() => {
+          this.#synchronized = true;
+        })
+        .finally(() => {
+          settled.value = true;
+          if (this.#active?.promise === tracked) this.#active = null;
+        });
+      this.#active = Object.freeze({ promise: tracked, controller, waiters, settled });
+    }
+    return this.#waitForActive(signal);
   }
 
-  async #run(): Promise<void> {
+  #waitForActive(signal?: AbortSignal): Promise<void> {
+    const active = this.#active!;
+    const waiter = Object.freeze({});
+    active.waiters.add(waiter);
+    const release = () => {
+      active.waiters.delete(waiter);
+      if (!active.settled.value && active.waiters.size === 0) active.controller.abort();
+    };
+    if (signal?.aborted) {
+      release();
+      return Promise.reject(new Error('Local widget package synchronization was cancelled.'));
+    }
+    return new Promise((resolve, reject) => {
+      const cancelled = () => {
+        release();
+        reject(new Error('Local widget package synchronization was cancelled.'));
+      };
+      signal?.addEventListener('abort', cancelled, { once: true });
+      void active.promise.then(resolve, reject).finally(() => {
+        signal?.removeEventListener('abort', cancelled);
+        release();
+      });
+    });
+  }
+
+  async #run(signal: AbortSignal): Promise<void> {
     const scriptPath = join(this.#repositoryRoot, 'scripts', 'local-registry.mjs');
     const script = await this.#stat(scriptPath).catch(() => null);
     if (script === null || !script.isFile()) {
@@ -106,6 +151,7 @@ export class LocalWidgetPackageRegistrySync {
         cwd: this.#repositoryRoot,
         timeout: 5 * 60_000,
         maxBuffer: 2 * 1024 * 1024,
+        signal,
       },
     );
   }
