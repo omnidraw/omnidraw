@@ -198,6 +198,31 @@ describe('shared agent draft root', () => {
     expect(snapshot.entries['hello-app']?.draft?.manifest?.name).toBe('Renamed App');
   });
 
+  test('plans and removes every exact backend-owned draft mount after source retirement', async () => {
+    const { widgetsRoot, workspace } = await createHome();
+    await workspace.createDraft(
+      CHAT_ID,
+      { name: 'Hello App' },
+      ({ cwd, name }) => scaffoldHelloDraft(cwd, name),
+    );
+    await workspace.createDraft(
+      CHAT_ID,
+      { name: 'Other App' },
+      ({ cwd, name }) => scaffoldHelloDraft(cwd, name, 'other-app'),
+    );
+    await workspace.ensureChat(SECOND_CHAT_ID);
+
+    const planned = await workspace.observeDraftMounts('hello-app');
+    expect(planned.map((mount) => mount.chatId).sort()).toEqual([CHAT_ID, SECOND_CHAT_ID].sort());
+    expect(planned.every((mount) => mount.name === 'Hello App')).toBe(true);
+    await rm(join(widgetsRoot, 'drafts', 'hello-app'), { recursive: true });
+    for (const mount of planned) await workspace.removeDraftMount('hello-app', mount);
+
+    expect(await workspace.observeDraftMounts('hello-app')).toEqual([]);
+    expect((await workspace.listMounts(CHAT_ID)).map((mount) => mount.name)).toEqual(['Other App']);
+    expect((await workspace.listMounts(SECOND_CHAT_ID)).map((mount) => mount.name)).toEqual(['Other App']);
+  });
+
   test('rejects duplicate display names and slug collisions at creation', async () => {
     const { workspace } = await createHome();
     await workspace.createDraft(

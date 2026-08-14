@@ -1037,7 +1037,12 @@ export async function acquireWidgetRootWriterLease(
   if (!fnIsPublicationToken(args.operationToken) || !fnIsPublicationToken(args.ownerToken)) {
     throw errorWithCode('INVALID_PUBLICATION_INPUT', 'Writer lease tokens are invalid.');
   }
-  if (args.purpose !== 'draft' && args.purpose !== 'import' && args.purpose !== 'preview') {
+  if (
+    args.purpose !== 'draft'
+    && args.purpose !== 'import'
+    && args.purpose !== 'preview'
+    && args.purpose !== 'delete'
+  ) {
     throw errorWithCode('INVALID_PUBLICATION_INPUT', 'Writer lease purpose is invalid.');
   }
   const context: TTransitionContext = Object.freeze({

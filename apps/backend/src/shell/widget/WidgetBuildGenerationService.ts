@@ -92,6 +92,7 @@ type TConfig = Readonly<{
   now: () => number;
   scheduleInterval: (callback: () => void, milliseconds: number) => ReturnType<typeof setInterval>;
   cancelInterval: (timer: ReturnType<typeof setInterval>) => void;
+  mutationAdmission?: Readonly<{ assertAllowed(widgetKey: string): void }>;
 }>;
 
 type TEntry = {
@@ -154,6 +155,8 @@ export class WidgetBuildGenerationService {
   readonly #config: TConfig;
   readonly #workspace: Promise<NodeWidgetFilesystemWorkspace>;
   readonly #entries = new Map<string, TEntry>();
+  readonly #rebuildControllers = new Map<string, Set<AbortController>>();
+  readonly #rebuildSettlements = new Map<string, Set<Promise<void>>>();
   readonly #listeners = new Set<(event: TWidgetBuildGenerationEvent) => void>();
   readonly #now: () => number;
   #generation = 0;
@@ -228,6 +231,18 @@ export class WidgetBuildGenerationService {
   }
 
   async rebuild(widgetKey: string, signal?: AbortSignal): Promise<TAcceptedWidgetBuildGeneration> {
+    this.#config.mutationAdmission?.assertAllowed(widgetKey);
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason ?? 'caller-cancelled');
+    signal?.addEventListener('abort', cancel, { once: true });
+    const controllers = this.#rebuildControllers.get(widgetKey) ?? new Set<AbortController>();
+    controllers.add(controller);
+    this.#rebuildControllers.set(widgetKey, controllers);
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    const settlements = this.#rebuildSettlements.get(widgetKey) ?? new Set<Promise<void>>();
+    settlements.add(settled);
+    this.#rebuildSettlements.set(widgetKey, settlements);
     const release = this.activate(widgetKey);
     const entry = this.#entry(widgetKey);
     entry.phase = 'building';
@@ -237,7 +252,7 @@ export class WidgetBuildGenerationService {
         cwd: join(this.#config.widgetsRoot, 'drafts', widgetKey),
         timeoutMs: MANUAL_BUILD_TIMEOUT_MS,
         maxOutputBytes: MANUAL_BUILD_OUTPUT_MAX_BYTES,
-        ...(signal === undefined ? {} : { signal }),
+        signal: controller.signal,
       });
       entry.lastMarker = null;
       await this.#observe(entry, true);
@@ -247,14 +262,35 @@ export class WidgetBuildGenerationService {
           entry.diagnostics[0]?.message ?? 'Portable build output was rejected by host validation.',
         );
       }
-      return await this.requireCurrent(widgetKey, signal);
+      return await this.requireCurrent(widgetKey, controller.signal);
     } catch (error) {
       if ((entry.phase as TWidgetBuildGenerationPhase) !== 'ready') entry.phase = 'rejected';
       entry.diagnostics = Object.freeze([fnWidgetBuildGenerationDiagnostic(error)]);
       throw error;
     } finally {
       release();
+      signal?.removeEventListener('abort', cancel);
+      controllers.delete(controller);
+      if (controllers.size === 0) this.#rebuildControllers.delete(widgetKey);
+      settle();
+      settlements.delete(settled);
+      if (settlements.size === 0) this.#rebuildSettlements.delete(widgetKey);
     }
+  }
+
+  async retire(widgetKey: string): Promise<void> {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(widgetKey)) {
+      throw new TypeError('Widget build generation key is invalid.');
+    }
+    for (const controller of this.#rebuildControllers.get(widgetKey) ?? []) {
+      controller.abort('widget-deleted');
+    }
+    await Promise.allSettled([...(this.#rebuildSettlements.get(widgetKey) ?? [])]);
+    const entry = this.#entries.get(widgetKey);
+    entry?.watcher?.close();
+    if (entry !== undefined) await entry.observeTail.catch(() => undefined);
+    this.#entries.delete(widgetKey);
+    await this.#config.builder.closeWorkspace(`generation_${widgetKey}`);
   }
 
   async stop(): Promise<void> {
@@ -262,9 +298,17 @@ export class WidgetBuildGenerationService {
     this.#closed = true;
     if (this.#pollTimer !== null) this.#config.cancelInterval(this.#pollTimer);
     this.#pollTimer = null;
+    for (const controllers of this.#rebuildControllers.values()) {
+      for (const controller of controllers) controller.abort('service-stopped');
+    }
+    await Promise.allSettled(
+      [...this.#rebuildSettlements.values()].flatMap((settlements) => [...settlements]),
+    );
     for (const entry of this.#entries.values()) entry.watcher?.close();
     await Promise.all([...this.#entries.values()].map((entry) => entry.observeTail.catch(() => undefined)));
     this.#listeners.clear();
+    this.#rebuildControllers.clear();
+    this.#rebuildSettlements.clear();
     this.#entries.clear();
     this.#pollCursor = 0;
   }

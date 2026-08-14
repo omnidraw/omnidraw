@@ -68,6 +68,21 @@ function mountDetail(options: Readonly<{
   initialTab?: string;
   saveError?: Error;
   metadataError?: Error;
+  catalog?: TWidgetPublicCatalog;
+  deletionPlan?: Readonly<{
+    planToken: string;
+    widgetKey: string;
+    source: 'draft' | 'published';
+    catalogDigestSha256: string;
+    pairedDraftPresent: boolean;
+    placementCount: number;
+    previewPlacementCount: number;
+    publishedPlacementCount: number;
+    chatMountCount: number;
+    resourcesPreserved: true;
+  }>;
+  planError?: Error;
+  commit?: () => Promise<readonly [Error | undefined, unknown]>;
 }> = {}) {
   const source = options.source ?? 'draft';
   const saveDraft = vi.fn(async () => options.saveError
@@ -89,7 +104,33 @@ function mountDetail(options: Readonly<{
     generation: 2,
     catalogDigestSha256: 'b'.repeat(64),
   }]);
-  const getCatalog = vi.fn(async () => [undefined, catalog()] as const);
+  const deletionPlan = options.deletionPlan ?? {
+    planToken: 'plan_1',
+    widgetKey: 'notes-board',
+    source,
+    catalogDigestSha256: 'a'.repeat(64),
+    pairedDraftPresent: source === 'published',
+    placementCount: source === 'published' ? 3 : 1,
+    previewPlacementCount: 1,
+    publishedPlacementCount: source === 'published' ? 2 : 0,
+    chatMountCount: 2,
+    resourcesPreserved: true as const,
+  };
+  const planDeletion = vi.fn(async () => options.planError
+    ? [options.planError, undefined]
+    : [undefined, deletionPlan]);
+  const commitDeletion = vi.fn(options.commit ?? (async () => [undefined, {
+    status: 'committed',
+    operationId: 'operation_1',
+    widgetKey: 'notes-board',
+    source,
+    generation: 2,
+    catalogDigestSha256: 'b'.repeat(64),
+    removedPlacementCount: deletionPlan.placementCount,
+    removedChatMountCount: deletionPlan.chatMountCount,
+    resourcesPreserved: true,
+  }]));
+  const getCatalog = vi.fn(async () => [undefined, options.catalog ?? catalog()] as const);
   const notifyError = vi.fn();
   const notifySuccess = vi.fn();
   const controller = {
@@ -116,6 +157,7 @@ function mountDetail(options: Readonly<{
             },
           },
           config: { saveDraft },
+          deletion: { plan: planDeletion, commit: commitDeletion },
           publication: { publishMetadata, buildAndPublish },
         },
       },
@@ -124,6 +166,7 @@ function mountDetail(options: Readonly<{
     subscribeReconnect: () => () => undefined,
     lifecycle,
     browser: {
+      createIdempotencyKey: () => 'operation_1',
       setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
       clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
     },
@@ -135,6 +178,8 @@ function mountDetail(options: Readonly<{
       toggleSidebar: vi.fn(),
     },
   } as never;
+  const invalidate = vi.spyOn(controller.invalidation, 'invalidate');
+  const navigate = vi.spyOn(controller.application, 'navigate');
   const host = document.createElement('div');
   document.body.appendChild(host);
   let selectTab: (value: string) => void = () => undefined;
@@ -166,6 +211,10 @@ function mountDetail(options: Readonly<{
     buildAndPublish,
     notifyError,
     notifySuccess,
+    planDeletion,
+    commitDeletion,
+    invalidate,
+    navigate,
   };
 }
 
@@ -301,5 +350,121 @@ describe('WidgetDetailPage filesystem inspector', () => {
       .not.toContain('Save draft');
     expect(host.textContent).not.toContain('Publish metadata');
     expect(host.textContent).not.toContain('Build and Publish');
+  });
+
+  test('keeps Delete available for unhealthy draft and published forms with no Config', async () => {
+    const unhealthy = publicCatalog([{
+      ...publicEntry('notes-board'),
+      health: 'unhealthy',
+      draft: {
+        ...detailedForm('draft'),
+        health: 'unhealthy',
+        manifestDigestSha256: null,
+        config: null,
+        issues: [{ code: 'MANIFEST_INVALID', message: 'Unreadable manifest.' }],
+      },
+      published: {
+        ...detailedForm('published'),
+        health: 'unhealthy',
+        manifestDigestSha256: null,
+        config: null,
+        issues: [{ code: 'RELEASE_INVALID', message: 'Unreadable release.' }],
+      },
+    }]);
+    const draft = mountDetail({ source: 'draft', catalog: unhealthy });
+    const published = mountDetail({ source: 'published', catalog: unhealthy });
+    await vi.waitFor(() => {
+      expect(button(draft.host, 'Delete widget').disabled).toBe(false);
+      expect(button(published.host, 'Delete widget').disabled).toBe(false);
+    });
+  });
+
+  test('plans before confirmation and draft cancellation preserves focus and mutates nothing', async () => {
+    const mounted = mountDetail({ source: 'draft' });
+    const trigger = await vi.waitFor(() => button(mounted.host, 'Delete widget'));
+    trigger.focus();
+    trigger.click();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
+    await vi.waitFor(() => expect(mounted.planDeletion).toHaveBeenCalledWith({
+      widgetKey: 'notes-board',
+      source: 'draft',
+    }));
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('1 Preview frame');
+      expect(document.body.textContent).toContain('2 AI Chat mounts');
+      expect(document.body.textContent).toContain('publication and every placed published instance remain');
+      expect(document.body.textContent).toContain('Independent resources remain');
+    });
+    button(document.body, 'Cancel').click();
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(mounted.commitDeletion).not.toHaveBeenCalled();
+    expect(mounted.navigate).not.toHaveBeenCalled();
+    expect(mounted.invalidate).not.toHaveBeenCalled();
+  });
+
+  test('published confirmation reports its exact blast radius and successful commit navigates once', async () => {
+    const mounted = mountDetail({ source: 'published' });
+    const trigger = await vi.waitFor(() => button(mounted.host, 'Delete widget'));
+    trigger.click();
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('its same-key draft and derived Preview/build state');
+      expect(document.body.textContent).toContain('3 Canvas placements');
+      expect(document.body.textContent).toContain('2 AI Chat mounts');
+    });
+    const confirm = button(document.body, 'Delete permanently');
+    confirm.click();
+    confirm.click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledOnce());
+    expect(mounted.commitDeletion).toHaveBeenCalledWith({
+      planToken: 'plan_1',
+      operationId: 'operation_1',
+    });
+    expect(mounted.invalidate).toHaveBeenCalledOnce();
+    expect(mounted.invalidate).toHaveBeenCalledWith('widgets');
+    expect(mounted.navigate).toHaveBeenCalledOnce();
+    expect(mounted.navigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mounted.notifySuccess).toHaveBeenCalledWith('Widget publication deleted');
+  });
+
+  test('retains a failed commit for an idempotent retry', async () => {
+    const temporary = Object.assign(new Error('Canvas cleanup is pending.'), {
+      code: 'WIDGET_DELETION_RECOVERY_PENDING',
+    });
+    let commitAttempt = 0;
+    const mounted = mountDetail({
+      commit: async () => ++commitAttempt === 1
+        ? [temporary, undefined] as const
+        : [undefined, { status: 'committed' }] as const,
+    });
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Delete permanently'));
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain(temporary.message));
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledTimes(2));
+    expect(mounted.commitDeletion.mock.calls[0]?.[0]).toEqual(
+      mounted.commitDeletion.mock.calls[1]?.[0],
+    );
+  });
+
+  test('discards a stale plan and asks the human to review again', async () => {
+    const staleError = Object.assign(new Error('Source changed.'), {
+      code: 'WIDGET_DELETION_STALE_PLAN',
+    });
+    const stale = mountDetail({ commit: async () => [staleError, undefined] as const });
+    (await vi.waitFor(() => button(stale.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Delete permanently'));
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(stale.notifyError).toHaveBeenCalled());
+    expect(stale.notifyError.mock.calls).toEqual([[
+      'Could not delete widget',
+      'The widget changed after you reviewed deletion. Review the current consequences and confirm again.',
+    ]]);
+    await vi.waitFor(() => {
+      expect(stale.host.textContent).toContain('Review the current consequences and confirm again.');
+      expect(stale.navigate).not.toHaveBeenCalled();
+      expect(stale.invalidate).not.toHaveBeenCalled();
+    });
   });
 });

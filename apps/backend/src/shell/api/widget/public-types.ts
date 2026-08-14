@@ -71,6 +71,31 @@ export type TWidgetPublicMutationResult = Readonly<{
   catalogDigestSha256: string;
 }>;
 
+export type TWidgetPublicDeletionPlan = Readonly<{
+  planToken: string;
+  widgetKey: string;
+  source: 'draft' | 'published';
+  catalogDigestSha256: string;
+  pairedDraftPresent: boolean;
+  placementCount: number;
+  previewPlacementCount: number;
+  publishedPlacementCount: number;
+  chatMountCount: number;
+  resourcesPreserved: true;
+}>;
+
+export type TWidgetPublicDeletionResult = Readonly<{
+  status: 'committed';
+  operationId: string;
+  widgetKey: string;
+  source: 'draft' | 'published';
+  generation: number;
+  catalogDigestSha256: string;
+  removedPlacementCount: number;
+  removedChatMountCount: number;
+  resourcesPreserved: true;
+}>;
+
 export type TWidgetPublicFileEntry = Readonly<{
   path: string;
   kind: 'file' | 'directory';

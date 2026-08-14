@@ -309,6 +309,36 @@ describe('CanvasService', () => {
     })).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
+  test('rejects a newly resolved widget placement while deletion admission is fenced', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a');
+    const admitted: string[] = [];
+    const canvas = new CanvasService({
+      store,
+      widgetPlacementAdmission: {
+        async withAdmission(placements, operation) {
+          admitted.push(`fence:${placements.map((item) => item.widgetKey).join(',')}`);
+          return operation();
+        },
+        async assertAllowed(input) {
+          admitted.push(`${input.type}:${input.widgetKey}`);
+          throw Object.assign(new Error('Widget deletion is in progress.'), {
+            code: 'WIDGET_DELETION_BUSY',
+          });
+        },
+      },
+    });
+
+    await expect(canvas.execute(insertCommand(
+      'late-widget',
+      'canvas-a',
+      0,
+      widget('widget-a', 'instance-a'),
+    ))).rejects.toMatchObject({ code: 'WIDGET_DELETION_BUSY' });
+    expect(admitted).toEqual(['fence:counter', 'widget-instance:counter']);
+    expect((await canvas.getSnapshot({ canvasId: 'canvas-a' })).items).toEqual([]);
+  });
+
   test('rejects conflicting descriptors for one durable image resource', async () => {
     const store = new MemoryCanvasStore();
     store.createCanvas('canvas-a', [

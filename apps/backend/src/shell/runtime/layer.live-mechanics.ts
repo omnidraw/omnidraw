@@ -398,12 +398,16 @@ export function layerLiveMechanics(args: Readonly<{
   });
   let widgetBuildGeneration: WidgetBuildGenerationService | null = null;
   let resourceService: ResourceService | null = null;
+  let canvasService: CanvasService | null = null;
+  let widgetPreview: WidgetPreviewService | null = null;
+  let agentService: AgentService | null = null;
+  const publicationBarrier = new PublicationReadWriteBarrier();
   const widgetCatalog = new WidgetFilesystemRuntimeCatalog({
     widgetsRoot: config.home.widgetsRoot,
     capsule: widgetReleaseAttestation,
     filesystem: new NodeWidgetCatalogFilesystem(),
     hash: new NodeWidgetCatalogHash(),
-    barrier: new PublicationReadWriteBarrier(),
+    barrier: publicationBarrier,
     management: {
       builder: widgetFilesystemBuilder,
       createOperationToken: randomUUID,
@@ -413,6 +417,113 @@ export function layerLiveMechanics(args: Readonly<{
             throw new Error('Widget build generation authority is not initialized.');
           }
           return widgetBuildGeneration.requireCurrent(widgetKey, signal);
+        },
+      },
+      deletion: {
+        async observe({ widgetKey, source, deleteDraft }) {
+          if (canvasService === null || agentService === null) {
+            throw new Error('Widget deletion cleanup authorities are not initialized.');
+          }
+          const placements: import('#backend/shell/agent').TWidgetDeletionPlacement[] = [];
+          const canvases = await dbService.canvas.listAll();
+          for (const canvas of canvases) {
+            let cursor: import('@omnidraw/canvas-contract').TCanvasItemQueryCursor | undefined;
+            do {
+              const page = await canvasService.queryItems({
+                canvasId: canvas.id,
+                filter: { type: 'widget-key', widgetKey },
+                limit: 1_000,
+                ...(cursor === undefined ? {} : { cursor }),
+              });
+              for (const snapshot of page.items) {
+                const extension = snapshot.item.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+                  | TCanvasWidgetExtensionV1
+                  | undefined;
+                if (
+                  snapshot.item.kind !== 'widget-frame'
+                  || (extension?.type !== 'widget-instance' && extension?.type !== 'widget-preview')
+                  || extension.widgetKey !== widgetKey
+                  || (source === 'draft' && extension.type !== 'widget-preview')
+                ) continue;
+                placements.push(Object.freeze({
+                  canvasId: canvas.id,
+                  itemId: snapshot.id,
+                  itemRevision: snapshot.itemRevision,
+                  createdAtSec: snapshot.createdAtSec,
+                  instanceId: extension.instanceId,
+                  type: extension.type,
+                }));
+              }
+              cursor = page.nextCursor ?? undefined;
+            } while (cursor !== undefined);
+          }
+          const mounts = deleteDraft
+            ? await agentService.observeWidgetDraftMounts(widgetKey)
+            : Object.freeze([]);
+          return Object.freeze({
+            placements: Object.freeze(placements),
+            mounts,
+          });
+        },
+        async retireDraft(widgetKey) {
+          if (widgetPreview === null || widgetBuildGeneration === null) {
+            throw new Error('Widget derived-state authorities are not initialized.');
+          }
+          await widgetPreview.retireWidget(widgetKey);
+          await widgetBuildGeneration.retire(widgetKey);
+        },
+        async removePlacement({ operationId, widgetKey, placement }) {
+          if (canvasService === null) throw new Error('Canvas authority is not initialized.');
+          const commandId = `widget-delete-${sha256([
+            operationId,
+            placement.canvasId,
+            placement.itemId,
+            placement.createdAtSec,
+          ].join('\u0000')).slice(0, 48)}`;
+          for (let attempt = 0; attempt < 8; attempt += 1) {
+            const snapshot = await canvasService.getSnapshot({ canvasId: placement.canvasId });
+            const current = snapshot.items.find((item) => item.id === placement.itemId);
+            if (current === undefined) return;
+            const extension = current.item.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+              | TCanvasWidgetExtensionV1
+              | undefined;
+            if (
+              current.createdAtSec !== placement.createdAtSec
+              || current.item.kind !== 'widget-frame'
+              || extension?.type !== placement.type
+              || extension.widgetKey !== widgetKey
+              || extension.instanceId !== placement.instanceId
+            ) throw Object.assign(
+              new Error('A planned Canvas placement was replaced; recovery refuses to delete it.'),
+              { code: 'WIDGET_DELETION_RECOVERY_PENDING' },
+            );
+            try {
+              await canvasService.execute({
+                commandId,
+                canvasId: placement.canvasId,
+                baseRevision: snapshot.revision,
+                operations: [{ type: 'delete', itemId: placement.itemId }],
+                preconditions: [{
+                  type: 'item-revision',
+                  itemId: placement.itemId,
+                  itemRevision: current.itemRevision,
+                }],
+              });
+              return;
+            } catch (error) {
+              const code = error !== null && typeof error === 'object' && 'code' in error
+                ? error.code
+                : null;
+              if (code !== 'CONFLICT' && code !== 'STORE_CONFLICT') throw error;
+            }
+          }
+          throw Object.assign(new Error('Canvas placement remained busy during deletion.'), {
+            code: 'WIDGET_DELETION_RECOVERY_PENDING',
+          });
+        },
+        async removeMount({ widgetKey, mount }) {
+          if (agentService === null) throw new Error('AI Chat mount authority is not initialized.');
+          await agentService.removeWidgetDraftMount(widgetKey, mount);
         },
       },
     },
@@ -441,6 +552,9 @@ export function layerLiveMechanics(args: Readonly<{
     now: Date.now,
     scheduleInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
     cancelInterval: clearInterval,
+    mutationAdmission: {
+      assertAllowed: (widgetKey) => widgetCatalog.assertDraftMutationAllowed(widgetKey),
+    },
   });
   const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
   const previewInspectionReleaseRuntime = resolvePreviewInspectionReleaseRuntime({
@@ -483,8 +597,17 @@ export function layerLiveMechanics(args: Readonly<{
     writePermitCoordinator: writePermits,
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
-  const canvasService = new CanvasService({
+  canvasService = new CanvasService({
     store: new CanvasItemStoreTurso(dbService.db),
+    widgetPlacementAdmission: {
+      assertAllowed: (input) => widgetCatalog.assertCanvasPlacementAllowed(input),
+      withAdmission: (placements, operation) => publicationBarrier.withRead(async () => {
+        for (const placement of placements) {
+          widgetCatalog.assertCanvasPlacementAllowed(placement);
+        }
+        return operation();
+      }),
+    },
   });
   const functionTempRoot = join(config.home.tempRoot, 'function-runtime');
   mkdirSync(functionTempRoot, { recursive: true, mode: 0o700 });
@@ -607,7 +730,7 @@ export function layerLiveMechanics(args: Readonly<{
       widgetKey: args.widgetKey,
     });
   };
-  const widgetPreview = new WidgetPreviewService({
+  widgetPreview = new WidgetPreviewService({
     widgetsRoot: config.home.widgetsRoot,
     catalog: widgetCatalog,
     buildGenerations: widgetBuildGeneration,
@@ -659,7 +782,7 @@ export function layerLiveMechanics(args: Readonly<{
   });
   const agentRoot = config.home.agentRoot;
   mkdirSync(agentRoot, { recursive: true });
-  const agentService = new AgentService({
+  agentService = new AgentService({
     world: {
       platform: process.platform,
       createId: randomUUID,
@@ -697,6 +820,9 @@ export function layerLiveMechanics(args: Readonly<{
       resolve: (references) => widgetCatalog.resolveWidgetReferences(references),
       assertCurrent: (resolution) => (
         widgetCatalog.assertWidgetReferenceResolutionCurrent(resolution)
+      ),
+      withDraftMountAdmission: (widgetKeys, operation) => (
+        widgetCatalog.withDraftMountAdmission(widgetKeys, operation)
       ),
     },
     widgetAuthoringAuthority: {
@@ -736,6 +862,7 @@ export function layerLiveMechanics(args: Readonly<{
     Effect.promise(() => agentService.start()).pipe(Effect.as(agentService)),
     () => Effect.promise(() => agentService.stop()),
   );
+  yield* Effect.promise(() => widgetCatalog.recoverDeletions());
 
   return Context.make(BackendConfig, config).pipe(
     Context.add(LiveAgent, agentService),

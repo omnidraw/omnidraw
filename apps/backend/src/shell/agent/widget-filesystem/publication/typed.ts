@@ -27,7 +27,8 @@ export type TPublicationWriterLockPurpose =
   | 'draft'
   | 'recover'
   | 'import'
-  | 'preview';
+  | 'preview'
+  | 'delete';
 
 export type TPublicationWriterLockRecord = Readonly<{
   format: 'omnidraw.widget-writer-lock.v1';
@@ -278,13 +279,13 @@ export type TAcquireWidgetRootWriterLeaseInput = Readonly<{
   widgetRoot: string;
   operationToken: string;
   ownerToken: string;
-  purpose: 'draft' | 'import' | 'preview';
+  purpose: 'draft' | 'import' | 'preview' | 'delete';
 }>;
 
 export type TWidgetRootWriterLease = Readonly<{
   path: string;
   serialized: string;
-  purpose: 'draft' | 'import' | 'preview';
+  purpose: 'draft' | 'import' | 'preview' | 'delete';
   release(): Promise<void>;
 }>;
 

@@ -141,6 +141,7 @@ export function fnParsePublicationWriterLock(
       && value.purpose !== 'recover'
       && value.purpose !== 'import'
       && value.purpose !== 'preview'
+      && value.purpose !== 'delete'
     )
   ) return null;
   return Object.freeze({

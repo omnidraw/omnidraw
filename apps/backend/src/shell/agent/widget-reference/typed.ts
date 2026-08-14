@@ -39,6 +39,10 @@ export type TWidgetReferenceResolution = Readonly<{
 export type TWidgetReferenceResolver = Readonly<{
   resolve(references: readonly TWidgetReferenceInput[]): Promise<TWidgetReferenceResolution>;
   assertCurrent(resolution: TWidgetReferenceResolution): Promise<void>;
+  withDraftMountAdmission?<T>(
+    widgetKeys: readonly string[],
+    operation: () => Promise<T>,
+  ): Promise<T>;
 }>;
 
 export type TAgentWidgetCatalogEntry = Readonly<{

@@ -31,6 +31,7 @@ import type {
 
 type TConstructionCacheEntry<TConstruction> = {
   ownerSessionId: string;
+  widgetKey: string;
   executableInputDigestSha256: string;
   compatibility: TPreviewConstructionCompatibility;
   construction: TConstruction;
@@ -233,6 +234,18 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
     return true;
   }
 
+  async closeWidget(widgetKeyInput: string): Promise<number> {
+    const widgetKey = fnNormalizePreviewWidgetKey(widgetKeyInput);
+    const sessions = [...this.#sessions.values()]
+      .filter((session) => session.widgetKey === widgetKey)
+      .map((session) => session.sessionId);
+    await Promise.all(sessions.map((sessionId) => this.close(sessionId)));
+    for (const [key, entry] of this.#constructionCache) {
+      if (entry.widgetKey === widgetKey) this.#constructionCache.delete(key);
+    }
+    return sessions.length;
+  }
+
   async shutdown(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
@@ -296,6 +309,7 @@ export class EphemeralPreviewService<TConstruction, TSignedArtifact, TMountHandl
         }
         this.#constructionCache.set(cacheKey, {
           ownerSessionId: session.sessionId,
+          widgetKey: session.widgetKey,
           executableInputDigestSha256: session.executableInputDigestSha256,
           compatibility: session.compatibility,
           construction: session.construction,

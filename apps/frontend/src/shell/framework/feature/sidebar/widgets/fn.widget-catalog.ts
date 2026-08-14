@@ -36,7 +36,7 @@ const DRAFT_PLACEMENT_BOUNDS = Object.freeze({ width: 360, height: 320 });
 export function fnWidgetDraftRowVisible(entry: TWidgetPublicCatalogEntry): boolean {
   return entry.draft !== null
     && (entry.differences.availability === 'draft-only'
-      || entry.differences.manifest === 'different');
+      || entry.differences.manifest !== 'same');
 }
 
 export function fnProjectWidgetCatalog(catalog: TWidgetPublicCatalog): TWidgetSidebarProjection {

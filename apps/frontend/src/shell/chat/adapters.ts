@@ -426,6 +426,10 @@ export function createFrontendSidebarController(runtime: TFrontendRuntime, args:
       config: {
         saveDraft: (input) => runtime.api.safeRequest("widget.config.saveDraft", input),
       },
+      deletion: {
+        plan: (input) => runtime.api.safeRequest("widget.deletion.plan", input),
+        commit: (input) => runtime.api.safeRequest("widget.deletion.commit", input),
+      },
       preview: {
         rebuildDraft: (input) => runtime.api.safeRequest("widget.preview.rebuildDraft", input),
       },

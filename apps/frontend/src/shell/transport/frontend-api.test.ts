@@ -24,7 +24,10 @@ if (false) {
 }
 
 test("every request operation has one explicit replay classification", () => {
-  expect([...FRONTEND_IDEMPOTENT_MUTATION_PATHS]).toEqual(["canvas.execute"]);
+  expect([...FRONTEND_IDEMPOTENT_MUTATION_PATHS]).toEqual([
+    "canvas.execute",
+    "widget.deletion.commit",
+  ]);
   for (const path of PRIVATE_REQUEST_PATHS) {
     expect(typeof FRONTEND_IDEMPOTENT_MUTATION_PATHS.has(path)).toBe("boolean");
   }

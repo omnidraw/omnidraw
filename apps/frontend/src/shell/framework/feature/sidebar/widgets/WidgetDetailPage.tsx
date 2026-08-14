@@ -1,4 +1,5 @@
 import { Button } from '@kobalte/core/button';
+import * as AlertDialog from '@kobalte/core/alert-dialog';
 import * as Tabs from '@kobalte/core/tabs';
 import type {
   TWidgetPublicFileEntry,
@@ -20,6 +21,7 @@ import { WidgetIcon } from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
 import type { TWidgetSource } from './types';
+import type { TWidgetPublicDeletionPlan } from '@/core/app/private-operation-contract';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
@@ -56,6 +58,13 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [iconValue, setIconValue] = createSignal('');
   const [action, setAction] = createSignal<'save' | 'rebuild' | 'metadata' | 'build' | null>(null);
   const [actionError, setActionError] = createSignal('');
+  const [deletionPlan, setDeletionPlan] = createSignal<TWidgetPublicDeletionPlan | null>(null);
+  const [deletionOperationId, setDeletionOperationId] = createSignal<string | null>(null);
+  const [deletionOpen, setDeletionOpen] = createSignal(false);
+  const [deletionPhase, setDeletionPhase] = createSignal<'planning' | 'committing' | null>(null);
+  const [deletionError, setDeletionError] = createSignal('');
+  const [deletionReviewError, setDeletionReviewError] = createSignal('');
+  let deleteTrigger: HTMLButtonElement | undefined;
   let fileListRequest = 0;
   let previewRequest = 0;
 
@@ -64,7 +73,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   ));
   const form = createMemo(() => {
     const selected = entry();
-    return props.source === 'draft' ? selected?.draft ?? null : selected?.published ?? null;
+    if (props.source === 'draft') return selected?.draft ?? null;
+    if (props.source === 'published') return selected?.published ?? null;
+    return null;
   });
   const selectedPath = () => props.query.path() ?? '';
   const activeTab = (): TTab => {
@@ -77,6 +88,11 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setFiles(null);
     setPreview(null);
     setActionError('');
+    setDeletionPlan(null);
+    setDeletionOperationId(null);
+    setDeletionOpen(false);
+    setDeletionError('');
+    setDeletionReviewError('');
     if (!config) return;
     setName(config.name);
     setDescription(config.description);
@@ -243,6 +259,84 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     application.notifySuccess('Widget build accepted');
   };
 
+  const restoreDeleteFocus = () => {
+    props.controller.browser.setTimeout(() => deleteTrigger?.focus(), 0);
+  };
+
+  const planDeletion = async () => {
+    if (deletionPhase() !== null || !props.source || !props.name) return;
+    setDeletionPhase('planning');
+    setDeletionError('');
+    setDeletionReviewError('');
+    const [planError, plan] = await props.controller.apiService.api.widget.deletion.plan({
+      widgetKey: props.name,
+      source: props.source,
+    });
+    setDeletionPhase(null);
+    if (planError || !plan) {
+      const message = planError?.message ?? 'The deletion consequences could not be resolved.';
+      setDeletionError(message);
+      application.notifyError('Could not plan widget deletion', message);
+      restoreDeleteFocus();
+      return;
+    }
+    setDeletionPlan(plan);
+    setDeletionOperationId(props.controller.browser.createIdempotencyKey());
+    setDeletionOpen(true);
+  };
+
+  const closeDeletion = () => {
+    if (deletionPhase() === 'committing') return;
+    setDeletionOpen(false);
+    setDeletionPlan(null);
+    setDeletionOperationId(null);
+    setDeletionError('');
+    restoreDeleteFocus();
+  };
+
+  const commitDeletion = async () => {
+    const plan = deletionPlan();
+    const operationId = deletionOperationId();
+    if (deletionPhase() !== null || plan === null || operationId === null) return;
+    setDeletionPhase('committing');
+    setDeletionError('');
+    const [deleteError] = await props.controller.apiService.api.widget.deletion.commit({
+      planToken: plan.planToken,
+      operationId,
+    });
+    setDeletionPhase(null);
+    if (deleteError) {
+      const stale = deleteError.code === 'WIDGET_DELETION_STALE_PLAN';
+      const message = stale
+        ? 'The widget changed after you reviewed deletion. Review the current consequences and confirm again.'
+        : deleteError.message;
+      setDeletionError(message);
+      application.notifyError('Could not delete widget', message);
+      if (stale) {
+        setDeletionOpen(false);
+        setDeletionPlan(null);
+        setDeletionOperationId(null);
+        setDeletionReviewError(message);
+        restoreDeleteFocus();
+      }
+      return;
+    }
+    props.controller.invalidation.invalidate('widgets');
+    application.notifySuccess(
+      plan.source === 'draft' ? 'Widget draft deleted' : 'Widget publication deleted',
+    );
+    application.navigate('/', { replace: true });
+  };
+
+  const deletionDescription = createMemo(() => {
+    const plan = deletionPlan();
+    if (plan === null) return '';
+    if (plan.source === 'draft') {
+      return `Delete the exact draft “${plan.widgetKey}”? This removes ${plan.previewPlacementCount} Preview frame${plan.previewPlacementCount === 1 ? '' : 's'}, its accepted Preview/build state, and ${plan.chatMountCount} AI Chat mount${plan.chatMountCount === 1 ? '' : 's'}. The publication and every placed published instance remain. Independent resources remain.`;
+    }
+    return `Delete the publication “${plan.widgetKey}”? This removes the publication${plan.pairedDraftPresent ? ', its same-key draft and derived Preview/build state' : ''}, ${plan.placementCount} Canvas placement${plan.placementCount === 1 ? '' : 's'}, and ${plan.chatMountCount} AI Chat mount${plan.chatMountCount === 1 ? '' : 's'}. Independent resources remain.`;
+  });
+
   const configDirty = createMemo(() => {
     const persisted = form()?.config;
     return props.source === 'draft'
@@ -278,6 +372,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       <p>{catalogState.error() || 'Widget source was not found.'}</p>
     </div>}
   >
+    <>
     <Tabs.Root
       class={styles.page}
       value={activeTab()}
@@ -360,6 +455,23 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         <For each={form()!.issues}>{(issue) => <section class={styles.problemPanel}>
           <h3>{issue.code}</h3><p>{issue.message}</p>
         </section>}</For>
+        <section class={`${styles.panel} ${styles.dangerPanel}`}>
+          <div>
+            <h3>Danger zone</h3>
+            <p class={styles.muted}>{props.source === 'draft'
+              ? 'Delete this exact draft without deleting its publication or placed published instances.'
+              : 'Delete this publication, its same-key draft when present, and every Canvas placement.'}</p>
+          </div>
+          <Button
+            ref={deleteTrigger}
+            class={`${styles.button} ${styles.dangerButton}`}
+            disabled={deletionPhase() !== null}
+            onClick={() => void planDeletion()}
+          >{deletionPhase() === 'planning' ? 'Reviewing deletion…' : 'Delete widget'}</Button>
+        </section>
+        <Show when={!deletionOpen() ? deletionReviewError() || deletionError() : ''}>{(message) => (
+          <p class={styles.validationError} role="alert">{message()}</p>
+        )}</Show>
       </div></Tabs.Content>
 
       <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
@@ -471,5 +583,33 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         </div>
       </Tabs.Content>
     </Tabs.Root>
+    <AlertDialog.Root
+      open={deletionOpen()}
+      onOpenChange={(open) => {
+        if (!open && deletionOpen()) closeDeletion();
+      }}
+    >
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay class={styles.dialogOverlay} />
+        <AlertDialog.Content class={styles.dialogContent}>
+          <AlertDialog.Title class={styles.dialogTitle}>Delete {deletionPlan()?.source === 'draft' ? 'widget draft' : 'widget publication'}</AlertDialog.Title>
+          <AlertDialog.Description class={styles.dialogDescription}>
+            {deletionDescription()}
+          </AlertDialog.Description>
+          <Show when={deletionError()}>{(message) => (
+            <p class={styles.validationError} role="alert">{message()}</p>
+          )}</Show>
+          <div class={styles.dialogActions}>
+            <AlertDialog.CloseButton class={styles.button} disabled={deletionPhase() === 'committing'}>Cancel</AlertDialog.CloseButton>
+            <Button
+              class={`${styles.button} ${styles.dangerButton}`}
+              disabled={deletionPhase() === 'committing'}
+              onClick={() => void commitDeletion()}
+            >{deletionPhase() === 'committing' ? 'Deleting…' : 'Delete permanently'}</Button>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+    </>
   </Show>;
 };

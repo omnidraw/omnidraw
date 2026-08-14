@@ -4,6 +4,10 @@ import {
   apiWidgetBuildAndPublish,
   apiWidgetPublishMetadata,
 } from './api.publication';
+import {
+  apiWidgetDeletionCommit,
+  apiWidgetDeletionPlan,
+} from './api.deletion';
 
 const MANIFEST_DIGEST = 'a'.repeat(64);
 const CATALOG_DIGEST = 'b'.repeat(64);
@@ -70,5 +74,48 @@ describe('filesystem widget management API', () => {
     expect(calls.map(([kind]) => kind)).toEqual(['save', 'metadata', 'build']);
     expect(calls[1]?.[1]).toMatchObject(publicationInput);
     expect(calls[2]?.[1]).toMatchObject(publicationInput);
+  });
+
+  test('delegates opaque deletion plan and commit values without exposing filesystem paths', async () => {
+    const calls: Array<readonly [string, unknown]> = [];
+    const plan = {
+      planToken: 'plan_1',
+      widgetKey: 'notes-board',
+      source: 'published' as const,
+      catalogDigestSha256: CATALOG_DIGEST,
+      pairedDraftPresent: true,
+      placementCount: 2,
+      previewPlacementCount: 1,
+      publishedPlacementCount: 1,
+      chatMountCount: 3,
+      resourcesPreserved: true as const,
+    };
+    const result = {
+      status: 'committed' as const,
+      operationId: 'operation_1',
+      widgetKey: 'notes-board',
+      source: 'published' as const,
+      generation: 10,
+      catalogDigestSha256: CATALOG_DIGEST,
+      removedPlacementCount: 2,
+      removedChatMountCount: 3,
+      resourcesPreserved: true as const,
+    };
+    const context = {
+      widgetCatalog: {
+        async planDeletion(input: unknown) { calls.push(['plan', input]); return plan; },
+        async commitDeletion(input: unknown) { calls.push(['commit', input]); return result; },
+      },
+    } as never;
+    const resolvePlan = apiWidgetDeletionPlan.callable({ context });
+    const commit = apiWidgetDeletionCommit.callable({ context });
+
+    expect(await resolvePlan({ widgetKey: 'notes-board', source: 'published' })).toEqual(plan);
+    expect(await commit({ planToken: 'plan_1', operationId: 'operation_1' })).toEqual(result);
+    expect(calls[0]).toEqual(['plan', { widgetKey: 'notes-board', source: 'published' }]);
+    expect(calls[1]?.[0]).toBe('commit');
+    expect(calls[1]?.[1]).toMatchObject({ planToken: 'plan_1', operationId: 'operation_1' });
+    expect(JSON.stringify([plan, result])).not.toContain('relativePath');
+    expect(JSON.stringify([plan, result])).not.toContain('.trash');
   });
 });

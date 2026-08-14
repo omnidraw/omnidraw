@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
+  lstat,
   readFile,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -21,6 +23,7 @@ import {
   NodeWidgetCatalogFilesystem,
   NodeWidgetCatalogHash,
   PublicationReadWriteBarrier,
+  fnSerializePublicationWriterLock,
   type TWidgetCatalogCapsuleInspectionEffects,
   type WidgetFilesystemBuildService,
 } from '#backend/shell/agent';
@@ -185,6 +188,10 @@ async function writePublication(
     writeFile(join(path, 'release.json'), JSON.stringify(release)),
     ...sourceFiles.map((file) => writeFile(join(path, ...file.path.split('/')), file.bytes)),
   ]);
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  return await lstat(path).then(() => true, () => false);
 }
 
 afterEach(async () => {
@@ -459,5 +466,248 @@ describe('WidgetFilesystemRuntimeCatalog management', () => {
     await catalog.stop();
     await catalog.stop();
     expect(closeCalls).toBe(1);
+  });
+
+  test('deletes only a confirmed draft and preserves its publication', async () => {
+    const root = await createWidgetsRoot();
+    const value = manifest('Notes Board');
+    await Promise.all([writeDraft(root, value), writePublication(root, value)]);
+    const removedPlacements: string[] = [];
+    const removedMounts: string[] = [];
+    const retired: string[] = [];
+    let operation = 0;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder: { close: async () => undefined } as unknown as WidgetFilesystemBuildService,
+        acceptedBuild: { async requireCurrent() { throw new Error('unused'); } },
+        createOperationToken: () => `delete_${++operation}`,
+        deletion: {
+          async observe() {
+            return {
+              placements: [{
+                canvasId: 'canvas-a',
+                itemId: 'preview-a',
+                itemRevision: 1,
+                createdAtSec: '1',
+                instanceId: 'preview-instance-a',
+                type: 'widget-preview',
+              }],
+              mounts: [
+                { chatId: 'chat-a', name: 'notes-board', relativePath: 'chats/chat-a/workspace/widgets/notes-board', linkTarget: '../../../../../widgets/drafts/notes-board' },
+                { chatId: 'chat-b', name: 'notes-board', relativePath: 'chats/chat-b/workspace/widgets/notes-board', linkTarget: '../../../../../widgets/drafts/notes-board' },
+              ],
+            };
+          },
+          async retireDraft(widgetKey) { retired.push(widgetKey); },
+          async removePlacement({ placement }) { removedPlacements.push(placement.itemId); },
+          async removeMount({ mount }) { removedMounts.push(mount.chatId); },
+        },
+      },
+    });
+    await catalog.start();
+    const events: string[][] = [];
+    catalog.subscribe((event) => events.push([...event.changedWidgetKeys]));
+
+    const plan = await catalog.planDeletion({ widgetKey: 'notes-board', source: 'draft' });
+    expect(plan).toMatchObject({
+      source: 'draft',
+      pairedDraftPresent: false,
+      placementCount: 1,
+      previewPlacementCount: 1,
+      publishedPlacementCount: 0,
+      chatMountCount: 2,
+      resourcesPreserved: true,
+    });
+    const result = await catalog.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'human_operation_1',
+    });
+    expect(result).toMatchObject({
+      status: 'committed',
+      source: 'draft',
+      removedPlacementCount: 1,
+      removedChatMountCount: 2,
+      resourcesPreserved: true,
+    });
+    expect(await catalog.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'human_operation_1',
+    })).toEqual(result);
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(false);
+    expect(await pathExists(join(root, 'published', 'notes-board'))).toBe(true);
+    expect(retired).toEqual(['notes-board']);
+    expect(removedPlacements).toEqual(['preview-a']);
+    expect(removedMounts.sort()).toEqual(['chat-a', 'chat-b']);
+    expect(events).toEqual([['notes-board']]);
+    await catalog.stop();
+  });
+
+  test('fences stale plans and recovers unhealthy published deletion forward after cleanup failure', async () => {
+    const root = await createWidgetsRoot();
+    const value = manifest('Notes Board');
+    await Promise.all([writeDraft(root, value), writePublication(root, value)]);
+    await writeFile(join(root, 'published', 'notes-board', 'omnidraw.json'), '{invalid');
+    const placements = [
+      { canvasId: 'canvas-a', itemId: 'widget-a', itemRevision: 1, createdAtSec: '1', instanceId: 'instance-a', type: 'widget-instance' as const },
+      { canvasId: 'canvas-b', itemId: 'widget-b', itemRevision: 4, createdAtSec: '2', instanceId: 'instance-b', type: 'widget-instance' as const },
+    ];
+    let operation = 0;
+    let failOnce = true;
+    const removed: string[] = [];
+    const management = () => ({
+      builder: { close: async () => undefined } as unknown as WidgetFilesystemBuildService,
+      acceptedBuild: { async requireCurrent() { throw new Error('unused'); } },
+      createOperationToken: () => `delete_${++operation}`,
+      deletion: {
+        async observe() { return { placements, mounts: [] }; },
+        async retireDraft() { /* accepted state retired before placement cleanup */ },
+        async removePlacement({ placement }: { placement: typeof placements[number] }) {
+          if (failOnce) {
+            failOnce = false;
+            throw new Error('simulated Canvas outage');
+          }
+          removed.push(placement.itemId);
+        },
+        async removeMount() { /* no mounts */ },
+      },
+    });
+    const first = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(), widgetsRoot: root, capsule, management: management(),
+    });
+    await first.start();
+    expect(first.current().entries['notes-board']?.published?.health).toBe('unhealthy');
+    const stale = await first.planDeletion({ widgetKey: 'notes-board', source: 'published' });
+    await writeFile(join(root, 'drafts', 'notes-board', 'ui', 'main.ts'), 'export default 2;\n');
+    await expect(first.commitDeletion({
+      planToken: stale.planToken,
+      operationId: 'human_operation_stale',
+    })).rejects.toMatchObject({ code: 'WIDGET_DELETION_STALE_PLAN' });
+    expect(await pathExists(join(root, 'published', 'notes-board'))).toBe(true);
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(true);
+
+    const plan = await first.planDeletion({ widgetKey: 'notes-board', source: 'published' });
+    expect(plan).toMatchObject({ pairedDraftPresent: true, placementCount: 2 });
+    await expect(first.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'human_operation_recovery',
+    })).rejects.toMatchObject({ code: 'WIDGET_DELETION_RECOVERY_PENDING' });
+    expect(await pathExists(join(root, 'published', 'notes-board'))).toBe(false);
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(false);
+    await first.stop();
+    await writeFile(
+      join(
+        root,
+        '.staging',
+        `notes-board.${plan.planToken}.deletion.json.update-human_operation_recovery`,
+      ),
+      '{}\n',
+      { flag: 'wx', mode: 0o600 },
+    );
+    await writeFile(
+      join(root, '.writer.lock'),
+      fnSerializePublicationWriterLock('human_operation_recovery', 'delete'),
+      { flag: 'wx', mode: 0o600 },
+    );
+
+    const restarted = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(), widgetsRoot: root, capsule, management: management(),
+    });
+    await restarted.start();
+    await restarted.recoverDeletions();
+    expect(await pathExists(join(root, '.writer.lock'))).toBe(false);
+    expect(removed.sort()).toEqual(['widget-a', 'widget-b']);
+    expect(restarted.current().entries['notes-board']).toBeUndefined();
+    const receipt = await restarted.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'human_operation_recovery',
+    });
+    expect(receipt).toMatchObject({ status: 'committed', removedPlacementCount: 2 });
+    await expect(restarted.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'different_operation',
+    })).rejects.toMatchObject({ code: 'WIDGET_DELETION_STALE_PLAN' });
+    await restarted.stop();
+  });
+
+  test('rejects an escaping symlink before mutation', async () => {
+    const root = await createWidgetsRoot();
+    const value = manifest('Notes Board');
+    await writeDraft(root, value);
+    await symlink(
+      join(root, 'published'),
+      join(root, 'drafts', 'notes-board', 'escaped-publications'),
+      'dir',
+    );
+    let operation = 0;
+    const create = () => new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder: { close: async () => undefined } as unknown as WidgetFilesystemBuildService,
+        acceptedBuild: { async requireCurrent() { throw new Error('unused'); } },
+        createOperationToken: () => `delete_${++operation}`,
+        deletion: {
+          async observe() { return { placements: [], mounts: [] }; },
+          async retireDraft() { /* must not run */ },
+          async removePlacement() { /* must not run */ },
+          async removeMount() { /* must not run */ },
+        },
+      },
+    });
+    const symlinkCatalog = create();
+    await symlinkCatalog.start();
+    await expect(symlinkCatalog.planDeletion({
+      widgetKey: 'notes-board', source: 'draft',
+    })).rejects.toMatchObject({ code: 'WIDGET_DELETION_UNSAFE_PATH' });
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(true);
+    await symlinkCatalog.stop();
+  });
+
+  test('discards an unmutated journal when cleanup drifts at the write barrier', async () => {
+    const root = await createWidgetsRoot();
+    await writeDraft(root, manifest('Notes Board'));
+    let observations = 0;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder: { close: async () => undefined } as unknown as WidgetFilesystemBuildService,
+        acceptedBuild: { async requireCurrent() { throw new Error('unused'); } },
+        createOperationToken: () => 'late_drift_plan',
+        deletion: {
+          async observe() {
+            observations += 1;
+            return {
+              placements: observations < 3 ? [] : [{
+                canvasId: 'canvas-late', itemId: 'preview-late', itemRevision: 1,
+                createdAtSec: 'late', instanceId: 'preview-late', type: 'widget-preview',
+              }],
+              mounts: [],
+            };
+          },
+          async retireDraft() { throw new Error('must not retire'); },
+          async removePlacement() { throw new Error('must not remove'); },
+          async removeMount() { throw new Error('must not remove'); },
+        },
+      },
+    });
+    await catalog.start();
+    const plan = await catalog.planDeletion({ widgetKey: 'notes-board', source: 'draft' });
+    await expect(catalog.commitDeletion({
+      planToken: plan.planToken,
+      operationId: 'late_drift_operation',
+    })).rejects.toMatchObject({ code: 'WIDGET_DELETION_STALE_PLAN' });
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(true);
+    expect(await pathExists(join(
+      root,
+      '.staging',
+      `notes-board.${plan.planToken}.deletion.json`,
+    ))).toBe(false);
+    await catalog.stop();
   });
 });

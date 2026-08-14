@@ -11,6 +11,7 @@ import {
   type TWidgetFilesystemManagementCapability,
   type TAgentEditableDraftResolution,
   type TAgentWidgetCatalogSnapshot,
+  type TWidgetDeletionCleanupCapability,
   type TWidgetReferenceInput,
   type TWidgetReferenceResolution,
   type WidgetFilesystemBuildService,
@@ -78,6 +79,7 @@ type TWidgetFilesystemRuntimeCatalogConfig = Readonly<{
       }>>;
     }>;
     createOperationToken: () => string;
+    deletion?: TWidgetDeletionCleanupCapability;
   }>;
   buildGenerations?: Readonly<{
     view(widgetKey: string): Promise<Readonly<{
@@ -156,6 +158,7 @@ export class WidgetFilesystemRuntimeCatalog {
   readonly #buildGenerations: TWidgetFilesystemRuntimeCatalogConfig['buildGenerations'];
   readonly #resources: TWidgetFilesystemRuntimeCatalogConfig['resources'];
   readonly #listeners = new Set<(event: TWidgetFilesystemCatalogChange) => void>();
+  readonly #deletingWidgetKeys = new Set<string>();
   #startPromise: Promise<void> | null = null;
   #eventGeneration = 0;
 
@@ -189,6 +192,13 @@ export class WidgetFilesystemRuntimeCatalog {
           acceptedBuild: config.management.acceptedBuild,
           validateManifestResources: (manifest) => this.#validateManifestResources(manifest),
           createOperationToken: config.management.createOperationToken,
+          ...(config.management.deletion === undefined ? {} : {
+            deletion: {
+              cleanup: config.management.deletion,
+              begin: (widgetKey: string) => { this.#deletingWidgetKeys.add(widgetKey); },
+              end: (widgetKey: string) => { this.#deletingWidgetKeys.delete(widgetKey); },
+            },
+          }),
         });
   }
 
@@ -204,6 +214,7 @@ export class WidgetFilesystemRuntimeCatalog {
       await this.#management?.close();
     } finally {
       this.#listeners.clear();
+      this.#deletingWidgetKeys.clear();
     }
   }
 
@@ -257,6 +268,9 @@ export class WidgetFilesystemRuntimeCatalog {
         candidate.name === reference.name && candidate.source === reference.source
       )) === index;
     });
+    if (deduplicated.some((reference) => this.#deletingWidgetKeys.has(reference.name))) {
+      throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
+    }
     const snapshot = await this.refresh();
     const resolved = await Promise.all(deduplicated.map(async (reference) => {
       const entry = snapshot.entries[reference.name];
@@ -477,6 +491,52 @@ export class WidgetFilesystemRuntimeCatalog {
     for (const listener of [...this.#listeners]) listener(event);
   }
 
+  planDeletion(
+    args: Parameters<TWidgetFilesystemManagementCapability['planDeletion']>[0],
+  ) {
+    return this.#requireManagement().planDeletion(args);
+  }
+
+  commitDeletion(
+    args: Parameters<TWidgetFilesystemManagementCapability['commitDeletion']>[0],
+  ) {
+    return this.#requireManagement().commitDeletion(args);
+  }
+
+  recoverDeletions() {
+    return this.#requireManagement().recoverDeletions();
+  }
+
+  assertCanvasPlacementAllowed(args: Readonly<{
+    widgetKey: string;
+    type: 'widget-instance' | 'widget-preview';
+  }>): void {
+    if (this.#deletingWidgetKeys.has(args.widgetKey)) {
+      throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
+    }
+    const entry = this.current().entries[args.widgetKey];
+    const available = args.type === 'widget-instance'
+      ? entry?.published !== null && entry?.published !== undefined
+      : entry?.draft !== null && entry?.draft !== undefined;
+    if (!available) throw errorWithCode('Widget source no longer exists.', 'WIDGET_MISSING');
+  }
+
+  assertDraftMutationAllowed(widgetKey: string): void {
+    if (this.#deletingWidgetKeys.has(widgetKey)) {
+      throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
+    }
+  }
+
+  withDraftMountAdmission<T>(
+    widgetKeys: readonly string[],
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.#barrier.withRead(async () => {
+      for (const widgetKey of widgetKeys) this.assertDraftMutationAllowed(widgetKey);
+      return operation();
+    });
+  }
+
   saveDraftConfig(
     args: Parameters<TWidgetFilesystemManagementCapability['saveDraftConfig']>[0],
   ) {
@@ -535,6 +595,9 @@ export class WidgetFilesystemRuntimeCatalog {
   async resolvePlacement(args: Readonly<{
     reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'published' }>>;
   }>): Promise<TWidgetFilesystemPlacementDescriptor> {
+    if (this.#deletingWidgetKeys.has(args.reference.widgetKey)) {
+      throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
+    }
     const snapshot = this.current();
     if (args.reference.catalogGeneration !== snapshot.generation) {
       throw errorWithCode('Widget catalog generation changed.', 'WIDGET_CATALOG_CHANGED');
@@ -562,6 +625,9 @@ export class WidgetFilesystemRuntimeCatalog {
   async resolveRuntime(
     widgetKey: string,
   ): Promise<TWidgetFilesystemRuntimeResolution> {
+    if (this.#deletingWidgetKeys.has(widgetKey)) {
+      throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
+    }
     try {
       return await this.#barrier.withRead(async () => {
       const captured = this.current();

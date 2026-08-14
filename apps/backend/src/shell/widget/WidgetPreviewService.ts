@@ -1173,6 +1173,24 @@ class WidgetPreviewService {
     return this.#preview.close(sessionId);
   }
 
+  async retireWidget(widgetKey: string): Promise<void> {
+    const sessionIds = new Set<string>();
+    for (const [sessionId, artifact] of this.#artifacts) {
+      if (artifact.widgetKey === widgetKey) sessionIds.add(sessionId);
+    }
+    for (const [sessionId, accepted] of this.#pendingGenerations) {
+      if (accepted.widgetKey === widgetKey) sessionIds.add(sessionId);
+    }
+    await this.#preview.closeWidget(widgetKey);
+    for (const sessionId of sessionIds) {
+      this.#artifacts.delete(sessionId);
+      this.#artifactGenerations.delete(sessionId);
+      this.#pendingGenerations.delete(sessionId);
+      this.#generationReleases.get(sessionId)?.();
+      this.#generationReleases.delete(sessionId);
+    }
+  }
+
   async invoke(
     args: Readonly<{
       canvasId: string;

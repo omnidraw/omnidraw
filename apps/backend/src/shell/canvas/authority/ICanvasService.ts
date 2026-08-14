@@ -96,6 +96,19 @@ export type TCanvasServiceOptions = Readonly<{
 export type TCanvasServiceDependencies = Readonly<{
   store: ICanvasStore;
   options?: TCanvasServiceOptions;
+  widgetPlacementAdmission?: Readonly<{
+    assertAllowed(args: Readonly<{
+      widgetKey: string;
+      type: 'widget-instance' | 'widget-preview';
+    }>): void | Promise<void>;
+    withAdmission?<T>(
+      placements: readonly Readonly<{
+        widgetKey: string;
+        type: 'widget-instance' | 'widget-preview';
+      }>[],
+      operation: () => Promise<T>,
+    ): Promise<T>;
+  }>;
 }>;
 
 export type TCanvasServiceMetrics = Readonly<{

@@ -125,6 +125,29 @@ export type TWidgetPublicFileEntry = Readonly<{ path: string; kind: "file" | "di
 export type TWidgetPublicFileList = Readonly<{ entries: readonly TWidgetPublicFileEntry[]; truncated: boolean }>;
 export type TWidgetPublicFilePreview = Readonly<{ path: string; byteSize: number; binary: boolean; truncated: boolean; text: string | null }>;
 export type TWidgetPublicMutationResult = Readonly<{ widgetKey: string; generation: number; catalogDigestSha256: string }>;
+export type TWidgetPublicDeletionPlan = Readonly<{
+  planToken: string;
+  widgetKey: string;
+  source: "draft" | "published";
+  catalogDigestSha256: string;
+  pairedDraftPresent: boolean;
+  placementCount: number;
+  previewPlacementCount: number;
+  publishedPlacementCount: number;
+  chatMountCount: number;
+  resourcesPreserved: true;
+}>;
+export type TWidgetPublicDeletionResult = Readonly<{
+  status: "committed";
+  operationId: string;
+  widgetKey: string;
+  source: "draft" | "published";
+  generation: number;
+  catalogDigestSha256: string;
+  removedPlacementCount: number;
+  removedChatMountCount: number;
+  resourcesPreserved: true;
+}>;
 export type TWidgetTransportArtifact = Readonly<{
   artifact: Readonly<{ bytesBase64: string; digestSha256: string }>;
   runtimeDescriptor?: unknown;
@@ -246,6 +269,8 @@ export type TPrivateRequestOperations = Readonly<{
   "widget.catalog.files.list": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published" }>, TWidgetPublicFileList>;
   "widget.catalog.files.read": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published"; path: string }>, TWidgetPublicFilePreview>;
   "widget.config.saveDraft": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; config: Readonly<{ name: string; description: string; tool: Readonly<{ label: string; icon: unknown | null; group: string | null; priority: number }> }> }>, TWidgetPublicMutationResult>;
+  "widget.deletion.plan": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published" }>, TWidgetPublicDeletionPlan>;
+  "widget.deletion.commit": TOperation<Readonly<{ planToken: string; operationId: string }>, TWidgetPublicDeletionResult>;
   "widget.publication.publishMetadata": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.publication.buildAndPublish": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.placement.resolve": TOperation<Readonly<{ reference: Extract<TWidgetPlacementRef, { source: "published" }> }>, Readonly<{ kind: "published"; reference: Extract<TWidgetPlacementRef, { source: "published" }>; widgetKey: string; catalogGeneration: number; bounds: Readonly<{ width: number; height: number }> }>>;
