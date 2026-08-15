@@ -80,6 +80,7 @@ function createFakes(shellPath: string, executablePath: string) {
   } as unknown as Browser;
   const shell: TPreviewInspectionShellLeasePort = {
     path: shellPath,
+    async verify() { return { buildId: `sha256:${SHA_A}`, rootPath: shellPath }; },
     async open() {
       return {
         url: 'http://127.0.0.1:44771/token/index.html',
@@ -297,11 +298,21 @@ describe('PreviewInspectionBrowserService', () => {
     });
   });
 
-  test('coalesces preflight, retries a repaired shell failure, and caches success', async () => {
+  test('coalesces each preflight, retries shell failure, and caches only runtime identity success', async () => {
     await rm(join(shellPath, 'index.html'));
+    let shellVerifications = 0;
     const service = new PreviewInspectionBrowserService({
       tempRoot: join(root, 'preflight-retry-jobs'),
-      shell: fakes.shell,
+      shell: {
+        ...fakes.shell,
+        async verify() {
+          shellVerifications += 1;
+          await stat(join(shellPath, 'index.html')).catch(() => {
+            throw Object.assign(new Error('missing'), { code: 'INSPECTION_SHELL_MISSING' });
+          });
+          return { buildId: `sha256:${SHA_A}` as const, rootPath: shellPath };
+        },
+      },
       launcher: fakes.launcher,
       internals: fakes.internals,
       driver: fakes.driver,
@@ -313,6 +324,7 @@ describe('PreviewInspectionBrowserService', () => {
       expect.objectContaining({ ok: false, code: 'INSPECTION_SHELL_MISSING' }),
     ]);
     expect(fakes.state.runtimeEvidenceReads).toBe(1);
+    expect(shellVerifications).toBe(1);
 
     await writeFile(join(shellPath, 'index.html'), '<!doctype html>');
     const repaired = await Promise.all([service.preflight(), service.preflight()]);
@@ -320,10 +332,12 @@ describe('PreviewInspectionBrowserService', () => {
       expect.objectContaining({ ok: true }),
       expect.objectContaining({ ok: true }),
     ]);
-    expect(fakes.state.runtimeEvidenceReads).toBe(2);
+    expect(fakes.state.runtimeEvidenceReads).toBe(1);
+    expect(shellVerifications).toBe(2);
 
     await expect(service.preflight()).resolves.toMatchObject({ ok: true });
-    expect(fakes.state.runtimeEvidenceReads).toBe(2);
+    expect(fakes.state.runtimeEvidenceReads).toBe(1);
+    expect(shellVerifications).toBe(3);
     await service.stop();
   });
 
@@ -445,6 +459,7 @@ describe('PreviewInspectionBrowserService', () => {
       shell: {
         ...fakes.shell,
         get path() { throw new Error('/private/runtime/path'); },
+        async verify() { throw new Error('/private/runtime/path'); },
       },
       launcher: fakes.launcher,
       internals: fakes.internals,
@@ -456,7 +471,7 @@ describe('PreviewInspectionBrowserService', () => {
         invoke: async () => null,
         dispose() { preflightDisposals += 1; },
       },
-    }))).rejects.toMatchObject({ code: 'BROWSER_PREFLIGHT_FAILED', stage: 'mount' });
+    }))).rejects.toMatchObject({ code: 'INSPECTION_SHELL_UNVERIFIED', stage: 'mount' });
     expect(preflightDisposals).toBe(1);
     await preflightService.stop();
   });
@@ -552,6 +567,105 @@ describe('PreviewInspectionBrowserService', () => {
       code: 'BROWSER_EXECUTABLE_MISSING',
       remediation: expect.stringContaining('playwright@1.61.1 install chromium'),
     });
+    await service.stop();
+  });
+
+  test('recovers after a missing browser executable appears without a backend restart', async () => {
+    const recoveredExecutable = join(root, 'installed-later-chromium');
+    let evidenceReads = 0;
+    const service = new PreviewInspectionBrowserService({
+      tempRoot: join(root, 'browser-recovery-jobs'),
+      shell: fakes.shell,
+      launcher: {
+        ...fakes.launcher,
+        async runtimeExecutableEvidence() {
+          evidenceReads += 1;
+          return {
+            ...await fakes.launcher.runtimeExecutableEvidence(),
+            executablePath: recoveredExecutable,
+          };
+        },
+      },
+      internals: fakes.internals,
+      driver: fakes.driver,
+    });
+    await expect(service.preflight()).resolves.toMatchObject({
+      ok: false,
+      code: 'BROWSER_EXECUTABLE_MISSING',
+    });
+    await writeFile(recoveredExecutable, 'installed');
+    await expect(service.preflight()).resolves.toMatchObject({
+      ok: true,
+      executablePath: recoveredExecutable,
+    });
+    expect(evidenceReads).toBe(2);
+    await service.stop();
+  });
+
+  test('recovers after a missing shell is built without re-reading verified browser identity', async () => {
+    let shellReady = false;
+    let shellVerifications = 0;
+    const service = new PreviewInspectionBrowserService({
+      tempRoot: join(root, 'recovering-preflight-jobs'),
+      shell: {
+        ...fakes.shell,
+        async verify() {
+          shellVerifications += 1;
+          if (!shellReady) throw Object.assign(new Error('missing'), { code: 'INSPECTION_SHELL_MISSING' });
+          return { buildId: `sha256:${SHA_A}` as const, rootPath: shellPath };
+        },
+      },
+      launcher: fakes.launcher,
+      internals: fakes.internals,
+      driver: fakes.driver,
+    });
+
+    await expect(service.preflight()).resolves.toMatchObject({
+      ok: false,
+      code: 'INSPECTION_SHELL_MISSING',
+    });
+    shellReady = true;
+    await expect(service.preflight()).resolves.toMatchObject({ ok: true, shellPath });
+    expect(shellVerifications).toBe(2);
+    expect(fakes.state.runtimeEvidenceReads).toBe(1);
+    expect(fakes.state.runtimeVersionReads).toBe(1);
+    await service.stop();
+  });
+
+  test('shares each concurrent retry while allowing a later transient-shell recovery', async () => {
+    const verificationStarted = deferred();
+    const releaseVerification = deferred();
+    let attempts = 0;
+    let fail = true;
+    const service = new PreviewInspectionBrowserService({
+      tempRoot: join(root, 'single-flight-retry-jobs'),
+      shell: {
+        ...fakes.shell,
+        async verify() {
+          attempts += 1;
+          verificationStarted.resolve();
+          await releaseVerification.promise;
+          if (fail) throw Object.assign(new Error('partial'), { code: 'INSPECTION_SHELL_UNVERIFIED' });
+          return { buildId: `sha256:${SHA_A}` as const, rootPath: shellPath };
+        },
+      },
+      launcher: fakes.launcher,
+      internals: fakes.internals,
+      driver: fakes.driver,
+    });
+    const first = service.preflight();
+    const concurrent = service.preflight();
+    expect(first).toBe(concurrent);
+    await verificationStarted.promise;
+    releaseVerification.resolve();
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([
+      expect.objectContaining({ ok: false, code: 'INSPECTION_SHELL_UNVERIFIED' }),
+      expect.objectContaining({ ok: false, code: 'INSPECTION_SHELL_UNVERIFIED' }),
+    ]);
+    fail = false;
+    await expect(service.preflight()).resolves.toMatchObject({ ok: true });
+    expect(attempts).toBe(2);
+    expect(fakes.state.runtimeEvidenceReads).toBe(1);
     await service.stop();
   });
 

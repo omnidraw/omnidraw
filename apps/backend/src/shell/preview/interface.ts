@@ -207,7 +207,8 @@ export type TPreviewInspectionBrowserPreflight =
         | 'BROWSER_RUNTIME_IDENTITY_INVALID'
         | 'BROWSER_EXECUTABLE_MISSING'
         | 'BROWSER_VERSION_MISMATCH'
-        | 'INSPECTION_SHELL_MISSING';
+        | 'INSPECTION_SHELL_MISSING'
+        | 'INSPECTION_SHELL_UNVERIFIED';
       message: string;
       remediation: string;
     }>;
@@ -234,8 +235,14 @@ export type TPreviewInspectionShellLease = Readonly<{
   release(): void;
 }>;
 
+export type TPreviewInspectionShellBuild = Readonly<{
+  buildId: `sha256:${string}`;
+  rootPath: string;
+}>;
+
 export type TPreviewInspectionShellLeasePort = Readonly<{
   path: string;
+  verify(): Promise<TPreviewInspectionShellBuild>;
   open(jobId: string): Promise<TPreviewInspectionShellLease>;
   stop(): Promise<void>;
 }>;

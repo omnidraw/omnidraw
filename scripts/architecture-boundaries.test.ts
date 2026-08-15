@@ -474,6 +474,29 @@ describe('application and import boundaries', () => {
     expect(devFrontend).not.toContain('"tsconfig.build.json", "--watch"')
   })
 
+  test('gates normal development on the isolated verified inspection distribution', async () => {
+    const rootManifest = await readJson(join(ROOT, 'package.json'))
+    const backendManifest = await readJson(join(ROOT, 'apps/backend/package.json'))
+    const frontendManifest = await readJson(join(ROOT, 'apps/frontend/package.json'))
+    expect(frontendManifest.scripts['build:inspection']).toContain('build-inspection.ts')
+    expect(frontendManifest.scripts['dev:inspection']).toContain('build-inspection.ts --watch')
+    expect(frontendManifest.scripts['dev:inspection:ready']).toContain('--watch --reuse-current')
+    expect(frontendManifest.scripts.build).toBe('vite build && bun run build:inspection')
+    expect(rootManifest.scripts.dev).toBe('bun run scripts/dev.ts')
+    expect(rootManifest.scripts.predev).toBe('bun run build:public && bun run build:inspection')
+    expect(rootManifest.scripts['preclient:dev']).toBe('bun run build:public && bun run build:inspection')
+    expect(rootManifest.scripts['preserver:dev']).toBe('bun run build:inspection')
+    expect(backendManifest.scripts.predev).toBe('bun run --cwd ../frontend build:inspection')
+
+    const rootDev = await readFile(join(ROOT, 'scripts/dev.ts'), 'utf8')
+    expect(rootDev).not.toContain('build:inspection')
+    const frontendDev = await readFile(join(ROOT, 'scripts/dev-frontend.ts'), 'utf8')
+    expect(frontendDev).toContain('"dev:inspection:ready"')
+    expect(frontendDev.indexOf('await waitForInspectionReady(inspection)'))
+      .toBeLessThan(frontendDev.indexOf('name: "canvas-contract"'))
+    expect(frontendDev).toContain('name: "frontend"')
+  })
+
   test('keeps public imports on their declared graph and all source off retired packages', async () => {
     const violations: string[] = []
     const roots = [
