@@ -553,6 +553,46 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     });
   }
 
+  /**
+   * Retains restart-safe runtime inputs while keeping verified source-map
+   * bytes inside the process that built them. The replacement contract digest
+   * truthfully attests that the durable projection has no source-map artifact.
+   */
+  prepareDurableCacheConstruction(
+    construction: TWidgetArtifactConstructionResult,
+  ): TWidgetArtifactConstructionResult {
+    this.#assertTrustedConstruction(construction);
+    if (construction.sourceMapArtifact === null) return construction;
+    const durable = Object.freeze({
+      ...construction,
+      sourceMapArtifact: null,
+      constructionContractDigestSha256: sha256(
+        fnCanonicalizeWidgetConstructionContractPayload({
+          sourceSnapshotId: construction.sourceSnapshotId,
+          sourceDigestSha256: construction.sourceDigestSha256,
+          sourceArtifactDigestSha256: construction.sourceArtifact.digestSha256,
+          sourceMapArtifactDigestSha256: null,
+          canonicalManifestJson: construction.canonicalManifestJson,
+          unsignedUiDigestSha256: construction.uiArtifact.digestSha256,
+          artifactHash: construction.uiArtifact.artifactHash,
+          apiContract: construction.uiArtifact.runtimeDescriptor.apiContract,
+          budgets: construction.uiArtifact.runtimeDescriptor.budgets,
+          capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
+          channelContractDigestSha256: construction.channelContractDigestSha256,
+          serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
+          serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+          functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
+          builderIdentity: construction.builderIdentity,
+          capsuleBuildIdentity: construction.capsuleBuildIdentity,
+          buildPolicyId: construction.buildPolicyId,
+          distributionProvenance: construction.distributionProvenance,
+        }),
+      ),
+    });
+    this.#assertTrustedConstruction(durable);
+    return durable;
+  }
+
   async closeWorkspace(
     request: Readonly<{ workspaceKey: string }>,
   ): Promise<void> {

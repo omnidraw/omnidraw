@@ -386,6 +386,9 @@ export function layerLiveMechanics(args: Readonly<{
         }));
         return build;
       },
+      prepareDurableCacheConstruction: (construction) => (
+        capsuleBuilder.prepareDurableCacheConstruction(construction)
+      ),
       closeWorkspace: (request) => capsuleBuilder.closeWorkspace(request),
       close: () => capsuleBuilder.close(),
     },

@@ -340,7 +340,7 @@ describe('filesystem widget build service', () => {
     expect(second.distFiles.map((file) => file.path)).toEqual(first.distFiles.map((file) => file.path));
   });
 
-  test('keeps verified source-map bytes process-owned instead of durable cache data', async () => {
+  test('caches a trusted map-free projection while source-map bytes stay process-owned', async () => {
     let constructCalls = 0;
     let deleteCalls = 0;
     let writeCalls = 0;
@@ -390,7 +390,7 @@ describe('filesystem widget build service', () => {
       construction: sourceMapped,
       distFiles: [{ path: 'dist/main.js', bytes: new TextEncoder().encode('browser') }],
     };
-    const service = new WidgetFilesystemBuildService({
+    const createService = (returnMappedProjection = false) => new WidgetFilesystemBuildService({
       builderIdentity: 'builder-v1',
       environment: ENVIRONMENT,
       constructionCache: {
@@ -399,7 +399,10 @@ describe('filesystem widget build service', () => {
           deleteCalls += 1;
           cached = null;
         },
-        write: async () => { writeCalls += 1; },
+        write: async (_key, construction) => {
+          writeCalls += 1;
+          cached = construction;
+        },
       },
       construction: {
         async construct() {
@@ -408,6 +411,14 @@ describe('filesystem widget build service', () => {
         },
         async signConstruction() {
           return sourceMapped as unknown as TWidgetBuildResult;
+        },
+        prepareDurableCacheConstruction(construction) {
+          expect(construction.sourceMapArtifact).not.toBeNull();
+          if (returnMappedProjection) return construction;
+          return {
+            ...construction,
+            sourceMapArtifact: null,
+          };
         },
       },
       capsuleInspector: {
@@ -430,12 +441,20 @@ describe('filesystem widget build service', () => {
       { path: 'package.json', bytes: new TextEncoder().encode('{}') },
     ];
 
-    await service.construct({ manifest: MANIFEST, files });
-    await service.construct({ manifest: MANIFEST, files });
+    const live = await createService().construct({ manifest: MANIFEST, files });
+    const restored = await createService().construct({ manifest: MANIFEST, files });
 
     expect(deleteCalls).toBe(1);
-    expect(writeCalls).toBe(0);
-    expect(constructCalls).toBe(2);
+    expect(writeCalls).toBe(1);
+    expect(constructCalls).toBe(1);
+    expect(live.construction.sourceMapArtifact).not.toBeNull();
+    expect(restored.construction.sourceMapArtifact).toBeNull();
+    expect(cached?.construction.sourceMapArtifact).toBeNull();
+
+    cached = null;
+    await createService(true).construct({ manifest: MANIFEST, files });
+    expect(writeCalls).toBe(1);
+    expect(cached).toBeNull();
   });
 
   test('derives the server ABI per manifest so one service builds UI-only and server widgets', async () => {

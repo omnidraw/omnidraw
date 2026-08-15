@@ -253,6 +253,19 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     expect(decoder.decode(result.sourceMapArtifact!.bytes)).not.toContain(
       decoder.decode(result.uiArtifact.bytes),
     );
+
+    const mapped = await artifactBuilder.construct(
+      request(sourceSnapshot, widgetManifest),
+    );
+    const durable = artifactBuilder.prepareDurableCacheConstruction(mapped);
+    expect(mapped.sourceMapArtifact).not.toBeNull();
+    expect(durable.sourceMapArtifact).toBeNull();
+    expect(durable.constructionContractDigestSha256)
+      .not.toBe(mapped.constructionContractDigestSha256);
+    await expect(artifactBuilder.signConstruction({
+      construction: durable,
+      signingPurpose: 'preview',
+    })).resolves.toMatchObject({ sourceMapArtifact: null });
   });
 
   test('forwards hostile UI syntax unchanged only to the injected Capsule build port', async () => {

@@ -205,13 +205,24 @@ export class WidgetFilesystemBuildService {
       distFiles,
     });
     const writeCache = this.config.constructionCache;
+    // The caller keeps the mapped construction; only the restart projection
+    // crosses the durable cache boundary.
+    const durableConstruction = result.construction.sourceMapArtifact === null
+      ? result.construction
+      : this.config.construction.prepareDurableCacheConstruction?.(
+        result.construction,
+      ) ?? null;
     if (
       writeCache !== undefined
-      && result.construction.sourceMapArtifact === null
+      && durableConstruction !== null
+      && durableConstruction.sourceMapArtifact === null
     ) {
       await writeCache.write(
         this.#constructionCacheKey(executableInputDigestSha256),
-        result,
+        Object.freeze({
+          ...result,
+          construction: durableConstruction,
+        }),
       ).catch(() => undefined);
     }
     return result;

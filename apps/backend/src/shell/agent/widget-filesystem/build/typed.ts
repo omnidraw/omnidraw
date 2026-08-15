@@ -22,6 +22,13 @@ export type TWidgetFilesystemConstructionPort = Readonly<{
   signConstruction(
     request: TWidgetArtifactConstructionSignRequest,
   ): Promise<TWidgetBuildResult>;
+  /**
+   * Projects a trusted live construction into the exact form allowed in the
+   * durable restart cache. Returning null keeps the construction process-only.
+   */
+  prepareDurableCacheConstruction?(
+    construction: TWidgetArtifactConstructionResult,
+  ): TWidgetArtifactConstructionResult | null;
   decodeSourceArtifact?(artifact: TWidgetSourceArtifact): TWidgetSourceSnapshot;
   closeWorkspace?(request: Readonly<{ workspaceKey: string }>): Promise<void>;
   close?(): Promise<void>;
