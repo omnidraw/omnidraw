@@ -71,6 +71,15 @@ describe("createWidgetViewportSync", () => {
       visibility: "hidden",
     });
 
+    const attached = { setViewport: (viewport: TWidgetViewport) => updates.push(viewport) };
+    sync.attach(attached, updates[1]!);
+    sync.detach({ setViewport: () => undefined });
+    sync.updateNode(frame("visible"));
+    expect(updates).toHaveLength(3);
+    sync.detach(attached);
+    sync.updateNode(frame("hidden"));
+    expect(updates).toHaveLength(3);
+
     sync.disconnect();
     expect(disconnected).toBe(true);
   });

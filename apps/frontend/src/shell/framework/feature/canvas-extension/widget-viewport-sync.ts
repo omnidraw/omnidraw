@@ -18,6 +18,7 @@ type TWidgetViewportSyncArgs = Readonly<{
 export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonly<{
   attach(sink: TViewportSink, appliedViewport: TWidgetViewport): void;
   current(): TWidgetViewport;
+  detach(sink: TViewportSink): void;
   disconnect(): void;
   updateNode(node: TWidgetFrameNode): void;
 }> {
@@ -63,6 +64,11 @@ export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonl
       sync();
     },
     current,
+    detach(retiredSink) {
+      if (sink !== retiredSink) return;
+      sink = null;
+      lastViewport = null;
+    },
     disconnect() {
       disposed = true;
       sink = null;

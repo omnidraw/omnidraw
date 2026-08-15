@@ -616,7 +616,7 @@ function reachableSourcePaths(ts, sources, entry) {
   return reachable;
 }
 
-function validateSourcePolicy(ts, sourceFile, path, isServer, diagnostics) {
+function validateSourcePolicy(ts, sourceFile, path, isServer, uiAllowsPagehide, diagnostics) {
   const visit = (node) => {
     const specifier = staticModuleSpecifier(ts, node);
     if (specifier !== null) {
@@ -640,6 +640,20 @@ function validateSourcePolicy(ts, sourceFile, path, isServer, diagnostics) {
         diagnostics.push(fnCreateOfflineCheckDiagnostic({
           phase: 'policy', code: 'SOURCE_RUNTIME_GLOBAL_FORBIDDEN',
           summary: `Direct runtime call '${directName ?? 'import'}' is outside the portable widget policy.`,
+          ...sourceLocation(ts, sourceFile, node, path),
+        }));
+      }
+      const isWindowPagehideRegistration = !uiAllowsPagehide
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'addEventListener'
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === 'window'
+        && node.arguments[0] !== undefined
+        && stringLiteral(ts, node.arguments[0]) === 'pagehide';
+      if (isWindowPagehideRegistration) {
+        diagnostics.push(fnCreateOfflineCheckDiagnostic({
+          phase: 'policy', code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+          summary: 'window.addEventListener("pagehide", ...) is unsupported by this widget API profile. Remove it and rely on host disposal for cleanup.',
           ...sourceLocation(ts, sourceFile, node, path),
         }));
       }
@@ -871,6 +885,7 @@ async function checkWidget(args, signal) {
         sourceFile,
         path,
         serverSources.has(path) && !uiSources.has(path),
+        !uiSources.has(path) || manifest.ui.apis.includes('WEBGL'),
         diagnostics,
       );
       if (manifest.server?.entry === path) {

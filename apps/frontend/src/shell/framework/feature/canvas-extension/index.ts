@@ -29,6 +29,7 @@ import {
 } from "@/core/widgets/fn.placed-widget-node";
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
 import { createWidgetViewportSync } from "./widget-viewport-sync";
+import { retireFatalWidgetMount } from "./widget-fatal-lifecycle";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
@@ -238,7 +239,24 @@ export function createFrontendWidgetExtension(
             opening = (async () => {
               const previous = mount;
               let next: IWidgetBrowserMount | undefined;
+              let fatalError: unknown;
+              let committed = false;
               const initialViewport = viewportSync.current();
+              const retireFatalMount = async (failedMount: IWidgetBrowserMount, error: unknown): Promise<void> => {
+                await retireFatalWidgetMount({
+                  canRenderFailure: () => mount === undefined
+                    && !args.signal.aborted,
+                  detach: (failed) => viewportSync.detach(failed),
+                  error,
+                  failedMount,
+                  isCurrent: () => mount === failedMount,
+                  renderFailure,
+                  retire: () => {
+                    mount = undefined;
+                    mounts.delete(args.node.id);
+                  },
+                });
+              };
               try {
                 next = await runtime.mount({
                   mode: extension.type === "widget-preview" ? "preview" : "published",
@@ -254,8 +272,15 @@ export function createFrontendWidgetExtension(
                       fnWidgetHostDiagnosticDescription(diagnostic),
                     );
                   },
+                  onFatal: (error) => {
+                    fatalError ??= error;
+                    if (committed && next !== undefined) {
+                      void retireFatalMount(next, error).catch(() => undefined);
+                    }
+                  },
                 });
                 await next.ready();
+                if (fatalError !== undefined) throw fatalError;
               } catch (error) {
                 await next?.dispose("replacement-failed").catch(() => undefined);
                 if (previous === undefined) renderFailure(error);
@@ -268,7 +293,16 @@ export function createFrontendWidgetExtension(
               mount = next;
               viewportSync.attach(next, initialViewport);
               mounts.set(args.node.id, next);
+              committed = true;
+              if (fatalError !== undefined) {
+                await retireFatalMount(next, fatalError);
+                return false;
+              }
               await previous?.dispose("replaced");
+              if (fatalError !== undefined) {
+                await retireFatalMount(next, fatalError);
+                return false;
+              }
               return true;
             })().finally(() => {
               opening = null;
