@@ -24,7 +24,7 @@ async function files(root: string): Promise<string[]> {
 describe('@omnidraw/sdk package boundaries', () => {
   test('uses exact implementation dependencies and no retired packages', async () => {
     const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-    expect(manifest.version).toBe('0.8.1');
+    expect(manifest.version).toBe('0.8.2');
     expect(manifest.dependencies).toEqual({
       '@omnidraw/capsule': '0.15.0',
       effect: '4.0.0-rc.108',

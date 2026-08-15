@@ -230,6 +230,30 @@ describe('omnidraw-widget offline check', () => {
       }));
       expect(typeError.stdout).not.toContain(base);
 
+      await writeFile(join(root, 'ui/main.ts'), [
+        'window.addEventListener("pagehide", () => {',
+        '  throw new Error("private authored value");',
+        '}, { once: true });',
+        '',
+      ].join('\n'));
+      const unsupportedDomEvent = await runCheck(root);
+      expect(JSON.parse(unsupportedDomEvent.stdout).checks).toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+        summary: 'window.addEventListener("pagehide", ...) is unsupported by this widget API profile. Remove it and rely on host disposal for cleanup.',
+        location: { file: 'widget://ui/main.ts', line: 1, column: 1 },
+      }));
+      expect(unsupportedDomEvent.stdout).not.toContain('private authored value');
+
+      await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify(manifest({
+        ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM', 'WEBGL'] },
+      }))}\n`);
+      const webglPagehide = await runCheck(root);
+      expect(webglPagehide).toMatchObject({ exitCode: 0, stderr: '' });
+      expect(JSON.parse(webglPagehide.stdout).checks).not.toContainEqual(expect.objectContaining({
+        code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+      }));
+
       await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify(manifest({
         ui: { runtime: 'capsule', entry: 'ui/missing.ts', apis: ['DOM'] },
       }))}\n`);

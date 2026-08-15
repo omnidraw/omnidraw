@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -314,7 +314,13 @@ async function waitForBrowserState<T>(args: Readonly<{
     await Bun.sleep(100);
   }
   throw new Error(
-    `Timed out waiting for ${args.label}. Last evidence: ${JSON.stringify(latest)}`
+    `Timed out waiting for ${args.label}. Last evidence: ${JSON.stringify(latest, (key, value) => (
+      key === 'bytesBase64'
+        ? '[redacted artifact bytes]'
+        : typeof value === 'string' && value.length > 1_000
+          ? `${value.slice(0, 1_000)}…`
+          : value
+    )).slice(0, 8_000)}`
     + (latestNavigationError === undefined ? '' : ` Last navigation race: ${latestNavigationError}`),
   );
 }
@@ -424,6 +430,13 @@ async function assertDraftPreviewTitlebar(
   }
   const previewOpenBeforeReload = (await readRpcRequests(page, 'widget.preview.open')).length;
   await page.getByRole('menuitem', { name: 'Reload', exact: true }).click();
+  await Bun.sleep(250);
+  if ((await readRpcRequests(page, 'widget.preview.open')).length === previewOpenBeforeReload) {
+    await actions.click();
+    const reload = page.getByRole('menuitem', { name: 'Reload', exact: true });
+    await reload.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await reload.click();
+  }
   await waitForSuccessfulRpcRequest({
     afterCount: previewOpenBeforeReload,
     label: `${label} native Reload action`,
@@ -458,6 +471,8 @@ function summarizeTransport(transport: TTransportEvidence): unknown {
 async function seedDraftWidget(home: string): Promise<string> {
   const widgetRoot = join(home, 'widgets/drafts/browser-acceptance');
   const unbuiltWidgetRoot = join(home, 'widgets/drafts/browser-unbuilt');
+  const canvasWidgetRoot = join(home, 'widgets/drafts/browser-canvas-2d');
+  const webglWidgetRoot = join(home, 'widgets/drafts/browser-webgl');
   const toolsRoot = join(home, 'browser-acceptance-tools');
   const sdkCli = join(ROOT, 'packages/sdk/dist/cli.js');
   const viteModuleUrl = new URL(
@@ -468,6 +483,7 @@ async function seedDraftWidget(home: string): Promise<string> {
     'src/widget.ts',
     `file://${join(ROOT, 'packages/sdk/')}`,
   ).href;
+  const threeModuleRoot = join(ROOT, 'node_modules/.bun/three@0.185.1/node_modules/three');
   const viteWrapperSource = [
     '#!/usr/bin/env node',
     'const { readFile, writeFile } = await import("node:fs/promises");',
@@ -487,6 +503,11 @@ async function seedDraftWidget(home: string): Promise<string> {
   await mkdir(join(widgetRoot, 'ui'), { recursive: true, mode: 0o700 });
   await mkdir(join(widgetRoot, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
   await mkdir(join(unbuiltWidgetRoot, 'ui'), { recursive: true, mode: 0o700 });
+  for (const root of [canvasWidgetRoot, webglWidgetRoot]) {
+    await mkdir(join(root, 'ui'), { recursive: true, mode: 0o700 });
+    await mkdir(join(root, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
+  }
+  await symlink(threeModuleRoot, join(webglWidgetRoot, 'node_modules/three'), 'dir');
   await mkdir(toolsRoot, { recursive: true, mode: 0o700 });
   const manifest = {
     $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
@@ -516,6 +537,91 @@ async function seedDraftWidget(home: string): Promise<string> {
       priority: 1,
     },
   } as const;
+  const profileManifests = [{
+    root: canvasWidgetRoot,
+    manifest: {
+      ...manifest,
+      name: 'Browser Canvas 2D Widget',
+      slug: 'browser-canvas-2d',
+      description: 'A deterministic Canvas 2D first-frame qualification fixture.',
+      tool: { ...manifest.tool, label: 'Browser Canvas 2D Widget', priority: 2 },
+      ui: { ...manifest.ui, apis: ['DOM', 'CANVAS_2D'] },
+    },
+    source: [
+      'const canvas = document.createElement("canvas");',
+      'canvas.width = 128;',
+      'canvas.height = 96;',
+      'document.body.append(canvas);',
+      'const context = canvas.getContext("2d");',
+      'if (context === null) throw new Error("Canvas 2D is unavailable");',
+      'context.fillStyle = "#08110d";',
+      'context.fillRect(0, 0, 128, 96);',
+      'context.fillStyle = "#35e184";',
+      'context.fillRect(18, 18, 92, 60);',
+      'requestAnimationFrame(() => {',
+      '  context.fillStyle = "#050505";',
+      '  context.fillRect(48, 38, 32, 20);',
+      '});',
+      '',
+    ].join('\n'),
+  }, {
+    root: webglWidgetRoot,
+    manifest: {
+      ...manifest,
+      name: 'Browser WebGL Widget',
+      slug: 'browser-webgl',
+      description: 'A deterministic indexed RawShaderMaterial WebGL qualification fixture.',
+      tool: { ...manifest.tool, label: 'Browser WebGL Widget', priority: 3 },
+      ui: { ...manifest.ui, apis: ['DOM', 'WEBGL'] },
+    },
+    source: [
+      'import * as THREE from "three";',
+      'const canvas = document.createElement("canvas");',
+      'canvas.width = 128;',
+      'canvas.height = 96;',
+      'document.body.append(canvas);',
+      'const renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: false });',
+      'renderer.setSize(128, 96, false);',
+      'renderer.setClearColor(0x050505, 1);',
+      'const geometry = new THREE.BufferGeometry();',
+      'geometry.setAttribute("position", new THREE.Float32BufferAttribute([-0.8, -0.7, 0, 0.8, -0.7, 0, 0, 0.8, 0], 3));',
+      'geometry.setIndex([0, 1, 2]);',
+      'const material = new THREE.RawShaderMaterial({',
+      '  vertexShader: "precision highp float; attribute vec3 position; uniform mat4 projectionMatrix; uniform mat4 modelViewMatrix; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",',
+      '  fragmentShader: "precision highp float; void main(){ gl_FragColor = vec4(0.95, 0.05, 0.55, 1.0); }",',
+      '  depthTest: false,',
+      '  depthWrite: false,',
+      '});',
+      'const scene = new THREE.Scene();',
+      'scene.add(new THREE.Mesh(geometry, material));',
+      'renderer.render(scene, new THREE.Camera());',
+      '',
+    ].join('\n'),
+    dependencies: { three: '0.185.1' },
+  }] as const;
+  const packageJson = (name: string, dependencies: Readonly<Record<string, string>> = {}) => `${JSON.stringify({
+    name,
+    version: '1.0.0',
+    private: true,
+    type: 'module',
+    scripts: { build: 'omnidraw-widget build .' },
+    dependencies,
+    devDependencies: { vite: '8.1.4' },
+  }, null, 2)}\n`;
+  const packageLock = (name: string, dependencies: Readonly<Record<string, string>> = {}) => `${JSON.stringify({
+    name,
+    version: '1.0.0',
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      '': {
+        name,
+        version: '1.0.0',
+        ...(Object.keys(dependencies).length === 0 ? {} : { dependencies }),
+        devDependencies: { vite: '8.1.4' },
+      },
+    },
+  }, null, 2)}\n`;
   await Promise.all([
     writeFile(join(widgetRoot, 'omnidraw.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 }),
     writeFile(join(widgetRoot, 'ui/main.ts'), [
@@ -580,10 +686,20 @@ async function seedDraftWidget(home: string): Promise<string> {
       viteWrapperSource,
       { mode: 0o700 },
     ),
+    ...profileManifests.flatMap((fixture) => {
+      const dependencies = 'dependencies' in fixture ? fixture.dependencies : {};
+      return [
+        writeFile(join(fixture.root, 'omnidraw.json'), `${JSON.stringify(fixture.manifest, null, 2)}\n`, { mode: 0o600 }),
+        writeFile(join(fixture.root, 'ui/main.ts'), fixture.source, { mode: 0o600 }),
+        writeFile(join(fixture.root, 'package.json'), packageJson(fixture.manifest.slug, dependencies), { mode: 0o600 }),
+        writeFile(join(fixture.root, 'package-lock.json'), packageLock(fixture.manifest.slug, dependencies), { mode: 0o600 }),
+        writeFile(join(fixture.root, 'node_modules/vite/bin/vite.js'), viteWrapperSource, { mode: 0o700 }),
+      ];
+    }),
     writeFile(join(toolsRoot, 'npm'), [
       '#!/usr/bin/env node',
       'const { spawnSync } = await import("node:child_process");',
-      'const { mkdir, writeFile } = await import("node:fs/promises");',
+      'const { mkdir, readFile, symlink, writeFile } = await import("node:fs/promises");',
       'const { join } = await import("node:path");',
       'const args = process.argv.slice(2);',
       'if (args[0] === "--version") { process.stdout.write("10.0.0\\n"); process.exit(0); }',
@@ -591,6 +707,10 @@ async function seedDraftWidget(home: string): Promise<string> {
       '  const viteBin = join(process.cwd(), "node_modules/vite/bin/vite.js");',
       '  await mkdir(join(process.cwd(), "node_modules/vite/bin"), { recursive: true });',
       `  await writeFile(viteBin, ${JSON.stringify(viteWrapperSource)}, { mode: 0o700 });`,
+      '  const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8"));',
+      '  if (packageJson.dependencies?.three === "0.185.1") {',
+      `    await symlink(${JSON.stringify(threeModuleRoot)}, join(process.cwd(), "node_modules/three"), "dir").catch((error) => { if (error.code !== "EEXIST") throw error; });`,
+      '  }',
       '  process.exit(0);',
       '}',
       'if (args[0] === "run" && args[1] === "build") {',
@@ -618,6 +738,25 @@ async function seedDraftWidget(home: string): Promise<string> {
     new Response(build.stderr).text(),
   ]);
   assert.equal(exitCode, 0, `Could not prebuild the deterministic Preview fixture.\n${stdout}\n${stderr}`);
+  for (const fixture of profileManifests) {
+    const fixtureBuild = Bun.spawn([process.execPath, sdkCli, 'build', '.'], {
+      cwd: fixture.root,
+      env: process.env,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [fixtureExitCode, fixtureStdout, fixtureStderr] = await Promise.all([
+      fixtureBuild.exited,
+      new Response(fixtureBuild.stdout).text(),
+      new Response(fixtureBuild.stderr).text(),
+    ]);
+    assert.equal(
+      fixtureExitCode,
+      0,
+      `Could not prebuild ${fixture.manifest.slug}.\n${fixtureStdout}\n${fixtureStderr}`,
+    );
+  }
   return toolsRoot;
 }
 
@@ -1331,6 +1470,7 @@ async function exerciseDeterministicPrompt(args: Readonly<{
 }
 
 async function placeDraftPreviewWidget(page: Page): Promise<Readonly<{
+  identity: unknown;
   nodeId: string;
 }>> {
   const host = page.locator('.omnidraw-canvas-engine-host');
@@ -1453,7 +1593,64 @@ async function placeDraftPreviewWidget(page: Page): Promise<Readonly<{
   await reloadedPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   await assertDraftGuestMounted(page, reloadedPortal, 'draft Preview reload');
   await assertNoHandledErrorAlerts(page, 'draft Preview reload');
-  return Object.freeze({ nodeId: node.id });
+  return Object.freeze({ identity: previewMountIdentity(previewOpen), nodeId: node.id });
+}
+
+function previewMountIdentity(request: TRpcWireRequest): unknown {
+  const value = record(request.exit?.value);
+  const runtime = record(value.runtime ?? value.runtimeDescriptor);
+  const artifact = record(value.artifact);
+  return Object.freeze({
+    artifactDigestSha256: artifact.digestSha256,
+    artifactHash: runtime.artifactHash,
+    functionDescriptors: value.functionDescriptors,
+    identity: value.identity,
+    manifest: value.manifest,
+    runtime,
+  });
+}
+
+async function placeProfilePreview(
+  page: Page,
+  fixture: Readonly<{ name: string; widgetKey: string }>,
+): Promise<Readonly<{ identity: unknown; nodeId: string }>> {
+  const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
+  if (await expand.count()) await expand.click();
+  const executeBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  const openBefore = (await readRpcRequests(page, 'widget.preview.open')).length;
+  await page.getByRole('button', {
+    name: `Preview ${fixture.name} on canvas`,
+    exact: true,
+  }).click();
+  const command = await waitForSuccessfulRpcRequest({
+    afterCount: executeBefore,
+    label: `${fixture.name} placement`,
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const extension = node === null ? {} : canvasWidgetExtension(node);
+      return extension.type === 'widget-preview' && extension.widgetKey === fixture.widgetKey;
+    },
+  });
+  const node = canvasCommandWidgetNode(command);
+  assert.ok(node !== null && typeof node.id === 'string');
+  const open = await waitForSuccessfulRpcRequest({
+    afterCount: openBefore,
+    label: `${fixture.name} accepted artifact`,
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === node.id,
+  });
+  const portal = page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${node.id}"]`);
+  await portal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await assertDraftGuestMounted(page, portal, fixture.name);
+  assert.equal(
+    await portal.locator('[data-omnidraw-widget-preview-failure]').count(),
+    0,
+    `${fixture.name} rendered a failure surface instead of its first frame.`,
+  );
+  return Object.freeze({ identity: previewMountIdentity(open), nodeId: node.id });
 }
 
 async function provePersistentPreGuestPreviewFailure(page: Page): Promise<void> {
@@ -1846,40 +2043,63 @@ async function runBrowserSuite(
 
     console.log('[browser:live] real sidebar pointer-drag draft Preview portal and reload');
     const preview = await placeDraftPreviewWidget(page);
-    const beforePreviewRestart = await page.evaluate(() => (
-      (window as unknown as {
-        __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
-      }).__omnidrawBrowserAcceptance.snapshot()
-    ));
+    console.log('[browser:live] executable Canvas 2D and indexed RawShaderMaterial WebGL Preview profiles');
+    const profileFixtures = [{
+      name: 'Browser Canvas 2D Widget',
+      widgetKey: 'browser-canvas-2d',
+    }, {
+      name: 'Browser WebGL Widget',
+      widgetKey: 'browser-webgl',
+    }] as const;
+    const profilePreviews = [] as Array<Readonly<{ identity: unknown; nodeId: string }>>;
+    for (const fixture of profileFixtures) {
+      profilePreviews.push(await placeProfilePreview(page, fixture));
+    }
     console.log('[browser:live] mounted draft Preview recovery after a real backend process restart');
     await restartBackend();
-    await waitForBrowserState({
-      label: 'a replacement native RPC connection for the mounted draft Preview',
-      read: () => page.evaluate(() => (
-        (window as unknown as {
-          __omnidrawBrowserAcceptance: { snapshot(): TTransportEvidence };
-        }).__omnidrawBrowserAcceptance.snapshot()
-      )),
-      ready: (transport) => transport.rpcOpenCount > beforePreviewRestart.rpcOpenCount
-        && transport.rpcConnections.some((connection) => (
-          (connection.openSequence ?? 0) > beforePreviewRestart.rpcOpenCount
-          && connection.opened
-          && !connection.closed
-          && connection.incomingFrameCount > 0
-        )),
-    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await waitForRpcConnection(page);
     const restartedPreviewPortal = page.locator(
       `[data-vibecanvas-portal-id="omnidraw:widget:${preview.nodeId}"]`,
     );
+    const restartedDomOpen = await waitForSuccessfulRpcRequest({
+      afterCount: 0,
+      label: 'the DOM fixture cold backend remount',
+      page,
+      path: 'widget.preview.open',
+      predicate: (request) => record(request.input).elementId === preview.nodeId,
+    });
+    assert.deepEqual(
+      previewMountIdentity(restartedDomOpen),
+      preview.identity,
+      'The DOM fixture changed accepted artifact, runtime policy, manifest, or signing identity across restart.',
+    );
     await restartedPreviewPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
     await assertDraftGuestMounted(page, restartedPreviewPortal, 'draft Preview backend restart');
+    for (let index = 0; index < profileFixtures.length; index += 1) {
+      const fixture = profileFixtures[index]!;
+      const previous = profilePreviews[index]!;
+      const open = await waitForSuccessfulRpcRequest({
+        afterCount: 0,
+        label: `${fixture.name} cold backend remount`,
+        page,
+        path: 'widget.preview.open',
+        predicate: (request) => record(request.input).elementId === previous.nodeId,
+      });
+      assert.deepEqual(
+        previewMountIdentity(open),
+        previous.identity,
+        `${fixture.name} changed accepted artifact, runtime policy, manifest, or signing identity across restart.`,
+      );
+      const portal = page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${previous.nodeId}"]`);
+      await portal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+      await assertDraftGuestMounted(page, portal, `${fixture.name} cold backend remount`);
+      assert.equal(await portal.locator('[data-omnidraw-widget-preview-failure]').count(), 0);
+    }
     await assertNoHandledErrorAlerts(page, 'backend restart recovery');
-    const restartedPreviewTitlebar = page.locator('[data-vibecanvas-widget-titlebar]').filter({
-      has: page.getByText('Preview: Browser Acceptance Widget', { exact: true }),
-    });
-    await restartedPreviewTitlebar.locator('[aria-label="Preview actions"]').click();
-    await page.getByRole('menuitem', { name: 'Remove', exact: true }).click();
-    await restartedPreviewPortal.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
+    await createCanvas(page, 'Preview Failure Follow-up');
+    await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
 
     console.log('[browser:live] persistent non-blank pre-guest Preview build failure');
     await provePersistentPreGuestPreviewFailure(page);

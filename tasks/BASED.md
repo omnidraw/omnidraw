@@ -210,7 +210,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B96](b/B96.md) - AI widget Preview: lockfile-only drafts cannot build and leave blank frames
 - [x]: [B97](b/B97.md) - public package dev: Canvas build races AI Chat type watcher
 - [x]: [B98](b/B98.md) - Preview inspect: frontend shell build is unreachable
-- [ ]: [B99](b/B99.md) - Widget Preview: accepted runtimes go blank on cold remount
+- [x]: [B99](b/B99.md) - Widget Preview: accepted runtimes go blank on cold remount
 - [ ]: [B100](b/B100.md) - Dev startup: Preview inspection shell is absent and failure stays cached
 
 ## A dditions
