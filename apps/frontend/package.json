@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && bun run build:inspection",
-    "build:inspection": "vite build --config vite.inspection.config.ts && bun run scripts/verify-inspection-dist.ts",
+    "build:inspection": "bun run scripts/build-inspection.ts",
+    "dev:inspection": "bun run scripts/build-inspection.ts --watch",
+    "dev:inspection:ready": "bun run scripts/build-inspection.ts --watch --reuse-current",
+    "verify:inspection": "bun run scripts/verify-inspection-dist.ts",
     "preview": "vite preview",
-    "test:unit": "bun test src && bun ./node_modules/vitest/vitest.mjs --run",
+    "test:unit": "bun test src scripts && bun ./node_modules/vitest/vitest.mjs --run",
     "test": "bun run typecheck && bun run test:unit && bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

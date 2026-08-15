@@ -17,6 +17,7 @@ function spawnDevProcess(args: {
   name: string
   cwd: string
   command: string[]
+  output?: "inherit" | "pipe"
 }): TDevProcess {
   console.log(`[dev] ${args.name}: ${args.command.join(" ")}`)
   return {
@@ -26,10 +27,71 @@ function spawnDevProcess(args: {
       cwd: args.cwd,
       env: process.env,
       stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: args.output ?? "inherit",
+      stderr: args.output ?? "inherit",
     }),
   }
+}
+
+function readableProcessStream(value: unknown): ReadableStream<Uint8Array> | null {
+  return value instanceof ReadableStream ? value as ReadableStream<Uint8Array> : null
+}
+
+async function pipeLines(args: {
+  child: TDevProcess
+  stream: ReadableStream<Uint8Array> | null
+  onLine(line: string): void
+  write(text: string): void
+}): Promise<void> {
+  if (!args.stream) return
+  const reader = args.stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  while (true) {
+    const result = await reader.read()
+    if (result.done) break
+    buffer += decoder.decode(result.value, { stream: true })
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() ?? ""
+    for (const line of lines) {
+      args.onLine(line)
+      args.write(`[${args.child.name}] ${line}\n`)
+    }
+  }
+  if (buffer) {
+    args.onLine(buffer)
+    args.write(`[${args.child.name}] ${buffer}\n`)
+  }
+}
+
+async function waitForInspectionReady(child: TDevProcess): Promise<void> {
+  let ready = false
+  const readiness = new Promise<void>((resolve, reject) => {
+    const onLine = (line: string): void => {
+      if (!line.includes("[inspection-shell] ready")) return
+      ready = true
+      resolve()
+    }
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stdout),
+      onLine,
+      write: (text) => process.stdout.write(text),
+    })
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stderr),
+      onLine,
+      write: (text) => process.stderr.write(text),
+    })
+    void child.process.exited.then((exitCode) => {
+      if (!ready) reject(new Error(`[dev] inspection-shell exited before its verified build became ready with code ${exitCode}`))
+    })
+  })
+  await Promise.race([
+    readiness,
+    Bun.sleep(60_000).then(() => { throw new Error("[dev] Timed out waiting for the verified inspection shell") }),
+  ])
 }
 
 const frontendArgs = process.argv.slice(2)
@@ -70,6 +132,15 @@ process.on("SIGTERM", () => {
 })
 
 try {
+  const inspection = spawnDevProcess({
+    name: "inspection-shell",
+    cwd: path.join(rootDir, "apps/frontend"),
+    command: [bunExec, "run", "dev:inspection:ready"],
+    output: "pipe",
+  })
+  processes.push(inspection)
+  await waitForInspectionReady(inspection)
+
   processes.push(spawnDevProcess({
     name: "canvas-contract",
     cwd: path.join(rootDir, "packages/canvas-contract"),

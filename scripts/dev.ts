@@ -232,6 +232,36 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
   ])
 }
 
+async function waitForFrontendReady(child: TDevProcess, port: number): Promise<void> {
+  let resolved = false
+  const readiness = new Promise<void>((resolve, reject) => {
+    const readLine = (line: string): void => {
+      if (!line.includes("Local:") || !line.includes(`:${port}/`)) return
+      resolved = true
+      resolve()
+    }
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stdout),
+      sink: readLine,
+      write: (text) => process.stdout.write(text),
+    })
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stderr),
+      sink: readLine,
+      write: (text) => process.stderr.write(text),
+    })
+    void child.process.exited.then((exitCode) => {
+      if (!resolved) reject(new Error(`[dev] frontend stack exited before it became ready with code ${exitCode}`))
+    })
+  })
+  await Promise.race([
+    readiness,
+    Bun.sleep(90_000).then(() => { throw new Error("[dev] Timed out waiting for frontend startup") }),
+  ])
+}
+
 async function stopProcesses(processes: TDevProcess[], exitCode: number): Promise<never> {
   for (const child of processes) {
     child.process.kill("SIGTERM")
@@ -302,11 +332,7 @@ try {
 
   const backendTarget = `http://127.0.0.1:${actualBackendPort}`
 
-  console.log(`[dev] Backend: ${backendTarget}`)
-  console.log(`[dev] Frontend: http://127.0.0.1:${frontendLease.port}`)
-  console.log(`[dev] Frontend proxy target: ${backendTarget}`)
-
-  processes.push(spawnDevProcess({
+  const frontendStack = spawnDevProcess({
     name: "frontend-stack",
     cwd: rootDir,
     cmd: [bunExec, frontendDevScript, "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
@@ -315,7 +341,14 @@ try {
       OMNIDRAW_BACKEND_PORT: String(actualBackendPort),
       OMNIDRAW_FRONTEND_PORT: String(frontendLease.port),
     },
-  }))
+    output: "pipe",
+  })
+  processes.push(frontendStack)
+  await waitForFrontendReady(frontendStack, frontendLease.port)
+
+  console.log(`[dev] Ready — Backend: ${backendTarget}`)
+  console.log(`[dev] Ready — Frontend: http://127.0.0.1:${frontendLease.port}`)
+  console.log(`[dev] Frontend proxy target: ${backendTarget}`)
 
   for (const child of processes) {
     child.process.exited.then((exitCode) => {

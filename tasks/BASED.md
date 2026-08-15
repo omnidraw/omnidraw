@@ -211,7 +211,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B97](b/B97.md) - public package dev: Canvas build races AI Chat type watcher
 - [x]: [B98](b/B98.md) - Preview inspect: frontend shell build is unreachable
 - [x]: [B99](b/B99.md) - Widget Preview: accepted runtimes go blank on cold remount
-- [ ]: [B100](b/B100.md) - Dev startup: Preview inspection shell is absent and failure stays cached
+- [x]: [B100](b/B100.md) - Dev startup: Preview inspection shell is absent and failure stays cached
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

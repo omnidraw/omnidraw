@@ -65,7 +65,7 @@
     "changeset:version": "changeset version",
     "predev": "bun run build:public && bun run build:inspection",
     "dev": "bun run scripts/dev.ts",
-    "preclient:dev": "bun run build:public",
+    "preclient:dev": "bun run build:public && bun run build:inspection",
     "client:dev": "bun run scripts/dev-frontend.ts",
     "preserver:dev": "bun run build:inspection",
     "server:dev": "cd apps/backend && NODE_ENV=development bun run --watch src/main.ts serve",

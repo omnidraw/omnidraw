@@ -313,6 +313,8 @@ implements TPreviewInspectionBrowserPort {
   #activeCount = 0;
   #browserOperation: Promise<Browser> | undefined;
   #preflightOperation: Promise<TPreviewInspectionBrowserPreflight> | undefined;
+  #runtimeIdentityOperation: Promise<TPlaywrightRuntimeIdentity | TPreviewInspectionBrowserPreflight> | undefined;
+  #tempRootOperation: Promise<void> | undefined;
   #verifiedRuntimeIdentity: TPlaywrightRuntimeIdentity | undefined;
   #stopping = false;
 
@@ -326,21 +328,13 @@ implements TPreviewInspectionBrowserPort {
   }
 
   preflight(): Promise<TPreviewInspectionBrowserPreflight> {
-    if (this.#preflightOperation !== undefined) return this.#preflightOperation;
-    const operation = this.#preflight();
+    const current = this.#preflightOperation;
+    if (current !== undefined) return current;
+    let operation: Promise<TPreviewInspectionBrowserPreflight>;
+    operation = this.#preflight().finally(() => {
+      if (this.#preflightOperation === operation) this.#preflightOperation = undefined;
+    });
     this.#preflightOperation = operation;
-    void operation.then(
-      (result) => {
-        if (!result.ok && this.#preflightOperation === operation) {
-          this.#preflightOperation = undefined;
-        }
-      },
-      () => {
-        if (this.#preflightOperation === operation) {
-          this.#preflightOperation = undefined;
-        }
-      },
-    );
     return operation;
   }
 
@@ -378,6 +372,14 @@ implements TPreviewInspectionBrowserPort {
         'mount',
       );
     }
+    if (this.#stopping) {
+      await disposeFunctionBridge(job.functionBridge);
+      throw serviceError(
+        'BROWSER_RUNNER_STOPPING',
+        'Preview inspection browser service is stopping.',
+        true,
+      );
+    }
     if (!preflight.ok) {
       await disposeFunctionBridge(job.functionBridge);
       throw serviceError(
@@ -385,14 +387,6 @@ implements TPreviewInspectionBrowserPort {
         `${preflight.message} ${preflight.remediation}`,
         true,
         'mount',
-      );
-    }
-    if (this.#stopping) {
-      await disposeFunctionBridge(job.functionBridge);
-      throw serviceError(
-        'BROWSER_RUNNER_STOPPING',
-        'Preview inspection browser service is stopping.',
-        true,
       );
     }
     if (job.signal.aborted) {
@@ -488,6 +482,75 @@ implements TPreviewInspectionBrowserPort {
   }
 
   async #preflight(): Promise<TPreviewInspectionBrowserPreflight> {
+    const runtime = await this.#runtimeIdentity();
+    if (!('executableSha256' in runtime)) return runtime;
+    if (this.#stopping) {
+      return Object.freeze({
+        ok: false,
+        code: 'BROWSER_RUNTIME_UNAVAILABLE',
+        message: 'Preview inspection browser preflight stopped before completion.',
+        remediation: 'Restart Omnidraw before retrying Preview inspection.',
+      });
+    }
+    let shellBuild: Awaited<ReturnType<TPreviewInspectionShellLeasePort['verify']>>;
+    try {
+      shellBuild = await this.#config.shell.verify();
+    } catch (error) {
+      const code = error !== null && typeof error === 'object' && 'code' in error
+        && error.code === 'INSPECTION_SHELL_MISSING'
+        ? 'INSPECTION_SHELL_MISSING'
+        : 'INSPECTION_SHELL_UNVERIFIED';
+      return Object.freeze({
+        ok: false,
+        code,
+        message: code === 'INSPECTION_SHELL_MISSING'
+          ? 'The internal Preview inspection shell is not built.'
+          : 'The internal Preview inspection shell is partial or unverified.',
+        remediation: 'Run the verified frontend inspection build, then retry without restarting Omnidraw.',
+      });
+    }
+    if (this.#stopping) {
+      return Object.freeze({
+        ok: false,
+        code: 'BROWSER_RUNTIME_UNAVAILABLE',
+        message: 'Preview inspection browser preflight stopped before completion.',
+        remediation: 'Restart Omnidraw before retrying Preview inspection.',
+      });
+    }
+    try {
+      await this.#initializeTempRoot();
+    } catch {
+      return Object.freeze({
+        ok: false,
+        code: 'BROWSER_RUNTIME_UNAVAILABLE',
+        message: 'Preview inspection browser temporary storage could not be initialized.',
+        remediation: 'Check the Omnidraw home permissions, then retry Preview inspection.',
+      });
+    }
+    return Object.freeze({
+      ok: true,
+      runtime: PREVIEW_INSPECTION_BROWSER_RUNTIME,
+      executablePath: runtime.executablePath,
+      shellPath: shellBuild.rootPath,
+    });
+  }
+
+  async #runtimeIdentity(): Promise<TPlaywrightRuntimeIdentity | TPreviewInspectionBrowserPreflight> {
+    if (this.#verifiedRuntimeIdentity !== undefined) return this.#verifiedRuntimeIdentity;
+    const current = this.#runtimeIdentityOperation;
+    if (current !== undefined) return current;
+    let operation: Promise<TPlaywrightRuntimeIdentity | TPreviewInspectionBrowserPreflight>;
+    operation = this.#readRuntimeIdentity().then((result) => {
+      if ('executableSha256' in result) this.#verifiedRuntimeIdentity = result;
+      return result;
+    }).finally(() => {
+      if (this.#runtimeIdentityOperation === operation) this.#runtimeIdentityOperation = undefined;
+    });
+    this.#runtimeIdentityOperation = operation;
+    return operation;
+  }
+
+  async #readRuntimeIdentity(): Promise<TPlaywrightRuntimeIdentity | TPreviewInspectionBrowserPreflight> {
     let evidence: TPlaywrightRuntimeExecutableEvidence;
     try {
       evidence = await this.#launcher.runtimeExecutableEvidence();
@@ -496,7 +559,7 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_RUNTIME_IDENTITY_INVALID',
         message: 'The installed Playwright Chromium executable evidence could not be verified.',
-        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then restart.',
+        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then retry.',
       });
     }
     if (this.#stopping) {
@@ -522,7 +585,7 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_RUNTIME_IDENTITY_INVALID',
         message: 'The installed Playwright Chromium executable evidence is malformed.',
-        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then restart.',
+        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then retry.',
       });
     }
     if (
@@ -533,7 +596,7 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_VERSION_MISMATCH',
         message: 'The installed Playwright Chromium version does not match the pinned Preview inspection runtime.',
-        remediation: 'Run `bun install` from the Omnidraw workspace and restart.',
+        remediation: 'Run `bun install` from the Omnidraw workspace, then retry.',
       });
     }
     let identity: TPlaywrightRuntimeIdentity;
@@ -544,7 +607,7 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_RUNTIME_IDENTITY_INVALID',
         message: 'The installed Playwright Chromium version could not be verified.',
-        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then restart.',
+        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then retry.',
       });
     }
     if (this.#stopping) {
@@ -577,7 +640,7 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_VERSION_MISMATCH',
         message: 'The installed Playwright Chromium version does not match the pinned Preview inspection runtime.',
-        remediation: 'Run `bun install` from the Omnidraw workspace and restart.',
+        remediation: 'Run `bun install` from the Omnidraw workspace, then retry.',
       });
     }
     const executable = await stat(identity.executablePath).catch(() => null);
@@ -586,40 +649,29 @@ implements TPreviewInspectionBrowserPort {
         ok: false,
         code: 'BROWSER_EXECUTABLE_MISSING',
         message: 'The pinned Playwright Chromium executable is not installed.',
-        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium` and restart Omnidraw.',
+        remediation: 'Run `bun --cwd apps/backend x playwright@1.61.1 install chromium`, then retry.',
       });
     }
-    const shellEntry = await stat(join(this.#config.shell.path, 'index.html'))
-      .catch(() => null);
-    if (shellEntry === null || !shellEntry.isFile()) {
-      return Object.freeze({
-        ok: false,
-        code: 'INSPECTION_SHELL_MISSING',
-        message: 'The internal Preview inspection shell is not built.',
-        remediation: 'Build the frontend and restart Omnidraw.',
+    return identity;
+  }
+
+  #initializeTempRoot(): Promise<void> {
+    const current = this.#tempRootOperation;
+    if (current !== undefined) return current;
+    let operation: Promise<void>;
+    operation = (async () => {
+      await rm(this.#config.tempRoot, { recursive: true, force: true });
+      await mkdir(this.#config.tempRoot, { recursive: true, mode: 0o700 });
+      await mkdir(join(this.#config.tempRoot, 'browser-downloads'), {
+        recursive: true,
+        mode: 0o700,
       });
-    }
-    if (this.#stopping) {
-      return Object.freeze({
-        ok: false,
-        code: 'BROWSER_RUNTIME_UNAVAILABLE',
-        message: 'Preview inspection browser preflight stopped before completion.',
-        remediation: 'Restart Omnidraw before retrying Preview inspection.',
-      });
-    }
-    await rm(this.#config.tempRoot, { recursive: true, force: true });
-    await mkdir(this.#config.tempRoot, { recursive: true, mode: 0o700 });
-    await mkdir(join(this.#config.tempRoot, 'browser-downloads'), {
-      recursive: true,
-      mode: 0o700,
+    })().catch((error) => {
+      if (this.#tempRootOperation === operation) this.#tempRootOperation = undefined;
+      throw error;
     });
-    this.#verifiedRuntimeIdentity = identity;
-    return Object.freeze({
-      ok: true,
-      runtime: PREVIEW_INSPECTION_BROWSER_RUNTIME,
-      executablePath: identity.executablePath,
-      shellPath: this.#config.shell.path,
-    });
+    this.#tempRootOperation = operation;
+    return operation;
   }
 
   #rememberJobId(jobId: string): void {
