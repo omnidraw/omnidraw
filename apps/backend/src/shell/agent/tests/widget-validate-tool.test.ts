@@ -165,9 +165,48 @@ describe('od_widget_validate preview execution', () => {
       ok: false,
       widgetKey: 'hello-app',
       acceptedArtifactBuild: 'failed',
-      errors: ['Accepted host build failed.'],
+      errors: ['[BUILD_IMPORT_FAILED] Accepted host build failed.'],
       livePreviewRuntime: 'not_exercised',
       resources: 'not_exercised',
     });
+  });
+
+  test('preserves source diagnostic code and safe location for AI repair', async () => {
+    const workspace = await createWorkspace();
+    const result = await executeTool(createValidateTool(
+      workspace,
+      undefined,
+      async ({ slug }) => ({
+        ok: false,
+        widgetKey: slug,
+        displayName: 'Hello App',
+        capturedDraftDigestSha256: 'a'.repeat(64),
+        executableInputDigestSha256: null,
+        acceptedGeneration: null,
+        buildIdentity: null,
+        sourceValidation: {
+          status: 'failed',
+          diagnostics: [{
+            code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+            message: 'Line 17, column 1: pagehide is unsupported; rely on host disposal.',
+            path: 'ui/main.ts',
+          }],
+          files: ['omnidraw.json', 'ui/main.ts'],
+          filesTruncated: false,
+        },
+        acceptedArtifactBuild: { status: 'not_run', diagnostics: [] },
+        livePreviewRuntime: 'not_exercised',
+        resources: 'not_exercised',
+      }),
+    ), { name: 'Hello App' });
+
+    expect(result.details).toMatchObject({
+      ok: false,
+      acceptedArtifactBuild: 'not-run',
+      errors: [
+        '[SOURCE_DOM_EVENT_UNSUPPORTED] ui/main.ts: Line 17, column 1: pagehide is unsupported; rely on host disposal.',
+      ],
+    });
+    expect(result.content[0]?.text).toContain('construction is invalid');
   });
 });

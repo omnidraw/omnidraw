@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import type { TOfflineCheckDiagnostic, TOfflineCheckReport } from '@omnidraw/sdk/fn.offline-check';
 import { fnResolveWidgetAuthoringDraft } from '../../core/widget-authoring/fn.resolve-draft';
 import type {
   TWidgetAuthoringCatalog,
@@ -78,6 +79,27 @@ function safeDiagnostic(error: unknown): TWidgetAuthoringDiagnostic {
   });
 }
 
+function offlineDiagnosticPath(value: string): string | null {
+  if (!value.startsWith('widget://')) return null;
+  const relative = value.slice('widget://'.length);
+  return relative === '.' ? null : safeDiagnosticPath(relative);
+}
+
+function offlineDiagnostic(diagnostic: TOfflineCheckDiagnostic): TWidgetAuthoringDiagnostic {
+  const position = diagnostic.location.line === undefined
+    ? ''
+    : diagnostic.location.column === undefined
+      ? `Line ${diagnostic.location.line}: `
+      : `Line ${diagnostic.location.line}, column ${diagnostic.location.column}: `;
+  return Object.freeze({
+    code: /^[A-Z][A-Z0-9_]{0,127}$/.test(diagnostic.code)
+      ? diagnostic.code
+      : 'SOURCE_VALIDATION_FAILED',
+    message: safeDiagnosticMessage(`${position}${diagnostic.summary}`),
+    path: offlineDiagnosticPath(diagnostic.location.file),
+  });
+}
+
 function catalogProjection(snapshot: TWidgetCatalogSnapshot): TWidgetAuthoringCatalog {
   return Object.freeze({
     generation: snapshot.generation,
@@ -106,6 +128,11 @@ type TConfig = Readonly<{
     WidgetBuildGenerationService,
     'rebuild' | 'requireCurrent' | 'view'
   >;
+  sourceCheck: (args: Readonly<{
+    files: readonly Readonly<{ path: string; bytes: Uint8Array }>[];
+    canonicalManifestJson: string;
+    signal: AbortSignal;
+  }>) => Promise<TOfflineCheckReport>;
   preview: Pick<WidgetPreviewService, 'inspect'>;
   screenshotLeases: Pick<WidgetScreenshotLeaseService, 'issue'>;
 }>;
@@ -192,9 +219,52 @@ export class WidgetAuthoringVerificationService implements IWidgetAuthoringVerif
       'The exact draft changed while source validation was being captured.',
     );
 
+    const validationSignal = args.signal ?? new AbortController().signal;
+    let offlineReport: TOfflineCheckReport;
+    try {
+      offlineReport = await this.#config.sourceCheck({
+        files: capture.files,
+        canonicalManifestJson: capture.canonicalManifestJson,
+        signal: validationSignal,
+      });
+    } catch (error) {
+      if (validationSignal.aborted) throw error;
+      offlineReport = Object.freeze({
+        schemaVersion: 1,
+        ok: false,
+        scope: 'offline-project',
+        checks: Object.freeze([Object.freeze({
+          phase: 'project',
+          code: 'SOURCE_CHECK_UNAVAILABLE',
+          severity: 'error',
+          summary: safeDiagnostic(error).message,
+          location: Object.freeze({ file: 'widget://.' }),
+        })]),
+        limitations: Object.freeze([
+          'resource-existence-not-checked',
+          'preview-runtime-not-checked',
+        ] as const),
+        truncated: false,
+      });
+    }
+    const confirmedCapture = await workspace.captureDraftBuildInput({
+      slug: selected.widgetKey,
+      signal: validationSignal,
+    });
+    if (
+      confirmedCapture.slug !== capture.slug
+      || confirmedCapture.manifest.slug !== capture.manifest.slug
+      || confirmedCapture.manifest.name !== capture.manifest.name
+      || confirmedCapture.treeDigestSha256 !== capture.treeDigestSha256
+      || confirmedCapture.fileSetDigestSha256 !== capture.fileSetDigestSha256
+    ) throw authoringError(
+      'WIDGET_CATALOG_CHANGED',
+      'The exact draft changed while the current SDK source policy was being checked.',
+    );
+
     const files = [
       'omnidraw.json',
-      ...capture.files.map((file) => file.path),
+      ...confirmedCapture.files.map((file) => file.path),
     ].sort();
     const manifestValidation = fnValidateManifest(capture.manifest);
     const requiredValidation = fnLintRequiredWidgetFiles({
@@ -204,11 +274,13 @@ export class WidgetAuthoringVerificationService implements IWidgetAuthoringVerif
     const sourceDiagnostics = Object.freeze([
       ...manifestValidation.errors,
       ...requiredValidation.errors,
-    ].slice(0, MAX_SOURCE_DIAGNOSTICS).map((message, index) => Object.freeze({
+    ].map((message, index) => Object.freeze({
       code: `SOURCE_VALIDATION_${String(index + 1).padStart(3, '0')}`,
       message: message.slice(0, 2_000),
       path: null,
-    })));
+    } as TWidgetAuthoringDiagnostic))
+      .concat(offlineReport.checks.map(offlineDiagnostic))
+      .slice(0, MAX_SOURCE_DIAGNOSTICS));
     if (sourceDiagnostics.length > 0) {
       return Object.freeze({
         ok: false,

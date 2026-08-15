@@ -112,6 +112,7 @@ type TRunProcess = (
     timeoutMs: number;
     maxOutputBytes: number;
     signal?: AbortSignal;
+    allowedExitCodes?: readonly number[];
   }>,
 ) => Promise<string | void>;
 
@@ -386,6 +387,7 @@ export function runProcess(
     timeoutMs: number;
     maxOutputBytes: number;
     signal?: AbortSignal;
+    allowedExitCodes?: readonly number[];
   }>,
 ): Promise<string> {
   if (options.signal?.aborted === true) return Promise.reject(abortError());
@@ -476,7 +478,7 @@ export function runProcess(
         finish(terminalError);
         return;
       }
-      if (code === 0) {
+      if (code === 0 || (code !== null && options.allowedExitCodes?.includes(code) === true)) {
         finish();
         return;
       }

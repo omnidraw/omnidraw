@@ -1,5 +1,9 @@
 export { WidgetAuthoringVerificationService } from './WidgetAuthoringVerificationService';
 export {
+  createWidgetSdkSourceCheck,
+  type TWidgetSdkSourceCheck,
+} from './WidgetSdkSourceCheck';
+export {
   SCREENSHOT_LEASE_OPERATION_HEADER,
   SCREENSHOT_LEASE_PATH,
   WidgetScreenshotLeaseService,

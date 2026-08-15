@@ -113,6 +113,7 @@ import {
 } from '../widget/LocalWidgetPackageRegistrySync';
 import { WidgetSourceSnapshot } from '../widget-domain/local';
 import {
+  createWidgetSdkSourceCheck,
   WidgetAuthoringVerificationService,
   WidgetScreenshotLeaseService,
 } from '../widget-authoring';
@@ -863,10 +864,18 @@ export function layerLiveMechanics(args: Readonly<{
     createToken: () => randomBytes(24).toString('base64url'),
     nowMs: Date.now,
   });
+  const widgetSourceCheck = createWidgetSdkSourceCheck({
+    scratchDirectory: join(config.home.tempRoot, 'widget-source-checks'),
+    npmUserConfigPath,
+    prepareNpmDependencies: prepareWidgetNpmDependencies,
+    mutableRegistryUrl,
+    runProcess: runWidgetBuildProcess,
+  });
   const widgetAuthoring = new WidgetAuthoringVerificationService({
     catalog: widgetCatalog,
     workspace: widgetWorkspace,
     buildGenerations: widgetBuildGeneration,
+    sourceCheck: widgetSourceCheck,
     preview: widgetPreview,
     screenshotLeases: widgetScreenshotLease,
   });

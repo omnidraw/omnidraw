@@ -5,6 +5,20 @@ const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
 const SHA_C = 'c'.repeat(64);
 
+function passedSourceCheck() {
+  return Promise.resolve({
+    schemaVersion: 1 as const,
+    ok: true,
+    scope: 'offline-project' as const,
+    checks: [],
+    limitations: [
+      'resource-existence-not-checked' as const,
+      'preview-runtime-not-checked' as const,
+    ],
+    truncated: false,
+  });
+}
+
 const manifest = Object.freeze({
   $schema: 'https://omnidraw.dev/schemas/widget/v1.json' as const,
   schemaVersion: 1 as const,
@@ -38,6 +52,7 @@ function capture() {
   return {
     slug: 'clock',
     manifest,
+    canonicalManifestJson: JSON.stringify(manifest),
     treeDigestSha256: SHA_C,
     fileSetDigestSha256: SHA_A,
     files: [{ path: 'ui/main.ts', bytes: new TextEncoder().encode('export default 1;') }],
@@ -115,6 +130,7 @@ describe('WidgetAuthoringVerificationService', () => {
           },
           async view() { return { diagnostics: [] }; },
         },
+        sourceCheck: passedSourceCheck,
         preview: {
           async inspect() {
             inspections += 1;
@@ -160,6 +176,7 @@ describe('WidgetAuthoringVerificationService', () => {
           };
         },
       },
+      sourceCheck: passedSourceCheck,
       preview: { async inspect() { throw new Error('not used'); } },
       screenshotLeases: { issue() { throw new Error('not used'); } },
     } as never);
@@ -209,6 +226,7 @@ describe('WidgetAuthoringVerificationService', () => {
         },
         async view() { return { diagnostics: [] }; },
       },
+      sourceCheck: passedSourceCheck,
       preview: {
         async inspect() {
           inspections += 1;
@@ -252,6 +270,7 @@ describe('WidgetAuthoringVerificationService', () => {
         async requireCurrent() { throw new Error('not used'); },
         async view() { return { diagnostics: [] }; },
       },
+      sourceCheck: passedSourceCheck,
       preview: { async inspect() { throw new Error('not used'); } },
       screenshotLeases: { issue() { throw new Error('not used'); } },
     } as never);
@@ -265,6 +284,60 @@ describe('WidgetAuthoringVerificationService', () => {
       capturedDraftDigestSha256: SHA_C,
       acceptedGeneration: 9,
       buildIdentity: SHA_A,
+    });
+  });
+
+  test('rejects current SDK source-policy diagnostics before host build acceptance', async () => {
+    let rebuilds = 0;
+    const service = new WidgetAuthoringVerificationService({
+      catalog: { current: catalog, refresh: async () => catalog() },
+      workspace: Promise.resolve({
+        rootPath: '/srv/selected/widgets',
+        captureDraftBuildInput: async () => capture(),
+      }),
+      buildGenerations: {
+        async rebuild() {
+          rebuilds += 1;
+          throw new Error('must not build rejected source');
+        },
+        async requireCurrent() { throw new Error('not used'); },
+        async view() { return { diagnostics: [] }; },
+      },
+      sourceCheck: async ({ files, canonicalManifestJson }) => {
+        expect(files.map((file) => file.path)).toEqual(['ui/main.ts']);
+        expect(JSON.parse(canonicalManifestJson)).toMatchObject({ slug: 'clock' });
+        return {
+          schemaVersion: 1,
+          ok: false,
+          scope: 'offline-project',
+          checks: [{
+            phase: 'policy',
+            code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+            severity: 'error',
+            summary: 'window.addEventListener("pagehide", ...) is unsupported by this widget API profile. Remove it and rely on host disposal for cleanup.',
+            location: { file: 'widget://ui/main.ts', line: 173, column: 1 },
+          }],
+          limitations: ['resource-existence-not-checked', 'preview-runtime-not-checked'],
+          truncated: false,
+        };
+      },
+      preview: { async inspect() { throw new Error('not used'); } },
+      screenshotLeases: { issue() { throw new Error('not used'); } },
+    } as never);
+
+    const result = await service.validate({ widgetKey: 'clock' });
+    expect(rebuilds).toBe(0);
+    expect(result).toMatchObject({
+      ok: false,
+      sourceValidation: {
+        status: 'failed',
+        diagnostics: [{
+          code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
+          path: 'ui/main.ts',
+          message: 'Line 173, column 1: window.addEventListener("pagehide", ...) is unsupported by this widget API profile. Remove it and rely on host disposal for cleanup.',
+        }],
+      },
+      acceptedArtifactBuild: { status: 'not_run', diagnostics: [] },
     });
   });
 });

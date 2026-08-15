@@ -212,6 +212,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B98](b/B98.md) - Preview inspect: frontend shell build is unreachable
 - [x]: [B99](b/B99.md) - Widget Preview: accepted runtimes go blank on cold remount
 - [x]: [B100](b/B100.md) - Dev startup: Preview inspection shell is absent and failure stays cached
+- [x]: [B101](b/B101.md) - Widget validation: enforce the current SDK source policy before host acceptance
+- [x]: [B102](b/B102.md) - AI widget validation: preserve actionable diagnostic identity and location
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

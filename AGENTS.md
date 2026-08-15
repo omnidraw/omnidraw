@@ -182,6 +182,31 @@ storage code never enters the public packages.
 Capsule owns React, React DOM, Three, and other framework compatibility
 evidence. Do not duplicate those fixtures in this repository.
 
+## Widget debugging CLI
+
+Use the source-run `omnidraw widget` CLI to discover, validate, and inspect an
+existing local widget draft through the already-running backend. From the
+repository root, invoke it as
+`bun run apps/backend/src/main.ts widget <list|resolve|validate|inspect>` and
+pass `--port` when the server is not on the default port. Use `--help` on a
+subcommand for its complete flags.
+
+The supported repair loop is `list` or exact `resolve`, edit the returned draft,
+`validate`, then `inspect`. A portable SDK `check` or `build` is useful offline
+evidence, but it does not prove host acceptance. `validate` performs the
+host-owned accepted-generation build. `inspect` never builds implicitly: carry
+its exact draft digest, accepted generation, and build identity from the
+validation result.
+
+Use `inspect --mode artifact` for isolated accepted-artifact evidence and
+`inspect --mode preview` for manifest-bound diagnostic-clone runtime evidence.
+The clone is not the visible Canvas frame; optional `--canvas` correlation does
+not create or mutate one. Protected or unclear writes fail closed because this
+CLI has no approval coordinator. Prefer `--json` for automation, and treat an
+optional verified PNG as evidence rather than the success criterion. The CLI
+must remain an RPC client of the running backend; do not make it open storage or
+construct another catalog, build, Preview, browser, or application runtime.
+
 ## Package publishing
 
 The `version` field in a package's own `package.json` is its release marker.

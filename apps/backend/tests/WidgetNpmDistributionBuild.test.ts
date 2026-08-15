@@ -616,6 +616,35 @@ describe('WidgetNpmDistributionBuild', () => {
     })).rejects.toThrow('output exceeded 1024 bytes');
   });
 
+  test('returns bounded output for an explicitly accepted diagnostic exit code', async () => {
+    const output = await runProcess('node', ['-e', [
+      'process.stdout.write(JSON.stringify({ok:false}));',
+      'process.exit(3);',
+    ].join('')], {
+      cwd: tmpdir(),
+      timeoutMs: 5_000,
+      maxOutputBytes: 1_024,
+      allowedExitCodes: [0, 3],
+    });
+
+    expect(output).toBe('{"ok":false}');
+  });
+
+  test('enforces the deadline when a command ignores graceful termination', async () => {
+    const startedAt = Date.now();
+    await expect(runProcess('node', ['-e', [
+      'process.on("SIGTERM", () => undefined);',
+      'setInterval(() => undefined, 1000);',
+    ].join('')], {
+      cwd: tmpdir(),
+      timeoutMs: 50,
+      maxOutputBytes: 1_024,
+    })).rejects.toMatchObject({
+      diagnostic: { code: 'WIDGET_COMMAND_TIMEOUT' },
+    });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
   test('redacts ambient credentials from failed guest process diagnostics', async () => {
     const environmentName = 'OMNIDRAW_WIDGET_BUILD_TEST_TOKEN';
     const secret = 'test-only-widget-build-secret-42';

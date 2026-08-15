@@ -260,12 +260,13 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
               ...(signal === undefined ? {} : { signal }),
             });
             await args.onDraftChanged?.({ name: mount.name, type: 'validated' });
-            const sourceErrors = verification.sourceValidation.diagnostics.map(
-              (diagnostic) => diagnostic.message,
-            );
-            const buildErrors = verification.acceptedArtifactBuild.diagnostics.map(
-              (diagnostic) => diagnostic.message,
-            );
+            const formatDiagnostic = (diagnostic: Readonly<{
+              code: string;
+              message: string;
+              path: string | null;
+            }>): string => `[${diagnostic.code}] ${diagnostic.path === null ? '' : `${diagnostic.path}: `}${diagnostic.message}`;
+            const sourceErrors = verification.sourceValidation.diagnostics.map(formatDiagnostic);
+            const buildErrors = verification.acceptedArtifactBuild.diagnostics.map(formatDiagnostic);
             const errors = [...sourceErrors, ...buildErrors].slice(0, 40);
             const acceptedArtifactBuild = verification.acceptedArtifactBuild.status === 'not_run'
               ? 'not-run' as const
