@@ -5,7 +5,7 @@ export interface ICliConfig {
   cwd: string;
   dev: boolean;
   version: string;
-  command: 'serve' | 'canvas' | 'unknown';
+  command: 'serve' | 'canvas' | 'widget' | 'unknown';
   subcommand?: string;
   rawArgv: string[];
   argv: string[];

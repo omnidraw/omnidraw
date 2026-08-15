@@ -171,6 +171,69 @@ export type TWidgetTransportArtifact = Readonly<{
   functionDescriptors?: readonly TWidgetBrowserFunctionDescriptor[];
   identity?: Readonly<{ catalogGeneration?: number }>;
 }> & Readonly<Record<string, unknown>>;
+type TWidgetAuthoringDiagnostic = Readonly<{ code: string; message: string; path: string | null }>;
+type TWidgetAuthoringResolvedDraft = Readonly<{
+  catalogGeneration: number;
+  catalogDigestSha256: string;
+  widgetKey: string;
+  displayName: string;
+  health: "healthy";
+  draftDigestSha256: string;
+  draftPath: string;
+}>;
+type TWidgetAuthoringValidation = Readonly<{
+  ok: boolean;
+  widgetKey: string;
+  displayName: string;
+  selectedCatalogGeneration: number;
+  selectedCatalogDigestSha256: string;
+  capturedDraftDigestSha256: string;
+  executableInputDigestSha256: string | null;
+  acceptedGeneration: number | null;
+  buildIdentity: string | null;
+  sourceValidation: Readonly<{
+    status: "passed" | "failed";
+    diagnostics: readonly TWidgetAuthoringDiagnostic[];
+    files: readonly string[];
+    filesTruncated: boolean;
+  }>;
+  acceptedArtifactBuild: Readonly<{
+    status: "passed" | "failed" | "not_run";
+    diagnostics: readonly TWidgetAuthoringDiagnostic[];
+  }>;
+  livePreviewRuntime: "not_exercised";
+  resources: "not_exercised";
+}>;
+type TWidgetAuthoringInspectInput = Readonly<{
+  widgetKey: string;
+  expectedDraftDigestSha256: string;
+  expectedAcceptedGeneration: number;
+  expectedBuildIdentity: string;
+  mode: "artifact" | "preview";
+  canvasId?: string;
+  viewport?: Readonly<{ width?: number; height?: number; deviceScaleFactor?: 1 | 2 }>;
+  settle?: Readonly<{ frames?: number; timeoutMs?: number }>;
+  actions?: readonly Readonly<Record<string, unknown>>[];
+  continueOnActionError?: boolean;
+  timeoutMs?: number;
+  includeScreenshot: boolean;
+  operationId: string;
+}>;
+type TWidgetAuthoringInspection = Readonly<{
+  ok: boolean;
+  widgetKey: string;
+  draftDigestSha256: string;
+  acceptedGeneration: number;
+  buildIdentity: string;
+  canvasCorrelation: Readonly<{
+    canvas: "not_selected" | "selected";
+    visibleFrame: "not_claimed";
+    durableInstanceState: "not_selected" | "selected_not_exercised";
+  }>;
+  result?: Readonly<Record<string, unknown>>;
+  error?: Readonly<Record<string, unknown>>;
+  screenshotLease?: Readonly<{ url: string; expiresAtMs: number }>;
+}>;
 type TWidgetStateIdentity = Pick<TWidgetHostSubject, "canvasId" | "elementId" | "widgetInstanceId">;
 type TWidgetStateSnapshot = Readonly<{
   identity?: TWidgetStateIdentity;
@@ -282,6 +345,9 @@ export type TPrivateRequestOperations = Readonly<{
   "resource.dbBackups.restore": TOperation<Readonly<{ resourceId: string; applyId: string }>, TDbApplyRun>;
   "resource.dbBackups.restoreStatus": TOperation<Readonly<{ restoreId: string }>, TDbApplyDetails>;
   "widget.catalog.get": TOperation<Readonly<Record<string, never>> | undefined, TWidgetPublicCatalog>;
+  "widget.authoring.resolve": TOperation<Readonly<{ widgetKey: string } | { name: string }>, TWidgetAuthoringResolvedDraft>;
+  "widget.authoring.validate": TOperation<Readonly<{ widgetKey: string; expectedDraftDigestSha256?: string }>, TWidgetAuthoringValidation>;
+  "widget.authoring.inspect": TOperation<TWidgetAuthoringInspectInput, TWidgetAuthoringInspection>;
   "widget.catalog.refresh": TOperation<Readonly<Record<string, never>>, TWidgetPublicCatalog>;
   "widget.catalog.files.list": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published" }>, TWidgetPublicFileList>;
   "widget.catalog.files.read": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published"; path: string }>, TWidgetPublicFilePreview>;

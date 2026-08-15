@@ -5,6 +5,8 @@ import type { IEventPublisherService } from '../events/types';
 import type { TApiContext } from '../api/context';
 import type { ICliConfig } from '../cli/config';
 import type { WidgetBuildGenerationService } from '../widget/WidgetBuildGenerationService';
+import type { IWidgetAuthoringVerification } from '../widget-authoring';
+import type { WidgetScreenshotLeaseService } from '../widget-authoring';
 
 /**
  * Live mechanics are deliberately exposed as narrow semantic capabilities.
@@ -74,3 +76,13 @@ export class LiveWidgetBuildGeneration extends Context.Service<
   LiveWidgetBuildGeneration,
   WidgetBuildGenerationService
 >()('omnidraw/backend/LiveWidgetBuildGeneration') {}
+
+export class LiveWidgetAuthoring extends Context.Service<
+  LiveWidgetAuthoring,
+  IWidgetAuthoringVerification
+>()('omnidraw/backend/LiveWidgetAuthoring') {}
+
+export class LiveWidgetScreenshotLease extends Context.Service<
+  LiveWidgetScreenshotLease,
+  WidgetScreenshotLeaseService
+>()('omnidraw/backend/LiveWidgetScreenshotLease') {}

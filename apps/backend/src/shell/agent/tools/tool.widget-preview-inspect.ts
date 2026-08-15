@@ -101,6 +101,7 @@ const WIDGET_PREVIEW_INSPECT_PARAMETERS = Type.Object({
   mode: Type.Optional(Type.Union([Type.Literal('artifact'), Type.Literal('preview')])),
   expectedDraftDigestSha256: Type.Optional(SHA256_SCHEMA),
   expectedAcceptedGeneration: Type.Optional(Type.Integer({ minimum: 1 })),
+  expectedBuildIdentity: Type.Optional(SHA256_SCHEMA),
   viewport: Type.Optional(Type.Object({
     width: Type.Optional(Type.Integer({ minimum: 160, maximum: 1_280 })),
     height: Type.Optional(Type.Integer({ minimum: 120, maximum: 1_024 })),
@@ -546,6 +547,12 @@ export function createWidgetPreviewInspectTool(args: TCreateWidgetPreviewInspect
           try {
             response = await awaitInspectionOperation(
               args.capability!.inspect(Object.freeze({
+                subject: Object.freeze({
+                  kind: 'ai_chat' as const,
+                  chatId: args.chatId,
+                  toolCallId,
+                  ...(scope === undefined ? {} : { scope }),
+                }),
                 chatId: args.chatId,
                 toolCallId,
                 name: mount.name,

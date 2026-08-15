@@ -33,6 +33,7 @@ import {
   LiveHumanResourceSecret,
   LiveResource,
   LiveWidgetCatalog,
+  LiveWidgetAuthoring,
   LiveWidgetHostConfiguration,
   LiveWidgetLoadAdmission,
   LiveWidgetPreview,
@@ -92,6 +93,7 @@ export const layerLiveRpcDispatcher = Layer.effect(
     const humanResourceSecret = yield* LiveHumanResourceSecret;
     const resource = yield* LiveResource;
     const widgetCatalog = yield* LiveWidgetCatalog;
+    const widgetAuthoring = yield* LiveWidgetAuthoring;
     const widgetPreview = yield* LiveWidgetPreview;
     const widgetCapsuleHostConfiguration = yield* LiveWidgetHostConfiguration;
     const widgetRuntimeLoadAdmission = yield* LiveWidgetLoadAdmission;
@@ -113,6 +115,7 @@ export const layerLiveRpcDispatcher = Layer.effect(
       humanResourceSecret,
       resource,
       widgetCatalog,
+      widgetAuthoring,
       widgetPreview,
       widgetCapsuleHostConfiguration,
       widgetRuntimeLoadAdmission,

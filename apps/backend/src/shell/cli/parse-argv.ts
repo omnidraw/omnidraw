@@ -1,6 +1,6 @@
 import { parseArgs } from 'util';
 
-type TCliCommand = 'serve' | 'canvas' | 'unknown';
+type TCliCommand = 'serve' | 'canvas' | 'widget' | 'unknown';
 
 type TCliSubcommandOptions = {
   dryRun?: boolean;
@@ -31,6 +31,7 @@ type TCliParsedArgv = {
 
 function getDefaultCommand(commandToken: string | undefined): TCliCommand {
   if (commandToken === 'canvas') return 'canvas';
+  if (commandToken === 'widget') return 'widget';
   if (commandToken === undefined || /^\d+$/.test(commandToken)) return 'serve';
   if (commandToken === 'serve') return 'serve';
   if (commandToken.startsWith('-')) return 'serve';
@@ -87,7 +88,11 @@ function parseCliArgv(rawArgv: readonly string[] = Bun.argv): TCliParsedArgv {
     rawArgv: [...rawArgv],
     argv,
     command,
-    subcommand: command === 'canvas' ? positionals[3] : command === 'unknown' ? commandToken : undefined,
+    subcommand: command === 'canvas' || command === 'widget'
+      ? positionals[3]
+      : command === 'unknown'
+        ? commandToken
+        : undefined,
     port: parsePort(typeof values.port === 'string' ? values.port : /^\d+$/.test(commandToken ?? '') ? commandToken : undefined),
     dataDir: validateOptionValue(
       '--data-dir',

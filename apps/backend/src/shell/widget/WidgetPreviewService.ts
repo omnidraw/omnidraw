@@ -144,24 +144,79 @@ type TWidgetPreviewServiceConfig = Readonly<{
       canvasId: string;
       aiChatElementId: string;
       widgetKey: string;
-    }>): Promise<TPreviewInspectionScopeResolution>;
-    assertCurrent(resolution: TPreviewInspectionScopeResolution): Promise<void>;
+    }>): Promise<TPreviewInspectionAiScopeResolution>;
+    assertCurrent(resolution: TPreviewInspectionAiScopeResolution): Promise<void>;
+  }>;
+  inspectionAutomationScope?: Readonly<{
+    resolve(args: Readonly<{
+      canvasId: string;
+      widgetKey: string;
+    }>): Promise<TPreviewInspectionAutomationScopeResolution>;
+    assertCurrent(resolution: TPreviewInspectionAutomationScopeResolution): Promise<void>;
   }>;
 }>;
 
-type TPreviewInspectionScopeResolution = Readonly<{
-  chatId: string;
-  canvasId: string;
-  aiChatElementId: string;
-  widgetKey: string;
-}> & (
+type TPreviewInspectionFrameResolution =
   | Readonly<{ previewFrame: 'absent' }>
   | Readonly<{
       previewFrame: 'exact';
       previewElementId: string;
       previewInstanceId: string;
+    }>;
+
+type TPreviewInspectionAiScopeResolution = Readonly<{
+  chatId: string;
+  canvasId: string;
+  aiChatElementId: string;
+  widgetKey: string;
+}> & TPreviewInspectionFrameResolution;
+
+type TPreviewInspectionScopeResolution = Readonly<{
+  subject: 'ai_chat';
+}> & TPreviewInspectionAiScopeResolution;
+
+type TPreviewInspectionAutomationScopeResolution = Readonly<{
+  subject: 'automation';
+  canvasId: string;
+  canvasRevision: number;
+  widgetKey: string;
+}> & TPreviewInspectionFrameResolution;
+
+type TPreviewInspectionSelectedScope =
+  | TPreviewInspectionScopeResolution
+  | TPreviewInspectionAutomationScopeResolution;
+
+type TResolvedInspectionSubject =
+  | Readonly<{
+      kind: 'ai_chat';
+      chatId: string;
+      toolCallId: string;
+      scope?: Readonly<{ canvasId: string; aiChatElementId: string }>;
     }>
-);
+  | Readonly<{
+      kind: 'automation';
+      operationId: string;
+      canvasId?: string;
+    }>;
+
+function resolveInspectionSubject(
+  args: TWidgetPreviewInspectionRequest,
+): TResolvedInspectionSubject {
+  if (args.subject?.kind === 'automation') return args.subject;
+  if (args.subject?.kind === 'ai_chat') return args.subject;
+  if (args.chatId === undefined || args.toolCallId === undefined) {
+    throw inspectionError(
+      'PREVIEW_INSPECTION_SUBJECT_INVALID',
+      'Preview inspection requires an explicit verified subject.',
+    );
+  }
+  return Object.freeze({
+    kind: 'ai_chat',
+    chatId: args.chatId,
+    toolCallId: args.toolCallId,
+    ...(args.scope === undefined ? {} : { scope: args.scope }),
+  });
+}
 
 function sha256(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
@@ -537,6 +592,7 @@ class WidgetPreviewService {
     args: TWidgetPreviewInspectionRequest,
   ): Promise<TWidgetPreviewInspectionResponse> {
     const startedAtMs = Date.now();
+    const subject = resolveInspectionSubject(args);
     const controller = new AbortController();
     const cancel = (): void => controller.abort(
       args.signal?.reason === 'inspection-timeout'
@@ -607,6 +663,16 @@ class WidgetPreviewService {
         );
       }
       if (
+        args.input.expectedBuildIdentity !== undefined
+        && args.input.expectedBuildIdentity !== accepted.receipt.buildIdentity
+      ) {
+        throw inspectionError(
+          'PREVIEW_GENERATION_CHANGED',
+          'The accepted Preview build identity changed after the requested fence was selected.',
+          true,
+        );
+      }
+      if (
         args.input.expectedDraftDigestSha256 !== undefined
         && args.input.expectedDraftDigestSha256 !== accepted.capture.treeDigestSha256
       ) {
@@ -647,36 +713,70 @@ class WidgetPreviewService {
         construction: accepted.construction,
       }), accepted.signed);
       let artifact = acceptedArtifact;
-      let scopeResolution: TPreviewInspectionScopeResolution | undefined;
+      let scopeResolution: TPreviewInspectionSelectedScope | undefined;
       if (args.input.mode === 'preview') {
         stage = 'scope';
-        if (args.scope === undefined || this.#config.inspectionScope === undefined) {
-          throw inspectionError(
-            'PREVIEW_UNAVAILABLE',
-            'The exact current canvas Preview scope is unavailable.',
-            true,
+        if (subject.kind === 'ai_chat') {
+          if (subject.scope === undefined || this.#config.inspectionScope === undefined) {
+            throw inspectionError(
+              'PREVIEW_UNAVAILABLE',
+              'The exact current canvas Preview scope is unavailable.',
+              true,
+            );
+          }
+          const resolvedAiScope = await awaitInspectionSignal(
+            this.#config.inspectionScope.resolve(Object.freeze({
+              chatId: subject.chatId,
+              canvasId: subject.scope.canvasId,
+              aiChatElementId: subject.scope.aiChatElementId,
+              widgetKey: args.widgetKey,
+            })),
+            controller.signal,
           );
-        }
-        scopeResolution = await awaitInspectionSignal(
-          this.#config.inspectionScope.resolve(Object.freeze({
-            chatId: args.chatId,
-            canvasId: args.scope.canvasId,
-            aiChatElementId: args.scope.aiChatElementId,
-            widgetKey: args.widgetKey,
-          })),
-          controller.signal,
-        );
-        if (
-          scopeResolution.chatId !== args.chatId
-          || scopeResolution.canvasId !== args.scope.canvasId
-          || scopeResolution.aiChatElementId !== args.scope.aiChatElementId
-          || scopeResolution.widgetKey !== args.widgetKey
-        ) {
-          throw inspectionError(
-            'PREVIEW_UNAVAILABLE',
-            'The resolved Preview scope did not match the verified AI Chat target.',
-            true,
+          scopeResolution = Object.freeze({
+            subject: 'ai_chat' as const,
+            ...resolvedAiScope,
+          });
+          if (
+            scopeResolution.subject !== 'ai_chat'
+            || scopeResolution.chatId !== subject.chatId
+            || scopeResolution.canvasId !== subject.scope.canvasId
+            || scopeResolution.aiChatElementId !== subject.scope.aiChatElementId
+            || scopeResolution.widgetKey !== args.widgetKey
+          ) {
+            throw inspectionError(
+              'PREVIEW_UNAVAILABLE',
+              'The resolved Preview scope did not match the verified AI Chat target.',
+              true,
+            );
+          }
+        } else if (subject.canvasId !== undefined) {
+          if (this.#config.inspectionAutomationScope === undefined) {
+            throw inspectionError(
+              'PREVIEW_UNAVAILABLE',
+              'Canvas correlation is unavailable for automation inspection.',
+              true,
+            );
+          }
+          scopeResolution = await awaitInspectionSignal(
+            this.#config.inspectionAutomationScope.resolve(Object.freeze({
+              canvasId: subject.canvasId,
+              widgetKey: args.widgetKey,
+            })),
+            controller.signal,
           );
+          if (
+            scopeResolution.subject !== 'automation'
+            || scopeResolution.canvasId !== subject.canvasId
+            || !Number.isSafeInteger(scopeResolution.canvasRevision)
+            || scopeResolution.widgetKey !== args.widgetKey
+          ) {
+            throw inspectionError(
+              'PREVIEW_UNAVAILABLE',
+              'The resolved Canvas correlation did not match the automation selector.',
+              true,
+            );
+          }
         }
         let manifestBindings: readonly TWidgetPreviewResourceBinding[];
         try {
@@ -700,7 +800,7 @@ class WidgetPreviewService {
           throw inspectionError(mapped, 'Manifest resource validation failed safely.', true);
         }
         artifact = this.#withServer(acceptedArtifact, manifestBindings);
-        if (scopeResolution.previewFrame === 'absent') {
+        if (scopeResolution === undefined || scopeResolution.previewFrame === 'absent') {
           previewState = 'absent';
         } else {
           const liveSessionId = this.#sessionId({
@@ -767,10 +867,14 @@ class WidgetPreviewService {
             ));
           }
         }
-        await awaitInspectionSignal(
-          this.#config.inspectionScope.assertCurrent(scopeResolution),
-          controller.signal,
-        );
+        if (scopeResolution !== undefined) {
+          await awaitInspectionSignal(
+            scopeResolution.subject === 'ai_chat'
+              ? this.#config.inspectionScope!.assertCurrent(scopeResolution)
+              : this.#config.inspectionAutomationScope!.assertCurrent(scopeResolution),
+            controller.signal,
+          );
+        }
       }
       const selectedScope = scopeResolution;
       const assertCurrent = async (): Promise<void> => {
@@ -787,10 +891,17 @@ class WidgetPreviewService {
           );
         }
         if (selectedScope === undefined) return;
-        if (this.#config.inspectionScope === undefined) {
-          throw inspectionError('PREVIEW_GENERATION_CHANGED', 'The Preview scope was revoked.', true);
+        if (selectedScope.subject === 'ai_chat') {
+          if (this.#config.inspectionScope === undefined) {
+            throw inspectionError('PREVIEW_GENERATION_CHANGED', 'The Preview scope was revoked.', true);
+          }
+          await this.#config.inspectionScope.assertCurrent(selectedScope);
+        } else {
+          if (this.#config.inspectionAutomationScope === undefined) {
+            throw inspectionError('PREVIEW_GENERATION_CHANGED', 'The Canvas correlation was revoked.', true);
+          }
+          await this.#config.inspectionAutomationScope.assertCurrent(selectedScope);
         }
-        await this.#config.inspectionScope.assertCurrent(selectedScope);
         if (selectedScope.previewFrame === 'absent') return;
         const liveSessionId = this.#sessionId({
           canvasId: selectedScope.canvasId,
@@ -934,7 +1045,9 @@ class WidgetPreviewService {
       const browser = await this.#config.inspectionBrowser.run(Object.freeze({
         format: PREVIEW_INSPECTION_JOB_FORMAT,
         jobId,
-        ownerKey: `chat-${sha256(args.chatId).slice(0, 40)}`,
+        ownerKey: subject.kind === 'ai_chat'
+          ? `chat-${sha256(subject.chatId).slice(0, 40)}`
+          : `automation-${sha256(subject.operationId).slice(0, 40)}`,
         widgetKey: args.widgetKey,
         artifact: Object.freeze({
           bytes: artifact.capsuleBytes,
@@ -1313,9 +1426,11 @@ class WidgetPreviewService {
 
   #inspectionSessionId(args: TWidgetPreviewInspectionRequest): string {
     this.#inspectionSequence += 1;
+    const subject = resolveInspectionSubject(args);
     return `inspection-${sha256([
-      args.chatId,
-      args.toolCallId,
+      subject.kind,
+      subject.kind === 'ai_chat' ? subject.chatId : subject.operationId,
+      subject.kind === 'ai_chat' ? subject.toolCallId : subject.canvasId ?? '',
       String(this.#inspectionSequence),
     ].join('\u0000')).slice(0, 48)}`;
   }

@@ -26,6 +26,32 @@ export type TWidgetPreviewBuildCheck = (args: Readonly<{
   slug: string;
 }>) => Promise<Readonly<{ ok: boolean; errors: readonly string[] }>>;
 
+/** Shared host validation projection used by AI Chat and headless automation. */
+export type TWidgetDraftValidationCheck = (args: Readonly<{
+  slug: string;
+  signal?: AbortSignal;
+}>) => Promise<Readonly<{
+  ok: boolean;
+  widgetKey: string;
+  displayName: string;
+  capturedDraftDigestSha256: string;
+  executableInputDigestSha256: string | null;
+  acceptedGeneration: number | null;
+  buildIdentity: string | null;
+  sourceValidation: Readonly<{
+    status: 'passed' | 'failed';
+    diagnostics: readonly Readonly<{ code: string; message: string; path: string | null }>[];
+    files: readonly string[];
+    filesTruncated: boolean;
+  }>;
+  acceptedArtifactBuild: Readonly<{
+    status: 'passed' | 'failed' | 'not_run';
+    diagnostics: readonly Readonly<{ code: string; message: string; path: string | null }>[];
+  }>;
+  livePreviewRuntime: 'not_exercised';
+  resources: 'not_exercised';
+}>>;
+
 export type TWidgetPreviewInspectTarget =
   | Readonly<{
       by: 'css';
@@ -84,6 +110,7 @@ export type TWidgetPreviewInspectInput = Readonly<{
   mode?: 'artifact' | 'preview';
   expectedDraftDigestSha256?: string;
   expectedAcceptedGeneration?: number;
+  expectedBuildIdentity?: string;
   viewport?: Readonly<{
     width?: number;
     height?: number;
@@ -115,6 +142,7 @@ export type TWidgetPreviewInspectNormalizedInput = Readonly<{
   mode: 'artifact' | 'preview';
   expectedDraftDigestSha256?: string;
   expectedAcceptedGeneration?: number;
+  expectedBuildIdentity?: string;
   viewport: Readonly<{
     width: number;
     height: number;
@@ -376,18 +404,43 @@ export type TWidgetPreviewInspectResult =
       durationMs: number;
     }>;
 
-export type TWidgetPreviewInspectionRequest = Readonly<{
-  chatId: string;
-  toolCallId: string;
+type TWidgetPreviewInspectionRequestBase = Readonly<{
   name: string;
   widgetKey: string;
   input: TWidgetPreviewInspectNormalizedInput;
-  scope?: Readonly<{
-    canvasId: string;
-    aiChatElementId: string;
-  }>;
   signal?: AbortSignal;
 }>;
+
+export type TWidgetPreviewInspectionRequest = TWidgetPreviewInspectionRequestBase & (
+  | Readonly<{
+      subject: Readonly<{
+        kind: 'automation';
+        operationId: string;
+        canvasId?: string;
+      }>;
+      chatId?: never;
+      toolCallId?: never;
+      scope?: never;
+    }>
+  | Readonly<{
+      subject?: Readonly<{
+        kind: 'ai_chat';
+        chatId: string;
+        toolCallId: string;
+        scope?: Readonly<{
+          canvasId: string;
+          aiChatElementId: string;
+        }>;
+      }>;
+      /** Legacy call shape retained internally while AI Chat adopts `subject`. */
+      chatId: string;
+      toolCallId: string;
+      scope?: Readonly<{
+        canvasId: string;
+        aiChatElementId: string;
+      }>;
+    }>
+);
 
 export type TWidgetPreviewInspectionToolError = Readonly<{
   code: string;

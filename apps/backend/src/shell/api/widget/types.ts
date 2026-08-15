@@ -16,6 +16,7 @@ import type {
   TWidgetServerFunctionDescriptor,
 } from '@omnidraw/sdk/contract';
 import type { IWidgetCapsuleHostConfigurationReader } from '#backend/shell/widget';
+import type { IWidgetAuthoringVerification } from '#backend/shell/widget-authoring';
 
 type TWidgetHostConfigurationCapability =
   IWidgetCapsuleHostConfigurationReader;
@@ -186,6 +187,7 @@ type TWidgetApiContext = Readonly<{
   canvas: ICanvasService;
   widgetCatalog: TWidgetRuntimeApiCapability;
   widgetPreview: TWidgetPreviewApiCapability;
+  widgetAuthoring: IWidgetAuthoringVerification;
   widgetState: IWidgetStateService;
   widgetCapsuleHostConfiguration: TWidgetHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;

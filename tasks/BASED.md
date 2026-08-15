@@ -512,7 +512,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E40](e/E40.md) - AI widget live Preview: architecture and product decision ledger
 - [x]: [E41](e/E41.md) - widgets: filesystem-first publication and database hard cut
 - [x]: [E42](e/E42.md) - widgets: server-function mounts reject builder-signed capability digest (a04fb57b regression)
-- [ ]: [E43](e/E43.md) - widgets: headless host-authoritative repair, build, and verification CLI
+- [x]: [E43](e/E43.md) - widgets: headless host-authoritative repair, build, and verification CLI
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions

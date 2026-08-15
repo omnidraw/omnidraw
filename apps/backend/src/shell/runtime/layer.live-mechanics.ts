@@ -112,6 +112,10 @@ import {
   type TLocalWidgetPackageRegistryExecute,
 } from '../widget/LocalWidgetPackageRegistrySync';
 import { WidgetSourceSnapshot } from '../widget-domain/local';
+import {
+  WidgetAuthoringVerificationService,
+  WidgetScreenshotLeaseService,
+} from '../widget-authoring';
 import { Context, Effect, Layer } from 'effect';
 import {
   BackendConfig,
@@ -123,11 +127,13 @@ import {
   LiveHumanResourceSecret,
   LiveResource,
   LiveWidgetBuildGeneration,
+  LiveWidgetAuthoring,
   LiveWidgetCatalog,
   LiveWidgetHostConfiguration,
   LiveWidgetLoadAdmission,
   LiveWidgetPreview,
   LiveWidgetState,
+  LiveWidgetScreenshotLease,
 } from './service.live-mechanics';
 
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
@@ -546,9 +552,12 @@ export function layerLiveMechanics(args: Readonly<{
       },
     },
   });
+  const widgetWorkspace = NodeWidgetFilesystemWorkspace.open({
+    rootPath: config.home.widgetsRoot,
+  });
   widgetBuildGeneration = new WidgetBuildGenerationService({
     widgetsRoot: config.home.widgetsRoot,
-    workspace: NodeWidgetFilesystemWorkspace.open({ rootPath: config.home.widgetsRoot }),
+    workspace: widgetWorkspace,
     catalog: widgetCatalog,
     builder: widgetFilesystemBuilder,
     sdkVersion: sdkPackage.version,
@@ -734,6 +743,47 @@ export function layerLiveMechanics(args: Readonly<{
       widgetKey: args.widgetKey,
     });
   };
+  const resolveAutomationInspectionScope = async (args: Readonly<{
+    canvasId: string;
+    widgetKey: string;
+  }>) => {
+    const snapshot = await canvasService.getSnapshot({ canvasId: args.canvasId });
+    const previews = snapshot.items.flatMap((entry) => {
+      const extension = entry.item.extensions?.[CANVAS_WIDGET_EXTENSION_KEY] as
+        | TCanvasWidgetExtensionV1
+        | undefined;
+      return entry.item.kind === 'widget-frame'
+        && extension?.type === 'widget-preview'
+        && extension.widgetKey === args.widgetKey
+          ? [{ item: entry.item, extension }]
+          : [];
+    });
+    if (previews.length > 1) {
+      throw Object.assign(
+        new Error('More than one matching Preview frame exists on the selected canvas.'),
+        { code: 'PREVIEW_FRAME_AMBIGUOUS' },
+      );
+    }
+    if (previews.length === 0) {
+      return Object.freeze({
+        subject: 'automation' as const,
+        canvasId: args.canvasId,
+        canvasRevision: snapshot.revision,
+        widgetKey: args.widgetKey,
+        previewFrame: 'absent' as const,
+      });
+    }
+    const preview = previews[0]!;
+    return Object.freeze({
+      subject: 'automation' as const,
+      canvasId: args.canvasId,
+      canvasRevision: snapshot.revision,
+      widgetKey: args.widgetKey,
+      previewFrame: 'exact' as const,
+      previewElementId: preview.item.id,
+      previewInstanceId: preview.extension.instanceId,
+    });
+  };
   widgetPreview = new WidgetPreviewService({
     widgetsRoot: config.home.widgetsRoot,
     catalog: widgetCatalog,
@@ -783,6 +833,42 @@ export function layerLiveMechanics(args: Readonly<{
         }
       },
     },
+    inspectionAutomationScope: {
+      resolve: resolveAutomationInspectionScope,
+      async assertCurrent(resolution) {
+        const current = await resolveAutomationInspectionScope(resolution);
+        if (
+          current.canvasId !== resolution.canvasId
+          || current.canvasRevision !== resolution.canvasRevision
+          || current.widgetKey !== resolution.widgetKey
+          || current.previewFrame !== resolution.previewFrame
+          || (
+            current.previewFrame === 'exact'
+            && resolution.previewFrame === 'exact'
+            && (
+              current.previewElementId !== resolution.previewElementId
+              || current.previewInstanceId !== resolution.previewInstanceId
+            )
+          )
+        ) {
+          throw Object.assign(new Error('The exact Canvas Preview correlation changed.'), {
+            code: 'PREVIEW_GENERATION_CHANGED',
+          });
+        }
+      },
+    },
+  });
+  const widgetScreenshotLease = new WidgetScreenshotLeaseService({
+    baseUrl: `http://127.0.0.1:${config.port}/`,
+    createToken: () => randomBytes(24).toString('base64url'),
+    nowMs: Date.now,
+  });
+  const widgetAuthoring = new WidgetAuthoringVerificationService({
+    catalog: widgetCatalog,
+    workspace: widgetWorkspace,
+    buildGenerations: widgetBuildGeneration,
+    preview: widgetPreview,
+    screenshotLeases: widgetScreenshotLease,
   });
   const agentRoot = config.home.agentRoot;
   const agentBashCapability = createBunAgentBashCapability();
@@ -801,6 +887,10 @@ export function layerLiveMechanics(args: Readonly<{
       void widgetCatalog.refresh().catch(() => undefined);
     },
     previewBuild: ({ slug }) => widgetPreview.buildCheck({ widgetKey: slug }),
+    widgetValidation: ({ slug, signal }) => widgetAuthoring.validate({
+      widgetKey: slug,
+      ...(signal === undefined ? {} : { signal }),
+    }),
     previewInspection: widgetPreview,
     eventPublisherService: eventPublisher,
     chats: dbService.chats,
@@ -860,6 +950,7 @@ export function layerLiveMechanics(args: Readonly<{
   );
   yield* Effect.addFinalizer(() => Effect.promise(() => previewInspectionBrowser.stop()));
   yield* Effect.addFinalizer(() => Effect.promise(() => widgetPreview.stop()));
+  yield* Effect.addFinalizer(() => Effect.sync(() => widgetScreenshotLease.stop()));
   yield* Effect.acquireRelease(
     Effect.promise(() => resourceService.start()).pipe(Effect.as(resourceService)),
     () => Effect.promise(() => resourceService.stop()),
@@ -879,11 +970,13 @@ export function layerLiveMechanics(args: Readonly<{
     Context.add(LiveHumanResourceSecret, resourceCapabilities.humanSecret),
     Context.add(LiveResource, resourceCapabilities.resource),
     Context.add(LiveWidgetBuildGeneration, widgetBuildGeneration),
+    Context.add(LiveWidgetAuthoring, widgetAuthoring),
     Context.add(LiveWidgetCatalog, widgetCatalog),
     Context.add(LiveWidgetHostConfiguration, widgetCapsuleHostConfiguration),
     Context.add(LiveWidgetLoadAdmission, widgetRuntimeLoadAdmission),
     Context.add(LiveWidgetPreview, widgetPreview),
     Context.add(LiveWidgetState, widgetStateService),
+    Context.add(LiveWidgetScreenshotLease, widgetScreenshotLease),
   );
   }));
 }

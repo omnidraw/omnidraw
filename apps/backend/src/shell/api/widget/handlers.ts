@@ -1,4 +1,9 @@
 import { apiWidgetRuntimeConfig } from './api.runtime-config';
+import {
+  apiWidgetAuthoringInspect,
+  apiWidgetAuthoringResolve,
+  apiWidgetAuthoringValidate,
+} from './api.authoring';
 import { apiWidgetCatalogEvents } from './api.catalog-events';
 import { apiWidgetCatalogGet } from './api.catalog-get';
 import { apiWidgetCatalogRefresh } from './api.catalog-refresh';
@@ -30,6 +35,11 @@ import { apiRuntimeWidgetStateEvents } from './api.runtime-widget-state-events';
 import { apiRuntimeWidgetStateGet } from './api.runtime-widget-state-get';
 
 const widgetHandlers = {
+  authoring: {
+    resolve: apiWidgetAuthoringResolve,
+    validate: apiWidgetAuthoringValidate,
+    inspect: apiWidgetAuthoringInspect,
+  },
   catalog: {
     get: apiWidgetCatalogGet,
     refresh: apiWidgetCatalogRefresh,

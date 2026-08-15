@@ -20,7 +20,12 @@ import {
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { writeWidgetScaffold } from './widget-scaffold';
 import { tryNpmInstall, type TNpmInstall } from './npm-install';
-import type { TToolDefinition, TWidgetDraftChangeHandler, TWidgetPreviewBuildCheck } from './types';
+import type {
+  TToolDefinition,
+  TWidgetDraftChangeHandler,
+  TWidgetDraftValidationCheck,
+  TWidgetPreviewBuildCheck,
+} from './types';
 
 type TCreateWidgetWorkspaceToolsArgs = {
   workspace: WidgetWorkspace;
@@ -34,6 +39,7 @@ type TCreateWidgetWorkspaceToolsArgs = {
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
   previewBuild?: TWidgetPreviewBuildCheck;
+  widgetValidation?: TWidgetDraftValidationCheck;
   npmInstall?: TNpmInstall;
 };
 
@@ -56,7 +62,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
       cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
     }, { additionalProperties: false }),
-    async execute(_toolCallId, params: any) {
+    async execute(_toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('od_widget_list')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         const widgets = fnSortAvailableWidgets(await (
@@ -243,11 +249,61 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
     parameters: Type.Object({
       name: Type.String({ minLength: 1, maxLength: 120 }),
     }, { additionalProperties: false }),
-    async execute(_toolCallId, params: any) {
+    async execute(_toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('od_widget_validate')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         const mount = await args.workspace.findMountedWidget(args.chatId, params.name);
         return await args.workspace.withDraftAuthoringOperation(mount.name, async () => {
+          if (args.widgetValidation !== undefined) {
+            const verification = await args.widgetValidation({
+              slug: basename(mount.targetPath),
+              ...(signal === undefined ? {} : { signal }),
+            });
+            await args.onDraftChanged?.({ name: mount.name, type: 'validated' });
+            const sourceErrors = verification.sourceValidation.diagnostics.map(
+              (diagnostic) => diagnostic.message,
+            );
+            const buildErrors = verification.acceptedArtifactBuild.diagnostics.map(
+              (diagnostic) => diagnostic.message,
+            );
+            const errors = [...sourceErrors, ...buildErrors].slice(0, 40);
+            const acceptedArtifactBuild = verification.acceptedArtifactBuild.status === 'not_run'
+              ? 'not-run' as const
+              : verification.acceptedArtifactBuild.status;
+            const modelData = {
+              name: mount.name,
+              widgetKey: verification.widgetKey,
+              mountPath: `widgets/${mount.name}`,
+              source: mount.source,
+              ok: verification.ok,
+              draft: true,
+              validationScope: 'source_and_accepted_artifact' as const,
+              acceptedArtifactBuild,
+              livePreviewRuntime: verification.livePreviewRuntime,
+              resources: verification.resources,
+              publishReady: false,
+              draftDigestSha256: verification.capturedDraftDigestSha256,
+              executableInputDigestSha256: verification.executableInputDigestSha256,
+              acceptedGeneration: verification.acceptedGeneration,
+              buildIdentity: verification.buildIdentity,
+              errors,
+              warnings: [] as string[],
+              files: [...verification.sourceValidation.files],
+              authoredFileCount: verification.sourceValidation.files.length,
+              errorsTruncated: sourceErrors.length + buildErrors.length > errors.length,
+              warningsTruncated: false,
+              filesTruncated: verification.sourceValidation.filesTruncated,
+            };
+            return fnToolSuccess({
+              summary: verification.ok
+                ? `Widget '${mount.name}' source is valid and its accepted artifact build passed. Live Preview runtime and resources were not exercised.`
+                : acceptedArtifactBuild === 'failed'
+                  ? `Widget '${mount.name}' accepted artifact build failed. Live Preview runtime and resources were not exercised.`
+                  : `Widget '${mount.name}' construction is invalid.`,
+              modelData,
+              details: modelData,
+            });
+          }
           const validation = await validateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
             cwd: mount.targetPath,
           });

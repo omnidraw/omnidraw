@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
 import { createWidgetWorkspaceTools } from '../tools/tool.widget-workspace';
-import type { TWidgetPreviewBuildCheck } from '../tools/types';
+import type {
+  TWidgetDraftValidationCheck,
+  TWidgetPreviewBuildCheck,
+} from '../tools/types';
 import { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { executeTool } from './tool.test-helpers';
 import { testChatId, testWorkspaceWorld } from './service.fixture';
@@ -43,12 +46,14 @@ async function createWorkspace(): Promise<WidgetWorkspace> {
 function createValidateTool(
   workspace: WidgetWorkspace,
   previewBuild?: TWidgetPreviewBuildCheck,
+  widgetValidation?: TWidgetDraftValidationCheck,
 ) {
   const tools = createWidgetWorkspaceTools({
     workspace,
     chatId: CHAT_ID,
     authorize: async () => true,
     ...(previewBuild === undefined ? {} : { previewBuild }),
+    ...(widgetValidation === undefined ? {} : { widgetValidation }),
   });
   return tools.find((tool) => tool.name === 'od_widget_validate')!;
 }
@@ -115,5 +120,54 @@ describe('od_widget_validate preview execution', () => {
 
     expect(builds).toEqual([]);
     expect(result.details).toMatchObject({ ok: false, acceptedArtifactBuild: 'not-run' });
+  });
+
+  test('uses the shared host validation capability when the live app supplies it', async () => {
+    const workspace = await createWorkspace();
+    const calls: string[] = [];
+    const result = await executeTool(createValidateTool(
+      workspace,
+      async () => {
+        throw new Error('legacy build adapter must not run');
+      },
+      async ({ slug }) => {
+        calls.push(slug);
+        return {
+          ok: false,
+          widgetKey: slug,
+          displayName: 'Hello App',
+          capturedDraftDigestSha256: 'a'.repeat(64),
+          executableInputDigestSha256: null,
+          acceptedGeneration: null,
+          buildIdentity: null,
+          sourceValidation: {
+            status: 'passed',
+            diagnostics: [],
+            files: ['omnidraw.json', 'ui/main.ts'],
+            filesTruncated: false,
+          },
+          acceptedArtifactBuild: {
+            status: 'failed',
+            diagnostics: [{
+              code: 'BUILD_IMPORT_FAILED',
+              message: 'Accepted host build failed.',
+              path: null,
+            }],
+          },
+          livePreviewRuntime: 'not_exercised',
+          resources: 'not_exercised',
+        };
+      },
+    ), { name: 'Hello App' });
+
+    expect(calls).toEqual(['hello-app']);
+    expect(result.details).toMatchObject({
+      ok: false,
+      widgetKey: 'hello-app',
+      acceptedArtifactBuild: 'failed',
+      errors: ['Accepted host build failed.'],
+      livePreviewRuntime: 'not_exercised',
+      resources: 'not_exercised',
+    });
   });
 });

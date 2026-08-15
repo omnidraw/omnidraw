@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build --config vite.inspection.config.ts && bun run scripts/verify-inspection-dist.ts",
+    "build": "vite build && bun run build:inspection",
+    "build:inspection": "vite build --config vite.inspection.config.ts && bun run scripts/verify-inspection-dist.ts",
     "preview": "vite preview",
     "test:unit": "bun test src && bun ./node_modules/vitest/vitest.mjs --run",
     "test": "bun run typecheck && bun run test:unit && bun run build",

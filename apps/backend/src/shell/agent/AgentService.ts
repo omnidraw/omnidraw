@@ -36,6 +36,7 @@ import { fnIsStructuredToolErrorDetails } from './tools/fn.result';
 import { fnFindEditableUserMessage, fnProjectActiveChatHistory, type TAgentChatHistoryItem } from './fn.chat-history';
 import type {
   TWidgetDbChangeProposalRecord,
+  TWidgetDraftValidationCheck,
   TWidgetPreviewBuildCheck,
   TWidgetPreviewInspectionCapability,
 } from './tools/types';
@@ -72,6 +73,7 @@ export interface IAgentServiceConfig {
   onWidgetDraftsChanged?: () => void;
   /** Runs the real host Preview build for one draft slug during validation. */
   previewBuild?: TWidgetPreviewBuildCheck;
+  widgetValidation?: TWidgetDraftValidationCheck;
   /** Runs one exact draft artifact in a fresh isolated browser for agent inspection. */
   previewInspection?: TWidgetPreviewInspectionCapability;
   eventPublisherService: IEventPublisherService,
@@ -1105,6 +1107,9 @@ export class AgentService implements IPublicMethods {
       ...(this.#config.previewBuild === undefined
         ? {}
         : { previewBuild: this.#config.previewBuild }),
+      ...(this.#config.widgetValidation === undefined
+        ? {}
+        : { widgetValidation: this.#config.widgetValidation }),
       ...(this.#config.previewInspection === undefined
         ? {}
         : { previewInspection: this.#config.previewInspection }),

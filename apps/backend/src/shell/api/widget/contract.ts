@@ -32,6 +32,7 @@ import type {
   TWidgetHostConfiguration,
   TWidgetPublicSigningKey,
 } from './types';
+import type { TWidgetPreviewInspectResult } from '#backend/shell/agent';
 import type {
   TWidgetPublicCatalog,
   TWidgetPublicCatalogEntry,
@@ -389,7 +390,183 @@ const ZWidgetPublicFilePreview: z.ZodType<TWidgetPublicFilePreview> = z.object({
   text: z.string().max(256 * 1_024).nullable(),
 }).strict();
 
+const ZWidgetAuthoringDiagnostic = z.object({
+  code: z.string().min(1).max(128).regex(/^[A-Z][A-Z0-9_]*$/),
+  message: z.string().max(2_000),
+  path: z.string().max(512).nullable(),
+}).strict();
+const ZWidgetAuthoringResolvedDraft = z.object({
+  catalogGeneration: z.number().int().positive(),
+  catalogDigestSha256: ZSha256,
+  widgetKey: ZWidgetKey,
+  displayName: z.string().min(1).max(WIDGET_NAME_MAX_CHARACTERS),
+  health: z.literal('healthy'),
+  draftDigestSha256: ZSha256,
+  draftPath: z.string().min(1).max(4_096),
+}).strict();
+const ZWidgetAuthoringValidation = z.object({
+  ok: z.boolean(),
+  widgetKey: ZWidgetKey,
+  displayName: z.string().min(1).max(WIDGET_NAME_MAX_CHARACTERS),
+  selectedCatalogGeneration: z.number().int().positive(),
+  selectedCatalogDigestSha256: ZSha256,
+  capturedDraftDigestSha256: ZSha256,
+  executableInputDigestSha256: ZSha256.nullable(),
+  acceptedGeneration: z.number().int().positive().nullable(),
+  buildIdentity: ZSha256.nullable(),
+  sourceValidation: z.object({
+    status: z.enum(['passed', 'failed']),
+    diagnostics: z.array(ZWidgetAuthoringDiagnostic).max(40),
+    files: z.array(ZWidgetFilePath).max(100),
+    filesTruncated: z.boolean(),
+  }).strict(),
+  acceptedArtifactBuild: z.object({
+    status: z.enum(['passed', 'failed', 'not_run']),
+    diagnostics: z.array(ZWidgetAuthoringDiagnostic).max(40),
+  }).strict(),
+  livePreviewRuntime: z.literal('not_exercised'),
+  resources: z.literal('not_exercised'),
+}).strict();
+const ZWidgetInspectTarget = z.discriminatedUnion('by', [
+  z.object({ by: z.literal('css'), selector: z.string().min(1).max(512) }).strict(),
+  z.object({
+    by: z.literal('role'),
+    role: z.enum([
+      'button', 'checkbox', 'combobox', 'link', 'listbox', 'menuitem', 'option',
+      'radio', 'slider', 'spinbutton', 'switch', 'tab', 'textbox',
+    ]),
+    name: z.string().max(256).optional(),
+    exact: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    by: z.literal('label'),
+    text: z.string().min(1).max(256),
+    exact: z.boolean().optional(),
+  }).strict(),
+]);
+const ZWidgetInspectAction = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('click'), target: ZWidgetInspectTarget }).strict(),
+  z.object({
+    type: z.literal('input'),
+    target: ZWidgetInspectTarget,
+    value: z.string().max(4_096),
+    commit: z.enum(['none', 'blur', 'enter']).optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('waitFrames'),
+    count: z.number().int().min(1).max(120),
+  }).strict(),
+  z.object({
+    type: z.literal('assertText'),
+    target: ZWidgetInspectTarget,
+    text: z.string().min(1).max(512),
+    exact: z.boolean().optional(),
+  }).strict(),
+]);
+const ZWidgetAuthoringInspectInput = z.object({
+  widgetKey: ZWidgetKey,
+  expectedDraftDigestSha256: ZSha256,
+  expectedAcceptedGeneration: z.number().int().positive(),
+  expectedBuildIdentity: ZSha256,
+  mode: z.enum(['artifact', 'preview']),
+  canvasId: ZIdentifier.optional(),
+  viewport: z.object({
+    width: z.number().int().min(160).max(1_280).optional(),
+    height: z.number().int().min(120).max(1_024).optional(),
+    deviceScaleFactor: z.union([z.literal(1), z.literal(2)]).optional(),
+  }).strict().optional(),
+  settle: z.object({
+    frames: z.number().int().min(1).max(8).optional(),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }).strict().optional(),
+  actions: z.array(ZWidgetInspectAction).max(16).optional(),
+  continueOnActionError: z.boolean().optional(),
+  timeoutMs: z.number().int().min(1).max(180_000).optional(),
+  includeScreenshot: z.boolean(),
+  operationId: ZWidgetOperationToken,
+}).strict().superRefine((value, context) => {
+  if (value.mode === 'artifact' && value.canvasId !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Canvas correlation is available only in preview mode.',
+      path: ['canvasId'],
+    });
+  }
+});
+const ZBoundedWidgetInspectResult = z.custom<TWidgetPreviewInspectResult>((value) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!('status' in value) || ![
+    'completed',
+    'completed_with_errors',
+    'failed',
+    'timed_out',
+    'cancelled',
+  ].includes(String(value.status))) {
+    return false;
+  }
+  try {
+    return (JSON.stringify(value)?.length ?? Number.POSITIVE_INFINITY) <= 2 * 1_024 * 1_024;
+  } catch {
+    return false;
+  }
+}, 'Expected one bounded, protocol-validated inspection result.');
+const ZWidgetInspectionToolError = z.object({
+  code: z.string().min(1).max(128).regex(/^[A-Z][A-Z0-9_]*$/),
+  message: z.string().max(2_000),
+  retryable: z.boolean(),
+  observedDraftDigestSha256: ZSha256.optional(),
+  previewState: z.enum([
+    'not_applicable', 'absent', 'mounting', 'ready', 'retired', 'ambiguous',
+    'generation_mismatch', 'failed',
+  ]).optional(),
+  nextAction: z.enum([
+    'none', 'repair_visible_preview', 'retry_after_settle', 'reopen_preview',
+    'remove_duplicate_previews', 'retry_current_generation',
+    'use_preview_mode_for_resources',
+  ]).optional(),
+  diagnostics: z.array(z.unknown()).max(20).optional(),
+}).strict();
+const ZWidgetAuthoringInspection = z.object({
+  ok: z.boolean(),
+  widgetKey: ZWidgetKey,
+  draftDigestSha256: ZSha256,
+  acceptedGeneration: z.number().int().positive(),
+  buildIdentity: ZSha256,
+  canvasCorrelation: z.object({
+    canvas: z.enum(['not_selected', 'selected']),
+    visibleFrame: z.literal('not_claimed'),
+    durableInstanceState: z.enum(['not_selected', 'selected_not_exercised']),
+  }).strict(),
+  result: ZBoundedWidgetInspectResult.optional(),
+  error: ZWidgetInspectionToolError.optional(),
+  screenshotLease: z.object({
+    url: z.string().url().max(512).refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'http:' && url.hostname === '127.0.0.1';
+    }),
+    expiresAtMs: z.number().int().positive(),
+  }).strict().optional(),
+}).strict().superRefine((value, context) => {
+  if ((value.result === undefined) === (value.error === undefined)) {
+    context.addIssue({ code: 'custom', message: 'Inspection returns exactly one result or error.' });
+  }
+  if (value.screenshotLease !== undefined && value.result?.screenshot === undefined) {
+    context.addIssue({ code: 'custom', message: 'Screenshot lease requires screenshot metadata.' });
+  }
+});
+
 const widgetContract = pc.router({
+  authoring: pc.router({
+    resolve: pc.input(z.union([
+      z.object({ widgetKey: ZWidgetKey }).strict(),
+      z.object({ name: z.string().min(1).max(WIDGET_NAME_MAX_CHARACTERS) }).strict(),
+    ])).output(ZWidgetAuthoringResolvedDraft),
+    validate: pc.input(z.object({
+      widgetKey: ZWidgetKey,
+      expectedDraftDigestSha256: ZSha256.optional(),
+    }).strict()).output(ZWidgetAuthoringValidation),
+    inspect: pc.input(ZWidgetAuthoringInspectInput).output(ZWidgetAuthoringInspection),
+  }),
   catalog: pc.router({
     get: pc.output(ZWidgetPublicCatalog),
     refresh: pc.input(z.object({}).strict()).output(ZWidgetPublicCatalog),

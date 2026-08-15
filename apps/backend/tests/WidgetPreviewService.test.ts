@@ -952,6 +952,48 @@ describe('WidgetPreviewService', () => {
     await setup.service.stop();
   });
 
+  test('runs automation preview inspection without any Canvas or AI Chat scope', async () => {
+    const setup = await harness({
+      withServerFunction: true,
+      manifestResource: { resourceId: 'resource-private-a', kind: 'db' },
+      availableResource: { id: 'resource-private-a', kind: 'db', status: 'ready' },
+      runInspection: async (job) => {
+        await job.functionBridge.invoke({
+          functionName: 'run',
+          input: {},
+          signal: job.signal,
+        });
+        return successfulBrowserResult(job);
+      },
+    });
+
+    const response = await setup.service.inspect({
+      subject: {
+        kind: 'automation',
+        operationId: 'operation-headless',
+      },
+      name: 'Counter',
+      widgetKey: 'counter',
+      input: inspectionInput('preview'),
+    });
+
+    expect('result' in response && response.result).toMatchObject({
+      status: 'completed',
+      verification: {
+        surface: 'preview',
+        resources: 'manifest_bound',
+        visibleFrame: 'not_claimed',
+        executionTarget: 'diagnostic_clone',
+        previewState: 'absent',
+      },
+    });
+    expect(setup.inspectionJobs).toHaveLength(1);
+    expect(setup.inspectionJobs[0]?.ownerKey).toMatch(/^automation-/);
+    expect(setup.functionInvocations()).toBe(1);
+    expect(JSON.stringify(response)).not.toContain('resource-private-a');
+    await setup.service.stop();
+  });
+
   test('reports retired and ambiguous visible Preview states with distinct next actions', async () => {
     const retired = await harness();
     const retiredResponse = await retired.service.inspect({

@@ -1,6 +1,3 @@
-import { Context, Effect, Layer, ManagedRuntime } from 'effect';
-import { RpcClient, RpcSerialization } from 'effect/unstable/rpc';
-import { Socket } from 'effect/unstable/socket';
 import type {
   TCanvasCommand,
   TCanvasItemPage,
@@ -8,7 +5,6 @@ import type {
   TCanvasItemsChangedEvent,
   TCanvasSnapshot,
 } from '@omnidraw/canvas-contract';
-import { PrivateTransportRpcs } from '../../../shell/transport/rpc-contract';
 import type { TPrivateRequestPath } from '../../../shell/transport/operation-contract';
 import type { Json } from 'effect/Schema';
 import type {
@@ -17,37 +13,15 @@ import type {
   TCanvasApiResult,
   TCanvasListEntry,
 } from '../cmds/interface';
-
-type TRequestClient = Readonly<{
-  request(args: Readonly<{
-    path: TPrivateRequestPath;
-    input: Json;
-    idempotencyKey?: string;
-  }>): Effect.Effect<unknown, unknown>;
-}>;
-
-class CanvasCliRpcClient extends Context.Service<CanvasCliRpcClient, TRequestClient>()(
-  'omnidraw/backend/CanvasCliRpcClient',
-) {}
-
-function layerCanvasCliRpc(websocketUrl: string) {
-  return Layer.effect(
-    CanvasCliRpcClient,
-    Effect.map(RpcClient.make(PrivateTransportRpcs), (client) => CanvasCliRpcClient.of({
-      request: (args) => client['omnidraw.request.v1'](args),
-    })),
-  ).pipe(
-    Layer.provide(RpcClient.layerProtocolSocket({ retryTransientErrors: true })),
-    Layer.provide(Socket.layerWebSocket(websocketUrl)),
-    Layer.provide(Socket.layerWebSocketConstructorGlobal),
-    Layer.provide(RpcSerialization.layerNdjson),
-  );
-}
+import { createPrivateRpcConnection } from './PrivateRpcConnection';
 
 export function createCanvasRpcConnection(
   websocketUrl: string,
 ): ICanvasRpcConnection {
-  const runtime = ManagedRuntime.make(layerCanvasCliRpc(websocketUrl));
+  const connection = createPrivateRpcConnection({
+    websocketUrl,
+    retryTransientErrors: true,
+  });
 
   const invoke = async <Result>(args: Readonly<{
     path: TPrivateRequestPath;
@@ -55,10 +29,7 @@ export function createCanvasRpcConnection(
     idempotencyKey?: string;
   }>): TCanvasApiResult<Result> => {
     try {
-      const result = await runtime.runPromise(Effect.flatMap(
-        CanvasCliRpcClient,
-        (client) => client.request(args),
-      ));
+      const result = await connection.request(args);
       return [null, result as Result] as const;
     } catch (error) {
       return [error, undefined] as const;
@@ -87,6 +58,6 @@ export function createCanvasRpcConnection(
 
   return Object.freeze({
     api,
-    close: () => runtime.dispose(),
+    close: () => connection.close(),
   });
 }

@@ -12,6 +12,7 @@ import { createWorkspaceFileTools } from './tool.workspace-files';
 import type {
   TToolDefinition,
   TWidgetDraftChangeHandler,
+  TWidgetDraftValidationCheck,
   TWidgetPreviewBuildCheck,
   TWidgetPreviewInspectionCapability,
 } from './types';
@@ -29,6 +30,7 @@ type TCreateToolRegistryArgs = {
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: TWidgetDraftChangeHandler;
   previewBuild?: TWidgetPreviewBuildCheck;
+  widgetValidation?: TWidgetDraftValidationCheck;
   previewInspection?: TWidgetPreviewInspectionCapability;
   resolvePreviewScope?: (name: string) => Promise<Readonly<{
     canvasId: string;
@@ -50,6 +52,7 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       loadWidget: args.loadWidget,
       onMounted: args.onMounted,
       previewBuild: args.previewBuild,
+      widgetValidation: args.widgetValidation,
       onDraftChanged: args.onDraftChanged
         ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
         : undefined,

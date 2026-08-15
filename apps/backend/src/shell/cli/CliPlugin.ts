@@ -1,5 +1,6 @@
 import type { ICliConfig } from './config';
 import { DEFAULT_CANVAS_CLI_SHELL, runCanvasCommand } from './cmds/cmd.canvas';
+import { runWidgetCommand } from './cmds/cmd.widget';
 import { fnBuildUnknownCommandError, fnPrintCommandError } from './runtime/print-command-result';
 
 export function printHelp(): void {
@@ -11,6 +12,7 @@ Usage:
 Commands:
   serve     Start the omnidraw runtime (default when no command given)
   canvas    Query and mutate a running canvas server
+  widget    Verify widget drafts through the running server
 
 Options:
   --port <number>      Port for the source-run server (default: 3000)
@@ -25,6 +27,7 @@ Examples:
   omnidraw serve --data-dir ./tmp/omnidraw-home
   omnidraw canvas list --json
   omnidraw canvas query --canvas <id> --kind rect --json
+  omnidraw widget validate --widget-key little-pomodoro --json
   omnidraw --version
   omnidraw --help
 `);
@@ -40,6 +43,10 @@ async function runCliCommand(config: ICliConfig): Promise<void> {
   }
   if (config.command === 'canvas') {
     await runCanvasCommand({ config, shell: DEFAULT_CANVAS_CLI_SHELL });
+    return;
+  }
+  if (config.command === 'widget') {
+    await runWidgetCommand({ config });
     return;
   }
   if (config.helpRequested) {

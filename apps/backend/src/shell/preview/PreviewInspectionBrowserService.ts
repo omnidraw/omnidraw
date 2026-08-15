@@ -326,8 +326,22 @@ implements TPreviewInspectionBrowserPort {
   }
 
   preflight(): Promise<TPreviewInspectionBrowserPreflight> {
-    this.#preflightOperation ??= this.#preflight();
-    return this.#preflightOperation;
+    if (this.#preflightOperation !== undefined) return this.#preflightOperation;
+    const operation = this.#preflight();
+    this.#preflightOperation = operation;
+    void operation.then(
+      (result) => {
+        if (!result.ok && this.#preflightOperation === operation) {
+          this.#preflightOperation = undefined;
+        }
+      },
+      () => {
+        if (this.#preflightOperation === operation) {
+          this.#preflightOperation = undefined;
+        }
+      },
+    );
+    return operation;
   }
 
   async run(job: TPreviewInspectionBrowserJob): Promise<TPreviewInspectionBrowserResult> {

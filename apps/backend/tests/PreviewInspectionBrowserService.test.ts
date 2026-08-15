@@ -297,6 +297,36 @@ describe('PreviewInspectionBrowserService', () => {
     });
   });
 
+  test('coalesces preflight, retries a repaired shell failure, and caches success', async () => {
+    await rm(join(shellPath, 'index.html'));
+    const service = new PreviewInspectionBrowserService({
+      tempRoot: join(root, 'preflight-retry-jobs'),
+      shell: fakes.shell,
+      launcher: fakes.launcher,
+      internals: fakes.internals,
+      driver: fakes.driver,
+    });
+
+    const first = await Promise.all([service.preflight(), service.preflight()]);
+    expect(first).toEqual([
+      expect.objectContaining({ ok: false, code: 'INSPECTION_SHELL_MISSING' }),
+      expect.objectContaining({ ok: false, code: 'INSPECTION_SHELL_MISSING' }),
+    ]);
+    expect(fakes.state.runtimeEvidenceReads).toBe(1);
+
+    await writeFile(join(shellPath, 'index.html'), '<!doctype html>');
+    const repaired = await Promise.all([service.preflight(), service.preflight()]);
+    expect(repaired).toEqual([
+      expect.objectContaining({ ok: true }),
+      expect.objectContaining({ ok: true }),
+    ]);
+    expect(fakes.state.runtimeEvidenceReads).toBe(2);
+
+    await expect(service.preflight()).resolves.toMatchObject({ ok: true });
+    expect(fakes.state.runtimeEvidenceReads).toBe(2);
+    await service.stop();
+  });
+
   test('uses a fresh context/page, native point action, verified PNG, and bounded DTO result', async () => {
     const service = new PreviewInspectionBrowserService({
       tempRoot: join(root, 'jobs'),

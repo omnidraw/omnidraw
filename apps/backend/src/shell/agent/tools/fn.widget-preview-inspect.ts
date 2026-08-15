@@ -200,6 +200,7 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
     'mode',
     'expectedDraftDigestSha256',
     'expectedAcceptedGeneration',
+    'expectedBuildIdentity',
     'viewport',
     'settle',
     'actions',
@@ -232,6 +233,12 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
     Number.MAX_SAFE_INTEGER,
   )) {
     return { ok: false, message: 'expectedAcceptedGeneration must be a positive safe integer.' };
+  }
+  if (hasOwn(input, 'expectedBuildIdentity') && (
+    typeof input.expectedBuildIdentity !== 'string'
+    || !/^[a-f0-9]{64}$/.test(input.expectedBuildIdentity)
+  )) {
+    return { ok: false, message: 'expectedBuildIdentity must be one lowercase SHA-256 digest.' };
   }
 
   const viewport = input.viewport ?? {};
@@ -294,6 +301,9 @@ export function fnNormalizeWidgetPreviewInspectInput(input: unknown): TNormalize
         : {}),
       ...(typeof input.expectedAcceptedGeneration === 'number'
         ? { expectedAcceptedGeneration: input.expectedAcceptedGeneration }
+        : {}),
+      ...(typeof input.expectedBuildIdentity === 'string'
+        ? { expectedBuildIdentity: input.expectedBuildIdentity }
         : {}),
       viewport: Object.freeze({ width, height, deviceScaleFactor }),
       settle: Object.freeze({ frames: settleFrames, timeoutMs: settleTimeoutMs }),

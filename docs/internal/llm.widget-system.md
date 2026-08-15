@@ -252,6 +252,52 @@ observed. Every draft change invalidates the catalog without making raw source
 presentable. Durable chat metadata lives in the `chats` table; transcripts stay
 files.
 
+## Headless authoring verification
+
+The source-run `omnidraw widget` CLI is the supported trusted-local boundary
+for repairing an existing draft without AI Chat or Canvas UI interaction. It
+connects to the already-running backend through the same private Effect RPC;
+it never opens the database or constructs another catalog, build authority,
+Preview service, browser runner, or backend runtime.
+
+The autonomous loop is deliberately two-step and generation-fenced:
+
+```text
+omnidraw widget list / resolve exact draft
+  -> edit the returned draft path
+  -> omnidraw-widget check .                  # useful offline evidence only
+  -> omnidraw widget validate                 # host-accepted generation
+  -> omnidraw widget inspect --mode artifact  # isolated accepted bytes
+  -> omnidraw widget inspect --mode preview   # manifest-bound runtime policy
+  -> consume bounded diagnostics / optional verified PNG
+  -> repair and repeat
+```
+
+`validate` and AI Chat validation share the same host orchestration and report
+source validation separately from artifact acceptance. `inspect` never builds:
+the caller must carry the exact draft digest, accepted generation, and build
+identity from validation. Preview mode can run a diagnostic clone without any
+Canvas. An optional `--canvas` selector correlates one existing unique Preview;
+it never creates, opens, moves, or removes a frame. Without that selector,
+visible-frame evidence is not claimed and durable instance state is explicitly
+not selected.
+
+Artifact inspection is not resource evidence. A diagnostic clone is not the
+visible Canvas frame, and its PNG is evidence rather than the success
+criterion. Manifest-bound reads retain normal Preview policy; protected or
+unclear writes fail closed because the CLI has no approval coordinator. OSS
+widget builds and server functions execute as trusted local host code, not in
+a sandbox.
+
+Screenshot metadata remains on RPC while bytes use a short-lived, random,
+single-use loopback lease bound to the originating inspection operation. The
+CLI presents that operation identity in a private request header, consumes the
+lease immediately, revalidates PNG MIME, dimensions, size, and SHA-256, and
+writes through a sibling temporary file without replacing an existing
+destination unless `--overwrite` was explicit. Missing or cross-operation
+credentials receive the same 404 as an unknown lease and do not consume it.
+Lease URLs are never printed.
+
 ## Ownership map
 
 | Owner | Role |
