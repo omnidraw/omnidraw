@@ -215,6 +215,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B101](b/B101.md) - Widget validation: enforce the current SDK source policy before host acceptance
 - [x]: [B102](b/B102.md) - AI widget validation: preserve actionable diagnostic identity and location
 - [x]: [B103](b/B103.md) - Preview restart: source maps bypass the durable construction cache
+- [~]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -334,6 +335,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A117](a/A117.md) - Preview inspection: packaged browser runner and image tool results
 - [x]: [A118](a/A118.md) - widget projects: portable SDK-based offline check (order 4/5)
 - [x]: [A119](a/A119.md) - AI Chat: inspect accepted builds and the real Preview runtime (order 5/5)
+- [~]: [A120](a/A120.md) - AI Chat: per-chat approval policy in the composer
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
