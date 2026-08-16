@@ -159,7 +159,7 @@ try {
   processes.push(spawnDevProcess({
     name: "canvas-types",
     cwd: path.join(rootDir, "packages/canvas"),
-    command: [bunExec, "run", "dev:types"],
+    command: [bunExec, "x", "tsc", "-b", "tsconfig.dev.json", "--watch", "--preserveWatchOutput"],
   }))
   processes.push(spawnDevProcess({
     name: "ai-chat-bundle",

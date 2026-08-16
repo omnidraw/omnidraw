@@ -217,6 +217,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B103](b/B103.md) - Preview restart: source maps bypass the durable construction cache
 - [x]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
 - [x]: [B105](b/B105.md) - Widget Preview: React select initialization blanks the Capsule guest
+- [x]: [B107](b/B107.md) - public package dev: Canvas Contract build races Canvas type watcher
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

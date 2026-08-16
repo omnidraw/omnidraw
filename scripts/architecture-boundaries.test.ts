@@ -502,6 +502,39 @@ describe('application and import boundaries', () => {
     expect(devFrontend).not.toContain('"tsconfig.build.json", "--watch"')
   })
 
+  test('Canvas dev declarations resolve Canvas Contract source without changing release resolution', async () => {
+    const dev = await readTsconfig(join(ROOT, 'packages/canvas/tsconfig.dev.json'))
+    const devPaths = (dev.compilerOptions?.paths ?? {}) as Record<string, readonly string[]>
+    expect(dev.extends).toBe('./tsconfig.build.json')
+    expect(devPaths).toEqual({
+      '@omnidraw/canvas-contract': ['../canvas-contract/src/index.ts'],
+      '@omnidraw/canvas-contract/CONSTANTS': ['../canvas-contract/src/CONSTANTS.ts'],
+      '@omnidraw/theme': ['../theme/src/index.ts'],
+    })
+    expect(dev.references).toEqual([
+      { path: '../canvas-contract/tsconfig.dev.json' },
+      { path: '../theme/tsconfig.dev.json' },
+    ])
+
+    for (const dependency of ['canvas-contract', 'theme']) {
+      const dependencyDev = await readTsconfig(join(ROOT, `packages/${dependency}/tsconfig.dev.json`))
+      expect(dependencyDev.extends).toBe('./tsconfig.build.json')
+      expect(dependencyDev.compilerOptions?.composite).toBe(true)
+      expect(dependencyDev.compilerOptions?.emitDeclarationOnly).toBe(true)
+      expect(dependencyDev.compilerOptions?.outDir).toBe('.dev-dist')
+    }
+
+    const regular = await readTsconfig(join(ROOT, 'packages/canvas/tsconfig.json'))
+    const build = await readTsconfig(join(ROOT, 'packages/canvas/tsconfig.build.json'))
+    expect(regular.compilerOptions?.paths).toBeUndefined()
+    expect(build.compilerOptions?.paths).toBeUndefined()
+
+    const devFrontend = await readFile(join(ROOT, 'scripts/dev-frontend.ts'), 'utf8')
+    expect(devFrontend).toContain('name: "canvas-types"')
+    expect(devFrontend).toContain('"-b", "tsconfig.dev.json"')
+    expect(devFrontend).not.toContain('command: [bunExec, "run", "dev:types"]')
+  })
+
   test('gates normal development on the isolated verified inspection distribution', async () => {
     const rootManifest = await readJson(join(ROOT, 'package.json'))
     const backendManifest = await readJson(join(ROOT, 'apps/backend/package.json'))

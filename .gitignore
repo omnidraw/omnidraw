@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 dist/
+.dev-dist/
 !packages/sdk/dist/
 !packages/sdk/dist/**
 .output/
