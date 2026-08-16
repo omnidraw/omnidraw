@@ -401,7 +401,7 @@ describe("ChatTab rendered message history", () => {
     expect(markdown).not.toContain("data:image")
   })
 
-  it("renders generic protected resource approvals with redacted structured details", async () => {
+  it("renders one inline action surface for a manual approval with a visible tool call", async () => {
     const onResolveApproval = vi.fn(async () => {})
     const root = renderChatTab(undefined, [{
       role: "assistant",
@@ -425,7 +425,8 @@ describe("ChatTab rendered message history", () => {
 
     expect(root.textContent).toContain("Write deployment configuration")
     expect(root.querySelectorAll(".omnidraw-ai-chat-tool-call .omnidraw-ai-chat-approval")).toHaveLength(1)
-    expect(root.querySelectorAll(".omnidraw-ai-chat-approvals--floating .omnidraw-ai-chat-approval")).toHaveLength(1)
+    expect(root.querySelectorAll(".omnidraw-ai-chat-approvals--floating .omnidraw-ai-chat-approval")).toHaveLength(0)
+    expect(root.querySelectorAll(".omnidraw-ai-chat-approval__actions")).toHaveLength(1)
     root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-tool-call .omnidraw-ai-chat-approval__details-toggle")?.click()
     expect(root.textContent).toContain("[redacted]")
     expect(root.textContent).not.toContain("must-not-render")
@@ -433,6 +434,28 @@ describe("ChatTab rendered message history", () => {
       .find((button) => button.textContent === "Approve")
       ?.click()
     await vi.waitFor(() => expect(onResolveApproval).toHaveBeenCalledWith("approval-1", "approve"))
+  })
+
+  it("uses the floating action surface only when a pending approval has no visible tool call", () => {
+    const root = renderChatTab(undefined, [], {
+      approvals: [{
+        id: "approval-floating",
+        chatId: "chat-1",
+        toolCallId: "tool-call-not-visible",
+        kind: "resource-delete",
+        summary: "Delete archived cache",
+        risk: "high",
+        warnings: [],
+        details: { resourceId: "cache-1" },
+        createdAtSec: new Date(0).toISOString(),
+        policyMode: "manual",
+        status: "pending",
+      }],
+    })
+
+    expect(root.querySelectorAll(".omnidraw-ai-chat-tool-call .omnidraw-ai-chat-approval")).toHaveLength(0)
+    expect(root.querySelectorAll(".omnidraw-ai-chat-approvals--floating .omnidraw-ai-chat-approval")).toHaveLength(1)
+    expect(root.querySelectorAll(".omnidraw-ai-chat-approval__actions")).toHaveLength(1)
   })
 
   it("opens the resource detail page from a resource tool result", () => {

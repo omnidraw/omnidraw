@@ -78,11 +78,13 @@ describe('process-local approvals', () => {
   });
 
   test('always-approve and reviewer decisions preserve decision provenance', async () => {
+    const automaticEvents: unknown[] = [];
     const automatic = new ApprovalCoordinator({
       createId: () => 'approval-policy',
       now: () => new Date(),
       policy: () => ({ mode: 'always-approve' }),
       authorize: ({ chatId, toolName }) => chatId === 'chat-a' && toolName === 'approval.resolve',
+      onChanged: (event) => automaticEvents.push(event),
     });
     await expect(automatic.request({
       chatId: 'chat-a',
@@ -94,6 +96,15 @@ describe('process-local approvals', () => {
       safeDetails: { name: 'Cache' },
       execute: async () => ({ ok: true }),
     })).resolves.toEqual({ ok: true });
+    expect(automaticEvents).toEqual([
+      expect.objectContaining({
+        type: 'resolved',
+        decision: 'approve',
+        approval: expect.objectContaining({
+          decisionSource: 'policy',
+        }),
+      }),
+    ]);
 
     const events: unknown[] = [];
     const reviewed = new ApprovalCoordinator({

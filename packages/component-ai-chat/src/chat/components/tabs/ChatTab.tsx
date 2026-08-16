@@ -694,12 +694,17 @@ export function ChatTab(props: IProps) {
   let contentRoot!: HTMLDivElement
   let shouldAutoScroll = true
   let scrollAnimationFrame: number | undefined
-  const pendingApprovals = () => props.approvals.filter((approval) => approval.status === "pending")
   const [editingEntryId, setEditingEntryId] = createSignal<string>()
   const [editText, setEditText] = createSignal("")
   const [editPending, setEditPending] = createSignal(false)
   const [resolvedComposerPreference, setResolvedComposerPreference] = createSignal<TChatComposerPreferenceChange>({})
   const visibleMessageHistory = createMemo(() => props.messageHistory.filter((item) => fnIsChatMessageVisible(item.message)))
+  const visibleToolCallIds = createMemo(() => new Set(
+    visibleMessageHistory().flatMap((item) => fnGetChatToolCalls(item.message).map((toolCall) => toolCall.id)),
+  ))
+  const floatingApprovals = () => props.approvals.filter((approval) => (
+    approval.status === "pending" && !visibleToolCallIds().has(approval.toolCallId)
+  ))
 
   const beginEdit = (item: TChatHistoryItem) => {
     if (!item.entryId || props.isRunning || props.isCanceling || props.isEditingHistory) return
@@ -868,7 +873,7 @@ export function ChatTab(props: IProps) {
       <div class="omnidraw-ai-chat-floating-approvals">
         <ApprovalList
           browser={props.browser}
-          approvals={pendingApprovals()}
+          approvals={floatingApprovals()}
           onResolve={props.onResolveApproval}
           onOpenResource={props.onOpenResource}
           variant="floating"

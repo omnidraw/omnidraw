@@ -215,7 +215,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B101](b/B101.md) - Widget validation: enforce the current SDK source policy before host acceptance
 - [x]: [B102](b/B102.md) - AI widget validation: preserve actionable diagnostic identity and location
 - [x]: [B103](b/B103.md) - Preview restart: source maps bypass the durable construction cache
-- [~]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
+- [x]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
