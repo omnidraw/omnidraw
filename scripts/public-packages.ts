@@ -29,7 +29,7 @@ export const PUBLICATION_ORDER = Object.freeze([
 export const EXACT_QUALIFICATION_VERSIONS = Object.freeze({
   effect: '4.0.0-rc.108',
   '@omnidraw/cangine': '0.6.1',
-  '@omnidraw/capsule': '0.15.0',
+  '@omnidraw/capsule': '0.15.1',
   'solid-js': '1.9.14',
 } as const)
 

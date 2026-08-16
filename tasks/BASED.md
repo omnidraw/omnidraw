@@ -216,6 +216,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B102](b/B102.md) - AI widget validation: preserve actionable diagnostic identity and location
 - [x]: [B103](b/B103.md) - Preview restart: source maps bypass the durable construction cache
 - [x]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
+- [x]: [B105](b/B105.md) - Widget Preview: React select initialization blanks the Capsule guest
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
