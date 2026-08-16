@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ChatTab } from "./tabs/ChatTab"
@@ -11,6 +11,7 @@ import { createMentionCatalog } from "../mention-catalog"
 import { fnReplaceChatHistoryTail, type TChatHistoryItem } from "./tabs/fn.chat-history-edit"
 import type {
   TAiChatPreference,
+  TAiChatApprovalPolicy,
   TAiChatProps,
   TAiChatSettings,
   TAiChatStreamEvent,
@@ -20,6 +21,23 @@ import { AiChatEffectRuntime } from "../../internal/stream-lifecycle.js"
 import "../../styles.css"
 
 type TChatConnectIntent = { revision: number; mode: "reuse" | "replace"; sessionId?: string }
+
+function aiChatPreference(preference?: TAiChatPreference): TAiChatPreference {
+  return Object.freeze({
+    approvalPolicy: preference?.approvalPolicy ?? Object.freeze({ mode: "manual" }),
+    ...(preference?.model === undefined ? {} : { model: preference.model }),
+    ...(preference?.thinkingLevel === undefined ? {} : { thinkingLevel: preference.thinkingLevel }),
+  })
+}
+
+function sameApprovalPolicy(left: TAiChatApprovalPolicy, right: TAiChatApprovalPolicy): boolean {
+  return left.mode === right.mode
+    && (left.mode !== "ai-review" || (
+      right.mode === "ai-review"
+      && left.reviewerModel.provider === right.reviewerModel.provider
+      && left.reviewerModel.modelId === right.reviewerModel.modelId
+    ))
+}
 
 type TAgentMessageRecord = Record<string, unknown>
 function isAgentMessageRecord(message: unknown): message is TAgentMessageRecord {
@@ -61,7 +79,7 @@ export function AiChat(props: TAiChatProps) {
   const [isCanceling, setIsCanceling] = createSignal(false)
   const [chatDraftText, setChatDraftText] = createSignal("")
   const [localAiChatPreference, setLocalAiChatPreference] =
-    createSignal<TAiChatPreference>({ ...(props.preference ?? {}) })
+    createSignal<TAiChatPreference>(aiChatPreference(props.preference))
   const [chatConnectIntent, setChatConnectIntent] = createSignal<TChatConnectIntent>({ revision: 0, mode: "reuse" })
   const [eventStreamRestart, setEventStreamRestart] = createSignal(0)
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
@@ -141,7 +159,7 @@ export function AiChat(props: TAiChatProps) {
   }
 
   createEffect(() => {
-    setLocalAiChatPreference({ ...(props.preference ?? {}) })
+    setLocalAiChatPreference(aiChatPreference(props.preference))
   })
 
   createEffect(() => {
@@ -156,6 +174,7 @@ export function AiChat(props: TAiChatProps) {
     const connectIntent = chatConnectIntent()
     const currentSessionId = sessionId()
     const connectMode = connectIntent.sessionId === currentSessionId ? connectIntent.mode : "reuse"
+    const approvalPolicy = untrack(() => localAiChatPreference().approvalPolicy)
     lifecycleRuntime.closeMatching("session:")
     setIsRunning(false)
     setIsCanceling(false)
@@ -166,6 +185,7 @@ export function AiChat(props: TAiChatProps) {
         canvasId: props.canvasId,
         sessionId: currentSessionId,
         componentId: props.id,
+        approvalPolicy,
         mode: connectMode,
       }),
       onSuccess(completion) {
@@ -212,6 +232,7 @@ export function AiChat(props: TAiChatProps) {
 
   createEffect(() => {
     const currentSessionId = sessionId()
+    const approvalPolicy = localAiChatPreference().approvalPolicy
     eventStreamRestart()
     const onEvent = (event: TAiChatStreamEvent): void => {
       if (event.kind === "catalog") {
@@ -277,6 +298,7 @@ export function AiChat(props: TAiChatProps) {
       open: (signal) => props.port.events({
         componentId: props.id,
         sessionId: currentSessionId,
+        approvalPolicy,
       }, { signal }),
       onEvent,
       onError(error) {
@@ -325,17 +347,49 @@ export function AiChat(props: TAiChatProps) {
     void lifecycleRuntime.dispose()
   })
 
-  const updateAiChatPreference = (preference: TAiChatPreference) => {
+  const updateAiChatPreference = (preference: Partial<TAiChatPreference>) => {
     const currentPreference = localAiChatPreference()
     const nextPreference = { ...currentPreference, ...preference }
     if (
       currentPreference.model?.provider === nextPreference.model?.provider
       && currentPreference.model?.modelId === nextPreference.model?.modelId
       && currentPreference.thinkingLevel === nextPreference.thinkingLevel
+      && sameApprovalPolicy(currentPreference.approvalPolicy, nextPreference.approvalPolicy)
     ) return
     setLocalAiChatPreference(nextPreference)
     props.onPreferenceChange?.(nextPreference)
     props.onStateChange?.({ sessionId: sessionId(), preference: nextPreference })
+  }
+
+  const updateApprovalPolicy = (policy: TAiChatApprovalPolicy): Promise<boolean> => {
+    const currentSessionId = sessionId()
+    if (sameApprovalPolicy(localAiChatPreference().approvalPolicy, policy)) return Promise.resolve(true)
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (value: boolean) => {
+        if (settled) return
+        settled = true
+        resolve(value)
+      }
+      lifecycleRuntime.startLatest("session:approval-policy", {
+        run: () => props.port.actions.setApprovalPolicy({
+          componentId: props.id,
+          sessionId: currentSessionId,
+          policy,
+        }),
+        onSuccess(saved) {
+          if (sessionId() !== currentSessionId) return finish(false)
+          clearWidgetError("approval")
+          updateAiChatPreference({ approvalPolicy: saved })
+          finish(true)
+        },
+        onError(error) {
+          if (sessionId() === currentSessionId) reportWidgetError("approval", error)
+          finish(false)
+        },
+        onFinally: () => finish(false),
+      })
+    })
   }
 
   const prompt = (args: { text: string; images: TChatPromptImage[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
@@ -453,10 +507,15 @@ export function AiChat(props: TAiChatProps) {
     refreshedApprovalIds.clear()
     lifecycleRuntime.closeMatching("session:")
     setSessionId(nextSessionId)
-    props.onPreferenceChange?.(localAiChatPreference())
+    const nextPreference = Object.freeze({
+      ...localAiChatPreference(),
+      approvalPolicy: Object.freeze({ mode: "manual" as const }),
+    })
+    setLocalAiChatPreference(nextPreference)
+    props.onPreferenceChange?.(nextPreference)
     props.onStateChange?.({
       sessionId: nextSessionId,
-      preference: localAiChatPreference(),
+      preference: nextPreference,
     })
     lifecycleRuntime.startLatest(`reset-session:${previousSessionId}`, {
       run: () => props.port.actions.resetSession({
@@ -540,6 +599,7 @@ export function AiChat(props: TAiChatProps) {
                     mentions={mentions()}
                     onDraftTextChange={setChatDraftText}
                     onPreferenceChange={updateAiChatPreference}
+                    onApprovalPolicyChange={updateApprovalPolicy}
                     onPrompt={prompt}
                     onEditMessage={editMessage}
                     onResolveApproval={resolveApproval}

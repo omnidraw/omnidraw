@@ -2,7 +2,6 @@
 
 export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "agent.settings.get",
-  "agent.settings.approvalPolicy.update",
   "agent.auth.login",
   "agent.auth.logout",
   "agent.auth.status",
@@ -10,6 +9,7 @@ export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "agent.auth.apiKey.set",
   "agent.auth.apiKey.remove",
   "agent.chat.connect",
+  "agent.chat.approvalPolicy.update",
   "agent.chat.history",
   "agent.chat.prompt",
   "agent.chat.edit",

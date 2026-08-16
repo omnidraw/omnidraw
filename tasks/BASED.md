@@ -335,7 +335,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A117](a/A117.md) - Preview inspection: packaged browser runner and image tool results
 - [x]: [A118](a/A118.md) - widget projects: portable SDK-based offline check (order 4/5)
 - [x]: [A119](a/A119.md) - AI Chat: inspect accepted builds and the real Preview runtime (order 5/5)
-- [~]: [A120](a/A120.md) - AI Chat: per-chat approval policy in the composer
+- [x]: [A120](a/A120.md) - AI Chat: per-chat approval policy in the composer
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

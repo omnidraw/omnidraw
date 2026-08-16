@@ -5,11 +5,17 @@ export type TChatScope = Readonly<{
   canvasId: string;
   componentId: string;
   sessionId: string;
+  approvalPolicy:
+    | Readonly<{ mode: "always-approve" | "manual" }>
+    | Readonly<{
+        mode: "ai-review";
+        reviewerModel: Readonly<{ provider: string; modelId: string }>;
+      }>;
 }>;
 
 export class ChatRecoveryBackend extends Context.Service<ChatRecoveryBackend, {
   connectReuse(scope: TChatScope): Effect.Effect<void, TFrontendTransportFailure>;
-  history(scope: Omit<TChatScope, "canvasId">): Effect.Effect<readonly unknown[], TFrontendTransportFailure>;
+  history(scope: Pick<TChatScope, "componentId" | "sessionId">): Effect.Effect<readonly unknown[], TFrontendTransportFailure>;
 }>()("omnidraw/frontend/core/chat/ChatRecoveryBackend") {}
 
 export type TRecoveredChatEvent = Readonly<{

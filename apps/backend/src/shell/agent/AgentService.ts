@@ -15,7 +15,6 @@ import {
 } from '../../core/agent/error.agent-service';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
-import { ApprovalPolicyStore } from './approval/ApprovalPolicyStore';
 import {
   fnNormalizeApprovalPolicy,
   fnNormalizeApprovalReviewDecision,
@@ -106,10 +105,6 @@ export interface IAgentServiceConfig {
   bashCapability?: TAgentBashCapability;
   authorizeToolCall?: TToolAuthorizer;
   approvalReviewer?: TApprovalReviewer;
-  approvalPolicyStore?: Readonly<{
-    load(): Promise<TApprovalPolicy>;
-    save(policy: TApprovalPolicy): Promise<TApprovalPolicy>;
-  }>;
 }
 
 type TWidgetId = string;
@@ -186,8 +181,7 @@ export class AgentService implements IPublicMethods {
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
   #approvals: ApprovalCoordinator;
-  #approvalPolicy: TApprovalPolicy = Object.freeze({ mode: 'manual' });
-  #approvalPolicyStore: NonNullable<IAgentServiceConfig['approvalPolicyStore']>;
+  #chatApprovalPolicies = new Map<TOmnidrawChatId, TApprovalPolicy>();
   #chatWidgetIds = new Map<TOmnidrawChatId, TWidgetId>();
   #chatCanvasIds = new Map<TOmnidrawChatId, string>();
   #promptWidgetSelections = new Map<TOmnidrawChatId, TWidgetPromptSelectionContext>();
@@ -217,13 +211,12 @@ export class AgentService implements IPublicMethods {
       npmUserConfigPath: config.npmUserConfigPath,
       prepareNpmDependencies: config.prepareWidgetNpmDependencies,
     })
-    this.#approvalPolicyStore = config.approvalPolicyStore
-      ?? new ApprovalPolicyStore(join(this.#piAgentDir, 'approval-policy.json'))
     this.#approvals = new ApprovalCoordinator({
       createId: config.world.createId,
       now: config.world.now,
       authorize: config.authorizeToolCall,
-      policy: () => this.#approvalPolicy,
+      policy: (chatId) => this.#chatApprovalPolicies.get(chatId)
+        ?? Object.freeze({ mode: 'manual' }),
       reviewer: config.approvalReviewer ?? {
         review: (input, signal) => this.#reviewProtectedOperation(input, signal),
       },
@@ -250,9 +243,6 @@ export class AgentService implements IPublicMethods {
       authPath: join(this.#piAgentDir, 'auth.json'),
       modelsPath: join(this.#piAgentDir, 'models.json'),
     })
-    this.#approvalPolicy = fnNormalizeApprovalPolicy(
-      await this.#approvalPolicyStore.load(),
-    )
     await this.#workspace.init()
   }
 
@@ -319,6 +309,7 @@ export class AgentService implements IPublicMethods {
       .map((result) => result.reason))
     this.#chatWidgetIds.clear()
     this.#chatCanvasIds.clear()
+    this.#chatApprovalPolicies.clear()
     this.#promptWidgetSelections.clear()
     this.#chatConnectionGenerations.clear()
     this.#chatConnectionLanes.clear()
@@ -341,19 +332,25 @@ export class AgentService implements IPublicMethods {
     id: TWidgetId,
     sessionId: string,
     canvasIdOrMode?: string,
+    approvalPolicyOrMode?: TApprovalPolicy | TChatConnectMode,
     requestedMode?: TChatConnectMode,
   ): Promise<TAgentConnectResult> {
     const mode = requestedMode
+      ?? (typeof approvalPolicyOrMode === 'string' ? approvalPolicyOrMode : undefined)
       ?? (canvasIdOrMode === 'reuse' || canvasIdOrMode === 'replace'
         ? canvasIdOrMode
         : 'reuse')
     const canvasId = requestedMode === undefined
+      && typeof approvalPolicyOrMode !== 'object'
       && (canvasIdOrMode === undefined || canvasIdOrMode === 'reuse' || canvasIdOrMode === 'replace')
         ? this.#config.chatScope.defaultCanvasId
         : canvasIdOrMode
     if (canvasId === undefined) {
       throw this.#chatConnectionError('CHAT_CANVAS_REQUIRED', 'Verified canvas scope is required.')
     }
+    const selectedApprovalPolicy = typeof approvalPolicyOrMode === 'object'
+      ? fnNormalizeApprovalPolicy(approvalPolicyOrMode)
+      : this.#chatApprovalPolicies.get(sessionId) ?? Object.freeze({ mode: 'manual' })
     this.#assertCanvasNotRetiring(canvasId)
     const releaseMutation = this.#claimChatMutation(sessionId, 'connect', true)
     const releaseCanvasScope = this.#trackChatConnectionCanvasScope(sessionId, canvasId)
@@ -364,7 +361,7 @@ export class AgentService implements IPublicMethods {
         sessionId,
         async () => {
           await this.#assertVerifiedChatCanvas(id, sessionId, canvasId)
-          return this.#connectChatGeneration(id, sessionId, canvasId, generation)
+          return this.#connectChatGeneration(id, sessionId, canvasId, selectedApprovalPolicy, generation)
         },
       )
       if (outcome.status === 'connected') return outcome.result
@@ -790,21 +787,19 @@ export class AgentService implements IPublicMethods {
       providersWithCredentials,
       providers,
       models,
-      approvalPolicy: this.#approvalPolicy,
     }
   }
 
-  async updateApprovalPolicy(policy: TApprovalPolicy): Promise<TApprovalPolicy> {
-    const normalized = fnNormalizeApprovalPolicy(policy)
-    if (normalized.mode === 'ai-review') {
-      const model = this.modelRuntime.getModel(
-        normalized.reviewerModel.provider,
-        normalized.reviewerModel.modelId,
-      )
-      if (!model) throw new Error('The selected approval reviewer model is unavailable.')
-    }
-    this.#approvalPolicy = await this.#approvalPolicyStore.save(normalized)
-    return this.#approvalPolicy
+  async setChatApprovalPolicy(
+    id: TWidgetId,
+    sessionId: TOmnidrawChatId,
+    policy: TApprovalPolicy,
+  ): Promise<TApprovalPolicy> {
+    await this.#waitForChatConnectionLaneIdle(sessionId)
+    this.#assertChatScope(id, sessionId)
+    const normalized = this.#validateApprovalPolicy(policy)
+    this.#chatApprovalPolicies.set(sessionId, normalized)
+    return normalized
   }
 
   async #reviewProtectedOperation(
@@ -897,6 +892,7 @@ export class AgentService implements IPublicMethods {
     id: TWidgetId,
     sessionId: TOmnidrawChatId,
     canvasId: string,
+    approvalPolicy: TApprovalPolicy,
     generation: number,
   ): Promise<TChatConnectGenerationResult> {
     if (this.#isStopping) throw new Error('Agent service is stopping.')
@@ -910,6 +906,7 @@ export class AgentService implements IPublicMethods {
     if (connectedEntry && replacementGeneration === undefined) {
       await this.#ensureChatMetadata(sessionId, canvasId)
       this.#assertCanvasNotRetiring(canvasId)
+      this.#chatApprovalPolicies.set(sessionId, approvalPolicy)
       return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
     }
 
@@ -955,6 +952,7 @@ export class AgentService implements IPublicMethods {
           : 'Chat ownership changed before approval.',
       )
       installed = true
+      this.#chatApprovalPolicies.set(sessionId, approvalPolicy)
       if (replacementGeneration !== undefined && replacementGeneration <= generation) {
         this.#chatReplacementGenerations.delete(sessionId)
       }
@@ -1498,6 +1496,18 @@ export class AgentService implements IPublicMethods {
     }
   }
 
+  #validateApprovalPolicy(policy: TApprovalPolicy): TApprovalPolicy {
+    const normalized = fnNormalizeApprovalPolicy(policy)
+    if (
+      normalized.mode === 'ai-review'
+      && !this.modelRuntime.getModel(
+        normalized.reviewerModel.provider,
+        normalized.reviewerModel.modelId,
+      )
+    ) throw new Error('The selected approval reviewer model is unavailable.')
+    return normalized
+  }
+
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
     if (!images || images.length === 0) {
       return []
@@ -1540,6 +1550,7 @@ export class AgentService implements IPublicMethods {
   #disposeAgentSession(id: TWidgetId, sessionId: TOmnidrawChatId): void {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     this.#approvals.cancelChat(sessionId)
+    this.#chatApprovalPolicies.delete(sessionId)
     if (!sessionEntry) {
       if (this.#chatWidgetIds.get(sessionId) === id) {
         this.#chatWidgetIds.delete(sessionId)

@@ -13,6 +13,7 @@ import type {
   IAiChatPort,
   IAiChatTitleBarPort,
   TAiChatPersistedState,
+  TAiChatApprovalPolicy,
   TAiChatThinkingLevel,
 } from "./contracts.js";
 
@@ -27,6 +28,7 @@ export const AI_CHAT_CANVAS_WIDGET_KIND = "ai-chat" as const;
 
 export type TAiChatCanvasNodePayload = Readonly<{
   sessionId: string;
+  approvalPolicy: TAiChatApprovalPolicy;
   model?: Readonly<{ provider: string; modelId: string }>;
   thinkingLevel?: TAiChatThinkingLevel;
 }>;
@@ -40,6 +42,34 @@ const THINKING_LEVELS = new Set<TAiChatThinkingLevel>([
   "xhigh",
 ]);
 
+function approvalPolicy(value: unknown): TAiChatApprovalPolicy | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Readonly<Record<string, unknown>>;
+  if (record.mode === "manual" || record.mode === "always-approve") {
+    return Object.freeze({ mode: record.mode });
+  }
+  if (
+    record.mode !== "ai-review"
+    || typeof record.reviewerModel !== "object"
+    || record.reviewerModel === null
+    || Array.isArray(record.reviewerModel)
+  ) return null;
+  const reviewerModel = record.reviewerModel as Readonly<Record<string, unknown>>;
+  if (
+    typeof reviewerModel.provider !== "string"
+    || reviewerModel.provider.length === 0
+    || typeof reviewerModel.modelId !== "string"
+    || reviewerModel.modelId.length === 0
+  ) return null;
+  return Object.freeze({
+    mode: "ai-review",
+    reviewerModel: Object.freeze({
+      provider: reviewerModel.provider,
+      modelId: reviewerModel.modelId,
+    }),
+  });
+}
+
 function payload(node: Readonly<TWidgetFrameNode>): TAiChatCanvasNodePayload | null {
   const extension = fnReadCanvasWidgetExtension(node);
   if (
@@ -49,6 +79,8 @@ function payload(node: Readonly<TWidgetFrameNode>): TAiChatCanvasNodePayload | n
   const value = extension.payload;
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   if (typeof value.sessionId !== "string" || value.sessionId.length === 0) return null;
+  const selectedApprovalPolicy = approvalPolicy(value.approvalPolicy);
+  if (selectedApprovalPolicy === null) return null;
   const model = typeof value.model === "object"
     && value.model !== null
     && !Array.isArray(value.model)
@@ -64,6 +96,7 @@ function payload(node: Readonly<TWidgetFrameNode>): TAiChatCanvasNodePayload | n
     : undefined;
   return Object.freeze({
     sessionId: value.sessionId,
+    approvalPolicy: selectedApprovalPolicy,
     ...(model === undefined ? {} : { model }),
     ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
   });
@@ -73,6 +106,7 @@ function persistedState(value: TAiChatCanvasNodePayload): TAiChatPersistedState 
   return Object.freeze({
     sessionId: value.sessionId,
     preference: Object.freeze({
+      approvalPolicy: value.approvalPolicy,
       ...(value.model === undefined ? {} : { model: value.model }),
       ...(value.thinkingLevel === undefined
         ? {}
@@ -84,6 +118,7 @@ function persistedState(value: TAiChatCanvasNodePayload): TAiChatPersistedState 
 function payloadFromState(state: TAiChatPersistedState): TAiChatCanvasNodePayload {
   return Object.freeze({
     sessionId: state.sessionId,
+    approvalPolicy: state.preference.approvalPolicy,
     ...(state.preference.model === undefined
       ? {}
       : { model: state.preference.model }),
@@ -98,6 +133,7 @@ function samePayload(
   right: TAiChatCanvasNodePayload,
 ): boolean {
   return left.sessionId === right.sessionId
+    && JSON.stringify(left.approvalPolicy) === JSON.stringify(right.approvalPolicy)
     && left.model?.provider === right.model?.provider
     && left.model?.modelId === right.model?.modelId
     && left.thinkingLevel === right.thinkingLevel;
@@ -138,7 +174,7 @@ function createAiChatNode(
         schemaVersion: 1,
         type: "ui-widget",
         kind: AI_CHAT_CANVAS_WIDGET_KIND,
-        payload: { sessionId },
+        payload: { sessionId, approvalPolicy: { mode: "manual" } },
       },
     },
   };

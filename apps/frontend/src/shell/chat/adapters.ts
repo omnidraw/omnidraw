@@ -10,7 +10,6 @@ import {
   type IAiChatBrowserPort,
   type IAiChatPort,
   type TAiChatApproval,
-  type TAiChatApprovalPolicy,
   type TAiChatContextCatalog,
   type TAiChatHistoryEntry,
   type TAiChatStreamEvent,
@@ -216,12 +215,17 @@ function createChatPort(runtime: TFrontendRuntime, canvasId: string): IAiChatPor
   };
   const chatActions: IAiChatActions = {
     getSettings: () => action("agent.settings.get"),
-    setApprovalPolicy: (policy: TAiChatApprovalPolicy) => action("agent.settings.approvalPolicy.update", policy),
+    setApprovalPolicy: (request) => action("agent.chat.approvalPolicy.update", {
+      widgetId: request.componentId,
+      sessionId: request.sessionId,
+      policy: request.policy,
+    }),
     async connect(request) {
       const response = record(await action("agent.chat.connect", {
         canvasId: request.canvasId,
         widgetId: request.componentId,
         sessionId: request.sessionId,
+        approvalPolicy: request.approvalPolicy,
         mode: request.mode,
       }));
       return { history: history(response.history ?? response.messageHistory) };
@@ -329,6 +333,7 @@ function createChatPort(runtime: TFrontendRuntime, canvasId: string): IAiChatPor
           canvasId,
           componentId: request.componentId,
           sessionId: request.sessionId,
+          approvalPolicy: request.approvalPolicy,
       }))],
       signal: options?.signal,
     });

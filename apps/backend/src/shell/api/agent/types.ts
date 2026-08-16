@@ -24,15 +24,18 @@ export type TAgentApiCapability = {
   disposeCanvasChats(args: Readonly<{ canvasId: string }>): Promise<void>;
   resumeCanvasChats(args: Readonly<{ canvasId: string }>): void;
   settings(): Promise<TAgentOutputs['settings']['get']>;
-  updateApprovalPolicy(
-    policy: TAgentInputs['settings']['approvalPolicy']['update'],
-  ): Promise<TAgentOutputs['settings']['approvalPolicy']['update']>;
   connectChat(
     widgetId: TAgentInputs['chat']['connect']['widgetId'],
     sessionId: TAgentInputs['chat']['connect']['sessionId'],
     canvasId: TAgentInputs['chat']['connect']['canvasId'],
+    approvalPolicy: TAgentInputs['chat']['connect']['approvalPolicy'],
     mode?: NonNullable<TAgentInputs['chat']['connect']['mode']>,
   ): Promise<TAgentOutputs['chat']['connect']>;
+  setChatApprovalPolicy(
+    widgetId: TAgentInputs['chat']['approvalPolicy']['update']['widgetId'],
+    sessionId: TAgentInputs['chat']['approvalPolicy']['update']['sessionId'],
+    policy: TAgentInputs['chat']['approvalPolicy']['update']['policy'],
+  ): Promise<TAgentOutputs['chat']['approvalPolicy']['update']>;
   getChatHistory(
     widgetId: TAgentInputs['chat']['history']['widgetId'],
     sessionId: TAgentInputs['chat']['history']['sessionId'],

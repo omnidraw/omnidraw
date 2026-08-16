@@ -264,14 +264,14 @@ type TResourceDataPage =
  */
 export type TPrivateRequestOperations = Readonly<{
   "agent.settings.get": TOperation<Readonly<Record<string, never>> | undefined, TAiChatSettings>;
-  "agent.settings.approvalPolicy.update": TOperation<TAiChatApprovalPolicy, TAiChatApprovalPolicy>;
   "agent.auth.login": TOperation<Readonly<{ providerId: "openai-codex" | "github-copilot" }>, Readonly<{ loginId: string }>>;
   "agent.auth.logout": TOperation<Readonly<{ providerId: "openai-codex" | "github-copilot" }>, Readonly<{ providerId: string }>>;
   "agent.auth.status": TOperation<Readonly<{ loginId: string }>, TAiChatLoginStatus>;
   "agent.auth.abort": TOperation<Readonly<{ loginId: string }>, null>;
   "agent.auth.apiKey.set": TOperation<Readonly<{ providerId: string; key: string }>, Readonly<{ providerId: string }>>;
   "agent.auth.apiKey.remove": TOperation<Readonly<{ providerId: string }>, Readonly<{ providerId: string }>>;
-  "agent.chat.connect": TOperation<TChatScope & Readonly<{ canvasId: string; mode?: "reuse" | "replace" }>, TChatConnect>;
+  "agent.chat.connect": TOperation<TChatScope & Readonly<{ canvasId: string; approvalPolicy: TAiChatApprovalPolicy; mode?: "reuse" | "replace" }>, TChatConnect>;
+  "agent.chat.approvalPolicy.update": TOperation<TChatScope & Readonly<{ policy: TAiChatApprovalPolicy }>, TAiChatApprovalPolicy>;
   "agent.chat.history": TOperation<TChatScope, readonly TChatHistoryItem[]>;
   "agent.chat.prompt": TOperation<TChatScope & Readonly<{
     canvasId: string;

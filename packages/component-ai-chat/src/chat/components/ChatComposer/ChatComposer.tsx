@@ -34,6 +34,7 @@ import {
 } from "./fn.suggestion-navigation"
 import { fnFindPromptTrigger } from "./fn.trigger"
 import { AiChatWidgetIcon } from "../WidgetIcon"
+import { ApprovalPolicyPicker } from "./ApprovalPolicyPicker"
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const MAX_PROMPT_IMAGE_COUNT = 5
@@ -372,6 +373,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const [hasFocus, setHasFocus] = createSignal(false)
   const [modelMenuOpen, setModelMenuOpen] = createSignal(false)
   const [actionMenuOpen, setActionMenuOpen] = createSignal(false)
+  const [approvalMenuOpen, setApprovalMenuOpen] = createSignal(false)
   const [selectedModelId, setSelectedModelId] = createSignal<string>()
   const [activeProvider, setActiveProvider] = createSignal<string>()
   const [focusedModelId, setFocusedModelId] = createSignal<string>()
@@ -867,6 +869,7 @@ export function ChatComposer(props: TChatComposerProps) {
     if (event.key === "Escape") {
       setModelMenuOpen(false)
       setActionMenuOpen(false)
+      setApprovalMenuOpen(false)
       return true
     }
 
@@ -1008,6 +1011,7 @@ export function ChatComposer(props: TChatComposerProps) {
 
       setModelMenuOpen(false)
       setActionMenuOpen(false)
+      setApprovalMenuOpen(false)
     }
 
     props.browser.document.addEventListener("keydown", handleDocumentKeydown, true)
@@ -1235,6 +1239,7 @@ export function ChatComposer(props: TChatComposerProps) {
                 onClick={(event) => {
                   event.stopPropagation()
                   setModelMenuOpen(false)
+                  setApprovalMenuOpen(false)
                   setActionMenuOpen((open) => !open)
                 }}
               >
@@ -1268,6 +1273,19 @@ export function ChatComposer(props: TChatComposerProps) {
                 </div>
               </Show>
             </div>
+            <ApprovalPolicyPicker
+              open={approvalMenuOpen()}
+              policy={props.approvalPolicy}
+              reviewerModels={props.reviewerModels ?? []}
+              onOpenChange={(open) => {
+                if (open) {
+                  setActionMenuOpen(false)
+                  setModelMenuOpen(false)
+                }
+                setApprovalMenuOpen(open)
+              }}
+              onChange={props.onApprovalPolicyChange}
+            />
             <div class="omnidraw-ai-chat-composer__model-picker">
               <button
                 class="omnidraw-ai-chat-composer__pill"
@@ -1278,6 +1296,7 @@ export function ChatComposer(props: TChatComposerProps) {
                 onClick={(event) => {
                   event.stopPropagation()
                   setActionMenuOpen(false)
+                  setApprovalMenuOpen(false)
                   if (modelMenuOpen()) setModelMenuOpen(false)
                   else openModelMenu()
                 }}

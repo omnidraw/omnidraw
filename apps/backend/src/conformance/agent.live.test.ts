@@ -30,7 +30,10 @@ describe('agent live conformance', () => {
               size: { width: 320, height: 480 },
               extensions: { 'omnidraw:widget': {
                 schemaVersion: 1, type: 'ui-widget', kind: 'ai-chat',
-                payload: { sessionId: '00000000-0000-4000-8000-000000000001' },
+                payload: {
+                  sessionId: '00000000-0000-4000-8000-000000000001',
+                  approvalPolicy: { mode: 'manual' },
+                },
               } },
             },
           }],

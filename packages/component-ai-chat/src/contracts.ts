@@ -41,7 +41,6 @@ export type TAiChatSettings = Readonly<{
   providersWithCredentials: readonly string[];
   providers: readonly string[];
   models: readonly TAiChatModel[];
-  approvalPolicy: TAiChatApprovalPolicy;
 }>;
 
 export type TAiChatSessionScope = Readonly<{
@@ -52,6 +51,7 @@ export type TAiChatSessionScope = Readonly<{
 
 export type TAiChatConnectRequest = TAiChatSessionScope & Readonly<{
   canvasId: string;
+  approvalPolicy: TAiChatApprovalPolicy;
   mode?: "reuse" | "replace";
 }>;
 
@@ -236,13 +236,17 @@ export type TAiChatStreamEvent =
   | TAiChatCatalogEvent;
 
 export type TAiChatStreamRequest = TAiChatSessionScope & Readonly<{
+  /** Re-establishes the durable chat preference during semantic recovery. */
+  approvalPolicy: TAiChatApprovalPolicy;
   /** Opaque cursor acknowledged by a host adapter, if its transport supports it. */
   afterCursor?: string;
 }>;
 
 export interface IAiChatActions {
   getSettings(): Promise<TAiChatSettings>;
-  setApprovalPolicy(policy: TAiChatApprovalPolicy): Promise<TAiChatApprovalPolicy>;
+  setApprovalPolicy(
+    request: TAiChatSessionScope & Readonly<{ policy: TAiChatApprovalPolicy }>,
+  ): Promise<TAiChatApprovalPolicy>;
   connect(request: TAiChatConnectRequest): Promise<TAiChatCompletion>;
   getHistory(scope: TAiChatSessionScope): Promise<readonly TAiChatHistoryEntry[]>;
   prompt(request: TAiChatPromptRequest): Promise<void>;
@@ -315,6 +319,7 @@ export interface IAiChatTitleBarPort {
 }
 
 export type TAiChatPreference = Readonly<{
+  approvalPolicy: TAiChatApprovalPolicy;
   model?: TAiChatModelRef;
   thinkingLevel?: TAiChatThinkingLevel;
 }>;

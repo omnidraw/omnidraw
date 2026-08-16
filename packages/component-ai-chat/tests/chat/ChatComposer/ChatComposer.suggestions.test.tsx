@@ -69,6 +69,7 @@ function renderComposer(overrides: Partial<TChatComposerProps> = {}): TRenderedC
     <div class="omnidraw-ai-chat-tab--chat">
       <ChatComposer
         browser={browser}
+        approvalPolicy={overrides.approvalPolicy ?? { mode: "manual" }}
         mentions={mentions()}
         commands={overrides.commands}
         onDraftTextChange={overrides.onDraftTextChange}

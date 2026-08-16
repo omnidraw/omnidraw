@@ -13,6 +13,7 @@ export function runAgentConformance(): Effect.Effect<
       canvasId: 'canvas-1',
       widgetId: 'chat-1',
       sessionId: '00000000-0000-4000-8000-000000000001',
+      approvalPolicy: { mode: 'manual' as const },
       mode: 'reuse' as const,
     };
     const connected = yield* fxConnectAgent(request);
