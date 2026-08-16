@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { CAPSULE_API_GROUP_BUNDLE_DIGEST } from '@omnidraw/capsule/protocol';
 import { createWidgetBrowserHost } from '../src/host';
 
 const digest = 'b'.repeat(64);
@@ -34,7 +35,7 @@ describe('@omnidraw/sdk/host', () => {
         apiContract: {
           format: 'capsule-api-groups-v1',
           groups: ['DOM'],
-          bundleDigest: 'sha256:3e35cd0f81b3302cb20d63303d4b754afa2db0b9ccac7980e9f290fad1426d16',
+          bundleDigest: CAPSULE_API_GROUP_BUNDLE_DIGEST,
         },
         budgets: {},
         capabilityRequests: [],

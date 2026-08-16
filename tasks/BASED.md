@@ -217,6 +217,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B103](b/B103.md) - Preview restart: source maps bypass the durable construction cache
 - [x]: [B104](b/B104.md) - AI Chat: resolved automatic approvals render as pending prompts
 - [x]: [B105](b/B105.md) - Widget Preview: React select initialization blanks the Capsule guest
+- [x]: [B106](b/B106.md) - Widget Preview: integrate Capsule guest-reported error diagnostics
 - [x]: [B107](b/B107.md) - public package dev: Canvas Contract build races Canvas type watcher
 
 ## A dditions
@@ -479,6 +480,14 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S137](s/S137.md) - functions: delete durable invocation and usage, keep direct calls
 - [x]: [S138](s/S138.md) - widgets: remove obsolete revision, Preview, artifact, group, Runs, and Logs surfaces
 - [x]: [S139](s/S139.md) - widgets: make SDK the portable contract authority (order 3/7)
+- [R]: [S140](s/S140.md) - widgets: lock one portable server ABI and two private host adapters (order 1/8)
+- [R]: [S141](s/S141.md) - widgets: remove author-selected runtimes from the server contract (order 2/8)
+- [R]: [S142](s/S142.md) - widgets: emit one host-neutral server module instead of a Bun envelope (order 3/8)
+- [R]: [S143](s/S143.md) - functions: keep OSS execution direct, local, and trusted (order 4/8)
+- [R]: [S144](s/S144.md) - resources: make function resource calls a portable SDK ABI (order 5/8)
+- [R]: [S145](s/S145.md) - resources: enforce cloud-portable semantics in the OSS providers (order 6/8)
+- [R]: [S146](s/S146.md) - widgets: ship cross-host function and resource conformance (order 7/8)
+- [R]: [S147](s/S147.md) - widgets: delete runtime residue and qualify the portability hard cut (order 8/8)
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

@@ -61,14 +61,14 @@ Before publishing the Omnidraw closure, exact external dependencies must be
 available from the public npm registry:
 
 - `@omnidraw/cangine@0.6.1`, published from its owning repository;
-- `@omnidraw/capsule@0.15.1`.
+- `@omnidraw/capsule@0.16.0`.
 
 Local Verdaccio packages and the repository lockfile do not satisfy this gate.
 Check the public registry explicitly:
 
 ```sh
 npm view @omnidraw/cangine@0.6.1 version dist.integrity --registry=https://registry.npmjs.org/
-npm view @omnidraw/capsule@0.15.1 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/capsule@0.16.0 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 Stop if either exact version cannot be resolved publicly.

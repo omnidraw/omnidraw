@@ -236,7 +236,7 @@ describe('local widget package publication', () => {
       version: manifest.version,
       bin: { 'omnidraw-widget': './cli.js' },
       dependencies: {
-        '@omnidraw/capsule': '0.15.0',
+        '@omnidraw/capsule': '0.16.0',
         effect: '4.0.0-rc.108',
         'lucide-static': '1.24.0',
       },

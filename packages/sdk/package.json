@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -98,7 +98,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@omnidraw/capsule": "0.15.1",
+    "@omnidraw/capsule": "0.16.0",
     "effect": "4.0.0-rc.108",
     "lucide-static": "1.24.0"
   },

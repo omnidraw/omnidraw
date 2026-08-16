@@ -48,7 +48,6 @@ import type {
   TWidgetBrowserFunctionDescriptor,
   TWidgetCapabilityRequest,
   TWidgetHostConfiguration,
-  TWidgetHostDiagnostic,
   TWidgetSerializableJsonValue,
   TWidgetStateSnapshot,
   TWidgetViewport,
@@ -68,6 +67,7 @@ import {
 } from './capsule/CONSTANTS';
 import { fnOmnidrawWidgetNotificationOutput } from './capsule/fn.channel-values';
 import type { TOmnidrawCapsuleCapabilityContract } from './capsule/types';
+import { fnCapsuleMountErrorDiagnostic } from './fn.capsule-mount-error-diagnostic';
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -78,45 +78,6 @@ function canonicalJson(value: unknown): string {
   return `{${Object.keys(input).sort().map((key) => (
     `${JSON.stringify(key)}:${canonicalJson(input[key])}`
   )).join(',')}}`;
-}
-
-function diagnosticCategory(event: CapsuleMountErrorEvent): TWidgetHostDiagnostic['category'] {
-  if (['PAYLOAD_LIMIT', 'RATE_LIMIT', 'CONCURRENCY_LIMIT', 'DEADLINE_EXCEEDED', 'STREAM_OVERFLOW', 'HANDLE_LIMIT', 'HANDLE_QUOTA'].includes(event.code)) {
-    return 'budget';
-  }
-  switch (event.category) {
-    case 'capability': return 'capability';
-    case 'lifecycle': return 'lifecycle';
-    case 'vm': return 'guest';
-    case 'dom':
-    case 'host': return 'host';
-  }
-}
-
-function safeDiagnostic(event: CapsuleMountErrorEvent): TWidgetHostDiagnostic {
-  const category = diagnosticCategory(event);
-  const message = category === 'budget'
-    ? 'The widget exceeded a browser runtime budget.'
-    : category === 'capability'
-      ? 'A widget capability was denied or failed.'
-      : category === 'guest'
-        ? 'The widget runtime failed.'
-        : category === 'lifecycle'
-          ? 'The widget lifecycle operation failed.'
-          : category === 'internal'
-            ? 'The browser widget runtime failed safely.'
-            : 'The browser widget host rejected the operation.';
-  const details = event as unknown as Readonly<Record<string, unknown>>;
-  return Object.freeze({
-    format: 'omnidraw.widget-host-diagnostic.v1',
-    phase: 'runtime',
-    category,
-    code: event.code,
-    fatal: event.fatal,
-    message,
-    ...(typeof details.capabilityId === 'string' ? { capability: details.capabilityId } : {}),
-    ...(typeof details.operation === 'string' ? { operation: details.operation } : {}),
-  });
 }
 
 function safeHostFailure(error: InstanceType<typeof CapsuleHostError>): WidgetHostError {
@@ -574,9 +535,10 @@ export async function createWidgetBrowserHost(
     const grants: readonly CapsuleCapabilityGrant[] = Object.freeze(derived.contracts.map(({ grant }) => grant));
     let raw: CapsuleHandle | undefined;
     let stopAbort = (): void => undefined;
+    let stopRuntimeErrors = (): void => undefined;
     try {
       const report = (event: CapsuleMountErrorEvent): void => {
-        const mapped = safeDiagnostic(event);
+        const mapped = fnCapsuleMountErrorDiagnostic(event);
         try { request.onDiagnostic?.(mapped); } catch { /* Observers cannot affect the runtime. */ }
         if (mapped.fatal) {
           try { request.onFatal?.(mapped); } catch { /* Observers cannot affect cleanup. */ }
@@ -592,8 +554,7 @@ export async function createWidgetBrowserHost(
             restoreSnapshot: request.restoreSnapshot,
             visualConfinement: 'strict',
             authoringInspection: inspection!.attachment,
-            // Capsule retains this listener for the mounted handle. Registering
-            // it again through `raw.onError` would duplicate every later event.
+            // This listener covers startup before Capsule can return a handle.
             onError: report,
           })
         : await (host as CapsuleHost).mount({
@@ -604,9 +565,16 @@ export async function createWidgetBrowserHost(
             guestChannels: guestChannels(request, derived.channels),
             restoreSnapshot: request.restoreSnapshot,
             visualConfinement: 'strict',
-            // This is the single error subscription for the mount lifetime.
+            // This listener covers startup before Capsule can return a handle.
             onError: report,
           });
+      const runtimeErrorSubscription = raw.onError(report);
+      let runtimeErrorsSubscribed = true;
+      stopRuntimeErrors = () => {
+        if (!runtimeErrorsSubscribed) return;
+        runtimeErrorsSubscribed = false;
+        runtimeErrorSubscription.unsubscribe();
+      };
       if (raw.diagnostics().artifactHash !== artifact.artifactHash) {
         throw new Error('Mounted widget artifact hash does not match runtime metadata.');
       }
@@ -629,6 +597,7 @@ export async function createWidgetBrowserHost(
           if (disposal !== undefined) return disposal;
           finished = true;
           stopAbort();
+          stopRuntimeErrors();
           disposal = mounted.destroy(reason).catch(() => undefined).then(async () => {
             inspection?.dispose();
             await host.destroy().catch(() => undefined);
@@ -647,6 +616,7 @@ export async function createWidgetBrowserHost(
       return Object.freeze({ ...base, inspection: inspectionController(inspection!) });
     } catch (error) {
       stopAbort();
+      stopRuntimeErrors();
       await raw?.destroy('mount-failed').catch(() => undefined);
       inspection?.dispose();
       for (const binding of capabilityBindings) await Promise.resolve(binding.dispose()).catch(() => undefined);

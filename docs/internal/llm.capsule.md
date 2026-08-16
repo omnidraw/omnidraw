@@ -1,6 +1,6 @@
-# Using the Capsule library — 0.13.0
+# Using the Capsule library — 0.16.0
 
-This is the consumer manual for `@omnidraw/capsule`. Capsule 0.13.0 uses
+This is the consumer manual for `@omnidraw/capsule`. Capsule 0.16.0 uses
 public browser API groups; runtime ABI, DOM profiles, feature profiles, and
 feature grants remain private enforcement details.
 
@@ -127,6 +127,7 @@ Use only these entries:
 | `@omnidraw/capsule/schema` | Browser or tooling | Canonical application-schema resources |
 | `@omnidraw/capsule/sign` | Bun/Node release tooling | Sign exact artifact bytes with explicit Ed25519 keys |
 | `@omnidraw/capsule/testkit` | Browser tests | Root-confined closed-tree automation |
+| `@omnidraw/capsule/authoring-inspection` | Trusted authoring browser host | Bounded closed-tree metadata for one dedicated inspection mount |
 | `@omnidraw/capsule/webgl` | Trusted browser adapter | Fixed bounded WebGL integration |
 | `@omnidraw/capsule/webgpu` | Trusted browser adapter | Fixed bounded WebGPU integration |
 
@@ -341,7 +342,15 @@ WOFF2, variations, color/SVG font tables, and guest `FontFace` or
 Live SVG is part of `DOM`; it is not another group. Use the reviewed
 `document.createElementNS()` element/attribute surface. Parser assignment,
 links, styles, filters, masks, animation, and external resources remain
-absent.
+absent. The current `svg-dom-v2` surface retains exact
+`aria-hidden="true"`/`"false"` values on every supported live SVG element and
+accepts `clip-rule` only as `nonzero`, `evenodd`, or `inherit`. Removal is the
+unset ARIA state. The common legacy decorative hint `focusable="false"` is an
+observable no-op: it does not create focus authority, readback remains unset,
+and `diagnostics().dom.svgCompatibility` counts the recovery. Other values,
+unknown `aria-*`, relational ARIA references, focus/navigation attributes,
+handlers, URLs, namespace/parser operations, and styles still fail closed.
+Static `.svg` resources use their separate unchanged sanitizer.
 
 Literal browser-loaded CSS images require both `NETWORK` and explicit
 `networkPolicy.browserImages` exact-URL authority. Origin-wide authority is
@@ -753,14 +762,24 @@ The mount listener is active before application-module evaluation and is
 released when mount settles. Handle listeners do not replay startup events.
 Listener failures are contained.
 
-Current errors use the exact message-free `capsule-mount-error-v2`
+Current errors use the exact message-free `capsule-mount-error-v3`
 discriminated union. Guest failures carry the exact artifact hash, a positive
 never-reused runtime generation, and an optional frozen generated location.
 Locations use one-based lines and zero-based UTF-16 columns against the exact
 application-owned distribution bytes; apply consumer-owned source maps
 outside Capsule. Omitted locations are normal when native metadata is absent,
 ineligible, stale, malformed, internal, or out of bounds. The separately
-exported v1 format and `*V1` types are historical shapes, not aliases for v2.
+exported v1/v2 formats and `*V1`/`*V2` types are historical shapes, not aliases
+for v3.
+
+With the current `DOM` bundle, `console.error()` emits only the nonfatal
+`guest.console` / `GUEST_REPORTED_ERROR` signal. Capsule evaluates guest
+argument expressions normally but never passes their resulting values to the
+host hook and never inspects, coerces, stringifies, retains, or hashes them.
+Multiple calls in one outermost entry coalesce. The complete mount—including
+freeze, park, rejected replacement, and committed replacement—publishes at
+most 16 reports; later entries increment only the saturating suppressed
+diagnostic. `console.log()` and `console.warn()` remain inert.
 
 ## Diagnostics
 
@@ -776,6 +795,7 @@ console.log({
   legacy: diagnostics.apiContract.legacy,
   resourceFamilies: diagnostics.apiContract.resourceFamilies,
   budgets: diagnostics.budgets,
+  svgCompatibility: diagnostics.dom.svgCompatibility,
 });
 ```
 
@@ -830,6 +850,113 @@ immutable descriptor snapshot before delegating. Testkit returns no ShadowRoot o
 does not enter the VM, and cannot bypass group, capability, or activation
 policy. Never import the testkit entry in production.
 
+## Dedicated authoring inspection
+
+Authoring products that must inspect one isolated draft use the separate
+production-supported host. Do not add its attachment to an ordinary visible
+or published mount:
+
+```ts
+import {
+  createCapsuleAuthoringInspection,
+  createCapsuleAuthoringInspectionHost,
+} from '@omnidraw/capsule/authoring-inspection';
+
+const inspection = createCapsuleAuthoringInspection({
+  maxTargets: 64,
+  maxResults: 32,
+});
+const inspectionHost = await createCapsuleAuthoringInspectionHost({
+  allowedApis: ['DOM'],
+  artifactVerification: { signaturePolicy },
+  browserPlatform: createDefaultCapsuleBrowserPlatform({ document }),
+});
+const handle = await inspectionHost.mount({
+  artifact: signedArtifactBytes,
+  container: isolatedInspectionContainer,
+  authoringInspection: inspection.attachment,
+});
+await handle.ready();
+
+const matches = inspection.query({
+  role: 'button',
+  name: 'Save',
+  exact: true,
+  maxResults: 2,
+});
+const point = matches.length === 1
+  ? inspection.validateActionPoint(matches[0]!.id)
+  : undefined;
+
+// After the trusted pointer click has settled, and immediately before typing:
+const focused = matches.length === 1
+  ? inspection.validateFocusedTarget(matches[0]!.id)
+  : undefined;
+if (focused?.valid !== true) {
+  throw new Error(`Input target changed: ${focused?.reason ?? 'missing'}`);
+}
+
+// Immediately before one trusted browser insert operation:
+const keyboardGuard = inspection.armNativeKeyboardGuard(
+  matches[0]!.id,
+  'insert_text',
+);
+// Drive exactly one trusted browser insert-text operation outside this page.
+// Then, without starting another operation:
+const keyboardResult = inspection.finishNativeKeyboardGuard(keyboardGuard.guardId);
+if (!keyboardResult.valid) {
+  throw new Error(`Input was not retained: ${keyboardResult.reason}`);
+}
+```
+
+Drive a real browser pointer only when `point?.valid === true`, using the
+returned mount-relative `centerX`/`centerY` plus the trusted container's
+browser position. Re-query after runtime replacement. Freeze/resume may
+advance `lifecycleGeneration`; `runtimeGeneration` and
+`attachmentGeneration` identify the inspected root generation.
+
+For keyboard input, let the native click and guest focus handlers settle, then
+call `validateFocusedTarget(targetId)` immediately before the first global key
+operation. It succeeds only when the same current target remains visible,
+enabled, non-sensitive, editable, and is the closed root's exact active
+element. A denial reason is one of `missing`, `stale`, `not_visible`,
+`disabled`, `sensitive`, `not_editable`, or `not_focused`; do not type after a
+denial. The check does not focus, mutate, or dispatch.
+
+For each native mutation, arm exactly one guard for `delete_backward`,
+`insert_text`, or `commit_enter`, drive one matching trusted browser operation,
+and immediately finish the same `guardId`. Only one guard may be active. Arm
+atomically repeats the retained-target safety and exact-focus check. During the
+native listener, Capsule records only whether the exact keydown/beforeinput was
+observed. After every guest callback it cancels that same native default if
+focus left the target, if a contenteditable Selection escaped the target, or
+if the event did not match the declared operation. Finish returns only the
+ticket identity, `valid`, one of `valid`, `focus_redirected`,
+`selection_outside_target`, `event_missing`, `event_mismatch`, or `stale`, the
+two event-observed booleans, and whether native cancellation actually
+succeeded. Treat every non-`valid` result as an aborted action. Selection-only
+commands such as select-all instead require an immediate second
+`validateFocusedTarget` before any guarded mutation. Contenteditable guarding
+requires captured composed-range endpoints; Capsule denies arm on a browser
+that cannot provide that exact view instead of trusting a clipped scoped
+Selection. Input and textarea targets do not depend on that primitive.
+
+`visibleSummary()` orders interactive/form controls, canvas/media, landmarks,
+then visible text in tree order. `canvases()` returns visible bounds, bitmap
+dimensions, owned context kind, and context-loss state only. It makes no
+pixel-content claim. All records and arrays are frozen and bounded. The
+4,096-element scan allowance is cumulative across calls on one attachment;
+inspection fails closed before a call would exceed what remains. After each
+successful call, `diagnostics().lastQueryOmitted`,
+`lastVisibleSummaryOmitted`, and `lastCanvasOmitted` report exact result-limit
+omissions for that call kind, so an authoring shell can mark a snapshot as
+truncated instead of assuming a full result. The
+controller never exposes nodes, the closed root, HTML, form values, URLs,
+arbitrary styles/attributes, pixels, GPU objects, an evaluator, or
+programmatic activation; password/file/hidden inputs are marked sensitive.
+Destroying the handle or host disposes the single-use attachment and clears
+all retained targets and generation identity.
+
 ## WebGL and WebGPU adapters
 
 `createDefaultCapsuleBrowserPlatform()` constructs the reviewed adapters.
@@ -841,8 +968,12 @@ They do not expose a general private-profile assembler. Native contexts,
 devices, buffers, textures, queues, and other browser objects remain
 host-owned.
 
-`WEBGL` is the bounded WebGL2 ledger used by the pinned Three.js r185 probe,
-not ambient WebGL or a promise that arbitrary scenes work. `WEBGPU` is the
+`WEBGL` resolves to `canvas-webgl-v2`, the bounded WebGL2 ledger used by the
+pinned Three.js r185 indexed transparent-shader probe. V2 adds ordinary blend
+state only: `BLEND` plus the five blend state methods. It remains neither
+ambient WebGL nor a promise that arbitrary scenes work. Already signed 0.12.0
+artifacts retain their exact `canvas-webgl-v1` facade; Capsule does not widen
+them during verification or mount. `WEBGPU` is the
 bounded visible-canvas subset, not compute or unrestricted WebGPU.
 
 ## Lazy loading and population
@@ -855,7 +986,10 @@ const { createCapsuleHost, createDefaultCapsuleBrowserPlatform } =
 ```
 
 The QuickJS release distribution loads only when the first VM is constructed.
-Keep `build`, `sign`, and `testkit` out of production browser imports.
+Keep `build`, `sign`, and `testkit` out of production browser imports. Load
+`authoring-inspection` only in the isolated trusted authoring route that owns
+the dedicated mount; ordinary application and Preview routes use the root
+host.
 
 Do not allocate one live runtime per persisted or offscreen record. The
 repository's conservative construction policy admits at most 24 aggregate
@@ -930,6 +1064,37 @@ its decoder understands the group schema, then rejects the artifact with
 The artifact adapter is not a reason to preserve two source APIs. Remove all
 application imports and examples of public runtime/profile constants and
 feature grants during the upgrade.
+
+## Upgrading from 0.15.1
+
+Capsule 0.16.0 adds bounded content-free `console.error()` observability to
+new current-bundle `DOM` artifacts. Rebuild and sign a guest to select
+`guest-console-errors-v1`; `console.log()` and `console.warn()` remain inert,
+and console argument values never cross the guest boundary.
+
+Existing 0.15.1 signed artifacts remain valid under their exact retained
+bundle digest. They keep `form-select-options-v1` and `svg-dom-v2`, do not gain
+`guest-console-errors-v1`, and therefore keep `console.error()` inert. Existing
+0.15.0 artifacts are also retained exactly with `svg-dom-v2` but without the
+later select-options or console overlays. Do not copy an old bundle digest
+into a newly constructed manifest; preserve the signed artifact or rebuild it
+against the current registry.
+
+## Upgrading from 0.12.0
+
+Capsule 0.13.0 moves newly built `WEBGL` artifacts to `canvas-webgl-v2` so
+standard Three.js transparent materials can configure blending. Rebuild and
+sign WebGL guests to select v2. Existing 0.12.0 signed group artifacts remain
+valid under their retained bundle digest and continue using the v1 method and
+constant tables without blend authority.
+
+- No host API call shape changes are required.
+- Custom trusted WebGL adapters must implement the five ordinary blend-state
+  methods for new v2 artifacts.
+- Readback, debug renderer information, context-loss control, ambient uploads,
+  and native-object export remain denied.
+- Repeat the native/Capsule WebGL lab on the deployment's real browser, OS,
+  GPU, and driver before making a compatibility claim.
 
 ## Upgrading from 0.11.0
 
@@ -1012,7 +1177,7 @@ digest into new manifests.
 
 ## Versioning
 
-The package version is `@omnidraw/capsule` 0.13.0. The group-contract format
+The package version is `@omnidraw/capsule` 0.16.0. The group-contract format
 and bundle digest, artifact envelope, runtime ABI, private ledgers/profiles,
 capability identities, network-policy format, and snapshot schemas are
 independently versioned exact contracts.

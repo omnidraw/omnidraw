@@ -7,6 +7,7 @@ import {
 } from "@omnidraw/canvas-contract";
 import type {
   IWidgetBrowserMount,
+  TWidgetHostDiagnostic,
   TWidgetNotificationOutput,
   TWidgetHostSubject,
 } from "@omnidraw/sdk";
@@ -30,6 +31,10 @@ import {
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
 import { createWidgetViewportSync } from "./widget-viewport-sync";
 import { retireFatalWidgetMount } from "./widget-fatal-lifecycle";
+import {
+  createWidgetGuestReportedErrorSurface,
+  fnIsWidgetGuestReportedError,
+} from "./widget-runtime-diagnostic";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
@@ -155,6 +160,7 @@ export function createFrontendWidgetExtension(
           // menu; an extension titlebar here would overlay that same chrome.
           let mount: IWidgetBrowserMount | undefined;
           let failureSurface: HTMLElement | null = null;
+          let diagnosticSurface: HTMLElement | null = null;
           let opening: Promise<boolean> | null = null;
           const ownerWindow = application.ownerWindow as Window & typeof globalThis;
           const viewportSync = createWidgetViewportSync({
@@ -171,6 +177,8 @@ export function createFrontendWidgetExtension(
           };
           const renderFailure = (error: unknown): void => {
             if (extension.type !== "widget-preview" || mount !== undefined) return;
+            diagnosticSurface?.remove();
+            diagnosticSurface = null;
             failureSurface?.remove();
             const presentation = previewFailurePresentation(error);
             const surface = args.container.ownerDocument.createElement("section");
@@ -239,9 +247,22 @@ export function createFrontendWidgetExtension(
             opening = (async () => {
               const previous = mount;
               let next: IWidgetBrowserMount | undefined;
+              const nextDiagnostic = { surface: null as HTMLElement | null };
               let fatalError: unknown;
               let committed = false;
               const initialViewport = viewportSync.current();
+              const retainGuestDiagnostic = (diagnostic: TWidgetHostDiagnostic): void => {
+                if (extension.type !== "widget-preview" || !fnIsWidgetGuestReportedError(diagnostic)) return;
+                nextDiagnostic.surface ??= createWidgetGuestReportedErrorSurface(
+                  args.container.ownerDocument,
+                  diagnostic,
+                );
+                if (committed && mount === next && !nextDiagnostic.surface.isConnected) {
+                  diagnosticSurface?.remove();
+                  diagnosticSurface = nextDiagnostic.surface;
+                  args.container.append(nextDiagnostic.surface);
+                }
+              };
               const retireFatalMount = async (failedMount: IWidgetBrowserMount, error: unknown): Promise<void> => {
                 await retireFatalWidgetMount({
                   canRenderFailure: () => mount === undefined
@@ -252,6 +273,8 @@ export function createFrontendWidgetExtension(
                   isCurrent: () => mount === failedMount,
                   renderFailure,
                   retire: () => {
+                    diagnosticSurface?.remove();
+                    diagnosticSurface = null;
                     mount = undefined;
                     mounts.delete(args.node.id);
                   },
@@ -267,6 +290,7 @@ export function createFrontendWidgetExtension(
                   props: extension.uiProps,
                   signal: args.signal,
                   onDiagnostic: (diagnostic) => {
+                    retainGuestDiagnostic(diagnostic);
                     if (diagnostic.fatal) showErrorToast(
                       diagnostic.message,
                       fnWidgetHostDiagnosticDescription(diagnostic),
@@ -282,6 +306,7 @@ export function createFrontendWidgetExtension(
                 await next.ready();
                 if (fatalError !== undefined) throw fatalError;
               } catch (error) {
+                nextDiagnostic.surface?.remove();
                 await next?.dispose("replacement-failed").catch(() => undefined);
                 if (previous === undefined) renderFailure(error);
                 const failed = previewFailurePresentation(error);
@@ -290,10 +315,15 @@ export function createFrontendWidgetExtension(
               }
               failureSurface?.remove();
               failureSurface = null;
+              diagnosticSurface?.remove();
+              diagnosticSurface = nextDiagnostic.surface;
               mount = next;
               viewportSync.attach(next, initialViewport);
               mounts.set(args.node.id, next);
               committed = true;
+              if (diagnosticSurface !== null && !diagnosticSurface.isConnected) {
+                args.container.append(diagnosticSurface);
+              }
               if (fatalError !== undefined) {
                 await retireFatalMount(next, fatalError);
                 return false;
@@ -328,6 +358,7 @@ export function createFrontendWidgetExtension(
             reloadByNode.delete(args.node.id);
             mounts.delete(args.node.id);
             failureSurface?.remove();
+            diagnosticSurface?.remove();
             await mount?.dispose("canvas-unmount");
           };
         },

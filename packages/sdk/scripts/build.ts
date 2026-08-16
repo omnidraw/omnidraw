@@ -90,6 +90,7 @@ if (!result.success) {
 rmSync(path.join(distDir, "internal/capsule"), { recursive: true, force: true })
 rmSync(path.join(distDir, "internal/browser-host.d.ts"), { force: true })
 rmSync(path.join(distDir, "internal/effect-runtime.d.ts"), { force: true })
+rmSync(path.join(distDir, "internal/fn.capsule-mount-error-diagnostic.d.ts"), { force: true })
 
 const cli = await Bun.build({
   entrypoints: [path.join(sdkDir, "src/cli.mjs")],

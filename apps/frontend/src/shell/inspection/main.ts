@@ -13,6 +13,7 @@ import type {
   TWidgetTheme,
 } from "@omnidraw/sdk";
 import { createWidgetBrowserHost, WidgetHostError } from "@omnidraw/sdk/host";
+import { fnWidgetHostDiagnosticRuntimeEvent } from "./fn.widget-host-diagnostic-runtime-event";
 
 type TBrowserMountJob = Readonly<{
   jobId: string;
@@ -138,18 +139,13 @@ function projectTarget(target: TWidgetInspectionTarget) {
 function recordDiagnostic(diagnostic: TWidgetHostDiagnostic): void {
   if (runtimeEvents.length >= 100) return;
   const details = mountHandle?.diagnostics();
-  runtimeEvents.push(Object.freeze({
-    origin: "sdk",
-    phase: diagnostic.category,
-    code: diagnostic.code.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128) || "WIDGET_HOST",
-    severity: diagnostic.fatal ? "error" : "warning",
-    message: `sdk ${diagnostic.code.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128) || "WIDGET_HOST"}`,
-    ...(details === undefined ? {} : {
+  runtimeEvents.push(fnWidgetHostDiagnosticRuntimeEvent(
+    diagnostic,
+    details === undefined ? undefined : {
       artifactHash: details.artifactHash,
-      runtimeGeneration: details.generation,
-      lifecycleGeneration: details.generation,
-    }),
-  }));
+      generation: details.generation,
+    },
+  ));
 }
 
 function recordShellFailure(code: string): void {
