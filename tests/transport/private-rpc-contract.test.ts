@@ -149,6 +149,7 @@ describe('private Effect RPC client/server contract parity', () => {
         canvasId: 'canvas-1',
         widgetId: 'widget-1',
         sessionId: 'session-1',
+        approvalPolicy: { mode: 'manual' },
         mode: 'reuse',
       },
       idempotencyKey: 'stable-key-1',

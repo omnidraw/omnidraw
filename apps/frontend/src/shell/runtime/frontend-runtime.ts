@@ -124,6 +124,7 @@ export function createLiveFrontendRuntime(args: Readonly<{
           canvasId: scope.canvasId,
           widgetId: scope.componentId,
           sessionId: scope.sessionId,
+          approvalPolicy: scope.approvalPolicy,
           mode: "reuse",
         }, { signal: lifetime.signal });
       },

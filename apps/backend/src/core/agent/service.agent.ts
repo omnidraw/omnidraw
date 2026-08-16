@@ -11,6 +11,12 @@ export type TAgentConnectRequest = Readonly<{
   canvasId: string;
   widgetId: string;
   sessionId: string;
+  approvalPolicy:
+    | Readonly<{ mode: 'always-approve' | 'manual' }>
+    | Readonly<{
+        mode: 'ai-review';
+        reviewerModel: Readonly<{ provider: string; modelId: string }>;
+      }>;
   mode?: 'reuse' | 'replace';
 }>;
 

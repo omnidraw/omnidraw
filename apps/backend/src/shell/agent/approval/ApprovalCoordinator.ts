@@ -30,7 +30,7 @@ type TApprovalCoordinatorConfig = {
   createId: () => string;
   now: () => Date;
   authorize?: TToolAuthorizer;
-  policy?: () => TApprovalPolicy;
+  policy?: (chatId: string) => TApprovalPolicy;
   reviewer?: TApprovalReviewer;
   onChanged?: (event: TApprovalCoordinatorEvent) => void;
 };
@@ -59,7 +59,7 @@ export class ApprovalCoordinator {
   readonly #createId: () => string;
   readonly #now: () => Date;
   readonly #authorize?: TToolAuthorizer;
-  readonly #policy: () => TApprovalPolicy;
+  readonly #policy: (chatId: string) => TApprovalPolicy;
   readonly #reviewer?: TApprovalReviewer;
   readonly #onChanged?: TApprovalCoordinatorConfig['onChanged'];
   readonly #pending = new Map<string, TPendingApproval>();
@@ -93,7 +93,7 @@ export class ApprovalCoordinator {
     }
     const id = this.#createId();
     if (this.#pending.has(id)) return Promise.reject(new Error('Approval ID collision.'));
-    const policy = this.#policy();
+    const policy = this.#policy(args.chatId);
     const exactArgs = this.#deepFreeze(structuredClone(args.exactArgs));
     const view: TApprovalView = this.#deepFreeze({
       id,

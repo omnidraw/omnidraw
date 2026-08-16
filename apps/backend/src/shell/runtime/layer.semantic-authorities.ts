@@ -65,6 +65,7 @@ export function agentAuthorityFromLive(
         request.widgetId,
         request.sessionId,
         request.canvasId,
+        request.approvalPolicy,
         request.mode,
       ),
       catch: agentFailure,

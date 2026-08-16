@@ -5,6 +5,7 @@ export const apiChatConnect = baseAgentOs.chat.connect.handler(async ({ input, c
     input.widgetId,
     input.sessionId,
     input.canvasId,
+    input.approvalPolicy,
     input.mode ?? 'reuse',
   )
 })

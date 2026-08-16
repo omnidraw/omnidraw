@@ -6,7 +6,7 @@ import { apiAuthLogout } from "./api.auth.logout";
 import { apiAuthStatus } from "./api.auth.status";
 import { apiAgentEvents } from "./api.events";
 import { apiGetDefinitions } from "./api.setting.get";
-import { apiUpdateApprovalPolicy } from './api.setting.approvalPolicy.update';
+import { apiChatApprovalPolicyUpdate } from './api.chat.approvalPolicy.update';
 import { apiChatCancel } from "./api.chat.cancel";
 import { apiChatApprovalGet } from "./api.chat.approval.get";
 import { apiChatApprovalList } from "./api.chat.approval.list";
@@ -26,9 +26,6 @@ import { apiApprovalResolve } from './api.approval.resolve';
 const agentHandlers = {
     settings: {
         get: apiGetDefinitions,
-        approvalPolicy: {
-            update: apiUpdateApprovalPolicy,
-        },
     },
     auth: {
         login: apiAuthLogin,
@@ -42,6 +39,9 @@ const agentHandlers = {
     },
     chat: {
         connect: apiChatConnect,
+        approvalPolicy: {
+            update: apiChatApprovalPolicyUpdate,
+        },
         history: apiChatHistory,
         prompt: apiChatPrompt,
         edit: apiChatEdit,

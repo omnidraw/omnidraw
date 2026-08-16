@@ -142,6 +142,84 @@ describe('process-local approvals', () => {
     ]);
   });
 
+  test('makes reviewer failure manually actionable only in the owning chat', async () => {
+    const events: unknown[] = [];
+    const coordinator = new ApprovalCoordinator({
+      createId: () => 'approval-fallback',
+      now: () => new Date(),
+      policy: () => ({
+        mode: 'ai-review',
+        reviewerModel: { provider: 'provider-a', modelId: 'retired-model' },
+      }),
+      reviewer: { review: async () => { throw new Error('Reviewer unavailable'); } },
+      onChanged: (event) => events.push(event),
+    });
+    const result = coordinator.request({
+      chatId: 'chat-owner',
+      toolCallId: 'tool-fallback',
+      kind: 'resource-update',
+      exactArgs: { resourceId: 'resource-a' },
+      summary: 'Update resource',
+      risk: 'medium',
+      safeDetails: { resourceId: 'resource-a' },
+      execute: async () => 'executed',
+    });
+    await waitForApproval();
+    await waitForApproval();
+
+    expect(coordinator.list('chat-owner')).toEqual([
+      expect.objectContaining({ id: 'approval-fallback', policyMode: 'ai-review' }),
+    ]);
+    expect(coordinator.list('chat-sibling')).toEqual([]);
+    await expect(coordinator.resolve('chat-sibling', 'approval-fallback', 'approve'))
+      .rejects.toThrow('not found');
+    await coordinator.resolve('chat-owner', 'approval-fallback', 'approve');
+    await expect(result).resolves.toBe('executed');
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'created',
+      reason: 'reviewer-unavailable',
+    }));
+  });
+
+  test('isolates chat policies and captures each policy when the request is created', async () => {
+    const policies = new Map([
+      ['chat-a', { mode: 'manual' } as const],
+      ['chat-b', { mode: 'always-approve' } as const],
+    ]);
+    let nextId = 0;
+    let executions = 0;
+    const coordinator = new ApprovalCoordinator({
+      createId: () => `approval-${++nextId}`,
+      now: () => new Date('2026-08-16T12:00:00.000Z'),
+      policy: (chatId) => policies.get(chatId) ?? { mode: 'manual' },
+    });
+    const request = (chatId: string) => coordinator.request({
+      chatId,
+      toolCallId: `tool-${chatId}-${nextId + 1}`,
+      kind: 'resource-create' as const,
+      exactArgs: { chatId },
+      summary: `Create for ${chatId}`,
+      risk: 'medium' as const,
+      safeDetails: { chatId },
+      execute: async () => { executions += 1; },
+    });
+
+    const capturedManual = request('chat-a');
+    policies.set('chat-a', { mode: 'always-approve' });
+    const futureAutomatic = request('chat-a');
+    const siblingAutomatic = request('chat-b');
+    await expect(Promise.all([futureAutomatic, siblingAutomatic])).resolves.toEqual([undefined, undefined]);
+    expect(executions).toBe(2);
+    expect(coordinator.list('chat-a')).toEqual([
+      expect.objectContaining({ id: 'approval-1', policyMode: 'manual' }),
+    ]);
+    expect(coordinator.list('chat-b')).toEqual([]);
+
+    await coordinator.resolve('chat-a', 'approval-1', 'approve');
+    await expect(capturedManual).resolves.toBeUndefined();
+    expect(executions).toBe(3);
+  });
+
   test('cancellation wins while automatic approval authorization is pending', async () => {
     let releaseAuthorization!: (allowed: boolean) => void;
     let executions = 0;

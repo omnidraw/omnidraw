@@ -75,7 +75,7 @@ const fakeAgentCapability = {
   resolveChatApproval: unusedCapability,
   setApiKey: unusedCapability,
   settings: unusedCapability,
-  updateApprovalPolicy: unusedCapability,
+  setChatApprovalPolicy: unusedCapability,
 } satisfies TApiContext['agent'];
 
 const fakeContext = {

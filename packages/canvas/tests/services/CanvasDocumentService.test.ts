@@ -121,7 +121,7 @@ function chatWidget(id = 'widget-live'): TWidgetFrameNode {
         schemaVersion: 1,
         type: 'ui-widget',
         kind: 'ai-chat',
-        payload: { sessionId: 'session-live' },
+        payload: { sessionId: 'session-live', approvalPolicy: { mode: 'manual' } },
       },
     },
   };

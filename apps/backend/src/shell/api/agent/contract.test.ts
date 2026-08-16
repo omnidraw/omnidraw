@@ -62,6 +62,28 @@ describe('agent contract', () => {
     expect(schema.safeParse({ ...base, entryId: '' }).success).toBe(false);
   });
 
+  test('requires a complete chat-scoped approval policy on connect and update', () => {
+    const connect = api().chat.connect.inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    const update = api().chat.approvalPolicy.update.inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    const scope = { canvasId: 'canvas-1', widgetId: 'chat', sessionId: 'session' };
+
+    expect(connect.safeParse({ ...scope, approvalPolicy: { mode: 'manual' } }).success).toBe(true);
+    expect(connect.safeParse(scope).success).toBe(false);
+    expect(connect.safeParse({
+      ...scope,
+      approvalPolicy: { mode: 'ai-review', reviewerModel: { provider: '', modelId: 'reviewer' } },
+    }).success).toBe(false);
+    expect(update.safeParse({
+      widgetId: scope.widgetId,
+      sessionId: scope.sessionId,
+      policy: { mode: 'always-approve' },
+    }).success).toBe(true);
+  });
+
   test('gives action-only procedures an explicit JSON null result', () => {
     const actionOutputs = [
       api().auth.abort.outputSchema,

@@ -18,6 +18,7 @@ one reactive runtime.
 
 `createAiChatCanvasExtension` owns the canonical `kind: "ai-chat"` Canvas
 contribution. Its node payload durably stores the current session, model, and
-thinking level, and the injected port may expose `subscribeReconnect` so each
-mounted component can reinstall semantic session intent after a transport
-generation changes.
+thinking level plus its protected-operation approval policy. New chats start in
+manual mode. The injected port may expose `subscribeReconnect` so each mounted
+component can reinstall that exact chat-scoped semantic intent after a
+transport generation changes.

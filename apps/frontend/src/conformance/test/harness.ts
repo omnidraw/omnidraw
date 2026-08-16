@@ -161,7 +161,7 @@ export function createLiveConformanceHarness(): TFullConformanceHarness {
           chatCalls.push("agent.chat.connect");
           driver.request({
             path: "agent.chat.connect",
-            input: { canvasId: scope.canvasId, widgetId: scope.componentId, sessionId: scope.sessionId, mode: "reuse" },
+            input: { canvasId: scope.canvasId, widgetId: scope.componentId, sessionId: scope.sessionId, approvalPolicy: scope.approvalPolicy, mode: "reuse" },
           });
         },
         catch: frontendTransportFailure,

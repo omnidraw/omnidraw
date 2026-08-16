@@ -1165,6 +1165,7 @@ async function placeShortAiChatWidget(page: Page): Promise<Readonly<{
   assert.equal(connectInput.widgetId, aiNode.id);
   assert.equal(connectInput.canvasId, record(command.input).canvasId);
   assert.ok(typeof connectInput.sessionId === 'string' && connectInput.sessionId.length > 0);
+  assert.deepEqual(record(connectInput.approvalPolicy), { mode: 'manual' });
   assert.equal(
     await page.getByText('Could not connect to AI chat', { exact: true }).count(),
     0,
@@ -1265,6 +1266,41 @@ async function persistAiChatStateAcrossReload(
     },
   });
 
+  const policyUpdateBefore = (await readRpcRequests(page, 'agent.chat.approvalPolicy.update')).length;
+  canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  const approvalButton = page.getByRole('button', {
+    name: /^Protected operations approval mode:/,
+  });
+  await approvalButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.ok((await approvalButton.getAttribute('aria-label'))?.includes('Manual approval'));
+  await approvalButton.click();
+  await page.getByRole('menuitemradio', { name: /^Always approve/ }).click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: policyUpdateBefore,
+    label: 'the exact-chat approval policy update',
+    page,
+    path: 'agent.chat.approvalPolicy.update',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.widgetId === initial.widgetId
+        && input.sessionId === initial.sessionId
+        && record(input.policy).mode === 'always-approve';
+    },
+  });
+  await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the durable per-chat approval preference',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      return node?.id === initial.widgetId
+        && record(aiChatPayload(node).approvalPolicy).mode === 'always-approve';
+    },
+  });
+  await approvalButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  assert.ok((await approvalButton.getAttribute('aria-label'))?.includes('Always approve'));
+
   const connectBefore = (await readRpcRequests(page, 'agent.chat.connect')).length;
   const resetBefore = (await readRpcRequests(page, 'agent.chat.newSession')).length;
   canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
@@ -1277,7 +1313,9 @@ async function persistAiChatStateAcrossReload(
     path: 'agent.chat.connect',
     predicate: (request) => {
       const input = record(request.input);
-      return input.widgetId === initial.widgetId && input.sessionId !== initial.sessionId;
+      return input.widgetId === initial.widgetId
+        && input.sessionId !== initial.sessionId
+        && record(input.approvalPolicy).mode === 'manual';
     },
   });
   const nextSessionId = record(nextConnect.input).sessionId;
@@ -1302,6 +1340,7 @@ async function persistAiChatStateAcrossReload(
       const payload = node === null ? {} : aiChatPayload(node);
       const model = record(payload.model);
       return node?.id === initial.widgetId && payload.sessionId === nextSessionId
+        && record(payload.approvalPolicy).mode === 'manual'
         && payload.thinkingLevel === 'xhigh'
         && model.provider === selectedModelIdentity.provider
         && model.modelId === selectedModelIdentity.modelId;
@@ -1320,7 +1359,9 @@ async function persistAiChatStateAcrossReload(
     path: 'agent.chat.connect',
     predicate: (request) => {
       const input = record(request.input);
-      return input.widgetId === initial.widgetId && input.sessionId === nextSessionId;
+      return input.widgetId === initial.widgetId
+        && input.sessionId === nextSessionId
+        && record(input.approvalPolicy).mode === 'manual';
     },
   });
   await showChatComposer(page);
@@ -1330,6 +1371,9 @@ async function persistAiChatStateAcrossReload(
     `Reload lost model preference '${selectedModelName}': ${preferenceText}`,
   );
   assert.ok(preferenceText.includes('Xhigh'), `Reload lost xhigh preference: ${preferenceText}`);
+  assert.ok((await page.getByRole('button', {
+    name: /^Protected operations approval mode:/,
+  }).getAttribute('aria-label'))?.includes('Manual approval'));
   await assertNoHandledErrorAlerts(page, 'New Chat and preference reload');
   return Object.freeze({ sessionId: nextSessionId as string, widgetId: initial.widgetId });
 }

@@ -25,6 +25,7 @@ async function createService(
   authorizeToolCall?: ConstructorParameters<typeof AgentService>[0]['authorizeToolCall'],
   chats = createTestChats(),
   chatScope = createTestChatScope(),
+  eventPublisherService = createTestEvents(),
 ) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-prompt-'));
   tempDirs.push(dataPath);
@@ -33,7 +34,7 @@ async function createService(
     world: testAgentWorld(),
     dataPath,
     widgetDraftsRoot: join(dataPath, 'widgets', 'drafts'),
-    eventPublisherService: createTestEvents(),
+    eventPublisherService,
     chats,
     chatScope,
     widgetReferenceResolver: createTestWidgetReferenceResolver(),
@@ -237,6 +238,139 @@ describe('AgentService.promptChat', () => {
     expect(service.listChatApprovals(widgetId, sessionId).map((item) => item.id)).toEqual([approval.id]);
     await service.resolveChatApproval(widgetId, sessionId, approval.id, 'reject');
     await toolResult;
+  });
+
+  test('keeps approval policy isolated by chat, preserves it on reuse, and clears it on retirement', async () => {
+    const created: string[] = [];
+    const service = await createService({
+      createResource: async ({ kind, name }) => {
+        created.push(name);
+        return {
+          id: `resource-${created.length}`,
+          kind,
+          name,
+          status: 'ready',
+          lastError: null,
+          createdAtSec: '2026-08-16 00:00:00',
+          updatedAtSec: '2026-08-16 00:00:00',
+        };
+      },
+    });
+    const manualChat = testChatId('policy-manual-chat');
+    const automaticChat = testChatId('policy-automatic-chat');
+    await service.connectChat('widget-manual', manualChat, 'canvas-test', { mode: 'manual' }, 'reuse');
+    await service.connectChat('widget-automatic', automaticChat, 'canvas-test', { mode: 'always-approve' }, 'reuse');
+    const manualTool = service.sessionMap['widget-manual'][manualChat].session.getToolDefinition('od_resource_create');
+    const automaticTool = service.sessionMap['widget-automatic'][automaticChat].session.getToolDefinition('od_resource_create');
+    if (!manualTool || !automaticTool) throw new Error('Resource create tool was not registered.');
+
+    const manualResult = manualTool.execute('tool-manual', { kind: 'kv', name: 'Manual' }, undefined, undefined, {} as never);
+    await waitForChatApproval(service, 'widget-manual', manualChat);
+    await expect(automaticTool.execute('tool-auto', { kind: 'kv', name: 'Automatic' }, undefined, undefined, {} as never))
+      .resolves.toBeDefined();
+    expect(created).toEqual(['Automatic']);
+    expect(service.listChatApprovals('widget-automatic', automaticChat)).toEqual([]);
+    await service.resolveChatApproval('widget-manual', manualChat, service.listChatApprovals('widget-manual', manualChat)[0]!.id, 'approve');
+    await manualResult;
+    expect(created).toEqual(['Automatic', 'Manual']);
+
+    await service.connectChat('widget-automatic', automaticChat, 'canvas-test');
+    const reusedTool = service.sessionMap['widget-automatic'][automaticChat].session.getToolDefinition('od_resource_create');
+    await expect(reusedTool!.execute('tool-reuse', { kind: 'kv', name: 'Reuse' }, undefined, undefined, {} as never))
+      .resolves.toBeDefined();
+    expect(created).toContain('Reuse');
+
+    await service.newChatSession('widget-automatic', automaticChat);
+    await service.connectChat('widget-automatic', automaticChat, 'canvas-test');
+    const retiredTool = service.sessionMap['widget-automatic'][automaticChat].session.getToolDefinition('od_resource_create');
+    const retiredResult = retiredTool!.execute('tool-retired', { kind: 'kv', name: 'Retired' }, undefined, undefined, {} as never);
+    const retiredApproval = await waitForChatApproval(service, 'widget-automatic', automaticChat);
+    expect(retiredApproval.policyMode).toBe('manual');
+    await service.resolveChatApproval('widget-automatic', automaticChat, retiredApproval.id, 'reject');
+    await retiredResult;
+    expect(created).not.toContain('Retired');
+  });
+
+  test('reconnects an unavailable persisted reviewer and falls back to an owning-chat manual approval', async () => {
+    const created: string[] = [];
+    const events = createTestEvents();
+    const service = await createService({
+      createResource: async ({ kind, name }) => {
+        created.push(name);
+        return {
+          id: 'resource-reviewer-fallback',
+          kind,
+          name,
+          status: 'ready',
+          lastError: null,
+          createdAtSec: '2026-08-16 00:00:00',
+          updatedAtSec: '2026-08-16 00:00:00',
+        };
+      },
+    }, undefined, createTestChats(), createTestChatScope(), events);
+    const widgetId = 'widget-reviewer-fallback';
+    const sessionId = testChatId('policy-reviewer-fallback');
+    const persistedPolicy = {
+      mode: 'ai-review' as const,
+      reviewerModel: { provider: 'retired-provider', modelId: 'retired-model' },
+    };
+
+    await service.connectChat(widgetId, sessionId, 'canvas-test', persistedPolicy, 'reuse');
+    service.modelRuntime = {
+      getModel: () => undefined,
+      hasConfiguredAuth: () => false,
+    } as never;
+    await service.connectChat(widgetId, sessionId, 'canvas-test', persistedPolicy, 'reuse');
+
+    const tool = service.sessionMap[widgetId][sessionId].session.getToolDefinition('od_resource_create');
+    if (!tool) throw new Error('Resource create tool was not registered.');
+    const result = tool.execute(
+      'tool-reviewer-fallback',
+      { kind: 'kv', name: 'Reviewer fallback' },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    const approval = await waitForChatApproval(service, widgetId, sessionId);
+    expect(approval).toMatchObject({
+      chatId: sessionId,
+      policyMode: 'ai-review',
+    });
+    expect(approval).not.toHaveProperty('decisionSource');
+    expect(created).toEqual([]);
+    expect(() => service.resolveChatApproval('different-widget', sessionId, approval.id, 'approve'))
+      .toThrow('No connected agent session');
+    await service.resolveChatApproval(widgetId, sessionId, approval.id, 'approve');
+    await expect(result).resolves.toBeDefined();
+    expect(created).toEqual(['Reviewer fallback']);
+
+    const iterator = events.subscribeAgentEvents({ afterSequence: 0 })[Symbol.asyncIterator]();
+    const published = [];
+    for (let index = 0; index < events.getAgentEventCursor(); index += 1) {
+      const next = await iterator.next();
+      if (!next.done) published.push(next.value);
+    }
+    await iterator.return?.();
+    expect(published).toContainEqual(expect.objectContaining({
+      kind: 'approval',
+      widgetId,
+      sessionId,
+      type: 'created',
+      reason: 'reviewer-unavailable',
+      approval: expect.objectContaining({ policyMode: 'ai-review' }),
+    }));
+  });
+
+  test('rejects a chat-scoped AI reviewer that is not in the current backend model catalog', async () => {
+    const service = await createService();
+    const sessionId = testChatId('policy-reviewer-validation');
+    await service.connectChat('widget-reviewer', sessionId, 'canvas-test', { mode: 'manual' });
+    service.modelRuntime = { getModel: () => undefined } as never;
+
+    await expect(service.setChatApprovalPolicy('widget-reviewer', sessionId, {
+      mode: 'ai-review',
+      reviewerModel: { provider: 'missing-provider', modelId: 'missing-model' },
+    })).rejects.toThrow('selected approval reviewer model is unavailable');
   });
 
   test('resolves overlapping initial same-scope connects only after a live runtime is committed', async () => {

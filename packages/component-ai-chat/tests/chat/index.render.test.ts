@@ -1,6 +1,6 @@
 import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IAiChatPort, TAiChatStreamEvent } from "../../src/index.js";
+import type { IAiChatActions, IAiChatPort, TAiChatStreamEvent } from "../../src/index.js";
 import { AiChat } from "../../src/index.js";
 import {
   createTestAiChatPort,
@@ -203,6 +203,8 @@ describe("AiChat portable shell", () => {
     expect(container?.querySelector(".omnidraw-ai-chat-header")).toBeNull();
     settingsAction?.();
     await vi.waitFor(() => expect(container?.querySelector(".omnidraw-ai-chat-view--settings")).not.toBeNull());
+    expect(container?.textContent).not.toContain("Approval policy");
+    expect(container?.textContent).not.toContain("Always approve");
     expect(setActionState).toHaveBeenLastCalledWith("settings", { pressed: true, label: "Back to chat" });
   });
 
@@ -249,6 +251,7 @@ describe("AiChat portable shell", () => {
       canvasId: "canvas-1",
       componentId: "surface-1",
       sessionId: "conversation-1",
+      approvalPolicy: { mode: "manual" },
       mode: "reuse",
     });
 
@@ -261,6 +264,7 @@ describe("AiChat portable shell", () => {
     const onStateChange = vi.fn();
     mount(createTestAiChatPort(), {
       preference: {
+        approvalPolicy: { mode: "always-approve" },
         model: { provider: "openai", modelId: "gpt-test" },
         thinkingLevel: "high",
       },
@@ -288,10 +292,51 @@ describe("AiChat portable shell", () => {
     expect(onStateChange).toHaveBeenCalledWith({
       sessionId: "conversation-2",
       preference: {
+        approvalPolicy: { mode: "manual" },
         model: { provider: "openai", modelId: "gpt-test" },
         thinkingLevel: "high",
       },
     });
+  });
+
+  it("persists a composer policy change through only the mounted chat scope", async () => {
+    const setApprovalPolicy = vi.fn<IAiChatActions["setApprovalPolicy"]>(
+      async (request) => request.policy,
+    );
+    const onStateChange = vi.fn();
+    mount(createTestAiChatPort({ setApprovalPolicy }), {
+      preference: { approvalPolicy: { mode: "manual" } },
+      onStateChange,
+    });
+
+    const trigger = await vi.waitFor(() => {
+      const button = container?.querySelector<HTMLButtonElement>(
+        "button[aria-label^='Protected operations approval mode']",
+      );
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    trigger.click();
+    const automatic = await vi.waitFor(() => {
+      const button = [...container?.querySelectorAll<HTMLButtonElement>(
+        "[role='menuitemradio']",
+      ) ?? []].find((candidate) => candidate.textContent?.includes("Always approve"));
+      expect(button).not.toBeUndefined();
+      return button!;
+    });
+    automatic.click();
+
+    await vi.waitFor(() => expect(setApprovalPolicy).toHaveBeenCalledWith({
+      componentId: "surface-1",
+      sessionId: "conversation-1",
+      policy: { mode: "always-approve" },
+    }));
+    await vi.waitFor(() => expect(onStateChange).toHaveBeenCalledWith({
+      sessionId: "conversation-1",
+      preference: { approvalPolicy: { mode: "always-approve" } },
+    }));
+    expect(trigger.dataset.mode).toBe("always-approve");
+    expect(trigger.getAttribute("aria-label")).toContain("Always approve");
   });
 
   it("submits with an unchanged durable preference without emitting a no-op state write", async () => {
@@ -326,10 +371,10 @@ describe("AiChat portable shell", () => {
         }],
         providers: ["openai"],
         providersWithCredentials: ["openai"],
-        approvalPolicy: { mode: "manual" },
       }),
     }), {
       preference: {
+        approvalPolicy: { mode: "manual" },
         model: { provider: "openai", modelId: "gpt-test" },
         thinkingLevel: "xhigh",
       },

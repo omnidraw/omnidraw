@@ -16,6 +16,7 @@ type TRenderChatTabSettings = {
   defaultProvider?: string
   defaultThinkingLevel?: TChatComposerThinkingLevel
   models: TChatComposerModel[]
+  providersWithCredentials: string[]
 }
 
 const MOCK_MESSAGE_HISTORY = [
@@ -130,6 +131,7 @@ function ensureComponentDomMocks() {
 
 function renderChatTab(settings: TRenderChatTabSettings = {
   defaultThinkingLevel: "low" as const,
+  providersWithCredentials: ["openai-codex"],
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
@@ -162,6 +164,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onPrompt: async () => {},
     onEditMessage: async () => true,
     onPreferenceChange: () => {},
+    aiChatPreference: { approvalPolicy: { mode: "manual" } },
     onResolveApproval: async () => {},
     settings,
     mentions: [{ id: "db-1", label: "db", kind: "Database" }],
@@ -757,6 +760,7 @@ describe("ChatTab rendered message history", () => {
       defaultModel: "gpt-test",
       defaultProvider: "openai-codex",
       defaultThinkingLevel: "low" as const,
+      providersWithCredentials: ["openai-codex"],
       models: [
         { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
         { id: "gpt-next", input: ["text" as const], provider: "openai-codex", name: "GPT Next" },

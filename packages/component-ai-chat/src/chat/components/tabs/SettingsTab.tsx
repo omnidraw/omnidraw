@@ -1,13 +1,10 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import type {
   IAiChatActions,
-  TAiChatApprovalPolicy,
   TAiChatLoginStatus,
   TAiChatSettings,
 } from "../../../contracts.js"
 import type { AiChatEffectRuntime } from "../../../internal/stream-lifecycle.js"
-
-type TApprovalMode = TAiChatApprovalPolicy["mode"]
 
 type TProviderId = "openai-codex" | "github-copilot"
 type TLoginStatus =
@@ -55,49 +52,6 @@ export function SettingsTab(props: IProps) {
   const [apiKeyDraftByProvider, setApiKeyDraftByProvider] = createSignal<Record<string, string>>({})
   const [apiKeyStatusByProvider, setApiKeyStatusByProvider] = createSignal<Record<string, TApiKeyStatus>>({})
   const [expandedApiKeyProviderMap, setExpandedApiKeyProviderMap] = createSignal<Record<string, boolean>>({})
-  const [approvalPolicy, setApprovalPolicy] = createSignal(props.settings?.approvalPolicy ?? { mode: "manual" } as const)
-  const [approvalPolicyStatus, setApprovalPolicyStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
-  const reviewerModels = createMemo(() => {
-    const configured = configuredProviders()
-    return (props.settings?.models ?? []).filter((model) => configured.has(model.provider))
-  })
-  const reviewerModelKey = (model: { provider: string; modelId: string }) => JSON.stringify([model.provider, model.modelId])
-  const selectedReviewerKey = () => {
-    const policy = approvalPolicy()
-    if (policy.mode === "ai-review") return reviewerModelKey(policy.reviewerModel)
-    const firstModel = reviewerModels()[0]
-    return firstModel
-      ? reviewerModelKey({ provider: firstModel.provider, modelId: firstModel.id })
-      : ""
-  }
-
-  createEffect(() => {
-    if (props.settings?.approvalPolicy) setApprovalPolicy(props.settings.approvalPolicy)
-  })
-
-  const saveApprovalPolicy = (mode: TApprovalMode, reviewerKey = selectedReviewerKey()) => {
-    let policy: TAiChatApprovalPolicy
-    if (mode === "ai-review") {
-      if (!reviewerKey) {
-        setApprovalPolicyStatus("error")
-        return
-      }
-      const [provider, modelId] = JSON.parse(reviewerKey) as [string, string]
-      policy = { mode, reviewerModel: { provider, modelId } }
-    } else {
-      policy = { mode }
-    }
-    setApprovalPolicyStatus("saving")
-    props.lifecycle.startLatest("settings:approval-policy", {
-      run: () => props.actions.setApprovalPolicy(policy),
-      onSuccess(saved) {
-        setApprovalPolicy(saved)
-        setApprovalPolicyStatus("saved")
-      },
-      onError: () => setApprovalPolicyStatus("error"),
-    })
-  }
-
   const setProviderState = (provider: string, state: TLoginUiState) => {
     setLoginStateByProvider((current) => ({ ...current, [provider]: state }))
   }
@@ -260,54 +214,6 @@ export function SettingsTab(props: IProps) {
           <p>Connect a Pi subscription provider or add an API key for one of the supported providers.</p>
         </section>
       </Show>
-
-      <section class="omnidraw-ai-chat-settings-section">
-        <div class="omnidraw-ai-chat-settings-header">
-          <span class="omnidraw-ai-chat-kicker">Protected operations</span>
-          <p>Choose how future resource mutations are approved. Scope checks, redaction, and execute-once guards always remain active.</p>
-        </div>
-        <label class="omnidraw-ai-chat-api-key-field">
-          <span>Approval policy</span>
-          <select
-            aria-label="Protected operation approval policy"
-            value={approvalPolicy().mode}
-            disabled={approvalPolicyStatus() === "saving"}
-            onChange={(event) => void saveApprovalPolicy(event.currentTarget.value as TApprovalMode)}
-          >
-            <option value="manual">Ask me every time</option>
-            <option value="ai-review">Ask an independent AI reviewer</option>
-            <option value="always-approve">Always approve</option>
-          </select>
-        </label>
-        <p>{approvalPolicy().mode === "manual"
-          ? "You make every decision. Requests remain pending without a timer until the chat lifecycle ends."
-          : approvalPolicy().mode === "ai-review"
-            ? "A separate model sees only redacted operation details. Reviewer failures fall back to manual approval."
-            : "Future requests execute automatically only after current authorization is checked again."}</p>
-        <Show when={approvalPolicy().mode === "ai-review"}>
-          <label class="omnidraw-ai-chat-api-key-field">
-            <span>Reviewer model</span>
-            <select
-              aria-label="Approval reviewer model"
-              value={selectedReviewerKey()}
-              disabled={approvalPolicyStatus() === "saving" || reviewerModels().length === 0}
-              onChange={(event) => void saveApprovalPolicy("ai-review", event.currentTarget.value)}
-            >
-              <For each={reviewerModels()}>{(model) => (
-                <option value={reviewerModelKey({ provider: model.provider, modelId: model.id })}>
-                  {model.name} ({model.provider})
-                </option>
-              )}</For>
-            </select>
-          </label>
-          <Show when={reviewerModels().length === 0}>
-            <p role="status">Connect a provider before selecting an AI reviewer.</p>
-          </Show>
-        </Show>
-        <Show when={approvalPolicyStatus() === "saving"}><p role="status">Saving approval policy…</p></Show>
-        <Show when={approvalPolicyStatus() === "saved"}><p role="status">Approval policy saved.</p></Show>
-        <Show when={approvalPolicyStatus() === "error"}><p role="alert">Approval policy could not be saved.</p></Show>
-      </section>
 
       <section class="omnidraw-ai-chat-settings-section">
         <div class="omnidraw-ai-chat-settings-header">

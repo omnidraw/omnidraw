@@ -88,7 +88,7 @@ describe('production Agent host shell', () => {
               schemaVersion: 1,
               type: 'ui-widget',
               kind: 'ai-chat',
-              payload: { sessionId: chatId },
+              payload: { sessionId: chatId, approvalPolicy: { mode: 'manual' } },
             },
           },
         },

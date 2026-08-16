@@ -309,6 +309,34 @@ describe('public package release graph', () => {
     expect(visited.size).toBe(5)
   })
 
+  test('keeps AI Chat approval policy transport-neutral and chat-scoped', async () => {
+    const publicContract = await readFile(
+      join(ROOT, 'packages/component-ai-chat/src/contracts.ts'),
+      'utf8',
+    )
+    expect(publicContract).toContain('approvalPolicy: TAiChatApprovalPolicy')
+    expect(publicContract).not.toMatch(/(?:from\s+|import\s*\()["'](?:effect|@\/|#backend|@omnidraw\/(?:backend|frontend))/)
+
+    const settings = await readFile(
+      join(ROOT, 'packages/component-ai-chat/src/chat/components/tabs/SettingsTab.tsx'),
+      'utf8',
+    )
+    expect(settings).not.toContain('setApprovalPolicy')
+    expect(settings).not.toContain('approvalPolicy')
+    expect(await exists(join(ROOT, 'apps/backend/src/shell/agent/approval/ApprovalPolicyStore.ts'))).toBe(false)
+    expect(await exists(join(ROOT, 'apps/backend/src/shell/api/agent/api.setting.approvalPolicy.update.ts'))).toBe(false)
+
+    const agent = await readFile(join(ROOT, 'apps/backend/src/shell/agent/AgentService.ts'), 'utf8')
+    expect(agent).toContain('#chatApprovalPolicies = new Map')
+    expect(agent).toContain('#chatApprovalPolicies.delete(sessionId)')
+    const privateContract = await readFile(
+      join(ROOT, 'apps/frontend/src/core/app/private-operation-contract.ts'),
+      'utf8',
+    )
+    expect(privateContract).toContain('"agent.chat.approvalPolicy.update"')
+    expect(privateContract).not.toContain('"agent.setting.approvalPolicy.update"')
+  })
+
   test('stages standalone manifests with exact internal versions', async () => {
     const packageSet = await readPublicPackageSet(ROOT)
     for (const [name, directory] of Object.entries(PUBLIC_PACKAGE_DIRECTORIES)) {

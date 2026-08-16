@@ -1,4 +1,4 @@
-import type { TAiChatToolIcon } from "../../../contracts.js"
+import type { TAiChatApprovalPolicy, TAiChatToolIcon } from "../../../contracts.js"
 
 export type TChatComposerMentionTarget =
   | { type: "resource"; resourceId: string }
@@ -66,6 +66,8 @@ export type TChatComposerProps = {
   mentions?: readonly TChatComposerMention[]
   commands?: readonly TChatComposerCommand[]
   models?: readonly TChatComposerModel[]
+  reviewerModels?: readonly TChatComposerModel[]
+  approvalPolicy: TAiChatApprovalPolicy
   defaultModel?: string
   defaultProvider?: string
   defaultThinkingLevel?: TChatComposerThinkingLevel
@@ -76,6 +78,7 @@ export type TChatComposerProps = {
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   onResolvedPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
+  onApprovalPolicyChange?: (policy: TAiChatApprovalPolicy) => Promise<boolean>
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
   onNewChat?: () => void

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { apiApprovalResolve } from './api.approval.resolve';
 import { apiChatApprovalResolve } from './api.chat.approval.resolve';
+import { apiChatApprovalPolicyUpdate } from './api.chat.approvalPolicy.update';
 import { apiChatConnect } from './api.chat.connect';
 import { apiChatEdit } from './api.chat.edit';
 import { apiChatHistory } from './api.chat.history';
@@ -22,12 +23,32 @@ describe('agent API forwarding', () => {
       canvasId: 'canvas-1',
       widgetId: 'widget-1',
       sessionId: 'session-1',
+      approvalPolicy: { mode: 'always-approve' },
       mode: 'replace',
     });
 
     expect(calls).toEqual([
-      ['connect', 'widget-1', 'session-1', 'canvas-1', 'replace'],
+      ['connect', 'widget-1', 'session-1', 'canvas-1', { mode: 'always-approve' }, 'replace'],
     ]);
+  });
+
+  test('forwards policy updates through the exact chat scope', async () => {
+    const calls: unknown[][] = [];
+    const update = apiChatApprovalPolicyUpdate.callable({ context: {
+      agent: {
+        async setChatApprovalPolicy(...args: unknown[]) {
+          calls.push(args);
+          return args[2];
+        },
+      },
+    } as never });
+
+    await expect(update({
+      widgetId: 'widget-1',
+      sessionId: 'session-1',
+      policy: { mode: 'manual' },
+    })).resolves.toEqual({ mode: 'manual' });
+    expect(calls).toEqual([['widget-1', 'session-1', { mode: 'manual' }]]);
   });
 
   test('forwards canonical history reads and edit selections by entry ID', async () => {

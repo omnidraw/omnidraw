@@ -91,6 +91,7 @@ export function createFrontendSimRuntime(args: Readonly<{
             canvasId: scope.canvasId,
             widgetId: scope.componentId,
             sessionId: scope.sessionId,
+            approvalPolicy: scope.approvalPolicy,
             mode: "reuse",
           },
         });

@@ -14,7 +14,7 @@ import { fnGetChatHistoryScrollKey } from "./fn.chat-history-scroll-key"
 import { ApprovalList } from "../ApprovalList"
 import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetToolResultWidgetDraft } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
-import type { TAiChatBrowserPort } from "../../../ports"
+import type { IAiChatBrowserPort, TAiChatApprovalPolicy } from "../../../contracts.js"
 import type { AiChatEffectRuntime } from "../../../internal/stream-lifecycle.js"
 
 type TAgentSettings = {
@@ -22,9 +22,11 @@ type TAgentSettings = {
   defaultProvider?: string
   defaultThinkingLevel?: TChatComposerThinkingLevel
   models: readonly TChatComposerModel[]
+  providersWithCredentials: readonly string[]
 }
 
 type TAiChatPreference = {
+  approvalPolicy: TAiChatApprovalPolicy
   model?: {
     provider: string
     modelId: string
@@ -38,7 +40,7 @@ const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
 const TOOL_RESULT_COLLAPSED_LINE_LIMIT = 5
 
 interface IProps {
-  browser: TAiChatBrowserPort
+  browser: IAiChatBrowserPort
   lifecycle: AiChatEffectRuntime
   onLogError: (error: unknown) => void
   settings?: TAgentSettings
@@ -51,6 +53,7 @@ interface IProps {
   draftText?: string
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
+  onApprovalPolicyChange?: (policy: TAiChatApprovalPolicy) => Promise<boolean>
   mentions?: readonly TChatComposerMention[]
   approvals: readonly TAiChatApproval[]
   onPrompt: (args: { text: string; images: TChatPromptImage[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => void
@@ -163,7 +166,7 @@ function isAllowedPromptImageMimeType(mimeType: string): mimeType is TChatPrompt
   return ALLOWED_IMAGE_MIME_TYPES.has(mimeType as TChatPromptImage["mimeType"])
 }
 
-async function encodePromptImage(browser: TAiChatBrowserPort, image: TChatComposerImage): Promise<TChatPromptImage | undefined> {
+async function encodePromptImage(browser: IAiChatBrowserPort, image: TChatComposerImage): Promise<TChatPromptImage | undefined> {
   const file = image.file
 
   if (!isAllowedPromptImageMimeType(file.type) || file.size > MAX_PROMPT_IMAGE_BYTES) {
@@ -184,7 +187,7 @@ async function encodePromptImage(browser: TAiChatBrowserPort, image: TChatCompos
   }
 }
 
-async function encodePromptImages(browser: TAiChatBrowserPort, images: TChatComposerImage[]) {
+async function encodePromptImages(browser: IAiChatBrowserPort, images: TChatComposerImage[]) {
   const limitedImages = images.slice(0, MAX_PROMPT_IMAGE_COUNT)
   const encoded = await Promise.all(limitedImages.map((image) => encodePromptImage(browser, image)))
 
@@ -449,7 +452,7 @@ function ChatWidgetErrorBanner(props: {
 }
 
 function ToolCallRow(props: {
-  browser: TAiChatBrowserPort
+  browser: IAiChatBrowserPort
   toolCall: { id: string; name: string }
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
@@ -474,7 +477,7 @@ function ToolCallRow(props: {
 }
 
 function ChatHistoryMessage(props: {
-  browser: TAiChatBrowserPort
+  browser: IAiChatBrowserPort
   lifecycle: AiChatEffectRuntime
   item: TChatHistoryItem
   approvals: readonly TAiChatApproval[]
@@ -698,6 +701,10 @@ export function ChatTab(props: IProps) {
   const [editText, setEditText] = createSignal("")
   const [editPending, setEditPending] = createSignal(false)
   const [resolvedComposerPreference, setResolvedComposerPreference] = createSignal<TChatComposerPreferenceChange>({})
+  const reviewerModels = createMemo(() => {
+    const configured = new Set(props.settings?.providersWithCredentials ?? [])
+    return (props.settings?.models ?? []).filter((model) => configured.has(model.provider))
+  })
   const visibleMessageHistory = createMemo(() => props.messageHistory.filter((item) => fnIsChatMessageVisible(item.message)))
   const visibleToolCallIds = createMemo(() => new Set(
     visibleMessageHistory().flatMap((item) => fnGetChatToolCalls(item.message).map((toolCall) => toolCall.id)),
@@ -896,6 +903,8 @@ export function ChatTab(props: IProps) {
         placeholder="Ask about your canvas. Type @ to add context"
         mentions={props.mentions}
         models={props.settings?.models}
+        reviewerModels={reviewerModels()}
+        approvalPolicy={props.aiChatPreference?.approvalPolicy ?? { mode: "manual" }}
         defaultModel={props.aiChatPreference?.model?.modelId ?? props.settings?.defaultModel}
         defaultProvider={props.aiChatPreference?.model?.provider ?? props.settings?.defaultProvider}
         defaultThinkingLevel={props.aiChatPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
@@ -906,6 +915,7 @@ export function ChatTab(props: IProps) {
         onDraftTextChange={props.onDraftTextChange}
         onPreferenceChange={props.onPreferenceChange}
         onResolvedPreferenceChange={setResolvedComposerPreference}
+        onApprovalPolicyChange={props.onApprovalPolicyChange}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}

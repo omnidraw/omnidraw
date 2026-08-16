@@ -44,7 +44,7 @@ describe("AI Chat Canvas extension", () => {
       schemaVersion: 1,
       type: "ui-widget",
       kind: "ai-chat",
-      payload: { sessionId: "session-1" },
+      payload: { sessionId: "session-1", approvalPolicy: { mode: "manual" } },
     });
   });
 
@@ -64,8 +64,9 @@ describe("AI Chat Canvas extension", () => {
   it("persists New Chat state through one Canvas upsert without duplicate titlebar chrome", async () => {
     let registration: TCanvasWidgetHostRegistration | undefined;
     const commit = vi.fn();
+    const connect = vi.fn(async () => ({ history: [] }));
     const contribution = createAiChatCanvasExtension({
-      port: createTestAiChatPort(),
+      port: createTestAiChatPort({ connect }),
       browser: createTestChatBrowser(),
       host: createTestHostActions(),
       createSessionId: () => "session-next",
@@ -121,22 +122,58 @@ describe("AI Chat Canvas extension", () => {
           kind: "ai-chat",
           payload: {
             sessionId: "session-current",
+            approvalPolicy: {
+              mode: "ai-review",
+              reviewerModel: { provider: "openai", modelId: "reviewer-test" },
+            },
             model: { provider: "openai", modelId: "gpt-test" },
             thinkingLevel: "xhigh",
           },
         },
       },
     };
-    const host = document.createElement("div");
+    let host = document.createElement("div");
     document.body.append(host);
     const setTitlebar = vi.fn();
-    const cleanup = await registration?.mount({
+    let cleanup = await registration?.mount({
       node,
       container: host,
       signal: new AbortController().signal,
       setTitlebar,
       onNodeChange: () => () => undefined,
     });
+
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledWith({
+      canvasId: "canvas-a",
+      componentId: "chat-persisted",
+      sessionId: "session-current",
+      approvalPolicy: {
+        mode: "ai-review",
+        reviewerModel: { provider: "openai", modelId: "reviewer-test" },
+      },
+      mode: "reuse",
+    }));
+    if (typeof cleanup === "function") cleanup();
+    host.remove();
+
+    host = document.createElement("div");
+    document.body.append(host);
+    cleanup = await registration?.mount({
+      node,
+      container: host,
+      signal: new AbortController().signal,
+      setTitlebar,
+      onNodeChange: () => () => undefined,
+    });
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+    expect(connect).toHaveBeenLastCalledWith(expect.objectContaining({
+      componentId: "chat-persisted",
+      sessionId: "session-current",
+      approvalPolicy: {
+        mode: "ai-review",
+        reviewerModel: { provider: "openai", modelId: "reviewer-test" },
+      },
+    }));
 
     const actions = await vi.waitFor(() => {
       const button = host.querySelector<HTMLButtonElement>(
@@ -169,6 +206,7 @@ describe("AI Chat Canvas extension", () => {
               kind: "ai-chat",
               payload: {
                 sessionId: "session-next",
+                approvalPolicy: { mode: "manual" },
                 model: { provider: "openai", modelId: "gpt-test" },
                 thinkingLevel: "xhigh",
               },

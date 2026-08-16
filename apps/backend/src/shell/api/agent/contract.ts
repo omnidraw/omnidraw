@@ -35,7 +35,6 @@ const ZAgentSettings = z.object({
     provider: z.string(),
     name: z.string()
   }).array(),
-  approvalPolicy: ZApprovalPolicy,
 });
 
 const ZAgentLogin = z.object({
@@ -76,6 +75,7 @@ const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() }
 const ZCanvasId = z.string().min(1).max(200)
 const ZAgentChatConnectInput = ZAgentChatScope.extend({
   canvasId: ZCanvasId,
+  approvalPolicy: ZApprovalPolicy,
   mode: z.enum(['reuse', 'replace']).optional(),
 })
 const ZWidgetKey = z.string().min(1).max(100)
@@ -219,12 +219,12 @@ export const agentContract = pc.router({
   settings: {
     get: pc
       .output(ZAgentSettings),
-    approvalPolicy: {
-      update: pc.input(ZApprovalPolicy).output(ZApprovalPolicy),
-    },
   },
   chat: {
     connect: pc.input(ZAgentChatConnectInput).output(ZAgentChatConnect),
+    approvalPolicy: {
+      update: pc.input(ZAgentChatScope.extend({ policy: ZApprovalPolicy })).output(ZApprovalPolicy),
+    },
     history: pc.input(ZAgentChatScope).output(z.array(ZAgentChatHistoryItem).max(100_000)),
     prompt: pc.input(ZAgentChatPrompt).output(z.null()),
     edit: pc.input(ZAgentChatEdit).output(z.array(ZAgentChatHistoryItem).max(100_000)),

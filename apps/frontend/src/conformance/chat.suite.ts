@@ -17,6 +17,7 @@ export async function chatConformanceSuite(harness: TChatConformanceHarness): Pr
     canvasId: "canvas-1",
     componentId: "widget-1",
     sessionId: "session-1",
+    approvalPolicy: { mode: "manual" },
   }));
   if (harness.calls().join(",") !== "agent.chat.connect,agent.chat.history") {
     throw new Error("Chat history was read before reuse connection completed.");

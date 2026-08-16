@@ -34,7 +34,6 @@ describe('AgentService settings projection', () => {
       providersWithCredentials: [],
       providers: [],
       models: [],
-      approvalPolicy: { mode: 'manual' },
     });
     expect(JSON.parse(JSON.stringify(settings))).toEqual(settings);
   });
