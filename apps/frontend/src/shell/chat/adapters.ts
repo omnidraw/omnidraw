@@ -135,7 +135,7 @@ function approval(value: unknown): TAiChatApproval {
   };
 }
 
-function normalizeAgentEvent(value: unknown): TAiChatStreamEvent | null {
+export function normalizeAgentEvent(value: unknown): TAiChatStreamEvent | null {
   const item = record(value);
   if (item.kind === "widget-catalog") {
     return { kind: "catalog", catalog: "widgets" };
@@ -159,8 +159,11 @@ function normalizeAgentEvent(value: unknown): TAiChatStreamEvent | null {
     ? item.componentId
     : typeof item.widgetId === "string" ? item.widgetId : "";
   const sessionId = typeof item.sessionId === "string" ? item.sessionId : "";
-  if (item.kind === "approval" || item.type === "approval") {
-    const type = item.action === "resolved" || item.action === "canceled" ? item.action : "created";
+  if (item.kind === "approval") {
+    const type = item.type === "created" || item.type === "resolved" || item.type === "canceled"
+      ? item.type
+      : null;
+    if (type === null) return null;
     return {
       kind: "approval",
       componentId,

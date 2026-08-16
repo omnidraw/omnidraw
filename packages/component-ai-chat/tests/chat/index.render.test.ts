@@ -107,6 +107,59 @@ describe("AiChat portable shell", () => {
     expect(container?.textContent).not.toContain(SYNTHETIC_PNG_BASE64);
   });
 
+  it("renders a resolved policy approval as executed without manual action buttons", async () => {
+    const toolCallMessage = {
+      role: "assistant",
+      content: [{
+        type: "toolCall",
+        id: "tool-call-policy",
+        name: "od_resource_create",
+        arguments: {},
+      }],
+    };
+    const stream = deferredStream();
+    mount(createTestAiChatPort({
+      connect: async () => ({
+        history: [{ entryId: "assistant-policy", message: toolCallMessage }],
+      }),
+    }, stream.stream));
+
+    stream.emit({
+      kind: "approval",
+      componentId: "surface-1",
+      sessionId: "conversation-1",
+      type: "resolved",
+      decision: "approve",
+      approval: {
+        id: "approval-policy",
+        chatId: "conversation-1",
+        toolCallId: "tool-call-policy",
+        kind: "resource-create",
+        summary: "Create cache",
+        risk: "medium",
+        warnings: [],
+        details: { resourceId: "cache-1" },
+        createdAtSec: "2026-08-16T10:00:00.000Z",
+        policyMode: "always-approve",
+        decisionSource: "policy",
+      },
+    });
+
+    const approval = await vi.waitFor(() => {
+      const card = container?.querySelector<HTMLElement>(
+        ".omnidraw-ai-chat-tool-call .omnidraw-ai-chat-approval",
+      );
+      expect(card).not.toBeNull();
+      return card!;
+    });
+    expect(approval.dataset.status).toBe("executed");
+    expect(approval.textContent).toContain("Decision: policy");
+    expect(approval.textContent).not.toContain("Reject");
+    expect(approval.textContent).not.toContain("Approve");
+    expect(container?.querySelectorAll(".omnidraw-ai-chat-approval__actions")).toHaveLength(0);
+    expect(container?.querySelectorAll(".omnidraw-ai-chat-approvals--floating .omnidraw-ai-chat-approval")).toHaveLength(0);
+  });
+
   it("cancels with the portable session scope and restores canonical history", async () => {
     const message = { role: "assistant", content: "Completed before cancellation.", timestamp: 1 };
     const cancel = vi.fn(async () => ({ canceled: true, running: false }));
