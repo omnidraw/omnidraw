@@ -1,6 +1,7 @@
 import Bot from "lucide-solid/icons/bot"
-import Check from "lucide-solid/icons/check"
 import Hand from "lucide-solid/icons/hand"
+import ShieldAlert from "lucide-solid/icons/shield-alert"
+import ShieldCheck from "lucide-solid/icons/shield-check"
 import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js"
 import type { TAiChatApprovalPolicy } from "../../../contracts.js"
 import type { TChatComposerModel } from "./interface"
@@ -15,7 +16,7 @@ type TProps = Readonly<{
 
 const MODE_LABELS = Object.freeze({
   manual: "Manual approval",
-  "ai-review": "AI review",
+  "ai-review": "Approve for me",
   "always-approve": "Always approve",
 })
 
@@ -90,8 +91,8 @@ export function ApprovalPolicyPicker(props: TProps) {
       >
         <Switch>
           <Match when={props.policy.mode === "manual"}><Hand size={18} aria-hidden="true" /></Match>
-          <Match when={props.policy.mode === "ai-review"}><Bot size={18} aria-hidden="true" /></Match>
-          <Match when={props.policy.mode === "always-approve"}><Check size={18} aria-hidden="true" /></Match>
+          <Match when={props.policy.mode === "ai-review"}><ShieldCheck size={18} aria-hidden="true" /></Match>
+          <Match when={props.policy.mode === "always-approve"}><ShieldAlert size={18} aria-hidden="true" /></Match>
         </Switch>
         <span class="omnidraw-ai-chat-visually-hidden">{label()}</span>
       </button>
@@ -140,8 +141,8 @@ export function ApprovalPolicyPicker(props: TProps) {
             disabled={saving() || props.reviewerModels.length === 0}
             onClick={() => selectMode("ai-review")}
           >
-            <Bot size={16} aria-hidden="true" />
-            <span><strong>AI review</strong><small>Independent review; falls back to manual</small></span>
+            <ShieldCheck size={16} aria-hidden="true" />
+            <span><strong>Approve for me</strong><small>Independent review; falls back to manual</small></span>
           </button>
           <button
             type="button"
@@ -150,7 +151,7 @@ export function ApprovalPolicyPicker(props: TProps) {
             disabled={saving()}
             onClick={() => selectMode("always-approve")}
           >
-            <Check size={16} aria-hidden="true" />
+            <ShieldAlert size={16} aria-hidden="true" />
             <span><strong>Always approve</strong><small>Still rechecks current authorization</small></span>
           </button>
 

@@ -101,7 +101,7 @@
     },
     "packages/component-ai-chat": {
       "name": "@omnidraw/component-ai-chat",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "dependencies": {
         "@omnidraw/canvas": "workspace:*",
         "dompurify": "^3.4.11",

@@ -87,7 +87,15 @@ describe("ApprovalPolicyPicker", () => {
     expect(document.activeElement).toBe(trigger)
     expect(onChange).toHaveBeenCalledOnce()
     expect(trigger?.dataset.mode).toBe("ai-review")
-    expect(trigger?.getAttribute("aria-label")).toContain("AI review")
+    expect(trigger?.getAttribute("aria-label")).toContain("Approve for me")
+    expect(trigger?.querySelector(".lucide-shield-check")).not.toBeNull()
+  })
+
+  it("uses the alert shield for always approve", () => {
+    mount({ mode: "always-approve" })
+    const trigger = container?.querySelector<HTMLButtonElement>("[aria-haspopup='menu']")
+    expect(trigger?.getAttribute("aria-label")).toContain("Always approve")
+    expect(trigger?.querySelector(".lucide-shield-alert")).not.toBeNull()
   })
 
   it("announces an unavailable saved reviewer and permits a safe manual fallback", async () => {
