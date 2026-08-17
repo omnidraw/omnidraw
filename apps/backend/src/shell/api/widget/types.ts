@@ -96,6 +96,17 @@ type TWidgetPreviewDiagnosticView = Readonly<{
   path: string | null;
 }>;
 
+export type TWidgetPreviewBuildState = Readonly<{
+  phase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+  acceptedGeneration: number | null;
+  current: boolean;
+  diagnostics: readonly Readonly<{
+    code: string;
+    message: string;
+    path: string | null;
+  }>[];
+}>;
+
 /** Process-owned Preview mount payload; never persisted. */
 type TWidgetPreviewMountView = Readonly<{
   canvasId: string;
@@ -140,16 +151,7 @@ type TWidgetPreviewInvokeResult = Readonly<{
 }>;
 
 type TWidgetPreviewApiCapability = Readonly<{
-  buildState(widgetKey: string): Promise<Readonly<{
-    phase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
-    acceptedGeneration: number | null;
-    current: boolean;
-    diagnostics: readonly Readonly<{
-      code: string;
-      message: string;
-      path: string | null;
-    }>[];
-  }>>;
+  buildState(widgetKey: string): Promise<TWidgetPreviewBuildState>;
   open(
     args: TWidgetPreviewSessionInput,
     signal?: AbortSignal,

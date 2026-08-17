@@ -47,6 +47,10 @@ select {
   letter-spacing: inherit;
 }
 
+@keyframes omnidraw-widget-preview-spin {
+  to { transform: rotate(360deg); }
+}
+
 button,
 [type="button"],
 [type="reset"],

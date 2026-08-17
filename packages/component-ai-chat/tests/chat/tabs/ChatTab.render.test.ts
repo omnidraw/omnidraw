@@ -485,7 +485,7 @@ describe("ChatTab rendered message history", () => {
     expect(root.textContent).not.toContain("Widget drafts")
   })
 
-  it("offers Open Preview on a successful widget create result and calls back with the draft name", async () => {
+  it("automatically opens a successful widget create result and keeps a focus action", async () => {
     const onOpenWidgetPreview = vi.fn()
     const root = renderChatTab(undefined, [{
       role: "toolResult",
@@ -504,14 +504,12 @@ describe("ChatTab rendered message history", () => {
       isError: false,
     }], { onOpenWidgetPreview })
 
-    const openButton = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__preview-action button"))
-      .find((button) => button.textContent === "Open Preview")
+    const openButton = root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-history__preview-action button")
     expect(openButton).not.toBeUndefined()
-    openButton?.click()
     await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" }))
   })
 
-  it("offers Open Preview on a successful widget validate result but not on failures or prose", () => {
+  it("automatically opens a successful widget validate result but not failures or prose", async () => {
     const onOpenWidgetPreview = vi.fn()
     const root = renderChatTab(undefined, [
       {
@@ -551,8 +549,47 @@ describe("ChatTab rendered message history", () => {
 
     const buttons = root.querySelectorAll(".omnidraw-ai-chat-history__preview-action button")
     expect(buttons).toHaveLength(1)
-    buttons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" })
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" }))
+  })
+
+  it("opens one Preview per draft when create and validate both succeed", async () => {
+    const onOpenWidgetPreview = vi.fn()
+    renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolCallId: "call-widget-create",
+        toolName: "od_widget_create",
+        content: [{ type: "text", text: "Created widget draft 'Shared Timer'." }],
+        details: {
+          name: "Shared Timer",
+          mountPath: "widgets/Shared Timer",
+          source: "draft",
+          draft: true,
+          template: "plain",
+          server: false,
+          files: ["omnidraw.json", "ui/main.ts"],
+        },
+        isError: false,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-widget-validate",
+        toolName: "od_widget_validate",
+        content: [{ type: "text", text: "Widget 'Shared Timer' construction is valid." }],
+        details: {
+          name: "Shared Timer",
+          mountPath: "widgets/Shared Timer",
+          source: "draft",
+          ok: true,
+          draft: true,
+          previewExecution: "passed",
+        },
+        isError: false,
+      },
+    ], { onOpenWidgetPreview })
+
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith({ name: "Shared Timer" }))
+    expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
   })
 
   it("forwards vertical table wheel gestures to the chat scroller", () => {

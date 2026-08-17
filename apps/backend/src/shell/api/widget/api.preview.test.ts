@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { apiWidgetPreviewOpen, apiWidgetPreviewRebuildDraft } from './api.preview';
+import {
+  apiWidgetPreviewBuildState,
+  apiWidgetPreviewOpen,
+  apiWidgetPreviewRebuildDraft,
+} from './api.preview';
 
 const rejectedBuildState = Object.freeze({
   phase: 'rejected' as const,
@@ -13,6 +17,27 @@ const rejectedBuildState = Object.freeze({
 });
 
 describe('widget Preview API build failures', () => {
+  test('exposes the host build phase for a live Preview status surface', async () => {
+    const context = {
+      widgetPreview: {
+        buildState: async () => ({
+          phase: 'validating' as const,
+          acceptedGeneration: 8,
+          current: false,
+          diagnostics: [],
+        }),
+      },
+    } as never;
+
+    await expect(apiWidgetPreviewBuildState.callable({ context })({
+      widgetKey: 'notes-board',
+    })).resolves.toMatchObject({
+      phase: 'validating',
+      acceptedGeneration: 8,
+      current: false,
+    });
+  });
+
   test('carries the exact durable build state across a pre-guest open failure', async () => {
     const calls: string[] = [];
     const context = {

@@ -6,7 +6,7 @@
     "@omnidraw/canvas-contract": "1.0.0",
     "@omnidraw/canvas": "1.1.3",
     "@omnidraw/sdk": "0.12.1",
-    "@omnidraw/component-ai-chat": "0.8.2",
+    "@omnidraw/component-ai-chat": "0.8.3",
     "@omnidraw/theme": "0.6.0",
     "solid-js": "1.9.14"
   }

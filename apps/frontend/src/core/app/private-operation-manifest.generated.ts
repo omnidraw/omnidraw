@@ -84,6 +84,7 @@ export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "widget.publication.publishMetadata",
   "widget.publication.buildAndPublish",
   "widget.placement.resolve",
+  "widget.preview.buildState",
   "widget.preview.open",
   "widget.preview.rebuild",
   "widget.preview.rebuildDraft",

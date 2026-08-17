@@ -171,6 +171,16 @@ export type TWidgetTransportArtifact = Readonly<{
   functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
   identity?: Readonly<{ catalogGeneration?: number }>;
 }> & Readonly<Record<string, unknown>>;
+export type TWidgetPreviewBuildState = Readonly<{
+  phase: "unbuilt" | "build_required" | "building" | "validating" | "ready" | "rejected";
+  acceptedGeneration: number | null;
+  current: boolean;
+  diagnostics: readonly Readonly<{
+    code: string;
+    message: string;
+    path: string | null;
+  }>[];
+}>;
 type TWidgetAuthoringDiagnostic = Readonly<{ code: string; message: string; path: string | null }>;
 type TWidgetAuthoringResolvedDraft = Readonly<{
   catalogGeneration: number;
@@ -357,6 +367,7 @@ export type TPrivateRequestOperations = Readonly<{
   "widget.publication.publishMetadata": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.publication.buildAndPublish": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.placement.resolve": TOperation<Readonly<{ reference: Extract<TWidgetPlacementRef, { source: "published" }> }>, Readonly<{ kind: "published"; reference: Extract<TWidgetPlacementRef, { source: "published" }>; widgetKey: string; catalogGeneration: number; bounds: Readonly<{ width: number; height: number }> }>>;
+  "widget.preview.buildState": TOperation<Readonly<{ widgetKey: string }>, TWidgetPreviewBuildState>;
   "widget.preview.open": TOperation<Readonly<{ canvasId: string; elementId: string; widgetKey: string }>, TWidgetTransportArtifact>;
   "widget.preview.rebuild": TOperation<Readonly<{ canvasId: string; elementId: string; widgetKey: string }>, TWidgetTransportArtifact>;
   "widget.preview.rebuildDraft": TOperation<Readonly<{ widgetKey: string }>, Readonly<{ widgetKey: string; acceptedGeneration: number; buildIdentity: string }>>;

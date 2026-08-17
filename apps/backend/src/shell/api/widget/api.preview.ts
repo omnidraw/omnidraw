@@ -59,6 +59,10 @@ const apiWidgetPreviewOpen = baseWidgetOs.preview.open.handler(async ({ context,
   }
 });
 
+const apiWidgetPreviewBuildState = baseWidgetOs.preview.buildState.handler(({ context, input }) => (
+  context.widgetPreview.buildState(input.widgetKey)
+));
+
 const apiWidgetPreviewRebuild = baseWidgetOs.preview.rebuild.handler(async ({ context, input, signal }) => {
   try {
     return mountView(await context.widgetPreview.rebuild(input, signal));
@@ -92,6 +96,7 @@ const apiWidgetPreviewInvoke = baseWidgetOs.preview.invoke.handler(({ context, i
 ));
 
 export {
+  apiWidgetPreviewBuildState,
   apiWidgetPreviewClose,
   apiWidgetPreviewInvoke,
   apiWidgetPreviewLoad,

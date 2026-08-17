@@ -22,6 +22,7 @@ import {
 } from './api.publication';
 import { apiWidgetPlacementResolve } from './api.placement-resolve';
 import {
+  apiWidgetPreviewBuildState,
   apiWidgetPreviewClose,
   apiWidgetPreviewInvoke,
   apiWidgetPreviewLoad,
@@ -64,6 +65,7 @@ const widgetHandlers = {
     resolve: apiWidgetPlacementResolve,
   },
   preview: {
+    buildState: apiWidgetPreviewBuildState,
     open: apiWidgetPreviewOpen,
     rebuild: apiWidgetPreviewRebuild,
     rebuildDraft: apiWidgetPreviewRebuildDraft,

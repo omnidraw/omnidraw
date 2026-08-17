@@ -16,7 +16,10 @@ import type {
 } from "@omnidraw/sdk";
 import { createWidgetBrowserHost } from "@omnidraw/sdk/host";
 import type { FrontendRpcConnection } from "@/shell/transport/rpc";
-import type { TWidgetTransportArtifact } from "@/core/app/private-operation-contract";
+import type {
+  TWidgetPreviewBuildState,
+  TWidgetTransportArtifact,
+} from "@/core/app/private-operation-contract";
 import { mountWidgetTarget } from "./mount-target";
 
 type TTransportArtifact = TWidgetTransportArtifact;
@@ -158,6 +161,13 @@ export class FrontendWidgetRuntime {
         onFatal: request.onFatal,
       }),
     });
+  }
+
+  async buildState(
+    widgetKey: string,
+    signal?: AbortSignal,
+  ): Promise<TWidgetPreviewBuildState> {
+    return this.#rpc.request("widget.preview.buildState", { widgetKey }, { signal });
   }
 
   async dispose(): Promise<void> {

@@ -479,6 +479,7 @@ function ToolCallRow(props: {
 function ChatHistoryMessage(props: {
   browser: IAiChatBrowserPort
   lifecycle: AiChatEffectRuntime
+  onLogError: IProps["onLogError"]
   item: TChatHistoryItem
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
@@ -513,6 +514,16 @@ function ChatHistoryMessage(props: {
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
   const canSendEdit = () => props.editText.trim().length > 0 || fnChatMessageHasImage(message())
+  const requestPreview = (name: string) => {
+    if (previewPending()) return
+    setPreviewPending(true)
+    props.lifecycle.startLatest(`composer:preview:${name}`, {
+      run: () => Promise.resolve(props.onOpenWidgetPreview?.({ name })),
+      onSuccess: () => undefined,
+      onError: props.onLogError,
+      onFinally: () => setPreviewPending(false),
+    })
+  }
   const resizeEditor = () => {
     if (!editor) return
     editor.style.height = "auto"
@@ -661,17 +672,10 @@ function ChatHistoryMessage(props: {
               disabled={previewPending()}
               onClick={(event) => {
                 event.stopPropagation()
-                if (previewPending()) return
-                setPreviewPending(true)
-                props.lifecycle.startLatest(`composer:preview:${draft().name}`, {
-                  run: () => Promise.resolve(props.onOpenWidgetPreview?.({ name: draft().name })),
-                  onSuccess: () => undefined,
-                  onError: () => undefined,
-                  onFinally: () => setPreviewPending(false),
-                })
+                requestPreview(draft().name)
               }}
             >
-              {previewPending() ? "Opening Preview…" : "Open Preview"}
+              {previewPending() ? "Preparing Preview…" : "Focus Preview"}
             </button>
           </div>
         )}
@@ -811,6 +815,21 @@ export function ChatTab(props: IProps) {
     props.isCanceling ? "canceling" : "active",
   ].join(":")
 
+  const autoOpenedPreviewNames = new Set<string>()
+  createEffect(() => {
+    if (props.onOpenWidgetPreview === undefined) return
+    for (const item of visibleMessageHistory()) {
+      const draft = fnGetToolResultWidgetDraft(item.message)
+      if (draft === undefined || autoOpenedPreviewNames.has(draft.name)) continue
+      autoOpenedPreviewNames.add(draft.name)
+      props.lifecycle.startLatest(`composer:preview:${draft.name}`, {
+        run: () => Promise.resolve(props.onOpenWidgetPreview?.({ name: draft.name })),
+        onSuccess: () => undefined,
+        onError: props.onLogError,
+      })
+    }
+  })
+
   createEffect(() => {
     getChatScrollSignal()
 
@@ -852,6 +871,7 @@ export function ChatTab(props: IProps) {
                 <ChatHistoryMessage
                   browser={props.browser}
                   lifecycle={props.lifecycle}
+                  onLogError={props.onLogError}
                   item={item}
                   approvals={props.approvals}
                   onResolveApproval={props.onResolveApproval}

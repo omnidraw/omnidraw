@@ -31,6 +31,7 @@ import { sdkSchema } from '../sdk-schema';
 import type {
   TWidgetHostConfiguration,
   TWidgetPublicSigningKey,
+  TWidgetPreviewBuildState,
 } from './types';
 import type { TWidgetPreviewInspectResult } from '#backend/shell/agent';
 import type {
@@ -249,6 +250,17 @@ export const ZWidgetPreviewDiagnostic = z.object({
   message: z.string().min(1).max(4_096),
   code: z.string().min(1).max(100).nullable(),
   path: z.string().min(1).max(512).nullable(),
+}).strict();
+
+export const ZWidgetPreviewBuildState: z.ZodType<TWidgetPreviewBuildState> = z.object({
+  phase: z.enum(['unbuilt', 'build_required', 'building', 'validating', 'ready', 'rejected']),
+  acceptedGeneration: z.number().int().positive().nullable(),
+  current: z.boolean(),
+  diagnostics: z.array(z.object({
+    code: z.string().min(1).max(128),
+    message: z.string().max(2_000),
+    path: z.string().max(512).nullable(),
+  }).strict()).max(40),
 }).strict();
 
 export const ZWidgetPreviewMount = z.object({
@@ -637,6 +649,9 @@ const widgetContract = pc.router({
     }).strict()),
   }),
   preview: pc.router({
+    buildState: pc.input(z.object({
+      widgetKey: ZWidgetKey,
+    }).strict()).output(ZWidgetPreviewBuildState),
     open: pc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
     rebuild: pc.input(ZWidgetPreviewSessionIdentity).output(ZWidgetPreviewMount),
     rebuildDraft: pc.input(z.object({

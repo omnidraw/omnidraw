@@ -14,6 +14,8 @@ export const WIDGET_PREVIEW_ACTIONS = Object.freeze([
   { id: "remove", text: "Remove" },
 ] as const);
 
+export const WIDGET_PREVIEW_DEFAULT_BOUNDS = Object.freeze({ width: 360, height: 320 });
+
 export type TWidgetPreviewActionId = typeof WIDGET_PREVIEW_ACTIONS[number]["id"];
 
 /** Resolves both Canvas dropdown paths and direct title-bar action IDs. */

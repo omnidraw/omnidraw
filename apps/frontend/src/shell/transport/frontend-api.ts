@@ -43,7 +43,10 @@ export type TFrontendApi = Readonly<{
     path: Path,
     ...args: TPrivateStreamArguments<Path>
   ): Promise<TSafeResult<AsyncIterable<TPrivateStreamOutput<Path>>>>;
-  widgetCatalogEvents(input: Readonly<{ afterGeneration?: number }>): AsyncIterable<TPrivateStreamOutput<"widget.catalog.events">>;
+  widgetCatalogEvents(
+    input: Readonly<{ afterGeneration?: number }>,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): AsyncIterable<TPrivateStreamOutput<"widget.catalog.events">>;
 }>;
 
 export function createFrontendApi(args: Readonly<{
@@ -79,6 +82,7 @@ export function createFrontendApi(args: Readonly<{
 
   const widgetCatalogEvents = (
     input: Readonly<{ afterGeneration?: number }>,
+    options?: Readonly<{ signal?: AbortSignal }>,
   ): AsyncIterable<TPrivateStreamOutput<"widget.catalog.events">> => {
     const initial = input.afterGeneration;
     return args.rpc.resumableStream<"widget.catalog.events", number | undefined>({
@@ -87,6 +91,7 @@ export function createFrontendApi(args: Readonly<{
       input: (afterGeneration) => afterGeneration === undefined ? {} : { afterGeneration },
       advance: (cursor, event) => Math.max(cursor ?? 0, event.generation),
       isDuplicate: (cursor, event) => cursor !== undefined && event.generation <= cursor,
+      signal: options?.signal,
     });
   };
 

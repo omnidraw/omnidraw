@@ -20,6 +20,7 @@ import {
 } from './canvas-document-transport';
 import type { TFrontendRuntime } from '../runtime/frontend-runtime';
 import { startFrontendDatabaseEvents } from '../browser/database-events';
+import { createWidgetPreviewAutomation } from '../framework/feature/canvas-extension/preview-automation';
 
 type TCreateFrontendCanvasCompositionArgs = Readonly<{
   canvasId: string;
@@ -145,14 +146,17 @@ export function createFrontendCanvasComposition(
     args.canvasId,
   );
   const stopDatabaseEvents = startFrontendDatabaseEvents(args.runtime, args.canvasId);
+  const previewAutomation = createWidgetPreviewAutomation(args.runtime);
   const runtimeExtension = createFrontendAiChatExtension(args.runtime, {
     canvasId: args.canvasId,
     navigate: args.navigate,
+    ensureWidgetPreview: previewAutomation.ensure,
   });
   const widgetExtension = createFrontendWidgetExtension({
     runtime: args.runtime,
     placement: args.runtime.widgetPlacement,
     invalidateWidgets: () => args.runtime.catalogInvalidation.invalidate('widgets'),
+    previewAutomation,
   });
   const dependencies = Object.freeze({
     transport: createFrontendCanvasDocumentTransport(args.runtime),
@@ -169,7 +173,7 @@ export function createFrontendCanvasComposition(
     hostRetirement:
       args.runtime.canvasHostRetirement.registration,
     ...(diagnostics === undefined ? {} : { diagnostics }),
-    extensions: Object.freeze([runtimeExtension, widgetExtension]),
+    extensions: Object.freeze([widgetExtension, runtimeExtension]),
     toolbarContributions: frontendToolbarContributions(args.runtime),
   }) satisfies TCanvasDependencies;
 

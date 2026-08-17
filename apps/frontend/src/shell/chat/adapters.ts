@@ -431,6 +431,7 @@ export function createCanvasImagePort(runtime: TFrontendRuntime): TCanvasImagePo
 export function createFrontendAiChatExtension(runtime: TFrontendRuntime, args: {
   canvasId: string;
   navigate(path: string): void;
+  ensureWidgetPreview?(name: string): void | Promise<void>;
 }) {
   return createAiChatCanvasExtension({
     port: createChatPort(runtime, args.canvasId),
@@ -438,7 +439,8 @@ export function createFrontendAiChatExtension(runtime: TFrontendRuntime, args: {
     createSessionId: () => runtime.ownerWindow.crypto.randomUUID(),
     host: {
       openResource: (resourceId) => args.navigate(`/resources/${encodeURIComponent(resourceId)}`),
-      openWidgetPreview: ({ name }) => args.navigate(`/widgets/draft/${encodeURIComponent(name)}`),
+      openWidgetPreview: ({ name }) => args.ensureWidgetPreview?.(name)
+        ?? args.navigate(`/widgets/draft/${encodeURIComponent(name)}`),
       invalidateCatalog: (kind) => runtime.catalogInvalidation.invalidate(kind),
       subscribeCatalogInvalidation: (kind, listener) => runtime.catalogInvalidation.subscribe(kind, listener),
       logError: (error) => console.error(error),
