@@ -618,6 +618,12 @@ function reachableSourcePaths(ts, sources, entry) {
   return reachable;
 }
 
+function pathIsServerOnly(path, serverEntry) {
+  return path === serverEntry
+    || /(?:^|\/)server\//.test(path)
+    || /(?:^|\/)[^/]+\.server\.(?:[cm]?[jt]sx?)$/.test(path);
+}
+
 function validateSourcePolicy(ts, sourceFile, path, isServer, uiAllowsPagehide, diagnostics) {
   const visit = (node) => {
     const specifier = staticModuleSpecifier(ts, node);
@@ -873,9 +879,10 @@ async function checkWidget(args, signal) {
       return [file.path, sourceFile];
     }));
     const uiSources = reachableSourcePaths(ts, parsedSources, manifest.ui.entry);
-    const serverSources = manifest.server === undefined
+    const serverEntry = manifest.server?.entry ?? null;
+    const serverSources = serverEntry === null
       ? new Set()
-      : reachableSourcePaths(ts, parsedSources, manifest.server.entry);
+      : reachableSourcePaths(ts, parsedSources, serverEntry);
     const policyPaths = new Set([
       ...sourceFiles
         .map((file) => file.path)
@@ -886,11 +893,13 @@ async function checkWidget(args, signal) {
     for (const path of [...policyPaths].sort(compareText)) {
       const sourceFile = parsedSources.get(path);
       if (sourceFile === undefined) continue;
+      const isServer = pathIsServerOnly(path, serverEntry)
+        || (serverSources.has(path) && !uiSources.has(path));
       validateSourcePolicy(
         ts,
         sourceFile,
         path,
-        serverSources.has(path) && !uiSources.has(path),
+        isServer,
         !uiSources.has(path) || manifest.ui.apis.includes('WEBGL'),
         diagnostics,
       );

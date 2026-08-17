@@ -129,7 +129,7 @@
     },
     "packages/sdk": {
       "name": "@omnidraw/sdk",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "bin": {
         "omnidraw-widget": "./dist/cli.js",
       },

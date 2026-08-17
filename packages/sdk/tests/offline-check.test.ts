@@ -396,6 +396,74 @@ describe('omnidraw-widget offline check', () => {
     }
   }, 30_000);
 
+  test('allows @omnidraw/sdk/server on server modules imported by UI and forbids it in UI and shared modules', async () => {
+    const base = await mkdtemp('/tmp/omnidraw-offline-server-import-');
+    const root = join(base, 'project');
+    await mkdir(root);
+    try {
+      await createProject(root);
+      await mkdir(join(root, 'server'), { recursive: true });
+      await writeFile(join(root, 'server/main.server.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'const schema = {};',
+        'export const addContact = defineServerFunction({',
+        '  effect: "fn", input: schema, output: schema,',
+        '}, async () => ({}));',
+        'export const listContacts = defineServerFunction({',
+        '  effect: "fn", input: schema, output: schema,',
+        '}, async () => ({}));',
+        '',
+      ].join('\n'));
+      await writeFile(join(root, 'ui/main.ts'), [
+        'import { addContact, listContacts } from "../server/main.server";',
+        'void addContact;',
+        'void listContacts;',
+        '',
+      ].join('\n'));
+      await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify(manifest({
+        server: { entry: 'server/main.server.ts' },
+      }))}\n`);
+      const uiImportsServer = await runCheck(root);
+      expect(JSON.parse(uiImportsServer.stdout).checks).not.toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_IMPORT_FORBIDDEN',
+        location: expect.objectContaining({ file: 'widget://server/main.server.ts' }),
+      }));
+
+      await writeFile(join(root, 'ui/main.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'void defineServerFunction;',
+        '',
+      ].join('\n'));
+      const uiImportsServerSdk = await runCheck(root);
+      expect(JSON.parse(uiImportsServerSdk.stdout).checks).toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_IMPORT_FORBIDDEN',
+        location: expect.objectContaining({ file: 'widget://ui/main.ts', line: 1 }),
+      }));
+
+      await writeFile(join(root, 'ui/main.ts'), [
+        'const node = document.createElement("div");',
+        'document.body.append(node);',
+        '',
+      ].join('\n'));
+      await mkdir(join(root, 'shared'), { recursive: true });
+      await writeFile(join(root, 'shared/model.shared.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'void defineServerFunction;',
+        '',
+      ].join('\n'));
+      const sharedImportsServerSdk = await runCheck(root);
+      expect(JSON.parse(sharedImportsServerSdk.stdout).checks).toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_IMPORT_FORBIDDEN',
+        location: expect.objectContaining({ file: 'widget://shared/model.shared.ts', line: 1 }),
+      }));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test('fails closed on authored symlinks without following them', async () => {
     const base = await mkdtemp('/tmp/omnidraw-offline-symlink-');
     const root = join(base, 'project');

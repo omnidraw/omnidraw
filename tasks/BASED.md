@@ -221,7 +221,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B107](b/B107.md) - public package dev: Canvas Contract build races Canvas type watcher
 - [x]: [B108](b/B108.md) - widget validate: tsgo frontend-stack rebuilds during source-check npm ci
 - [ ]: [B109](b/B109.md) - SPA navigation: chat RPC teardown shows CHAT_BUSY as disconnect
-- [ ]: [B110](b/B110.md) - widget check: UI import of server entry rejects `@omnidraw/sdk/server`
+- [x]: [B110](b/B110.md) - widget check: UI import of server entry rejects `@omnidraw/sdk/server`
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
