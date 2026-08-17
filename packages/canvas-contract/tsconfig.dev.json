@@ -5,5 +5,12 @@
     "emitDeclarationOnly": true,
     "outDir": ".dev-dist",
     "tsBuildInfoFile": ".dev-dist/tsconfig.tsbuildinfo"
+  },
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
   }
 }

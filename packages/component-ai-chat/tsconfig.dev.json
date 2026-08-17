@@ -7,5 +7,12 @@
       "@omnidraw/canvas-contract/CONSTANTS": ["../canvas-contract/src/CONSTANTS.ts"],
       "@omnidraw/theme": ["../theme/src/index.ts"]
     }
+  },
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
   }
 }

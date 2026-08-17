@@ -11,5 +11,12 @@
     "sourceMap": false
   },
   "include": ["src"],
-  "exclude": ["tests"]
+  "exclude": ["tests"],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
 }

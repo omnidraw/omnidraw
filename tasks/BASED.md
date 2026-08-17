@@ -219,6 +219,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B105](b/B105.md) - Widget Preview: React select initialization blanks the Capsule guest
 - [x]: [B106](b/B106.md) - Widget Preview: integrate Capsule guest-reported error diagnostics
 - [x]: [B107](b/B107.md) - public package dev: Canvas Contract build races Canvas type watcher
+- [x]: [B108](b/B108.md) - widget validate: tsgo frontend-stack rebuilds during source-check npm ci
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -529,6 +530,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E41](e/E41.md) - widgets: filesystem-first publication and database hard cut
 - [x]: [E42](e/E42.md) - widgets: server-function mounts reject builder-signed capability digest (a04fb57b regression)
 - [x]: [E43](e/E43.md) - widgets: headless host-authoritative repair, build, and verification CLI
+- [x]: [E44](e/E44.md) - spurious frontend tsgo rebuilds when AI chat updates a widget (dev mode)
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions

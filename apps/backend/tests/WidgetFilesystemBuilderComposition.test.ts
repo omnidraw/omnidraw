@@ -16,6 +16,7 @@ import {
   type TWidgetManifestV1,
 } from '@omnidraw/sdk/contract';
 import { fnResolveOmnidrawHome } from '#backend/shell/config/fn.resolve-omnidraw-home';
+import { fnWidgetNpmScratchRoot } from '#backend/shell/widget/fn.widget-npm-scratch-root';
 import type { ICliConfig } from '../src/shell/cli/config';
 import { layerLiveMechanics } from '../src/shell/runtime/layer.live-mechanics';
 import {
@@ -181,6 +182,16 @@ describe('production filesystem widget builder composition', () => {
         }),
       );
       expect((await lstat(join(home.tempRoot, 'function-runtime'))).isDirectory()).toBe(true);
+      const widgetNpmScratchRoot = fnWidgetNpmScratchRoot({
+        tmpdir: tmpdir(),
+        homeDir: home.homeDir,
+      });
+      expect(widgetNpmScratchRoot.startsWith(`${home.homeDir}/`)).toBe(false);
+      expect((await lstat(join(widgetNpmScratchRoot, 'widget-builds'))).isDirectory()).toBe(true);
+      expect(await lstat(join(home.tempRoot, 'widget-builds')).then(() => true, () => false))
+        .toBe(false);
+      expect(await lstat(join(home.tempRoot, 'widget-source-checks')).then(() => true, () => false))
+        .toBe(false);
       await writeAcceptedReceipt(home.widgetsRoot, 'ui-only');
       await writeAcceptedReceipt(home.widgetsRoot, 'with-server');
       await widgetBuildGeneration.view('ui-only');

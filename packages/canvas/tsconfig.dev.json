@@ -12,5 +12,12 @@
   "references": [
     { "path": "../canvas-contract/tsconfig.dev.json" },
     { "path": "../theme/tsconfig.dev.json" }
-  ]
+  ],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
 }

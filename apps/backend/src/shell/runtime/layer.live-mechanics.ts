@@ -44,7 +44,7 @@ import {
 } from '#backend/shell/widget-state';
 import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'path';
 import { fileURLToPath } from 'node:url';
 import { ensureOmnidrawHome } from '#backend/shell/config/ensure-omnidraw-home';
@@ -57,6 +57,7 @@ import { DEFAULT_OSS_CELL_ID } from '#backend/shell/database/CONSTANTS';
 import type { ICliConfig } from '../cli/config';
 import { fnLocalRegistryNpmUserConfig } from '../registry/fn.local-registry-npm-userconfig';
 import { fnWidgetCapsuleBuilderIdentity } from '../widget/fn.widget-capsule-builder-identity';
+import { fnWidgetNpmScratchRoot } from '../widget/fn.widget-npm-scratch-root';
 import {
   WIDGET_CAPSULE_BUILD_IDENTITY,
   WIDGET_CAPSULE_BUILD_POLICY_ID,
@@ -291,9 +292,16 @@ export function layerLiveMechanics(args: Readonly<{
     npmVersion: process.versions.npm ?? 'external',
     serverBunVersion: Bun.version,
   });
-  const widgetBuildTempRoot = join(config.home.tempRoot, 'widget-builds');
+  // npm ci of widget source-check/build trees writes .d.ts/.ts under scratch.
+  // tsgo watch roots the repo (bun-store realpaths), so scratch inside
+  // OMNIDRAW_HOME/.omnidraw would retrigger frontend-stack type watchers.
+  const widgetNpmScratchRoot = fnWidgetNpmScratchRoot({
+    tmpdir: tmpdir(),
+    homeDir: config.home.homeDir,
+  });
+  const widgetBuildTempRoot = join(widgetNpmScratchRoot, 'widget-builds');
   const widgetDescriptorTempRoot = join(
-    config.home.tempRoot,
+    widgetNpmScratchRoot,
     'widget-function-descriptors',
   );
   mkdirSync(widgetBuildTempRoot, { recursive: true, mode: 0o700 });
@@ -861,7 +869,7 @@ export function layerLiveMechanics(args: Readonly<{
     nowMs: Date.now,
   });
   const widgetSourceCheck = createWidgetSdkSourceCheck({
-    scratchDirectory: join(config.home.tempRoot, 'widget-source-checks'),
+    scratchDirectory: join(widgetNpmScratchRoot, 'widget-source-checks'),
     npmUserConfigPath,
     prepareNpmDependencies: prepareWidgetNpmDependencies,
     mutableRegistryUrl,

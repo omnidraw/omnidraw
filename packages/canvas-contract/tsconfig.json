@@ -15,5 +15,12 @@
     "types": ["bun-types"],
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
 }

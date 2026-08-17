@@ -12,5 +12,12 @@
     "skipLibCheck": true,
     "types": ["bun-types"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
 }
