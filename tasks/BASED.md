@@ -222,6 +222,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B108](b/B108.md) - widget validate: tsgo frontend-stack rebuilds during source-check npm ci
 - [x]: [B109](b/B109.md) - SPA navigation: chat RPC teardown shows CHAT_BUSY as disconnect
 - [x]: [B110](b/B110.md) - widget check: UI import of server entry rejects `@omnidraw/sdk/server`
+- [x]: [B111](b/B111.md) - Small CRM Preview: listContacts treats portable db rows as contact objects
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
