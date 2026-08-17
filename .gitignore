@@ -51,3 +51,4 @@ local-volume/
 
 # AI
 .claude/
+.workspaces/
