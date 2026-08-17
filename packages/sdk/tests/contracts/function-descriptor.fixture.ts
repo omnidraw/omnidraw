@@ -6,7 +6,6 @@ import type {
 export const TEST_SERVER_FUNCTION_DESCRIPTOR: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,
   exportName: 'run',
-  modulePath: 'server/run.server.ts',
   effect: 'fn',
   inputSchema: Object.freeze({ type: 'object', additionalProperties: false }),
   outputSchema: Object.freeze({ type: 'object', additionalProperties: false }),

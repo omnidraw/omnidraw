@@ -19,7 +19,6 @@ export type {
   TWidgetBuildTargetKind,
 } from './fn.build-boundary';
 export {
-  fnAttachServerFunctionModulePaths,
   fnGenerateServerFunctionEntrySource,
 } from './fn.server-function-modules';
 export type { TServerFunctionModule } from './fn.server-function-modules';

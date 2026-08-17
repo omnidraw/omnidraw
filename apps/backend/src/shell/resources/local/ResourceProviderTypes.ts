@@ -4,6 +4,8 @@
 import type {
   TResourceErrorCode,
   TResourceKind,
+  TResourcePermission,
+  TResourceRequirement,
   TResourceStatus,
 } from '#backend/core/resources/types';
 
@@ -17,22 +19,10 @@ export type TLocalResource = Readonly<{
   updatedAtSec?: string;
 }>;
 
-export type TLocalResourceRequirement = Readonly<{
-  kind: TResourceKind;
-  required?: boolean;
-  scope?: readonly ('read' | 'write')[];
-  arbitrarySql?: boolean;
-  operations?: Readonly<Record<string, Readonly<{
-    effect: 'read' | 'write';
-    sql: string;
-    parameters?: Readonly<Record<string, Readonly<{
-      type: 'string' | 'number' | 'boolean' | 'bigint' | 'bytes' | 'json';
-      required?: boolean;
-      nullable?: boolean;
-    }>>>;
-    result: 'rows' | 'execute';
-  }>>>;
-}>;
+export type TLocalResourceRequirement = Readonly<
+  Pick<TResourceRequirement, 'kind' | 'required' | 'arbitrarySql' | 'operations'>
+  & { scope?: readonly TResourcePermission[] }
+>;
 
 export type TLocalResolvedResourceCall = Readonly<{
   resource: TLocalResource;

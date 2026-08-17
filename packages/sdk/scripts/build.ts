@@ -67,6 +67,8 @@ const result = await Bun.build({
   format: "esm",
   root: path.join(sdkDir, "src"),
   external: [
+    "@babel/parser",
+    "@babel/traverse",
     "@omnidraw/capsule",
     "@omnidraw/capsule/authoring-inspection",
     "@omnidraw/capsule/guest",
@@ -101,7 +103,7 @@ const cli = await Bun.build({
   define: {
     __OMNIDRAW_SDK_VERSION__: JSON.stringify(packageManifest.version),
   },
-  external: ["effect", "lucide-static"],
+  external: ["@babel/parser", "@babel/traverse", "effect", "lucide-static"],
 })
 
 if (!cli.success) {

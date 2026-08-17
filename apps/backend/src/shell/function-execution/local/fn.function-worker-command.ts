@@ -1,5 +1,5 @@
 /**
- * @file Pure Bun child-worker command construction.
+ * @file Pure Bun child-worker command construction for trusted local execution.
  */
 
 type TArgs = Readonly<{

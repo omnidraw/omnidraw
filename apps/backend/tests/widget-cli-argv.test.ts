@@ -3,7 +3,10 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseWidgetSubcommandArgs } from '../src/shell/cli/cmds/widget-argv';
-import { writeScreenshotAtomically } from '../src/shell/cli/cmds/cmd.widget';
+import {
+  WIDGET_SUBCOMMAND_HELP,
+  writeScreenshotAtomically,
+} from '../src/shell/cli/cmds/cmd.widget';
 
 const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
@@ -14,6 +17,15 @@ afterEach(async () => {
 });
 
 describe('widget CLI argv', () => {
+  test('documents every accepted common option for every subcommand', () => {
+    for (const help of Object.values(WIDGET_SUBCOMMAND_HELP)) {
+      expect(help).toContain('--port <number>');
+      expect(help).toContain('--data-dir <path>');
+      expect(help).toContain('--json');
+      expect(help).toContain('--help, -h');
+    }
+  });
+
   test('requires one exact resolver selector', async () => {
     await expect(parseWidgetSubcommandArgs('resolve', [
       '--widget-key', 'clock', '--name', 'Clock',

@@ -28,6 +28,11 @@ import type {
   TResourceWriteCapabilityClaims,
 } from '#backend/shell/resources';
 import type { ILocalResourceProvider } from './ResourceProviderTypes';
+import { RESOURCE_MANAGEMENT_OPERATION } from '../../widget/CONSTANTS';
+import {
+  fnValidatePortableResourceOperationInput,
+  fnValidatePortableResourceOperationResult,
+} from '@omnidraw/sdk/contract';
 
 type TLocalProviderContext = Readonly<{
   resource: Readonly<{ id: string; kind: TResourceKind }>;
@@ -89,6 +94,67 @@ function placementMatches(
     && placement.status === 'active'
     && placement.cellId === local.cellId
     && placement.placementEpoch === local.placementEpoch;
+}
+
+function namedDatabaseOperation(
+  requirement: TResourceRequirement,
+  operation: string,
+  input: unknown,
+): NonNullable<TResourceRequirement['operations']>[string] | undefined {
+  if (
+    requirement.kind !== 'db'
+    || operation !== 'invoke'
+    || input === null
+    || typeof input !== 'object'
+    || Array.isArray(input)
+  ) return undefined;
+  const name = (input as Readonly<Record<string, unknown>>).operation;
+  return typeof name === 'string' ? requirement.operations?.[name] : undefined;
+}
+
+function validatePortableCall(
+  requirement: TResourceRequirement,
+  operation: string,
+  effect: TResourcePermission,
+  input: unknown,
+): void {
+  const declared = namedDatabaseOperation(requirement, operation, input);
+  try {
+    fnValidatePortableResourceOperationInput({
+      kind: requirement.kind,
+      operation,
+      effect,
+      input,
+      ...(declared === undefined ? {} : { declaredEffect: declared.effect }),
+    });
+  } catch {
+    throw new ResourceError(
+      'RESOURCE_CALL_INVALID',
+      'Resource operation input does not satisfy the portable contract.',
+    );
+  }
+}
+
+function validatePortableResult(
+  requirement: TResourceRequirement,
+  operation: string,
+  input: unknown,
+  output: unknown,
+): void {
+  const declared = namedDatabaseOperation(requirement, operation, input);
+  try {
+    fnValidatePortableResourceOperationResult({
+      kind: requirement.kind,
+      operation,
+      result: output,
+      ...(declared === undefined ? {} : { declaredResult: declared.result }),
+    });
+  } catch {
+    throw new ResourceError(
+      'RESOURCE_PROVIDER_UNAVAILABLE',
+      'Resource provider result does not satisfy the portable contract.',
+    );
+  }
 }
 
 function placementCanActivate(
@@ -195,8 +261,27 @@ export class ResourceStoreService implements IResourceStore {
         : [call.requirement.effect],
     };
     const effect = provider.effect(call.operation, requirement, call.input);
+    if (
+      effect === null
+      && requirement.kind === 'db'
+      && call.operation === 'invoke'
+    ) {
+      throw new ResourceError(
+        'DB_NAMED_OPERATION_UNKNOWN',
+        'Named database operation is not declared.',
+      );
+    }
     if (effect !== call.effect) {
-      throw new ResourceError('RESOURCE_CALL_INVALID', 'Resource operation effect does not match the resolved call.');
+      throw new ResourceError(
+        call.effect === 'read'
+          ? 'RESOURCE_READ_NOT_ALLOWED'
+          : 'RESOURCE_WRITE_NOT_ALLOWED',
+        'Resource operation effect does not match the resolved call.',
+      );
+    }
+    const isPortableWidgetCall = call.operation !== RESOURCE_MANAGEMENT_OPERATION;
+    if (isPortableWidgetCall) {
+      validatePortableCall(requirement, call.operation, call.effect, call.input);
     }
     const providerContext = {
       resource,
@@ -225,6 +310,9 @@ export class ResourceStoreService implements IResourceStore {
         call.operation,
         call.input,
       ) as TOutput;
+      if (isPortableWidgetCall) {
+        validatePortableResult(requirement, call.operation, call.input, output);
+      }
       return {
         output,
       };

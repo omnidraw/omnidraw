@@ -16,6 +16,7 @@ import {
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
 } from './fn.function-descriptor';
+import { fnValidateWidgetServerModuleArtifact } from './fn.server-module';
 
 export type TWidgetBuildIntegrityValidation =
   | Readonly<{
@@ -38,6 +39,7 @@ export type TWidgetBuildIntegrityValidation =
       valid: false;
       reason:
         | 'artifact_set_mismatch'
+        | 'server_artifact_invalid'
         | 'runtime_descriptor_mismatch'
         | 'function_descriptors_invalid'
         | 'function_descriptors_digest_mismatch'
@@ -54,7 +56,7 @@ export type TWidgetBuildIntegrityArgs = Readonly<{
   capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
   buildPolicyId: string;
   build: TWidgetBuildResult;
-  digestSha256: (canonicalValue: string) => string;
+  digestSha256: (canonicalValue: string | Uint8Array) => string;
 }>;
 
 export function fnWidgetSourceSnapshotIdentityMatches(
@@ -143,12 +145,22 @@ export function fnValidateWidgetBuildIntegrity(
   if (
     args.build.uiArtifact.kind !== 'ui'
     || (args.manifest.server === null) !== (args.build.serverArtifact === null)
-    || (args.build.serverArtifact !== null && args.build.serverArtifact.kind !== 'server')
-    || (
-      args.build.serverArtifact !== null
-      && args.build.serverArtifact.runtimeAbi !== args.manifest.server?.runtimeAbi
-    )
   ) return { valid: false, reason: 'artifact_set_mismatch' };
+  if (args.build.serverArtifact !== null) {
+    const serverValidation = fnValidateWidgetServerModuleArtifact({
+      artifact: args.build.serverArtifact,
+      digestSha256: args.digestSha256,
+    });
+    if (
+      !serverValidation.valid
+      || args.build.serverArtifact.functionDescriptorsDigestSha256
+        !== args.build.functionDescriptorsDigestSha256
+      || !sameJson(
+        args.build.serverArtifact.functionDescriptors,
+        args.build.functionDescriptors,
+      )
+    ) return { valid: false, reason: 'server_artifact_invalid' };
+  }
 
   const runtime = fnNormalizeWidgetRuntimeDescriptor(
     args.build.uiArtifact.runtimeDescriptor,
@@ -206,8 +218,9 @@ export function fnValidateWidgetBuildIntegrity(
     capabilityContractDigestSha256,
     channelContractDigestSha256,
     signatureKeyIds: runtime.signatureKeyIds,
-    serverDigestSha256: args.build.serverArtifact?.digestSha256 ?? null,
-    serverRuntimeAbi: args.build.serverArtifact?.runtimeAbi ?? null,
+    serverModuleFormat: args.build.serverArtifact?.format ?? null,
+    serverModuleAbi: args.build.serverArtifact?.abi ?? null,
+    serverModuleDigestSha256: args.build.serverArtifact?.moduleDigestSha256 ?? null,
     functionDescriptorsDigestSha256,
     sourceDigestSha256: args.snapshot.digestSha256,
     builderIdentity: args.builderIdentity,

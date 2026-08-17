@@ -121,7 +121,6 @@ export function fnCanonicalizeWidgetExecutableInput(args: Readonly<{
     capsuleBuildIdentity: args.environment.capsuleBuildIdentity,
     buildPolicyId: args.environment.buildPolicyId,
     signingPolicyId: args.environment.signingPolicyId,
-    serverRuntimeAbi: args.environment.serverRuntimeAbi,
   });
   const chunks: Uint8Array[] = [encodeUtf8('omnidraw.widget-executable-input.v1\0')];
   chunks.push(...framedField('executable-manifest', encodeUtf8(fnCanonicalizeWidgetExecutableManifest(args.manifest))));
@@ -143,4 +142,3 @@ export function fnWidgetExecutableInputDigest(args: Readonly<{
   assertDigest(digest, 'Executable input digest');
   return digest;
 }
-

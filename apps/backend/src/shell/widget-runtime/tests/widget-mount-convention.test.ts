@@ -9,10 +9,10 @@ import type {
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
 import { describe, expect, test } from 'bun:test';
 import {
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
   fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnProjectWidgetBrowserFunctionDescriptors,
   fnWidgetBrowserFunctionCapabilityRequestMatches,
   fnWidgetServerFunctionCapabilityRequestMatches,
   type TWidgetBuildRequest,
@@ -27,11 +27,9 @@ import {
 } from '../build';
 import { WidgetSourceSnapshot } from '#backend/shell/widget-domain/local';
 
-// E42 regression pin: the builder signs the server-descriptor digest into the
-// capability request, while the SPA mount receives the browser projection and
-// its own digest. Both digest domains must stay verifiable by their owner
-// (host / client) for preview and release signatures, or every server-function
-// widget becomes unmountable.
+// E42 regression pin: the builder signs the one canonical path-free descriptor
+// digest into the capability request. Host and client verification must use
+// that same contract for preview and release signatures.
 
 const encoder = new TextEncoder();
 const sha256 = (value: Uint8Array | string): string => (
@@ -125,7 +123,6 @@ function manifest(): TWidgetExecutableManifestProjection {
     }),
     server: Object.freeze({
       entry: 'server/entry.ts',
-      runtimeAbi: 'bun-v1',
     }),
     resources: Object.freeze([]),
   });
@@ -189,22 +186,21 @@ describe('widget mount signing convention (E42)', () => {
         buildPolicyId: buildRequest.buildPolicyId,
       });
 
-      // The mount view mirrors WidgetPreviewService.#assembleArtifact /
-      // api.runtime-load-widget: browser projection + browser digest reach the
-      // SPA, while the signed request carries the server-descriptor digest.
-      const serverDescriptors = construction.functionDescriptors;
-      expect(serverDescriptors.length).toBe(1);
-      expect(serverDescriptors[0]!.modulePath).toBe('server/functions.server.ts');
-      const browserDescriptors = fnProjectWidgetBrowserFunctionDescriptors(serverDescriptors);
-      const serverDigestSha256 = sha256(
-        fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors),
+      const descriptors = construction.functionDescriptors;
+      expect(descriptors).toEqual([FN_READ_DESCRIPTOR]);
+      const descriptorDigestSha256 = sha256(
+        fnCanonicalizeWidgetServerFunctionDescriptors(descriptors),
       );
-      const browserDigestSha256 = sha256(
-        fnCanonicalizeWidgetBrowserFunctionDescriptors(browserDescriptors),
-      );
-      // The two digest domains differ by construction; any mount check that
-      // compares them across domains rejects every server-function widget.
-      expect(serverDigestSha256).not.toBe(browserDigestSha256);
+      expect(construction.functionDescriptorsDigestSha256)
+        .toBe(descriptorDigestSha256);
+      expect(construction.serverArtifact).toMatchObject({
+        kind: 'server_module',
+        format: WIDGET_SERVER_MODULE_FORMAT,
+        abi: WIDGET_SERVER_MODULE_ABI,
+        moduleDigestSha256: sha256(construction.serverArtifact!.moduleBytes),
+        functionDescriptorsDigestSha256: descriptorDigestSha256,
+        functionDescriptors: descriptors,
+      });
 
       for (const signingPurpose of ['preview', 'release'] as const) {
         const signed = await artifactBuilder.signConstruction({
@@ -214,25 +210,20 @@ describe('widget mount signing convention (E42)', () => {
         const requests = signed.uiArtifact.runtimeDescriptor.capabilityRequests;
         expect(requests).toHaveLength(1);
 
-        // Host-side verifier convention (server digest): stays green.
         expect(fnWidgetServerFunctionCapabilityRequestMatches(
-          serverDigestSha256,
-          browserDescriptors,
+          descriptorDigestSha256,
+          descriptors,
           requests,
         )).toBe(true);
 
-        // Client-side mount convention: the signed request must stay
-        // consistent with the browser projection without re-deriving the
-        // server digest. This is exactly what the fixed mount boundary checks.
+        // The client verifies the same path-free descriptors without a second
+        // browser projection or filesystem metadata.
         expect(fnWidgetBrowserFunctionCapabilityRequestMatches(
           requests[0]!,
-          browserDescriptors,
+          descriptors,
         )).toBe(true);
 
-        // The legacy cross-domain equality was never satisfiable under this
-        // convention; pin that it is not reintroduced as the mount check.
-        expect(requests[0]!.contractHash).toBe(`sha256:${serverDigestSha256}`);
-        expect(requests[0]!.contractHash).not.toBe(`sha256:${browserDigestSha256}`);
+        expect(requests[0]!.contractHash).toBe(`sha256:${descriptorDigestSha256}`);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

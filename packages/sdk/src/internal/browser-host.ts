@@ -40,12 +40,11 @@ import type {
   TWidgetBrowserMountRequest,
 } from '../contracts/interface';
 import {
-  WidgetBrowserFunctionDescriptorsValidator,
   WidgetRuntimeDescriptorValidator,
+  WidgetServerFunctionDescriptorsValidator,
 } from '../contracts/schema';
 import type {
   TWidgetBrowserArtifact,
-  TWidgetBrowserFunctionDescriptor,
   TWidgetCapabilityRequest,
   TWidgetHostConfiguration,
   TWidgetSerializableJsonValue,
@@ -171,7 +170,7 @@ function captureArtifact(input: unknown): TWidgetBrowserArtifact {
     digestSha256: value.digestSha256,
     artifactHash: artifactHash as `sha256:${string}`,
     runtime: WidgetRuntimeDescriptorValidator.parse(rawRuntime),
-    functions: WidgetBrowserFunctionDescriptorsValidator.parse(value.functions ?? []),
+    functions: WidgetServerFunctionDescriptorsValidator.parse(value.functions ?? []),
   });
 }
 
@@ -486,7 +485,7 @@ export async function createWidgetBrowserHost(
       ? validatedArtifact
       : Object.freeze({
           ...validatedArtifact,
-          functions: WidgetBrowserFunctionDescriptorsValidator.parse(request.functionDescriptors),
+          functions: WidgetServerFunctionDescriptorsValidator.parse(request.functionDescriptors),
         });
     const catalog = await readCatalog();
     const unsupportedApi = artifact.runtime.apiContract.groups.find((api) => !catalog.allowedApis.includes(api));

@@ -31,7 +31,7 @@ describe('backend shell explicit world handles', () => {
 
   test('stateful adapters declare their replaceable world dependencies as required', async () => {
     const requirements: Readonly<Record<string, readonly string[]>> = {
-      'function-execution/local/BunChildSandboxDriver.ts': [
+      'function-execution/local/BunChildFunctionProcessDriver.ts': [
         'executable: string',
         'workerPath: string',
         'tempRoot: string',

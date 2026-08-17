@@ -6,9 +6,9 @@ import type {
   TDirectFunctionDefinition,
   TDirectFunctionInvocationRequest,
   TDirectFunctionResult,
-  TFunctionSandboxExecutionResult,
-  TFunctionSandboxHandle,
-  TFunctionSandboxStartRequest,
+  TFunctionProcessExecutionResult,
+  TFunctionProcessHandle,
+  TFunctionProcessStartRequest,
   TFunctionUsageMetrics,
 } from './types';
 
@@ -17,22 +17,22 @@ export interface IDirectFunctionInvoker {
 }
 
 /** One child per call. Implementations must reap every handle on every exit. */
-export interface IFunctionSandboxDriver {
+export interface IFunctionProcessDriver {
   readonly name: string;
   prepare(request: Readonly<{
     definition: TDirectFunctionDefinition;
     artifact: Uint8Array;
-  }>): Promise<TFunctionSandboxHandle>;
+  }>): Promise<TFunctionProcessHandle>;
   start(
-    prepared: TFunctionSandboxHandle,
-    request: TFunctionSandboxStartRequest,
-  ): Promise<TFunctionSandboxHandle>;
+    prepared: TFunctionProcessHandle,
+    request: TFunctionProcessStartRequest,
+  ): Promise<TFunctionProcessHandle>;
   execute(
-    running: TFunctionSandboxHandle,
+    running: TFunctionProcessHandle,
     call: TDirectFunctionCall,
     resources: IResourceGateway,
-  ): Promise<TFunctionSandboxExecutionResult>;
-  measure(running: TFunctionSandboxHandle): Promise<TFunctionUsageMetrics>;
-  cancel(running: TFunctionSandboxHandle, reason: string): Promise<void>;
-  destroy(handle: TFunctionSandboxHandle): Promise<void>;
+  ): Promise<TFunctionProcessExecutionResult>;
+  measure(running: TFunctionProcessHandle): Promise<TFunctionUsageMetrics>;
+  cancel(running: TFunctionProcessHandle, reason: string): Promise<void>;
+  destroy(handle: TFunctionProcessHandle): Promise<void>;
 }

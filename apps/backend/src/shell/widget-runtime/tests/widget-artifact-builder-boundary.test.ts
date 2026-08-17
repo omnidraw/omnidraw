@@ -14,10 +14,11 @@ import {
 import type { CapsuleArtifactSigningKey } from '@omnidraw/capsule/sign';
 import { describe, expect, test } from 'bun:test';
 import {
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
   fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnProjectWidgetBrowserFunctionDescriptors,
+  fnWidgetServerModulePolicyAdmission,
   type TWidgetBuildRequest,
   type TWidgetRuntimeBuildIdentity,
   type TWidgetExecutableManifestProjection,
@@ -132,7 +133,6 @@ function manifest(args: Readonly<{
       ? null
       : Object.freeze({
           entry: args.serverEntry,
-          runtimeAbi: 'bun-v1',
         }),
     resources: Object.freeze([]),
   });
@@ -513,21 +513,18 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         'function fnHello(value: unknown)',
       );
       expect([...byPath.values()].join('\n')).not.toContain('registerServerFunction');
-      const browserFunctionDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
-        result.functionDescriptors,
-      );
-      const browserDigestSha256 = createHash('sha256')
-        .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(browserFunctionDescriptors))
-        .digest('hex');
-      const serverDigestSha256 = createHash('sha256')
+      const descriptorDigestSha256 = createHash('sha256')
         .update(fnCanonicalizeWidgetServerFunctionDescriptors(result.functionDescriptors))
         .digest('hex');
-      expect(result.functionDescriptorsDigestSha256).toBe(serverDigestSha256);
-      expect(browserDigestSha256).not.toBe(serverDigestSha256);
+      expect(result.functionDescriptors).toEqual([FN_HELLO_DESCRIPTOR]);
+      expect(result.functionDescriptorsDigestSha256).toBe(descriptorDigestSha256);
+      expect(result.serverArtifact?.functionDescriptors).toEqual(result.functionDescriptors);
+      expect(result.serverArtifact?.functionDescriptorsDigestSha256)
+        .toBe(descriptorDigestSha256);
       expect(captured!.capabilityRequests).toEqual([{
-        id: `omnidraw.widget.functions.h${serverDigestSha256}`,
+        id: `omnidraw.widget.functions.h${descriptorDigestSha256}`,
         versionRange: '1.0.0',
-        contractHash: `sha256:${serverDigestSha256}`,
+        contractHash: `sha256:${descriptorDigestSha256}`,
         required: true,
         operations: ['fnHello'],
       }]);
@@ -536,7 +533,52 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
     }
   });
 
-  test('constructs full-stack outputs once and signs exact Preview and release envelopes', async () => {
+  test('bundles a vetted author-selected TypeBox schema into one portable module', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'capsule-typebox-server-'));
+    try {
+      const sourceSnapshot = snapshot([
+        { path: 'ui/main.ts', value: 'document.body.textContent = "typebox";' },
+        {
+          path: 'server/main.server.ts',
+          value: [
+            'import { defineServerFunction } from "@omnidraw/sdk/server";',
+            'import { Type } from "typebox";',
+            'const document = Type.Object({ value: Type.Number() });',
+            'const schema = Object.freeze({',
+            '  parse(value: unknown): { value: number } {',
+            '    if (value === null || typeof value !== "object" || typeof (value as { value?: unknown }).value !== "number") throw new TypeError("invalid");',
+            '    return { value: (value as { value: number }).value };',
+            '  },',
+            '  toJSONSchema: () => document,',
+            '});',
+            'export const fnHello = defineServerFunction({ effect: "fn", input: schema, output: schema }, async (_context, input) => input);',
+          ].join('\n'),
+        },
+      ]);
+      const artifactBuilder = builder({
+        tempRoot,
+        descriptors: Object.freeze([FN_HELLO_DESCRIPTOR]),
+        capsuleBuild: async () => EMPTY_CAPSULE_OUTPUT,
+      });
+      const result = await artifactBuilder.build(request(sourceSnapshot, manifest({
+        entry: 'ui/main.ts',
+        serverEntry: 'server/main.server.ts',
+      })));
+      const serverArtifact = result.serverArtifact;
+      expect(serverArtifact).not.toBeNull();
+      const source = decoder.decode(serverArtifact!.moduleBytes);
+      expect(fnWidgetServerModulePolicyAdmission({
+        phase: 'closed_bundle',
+        source,
+      })).toEqual({ allowed: true });
+      expect(source).not.toMatch(/\b(?:import|require)\s*[({]/);
+      expect(serverArtifact!.moduleDigestSha256).toBe(sha256(serverArtifact!.moduleBytes));
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('constructs full-stack outputs once and signs exact Preview and release artifacts', async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), 'capsule-construction-'));
     let distributionBuildCalls = 0;
     let capsuleBuildCalls = 0;
@@ -653,6 +695,12 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
       });
       expect(construction.constructionContractDigestSha256)
         .toMatch(/^[0-9a-f]{64}$/);
+      expect(construction.serverArtifact?.format).toBe(WIDGET_SERVER_MODULE_FORMAT);
+      expect(construction.serverArtifact?.abi).toBe(WIDGET_SERVER_MODULE_ABI);
+      expect(construction.serverArtifact?.moduleDigestSha256)
+        .toBe(sha256(construction.serverArtifact!.moduleBytes));
+      expect(construction.serverArtifact?.functionDescriptors)
+        .toEqual(construction.functionDescriptors);
 
       const preview = await artifactBuilder.signConstruction({
         construction,
@@ -675,8 +723,10 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         .toBe(construction.uiArtifact.artifactHash);
       expect(release.uiArtifact.artifactHash)
         .toBe(construction.uiArtifact.artifactHash);
-      expect(preview.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
-      expect(release.serverArtifact?.bytes).toEqual(construction.serverArtifact?.bytes);
+      expect(preview.serverArtifact?.moduleBytes)
+        .toEqual(construction.serverArtifact?.moduleBytes);
+      expect(release.serverArtifact?.moduleBytes)
+        .toEqual(construction.serverArtifact?.moduleBytes);
       expect(preview.functionDescriptors).toEqual(construction.functionDescriptors);
       expect(release.functionDescriptors).toEqual(construction.functionDescriptors);
       expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds)
@@ -716,12 +766,12 @@ describe('WidgetArtifactBuilderCapsule trust boundary', () => {
         },
         signingPurpose: 'release',
       })).rejects.toThrow();
-      const serverBytes = new Uint8Array(construction.serverArtifact!.bytes);
+      const serverBytes = new Uint8Array(construction.serverArtifact!.moduleBytes);
       serverBytes[0] = (serverBytes[0] ?? 0) ^ 0xff;
       await expect(artifactBuilder.signConstruction({
         construction: {
           ...construction,
-          serverArtifact: { ...construction.serverArtifact!, bytes: serverBytes },
+          serverArtifact: { ...construction.serverArtifact!, moduleBytes: serverBytes },
         },
         signingPurpose: 'release',
       })).rejects.toThrow();

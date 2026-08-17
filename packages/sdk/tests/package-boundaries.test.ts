@@ -24,8 +24,10 @@ async function files(root: string): Promise<string[]> {
 describe('@omnidraw/sdk package boundaries', () => {
   test('uses exact implementation dependencies and no retired packages', async () => {
     const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-    expect(manifest.version).toBe('0.8.4');
+    expect(manifest.version).toBe('0.12.0');
     expect(manifest.dependencies).toEqual({
+      '@babel/parser': '7.29.8',
+      '@babel/traverse': '7.29.8',
       '@omnidraw/capsule': '0.16.0',
       effect: '4.0.0-rc.108',
       'lucide-static': '1.24.0',

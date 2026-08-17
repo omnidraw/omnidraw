@@ -118,7 +118,11 @@ class FunctionService implements IFunctionInvocationApiCapability {
     const artifactFile = resolution.release.files.find(
       (file) => file.path === server.entry,
     );
-    if (artifactFile === undefined || artifactFile.byteSize !== serverEntryBytes.byteLength) {
+    if (
+      artifactFile === undefined
+      || artifactFile.byteSize !== serverEntryBytes.byteLength
+      || artifactFile.sha256 !== server.moduleDigestSha256
+    ) {
       throw functionServiceError('FUNCTION_NOT_FOUND', 'Published function artifact was not found.');
     }
 
@@ -131,8 +135,13 @@ class FunctionService implements IFunctionInvocationApiCapability {
       definition: {
         widgetKey: input.widgetKey,
         catalogGeneration: resolution.catalogGeneration,
-        runtimeAbi: server.runtimeAbi,
-        artifactDigestSha256: artifactFile.sha256,
+        serverModule: {
+          format: server.format,
+          abi: server.abi,
+          moduleDigestSha256: server.moduleDigestSha256,
+          functionDescriptors: resolution.functionDescriptors,
+          functionDescriptorsDigestSha256: server.functionsDigestSha256,
+        },
         descriptor,
       },
       artifact: serverEntryBytes,

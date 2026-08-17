@@ -1,9 +1,12 @@
 /** @file Public contracts for one bounded, synchronous server-function call. */
 
 import type { IResourceGateway } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
+import type {
+  TWidgetServerFunctionDescriptor,
+  TWidgetServerModuleArtifact,
+} from '@omnidraw/sdk/contract';
 
-export type TFunctionMemoryTier = 'small' | 'medium' | 'large';
+export type TFunctionMemoryTier = 'small';
 
 export type TDirectFunctionSubject = Readonly<{
   canvasId: string;
@@ -15,8 +18,14 @@ export type TDirectFunctionSubject = Readonly<{
 export type TDirectFunctionDefinition = Readonly<{
   widgetKey: string;
   catalogGeneration: number;
-  runtimeAbi: string;
-  artifactDigestSha256: string;
+  serverModule: Pick<
+    TWidgetServerModuleArtifact,
+    | 'format'
+    | 'abi'
+    | 'moduleDigestSha256'
+    | 'functionDescriptors'
+    | 'functionDescriptorsDigestSha256'
+  >;
   descriptor: TWidgetServerFunctionDescriptor;
 }>;
 
@@ -70,17 +79,17 @@ export type TFunctionUsageMetrics = Readonly<{
   peakRssBytes: number;
 }>;
 
-export type TFunctionSandboxHandle = Readonly<{
+export type TFunctionProcessHandle = Readonly<{
   driver: string;
   id: string;
 }>;
 
-export type TFunctionSandboxStartRequest = Readonly<{
+export type TFunctionProcessStartRequest = Readonly<{
   deadlineAtMs: number;
   observeMetrics(metrics: TFunctionUsageMetrics): void;
 }>;
 
-export type TFunctionSandboxExecutionResult =
+export type TFunctionProcessExecutionResult =
   | Readonly<{
       status: 'succeeded';
       output: unknown;

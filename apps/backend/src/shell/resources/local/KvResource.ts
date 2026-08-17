@@ -1,4 +1,8 @@
 import { ResourceError, toResourceError } from '#backend/core/resources/ResourceError';
+import {
+  PORTABLE_RESOURCE_OPERATION_LIMITS,
+  fnGetPortableResourceOperation,
+} from '@omnidraw/sdk/contract';
 import type {
   IResourceKeyValuePersistence,
   TResourceJson as TJson,
@@ -17,8 +21,8 @@ import type {
 
 type TResourceProviderCreateArgs = unknown;
 
-const KEY_MAX_LENGTH = 1_024;
-const LIST_MAX_LIMIT = 500;
+const KEY_MAX_LENGTH = PORTABLE_RESOURCE_OPERATION_LIMITS.keyBytes;
+const LIST_MAX_LIMIT = PORTABLE_RESOURCE_OPERATION_LIMITS.listLimit;
 
 function recordArgs(args: unknown): Record<string, unknown> {
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
@@ -28,15 +32,23 @@ function recordArgs(args: unknown): Record<string, unknown> {
 }
 
 function keyArg(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0 || value.length > KEY_MAX_LENGTH) {
-    throw new ResourceError('KV_KEY_INVALID', `KV keys must be non-blank strings no longer than ${KEY_MAX_LENGTH} characters.`);
+  if (
+    typeof value !== 'string'
+    || value.trim().length === 0
+    || new TextEncoder().encode(value).byteLength > KEY_MAX_LENGTH
+  ) {
+    throw new ResourceError('KV_KEY_INVALID', `KV keys must be non-blank strings no larger than ${KEY_MAX_LENGTH} UTF-8 bytes.`);
   }
   return value;
 }
 
 function listTextArg(value: unknown, label: string, allowEmpty: boolean): string {
-  if (typeof value !== 'string' || (!allowEmpty && value.trim().length === 0) || value.length > KEY_MAX_LENGTH) {
-    throw new ResourceError('KV_KEY_INVALID', `${label} must be a string no longer than ${KEY_MAX_LENGTH} characters.`);
+  if (
+    typeof value !== 'string'
+    || (!allowEmpty && value.trim().length === 0)
+    || new TextEncoder().encode(value).byteLength > KEY_MAX_LENGTH
+  ) {
+    throw new ResourceError('KV_KEY_INVALID', `${label} must be a string no larger than ${KEY_MAX_LENGTH} UTF-8 bytes.`);
   }
   return value;
 }
@@ -112,9 +124,10 @@ export class KvResource implements ILocalResourceProvider {
   }
 
   effect(operation: string, _requirement: TLocalResourceRequirement): 'read' | 'write' | null {
-    if (operation === 'get' || operation === 'has' || operation === 'list') return 'read';
-    if (operation === 'set' || operation === 'delete' || operation === 'compareAndSet') return 'write';
-    return null;
+    const descriptor = fnGetPortableResourceOperation('kv', operation);
+    return descriptor?.effect === 'read' || descriptor?.effect === 'write'
+      ? descriptor.effect
+      : null;
   }
 
   async countEntries(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {

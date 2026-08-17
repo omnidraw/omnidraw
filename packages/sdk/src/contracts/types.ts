@@ -63,6 +63,8 @@ export type TWidgetResourceNamedOperation = Readonly<{
   sql: string;
   parameters?: Readonly<Record<string, TWidgetResourceOperationParameterDeclaration>>;
   result: 'rows' | 'execute';
+  /** Named result columns whose SQL text is decoded as bounded portable JSON. */
+  jsonColumns?: readonly string[];
 }>;
 export type TWidgetResourceRequirement = Readonly<{
   slot: string;
@@ -213,7 +215,6 @@ export type TWidgetUiManifest = Readonly<{
 
 export type TWidgetServerManifest = Readonly<{
   entry: string;
-  runtimeAbi: string;
 }>;
 
 /** Short-lived server-function effect ceiling emitted by the trusted build. */
@@ -226,30 +227,26 @@ export type TWidgetServerFunctionResourceAccess = Readonly<{
 
 export type TWidgetServerFunctionLimits = Readonly<{
   timeoutMs: number;
-  memoryTier: 'small' | 'medium' | 'large';
+  /** Fixed portable ceiling: at most 128 MiB, matching the managed isolate profile. */
+  memoryTier: 'small';
   outputByteLimit: number;
   logByteLimit: number;
 }>;
 
 /**
  * Canonical, serializable registration emitted for one direct named export.
- * Host-owned identity, revision, artifact digest, and runtime ABI are bound by
- * the publication/store record rather than trusted from guest code.
+ * Host-owned identity, revision, and artifact digest are bound by the
+ * publication/store record rather than trusted from guest code.
  */
 export type TWidgetServerFunctionDescriptor = Readonly<{
   schemaVersion: 1;
   exportName: string;
-  /** Host-derived source module containing the direct export. */
-  modulePath?: string;
   effect: TWidgetServerFunctionEffect;
   inputSchema: TWidgetSerializableJsonObject;
   outputSchema: TWidgetSerializableJsonObject;
   resources: readonly TWidgetServerFunctionResourceAccess[];
   limits: TWidgetServerFunctionLimits;
 }>;
-
-/** Browser-visible function metadata; host filesystem module paths are never exposed. */
-export type TWidgetBrowserFunctionDescriptor = Omit<TWidgetServerFunctionDescriptor, 'modulePath'>;
 
 export type TWidgetServerFunctionDescriptorValidation =
   | Readonly<{ valid: true }>
@@ -258,7 +255,6 @@ export type TWidgetServerFunctionDescriptorValidation =
       reason:
         | 'browser_only_has_functions'
         | 'server_has_no_functions'
-        | 'missing_module_path'
         | 'duplicate_export'
         | 'duplicate_resource_slot'
         | 'fn_has_resources'
@@ -379,12 +375,19 @@ export type TWidgetRuntimeDescriptorCreateRequest = Readonly<{
   signatureKeyIds: readonly string[];
 }>;
 
-/** Server artifacts retain their distinct server execution ABI. */
-export type TWidgetServerBuildArtifact = Readonly<{
-  kind: 'server';
-  digestSha256: TWidgetArtifactDigest;
-  bytes: Uint8Array;
-  runtimeAbi: string;
+/** Exact host-neutral ES module emitted before descriptor extraction. */
+export type TWidgetServerModule = Readonly<{
+  format: 'omnidraw.widget-server-module.v1';
+  abi: 'omnidraw.widget-server-abi.v1';
+  moduleBytes: Uint8Array;
+  moduleDigestSha256: TWidgetArtifactDigest;
+}>;
+
+/** Canonical immutable server artifact consumed unchanged by every host adapter. */
+export type TWidgetServerModuleArtifact = TWidgetServerModule & Readonly<{
+  kind: 'server_module';
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
 }>;
 
 /** Canonically encoded immutable source bytes stored beside a built revision. */
@@ -505,8 +508,9 @@ export type TWidgetConstructionContractPayloadInput = Readonly<{
   budgets: TWidgetRuntimeBudgetRequest;
   capabilityContractDigestSha256: TWidgetArtifactDigest;
   channelContractDigestSha256: TWidgetArtifactDigest;
-  serverDigestSha256: TWidgetArtifactDigest | null;
-  serverRuntimeAbi: string | null;
+  serverModuleFormat: 'omnidraw.widget-server-module.v1' | null;
+  serverModuleAbi: 'omnidraw.widget-server-abi.v1' | null;
+  serverModuleDigestSha256: TWidgetArtifactDigest | null;
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   builderIdentity: string;
   capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
@@ -536,7 +540,7 @@ export type TWidgetArtifactConstructionResult = Readonly<{
   channelContractDigestSha256: TWidgetArtifactDigest;
   constructionContractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetUnsignedUiArtifact;
-  serverArtifact: TWidgetServerBuildArtifact | null;
+  serverArtifact: TWidgetServerModuleArtifact | null;
   diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
@@ -564,7 +568,7 @@ export type TWidgetBuildResult = Readonly<{
   contractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetUiArtifact;
   sourceMapArtifact: TWidgetSourceMapArtifact | null;
-  serverArtifact: TWidgetServerBuildArtifact | null;
+  serverArtifact: TWidgetServerModuleArtifact | null;
   diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
@@ -575,8 +579,9 @@ type TWidgetContractPayloadBase = Readonly<{
   capabilityContractDigestSha256: TWidgetArtifactDigest;
   channelContractDigestSha256: TWidgetArtifactDigest;
   signatureKeyIds: readonly string[];
-  serverDigestSha256: TWidgetArtifactDigest | null;
-  serverRuntimeAbi: string | null;
+  serverModuleFormat: 'omnidraw.widget-server-module.v1' | null;
+  serverModuleAbi: 'omnidraw.widget-server-abi.v1' | null;
+  serverModuleDigestSha256: TWidgetArtifactDigest | null;
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   sourceDigestSha256: TWidgetArtifactDigest;
   builderIdentity: string;
@@ -591,9 +596,7 @@ export type TWidgetContractPayloadInput = TWidgetContractPayloadBase & Readonly<
 }>;
 
 export type TWidgetServerFunctionDescriptorExtractionRequest = Readonly<{
-  serverArtifact: TWidgetServerBuildArtifact;
-  serverEntry: string;
-  runtimeAbi: string;
+  serverModule: TWidgetServerModule;
 }>;
 
 /** Stable subject identity supplied by a host to guest state and functions. */
@@ -683,7 +686,7 @@ export type TWidgetPortableArtifact = Readonly<{
     digestSha256: string;
     runtime: TWidgetRuntimeDescriptor;
   }>;
-  server: TWidgetServerBuildArtifact | null;
+  server: TWidgetServerModuleArtifact | null;
   functions: readonly TWidgetServerFunctionDescriptor[];
   artifactDigestSha256: string;
 }>;
@@ -705,7 +708,7 @@ export type TWidgetBrowserArtifact = Readonly<{
   digestSha256: string;
   artifactHash: TWidgetArtifactHash;
   runtime: TWidgetRuntimeDescriptor;
-  functions: readonly TWidgetBrowserFunctionDescriptor[];
+  functions: readonly TWidgetServerFunctionDescriptor[];
 }>;
 
 export type TWidgetHostDiagnosticCategory =

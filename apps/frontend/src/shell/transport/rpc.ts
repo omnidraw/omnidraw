@@ -243,6 +243,10 @@ export type TFrontendResumableStreamOptions<
   input(cursor: TCursor): TPrivateStreamInput<Path>;
   advance(cursor: TCursor, event: TPrivateStreamOutput<Path>): TCursor;
   isDuplicate?(cursor: TCursor, event: TPrivateStreamOutput<Path>): boolean;
+  recoverAfterDomainError?(
+    error: unknown,
+    cursor: TCursor,
+  ): Promise<Readonly<{ cursor: TCursor; events: readonly TRecoveryEvent[] }> | null>;
   afterReconnect?(cursor: TCursor): Promise<readonly TRecoveryEvent[]>;
   signal?: AbortSignal;
 }>;
@@ -367,6 +371,7 @@ export class FrontendRpcConnection {
         let cursor = options.initialCursor;
         while (!options.signal?.aborted) {
           let activeGeneration = connection.generations.snapshot().generation;
+          let recoveredWithoutReconnect = false;
           try {
             const events = await connection.stream(
               options.path,
@@ -386,9 +391,37 @@ export class FrontendRpcConnection {
             }
           } catch (error) {
             if (options.signal?.aborted) return;
-            const state = connection.generations.snapshot();
-            if (state.connected && state.generation === activeGeneration) throw error;
+            let state = connection.generations.snapshot();
+            if (state.connected && state.generation === activeGeneration) {
+              if (options.recoverAfterDomainError === undefined) throw error;
+              let recovery: Readonly<{
+                cursor: TCursor;
+                events: readonly TRecoveryEvent[];
+              }> | null = null;
+              try {
+                recovery = await options.recoverAfterDomainError(error, cursor);
+              } catch (recoveryError) {
+                state = connection.generations.snapshot();
+                if (state.connected && state.generation === activeGeneration) {
+                  throw recoveryError;
+                }
+              }
+              state = connection.generations.snapshot();
+              if (state.connected && state.generation === activeGeneration) {
+                if (recovery === null) throw error;
+                cursor = recovery.cursor;
+                for (const event of recovery.events) {
+                  state = connection.generations.snapshot();
+                  if (!state.connected || state.generation !== activeGeneration) break;
+                  yield event;
+                }
+                state = connection.generations.snapshot();
+                recoveredWithoutReconnect = state.connected
+                  && state.generation === activeGeneration;
+              }
+            }
           }
+          if (recoveredWithoutReconnect) continue;
           let recoveryAfterGeneration = activeGeneration;
           while (!options.signal?.aborted) {
             const reconnected = await connection.generations.waitForConnectionAfter(

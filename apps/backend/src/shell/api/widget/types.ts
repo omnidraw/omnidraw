@@ -5,7 +5,6 @@ import type {
   TWidgetFilesystemManagementCapability,
 } from '#backend/shell/agent';
 import type {
-  TWidgetBrowserFunctionDescriptor,
   TWidgetRuntimeDescriptor,
 } from '@omnidraw/sdk/contract';
 import type {
@@ -109,7 +108,7 @@ type TWidgetPreviewMountView = Readonly<{
     bytesBase64: string;
   }>;
   runtimeDescriptor: TWidgetRuntimeDescriptor;
-  functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   constructionReused: boolean;
   diagnostics: readonly TWidgetPreviewDiagnosticView[];

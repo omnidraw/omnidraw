@@ -6,7 +6,6 @@ export type {
   IWidgetFunctionHostPort,
 } from './contracts/interface';
 export type {
-  TWidgetBrowserFunctionDescriptor,
   TWidgetFunctionInvocation,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionEffect,
@@ -14,13 +13,9 @@ export type {
   TWidgetServerFunctionResourceAccess,
 } from './contracts/types';
 export {
-  WidgetBrowserFunctionDescriptorsValidator,
   WidgetServerFunctionDescriptorsValidator,
-  ZWidgetBrowserFunctionDescriptors,
   ZWidgetServerFunctionDescriptors,
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnNormalizeWidgetBrowserFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
 } from './contracts/index';

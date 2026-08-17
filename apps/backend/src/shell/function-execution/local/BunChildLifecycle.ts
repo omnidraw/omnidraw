@@ -14,7 +14,7 @@ export type TBunChildCage = Readonly<{
 
 export type TBunChildProcessGroupController = Readonly<{
   signal(processGroupId: number, signal: NodeJS.Signals): void;
-  /** Null means the host can signal the group but cannot probe it (for example, a seatbelt sandbox). */
+  /** Null means the host can signal the group but cannot probe it in a restricted host environment. */
   exists(processGroupId: number): boolean | null;
 }>;
 

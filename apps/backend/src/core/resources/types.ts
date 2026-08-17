@@ -2,11 +2,19 @@
  * @file Resource catalog, capability, data, and lifecycle types.
  */
 
+import type {
+  TWidgetResourceEffect,
+  TWidgetResourceKind,
+  TWidgetResourceNamedOperation,
+  TWidgetResourceOperationParameterDeclaration,
+  TWidgetResourceOperationParameterType,
+  TWidgetResourceRequirement,
+} from '@omnidraw/sdk';
 import type { TSemanticFailureDetails } from '../semantic-failure';
 
 export type TResourceId = string;
 export type TResourceSlot = string;
-export type TResourceKind = 'kv' | 'secretStore' | 'db';
+export type TResourceKind = TWidgetResourceKind;
 export type TResourceStatus =
   | 'created'
   | 'provisioning'
@@ -15,7 +23,7 @@ export type TResourceStatus =
   | 'error'
   | 'deleting';
 export type TResourcePlacementStatus = 'reserved' | 'active' | 'moving' | 'error';
-export type TResourceEffect = 'read' | 'write' | 'read_write';
+export type TResourceEffect = TWidgetResourceEffect;
 export type TResourcePermission = Exclude<TResourceEffect, 'read_write'>;
 export type TResourceOperationName = string;
 export type TResourceOperationId = string;
@@ -130,39 +138,12 @@ export type TResourceReference = Readonly<{
   kind: TResourceKind;
 }>;
 
-export type TResourceRequirement = Readonly<{
-  slot: TResourceSlot;
-  /** Exact installation-local resource identity authored in omnidraw.json. */
-  resourceId?: TResourceId;
-  kind: TResourceKind;
-  effect: TResourceEffect;
-  required?: boolean;
-  /** Host-declared escape hatch for trusted database declarations only. */
-  arbitrarySql?: boolean;
-  /** Host-derived named operations. Callers may select a name, but never supply SQL. */
-  operations?: Readonly<Record<string, TResourceNamedOperation>>;
-}>;
-
-export type TResourceOperationParameterType =
-  | 'string'
-  | 'number'
-  | 'boolean'
-  | 'bigint'
-  | 'bytes'
-  | 'json';
-
-export type TResourceOperationParameterDeclaration = Readonly<{
-  type: TResourceOperationParameterType;
-  required?: boolean;
-  nullable?: boolean;
-}>;
-
-export type TResourceNamedOperation = Readonly<{
-  effect: TResourcePermission;
-  sql: string;
-  parameters?: Readonly<Record<string, TResourceOperationParameterDeclaration>>;
-  result: 'rows' | 'execute';
-}>;
+/** Portable declarations are owned by the public SDK contract. */
+export type TResourceRequirement = TWidgetResourceRequirement;
+export type TResourceOperationParameterType = TWidgetResourceOperationParameterType;
+export type TResourceOperationParameterDeclaration =
+  TWidgetResourceOperationParameterDeclaration;
+export type TResourceNamedOperation = TWidgetResourceNamedOperation;
 
 export type TResourceBinding = Readonly<{
   slot: TResourceSlot;
@@ -200,7 +181,10 @@ type TResourceWriteCall = Readonly<{
   writeCapability?: string;
 }>;
 
-/** A caller-selected logical slot; concrete resource identity is resolved by the gateway. */
+/**
+ * Host-domain call after portable-wire decoding. It is never serialized and
+ * may carry host-only fencing authority; concrete identity is gateway-resolved.
+ */
 export type TResourceCall = TResourceReadCall | TResourceWriteCall;
 
 /** A gateway-resolved call. This still contains no path, handle, native config, or key material. */

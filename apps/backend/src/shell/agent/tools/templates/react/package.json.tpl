@@ -10,8 +10,7 @@
   "dependencies": {
     "@omnidraw/sdk": "__OMNIDRAW_SDK_DEPENDENCY__",
     "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "zod": "4.4.3"
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@types/react": "19.2.17",

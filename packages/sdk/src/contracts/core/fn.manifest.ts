@@ -47,6 +47,9 @@ function normalizeOperations(
           ? {}
           : { parameters: normalizeParameterDeclarations(operation.parameters) }),
         result: operation.result,
+        ...(operation.jsonColumns === undefined
+          ? {}
+          : { jsonColumns: [...operation.jsonColumns].sort(compareText) }),
       }]),
   );
 }

@@ -28,7 +28,6 @@ import type {
 import {
   fnCreateWidgetReleaseDescriptor,
   fnWidgetExecutableManifestDigest,
-  fnWidgetReleaseDirectoryDigest,
 } from '@omnidraw/sdk/contract';
 import {
   NodeWidgetCatalogFilesystem,
@@ -174,7 +173,6 @@ async function writePublication(
 const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = {
   schemaVersion: 1,
   exportName: 'run',
-  modulePath: 'server/main.ts',
   effect: 'fn',
   inputSchema: { type: 'object', additionalProperties: false },
   outputSchema: { type: 'object', additionalProperties: false },
@@ -193,7 +191,7 @@ async function writeServerPublication(
 ): Promise<string> {
   const value: TWidgetManifestV1 = {
     ...manifest(slug, 'Server widget'),
-    server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' },
+    server: { entry: 'server/main.ts' },
   };
   const path = join(rootPath, 'published', slug);
   const distBytes = new Uint8Array(Buffer.from('export default 1;', 'utf8'));
@@ -207,7 +205,7 @@ async function writeServerPublication(
   const artifactHash = `sha256:${sha256(capsuleBytes)}` as const;
   const capsuleRuntime = runtime(artifactHash, functionsDigestSha256);
   const serverFile = {
-    path: 'main.js',
+    path: 'main.mjs',
     byteSize: serverBytes.byteLength,
     sha256: sha256(serverBytes),
   };
@@ -224,13 +222,7 @@ async function writeServerPublication(
     ],
     capsule: { path: 'capsule.artifact', artifactHash, runtime: capsuleRuntime },
     server: {
-      entry: 'server-dist/main.js',
-      runtimeAbi: 'bun-v1',
-      functionsPath: 'functions.json',
-      serverDistDigestSha256: fnWidgetReleaseDirectoryDigest({
-        files: [serverFile],
-        digestSha256: sha256,
-      }),
+      moduleDigestSha256: serverFile.sha256,
       functionsDigestSha256,
     },
     releaseAttestation: RELEASE_ATTESTATION,
@@ -242,7 +234,7 @@ async function writeServerPublication(
   await Promise.all([
     writeManifest(path, value),
     writeFile(join(path, 'dist', 'main.js'), distBytes),
-    writeFile(join(path, 'server-dist', 'main.js'), serverBytes),
+    writeFile(join(path, 'server-dist', 'main.mjs'), serverBytes),
     writeFile(join(path, 'functions.json'), functionsBytes),
     writeFile(join(path, 'capsule.artifact'), capsuleBytes),
   ]);
@@ -379,9 +371,9 @@ describe('filesystem-first widget catalog', () => {
 
     const releasePath = join(serverPath, 'release.json');
     const release = JSON.parse(await readFile(releasePath, 'utf8')) as {
-      server: { serverDistDigestSha256: string };
+      server: { moduleDigestSha256: string };
     };
-    release.server.serverDistDigestSha256 = 'f'.repeat(64);
+    release.server.moduleDigestSha256 = 'f'.repeat(64);
     await writeFile(releasePath, JSON.stringify(release));
     const second = await catalog.refresh();
     expect(second.entries['server-widget']?.published?.health).toBe('unhealthy');

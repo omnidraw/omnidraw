@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import type {
-  IFunctionSandboxDriver,
+  IFunctionProcessDriver,
   TDirectFunctionDefinition,
   TDirectFunctionInvocationRequest,
-  TFunctionSandboxExecutionResult,
+  TFunctionProcessExecutionResult,
   TFunctionUsageMetrics,
 } from '../index';
 import {
@@ -22,12 +22,34 @@ const explicitExecutorWorld = Object.freeze({
 const definition: TDirectFunctionDefinition = Object.freeze({
   widgetKey: 'counter',
   catalogGeneration: 7,
-  runtimeAbi: 'omnidraw.function.v1',
-  artifactDigestSha256: 'a'.repeat(64),
+  serverModule: Object.freeze({
+    format: 'omnidraw.widget-server-module.v1',
+    abi: 'omnidraw.widget-server-abi.v1',
+    moduleDigestSha256: 'a'.repeat(64),
+    functionDescriptorsDigestSha256: 'b'.repeat(64),
+    functionDescriptors: Object.freeze([Object.freeze({
+      schemaVersion: 1,
+      exportName: 'increment',
+      effect: 'fn',
+      inputSchema: { type: 'object', additionalProperties: false },
+      outputSchema: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+      resources: [],
+      limits: {
+        timeoutMs: 1_000,
+        memoryTier: 'small' as const,
+        outputByteLimit: 64,
+        logByteLimit: 32,
+      },
+    })]),
+  }),
   descriptor: Object.freeze({
     schemaVersion: 1,
     exportName: 'increment',
-    modulePath: 'server.ts',
     effect: 'fn',
     inputSchema: { type: 'object', additionalProperties: false },
     outputSchema: {
@@ -84,11 +106,11 @@ function request(
 }
 
 function driver(
-  result: TFunctionSandboxExecutionResult = {
+  result: TFunctionProcessExecutionResult = {
     status: 'succeeded', output: { ok: true }, outputByteSize: 11, logByteSize: 0,
   },
   events: string[] = [],
-): IFunctionSandboxDriver {
+): IFunctionProcessDriver {
   return {
     name: 'fake',
     prepare: async () => {
@@ -179,8 +201,8 @@ describe('direct function execution', () => {
   });
 
   test('rejects excess concurrency immediately instead of queueing', async () => {
-    let finish!: (value: TFunctionSandboxExecutionResult) => void;
-    const pending = new Promise<TFunctionSandboxExecutionResult>((resolve) => { finish = resolve; });
+    let finish!: (value: TFunctionProcessExecutionResult) => void;
+    const pending = new Promise<TFunctionProcessExecutionResult>((resolve) => { finish = resolve; });
     const fake = driver();
     fake.execute = async () => pending;
     const executor = new DirectFunctionExecutor({
@@ -199,8 +221,8 @@ describe('direct function execution', () => {
 
   test('forwards live cancellation and always reaps the child', async () => {
     const events: string[] = [];
-    let finish!: (value: TFunctionSandboxExecutionResult) => void;
-    const pending = new Promise<TFunctionSandboxExecutionResult>((resolve) => { finish = resolve; });
+    let finish!: (value: TFunctionProcessExecutionResult) => void;
+    const pending = new Promise<TFunctionProcessExecutionResult>((resolve) => { finish = resolve; });
     const fake = driver(undefined, events);
     fake.execute = async () => pending;
     fake.cancel = async () => {
@@ -344,7 +366,7 @@ describe('ephemeral write permits', () => {
       nowMs: () => 10,
     });
     await expect(gateway.call({
-      slot: 'store', operation: 'set', effect: 'write', input: { key: 'a' },
+      slot: 'store', operation: 'set', effect: 'write', input: { key: 'a', value: 1 },
     })).rejects.toThrow('rejected before permit consumption');
     expect(authority.activePermitCount()).toBe(0);
   });

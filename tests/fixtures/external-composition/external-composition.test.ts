@@ -21,5 +21,8 @@ describe('external managed composition', () => {
     })
     expect(evidence.canvasBytes).toBeGreaterThan(100)
     expect(evidence.widgetBytes).toBeGreaterThan(100)
+    expect(evidence.widgetModuleBytes).toBeGreaterThan(100)
+    expect(evidence.widgetModuleDigestSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(evidence.widgetAdmissionVectorCount).toBe(41)
   })
 })

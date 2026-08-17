@@ -4,7 +4,6 @@
  */
 
 import type {
-  TWidgetBrowserFunctionDescriptor,
   TWidgetCapabilityRequest,
   TWidgetSerializableJsonObject,
   TWidgetSerializableJsonValue,
@@ -47,7 +46,6 @@ export function fnNormalizeWidgetServerFunctionDescriptor(
   return {
     schemaVersion: 1,
     exportName: descriptor.exportName,
-    ...(descriptor.modulePath === undefined ? {} : { modulePath: descriptor.modulePath }),
     effect: descriptor.effect,
     inputSchema: normalizeJson(descriptor.inputSchema) as TWidgetSerializableJsonObject,
     outputSchema: normalizeJson(descriptor.outputSchema) as TWidgetSerializableJsonObject,
@@ -78,53 +76,9 @@ export function fnCanonicalizeWidgetServerFunctionDescriptors(
   });
 }
 
-export function fnNormalizeWidgetBrowserFunctionDescriptor(
-  descriptor: TWidgetBrowserFunctionDescriptor,
-): TWidgetBrowserFunctionDescriptor {
-  const { modulePath: _modulePath, ...browserDescriptor } =
-    fnNormalizeWidgetServerFunctionDescriptor(descriptor);
-  return browserDescriptor;
-}
-
-export function fnNormalizeWidgetBrowserFunctionDescriptors(
-  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
-): readonly TWidgetBrowserFunctionDescriptor[] {
-  return [...descriptors]
-    .sort((left, right) => compareText(left.exportName, right.exportName))
-    .map(fnNormalizeWidgetBrowserFunctionDescriptor);
-}
-
-/**
- * Projects trusted server descriptors into the browser-visible contract.
- * `modulePath` is deliberately removed only after the full persisted
- * descriptor contract has been verified by the trusted server boundary.
- */
-export function fnProjectWidgetBrowserFunctionDescriptors(
-  descriptors: readonly TWidgetServerFunctionDescriptor[],
-): readonly TWidgetBrowserFunctionDescriptor[] {
-  return fnNormalizeWidgetBrowserFunctionDescriptors(descriptors.map((descriptor) => {
-    const { modulePath: _modulePath, ...browserDescriptor } =
-      fnNormalizeWidgetServerFunctionDescriptor(descriptor);
-    return browserDescriptor;
-  }));
-}
-
-/**
- * Canonical browser-safe descriptor contract. Unlike the persisted server
- * contract, this representation never includes host filesystem module paths.
- */
-export function fnCanonicalizeWidgetBrowserFunctionDescriptors(
-  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
-): string {
-  return JSON.stringify({
-    format: 'omnidraw.browser-server-functions.v1',
-    functions: fnNormalizeWidgetBrowserFunctionDescriptors(descriptors),
-  });
-}
-
 export function fnWidgetServerFunctionCapabilityRequestMatches(
   descriptorDigestSha256: string,
-  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+  descriptors: readonly TWidgetServerFunctionDescriptor[],
   requests: readonly TWidgetCapabilityRequest[],
 ): boolean {
   const functionRequests = requests.filter((request) => (
@@ -150,15 +104,15 @@ export function fnWidgetServerFunctionCapabilityRequestMatches(
 
 /**
  * Client-side twin of `fnWidgetServerFunctionCapabilityRequestMatches`.
- * The browser cannot re-derive the server digest (modulePath is withheld
- * from the projection), so this checks only what the client can verify:
+ * The browser receives the same path-free canonical descriptors, so this
+ * checks only what the client can verify:
  * the signed selector is self-consistent and its operations/version/required
- * fields match the browser descriptor projection. The server-digest binding
+ * fields match the canonical path-free descriptors. The server-digest binding
  * of `contractHash` stays a host-side check.
  */
 export function fnWidgetBrowserFunctionCapabilityRequestMatches(
   request: TWidgetCapabilityRequest,
-  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+  descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): boolean {
   const idMatch = /^omnidraw\.widget\.functions\.h([0-9a-f]{64})$/.exec(request.id);
   if (idMatch === null) return false;
@@ -190,13 +144,6 @@ export function fnValidateWidgetServerFunctionDescriptors(
     requirement,
   ]));
   for (const descriptor of descriptors) {
-    if (descriptor.modulePath === undefined) {
-      return {
-        valid: false,
-        reason: 'missing_module_path',
-        exportName: descriptor.exportName,
-      };
-    }
     if (exports.has(descriptor.exportName)) {
       return {
         valid: false,

@@ -14,6 +14,11 @@ import {
   WIDGET_RELEASE_FILE_COUNT_MAX,
   WIDGET_RELEASE_FILE_MAX_BYTES,
   WIDGET_RELEASE_FORMAT,
+  WIDGET_SERVER_FUNCTIONS_PATH,
+  WIDGET_SERVER_FUNCTION_COUNT_MAX,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_PATH,
   WIDGET_SLUG_MAX_BYTES,
   WIDGET_TOOL_GROUP_MAX_BYTES,
   WIDGET_TOOL_LABEL_MAX_CHARACTERS,
@@ -23,10 +28,8 @@ import {
   fnNormalizeWidgetRuntimeBudgetRequest,
   fnNormalizeWidgetRuntimeDescriptor,
 } from './core/fn.capsule';
-import {
-  fnNormalizeWidgetBrowserFunctionDescriptors,
-  fnNormalizeWidgetServerFunctionDescriptors,
-} from './core/fn.function-descriptor';
+import { fnNormalizeWidgetServerFunctionDescriptors } from './core/fn.function-descriptor';
+import { fnValidatePortableResourceSql } from './core/fn.portable-resource-sql';
 import {
   fnNormalizeWidgetExecutableProjection,
   fnNormalizeWidgetManifestV1,
@@ -45,7 +48,6 @@ import type {
 } from './filesystem/typed';
 import type {
   TOmnidrawToolIcon,
-  TWidgetBrowserFunctionDescriptor,
   TWidgetRuntimeApiGroup,
   TWidgetRuntimeBudgetRequest,
   TWidgetRuntimeBudgets,
@@ -196,7 +198,6 @@ const SDK_VERSION_PATTERN = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0
 const CAPABILITY_ID_PATTERN = /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*)+$/;
 const OPERATION_PATTERN = /^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/;
 const VERSION_RANGE_PATTERN = /^(?:\*|[\^~]?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
-const MODULE_PATH_PATTERN = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\\)(?!.*\0)[^/]+(?:\/[^/]+)*\.(?:[cm]?[jt]sx?)$/;
 
 function sha256(value: unknown, path: TSdkValidationPath): string {
   return stringValue(value, path, { pattern: SHA256_PATTERN });
@@ -311,7 +312,7 @@ function resourceRequirement(
     for (const [name, operationValue] of operationEntries) {
       if (!NAME_PATTERN.test(name)) fail([...path, 'operations', name], 'Invalid resource operation name.');
       const operation = record(operationValue, [...path, 'operations', name]);
-      onlyKeys(operation, ['effect', 'sql', 'parameters', 'result'], [...path, 'operations', name]);
+      onlyKeys(operation, ['effect', 'sql', 'parameters', 'result', 'jsonColumns'], [...path, 'operations', name]);
       if (!['read', 'write'].includes(String(operation.effect))) fail([...path, 'operations', name, 'effect'], 'Invalid operation effect.');
       if (effect !== 'read_write' && operation.effect !== effect) {
         fail([...path, 'operations', name, 'effect'], 'Operation exceeds the resource effect ceiling.');
@@ -335,11 +336,50 @@ function resourceRequirement(
         }),
       );
       if (!['rows', 'execute'].includes(String(operation.result))) fail([...path, 'operations', name, 'result'], 'Invalid operation result kind.');
+      let jsonColumns: readonly string[] | undefined;
+      if (operation.jsonColumns !== undefined) {
+        if (
+          operation.result !== 'rows'
+          || !Array.isArray(operation.jsonColumns)
+          || operation.jsonColumns.length < 1
+          || operation.jsonColumns.length > 128
+        ) fail([...path, 'operations', name, 'jsonColumns'], 'JSON result columns require a bounded row result.');
+        const normalizedColumns = operation.jsonColumns.map((column, index) => {
+          const normalized = stringValue(column, [...path, 'operations', name, 'jsonColumns', index], {
+            min: 1,
+            max: 1_024,
+          });
+          if (normalized.normalize('NFC') !== normalized) {
+            return fail([...path, 'operations', name, 'jsonColumns', index], 'JSON result column must use NFC text.');
+          }
+          return normalized;
+        });
+        if (new Set(normalizedColumns).size !== normalizedColumns.length) {
+          fail([...path, 'operations', name, 'jsonColumns'], 'JSON result columns must be unique.', 'duplicate');
+        }
+        jsonColumns = Object.freeze(normalizedColumns.sort());
+      }
+      const sql = stringValue(
+        operation.sql,
+        [...path, 'operations', name, 'sql'],
+        { min: 1, max: 100_000 },
+      );
+      const sqlValidation = fnValidatePortableResourceSql({
+        sql,
+        expectedEffect: operation.effect as 'read' | 'write',
+      });
+      if (!sqlValidation.allowed) {
+        fail(
+          [...path, 'operations', name, 'sql'],
+          sqlValidation.message,
+        );
+      }
       normalized[name] = Object.freeze({
         effect: operation.effect as 'read' | 'write',
-        sql: stringValue(operation.sql, [...path, 'operations', name, 'sql'], { min: 1, max: 100_000 }),
+        sql,
         ...(parameters === undefined ? {} : { parameters }),
         result: operation.result as 'rows' | 'execute',
+        ...(jsonColumns === undefined ? {} : { jsonColumns }),
       });
     }
     operations = Object.freeze(normalized);
@@ -401,10 +441,9 @@ function ui(value: unknown, path: TSdkValidationPath): TWidgetManifestV1['ui'] {
 
 function server(value: unknown, path: TSdkValidationPath): NonNullable<TWidgetManifestV1['server']> {
   const input = record(value, path);
-  onlyKeys(input, ['entry', 'runtimeAbi'], path);
+  onlyKeys(input, ['entry'], path);
   return Object.freeze({
     entry: buildEntry(input.entry, [...path, 'entry']),
-    runtimeAbi: stringValue(input.runtimeAbi, [...path, 'runtimeAbi'], { min: 1, max: 100, pattern: IDENTIFIER_PATTERN }),
   });
 }
 
@@ -483,11 +522,9 @@ function jsonObject(value: unknown, path: TSdkValidationPath): TWidgetSerializab
   return result as TWidgetSerializableJsonObject;
 }
 
-function functionDescriptor(value: unknown, path: TSdkValidationPath, browser: boolean): TWidgetServerFunctionDescriptor {
+function functionDescriptor(value: unknown, path: TSdkValidationPath): TWidgetServerFunctionDescriptor {
   const input = record(value, path);
-  onlyKeys(input, browser
-    ? ['schemaVersion', 'exportName', 'effect', 'inputSchema', 'outputSchema', 'resources', 'limits']
-    : ['schemaVersion', 'exportName', 'modulePath', 'effect', 'inputSchema', 'outputSchema', 'resources', 'limits'], path);
+  onlyKeys(input, ['schemaVersion', 'exportName', 'effect', 'inputSchema', 'outputSchema', 'resources', 'limits'], path);
   const effect = String(input.effect);
   if (!['fn', 'fx', 'tx'].includes(effect)) fail([...path, 'effect'], 'Invalid server-function effect.');
   if (!Array.isArray(input.resources) || input.resources.length > 64) fail([...path, 'resources'], 'Function resources must be a bounded array.', 'invalid_type');
@@ -505,38 +542,33 @@ function functionDescriptor(value: unknown, path: TSdkValidationPath, browser: b
   });
   const limits = record(input.limits, [...path, 'limits']);
   onlyKeys(limits, ['timeoutMs', 'memoryTier', 'outputByteLimit', 'logByteLimit'], [...path, 'limits']);
-  if (!['small', 'medium', 'large'].includes(String(limits.memoryTier))) fail([...path, 'limits', 'memoryTier'], 'Invalid function memory tier.');
+  if (limits.memoryTier !== 'small') fail([...path, 'limits', 'memoryTier'], "Function memory tier must be 'small'.");
   return {
     schemaVersion: literal(input.schemaVersion, 1, [...path, 'schemaVersion']),
     exportName: stringValue(input.exportName, [...path, 'exportName'], { pattern: EXPORT_NAME_PATTERN }),
-    ...(!browser && input.modulePath !== undefined ? {
-      modulePath: stringValue(input.modulePath, [...path, 'modulePath'], { max: 500, pattern: MODULE_PATH_PATTERN }),
-    } : {}),
     effect: effect as 'fn' | 'fx' | 'tx',
     inputSchema: jsonObject(input.inputSchema, [...path, 'inputSchema']),
     outputSchema: jsonObject(input.outputSchema, [...path, 'outputSchema']),
     resources: Object.freeze(functionResources),
     limits: Object.freeze({
       timeoutMs: integer(limits.timeoutMs, [...path, 'limits', 'timeoutMs'], 1, 30_000),
-      memoryTier: limits.memoryTier as 'small' | 'medium' | 'large',
+      memoryTier: limits.memoryTier as 'small',
       outputByteLimit: integer(limits.outputByteLimit, [...path, 'limits', 'outputByteLimit'], 1, 1_048_576),
       logByteLimit: integer(limits.logByteLimit, [...path, 'limits', 'logByteLimit'], 0, 1_048_576),
     }),
   };
 }
 
-function descriptorArray(value: unknown, browser: boolean): readonly TWidgetServerFunctionDescriptor[] {
-  if (!Array.isArray(value) || value.length > 128) fail([], 'Function descriptors must be a bounded array.', 'invalid_type');
+function descriptorArray(value: unknown): readonly TWidgetServerFunctionDescriptor[] {
+  if (!Array.isArray(value) || value.length > WIDGET_SERVER_FUNCTION_COUNT_MAX) fail([], 'Function descriptors must be a bounded array.', 'invalid_type');
   const seen = new Set<string>();
   const descriptors = value.map((entry, index) => {
-    const descriptor = functionDescriptor(entry, [index], browser);
+    const descriptor = functionDescriptor(entry, [index]);
     if (seen.has(descriptor.exportName)) fail([index, 'exportName'], 'Duplicate server-function export.', 'duplicate');
     seen.add(descriptor.exportName);
     return descriptor;
   });
-  return browser
-    ? fnNormalizeWidgetBrowserFunctionDescriptors(descriptors)
-    : fnNormalizeWidgetServerFunctionDescriptors(descriptors);
+  return fnNormalizeWidgetServerFunctionDescriptors(descriptors);
 }
 
 function capabilityRequest(value: unknown, path: TSdkValidationPath): TWidgetCapabilityRequest {
@@ -706,7 +738,7 @@ function unsignedRelease(value: unknown, includeAttestation: boolean): TWidgetUn
   const capsule = record(input.capsule, ['capsule']);
   onlyKeys(capsule, ['path', 'artifactHash', 'runtime'], ['capsule']);
   const serverInput = input.server === null ? null : record(input.server, ['server']);
-  if (serverInput !== null) onlyKeys(serverInput, ['entry', 'runtimeAbi', 'functionsPath', 'serverDistDigestSha256', 'functionsDigestSha256'], ['server']);
+  if (serverInput !== null) onlyKeys(serverInput, ['entry', 'format', 'abi', 'functionsPath', 'moduleDigestSha256', 'functionsDigestSha256'], ['server']);
   const base: TWidgetUnsignedReleaseDescriptor = {
     format: literal(input.format, WIDGET_RELEASE_FORMAT, ['format']),
     complete: literal(input.complete, true, ['complete']),
@@ -718,14 +750,11 @@ function unsignedRelease(value: unknown, includeAttestation: boolean): TWidgetUn
       runtime: decodeRuntimeDescriptor(capsule.runtime),
     }),
     server: serverInput === null ? null : Object.freeze({
-      entry: (() => {
-        const entry = stringValue(serverInput.entry, ['server', 'entry'], { min: 1, max: 1_024 });
-        if (!entry.startsWith('server-dist/') || fnNormalizeWidgetFilesystemRelativePath(entry) !== entry) fail(['server', 'entry'], 'Invalid server release entry.');
-        return entry;
-      })(),
-      runtimeAbi: stringValue(serverInput.runtimeAbi, ['server', 'runtimeAbi'], { min: 1, max: 100, pattern: IDENTIFIER_PATTERN }),
-      functionsPath: literal(serverInput.functionsPath, 'functions.json', ['server', 'functionsPath']),
-      serverDistDigestSha256: sha256(serverInput.serverDistDigestSha256, ['server', 'serverDistDigestSha256']),
+      entry: literal(serverInput.entry, WIDGET_SERVER_MODULE_PATH, ['server', 'entry']),
+      format: literal(serverInput.format, WIDGET_SERVER_MODULE_FORMAT, ['server', 'format']),
+      abi: literal(serverInput.abi, WIDGET_SERVER_MODULE_ABI, ['server', 'abi']),
+      functionsPath: literal(serverInput.functionsPath, WIDGET_SERVER_FUNCTIONS_PATH, ['server', 'functionsPath']),
+      moduleDigestSha256: sha256(serverInput.moduleDigestSha256, ['server', 'moduleDigestSha256']),
       functionsDigestSha256: sha256(serverInput.functionsDigestSha256, ['server', 'functionsDigestSha256']),
     }),
   };
@@ -778,10 +807,8 @@ export const WidgetManifestValidator = validator<TWidgetManifestV1>(decodeManife
 export const WidgetExecutableManifestValidator = validator<TWidgetExecutableManifestProjection>(decodeExecutableManifest);
 export const WidgetBuildReceiptValidator = validator<TWidgetBuildReceipt>(decodeReceipt);
 export const WidgetRuntimeDescriptorValidator = validator<TWidgetRuntimeDescriptor>(decodeRuntimeDescriptor);
-export const WidgetServerFunctionDescriptorValidator = validator<TWidgetServerFunctionDescriptor>((value) => functionDescriptor(value, [], false));
-export const WidgetBrowserFunctionDescriptorValidator = validator<TWidgetBrowserFunctionDescriptor>((value) => functionDescriptor(value, [], true) as TWidgetBrowserFunctionDescriptor);
-export const WidgetServerFunctionDescriptorsValidator = validator<readonly TWidgetServerFunctionDescriptor[]>((value) => descriptorArray(value, false));
-export const WidgetBrowserFunctionDescriptorsValidator = validator<readonly TWidgetBrowserFunctionDescriptor[]>((value) => descriptorArray(value, true) as readonly TWidgetBrowserFunctionDescriptor[]);
+export const WidgetServerFunctionDescriptorValidator = validator<TWidgetServerFunctionDescriptor>((value) => functionDescriptor(value, []));
+export const WidgetServerFunctionDescriptorsValidator = validator<readonly TWidgetServerFunctionDescriptor[]>(descriptorArray);
 export const WidgetReleaseDescriptorValidator = validator<TWidgetReleaseDescriptor>((value) => unsignedRelease(value, true) as TWidgetReleaseDescriptor);
 export const WidgetUnsignedReleaseDescriptorValidator = validator<TWidgetUnsignedReleaseDescriptor>((value) => unsignedRelease(value, false));
 export const WidgetResourceRequirementValidator = validator<TWidgetResourceRequirement>((value) => resourceRequirement(value, [], false));
@@ -811,9 +838,7 @@ export const ZWidgetExecutableManifest = WidgetExecutableManifestValidator;
 export const ZWidgetBuildReceipt = WidgetBuildReceiptValidator;
 export const ZWidgetRuntimeDescriptor = WidgetRuntimeDescriptorValidator;
 export const ZWidgetServerFunctionDescriptor = WidgetServerFunctionDescriptorValidator;
-export const ZWidgetBrowserFunctionDescriptor = WidgetBrowserFunctionDescriptorValidator;
 export const ZWidgetServerFunctionDescriptors = WidgetServerFunctionDescriptorsValidator;
-export const ZWidgetBrowserFunctionDescriptors = WidgetBrowserFunctionDescriptorsValidator;
 export const ZWidgetReleaseDescriptor = WidgetReleaseDescriptorValidator;
 export const ZWidgetUnsignedReleaseDescriptor = WidgetUnsignedReleaseDescriptorValidator;
 export const ZWidgetResourceRequirement = WidgetResourceRequirementValidator;

@@ -39,6 +39,7 @@ export type TManagedResourceRequirement = Readonly<{
       nullable?: boolean;
     }>>>;
     result: 'rows' | 'execute';
+    jsonColumns?: readonly string[];
   }>>>;
 }>;
 

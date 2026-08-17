@@ -7,7 +7,6 @@ export type TPreviewConstructionCompatibility = Readonly<{
   buildPolicyId: string;
   environmentIdentity: string;
   capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
-  serverRuntimeAbi: string | null;
 }>;
 
 export type TPreviewDiagnosticInput = Readonly<{

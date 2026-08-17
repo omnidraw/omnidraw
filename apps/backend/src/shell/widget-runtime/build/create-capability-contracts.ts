@@ -1,5 +1,5 @@
 import { createCapsuleSchemaResource } from '@omnidraw/capsule/schema';
-import type { TWidgetBrowserFunctionDescriptor } from '@omnidraw/sdk/contract';
+import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
 import {
   fnOmnidrawCapabilityGrant,
   fnOmnidrawCapabilityRequest,
@@ -37,7 +37,7 @@ function deduplicateSchemas<T extends Readonly<{ reference: Readonly<{ hash: str
 
 export async function createOmnidrawServerFunctionCapabilityContract(args: Readonly<{
   descriptorDigestSha256: string;
-  functions: readonly TWidgetBrowserFunctionDescriptor[];
+  functions: readonly TWidgetServerFunctionDescriptor[];
 }>): Promise<TOmnidrawCapsuleCapabilityContract | null> {
   if (args.functions.length === 0) return null;
   const functions = await Promise.all(args.functions.map(async (item) => {

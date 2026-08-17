@@ -51,7 +51,7 @@ const MANIFEST: TWidgetManifestV1 = Object.freeze({
     apis: Object.freeze(['DOM'] as const),
   }),
 });
-const ENVIRONMENT: Omit<TWidgetBuildEnvironment, 'serverRuntimeAbi'> = Object.freeze({
+const ENVIRONMENT: TWidgetBuildEnvironment = Object.freeze({
   packageManager: Object.freeze({
     name: 'npm',
     version: '11.0.0',
@@ -351,7 +351,7 @@ describe('filesystem widget build service', () => {
       sourceMapArtifact: {
         kind: 'source_map',
         digestSha256: RAW_B,
-        bytes: new TextEncoder().encode('trusted map envelope'),
+        bytes: new TextEncoder().encode('trusted source map'),
       },
       builderIdentity: 'builder-v1',
       capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
@@ -457,7 +457,7 @@ describe('filesystem widget build service', () => {
     expect(cached).toBeNull();
   });
 
-  test('derives the server ABI per manifest so one service builds UI-only and server widgets', async () => {
+  test('derives one fixed server contract while building UI-only and server widgets', async () => {
     const harness = fixture();
     const uiConstruction = await harness.service.construct({
       manifest: MANIFEST,
@@ -468,7 +468,7 @@ describe('filesystem widget build service', () => {
     const serverConstruction = await harness.service.construct({
       manifest: {
         ...MANIFEST,
-        server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' },
+        server: { entry: 'server/main.ts' },
       },
       files: [
         { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
@@ -479,7 +479,7 @@ describe('filesystem widget build service', () => {
     expect(uiConstruction.executableInputDigestSha256)
       .not.toBe(serverConstruction.executableInputDigestSha256);
     expect(uiManifest?.server).toBeNull();
-    expect(harness.captured()?.manifest.server?.runtimeAbi).toBe('bun-v1');
+    expect(harness.captured()?.manifest.server).toEqual({ entry: 'server/main.ts' });
   });
 
   test('publishes presentation separately and validates exact runtime files', async () => {

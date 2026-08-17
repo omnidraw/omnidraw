@@ -4,7 +4,7 @@ import type {
   CapsuleCapabilityRequest,
   CapsuleSchemaReference,
 } from '@omnidraw/capsule/protocol';
-import type { TWidgetBrowserFunctionDescriptor } from '../../contracts/types';
+import type { TWidgetServerFunctionDescriptor } from '../../contracts/types';
 import {
   OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
   OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
@@ -68,7 +68,7 @@ export function fnOmnidrawCapabilityGrant(
 export function fnOmnidrawServerFunctionDescriptor(args: Readonly<{
   descriptorDigestSha256: string;
   functions: readonly Readonly<{
-    function: TWidgetBrowserFunctionDescriptor;
+    function: TWidgetServerFunctionDescriptor;
     inputSchema: CapsuleSchemaReference;
     outputSchema: CapsuleSchemaReference;
   }>[];
@@ -177,4 +177,3 @@ export function fnOmnidrawCollaborativeStateDescriptor(args: Readonly<{
     ]),
   });
 }
-

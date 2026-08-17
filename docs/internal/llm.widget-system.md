@@ -40,6 +40,10 @@ releases, no artifacts, no Preview records, and no function history.
 7. **Server function** is a declared, descriptor-driven export of a published
    (or Preview) widget. Calls are one live request and one live response with
    no durable history.
+8. **Canonical server module** is the SDK-owned, host-neutral ES module and
+   fixed Omnidraw ABI emitted once for a server-bearing build. OSS and managed
+   accept the same module bytes; host wrappers, IPC, deployment metadata, and
+   provider bindings are not part of its artifact digest.
 
 ## Widget root layout
 
@@ -76,9 +80,10 @@ project separately, so metadata-only edits never rebuild executable bytes.
   executable-input digest (manifest + source files + build environment).
 - **`release.json`** is minimal: exact file list with byte sizes and SHA-256,
   the signed Capsule identity and runtime descriptor, optional server entry
-  with `runtimeAbi` and the functions digest, the executable-manifest digest,
-  and the host release attestation. It is validated exactly before a folder
-  counts as published.
+  with the SDK-derived fixed ABI marker, exact canonical server-module digest,
+  and functions digest, the executable-manifest digest, and the host release
+  attestation. Authors do not select a runtime ABI. The release is validated
+  exactly before a folder counts as published.
 - The reserved authoring-source artifact is covered by that same exact file
   list and release attestation. It is not a browser distribution input, is
   never writable, and is decoded only into an absent draft by a
@@ -163,6 +168,71 @@ restart.
 
 ## Direct server functions
 
+The server artifact is an Omnidraw module, not Bun source, a Cloudflare Worker,
+or a complete deployable Fetch script. Widget authors use
+`@omnidraw/sdk/server`; they do not receive Cloudflare `env`, define a Fetch
+handler, write Wrangler configuration, select an execution runtime, or maintain
+separate OSS and managed source. The OSS accepted-build boundary and private
+managed accepted-build boundary admit the same portable language. A construct
+that works only because OSS uses Bun is rejected.
+
+OSS loads the exact canonical module bytes in one disposable Bun child on the
+local host. This is explicitly trusted local execution. The child, blank guest
+global, denied capabilities, and process cleanup are defense in depth, not a
+hostile-code sandbox guarantee. Capsule remains exclusively the browser UI
+sandbox and never executes server functions.
+
+The private managed adapter may generate a small module/Fetch wrapper around
+the exact canonical bytes. That wrapper has a distinct deployment digest and
+must neither rewrite nor rebuild the canonical module or change the widget
+artifact digest. The wrapper is an untrusted-realm trampoline, not a security
+boundary: it holds no Turso credential, tenant secret, write-permit authority,
+or provider handle. A separately trusted broker owns those values and is
+reached only through a host-provided service binding. The adapter runs widget
+code only as a Workers for Platforms user Worker—never in Cloudflare Sandbox,
+a Container, a Durable Object, or the managed chat/build sandbox. The private
+adapter owns dispatch namespaces,
+uploads, outbound-worker policy, Cloudflare bindings, resource brokerage,
+Turso credentials, tenant/authentication policy, metering, billing, plan
+enforcement, and usage evidence.
+
+OSS owns no Cloudflare executor, remote Turso fallback, per-user/monthly quota,
+billing-plan limit, managed workload bound, or sandbox-minute allowance. OSS
+conformance qualifies only the portable contract and local adapter. Before an
+exact public package set is accepted, the private managed repository must use
+the SDK version pinned by `public-package-set.json`, deploy through a real WFP
+dispatch namespace, run the same conformance against Turso, verify the wrapper
+references the exact canonical module digest, and prove widget code has no
+outbound or host-OS authority.
+
+The portable invocation contract does not expose catalog generations or an
+evaluation-lifetime guarantee. Hosts may evaluate the module once or reuse an
+isolate, so module-scope mutation, caches, locks, and intrinsic modification
+must not affect a function result. A function is portable only as a function
+of its input, the frozen invocation context, and declared resource results.
+The context cancellation surface is exactly `aborted`, `reason`,
+`throwIfAborted`, and abort-listener add/remove; prototype identity,
+`onabort`, and native `DOMException` identity are not ABI.
+
+Every descriptor uses the single `small` memory class with a 128 MiB portable
+ceiling. Canonical server bytes are at most 8 MiB. The managed acceptance gate
+must additionally prove the complete wrapper upload stays within its compressed
+platform limit and that global-scope parsing/evaluation stays within the Worker
+startup limit. `timeoutMs` is a wall-clock contract: the wrapper aborts awaited
+work, while the caller maps an uncatchable platform CPU/memory termination to
+the same bounded terminal failure class.
+
+Managed user Workers run the wrapper and canonical module in one realm where
+Worker globals physically exist. Shared admission rejects direct, computed,
+and unresolved `globalThis` access outside the ECMAScript allowlist, but static
+admission is not the egress boundary. The private live gate must configure an
+outbound Worker to deny public network access and prove denial with an actual
+exfiltration attempt. The user Worker receives no direct Turso binding. KV,
+secret-store, and database resource semantics are brokered by strongly
+consistent storage; Cloudflare KV is not a valid implementation of revisioned
+CAS. Database batches use one provider-owned sticky transaction/pipeline and
+CAS-participating reads cannot use a stale replica.
+
 One call resolves the current canvas item and the current published (or
 Preview) manifest, obtains the resource only from its declared `resourceId`,
 then rechecks publication identity, lifecycle, kind, effect, operation,
@@ -177,6 +247,53 @@ closed without display-name or first-compatible fallback.
 - There are no queues, leases, receipts, idempotency records, attempts,
   logs, status reads, usage accounting, or invocation history — after
   restart nothing is inspectable.
+
+## Portable resource capability matrix
+
+The manifest is the complete widget-facing resource authority. A server
+function may use only the slots and effects in its accepted descriptor, and
+those effects must stay within the matching manifest requirement. An `fn`
+function declares no resources, an `fx` function may declare read access only,
+and a `tx` function may declare read, write, or read/write access. The host
+rechecks this chain on every call; a resource ID alone grants nothing.
+
+| Resource | Read operations | Write operations | Portable observable behavior |
+| --- | --- | --- | --- |
+| KV | `get`, `has`, `list` | `set`, `delete`, `compareAndSet` | Bounded JSON values, positive revisions, prefix/cursor pagination, and explicit compare-and-set success or conflict. |
+| Secret store | `get`, `has`, `list` | `set`, `delete`, `compareAndSet` | `get` is the explicit widget capability that returns plaintext plus revision. `list` returns only name and revision; it never returns plaintext, provider timestamps, or storage metadata. Writes use positive revisions and explicit compare-and-set success or conflict. |
+| Database | Declared read `invoke`; `query` only when arbitrary SQL is enabled | Declared write `invoke`; `execute` and bounded execute batches only when arbitrary SQL is enabled | Named operations use their declared parameter types, effect, SQL, result kind, and optional JSON result-column declarations. Declared JSON columns decode bounded SQL text as tagged JSON; arbitrary SQLite query results remain text unless declared by a named operation. Rows preserve ordered and duplicate columns plus tagged cell values. Execute results contain normalized affected-row counts and optional decimal-string insert IDs. The adapter, not widget SQL, owns a batch transaction. |
+
+All calls use one SDK-owned bounded request/result/failure wire contract. The
+request contains only correlation, logical slot, operation, requested effect,
+and encoded input. It never carries a concrete resource ID, provider handle,
+credentials, environment, tenant, user, or host binding. Portable values are
+canonical tagged null, boolean, finite number, string, bigint, bytes, arrays,
+and sorted-key objects; database rows additionally retain column order and
+cell types. Malformed input/output, unknown operations, denied effects,
+provider failures, and limits are bounded failure codes rather than leaked
+provider errors. A write with an unclear outcome consumes its single-use
+permit and is never retried automatically.
+
+Widget-authored database SQL is one bounded, classified statement. Transaction
+control, `ATTACH`/`DETACH`, `PRAGMA`, `VACUUM`, trigger creation, extension
+loading, host-file functions, temporary objects, and writes to SQLite, libSQL,
+Turso, or Omnidraw internal namespaces are forbidden. An unclassified
+statement and any declared-effect mismatch fail closed. Local maintenance SQL
+and human resource-management APIs are outside this widget data-plane profile.
+
+Admission rejects direct dynamic-code authority and statically resolvable
+constructor aliases. The OSS guest additionally disables string and Wasm code
+generation in its VM, and the managed Worker profile must apply the equivalent
+runtime restriction, so indirect constructor reconstruction cannot execute.
+
+OSS preserves its complete local product surface: embedded database files and
+WAL handling, encrypted secrets, catalog/data editing, drafts, apply and
+backup/restore flows, recovery, redacted listing, and explicit human secret
+reveal. A private managed Turso/resource adapter may use different private
+storage schemas and management APIs, but the same conformance scenarios must
+produce the same widget-visible transcript and failure classes. Neither side
+may project provider time, identity, credentials, or billing state into the
+portable result.
 
 ## AI authoring
 
@@ -309,6 +426,7 @@ Lease URLs are never printed.
 | `packages/theme` | Public theme values, namespaced CSS, tokens, and caller-scoped theme application helpers. |
 | `apps/backend` | Filesystem workspaces and catalog, build and publication, ephemeral Preview authority, trusted local function execution, resources, widget-instance state, signing, persistence, and private RPC handlers. |
 | `apps/frontend` | Product navigation and sidebar, widget placement, SDK browser-host composition, Preview and inspection UI, AI Chat adapters, and the multiplexed browser RPC client. |
+| Private managed repository | Exact-bytes WFP wrapper generation and upload, dispatch namespaces, outbound-worker policy, Cloudflare bindings, resource broker and Turso adapter, credentials, authentication, tenancy, metering, billing, plan enforcement, usage evidence, and real managed qualification. |
 
 ## Invariants
 
@@ -317,6 +435,10 @@ Lease URLs are never printed.
   artifacts, Preview, or function history.
 - Preview is ephemeral; only the draft `widgetKey` and frame data persist.
 - Only accepted portable build generations reach Preview or publication.
+- OSS and managed accept the same SDK-owned canonical server-module language;
+  adapter wrappers and transports never change its bytes or artifact digest.
+- Managed widget functions execute only as WFP user Workers; Capsule executes
+  browser UI only, and OSS execution remains trusted local host code.
 - `omnidraw.json` is the only widget-to-resource authority; canvas items carry
   no resource binding map and placement never asks the user to choose one.
 - Functions are direct and history-free.

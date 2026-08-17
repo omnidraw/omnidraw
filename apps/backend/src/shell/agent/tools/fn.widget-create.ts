@@ -35,7 +35,6 @@ export function fnBuildWidgetCreateManifest(args: TWidgetCreateInput): TWidgetMa
       ? {
           server: {
             entry: 'server/main.server.ts',
-            runtimeAbi: 'omnidraw-function-v1',
           },
         }
       : {}),

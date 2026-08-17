@@ -95,7 +95,6 @@ export type TWidgetBuildEnvironment = Readonly<{
   capsuleBuildIdentity: TWidgetRuntimeBuildIdentity;
   buildPolicyId: string;
   signingPolicyId: string;
-  serverRuntimeAbi: string | null;
 }>;
 
 export type TWidgetChangeClass =
@@ -121,10 +120,11 @@ export type TWidgetReleaseFile = Readonly<{
 }>;
 
 export type TWidgetReleaseServer = Readonly<{
-  entry: string;
-  runtimeAbi: string;
+  entry: 'server-dist/main.mjs';
+  format: 'omnidraw.widget-server-module.v1';
+  abi: 'omnidraw.widget-server-abi.v1';
   functionsPath: 'functions.json';
-  serverDistDigestSha256: string;
+  moduleDigestSha256: string;
   functionsDigestSha256: string;
 }>;
 
@@ -163,7 +163,7 @@ export type TWidgetReleaseObservation = Readonly<{
     runtime: TWidgetRuntimeDescriptor;
   }>;
   server: Readonly<{
-    serverDistDigestSha256: string;
+    moduleDigestSha256: string;
     functionsDigestSha256: string;
     functions: readonly TWidgetServerFunctionDescriptor[];
   }> | null;

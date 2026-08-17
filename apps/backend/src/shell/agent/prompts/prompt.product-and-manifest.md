@@ -56,7 +56,7 @@ fields the request actually changes.
   widget-instance state; `localStore` is `none` or `ephemeral`.
 - Parking is unavailable in this release. Do not request it.
 - Omit `server` and `resources` for a UI-only widget. This is the default.
-- Add `server: { "entry": "server/main.server.ts", "runtimeAbi": "omnidraw-function-v1" }` only when the request truly needs a short server function. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
+- Add `server: { "entry": "server/main.server.ts" }` only when the request truly needs a short server function. The SDK owns the fixed portable server ABI; never add a runtime or host selection to the manifest. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
 - `resources` is an optional array of host-bound requirements. Each requirement names a stable logical slot, includes the exact local `resourceId` returned by successful resource creation or inspection, and declares kind, required status, read/write ceiling, and allowed operations. Never invent an id or put a path, handle, credential, or secret in the manifest.
 - Source paths are relative, normalized, and contained in the draft. Never use
   absolute paths, `..`, symlinks, dynamic imports, or runtime `require`.

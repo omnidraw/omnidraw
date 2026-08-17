@@ -4,6 +4,7 @@ import type {
   TWidgetReleaseFile,
   TWidgetReleaseValidation,
 } from '@omnidraw/sdk/contract';
+import { WIDGET_SERVER_MODULE_PATH } from '@omnidraw/sdk/contract';
 import type {
   TWidgetRuntimeDescriptor,
   TWidgetServerFunctionDescriptor,
@@ -634,26 +635,21 @@ async function scanPublished(
   }
 
   let serverObservation: {
-    serverDistDigestSha256: string;
+    moduleDigestSha256: string;
     functionsDigestSha256: string;
     functions: readonly TWidgetServerFunctionDescriptor[];
   } | null = null;
   if (facts.manifest?.server !== undefined) {
     const functionsFile = tree.files.find((file) => file.path === WIDGET_CATALOG_FUNCTIONS_PATH);
+    const moduleFile = tree.files.find((file) => file.path === WIDGET_SERVER_MODULE_PATH);
     try {
       const text = selectedText(effects, tree, WIDGET_CATALOG_FUNCTIONS_PATH);
-      if (text === null || functionsFile === undefined) {
-        throw new TypeError('Published server widget is missing a bounded functions.json.');
+      if (text === null || functionsFile === undefined || moduleFile === undefined) {
+        throw new TypeError('Published server widget is missing its canonical module or bounded functions.json.');
       }
       functions = effects.contracts.parseFunctionsJson(text);
-      const serverFiles: TWidgetReleaseFile[] = tree.files
-        .filter((file) => file.path.startsWith('server-dist/'))
-        .map((file) => ({ ...file, path: file.path.slice('server-dist/'.length) }));
       serverObservation = {
-        serverDistDigestSha256: effects.contracts.releaseDirectoryDigest({
-          files: serverFiles,
-          digestSha256: (value) => digestText(effects, value),
-        }),
+        moduleDigestSha256: moduleFile.sha256,
         functionsDigestSha256: functionsFile.sha256,
         functions,
       };

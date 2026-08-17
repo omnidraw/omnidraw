@@ -60,7 +60,6 @@ const ENVIRONMENT: TWidgetBuildEnvironment = Object.freeze({
   capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
   buildPolicyId: 'widget-build-v1',
   signingPolicyId: 'release-signing-v1',
-  serverRuntimeAbi: null,
 });
 
 const FILES: readonly TWidgetExecutableInputFile[] = Object.freeze([
@@ -125,8 +124,13 @@ describe('portable widget manifest v1', () => {
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'C:/main.ts' } },
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui\\main.ts' } },
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui/ma\nin.ts' } },
+      { ...MANIFEST, server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' } },
     ];
     for (const candidate of invalid) expect(ZWidgetManifestV1.safeParse(candidate).success).toBe(false);
+    expect(ZWidgetManifestV1.parse({
+      ...MANIFEST,
+      server: { entry: 'server/main.ts' },
+    }).server).toEqual({ entry: 'server/main.ts' });
   });
 
   test('bounds and shape-checks icons while retaining render-time sanitization as a separate edge', () => {
@@ -174,6 +178,51 @@ describe('portable widget manifest v1', () => {
         resources: [{ ...resource, resourceId }],
       }).success).toBe(false);
     }
+  });
+
+  test('normalizes declared database JSON result columns and rejects invalid declarations', () => {
+    const database = {
+      slot: 'data',
+      kind: 'db' as const,
+      effect: 'read' as const,
+      required: true,
+      operations: {
+        readJson: {
+          effect: 'read' as const,
+          sql: 'SELECT :value AS payload, :value AS metadata',
+          parameters: { value: { type: 'json' as const } },
+          result: 'rows' as const,
+          jsonColumns: ['payload', 'metadata'],
+        },
+      },
+    };
+    expect(ZWidgetManifestV1.parse({ ...MANIFEST, resources: [database] })
+      .resources?.[0]?.operations?.readJson?.jsonColumns).toEqual(['metadata', 'payload']);
+    for (const jsonColumns of [[], ['payload', 'payload']]) {
+      expect(ZWidgetManifestV1.safeParse({
+        ...MANIFEST,
+        resources: [{
+          ...database,
+          operations: {
+            readJson: { ...database.operations.readJson, jsonColumns },
+          },
+        }],
+      }).success).toBe(false);
+    }
+    expect(ZWidgetManifestV1.safeParse({
+      ...MANIFEST,
+      resources: [{
+        ...database,
+        operations: {
+          writeJson: {
+            effect: 'read',
+            sql: 'SELECT 1',
+            result: 'execute',
+            jsonColumns: ['payload'],
+          },
+        },
+      }],
+    }).success).toBe(false);
   });
 });
 

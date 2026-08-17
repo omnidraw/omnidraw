@@ -5,7 +5,7 @@ import type {
   IWidgetOutputHostPort,
   IWidgetStateHostPort,
   TWidgetBrowserArtifact,
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetHostDiagnostic,
   TWidgetHostSubject,
   TWidgetProps,

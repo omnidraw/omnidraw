@@ -30,11 +30,13 @@ import {
 import { pathToFileURL } from 'node:url';
 import {
   WIDGET_BUILD_RECEIPT_PATH,
+  WIDGET_SERVER_ALLOWED_PACKAGE_IMPORTS,
   ZWidgetManifestV1,
   fnCanonicalizeWidgetBuildReceipt,
   fnCanonicalizeWidgetExecutableProjection,
   fnCreateWidgetBuildReceipt,
   fnProjectWidgetExecutableManifest,
+  fnWidgetServerModulePolicyAdmission,
   fnWidgetManifestV1Digest,
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
@@ -626,7 +628,11 @@ function validateSourcePolicy(ts, sourceFile, path, isServer, uiAllowsPagehide, 
         && specifier !== '@omnidraw/sdk'
         && !specifier.startsWith('@omnidraw/sdk/');
       const serverSdkInUi = !isServer && specifier === '@omnidraw/sdk/server';
-      if (forbiddenNode || forbiddenOmnidraw || serverSdkInUi) {
+      const serverPackageOutsideProfile = isServer
+        && !specifier.startsWith('.')
+        && !specifier.startsWith('/')
+        && !WIDGET_SERVER_ALLOWED_PACKAGE_IMPORTS.includes(specifier);
+      if (forbiddenNode || forbiddenOmnidraw || serverSdkInUi || serverPackageOutsideProfile) {
         diagnostics.push(fnCreateOfflineCheckDiagnostic({
           phase: 'policy', code: 'SOURCE_IMPORT_FORBIDDEN',
           summary: `Source import '${specifier.slice(0, 200)}' is outside the portable widget policy.`,
@@ -888,6 +894,20 @@ async function checkWidget(args, signal) {
         !uiSources.has(path) || manifest.ui.apis.includes('WEBGL'),
         diagnostics,
       );
+      if (serverSources.has(path)) {
+        const admission = fnWidgetServerModulePolicyAdmission({
+          phase: 'authored_source',
+          source: sourceFile.text,
+        });
+        if (!admission.allowed) {
+          diagnostics.push(fnCreateOfflineCheckDiagnostic({
+            phase: 'policy',
+            code: 'SERVER_CAPABILITY_FORBIDDEN',
+            summary: `Server source uses unsupported portable capability '${admission.token}'.`,
+            file: widgetLocation(path),
+          }));
+        }
+      }
       if (manifest.server?.entry === path) {
         validateServerDescriptors(ts, sourceFile, path, manifest, diagnostics);
       }

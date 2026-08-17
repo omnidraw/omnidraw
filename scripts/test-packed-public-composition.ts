@@ -70,17 +70,10 @@ async function packedManifest(tarball: string): Promise<Record<string, unknown>>
   return JSON.parse(result.stdout) as Record<string, unknown>
 }
 
+const MODULE_SCANNER = new Bun.Transpiler({ loader: 'js' })
+
 function moduleSpecifiers(source: string): readonly string[] {
-  const declarations = source.matchAll(
-    /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?(?:[^;'"`]+?\s+from\s+)?['"]([^'"]+)['"]/g,
-  )
-  const dynamicImports = source.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)
-  const commonJsRequires = source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g)
-  return [
-    ...[...declarations].map((match) => match[1]!),
-    ...[...dynamicImports].map((match) => match[1]!),
-    ...[...commonJsRequires].map((match) => match[1]!),
-  ]
+  return MODULE_SCANNER.scanImports(source.replace(/^#![^\n]*(?:\n|$)/, '')).map(({ path }) => path)
 }
 
 function importedPackageName(specifier: string): string | null {

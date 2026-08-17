@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -87,14 +87,105 @@ type TFakeProvider = Readonly<{
 const ROOT = resolve(import.meta.dir, '../..');
 const BACKEND_ROOT = join(ROOT, 'apps/backend');
 const FRONTEND_ROOT = join(ROOT, 'apps/frontend');
+const SDK_ROOT = join(ROOT, 'packages/sdk');
 const VITE_BIN = join(FRONTEND_ROOT, 'node_modules/vite/bin/vite.js');
 const ROUTE_TIMEOUT_MS = 20_000;
+const FUNCTION_RESOURCE_WIDGET_KEY = 'browser-function-resource';
+const FUNCTION_RESOURCE_KEY = 'acceptance/preview-bridge';
+const FUNCTION_RESOURCE_VALUE = 'portable-resource-ok';
 const FAKE_PROVIDER_ID = 'browser-local';
 const FAKE_MODEL_ID = 'browser-stream-model';
 const FAKE_MODEL_NAME = 'Browser Streaming Model';
 const PROMPT_TEXT = 'Return the deterministic browser acceptance reply.';
 const PARTIAL_RESPONSE_TEXT = 'Browser acceptance';
 const COMPLETE_RESPONSE_TEXT = 'Browser acceptance streamed reply.';
+const sdkPackage = JSON.parse(await readFile(join(SDK_ROOT, 'package.json'), 'utf8')) as {
+  version?: unknown;
+};
+assert.equal(typeof sdkPackage.version, 'string', 'The workspace SDK package has no release marker.');
+const SDK_VERSION = String(sdkPackage.version);
+
+function functionResourceManifest(resourceId?: string): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+    schemaVersion: 1,
+    name: 'Browser Function Resource Widget',
+    slug: FUNCTION_RESOURCE_WIDGET_KEY,
+    description: 'Exercises the fixed Preview function and portable resource bridge.',
+    tool: {
+      label: 'Browser Function Resource Widget',
+      group: 'acceptance',
+      priority: 4,
+    },
+    ui: {
+      runtime: 'capsule',
+      entry: 'ui/main.ts',
+      apis: ['DOM'],
+    },
+    server: { entry: 'server/main.server.ts' },
+    resources: [{
+      slot: 'store',
+      ...(resourceId === undefined ? {} : { resourceId }),
+      kind: 'kv',
+      effect: 'read',
+      required: true,
+    }],
+  });
+}
+
+const FUNCTION_RESOURCE_UI_SOURCE = [
+  'import { readAcceptanceValue } from "../server/main.server";',
+  'const root = document.createElement("section");',
+  'root.textContent = "Preview function/resource bridge pending";',
+  'root.style.cssText = "box-sizing:border-box;min-height:240px;padding:24px;background:#4b1d1d;color:#ffffff";',
+  'document.body.style.margin = "0";',
+  'document.body.append(root);',
+  `void readAcceptanceValue({ key: ${JSON.stringify(FUNCTION_RESOURCE_KEY)} }).then((result) => {`,
+  `  if (result.value !== ${JSON.stringify(FUNCTION_RESOURCE_VALUE)} || result.revision !== 1) throw new Error("Unexpected Preview resource result.");`,
+  '  root.textContent = `Preview function/resource bridge: ${result.value}`;',
+  '  root.style.background = "#14c96f";',
+  '});',
+  '',
+].join('\n');
+
+const FUNCTION_RESOURCE_SERVER_SOURCE = [
+  'import { defineServerFunction } from "@omnidraw/sdk/server";',
+  'const inputSchema = Object.freeze({',
+  '  parse(value: unknown): { key: string } {',
+  '    if (value === null || typeof value !== "object" || typeof (value as { key?: unknown }).key !== "string") {',
+  '      throw new TypeError("Expected one resource key.");',
+  '    }',
+  '    return { key: (value as { key: string }).key };',
+  '  },',
+  '  toJSONSchema() {',
+  '    return { type: "object", required: ["key"], additionalProperties: false, properties: { key: { type: "string" } } };',
+  '  },',
+  '});',
+  'const outputSchema = Object.freeze({',
+  '  parse(value: unknown): { value: string; revision: number } {',
+  '    if (value === null || typeof value !== "object") throw new TypeError("Expected one resource value.");',
+  '    const candidate = value as { value?: unknown; revision?: unknown };',
+  '    if (typeof candidate.value !== "string" || !Number.isInteger(candidate.revision)) {',
+  '      throw new TypeError("Expected a string value and integer revision.");',
+  '    }',
+  '    return { value: candidate.value, revision: candidate.revision as number };',
+  '  },',
+  '  toJSONSchema() {',
+  '    return { type: "object", required: ["value", "revision"], additionalProperties: false, properties: { value: { type: "string" }, revision: { type: "integer" } } };',
+  '  },',
+  '});',
+  'export const readAcceptanceValue = defineServerFunction({',
+  '  effect: "fx",',
+  '  input: inputSchema,',
+  '  output: outputSchema,',
+  '  resources: { store: "read" },',
+  '}, async (context, input) => {',
+  '  const entry = await context.resources.read<{ value: unknown; revision: number } | null>("store", "get", { key: input.key });',
+  '  if (entry === null || typeof entry.value !== "string") throw new TypeError("Acceptance resource value is unavailable.");',
+  '  return { value: entry.value, revision: entry.revision };',
+  '});',
+  '',
+].join('\n');
 
 function failMessage(error: unknown): string {
   return error instanceof Error ? error.stack ?? error.message : String(error);
@@ -384,6 +475,52 @@ async function assertDraftGuestMounted(
   );
 }
 
+async function assertFunctionResourceGuestConsumed(
+  page: Page,
+  portal: ReturnType<Page['locator']>,
+): Promise<void> {
+  await waitForBrowserState({
+    label: 'the closed Capsule guest to consume and paint the exact resource result',
+    read: async () => {
+      const bounds = await portal.boundingBox();
+      if (bounds === null) return { greenPixels: 0 };
+      const viewportImage = await page.screenshot();
+      const encoded = viewportImage.toString('base64');
+      return page.evaluate(async ({ imageBase64, portalBounds }) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${imageBase64}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (context === null) return { greenPixels: 0 };
+        context.drawImage(image, 0, 0);
+        const x = Math.max(0, Math.floor(portalBounds.x));
+        const y = Math.max(0, Math.floor(portalBounds.y));
+        const width = Math.max(0, Math.min(Math.ceil(portalBounds.width), canvas.width - x));
+        const height = Math.max(0, Math.min(Math.ceil(portalBounds.height), canvas.height - y));
+        const pixels = context.getImageData(x, y, width, height).data;
+        let greenPixels = 0;
+        for (let offset = 0; offset < pixels.length; offset += 4) {
+          const red = pixels[offset]!;
+          const green = pixels[offset + 1]!;
+          const blue = pixels[offset + 2]!;
+          const alpha = pixels[offset + 3]!;
+          if (red < 80 && green > 150 && blue < 150 && alpha > 200) greenPixels += 1;
+        }
+        return { greenPixels };
+      }, { imageBase64: encoded, portalBounds: bounds });
+    },
+    ready: (evidence) => evidence.greenPixels >= 5_000,
+  });
+  assert.equal(
+    await page.getByText(`Preview function/resource bridge: ${FUNCTION_RESOURCE_VALUE}`, { exact: true }).count(),
+    0,
+    'The function/resource result escaped the closed Capsule guest DOM boundary.',
+  );
+}
+
 async function assertDraftPreviewTitlebar(
   page: Page,
   label: string,
@@ -473,6 +610,7 @@ async function seedDraftWidget(home: string): Promise<string> {
   const unbuiltWidgetRoot = join(home, 'widgets/drafts/browser-unbuilt');
   const canvasWidgetRoot = join(home, 'widgets/drafts/browser-canvas-2d');
   const webglWidgetRoot = join(home, 'widgets/drafts/browser-webgl');
+  const functionResourceRoot = join(home, `widgets/drafts/${FUNCTION_RESOURCE_WIDGET_KEY}`);
   const toolsRoot = join(home, 'browser-acceptance-tools');
   const sdkCli = join(ROOT, 'packages/sdk/dist/cli.js');
   const viteModuleUrl = new URL(
@@ -495,6 +633,7 @@ async function seedDraftWidget(home: string): Promise<string> {
     'await writeFile(configPath, source);',
     'const bridgePath = new URL("../__omnidraw_guest_bridge__.mjs", `file://${configPath}`).pathname;',
     'let bridge = await readFile(bridgePath, "utf8");',
+    `bridge = bridge.replace("from '@omnidraw/sdk/widget'", 'from ${JSON.stringify(sdkWidgetModuleUrl)}');`,
     `bridge = bridge.replace("from '@omnidraw/sdk'", 'from ${JSON.stringify(sdkWidgetModuleUrl)}');`,
     'await writeFile(bridgePath, bridge);',
     `await import(${JSON.stringify(VITE_BIN)});`,
@@ -503,6 +642,8 @@ async function seedDraftWidget(home: string): Promise<string> {
   await mkdir(join(widgetRoot, 'ui'), { recursive: true, mode: 0o700 });
   await mkdir(join(widgetRoot, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
   await mkdir(join(unbuiltWidgetRoot, 'ui'), { recursive: true, mode: 0o700 });
+  await mkdir(join(functionResourceRoot, 'ui'), { recursive: true, mode: 0o700 });
+  await mkdir(join(functionResourceRoot, 'server'), { recursive: true, mode: 0o700 });
   for (const root of [canvasWidgetRoot, webglWidgetRoot]) {
     await mkdir(join(root, 'ui'), { recursive: true, mode: 0o700 });
     await mkdir(join(root, 'node_modules/vite/bin'), { recursive: true, mode: 0o700 });
@@ -682,6 +823,44 @@ async function seedDraftWidget(home: string): Promise<string> {
       },
     }, null, 2)}\n`, { mode: 0o600 }),
     writeFile(
+      join(functionResourceRoot, 'omnidraw.json'),
+      `${JSON.stringify(functionResourceManifest(), null, 2)}\n`,
+      { mode: 0o600 },
+    ),
+    writeFile(
+      join(functionResourceRoot, 'ui/main.ts'),
+      FUNCTION_RESOURCE_UI_SOURCE,
+      { mode: 0o600 },
+    ),
+    writeFile(
+      join(functionResourceRoot, 'server/main.server.ts'),
+      FUNCTION_RESOURCE_SERVER_SOURCE,
+      { mode: 0o600 },
+    ),
+    writeFile(join(functionResourceRoot, 'package.json'), `${JSON.stringify({
+      name: FUNCTION_RESOURCE_WIDGET_KEY,
+      version: '1.0.0',
+      private: true,
+      type: 'module',
+      scripts: { build: 'omnidraw-widget build .' },
+      dependencies: { '@omnidraw/sdk': SDK_VERSION },
+      devDependencies: { vite: '8.1.4' },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(join(functionResourceRoot, 'package-lock.json'), `${JSON.stringify({
+      name: FUNCTION_RESOURCE_WIDGET_KEY,
+      version: '1.0.0',
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': {
+          name: FUNCTION_RESOURCE_WIDGET_KEY,
+          version: '1.0.0',
+          dependencies: { '@omnidraw/sdk': SDK_VERSION },
+          devDependencies: { vite: '8.1.4' },
+        },
+      },
+    }, null, 2)}\n`, { mode: 0o600 }),
+    writeFile(
       join(widgetRoot, 'node_modules/vite/bin/vite.js'),
       viteWrapperSource,
       { mode: 0o700 },
@@ -707,6 +886,8 @@ async function seedDraftWidget(home: string): Promise<string> {
       '  const viteBin = join(process.cwd(), "node_modules/vite/bin/vite.js");',
       '  await mkdir(join(process.cwd(), "node_modules/vite/bin"), { recursive: true });',
       `  await writeFile(viteBin, ${JSON.stringify(viteWrapperSource)}, { mode: 0o700 });`,
+      '  await mkdir(join(process.cwd(), "node_modules/@omnidraw"), { recursive: true });',
+      `  await symlink(${JSON.stringify(SDK_ROOT)}, join(process.cwd(), "node_modules/@omnidraw/sdk"), "dir").catch((error) => { if (error.code !== "EEXIST") throw error; });`,
       '  const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8"));',
       '  if (packageJson.dependencies?.three === "0.185.1") {',
       `    await symlink(${JSON.stringify(threeModuleRoot)}, join(process.cwd(), "node_modules/three"), "dir").catch((error) => { if (error.code !== "EEXIST") throw error; });`,
@@ -758,6 +939,14 @@ async function seedDraftWidget(home: string): Promise<string> {
     );
   }
   return toolsRoot;
+}
+
+async function bindFunctionResourceDraft(home: string, resourceId: string): Promise<void> {
+  await writeFile(
+    join(home, `widgets/drafts/${FUNCTION_RESOURCE_WIDGET_KEY}/omnidraw.json`),
+    `${JSON.stringify(functionResourceManifest(resourceId), null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 async function installWebSocketEvidence(page: Page): Promise<void> {
@@ -1697,6 +1886,31 @@ async function placeProfilePreview(
   return Object.freeze({ identity: previewMountIdentity(open), nodeId: node.id });
 }
 
+async function placeFunctionResourcePreview(page: Page): Promise<void> {
+  const invocationBefore = (await readRpcRequests(page, 'widget.preview.invoke')).length;
+  const preview = await placeProfilePreview(page, {
+    name: 'Browser Function Resource Widget',
+    widgetKey: FUNCTION_RESOURCE_WIDGET_KEY,
+  });
+  const invocation = await waitForSuccessfulRpcRequest({
+    afterCount: invocationBefore,
+    label: 'the Capsule Preview server function through its portable KV resource',
+    page,
+    path: 'widget.preview.invoke',
+    predicate: (request) => record(request.input).functionName === 'readAcceptanceValue',
+  });
+  const result = record(invocation.exit?.value);
+  assert.equal(result.status, 'succeeded', `Preview function failed: ${JSON.stringify(result)}`);
+  assert.deepEqual(result.output, {
+    value: FUNCTION_RESOURCE_VALUE,
+    revision: 1,
+  });
+  await assertFunctionResourceGuestConsumed(
+    page,
+    page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${preview.nodeId}"]`),
+  );
+}
+
 async function provePersistentPreGuestPreviewFailure(page: Page): Promise<void> {
   const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
   if (await expand.count()) await expand.click();
@@ -1887,6 +2101,47 @@ async function createResources(page: Page): Promise<readonly TCreatedResource[]>
   return Object.freeze(created);
 }
 
+async function seedFunctionResourceValue(
+  page: Page,
+  baseUrl: string,
+  resource: TCreatedResource,
+): Promise<void> {
+  await page.goto(new URL(`/resources/${resource.id}?tab=data`, baseUrl).toString(), {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Add value', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add value', exact: true });
+  await dialog.getByLabel('Key', { exact: true }).fill(FUNCTION_RESOURCE_KEY);
+  await dialog.getByLabel('JSON value', { exact: true }).fill(JSON.stringify(FUNCTION_RESOURCE_VALUE));
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByText(FUNCTION_RESOURCE_KEY, { exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+}
+
+async function acceptFunctionResourceDraft(page: Page, baseUrl: string): Promise<void> {
+  await page.goto(
+    new URL(`/widgets/draft/${FUNCTION_RESOURCE_WIDGET_KEY}?tab=config`, baseUrl).toString(),
+    { waitUntil: 'domcontentloaded' },
+  );
+  await page.getByText('Browser Function Resource Widget', { exact: true }).first().waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const rebuildBefore = (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length;
+  const rebuild = page.getByRole('button', { name: 'Rebuild', exact: true });
+  await rebuild.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await rebuild.click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: rebuildBefore,
+    label: 'the host-accepted fixed server module and bound resource fixture',
+    page,
+    path: 'widget.preview.rebuildDraft',
+    predicate: (request) => record(request.input).widgetKey === FUNCTION_RESOURCE_WIDGET_KEY,
+  });
+}
+
 async function assertRoute(
   page: Page,
   baseUrl: string,
@@ -2040,6 +2295,7 @@ async function runBrowserSuite(
   baseUrl: string,
   restartBackend: () => Promise<void>,
   provider: TFakeProvider,
+  home: string,
 ): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -2084,6 +2340,25 @@ async function runBrowserSuite(
       state: 'visible',
       timeout: ROUTE_TIMEOUT_MS,
     });
+
+    console.log('[browser:live] create and bind the Preview function resource fixture');
+    const resources = await createResources(page);
+    assert.deepEqual(resources.map((resource) => resource.kind), ['kv', 'secretStore', 'db']);
+    const byKind = Object.fromEntries(resources.map((resource) => [resource.kind, resource])) as Record<
+      TCreatedResource['kind'],
+      TCreatedResource
+    >;
+    await seedFunctionResourceValue(page, baseUrl, byKind.kv);
+    await bindFunctionResourceDraft(home, byKind.kv.id);
+    await acceptFunctionResourceDraft(page, baseUrl);
+    await page.goto(new URL(`/c/${initialCanvasId}`, baseUrl).toString(), {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+    await waitForRpcConnection(page);
+
+    console.log('[browser:live] fixed Preview server function and portable KV bridge');
+    await placeFunctionResourcePreview(page);
 
     console.log('[browser:live] real sidebar pointer-drag draft Preview portal and reload');
     const preview = await placeDraftPreviewWidget(page);
@@ -2154,13 +2429,6 @@ async function runBrowserSuite(
 
     console.log('[browser:live] screen-atlas resource route families');
     await waitForRpcConnection(page);
-    const resources = await createResources(page);
-    assert.deepEqual(resources.map((resource) => resource.kind), ['kv', 'secretStore', 'db']);
-    const byKind = Object.fromEntries(resources.map((resource) => [resource.kind, resource])) as Record<
-      TCreatedResource['kind'],
-      TCreatedResource
-    >;
-
     await exerciseResourceWorkbenches(page, baseUrl, byKind);
 
     console.log('[browser:live] native WebSocket disconnect, reconnect, and stale-generation fencing');
@@ -2195,7 +2463,7 @@ async function runBrowserSuite(
     ));
     assert.deepEqual(toleratedDisconnectErrors, [], browserErrors.join('\n'));
     assert.deepEqual(badResponses, [], badResponses.join('\n'));
-    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
+    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview function/resource bridge, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
   } finally {
     await page.close();
     await browser.close();
@@ -2262,7 +2530,7 @@ try {
   processes.push(frontend);
   const baseUrl = `http://127.0.0.1:${frontendPort!.port}/`;
   await waitForHttp(baseUrl, frontend);
-  await runBrowserSuite(baseUrl, restartBackend, provider);
+  await runBrowserSuite(baseUrl, restartBackend, provider, home);
   await assert.rejects(
     access(join(home, 'widgets/drafts/browser-unbuilt/node_modules')),
     { code: 'ENOENT' },

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type {
   CapsuleBuildOutput,
   CapsuleSnapshotFile,
@@ -12,14 +12,19 @@ import {
 import {
   ZWidgetExecutableManifest,
   ZWidgetServerFunctionDescriptors,
+  WIDGET_SERVER_FUNCTION_COUNT_MAX,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_MAX_BYTES,
   fnCanonicalizeWidgetCapabilityRequests,
   fnCanonicalizeWidgetChannelContract,
   fnCanonicalizeWidgetConstructionContractPayload,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnCreateWidgetServerModuleArtifact,
   fnGenerateWidgetServerFunctionClientModule,
-  fnProjectWidgetBrowserFunctionDescriptors,
+  fnValidateWidgetServerModuleArtifact,
   fnValidateWidgetServerFunctionDescriptors,
   type TWidgetArtifactConstructionRequest,
   type TWidgetArtifactConstructionResult,
@@ -31,7 +36,8 @@ import {
   type TWidgetArtifactHash,
   type TWidgetBuildRequest,
   type TWidgetDistributionBuildProvenance,
-  type TWidgetServerBuildArtifact,
+  type TWidgetServerModule,
+  type TWidgetServerModuleArtifact,
   type TWidgetServerFunctionDescriptor,
   type TWidgetServerFunctionDescriptorExtractionRequest,
   type TWidgetSourceArtifact,
@@ -43,7 +49,6 @@ import type {
 } from '#backend/shell/widget';
 import {
   WidgetSourceSnapshot,
-  fnAttachServerFunctionModulePaths,
   fnGenerateServerFunctionEntrySource,
   fnNormalizeWidgetBuildAllowedPackageImports,
   fnResolveWidgetBuildImport,
@@ -62,7 +67,6 @@ import {
 import {
   OMNIDRAW_CAPSULE_ALLOWED_SERVER_IMPORTS,
   OMNIDRAW_CAPSULE_BUILD_POLICY_ID,
-  OMNIDRAW_SERVER_ARTIFACT_FORMAT,
 } from './CONSTANTS';
 import {
   fnOmnidrawCapsuleApis,
@@ -80,6 +84,7 @@ import type {
   TOmnidrawDistributionBuild,
 } from './interface';
 import { signOmnidrawCapsuleArtifact } from './sign-capsule-artifact';
+import { fnWidgetServerModulePolicyAdmission } from '@omnidraw/sdk/contract';
 
 const GENERATED_SERVER_ENTRY = '__omnidraw_server_entry__.ts';
 const JAVASCRIPT_SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
@@ -134,6 +139,10 @@ function serverGraph(args: Readonly<{
     if (file === undefined) throw fnWidgetBuildError('server');
     const source = Buffer.from(file.bytes).toString('utf8');
     if (fnWidgetBuildSourceHasForbiddenImportSyntax(source)) throw fnWidgetBuildError('server');
+    if (!fnWidgetServerModulePolicyAdmission({
+      phase: 'authored_source',
+      source,
+    }).allowed) throw fnWidgetBuildError('server');
     let imports;
     try {
       imports = transpiler.scanImports(source);
@@ -195,10 +204,6 @@ function serverFunctionModules(
 
 function capsuleHash(digest: string): TWidgetArtifactHash {
   return `sha256:${digest}`;
-}
-
-function serverOutputLoader(loader: string): string {
-  return ['js', 'jsx', 'ts', 'tsx'].includes(loader) ? 'js' : loader;
 }
 
 function assertBuildActive(signal: AbortSignal | undefined): void {
@@ -280,37 +285,43 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       ? Object.freeze([])
       : serverFunctionModules(request.snapshot, serverSourceGraph, manifest.server.entry);
 
-    const serverArtifact = manifest.server === null
+    const serverModule = manifest.server === null
       ? null
       : await this.#buildServer(request.snapshot, manifest.server, functionModules);
     assertBuildActive(request.signal);
     let functionDescriptors: readonly TWidgetServerFunctionDescriptor[] = [];
-    if (serverArtifact !== null && manifest.server !== null) {
+    if (serverModule !== null && manifest.server !== null) {
       const extractionRequest = Object.freeze({
-        serverArtifact,
-        serverEntry: manifest.server.entry,
-        runtimeAbi: manifest.server.runtimeAbi,
+        serverModule,
       });
       const extracted = await this.config.functionDescriptorExtractor
         .extractServerFunctionDescriptors(extractionRequest);
-      functionDescriptors = ZWidgetServerFunctionDescriptors.parse(
-        fnAttachServerFunctionModulePaths(extracted, functionModules),
-      );
+      functionDescriptors = ZWidgetServerFunctionDescriptors.parse(extracted);
     }
     const validation = fnValidateWidgetServerFunctionDescriptors(manifest, functionDescriptors);
     if (!validation.valid) throw fnWidgetBuildError('server');
 
-    const functionDescriptorsDigestSha256 = sha256(
-      fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors),
-    );
-    const browserFunctionDescriptors =
-      fnProjectWidgetBrowserFunctionDescriptors(functionDescriptors);
+    if (functionDescriptors.length > WIDGET_SERVER_FUNCTION_COUNT_MAX) {
+      throw fnWidgetBuildError('server');
+    }
+    const serverArtifact: TWidgetServerModuleArtifact | null = serverModule === null
+      ? null
+      : fnCreateWidgetServerModuleArtifact({
+          moduleBytes: serverModule.moduleBytes,
+          functionDescriptors,
+          digestSha256: sha256,
+        });
+    if (serverArtifact !== null) {
+      functionDescriptors = serverArtifact.functionDescriptors;
+    }
+    const functionDescriptorsDigestSha256 = serverArtifact
+      ?.functionDescriptorsDigestSha256
+      ?? sha256(fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors));
     const functions = await createOmnidrawServerFunctionCapabilityContract({
-      // The capability binds the exact generated functions.json contract. The
-      // browser receives the safe projection, but its selector must still
-      // identify the full descriptor file verified by the host.
+      // The capability binds the exact path-free functions.json contract used
+      // by both browser clients and server hosts.
       descriptorDigestSha256: functionDescriptorsDigestSha256,
-      functions: browserFunctionDescriptors,
+      functions: functionDescriptors,
     });
     const collaborative = manifest.ui.state?.collaborative === true
       ? await createOmnidrawCollaborativeStateCapabilityContract()
@@ -340,8 +351,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       .map((file) => Object.freeze({ path: file.path, bytes: new Uint8Array(file.bytes) }));
     if (functions !== null) {
       for (const module of functionModules) {
+        const moduleExports = new Set(module.exportNames);
         const descriptors = functionDescriptors.filter(
-          (descriptor) => descriptor.modulePath === module.path,
+          (descriptor) => moduleExports.has(descriptor.exportName),
         );
         uiFiles.push(Object.freeze({
           path: module.path,
@@ -444,8 +456,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         budgets: runtimeDescriptor.budgets,
         capabilityContractDigestSha256,
         channelContractDigestSha256,
-        serverDigestSha256: serverArtifact?.digestSha256 ?? null,
-        serverRuntimeAbi: serverArtifact?.runtimeAbi ?? null,
+        serverModuleFormat: serverArtifact?.format ?? null,
+        serverModuleAbi: serverArtifact?.abi ?? null,
+        serverModuleDigestSha256: serverArtifact?.moduleDigestSha256 ?? null,
         functionDescriptorsDigestSha256,
         builderIdentity: request.builderIdentity,
         capsuleBuildIdentity: request.capsuleBuildIdentity,
@@ -513,8 +526,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
       channelContractDigestSha256: construction.channelContractDigestSha256,
       signatureKeyIds: runtimeDescriptor.signatureKeyIds,
-      serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
-      serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+      serverModuleFormat: construction.serverArtifact?.format ?? null,
+      serverModuleAbi: construction.serverArtifact?.abi ?? null,
+      serverModuleDigestSha256: construction.serverArtifact?.moduleDigestSha256 ?? null,
       functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
       sourceDigestSha256: construction.sourceDigestSha256,
       builderIdentity: construction.builderIdentity,
@@ -579,8 +593,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
           budgets: construction.uiArtifact.runtimeDescriptor.budgets,
           capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
           channelContractDigestSha256: construction.channelContractDigestSha256,
-          serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
-          serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+          serverModuleFormat: construction.serverArtifact?.format ?? null,
+          serverModuleAbi: construction.serverArtifact?.abi ?? null,
+          serverModuleDigestSha256: construction.serverArtifact?.moduleDigestSha256 ?? null,
           functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
           builderIdentity: construction.builderIdentity,
           capsuleBuildIdentity: construction.capsuleBuildIdentity,
@@ -643,7 +658,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       || (manifest.server === null) !== (construction.serverArtifact === null)
       || (
         construction.serverArtifact !== null
-        && construction.serverArtifact.runtimeAbi !== manifest.server?.runtimeAbi
+        && (
+          construction.serverArtifact.format !== WIDGET_SERVER_MODULE_FORMAT
+          || construction.serverArtifact.abi !== WIDGET_SERVER_MODULE_ABI
+        )
       )
     ) {
       throw new Error('Widget construction metadata failed integrity validation.');
@@ -655,8 +673,16 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
     });
     if (
       construction.serverArtifact !== null
-      && sha256(construction.serverArtifact.bytes)
-        !== construction.serverArtifact.digestSha256
+      && (
+        !fnValidateWidgetServerModuleArtifact({
+          artifact: construction.serverArtifact,
+          digestSha256: sha256,
+        }).valid
+        || JSON.stringify(construction.serverArtifact.functionDescriptors)
+          !== JSON.stringify(construction.functionDescriptors)
+        || construction.serverArtifact.functionDescriptorsDigestSha256
+          !== construction.functionDescriptorsDigestSha256
+      )
     ) {
       throw new Error('Widget construction server artifact failed integrity validation.');
     }
@@ -688,8 +714,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         budgets: construction.uiArtifact.runtimeDescriptor.budgets,
         capabilityContractDigestSha256: construction.capabilityContractDigestSha256,
         channelContractDigestSha256: construction.channelContractDigestSha256,
-        serverDigestSha256: construction.serverArtifact?.digestSha256 ?? null,
-        serverRuntimeAbi: construction.serverArtifact?.runtimeAbi ?? null,
+        serverModuleFormat: construction.serverArtifact?.format ?? null,
+        serverModuleAbi: construction.serverArtifact?.abi ?? null,
+        serverModuleDigestSha256: construction.serverArtifact?.moduleDigestSha256 ?? null,
         functionDescriptorsDigestSha256: construction.functionDescriptorsDigestSha256,
         builderIdentity: construction.builderIdentity,
         capsuleBuildIdentity: construction.capsuleBuildIdentity,
@@ -737,9 +764,9 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
 
   async #buildServer(
     snapshot: TWidgetSourceSnapshot,
-    server: Readonly<{ entry: string; runtimeAbi: string }>,
+    server: Readonly<{ entry: string }>,
     functionModules: readonly TServerFunctionModule[],
-  ): Promise<TWidgetServerBuildArtifact> {
+  ): Promise<TWidgetServerModule> {
     await mkdir(this.config.tempRoot, { recursive: true, mode: 0o700 });
     const root = await mkdtemp(join(this.config.tempRoot, 'capsule-server-'));
     try {
@@ -753,7 +780,7 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       const result = await this.#bunBuild({
         entrypoints: [generated],
         root,
-        target: 'bun',
+        target: 'browser',
         format: 'esm',
         splitting: false,
         sourcemap: 'none',
@@ -774,38 +801,27 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
         }],
       });
       if (!result.success) throw fnWidgetBuildError('server');
-      const outputs = [];
-      for (const [index, output] of [...result.outputs].sort((left, right) => (
-        basename(left.path).localeCompare(basename(right.path))
-      )).entries()) {
-        const bytes = new Uint8Array(await output.arrayBuffer());
-        const loader = serverOutputLoader(output.loader);
-        const source = loader === 'js' ? Buffer.from(bytes).toString('utf8') : '';
-        if (source !== '' && fnWidgetBuildSourceHasForbiddenImportSyntax(source)) {
-          throw fnWidgetBuildError('server');
-        }
-        outputs.push(Object.freeze({
-          path: `output-${index}.${loader === 'file' ? 'bin' : loader}`,
-          loader,
-          kind: output.kind,
-          digestSha256: sha256(bytes),
-          bytesBase64: Buffer.from(bytes).toString('base64'),
-        }));
+      if (result.outputs.length !== 1) throw fnWidgetBuildError('server');
+      const output = result.outputs[0]!;
+      if (output.kind !== 'entry-point' || !['js', 'jsx', 'ts', 'tsx'].includes(output.loader)) {
+        throw fnWidgetBuildError('server');
       }
-      const bytes = new TextEncoder().encode(JSON.stringify({
-        format: OMNIDRAW_SERVER_ARTIFACT_FORMAT,
-        kind: 'server',
-        entry: server.entry,
-        sourceDigestSha256: snapshot.digestSha256,
-        builderIdentity: this.config.builderIdentity,
-        runtimeAbi: server.runtimeAbi,
-        outputs,
-      }));
+      const bytes = new Uint8Array(await output.arrayBuffer());
+      if (bytes.byteLength < 1 || bytes.byteLength > WIDGET_SERVER_MODULE_MAX_BYTES) {
+        throw fnWidgetBuildError('server');
+      }
+      const source = Buffer.from(bytes).toString('utf8');
+      if (fnWidgetBuildSourceHasForbiddenImportSyntax(source)) throw fnWidgetBuildError('server');
+      const admission = fnWidgetServerModulePolicyAdmission({
+        phase: 'closed_bundle',
+        source,
+      });
+      if (!admission.allowed) throw fnWidgetBuildError('server');
       return Object.freeze({
-        kind: 'server',
-        digestSha256: sha256(bytes),
-        bytes,
-        runtimeAbi: server.runtimeAbi,
+        format: WIDGET_SERVER_MODULE_FORMAT,
+        abi: WIDGET_SERVER_MODULE_ABI,
+        moduleBytes: bytes,
+        moduleDigestSha256: sha256(bytes),
       });
     } catch (cause) {
       if (cause instanceof Error && 'code' in cause && cause.code === 'WIDGET_BUILD_FAILED') {

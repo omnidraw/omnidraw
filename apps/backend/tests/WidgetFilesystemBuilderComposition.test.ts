@@ -5,6 +5,9 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { NodeWidgetFilesystemWorkspace } from '#backend/shell/agent';
 import {
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_PATH,
   fnCanonicalizeWidgetBuildReceipt,
   fnCreateWidgetBuildReceipt,
   fnWidgetManifestV1Digest,
@@ -44,11 +47,21 @@ async function writeDraft(
     await mkdir(join(root, 'server'), { recursive: true });
     await writeFile(join(root, 'server', 'main.ts'), [
       "import { defineServerFunction } from '@omnidraw/sdk/server';",
-      "import { z } from 'zod';",
+      'const valueSchema = Object.freeze({',
+      '  parse(value: unknown): { value: number } {',
+      "    if (value === null || typeof value !== 'object' || typeof (value as { value?: unknown }).value !== 'number') {",
+      "      throw new TypeError('Expected one numeric value.');",
+      '    }',
+      '    return value as { value: number };',
+      '  },',
+      '  toJSONSchema() {',
+      "    return { type: 'object', required: ['value'], additionalProperties: false, properties: { value: { type: 'number' } } };",
+      '  },',
+      '});',
       'export const ping = defineServerFunction({',
       "  effect: 'fn',",
-      '  input: z.object({ value: z.number() }),',
-      '  output: z.object({ value: z.number() }),',
+      '  input: valueSchema,',
+      '  output: valueSchema,',
       '}, async (_context, input) => ({ value: input.value }));',
       '',
     ].join('\n'));
@@ -104,7 +117,7 @@ async function writeAcceptedReceipt(
 
 function manifest(
   slug: string,
-  serverRuntimeAbi?: string,
+  withServer = false,
 ): TWidgetManifestV1 {
   return {
     $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
@@ -114,14 +127,12 @@ function manifest(
     description: `${slug} composition fixture`,
     tool: { label: slug, group: 'tests', priority: 0 },
     ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
-    ...(serverRuntimeAbi === undefined
-      ? {}
-      : { server: { entry: 'server/main.ts', runtimeAbi: serverRuntimeAbi } }),
+    ...(withServer ? { server: { entry: 'server/main.ts' } } : {}),
   };
 }
 
 describe('production filesystem widget builder composition', () => {
-  test('publishes UI-only and bun-v1 server widgets through one catalog service', async () => {
+  test('publishes UI-only and fixed-contract server widgets through one catalog service', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omnidraw-widget-builder-composition-'));
     roots.push(root);
     const home = fnResolveOmnidrawHome({ join, resolve }, {
@@ -142,7 +153,7 @@ describe('production filesystem widget builder composition', () => {
       home.widgetQuarantineRoot,
     ].map((path) => mkdir(path, { recursive: true })));
     await writeDraft(home.widgetDraftsRoot, manifest('ui-only'));
-    await writeDraft(home.widgetDraftsRoot, manifest('with-server', 'bun-v1'));
+    await writeDraft(home.widgetDraftsRoot, manifest('with-server', true));
 
     const config: ICliConfig = {
       cwd: root,
@@ -192,7 +203,12 @@ describe('production filesystem widget builder composition', () => {
       const withServer = await widgetCatalog.resolveRuntime('with-server');
       expect(uiOnly.release.server).toBeNull();
       expect(uiOnly.serverEntryBytes).toBeNull();
-      expect(withServer.release.server?.runtimeAbi).toBe('bun-v1');
+      expect(withServer.release.server).toMatchObject({
+        entry: WIDGET_SERVER_MODULE_PATH,
+        format: WIDGET_SERVER_MODULE_FORMAT,
+        abi: WIDGET_SERVER_MODULE_ABI,
+        moduleDigestSha256: sha256(withServer.serverEntryBytes!),
+      });
       expect(withServer.serverEntryBytes?.byteLength).toBeGreaterThan(0);
       expect(widgetCatalog.current().entries['ui-only']?.published?.health).toBe('healthy');
       expect(widgetCatalog.current().entries['with-server']?.published?.health).toBe('healthy');

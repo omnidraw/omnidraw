@@ -187,6 +187,50 @@ The requirement is conjunctive: complexity plus side effects requires Effect.
 Pure complexity stays pure, and a tiny synchronous side-effect adapter may stay
 an imperative shell function.
 
+### Portable widget server boundary
+
+`@omnidraw/sdk` owns one fixed, host-neutral Omnidraw server-module ABI,
+canonical module/artifact and descriptor contracts, invocation/resource wire
+contracts, validators, codecs, and cross-host conformance vectors. It owns no
+executor, provider, deployment adapter, authentication, tenancy, metering, or
+billing policy. Public APIs remain Effect-free and transport-neutral.
+
+Host mechanics remain shell code. The OSS backend loads the exact canonical
+module bytes in a disposable local Bun child and adapts the portable resource
+contract to IPC and the local Resource Store. This is trusted local execution,
+not a hostile-code sandbox. There is no OSS cloud executor, remote Turso
+fallback, per-user/monthly quota, billing-plan limit, cost-model workload
+bound, or managed sandbox-minute allowance.
+
+The private managed shell may generate a small Workers for Platforms wrapper
+around those exact module bytes. The wrapper has its own deployment digest and
+must not rewrite or rebuild the canonical module or change its artifact digest.
+It shares the untrusted user-Worker realm with the canonical module, holds no
+credential or provider authority, and reaches a separately trusted resource
+broker only through a host binding. Public egress is denied by outbound policy
+and proven live. Managed KV and secret semantics require the same strong
+revision/CAS consistency as the database broker; Cloudflare KV is not a valid
+substitute.
+Managed widget code runs only as a WFP user Worker, never in Cloudflare
+Sandbox, a Container, a Durable Object, or the managed chat/build sandbox.
+Dispatch namespaces, uploads, outbound policy, Cloudflare bindings, resource
+brokerage, Turso credentials, identity, metering, billing, plans, and usage
+evidence remain private. Capsule is exclusively the browser UI sandbox.
+
+OSS qualification proves the portable contract and local adapter. A package
+set is not managed-qualified until the private repository consumes the exact
+SDK version in `public-package-set.json`, deploys the wrapper through a real
+WFP dispatch namespace, runs the same conformance against Turso, checks the
+canonical module digest, and proves widget code has no outbound or host-OS
+authority.
+
+The portable runtime promises neither a fresh module evaluation nor native
+prototype identity for context values. Functions cannot make module-scope
+mutation observable. The SDK exposes one 128 MiB memory class, an 8 MiB
+canonical-module ceiling, and a structural cancellation subset. Managed
+qualification separately proves compressed upload size, startup execution,
+wall-clock timeout mapping, and platform-kill failure mapping.
+
 ## Core
 
 Core owns domain values, policies, expected failures, semantic service
@@ -495,6 +539,14 @@ Rules:
 - unstable APIs remain behind the implementation being qualified unless the
   semantic contract itself explicitly requires one.
 
+Public cross-host conformance kits follow the same semantic discipline even
+when their adapter ports are ordinary Effect-free TypeScript: expected values
+contain stable domain codes and canonical data, each scenario owns fresh state
+and explicit disposal, and transport frames, provider messages, wall-clock
+timestamps, process metrics, and deployment metadata stay out of transcripts.
+An in-memory or fake adapter may exercise the kit but does not qualify a real
+OSS or managed implementation.
+
 ## Deterministic simulation testing
 
 The minimum deterministic architecture is explicit simulation Layers, a
@@ -731,6 +783,11 @@ Repository lint must enforce:
     runtime dependency.
 15. Public declarations contain no Effect-owned type even when package
     implementation uses Effect internally.
+16. Public package imports and OSS widget function/local-resource adapters
+    reject Cloudflare, Wrangler, workerd, remote Turso, tenant, billing,
+    metering, authentication, and managed-policy implementation dependencies.
+    The embedded `@tursodatabase/database` provider remains the OSS local
+    database adapter and is not part of this ban.
 
 ## Anti-patterns
 

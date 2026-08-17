@@ -67,14 +67,13 @@ export type TServerFunctionContext<
 > = Readonly<{
   invocationId: string;
   widgetKey: string;
-  catalogGeneration: number;
   subject: Readonly<{
     canvasId: string;
     elementId: string;
     widgetInstanceId: string;
   }>;
   deadlineAtMs: number;
-  signal: AbortSignal;
+  signal: TServerFunctionAbortSignal;
   resources: TServerFunctionResources<TEffect, TResources>;
   log: Readonly<{
     debug(fields: Readonly<Record<string, unknown>>, message?: string): void;
@@ -85,6 +84,26 @@ export type TServerFunctionContext<
   metrics: Readonly<{
     increment(name: string, value?: number): void;
   }>;
+}>;
+
+export type TServerFunctionAbortEvent = Readonly<{
+  type: 'abort';
+  target: TServerFunctionAbortSignal;
+}>;
+
+/** Exact host-neutral cancellation subset implemented identically by both adapters. */
+export type TServerFunctionAbortSignal = Readonly<{
+  readonly aborted: boolean;
+  readonly reason: unknown;
+  throwIfAborted(): void;
+  addEventListener(
+    type: 'abort',
+    listener: (event: TServerFunctionAbortEvent) => void,
+  ): void;
+  removeEventListener(
+    type: 'abort',
+    listener: (event: TServerFunctionAbortEvent) => void,
+  ): void;
 }>;
 
 type TResourcesConfig<
@@ -182,8 +201,8 @@ function normalizeLimits(value: Partial<TWidgetServerFunctionLimits> | undefined
   assertOnlyKeys(value, LIMIT_KEYS, 'Server-function limits');
   const limits = { ...DEFAULT_LIMITS, ...value };
   assertIntegerInRange(limits.timeoutMs, 1, 30_000, 'timeoutMs');
-  if (!['small', 'medium', 'large'].includes(limits.memoryTier)) {
-    throw new TypeError('memoryTier must be small, medium, or large.');
+  if (limits.memoryTier !== 'small') {
+    throw new TypeError("memoryTier must be 'small'.");
   }
   assertIntegerInRange(limits.outputByteLimit, 1, 1_048_576, 'outputByteLimit');
   assertIntegerInRange(limits.logByteLimit, 0, 1_048_576, 'logByteLimit');
@@ -284,7 +303,7 @@ export function isDefinedServerFunction(
       === 'omnidraw.server-function.v1';
 }
 
-/** Called only inside a registration sandbox after loading the built server entry. */
+/** Called only inside a bounded descriptor-extraction guest after loading the built server entry. */
 export function collectServerFunctionDescriptors(
   moduleExports: Readonly<Record<string, unknown>>,
 ): readonly TWidgetServerFunctionDescriptor[] {

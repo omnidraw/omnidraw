@@ -94,8 +94,8 @@ export interface IWidgetRuntimeDescriptorFactory {
 }
 
 /**
- * Loads an already-built server artifact only inside a bounded registration
- * sandbox and returns its generated, serializable named-export descriptors.
+ * Loads an already-built server artifact only inside a bounded descriptor-
+ * extraction guest and returns its generated, serializable named-export descriptors.
  */
 export interface IWidgetServerFunctionDescriptorExtractor {
   extractServerFunctionDescriptors(
@@ -143,7 +143,7 @@ export type TWidgetMount = Readonly<{
   dispose(reason?: string): Promise<void>;
 }>;
 
-/** Common host bridge. Capsule, process, sandbox and metering details stay private. */
+/** Common host bridge. Capsule, process, adapter, and metering details stay private. */
 export interface IWidgetHostBridge {
   validateArtifact(artifact: TWidgetPortableArtifact): Promise<void>;
   mount(request: Readonly<{
@@ -182,8 +182,8 @@ export type TWidgetBrowserHostOptions = Readonly<{
 export type TWidgetBrowserMountRequest = Readonly<{
   mode: 'preview' | 'published';
   artifact: TWidgetBrowserArtifact;
-  /** Browser-safe descriptors may arrive beside artifact bytes over application transport. */
-  functionDescriptors?: readonly import('./types').TWidgetBrowserFunctionDescriptor[];
+  /** Canonical path-free descriptors may arrive beside artifact bytes over application transport. */
+  functionDescriptors?: readonly import('./types').TWidgetServerFunctionDescriptor[];
   container: HTMLElement;
   subject: TWidgetHostSubject;
   viewport: TWidgetViewport;

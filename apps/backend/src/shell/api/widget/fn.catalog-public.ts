@@ -3,7 +3,6 @@ import type {
   TWidgetCatalogSnapshot,
 } from '#backend/shell/agent';
 import type {
-  TWidgetBrowserFunctionDescriptor,
   TWidgetServerFunctionDescriptor,
 } from '@omnidraw/sdk/contract';
 import type {
@@ -36,11 +35,8 @@ function publicIssue(issue: TWidgetCatalogIssue): TWidgetPublicIssue {
 
 function browserFunctions(
   functions: readonly TWidgetServerFunctionDescriptor[] | null,
-): readonly TWidgetBrowserFunctionDescriptor[] {
-  return Object.freeze((functions ?? []).map((descriptor) => {
-    const { modulePath: _modulePath, ...browser } = descriptor;
-    return Object.freeze(browser);
-  }));
+): readonly TWidgetServerFunctionDescriptor[] {
+  return Object.freeze([...(functions ?? [])]);
 }
 
 function publicForm(

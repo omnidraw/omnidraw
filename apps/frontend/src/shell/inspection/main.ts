@@ -2,7 +2,7 @@ import type {
   IWidgetBrowserHost,
   IWidgetBrowserInspectionMount,
   IWidgetFunctionHostPort,
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetHostConfiguration,
   TWidgetHostDiagnostic,
   TWidgetProps,
@@ -26,7 +26,7 @@ type TBrowserMountJob = Readonly<{
     runtimeDescriptor?: unknown;
   } & Record<string, unknown>>;
   hostConfiguration: TWidgetHostConfiguration;
-  functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   props?: TWidgetProps;
   theme: TWidgetTheme;

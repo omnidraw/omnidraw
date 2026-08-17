@@ -40,6 +40,7 @@ type TPacked = Readonly<TPackage & { tarball: string }>
 const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FORBIDDEN_PROTOCOL = /['"](?:workspace|catalog|file|link):/
 const TEXT_FILE = /\.(?:css|d\.ts|js|json|map|md|txt)$/
+const MODULE_SCANNER = new Bun.Transpiler({ loader: 'js' })
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -131,11 +132,7 @@ function targets(value: unknown): readonly string[] {
 }
 
 function moduleSpecifiers(source: string): readonly string[] {
-  return [
-    ...[...source.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?(?:[^;'"`]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
-      .map((match) => match[1]!),
-    ...[...source.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)].map((match) => match[1]!),
-  ]
+  return MODULE_SCANNER.scanImports(source.replace(/^#![^\n]*(?:\n|$)/, '')).map(({ path }) => path)
 }
 
 function importedPackageName(specifier: string): string | null {

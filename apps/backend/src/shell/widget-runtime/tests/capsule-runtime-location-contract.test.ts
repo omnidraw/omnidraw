@@ -7,14 +7,14 @@ import {
   type CapsuleRuntimeLocation,
 } from '@omnidraw/capsule';
 
-describe('Capsule 0.10.2 runtime-location public contract', () => {
-  test('exposes the exact v2 format and coordinate convention at the root', () => {
+describe('Capsule 0.16.0 runtime-location public contract', () => {
+  test('exposes the exact v3 format and coordinate convention at the root', () => {
     const location: CapsuleRuntimeLocation = {
       module: 'main.js',
       line: 1,
       column: 0,
     };
-    expect(CAPSULE_MOUNT_ERROR_FORMAT).toBe('capsule-mount-error-v2');
+    expect(CAPSULE_MOUNT_ERROR_FORMAT).toBe('capsule-mount-error-v3');
     expect(location).toEqual({ module: 'main.js', line: 1, column: 0 });
   });
 

@@ -146,6 +146,98 @@ describe("frontend RPC connection generations", () => {
   });
 });
 
+describe("frontend RPC connected-domain recovery", () => {
+  test("recovers a bounded replay gap without waiting for a physical reconnect", async () => {
+    const generations = new FrontendRpcConnectionGenerations();
+    const requests: number[] = [];
+    let calls = 0;
+    const gap = new PrivateRpcError({
+      code: "EVENT_REPLAY_UNAVAILABLE",
+      status: 409,
+      message: "Replay gap.",
+      details: { afterSequence: 0, earliestSequence: 282 },
+    });
+    const client = {
+      "omnidraw.stream.v1": (payload: Readonly<{
+        input: Readonly<{ afterSequence?: number }>;
+      }>) => {
+        requests.push(payload.input.afterSequence ?? 0);
+        calls += 1;
+        return calls === 1
+          ? Stream.fail(gap)
+          : Stream.concat(
+              Stream.fromIterable([{ sequence: 282, kind: "widget-catalog", type: "changed" }]),
+              Stream.never,
+            );
+      },
+    } as never;
+    generations.connected();
+    const connection = new FrontendRpcConnection({
+      generations,
+      runPromise: (program, options) => Effect.runPromise(
+        Effect.provideService(program, FrontendRpcClient, client),
+        options,
+      ),
+    });
+    let recoveryCalls = 0;
+    const iterator = connection.resumableStream({
+      path: "agent.events",
+      initialCursor: 0,
+      input: (afterSequence) => ({ afterSequence }),
+      advance: (_cursor, event) => event.sequence,
+      recoverAfterDomainError: async (error, cursor) => {
+        expect(error).toBe(gap);
+        expect(cursor).toBe(0);
+        recoveryCalls += 1;
+        return { cursor: 281, events: [{ kind: "recovered" as const }] };
+      },
+    })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { kind: "recovered" },
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { sequence: 282, kind: "widget-catalog", type: "changed" },
+    });
+    expect(requests).toEqual([0, 281]);
+    expect(recoveryCalls).toBe(1);
+    expect(generations.snapshot()).toEqual({ connected: true, generation: 1 });
+    await iterator.return?.();
+  });
+
+  test("keeps non-recoverable connected stream failures terminal", async () => {
+    const generations = new FrontendRpcConnectionGenerations();
+    const failure = new PrivateRpcError({
+      code: "EVENT_CURSOR_INVALID",
+      status: 409,
+      message: "Future cursor.",
+      details: null,
+    });
+    const client = {
+      "omnidraw.stream.v1": () => Stream.fail(failure),
+    } as never;
+    generations.connected();
+    const connection = new FrontendRpcConnection({
+      generations,
+      runPromise: (program, options) => Effect.runPromise(
+        Effect.provideService(program, FrontendRpcClient, client),
+        options,
+      ),
+    });
+    const iterator = connection.resumableStream({
+      path: "agent.events",
+      initialCursor: 10,
+      input: (afterSequence) => ({ afterSequence }),
+      advance: (_cursor, event) => event.sequence,
+      recoverAfterDomainError: async () => null,
+    })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).rejects.toBe(failure);
+  });
+});
+
 type TResumableDomainCase<Path extends TPrivateStreamPath = TPrivateStreamPath> = Readonly<{
   path: Path;
   input(cursor: number): TPrivateStreamInput<Path>;

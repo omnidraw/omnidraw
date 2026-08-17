@@ -1,4 +1,8 @@
 import { ResourceError, toResourceError } from '#backend/core/resources/ResourceError';
+import {
+  PORTABLE_RESOURCE_OPERATION_LIMITS,
+  fnGetPortableResourceOperation,
+} from '@omnidraw/sdk/contract';
 import type {
   IResourceKeyValuePersistence,
   TResourceKeyValueDeleteResult,
@@ -16,9 +20,9 @@ import type {
 
 type TResourceProviderCreateArgs = unknown;
 
-const SECRET_NAME_MAX_LENGTH = 256;
-const SECRET_VALUE_MAX_LENGTH = 1_048_576;
-const LIST_MAX_LIMIT = 500;
+const SECRET_NAME_MAX_LENGTH = PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes;
+const SECRET_VALUE_MAX_LENGTH = PORTABLE_RESOURCE_OPERATION_LIMITS.secretValueBytes;
+const LIST_MAX_LIMIT = PORTABLE_RESOURCE_OPERATION_LIMITS.listLimit;
 
 export type TSecretStoreCompareAndSetResult =
   | { readonly ok: true; readonly entry: TResourceKeyValueEntryMetadata }
@@ -32,22 +36,34 @@ function recordArgs(args: unknown): Record<string, unknown> {
 }
 
 function secretName(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0 || value.length > SECRET_NAME_MAX_LENGTH) {
-    throw new ResourceError('SECRET_NAME_INVALID', `Secret names must be non-blank strings no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
+  if (
+    typeof value !== 'string'
+    || value.trim().length === 0
+    || new TextEncoder().encode(value).byteLength > SECRET_NAME_MAX_LENGTH
+  ) {
+    throw new ResourceError('SECRET_NAME_INVALID', `Secret names must be non-blank strings no larger than ${SECRET_NAME_MAX_LENGTH} UTF-8 bytes.`);
   }
   return value;
 }
 
 function secretValue(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > SECRET_VALUE_MAX_LENGTH) {
-    throw new ResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no longer than ${SECRET_VALUE_MAX_LENGTH} characters.`);
+  if (
+    typeof value !== 'string'
+    || value.length === 0
+    || new TextEncoder().encode(value).byteLength > SECRET_VALUE_MAX_LENGTH
+  ) {
+    throw new ResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no larger than ${SECRET_VALUE_MAX_LENGTH} UTF-8 bytes.`);
   }
   return value;
 }
 
 function listTextArg(value: unknown, label: string, allowEmpty: boolean): string {
-  if (typeof value !== 'string' || (!allowEmpty && value.trim().length === 0) || value.length > SECRET_NAME_MAX_LENGTH) {
-    throw new ResourceError('SECRET_NAME_INVALID', `${label} must be a string no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
+  if (
+    typeof value !== 'string'
+    || (!allowEmpty && value.trim().length === 0)
+    || new TextEncoder().encode(value).byteLength > SECRET_NAME_MAX_LENGTH
+  ) {
+    throw new ResourceError('SECRET_NAME_INVALID', `${label} must be a string no larger than ${SECRET_NAME_MAX_LENGTH} UTF-8 bytes.`);
   }
   return value;
 }
@@ -141,9 +157,10 @@ export class SecretStoreResource implements ILocalResourceProvider {
   }
 
   effect(operation: string, _requirement: TLocalResourceRequirement): 'read' | 'write' | null {
-    if (operation === 'get' || operation === 'has' || operation === 'list') return 'read';
-    if (operation === 'set' || operation === 'delete' || operation === 'compareAndSet') return 'write';
-    return null;
+    const descriptor = fnGetPortableResourceOperation('secretStore', operation);
+    return descriptor?.effect === 'read' || descriptor?.effect === 'write'
+      ? descriptor.effect
+      : null;
   }
 
   async countEntries(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {
@@ -300,8 +317,6 @@ export class SecretStoreResource implements ILocalResourceProvider {
           items: page.entries.map((entry) => ({
             name: entry.key,
             revision: entry.revision,
-            createdAtSec: entry.createdAtSec,
-            updatedAtSec: entry.updatedAtSec,
           })),
           ...(page.nextCursor === null ? {} : { nextCursor: page.nextCursor }),
         };

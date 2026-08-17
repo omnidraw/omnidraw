@@ -12,10 +12,19 @@ import {
   SourceTextModule,
   type Context,
 } from 'node:vm';
-import type { TResourceCall, TResourceCallResult } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
+import {
+  PORTABLE_RESOURCE_DB_EXECUTE_FORMAT,
+  PORTABLE_RESOURCE_DB_ROWS_FORMAT,
+  PortableResourceWireError,
+  fnDecodePortableResourceDbExecute,
+  fnDecodePortableResourceDbRows,
+  fnDecodePortableResourceResponse,
+  fnEncodePortableResourceValue,
+  fnEncodePortableResourceRequest,
+  fnWidgetServerModulePolicyAdmission,
+  type TWidgetServerFunctionDescriptor,
+} from '@omnidraw/sdk/contract';
 import type { TFunctionFailure, TFunctionUsageMetrics } from '../types';
-import { fnFunctionArtifactAdmission } from './fn.artifact-admission';
 import type {
   TFunctionCanonicalRegistration,
   TFunctionWorkerContext,
@@ -80,12 +89,17 @@ function guestFunction(value: unknown): value is TGuestFunction {
     && typeof execute?.value === 'function';
 }
 
-async function importGuest(sourceBase64: string, expectedDigest: string): Promise<TGuestModule> {
-  const source = Buffer.from(sourceBase64, 'base64');
-  if (source.toString('base64') !== sourceBase64) throw new Error('Guest bundle is not canonical base64.');
+async function importGuest(moduleBytes: Uint8Array, expectedDigest: string): Promise<TGuestModule> {
+  if (!(moduleBytes instanceof Uint8Array) || moduleBytes.byteLength === 0) {
+    throw new Error('Guest module bytes are invalid.');
+  }
+  const source = new Uint8Array(moduleBytes);
   const digest = createHash('sha256').update(source).digest('hex');
-  if (digest !== expectedDigest) throw new Error('Guest bundle digest does not match its artifact envelope.');
-  const admission = fnFunctionArtifactAdmission(source.toString('utf8'));
+  if (digest !== expectedDigest) throw new Error('Guest module digest does not match its pinned artifact.');
+  const admission = fnWidgetServerModulePolicyAdmission({
+    phase: 'closed_bundle',
+    source: Buffer.from(source).toString('utf8'),
+  });
   if (!admission.allowed) {
     throw new Error(`Guest bundle uses unsupported runtime construct '${admission.token}'.`);
   }
@@ -93,7 +107,7 @@ async function importGuest(sourceBase64: string, expectedDigest: string): Promis
     name: 'omnidraw-function-guest',
     codeGeneration: { strings: false, wasm: false },
   });
-  const guestModule = new SourceTextModule(source.toString('utf8'), {
+  const guestModule = new SourceTextModule(Buffer.from(source).toString('utf8'), {
     context,
     identifier: 'omnidraw:function-guest',
     importModuleDynamically: async () => {
@@ -137,11 +151,22 @@ function boundedJsonBytes(value: unknown): number {
   return Buffer.byteLength(text, 'utf8');
 }
 
+/** Normalize guest-realm data before applying the host-owned portable codec. */
+function hostPortableValue(value: unknown): unknown {
+  try {
+    return structuredClone(value);
+  } catch {
+    throw new Error('Resource request is not structured-cloneable.');
+  }
+}
+
 function resourceFacade(
+  guestContext: Context,
   requestId: string,
   send: TSend,
   pending: Map<string, Readonly<{
-    resolve(value: TResourceCallResult): void;
+    operation: string;
+    resolve(value: unknown): void;
     reject(error: Error): void;
   }>>,
 ): Readonly<{
@@ -149,27 +174,95 @@ function resourceFacade(
   write(slot: string, operation: string, input: unknown): Promise<unknown>;
 }> {
   let sequence = 0;
-  const call = (resourceCall: TResourceCall): Promise<unknown> => {
-    const callId = `${requestId}:${sequence++}`;
-    return new Promise<TResourceCallResult>((resolve, reject) => {
-      pending.set(callId, { resolve, reject });
-      send({ type: 'resource_call', requestId, callId, call: resourceCall });
-    }).then((result) => result.output);
+  const call = (
+    effect: 'read' | 'write',
+    slot: string,
+    operation: string,
+    input: unknown,
+  ): Promise<unknown> => {
+    const correlationId = `${requestId}:${sequence++}`;
+    let request: ReturnType<typeof fnEncodePortableResourceRequest>;
+    try {
+      request = fnEncodePortableResourceRequest({
+        correlationId,
+        slot,
+        operation,
+        effect,
+        input: hostPortableValue(input),
+      });
+    } catch (error) {
+      const overLimit = error instanceof PortableResourceWireError
+        && error.code === 'LIMIT_EXCEEDED';
+      return Promise.reject(guestCodedError(
+        guestContext,
+        overLimit
+          ? 'Resource operation exceeded a limit.'
+          : 'Resource request is malformed.',
+        overLimit ? 'RESOURCE_LIMIT_EXCEEDED' : 'RESOURCE_MALFORMED_INPUT',
+      ));
+    }
+    return new Promise<unknown>((resolve, reject) => {
+      pending.set(correlationId, { operation, resolve, reject });
+      send({ type: 'resource_call', requestId, request });
+    });
   };
   return Object.freeze({
-    read: (slot: string, operation: string, input: unknown) => call({
-      slot,
-      operation,
-      effect: 'read',
-      input,
-    }),
-    write: (slot: string, operation: string, input: unknown) => call({
-      slot,
-      operation,
-      effect: 'write',
-      input,
-    }),
+    read: (slot: string, operation: string, input: unknown) => (
+      call('read', slot, operation, input)
+    ),
+    write: (slot: string, operation: string, input: unknown) => (
+      call('write', slot, operation, input)
+    ),
   });
+}
+
+function resourceWireFormat(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(value, 'format');
+  return descriptor?.get === undefined ? descriptor?.value : undefined;
+}
+
+export function fnDecodeFunctionWorkerResourceOutput(
+  operation: string,
+  output: unknown,
+): unknown {
+  if (operation === 'query') return fnDecodePortableResourceDbRows(output);
+  if (operation === 'execute') {
+    return Array.isArray(output)
+      ? Object.freeze(output.map((item) => fnDecodePortableResourceDbExecute(item)))
+      : fnDecodePortableResourceDbExecute(output);
+  }
+  if (operation !== 'invoke') return output;
+  const format = resourceWireFormat(output);
+  if (format === PORTABLE_RESOURCE_DB_ROWS_FORMAT) {
+    return fnDecodePortableResourceDbRows(output);
+  }
+  if (format === PORTABLE_RESOURCE_DB_EXECUTE_FORMAT) {
+    return fnDecodePortableResourceDbExecute(output);
+  }
+  if (Array.isArray(output)) {
+    return Object.freeze(output.map((item) => fnDecodePortableResourceDbExecute(item)));
+  }
+  throw new Error('Resource host returned an invalid database result.');
+}
+
+export function fnMaterializeFunctionWorkerResourceOutput(
+  guestContext: Context,
+  operation: string,
+  output: unknown,
+): unknown {
+  return guestPortableValue(
+    guestContext,
+    fnDecodeFunctionWorkerResourceOutput(operation, output),
+  );
+}
+
+function resourceResponseCorrelationId(value: unknown): string | null {
+  if (value === null || typeof value !== 'object') return null;
+  const descriptor = Object.getOwnPropertyDescriptor(value, 'correlationId');
+  return descriptor?.get === undefined && typeof descriptor?.value === 'string'
+    ? descriptor.value
+    : null;
 }
 
 function withGuestBinding<T>(
@@ -202,13 +295,69 @@ function guestJsonValue(context: Context, value: unknown): unknown {
   );
 }
 
+function guestPortableValue(context: Context, value: unknown): unknown {
+  const text = JSON.stringify(fnEncodePortableResourceValue(value));
+  return withGuestBinding(context, '__omnidrawHostPortableValue', text, `(() => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const decodeBase64 = (value) => {
+      const bytes = [];
+      let bits = 0;
+      let bitCount = 0;
+      for (const character of value.replace(/=+$/, '')) {
+        bits = (bits << 6) | alphabet.indexOf(character);
+        bitCount += 6;
+        if (bitCount >= 8) {
+          bitCount -= 8;
+          bytes.push((bits >> bitCount) & 255);
+        }
+      }
+      return Uint8Array.from(bytes);
+    };
+    const decode = (node) => {
+      if (node.type === 'null') return null;
+      if (node.type === 'boolean' || node.type === 'number' || node.type === 'string') {
+        return node.value;
+      }
+      if (node.type === 'bigint') return BigInt(node.value);
+      if (node.type === 'bytes') return decodeBase64(node.base64);
+      if (node.type === 'array') return node.items.map(decode);
+      const value = Object.create(null);
+      for (const [key, item] of node.entries) value[key] = decode(item);
+      return value;
+    };
+    return decode(JSON.parse(__omnidrawHostPortableValue));
+  })()`);
+}
+
+function guestCodedError(context: Context, message: string, code?: string): Error {
+  return withGuestBinding(context, '__omnidrawHostError', { message, code }, `(() => {
+    const error = new Error(__omnidrawHostError.message);
+    if (__omnidrawHostError.code !== undefined) {
+      Object.defineProperty(error, 'code', {
+        enumerable: true,
+        value: __omnidrawHostError.code,
+      });
+    }
+    return error;
+  })()`);
+}
+
+export function fnMaterializeFunctionWorkerError(
+  guestContext: Context,
+  message: string,
+  code?: string,
+): Error {
+  return guestCodedError(guestContext, message, code);
+}
+
 function runtimeContext(
   guestContext: Context,
   value: TFunctionWorkerContext,
   requestId: string,
   send: TSend,
   pending: Map<string, Readonly<{
-    resolve(value: TResourceCallResult): void;
+    operation: string;
+    resolve(value: unknown): void;
     reject(error: Error): void;
   }>>,
 ): Readonly<{
@@ -223,7 +372,7 @@ function runtimeContext(
     const values = message === undefined ? [fields] : [fields, message];
     send({ type: 'log', requestId, level, values, byteSize: boundedJsonBytes(values) });
   };
-  const resources = resourceFacade(requestId, send, pending);
+  const resources = resourceFacade(guestContext, requestId, send, pending);
   const bridge = Object.freeze({
     read: resources.read,
     write: resources.write,
@@ -266,7 +415,6 @@ function runtimeContext(
     const runtime = Object.freeze({
       invocationId: ${invocationId},
       widgetKey: ${widgetKey},
-      catalogGeneration: ${value.catalogGeneration},
       subject: Object.freeze(${subject}),
       deadlineAtMs: ${value.deadlineAtMs},
       signal,
@@ -301,14 +449,15 @@ export function runFunctionWorker(): void {
   let loaded: TLoadedGuest | null = null;
   let active: Readonly<{ requestId: string; abort(reason: string): void }> | null = null;
   const pendingResources = new Map<string, Readonly<{
-    resolve(value: TResourceCallResult): void;
+    operation: string;
+    resolve(value: unknown): void;
     reject(error: Error): void;
   }>>();
 
   process.on('message', (raw: unknown) => {
     const message = raw as THostToFunctionWorkerMessage;
     if (message.type === 'inspect') {
-      void importGuest(message.sourceBase64, message.sourceDigestSha256)
+      void importGuest(message.moduleBytes, message.moduleDigestSha256)
         .then((guestModule) => send({
           type: 'inspected',
           requestId: message.requestId,
@@ -322,8 +471,12 @@ export function runFunctionWorker(): void {
       return;
     }
     if (message.type === 'load') {
-      void importGuest(message.sourceBase64, message.sourceDigestSha256)
+      void importGuest(message.moduleBytes, message.moduleDigestSha256)
         .then((guestModule) => {
+          const actualDescriptors = registrationDescriptors(guestModule.namespace);
+          if (canonical(actualDescriptors) !== canonical(message.functionDescriptors)) {
+            throw new Error('Canonical server module descriptors do not match publication metadata.');
+          }
           const selected = guestModule.namespace[message.exportName];
           if (!guestFunction(selected)) {
             throw new Error(`Canonical function export '${message.exportName}' is missing or invalid.`);
@@ -342,15 +495,40 @@ export function runFunctionWorker(): void {
       return;
     }
     if (message.type === 'resource_result') {
-      const pending = pendingResources.get(message.callId);
+      const correlationId = resourceResponseCorrelationId(message.response);
+      if (correlationId === null) {
+        for (const pending of pendingResources.values()) {
+          pending.reject(loaded === null
+            ? new Error('Resource host returned an invalid result.')
+            : guestCodedError(loaded.context, 'Resource host returned an invalid result.'));
+        }
+        pendingResources.clear();
+        return;
+      }
+      const pending = pendingResources.get(correlationId);
       if (!pending) return;
-      pendingResources.delete(message.callId);
-      if (message.error) {
-        pending.reject(Object.assign(new Error(message.error.message), { code: message.error.code }));
-      } else if (message.result) {
-        pending.resolve(message.result);
-      } else {
-        pending.reject(new Error('Resource host returned an invalid result.'));
+      pendingResources.delete(correlationId);
+      try {
+        const response = fnDecodePortableResourceResponse(message.response);
+        if ('failure' in response) {
+          if (loaded === null) throw new Error('Function guest is not loaded.');
+          pending.reject(guestCodedError(
+            loaded.context,
+            response.failure.message,
+            response.failure.code,
+          ));
+        } else {
+          if (loaded === null) throw new Error('Function guest is not loaded.');
+          pending.resolve(fnMaterializeFunctionWorkerResourceOutput(
+            loaded.context,
+            pending.operation,
+            response.output,
+          ));
+        }
+      } catch {
+        pending.reject(loaded === null
+          ? new Error('Resource host returned an invalid result.')
+          : guestCodedError(loaded.context, 'Resource host returned an invalid result.'));
       }
       return;
     }
@@ -421,9 +599,14 @@ export function runFunctionWorker(): void {
       });
     }).finally(() => {
       active = null;
-      for (const [callId, pending] of pendingResources) {
-        pending.reject(new Error('Function execution ended before its resource call completed.'));
-        pendingResources.delete(callId);
+      for (const [correlationId, pending] of pendingResources) {
+        pending.reject(loaded === null
+          ? new Error('Function execution ended before its resource call completed.')
+          : guestCodedError(
+              loaded.context,
+              'Function execution ended before its resource call completed.',
+            ));
+        pendingResources.delete(correlationId);
       }
     });
   });

@@ -9,7 +9,7 @@ export function fnCanonicalizeWidgetConstructionContractPayload(
   input: TWidgetConstructionContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'omnidraw.widget-construction-contract.v3',
+    format: 'omnidraw.widget-construction-contract.v4',
     sourceSnapshotId: input.sourceSnapshotId,
     sourceDigestSha256: input.sourceDigestSha256,
     sourceArtifactDigestSha256: input.sourceArtifactDigestSha256,
@@ -21,8 +21,9 @@ export function fnCanonicalizeWidgetConstructionContractPayload(
     budgets: fnNormalizeWidgetRuntimeBudgetRequest(input.budgets),
     capabilityContractDigestSha256: input.capabilityContractDigestSha256,
     channelContractDigestSha256: input.channelContractDigestSha256,
-    serverDigestSha256: input.serverDigestSha256,
-    serverRuntimeAbi: input.serverRuntimeAbi,
+    serverModuleFormat: input.serverModuleFormat,
+    serverModuleAbi: input.serverModuleAbi,
+    serverModuleDigestSha256: input.serverModuleDigestSha256,
     functionDescriptorsDigestSha256: input.functionDescriptorsDigestSha256,
     builderIdentity: input.builderIdentity,
     capsuleBuildIdentity: {

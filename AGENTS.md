@@ -68,6 +68,12 @@ artifact, guest ABI, widget state/resource/function contracts, and host bridge.
 It encapsulates Capsule; widget source does not import Capsule or retired
 Omnidraw packages directly.
 
+The SDK also owns one fixed, host-neutral Omnidraw server-module ABI. The
+canonical server module is neither Bun code nor a deployable Cloudflare Worker.
+OSS loads those exact module bytes locally; the private managed adapter may
+place the same bytes beside a generated Workers for Platforms wrapper, but it
+must not rewrite or rebuild them or change their canonical artifact digest.
+
 SDK paths that own asynchronous builds, guest channels, cancellation, or scoped
 host resources use exact `effect@4.0.0-rc.108` internally.
 
@@ -174,10 +180,33 @@ edge.
 ## Widget portability and trust
 
 The same SDK widget source and canonical artifact must work in OSS and managed.
-OSS runs widget server/function code as explicitly trusted local host code.
-Managed runs untrusted builds, functions, and coding commands in Microsandbox
-and records private usage evidence. Managed policy, billing, auth, sandbox, and
-storage code never enters the public packages.
+OSS runs widget server/function code as explicitly trusted local host code in a
+disposable Bun child. Managed invokes those functions only as Workers for
+Platforms user Workers. A widget function never runs in Cloudflare Sandbox, a
+Container, a Durable Object, or the managed chat/build sandbox. Managed may use
+Microsandbox for coding and build work, but that is a separate execution path.
+
+Capsule is exclusively the browser UI sandbox; it never executes widget server
+functions. Dispatch namespaces, generated Worker wrappers and uploads,
+outbound-worker policy, Cloudflare bindings, Turso credentials, authentication,
+tenant identity, metering, billing, plan enforcement, and managed usage
+evidence stay in the private managed repository. OSS contains no cloud
+executor, remote Turso fallback, per-user/monthly quota, billing-plan limit,
+cost-model workload bound, or managed sandbox-minute allowance.
+
+The generated user-Worker wrapper is an untrusted-realm trampoline and holds
+no Turso credential, tenant secret, or write-permit authority. A separately
+trusted service-bound broker owns those values. The outbound Worker denies
+public egress. Cloudflare KV is not a valid implementation of the portable
+revision/CAS contract; managed KV, secret, and database calls require strongly
+consistent broker storage. Module evaluation lifetime is not widget ABI, so
+portable functions never depend on observable module-scope mutation.
+
+OSS qualification proves the portable SDK contract and local adapter only. A
+private release gate must consume the exact SDK version named by
+`public-package-set.json`, deploy the generated wrapper through a real Workers
+for Platforms dispatch namespace, run the same conformance against Turso, and
+prove that widget code has no outbound or host-OS authority.
 
 Capsule owns React, React DOM, Three, and other framework compatibility
 evidence. Do not duplicate those fixtures in this repository.

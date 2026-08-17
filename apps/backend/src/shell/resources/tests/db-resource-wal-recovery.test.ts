@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Database } from '@tursodatabase/database';
+import { fnDecodePortableResourceDbRows } from '@omnidraw/sdk/contract';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -20,7 +21,7 @@ type TWalCrashCheckpoint = Readonly<{
   interruptedWalBytes: number;
   interruptedWalFrames: number;
   writerRows: readonly Record<string, unknown>[];
-  observerRows: readonly Record<string, unknown>[];
+  observerRows: unknown;
   dbResourceExperimental: readonly string[];
 }>;
 
@@ -124,9 +125,10 @@ describe('local DbResource WAL recovery', () => {
       { id: '1', label: 'committed' },
       { id: '2', label: 'uncommitted' },
     ]);
-    expect(checkpoint.observerRows).toEqual([
-      { id: '1', label: 'committed' },
-    ]);
+    expect(fnDecodePortableResourceDbRows(checkpoint.observerRows)).toEqual({
+      columns: ['id', 'label'],
+      rows: [['1', 'committed']],
+    });
     expect(checkpoint.dbResourceExperimental).toContain('multiprocess_wal');
 
     writer.kill(9);
@@ -143,16 +145,23 @@ describe('local DbResource WAL recovery', () => {
     });
     try {
       await expect(recovered.reconcile(resource)).resolves.toEqual({ status: 'ready' });
-      await expect(recovered.dispatch(context, 'query', {
+      const integrityRows = await recovered.executeLiveSql({
+        resourceId: RESOURCE_ID,
         sql: 'PRAGMA integrity_check',
-      })).resolves.toEqual([{ integrity_check: 'ok' }]);
-      await expect(recovered.dispatch(context, 'query', {
+        approved: false,
+      });
+      expect(integrityRows).toMatchObject({
+        kind: 'rows',
+        columns: ['integrity_check'],
+        rows: [{ integrity_check: { type: 'text', value: 'ok' } }],
+      });
+      const recoveredRows = await recovered.dispatch(context, 'query', {
         sql: 'SELECT id, label, hex(payload) AS payload FROM recovery_rows ORDER BY id',
-      })).resolves.toEqual([{
-        id: 1n,
-        label: 'committed',
-        payload: '636F6D6D6974746564',
-      }]);
+      });
+      expect(fnDecodePortableResourceDbRows(recoveredRows)).toEqual({
+        columns: ['id', 'label', 'payload'],
+        rows: [[1n, 'committed', '636F6D6D6974746564']],
+      });
     } finally {
       await recovered.close();
     }

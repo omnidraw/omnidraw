@@ -10,7 +10,9 @@ import {
   fnCanonicalizeWidgetManifestV1,
 } from '@omnidraw/sdk/contract'
 import {
+  WIDGET_SDK_MODULE_ADMISSION_VECTORS,
   WIDGET_SDK_CONFORMANCE_FIXTURE,
+  WIDGET_SDK_SERVER_MODULE_VECTOR,
 } from '@omnidraw/sdk/conformance'
 import {
   DEFAULT_THEME_ID,
@@ -27,7 +29,10 @@ export function runPackedPublicComposition(): Readonly<{
   canvasBytes: number
   packageCount: number
   themeId: string
+  widgetAdmissionVectorCount: number
   widgetBytes: number
+  widgetModuleBytes: number
+  widgetModuleDigestSha256: string
 }> {
   fnAssertValidCanvasDocument(CANVAS_CONFORMANCE_DOCUMENT)
   const canvasCanonical = fnStringifyCanonicalCanvasJson(CANVAS_CONFORMANCE_DOCUMENT)
@@ -40,7 +45,10 @@ export function runPackedPublicComposition(): Readonly<{
     canvasBytes: new TextEncoder().encode(canvasCanonical).byteLength,
     packageCount: MANAGED_PUBLIC_PACKAGE_NAMES.length,
     themeId: DEFAULT_THEME_ID,
+    widgetAdmissionVectorCount: WIDGET_SDK_MODULE_ADMISSION_VECTORS.length,
     widgetBytes: new TextEncoder().encode(widgetCanonical).byteLength,
+    widgetModuleBytes: WIDGET_SDK_SERVER_MODULE_VECTOR.moduleBytes.length,
+    widgetModuleDigestSha256: WIDGET_SDK_SERVER_MODULE_VECTOR.moduleDigestSha256,
   })
 }
 

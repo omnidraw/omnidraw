@@ -12,10 +12,15 @@ import type {
   TWidgetUnsignedReleaseDescriptor,
 } from '../filesystem/typed';
 import {
+  WIDGET_SERVER_FUNCTIONS_PATH,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_PATH,
+} from '../CONSTANTS';
+import {
   fnNormalizeWidgetRuntimeDescriptor,
 } from './fn.capsule';
 import {
-  fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetServerFunctionCapabilityRequestMatches,
 } from './fn.function-descriptor';
@@ -28,6 +33,17 @@ function compareText(left: string, right: string): number {
 }
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+
+type TWidgetUnsignedReleaseDescriptorInput = Omit<
+  TWidgetUnsignedReleaseDescriptor,
+  'format' | 'complete' | 'files' | 'server'
+> & Readonly<{
+  files: readonly TWidgetReleaseFile[];
+  server: Readonly<{
+    moduleDigestSha256: string;
+    functionsDigestSha256: string;
+  }> | null;
+}>;
 
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -109,9 +125,7 @@ export function fnWidgetReleaseDirectoryDigest(args: Readonly<{
 }
 
 export function fnCreateWidgetUnsignedReleaseDescriptor(
-  args: Omit<TWidgetUnsignedReleaseDescriptor, 'format' | 'complete' | 'files'> & Readonly<{
-    files: readonly TWidgetReleaseFile[];
-  }>,
+  args: TWidgetUnsignedReleaseDescriptorInput,
 ): TWidgetUnsignedReleaseDescriptor {
   return {
     format: 'omnidraw.widget-release.v1',
@@ -130,10 +144,11 @@ export function fnCreateWidgetUnsignedReleaseDescriptor(
       runtime: fnNormalizeWidgetRuntimeDescriptor(args.capsule.runtime),
     },
     server: args.server === null ? null : {
-      entry: args.server.entry,
-      runtimeAbi: args.server.runtimeAbi,
-      functionsPath: 'functions.json',
-      serverDistDigestSha256: args.server.serverDistDigestSha256,
+      entry: WIDGET_SERVER_MODULE_PATH,
+      format: WIDGET_SERVER_MODULE_FORMAT,
+      abi: WIDGET_SERVER_MODULE_ABI,
+      functionsPath: WIDGET_SERVER_FUNCTIONS_PATH,
+      moduleDigestSha256: args.server.moduleDigestSha256,
       functionsDigestSha256: args.server.functionsDigestSha256,
     },
   };
@@ -146,11 +161,7 @@ export function fnCanonicalizeWidgetUnsignedReleaseDescriptor(
 }
 
 export function fnCreateWidgetReleaseDescriptor(
-  args: Omit<
-    TWidgetUnsignedReleaseDescriptor,
-    'format' | 'complete' | 'files'
-  > & Readonly<{
-    files: readonly TWidgetReleaseFile[];
+  args: TWidgetUnsignedReleaseDescriptorInput & Readonly<{
     releaseAttestation: TWidgetReleaseAttestation;
   }>,
 ): TWidgetReleaseDescriptor {
@@ -222,6 +233,9 @@ export function fnValidateWidgetRelease(args: Readonly<{
   const hasServerFiles = args.release.files.some((file) => (
     file.path === 'functions.json' || file.path.startsWith('server-dist/')
   ));
+  const serverModuleFiles = args.release.files.filter((file) => (
+    file.path.startsWith('server-dist/')
+  ));
   if (args.manifest.server === undefined) {
     if (
       args.release.server !== null
@@ -238,7 +252,16 @@ export function fnValidateWidgetRelease(args: Readonly<{
   if (args.release.server === null || args.observation.server === null) {
     return { valid: false, reason: 'server_contract_mismatch' };
   }
-  if (args.release.server.runtimeAbi !== args.manifest.server.runtimeAbi) {
+  if (
+    serverModuleFiles.length !== 1
+    || serverModuleFiles[0]?.path !== WIDGET_SERVER_MODULE_PATH
+  ) return { valid: false, reason: 'server_contract_mismatch' };
+  if (
+    args.release.server.entry !== WIDGET_SERVER_MODULE_PATH
+    || args.release.server.format !== WIDGET_SERVER_MODULE_FORMAT
+    || args.release.server.abi !== WIDGET_SERVER_MODULE_ABI
+    || args.release.server.functionsPath !== WIDGET_SERVER_FUNCTIONS_PATH
+  ) {
     return { valid: false, reason: 'server_contract_mismatch' };
   }
   if (
@@ -246,10 +269,12 @@ export function fnValidateWidgetRelease(args: Readonly<{
     || !expectedFiles.has(args.release.server.functionsPath)
   ) return { valid: false, reason: 'server_file_missing' };
   if (
-    args.release.server.functionsDigestSha256
+    args.release.server.moduleDigestSha256
+      !== expectedFiles.get(args.release.server.entry)!.sha256
+    || args.release.server.moduleDigestSha256
+      !== args.observation.server.moduleDigestSha256
+    || args.release.server.functionsDigestSha256
       !== expectedFiles.get(args.release.server.functionsPath)!.sha256
-    || args.release.server.serverDistDigestSha256
-      !== args.observation.server.serverDistDigestSha256
     || args.release.server.functionsDigestSha256
       !== args.observation.server.functionsDigestSha256
   ) return { valid: false, reason: 'server_digest_mismatch' };
@@ -262,7 +287,7 @@ export function fnValidateWidgetRelease(args: Readonly<{
   }
   if (!fnWidgetServerFunctionCapabilityRequestMatches(
     args.release.server.functionsDigestSha256,
-    fnProjectWidgetBrowserFunctionDescriptors(args.observation.server.functions),
+    args.observation.server.functions,
     args.release.capsule.runtime.capabilityRequests,
   )) return { valid: false, reason: 'function_capability_mismatch' };
   return { valid: true };

@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
   ZWidgetManifestV1,
+  WIDGET_SERVER_FUNCTIONS_PATH,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_PATH,
   fnCanonicalizeWidgetExecutableProjection,
   fnCanonicalizeWidgetManifestV1,
   fnCanonicalizeWidgetReleaseDescriptor,
@@ -34,7 +38,6 @@ import type {
 import { WIDGET_PUBLISHED_SOURCE_ARTIFACT_PATH } from './CONSTANTS';
 
 const GENERATED_BUILD_MANIFEST_PATH = '.omnidraw/build-manifest.json';
-const SERVER_ARTIFACT_PATH = 'server-dist/main.artifact';
 
 function sha256(value: Uint8Array | string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -126,10 +129,7 @@ export class WidgetFilesystemBuildService {
     request: TWidgetFilesystemConstructionRequest,
   ): Promise<TWidgetFilesystemConstruction> {
     const manifest = ZWidgetManifestV1.parse(request.manifest);
-    const environment = Object.freeze({
-      ...this.config.environment,
-      serverRuntimeAbi: manifest.server?.runtimeAbi ?? null,
-    });
+    const environment = this.config.environment;
 
     const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
       manifest,
@@ -336,28 +336,20 @@ export class WidgetFilesystemBuildService {
     ];
     if (serverArtifact !== null) {
       const serverFiles = immutableFiles([{
-        path: SERVER_ARTIFACT_PATH,
-        bytes: new Uint8Array(serverArtifact.bytes),
+        path: WIDGET_SERVER_MODULE_PATH,
+        bytes: new Uint8Array(serverArtifact.moduleBytes),
       }]);
       const functionsJson = fnCanonicalizeWidgetServerFunctionDescriptors(
         signed.build.functionDescriptors,
       );
       const functionsFile = Object.freeze({
-        path: 'functions.json',
+        path: WIDGET_SERVER_FUNCTIONS_PATH,
         bytes: new TextEncoder().encode(functionsJson),
       });
-      const relativeServerFiles = serverFiles.map((file) => ({
-        path: file.path.slice('server-dist/'.length),
-        byteSize: file.bytes.byteLength,
-        sha256: sha256(file.bytes),
-      }));
       server = Object.freeze({
         files: serverFiles,
         functionsJson,
-        serverDistDigestSha256: fnWidgetReleaseDirectoryDigest({
-          files: relativeServerFiles,
-          digestSha256: sha256,
-        }),
+        moduleDigestSha256: serverArtifact.moduleDigestSha256,
       });
       runtimeFiles.push(...serverFiles, functionsFile);
     }
@@ -371,10 +363,7 @@ export class WidgetFilesystemBuildService {
         runtime: signed.capsule.runtime,
       },
       server: server === null ? null : {
-        entry: SERVER_ARTIFACT_PATH,
-        runtimeAbi: serverArtifact!.runtimeAbi,
-        functionsPath: 'functions.json',
-        serverDistDigestSha256: server.serverDistDigestSha256,
+        moduleDigestSha256: server.moduleDigestSha256,
         functionsDigestSha256: sha256(new TextEncoder().encode(server.functionsJson)),
       },
     });
@@ -398,7 +387,7 @@ export class WidgetFilesystemBuildService {
           runtime: signed.capsule.runtime,
         },
         server: server === null ? null : {
-          serverDistDigestSha256: server.serverDistDigestSha256,
+          moduleDigestSha256: server.moduleDigestSha256,
           functionsDigestSha256: sha256(new TextEncoder().encode(server.functionsJson)),
           functions: signed.build.functionDescriptors,
         },

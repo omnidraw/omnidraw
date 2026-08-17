@@ -14,7 +14,7 @@ import type {
   TAiChatSettings,
 } from "@omnidraw/component-ai-chat";
 import type {
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetHostConfiguration,
   TWidgetHostSubject,
   TWidgetPlacementRef,
@@ -105,7 +105,7 @@ export type TWidgetPublicCatalogForm = Readonly<{
   manifestDigestSha256: string | null;
   config: TWidgetPresentationProjection | null;
   resources: readonly TWidgetResourceRequirement[];
-  functions: readonly TWidgetBrowserFunctionDescriptor[];
+  functions: readonly TWidgetServerFunctionDescriptor[];
   fileCount: number;
   issues: readonly TWidgetPublicIssue[];
 }>;
@@ -168,7 +168,7 @@ export type TWidgetTransportArtifact = Readonly<{
   artifact: Readonly<{ bytesBase64: string; digestSha256: string }>;
   runtimeDescriptor?: unknown;
   runtime?: unknown;
-  functionDescriptors?: readonly TWidgetBrowserFunctionDescriptor[];
+  functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
   identity?: Readonly<{ catalogGeneration?: number }>;
 }> & Readonly<Record<string, unknown>>;
 type TWidgetAuthoringDiagnostic = Readonly<{ code: string; message: string; path: string | null }>;

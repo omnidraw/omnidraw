@@ -139,6 +139,34 @@ async function main(): Promise<void> {
       'document.body.append(output);',
       '',
     ].join('\n'))
+    await writeFile(join(consumerRoot, 'conformance-smoke.mjs'), [
+      'import {',
+      '  WIDGET_SDK_ARTIFACT_ADMISSION_VECTORS,',
+      '  WIDGET_SDK_FUNCTION_SCENARIOS,',
+      '  WIDGET_SDK_MODULE_ADMISSION_VECTORS,',
+      '  WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS,',
+      '  WIDGET_SDK_RESOURCE_WIRE_VECTORS,',
+      '  WIDGET_SDK_SERVER_MODULE_VECTOR,',
+      '  WIDGET_SDK_SQL_PROFILE_VECTORS,',
+      '  fnCreateWidgetSdkConformanceServerModuleArtifact,',
+      '} from "@omnidraw/sdk/conformance";',
+      'const artifact = fnCreateWidgetSdkConformanceServerModuleArtifact();',
+      'console.log(JSON.stringify({',
+      '  artifactVectors: WIDGET_SDK_ARTIFACT_ADMISSION_VECTORS.length,',
+      '  functionScenarios: WIDGET_SDK_FUNCTION_SCENARIOS.length,',
+      '  admissionVectors: WIDGET_SDK_MODULE_ADMISSION_VECTORS.length,',
+      '  wireVectors: WIDGET_SDK_RESOURCE_WIRE_VECTORS.length,',
+      '  sqlVectors: WIDGET_SDK_SQL_PROFILE_VECTORS.length,',
+      '  providerFamilies: WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS.length,',
+      '  providerSteps: WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS.reduce((count, scenario) => count + scenario.steps.length, 0),',
+      '  moduleBytes: artifact.moduleBytes.byteLength,',
+      '  moduleDigestSha256: artifact.moduleDigestSha256,',
+      '  descriptorBytes: WIDGET_SDK_SERVER_MODULE_VECTOR.functionDescriptorsBytes.length,',
+      '  descriptorCount: artifact.functionDescriptors.length,',
+      '  artifactDigestSha256: WIDGET_SDK_SERVER_MODULE_VECTOR.artifactDigestSha256,',
+      '}));',
+      '',
+    ].join('\n'))
     await writeFile(join(fakeHome, 'main.db'), 'must not be opened\n')
 
     await requireSuccess(
@@ -158,6 +186,44 @@ async function main(): Promise<void> {
     if (installedManifest.bin?.['omnidraw-widget'] !== './cli.js') {
       throw new Error('Packed SDK omitted the public omnidraw-widget bin.')
     }
+    const conformanceSource = await readFile(join(installedSdk, 'conformance.js'), 'utf8')
+    if (/^\s*(?:import\s|export\s+(?:\*|\{[^}]*\})\s+from\s)/m.test(conformanceSource)) {
+      throw new Error('Packed SDK conformance retained an external module import graph.')
+    }
+    if (/(?:^|[\s'"`])(?:apps\/|#backend|workspace:)/m.test(conformanceSource)) {
+      throw new Error('Packed SDK conformance retained a workspace or application reference.')
+    }
+    const conformance = JSON.parse(await requireSuccess(
+      [process.execPath, 'run', 'conformance-smoke.mjs'],
+      consumerRoot,
+    )) as {
+      artifactVectors?: number
+      functionScenarios?: number
+      admissionVectors?: number
+      wireVectors?: number
+      sqlVectors?: number
+      providerFamilies?: number
+      providerSteps?: number
+      moduleBytes?: number
+      moduleDigestSha256?: string
+      descriptorBytes?: number
+      descriptorCount?: number
+      artifactDigestSha256?: string
+    }
+    if (
+      conformance.artifactVectors !== 4
+      || conformance.functionScenarios !== 16
+      || conformance.admissionVectors !== 41
+      || conformance.wireVectors !== 6
+      || conformance.sqlVectors !== 13
+      || conformance.providerFamilies !== 7
+      || conformance.providerSteps !== 41
+      || (conformance.moduleBytes ?? 0) < 100
+      || (conformance.descriptorBytes ?? 0) < 100
+      || conformance.descriptorCount !== 16
+      || !/^[0-9a-f]{64}$/.test(conformance.moduleDigestSha256 ?? '')
+      || !/^[0-9a-f]{64}$/.test(conformance.artifactDigestSha256 ?? '')
+    ) throw new Error('Packed SDK conformance subpath omitted the canonical portability kit.')
 
     const trapModule = join(testRoot, 'connection-trap.cjs')
     const trapEvidence = join(testRoot, 'connection-attempted')

@@ -272,9 +272,10 @@ describe('omnidraw-widget offline check', () => {
         '',
       ].join('\n'));
       await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify(manifest({
-        server: { entry: 'server/main.ts', runtimeAbi: 'omnidraw-function-v1' },
+        server: { entry: 'server/main.ts' },
       }))}\n`);
       const descriptor = await runCheck(root);
+      expect(descriptor).toMatchObject({ exitCode: 3, stderr: '' });
       expect(JSON.parse(descriptor.stdout).checks).toContainEqual(expect.objectContaining({
         phase: 'functions', code: 'FUNCTION_RESOURCE_SLOT_UNDECLARED',
         location: expect.objectContaining({ file: 'widget://server/main.ts' }),
@@ -290,13 +291,61 @@ describe('omnidraw-widget offline check', () => {
         '',
       ].join('\n'));
       await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify(manifest({
-        server: { entry: 'backend/functions.ts', runtimeAbi: 'omnidraw-function-v1' },
+        server: { entry: 'backend/functions.ts' },
       }))}\n`);
       const customServerEntry = await runCheck(root);
       expect(JSON.parse(customServerEntry.stdout).checks).not.toContainEqual(expect.objectContaining({
         phase: 'policy',
         code: 'SOURCE_IMPORT_FORBIDDEN',
         location: expect.objectContaining({ file: 'widget://backend/functions.ts' }),
+      }));
+
+      await writeFile(join(root, 'backend/functions.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'import { Type } from "typebox";',
+        'void Type;',
+        'const schema = {};',
+        'export const run = defineServerFunction({ effect: "fn", input: schema, output: schema }, async () => ({}));',
+        '',
+      ].join('\n'));
+      const vettedSchemaLibrary = await runCheck(root);
+      expect(JSON.parse(vettedSchemaLibrary.stdout).checks).not.toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_IMPORT_FORBIDDEN',
+        location: expect.objectContaining({ file: 'widget://backend/functions.ts', line: 2 }),
+      }));
+
+      await writeFile(join(root, 'backend/functions.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'import { z } from "zod";',
+        'void z;',
+        'const schema = {};',
+        'export const run = defineServerFunction({ effect: "fn", input: schema, output: schema }, async () => ({}));',
+        '',
+      ].join('\n'));
+      const unqualifiedSchemaLibrary = await runCheck(root);
+      expect(JSON.parse(unqualifiedSchemaLibrary.stdout).checks).toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SOURCE_IMPORT_FORBIDDEN',
+        location: expect.objectContaining({ file: 'widget://backend/functions.ts', line: 2 }),
+      }));
+
+      await writeFile(join(root, 'backend/functions.ts'), [
+        'import { defineServerFunction } from "@omnidraw/sdk/server";',
+        'const schema = {};',
+        'const generated = eval("1");',
+        'void generated;',
+        'export const run = defineServerFunction({',
+        '  effect: "fn", input: schema, output: schema,',
+        '}, async () => ({}));',
+        '',
+      ].join('\n'));
+      const unsupportedServerCapability = await runCheck(root);
+      expect(JSON.parse(unsupportedServerCapability.stdout).checks).toContainEqual(expect.objectContaining({
+        phase: 'policy',
+        code: 'SERVER_CAPABILITY_FORBIDDEN',
+        summary: "Server source uses unsupported portable capability 'dynamic_code_generation'.",
+        location: { file: 'widget://backend/functions.ts' },
       }));
 
       await mkdir(join(root, 'helpers'), { recursive: true });

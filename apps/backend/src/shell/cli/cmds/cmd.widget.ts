@@ -22,18 +22,32 @@ import {
 const MAX_SCREENSHOT_BYTES = 16 * 1_024 * 1_024;
 const WIDGET_SUBCOMMAND_SET = new Set<string>(WIDGET_SUBCOMMANDS);
 
-const HELP = Object.freeze({
-  list: `Usage: omnidraw widget list [--json] [--port <number>]
+const COMMON_HELP = `Common options:
+  --port <number>              Running server RPC port (default: 3000)
+  --data-dir <path>            Omnidraw home selection (default: ~/.omnidraw; env: OMNIDRAW_HOME)
+  --json                       Emit one machine-readable result or error
+  --help, -h                   Show this subcommand help`;
 
-List the running server's current widget catalog.`,
+export const WIDGET_SUBCOMMAND_HELP = Object.freeze({
+  list: `Usage: omnidraw widget list [--json] [--port <number>] [--data-dir <path>] [--help]
+
+List the running server's current widget catalog.
+
+${COMMON_HELP}`,
   resolve: `Usage: omnidraw widget resolve (--widget-key <slug> | --name <exact-name>) [--json]
+  [--port <number>] [--data-dir <path>] [--help]
 
 Resolve exactly one existing healthy draft and print its canonical key, path,
-catalog generation, and source digest. Published-only widgets are rejected.`,
+catalog generation, and source digest. Published-only widgets are rejected.
+
+${COMMON_HELP}`,
   validate: `Usage: omnidraw widget validate --widget-key <slug> [--expected-draft-digest <sha256>] [--json]
+  [--port <number>] [--data-dir <path>] [--help]
 
 Validate source structure and run the accepted host artifact build. The result
-reports source validation and host build evidence separately.`,
+reports source validation and host build evidence separately.
+
+${COMMON_HELP}`,
   inspect: `Usage: omnidraw widget inspect --widget-key <slug> --expected-draft-digest <sha256> \\
   --expected-generation <number> --expected-build-identity <sha256> [options]
 
@@ -48,7 +62,8 @@ Options:
   --timeout <ms>                 Whole-call timeout (1-180000)
   --screenshot <path>            Save verified PNG evidence atomically
   --overwrite                    Permit replacing the screenshot target
-  --json                         Emit one machine-readable result`,
+
+${COMMON_HELP}`,
 } satisfies Readonly<Record<TWidgetCliSubcommand, string>>);
 
 type TPublicCatalog = Readonly<{
@@ -287,7 +302,7 @@ export async function runWidgetCommand(args: Readonly<{ config: ICliConfig }>): 
   }
   const exactSubcommand = subcommand as TWidgetCliSubcommand;
   if (config.helpRequested) {
-    console.log(HELP[exactSubcommand]);
+    console.log(WIDGET_SUBCOMMAND_HELP[exactSubcommand]);
     return;
   }
 

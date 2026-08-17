@@ -63,7 +63,7 @@ describe('direct function API contract', () => {
       ['UNEXPECTED_INTERNAL_FAILURE', 'INTERNAL_SERVER_ERROR'],
     ] as const;
     for (const [domainCode, apiCode] of cases) {
-      const secret = '/private/widgets/counter/server-dist/main.artifact';
+      const secret = '/private/widgets/counter/server-dist/main.mjs';
       const context: TFunctionApiContext = {
         functionInvocation: {
           invokeFunction: async () => {

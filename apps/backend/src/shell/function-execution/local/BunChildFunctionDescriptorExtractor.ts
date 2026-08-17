@@ -8,17 +8,18 @@ import type {
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
 } from '@omnidraw/sdk/contract';
+import {
+  WIDGET_SERVER_FUNCTION_COUNT_MAX,
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  fnWidgetServerModulePolicyAdmission,
+} from '@omnidraw/sdk/contract';
 import type { IWidgetServerFunctionDescriptorExtractor } from '#backend/shell/widget';
 import {
   type TBunChildCage,
   type TBunChildProcessGroupController,
 } from './BunChildLifecycle';
-import { fnFunctionArtifactAdmission } from './fn.artifact-admission';
-import {
-  fnParseServerArtifactEnvelope,
-  fnServerArtifactEntryOutput,
-} from './fn.artifact-envelope';
-import { fnBunFunctionWorkerCommand } from './fn.sandbox-command';
+import { fnBunFunctionWorkerCommand } from './fn.function-worker-command';
 import type {
   TFunctionWorkerToHostMessage,
   THostToFunctionWorkerMessage,
@@ -140,21 +141,19 @@ export class BunChildFunctionDescriptorExtractor implements
     const assertBeforeDeadline = () => {
       if (this.#nowMs() >= deadlineAtMs) throw deadlineError();
     };
-    if (request.serverArtifact.kind !== 'server') throw new Error('Descriptor extraction requires a server artifact.');
-    const digest = createHash('sha256').update(request.serverArtifact.bytes).digest('hex');
-    if (digest !== request.serverArtifact.digestSha256) throw new Error('Server artifact digest is invalid.');
-    const envelope = fnParseServerArtifactEnvelope({
-      text: Buffer.from(request.serverArtifact.bytes).toString('utf8'),
-      expectedRuntimeAbi: request.runtimeAbi,
-    });
-    if (envelope.entry !== request.serverEntry) throw new Error('Server artifact entry differs from its manifest.');
-    const output = fnServerArtifactEntryOutput(envelope);
-    const source = Buffer.from(output.bytesBase64, 'base64');
     if (
-      source.toString('base64') !== output.bytesBase64
-      || createHash('sha256').update(source).digest('hex') !== output.digestSha256
-    ) throw new Error('Server artifact entry point digest is invalid.');
-    const admission = fnFunctionArtifactAdmission(source.toString('utf8'));
+      request.serverModule.format !== WIDGET_SERVER_MODULE_FORMAT
+      || request.serverModule.abi !== WIDGET_SERVER_MODULE_ABI
+    ) throw new Error('Descriptor extraction requires the fixed portable server module.');
+    const source = new Uint8Array(request.serverModule.moduleBytes);
+    const digest = createHash('sha256').update(source).digest('hex');
+    if (digest !== request.serverModule.moduleDigestSha256) {
+      throw new Error('Server module digest is invalid.');
+    }
+    const admission = fnWidgetServerModulePolicyAdmission({
+      phase: 'closed_bundle',
+      source: Buffer.from(source).toString('utf8'),
+    });
     if (!admission.allowed) throw new Error(`Server function uses unsupported runtime construct '${admission.token}'.`);
 
     const requestId = this.#createId();
@@ -205,7 +204,7 @@ export class BunChildFunctionDescriptorExtractor implements
           if (message.type === 'inspected' && message.requestId === requestId) {
             let bytes = Number.POSITIVE_INFINITY;
             try { bytes = Buffer.byteLength(JSON.stringify(message.descriptors)); } catch { /* rejected below */ }
-            if (bytes > this.#outputByteLimit || message.descriptors.length > 128) {
+            if (bytes > this.#outputByteLimit || message.descriptors.length > WIDGET_SERVER_FUNCTION_COUNT_MAX) {
               rejectDescriptors(new Error('Function descriptor extraction output exceeds its bound.'));
             } else {
               resolveDescriptors(Object.freeze(message.descriptors.map((value) => Object.freeze(value))));
@@ -291,8 +290,8 @@ export class BunChildFunctionDescriptorExtractor implements
       const message: THostToFunctionWorkerMessage = {
         type: 'inspect',
         requestId,
-        sourceBase64: output.bytesBase64,
-        sourceDigestSha256: output.digestSha256,
+        moduleBytes: source,
+        moduleDigestSha256: request.serverModule.moduleDigestSha256,
       };
       assertBeforeDeadline();
       child.send(message);

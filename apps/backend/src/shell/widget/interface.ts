@@ -79,8 +79,8 @@ export interface IWidgetCapsuleRuntimeDescriptorFactory {
 }
 
 /**
- * Loads an already-built server artifact only inside a bounded registration
- * sandbox and returns its generated, serializable named-export descriptors.
+ * Loads an already-built server artifact only inside a bounded descriptor-
+ * extraction guest and returns its generated, serializable named-export descriptors.
  */
 export interface IWidgetServerFunctionDescriptorExtractor {
   extractServerFunctionDescriptors(

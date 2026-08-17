@@ -25,8 +25,9 @@ function normalizedContractTail(
     capabilityContractDigestSha256: input.capabilityContractDigestSha256,
     channelContractDigestSha256: input.channelContractDigestSha256,
     signatureKeyIds: normalizedSignatureKeyIds(input.signatureKeyIds),
-    serverDigestSha256: input.serverDigestSha256,
-    serverRuntimeAbi: input.serverRuntimeAbi,
+    serverModuleFormat: input.serverModuleFormat,
+    serverModuleAbi: input.serverModuleAbi,
+    serverModuleDigestSha256: input.serverModuleDigestSha256,
     functionDescriptorsDigestSha256: input.functionDescriptorsDigestSha256,
     sourceDigestSha256: input.sourceDigestSha256,
     builderIdentity: input.builderIdentity,
@@ -46,7 +47,7 @@ export function fnCanonicalizeWidgetContractPayload(
   input: TWidgetContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'omnidraw.widget-contract.v4',
+    format: 'omnidraw.widget-contract.v5',
     canonicalManifestJson: input.canonicalManifestJson,
     uiDigestSha256: input.uiDigestSha256,
     artifactHash: input.artifactHash,

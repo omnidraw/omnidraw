@@ -39,16 +39,15 @@ import {
   type WidgetFilesystemBuildService,
 } from '#backend/shell/agent';
 import {
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnProjectWidgetBrowserFunctionDescriptors,
   fnProjectWidgetExecutableManifest,
+  fnValidateWidgetServerModuleArtifact,
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetExecutableInputDigest,
   fnWidgetServerFunctionCapabilityRequestMatches,
-  type TWidgetBrowserFunctionDescriptor,
   type TWidgetBuildEnvironment,
   type TWidgetRuntimeDescriptor,
+  type TWidgetServerModuleArtifact,
   type TWidgetTheme,
   type TWidgetManifestV1,
   type TWidgetServerFunctionDescriptor,
@@ -88,11 +87,7 @@ type TWidgetPreviewResourceBinding = Readonly<{
 }>;
 
 type TWidgetPreviewServerMount = Readonly<{
-  runtimeAbi: string;
-  entryBytes: Uint8Array;
-  artifactDigestSha256: string;
-  runtimeDescriptor: TWidgetRuntimeDescriptor;
-  descriptors: readonly TWidgetServerFunctionDescriptor[];
+  serverModule: TWidgetServerModuleArtifact;
   requirements: readonly TResourceRequirement[];
   bindings: readonly TWidgetPreviewResourceBinding[];
 }>;
@@ -103,8 +98,8 @@ type TWidgetPreviewSignedArtifact = Readonly<{
   capsuleBytes: Uint8Array;
   artifactDigestSha256: string;
   runtimeDescriptor: TWidgetRuntimeDescriptor;
-  browserFunctionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
-  browserFunctionDescriptorsDigestSha256: string;
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  functionDescriptorsDigestSha256: string;
   constructionReused: boolean;
   diagnostics: readonly TWidgetPreviewDiagnosticView[];
   server: TWidgetPreviewServerMount | null;
@@ -133,8 +128,8 @@ type TWidgetPreviewServiceConfig = Readonly<{
   executor: IDirectFunctionInvoker;
   writePermits: EphemeralResourceWritePermitAuthority;
   nowMs: () => number;
-  environment: Omit<TWidgetBuildEnvironment, 'serverRuntimeAbi'>;
-  compatibility: Omit<TPreviewConstructionCompatibility, 'serverRuntimeAbi'>;
+  environment: TWidgetBuildEnvironment;
+  compatibility: TPreviewConstructionCompatibility;
   hostConfiguration: Pick<WidgetCapsuleHostConfigurationService, 'read'>;
   inspectionBrowser: TPreviewInspectionBrowserPort;
   inspectionTheme: TWidgetTheme;
@@ -490,17 +485,11 @@ class WidgetPreviewService {
       args.widgetKey,
       args.signal,
     );
-    const compatibility = Object.freeze({
-      ...this.#config.compatibility,
-      serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
-    });
+    const compatibility = this.#config.compatibility;
     const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
       manifest: accepted.capture.manifest,
       files: accepted.capture.files,
-      environment: Object.freeze({
-        ...this.#config.environment,
-        serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
-      }),
+      environment: this.#config.environment,
       digestSha256: sha256,
     });
     const manifestBindings = await this.#resolveBindings(
@@ -688,10 +677,7 @@ class WidgetPreviewService {
       const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
         manifest: accepted.capture.manifest,
         files: accepted.capture.files,
-        environment: Object.freeze({
-          ...this.#config.environment,
-          serverRuntimeAbi: accepted.capture.manifest.server?.runtimeAbi ?? null,
-        }),
+        environment: this.#config.environment,
         digestSha256: sha256,
       });
       if (executableInputDigestSha256 !== accepted.construction.executableInputDigestSha256) {
@@ -840,8 +826,8 @@ class WidgetPreviewService {
             || liveArtifact.artifactDigestSha256 !== acceptedArtifact.artifactDigestSha256
             || liveArtifact.runtimeDescriptor.artifactHash
               !== acceptedArtifact.runtimeDescriptor.artifactHash
-            || liveArtifact.browserFunctionDescriptorsDigestSha256
-              !== acceptedArtifact.browserFunctionDescriptorsDigestSha256
+            || liveArtifact.functionDescriptorsDigestSha256
+              !== acceptedArtifact.functionDescriptorsDigestSha256
           ) {
             previewState = 'generation_mismatch';
             throw inspectionError(
@@ -973,7 +959,7 @@ class WidgetPreviewService {
                 artifact,
                 await this.#resolveBindings(accepted.capture.manifest.resources ?? []),
               );
-          const descriptor = invocationArtifact.server?.descriptors.find(
+          const descriptor = invocationArtifact.server?.serverModule.functionDescriptors.find(
             (candidate) => candidate.exportName === request.functionName,
           );
           if (descriptor?.effect === 'tx') {
@@ -1056,9 +1042,9 @@ class WidgetPreviewService {
           runtimeDescriptor: artifact.runtimeDescriptor,
         }),
         hostConfiguration,
-        functionDescriptors: artifact.browserFunctionDescriptors,
+        functionDescriptors: artifact.functionDescriptors,
         browserFunctionDescriptorsDigestSha256:
-          artifact.browserFunctionDescriptorsDigestSha256,
+          artifact.functionDescriptorsDigestSha256,
         functionBridge,
         theme: this.#config.inspectionTheme,
         viewport: args.input.viewport,
@@ -1351,7 +1337,7 @@ class WidgetPreviewService {
       throw previewError('FUNCTION_NOT_FOUND', 'Published function was not found.');
     }
     const server = artifact.server;
-    const descriptor = server.descriptors.find(
+    const descriptor = server.serverModule.functionDescriptors.find(
       (candidate) => candidate.exportName === functionName,
     );
     if (descriptor === undefined) {
@@ -1366,11 +1352,17 @@ class WidgetPreviewService {
       definition: {
         widgetKey: artifact.widgetKey,
         catalogGeneration: 0,
-        runtimeAbi: server.runtimeAbi,
-        artifactDigestSha256: server.artifactDigestSha256,
+        serverModule: {
+          format: server.serverModule.format,
+          abi: server.serverModule.abi,
+          moduleDigestSha256: server.serverModule.moduleDigestSha256,
+          functionDescriptors: server.serverModule.functionDescriptors,
+          functionDescriptorsDigestSha256:
+            server.serverModule.functionDescriptorsDigestSha256,
+        },
         descriptor,
       },
-      artifact: server.entryBytes,
+      artifact: server.serverModule.moduleBytes,
       input,
       signal,
       createResources: (call) => new DirectInvocationResourceGateway({
@@ -1455,9 +1447,9 @@ class WidgetPreviewService {
         bytesBase64: Buffer.from(artifact.capsuleBytes).toString('base64'),
       }),
       runtimeDescriptor: artifact.runtimeDescriptor,
-      functionDescriptors: artifact.browserFunctionDescriptors,
+      functionDescriptors: artifact.functionDescriptors,
       browserFunctionDescriptorsDigestSha256:
-        artifact.browserFunctionDescriptorsDigestSha256,
+        artifact.functionDescriptorsDigestSha256,
       constructionReused: artifact.constructionReused,
       diagnostics: artifact.diagnostics,
     });
@@ -1496,18 +1488,15 @@ class WidgetPreviewService {
           : 'Preview server-function descriptors are invalid.',
       );
     }
-    const browserFunctionDescriptors = fnProjectWidgetBrowserFunctionDescriptors(
-      serverDescriptors,
-    );
-    const browserFunctionDescriptorsDigestSha256 = sha256(
-      fnCanonicalizeWidgetBrowserFunctionDescriptors(browserFunctionDescriptors),
+    const functionDescriptorsDigestSha256 = sha256(
+      fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors),
     );
     const capabilityDigest = executableProjection.server === null
       ? '0'.repeat(64)
-      : sha256(fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors));
+      : functionDescriptorsDigestSha256;
     if (!fnWidgetServerFunctionCapabilityRequestMatches(
       capabilityDigest,
-      browserFunctionDescriptors,
+      serverDescriptors,
       signed.capsule.runtime.capabilityRequests,
     )) throw previewError(
       'FUNCTION_DESCRIPTOR_INVALID',
@@ -1526,6 +1515,28 @@ class WidgetPreviewService {
         : { resources: executableProjection.resources }),
     });
     const serverArtifact = construction.construction.construction.serverArtifact;
+    if ((serverArtifact === null) !== (executableProjection.server === null)) {
+      throw previewError(
+        'FUNCTION_DESCRIPTOR_INVALID',
+        'Preview server module presence does not match the executable manifest.',
+      );
+    }
+    if (serverArtifact !== null) {
+      const serverArtifactValidation = fnValidateWidgetServerModuleArtifact({
+        artifact: serverArtifact,
+        digestSha256: sha256,
+      });
+      if (
+        !serverArtifactValidation.valid
+        || serverArtifact.functionDescriptorsDigestSha256
+          !== functionDescriptorsDigestSha256
+        || JSON.stringify(serverArtifact.functionDescriptors)
+          !== JSON.stringify(serverDescriptors)
+      ) throw previewError(
+        'FUNCTION_DESCRIPTOR_INVALID',
+        'Preview server module does not match its accepted function descriptors.',
+      );
+    }
     const sourceMapArtifact = construction.construction.construction.sourceMapArtifact;
     return Object.freeze({
       widgetKey: construction.manifest.slug,
@@ -1533,8 +1544,8 @@ class WidgetPreviewService {
       capsuleBytes: signed.capsule.artifactBytes,
       artifactDigestSha256: sha256(signed.capsule.artifactBytes),
       runtimeDescriptor: signed.capsule.runtime,
-      browserFunctionDescriptors,
-      browserFunctionDescriptorsDigestSha256,
+      functionDescriptors: serverArtifact?.functionDescriptors ?? serverDescriptors,
+      functionDescriptorsDigestSha256,
       constructionReused: false,
       diagnostics: Object.freeze([]),
       sourceMap: sourceMapArtifact === null
@@ -1548,11 +1559,7 @@ class WidgetPreviewService {
       server: serverArtifact === null || executableProjection.server === null
         ? null
         : Object.freeze({
-            runtimeAbi: serverArtifact.runtimeAbi,
-            entryBytes: serverArtifact.bytes,
-            artifactDigestSha256: serverArtifact.digestSha256,
-            runtimeDescriptor: signed.capsule.runtime,
-            descriptors: serverDescriptors,
+            serverModule: serverArtifact,
             requirements: executableProjection.resources,
             bindings: Object.freeze([]),
           }),

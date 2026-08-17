@@ -3,7 +3,7 @@ import { signCapsuleArtifactBytes } from '@omnidraw/capsule/sign';
 import type { IFunctionInvocationApiCapability } from '#backend/shell/api/function';
 import {
   BunChildFunctionDescriptorExtractor,
-  BunChildSandboxDriver,
+  BunChildFunctionProcessDriver,
   DirectFunctionExecutor,
   EphemeralResourceWritePermitAuthority,
   JsonSchemaFunctionValidator,
@@ -22,6 +22,7 @@ import {
   type TOmnidrawDistributionBuild,
 } from '#backend/shell/widget-runtime/builder';
 import {
+  OMNIDRAW_CAPSULE_ALLOWED_SERVER_IMPORTS,
   WidgetArtifactBuilderCapsule,
   buildCapsuleGuest,
 } from '#backend/shell/widget-runtime/build';
@@ -44,7 +45,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { fileURLToPath } from 'node:url';
 import { ensureOmnidrawHome } from '#backend/shell/config/ensure-omnidraw-home';
 import sdkPackage from '@omnidraw/sdk/package.json';
@@ -82,7 +83,7 @@ import {
   removeBunChildCage,
   terminateBunChild,
 } from '../function-execution/local/BunChildLifecycle';
-import { readBunChildCpuMs } from '../function-execution/local/BunChildSandboxDriver';
+import { readBunChildCpuMs } from '../function-execution/local/BunChildFunctionProcessDriver';
 import { ResourceService } from '../resources/ResourceService';
 import { createAgentResourceService } from '../agent/AgentResourceService';
 import { createBunAgentBashCapability } from '../agent/AgentBashCapability';
@@ -137,19 +138,11 @@ import {
   LiveWidgetScreenshotLease,
 } from './service.live-mechanics';
 
-const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@omnidraw/sdk/server',
-  'zod',
-]);
-
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
-  if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
+  if (!OMNIDRAW_CAPSULE_ALLOWED_SERVER_IMPORTS.some(
+    (candidate) => candidate === specifier,
+  )) {
     throw new Error(`Widget build package '${specifier}' is not trusted by the host.`);
-  }
-  // Bun can flatten Zod's ESM `util` namespace into an invalid server
-  // artifact. The package's equivalent CJS entry bundles deterministically.
-  if (specifier === 'zod') {
-    return join(dirname(Bun.resolveSync('zod/package.json', import.meta.dir)), 'index.cjs');
   }
   return Bun.resolveSync(specifier, import.meta.dir);
 }
@@ -163,9 +156,9 @@ export type TLiveMechanicsOptions = Readonly<{
   distributionBuild?: TOmnidrawDistributionBuild;
   distributionBuildEnvironmentIdentity?: string;
   localWidgetPackageRegistryExecute?: TLocalWidgetPackageRegistryExecute;
-  createFunctionSandboxDriver?: (args: Readonly<{
+  createFunctionProcessDriver?: (args: Readonly<{
     tempRoot: string;
-  }>) => BunChildSandboxDriver;
+  }>) => BunChildFunctionProcessDriver;
 }>;
 
 export function createLiveLocalWidgetPackageRegistrySync(args: Readonly<{
@@ -363,7 +356,7 @@ export function layerLiveMechanics(args: Readonly<{
         format: 'omnidraw-widget-host-import-map-v1',
         imports: {
           '@omnidraw/sdk/server': sdkPackage.version,
-          zod: '4.4.3',
+          typebox: '1.3.14',
         },
       })),
       transformsDigestSha256: sha256(distributionBuildSetup.environmentIdentity),
@@ -628,9 +621,9 @@ export function layerLiveMechanics(args: Readonly<{
   });
   const functionTempRoot = join(config.home.tempRoot, 'function-runtime');
   mkdirSync(functionTempRoot, { recursive: true, mode: 0o700 });
-  const functionDriver = options.createFunctionSandboxDriver?.({
+  const functionDriver = options.createFunctionProcessDriver?.({
     tempRoot: functionTempRoot,
-  }) ?? new BunChildSandboxDriver({
+  }) ?? new BunChildFunctionProcessDriver({
     executable: process.execPath,
     workerPath: fileURLToPath(new URL(
       '../function-execution/local/function-worker.ts',

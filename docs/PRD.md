@@ -17,7 +17,7 @@ The managed product is not a hosted deployment of the OSS application. It is a s
 - Managed backend code must be able to depend on the Canvas contract without acquiring Solid, browser, storage, or OSS server implementation dependencies.
 - Widget code and artifacts must remain portable between OSS and managed.
 - OSS runs local widget server and function code on the host.
-- Managed runs untrusted builds, functions, and coding commands through Microsandbox and records usage evidence privately.
+- Managed runs widget functions only as Workers for Platforms user Workers. It may run untrusted coding and build work through Microsandbox and records usage evidence privately.
 - The two repositories are works in progress and must be able to coevolve through explicit, versioned public contracts.
 
 This redesign adopts exact `effect@4.0.0-rc.108` for application orchestration and transport, an imperative shell around a functional core, and backend deterministic simulation testing. Public packages with non-trivial side-effect orchestration also use that exact Effect version internally, while their exported APIs remain Effect-free and transport-neutral.
@@ -47,7 +47,7 @@ Two external runtimes sit behind the public Omnidraw APIs:
 - Sharing private backend implementations between OSS and managed.
 - Unifying the OSS and managed database schemas.
 - Adding managed authentication, tenancy, billing, or usage-meter policy to OSS packages.
-- Running browser UI code inside Microsandbox. Microsandbox covers managed untrusted builds, functions, and coding commands; browser widget UI continues through the browser host bridge.
+- Running browser UI code inside Microsandbox or running widget functions in the managed coding/build sandbox. Capsule remains the browser UI boundary, Workers for Platforms user Workers execute managed widget functions, and Microsandbox may cover managed coding and build work only.
 - Re-proving Capsule's React, Three, or other framework compatibility in this repository. Capsule owns that evidence in its own repository; Omnidraw verifies only its SDK and host ABI against Capsule.
 - Redesigning existing screens or product workflows.
 - Migrating or preserving pre-refactor databases, persisted Canvas rows, replay records, widget artifacts, or private runtime state.
@@ -210,16 +210,38 @@ The same SDK-authored widget must be accepted by both products without condition
 The SDK must not implement:
 
 - The OSS child-process or host executor.
-- The managed Microsandbox executor.
+- The managed Workers for Platforms executor, generated deployment wrapper, dispatch namespace, or upload path.
 - Managed usage metering or billing policy.
 - OSS database, server, or product UI behavior.
 - Public API signatures that expose Capsule-owned types or require widget projects to import Capsule directly.
 
-OSS and managed each implement private execution adapters behind the same host bridge. Managed usage collection wraps its adapter and remains invisible to widget code.
+The SDK owns one fixed Omnidraw server-module ABI and canonical module bytes;
+the module is neither Bun-specific output nor a deployable Worker script. OSS
+and managed implement private adapters behind that same contract. The managed
+adapter may generate a Fetch/module wrapper around the exact canonical server
+bytes, but the wrapper has its own deployment digest and must not rewrite or
+rebuild the module or change the canonical widget artifact digest. Managed
+usage collection wraps its adapter and remains invisible to widget code.
+
+The portable function profile has one 128 MiB `small` memory class and an
+8 MiB canonical-module byte ceiling. It does not expose a catalog generation
+or promise fresh module evaluation: observable module-scope state is invalid,
+because a managed Worker may reuse one isolate. Cancellation exposes only the
+SDK-declared structural subset, not native `AbortSignal` prototype identity.
+Managed acceptance also gates compressed wrapper size, startup time, and
+wall-clock timeout/terminal-failure mapping.
+
+The generated WFP wrapper and canonical module share the untrusted user-Worker
+realm. The wrapper therefore contains no credential or provider authority and
+is not treated as a security boundary. A trusted service-bound resource broker
+owns Turso credentials and strongly consistent KV/secret/database semantics;
+Cloudflare KV cannot implement the portable revision/CAS contract. A configured
+outbound Worker denies public egress, and the private release gate proves that
+denial live rather than inferring it from static admission.
 
 `@omnidraw/capsule` is an exact direct implementation dependency of the SDK, currently `0.16.0`. New widget scaffolds depend on and import `@omnidraw/sdk` only. A Capsule major requires SDK ABI conformance and artifact-compatibility review before the SDK dependency is updated.
 
-The SDK does not depend on Zod or expose Zod-owned types. Its manifest, artifact, and guest-boundary validators are Omnidraw-owned deterministic functions. `defineServerFunction` accepts the structural runtime-schema capability it needs, such as `parse(unknown)`, so widget authors may independently choose Zod, Valibot, TypeBox, or a custom validator without making that library part of the Omnidraw ABI. Generated widget scaffolds do not install a schema library unless the selected example explicitly uses one.
+The SDK does not depend on a schema library or expose library-owned types. Its manifest, artifact, and guest-boundary validators are Omnidraw-owned deterministic functions. `defineServerFunction` accepts the structural runtime-schema capability it needs, such as `parse(unknown)`, so widget authors may use a custom validator or an independently versioned library without making that library part of the Omnidraw ABI. The current portable server build profile qualifies TypeBox; another library or entrypoint must first pass the same authored-source, closed-bundle, OSS VM, and managed Worker gates. Generated widget scaffolds do not install a schema library unless the selected example explicitly uses one.
 
 SDK implementation paths that own asynchronous builds, guest channels,
 cancellation, or scoped host resources use exact `effect@4.0.0-rc.108`.
@@ -329,28 +351,51 @@ Rules:
 
 ```mermaid
 flowchart TB
-  Source["One widget source using @omnidraw/sdk"] --> Artifact["Canonical widget artifact and ABI"]
+  Source["One widget source using @omnidraw/sdk"] --> Artifact["Canonical UI artifact + exact server module"]
   Artifact --> OSSHost["OSS private host adapter"]
   Artifact --> ManagedHost["Managed private host adapter"]
-  OSSHost --> LocalExec["Local host execution"]
-  ManagedHost --> Sandbox["Microsandbox execution"]
+  OSSHost --> LocalExec["Disposable Bun child on the local host"]
+  ManagedHost --> Wrapper["Generated wrapper around exact server bytes"]
+  Wrapper --> Worker["WFP user Worker"]
+  Worker --> Turso["Private resource broker + Turso"]
   ManagedHost --> Meter["Private usage evidence"]
-  Artifact --> BrowserBridge["Shared browser host bridge"]
+  Artifact --> BrowserBridge["Capsule browser UI host bridge"]
 ```
 
 Requirements:
 
 - One fixture must build to one canonical artifact digest and pass in both products.
 - Browser channels, manifest validation, function invocation, cancellation, and error shapes must be portable.
-- OSS local execution and managed Microsandbox execution may have different operational policies but must expose the same guest-visible ABI.
+- The SDK owns one fixed, host-neutral server-module ABI. Widget authors import `@omnidraw/sdk/server`; they do not select an execution runtime, receive Cloudflare `env`, define a Fetch handler, write Wrangler configuration, or maintain host-specific source variants.
+- OSS and managed acceptance admit the same artifact language. OSS must reject a Bun-only construct even when the local host could execute it.
+- Managed widget functions execute only as Workers for Platforms user Workers. They never execute in Cloudflare Sandbox, a Container, a Durable Object, or the managed chat/build sandbox.
+- A managed wrapper is deployment material only. It references the exact canonical server bytes without rewriting or rebuilding them and has a separate deployment digest.
+- Capsule is exclusively the browser UI sandbox and does not execute server functions.
 - Managed metering is out-of-band from the widget contract. Widget code cannot read, modify, or depend on billing evidence.
-- Managed-specific resource, tenant, authentication, and sandbox controls remain private adapters.
+- Managed dispatch namespaces, Worker uploads, outbound-worker policy, bindings, Turso credentials, resource brokerage, tenant/authentication policy, metering, billing, plan enforcement, and usage evidence remain private adapters.
 - Canonical widget conformance fixtures and expected guest-visible transcripts ship through `@omnidraw/sdk/conformance`; they are test-only exports and do not add a sixth package.
 - Omnidraw fixtures exercise the SDK/host contract with a minimal framework-neutral widget. React, React DOM, Three, and their type packages are not repository dependencies or Omnidraw conformance-fixture dependencies.
+- OSS conformance qualifies the portable contract and local adapter, not Cloudflare or Turso. The private managed repository must consume the exact SDK version in `public-package-set.json`, deploy through a real WFP dispatch namespace, run the same conformance against Turso, prove the wrapper references the canonical module digest, and prove widget code has neither outbound nor host-OS authority before accepting the package set.
 
 ### OSS local-execution trust model
 
-OSS deliberately executes locally built widget server and function code on the operator's machine. This is not equivalent to the managed Microsandbox security boundary. OSS documentation, CLI output, and execution surfaces must describe this as trusted local execution and must not claim sandbox isolation. The operator is responsible for reviewing and trusting code before execution. Adding a local sandbox is outside this redesign.
+OSS deliberately executes locally built widget server and function code on the
+operator's machine in a disposable Bun child. The child and its defense-in-
+depth restrictions are not a hostile-code security boundary. OSS documentation,
+CLI output, and execution surfaces must describe this as trusted local
+execution and must not claim sandbox isolation. The operator is responsible for
+reviewing and trusting code before execution. OSS has no cloud executor,
+per-user or monthly metering, billing-plan quota, managed cost-model workload
+bound, or sandbox-minute allowance. Adding a local hostile-code sandbox is
+outside this redesign.
+
+### Widget execution ownership
+
+| Owner | Responsibilities |
+| --- | --- |
+| `@omnidraw/sdk` | Portable manifest, fixed server ABI, exact module/artifact and descriptor contracts, invocation/resource envelopes, validators, codecs, and cross-host conformance vectors. It owns no executor or provider. |
+| `apps/backend` | Trusted-local Bun child, filesystem catalog, accepted build, Preview/publication, local Resource Store and providers, IPC adaptation, lifecycle, and process cleanup. It owns no cloud fallback. |
+| Private managed repository | Exact-bytes WFP wrapper generation and upload, dispatch namespaces, outbound policy, Cloudflare bindings, resource broker/Turso adapter, authentication, tenancy, metering, billing, plans, credentials, and managed qualification. |
 
 ### Existing widget projects
 
@@ -718,9 +763,11 @@ An incomplete or defective release is corrected with new package versions. Publi
 ### Widget portability
 
 - One SDK widget fixture builds once to one canonical artifact digest.
-- The fixture renders and invokes functions through both the OSS local adapter and managed adapter.
+- The fixture renders and invokes functions through both the OSS local adapter and the private managed WFP adapter.
 - Guest-visible messages, cancellation, validation, results, and errors conform in both products.
 - Managed usage evidence is produced without changing the widget ABI.
+- Both products accept the same exact canonical server bytes; the managed wrapper has a separate deployment digest and does not rebuild them.
+- The managed gate uses a real WFP dispatch namespace and Turso and proves Worker-only execution with no outbound or host-OS authority. OSS qualification does not claim those managed results.
 - New generated widgets import only SDK entrypoints and have no direct Capsule or retired Omnidraw dependencies.
 - Default generated widgets have no mandatory schema-library dependency; author-selected examples may add one privately.
 - Legacy widget imports fail as unsupported. No migration command or automatic
@@ -805,7 +852,7 @@ The redesign is complete when:
 | Effect unstable APIs change | Exact pinning, shell-only imports, explicit upgrade inventory and qualification |
 | Transport replacement changes stream semantics | Golden protocol scenarios and live reconnect/cancellation tests |
 | Helper app removal loses evidence | Move and pass each scenario before deleting its app |
-| Widget behavior diverges between host and Microsandbox | One canonical artifact fixture and shared conformance suite |
+| Widget behavior diverges between the OSS host and managed WFP/Turso adapters | One canonical artifact fixture, shared conformance suite, exact SDK pin, and a private real-service qualification gate |
 | Operators assume OSS host execution is sandboxed | Explicit trusted-local-execution documentation and product messaging |
 | Old data is mistaken for supported input | Explicit destructive replacement, fresh-database startup, and rejection of legacy import paths |
 | Mixed old/new packages create an accidental compatibility surface | One exact package set and atomic consumer cutover |
@@ -817,7 +864,7 @@ The redesign is complete when:
 - `canvas-contract` remains a separate published package.
 - `canvas-contract` owns the complete serialized Canvas scene schema, its semantic style tokens, and `CANVAS_SCENE_SCHEMA_VERSION = "1.0.0"`; it has no Cangine or Theme dependency.
 - Contract schemas and codecs are allowed; authority and reducer implementation are not.
-- SDK owns the portable guest ABI and host bridge.
+- SDK owns the portable guest ABI, fixed host-neutral server-module ABI, exact module/artifact contract, and host bridge.
 - SDK and Canvas Contract validation is library-neutral; Zod is not an Omnidraw dependency or public type.
 - Cangine is an exact direct dependency of Canvas only; Capsule is an exact direct dependency encapsulated by SDK.
 - Solid is a peer dependency of Canvas and AI Chat, and packed consumers must prove a single runtime instance.
@@ -836,8 +883,11 @@ The redesign is complete when:
 - Theme contract and implementation merge into `@omnidraw/theme` without a runtime dependency.
 - Existing OSS product behavior is preserved on a fresh database except compiled-binary distribution.
 - Managed is a reimplementation based on public packages, not a hosted OSS deployment.
-- Managed Microsandbox execution and usage metering remain private.
+- Managed widget functions execute only as Workers for Platforms user Workers. Generated wrappers preserve the exact canonical server bytes; dispatch, upload, outbound policy, Turso, credentials, tenancy, authentication, metering, billing, plans, and usage evidence remain private.
+- Managed coding and build sandboxes are separate from widget invocation; Cloudflare Sandbox, Containers, Durable Objects, and the chat/build sandbox never execute widget functions.
+- Capsule is exclusively the browser UI sandbox and never executes widget server functions.
 - OSS host execution is an explicitly accepted trusted-local-execution model, not a sandbox guarantee.
+- OSS has no cloud executor, remote Turso fallback, per-user/monthly metering, billing-plan quota, managed workload bound, or sandbox-minute allowance.
 - Managed and OSS storage schemas remain independent.
 - The pre-refactor database is replaced. Its schema, fingerprints, rows,
   backups, and migration history are unsupported inputs.

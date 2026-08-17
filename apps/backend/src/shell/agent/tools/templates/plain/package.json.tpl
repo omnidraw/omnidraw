@@ -8,8 +8,7 @@
     "build": "omnidraw-widget build ."
   },
   "dependencies": {
-    "@omnidraw/sdk": "__OMNIDRAW_SDK_DEPENDENCY__",
-    "zod": "4.4.3"
+    "@omnidraw/sdk": "__OMNIDRAW_SDK_DEPENDENCY__"
   },
   "devDependencies": {
     "typescript": "5.9.3",

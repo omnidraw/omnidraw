@@ -1,7 +1,10 @@
 /** @file Private serializable protocol between the Bun host driver and one child. */
 
-import type { TResourceCall, TResourceCallResult } from '#backend/shell/resources';
-import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
+import type {
+  TPortableResourceRequestWire,
+  TPortableResourceResponseWire,
+  TWidgetServerFunctionDescriptor,
+} from '@omnidraw/sdk/contract';
 import type {
   TDirectFunctionSubject,
   TFunctionFailure,
@@ -10,7 +13,7 @@ import type {
 
 export type TFunctionCanonicalRegistration = Omit<
   TWidgetServerFunctionDescriptor,
-  'exportName' | 'modulePath'
+  'exportName'
 >;
 
 export type TFunctionWorkerContext = Readonly<{
@@ -25,15 +28,16 @@ export type THostToFunctionWorkerMessage =
   | Readonly<{
       type: 'inspect';
       requestId: string;
-      sourceBase64: string;
-      sourceDigestSha256: string;
+      moduleBytes: Uint8Array;
+      moduleDigestSha256: string;
     }>
   | Readonly<{
       type: 'load';
       requestId: string;
-      sourceBase64: string;
-      sourceDigestSha256: string;
+      moduleBytes: Uint8Array;
+      moduleDigestSha256: string;
       exportName: string;
+      functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
       canonicalRegistration: TFunctionCanonicalRegistration;
     }>
   | Readonly<{
@@ -45,9 +49,7 @@ export type THostToFunctionWorkerMessage =
   | Readonly<{
       type: 'resource_result';
       requestId: string;
-      callId: string;
-      result?: TResourceCallResult;
-      error?: Readonly<{ code?: string; message: string }>;
+      response: TPortableResourceResponseWire;
     }>
   | Readonly<{ type: 'cancel'; requestId: string; reason: string }>;
 
@@ -67,8 +69,7 @@ export type TFunctionWorkerToHostMessage =
   | Readonly<{
       type: 'resource_call';
       requestId: string;
-      callId: string;
-      call: TResourceCall;
+      request: TPortableResourceRequestWire;
     }>
   | Readonly<{
       type: 'log';

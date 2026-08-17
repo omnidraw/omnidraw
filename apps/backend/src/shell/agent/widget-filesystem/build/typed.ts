@@ -55,7 +55,7 @@ export type TWidgetFilesystemConstructionCache = Readonly<{
 export type TWidgetFilesystemBuildServiceConfig = Readonly<{
   builderIdentity: string;
   /** Trusted identity of the concrete runner/toolchain wired to this service. */
-  environment: Omit<TWidgetBuildEnvironment, 'serverRuntimeAbi'>;
+  environment: TWidgetBuildEnvironment;
   construction: TWidgetFilesystemConstructionPort;
   capsuleInspector: TWidgetFilesystemCapsuleInspector;
   /** Host release authority; signs the canonical complete unsigned release. */
@@ -117,7 +117,7 @@ export type TWidgetFilesystemPreparedPublication = Readonly<{
   server: null | Readonly<{
     files: readonly TWidgetSourceFile[];
     functionsJson: string;
-    serverDistDigestSha256: string;
+    moduleDigestSha256: string;
   }>;
   files: readonly TWidgetSourceFile[];
   release: Readonly<{

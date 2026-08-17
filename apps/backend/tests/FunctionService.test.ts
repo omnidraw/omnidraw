@@ -46,7 +46,6 @@ function descriptor(
   return Object.freeze({
     schemaVersion: 1,
     exportName: input.functionName,
-    modulePath: 'server/main.ts',
     effect,
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
@@ -120,14 +119,17 @@ function runtimeResolution(
       manifestSha256: 'a'.repeat(64),
       capsule: { path: 'dist/widget.capsule', sha256: 'c'.repeat(64), byteSize: 1 },
       files: [{
-        path: 'server/main.ts',
+        path: 'server-dist/main.mjs',
         sha256: 'd'.repeat(64),
         byteSize: serverEntryBytes.byteLength,
       }],
       server: {
-        entry: 'server/main.ts',
-        runtimeAbi: 'omnidraw.function.v1',
-        functions: { path: 'server/functions.json', sha256: 'e'.repeat(64), byteSize: 1 },
+        entry: 'server-dist/main.mjs',
+        format: 'omnidraw.widget-server-module.v1',
+        abi: 'omnidraw.widget-server-abi.v1',
+        functionsPath: 'functions.json',
+        moduleDigestSha256: 'd'.repeat(64),
+        functionsDigestSha256: 'e'.repeat(64),
       },
     },
     capsuleBytes: new Uint8Array([0]),
@@ -207,7 +209,7 @@ function harness(args: Readonly<{
         gateway: {
           call: async (call: unknown) => {
             gatewayCalls.push(call);
-            return { output: { value: 41 } };
+            return { output: { value: 41, revision: 1 } };
           },
         },
         bindings: {
@@ -252,7 +254,7 @@ describe('FunctionService direct filesystem invocation', () => {
           operation: 'get',
           effect: 'read',
           input: { key: 'count' },
-        })).resolves.toEqual({ output: { value: 41 } });
+        })).resolves.toEqual({ output: { value: 41, revision: 1 } });
         return success;
       },
     };
@@ -284,8 +286,13 @@ describe('FunctionService direct filesystem invocation', () => {
     expect(invocation!.definition).toEqual({
       widgetKey: input.widgetKey,
       catalogGeneration: input.catalogGeneration,
-      runtimeAbi: 'omnidraw.function.v1',
-      artifactDigestSha256: 'd'.repeat(64),
+      serverModule: {
+        format: 'omnidraw.widget-server-module.v1',
+        abi: 'omnidraw.widget-server-abi.v1',
+        moduleDigestSha256: 'd'.repeat(64),
+        functionDescriptors: setup.resolution.functionDescriptors,
+        functionDescriptorsDigestSha256: 'e'.repeat(64),
+      },
       descriptor: setup.resolution.functionDescriptors[0],
     });
     expect(invocation!.artifact).toEqual(setup.resolution.serverEntryBytes!);
@@ -304,6 +311,7 @@ describe('FunctionService direct filesystem invocation', () => {
       operation: 'get',
       effect: 'read',
       input: { key: 'count' },
+      kind: 'kv',
     }]);
   });
 

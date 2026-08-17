@@ -92,7 +92,6 @@ function snapshot(): TWidgetCatalogSnapshot {
           functions: [{
             schemaVersion: 1,
             exportName: 'lookupNotes',
-            modulePath: 'server-dist/private.js',
             effect: 'fn',
             inputSchema: {},
             outputSchema: {},

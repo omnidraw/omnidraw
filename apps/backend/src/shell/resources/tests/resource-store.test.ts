@@ -182,13 +182,15 @@ describe('Resource Store', () => {
       controlStore: memory.controlStore,
       providers: [providerWith(async (context, operation, args) => {
         contexts.push({ context, operation, args });
-        return 'dark';
+        return { value: 'dark', revision: 1 };
       })],
       placement: CELL,
       nowMs,
     });
 
-    await expect(store.call(readCall())).resolves.toEqual({ output: 'dark' });
+    await expect(store.call(readCall())).resolves.toEqual({
+      output: { value: 'dark', revision: 1 },
+    });
     expect(contexts).toHaveLength(1);
     expect(contexts[0]).toMatchObject({
       context: { resource: { id: 'resource-a' }, canRead: true, canWrite: false },
@@ -208,7 +210,10 @@ describe('Resource Store', () => {
     };
     const store = new ResourceStoreService({
       controlStore: memory.controlStore,
-      providers: [providerWith(async () => { dispatches += 1; return 'saved'; })],
+      providers: [providerWith(async () => {
+        dispatches += 1;
+        return { value: 'dark', revision: 1 };
+      })],
       placement: CELL,
       nowMs: () => 100,
       writeCapabilityVerifier: {
@@ -237,7 +242,9 @@ describe('Resource Store', () => {
       writeCapability: 'permit-a',
     };
 
-    await expect(store.call(call)).resolves.toEqual({ output: 'saved' });
+    await expect(store.call(call)).resolves.toEqual({
+      output: { value: 'dark', revision: 1 },
+    });
     expect({ commits, dispatches }).toEqual({ commits: 1, dispatches: 1 });
     await store.close();
   });
@@ -259,7 +266,7 @@ describe('Resource Store', () => {
       requirement: { slot: 'preferences', kind: 'kv', effect: 'read_write' },
       operation: 'set',
       effect: 'write',
-      input: {},
+      input: { key: 'theme', value: 'dark' },
     })).rejects.toMatchObject({ code: 'RESOURCE_WRITE_CAPABILITY_INVALID' });
     expect(dispatched).toBe(false);
     await store.close();
@@ -316,7 +323,7 @@ describe('Resource Store', () => {
     const memory = memoryControlStore({ resources: [descriptor()], placements: [placement()] });
     const store = new ResourceStoreService({
       controlStore: memory.controlStore,
-      providers: [providerWith(async () => 'dark')],
+      providers: [providerWith(async () => ({ value: 'dark', revision: 1 }))],
       placement: CELL,
       nowMs,
     });
@@ -341,7 +348,9 @@ describe('Resource Store', () => {
       operation: 'get',
       effect: 'read',
       input: { key: 'theme' },
-    })).resolves.toEqual({ output: 'dark' });
+    })).resolves.toEqual({
+      output: { value: 'dark', revision: 1 },
+    });
     await store.close();
   });
 
@@ -352,7 +361,10 @@ describe('Resource Store', () => {
     const memory = memoryControlStore({ resources: [descriptor()], placements: [placement()] });
     const store = new ResourceStoreService({
       controlStore: memory.controlStore,
-      providers: [providerWith(async () => { await pending; return 'done'; }, {
+      providers: [providerWith(async () => {
+        await pending;
+        return { value: 'done', revision: 1 };
+      }, {
         close: async () => { providerClosed = true; },
       })],
       placement: CELL,
@@ -364,7 +376,9 @@ describe('Resource Store', () => {
     await Promise.resolve();
     expect(providerClosed).toBe(false);
     release();
-    await expect(call).resolves.toEqual({ output: 'done' });
+    await expect(call).resolves.toEqual({
+      output: { value: 'done', revision: 1 },
+    });
     await closing;
     expect(providerClosed).toBe(true);
   });

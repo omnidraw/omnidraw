@@ -6,12 +6,10 @@ import {
 } from '@omnidraw/canvas-contract';
 import {
   ZWidgetServerFunctionDescriptors,
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
   fnWidgetServerFunctionCapabilityRequestMatches,
-  type TWidgetBrowserFunctionDescriptor,
+  type TWidgetServerFunctionDescriptor,
 } from '@omnidraw/sdk/contract';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
@@ -39,7 +37,7 @@ function widgetItemMatchesTarget(
 function runtimeBrowserFunctionContract(
   resolution: TWidgetRuntimeResolution,
 ): Readonly<{
-  descriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  descriptors: readonly TWidgetServerFunctionDescriptor[];
   digestSha256: string;
 }> {
   const serverDescriptors = ZWidgetServerFunctionDescriptors.parse(
@@ -66,9 +64,9 @@ function runtimeBrowserFunctionContract(
     }
   }
 
-  const descriptors = fnProjectWidgetBrowserFunctionDescriptors(serverDescriptors);
+  const descriptors = Object.freeze([...serverDescriptors]);
   const digestSha256 = createHash('sha256')
-    .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
+    .update(fnCanonicalizeWidgetServerFunctionDescriptors(descriptors))
     .digest('hex');
   const capabilityDigest = resolution.release.server?.functionsDigestSha256
     ?? '0'.repeat(64);

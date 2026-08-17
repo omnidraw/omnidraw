@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.8.4",
+  "version": "0.12.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -98,11 +98,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
+    "@babel/parser": "7.29.8",
+    "@babel/traverse": "7.29.8",
     "@omnidraw/capsule": "0.16.0",
     "effect": "4.0.0-rc.108",
     "lucide-static": "1.24.0"
   },
   "devDependencies": {
+    "@types/babel__traverse": "7.20.5",
     "typescript": "7.0.2",
     "typescript-widget-compiler": "npm:typescript@5.9.3",
     "typescript-widget-fixture": "npm:typescript@6.0.3"

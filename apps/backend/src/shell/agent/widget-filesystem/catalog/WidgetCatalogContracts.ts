@@ -11,7 +11,6 @@ import {
   fnValidateWidgetRelease,
   fnWidgetExecutableManifestDigest,
   fnWidgetManifestV1Digest,
-  fnWidgetReleaseDirectoryDigest,
   parseWidgetManifestV1Json,
   parseWidgetReleaseJson,
 } from '@omnidraw/sdk/contract';
@@ -43,7 +42,6 @@ export const WIDGET_CATALOG_CONTRACTS: TWidgetCatalogContractEffects = Object.fr
   canonicalizePresentation: fnCanonicalizeWidgetPresentation,
   manifestDigest: fnWidgetManifestV1Digest,
   executableManifestDigest: fnWidgetExecutableManifestDigest,
-  releaseDirectoryDigest: fnWidgetReleaseDirectoryDigest,
   canonicalizeUnsignedRelease: fnCanonicalizeWidgetUnsignedReleaseDescriptor,
   validateRelease: fnValidateWidgetRelease,
 });

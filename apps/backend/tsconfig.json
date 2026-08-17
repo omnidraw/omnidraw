@@ -9,6 +9,7 @@
       "@omnidraw/canvas-contract/CONSTANTS": ["../../packages/canvas-contract/src/CONSTANTS.ts"],
       "@omnidraw/canvas-contract/types": ["../../packages/canvas-contract/src/types.ts"],
       "@omnidraw/sdk": ["../../packages/sdk/src/index.ts"],
+      "@omnidraw/sdk/conformance": ["../../packages/sdk/src/conformance.ts"],
       "@omnidraw/sdk/contract": ["../../packages/sdk/src/contract.ts"],
       "@omnidraw/sdk/package.json": ["../../packages/sdk/package.json"],
       "@omnidraw/sdk/server": ["../../packages/sdk/src/server.ts"],

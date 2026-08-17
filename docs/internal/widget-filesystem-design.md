@@ -1,8 +1,8 @@
 # Filesystem-first widget design
 
-**Status:** Approved target design from [E41](../../tasks/e/E41.md), plus the
-later single-user and clean-baseline decisions in this report. Not yet
-implemented. Where E41 differs, this report is the target.
+**Status:** Superseded historical design note. The current authority is
+[Omnidraw widget system](./llm.widget-system.md); where this report differs,
+that authority wins.
 
 **Audience:** Omnidraw programmers working on widgets, CanvasService, Capsule,
 resources, functions, the database, or the widget UI.
@@ -183,8 +183,7 @@ Unknown fields are errors.
     "parkability": { "enabled": false }
   },
   "server": {
-    "entry": "server/main.ts",
-    "runtimeAbi": "bun-v1"
+    "entry": "server/main.ts"
   },
   "resources": [
     {
@@ -196,6 +195,10 @@ Unknown fields are errors.
   ]
 }
 ```
+
+The server entry is the only authored server selection. The SDK derives one
+fixed portable server ABI; manifests never name Bun, Workers, or another host
+runtime.
 
 ### Presentation fields
 

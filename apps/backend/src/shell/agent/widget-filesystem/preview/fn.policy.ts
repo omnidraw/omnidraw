@@ -110,13 +110,6 @@ export function fnNormalizePreviewConstructionCompatibility(
         'Capsule runtime build digest',
       ),
     }),
-    serverRuntimeAbi: compatibility.serverRuntimeAbi === null
-      ? null
-      : normalizedIdentity(
-        compatibility.serverRuntimeAbi,
-        'Preview server runtime ABI',
-        PREVIEW_IDENTITY_MAX_LENGTH,
-      ),
   });
 }
 

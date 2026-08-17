@@ -16,3 +16,6 @@ export {
   ZWidgetExecutableResourceRequirement,
   ZWidgetResourceRequirement,
 } from './contracts/schema';
+export * from './contracts/core/fn.portable-resource-sql';
+export * from './contracts/core/fn.resource-operation-registry';
+export * from './contracts/core/fn.resource-wire';

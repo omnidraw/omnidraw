@@ -51,6 +51,9 @@ function normalizeOperations(
         ? {}
         : { parameters: normalizeParameterDeclarations(operation.parameters) }),
       result: operation.result,
+      ...(operation.jsonColumns === undefined
+        ? {}
+        : { jsonColumns: [...operation.jsonColumns].sort(compareText) }),
     }]));
 }
 
@@ -128,7 +131,6 @@ export function fnNormalizeWidgetManifestV1(manifest: TWidgetManifestV1): TWidge
       : { server: {
           entry: fnNormalizeWidgetFilesystemRelativePath(manifest.server.entry)
             ?? manifest.server.entry,
-          runtimeAbi: manifest.server.runtimeAbi,
         } }),
     ...(resources.length === 0 ? {} : { resources }),
   };
@@ -202,7 +204,6 @@ export function fnNormalizeWidgetExecutableProjection(
       : {
           entry: fnNormalizeWidgetFilesystemRelativePath(projection.server.entry)
             ?? projection.server.entry,
-          runtimeAbi: projection.server.runtimeAbi,
         },
     resources: [...projection.resources]
       .sort((left, right) => compareText(left.slot, right.slot))

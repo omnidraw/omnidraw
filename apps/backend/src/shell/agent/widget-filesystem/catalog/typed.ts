@@ -207,10 +207,6 @@ export type TWidgetCatalogContractEffects = Readonly<{
     manifest: TWidgetManifestV1;
     digestSha256(value: string): string;
   }>): string;
-  releaseDirectoryDigest(args: Readonly<{
-    files: readonly TWidgetReleaseFile[];
-    digestSha256(value: string): string;
-  }>): string;
   canonicalizeUnsignedRelease(release: TWidgetReleaseDescriptor): string;
   validateRelease(args: Readonly<{
     manifest: TWidgetManifestV1;

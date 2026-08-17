@@ -1,5 +1,5 @@
 import type {
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetPlacementRef,
   TWidgetPresentationProjection,
   TWidgetResourceRequirement,
@@ -28,7 +28,7 @@ export type TWidgetPublicCatalogForm = Readonly<{
   manifestDigestSha256: string | null;
   config: TWidgetPresentationProjection | null;
   resources: readonly TWidgetResourceRequirement[];
-  functions: readonly TWidgetBrowserFunctionDescriptor[];
+  functions: readonly TWidgetServerFunctionDescriptor[];
   fileCount: number;
   issues: readonly TWidgetPublicIssue[];
 }>;

@@ -1,6 +1,6 @@
 import type { Browser, BrowserContext, Page } from 'playwright';
 import type {
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetHostConfiguration,
   TWidgetProps,
   TWidgetRuntimeDescriptor,
@@ -71,7 +71,7 @@ export type TPreviewInspectionBrowserJob = Readonly<{
     runtimeDescriptor: TWidgetRuntimeDescriptor;
   }>;
   hostConfiguration: TWidgetHostConfiguration;
-  functionDescriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   browserFunctionDescriptorsDigestSha256: string;
   functionBridge: TPreviewInspectionFunctionBridge;
   props?: TWidgetProps;

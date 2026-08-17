@@ -17,7 +17,10 @@ import {
 import type { TCanvasImagePort } from "@omnidraw/canvas";
 import type { TFrontendRuntime } from "@/shell/runtime/frontend-runtime";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
-import { fnAdvanceAgentEventCursor } from "@/core/chat/fn.agent-event-cursor";
+import {
+  fnAdvanceAgentEventCursor,
+  fnAgentReplayCursorAfterGap,
+} from "@/core/chat/fn.agent-event-cursor";
 import { fxRecoverChat } from "@/core/chat/fx.recover-chat";
 import type {
   TPrivateRequestArguments,
@@ -329,6 +332,17 @@ function createChatPort(runtime: TFrontendRuntime, canvasId: string): IAiChatPor
       input: (afterSequence) => ({ afterSequence }),
       advance: (cursor, event) => fnAdvanceAgentEventCursor(cursor, record(event)),
       isDuplicate: (cursor, event) => typeof event.sequence === "number" && event.sequence <= cursor,
+      recoverAfterDomainError: async (error, cursor) => {
+        const replayCursor = fnAgentReplayCursorAfterGap(error, cursor);
+        if (replayCursor === null) return null;
+        const recovered = await runtime.runPromise(fxRecoverChat({
+          canvasId,
+          componentId: request.componentId,
+          sessionId: request.sessionId,
+          approvalPolicy: request.approvalPolicy,
+        }));
+        return { cursor: replayCursor, events: [recovered] };
+      },
       afterReconnect: async () => [await runtime.runPromise(fxRecoverChat({
           canvasId,
           componentId: request.componentId,

@@ -60,7 +60,6 @@ describe('portable widget authoring scaffold', () => {
       },
       dependencies: {
         '@omnidraw/sdk': '0.1.0',
-        zod: '4.4.3',
       },
       devDependencies: {
         typescript: '5.9.3',
@@ -151,7 +150,6 @@ describe('portable widget authoring scaffold', () => {
 
     expect(manifest.server).toEqual({
       entry: 'server/main.server.ts',
-      runtimeAbi: 'omnidraw-function-v1',
     });
     expect(changed).toContain('server/main.server.ts');
     expect([...files.values()].every((content) => !content.includes('__OMNIDRAW_'))).toBe(true);
@@ -159,5 +157,7 @@ describe('portable widget authoring scaffold', () => {
       'export const run = defineServerFunction',
     );
     expect(files.get('/draft/server/main.server.ts')).toContain('effect: "fn"');
+    expect(files.get('/draft/server/main.server.ts')).toContain('toJSONSchema()');
+    expect(files.get('/draft/server/main.server.ts')).not.toContain('from "zod"');
   });
 });

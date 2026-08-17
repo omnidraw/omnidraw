@@ -2,7 +2,7 @@
 
 export type {
   IDirectFunctionInvoker,
-  IFunctionSandboxDriver,
+  IFunctionProcessDriver,
 } from './interface';
 export type {
   TDirectFunctionCall,
@@ -14,8 +14,8 @@ export type {
   TFunctionDiagnostics,
   TFunctionFailure,
   TFunctionMemoryTier,
-  TFunctionSandboxExecutionResult,
-  TFunctionSandboxHandle,
-  TFunctionSandboxStartRequest,
+  TFunctionProcessExecutionResult,
+  TFunctionProcessHandle,
+  TFunctionProcessStartRequest,
   TFunctionUsageMetrics,
 } from './types';

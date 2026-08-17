@@ -58,7 +58,6 @@ const outputSchema = runtimeSchema((value) => {
 const context: TServerFunctionContext<'fn', Record<never, never>> = {
   invocationId: 'invocation-a',
   widgetKey: 'counter',
-  catalogGeneration: 7,
   subject: {
     canvasId: 'canvas-a',
     elementId: 'element-a',
@@ -122,6 +121,15 @@ describe('@omnidraw/sdk/server', () => {
     await expect(invalidOutput.__omnidrawExecute(context, { text: 'hello' }))
       .rejects.toThrow('length');
     await expect(count({ text: 'hello' })).rejects.toThrow('generated widget client proxy');
+  });
+
+  test('rejects memory tiers that cannot run in the fixed managed isolate profile', () => {
+    expect(() => defineServerFunction({
+      effect: 'fn',
+      input: inputSchema,
+      output: outputSchema,
+      limits: { memoryTier: 'medium' as never },
+    }, async () => ({ length: 1 }))).toThrow("memoryTier must be 'small'");
   });
 
   test('enforces fn/fx/tx ceilings and rejects durable-continuation configuration', () => {

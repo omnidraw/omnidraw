@@ -241,7 +241,6 @@ describe('WidgetNpmDistributionBuild', () => {
           },
           server: {
             entry: 'server/main.server.ts',
-            runtimeAbi: 'omnidraw.server.v1',
           },
           resources: [{
             slot: 'rows',

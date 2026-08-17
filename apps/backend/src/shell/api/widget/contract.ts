@@ -13,7 +13,7 @@ import {
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
   ZOmnidrawToolIcon as OmnidrawToolIconValidator,
-  ZWidgetBrowserFunctionDescriptors as WidgetBrowserFunctionDescriptorsValidator,
+  ZWidgetServerFunctionDescriptors as WidgetServerFunctionDescriptorsValidator,
   ZWidgetRuntimeAllowedApis as WidgetRuntimeAllowedApisValidator,
   ZWidgetRuntimeBudgetRequest as WidgetRuntimeBudgetRequestValidator,
   ZWidgetRuntimeDescriptor as WidgetRuntimeDescriptorValidator,
@@ -58,7 +58,7 @@ const ZSha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const ZWidgetSource = z.enum(['draft', 'published']);
 const ZWidgetOperationToken = z.string().min(1).max(96).regex(/^[A-Za-z0-9_-]+$/);
 const ZOmnidrawToolIcon = sdkSchema(OmnidrawToolIconValidator);
-const ZWidgetBrowserFunctionDescriptors = sdkSchema(WidgetBrowserFunctionDescriptorsValidator);
+const ZWidgetServerFunctionDescriptors = sdkSchema(WidgetServerFunctionDescriptorsValidator);
 const ZWidgetRuntimeAllowedApis = sdkSchema(WidgetRuntimeAllowedApisValidator);
 const ZWidgetRuntimeBudgetRequest = sdkSchema(WidgetRuntimeBudgetRequestValidator);
 const ZWidgetRuntimeDescriptor = sdkSchema(WidgetRuntimeDescriptorValidator);
@@ -234,7 +234,7 @@ export const ZWidgetRuntimeLoadOutput = z.object({
     }
   }),
   runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
-  functionDescriptors: ZWidgetBrowserFunctionDescriptors,
+  functionDescriptors: ZWidgetServerFunctionDescriptors,
   browserFunctionDescriptorsDigestSha256: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
@@ -258,7 +258,7 @@ export const ZWidgetPreviewMount = z.object({
   manifest: ZWidgetBrowserManifest,
   artifact: ZWidgetRuntimeLoadOutput.shape.artifact,
   runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
-  functionDescriptors: ZWidgetBrowserFunctionDescriptors,
+  functionDescriptors: ZWidgetServerFunctionDescriptors,
   browserFunctionDescriptorsDigestSha256: z.string().regex(/^[0-9a-f]{64}$/),
   constructionReused: z.boolean(),
   diagnostics: z.array(ZWidgetPreviewDiagnostic).max(1_024),
@@ -302,7 +302,7 @@ const ZWidgetPublicCatalogForm: z.ZodType<TWidgetPublicCatalogForm> = z.object({
   manifestDigestSha256: ZSha256.nullable(),
   config: ZWidgetPublicConfig.nullable(),
   resources: z.array(ZWidgetResourceRequirement).max(64),
-  functions: ZWidgetBrowserFunctionDescriptors,
+  functions: ZWidgetServerFunctionDescriptors,
   fileCount: z.number().int().min(0).max(20_000),
   issues: z.array(ZWidgetPublicIssue).max(256),
 }).strict();

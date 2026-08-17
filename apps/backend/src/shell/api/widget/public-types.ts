@@ -2,7 +2,7 @@ import type {
   TResourceRequirement,
 } from '#backend/shell/resources';
 import type {
-  TWidgetBrowserFunctionDescriptor,
+  TWidgetServerFunctionDescriptor,
   TWidgetPresentationProjection,
 } from '@omnidraw/sdk/contract';
 
@@ -17,7 +17,7 @@ export type TWidgetPublicCatalogForm = Readonly<{
   manifestDigestSha256: string | null;
   config: TWidgetPresentationProjection | null;
   resources: readonly TResourceRequirement[];
-  functions: readonly TWidgetBrowserFunctionDescriptor[];
+  functions: readonly TWidgetServerFunctionDescriptor[];
   fileCount: number;
   issues: readonly TWidgetPublicIssue[];
 }>;

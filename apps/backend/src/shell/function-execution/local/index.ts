@@ -5,10 +5,10 @@ export {
   type TBunChildFunctionDescriptorExtractorConfig,
 } from './BunChildFunctionDescriptorExtractor';
 export {
-  BunChildSandboxDriver,
-  type TBunChildSandboxDiagnostics,
-  type TBunChildSandboxDriverConfig,
-} from './BunChildSandboxDriver';
+  BunChildFunctionProcessDriver,
+  type TBunChildFunctionProcessDiagnostics,
+  type TBunChildFunctionProcessDriverConfig,
+} from './BunChildFunctionProcessDriver';
 export type { TBunChildProcessGroupController } from './BunChildLifecycle';
 export {
   DirectFunctionExecutor,
@@ -29,18 +29,11 @@ export {
   EphemeralResourceWritePermitAuthority,
   type TEphemeralResourceWritePermitAuthorityConfig,
 } from './EphemeralResourceWritePermitAuthority';
-export { fnFunctionArtifactAdmission } from './fn.artifact-admission';
-export {
-  fnParseServerArtifactEnvelope,
-  fnServerArtifactEntryOutput,
-  type TServerArtifactEnvelope,
-  type TServerArtifactOutput,
-} from './fn.artifact-envelope';
 export { fnCanonicalJson, type TCanonicalJsonLimits } from './fn.canonical-json';
 export {
   fnFunctionResourceCallDecision,
   type TFunctionResourceAccess,
   type TFunctionResourceCallDecision,
 } from './fn.resource-call-policy';
-export { fnBunFunctionWorkerCommand } from './fn.sandbox-command';
+export { fnBunFunctionWorkerCommand } from './fn.function-worker-command';
 export { runFunctionWorker } from './function-worker';

@@ -1,28 +1,9 @@
-/** @file Pure server-function export mapping and synthetic entry generation. */
-
-import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
+/** @file Pure transient server-function module discovery and synthetic entry generation. */
 
 export type TServerFunctionModule = Readonly<{
   path: string;
   exportNames: readonly string[];
 }>;
-
-export function fnAttachServerFunctionModulePaths(
-  descriptors: readonly TWidgetServerFunctionDescriptor[],
-  modules: readonly TServerFunctionModule[],
-): readonly TWidgetServerFunctionDescriptor[] {
-  const moduleByExport = new Map<string, string>();
-  for (const module of modules) {
-    for (const exportName of module.exportNames) moduleByExport.set(exportName, module.path);
-  }
-  return Object.freeze(descriptors.map((descriptor) => {
-    const modulePath = moduleByExport.get(descriptor.exportName);
-    if (modulePath === undefined) {
-      throw new Error('Registration sandbox returned an export absent from the pinned server graph.');
-    }
-    return Object.freeze({ ...descriptor, modulePath });
-  }));
-}
 
 export function fnGenerateServerFunctionEntrySource(
   serverEntry: string,

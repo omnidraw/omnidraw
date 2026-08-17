@@ -30,6 +30,7 @@ export type TResourceManagerGatewayCallOptions = Readonly<{
   writeCapability?: string;
 }>;
 
+/** Private host-management call; never part of the widget resource wire ABI. */
 export type TResourceManagerGatewayResourceCall = Readonly<{
   resourceId: TResourceId;
   kind: TResourceKind;

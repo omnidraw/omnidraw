@@ -6,6 +6,9 @@ import type {
   TWidgetReleaseValidation,
 } from '@omnidraw/sdk/contract';
 import {
+  WIDGET_SERVER_MODULE_ABI,
+  WIDGET_SERVER_MODULE_FORMAT,
+  WIDGET_SERVER_MODULE_PATH,
   fnCanonicalizeWidgetReleaseDirectoryFiles,
   ZWidgetReleaseDescriptor,
   fnCanonicalizeWidgetReleaseDescriptor,
@@ -38,7 +41,7 @@ const MANIFEST: TWidgetManifestV1 = {
   description: 'Calls one bounded server function.',
   tool: { label: 'Server widget', group: 'utilities', priority: 0 },
   ui: { runtime: 'capsule', entry: 'ui/main.ts', apis: ['DOM'] },
-  server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' },
+  server: { entry: 'server/main.ts' },
   resources: [],
 };
 
@@ -57,17 +60,14 @@ const RUNTIME = {
 const RELEASE = fnCreateWidgetReleaseDescriptor({
   executableManifestDigestSha256: RAW_DIGEST_A,
   files: [
-    { path: 'server-dist/main.js', byteSize: 40, sha256: RAW_DIGEST_B },
+    { path: WIDGET_SERVER_MODULE_PATH, byteSize: 40, sha256: RAW_DIGEST_B },
     { path: 'functions.json', byteSize: 30, sha256: FUNCTIONS_DIGEST },
     { path: 'dist/main.js', byteSize: 20, sha256: RAW_DIGEST_A },
     { path: 'capsule.artifact', byteSize: 10, sha256: RAW_DIGEST_B },
   ],
   capsule: { path: 'capsule.artifact', artifactHash: CAPSULE_HASH_A, runtime: RUNTIME },
   server: {
-    entry: 'server-dist/main.js',
-    runtimeAbi: 'bun-v1',
-    functionsPath: 'functions.json',
-    serverDistDigestSha256: SERVER_DIST_DIGEST,
+    moduleDigestSha256: RAW_DIGEST_B,
     functionsDigestSha256: FUNCTIONS_DIGEST,
   },
   releaseAttestation: RELEASE_ATTESTATION,
@@ -77,7 +77,7 @@ const OBSERVATION: TWidgetReleaseObservation = {
   files: [...RELEASE.files].reverse(),
   capsule: { artifactHash: CAPSULE_HASH_A, runtime: RUNTIME },
   server: {
-    serverDistDigestSha256: SERVER_DIST_DIGEST,
+    moduleDigestSha256: RAW_DIGEST_B,
     functionsDigestSha256: FUNCTIONS_DIGEST,
     functions: [TEST_SERVER_FUNCTION_DESCRIPTOR],
   },
@@ -125,14 +125,23 @@ describe('minimal widget release v1', () => {
       'capsule.artifact',
       'dist/main.js',
       'functions.json',
-      'server-dist/main.js',
+      WIDGET_SERVER_MODULE_PATH,
     ]);
     const serialized = fnCanonicalizeWidgetReleaseDescriptor(RELEASE);
     for (const forbidden of ['Server widget', 'description', '"tool"', 'revision', 'timestamp', 'releaseId']) {
       expect(serialized).not.toContain(forbidden);
     }
     expect(parseWidgetReleaseJson(serialized)).toEqual(RELEASE);
+    expect(RELEASE.server).toMatchObject({
+      entry: WIDGET_SERVER_MODULE_PATH,
+      format: WIDGET_SERVER_MODULE_FORMAT,
+      abi: WIDGET_SERVER_MODULE_ABI,
+    });
     expect(ZWidgetReleaseDescriptor.safeParse({ ...RELEASE, extra: true }).success).toBe(false);
+    expect(ZWidgetReleaseDescriptor.safeParse({
+      ...RELEASE,
+      server: { ...RELEASE.server, runtimeAbi: 'bun-v1' },
+    }).success).toBe(false);
   });
 
   test('validates the exact file set, signed-byte hashes, Capsule identity, server output, and descriptors', () => {
@@ -169,7 +178,7 @@ describe('minimal widget release v1', () => {
     }))).toBe('capsule_identity_mismatch');
     expect(failureReason(validate(RELEASE, {
       ...OBSERVATION,
-      server: { ...OBSERVATION.server!, serverDistDigestSha256: RAW_DIGEST_A },
+      server: { ...OBSERVATION.server!, moduleDigestSha256: RAW_DIGEST_A },
     }))).toBe('server_digest_mismatch');
   });
 

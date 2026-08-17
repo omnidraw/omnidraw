@@ -17,7 +17,8 @@ export type {
   TWidgetBuildResult,
   TWidgetRuntimeDescriptor,
   TWidgetPortableArtifact,
-  TWidgetServerBuildArtifact,
+  TWidgetServerModule,
+  TWidgetServerModuleArtifact,
   TWidgetSourceArtifact,
   TWidgetSourceFile,
   TWidgetSourceMapArtifact,
@@ -65,6 +66,8 @@ export {
   fnWidgetPortableExecutableInputDigest,
   fnWidgetPortableSourceDigest,
   fnWidgetReleaseDirectoryDigest,
+  fnCreateWidgetServerModuleArtifact,
+  fnValidateWidgetServerModuleArtifact,
   parseWidgetBuildReceiptJson,
   parseWidgetReleaseJson,
 } from './contracts/index';

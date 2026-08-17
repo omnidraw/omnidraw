@@ -5,9 +5,8 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import {
-  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
-  fnProjectWidgetBrowserFunctionDescriptors,
+  fnCreateWidgetServerModuleArtifact,
   fnProjectWidgetExecutableManifest,
   fnWidgetExecutableInputDigest,
   type TWidgetRuntimeDescriptor,
@@ -57,7 +56,6 @@ const MANIFEST: TWidgetManifestV1 = {
 const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,
   exportName: 'run',
-  modulePath: 'server/main.ts',
   effect: 'fn',
   inputSchema: { type: 'object', additionalProperties: false },
   outputSchema: { type: 'object', additionalProperties: false },
@@ -77,7 +75,6 @@ function runtimeDescriptor(
   const descriptorDigest = sha256(
     fnCanonicalizeWidgetServerFunctionDescriptors(functions),
   );
-  const browserFunctions = fnProjectWidgetBrowserFunctionDescriptors(functions);
   return {
     format: 'omnidraw.capsule-runtime.v2',
     artifactHash: `sha256:${sha256(capsuleBytes)}`,
@@ -91,7 +88,7 @@ function runtimeDescriptor(
       id: `omnidraw.widget.functions.h${descriptorDigest}`,
       versionRange: '1.0.0',
       contractHash: `sha256:${descriptorDigest}`,
-      operations: browserFunctions.map((descriptor) => descriptor.exportName),
+      operations: functions.map((descriptor) => descriptor.exportName),
       required: true,
     }],
     channels: null,
@@ -142,7 +139,7 @@ async function harness(options: Readonly<{
   const manifest: TWidgetManifestV1 = {
     ...MANIFEST,
     ...(options.withServerFunction
-      ? { server: { entry: 'server/main.server.ts', runtimeAbi: 'bun-v1' as const } }
+      ? { server: { entry: 'server/main.server.ts' } }
       : {}),
     ...(options.manifestResource === undefined ? {} : {
       resources: [{
@@ -163,6 +160,13 @@ async function harness(options: Readonly<{
       ? Object.freeze([])
       : Object.freeze([{ slot: 'store', effect: 'read' as const }]),
   });
+  const serverArtifact = options.withServerFunction
+    ? fnCreateWidgetServerModuleArtifact({
+        moduleBytes: new Uint8Array([5, 6, 7]),
+        functionDescriptors: [serverFunction],
+        digestSha256: sha256,
+      })
+    : null;
   if (options.withDraft !== false) {
     await mkdir(join(widgetsRoot, 'drafts', 'counter', 'src'), { recursive: true });
     if (options.withServerFunction) {
@@ -222,14 +226,13 @@ async function harness(options: Readonly<{
         ),
         distributionDigestSha256: 'b'.repeat(64),
         construction: {
-          functionDescriptors: options.withServerFunction ? [serverFunction] : [],
-          serverArtifact: options.withServerFunction
-            ? {
-                runtimeAbi: 'bun-v1',
-                bytes: new Uint8Array([5, 6, 7]),
-                digestSha256: sha256(new Uint8Array([5, 6, 7])),
-              }
-            : null,
+          functionDescriptors: serverArtifact?.functionDescriptors ?? [],
+          functionDescriptorsDigestSha256: sha256(
+            fnCanonicalizeWidgetServerFunctionDescriptors(
+              serverArtifact?.functionDescriptors ?? [],
+            ),
+          ),
+          serverArtifact,
           sourceMapArtifact: options.withSourceMap
             ? {
                 kind: 'source_map',
@@ -314,7 +317,7 @@ async function harness(options: Readonly<{
           runtimeBuildDigest: `sha256:${'e'.repeat(64)}`,
         },
         buildPolicyId: 'test-policy',
-        serverRuntimeAbi: capture.manifest.server?.runtimeAbi ?? null,
+        signingPolicyId: 'test-signing-policy',
       },
       digestSha256: sha256,
     });
@@ -402,9 +405,11 @@ async function harness(options: Readonly<{
   } as unknown as WidgetBuildGenerationService;
 
   let functionInvocations = 0;
+  const functionInvocationRequests: Parameters<IDirectFunctionInvoker['invoke']>[0][] = [];
   const executor: IDirectFunctionInvoker = {
     invoke: async (request) => {
       functionInvocations += 1;
+      functionInvocationRequests.push(request);
       return options.invokeFunction === undefined
         ? ({
           status: 'succeeded',
@@ -513,6 +518,7 @@ async function harness(options: Readonly<{
         runtimeBuildDigest: `sha256:${'e'.repeat(64)}`,
       },
       buildPolicyId: 'test-policy',
+      signingPolicyId: 'test-signing-policy',
     },
     compatibility: {
       builderIdentity: 'test-builder',
@@ -575,11 +581,13 @@ async function harness(options: Readonly<{
   return {
     builds,
     capsuleBytes,
+    functionInvocationRequests,
     functionInvocations: () => functionInvocations,
     inspectionJobs,
     liveSignStarted,
     resourceLists: () => resourceLists,
     resourceReads,
+    serverArtifact,
     service,
   };
 }
@@ -851,6 +859,18 @@ describe('WidgetPreviewService', () => {
       },
     });
     expect(setup.functionInvocations()).toBe(1);
+    expect(setup.functionInvocationRequests[0]?.artifact)
+      .toBe(setup.serverArtifact?.moduleBytes);
+    expect(setup.functionInvocationRequests[0]?.definition.serverModule).toMatchObject({
+      format: 'omnidraw.widget-server-module.v1',
+      abi: 'omnidraw.widget-server-abi.v1',
+      moduleDigestSha256: setup.serverArtifact?.moduleDigestSha256,
+      functionDescriptors: [expect.objectContaining({ exportName: 'run' })],
+    });
+    expect(setup.functionInvocationRequests[0]?.definition.serverModule)
+      .not.toHaveProperty('moduleBytes');
+    expect(setup.inspectionJobs[0]?.functionDescriptors)
+      .toEqual(setup.serverArtifact?.functionDescriptors);
     expect(setup.resourceReads.length).toBeGreaterThanOrEqual(3);
     expect(JSON.stringify(response)).not.toContain('resource-private-a');
     expect(JSON.stringify(setup.inspectionJobs[0]?.artifact)).not.toContain('resource-private-a');

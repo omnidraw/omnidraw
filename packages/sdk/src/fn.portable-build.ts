@@ -18,7 +18,7 @@ export function fnBootstrapWidgetUiEntry(
 
 export function fnWidgetGuestBridgeBootstrapSource(): string {
   return [
-    "import { subscribeWidgetLifecycle } from '@omnidraw/sdk';",
+    "import { subscribeWidgetLifecycle } from '@omnidraw/sdk/widget';",
     'subscribeWidgetLifecycle(() => undefined)();',
     '',
   ].join('\n');

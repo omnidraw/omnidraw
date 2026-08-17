@@ -1,12 +1,12 @@
 /** @file Bounded one-request/one-response function execution orchestration. */
 
-import type { IDirectFunctionInvoker, IFunctionSandboxDriver } from '../interface';
+import type { IDirectFunctionInvoker, IFunctionProcessDriver } from '../interface';
 import type {
   TDirectFunctionInvocationRequest,
   TDirectFunctionResult,
   TFunctionDiagnostics,
   TFunctionFailure,
-  TFunctionSandboxHandle,
+  TFunctionProcessHandle,
 } from '../types';
 import type { IFunctionSchemaValidator } from './JsonSchemaFunctionValidator';
 import { fnCanonicalJson } from './fn.canonical-json';
@@ -20,7 +20,7 @@ const MAX_INPUT_BYTES = 1_048_576;
 const MAX_DIAGNOSTICS_BYTES = 64 * 1_024;
 
 export type TDirectFunctionExecutorConfig = Readonly<{
-  driver: IFunctionSandboxDriver;
+  driver: IFunctionProcessDriver;
   schemas: IFunctionSchemaValidator;
   maxConcurrent?: number;
   nowMs: () => number;
@@ -89,7 +89,7 @@ function failedResult(
  * Capacity rejection is immediate: there is deliberately no queue.
  */
 export class DirectFunctionExecutor implements IDirectFunctionInvoker {
-  readonly #driver: IFunctionSandboxDriver;
+  readonly #driver: IFunctionProcessDriver;
   readonly #schemas: IFunctionSchemaValidator;
   readonly #maxConcurrent: number;
   readonly #nowMs: () => number;
@@ -135,7 +135,7 @@ export class DirectFunctionExecutor implements IDirectFunctionInvoker {
     }
 
     this.#activeCalls += 1;
-    let handle: TFunctionSandboxHandle | null = null;
+    let handle: TFunctionProcessHandle | null = null;
     let running = false;
     let cancelled = false;
     const onAbort = () => {

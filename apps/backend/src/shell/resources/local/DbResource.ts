@@ -4,6 +4,15 @@ import { Buffer } from 'node:buffer';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import {
+  fnDecodePortableResourceValue,
+  fnEncodePortableResourceDbExecute,
+  fnEncodePortableResourceDbRows,
+  fnEncodePortableResourceValue,
+  fnGetPortableResourceOperation,
+  fnValidatePortableResourceSql,
+  type TPortableResourceWireValue,
+} from '@omnidraw/sdk/contract';
+import {
   DATABASE_STATEMENTS,
   databaseParameterPlaceholders,
   renderDatabaseStatement,
@@ -50,6 +59,7 @@ type TDbNamedOperation = Readonly<{
   sql: string;
   parameters?: Readonly<Record<string, TDbOperationParameterDeclaration>>;
   result: 'rows' | 'execute';
+  jsonColumns?: readonly string[];
 }>;
 
 type TDbProviderRequirement = Readonly<{
@@ -300,6 +310,26 @@ function boundedGuestSql(value: unknown): string {
   return value;
 }
 
+function boundedPortableGuestSql(
+  value: unknown,
+  expectedEffect: 'read' | 'write',
+): string {
+  if (typeof value !== 'string') {
+    throw new ResourceError(
+      'DB_OPERATION_PARAMETERS_INVALID',
+      'Database SQL must be a string.',
+    );
+  }
+  const validation = fnValidatePortableResourceSql({
+    sql: value,
+    expectedEffect,
+  });
+  if (!validation.allowed) {
+    throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', validation.message);
+  }
+  return value;
+}
+
 function boundedDraftSql(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0 || Buffer.byteLength(value, 'utf8') > DRAFT_SQL_MAX_LENGTH) {
     throw new ResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft SQL is blank or exceeds the host limit.');
@@ -389,6 +419,30 @@ function draftSqlBindParameters(operation: TDbDraftChangeRecord['operation']): T
   return bindWireParameters(operation.parameters);
 }
 
+function hasExtendedPortableJsonValue(value: TPortableResourceWireValue): boolean {
+  if (value.type === 'bigint' || value.type === 'bytes') return true;
+  if (value.type === 'array') return value.items.some(hasExtendedPortableJsonValue);
+  if (value.type === 'object') {
+    return value.entries.some(([, nested]) => hasExtendedPortableJsonValue(nested));
+  }
+  return false;
+}
+
+function bindPortableJson(value: unknown, parameterName: string): string {
+  try {
+    const encoded = fnEncodePortableResourceValue(value);
+    if (hasExtendedPortableJsonValue(encoded)) throw new TypeError('extended value');
+    const serialized = JSON.stringify(fnDecodePortableResourceValue(encoded));
+    if (typeof serialized !== 'string') throw new TypeError('unserializable value');
+    return serialized;
+  } catch {
+    throw new ResourceError(
+      'DB_OPERATION_PARAMETERS_INVALID',
+      `Parameter "${parameterName}" must have type json without bigint or bytes.`,
+    );
+  }
+}
+
 function bindNamedParameters(requirement: TDbProviderRequirement, operationName: string, value: unknown): TDbBindParameters {
   const operation = requirement.operations?.[operationName];
   if (!operation) throw new ResourceError('DB_NAMED_OPERATION_UNKNOWN', `Named database operation "${operationName}" is not declared.`);
@@ -398,6 +452,7 @@ function bindNamedParameters(requirement: TDbProviderRequirement, operationName:
     if (!(name in declarations)) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', `Unknown parameter "${name}".`);
   }
   const result: TDbBindParameters = {};
+  let bytes = 0;
   for (const [name, declaration] of Object.entries(declarations)) {
     const supplied = Object.prototype.hasOwnProperty.call(raw, name) && raw[name] !== undefined;
     if (!supplied) {
@@ -405,14 +460,42 @@ function bindNamedParameters(requirement: TDbProviderRequirement, operationName:
       continue;
     }
     const value = raw[name];
+    if (value === null) {
+      if (declaration.nullable !== true) {
+        throw new ResourceError(
+          'DB_OPERATION_PARAMETERS_INVALID',
+          `Parameter "${name}" is not nullable.`,
+        );
+      }
+      const converted = declaration.type === 'json' ? bindPortableJson(value, name) : null;
+      bytes += Buffer.byteLength(name) + parameterBytes(converted);
+      if (bytes > PARAMETER_BYTES_MAX) {
+        throw new ResourceError(
+          'DB_OPERATION_PARAMETERS_INVALID',
+          'Database parameters exceed the size limit.',
+        );
+      }
+      result[name] = converted;
+      continue;
+    }
     const valid = declaration.type === 'string' ? typeof value === 'string'
       : declaration.type === 'number' ? typeof value === 'number' && Number.isFinite(value)
         : declaration.type === 'boolean' ? typeof value === 'boolean'
           : declaration.type === 'bigint' ? typeof value === 'bigint'
             : declaration.type === 'bytes' ? value instanceof Uint8Array
-              : declaration.type === 'json';
+              : true;
     if (!valid) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', `Parameter "${name}" must have type ${declaration.type}.`);
-    result[name] = toBindValue(value);
+    const converted = declaration.type === 'json'
+      ? bindPortableJson(value, name)
+      : toBindValue(value);
+    bytes += Buffer.byteLength(name) + parameterBytes(converted);
+    if (bytes > PARAMETER_BYTES_MAX) {
+      throw new ResourceError(
+        'DB_OPERATION_PARAMETERS_INVALID',
+        'Database parameters exceed the size limit.',
+      );
+    }
+    result[name] = converted;
   }
   return result;
 }
@@ -515,6 +598,51 @@ function normalizeNativeRow(raw: unknown, columnMax = RESULT_COLUMN_MAX_COUNT): 
     }
   }
   return result;
+}
+
+function normalizeNativeCell(value: unknown): TDbBindValue {
+  if (
+    value === null
+    || typeof value === 'string'
+    || typeof value === 'bigint'
+    || (typeof value === 'number' && Number.isFinite(value))
+    || value instanceof Uint8Array
+  ) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  throw new ResourceError('DB_QUERY_FAILED', 'Database returned an unsupported value type.');
+}
+
+function normalizeDeclaredJsonCell(value: TDbBindValue, column: string): unknown {
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new ResourceError('DB_QUERY_FAILED', `Declared JSON column '${column}' did not return SQL text.`);
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new ResourceError('DB_QUERY_FAILED', `Declared JSON column '${column}' returned malformed JSON.`);
+  }
+}
+
+function portableExecuteResult(
+  sql: string,
+  result: Readonly<{ rowsAffected: number; lastInsertRowId?: bigint }>,
+  expectedEffect: 'read' | 'write' = 'write',
+) {
+  const classification = fnValidatePortableResourceSql({
+    sql,
+    expectedEffect,
+  });
+  if (!classification.allowed) {
+    throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', classification.message);
+  }
+  return fnEncodePortableResourceDbExecute({
+    rowsAffected: result.rowsAffected,
+    lastInsertId: expectedEffect === 'write'
+      && (classification.statement === 'insert' || classification.statement === 'replace')
+      ? result.lastInsertRowId ?? null
+      : null,
+  });
 }
 
 function nativeRowBytes(row: TNativeRow): number {
@@ -667,9 +795,11 @@ export class DbResource implements ILocalResourceProvider {
 
   effect(operation: string, requirement: TLocalResourceRequirement, rawArgs: unknown): 'read' | 'write' | null {
     if (requirement.kind !== 'db') return null;
-    if (operation === 'query') return 'read';
-    if (operation === 'execute') return 'write';
-    if (operation !== 'invoke') return null;
+    const descriptor = fnGetPortableResourceOperation('db', operation);
+    if (descriptor === null) return null;
+    if (descriptor.effect === 'read' || descriptor.effect === 'write') {
+      return descriptor.effect;
+    }
     const name = recordArgs(rawArgs).operation;
     if (typeof name !== 'string') return null;
     return requirement.operations?.[name]?.effect ?? null;
@@ -1407,20 +1537,24 @@ export class DbResource implements ILocalResourceProvider {
         if (declared.effect === 'read' && !context.canRead) throw new ResourceError('DB_READ_NOT_ALLOWED', 'Read access is not allowed for this DbResource slot.');
         if (declared.effect === 'write' && !context.canWrite) throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this DbResource slot.');
         const parameters = bindNamedParameters(requirement, args.operation, args.parameters);
-        const sql = boundedGuestSql(declared.sql);
+        const sql = boundedPortableGuestSql(declared.sql, declared.effect);
         const run = (): Promise<unknown> => declared.effect === 'read'
           ? declared.result === 'rows'
-            ? this.#queryGuest(context.resource.id, sql, parameters)
+            ? this.#queryGuest(context.resource.id, sql, parameters, declared.jsonColumns)
             : this.#executeReadonlyGuest(context.resource.id, sql, parameters)
           : declared.result === 'rows'
-            ? this.#queryWriteGuest(context.resource.id, sql, parameters)
+            ? this.#queryWriteGuest(context.resource.id, sql, parameters, declared.jsonColumns)
             : this.#executeGuest(context.resource.id, sql, parameters);
         return declared.effect === 'write' ? this.#serializeWrite(context.resource.id, run) : run();
       }
       if (operation === 'query') {
         if (requirement.arbitrarySql !== true) throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', 'Arbitrary SQL is not enabled for this DbResource slot.');
         if (!context.canRead) throw new ResourceError('DB_READ_NOT_ALLOWED', 'Read access is not allowed for this DbResource slot.');
-        return this.#queryGuest(context.resource.id, boundedGuestSql(args.sql), bindParameters(args.parameters));
+        return this.#queryGuest(
+          context.resource.id,
+          boundedPortableGuestSql(args.sql, 'read'),
+          bindParameters(args.parameters),
+        );
       }
       if (operation === 'execute') {
         if (requirement.arbitrarySql !== true) throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', 'Arbitrary SQL is not enabled for this DbResource slot.');
@@ -1430,14 +1564,18 @@ export class DbResource implements ILocalResourceProvider {
           let totalSql = 0;
           const operations: TDbExecuteOperation[] = args.operations.map((value) => {
             const item = recordArgs(value);
-            const sql = boundedGuestSql(item.sql);
+            const sql = boundedPortableGuestSql(item.sql, 'write');
             totalSql += sql.length;
             if (totalSql > EXECUTE_TOTAL_SQL_MAX_LENGTH) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute SQL exceeds the host limit.');
             return { sql, parameters: bindParameters(item.parameters) };
           });
           return this.#serializeWrite(context.resource.id, () => this.#executeGuestOperations(context.resource.id, operations));
         }
-        return this.#serializeWrite(context.resource.id, () => this.#executeGuest(context.resource.id, boundedGuestSql(args.sql), bindParameters(args.parameters)));
+        return this.#serializeWrite(context.resource.id, () => this.#executeGuest(
+          context.resource.id,
+          boundedPortableGuestSql(args.sql, 'write'),
+          bindParameters(args.parameters),
+        ));
       }
       throw new ResourceError('DB_RESOURCE_UNAVAILABLE', `Unknown DbResource operation "${operation}".`);
     } catch (error) {
@@ -1466,10 +1604,10 @@ export class DbResource implements ILocalResourceProvider {
         throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this database operation.');
       }
       const parameters = bindNamedParameters(requirement, args.operation, args.parameters);
-      const sql = boundedGuestSql(declared.sql);
+      const sql = boundedPortableGuestSql(declared.sql, 'write');
       return declared.result === 'rows'
-        ? this.#queryGuestRows(database, sql, parameters)
-        : this.#runNative(database, sql, parameters);
+        ? this.#queryGuestRows(database, sql, parameters, declared.jsonColumns ?? [])
+        : portableExecuteResult(sql, await this.#runNative(database, sql, parameters));
     }
     if (operation !== 'execute' || requirement.arbitrarySql !== true || !context.canWrite) {
       throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Database write operation is not allowed.');
@@ -1481,19 +1619,26 @@ export class DbResource implements ILocalResourceProvider {
         || args.operations.length > EXECUTE_OPERATION_MAX_COUNT
       ) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute operations are invalid.');
       let totalSql = 0;
-      const results: { rowsAffected: number; lastInsertRowId?: bigint }[] = [];
+      const results: ReturnType<typeof fnEncodePortableResourceDbExecute>[] = [];
       for (const value of args.operations) {
         const item = recordArgs(value);
-        const sql = boundedGuestSql(item.sql);
+        const sql = boundedPortableGuestSql(item.sql, 'write');
         totalSql += sql.length;
         if (totalSql > EXECUTE_TOTAL_SQL_MAX_LENGTH) {
           throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute SQL exceeds the host limit.');
         }
-        results.push(await this.#runNative(database, sql, bindParameters(item.parameters)));
+        results.push(portableExecuteResult(
+          sql,
+          await this.#runNative(database, sql, bindParameters(item.parameters)),
+        ));
       }
       return results;
     }
-    return this.#runNative(database, boundedGuestSql(args.sql), bindParameters(args.parameters));
+    const sql = boundedPortableGuestSql(args.sql, 'write');
+    return portableExecuteResult(
+      sql,
+      await this.#runNative(database, sql, bindParameters(args.parameters)),
+    );
   }
 
   async #executeLiveSqlDatabase(
@@ -1585,12 +1730,17 @@ export class DbResource implements ILocalResourceProvider {
     }
   }
 
-  async #queryGuest(resourceId: string, sql: string, parameters: TDbBindParameters) {
+  async #queryGuest(
+    resourceId: string,
+    sql: string,
+    parameters: TDbBindParameters,
+    jsonColumns: readonly string[] = [],
+  ) {
     try {
       return await this.#withDatabase(
         this.#databasePath(resourceId),
         true,
-        (database) => this.#queryGuestRows(database, sql, parameters),
+        (database) => this.#queryGuestRows(database, sql, parameters, jsonColumns),
         resourceId,
       );
     } catch (error) {
@@ -1599,30 +1749,69 @@ export class DbResource implements ILocalResourceProvider {
     }
   }
 
-  async #queryWriteGuest(resourceId: string, sql: string, parameters: TDbBindParameters) {
+  async #queryWriteGuest(
+    resourceId: string,
+    sql: string,
+    parameters: TDbBindParameters,
+    jsonColumns: readonly string[] = [],
+  ) {
     try {
-      return await this.#queryGuestRows(await this.#open(resourceId, true), sql, parameters);
+      return await this.#queryGuestRows(
+        await this.#open(resourceId, true),
+        sql,
+        parameters,
+        jsonColumns,
+      );
     } catch (error) {
       if (error instanceof ResourceError) throw error;
       throw new ResourceError('DB_EXECUTE_FAILED', 'Database write query failed.');
     }
   }
 
-  async #queryGuestRows(database: Database, sql: string, parameters: TDbBindParameters) {
+  async #queryGuestRows(
+    database: Database,
+    sql: string,
+    parameters: TDbBindParameters,
+    jsonColumnNames: readonly string[],
+  ) {
     const statement = await database.prepare(sql);
     statement.safeIntegers(true);
     try {
       if (!statement.reader) throw new ResourceError('DB_READ_NOT_ALLOWED', 'Database query requires a row-producing statement.');
-      const rows: TNativeRow[] = [];
+      const columns = statement.columns().map((column) => column.name);
+      if (
+        columns.length > RESULT_COLUMN_MAX_COUNT
+        || columns.some((column) => typeof column !== 'string')
+      ) throw new ResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database result has invalid columns.');
+      const jsonColumns = new Set(jsonColumnNames);
+      if ([...jsonColumns].some((column) => !columns.includes(column))) {
+        throw new ResourceError('DB_QUERY_FAILED', 'Declared JSON result column is absent.');
+      }
+      statement.raw(true);
+      const rows: unknown[][] = [];
       let bytes = 0;
       for await (const raw of statement.iterate(parameters, { queryTimeout: QUERY_TIMEOUT_MS })) {
         if (rows.length >= RESULT_ROW_MAX_COUNT) throw new ResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database result has too many rows.');
-        const row = normalizeNativeRow(raw);
-        bytes += nativeRowBytes(row);
+        if (!Array.isArray(raw) || raw.length !== columns.length) {
+          throw new ResourceError('DB_QUERY_FAILED', 'Database returned an invalid row width.');
+        }
+        const nativeRow = raw.map(normalizeNativeCell);
+        bytes += columns.reduce(
+          (total, name, index) => total + Buffer.byteLength(name) + parameterBytes(nativeRow[index]!),
+          0,
+        );
         if (bytes > RESULT_BYTES_MAX) throw new ResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database result exceeds the size limit.');
-        rows.push(row);
+        rows.push(nativeRow.map((cell, index) => (
+          jsonColumns.has(columns[index]!)
+            ? normalizeDeclaredJsonCell(cell, columns[index]!)
+            : cell
+        )));
       }
-      return rows;
+      return fnEncodePortableResourceDbRows({
+        columns,
+        rows,
+        ...(jsonColumnNames.length === 0 ? {} : { jsonColumns: jsonColumnNames }),
+      });
     } finally { statement.close(); }
   }
 
@@ -1631,7 +1820,11 @@ export class DbResource implements ILocalResourceProvider {
       return await this.#withDatabase(
         this.#databasePath(resourceId),
         true,
-        (database) => this.#runNative(database, sql, parameters),
+        async (database) => portableExecuteResult(
+          sql,
+          await this.#runNative(database, sql, parameters),
+          'read',
+        ),
         resourceId,
       );
     } catch { throw new ResourceError('DB_QUERY_FAILED', 'Read-only database operation failed.'); }
@@ -1639,15 +1832,23 @@ export class DbResource implements ILocalResourceProvider {
 
   async #executeGuest(resourceId: string, sql: string, parameters: TDbBindParameters) {
     try {
-      return await this.#runNative(await this.#open(resourceId, true), sql, parameters);
+      return portableExecuteResult(
+        sql,
+        await this.#runNative(await this.#open(resourceId, true), sql, parameters),
+      );
     } catch { throw new ResourceError('DB_EXECUTE_FAILED', 'Database execute failed.'); }
   }
 
   async #executeGuestOperations(resourceId: string, operations: readonly TDbExecuteOperation[]) {
     const database = await this.#open(resourceId, true);
     const execute = database.transaction(async () => {
-      const results: { rowsAffected: number; lastInsertRowId?: bigint }[] = [];
-      for (const operation of operations) results.push(await this.#runNative(database, operation.sql, operation.parameters));
+      const results = [];
+      for (const operation of operations) {
+        results.push(portableExecuteResult(
+          operation.sql,
+          await this.#runNative(database, operation.sql, operation.parameters),
+        ));
+      }
       return results;
     });
     try {

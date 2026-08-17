@@ -51,6 +51,18 @@ const FORBIDDEN_DIRECT_DEPENDENCIES = new Set([
   ['party', 'socket'].join(''),
   ['w', 's'].join(''),
 ])
+const FORBIDDEN_MANAGED_WIDGET_PACKAGES = new Set([
+  'cloudflare',
+  'miniflare',
+  'workerd',
+  'wrangler',
+  '@libsql/client',
+  '@tursodatabase/serverless',
+])
+const OSS_WIDGET_ADAPTER_DIRECTORIES = Object.freeze([
+  'apps/backend/src/shell/function-execution',
+  'apps/backend/src/shell/resources/local',
+])
 const RETIRED_OMNIDRAW_NAMES = new Set([
   'api',
   'capsule-omnidraw',
@@ -154,6 +166,20 @@ function packageName(specifier: string): string | null {
   return specifier.startsWith('@')
     ? specifier.split('/').slice(0, 2).join('/')
     : specifier.split('/')[0] ?? null
+}
+
+function managedCloudImplementationImport(specifier: string): boolean {
+  const normalizedSpecifier = specifier.toLowerCase()
+  const imported = packageName(normalizedSpecifier)
+  return normalizedSpecifier === 'cloudflare:workers'
+    || normalizedSpecifier.startsWith('@cloudflare/')
+    || (imported !== null && FORBIDDEN_MANAGED_WIDGET_PACKAGES.has(imported))
+}
+
+function managedWidgetImplementationImport(specifier: string): boolean {
+  const normalizedSpecifier = specifier.toLowerCase()
+  return managedCloudImplementationImport(specifier)
+    || /(?:^|[/_.-])(?:tenant|billing|metering|authentication|managed-policy)(?:$|[/_.-])/.test(normalizedSpecifier)
 }
 
 function dependencyGroups(manifest: TManifest): readonly Record<string, string>[] {
@@ -369,6 +395,57 @@ describe('public package release graph', () => {
 })
 
 describe('application and import boundaries', () => {
+  test('keeps managed cloud and policy implementations outside portable and OSS widget adapters', async () => {
+    const violations: string[] = []
+    const manifestDirectories = [
+      ...Object.values(PUBLIC_PACKAGE_DIRECTORIES),
+      'apps/backend',
+    ]
+    for (const directory of manifestDirectories) {
+      const manifest = await readJson(join(ROOT, directory, 'package.json'))
+      for (const dependency of dependencies(manifest).keys()) {
+        if (managedWidgetImplementationImport(dependency)) {
+          violations.push(`${directory}/package.json declares managed widget dependency ${dependency}`)
+        }
+      }
+    }
+
+    const sourceRoots = [
+      ...Object.values(PUBLIC_PACKAGE_DIRECTORIES).map((directory) => join(ROOT, directory, 'src')),
+      ...OSS_WIDGET_ADAPTER_DIRECTORIES.map((directory) => join(ROOT, directory)),
+    ]
+    for (const sourceRoot of sourceRoots) {
+      for (const file of await sourceFiles(sourceRoot)) {
+        const source = await readFile(file, 'utf8')
+        for (const specifier of moduleSpecifiers(source)) {
+          if (managedWidgetImplementationImport(specifier)) {
+            violations.push(`${relative(ROOT, file)} imports managed widget implementation ${specifier}`)
+          }
+        }
+      }
+    }
+
+    for (const file of await sourceFiles(join(ROOT, 'apps/backend/src'))) {
+      if (isTestSource(file)) continue
+      const source = await readFile(file, 'utf8')
+      for (const specifier of moduleSpecifiers(source)) {
+        if (
+          managedCloudImplementationImport(specifier)
+          || /(?:^|[/_.-])(?:workers-for-platforms|remote-turso|managed-widget|managed-policy)(?:$|[/_.-])/.test(specifier.toLowerCase())
+        ) {
+          violations.push(`${relative(ROOT, file)} imports managed cloud widget implementation ${specifier}`)
+        }
+      }
+      if (/(?:CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)|TURSO_(?:DATABASE_URL|AUTH_TOKEN)|libsql:\/\/)/.test(source)) {
+        violations.push(`${relative(ROOT, file)} contains a managed cloud credential or remote database path`)
+      }
+    }
+
+    const backendManifest = await readJson(join(ROOT, 'apps/backend/package.json'))
+    expect(backendManifest.dependencies?.['@tursodatabase/database']).toBe('catalog:')
+    expect(violations).toEqual([])
+  })
+
   test('allows only core, shell, sim, conformance, and tiny source entry exceptions', async () => {
     for (const directory of APPLICATION_DIRECTORIES) {
       const topology = await applicationSourceTopology(directory)
@@ -445,6 +522,7 @@ describe('application and import boundaries', () => {
       '@omnidraw/canvas-contract/CONSTANTS',
       '@omnidraw/canvas-contract/types',
       '@omnidraw/sdk',
+      '@omnidraw/sdk/conformance',
       '@omnidraw/sdk/contract',
       '@omnidraw/sdk/package.json',
       '@omnidraw/sdk/server',

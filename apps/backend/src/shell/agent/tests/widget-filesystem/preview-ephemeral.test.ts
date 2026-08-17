@@ -22,7 +22,6 @@ const COMPATIBILITY: TPreviewConstructionCompatibility = Object.freeze({
     buildApiVersion: 'v2',
     runtimeBuildDigest: `sha256:${'d'.repeat(64)}`,
   }),
-  serverRuntimeAbi: 'bun-v1',
 });
 
 function deferred<T>() {
@@ -166,7 +165,6 @@ describe('EphemeralPreviewService', () => {
       buildPolicyId: COMPATIBILITY.buildPolicyId,
       environmentIdentity: COMPATIBILITY.environmentIdentity,
       capsuleBuildIdentity: COMPATIBILITY.capsuleBuildIdentity,
-      serverRuntimeAbi: COMPATIBILITY.serverRuntimeAbi,
     };
     await harness.service.open(openArgs('copied-policy', {
       executableInputDigestSha256: 'c'.repeat(64),
