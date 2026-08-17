@@ -990,6 +990,7 @@ describe('isolated consumer and tooling gates', () => {
       'prepare-package-dist.ts',
       'verify-package-dists.ts',
       'list-package-deployments.ts',
+      'check-published-lockfile.ts',
     ]) {
       const source = await readFile(join(ROOT, 'scripts', script), 'utf8')
       expect(source, script).toContain("from './public-packages'")

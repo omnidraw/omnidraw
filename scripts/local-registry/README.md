@@ -92,5 +92,9 @@ see `../link-local-packages.mjs`) and writes a repo-root `.npmrc` (gitignored)
 scoping `@omnidraw:registry` to it. Sibling checkouts default to `../capsule`
 and `../cangine` next to this repository; override with
 `OMNIDRAW_CAPSULE_LOCAL_PATH`/`OMNIDRAW_CANGINE_LOCAL_PATH` if yours live
-elsewhere. Run `bun run link:local:reset` (then `bun install` again) to go
-back to real npm resolution.
+elsewhere.
+
+The next `bun install` may record those tarballs as `http://127.0.0.1:4873/...`
+in `bun.lock`. Keep using the local registry for this machine. Commit and push
+as usual: a git hook strips those loopback URLs from the committed lockfile.
+CI still installs only published npm versions.

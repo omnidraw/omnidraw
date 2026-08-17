@@ -9,10 +9,11 @@
  * bun run link:local`) builds and publishes the requested sibling repo(s) into
  * this checkout's local registry (via `scripts/local-registry.mjs`, so it's
  * the same instance `bun run dev` uses for widget-package sync), then writes a
- * repo-root `.npmrc` pointing `@omnidraw:registry` at it. Run
- * `bun run link:local:reset` to remove that `.npmrc` and go back to normal
- * resolution. `bun install` still has to be re-run after either command for
- * the change to take effect.
+ * repo-root `.npmrc` pointing `@omnidraw:registry` at it. Git commit/push
+ * hooks strip loopback URLs from `bun.lock`, so local linking does not change
+ * the commit workflow. Run `bun run link:local:reset` only to stop using the
+ * local registry. `bun install` still has to be re-run after link or reset
+ * for `node_modules` to change.
  *
  * Each sibling repository owns its own build/pack/publish pipeline — this
  * script does not reimplement it. It looks for one of a few conventional
@@ -24,9 +25,11 @@
 import { access, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { restorePublishedLockfileUrls } from './published-lockfile.mjs';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
 const NPMRC_PATH = join(REPOSITORY_ROOT, '.npmrc');
+const LOCKFILE_PATH = join(REPOSITORY_ROOT, 'bun.lock');
 const LOCAL_REGISTRY_SCRIPT = join(REPOSITORY_ROOT, 'scripts', 'local-registry.mjs');
 
 const KNOWN_PACKAGES = Object.freeze({
@@ -174,12 +177,21 @@ async function linkPackages(names) {
   }
   await writeFile(NPMRC_PATH, npmrcContents(registry.registryUrl));
   console.log(`[link:local] wrote ${NPMRC_PATH} — @omnidraw:registry now resolves to ${registry.registryUrl}.`);
-  console.log('[link:local] run `bun install` to pick up the linked package(s); `bun run link:local:reset` to undo.');
+  console.log('[link:local] run `bun install` to pick up the linked package(s). Commit and push as usual.');
 }
 
 async function resetLink() {
   await rm(NPMRC_PATH, { force: true });
-  console.log(`[link:local] removed ${NPMRC_PATH} — @omnidraw:registry resolves to real npm again after the next \`bun install\`.`);
+  const lockfile = await readFile(LOCKFILE_PATH, 'utf8').catch((error) => {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (lockfile !== null) {
+    const restored = restorePublishedLockfileUrls(lockfile);
+    if (restored !== lockfile) await writeFile(LOCKFILE_PATH, restored);
+  }
+  console.log(`[link:local] removed ${NPMRC_PATH} and restored public npm tarball URLs in bun.lock.`);
+  console.log('[link:local] run `bun install` so node_modules matches the public registry.');
 }
 
 async function main() {

@@ -486,13 +486,13 @@
 
     "@omnidraw/backend": ["@omnidraw/backend@workspace:apps/backend"],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@0.6.1", "http://127.0.0.1:4873/@omnidraw/cangine/-/cangine-0.6.1.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-xaa6hcLWy0pLJW6Gu+s96y9tulJBp3djl0da3ZYsVGWGqcSJMliCJIpcjBZFIVb3uTQkLO/8Xe/3dnWfaACOdA=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@0.6.1", "", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-xaa6hcLWy0pLJW6Gu+s96y9tulJBp3djl0da3ZYsVGWGqcSJMliCJIpcjBZFIVb3uTQkLO/8Xe/3dnWfaACOdA=="],
 
     "@omnidraw/canvas": ["@omnidraw/canvas@workspace:packages/canvas"],
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.16.0", "http://127.0.0.1:4873/@omnidraw/capsule/-/capsule-0.16.0.tgz", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-aZ8QgfNQ/PbK5CTFoUDZMIQIlueBeJVaeBAcuQXjF0KUy6VVFf+cjvfiwiKB5K27np+40XRFkEdLVCd5DCeALQ=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.16.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-aZ8QgfNQ/PbK5CTFoUDZMIQIlueBeJVaeBAcuQXjF0KUy6VVFf+cjvfiwiKB5K27np+40XRFkEdLVCd5DCeALQ=="],
 
     "@omnidraw/component-ai-chat": ["@omnidraw/component-ai-chat@workspace:packages/component-ai-chat"],
 
