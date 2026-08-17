@@ -122,6 +122,38 @@ describe('AiChatEffectRuntime', () => {
     await runtime.dispose();
   });
 
+  it('does not report stream end or error after abort', async () => {
+    const runtime = new AiChatEffectRuntime();
+    const ends: string[] = [];
+    const errors: unknown[] = [];
+    let streamSignal: AbortSignal | undefined;
+    const lifecycle = runtime.startStream({
+      open(signal) {
+        streamSignal = signal;
+        return {
+          async *[Symbol.asyncIterator]() {
+            await new Promise<void>((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                reject(new Error("Chat prompt operation is already active."));
+              }, { once: true });
+            });
+          },
+        };
+      },
+      onEvent: () => undefined,
+      onError: (error) => errors.push(error),
+      onEnd: () => ends.push("end"),
+    });
+    await vi.waitFor(() => expect(streamSignal).toBeDefined());
+
+    lifecycle.close();
+    await vi.waitFor(() => expect(streamSignal?.aborted).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(errors).toEqual([]);
+    expect(ends).toEqual([]);
+    await runtime.dispose();
+  });
+
   it('aborts a component-owned action when the runtime is disposed', async () => {
     const runtime = new AiChatEffectRuntime();
     let actionSignal: AbortSignal | undefined;

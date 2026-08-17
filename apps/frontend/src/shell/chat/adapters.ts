@@ -17,10 +17,11 @@ import {
 import type { TCanvasImagePort } from "@omnidraw/canvas";
 import type { TFrontendRuntime } from "@/shell/runtime/frontend-runtime";
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
+import { fnAdvanceAgentEventCursor } from "@/core/chat/fn.agent-event-cursor";
 import {
-  fnAdvanceAgentEventCursor,
-  fnAgentReplayCursorAfterGap,
-} from "@/core/chat/fn.agent-event-cursor";
+  fnChatConnectBusyHistoryFallback,
+  fnRecoverChatStreamAfterDomainError,
+} from "@/core/chat/fn.recover-chat-stream";
 import { fxRecoverChat } from "@/core/chat/fx.recover-chat";
 import type {
   TPrivateRequestArguments,
@@ -101,6 +102,24 @@ function loginProviderId(value: string): "openai-codex" | "github-copilot" {
     message: `Unsupported interactive login provider '${value}'.`,
     retriable: false,
   });
+}
+
+export async function recoverChatEventStream<T>(
+  error: unknown,
+  cursor: number,
+  recoverHistory: () => Promise<T>,
+): Promise<Readonly<{ cursor: number; events: readonly T[] }> | null> {
+  const recovery = fnRecoverChatStreamAfterDomainError(error, cursor);
+  if (recovery === null) return null;
+  if (recovery.kind === "keep-listening") return { cursor, events: [] };
+  try {
+    return { cursor: recovery.cursor, events: [await recoverHistory()] };
+  } catch (recoveryError) {
+    if (fnRecoverChatStreamAfterDomainError(recoveryError, recovery.cursor)?.kind === "keep-listening") {
+      return { cursor: recovery.cursor, events: [] };
+    }
+    throw recoveryError;
+  }
 }
 
 function history(value: unknown): readonly TAiChatHistoryEntry[] {
@@ -224,14 +243,28 @@ function createChatPort(runtime: TFrontendRuntime, canvasId: string): IAiChatPor
       policy: request.policy,
     }),
     async connect(request) {
-      const response = record(await action("agent.chat.connect", {
-        canvasId: request.canvasId,
-        widgetId: request.componentId,
-        sessionId: request.sessionId,
-        approvalPolicy: request.approvalPolicy,
-        mode: request.mode,
-      }));
-      return { history: history(response.history ?? response.messageHistory) };
+      try {
+        const response = record(await runtime.rpc.request("agent.chat.connect", {
+          canvasId: request.canvasId,
+          widgetId: request.componentId,
+          sessionId: request.sessionId,
+          approvalPolicy: request.approvalPolicy,
+          mode: request.mode,
+        }));
+        return { history: history(response.history ?? response.messageHistory) };
+      } catch (error) {
+        if (
+          isPrivateRpcError(error)
+          && error.code === "CHAT_BUSY"
+          && fnChatConnectBusyHistoryFallback(request.mode)
+        ) {
+          return { history: await chatActions.getHistory({
+            componentId: request.componentId,
+            sessionId: request.sessionId,
+          }) };
+        }
+        throw actionError(error, "agent.chat.connect failed.");
+      }
     },
     getHistory: async (scope) => history(await action("agent.chat.history", {
       widgetId: scope.componentId,
@@ -332,23 +365,16 @@ function createChatPort(runtime: TFrontendRuntime, canvasId: string): IAiChatPor
       input: (afterSequence) => ({ afterSequence }),
       advance: (cursor, event) => fnAdvanceAgentEventCursor(cursor, record(event)),
       isDuplicate: (cursor, event) => typeof event.sequence === "number" && event.sequence <= cursor,
-      recoverAfterDomainError: async (error, cursor) => {
-        const replayCursor = fnAgentReplayCursorAfterGap(error, cursor);
-        if (replayCursor === null) return null;
-        const recovered = await runtime.runPromise(fxRecoverChat({
+      recoverAfterDomainError: async (error, cursor) => recoverChatEventStream(
+        error,
+        cursor,
+        () => runtime.runPromise(fxRecoverChat({
           canvasId,
           componentId: request.componentId,
           sessionId: request.sessionId,
           approvalPolicy: request.approvalPolicy,
-        }));
-        return { cursor: replayCursor, events: [recovered] };
-      },
-      afterReconnect: async () => [await runtime.runPromise(fxRecoverChat({
-          canvasId,
-          componentId: request.componentId,
-          sessionId: request.sessionId,
-          approvalPolicy: request.approvalPolicy,
-      }))],
+        })),
+      ),
       signal: options?.signal,
     });
     return {

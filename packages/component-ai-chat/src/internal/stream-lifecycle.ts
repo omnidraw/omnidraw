@@ -110,8 +110,19 @@ export class AiChatEffectRuntime {
 
   startStream(args: TAiChatStreamLifecycleArgs): TAiChatStreamLifecycle {
     if (this.#disposed) throw new Error("The AI Chat lifecycle runtime is disposed.");
+    this.#latestTasks.get("stream")?.();
     let closed = false;
     let activeController: AbortController | null = null;
+    let interrupt: () => void = () => undefined;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      if (this.#latestTasks.get("stream") === close) this.#latestTasks.delete("stream");
+      activeController?.abort();
+      interrupt();
+    };
+    this.#latestTasks.set("stream", close);
+    const quiet = (controller: AbortController) => closed || controller.signal.aborted;
     const program = Effect.acquireRelease(
       Effect.sync(() => {
         activeController = new AbortController();
@@ -131,23 +142,20 @@ export class AiChatEffectRuntime {
           catch: (cause) => cause,
         })),
         Effect.tap(() => Effect.sync(() => {
-          if (!controller.signal.aborted) args.onEnd();
+          if (!quiet(controller)) args.onEnd();
         })),
         Effect.catch((error) => Effect.sync(() => {
-          if (!controller.signal.aborted) args.onError(error);
+          if (!quiet(controller)) args.onError(error);
         })),
       )),
       Effect.scoped,
-    );
-    const cancel = this.#runtime.runCallback(program);
-    return Object.freeze({
-      close(): void {
-        if (closed) return;
+      Effect.ensuring(Effect.sync(() => {
         closed = true;
-        activeController?.abort();
-        cancel();
-      },
-    });
+        if (this.#latestTasks.get("stream") === close) this.#latestTasks.delete("stream");
+      })),
+    );
+    interrupt = this.#runtime.runCallback(program);
+    return Object.freeze({ close });
   }
 
   /**

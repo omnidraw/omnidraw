@@ -118,18 +118,6 @@ export function createLiveFrontendRuntime(args: Readonly<{
     }),
   });
   const chatRecoveryBackend = ChatRecoveryBackend.of({
-    connectReuse: (scope) => Effect.tryPromise({
-      try: async () => {
-        await rpc.request("agent.chat.connect", {
-          canvasId: scope.canvasId,
-          widgetId: scope.componentId,
-          sessionId: scope.sessionId,
-          approvalPolicy: scope.approvalPolicy,
-          mode: "reuse",
-        }, { signal: lifetime.signal });
-      },
-      catch: frontendTransportFailure,
-    }),
     history: (scope) => Effect.tryPromise({
       try: () => rpc.request("agent.chat.history", {
         widgetId: scope.componentId,

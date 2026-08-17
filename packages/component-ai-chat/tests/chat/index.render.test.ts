@@ -220,6 +220,8 @@ describe("AiChat portable shell", () => {
     disposeRendered?.();
     disposeRendered = undefined;
     expect(streamSignal?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(container?.textContent ?? "").not.toContain("Chat updates disconnected");
   });
 
   it("reuses the mounted session and restarts events on host reconnect", async () => {

@@ -207,6 +207,52 @@ describe("frontend RPC connected-domain recovery", () => {
     await iterator.return?.();
   });
 
+  test("aborting a resumable stream completes quietly without recovery or generation change", async () => {
+    const generations = new FrontendRpcConnectionGenerations();
+    const controller = new AbortController();
+    let afterReconnect = 0;
+    let recoverAfterDomainError = 0;
+    const client = {
+      "omnidraw.stream.v1": () => Stream.concat(
+        Stream.fromIterable([{ sequence: 1, kind: "widget-catalog", type: "changed" }]),
+        Stream.never,
+      ),
+    } as never;
+    generations.connected();
+    const connection = new FrontendRpcConnection({
+      generations,
+      runPromise: (program, options) => Effect.runPromise(
+        Effect.provideService(program, FrontendRpcClient, client),
+        options,
+      ),
+    });
+    const iterator = connection.resumableStream({
+      path: "agent.events",
+      initialCursor: 0,
+      input: (afterSequence) => ({ afterSequence }),
+      advance: (_cursor, event) => event.sequence,
+      recoverAfterDomainError: async () => {
+        recoverAfterDomainError += 1;
+        return null;
+      },
+      afterReconnect: async () => {
+        afterReconnect += 1;
+        return [];
+      },
+      signal: controller.signal,
+    })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { sequence: 1, kind: "widget-catalog", type: "changed" },
+    });
+    controller.abort();
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(generations.snapshot()).toEqual({ connected: true, generation: 1 });
+    expect(afterReconnect).toBe(0);
+    expect(recoverAfterDomainError).toBe(0);
+  });
+
   test("keeps non-recoverable connected stream failures terminal", async () => {
     const generations = new FrontendRpcConnectionGenerations();
     const failure = new PrivateRpcError({

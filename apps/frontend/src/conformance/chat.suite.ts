@@ -10,7 +10,7 @@ export type TChatConformanceHarness = Readonly<{
   calls(): readonly string[];
 }>;
 
-/** Same reconnect-before-history and monotonic cursor scenario. */
+/** Same history-only reconnect recovery and monotonic cursor scenario. */
 export async function chatConformanceSuite(harness: TChatConformanceHarness): Promise<void> {
   harness.scriptRecovery([{ role: "assistant", content: "recovered" }]);
   const recovered = await harness.runRecovery(fxRecoverChat({
@@ -19,8 +19,8 @@ export async function chatConformanceSuite(harness: TChatConformanceHarness): Pr
     sessionId: "session-1",
     approvalPolicy: { mode: "manual" },
   }));
-  if (harness.calls().join(",") !== "agent.chat.connect,agent.chat.history") {
-    throw new Error("Chat history was read before reuse connection completed.");
+  if (harness.calls().join(",") !== "agent.chat.history") {
+    throw new Error("Chat stream recovery claimed session ownership instead of rereading history.");
   }
   if (recovered.kind !== "recovered-history" || recovered.history.length !== 1) throw new Error("Recovered history event is invalid.");
   let cursor = fnAdvanceAgentEventCursor(0, { sequence: 7 });

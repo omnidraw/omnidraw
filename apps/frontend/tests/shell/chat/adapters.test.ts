@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAgentEvent } from "@/shell/chat/adapters";
+import { PrivateRpcError } from "@/core/app/private-rpc-error";
+import { normalizeAgentEvent, recoverChatEventStream } from "@/shell/chat/adapters";
 
 const approval = {
   id: "approval-1",
@@ -65,5 +66,44 @@ describe("AI Chat approval event adapter", () => {
       approval,
       decision: "approve",
     })).toBeNull();
+  });
+});
+
+describe("AI Chat stream recovery", () => {
+  it("keeps listening through CHAT_BUSY without reading history", async () => {
+    const busy = new PrivateRpcError({
+      code: "CHAT_BUSY",
+      status: 409,
+      message: "Chat prompt operation is already active.",
+      details: null,
+    });
+    let historyCalls = 0;
+    await expect(recoverChatEventStream(busy, 7, async () => {
+      historyCalls += 1;
+      return { kind: "recovered-history" as const, history: [] };
+    })).resolves.toEqual({ cursor: 7, events: [] });
+    expect(historyCalls).toBe(0);
+  });
+
+  it("reads history for a replay gap and keeps listening if that history is busy", async () => {
+    const gap = new PrivateRpcError({
+      code: "EVENT_REPLAY_UNAVAILABLE",
+      status: 409,
+      message: "Replay gap.",
+      details: { afterSequence: 0, earliestSequence: 282 },
+    });
+    const recovered = { kind: "recovered-history" as const, history: [{ role: "assistant" }] };
+    await expect(recoverChatEventStream(gap, 0, async () => recovered)).resolves.toEqual({
+      cursor: 281,
+      events: [recovered],
+    });
+    await expect(recoverChatEventStream(gap, 0, async () => {
+      throw new PrivateRpcError({
+        code: "CHAT_BUSY",
+        status: 409,
+        message: "Chat prompt operation is already active.",
+        details: null,
+      });
+    })).resolves.toEqual({ cursor: 281, events: [] });
   });
 });

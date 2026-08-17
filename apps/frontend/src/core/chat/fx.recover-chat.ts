@@ -14,7 +14,6 @@ export type TChatScope = Readonly<{
 }>;
 
 export class ChatRecoveryBackend extends Context.Service<ChatRecoveryBackend, {
-  connectReuse(scope: TChatScope): Effect.Effect<void, TFrontendTransportFailure>;
   history(scope: Pick<TChatScope, "componentId" | "sessionId">): Effect.Effect<readonly unknown[], TFrontendTransportFailure>;
 }>()("omnidraw/frontend/core/chat/ChatRecoveryBackend") {}
 
@@ -25,12 +24,11 @@ export type TRecoveredChatEvent = Readonly<{
   history: readonly unknown[];
 }>;
 
-/** Re-establishes backend session ownership before reading recovery history. */
+/** Reads recovery history without claiming session ownership. */
 export const fxRecoverChat = Effect.fn('fxRecoverChat')(function*(
   scope: TChatScope,
 ): Effect.fn.Return<TRecoveredChatEvent, TFrontendTransportFailure, ChatRecoveryBackend> {
   const backend = yield* ChatRecoveryBackend;
-  yield* backend.connectReuse(scope);
   const history = yield* backend.history({
     componentId: scope.componentId,
     sessionId: scope.sessionId,

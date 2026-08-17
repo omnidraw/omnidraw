@@ -3,12 +3,9 @@ import { Effect } from "effect";
 import { ChatRecoveryBackend, fxRecoverChat, type TChatScope } from "./fx.recover-chat";
 
 describe("fxRecoverChat", () => {
-  test("re-establishes each reconnect with its own captured chat policy before history", async () => {
-    const calls: Array<Readonly<{ kind: "connect" | "history"; scope: unknown }>> = [];
+  test("reads each reconnect history without claiming session ownership", async () => {
+    const calls: Array<Readonly<{ kind: "history"; scope: unknown }>> = [];
     const backend = ChatRecoveryBackend.of({
-      connectReuse: (scope) => Effect.sync(() => {
-        calls.push({ kind: "connect", scope: structuredClone(scope) });
-      }),
       history: (scope) => Effect.sync(() => {
         calls.push({ kind: "history", scope: structuredClone(scope) });
         return [{ role: "assistant", content: scope.sessionId }];
@@ -35,17 +32,14 @@ describe("fxRecoverChat", () => {
       "session-auto",
       "session-manual",
     ]);
+    expect(calls.map((call) => call.kind)).toEqual(["history", "history"]);
     for (const scope of scopes) {
-      const connectIndex = calls.findIndex((call) => call.kind === "connect"
-        && (call.scope as TChatScope).sessionId === scope.sessionId);
-      const historyIndex = calls.findIndex((call) => call.kind === "history"
-        && (call.scope as Pick<TChatScope, "sessionId">).sessionId === scope.sessionId);
-      expect(connectIndex).toBeGreaterThanOrEqual(0);
-      expect(historyIndex).toBeGreaterThan(connectIndex);
-      expect(calls[connectIndex]?.scope).toEqual(scope);
-      expect(calls[historyIndex]?.scope).toEqual({
-        componentId: scope.componentId,
-        sessionId: scope.sessionId,
+      expect(calls).toContainEqual({
+        kind: "history",
+        scope: {
+          componentId: scope.componentId,
+          sessionId: scope.sessionId,
+        },
       });
     }
   });

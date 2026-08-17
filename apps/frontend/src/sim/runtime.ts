@@ -83,21 +83,6 @@ export function createFrontendSimRuntime(args: Readonly<{
     }),
   });
   const chatRecovery = ChatRecoveryBackend.of({
-    connectReuse: (scope) => Effect.try({
-      try: () => {
-        transport.request({
-          path: "agent.chat.connect",
-          input: {
-            canvasId: scope.canvasId,
-            widgetId: scope.componentId,
-            sessionId: scope.sessionId,
-            approvalPolicy: scope.approvalPolicy,
-            mode: "reuse",
-          },
-        });
-      },
-      catch: frontendTransportFailure,
-    }),
     history: (scope) => Effect.try({
       try: () => transport.request({
         path: "agent.chat.history",

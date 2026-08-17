@@ -210,6 +210,43 @@ export function frontendRpcLayer(
   );
 }
 
+function abortReason(signal?: AbortSignal): unknown {
+  return signal?.reason ?? new DOMException("The RPC stream was aborted.", "AbortError");
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  return error instanceof DOMException && error.name === "AbortError"
+    || (error instanceof Error && error.name === "AbortError");
+}
+
+async function withCallerAbort<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal === undefined) return promise;
+  if (signal.aborted) throw abortReason(signal);
+  let onAbort: (() => void) | undefined;
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      onAbort = () => reject(abortReason(signal));
+      signal.addEventListener("abort", onAbort, { once: true });
+      void promise.then(resolve, reject);
+    });
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+async function nextWithCallerAbort<T>(
+  iterator: AsyncIterator<T>,
+  signal?: AbortSignal,
+): Promise<IteratorResult<T>> {
+  if (signal === undefined) return iterator.next();
+  if (signal.aborted) return { done: true, value: undefined };
+  return withCallerAbort(iterator.next(), signal);
+}
+
 function linkedSignal(
   generationSignal: AbortSignal,
   callerSignal?: AbortSignal,
@@ -369,28 +406,47 @@ export class FrontendRpcConnection {
     return {
       async *[Symbol.asyncIterator]() {
         let cursor = options.initialCursor;
-        while (!options.signal?.aborted) {
+        const callerSignal = options.signal;
+        const aborted = () => callerSignal?.aborted === true;
+        while (!aborted()) {
           let activeGeneration = connection.generations.snapshot().generation;
           let recoveredWithoutReconnect = false;
+          let inner: AsyncIterator<TPrivateStreamOutput<Path>> | undefined;
+          const pendingStream = connection.stream(
+            options.path,
+            options.input(cursor),
+          );
+          const abandonPendingStream = (): void => {
+            void pendingStream.then((events) => events[Symbol.asyncIterator]().return?.()).catch(() => undefined);
+          };
           try {
-            const events = await connection.stream(
-              options.path,
-              options.input(cursor),
-              { signal: options.signal },
-            );
+            const events = await withCallerAbort(pendingStream, callerSignal);
+            if (aborted()) {
+              void events[Symbol.asyncIterator]().return?.();
+              return;
+            }
             activeGeneration = connection.generations.snapshot().generation;
-            for await (const event of events) {
-              const duplicate = options.isDuplicate?.(cursor, event) ?? false;
-              cursor = options.advance(cursor, event);
+            inner = events[Symbol.asyncIterator]();
+            while (!aborted()) {
+              const next = await nextWithCallerAbort(inner, callerSignal);
+              if (next.done) break;
+              const duplicate = options.isDuplicate?.(cursor, next.value) ?? false;
+              cursor = options.advance(cursor, next.value);
               if (duplicate) continue;
-              yield event;
+              yield next.value;
+            }
+            if (aborted()) {
+              await inner.return?.();
+              return;
             }
             const state = connection.generations.snapshot();
             if (state.connected && state.generation === activeGeneration) {
               throw new Error(`RPC stream '${options.path}' ended unexpectedly.`);
             }
           } catch (error) {
-            if (options.signal?.aborted) return;
+            if (inner === undefined) abandonPendingStream();
+            else await inner.return?.().catch(() => undefined);
+            if (aborted() || isAbortError(error, callerSignal)) return;
             let state = connection.generations.snapshot();
             if (state.connected && state.generation === activeGeneration) {
               if (options.recoverAfterDomainError === undefined) throw error;
@@ -399,35 +455,50 @@ export class FrontendRpcConnection {
                 events: readonly TRecoveryEvent[];
               }> | null = null;
               try {
-                recovery = await options.recoverAfterDomainError(error, cursor);
+                recovery = await withCallerAbort(
+                  options.recoverAfterDomainError(error, cursor),
+                  callerSignal,
+                );
               } catch (recoveryError) {
+                if (aborted() || isAbortError(recoveryError, callerSignal)) return;
                 state = connection.generations.snapshot();
                 if (state.connected && state.generation === activeGeneration) {
                   throw recoveryError;
                 }
               }
+              if (aborted()) return;
               state = connection.generations.snapshot();
               if (state.connected && state.generation === activeGeneration) {
                 if (recovery === null) throw error;
                 cursor = recovery.cursor;
                 for (const event of recovery.events) {
+                  if (aborted()) return;
                   state = connection.generations.snapshot();
                   if (!state.connected || state.generation !== activeGeneration) break;
                   yield event;
                 }
+                if (aborted()) return;
                 state = connection.generations.snapshot();
                 recoveredWithoutReconnect = state.connected
                   && state.generation === activeGeneration;
               }
             }
           }
+          if (aborted()) return;
           if (recoveredWithoutReconnect) continue;
           let recoveryAfterGeneration = activeGeneration;
-          while (!options.signal?.aborted) {
-            const reconnected = await connection.generations.waitForConnectionAfter(
-              recoveryAfterGeneration,
-              options.signal,
-            );
+          while (!aborted()) {
+            let reconnected;
+            try {
+              reconnected = await connection.generations.waitForConnectionAfter(
+                recoveryAfterGeneration,
+                callerSignal,
+              );
+            } catch (error) {
+              if (aborted() || isAbortError(error, callerSignal)) return;
+              throw error;
+            }
+            if (aborted()) return;
             if (options.afterReconnect === undefined) break;
 
             let recovery;
@@ -443,11 +514,12 @@ export class FrontendRpcConnection {
                   try: () => options.afterReconnect!(cursor),
                   catch: frontendTransportFailure,
                 }),
-              }), { signal: options.signal });
+              }), { signal: callerSignal });
             } catch (error) {
-              if (options.signal?.aborted) return;
+              if (aborted() || isAbortError(error, callerSignal)) return;
               throw error;
             }
+            if (aborted()) return;
             if (recovery._tag === "GenerationChanged") {
               recoveryAfterGeneration = reconnected.generation;
               continue;
@@ -459,6 +531,7 @@ export class FrontendRpcConnection {
             }
             let recoveryRetired = false;
             for (const event of recovery.events) {
+              if (aborted()) return;
               current = connection.generations.snapshot();
               if (!current.connected || current.generation !== reconnected.generation) {
                 recoveryRetired = true;

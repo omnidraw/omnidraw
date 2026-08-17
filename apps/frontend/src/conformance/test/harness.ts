@@ -156,16 +156,6 @@ export function createLiveConformanceHarness(): TFullConformanceHarness {
     Layer.succeed(DbResources, dbResources),
     Layer.succeed(NotificationSink, NotificationSink.of({ show: () => Effect.void })),
     Layer.succeed(ChatRecoveryBackend, ChatRecoveryBackend.of({
-      connectReuse: (scope) => Effect.try({
-        try: () => {
-          chatCalls.push("agent.chat.connect");
-          driver.request({
-            path: "agent.chat.connect",
-            input: { canvasId: scope.canvasId, widgetId: scope.componentId, sessionId: scope.sessionId, approvalPolicy: scope.approvalPolicy, mode: "reuse" },
-          });
-        },
-        catch: frontendTransportFailure,
-      }),
       history: (scope) => Effect.try({
         try: () => {
           chatCalls.push("agent.chat.history");
@@ -203,7 +193,6 @@ export function createLiveConformanceHarness(): TFullConformanceHarness {
     script(path, value) { driver.script(path, value); },
     scriptStream(path, events) { driver.scriptStream(path, events); },
     scriptRecovery(value) {
-      driver.script("agent.chat.connect", {});
       driver.script("agent.chat.history", value);
     },
     runRequest: run,
@@ -264,7 +253,6 @@ export function createSimConformanceHarness(): TFullConformanceHarness {
     script(path, value) { runtime.transport.enqueueRequest(path, { value }); },
     scriptStream(path, events) { runtime.transport.enqueueStream(path, events); },
     scriptRecovery(value) {
-      runtime.transport.enqueueRequest("agent.chat.connect", { value: {} });
       runtime.transport.enqueueRequest("agent.chat.history", { value });
     },
     runRequest: (program) => runtime.runPromise(program),
