@@ -498,8 +498,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S146](s/S146.md) - widgets: ship cross-host function and resource conformance (order 7/8)
 - [x]: [S147](s/S147.md) - widgets: delete runtime residue and qualify the portability hard cut (order 8/8)
 - [/]: [S148](s/S148.md) - widgets: remove collaborative state and its APIs
-- [ ]: [S149](s/S149.md) - AI Chat: simplify tool schemas for strict providers
-- [ ]: [S150](s/S150.md) - widgets: make selected text copyable by default
+- [x]: [S149](s/S149.md) - AI Chat: simplify tool schemas for strict providers
+- [x]: [S150](s/S150.md) - widgets: make selected text copyable by default
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

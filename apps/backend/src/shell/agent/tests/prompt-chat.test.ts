@@ -60,7 +60,10 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/schemaVersion"?\s*:\s*[34]/);
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/manifest[- ]v[34]/i);
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtime": "capsule"');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"apis": ["DOM"]');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"apis": ["DOM", "CLIPBOARD"]');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`DOM` makes text selectable');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('bounded plain-text copy, cut, and paste require `CLIPBOARD`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('does not expose ambient `navigator.clipboard`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Omit `server` and `resources` for a UI-only widget');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('UI-only widgets start no backend process');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('defineServerFunction');
@@ -92,7 +95,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('untrusted receipt');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Keep Capsule behind `@omnidraw/sdk`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('neither declare nor');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`["DOM", "WEBGL"]`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`["DOM", "CLIPBOARD", "WEBGL"]`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('canvas-webgl-v1');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`three` to exactly `0.185.1`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('rely on the `WEBGL` group defaults');

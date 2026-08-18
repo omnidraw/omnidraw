@@ -914,6 +914,7 @@ describe('widget portability live conformance', () => {
     };
     const runtime = ManagedRuntime.make(layerLiveMechanics({
       config,
+      piAuthSourcePath: join(root, 'missing-pi-auth.json'),
       options: { distributionBuild: conformanceDistributionBuild },
     }));
     try {

@@ -170,6 +170,7 @@ describe('production filesystem widget builder composition', () => {
     };
     const runtime = ManagedRuntime.make(layerLiveMechanics({
       config,
+      piAuthSourcePath: join(root, 'missing-pi-auth.json'),
       options: { distributionBuild: testWidgetDistributionBuild },
     }));
     try {

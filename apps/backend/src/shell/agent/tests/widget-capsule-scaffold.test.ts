@@ -37,7 +37,7 @@ describe('portable widget authoring scaffold', () => {
       ui: {
         runtime: 'capsule',
         entry: 'ui/main.ts',
-        apis: ['DOM'],
+        apis: ['DOM', 'CLIPBOARD'],
       },
     });
     expect(changed).toEqual([
@@ -104,6 +104,7 @@ describe('portable widget authoring scaffold', () => {
     });
 
     expect(manifest.ui.entry).toBe('ui/main.tsx');
+    expect(manifest.ui.apis).toEqual(['DOM', 'CLIPBOARD']);
     expect(changed).toContain('ui/main.tsx');
     expect(changed).not.toContain('ui/main.ts');
     expect(changed).not.toContain('server/main.server.ts');

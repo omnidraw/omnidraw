@@ -27,7 +27,10 @@ export async function createLiveMechanicsConformanceRuntime(label: string) {
     helpRequested: false,
     versionRequested: false,
   });
-  const mechanics = layerLiveMechanics({ config });
+  const mechanics = layerLiveMechanics({
+    config,
+    piAuthSourcePath: join(homeDirectory, 'missing-pi-auth.json'),
+  });
   const semantic = layerSemanticAuthoritiesLive.pipe(Layer.provide(mechanics));
   const canvas = layerCanvasAuthorityFromLive.pipe(Layer.provide(mechanics));
   const runtime = ManagedRuntime.make(Layer.mergeAll(mechanics, semantic, canvas));

@@ -13,7 +13,10 @@ export const OMNIDRAW_CAPSULE_TESTED_THREE_VERSION = '0.185.1';
 
 /** Product API admission ceiling; each host receives one valid artifact subset. */
 export const OMNIDRAW_CAPSULE_ALLOWED_APIS = CAPSULE_API_GROUPS;
-export const OMNIDRAW_CAPSULE_AUTHORING_APIS = Object.freeze(['DOM'] as const);
+export const OMNIDRAW_CAPSULE_AUTHORING_APIS = Object.freeze([
+  'DOM',
+  'CLIPBOARD',
+] as const);
 export const OMNIDRAW_CAPSULE_BUDGET_DIMENSIONS =
   CAPSULE_API_GROUP_BUDGET_DIMENSIONS;
 

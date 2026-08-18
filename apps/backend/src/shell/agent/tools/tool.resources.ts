@@ -47,7 +47,7 @@ const RESOURCE_BATCH_SERIALIZED_LIMIT = 2_000_000;
 const DB_APPLY_AWAIT_DEADLINE_MS = 5_000;
 const DB_APPLY_AWAIT_INTERVAL_MS = 25;
 const RESOURCE_NAME_SCHEMA = Type.String({ minLength: 1, maxLength: 120 });
-const RESOURCE_KIND_SCHEMA = Type.Union([Type.Literal('kv'), Type.Literal('secretStore'), Type.Literal('db')]);
+const RESOURCE_KIND_SCHEMA = Type.String({ enum: ['kv', 'secretStore', 'db'] as const });
 const DB_PARAMETER_SCHEMA = Type.Union([
   Type.String(),
   Type.Number(),
@@ -413,11 +413,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     name: 'od_resource_create',
     label: 'Create Resource',
     description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required. Success returns the exact local resourceId to write into omnidraw.json.',
-    parameters: Type.Union([
-      Type.Object({ kind: Type.Literal('kv'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
-      Type.Object({ kind: Type.Literal('secretStore'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
-      Type.Object({ kind: Type.Literal('db'), name: RESOURCE_NAME_SCHEMA, engine: Type.Optional(Type.Literal('sqlite')) }, { additionalProperties: false }),
-    ]),
+    parameters: Type.Object({
+      kind: RESOURCE_KIND_SCHEMA,
+      name: RESOURCE_NAME_SCHEMA,
+    }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('od_resource_create')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.createResource) return toolUnavailable('RESOURCE_CREATE_UNAVAILABLE', 'Resource creation is unavailable in this host.');

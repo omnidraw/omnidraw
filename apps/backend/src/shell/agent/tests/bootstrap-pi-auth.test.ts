@@ -51,7 +51,14 @@ describe('bootstrapPiAuth', () => {
     const existing = Buffer.from('{"anthropic":{"type":"api_key","key":"existing"}}\n');
     writeFileSync(paths.destination, existing, { mode: 0o600 });
 
-    const result = await bootstrapPiAuth(effects, {
+    const sourceInspectionFailure = Object.assign(
+      new Error('source must not be inspected'),
+      { code: 'EACCES' },
+    );
+    const failSourceInspection = (async () => {
+      throw sourceInspectionFailure;
+    }) as typeof stat;
+    const result = await bootstrapPiAuth({ ...effects, stat: failSourceInspection }, {
       sourceAuthPath: paths.source,
       destinationAuthPath: paths.destination,
     });

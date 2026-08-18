@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCliConfig, SOURCE_APPLICATION_VERSION } from './build-config';
 import { fnBuildHomePreflightError } from '../../core/cli/fn.home-preflight-error';
@@ -66,6 +68,7 @@ export async function runCliMain() {
 
   const runtime = createBackendRuntime({
     config,
+    piAuthSourcePath: join(homedir(), '.pi', 'agent', 'auth.json'),
     repositoryRoot: SOURCE_REPOSITORY_ROOT,
   });
   const eventPublisher = await runtime.runPromise(LiveEventPublisher);

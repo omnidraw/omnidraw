@@ -414,13 +414,15 @@ describe('resource tools', () => {
     for (const input of [
       { kind: 'kv', name: 'Cache', expectedName: 'Cache', expectedId: 'created-1' },
       { kind: 'secretStore', name: 'Tokens', expectedName: 'Tokens', expectedId: 'created-2' },
-      { kind: 'db', name: ' Reports ', expectedName: 'Reports', expectedId: 'created-3', engine: 'sqlite' },
+      { kind: 'db', name: ' Reports ', expectedName: 'Reports', expectedId: 'created-3' },
     ]) {
       const { expectedName, expectedId, ...params } = input;
       const pending = executeTool(byName.get('od_resource_create')!, params);
       const approval = await pendingApproval(approvals);
       expect(approval.toolCallId).toBe('tool-call');
       expect(JSON.stringify(approval)).not.toContain('resourceId');
+      params.name = 'Mutated after approval';
+      params.kind = input.kind === 'db' ? 'kv' : 'db';
       await approvals.resolve('chat-a', approval.id, 'approve');
       expect(providerModelData(await pending)).toEqual({
         resource: { resourceId: expectedId, name: expectedName, kind: input.kind, status: 'ready' },

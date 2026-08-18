@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ZWidgetManifestV1 } from '@omnidraw/sdk/contract';
 import { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
-import { AI_CHAT_TOOL_NAMES } from '../tools/CONSTANTS';
+import { AI_CHAT_TOOL_NAMES, AJV } from '../tools/CONSTANTS';
 import { createToolRegistry } from '../tools/ToolRegistry';
 import { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { testApprovalWorld, testChatId, testWorkspaceWorld } from './service.fixture';
@@ -43,6 +43,37 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).toContain('od_widget_preview_inspect');
     expect(registry.toolNames).not.toContain('write');
     expect(registry.toolNames).toHaveLength(17);
+
+    for (const tool of registry.customTools) {
+      expect(
+        (tool.parameters as { type?: unknown }).type,
+        `${tool.name} must advertise one object-shaped parameter root`,
+      ).toBe('object');
+    }
+    const createSchema = registry.customTools.find(
+      (tool) => tool.name === 'od_resource_create',
+    )!.parameters as Record<string, any>;
+    expect(createSchema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'name'],
+      properties: {
+        kind: { type: 'string', enum: ['kv', 'secretStore', 'db'] },
+        name: { type: 'string' },
+      },
+    });
+    expect(Object.keys(createSchema.properties)).toEqual(['kind', 'name']);
+    expect(createSchema).not.toHaveProperty('anyOf');
+    expect(createSchema).not.toHaveProperty('oneOf');
+    expect(createSchema).not.toHaveProperty('allOf');
+    expect(JSON.stringify(createSchema)).not.toContain('engine');
+
+    const validateCreate = AJV.compile(createSchema);
+    for (const kind of ['kv', 'secretStore', 'db']) {
+      expect(validateCreate({ kind, name: 'Portable resource' })).toBe(true);
+    }
+    expect(validateCreate({ kind: 'db', name: 'Reports', engine: 'sqlite' })).toBe(false);
+    expect(validateCreate({ kind: 'unknown', name: 'Unknown' })).toBe(false);
   });
 
   test('does not rewrite unsupported private-target draft source', async () => {

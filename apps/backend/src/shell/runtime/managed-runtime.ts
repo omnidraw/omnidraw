@@ -9,10 +9,12 @@ import { layerCanvasDeletionLive } from '../canvas/layer.canvas-deletion.live';
 /** Exactly one ManagedRuntime is constructed for each backend process. */
 export function createBackendRuntime(args: Readonly<{
   config: ICliConfig;
+  piAuthSourcePath: string;
   repositoryRoot: string;
 }>) {
   const mechanics = layerLiveMechanics({
     config: args.config,
+    piAuthSourcePath: args.piAuthSourcePath,
     repositoryRoot: args.repositoryRoot,
   });
   const canvasAuthority = layerCanvasAuthorityFromLive.pipe(

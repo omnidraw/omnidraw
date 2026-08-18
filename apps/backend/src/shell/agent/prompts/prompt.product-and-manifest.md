@@ -21,7 +21,7 @@ fields the request actually changes.
   "ui": {
     "runtime": "capsule",
     "entry": "ui/main.ts",
-    "apis": ["DOM"]
+    "apis": ["DOM", "CLIPBOARD"]
   }
 }
 ```
@@ -44,8 +44,12 @@ fields the request actually changes.
 - `ui.runtime` is always `capsule`; `ui.entry` is one safe relative TypeScript
   or JavaScript entry path.
 - `ui.apis` requests Capsule public API groups. `DOM` is explicit and mandatory.
-  Add only the groups the source needs. `CANVAS_2D`, `WEBGL`, and `WEBGPU` are
-  mutually exclusive.
+  `DOM` makes ordinary text selectable, but bounded plain-text copy, cut, and
+  paste require `CLIPBOARD`. Preserve the scaffolded `CLIPBOARD` group for
+  ordinary UI unless the user explicitly requests a narrower non-copyable
+  artifact. This does not expose ambient `navigator.clipboard`, rich clipboard
+  data, files, or images. Add only the other groups the source needs.
+  `CANVAS_2D`, `WEBGL`, and `WEBGPU` are mutually exclusive.
 - `ui.budgets` may request non-negative Capsule ceilings for `cpuMs`,
   `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
   `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use

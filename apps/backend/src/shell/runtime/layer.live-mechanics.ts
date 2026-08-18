@@ -179,6 +179,7 @@ export function createLiveLocalWidgetPackageRegistrySync(args: Readonly<{
 
 export function layerLiveMechanics(args: Readonly<{
   config: ICliConfig;
+  piAuthSourcePath: string;
   repositoryRoot?: string;
   options?: TLiveMechanicsOptions;
 }>) {
@@ -889,7 +890,7 @@ export function layerLiveMechanics(args: Readonly<{
     try: () => bootstrapPiAuth(
       { chmod, copyFile, dirname, lstat, mkdir, stat, unlink },
       {
-        sourceAuthPath: join(homeDirectory, '.pi', 'agent', 'auth.json'),
+        sourceAuthPath: args.piAuthSourcePath,
         destinationAuthPath: join(
           fnOmnidrawPiAgentDirectory(join, agentRoot),
           'auth.json',

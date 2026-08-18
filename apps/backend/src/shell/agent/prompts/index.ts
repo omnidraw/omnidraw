@@ -18,15 +18,20 @@ const capsuleAuthoringCapabilityPrompt = `
 Supported public API groups are:
 ${OMNIDRAW_CAPSULE_ALLOWED_APIS.map((api) => `- \`${api}\``).join('\n')}
 
-Every widget must explicitly request \`DOM\`. Select no more than one of
-\`CANVAS_2D\`, \`WEBGL\`, and \`WEBGPU\`. Never write Capsule runtime ABIs,
+Every widget must explicitly request \`DOM\`. \`DOM\` makes text selectable;
+bounded plain-text copy, cut, and paste require \`CLIPBOARD\`. Preserve the
+scaffolded \`CLIPBOARD\` group for ordinary UI unless the user explicitly asks
+for a narrower non-copyable artifact. This does not expose ambient
+\`navigator.clipboard\`, rich clipboard data, files, or images. Select no more
+than one of \`CANVAS_2D\`, \`WEBGL\`, and \`WEBGPU\`. Never write Capsule runtime ABIs,
 DOM profiles, feature-profile names, resolved targets, bundle digests, or host
 limits into \`omnidraw.json\`.
 
 For Three.js/WebGL widgets:
 - pin \`three\` to exactly \`${OMNIDRAW_CAPSULE_TESTED_THREE_VERSION}\`;
-- set \`ui.apis\` to \`["DOM", "WEBGL"]\` unless another public capability is
-  independently required;
+- set \`ui.apis\` to \`["DOM", "CLIPBOARD", "WEBGL"]\` unless the user explicitly
+  requests a non-copyable artifact or another public capability is independently
+  required;
 - rely on the \`WEBGL\` group defaults. Add a partial \`ui.budgets\` override
   only when a verified current-process diagnostic proves a specific dimension needs it;
 - stay inside the reviewed Three.js probe subset: build an explicitly indexed

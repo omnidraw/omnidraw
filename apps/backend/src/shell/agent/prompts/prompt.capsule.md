@@ -43,6 +43,11 @@ They must bundle completely into the accepted ES2022 distribution and remain
 within the requested Capsule API groups and budgets. Do not substitute a CDN,
 remote ESM endpoint, vendored minified runtime, or runtime package loader.
 
+- `DOM` includes confined text selection, while `CLIPBOARD` is separately
+  required for bounded plain-text copy, cut, and paste. Preserve the scaffolded
+  `CLIPBOARD` group for ordinary UI unless the user explicitly requests a
+  narrower non-copyable artifact. Neither group exposes ambient
+  `navigator.clipboard`, rich clipboard data, files, or images.
 - `DOM` includes ordinary modern CSS inside Capsule's owned closed root:
   native selector specificity, custom properties and
   `var()` fallbacks, math functions, gradients, modern typography and layout,
