@@ -1,6 +1,7 @@
 import { Button } from '@kobalte/core/button';
 import * as AlertDialog from '@kobalte/core/alert-dialog';
 import * as Tabs from '@kobalte/core/tabs';
+import type { TOmnidrawToolIcon } from '@omnidraw/sdk/tool-icon';
 import type {
   TWidgetPublicFileEntry,
   TWidgetPublicFilePreview,
@@ -16,6 +17,10 @@ import {
   createSignal,
   type Component,
 } from 'solid-js';
+import {
+  ToolIconPicker,
+  toolIconValidationError,
+} from '../ToolIconPicker/ToolIconPicker';
 import { useWidgetCatalog } from './WidgetCatalogProvider';
 import { WidgetIcon } from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
@@ -53,8 +58,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [label, setLabel] = createSignal('');
   const [group, setGroup] = createSignal('');
   const [priority, setPriority] = createSignal('0');
-  const [iconKind, setIconKind] = createSignal<'none' | 'lucide' | 'custom'>('none');
-  const [iconValue, setIconValue] = createSignal('');
+  const [icon, setIcon] = createSignal<TOmnidrawToolIcon | null>(null);
   const [action, setAction] = createSignal<'save' | 'rebuild' | 'metadata' | 'build' | null>(null);
   const [actionError, setActionError] = createSignal('');
   const [deletionPlan, setDeletionPlan] = createSignal<TWidgetPublicDeletionPlan | null>(null);
@@ -98,16 +102,11 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setLabel(config.tool.label);
     setGroup(config.tool.group ?? '');
     setPriority(String(config.tool.priority));
-    if (config.tool.icon?.lucidIcon) {
-      setIconKind('lucide');
-      setIconValue(config.tool.icon.lucidIcon);
-    } else if (config.tool.icon?.svgIcon) {
-      setIconKind('custom');
-      setIconValue(config.tool.icon.svgIcon);
-    } else {
-      setIconKind('none');
-      setIconValue('');
-    }
+    setIcon(config.tool.icon?.svgIcon !== undefined
+      ? { svgIcon: config.tool.icon.svgIcon }
+      : config.tool.icon?.lucidIcon !== undefined
+        ? { lucidIcon: config.tool.icon.lucidIcon }
+        : null);
   });
 
   const loadFiles = async () => {
@@ -165,23 +164,18 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       : { tab, path: undefined });
   };
 
-  const configInput = () => {
-    const icon = iconKind() === 'none'
-      ? null
-      : iconKind() === 'lucide'
-        ? { lucidIcon: iconValue().trim() }
-        : { svgIcon: iconValue() };
-    return {
-      name: name().trim(),
-      description: description().trim(),
-      tool: {
-        label: label().trim(),
-        icon,
-        group: group().trim() || null,
-        priority: Number(priority()),
-      },
-    };
-  };
+  const iconError = createMemo(() => toolIconValidationError(icon()));
+
+  const configInput = () => ({
+    name: name().trim(),
+    description: description().trim(),
+    tool: {
+      label: label().trim(),
+      icon: icon(),
+      group: group().trim() || null,
+      priority: Number(priority()),
+    },
+  });
 
   const saveConfig = async () => {
     const selected = form();
@@ -190,6 +184,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       || props.source !== 'draft'
       || !props.name
       || !selected?.manifestDigestSha256
+      || iconError() !== null
     ) return;
     setAction('save');
     setActionError('');
@@ -487,16 +482,12 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                 <label class={styles.fullField}>Description<textarea class={`${styles.input} ${styles.textarea}`} value={description()} maxlength={2000} onInput={(event) => setDescription(event.currentTarget.value)} /></label>
                 <label>Group<input class={styles.input} value={group()} maxlength={100} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="utilities" onInput={(event) => setGroup(event.currentTarget.value)} /></label>
                 <label>Priority<input class={styles.input} type="number" min="-1000" max="1000" step="1" value={priority()} onInput={(event) => setPriority(event.currentTarget.value)} /></label>
-                <label>Icon type<select class={styles.input} value={iconKind()} onChange={(event) => {
-                  setIconKind(event.currentTarget.value as 'none' | 'lucide' | 'custom');
-                  setIconValue('');
-                }}><option value="none">None</option><option value="lucide">Lucide name</option><option value="custom">SVG or one grapheme</option></select></label>
-                <label>Icon value<input class={styles.input} value={iconValue()} maxlength={16384} disabled={iconKind() === 'none'} onInput={(event) => setIconValue(event.currentTarget.value)} /></label>
+                <div><ToolIconPicker value={icon()} onChange={setIcon} /></div>
                 <div class={`${styles.formActions} ${styles.fullField}`}>
-                  <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null} onClick={() => void saveConfig()}>
+                  <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null || iconError() !== null} onClick={() => void saveConfig()}>
                     {action() === 'save' ? 'Saving draft…' : 'Save draft'}
                   </Button>
-                  <Button class={styles.button} disabled={action() !== null || configDirty()} onClick={() => void rebuild()}>
+                  <Button class={styles.button} disabled={action() !== null || configDirty() || iconError() !== null} onClick={() => void rebuild()}>
                     {action() === 'rebuild' ? 'Rebuilding…' : 'Rebuild'}
                   </Button>
                   <span class={styles.fieldHint}>Press Ctrl/⌘+S to save. The manifest digest prevents stale forms from overwriting external edits.</span>
