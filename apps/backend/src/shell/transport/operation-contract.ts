@@ -29,10 +29,6 @@ import {
   ResourceProgramError,
   type IResourceAuthority,
 } from '../../core/resources/service.resources';
-import { fxWidgetStateEvents } from '../../core/widget-state/fx.events';
-import { fxGetWidgetState } from '../../core/widget-state/fx.get';
-import { txChangeWidgetState } from '../../core/widget-state/tx.change';
-import { WidgetStateAuthority, type IWidgetStateAuthority } from '../../core/widget-state/service.widget-state';
 import type { TApiContext } from '../api/context';
 import { handlers } from '../api/handlers';
 import {
@@ -73,7 +69,6 @@ export type TPrivateOperationRuntime = Readonly<{
   events: IEventAuthority;
   functions: IFunctionAuthority;
   resources: IResourceAuthority;
-  widgetState: IWidgetStateAuthority;
 }>;
 
 type TRequestCoreAdapter = (
@@ -91,7 +86,7 @@ type TIdempotencyMetadata = Readonly<{
 }>;
 
 export type TCursorMetadata = Readonly<{
-  inputKey: 'afterSequence' | 'afterRevision' | 'afterGeneration' | 'afterVersion';
+  inputKey: 'afterSequence' | 'afterRevision' | 'afterGeneration';
 }>;
 
 type TPrivateOperationBase = Readonly<{
@@ -191,22 +186,6 @@ const requestCoreAdapters = Object.freeze({
   'resource.resources.create': requestAdapter(handlers.resource.resources.create, (input, runtime) => (
     txCreateResource(input).pipe(Effect.provideService(ResourceAuthority, runtime.resources))
   )),
-  'widget.runtime.state.get': requestAdapter(handlers.widget.runtime.state.get, (input, runtime) => (
-    fxGetWidgetState({ identity: input }).pipe(
-      Effect.provideService(WidgetStateAuthority, runtime.widgetState),
-    )
-  )),
-  'widget.runtime.state.change': requestAdapter(handlers.widget.runtime.state.change, (input, runtime) => (
-    txChangeWidgetState({
-      identity: {
-        canvasId: input.canvasId,
-        elementId: input.elementId,
-        widgetInstanceId: input.widgetInstanceId,
-      },
-      expectedVersion: input.expectedVersion,
-      state: input.state,
-    }).pipe(Effect.provideService(WidgetStateAuthority, runtime.widgetState))
-  )),
 } satisfies Partial<Record<TPrivateRequestPath, TRequestCoreAdapter>>);
 
 const sequenceEvent = <Event>(record: Readonly<{ sequence: number; event: Event }>): Event & { sequence: number } => ({
@@ -236,16 +215,6 @@ const streamCoreAdapters = Object.freeze({
       Effect.map((events) => events.pipe(Stream.map(sequenceEvent))),
     )
   )),
-  'widget.runtime.state.events': streamAdapter(handlers.widget.runtime.state.events, (input, runtime) => (
-    fxWidgetStateEvents({
-      identity: {
-        canvasId: input.canvasId,
-        elementId: input.elementId,
-        widgetInstanceId: input.widgetInstanceId,
-      },
-      ...(input.afterVersion === undefined ? {} : { afterVersion: input.afterVersion }),
-    }).pipe(Effect.provideService(WidgetStateAuthority, runtime.widgetState))
-  )),
 } satisfies Partial<Record<TPrivateStreamPath, TStreamCoreAdapter>>);
 
 const idempotencyByPath = Object.freeze({
@@ -260,7 +229,6 @@ const cursorByPath = Object.freeze({
   'db.events': Object.freeze({ inputKey: 'afterSequence' }),
   'notification.events': Object.freeze({ inputKey: 'afterSequence' }),
   'widget.catalog.events': Object.freeze({ inputKey: 'afterGeneration' }),
-  'widget.runtime.state.events': Object.freeze({ inputKey: 'afterVersion' }),
 } satisfies Record<TPrivateStreamPath, TCursorMetadata>);
 
 function procedureEntries(

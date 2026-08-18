@@ -24,11 +24,6 @@ import {
 import { ResourceError, toSafeResourceError } from '../../core/resources/ResourceError';
 import type { TResourceDescriptor, TResourceErrorCode } from '../../core/resources/types';
 import {
-  WidgetStateAuthority,
-  WidgetStateProgramError,
-  type IWidgetStateAuthority,
-} from '../../core/widget-state/service.widget-state';
-import {
   WidgetAuthority,
   WidgetProgramError,
   type IWidgetAuthority,
@@ -39,7 +34,6 @@ import {
   LiveFunctionInvocation,
   LiveResource,
   LiveWidgetCatalog,
-  LiveWidgetState,
 } from './service.live-mechanics';
 
 function messageOf(error: unknown, fallback: string): string {
@@ -222,47 +216,6 @@ export const layerFunctionAuthorityLive = Layer.effect(
   Effect.map(LiveFunctionInvocation, functionAuthorityFromLive),
 );
 
-function stateFailure(error: unknown): WidgetStateProgramError {
-  if (error instanceof WidgetStateProgramError) return error;
-  return new WidgetStateProgramError(
-    'WIDGET_STATE_UNAVAILABLE',
-    messageOf(error, 'Widget state authority is unavailable.'),
-    {},
-    { cause: error },
-  );
-}
-
-export function widgetStateAuthorityFromLive(
-  state: typeof LiveWidgetState.Service,
-): IWidgetStateAuthority {
-  return WidgetStateAuthority.of({
-    get: (request) => Effect.tryPromise({
-      try: () => state.get(request),
-      catch: stateFailure,
-    }),
-    change: (request) => Effect.tryPromise({
-      try: () => state.change(request),
-      catch: stateFailure,
-    }),
-    events: (request) => Effect.tryPromise({
-      try: () => state.subscribe(request),
-      catch: stateFailure,
-    }).pipe(Effect.flatMap((result) => result.status === 'subscribed'
-      ? Effect.succeed(Stream.fromAsyncIterable(result.events, stateFailure))
-      : Effect.fail(new WidgetStateProgramError(
-        result.status === 'capacity-unavailable'
-          ? 'WIDGET_STATE_CAPACITY_UNAVAILABLE'
-          : 'WIDGET_STATE_UNAVAILABLE',
-        'Widget state subscription is unavailable.',
-      )))),
-  });
-}
-
-export const layerWidgetStateAuthorityLive = Layer.effect(
-  WidgetStateAuthority,
-  Effect.map(LiveWidgetState, widgetStateAuthorityFromLive),
-);
-
 function widgetFailure(error: unknown): WidgetProgramError {
   if (error instanceof WidgetProgramError) return error;
   return new WidgetProgramError(
@@ -388,6 +341,5 @@ export const layerSemanticAuthoritiesLive = Layer.mergeAll(
   layerEventAuthorityLive,
   layerResourceAuthorityLive,
   layerFunctionAuthorityLive,
-  layerWidgetStateAuthorityLive,
   layerWidgetAuthorityLive,
 );

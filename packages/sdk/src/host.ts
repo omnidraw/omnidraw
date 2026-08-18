@@ -6,7 +6,6 @@ export type {
   IWidgetFunctionHostPort,
   IWidgetHostBridge,
   IWidgetResourceHostPort,
-  IWidgetStateHostPort,
   IWidgetOutputHostPort,
   TWidgetMount,
   TWidgetBrowserHostOptions,

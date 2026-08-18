@@ -3,7 +3,6 @@ import type {
   IWidgetBrowserMount,
   IWidgetFunctionHostPort,
   IWidgetOutputHostPort,
-  IWidgetStateHostPort,
   TWidgetBrowserArtifact,
   TWidgetServerFunctionDescriptor,
   TWidgetHostDiagnostic,
@@ -98,7 +97,6 @@ function functionPort(
 }
 
 export class FrontendWidgetRuntime {
-  readonly #state: IWidgetStateHostPort;
   readonly #output: IWidgetOutputHostPort;
   readonly #rpc: FrontendRpcConnection;
   readonly #decodeBase64: (value: string) => string;
@@ -110,10 +108,8 @@ export class FrontendWidgetRuntime {
     createId(): string;
     decodeBase64(value: string): string;
     digestSha256(bytes: Uint8Array): Promise<string>;
-    state: IWidgetStateHostPort;
     output: IWidgetOutputHostPort;
   }>) {
-    this.#state = options.state;
     this.#output = options.output;
     this.#rpc = options.rpc;
     this.#decodeBase64 = options.decodeBase64;
@@ -154,7 +150,6 @@ export class FrontendWidgetRuntime {
           request.subject,
           response.identity?.catalogGeneration,
         ),
-        state: this.#state,
         output: this.#output,
         signal: request.signal,
         onDiagnostic: request.onDiagnostic,

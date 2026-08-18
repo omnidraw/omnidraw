@@ -16,7 +16,6 @@
       "@omnidraw/sdk/host": ["./src/host.ts"],
       "@omnidraw/sdk/resource": ["./src/resource.ts"],
       "@omnidraw/sdk/function": ["./src/function.ts"],
-      "@omnidraw/sdk/state": ["./src/state.ts"],
       "@omnidraw/sdk/tool-icon": ["./src/tool-icon.ts"],
       "@omnidraw/sdk/conformance": ["./src/conformance.ts"],
       "@omnidraw/sdk/widget": ["./src/widget.ts"],

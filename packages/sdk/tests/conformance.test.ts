@@ -52,7 +52,7 @@ describe('@omnidraw/sdk/conformance', () => {
     )).toBe(
       WIDGET_SDK_CONFORMANCE_VECTORS.find(({ name }) => name === 'canonical-executable-manifest')?.expected,
     );
-    expect(WIDGET_SDK_CONFORMANCE_TRANSCRIPT.state.map(({ version }) => version)).toEqual([1, 2]);
+    expect(WIDGET_SDK_CONFORMANCE_TRANSCRIPT.lifecycle.map(({ generation }) => generation)).toEqual([1, 1, 2]);
     expect(WIDGET_SDK_CONFORMANCE_FIXTURE.files[0]?.text).not.toMatch(/react|three|capsule/i);
   });
 

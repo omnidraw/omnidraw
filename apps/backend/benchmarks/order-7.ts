@@ -8,9 +8,6 @@ import {
 } from '@omnidraw/canvas-contract';
 import { fnReduceCanvasCommand } from '../src/core/canvas/fn.reduce-command';
 import { fnCanonicalJson } from '../src/core/fn.canonical-json';
-import {
-  fnTransitionWidgetStateMutationLedger,
-} from '../src/core/widget-state/fn.mutation-rate';
 import { CanvasItemStoreTurso } from '../src/shell/database/CanvasItemStoreTurso';
 import { DbServiceTurso } from '../src/shell/database/DbServiceTurso/DbServiceTurso';
 import { runDatabaseWrite } from '../src/shell/database/run-database-transaction';
@@ -232,44 +229,6 @@ async function main(): Promise<void> {
       let checksum = 0;
       for (let index = 0; index < 100; index += 1) checksum ^= fnCanonicalJson(canonical).length;
       return checksum;
-    }));
-
-    results.push(await benchmark('widget-state-rate-limiter', {
-      workload: '2,048 active ledgers; 1,000 admissions against one hot scope',
-      samples: 9,
-      warmups: 2,
-      operationsPerSample: 1_000,
-    }, () => {
-      const ledgers = new Map<string, {
-        lastSeenAt: number;
-        timestamps: number[];
-      }>();
-      for (let index = 0; index < 2_048; index += 1) {
-        ledgers.set(`scope-${index}`, {
-          lastSeenAt: 0,
-          timestamps: [0],
-        });
-      }
-      let allowed = 0;
-      for (let index = 0; index < 1_000; index += 1) {
-        const scope = 'scope-1024';
-        const transition = fnTransitionWidgetStateMutationLedger({
-          ledger: ledgers.get(scope),
-          now: index % 999,
-          limit: 2_000,
-          windowMs: 1_000,
-        });
-        const ledger = ledgers.get(scope)!;
-        if (transition.firstRetained > 0) {
-          ledger.timestamps.splice(0, transition.firstRetained);
-        }
-        ledger.lastSeenAt = transition.lastSeenAt;
-        if (transition.appendTimestamp !== undefined) {
-          ledger.timestamps.push(transition.appendTimestamp);
-        }
-        if (transition.admission.allowed) allowed += 1;
-      }
-      return allowed ^ ledgers.size;
     }));
 
     results.push(await benchmark('serialized-database-operations', {

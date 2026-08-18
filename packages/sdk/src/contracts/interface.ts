@@ -31,8 +31,6 @@ import type {
   TWidgetPortableArtifact,
   TWidgetResourceCall,
   TWidgetSerializableJsonValue,
-  TWidgetStateEvent,
-  TWidgetStateSnapshot,
   TWidgetViewport,
 } from './types';
 
@@ -103,26 +101,6 @@ export interface IWidgetServerFunctionDescriptorExtractor {
   ): Promise<readonly TWidgetServerFunctionDescriptor[]>;
 }
 
-/** Product-neutral state authority implemented separately by OSS and managed. */
-export interface IWidgetStateHostPort {
-  get<TValue extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue>(
-    subject: TWidgetFunctionInvocation['subject'],
-    options?: Readonly<{ signal?: AbortSignal }>,
-  ): Promise<TWidgetStateSnapshot<TValue>>;
-  change<TValue extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue>(
-    subject: TWidgetFunctionInvocation['subject'],
-    expectedVersion: number,
-    value: TValue,
-    options?: Readonly<{ signal?: AbortSignal }>,
-  ): Promise<TWidgetStateSnapshot<TValue>>;
-  events<TValue extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue>(
-    subject: TWidgetFunctionInvocation['subject'],
-    afterVersion: number,
-    options?: Readonly<{ signal?: AbortSignal }>,
-  ): AsyncIterable<TWidgetStateEvent<TValue>>;
-  dispose?(): void | Promise<void>;
-}
-
 export interface IWidgetResourceHostPort {
   call<TOutput extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue>(
     request: TWidgetResourceCall,
@@ -156,7 +134,6 @@ export interface IWidgetHostBridge {
   }>): Promise<TWidgetMount>;
   functions: IWidgetFunctionHostPort;
   resources: IWidgetResourceHostPort;
-  state: IWidgetStateHostPort;
   dispose(): Promise<void>;
 }
 
@@ -190,7 +167,6 @@ export type TWidgetBrowserMountRequest = Readonly<{
   props?: import('./types').TWidgetProps;
   theme: import('./types').TWidgetTheme;
   functions?: IWidgetFunctionHostPort;
-  state?: IWidgetStateHostPort;
   output?: IWidgetOutputHostPort;
   restoreSnapshot?: Uint8Array;
   signal?: AbortSignal;

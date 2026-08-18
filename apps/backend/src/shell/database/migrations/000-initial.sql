@@ -154,34 +154,6 @@ CREATE TABLE canvas_items (
   )
 ) STRICT;
 
-CREATE TABLE widget_instance_states (
-  canvas_id TEXT NOT NULL,
-  element_id TEXT NOT NULL,
-  instance_id TEXT NOT NULL,
-  version INTEGER NOT NULL DEFAULT 1,
-  state_json JSONB NOT NULL,
-  created_at_sec TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at_sec TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-  PRIMARY KEY (canvas_id, element_id),
-  UNIQUE (instance_id),
-  FOREIGN KEY (canvas_id, element_id)
-    REFERENCES canvas_items (canvas_id, id) ON DELETE CASCADE,
-  CHECK (version >= 1),
-  CHECK (json_type(state_json, '$') IS NOT NULL),
-  CHECK (
-    length(CAST(created_at_sec AS TEXT)) = 19
-    AND CAST(created_at_sec AS TEXT) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'
-    AND datetime(created_at_sec) = CAST(created_at_sec AS TEXT)
-  ),
-  CHECK (
-    length(CAST(updated_at_sec AS TEXT)) = 19
-    AND CAST(updated_at_sec AS TEXT) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'
-    AND datetime(updated_at_sec) = CAST(updated_at_sec AS TEXT)
-  ),
-  CHECK (updated_at_sec >= created_at_sec)
-) STRICT;
-
 CREATE TABLE resource_catalog (
   id TEXT PRIMARY KEY NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('kv', 'secretStore', 'db')),

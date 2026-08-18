@@ -22,9 +22,6 @@ import {
   ResourceAuthority,
 } from '../../core/resources/service.resources';
 import {
-  WidgetStateAuthority,
-} from '../../core/widget-state/service.widget-state';
-import {
   LiveAgent,
   LiveCanvas,
   LiveDatabase,
@@ -37,7 +34,6 @@ import {
   LiveWidgetHostConfiguration,
   LiveWidgetLoadAdmission,
   LiveWidgetPreview,
-  LiveWidgetState,
 } from '../runtime/service.live-mechanics';
 import { PrivateRpcError } from './rpc-contract';
 import { RpcDispatcher } from './service.rpc-dispatcher';
@@ -97,7 +93,6 @@ export const layerLiveRpcDispatcher = Layer.effect(
     const widgetPreview = yield* LiveWidgetPreview;
     const widgetCapsuleHostConfiguration = yield* LiveWidgetHostConfiguration;
     const widgetRuntimeLoadAdmission = yield* LiveWidgetLoadAdmission;
-    const widgetState = yield* LiveWidgetState;
     const canvasAuthority = yield* CanvasAuthority;
     const canvasDeletionStore = yield* CanvasDeletionStore;
     const canvasChatLifecycle = yield* CanvasChatLifecycle;
@@ -105,7 +100,6 @@ export const layerLiveRpcDispatcher = Layer.effect(
     const eventAuthority = yield* EventAuthority;
     const functionAuthority = yield* FunctionAuthority;
     const resourceAuthority = yield* ResourceAuthority;
-    const widgetStateAuthority = yield* WidgetStateAuthority;
     const context: TApiContext = {
       agent,
       canvas,
@@ -119,7 +113,6 @@ export const layerLiveRpcDispatcher = Layer.effect(
       widgetPreview,
       widgetCapsuleHostConfiguration,
       widgetRuntimeLoadAdmission,
-      widgetState,
     };
     const operationRuntime: TPrivateOperationRuntime = {
       context,
@@ -130,7 +123,6 @@ export const layerLiveRpcDispatcher = Layer.effect(
       events: eventAuthority,
       functions: functionAuthority,
       resources: resourceAuthority,
-      widgetState: widgetStateAuthority,
     };
 
     return RpcDispatcher.of({

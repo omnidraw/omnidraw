@@ -36,12 +36,7 @@ import { CanvasItemStoreTurso } from '#backend/shell/database/CanvasItemStoreTur
 import { DbServiceTurso } from '#backend/shell/database/DbServiceTurso/DbServiceTurso';
 import { Database } from '#backend/shell/database/DbServiceTurso/turso-native';
 import { ResourceControlStoreTurso } from '#backend/shell/database/ResourceControlStoreTurso';
-import { WidgetInstanceStateStoreTurso } from '#backend/shell/database/WidgetInstanceStateStoreTurso';
 import { EventPublisherService } from '#backend/shell/events/EventPublisherService';
-import {
-  WidgetStateService,
-  type IWidgetStateService,
-} from '#backend/shell/widget-state';
 import { mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
@@ -135,7 +130,6 @@ import {
   LiveWidgetHostConfiguration,
   LiveWidgetLoadAdmission,
   LiveWidgetPreview,
-  LiveWidgetState,
   LiveWidgetScreenshotLease,
 } from './service.live-mechanics';
 
@@ -943,16 +937,11 @@ export function layerLiveMechanics(args: Readonly<{
     resourceService: createAgentResourceService(resourceService),
     bashCapability: agentBashCapability,
   });
-  const widgetStateService = new WidgetStateService(
-    new WidgetInstanceStateStoreTurso(dbService.db),
-    { now: Date.now },
-  );
   yield* Effect.acquireRelease(
     Effect.promise(() => dbService.start()).pipe(Effect.as(dbService)),
     () => Effect.promise(() => dbService.stop()),
   );
   yield* Effect.addFinalizer(() => Effect.promise(() => canvasService.stop()));
-  yield* Effect.addFinalizer(() => Effect.sync(() => widgetStateService.stop()));
   yield* Effect.acquireRelease(
     Effect.promise(() => widgetCatalog.start()).pipe(Effect.as(widgetCatalog)),
     () => Effect.promise(() => widgetCatalog.stop()),
@@ -988,7 +977,6 @@ export function layerLiveMechanics(args: Readonly<{
     Context.add(LiveWidgetHostConfiguration, widgetCapsuleHostConfiguration),
     Context.add(LiveWidgetLoadAdmission, widgetRuntimeLoadAdmission),
     Context.add(LiveWidgetPreview, widgetPreview),
-    Context.add(LiveWidgetState, widgetStateService),
     Context.add(LiveWidgetScreenshotLease, widgetScreenshotLease),
   );
   }));

@@ -64,7 +64,6 @@ export const EXPECTED_APPLICATION_TABLES = Object.freeze([
   'resource_encryption_keys',
   'resource_placements',
   'schema_migrations',
-  'widget_instance_states',
 ] as const);
 
 export const EXPECTED_APPLICATION_TABLE_COUNT = EXPECTED_APPLICATION_TABLES.length;
@@ -389,27 +388,6 @@ export const EXPECTED_BASELINE_SCHEMA = Object.freeze({
     unique: [['name']],
     foreignKeys: [],
   },
-  widget_instance_states: {
-    columns: [
-      required('canvas_id', 'TEXT', 1),
-      required('element_id', 'TEXT', 2),
-      required('instance_id'),
-      required('version', 'INTEGER'),
-      required('state_json', 'JSONB'),
-      required('created_at_sec', 'TIMESTAMP'),
-      required('updated_at_sec', 'TIMESTAMP'),
-    ],
-    primaryKey: ['canvas_id', 'element_id'],
-    unique: [['instance_id']],
-    foreignKeys: [
-      {
-        columns: ['canvas_id', 'element_id'],
-        referencesTable: 'canvas_items',
-        referencesColumns: ['canvas_id', 'id'],
-        onDelete: 'CASCADE',
-      },
-    ],
-  },
 } satisfies TExpectedSchema);
 
 export const EXPECTED_INDEXES = Object.freeze({
@@ -471,7 +449,7 @@ export const EXPECTED_INDEXES = Object.freeze({
 
 export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
   Object.freeze({
-    fingerprintSha256: 'd0c52dcf3196b531b024b9d4e1ccc941507a76efc2ca3b9517f69dfc4163c580',
+    fingerprintSha256: 'b9d47c7f8e6e1c3dedf8af872d8c217e31001d6e76f4364e9750894553028537',
     domains: EXPECTED_DOMAINS,
     indexes: EXPECTED_INDEXES,
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,

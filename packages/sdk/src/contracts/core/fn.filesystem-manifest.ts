@@ -119,7 +119,6 @@ export function fnNormalizeWidgetManifestV1(manifest: TWidgetManifestV1): TWidge
       ...(manifest.ui.state === undefined
         ? {}
         : { state: {
-            collaborative: manifest.ui.state.collaborative,
             localStore: manifest.ui.state.localStore,
           } }),
       ...(manifest.ui.parkability === undefined
@@ -192,7 +191,6 @@ export function fnNormalizeWidgetExecutableProjection(
       ...(projection.ui.state === undefined
         ? {}
         : { state: {
-            collaborative: projection.ui.state.collaborative,
             localStore: projection.ui.state.localStore,
           } }),
       ...(projection.ui.parkability === undefined

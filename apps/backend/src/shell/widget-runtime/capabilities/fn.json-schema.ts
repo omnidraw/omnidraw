@@ -3,7 +3,6 @@ import type {
   CapsuleSchemaDocument,
   CapsuleSchemaNode,
 } from '@omnidraw/capsule/schema';
-import { fnOmnidrawBoundedJsonValueSchema } from './fn.bounded-json-schema';
 
 type TJsonRecord = Readonly<Record<string, unknown>>;
 type TSchemaState = { nodes: number };
@@ -346,35 +345,4 @@ export function fnJsonSchemaToCapsuleSchemaDocument(value: unknown): CapsuleSche
 /** Deliberately unconstrained schema for bounded guest-local ephemeral values. */
 export function fnOmnidrawAnySchemaDocument(): CapsuleSchemaDocument {
   return { format: 'capsule-schema-v1', root: { type: 'any' } };
-}
-
-export function fnOmnidrawNullSchemaDocument(): CapsuleSchemaDocument {
-  return { format: 'capsule-schema-v1', root: { type: 'null' } };
-}
-
-export function fnOmnidrawCollaborativeChangeSchemaDocument(): CapsuleSchemaDocument {
-  return {
-    format: 'capsule-schema-v1',
-    root: {
-      type: 'object',
-      properties: { value: fnOmnidrawBoundedJsonValueSchema() },
-      required: ['value'],
-      additionalProperties: false,
-    },
-  };
-}
-
-export function fnOmnidrawCollaborativeSnapshotSchemaDocument(): CapsuleSchemaDocument {
-  return {
-    format: 'capsule-schema-v1',
-    root: {
-      type: 'object',
-      properties: {
-        version: { type: 'number', integer: true, minimum: 1 },
-        value: fnOmnidrawBoundedJsonValueSchema(),
-      },
-      required: ['value', 'version'],
-      additionalProperties: false,
-    },
-  };
 }

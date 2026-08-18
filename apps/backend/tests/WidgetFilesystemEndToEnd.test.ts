@@ -29,10 +29,6 @@ import {
   CanvasItemStoreTurso,
 } from '#backend/shell/database/CanvasItemStoreTurso';
 import {
-  WidgetInstanceStateStoreTurso,
-} from '#backend/shell/database/WidgetInstanceStateStoreTurso';
-import { WidgetStateService } from '#backend/shell/widget-state';
-import {
   fnResolveOmnidrawHome,
 } from '#backend/shell/config/fn.resolve-omnidraw-home';
 import {
@@ -40,12 +36,6 @@ import {
 } from '#backend/shell/config/ensure-omnidraw-home';
 import { apiWidgetPlacementResolve } from '../src/shell/api/widget/api.placement-resolve';
 import { apiWidgetRuntimeLoad } from '../src/shell/api/widget/api.runtime-load-widget';
-import {
-  apiRuntimeWidgetStateChange,
-} from '../src/shell/api/widget/api.runtime-widget-state-change';
-import {
-  apiRuntimeWidgetStateGet,
-} from '../src/shell/api/widget/api.runtime-widget-state-get';
 import { WidgetFilesystemRuntimeCatalog } from '../src/shell/widget/WidgetFilesystemRuntimeCatalog';
 
 const temporaryRoots: string[] = [];
@@ -165,7 +155,7 @@ function manifest(): TWidgetManifestV1 {
       runtime: 'capsule',
       entry: 'ui/main.ts',
       apis: ['DOM'],
-      state: { collaborative: true, localStore: 'none' },
+      state: { localStore: 'none' },
     },
   };
 }
@@ -254,7 +244,7 @@ afterEach(async () => {
 });
 
 describe('clean-home filesystem widget integration', () => {
-  test('loads exact mount inputs and preserves state without turning the database into catalog authority', async () => {
+  test('loads exact mount inputs without turning the database into catalog authority', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omnidraw-widget-e2e-'));
     temporaryRoots.push(root);
     const home = fnResolveOmnidrawHome({ join, resolve }, {
@@ -277,14 +267,9 @@ describe('clean-home filesystem widget integration', () => {
     const canvas = new CanvasService({
       store: new CanvasItemStoreTurso(database),
     });
-    const widgetState = new WidgetStateService(
-      new WidgetInstanceStateStoreTurso(database),
-      { now: () => 0 },
-    );
     const context = {
       canvas,
       widgetCatalog: catalog,
-      widgetState,
       widgetCapsuleHostConfiguration: { read: async () => ({}) },
       widgetRuntimeLoadAdmission: runtimeAdmission(),
     } as never;
@@ -329,32 +314,8 @@ describe('clean-home filesystem widget integration', () => {
       `sha256:${loaded.artifact.digestSha256}`,
     );
     expect(mountBytes.toString('utf8')).toBe('signed-counter-v1');
-    expect(loaded.manifest.ui.state).toEqual({
-      collaborative: true,
-      localStore: 'none',
-    });
+    expect(loaded.manifest.ui.state).toEqual({ localStore: 'none' });
 
-    const getState = apiRuntimeWidgetStateGet.callable({ context });
-    const changeState = apiRuntimeWidgetStateChange.callable({ context });
-    const stateIdentity = {
-      canvasId: CANVAS_ID,
-      elementId: ELEMENT_ID,
-      widgetInstanceId: INSTANCE_ID,
-    };
-    expect(await getState(stateIdentity)).toMatchObject({
-      status: 'found',
-      snapshot: { version: 1, state: null },
-    });
-    expect(await changeState({
-      ...stateIdentity,
-      expectedVersion: 1,
-      state: { count: 1 },
-    })).toMatchObject({
-      status: 'changed',
-      snapshot: { version: 2, state: { count: 1 } },
-    });
-
-    widgetState.dispose();
     await canvas.stop();
     await database.close();
     openDatabases.splice(openDatabases.indexOf(database), 1);
@@ -365,35 +326,19 @@ describe('clean-home filesystem widget integration', () => {
     const reopenedCanvas = new CanvasService({
       store: new CanvasItemStoreTurso(reopened),
     });
-    const reopenedState = new WidgetStateService(
-      new WidgetInstanceStateStoreTurso(reopened),
-      { now: () => 0 },
-    );
     const reopenedContext = {
       ...context,
       canvas: reopenedCanvas,
-      widgetState: reopenedState,
     } as never;
-    const getReopenedState = apiRuntimeWidgetStateGet.callable({
+    const loadReopenedRuntime = apiWidgetRuntimeLoad.callable({
       context: reopenedContext,
     });
-    expect(await getReopenedState(stateIdentity)).toMatchObject({
-      status: 'found',
-      snapshot: { version: 2, state: { count: 1 } },
-    });
+    expect(await loadReopenedRuntime(target)).toMatchObject({ identity: target });
 
     await rm(publishedPath, { recursive: true, force: true });
     await catalog.refresh();
     expect(catalog.publishedReferences()).toEqual([]);
-    const loadReopenedRuntime = apiWidgetRuntimeLoad.callable({
-      context: reopenedContext,
-    });
     await expect(loadReopenedRuntime(target)).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    expect(await getReopenedState(stateIdentity)).toMatchObject({
-      status: 'found',
-      snapshot: { version: 2, state: { count: 1 } },
-    });
-    reopenedState.dispose();
     await reopenedCanvas.stop();
   });
 });

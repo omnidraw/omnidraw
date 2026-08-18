@@ -67,11 +67,6 @@ export class LiveWidgetLoadAdmission extends Context.Service<
   TApiContext['widgetRuntimeLoadAdmission']
 >()('omnidraw/backend/LiveWidgetLoadAdmission') {}
 
-export class LiveWidgetState extends Context.Service<
-  LiveWidgetState,
-  TApiContext['widgetState']
->()('omnidraw/backend/LiveWidgetState') {}
-
 export class LiveWidgetBuildGeneration extends Context.Service<
   LiveWidgetBuildGeneration,
   WidgetBuildGenerationService

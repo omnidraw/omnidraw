@@ -14,7 +14,6 @@ import type {
 import { showErrorToast, showSuccessToast, showToast } from "../../components/ui/Toast";
 import { fnWidgetHostTheme, fnWidgetPreviewTitleBarColor } from "@/core/widgets/fn.widget-host-theme";
 import { txRouteWidgetOutput } from "@/core/widgets/tx.route-widget-output";
-import { createWidgetCollaborativeStatePort } from "@/shell/widgets/widget-collaborative-state";
 import type { TFrontendRuntime } from "@/shell/runtime/frontend-runtime";
 import type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 import { FrontendWidgetRuntime } from "../widget-runtime";
@@ -251,7 +250,6 @@ export function createFrontendWidgetExtension(
           const digest = await application.ownerWindow.crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
           return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
         },
-        state: createWidgetCollaborativeStatePort(application.rpc),
         output: {
           notification(output: TWidgetNotificationOutput) {
             void application.runPromise(txRouteWidgetOutput({ output }));

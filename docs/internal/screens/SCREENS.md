@@ -10,7 +10,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
 | [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, fixed widget-frame actions/canvas maximize, AI chat/settings, accepted draft Preview/actions, manifest-bound resource failure/recovery/reload, direct no-picker widget placement |
-| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, resources, files, draft editing |
+| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
 
@@ -81,13 +81,13 @@ The widget route provides one tabbed workspace for published and draft widget de
 | ![Published Hacker News widget overview](assets/20-widget-published-overview.webp) | ![Read-only configuration for a published widget](assets/21-widget-published-config.webp) |
 | **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** Immutable published configuration with the edit-as-draft entry point. |
 
-The current inspector tabs are **Overview**, **Config**, **Functions**, **Collaborative State**, **Resources**, and **Files**. Published configuration and source are read from the exact published folder; draft configuration edits the mutable draft with digest-fenced saves.
+The current inspector tabs are **Overview**, **Config**, **Functions**, **Resources**, and **Files**. Published configuration and source are read from the exact published folder; draft configuration edits the mutable draft with digest-fenced saves.
 
 Draft publication offers two actions. **Publish metadata** atomically replaces
 only the published `omnidraw.json` and preserves every executable byte.
 **Build & publish** promotes only the current host-validated accepted
-generation; existing canvas instances retain geometry and
-instance state. Concrete resource configuration is shared by the published
+generation; existing canvas instances retain geometry and stable identity.
+Concrete resource configuration is shared by the published
 manifest, so a newly published ID is used by every instance on its next call.
 
 | Files | Draft config |

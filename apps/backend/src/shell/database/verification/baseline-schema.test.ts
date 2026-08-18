@@ -31,7 +31,6 @@ const EXPECTED_TABLE_NAMES = Object.freeze([
   'resource_encryption_keys',
   'resource_placements',
   'schema_migrations',
-  'widget_instance_states',
 ] as const);
 
 const FORBIDDEN_TABLE_NAMES = Object.freeze([
@@ -44,6 +43,7 @@ const FORBIDDEN_TABLE_NAMES = Object.freeze([
   'widget_revision_sources',
   'artifact_references',
   'widget_instances',
+  'widget_instance_states',
   'resource_bindings',
   'tool_groups',
   'agent_drafts',
@@ -210,15 +210,6 @@ const EXPECTED_COLUMNS: Readonly<Record<string, readonly TColumnTuple[]>> = Obje
     timestamp('applied_at_sec'),
     column('application_version', 'TEXT'),
   ],
-  widget_instance_states: [
-    column('canvas_id', 'TEXT', 1, 1),
-    column('element_id', 'TEXT', 1, 1),
-    column('instance_id', 'TEXT'),
-    column('version', 'INTEGER', 1, 0, 0, '1'),
-    column('state_json', 'JSONB'),
-    timestamp('created_at_sec'),
-    timestamp('updated_at_sec'),
-  ],
 });
 
 type TForeignKey = Readonly<{
@@ -263,9 +254,6 @@ const EXPECTED_FOREIGN_KEYS: Readonly<Record<string, readonly TForeignKey[]>> = 
     { columns: ['resource_id'], referencesTable: 'resource_catalog', referencesColumns: ['id'], onDelete: 'CASCADE' },
   ],
   schema_migrations: [],
-  widget_instance_states: [
-    { columns: ['canvas_id', 'element_id'], referencesTable: 'canvas_items', referencesColumns: ['canvas_id', 'id'], onDelete: 'CASCADE' },
-  ],
 });
 
 const EXPECTED_UNIQUE_KEYS: Readonly<Record<string, readonly (readonly string[])[]>> = Object.freeze({
@@ -282,7 +270,6 @@ const EXPECTED_UNIQUE_KEYS: Readonly<Record<string, readonly (readonly string[])
   resource_encryption_keys: [['resource_id']],
   resource_placements: [['relative_path']],
   schema_migrations: [['name']],
-  widget_instance_states: [['instance_id']],
 });
 
 const EXPECTED_PRIMARY_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
@@ -299,7 +286,6 @@ const EXPECTED_PRIMARY_KEYS: Readonly<Record<string, readonly string[]>> = Objec
   resource_encryption_keys: ['id'],
   resource_placements: ['resource_id'],
   schema_migrations: ['version'],
-  widget_instance_states: ['canvas_id', 'element_id'],
 });
 
 type TIndex = Readonly<{
@@ -349,7 +335,7 @@ const EXPECTED_DOMAINS = Object.freeze([
   },
 ] as const);
 
-const EXPECTED_FINGERPRINT_SHA256 = 'd0c52dcf3196b531b024b9d4e1ccc941507a76efc2ca3b9517f69dfc4163c580';
+const EXPECTED_FINGERPRINT_SHA256 = 'b9d47c7f8e6e1c3dedf8af872d8c217e31001d6e76f4364e9750894553028537';
 const temporaryRoots: string[] = [];
 const databases: Database[] = [];
 
@@ -430,7 +416,7 @@ describe('single-user 000 baseline schema', () => {
     expect(sql).not.toMatch(/\b(?:compatib|upgrade|copier|export_receipt|dual_write)\b/i);
   });
 
-  test('has exactly 14 independently pinned STRICT tables and no identity or deleted structure', async () => {
+  test('has exactly 13 independently pinned STRICT tables and no identity or deleted structure', async () => {
     const database = await openBaseline();
     const tableRows = await (await database.prepare('PRAGMA table_list')).all() as Array<{
       name: string;
@@ -447,17 +433,17 @@ describe('single-user 000 baseline schema', () => {
       ))
       .toSorted((left, right) => left.name.localeCompare(right.name));
 
-    expect(EXPECTED_TABLE_NAMES).toHaveLength(14);
+    expect(EXPECTED_TABLE_NAMES).toHaveLength(13);
     expect(applicationTables.map((row) => row.name)).toEqual([...EXPECTED_TABLE_NAMES]);
     expect(applicationTables.every((row) => row.strict === 1)).toBe(true);
-    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(14);
+    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(13);
     expect([...EXPECTED_APPLICATION_TABLES]).toEqual([...EXPECTED_TABLE_NAMES]);
 
     const columns = (await Promise.all(EXPECTED_TABLE_NAMES.map(async (table) => (
       (await (await database.prepare(`PRAGMA table_xinfo(${identifier(table)})`)).all() as Array<{ name: string }>)
         .map((row) => row.name)
     )))).flat();
-    expect(FORBIDDEN_TABLE_NAMES).toHaveLength(25);
+    expect(FORBIDDEN_TABLE_NAMES).toHaveLength(26);
     expect(EXPECTED_TABLE_NAMES.filter((name) => FORBIDDEN_TABLE_NAMES.includes(name as never))).toEqual([]);
     expect(columns).not.toContain('org_id');
     expect(columns).not.toContain('account_id');

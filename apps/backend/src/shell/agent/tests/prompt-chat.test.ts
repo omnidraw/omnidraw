@@ -69,6 +69,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`tx` may perform declared writes');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Draft Preview runs the same Capsule UI path');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`localStore` is `none` or `ephemeral`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('collaborative state');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('`localStore` is `none`, `ephemeral`, or `snapshot`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');

@@ -1,5 +1,4 @@
 import type { ICanvasService } from '#backend/shell/canvas/authority';
-import type { IWidgetStateService } from '#backend/shell/widget-state';
 import type {
   TWidgetCatalogSnapshot,
   TWidgetFilesystemManagementCapability,
@@ -189,7 +188,6 @@ type TWidgetApiContext = Readonly<{
   widgetCatalog: TWidgetRuntimeApiCapability;
   widgetPreview: TWidgetPreviewApiCapability;
   widgetAuthoring: IWidgetAuthoringVerification;
-  widgetState: IWidgetStateService;
   widgetCapsuleHostConfiguration: TWidgetHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;
 }>;

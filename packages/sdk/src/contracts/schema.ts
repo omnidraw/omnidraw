@@ -415,7 +415,7 @@ function ui(value: unknown, path: TSdkValidationPath): TWidgetManifestV1['ui'] {
   onlyKeys(input, ['runtime', 'entry', 'apis', 'budgets', 'state', 'parkability'], path);
   literal(input.runtime, 'capsule', [...path, 'runtime']);
   const stateInput = input.state === undefined ? undefined : record(input.state, [...path, 'state']);
-  if (stateInput !== undefined) onlyKeys(stateInput, ['collaborative', 'localStore'], [...path, 'state']);
+  if (stateInput !== undefined) onlyKeys(stateInput, ['localStore'], [...path, 'state']);
   const parkInput = input.parkability === undefined ? undefined : record(input.parkability, [...path, 'parkability']);
   if (parkInput !== undefined) onlyKeys(parkInput, ['enabled'], [...path, 'parkability']);
   return Object.freeze({
@@ -425,7 +425,6 @@ function ui(value: unknown, path: TSdkValidationPath): TWidgetManifestV1['ui'] {
     ...(input.budgets === undefined ? {} : { budgets: budgets(input.budgets, [...path, 'budgets']) }),
     ...(stateInput === undefined ? {} : {
       state: Object.freeze({
-        collaborative: booleanValue(stateInput.collaborative, [...path, 'state', 'collaborative']),
         localStore: literal(
           stateInput.localStore,
           stateInput.localStore === 'none' ? 'none' : 'ephemeral',

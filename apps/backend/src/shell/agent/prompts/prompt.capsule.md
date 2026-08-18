@@ -60,8 +60,8 @@ remote ESM endpoint, vendored minified runtime, or runtime package loader.
 - Import static CSS from UI source so Vite emits it into `dist/`. There is no
   runtime package installation or dynamic import.
 - Use `@omnidraw/sdk/widget` for host-observed props, theme, lifecycle,
-  output, bounded local state, collaborative state, and generated
-  server-function clients. Do not import `@omnidraw/capsule/guest` directly.
+  output, bounded mount-local state, and generated server-function clients.
+  Do not import `@omnidraw/capsule/guest` directly.
 - `getWidgetTheme()` returns the fixed safe semantic theme projection. Emit
   host UI only through
   `emitWidgetOutput({ type: "notification", tone: "info" | "success" | "error", message })`;

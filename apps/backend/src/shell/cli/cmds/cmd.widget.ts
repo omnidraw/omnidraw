@@ -87,7 +87,6 @@ type TInspectionResponse = Readonly<{
   canvasCorrelation: Readonly<{
     canvas: 'not_selected' | 'selected';
     visibleFrame: 'not_claimed';
-    durableInstanceState: 'not_selected' | 'selected_not_exercised';
   }>;
   result?: Readonly<{
     status: string;

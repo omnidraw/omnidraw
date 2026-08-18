@@ -64,7 +64,7 @@ Canvas owns complex asynchronous state and lifecycle, so it uses exact
 ### `@omnidraw/sdk`
 
 Is the only widget-authoring entrypoint. It owns the portable manifest,
-artifact, guest ABI, widget state/resource/function contracts, and host bridge.
+artifact, guest ABI, local-state/resource/function contracts, and host bridge.
 It encapsulates Capsule; widget source does not import Capsule or retired
 Omnidraw packages directly.
 
@@ -148,8 +148,7 @@ state from choosing observable order.
 `apps/frontend` keeps deterministic UI policy separate from browser and
 transport mechanics. The frontend owns product composition, navigation,
 sidebars, browser clients, and adapters for Canvas and AI Chat. It does not own
-durable Canvas or widget-state authority and does not run the backend DST
-world.
+durable Canvas authority and does not run the backend DST world.
 
 One frontend connection multiplexes private typed RPC calls and streams over a
 native WebSocket. Effect RPC owns physical connection retry. Domain adapters
@@ -165,9 +164,10 @@ add old-schema readers, data converters, dual reads, dual writes, compatibility
 tables, legacy fingerprints, or migration commands.
 
 Canvas persistence is one JSONB `canvas_items` row per authored Canvas node.
-The backend Canvas service is the only durable Canvas authority. The backend
-widget-state service is the only widget-instance state authority. Browser
-Canvas state is optimistic and reconciles with that authority.
+The backend Canvas service is the only durable Canvas authority. Widgets have
+no shared widget-instance state authority; Capsule local-store values are
+mount-local and ephemeral. Browser Canvas state is optimistic and reconciles
+with the Canvas authority.
 
 `CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"` for the redesigned clean-install
 format. The same literal does not make pre-refactor or unversioned rows

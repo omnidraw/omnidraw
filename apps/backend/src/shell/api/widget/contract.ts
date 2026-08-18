@@ -1,12 +1,5 @@
 import { eventIterator, pc } from '../procedure';
 import { ZDirectFunctionResult } from '../function/contract';
-import type {
-  TWidgetStateChangeResult,
-  TWidgetStateGetResult,
-  TWidgetStateJson,
-  TWidgetStateSubscriptionEvent,
-} from '#backend/shell/widget-state';
-import { fnAssertWidgetStateJson } from '#backend/core/widget-state';
 import {
   WIDGET_FRAME_MAX_HEIGHT,
   WIDGET_FRAME_MAX_WIDTH,
@@ -161,55 +154,14 @@ function decodedBase64ByteLength(value: string): number {
   return (value.length / 4) * 3 - padding;
 }
 
-export const ZWidgetStateIdentity = z.object({
+export const ZWidgetRuntimeIdentity = z.object({
   canvasId: ZIdentifier,
   elementId: ZIdentifier,
   widgetInstanceId: ZIdentifier,
-}).strict();
-
-export const ZWidgetRuntimeIdentity = ZWidgetStateIdentity.extend({
   widgetKey: ZWidgetKey,
 }).strict();
 
 export const ZWidgetRuntimeLoadInput = ZWidgetRuntimeIdentity;
-export const ZWidgetStateJson = z.custom<TWidgetStateJson>((value) => {
-  try {
-    fnAssertWidgetStateJson(value);
-    return true;
-  } catch {
-    return false;
-  }
-}, 'Expected bounded widget-state JSON.');
-
-const ZWidgetStateSnapshot = z.object({
-  identity: ZWidgetStateIdentity,
-  version: z.number().int().positive(),
-  state: ZWidgetStateJson,
-}).strict();
-
-const ZWidgetStateGetResult: z.ZodType<TWidgetStateGetResult> = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('found'), snapshot: ZWidgetStateSnapshot }).strict(),
-  z.object({ status: z.literal('unavailable') }).strict(),
-]);
-
-const ZWidgetStateChangeResult: z.ZodType<TWidgetStateChangeResult> = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('changed'), snapshot: ZWidgetStateSnapshot }).strict(),
-  z.object({ status: z.literal('conflict'), snapshot: ZWidgetStateSnapshot }).strict(),
-  z.object({
-    status: z.literal('rate-limited'),
-    retryAfterMs: z.number().int().nonnegative(),
-  }).strict(),
-  z.object({ status: z.literal('unavailable') }).strict(),
-]);
-
-const ZWidgetStateSubscriptionEvent: z.ZodType<TWidgetStateSubscriptionEvent> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('changed'), snapshot: ZWidgetStateSnapshot }).strict(),
-  z.object({
-    type: z.literal('snapshot'),
-    reason: z.enum(['initial', 'resync']),
-    snapshot: ZWidgetStateSnapshot,
-  }).strict(),
-]);
 
 export const ZWidgetBrowserManifest = ZWidgetManifestV1.transform((manifest) => {
   const { server: _server, ...browserManifest } = manifest;
@@ -547,7 +499,6 @@ const ZWidgetAuthoringInspection = z.object({
   canvasCorrelation: z.object({
     canvas: z.enum(['not_selected', 'selected']),
     visibleFrame: z.literal('not_claimed'),
-    durableInstanceState: z.enum(['not_selected', 'selected_not_exercised']),
   }).strict(),
   result: ZBoundedWidgetInspectResult.optional(),
   error: ZWidgetInspectionToolError.optional(),
@@ -671,23 +622,6 @@ const widgetContract = pc.router({
   runtime: pc.router({
     config: pc.output(ZWidgetCapsuleHostConfiguration),
     load: pc.input(ZWidgetRuntimeLoadInput).output(ZWidgetRuntimeLoadOutput),
-    state: pc.router({
-      get: pc
-        .input(ZWidgetStateIdentity)
-        .output(ZWidgetStateGetResult),
-      change: pc
-        .input(ZWidgetStateIdentity.extend({
-          expectedVersion: z.number().int().positive(),
-          state: ZWidgetStateJson,
-        }))
-        .output(ZWidgetStateChangeResult),
-      events: pc
-        .input(ZWidgetStateIdentity.extend({
-          afterVersion: z.number().int().nonnegative().optional(),
-        }))
-        .route({ method: 'GET' })
-        .output(eventIterator(ZWidgetStateSubscriptionEvent)),
-    }),
   }),
 });
 

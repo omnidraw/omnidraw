@@ -30,13 +30,12 @@ export type TWidgetDetailPageProps = {
   query: TWidgetDetailQueryPort;
 };
 
-type TTab = 'overview' | 'config' | 'functions' | 'collaborative-state' | 'resources' | 'files';
+type TTab = 'overview' | 'config' | 'functions' | 'resources' | 'files';
 
 const TABS = Object.freeze([
   { value: 'overview', label: 'Overview' },
   { value: 'config', label: 'Config' },
   { value: 'functions', label: 'Functions' },
-  { value: 'collaborative-state', label: 'Collaborative State' },
   { value: 'resources', label: 'Resources' },
   { value: 'files', label: 'Files' },
 ] satisfies readonly Readonly<{ value: TTab; label: string }>[]);
@@ -522,30 +521,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
               </dl>
             </article>}
           </For>
-        </section>
-      </div></Tabs.Content>
-
-      <Tabs.Content class={styles.content} value="collaborative-state"><div class={styles.contentInner}>
-        <section class={styles.panel}>
-          <h3>Instance-scoped collaborative state</h3>
-          <p class={styles.messageIntro}>Each placed widget instance owns centralized versioned JSON state scoped to its Canvas, element, and stable widget instance identity. Publication changes preserve that state.</p>
-          <dl class={styles.definitionList}>
-            <dt>Authority</dt><dd>Backend widget-state service</dd>
-            <dt>Identity</dt><dd><code>canvasId + elementId + widgetInstanceId</code></dd>
-            <dt>Lifecycle</dt><dd>Created lazily and changed through compare-and-swap updates.</dd>
-            <dt>Source manifest</dt><dd><code>{form()!.manifestDigestSha256 ?? 'Unavailable'}</code></dd>
-          </dl>
-        </section>
-        <section class={styles.panel}>
-          <h3>Published placement</h3>
-          <Show when={entry()!.placement} fallback={<p class={styles.muted}>No published placement descriptor is available for this widget.</p>}>
-            {(placement) => <dl class={styles.definitionList}>
-              <dt>Source</dt><dd>{placement().reference.source}</dd>
-              <dt>Widget key</dt><dd><code>{placement().reference.widgetKey}</code></dd>
-              <dt>Catalog generation</dt><dd>{placement().reference.catalogGeneration}</dd>
-              <dt>Frame</dt><dd>{placement().bounds.width} × {placement().bounds.height}</dd>
-            </dl>}
-          </Show>
         </section>
       </div></Tabs.Content>
 

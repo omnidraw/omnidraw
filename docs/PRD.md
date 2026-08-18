@@ -486,7 +486,7 @@ package APIs.
 The OSS transport replaces oRPC with modules from exact `effect@4.0.0-rc.108` and two explicit transport classes:
 
 - HTTP API for request/response endpoints, files, and binary media.
-- WebSocket-backed RPC for bidirectional typed procedures and streams such as Canvas events, commands, agent output, cancellation, approvals, notifications, and widget-state traffic.
+- WebSocket-backed RPC for bidirectional typed procedures and streams such as Canvas events, commands, agent output, cancellation, approvals, and notifications.
 
 WebSocket is the canonical browser streaming transport. SSE is not used. A split HTTP-command/SSE-event design is excluded because Omnidraw needs bidirectional cancellation and commands, multiplexed streams, connection-scoped lifecycle, and binary-capable framing.
 
@@ -507,7 +507,7 @@ The frontend shell maintains a monotonically increasing connection generation us
 
 - Canvas fetches an authoritative snapshot, records its revision, then subscribes from that revision before publishing the connection as ready.
 - Agent and chat clients query operation/session status and reopen output from the last acknowledged cursor.
-- Notifications, catalog events, database events, and widget-state streams resubscribe using their last acknowledged event identity or revision.
+- Notifications, catalog events, and database events resubscribe using their last acknowledged event identity or revision.
 - Commands and other mutations use stable idempotency keys. A caller may repeat a mutation after a lost acknowledgement only when its contract declares that key and the authority deduplicates it.
 - Non-idempotent or non-resumable calls fail visibly on disconnect and are never replayed automatically.
 - Cancellation and status operations use durable operation identifiers so they can be issued again after reconnect.
@@ -535,7 +535,6 @@ Requirements:
 | `packages/service-canvas` | Backend Canvas core and storage shell |
 | `packages/service-db` | Backend database shell |
 | `packages/service-agent` | Backend agent core and Pi/filesystem shell |
-| `packages/service-widget-state` | Backend widget-state domain |
 | `packages/service-event-publisher` | Backend transport/event shell |
 | `packages/service-kv` | Private backend key-value persistence domain |
 | `packages/runtime`, `packages/tapable` | Removed; replaced by explicit Effect services, Layers, and composition |

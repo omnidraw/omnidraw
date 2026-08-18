@@ -1,31 +1,29 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  ZWidgetRuntimeLoadInput,
-  ZWidgetStateIdentity,
-  widgetContract,
-} from './contract';
+import { ZWidgetRuntimeLoadInput, widgetContract } from './contract';
 
-describe('widget state API identity', () => {
-  test('accepts only the current canvas element and stable widget instance', () => {
+describe('widget runtime API identity', () => {
+  test('accepts only the current canvas element and stable widget identity', () => {
     const identity = {
       canvasId: 'canvas-a',
       elementId: 'element-a',
       widgetInstanceId: 'instance-a',
+      widgetKey: 'notes-board',
     };
 
-    expect(ZWidgetStateIdentity.parse(identity)).toEqual(identity);
-    expect(ZWidgetStateIdentity.safeParse({
+    expect(ZWidgetRuntimeLoadInput.parse(identity)).toEqual(identity);
+    expect(ZWidgetRuntimeLoadInput.safeParse({
       ...identity,
       definitionId: 'legacy-definition',
       revisionId: 'legacy-revision',
     }).success).toBe(false);
   });
 
-  test('keeps every state identity component within the public identifier bound', () => {
-    expect(ZWidgetStateIdentity.safeParse({
+  test('keeps every runtime identity component within its public bound', () => {
+    expect(ZWidgetRuntimeLoadInput.safeParse({
       canvasId: 'c'.repeat(201),
       elementId: 'element-a',
       widgetInstanceId: 'instance-a',
+      widgetKey: 'notes-board',
     }).success).toBe(false);
   });
 });

@@ -453,9 +453,6 @@ export class WidgetAuthoringVerificationService implements IWidgetAuthoringVerif
         canvasCorrelation: Object.freeze({
           canvas: args.canvasId === undefined ? 'not_selected' : 'selected',
           visibleFrame: 'not_claimed',
-          durableInstanceState: args.canvasId === undefined
-            ? 'not_selected'
-            : 'selected_not_exercised',
         }),
         error: response.toolError,
       });
@@ -503,9 +500,6 @@ export class WidgetAuthoringVerificationService implements IWidgetAuthoringVerif
       canvasCorrelation: Object.freeze({
         canvas: args.canvasId === undefined ? 'not_selected' : 'selected',
         visibleFrame: 'not_claimed',
-        durableInstanceState: args.canvasId === undefined
-          ? 'not_selected'
-          : 'selected_not_exercised',
       }),
       result: response.result,
       ...(screenshotLease === undefined ? {} : { screenshotLease }),

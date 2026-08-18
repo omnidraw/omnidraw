@@ -49,12 +49,12 @@ describe('private Effect RPC client/server contract parity', () => {
     expect(FRONTEND_STREAM_PATHS).toEqual(BACKEND_STREAM_PATHS)
     expect(new Set(BACKEND_REQUEST_PATHS).size).toBe(BACKEND_REQUEST_PATHS.length)
     expect(new Set(BACKEND_STREAM_PATHS).size).toBe(BACKEND_STREAM_PATHS.length)
-    expect(BACKEND_REQUEST_PATHS).toHaveLength(93)
-    expect(BACKEND_STREAM_PATHS).toHaveLength(6)
+    expect(BACKEND_REQUEST_PATHS).toHaveLength(92)
+    expect(BACKEND_STREAM_PATHS).toHaveLength(5)
   })
 
   test('keeps dispatch, codecs, error policy, replay, and cursor metadata on every registry entry', () => {
-    expect(PRIVATE_OPERATION_CONTRACTS.size).toBe(99)
+    expect(PRIVATE_OPERATION_CONTRACTS.size).toBe(97)
     for (const entry of PRIVATE_OPERATION_CONTRACTS.values()) {
       expect(typeof entry.path).toBe('string')
       expect(entry.procedure).toBeDefined()
@@ -220,7 +220,6 @@ describe('private Effect RPC client/server contract parity', () => {
       'apps/frontend/src/shell/canvas',
       'apps/frontend/src/shell/chat',
       'apps/frontend/src/shell/framework',
-      'apps/frontend/src/shell/widgets',
     ]
     const files: string[] = []
     const visit = async (directory: string): Promise<void> => {

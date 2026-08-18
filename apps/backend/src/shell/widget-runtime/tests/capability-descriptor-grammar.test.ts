@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  fnOmnidrawCollaborativeStateDescriptor,
-  fnOmnidrawServerFunctionDescriptor,
-} from '../capabilities';
+import { fnOmnidrawServerFunctionDescriptor } from '../capabilities';
 
 const INPUT_SCHEMA = Object.freeze({
   format: 'capsule-schema-v1' as const,
@@ -22,7 +19,7 @@ function expectCapsuleErrorCodeGrammar(codes: readonly string[] | undefined): vo
 }
 
 describe('Omnidraw capability descriptor grammar', () => {
-  test('emits Capsule-valid error codes for function and collaboration descriptors', () => {
+  test('emits Capsule-valid error codes for function descriptors', () => {
     const functions = fnOmnidrawServerFunctionDescriptor({
       descriptorDigestSha256: 'a'.repeat(64),
       functions: [{
@@ -44,13 +41,6 @@ describe('Omnidraw capability descriptor grammar', () => {
         outputSchema: OUTPUT_SCHEMA,
       }],
     });
-    const collaboration = fnOmnidrawCollaborativeStateDescriptor({
-      nullSchema: INPUT_SCHEMA,
-      changeSchema: INPUT_SCHEMA,
-      snapshotSchema: OUTPUT_SCHEMA,
-    });
-
     expectCapsuleErrorCodeGrammar(functions.errorCodes);
-    expectCapsuleErrorCodeGrammar(collaboration.errorCodes);
   });
 });

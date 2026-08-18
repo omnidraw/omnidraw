@@ -26,10 +26,6 @@ async function seedCanvasOwnedRows(service: DbServiceTurso): Promise<void> {
     'INSERT INTO canvas_items (canvas_id, id, item_json) VALUES (?, ?, ?)',
   )).run(CANVAS_ID, 'widget-item', item);
   await (await service.db.prepare(`
-    INSERT INTO widget_instance_states (canvas_id, element_id, instance_id, state_json)
-    VALUES (?, 'widget-item', 'delete-instance', '{"count":1}')
-  `)).run(CANVAS_ID);
-  await (await service.db.prepare(`
     INSERT INTO media_files (id, canvas_id, source_hash, digest_sha256, mime_type, byte_size, data)
     VALUES ('canvas-media', ?, 'canvas-source', NULL, 'image/png', 1, ?)
   `)).run(CANVAS_ID, new Uint8Array([1]));
@@ -85,7 +81,6 @@ describe('coordinated Canvas deletion store', () => {
     });
     expect(await service.canvas.findById({ id: CANVAS_ID })).toBeNull();
     expect(await count(service, 'canvas_items')).toBe(0);
-    expect(await count(service, 'widget_instance_states')).toBe(0);
     expect(await count(service, 'media_files')).toBe(1);
     expect(await count(service, 'resource_catalog')).toBe(1);
   });

@@ -82,10 +82,6 @@ import schemaContractListExplicitIndexesSql from '../../shell/database/stmts/sch
 import schemaContractReadTursoInternalTypesSql from '../../shell/database/stmts/schema-contract-read-turso-internal-types.sql' with { type: 'text' };
 import transactionDisableForeignKeysSql from '../../shell/database/stmts/transaction-disable-foreign-keys.sql' with { type: 'text' };
 import transactionEnableForeignKeysSql from '../../shell/database/stmts/transaction-enable-foreign-keys.sql' with { type: 'text' };
-import widgetStateInsertWidgetInstanceStatesSql from '../../shell/database/stmts/widget-state-insert-widget-instance-states.sql' with { type: 'text' };
-import widgetStateReadCanvasItemsSql from '../../shell/database/stmts/widget-state-read-canvas-items.sql' with { type: 'text' };
-import widgetStateReadWidgetInstanceStatesSql from '../../shell/database/stmts/widget-state-read-widget-instance-states.sql' with { type: 'text' };
-import widgetStateUpdateWidgetInstanceStatesSql from '../../shell/database/stmts/widget-state-update-widget-instance-states.sql' with { type: 'text' };
 
 import canvasItemReadAllSql from '../../shell/database/stmts/canvas-item-read-all.sql' with { type: 'text' };
 import canvasItemReadAllAfterIdSql from '../../shell/database/stmts/canvas-item-read-all-after-id.sql' with { type: 'text' };
@@ -297,10 +293,6 @@ export const DATABASE_STATEMENT_NAMES = Object.freeze([
   'schemaContractReadTursoInternalTypes',
   'transactionDisableForeignKeys',
   'transactionEnableForeignKeys',
-  'widgetStateInsertWidgetInstanceStates',
-  'widgetStateReadCanvasItems',
-  'widgetStateReadWidgetInstanceStates',
-  'widgetStateUpdateWidgetInstanceStates',
   'canvasItemReadAll',
   'canvasItemReadAllAfterId',
   'canvasItemReadByIds',
@@ -514,10 +506,6 @@ export const DATABASE_STATEMENTS = Object.freeze({
   schemaContractReadTursoInternalTypes: schemaContractReadTursoInternalTypesSql,
   transactionDisableForeignKeys: transactionDisableForeignKeysSql,
   transactionEnableForeignKeys: transactionEnableForeignKeysSql,
-  widgetStateInsertWidgetInstanceStates: widgetStateInsertWidgetInstanceStatesSql,
-  widgetStateReadCanvasItems: widgetStateReadCanvasItemsSql,
-  widgetStateReadWidgetInstanceStates: widgetStateReadWidgetInstanceStatesSql,
-  widgetStateUpdateWidgetInstanceStates: widgetStateUpdateWidgetInstanceStatesSql,
   canvasItemReadAll: canvasItemReadAllSql,
   canvasItemReadAllAfterId: canvasItemReadAllAfterIdSql,
   canvasItemReadByIds: canvasItemReadByIdsSql,

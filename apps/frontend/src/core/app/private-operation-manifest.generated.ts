@@ -93,8 +93,6 @@ export const PRIVATE_REQUEST_PATHS = Object.freeze([
   "widget.preview.invoke",
   "widget.runtime.config",
   "widget.runtime.load",
-  "widget.runtime.state.get",
-  "widget.runtime.state.change",
 ] as const);
 
 export const PRIVATE_STREAM_PATHS = Object.freeze([
@@ -103,7 +101,6 @@ export const PRIVATE_STREAM_PATHS = Object.freeze([
   "db.events",
   "notification.events",
   "widget.catalog.events",
-  "widget.runtime.state.events",
 ] as const);
 
 export const PRIVATE_IDEMPOTENCY_INPUT_KEYS = Object.freeze({
@@ -118,5 +115,4 @@ export const PRIVATE_CURSOR_INPUT_KEYS = Object.freeze({
   "db.events": "afterSequence",
   "notification.events": "afterSequence",
   "widget.catalog.events": "afterGeneration",
-  "widget.runtime.state.events": "afterVersion",
 } as const);

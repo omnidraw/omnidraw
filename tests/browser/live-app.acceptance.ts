@@ -2195,7 +2195,6 @@ async function exerciseWidgetInspectorRoutes(page: Page, baseUrl: string): Promi
   });
 
   await selectTab('Functions', 'functions', 'Browser-safe function descriptors');
-  await selectTab('Collaborative State', 'collaborative-state', 'Instance-scoped collaborative state');
   await selectTab('Resources', 'resources', 'Portable resource requirements');
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await page.waitForURL((url) => url.searchParams.get('tab') === 'files', {

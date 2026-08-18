@@ -205,7 +205,6 @@ export type TWidgetUiManifest = Readonly<{
   apis: readonly TWidgetRuntimeApiGroup[];
   budgets?: TWidgetRuntimeBudgetRequest;
   state?: Readonly<{
-    collaborative: boolean;
     localStore: 'none' | 'ephemeral';
   }>;
   parkability?: Readonly<{
@@ -643,20 +642,6 @@ export type TWidgetSnapshotHooks = Readonly<{
     value: TWidgetSerializableJsonValue,
     context: TWidgetSnapshotRestoreContext,
   ): TWidgetSerializableJsonValue;
-}>;
-
-export type TWidgetStateSnapshot<
-  TValue extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue,
-> = Readonly<{
-  version: number;
-  value: TValue;
-}>;
-
-export type TWidgetStateEvent<
-  TValue extends TWidgetSerializableJsonValue = TWidgetSerializableJsonValue,
-> = Readonly<{
-  type: 'snapshot';
-  snapshot: TWidgetStateSnapshot<TValue>;
 }>;
 
 export type TWidgetFunctionInvocation = Readonly<{

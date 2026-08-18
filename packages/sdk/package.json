@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {
@@ -49,10 +49,6 @@
     "./function": {
       "types": "./dist/function.d.ts",
       "default": "./dist/function.js"
-    },
-    "./state": {
-      "types": "./dist/state.d.ts",
-      "default": "./dist/state.js"
     },
     "./tool-icon": {
       "types": "./dist/tool-icon.d.ts",

@@ -8,10 +8,6 @@ import { FUNCTION_PROGRAM_ERROR_CODES, FunctionProgramError } from '../../core/f
 import { ResourceError } from '../../core/resources/ResourceError';
 import { ResourceProgramError } from '../../core/resources/service.resources';
 import { RESOURCE_ERROR_CODES } from '../../core/resources/types';
-import {
-  WIDGET_STATE_PROGRAM_ERROR_CODES,
-  WidgetStateProgramError,
-} from '../../core/widget-state/service.widget-state';
 import { WIDGET_PROGRAM_ERROR_CODES, WidgetProgramError } from '../../core/widgets/service.widgets';
 import { PrivateRpcError } from './rpc-contract';
 import {
@@ -30,7 +26,6 @@ const failures: readonly TSemanticFailure[] = [
   ...FUNCTION_PROGRAM_ERROR_CODES.map((code) => new FunctionProgramError(code, code)),
   ...RESOURCE_ERROR_CODES.map((code) => new ResourceError(code, code)),
   ...RESOURCE_ERROR_CODES.map((code) => new ResourceProgramError(code, code)),
-  ...WIDGET_STATE_PROGRAM_ERROR_CODES.map((code) => new WidgetStateProgramError(code, code)),
   ...WIDGET_PROGRAM_ERROR_CODES.map((code) => new WidgetProgramError(code, code)),
 ];
 
@@ -61,7 +56,6 @@ describe('semantic failure private RPC mapping', () => {
       [new FunctionProgramError('RESOURCE_EXHAUSTED', 'full'), 429],
       [new ResourceError('DB_READ_NOT_ALLOWED', 'forbidden'), 403],
       [new ResourceProgramError('RESOURCE_NAME_CONFLICT', 'duplicate'), 409],
-      [new WidgetStateProgramError('WIDGET_STATE_CAPACITY_UNAVAILABLE', 'full'), 429],
       [new WidgetProgramError('WIDGET_NOT_FOUND', 'missing', { widgetKey: 'counter' }), 404],
     ] as const;
     for (const [failure, status] of matrix) expect(semanticFailureStatus(failure)).toBe(status);

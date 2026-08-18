@@ -5,11 +5,7 @@ import type {
   CapsuleSchemaReference,
 } from '@omnidraw/capsule/protocol';
 import type { TWidgetServerFunctionDescriptor } from '@omnidraw/sdk/contract';
-import {
-  OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
-  OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
-  OMNIDRAW_COLLABORATIVE_STATE_CONTRACT_HASH,
-} from './CONSTANTS';
+import { OMNIDRAW_CAPSULE_CAPABILITY_VERSION } from './CONSTANTS';
 import type { TOmnidrawCapsuleCapabilitySelector } from './types';
 
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
@@ -30,15 +26,6 @@ export function fnOmnidrawServerFunctionCapabilitySelector(
     id: fnOmnidrawServerFunctionCapabilityId(descriptorDigestSha256),
     versionRange: OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
     contractHash: `sha256:${descriptorDigestSha256}`,
-  });
-}
-
-export function fnOmnidrawCollaborativeStateCapabilitySelector():
-TOmnidrawCapsuleCapabilitySelector {
-  return Object.freeze({
-    id: OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
-    versionRange: OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
-    contractHash: OMNIDRAW_COLLABORATIVE_STATE_CONTRACT_HASH,
   });
 }
 
@@ -107,73 +94,6 @@ export function fnOmnidrawServerFunctionDescriptor(args: Readonly<{
       'function_denied',
       'function_failed',
       'function_timeout',
-    ]),
-  });
-}
-
-export function fnOmnidrawCollaborativeStateDescriptor(args: Readonly<{
-  nullSchema: CapsuleSchemaReference;
-  changeSchema: CapsuleSchemaReference;
-  snapshotSchema: CapsuleSchemaReference;
-}>): CapsuleCapabilityDescriptor {
-  return Object.freeze({
-    id: OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
-    version: OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
-    contractHash: OMNIDRAW_COLLABORATIVE_STATE_CONTRACT_HASH,
-    operations: Object.freeze([
-      Object.freeze({
-        name: 'change',
-        kind: 'call' as const,
-        inputSchema: args.changeSchema,
-        outputSchema: args.snapshotSchema,
-        idempotency: 'non-idempotent' as const,
-        limits: Object.freeze({ maxBytes: 64 * 1024, maxInFlight: 1, maxRatePerSecond: 16 }),
-        lifecycle: Object.freeze({
-          freeze: 'cancel' as const,
-          park: 'dispose' as const,
-          resume: 'reopen' as const,
-          destroy: 'dispose' as const,
-        }),
-      }),
-      Object.freeze({
-        name: 'get',
-        kind: 'call' as const,
-        inputSchema: args.nullSchema,
-        outputSchema: args.snapshotSchema,
-        idempotency: 'read-only' as const,
-        limits: Object.freeze({ maxBytes: 64 * 1024, maxInFlight: 1, maxRatePerSecond: 32 }),
-        lifecycle: Object.freeze({
-          freeze: 'cancel' as const,
-          park: 'dispose' as const,
-          resume: 'reopen' as const,
-          destroy: 'dispose' as const,
-        }),
-      }),
-      Object.freeze({
-        name: 'subscribe',
-        kind: 'stream' as const,
-        inputSchema: args.nullSchema,
-        eventSchema: args.snapshotSchema,
-        limits: Object.freeze({
-          maxBytes: 64 * 1024,
-          maxInFlight: 1,
-          maxQueueEvents: 1,
-          maxQueueBytes: 64 * 1024,
-        }),
-        overflow: 'coalesce-latest' as const,
-        lifecycle: Object.freeze({
-          freeze: 'pause' as const,
-          park: 'dispose' as const,
-          resume: 'reopen' as const,
-          destroy: 'dispose' as const,
-        }),
-      }),
-    ]),
-    errorCodes: Object.freeze([
-      'state_aborted',
-      'state_conflict',
-      'state_failed',
-      'state_unavailable',
     ]),
   });
 }

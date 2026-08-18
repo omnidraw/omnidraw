@@ -36,14 +36,12 @@ import type {
   TWidgetManifestV1,
 } from './contracts/filesystem/typed';
 import type {
-  TWidgetCapabilitySelector,
   TWidgetNotificationOutput,
   TWidgetFunctionInvocation,
   TWidgetLifecycleEvent,
   TWidgetServerFunctionDescriptor,
   TWidgetServerModuleArtifact,
   TWidgetResourceCall,
-  TWidgetStateSnapshot,
 } from './contracts/types';
 import type {
   TPortableResourceDbRowsWire,
@@ -69,7 +67,7 @@ export const WIDGET_SDK_CONFORMANCE_FIXTURE = Object.freeze({
       runtime: 'capsule',
       entry: 'ui/main.ts',
       apis: Object.freeze(['DOM'] as const),
-      state: Object.freeze({ collaborative: true, localStore: 'ephemeral' }),
+      state: Object.freeze({ localStore: 'ephemeral' }),
     }),
     resources: Object.freeze([
       Object.freeze({
@@ -122,28 +120,21 @@ export const WIDGET_SDK_CONFORMANCE_FIXTURE = Object.freeze({
   files: Object.freeze([Object.freeze({
     path: 'ui/main.ts',
     text: [
-      "import { emitWidgetOutput, subscribeCollaborativeState } from '@omnidraw/sdk/guest';",
-      "subscribeCollaborativeState((value) => emitWidgetOutput({ type: 'notification', tone: 'info', message: String(value) }));",
+      "import { emitWidgetOutput, getWidgetLocalState, setWidgetLocalState } from '@omnidraw/sdk/guest';",
+      "const count = Number(getWidgetLocalState('count') ?? 0) + 1;",
+      "setWidgetLocalState('count', count);",
+      "emitWidgetOutput({ type: 'notification', tone: 'info', message: String(count) });",
       '',
     ].join('\n'),
   })]),
 });
 
 export const WIDGET_SDK_CONFORMANCE_TRANSCRIPT = Object.freeze({
-  capability: Object.freeze({
-    id: 'omnidraw.widget.collaborative_state',
-    versionRange: '1.0.0',
-    contractHash: 'sha256:4f1fb60c04cf513e111bae5840faf4233e47077215a32ceadf58e9d2232b18dc',
-  }) satisfies TWidgetCapabilitySelector,
   lifecycle: Object.freeze([
     Object.freeze({ state: 'active', generation: 1 }),
     Object.freeze({ state: 'frozen', generation: 1 }),
     Object.freeze({ state: 'active', generation: 2 }),
   ]) satisfies readonly TWidgetLifecycleEvent[],
-  state: Object.freeze([
-    Object.freeze({ version: 1, value: null }),
-    Object.freeze({ version: 2, value: Object.freeze({ count: 1 }) }),
-  ]) satisfies readonly TWidgetStateSnapshot[],
   functionInvocation: Object.freeze({
     invocationId: 'invocation-1',
     subject: Object.freeze({

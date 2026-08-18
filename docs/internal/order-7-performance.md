@@ -14,8 +14,6 @@ then executes `apps/backend/benchmarks/order-7.ts`.
 - Canvas query: a 2,048-row in-memory Turso store scanned in 256-row cursor
   pages, retaining strict row validation.
 - Canonical JSON: the same frozen nested 128-node payload serialized 100 times.
-- Rate limiting: 2,048 active scope ledgers and 1,000 admissions to one hot
-  scope.
 - Database serialization: 256 operations queued concurrently on one connection
   owner.
 
@@ -29,7 +27,6 @@ service-level targets.
 | Canvas command reduction | 10.189 / 10.378 ms | 9.870 / 10.515 ms | Keep the complete reducer; no material avoidable cost was demonstrated. |
 | Canvas query full scan | 32.172 / 32.585 ms | 29.921 / 30.197 ms | Keep strict validation on every persisted row. |
 | Repeated canonical JSON | 41.778 / 43.401 ms | 40.621 / 41.302 ms | Keep the simpler normalize-then-stringify implementation. |
-| Widget-state rate limiter | 19.090 / 20.679 ms | 0.231 / 0.325 ms | Optimize the demonstrated full-map scan and hot-ledger copying, an 82.6x median reduction. |
 | Serialized database operations | 0.255 / 0.407 ms | 0.108 / 0.136 ms | Keep the existing serializer; baseline was already about one million operations per second and the variation required no code change. |
 
 An experimental one-pass canonical stringifier regressed the representative
@@ -38,21 +35,10 @@ invalid-value tests remain to protect the current canonical behavior.
 
 ## Optimized ownership and invalidation
 
-The only retained performance change is in widget-state mutation admission.
-Core computes a pure instruction for one ledger: how many expired timestamps
-to remove and whether to append the current timestamp. The live shell and
-simulation own their mutable ledger maps and apply that instruction without
-copying the hot scope's full timestamp history on every admission. The maps
-remain bounded by `maxMutationRateLedgers` (2,048 in the benchmark).
-
-Admission for an existing scope now prunes only that scope. A full-map expiry
-sweep occurs only when a new scope arrives at capacity, where reclaiming an
-expired slot is required for correctness. Releasing an instance invalidates
-one scope, and disposing the owner clears its complete lifecycle state.
-
 No cache was added to Canvas reduction, persisted-row queries, canonical JSON,
 or database serialization. Full contract and storage validation remains in
-place at untrusted ingress.
+place at untrusted ingress. The former widget-state rate-limiter benchmark was
+removed with the collaborative-state authority.
 
 ## Cancellation scope
 

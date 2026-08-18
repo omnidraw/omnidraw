@@ -4,7 +4,6 @@ import type { IAiChatPort } from '@omnidraw/component-ai-chat'
 import type {
   IWidgetFunctionHostPort,
   IWidgetResourceHostPort,
-  IWidgetStateHostPort,
 } from '@omnidraw/sdk/host'
 import type { TWidgetManifestV1 } from '@omnidraw/sdk/contract'
 import type { IThemeService } from '@omnidraw/theme'
@@ -22,7 +21,6 @@ export type TManagedPublicComposition = Readonly<{
     functions: IWidgetFunctionHostPort
     manifest: TWidgetManifestV1
     resources: IWidgetResourceHostPort
-    state: IWidgetStateHostPort
   }>
 }>
 

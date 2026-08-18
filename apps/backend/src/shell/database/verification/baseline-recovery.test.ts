@@ -216,7 +216,6 @@ async function representativeRows(database: Database): Promise<Readonly<Record<s
   const orderBy: Readonly<Record<string, string>> = {
     canvases: 'id',
     canvas_items: 'canvas_id, id',
-    widget_instance_states: 'canvas_id, element_id',
     resource_catalog: 'id',
     resource_placements: 'resource_id',
     resource_encryption_keys: 'id',
@@ -256,11 +255,6 @@ async function seedEveryRetainedArea(database: Database): Promise<void> {
     INSERT INTO canvas_items (canvas_id, id, item_json)
     VALUES (?, ?, ?)
   `)).run(CANVAS_ID, ELEMENT_ID, widgetItem);
-  await (await database.prepare(`
-    INSERT INTO widget_instance_states (
-      canvas_id, element_id, instance_id, state_json
-    ) VALUES (?, ?, ?, '{"count":7}')
-  `)).run(CANVAS_ID, ELEMENT_ID, INSTANCE_ID);
   await (await database.prepare(`
     INSERT INTO resource_catalog (id, kind, name, status)
     VALUES (?, 'db', 'Recovery resource', 'ready')
@@ -644,7 +638,7 @@ describe('single-user managed database preflight and recovery', () => {
     await createDirectResource(home);
 
     const expectedRows = await representativeRows(service.db);
-    expect(Object.keys(expectedRows)).toHaveLength(14);
+    expect(Object.keys(expectedRows)).toHaveLength(13);
     expect(Object.values(expectedRows).every((rows) => rows.length > 0)).toBe(true);
     const expectedFingerprint = await schemaFingerprint(service.db);
     expect(expectedFingerprint).toBe(EXPECTED_DATABASE_SCHEMA_CONTRACTS[0]!.fingerprintSha256);

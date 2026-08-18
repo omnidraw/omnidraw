@@ -7,7 +7,6 @@ import { EventProgramError } from './events/service.events';
 import { FunctionProgramError } from './functions/service.functions';
 import { ResourceError } from './resources/ResourceError';
 import { ResourceProgramError } from './resources/service.resources';
-import { WidgetStateProgramError } from './widget-state/service.widget-state';
 import { WidgetProgramError } from './widgets/service.widgets';
 
 describe('semantic failure codecs', () => {
@@ -21,7 +20,6 @@ describe('semantic failure codecs', () => {
       [FunctionProgramError, new FunctionProgramError('FUNCTION_NOT_FOUND', 'missing', details)],
       [ResourceError, new ResourceError('RESOURCE_NAME_CONFLICT', 'duplicate', details)],
       [ResourceProgramError, new ResourceProgramError('RESOURCE_NOT_FOUND', 'missing', details)],
-      [WidgetStateProgramError, new WidgetStateProgramError('WIDGET_STATE_UNAVAILABLE', 'offline', details)],
       [WidgetProgramError, new WidgetProgramError('WIDGET_CATALOG_CHANGED', 'changed', details)],
     ] as const;
 
@@ -48,7 +46,6 @@ describe('semantic failure codecs', () => {
       [FunctionProgramError, 'FUNCTION_UNAVAILABLE'],
       [ResourceError, 'RESOURCE_UNAVAILABLE'],
       [ResourceProgramError, 'RESOURCE_UNAVAILABLE'],
-      [WidgetStateProgramError, 'WIDGET_STATE_UNAVAILABLE'],
       [WidgetProgramError, 'WIDGET_UNAVAILABLE'],
     ] as const;
     for (const [codec, validCode] of codecs) {

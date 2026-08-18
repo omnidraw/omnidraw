@@ -99,7 +99,7 @@ project separately, so metadata-only edits never rebuild executable bytes.
 | Save draft Config | Digest-fenced write of presentation/manifest fields into the draft. |
 | Publish metadata | Atomically replaces only `omnidraw.json` in the published folder; executable bytes are byte-identical before and after. No install, construction, Capsule generation, or signing runs. |
 | Rebuild | Runs the repository's same portable `npm run build`, then waits for independent host acceptance. It does not expose raw source edits. |
-| Build & publish | Requires one current accepted generation, applies release signing and exact release validation, and atomically replaces the publication. A resource-ID-only change may reuse byte-identical executable output, but still needs a fresh receipt and explicit publication. Existing canvas instances keep geometry and instance state and resolve the new published manifest on their next call. |
+| Build & publish | Requires one current accepted generation, applies release signing and exact release validation, and atomically replaces the publication. A resource-ID-only change may reuse byte-identical executable output, but still needs a fresh receipt and explicit publication. Existing canvas instances keep geometry and stable identity and resolve the new published manifest on their next call. |
 
 ## Runtime loading
 
@@ -111,11 +111,8 @@ The browser mounts widgets through the filesystem catalog:
    `release.json`, and revalidates the server-function descriptor digest and
    the signed capability request before returning mount inputs.
 2. A missing or unhealthy publication produces a missing-widget frame. No
-   durable canvas row or widget state is deleted.
-3. `WidgetStateService` stays the only owner of shared widget-instance JSON
-   state, keyed and compare-and-swap fenced against the exact canvas
-   identity. Publication changes never touch it.
-4. Resource bindings live only in the exact current draft or published
+   durable canvas row is deleted.
+3. Resource bindings live only in the exact current draft or published
    manifest. Runtime and function reads re-resolve the manifest declaration,
    resource lifecycle, kind, effect, operation, and policy. Placement and
    canvas items accept no binding payload and never open a resource picker.
@@ -396,8 +393,7 @@ the caller must carry the exact draft digest, accepted generation, and build
 identity from validation. Preview mode can run a diagnostic clone without any
 Canvas. An optional `--canvas` selector correlates one existing unique Preview;
 it never creates, opens, moves, or removes a frame. Without that selector,
-visible-frame evidence is not claimed and durable instance state is explicitly
-not selected.
+visible-frame evidence is not claimed.
 
 Artifact inspection is not resource evidence. A diagnostic clone is not the
 visible Canvas frame, and its PNG is evidence rather than the success
@@ -419,21 +415,23 @@ Lease URLs are never printed.
 
 | Owner | Role |
 | --- | --- |
-| `packages/sdk` | Portable manifest and artifact contracts, guest ABI, widget state/resource/function contracts, authoring entrypoints, and the browser host bridge that encapsulates Capsule. |
+| `packages/sdk` | Portable manifest and artifact contracts, guest ABI, mount-local state/resource/function contracts, authoring entrypoints, and the browser host bridge that encapsulates Capsule. |
 | `packages/canvas-contract` | Serialized Canvas documents, widget-frame extension data, commands, queries, snapshots, events, versions, and canonical codecs. |
 | `packages/canvas` | Canvas rendering, optimistic browser document state, and the injected widget-extension host seam. |
 | `packages/component-ai-chat` | Reusable AI Chat UI, its injected transport-neutral port, and its narrow Canvas extension. |
 | `packages/theme` | Public theme values, namespaced CSS, tokens, and caller-scoped theme application helpers. |
-| `apps/backend` | Filesystem workspaces and catalog, build and publication, ephemeral Preview authority, trusted local function execution, resources, widget-instance state, signing, persistence, and private RPC handlers. |
+| `apps/backend` | Filesystem workspaces and catalog, build and publication, ephemeral Preview authority, trusted local function execution, resources, signing, persistence, and private RPC handlers. |
 | `apps/frontend` | Product navigation and sidebar, widget placement, SDK browser-host composition, Preview and inspection UI, AI Chat adapters, and the multiplexed browser RPC client. |
 | Private managed repository | Exact-bytes WFP wrapper generation and upload, dispatch namespaces, outbound-worker policy, Cloudflare bindings, resource broker and Turso adapter, credentials, authentication, tenancy, metering, billing, plan enforcement, usage evidence, and real managed qualification. |
 
 ## Invariants
 
 - The filesystem is the only widget catalog and release authority.
-- The database has exactly 14 application tables; none store widgets,
+- The database has exactly 13 application tables; none store widgets,
   artifacts, Preview, or function history.
 - Preview is ephemeral; only the draft `widgetKey` and frame data persist.
+- Widget local-store values belong to one Capsule mount and never become shared
+  or durable widget-instance state.
 - Only accepted portable build generations reach Preview or publication.
 - OSS and managed accept the same SDK-owned canonical server-module language;
   adapter wrappers and transports never change its bytes or artifact digest.

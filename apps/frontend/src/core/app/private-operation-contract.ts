@@ -238,23 +238,11 @@ type TWidgetAuthoringInspection = Readonly<{
   canvasCorrelation: Readonly<{
     canvas: "not_selected" | "selected";
     visibleFrame: "not_claimed";
-    durableInstanceState: "not_selected" | "selected_not_exercised";
   }>;
   result?: Readonly<Record<string, unknown>>;
   error?: Readonly<Record<string, unknown>>;
   screenshotLease?: Readonly<{ url: string; expiresAtMs: number }>;
 }>;
-type TWidgetStateIdentity = Pick<TWidgetHostSubject, "canvasId" | "elementId" | "widgetInstanceId">;
-type TWidgetStateSnapshot = Readonly<{
-  identity?: TWidgetStateIdentity;
-  version: number;
-  state: TWidgetSerializableJsonValue;
-}>;
-export type TWidgetStateResult =
-  | Readonly<{ status: "found" | "changed" | "conflict"; snapshot: TWidgetStateSnapshot }>
-  | Readonly<{ status: "rate-limited"; retryAfterMs: number }>
-  | Readonly<{ status: "unavailable" }>;
-
 type TResourceDataPage =
   | Readonly<{
       kind: "kv";
@@ -376,8 +364,6 @@ export type TPrivateRequestOperations = Readonly<{
   "widget.preview.invoke": TOperation<Readonly<{ canvasId: string; elementId: string; functionName: string; input: unknown }>, TFunctionResult>;
   "widget.runtime.config": TOperation<Readonly<Record<string, never>> | undefined, TWidgetHostConfiguration>;
   "widget.runtime.load": TOperation<TWidgetHostSubject, TWidgetTransportArtifact>;
-  "widget.runtime.state.get": TOperation<TWidgetStateIdentity, TWidgetStateResult>;
-  "widget.runtime.state.change": TOperation<TWidgetStateIdentity & Readonly<{ expectedVersion: number; state: TWidgetSerializableJsonValue }>, TWidgetStateResult>;
 }>;
 
 export {
@@ -409,11 +395,6 @@ export type TPrivateStreamOperations = Readonly<{
     fullResync: boolean;
     changedWidgetKeys: readonly string[];
     previewWidgetKeys: readonly string[];
-  }>>;
-  "widget.runtime.state.events": TOperation<TWidgetStateIdentity & Readonly<{ afterVersion?: number }>, Readonly<{
-    type: "changed" | "snapshot";
-    reason?: "initial" | "resync";
-    snapshot: TWidgetStateSnapshot;
   }>>;
 }>;
 

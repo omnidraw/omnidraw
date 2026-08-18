@@ -26,17 +26,10 @@ export type {
   CapsuleValueLimits,
 } from '@omnidraw/capsule/schema';
 export type { CapsuleSchemaReference } from '@omnidraw/capsule/protocol';
-export {
-  OMNIDRAW_CAPSULE_CAPABILITY_VERSION,
-  OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
-  OMNIDRAW_COLLABORATIVE_STATE_CONTRACT_CANONICAL_JSON,
-  OMNIDRAW_COLLABORATIVE_STATE_CONTRACT_HASH,
-} from './CONSTANTS';
+export { OMNIDRAW_CAPSULE_CAPABILITY_VERSION } from './CONSTANTS';
 export {
   fnOmnidrawCapabilityGrant,
   fnOmnidrawCapabilityRequest,
-  fnOmnidrawCollaborativeStateCapabilitySelector,
-  fnOmnidrawCollaborativeStateDescriptor,
   fnOmnidrawServerFunctionCapabilityId,
   fnOmnidrawServerFunctionCapabilitySelector,
   fnOmnidrawServerFunctionDescriptor,
@@ -44,9 +37,6 @@ export {
 export {
   fnJsonSchemaToCapsuleSchemaDocument,
   fnOmnidrawAnySchemaDocument,
-  fnOmnidrawCollaborativeChangeSchemaDocument,
-  fnOmnidrawCollaborativeSnapshotSchemaDocument,
-  fnOmnidrawNullSchemaDocument,
 } from './fn.json-schema';
 export {
   fnOmnidrawWidgetOutputSchemaDocument,

@@ -204,7 +204,7 @@ describe('single-user baseline constraints', () => {
     );
   });
 
-  test('derives widget lookup identity from JSONB and enforces composite state ownership, uniqueness, and cascade', async () => {
+  test('derives widget lookup identity from JSONB and enforces stable identity uniqueness', async () => {
     const database = await openBaseline();
     await seedCanvas(database, CANVAS_A, 'Canvas A');
     await seedCanvas(database, CANVAS_B, 'Canvas B');
@@ -249,52 +249,6 @@ describe('single-user baseline constraints', () => {
       ELEMENT_B,
       canvasItem({ id: ELEMENT_B, instanceId: 'instance-a', widgetKey: 'other-widget' }),
     ));
-
-    await run(
-      database,
-      `INSERT INTO widget_instance_states (
-        canvas_id, element_id, instance_id, version, state_json
-      ) VALUES (?, ?, ?, 1, ?)`,
-      CANVAS_A,
-      ELEMENT_A,
-      'instance-a',
-      '{"count":1}',
-    );
-    await rejected(run(
-      database,
-      `INSERT INTO widget_instance_states (
-        canvas_id, element_id, instance_id, version, state_json
-      ) VALUES (?, 'missing-element', 'missing-instance', 1, '{}')`,
-      CANVAS_A,
-    ));
-    await insertCanvasItem(database, CANVAS_B, ELEMENT_B, canvasItem({ id: ELEMENT_B }));
-    await rejected(run(
-      database,
-      `INSERT INTO widget_instance_states (
-        canvas_id, element_id, instance_id, version, state_json
-      ) VALUES (?, ?, 'instance-a', 1, '{}')`,
-      CANVAS_B,
-      ELEMENT_B,
-    ));
-    await rejected(run(
-      database,
-      `UPDATE widget_instance_states SET version = 0
-       WHERE canvas_id = ? AND element_id = ?`,
-      CANVAS_A,
-      ELEMENT_A,
-    ));
-    await rejected(run(
-      database,
-      `UPDATE widget_instance_states SET state_json = 'not-json'
-       WHERE canvas_id = ? AND element_id = ?`,
-      CANVAS_A,
-      ELEMENT_A,
-    ));
-
-    await run(database, 'DELETE FROM canvas_items WHERE canvas_id = ? AND id = ?', CANVAS_A, ELEMENT_A);
-    expect(await (await database.prepare(`
-      SELECT count(*) AS count FROM widget_instance_states
-    `)).get()).toEqual({ count: 0 });
   });
 
   test('enforces media bytes, digests, MIME values, optional canvas ownership, and cascade', async () => {

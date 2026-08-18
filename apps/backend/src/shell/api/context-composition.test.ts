@@ -97,7 +97,6 @@ const fakeContext = {
   widgetCatalog: fakeCapability<TApiContext['widgetCatalog']>(),
   widgetAuthoring: fakeCapability<TApiContext['widgetAuthoring']>(),
   widgetPreview: fakeCapability<TApiContext['widgetPreview']>(),
-  widgetState: fakeCapability<TApiContext['widgetState']>(),
   widgetCapsuleHostConfiguration:
     fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),
   widgetRuntimeLoadAdmission: {

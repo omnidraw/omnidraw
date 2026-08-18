@@ -1,5 +1,4 @@
 import {
-  createCollaborativeStateClient,
   createServerFunctionProxy,
   emitWidgetOutput,
   getWidgetProps,
@@ -40,13 +39,6 @@ void generatedCount({ text: 'hello' }, {
 void generatedCount({ count: 1 });
 // @ts-expect-error Generated clients reject unknown call options.
 void generatedCount({ text: 'hello' }, { idempotencyKey: 'guest-chosen' });
-
-const collaborativeState =
-  createCollaborativeStateClient<{ count: number }>();
-void collaborativeState.get().then((value) => value.count.toFixed());
-void collaborativeState.change({ count: 2 });
-// @ts-expect-error Collaborative state preserves its configured value shape.
-void collaborativeState.change({ count: 'two' });
 
 const props = getWidgetProps<{ title: string }>();
 props.title.toUpperCase();

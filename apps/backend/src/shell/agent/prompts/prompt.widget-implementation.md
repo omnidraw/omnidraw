@@ -2,32 +2,22 @@
 
 Prefer the smallest complete browser implementation. UI-only widgets start no backend process and should remain fully useful while offline when their feature allows it.
 
-For shared published-instance state, use the build-wired collaborative-state
-client from `@omnidraw/sdk/widget`. Preview supplies a separate authoring
-state session; publication supplies the instance-bound host collaboration
-session. Preview state is not copied into a published instance. Treat state as
-bounded JSON and handle the first atomic snapshot. Do not invent or expose a
-capability selector.
+Keep transient interaction state in ordinary local JavaScript values. When a
+mount-local key/value store is useful, declare `ui.state.localStore` as
+`ephemeral` and use `getWidgetLocalState`, `setWidgetLocalState`,
+`deleteWidgetLocalState`, and `listWidgetLocalStateKeys` from
+`@omnidraw/sdk/widget`. This store is bounded, belongs only to the current
+Capsule mount, and is not shared or durable. Do not use it for data that must
+survive remount, reload, or publication.
 
-```ts
-import { createCollaborativeStateClient } from "@omnidraw/sdk/widget";
+For durable data, declare a resource and access it through a short `fx` or `tx`
+server function. Import a direct named function from a `server/*.server.ts`
+module and call its trusted generated proxy from an event handler. Show pending,
+success, and safe error states. Preview exercises the exact process-owned server
+output with the accepted manifest's exact resource references and independently
+validated policy, including permitted side effects. Do not expose invocation
+ids, Preview or artifact ids, capability selectors, resource ids, internal
+paths, or server diagnostics in normal UI.
 
-const shared = createCollaborativeStateClient<{ count: number }>();
-const unsubscribe = shared.subscribe((value) => {
-  output.textContent = String(value.count);
-});
-await shared.change({ count: 1 });
-
-// Call unsubscribe() and shared.dispose() when the widget tears down.
-```
-
-For optional server work, import a direct named function from a
-`server/*.server.ts` module and call its trusted generated proxy from an event
-handler. Show pending, success, and safe error states. Preview exercises the
-exact process-owned server output with the accepted manifest's exact resource
-references and independently validated policy, including permitted side
-effects. Do not expose invocation ids, Preview or artifact ids,
-capability selectors, resource ids,
-internal paths, or server diagnostics in normal UI.
-
-Use collaborative state for persistent browser state and short server functions for backend work. Never create a long-lived backend loop.
+Use local state for transient browser behavior and short server functions with
+declared resources for durable work. Never create a long-lived backend loop.

@@ -240,14 +240,13 @@ afterEach(() => {
 });
 
 describe('WidgetDetailPage filesystem inspector', () => {
-  test('renders Config, functions, collaborative state, resources, and files without Runs or Logs', async () => {
+  test('renders Config, functions, resources, and files without removed state, Runs, or Logs', async () => {
     const { host, selectTab } = mountDetail();
 
     expect(await tabLabels(host)).toEqual([
       'Overview',
       'Config',
       'Functions',
-      'Collaborative State',
       'Resources',
       'Files',
     ]);
@@ -258,16 +257,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
       expect(host.textContent).toContain('notes (read)');
       expect(host.textContent).not.toContain('modulePath');
     });
-    selectTab('collaborative-state');
-    await vi.waitFor(() => {
-      expect(host.textContent).toContain('Instance-scoped collaborative state');
-      expect(host.textContent).toContain('centralized versioned JSON state');
-      expect(host.textContent).toContain('canvasId + elementId + widgetInstanceId');
-      expect(host.textContent).toContain('Publication changes preserve that state.');
-      expect(host.textContent).toContain('a'.repeat(64));
-      expect(host.textContent).toContain('notes-board');
-      expect(host.textContent).toContain('480 × 320');
-    });
+    expect(host.textContent).not.toContain('Collaborative State');
     selectTab('resources');
     await vi.waitFor(() => {
       expect(host.textContent).toContain('Portable resource requirements');
@@ -276,6 +266,13 @@ describe('WidgetDetailPage filesystem inspector', () => {
     expect(host.textContent).not.toContain('Runs');
     expect([...host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent))
       .not.toContain('Logs');
+  });
+
+  test('falls back to Overview for the removed collaborative-state tab URL', async () => {
+    const { host } = mountDetail({ initialTab: 'collaborative-state' });
+    await vi.waitFor(() => {
+      expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Overview');
+    });
   });
 
   test('saves strict draft Config with Ctrl/Command+S and the observed manifest digest', async () => {

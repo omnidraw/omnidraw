@@ -11,10 +11,6 @@ import {
   type CapsuleHandle,
   type CapsuleHost,
   type CapsuleKernelCallContext,
-  type CapsuleKernelHostStream,
-  type CapsuleKernelHostStreamSink,
-  type CapsuleKernelStreamCancelReason,
-  type CapsuleKernelStreamContext,
   type CapsuleMountErrorEvent,
   type CapsuleMountGuestChannels,
   type CapsuleSchemaResource,
@@ -35,7 +31,6 @@ import type {
   IWidgetBrowserInspectionMount,
   IWidgetBrowserMount,
   IWidgetFunctionHostPort,
-  IWidgetStateHostPort,
   TWidgetBrowserHostOptions,
   TWidgetBrowserMountRequest,
 } from '../contracts/interface';
@@ -48,7 +43,6 @@ import type {
   TWidgetCapabilityRequest,
   TWidgetHostConfiguration,
   TWidgetSerializableJsonValue,
-  TWidgetStateSnapshot,
   TWidgetViewport,
 } from '../contracts/types';
 import {
@@ -57,13 +51,9 @@ import {
 import { SdkEffectRuntime } from './effect-runtime';
 import { WidgetHostError } from '../host-error';
 import {
-  createOmnidrawCollaborativeStateCapabilityContract,
   createOmnidrawGuestChannelContract,
   createOmnidrawServerFunctionCapabilityContract,
 } from './capsule/create-capability-contracts';
-import {
-  OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID,
-} from './capsule/CONSTANTS';
 import { fnOmnidrawWidgetNotificationOutput } from './capsule/fn.channel-values';
 import type { TOmnidrawCapsuleCapabilityContract } from './capsule/types';
 import { fnCapsuleMountErrorDiagnostic } from './fn.capsule-mount-error-diagnostic';
@@ -189,9 +179,7 @@ async function capabilityContracts(
   schemas: readonly CapsuleSchemaResource[];
   channels: Awaited<ReturnType<typeof createOmnidrawGuestChannelContract>> | null;
 }>> {
-  const requests = artifact.runtime.capabilityRequests;
-  const collaborativeRequest = requests.find(({ id }) => id === OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID);
-  const functionRequests = requests.filter(({ id }) => id !== OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID);
+  const functionRequests = artifact.runtime.capabilityRequests;
   if (functionRequests.length !== (artifact.functions.length === 0 ? 0 : 1)) {
     throw new Error('Widget function descriptors do not match signed capability requests.');
   }
@@ -206,19 +194,13 @@ async function capabilityContracts(
   if (functionContract !== null && !requestsMatch(functionContract.request, functionRequest!)) {
     throw new Error('Widget function capability contract is inconsistent with the artifact.');
   }
-  const collaborativeContract = collaborativeRequest === undefined
-    ? null
-    : await createOmnidrawCollaborativeStateCapabilityContract();
-  if (collaborativeContract !== null && !requestsMatch(collaborativeContract.request, collaborativeRequest!)) {
-    throw new Error('Widget state capability contract is inconsistent with the artifact.');
-  }
   const channels = artifact.runtime.channels === null ? null : await createOmnidrawGuestChannelContract({
     localStore: artifact.runtime.channels.store === undefined ? 'none' : 'ephemeral',
   });
   if (channels !== null && canonicalJson(channels.declaration) !== canonicalJson(artifact.runtime.channels)) {
     throw new Error('Widget guest channels are inconsistent with the artifact.');
   }
-  const contracts = [functionContract, collaborativeContract].filter(
+  const contracts = [functionContract].filter(
     (contract): contract is TOmnidrawCapsuleCapabilityContract => contract !== null,
   );
   const schemas = new Map<string, CapsuleSchemaResource>();
@@ -229,81 +211,6 @@ async function capabilityContracts(
     schemas: Object.freeze([...schemas.values()].sort((left, right) => left.reference.hash.localeCompare(right.reference.hash))),
     channels,
   });
-}
-
-class WidgetStateStream implements CapsuleKernelHostStream {
-  readonly #port: IWidgetStateHostPort;
-  readonly #subject: TWidgetBrowserMountRequest['subject'];
-  readonly #runtime: SdkEffectRuntime;
-  #sink: CapsuleKernelHostStreamSink | undefined;
-  #iterator: AsyncIterator<import('../contracts/types').TWidgetStateEvent> | undefined;
-  #version = 0;
-  #initialized = false;
-  #demand = 0;
-  #active = true;
-  #pumping = false;
-  #cancelTask = (): void => undefined;
-
-  constructor(port: IWidgetStateHostPort, subject: TWidgetBrowserMountRequest['subject'], runtime: SdkEffectRuntime) {
-    this.#port = port;
-    this.#subject = subject;
-    this.#runtime = runtime;
-  }
-
-  start(sink: CapsuleKernelHostStreamSink): void {
-    if (this.#sink !== undefined) throw new Error('Widget state stream cannot start twice.');
-    this.#sink = sink;
-    this.#pump();
-  }
-
-  request(demand: Readonly<{ events: number; bytes: number }>): void {
-    if (!this.#active) return;
-    this.#demand = Math.min(Number.MAX_SAFE_INTEGER, this.#demand + demand.events);
-    this.#pump();
-  }
-
-  cancel(_reason: CapsuleKernelStreamCancelReason): void {
-    if (!this.#active) return;
-    this.#active = false;
-    this.#cancelTask();
-    void this.#iterator?.return?.();
-  }
-
-  #pump(): void {
-    if (!this.#active || this.#pumping || this.#sink === undefined || this.#demand < 1) return;
-    this.#pumping = true;
-    this.#cancelTask = this.#runtime.fork(async (signal) => {
-      try {
-        if (!this.#initialized && this.#demand > 0) {
-          const snapshot = await this.#port.get(this.#subject, { signal });
-          if (!this.#active) return;
-          this.#version = snapshot.version;
-          this.#initialized = true;
-          this.#demand -= 1;
-          if (await this.#sink!.event(snapshot) === 'rejected') return this.cancel({ code: 'overflow' });
-        }
-        if (this.#iterator === undefined) {
-          this.#iterator = this.#port.events(this.#subject, this.#version, { signal })[Symbol.asyncIterator]();
-        }
-        while (this.#active && this.#demand > 0) {
-          const next = await this.#iterator.next();
-          if (next.done) { this.#sink?.close(); this.cancel({ code: 'provider-failure' }); return; }
-          const snapshot = next.value.snapshot;
-          if (snapshot.version <= this.#version) throw new Error('Widget state event version did not advance.');
-          this.#version = snapshot.version;
-          this.#demand -= 1;
-          if (await this.#sink!.event(snapshot) === 'rejected') return this.cancel({ code: 'overflow' });
-        }
-      } finally {
-        this.#pumping = false;
-        this.#pump();
-      }
-    }, () => {
-      if (!this.#active) return;
-      this.#sink?.error();
-      this.cancel({ code: 'provider-failure' });
-    });
-  }
 }
 
 function functionBinding(
@@ -333,67 +240,12 @@ function functionBinding(
   });
 }
 
-function stateBinding(
-  descriptor: CapsuleCapabilityDescriptor,
-  port: IWidgetStateHostPort,
-  request: TWidgetBrowserMountRequest,
-  runtime: SdkEffectRuntime,
-): CapsuleCapabilityBinding {
-  let disposed = false;
-  let latest: TWidgetStateSnapshot | undefined;
-  const streams = new Set<WidgetStateStream>();
-  return Object.freeze({
-    descriptor,
-    async invoke(context: CapsuleKernelCallContext, operation: string, input: unknown): Promise<unknown> {
-      if (disposed) throw new Error('Widget state provider is disposed.');
-      if (operation === 'get') {
-        if (input !== null) throw new TypeError('Widget state get input is invalid.');
-        latest = await port.get(request.subject, { signal: context.signal });
-        return latest;
-      }
-      if (operation === 'change') {
-        if (input === null || typeof input !== 'object' || Array.isArray(input) || !Object.hasOwn(input, 'value')) {
-          throw new TypeError('Widget state change input is invalid.');
-        }
-        latest ??= await port.get(request.subject, { signal: context.signal });
-        latest = await port.change(
-          request.subject,
-          latest.version,
-          (input as Readonly<{ value: TWidgetSerializableJsonValue }>).value,
-          { signal: context.signal },
-        );
-        return latest;
-      }
-      throw new Error('Widget state operation is unavailable.');
-    },
-    openStream(_context: CapsuleKernelStreamContext, operation: string, input: unknown): CapsuleKernelHostStream {
-      if (disposed) throw new Error('Widget state provider is disposed.');
-      if (operation !== 'subscribe' || input !== null) throw new TypeError('Widget state stream request is invalid.');
-      const stream = new WidgetStateStream(port, request.subject, runtime);
-      streams.add(stream);
-      return stream;
-    },
-    dispose(): void {
-      if (disposed) return;
-      disposed = true;
-      for (const stream of streams) stream.cancel({ code: 'destroy' });
-      streams.clear();
-      void port.dispose?.();
-    },
-  });
-}
-
 function bindings(
   contracts: readonly TOmnidrawCapsuleCapabilityContract[],
   request: TWidgetBrowserMountRequest,
-  runtime: SdkEffectRuntime,
   createId: () => string,
 ): readonly CapsuleCapabilityBinding[] {
   return Object.freeze(contracts.map((contract) => {
-    if (contract.descriptor.id === OMNIDRAW_COLLABORATIVE_STATE_CAPABILITY_ID) {
-      if (request.state === undefined) throw new Error('Widget state authority is unavailable for this mount.');
-      return stateBinding(contract.descriptor, request.state, request, runtime);
-    }
     if (request.functions === undefined) throw new Error('Widget function authority is unavailable for this mount.');
     return functionBinding(contract.descriptor, request.functions, request, createId);
   }));
@@ -530,7 +382,7 @@ export async function createWidgetBrowserHost(
       : await createCapsuleHost(hostOptions);
     liveHosts.add(host);
     for (const { descriptor } of derived.contracts) host.registerCapabilityDescriptor(descriptor);
-    const capabilityBindings = bindings(derived.contracts, request, runtime, createId);
+    const capabilityBindings = bindings(derived.contracts, request, createId);
     const grants: readonly CapsuleCapabilityGrant[] = Object.freeze(derived.contracts.map(({ grant }) => grant));
     let raw: CapsuleHandle | undefined;
     let stopAbort = (): void => undefined;

@@ -223,6 +223,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B109](b/B109.md) - SPA navigation: chat RPC teardown shows CHAT_BUSY as disconnect
 - [x]: [B110](b/B110.md) - widget check: UI import of server entry rejects `@omnidraw/sdk/server`
 - [x]: [B111](b/B111.md) - Small CRM Preview: listContacts treats portable db rows as contact objects
+- [ ]: [B112](b/B112.md) - widget Config: replace split icon fields with one visual picker
+- [ ]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -493,6 +495,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S145](s/S145.md) - resources: enforce cloud-portable semantics in the OSS providers (order 6/8)
 - [x]: [S146](s/S146.md) - widgets: ship cross-host function and resource conformance (order 7/8)
 - [x]: [S147](s/S147.md) - widgets: delete runtime residue and qualify the portability hard cut (order 8/8)
+- [/]: [S148](s/S148.md) - widgets: remove collaborative state and its APIs
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

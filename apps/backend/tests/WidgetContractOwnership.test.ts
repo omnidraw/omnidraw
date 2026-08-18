@@ -38,7 +38,6 @@ const PORTABLE_SDK_INVENTORY = Object.freeze({
   hostBridge: 'packages/sdk/src/host.ts',
   resources: 'packages/sdk/src/resource.ts',
   functions: 'packages/sdk/src/function.ts',
-  state: 'packages/sdk/src/state.ts',
   validationAndCanonicalizers: 'packages/sdk/src/contracts/index.ts',
   conformance: 'packages/sdk/src/conformance.ts',
 });

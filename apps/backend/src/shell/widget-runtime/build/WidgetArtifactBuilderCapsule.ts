@@ -60,7 +60,6 @@ import {
   type TServerFunctionModule,
 } from '#backend/shell/widget-domain/local';
 import {
-  createOmnidrawCollaborativeStateCapabilityContract,
   createOmnidrawGuestChannelContract,
   createOmnidrawServerFunctionCapabilityContract,
 } from './create-capability-contracts';
@@ -323,13 +322,10 @@ export class WidgetArtifactBuilderCapsule implements IWidgetArtifactConstruction
       descriptorDigestSha256: functionDescriptorsDigestSha256,
       functions: functionDescriptors,
     });
-    const collaborative = manifest.ui.state?.collaborative === true
-      ? await createOmnidrawCollaborativeStateCapabilityContract()
-      : null;
     const channels = await createOmnidrawGuestChannelContract({
       localStore: manifest.ui.state?.localStore ?? 'none',
     });
-    const capabilityContracts = [functions, collaborative].filter(
+    const capabilityContracts = [functions].filter(
       (value) => value !== null,
     );
     const capabilityRequests = capabilityContracts.map((value) => value.request);

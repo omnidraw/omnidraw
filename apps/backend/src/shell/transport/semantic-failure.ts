@@ -7,10 +7,6 @@ import { FunctionProgramError, type TFunctionProgramErrorCode } from '../../core
 import { ResourceError, toSafeResourceError } from '../../core/resources/ResourceError';
 import { ResourceProgramError } from '../../core/resources/service.resources';
 import type { TResourceErrorCode } from '../../core/resources/types';
-import {
-  WidgetStateProgramError,
-  type TWidgetStateProgramErrorCode,
-} from '../../core/widget-state/service.widget-state';
 import { WidgetProgramError, type TWidgetProgramErrorCode } from '../../core/widgets/service.widgets';
 import type { TSemanticFailureDetails } from '../../core/semantic-failure';
 import { PrivateRpcError } from './private-rpc-error-schema';
@@ -24,8 +20,7 @@ export type TSemanticFailure =
   | FunctionProgramError
   | ResourceError
   | ResourceProgramError
-  | WidgetProgramError
-  | WidgetStateProgramError;
+  | WidgetProgramError;
 
 const AGENT_STATUS: Readonly<Record<TAgentProgramErrorCode, number>> = Object.freeze({
   AGENT_UNAVAILABLE: 503,
@@ -90,11 +85,6 @@ const FUNCTION_STATUS: Readonly<Record<TFunctionProgramErrorCode, number>> = Obj
   WIDGET_RESOURCE_BINDING_STALE: 409,
   WIDGET_RESOURCE_KIND_MISMATCH: 400,
   WIDGET_RESOURCE_NOT_READY: 503,
-});
-
-const WIDGET_STATE_STATUS: Readonly<Record<TWidgetStateProgramErrorCode, number>> = Object.freeze({
-  WIDGET_STATE_CAPACITY_UNAVAILABLE: 429,
-  WIDGET_STATE_UNAVAILABLE: 503,
 });
 
 const WIDGET_STATUS: Readonly<Record<TWidgetProgramErrorCode, number>> = Object.freeze({
@@ -187,7 +177,6 @@ export function isSemanticFailure(error: unknown): error is TSemanticFailure {
     || error instanceof FunctionProgramError
     || error instanceof ResourceError
     || error instanceof ResourceProgramError
-    || error instanceof WidgetStateProgramError
     || error instanceof WidgetProgramError;
 }
 
@@ -200,9 +189,6 @@ export function semanticFailureStatus(error: TSemanticFailure): number {
   if (error instanceof FunctionProgramError) return FUNCTION_STATUS[(error as FunctionProgramError).code];
   if (error instanceof ResourceError) return RESOURCE_STATUS[(error as ResourceError).code];
   if (error instanceof ResourceProgramError) return RESOURCE_STATUS[(error as ResourceProgramError).code];
-  if (error instanceof WidgetStateProgramError) {
-    return WIDGET_STATE_STATUS[(error as WidgetStateProgramError).code];
-  }
   return WIDGET_STATUS[(error as WidgetProgramError).code];
 }
 

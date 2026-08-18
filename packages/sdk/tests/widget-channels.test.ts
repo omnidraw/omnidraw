@@ -86,7 +86,7 @@ describe('Capsule guest channels', () => {
     }]);
   });
 
-  test('wraps volatile local state and the sealed snapshot hook registration', () => {
+  test('keeps local state mount-scoped and wraps sealed snapshot hook registration', () => {
     expect(getWidgetLocalState('draft')).toBeUndefined();
     setWidgetLocalState('draft', { title: 'Capsule' });
     setWidgetLocalState('other', 1);
@@ -94,6 +94,9 @@ describe('Capsule guest channels', () => {
     expect(listWidgetLocalStateKeys()).toEqual(['draft', 'other']);
     expect(deleteWidgetLocalState('draft')).toBe(true);
     expect(deleteWidgetLocalState('draft')).toBe(false);
+    capsuleGuestMock.reset();
+    expect(getWidgetLocalState('other')).toBeUndefined();
+    expect(listWidgetLocalStateKeys()).toEqual([]);
 
     const hooks = {
       capture: () => ({ selected: true }),

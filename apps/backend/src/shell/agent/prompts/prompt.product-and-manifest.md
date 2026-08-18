@@ -52,8 +52,8 @@ fields the request actually changes.
   Capsule's selected-group defaults. Zero explicitly denies that dimension.
 - Do not claim that live Preview interaction passed unless the current process
   actually ran it for the exact draft digest.
-- Add `ui.state` only when needed. `collaborative` declares shared
-  widget-instance state; `localStore` is `none` or `ephemeral`.
+- Add `ui.state` only when needed. `localStore` is `none` or `ephemeral` and
+  belongs only to the current Capsule mount; it is never shared or durable.
 - Parking is unavailable in this release. Do not request it.
 - Omit `server` and `resources` for a UI-only widget. This is the default.
 - Add `server: { "entry": "server/main.server.ts" }` only when the request truly needs a short server function. The SDK owns the fixed portable server ABI; never add a runtime or host selection to the manifest. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
@@ -88,7 +88,6 @@ generation; it never trusts raw source, a receipt alone, or a Preview pointer.
 
 Preview construction, diagnostics, handles, and signing are
 owned only by the current process and temporary files. They are not durable
-revision authority. Preview collaborative/local state is authoring state and
-does not become published-instance state. Resource identity comes only from the
+revision authority. Preview local state ends with its mount. Resource identity comes only from the
 accepted manifest and is revalidated at Preview/function/publication/placement
 boundaries; there is no Preview or per-instance resource choice.

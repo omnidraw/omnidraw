@@ -9,18 +9,6 @@ export type {
 } from './function-client';
 
 export {
-  changeCollaborativeState,
-  createCollaborativeStateClient,
-  getCollaborativeState,
-  subscribeCollaborativeState,
-} from './collaborative-state-client';
-export type {
-  TCollaborativeStateClient,
-  TCollaborativeStateSnapshot,
-  TCollaborativeStateSubscriptionOptions,
-} from './collaborative-state-client';
-
-export {
   deleteWidgetLocalState,
   emitWidgetOutput,
   getWidgetLocalState,

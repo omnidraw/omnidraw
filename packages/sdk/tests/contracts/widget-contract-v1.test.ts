@@ -39,7 +39,7 @@ const MANIFEST: TWidgetManifestV1 = Object.freeze({
     entry: 'ui/main.ts',
     apis: Object.freeze(['DOM'] as const),
     budgets: Object.freeze({ cpuMs: 20, memoryBytes: 33_554_432 }),
-    state: Object.freeze({ collaborative: true, localStore: 'none' as const }),
+    state: Object.freeze({ localStore: 'none' as const }),
     parkability: Object.freeze({ enabled: false as const }),
   }),
   resources: Object.freeze([]),
@@ -124,6 +124,7 @@ describe('portable widget manifest v1', () => {
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'C:/main.ts' } },
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui\\main.ts' } },
       { ...MANIFEST, ui: { ...MANIFEST.ui, entry: 'ui/ma\nin.ts' } },
+      { ...MANIFEST, ui: { ...MANIFEST.ui, state: { localStore: 'none', collaborative: true } } },
       { ...MANIFEST, server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' } },
     ];
     for (const candidate of invalid) expect(ZWidgetManifestV1.safeParse(candidate).success).toBe(false);

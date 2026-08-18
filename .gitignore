@@ -47,6 +47,7 @@ coverage/
 
 # Dev database
 .omnidraw/
+.omnidraw*/
 local-volume/
 
 # AI

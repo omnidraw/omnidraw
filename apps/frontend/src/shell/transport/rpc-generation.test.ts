@@ -328,13 +328,6 @@ const RESUMABLE_DOMAIN_CASES = [
     event: (generation: number) => ({ previousGeneration: generation - 1, generation, fullResync: false, changedWidgetKeys: [], previewWidgetKeys: [] }),
     advance: (cursor: number, event: Readonly<{ generation: number }>) => Math.max(cursor, event.generation),
   },
-  {
-    path: "widget.runtime.state.events",
-    input: (afterVersion: number) => ({ canvasId: "canvas-1", elementId: "element-1", widgetInstanceId: "instance-1", afterVersion }),
-    cursor: (input: Readonly<{ afterVersion?: number }>) => input.afterVersion ?? 0,
-    event: (version: number) => ({ type: "changed" as const, snapshot: { version, state: null } }),
-    advance: (cursor: number, event: Readonly<{ snapshot: Readonly<{ version: number }> }>) => Math.max(cursor, event.snapshot.version),
-  },
 ] as const;
 
 async function reconnectDomain<Path extends TPrivateStreamPath>(

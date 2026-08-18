@@ -123,7 +123,7 @@ describe('createWidgetSdkSourceCheck', () => {
         'install',
         '--ignore-scripts',
         '--package-lock=false',
-        '@omnidraw/sdk@0.12.1',
+        '@omnidraw/sdk@0.13.0',
       ]),
     });
     expect(calls[2]?.args).toEqual(expect.arrayContaining([

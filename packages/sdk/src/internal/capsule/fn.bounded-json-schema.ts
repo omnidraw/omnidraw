@@ -39,9 +39,8 @@ function fnOmnidrawBoundedJsonSchemaAtDepth(depth: number): CapsuleSchemaNode {
 }
 
 /**
- * Exact JSON structured-value subset shared by guest channels and
- * collaborative state. Capsule byte strings and JavaScript-only values are
- * intentionally absent.
+ * Exact JSON structured-value subset used by guest channels. Capsule byte
+ * strings and JavaScript-only values are intentionally absent.
  */
 export function fnOmnidrawBoundedJsonValueSchema(): CapsuleSchemaNode {
   return fnOmnidrawBoundedJsonSchemaAtDepth(JSON_VALUE_MAX_DEPTH);

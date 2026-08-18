@@ -71,7 +71,6 @@ export type TWidgetAuthoringInspectionResult = Readonly<{
   canvasCorrelation: Readonly<{
     canvas: 'not_selected' | 'selected';
     visibleFrame: 'not_claimed';
-    durableInstanceState: 'not_selected' | 'selected_not_exercised';
   }>;
   result?: TWidgetPreviewInspectResult;
   error?: TWidgetPreviewInspectionToolError;

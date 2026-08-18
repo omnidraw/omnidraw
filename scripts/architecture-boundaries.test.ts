@@ -815,7 +815,6 @@ describe('application and import boundaries', () => {
       'apps/backend/src/core/functions/service.functions.ts',
       'apps/backend/src/core/resources/ResourceError.ts',
       'apps/backend/src/core/resources/service.resources.ts',
-      'apps/backend/src/core/widget-state/service.widget-state.ts',
       'apps/backend/src/core/widgets/service.widgets.ts',
     ]
     for (const relativePath of featureFailures) {
@@ -858,7 +857,6 @@ describe('application and import boundaries', () => {
         'resources',
         'functions',
         'widgets',
-        'widget-state',
         'events',
       ],
       'apps/frontend': [
@@ -955,6 +953,34 @@ describe('application and import boundaries', () => {
     expect(chatLifecycle).toContain('fxPollAiChat')
     expect(chatLifecycle).toContain('Stream.fromAsyncIterable')
     expect(chatLifecycle).not.toMatch(/\bsetInterval\s*\(/)
+  })
+
+  test('keeps collaborative widget state deleted from runtime and persistence surfaces', async () => {
+    const productionFiles = [
+      ...(await sourceFiles(join(ROOT, 'apps/backend/src'))),
+      ...(await sourceFiles(join(ROOT, 'apps/frontend/src'))),
+      ...(await sourceFiles(join(ROOT, 'packages/sdk/src'))),
+    ].filter((file) => !isTestSource(file))
+    const production = (await Promise.all(
+      productionFiles.map((file) => readFile(file, 'utf8')),
+    )).join('\n')
+    for (const retired of [
+      'omnidraw.widget.collaborative_state',
+      'widget.runtime.state.get',
+      'widget.runtime.state.change',
+      'widget.runtime.state.events',
+      'widget_instance_states',
+      'createCollaborativeStateClient',
+      'IWidgetStateHostPort',
+    ]) expect(production).not.toContain(retired)
+
+    const sdkManifest = await readJson(join(ROOT, 'packages/sdk/package.json'))
+    expect(sdkManifest.exports).not.toHaveProperty('./state')
+    const baseline = await readFile(
+      join(ROOT, 'apps/backend/src/shell/database/migrations/000-initial.sql'),
+      'utf8',
+    )
+    expect(baseline).not.toContain('widget_instance_states')
   })
 })
 

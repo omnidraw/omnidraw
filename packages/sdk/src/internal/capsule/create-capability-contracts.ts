@@ -3,17 +3,12 @@ import type { TWidgetServerFunctionDescriptor } from '../../contracts/types';
 import {
   fnOmnidrawCapabilityGrant,
   fnOmnidrawCapabilityRequest,
-  fnOmnidrawCollaborativeStateCapabilitySelector,
-  fnOmnidrawCollaborativeStateDescriptor,
   fnOmnidrawServerFunctionCapabilitySelector,
   fnOmnidrawServerFunctionDescriptor,
 } from './fn.capability';
 import {
   fnJsonSchemaToCapsuleSchemaDocument,
   fnOmnidrawAnySchemaDocument,
-  fnOmnidrawCollaborativeChangeSchemaDocument,
-  fnOmnidrawCollaborativeSnapshotSchemaDocument,
-  fnOmnidrawNullSchemaDocument,
 } from './fn.json-schema';
 import {
   fnOmnidrawWidgetOutputSchemaDocument,
@@ -61,29 +56,6 @@ export async function createOmnidrawServerFunctionCapabilityContract(args: Reado
     request: fnOmnidrawCapabilityRequest(selector, operations),
     grant: fnOmnidrawCapabilityGrant(selector, operations),
     schemas: deduplicateSchemas(functions.flatMap((item) => [item.input, item.output])),
-  });
-}
-
-export async function createOmnidrawCollaborativeStateCapabilityContract():
-Promise<TOmnidrawCapsuleCapabilityContract> {
-  const [nullSchema, changeSchema, snapshotSchema] = await Promise.all([
-    createCapsuleSchemaResource(fnOmnidrawNullSchemaDocument()),
-    createCapsuleSchemaResource(fnOmnidrawCollaborativeChangeSchemaDocument()),
-    createCapsuleSchemaResource(fnOmnidrawCollaborativeSnapshotSchemaDocument()),
-  ]);
-  const descriptor = fnOmnidrawCollaborativeStateDescriptor({
-    nullSchema: nullSchema.reference,
-    changeSchema: changeSchema.reference,
-    snapshotSchema: snapshotSchema.reference,
-  });
-  const selector = fnOmnidrawCollaborativeStateCapabilitySelector();
-  const operations = ['change', 'get', 'subscribe'];
-  return Object.freeze({
-    descriptor,
-    selector,
-    request: fnOmnidrawCapabilityRequest(selector, operations),
-    grant: fnOmnidrawCapabilityGrant(selector, operations),
-    schemas: deduplicateSchemas([nullSchema, changeSchema, snapshotSchema]),
   });
 }
 
