@@ -67,9 +67,10 @@ export interface IAgentServiceConfig {
   widgetDraftsRoot: string;
   npmUserConfigPath?: string;
   prepareWidgetNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
-  /** Notified after any agent-owned draft change so the app can rescan the
-   * shared widget root and invalidate catalogs. */
-  onWidgetDraftsChanged?: () => void;
+  /** Completes the shared widget-root rescan after an agent-owned draft change.
+   * The agent catalog event is published only after this callback resolves. */
+  onWidgetDraftsChanged?: () => Promise<void>;
+  onWidgetDraftsChangedError?: (error: unknown) => void;
   /** Runs the real host Preview build for one draft slug during validation. */
   previewBuild?: TWidgetPreviewBuildCheck;
   widgetValidation?: TWidgetDraftValidationCheck;
@@ -163,6 +164,24 @@ type TChatSessionEntry = {
 type TChatConnectGenerationResult =
   | { status: 'connected'; result: TAgentConnectResult }
   | { status: 'superseded' };
+
+export async function publishWidgetDraftsChangedAfterRefresh(args: Readonly<{
+  refresh?: () => Promise<void>;
+  publish: () => void;
+  onRefreshError?: (error: unknown) => void;
+}>): Promise<void> {
+  try {
+    await args.refresh?.()
+  } catch (error) {
+    try {
+      args.onRefreshError?.(error)
+    } catch {
+      // Notification diagnostics must not turn a completed draft write into a failure.
+    }
+    return
+  }
+  args.publish()
+}
 
 const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
 const PROMPT_IMAGE_MAX_COUNT = 5
@@ -1374,12 +1393,19 @@ export class AgentService implements IPublicMethods {
     })
   }
 
-  #publishWidgetDraftsChanged(): void {
-    this.#config.eventPublisherService.publishAgentEvent({
-      kind: 'widget-catalog',
-      type: 'changed',
+  #publishWidgetDraftsChanged(): Promise<void> {
+    return publishWidgetDraftsChangedAfterRefresh({
+      ...(this.#config.onWidgetDraftsChanged === undefined
+        ? {}
+        : { refresh: this.#config.onWidgetDraftsChanged }),
+      ...(this.#config.onWidgetDraftsChangedError === undefined
+        ? {}
+        : { onRefreshError: this.#config.onWidgetDraftsChangedError }),
+      publish: () => this.#config.eventPublisherService.publishAgentEvent({
+        kind: 'widget-catalog',
+        type: 'changed',
+      }),
     })
-    this.#config.onWidgetDraftsChanged?.()
   }
 
   async #listAvailableWidgets(sessionId: TOmnidrawChatId): Promise<TAvailableWidget[]> {

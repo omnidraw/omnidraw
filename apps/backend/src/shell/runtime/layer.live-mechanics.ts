@@ -890,8 +890,11 @@ export function layerLiveMechanics(args: Readonly<{
     widgetDraftsRoot: config.home.widgetDraftsRoot,
     npmUserConfigPath,
     prepareWidgetNpmDependencies,
-    onWidgetDraftsChanged: () => {
-      void widgetCatalog.refresh().catch(() => undefined);
+    onWidgetDraftsChanged: async () => {
+      await widgetCatalog.refresh();
+    },
+    onWidgetDraftsChangedError: (error) => {
+      console.warn('Could not refresh the widget catalog after an agent draft change.', error);
     },
     previewBuild: ({ slug }) => widgetPreview.buildCheck({ widgetKey: slug }),
     widgetValidation: ({ slug, signal }) => widgetAuthoring.validate({

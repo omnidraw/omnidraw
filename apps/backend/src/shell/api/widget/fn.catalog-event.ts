@@ -10,7 +10,8 @@ export function fnWidgetCatalogCatchUpEvent(args: Readonly<{
   afterGeneration: number | undefined;
   currentGeneration: number;
 }>): TWidgetCatalogPublicEvent | null {
-  if (args.afterGeneration === args.currentGeneration) return null;
+  const effectiveAfterGeneration = args.afterGeneration ?? 0;
+  if (effectiveAfterGeneration === args.currentGeneration) return null;
   return {
     previousGeneration: args.afterGeneration !== undefined && args.afterGeneration > 0
       ? args.afterGeneration

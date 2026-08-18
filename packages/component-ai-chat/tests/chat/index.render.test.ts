@@ -107,6 +107,51 @@ describe("AiChat portable shell", () => {
     expect(container?.textContent).not.toContain(SYNTHETIC_PNG_BASE64);
   });
 
+  it.each(["widgets", "resources"] as const)(
+    "refreshes mentions and invalidates the host catalog for %s events",
+    async (catalog) => {
+      const getContextCatalog = vi.fn(async () => ({ mentions: [], resources: [] }));
+      const invalidateCatalog = vi.fn();
+      const stream = deferredStream();
+      mount(createTestAiChatPort({ getContextCatalog }, stream.stream), {
+        host: createTestHostActions({ invalidateCatalog }),
+      });
+      await vi.waitFor(() => expect(getContextCatalog).toHaveBeenCalledOnce());
+      getContextCatalog.mockClear();
+
+      stream.emit({ kind: "catalog", catalog });
+
+      await vi.waitFor(() => expect(invalidateCatalog).toHaveBeenCalledWith(catalog));
+      await vi.waitFor(() => expect(getContextCatalog).toHaveBeenCalledOnce());
+    },
+  );
+
+  it("keeps the event stream alive when host catalog invalidation throws", async () => {
+    const logError = vi.fn();
+    const stream = deferredStream();
+    mount(createTestAiChatPort({}, stream.stream), {
+      host: createTestHostActions({
+        invalidateCatalog: () => { throw new Error("host invalidation failed"); },
+        logError,
+      }),
+    });
+
+    stream.emit({ kind: "catalog", catalog: "widgets" });
+    await vi.waitFor(() => expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "host invalidation failed" }),
+    ));
+    stream.emit({
+      kind: "session",
+      componentId: "surface-1",
+      sessionId: "conversation-1",
+      event: { type: "agent-start" },
+    });
+
+    await vi.waitFor(() => expect(container?.querySelector(
+      "[aria-label='Stop response']",
+    )).not.toBeNull());
+  });
+
   it("renders a resolved policy approval as executed without manual action buttons", async () => {
     const toolCallMessage = {
       role: "assistant",

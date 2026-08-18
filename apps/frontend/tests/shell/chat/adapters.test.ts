@@ -17,6 +17,15 @@ const approval = {
   reviewerReason: "Approved by the configured reviewer.",
 } as const;
 
+describe("AI Chat catalog event adapter", () => {
+  it("normalizes the global widget-catalog notification", () => {
+    expect(normalizeAgentEvent({ kind: "widget-catalog", type: "changed" })).toEqual({
+      kind: "catalog",
+      catalog: "widgets",
+    });
+  });
+});
+
 describe("AI Chat approval event adapter", () => {
   it.each([
     {

@@ -237,6 +237,11 @@ export function AiChat(props: TAiChatProps) {
     const onEvent = (event: TAiChatStreamEvent): void => {
       if (event.kind === "catalog") {
         mentionCatalog.refresh()
+        try {
+          props.host.invalidateCatalog?.(event.catalog)
+        } catch (error) {
+          props.host.logError(error)
+        }
         return
       }
       if (

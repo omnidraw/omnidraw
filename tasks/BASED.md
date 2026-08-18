@@ -225,6 +225,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B111](b/B111.md) - Small CRM Preview: listContacts treats portable db rows as contact objects
 - [x]: [B112](b/B112.md) - widget Config: replace split icon fields with one visual picker
 - [x]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
+- [x]: [B114](b/B114.md) - AI-created first widget stays missing from sidebar until reload
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

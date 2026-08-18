@@ -5,6 +5,30 @@ import {
 } from './fn.catalog-event';
 
 describe('widget catalog event projection', () => {
+  test.each([
+    { afterGeneration: undefined, currentGeneration: 0 },
+    { afterGeneration: 0, currentGeneration: 0 },
+    { afterGeneration: 6, currentGeneration: 6 },
+  ])('suppresses catch-up at an equal effective cursor ($afterGeneration, $currentGeneration)', (args) => {
+    expect(fnWidgetCatalogCatchUpEvent(args)).toBeNull();
+  });
+
+  test.each([undefined, 0])(
+    'sends one positive full resync from an empty cursor (%s) after catalog changes',
+    (afterGeneration) => {
+      expect(fnWidgetCatalogCatchUpEvent({
+        afterGeneration,
+        currentGeneration: 6,
+      })).toEqual({
+        previousGeneration: null,
+        generation: 6,
+        fullResync: true,
+        changedWidgetKeys: [],
+        previewWidgetKeys: [],
+      });
+    },
+  );
+
   test('forces a full scene resync when a deleted widget was missed during disconnect', () => {
     expect(fnWidgetCatalogCatchUpEvent({
       afterGeneration: 4,
