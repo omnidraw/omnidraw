@@ -318,7 +318,7 @@ export class NodeWidgetPublicationFilesystem implements TPublicationEffects {
     }
   }
 
-  observeFence(args: Readonly<{ slug: string }>) {
+  observeFence(args: Parameters<TPublicationEffects['observeFence']>[0]) {
     return this.#hooks.observeFence(args);
   }
 

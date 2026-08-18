@@ -8,6 +8,7 @@ import {
   scanWidgetCatalog,
   scanPublishedWidgetFolder,
   fnApplyWidgetDraftConfig,
+  fnPublishedWidgetIconInputError,
   acquireWidgetRootWriterLease,
   clearStalePublicationWriterLock,
   publishAtomicPublication,
@@ -42,6 +43,7 @@ import {
   fnNormalizeWidgetManifestV1,
   fnNormalizeWidgetFilesystemRelativePath,
   fnWidgetExecutableManifestDigest,
+  type TOmnidrawToolIcon,
 } from '@omnidraw/sdk/contract';
 import {
   WidgetDeletionJournalStore,
@@ -468,13 +470,80 @@ implements TWidgetFilesystemManagementCapability {
       operationToken: token,
       lockOwnerToken: `metadata_${token}`,
       expectedFence: {
-        draftDigestSha256: capture.treeDigestSha256,
+        source: 'draft',
+        sourceDigestSha256: capture.treeDigestSha256,
         catalogDigestSha256: snapshot.digestSha256,
       },
       expectedExecutableManifestDigestSha256:
         published.release.executableManifestDigestSha256,
       newExecutableManifestDigestSha256: executableDigest,
       manifestJson: capture.canonicalManifestJson,
+      barrier: this.#config.barrier,
+    });
+    return immutableResult(args.widgetKey, await this.#config.catalog.refresh());
+  }
+
+  async updatePublishedIcon(args: Readonly<{
+    widgetKey: string;
+    expectedPublishedManifestDigestSha256: string;
+    expectedCatalogDigestSha256: string;
+    icon: TOmnidrawToolIcon | null;
+    signal?: AbortSignal;
+  }>): Promise<TWidgetFilesystemCatalogMutationResult> {
+    const iconInputError = fnPublishedWidgetIconInputError(args.icon);
+    if (iconInputError !== null) {
+      throw errorWithCode(iconInputError, 'INVALID_PUBLICATION_INPUT');
+    }
+    args.signal?.throwIfAborted();
+    const snapshot = await this.#refreshAndFence(args.expectedCatalogDigestSha256);
+    const published = snapshot.entries[args.widgetKey]?.published;
+    if (
+      published?.health !== 'healthy'
+      || published.manifest === null
+      || published.release === null
+    ) throw errorWithCode(
+      'Published widget is missing or unhealthy.',
+      'WIDGET_METADATA_UNAVAILABLE',
+    );
+    if (published.manifestDigestSha256 !== args.expectedPublishedManifestDigestSha256) {
+      throw errorWithCode('Published widget manifest changed.', 'WIDGET_MANIFEST_CONFLICT');
+    }
+
+    const { icon: _currentIcon, ...currentTool } = published.manifest.tool;
+    const nextManifest = ZWidgetManifestV1.parse({
+      ...published.manifest,
+      tool: {
+        ...currentTool,
+        ...(args.icon === null ? {} : { icon: { ...args.icon } }),
+      },
+    });
+    const executableDigest = fnWidgetExecutableManifestDigest({
+      manifest: nextManifest,
+      digestSha256: sha256,
+    });
+    if (executableDigest !== published.release.executableManifestDigestSha256) {
+      throw errorWithCode(
+        'Published executable identity changed; the icon cannot be updated as metadata.',
+        'WIDGET_BUILD_REQUIRED',
+      );
+    }
+
+    args.signal?.throwIfAborted();
+    const token = this.#operationToken();
+    await publishWidgetMetadata(await this.#publication, {
+      widgetRoot: await this.#widgetsRoot,
+      slug: args.widgetKey,
+      operationToken: token,
+      lockOwnerToken: `metadata_${token}`,
+      expectedFence: {
+        source: 'published',
+        sourceDigestSha256: published.treeDigestSha256,
+        catalogDigestSha256: snapshot.digestSha256,
+      },
+      expectedExecutableManifestDigestSha256:
+        published.release.executableManifestDigestSha256,
+      newExecutableManifestDigestSha256: executableDigest,
+      manifestJson: fnCanonicalizeWidgetManifestV1(nextManifest),
       barrier: this.#config.barrier,
     });
     return immutableResult(args.widgetKey, await this.#config.catalog.refresh());
@@ -515,7 +584,8 @@ implements TWidgetFilesystemManagementCapability {
       operationToken: token,
       lockOwnerToken: `publish_${token}`,
       expectedFence: {
-        draftDigestSha256: capture.treeDigestSha256,
+        source: 'draft',
+        sourceDigestSha256: capture.treeDigestSha256,
         catalogDigestSha256: snapshot.digestSha256,
       },
       manifestJson: prepared.manifestJson,
@@ -1041,17 +1111,34 @@ implements TWidgetFilesystemManagementCapability {
     return NodeWidgetPublicationFilesystem.create({
       widgetRoot: this.#config.widgetsRoot,
       hooks: {
-        observeFence: async ({ slug }) => {
-          const workspace = await this.#workspace;
-          const [draft, snapshot] = await Promise.all([
-            workspace.captureDraftBuildInput({
-              slug,
-              signal: new AbortController().signal,
-            }),
-            this.#scanCurrent(),
-          ]);
+        observeFence: async ({ slug, source }) => {
+          if (source === 'draft') {
+            const workspace = await this.#workspace;
+            const [draft, snapshot] = await Promise.all([
+              workspace.captureDraftBuildInput({
+                slug,
+                signal: new AbortController().signal,
+              }),
+              this.#scanCurrent(),
+            ]);
+            return Object.freeze({
+              source,
+              sourceDigestSha256: draft.treeDigestSha256,
+              catalogDigestSha256: snapshot.digestSha256,
+            });
+          }
+
+          const snapshot = await this.#scanCurrent();
+          const published = snapshot.entries[slug]?.published;
+          if (published?.health !== 'healthy') {
+            throw errorWithCode(
+              'Published widget changed before metadata replacement.',
+              'PUBLICATION_FENCE_CONFLICT',
+            );
+          }
           return Object.freeze({
-            draftDigestSha256: draft.treeDigestSha256,
+            source,
+            sourceDigestSha256: published.treeDigestSha256,
             catalogDigestSha256: snapshot.digestSha256,
           });
         },

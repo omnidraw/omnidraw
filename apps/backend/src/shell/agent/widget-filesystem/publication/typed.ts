@@ -7,7 +7,8 @@
  */
 
 export type TPublicationDigestFence = Readonly<{
-  draftDigestSha256: string;
+  source: 'draft' | 'published';
+  sourceDigestSha256: string;
   catalogDigestSha256: string;
 }>;
 
@@ -129,7 +130,10 @@ export type TPublicationEffects = Readonly<{
   ): Promise<TPublicationCompareRemoveResult>;
   syncFile(path: string): Promise<unknown>;
   syncDirectory(path: string): Promise<unknown>;
-  observeFence(args: Readonly<{ slug: string }>): Promise<TPublicationDigestFence>;
+  observeFence(args: Readonly<{
+    slug: string;
+    source: TPublicationDigestFence['source'];
+  }>): Promise<TPublicationDigestFence>;
   validateReopenedPublication(args: Readonly<{
     slug: string;
     path: string;

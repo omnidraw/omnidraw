@@ -19,6 +19,7 @@ import {
 import {
   apiWidgetBuildAndPublish,
   apiWidgetPublishMetadata,
+  apiWidgetUpdatePublishedIcon,
 } from './api.publication';
 import { apiWidgetPlacementResolve } from './api.placement-resolve';
 import {
@@ -56,6 +57,7 @@ const widgetHandlers = {
   },
   publication: {
     publishMetadata: apiWidgetPublishMetadata,
+    updateIcon: apiWidgetUpdatePublishedIcon,
     buildAndPublish: apiWidgetBuildAndPublish,
   },
   placement: {

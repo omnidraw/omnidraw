@@ -5,8 +5,27 @@ import type {
   TWidgetDraftConfig,
 } from './typed';
 import type {
+  TOmnidrawToolIcon,
   TWidgetManifestV1,
 } from '@omnidraw/sdk/contract';
+
+const HOST_RESOURCE_SVG_PATTERN = /(?:<\s*(?:a|image|use|feimage|mpath|style|animate(?:motion|transform)?|set|font-face-uri)\b|(?:^|[\s<])(?:href|xlink:href|src|srcset|style)\s*=|@import\b|\burl\b)/i;
+
+export function fnPublishedWidgetIconInputError(
+  icon: TOmnidrawToolIcon | null,
+): string | null {
+  if (icon === null) return null;
+  const hasLucideIcon = icon.lucidIcon !== undefined;
+  const svgIcon = icon.svgIcon;
+  const hasSvgIcon = svgIcon !== undefined;
+  if (Number(hasLucideIcon) + Number(hasSvgIcon) !== 1) {
+    return 'Published widget icons must choose exactly one Lucide or custom icon.';
+  }
+  if (svgIcon !== undefined && HOST_RESOURCE_SVG_PATTERN.test(svgIcon)) {
+    return 'Published custom SVG icons cannot contain resource, navigation, animation, or style markup.';
+  }
+  return null;
+}
 
 export function fnApplyWidgetDraftConfig(
   manifest: TWidgetManifestV1,

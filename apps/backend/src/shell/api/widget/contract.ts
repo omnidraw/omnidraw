@@ -26,7 +26,10 @@ import type {
   TWidgetPublicSigningKey,
   TWidgetPreviewBuildState,
 } from './types';
-import type { TWidgetPreviewInspectResult } from '#backend/shell/agent';
+import {
+  fnPublishedWidgetIconInputError,
+  type TWidgetPreviewInspectResult,
+} from '#backend/shell/agent';
 import type {
   TWidgetPublicCatalog,
   TWidgetPublicCatalogEntry,
@@ -52,6 +55,10 @@ const ZSha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const ZWidgetSource = z.enum(['draft', 'published']);
 const ZWidgetOperationToken = z.string().min(1).max(96).regex(/^[A-Za-z0-9_-]+$/);
 const ZOmnidrawToolIcon = sdkSchema(OmnidrawToolIconValidator);
+const ZPublishedWidgetToolIcon = ZOmnidrawToolIcon.superRefine((icon, context) => {
+  const message = fnPublishedWidgetIconInputError(icon);
+  if (message !== null) context.addIssue({ code: 'custom', message });
+});
 const ZWidgetServerFunctionDescriptors = sdkSchema(WidgetServerFunctionDescriptorsValidator);
 const ZWidgetRuntimeAllowedApis = sdkSchema(WidgetRuntimeAllowedApisValidator);
 const ZWidgetRuntimeBudgetRequest = sdkSchema(WidgetRuntimeBudgetRequestValidator);
@@ -578,6 +585,12 @@ const widgetContract = pc.router({
       widgetKey: ZWidgetKey,
       expectedManifestDigestSha256: ZSha256,
       expectedCatalogDigestSha256: ZSha256,
+    }).strict()).output(ZWidgetPublicMutationResult),
+    updateIcon: pc.input(z.object({
+      widgetKey: ZWidgetKey,
+      expectedPublishedManifestDigestSha256: ZSha256,
+      expectedCatalogDigestSha256: ZSha256,
+      icon: ZPublishedWidgetToolIcon.nullable(),
     }).strict()).output(ZWidgetPublicMutationResult),
     buildAndPublish: pc.input(z.object({
       widgetKey: ZWidgetKey,

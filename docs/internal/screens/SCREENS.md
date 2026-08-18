@@ -74,14 +74,14 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 ## Widget inspector
 
-The widget route provides one tabbed workspace for published and draft widget definitions. Published configuration is read-only; a draft makes configuration editable.
+The widget route provides one tabbed workspace for published and draft widget definitions. Published configuration remains read-only except for its metadata-only icon control; a draft makes the complete presentation configuration editable.
 
 | Published overview | Published config |
 | --- | --- |
-| ![Published Hacker News widget overview](assets/20-widget-published-overview.webp) | ![Read-only configuration for a published widget](assets/21-widget-published-config.webp) |
-| **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** Immutable published configuration with the edit-as-draft entry point. |
+| ![Published Hacker News widget overview](assets/20-widget-published-overview.webp) | ![Published widget configuration and metadata-only icon editor](assets/21-widget-published-config.webp) |
+| **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** One visual icon picker can update only the published `tool.icon` through the metadata writer without a build; every other published field remains read-only. |
 
-The current inspector tabs are **Overview**, **Config**, **Functions**, **Resources**, and **Files**. Published configuration and source are read from the exact published folder; draft configuration edits the mutable draft with digest-fenced saves.
+The current inspector tabs are **Overview**, **Config**, **Functions**, **Resources**, and **Files**. Published configuration and source are read from the exact published folder; the published icon uses published-manifest and catalog fences, while draft configuration edits the mutable draft with digest-fenced saves.
 
 Draft publication offers two actions. **Publish metadata** atomically replaces
 only the published `omnidraw.json` and preserves every executable byte.
@@ -93,7 +93,7 @@ manifest, so a newly published ID is used by every instance on its next call.
 | Files | Draft config |
 | --- | --- |
 | ![Widget file tree and source viewer](assets/24-widget-files.webp) | ![Editable configuration for a draft widget](assets/25-widget-draft-config.webp) |
-| **`?tab=files`.** File tree with the selected source file rendered beside it. | **Draft `?tab=config`.** Editable name, label, description, group, priority, and one searchable visual icon picker for no icon, Lucide glyphs, or exact validated custom SVG/emoji source. |
+| **`?tab=files`.** File tree with the selected source file rendered beside it. | **Draft `?tab=config`.** Editable name, label, description, group, priority, and one searchable visual icon picker for no icon, curated Lucide glyphs, or exact validated custom SVG/emoji source. **Save draft** lives with publication actions in the route header and turns green for valid unsaved changes; Config has no footer actions or save shortcut. |
 
 ## Key-value and secret resources
 

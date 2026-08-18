@@ -549,6 +549,12 @@ export class WidgetFilesystemRuntimeCatalog {
     return this.#requireManagement().publishMetadata(args);
   }
 
+  updatePublishedIcon(
+    args: Parameters<TWidgetFilesystemManagementCapability['updatePublishedIcon']>[0],
+  ) {
+    return this.#requireManagement().updatePublishedIcon(args);
+  }
+
   buildAndPublish(
     args: Parameters<TWidgetFilesystemManagementCapability['buildAndPublish']>[0],
   ) {

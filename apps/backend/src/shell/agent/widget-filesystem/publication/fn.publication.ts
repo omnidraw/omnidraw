@@ -97,7 +97,8 @@ export function fnPublicationFenceMatches(
   expected: TPublicationDigestFence,
   observed: TPublicationDigestFence,
 ): boolean {
-  return expected.draftDigestSha256 === observed.draftDigestSha256
+  return expected.source === observed.source
+    && expected.sourceDigestSha256 === observed.sourceDigestSha256
     && expected.catalogDigestSha256 === observed.catalogDigestSha256;
 }
 
@@ -171,11 +172,12 @@ export function fnValidateMetadataPublicationInput(
     return 'Metadata publication tokens are invalid.';
   }
   if (
-    !fnIsPublicationDigest(args.expectedFence.draftDigestSha256)
+    (args.expectedFence.source !== 'draft' && args.expectedFence.source !== 'published')
+    || !fnIsPublicationDigest(args.expectedFence.sourceDigestSha256)
     || !fnIsPublicationDigest(args.expectedFence.catalogDigestSha256)
     || !fnIsPublicationDigest(args.expectedExecutableManifestDigestSha256)
     || !fnIsPublicationDigest(args.newExecutableManifestDigestSha256)
-  ) return 'Metadata publication digests must be lowercase SHA-256.';
+  ) return 'Metadata publication fence and digests are invalid.';
   if (
     args.expectedExecutableManifestDigestSha256
     !== args.newExecutableManifestDigestSha256
@@ -258,9 +260,10 @@ export function fnValidateAtomicPublicationInput(
     return { valid: false, reason: 'Publication tokens are invalid.' };
   }
   if (
-    !fnIsPublicationDigest(args.expectedFence.draftDigestSha256)
+    args.expectedFence.source !== 'draft'
+    || !fnIsPublicationDigest(args.expectedFence.sourceDigestSha256)
     || !fnIsPublicationDigest(args.expectedFence.catalogDigestSha256)
-  ) return { valid: false, reason: 'Expected publication digests must be lowercase SHA-256.' };
+  ) return { valid: false, reason: 'Expected draft publication fence is invalid.' };
 
   const manifest = parseJson(args.manifestJson);
   if (!isRecord(manifest) || manifest.slug !== args.slug) {

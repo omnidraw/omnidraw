@@ -101,7 +101,8 @@ function publicationInput(
     operationToken,
     lockOwnerToken: `owner-${operationToken}`,
     expectedFence: {
-      draftDigestSha256: DRAFT_DIGEST,
+      source: 'draft',
+      sourceDigestSha256: DRAFT_DIGEST,
       catalogDigestSha256: CATALOG_DIGEST,
     },
     manifestJson: jsonManifest(version),
@@ -162,7 +163,8 @@ function createEffects(): TTestEffects {
   const writes: string[] = [];
   const effects: TTestEffects = {
     fence: {
-      draftDigestSha256: DRAFT_DIGEST,
+      source: 'draft',
+      sourceDigestSha256: DRAFT_DIGEST,
       catalogDigestSha256: CATALOG_DIGEST,
     },
     transitions,
@@ -299,7 +301,7 @@ describe('atomic filesystem widget publication', () => {
     expect(await publicationVersion(join(root, '.trash', 'counter.publish-v2.replaced'))).toBe('v1');
   });
 
-  test('rechecks draft and catalog digests immediately before replacement', async () => {
+  test('rechecks the source and catalog digests immediately before replacement', async () => {
     const root = await createRoot();
     const effects = createEffects();
     const barrier = new PublicationReadWriteBarrier();
@@ -307,7 +309,7 @@ describe('atomic filesystem widget publication', () => {
     effects.failTransition = null;
     effects.pauseTransition = async (event) => {
       if (event.timing === 'after' && event.transition === 'stage-reopen-validation') {
-        effects.fence = { ...effects.fence, draftDigestSha256: 'f'.repeat(64) };
+        effects.fence = { ...effects.fence, sourceDigestSha256: 'f'.repeat(64) };
       }
     };
 
@@ -378,9 +380,10 @@ describe('atomic filesystem widget publication', () => {
     const filesystem = await NodeWidgetPublicationFilesystem.create({
       widgetRoot: requestedRoot,
       hooks: {
-        async observeFence() {
+        async observeFence({ source }) {
           return {
-            draftDigestSha256: DRAFT_DIGEST,
+            source,
+            sourceDigestSha256: DRAFT_DIGEST,
             catalogDigestSha256: CATALOG_DIGEST,
           };
         },
@@ -423,8 +426,8 @@ describe('atomic filesystem widget publication', () => {
     const filesystem = await NodeWidgetPublicationFilesystem.create({
       widgetRoot: requestedRoot,
       hooks: {
-        async observeFence() {
-          return { draftDigestSha256: DRAFT_DIGEST, catalogDigestSha256: CATALOG_DIGEST };
+        async observeFence({ source }) {
+          return { source, sourceDigestSha256: DRAFT_DIGEST, catalogDigestSha256: CATALOG_DIGEST };
         },
         async validateReopenedPublication({ slug, path }) {
           return validateFolder(slug, path, null);
@@ -468,8 +471,8 @@ describe('atomic filesystem widget publication', () => {
     await expect(NodeWidgetPublicationFilesystem.create({
       widgetRoot: linkedRoot,
       hooks: {
-        async observeFence() {
-          return { draftDigestSha256: DRAFT_DIGEST, catalogDigestSha256: CATALOG_DIGEST };
+        async observeFence({ source }) {
+          return { source, sourceDigestSha256: DRAFT_DIGEST, catalogDigestSha256: CATALOG_DIGEST };
         },
         async validateReopenedPublication() {
           return { valid: true };
@@ -769,6 +772,7 @@ describe('checked metadata-only publication', () => {
     const effects = createEffects();
     const barrier = new PublicationReadWriteBarrier();
     await publishAtomicPublication(effects, publicationInput(root, barrier, 'v1', 'base-v1'));
+    effects.fence = { ...effects.fence, source: 'published' };
     const currentPath = join(root, 'published', 'counter');
     const runtimePaths = ['dist/app.js', 'capsule.artifact', 'release.json'];
     const before = await Promise.all(runtimePaths.map((path) => readFile(join(currentPath, path))));
@@ -806,6 +810,41 @@ describe('checked metadata-only publication', () => {
       barrier,
     })).rejects.toMatchObject({ code: 'INVALID_PUBLICATION_INPUT' });
     expect(await Promise.all(runtimePaths.map((path) => readFile(join(currentPath, path))))).toEqual(before);
+  });
+
+  test('rechecks the published source fence immediately before metadata replacement', async () => {
+    const root = await createRoot();
+    const effects = createEffects();
+    const barrier = new PublicationReadWriteBarrier();
+    await publishAtomicPublication(effects, publicationInput(root, barrier, 'v1', 'base-v1'));
+    effects.fence = { ...effects.fence, source: 'published' };
+    effects.pauseTransition = async (event) => {
+      if (
+        event.operationToken === 'metadata-stale'
+        && event.timing === 'after'
+        && event.transition === 'metadata-reopen-validation'
+      ) effects.fence = { ...effects.fence, sourceDigestSha256: 'f'.repeat(64) };
+    };
+
+    await expect(publishWidgetMetadata(effects, {
+      widgetRoot: root,
+      slug: 'counter',
+      operationToken: 'metadata-stale',
+      lockOwnerToken: 'metadata-stale-owner',
+      expectedFence: {
+        source: 'published',
+        sourceDigestSha256: DRAFT_DIGEST,
+        catalogDigestSha256: CATALOG_DIGEST,
+      },
+      expectedExecutableManifestDigestSha256: EXECUTABLE_DIGEST,
+      newExecutableManifestDigestSha256: EXECUTABLE_DIGEST,
+      manifestJson: jsonManifest('v1', 'Stale Metadata'),
+      barrier,
+    })).rejects.toMatchObject({ code: 'PUBLICATION_FENCE_CONFLICT' });
+    expect(JSON.parse(await readFile(
+      join(root, 'published', 'counter', 'omnidraw.json'),
+      'utf8',
+    ))).toMatchObject({ name: 'Counter v1' });
   });
 
   test('poisons readers when an invalid metadata replacement cannot roll back', async () => {

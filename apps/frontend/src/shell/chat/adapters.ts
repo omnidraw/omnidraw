@@ -487,6 +487,7 @@ export function createFrontendSidebarController(runtime: TFrontendRuntime, args:
       },
       publication: {
         publishMetadata: (input) => runtime.api.safeRequest("widget.publication.publishMetadata", input),
+        updateIcon: (input) => runtime.api.safeRequest("widget.publication.updateIcon", input),
         buildAndPublish: (input) => runtime.api.safeRequest("widget.publication.buildAndPublish", input),
       },
     },

@@ -468,6 +468,174 @@ describe('WidgetFilesystemRuntimeCatalog management', () => {
     expect(closeCalls).toBe(1);
   });
 
+  test('updates a published-only icon without materializing a draft', async () => {
+    const root = await createWidgetsRoot();
+    await writePublication(root, manifest('Notes Board'));
+    let operation = 0;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder: { close: async () => undefined } as unknown as WidgetFilesystemBuildService,
+        acceptedBuild: {
+          async requireCurrent() {
+            throw new Error('published icon update must not require an accepted build');
+          },
+        },
+        createOperationToken: () => `published_only_icon_${++operation}`,
+      },
+    });
+    await catalog.start();
+
+    const initial = catalog.current();
+    expect(initial.entries['notes-board']!.draft).toBeNull();
+    const input = {
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256:
+        initial.entries['notes-board']!.published!.manifestDigestSha256!,
+      expectedCatalogDigestSha256: initial.digestSha256,
+    };
+    await expect(catalog.updatePublishedIcon({
+      ...input,
+      icon: { lucidIcon: 'Camera', svgIcon: '⭐' },
+    })).rejects.toMatchObject({ code: 'INVALID_PUBLICATION_INPUT' });
+    await expect(catalog.updatePublishedIcon({
+      ...input,
+      icon: { svgIcon: '<svg><image href="//attacker.example/icon" /></svg>' },
+    })).rejects.toMatchObject({ code: 'INVALID_PUBLICATION_INPUT' });
+
+    const svgIcon = '<svg viewBox="0 0 10 10"><path d="M1 1h8v8z" /></svg>';
+    await catalog.updatePublishedIcon({ ...input, icon: { svgIcon } });
+    expect(catalog.current().entries['notes-board']!.published!.manifest!.tool.icon)
+      .toEqual({ svgIcon });
+
+    const withSvg = catalog.current();
+    await catalog.updatePublishedIcon({
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256:
+        withSvg.entries['notes-board']!.published!.manifestDigestSha256!,
+      expectedCatalogDigestSha256: withSvg.digestSha256,
+      icon: null,
+    });
+
+    expect(await pathExists(join(root, 'drafts', 'notes-board'))).toBe(false);
+    expect(catalog.current().entries['notes-board']!.draft).toBeNull();
+    expect(catalog.current().entries['notes-board']!.published!.manifest!.tool.icon)
+      .toBeUndefined();
+    await catalog.stop();
+  });
+
+  test('updates only the published icon without building or mutating a divergent draft', async () => {
+    const root = await createWidgetsRoot();
+    const published = manifest('Notes Board');
+    const draft = {
+      ...published,
+      name: 'Notes Board Draft',
+      description: 'Unpublished source changes.',
+    };
+    await Promise.all([
+      writeDraft(root, draft),
+      writePublication(root, published, { includeSource: true }),
+    ]);
+
+    let constructCalls = 0;
+    let preparePublicationCalls = 0;
+    let acceptedBuildCalls = 0;
+    const builder = {
+      async construct() {
+        constructCalls += 1;
+        throw new Error('published icon update must not construct a widget');
+      },
+      async preparePublication() {
+        preparePublicationCalls += 1;
+        throw new Error('published icon update must not sign or prepare a release');
+      },
+      async close() {},
+    } as unknown as WidgetFilesystemBuildService;
+    let operation = 0;
+    const catalog = new WidgetFilesystemRuntimeCatalog({
+      ...catalogWorld(),
+      widgetsRoot: root,
+      capsule,
+      management: {
+        builder,
+        acceptedBuild: {
+          async requireCurrent() {
+            acceptedBuildCalls += 1;
+            throw new Error('published icon update must not require an accepted build');
+          },
+        },
+        createOperationToken: () => `icon_${++operation}`,
+      },
+    });
+    await catalog.start();
+
+    const initial = catalog.current();
+    const publishedForm = initial.entries['notes-board']!.published!;
+    const originalPublishedManifestDigest = publishedForm.manifestDigestSha256!;
+    const runtimePaths = [
+      'release.json',
+      'capsule.artifact',
+      'dist/main.js',
+      'dist/.omnidraw-authoring-source.artifact',
+    ];
+    const beforeRuntime = await Promise.all(runtimePaths.map((path) => readFile(
+      join(root, 'published', 'notes-board', ...path.split('/')),
+    )));
+    const beforeDraft = await readFile(
+      join(root, 'drafts', 'notes-board', 'omnidraw.json'),
+    );
+
+    await catalog.updatePublishedIcon({
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256: originalPublishedManifestDigest,
+      expectedCatalogDigestSha256: initial.digestSha256,
+      icon: { lucidIcon: 'NotebookPen' },
+    });
+
+    const afterRuntime = await Promise.all(runtimePaths.map((path) => readFile(
+      join(root, 'published', 'notes-board', ...path.split('/')),
+    )));
+    expect(afterRuntime).toEqual(beforeRuntime);
+    expect(await readFile(join(root, 'drafts', 'notes-board', 'omnidraw.json')))
+      .toEqual(beforeDraft);
+    expect(JSON.parse(await readFile(
+      join(root, 'published', 'notes-board', 'omnidraw.json'),
+      'utf8',
+    ))).toMatchObject({
+      name: 'Notes Board',
+      description: 'Notes Board description',
+      tool: {
+        label: 'Notes Board',
+        icon: { lucidIcon: 'NotebookPen' },
+        group: 'notes',
+        priority: 10,
+      },
+    });
+    expect(constructCalls).toBe(0);
+    expect(preparePublicationCalls).toBe(0);
+    expect(acceptedBuildCalls).toBe(0);
+    expect(catalog.current().entries['notes-board']!.draft!.manifest!.name)
+      .toBe('Notes Board Draft');
+
+    const current = catalog.current();
+    await expect(catalog.updatePublishedIcon({
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256:
+        current.entries['notes-board']!.published!.manifestDigestSha256!,
+      expectedCatalogDigestSha256: initial.digestSha256,
+      icon: null,
+    })).rejects.toMatchObject({ code: 'WIDGET_CATALOG_CHANGED' });
+    await expect(catalog.updatePublishedIcon({
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256: originalPublishedManifestDigest,
+      expectedCatalogDigestSha256: current.digestSha256,
+      icon: null,
+    })).rejects.toMatchObject({ code: 'WIDGET_MANIFEST_CONFLICT' });
+    await catalog.stop();
+  });
+
   test('deletes only a confirmed draft and preserves its publication', async () => {
     const root = await createWidgetsRoot();
     const value = manifest('Notes Board');

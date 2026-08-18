@@ -224,7 +224,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B110](b/B110.md) - widget check: UI import of server entry rejects `@omnidraw/sdk/server`
 - [x]: [B111](b/B111.md) - Small CRM Preview: listContacts treats portable db rows as contact objects
 - [x]: [B112](b/B112.md) - widget Config: replace split icon fields with one visual picker
-- [ ]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
+- [x]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

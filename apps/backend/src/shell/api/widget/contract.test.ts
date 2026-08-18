@@ -63,6 +63,37 @@ describe('filesystem widget API bounds', () => {
     }).success).toBe(false);
   });
 
+  test('accepts only one validated published icon behind manifest and catalog fences', () => {
+    const schema = widgetContract.publication.updateIcon.inputSchema as {
+      safeParse(value: unknown): { success: boolean };
+    };
+    const input = {
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256: 'a'.repeat(64),
+      expectedCatalogDigestSha256: 'b'.repeat(64),
+      icon: { lucidIcon: 'NotebookPen' },
+    };
+
+    expect(schema.safeParse(input).success).toBe(true);
+    expect(schema.safeParse({ ...input, icon: null }).success).toBe(true);
+    expect(schema.safeParse({ ...input, icon: { svgIcon: '👩🏽‍💻' } }).success).toBe(true);
+    expect(schema.safeParse({ ...input, icon: { lucidIcon: 'MissingIcon' } }).success).toBe(false);
+    expect(schema.safeParse({ ...input, icon: { svgIcon: '<svg><script /></svg>' } }).success)
+      .toBe(false);
+    expect(schema.safeParse({
+      ...input,
+      icon: { lucidIcon: 'Camera', svgIcon: '⭐' },
+    }).success).toBe(false);
+    for (const svgIcon of [
+      '<svg><image href="//attacker.example/icon" /></svg>',
+      '<svg><use href="#local-symbol" /></svg>',
+      '<svg><a href="/navigate"><path d="M0 0h1" /></a></svg>',
+      '<svg><style>@import"https://attacker.example/icon.css"</style></svg>',
+      '<svg><path style="fill:red" d="M0 0h1" /></svg>',
+    ]) expect(schema.safeParse({ ...input, icon: { svgIcon } }).success).toBe(false);
+    expect(schema.safeParse({ ...input, unexpected: true }).success).toBe(false);
+  });
+
   test('uses strict widget keys and rejects browser-owned placement bindings', () => {
     expect(ZWidgetRuntimeLoadInput.safeParse({
       canvasId: 'canvas-a',

@@ -18,6 +18,23 @@ const apiWidgetPublishMetadata = baseWidgetOs.publication.publishMetadata.handle
   }
 });
 
+const apiWidgetUpdatePublishedIcon = baseWidgetOs.publication.updateIcon.handler(async ({
+  context,
+  input,
+  signal,
+}) => {
+  try {
+    const result = await context.widgetCatalog.updatePublishedIcon({ ...input, signal });
+    return Object.freeze({
+      widgetKey: result.widgetKey,
+      generation: result.generation,
+      catalogDigestSha256: result.catalogDigestSha256,
+    });
+  } catch (error) {
+    throwWidgetFilesystemApiError(error);
+  }
+});
+
 const apiWidgetBuildAndPublish = baseWidgetOs.publication.buildAndPublish.handler(async ({
   context,
   input,
@@ -35,4 +52,8 @@ const apiWidgetBuildAndPublish = baseWidgetOs.publication.buildAndPublish.handle
   }
 });
 
-export { apiWidgetBuildAndPublish, apiWidgetPublishMetadata };
+export {
+  apiWidgetBuildAndPublish,
+  apiWidgetPublishMetadata,
+  apiWidgetUpdatePublishedIcon,
+};

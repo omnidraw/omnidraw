@@ -19,6 +19,7 @@ import type {
   TWidgetHostSubject,
   TWidgetPlacementRef,
   TWidgetPresentationProjection,
+  TOmnidrawToolIcon,
   TWidgetResourceRequirement,
   TWidgetSerializableJsonValue,
 } from "@omnidraw/sdk";
@@ -353,6 +354,7 @@ export type TPrivateRequestOperations = Readonly<{
   "widget.deletion.plan": TOperation<Readonly<{ widgetKey: string; source: "draft" | "published" }>, TWidgetPublicDeletionPlan>;
   "widget.deletion.commit": TOperation<Readonly<{ planToken: string; operationId: string }>, TWidgetPublicDeletionResult>;
   "widget.publication.publishMetadata": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
+  "widget.publication.updateIcon": TOperation<Readonly<{ widgetKey: string; expectedPublishedManifestDigestSha256: string; expectedCatalogDigestSha256: string; icon: TOmnidrawToolIcon | null }>, TWidgetPublicMutationResult>;
   "widget.publication.buildAndPublish": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.placement.resolve": TOperation<Readonly<{ reference: Extract<TWidgetPlacementRef, { source: "published" }> }>, Readonly<{ kind: "published"; reference: Extract<TWidgetPlacementRef, { source: "published" }>; widgetKey: string; catalogGeneration: number; bounds: Readonly<{ width: number; height: number }> }>>;
   "widget.preview.buildState": TOperation<Readonly<{ widgetKey: string }>, TWidgetPreviewBuildState>;

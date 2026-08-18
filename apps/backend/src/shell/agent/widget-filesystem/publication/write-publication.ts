@@ -269,7 +269,10 @@ async function assertFence(
     expectedFence: TAtomicPublicationInput['expectedFence'];
   }>,
 ): Promise<void> {
-  const observed = await effects.observeFence({ slug: args.slug });
+  const observed = await effects.observeFence({
+    slug: args.slug,
+    source: args.expectedFence.source,
+  });
   if (!fnPublicationFenceMatches(args.expectedFence, observed)) {
     throw errorWithCode(
       'PUBLICATION_FENCE_CONFLICT',

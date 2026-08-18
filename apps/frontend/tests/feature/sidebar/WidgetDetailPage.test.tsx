@@ -3,13 +3,20 @@ import type {
   TWidgetPublicCatalogForm,
 } from '../../../src/shell/framework/feature/sidebar/ports';
 import { createSignal } from 'solid-js';
+import * as LucideStatic from 'lucide-static';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Effect } from 'effect';
-import { fnWidgetToolIconTextError } from '@omnidraw/sdk/contract';
+import {
+  fnWidgetToolIconTextError,
+  type TOmnidrawToolIcon,
+} from '@omnidraw/sdk/contract';
 import { createCatalogInvalidation } from '../../../src/shell/framework/feature/sidebar/ports';
 import { WidgetCatalogProvider } from '../../../src/shell/framework/feature/sidebar/widgets/WidgetCatalogProvider';
-import { toolIconValidationError } from '../../../src/shell/framework/feature/sidebar/ToolIconPicker/ToolIconPicker';
+import {
+  CURATED_LUCIDE_ICON_IDS,
+  toolIconValidationError,
+} from '../../../src/shell/framework/feature/sidebar/ToolIconPicker/ToolIconPicker';
 import { WidgetDetailPage } from '../../../src/shell/framework/feature/sidebar/widgets/WidgetDetailPage';
 import {
   publicCatalog,
@@ -70,7 +77,11 @@ function mountDetail(options: Readonly<{
   initialTab?: string;
   saveError?: Error;
   metadataError?: Error;
+  publishedIconError?: Error;
   catalog?: TWidgetPublicCatalog;
+  catalogRefreshError?: Error;
+  catalogRefreshErrorCount?: number;
+  catalogRefreshGate?: Promise<void>;
   deletionPlan?: Readonly<{
     planToken: string;
     widgetKey: string;
@@ -101,6 +112,16 @@ function mountDetail(options: Readonly<{
         generation: 2,
         catalogDigestSha256: 'b'.repeat(64),
       }]);
+  let savedPublishedIcon: TOmnidrawToolIcon | null | undefined;
+  const updatePublishedIcon = vi.fn(async (input: Readonly<{ icon: TOmnidrawToolIcon | null }>) => {
+    if (options.publishedIconError) return [options.publishedIconError, undefined] as const;
+    savedPublishedIcon = input.icon;
+    return [undefined, {
+      widgetKey: 'notes-board',
+      generation: 2,
+      catalogDigestSha256: 'b'.repeat(64),
+    }] as const;
+  });
   const buildAndPublish = vi.fn(async () => [undefined, {
     widgetKey: 'notes-board',
     generation: 2,
@@ -132,7 +153,40 @@ function mountDetail(options: Readonly<{
     removedChatMountCount: deletionPlan.chatMountCount,
     resourcesPreserved: true,
   }]));
-  const getCatalog = vi.fn(async () => [undefined, options.catalog ?? catalog()] as const);
+  const initialCatalog = options.catalog ?? catalog();
+  let remainingCatalogRefreshErrors = options.catalogRefreshErrorCount ?? 0;
+  const getCatalog = vi.fn(async () => {
+    if (savedPublishedIcon !== undefined) {
+      await options.catalogRefreshGate;
+      if (options.catalogRefreshError && remainingCatalogRefreshErrors > 0) {
+        remainingCatalogRefreshErrors -= 1;
+        return [options.catalogRefreshError, undefined] as const;
+      }
+      const refreshed: TWidgetPublicCatalog = {
+        ...initialCatalog,
+        generation: 2,
+        catalogDigestSha256: 'b'.repeat(64),
+        entries: initialCatalog.entries.map((entry) => entry.widgetKey !== 'notes-board'
+          ? entry
+          : {
+              ...entry,
+              published: entry.published === null ? null : {
+                ...entry.published,
+                manifestDigestSha256: 'c'.repeat(64),
+                config: entry.published.config === null ? null : {
+                  ...entry.published.config,
+                  tool: {
+                    ...entry.published.config.tool,
+                    icon: savedPublishedIcon ?? null,
+                  },
+                },
+              },
+            }),
+      };
+      return [undefined, refreshed] as const;
+    }
+    return [undefined, initialCatalog] as const;
+  });
   const notifyError = vi.fn();
   const notifySuccess = vi.fn();
   const controller = {
@@ -160,7 +214,7 @@ function mountDetail(options: Readonly<{
           },
           config: { saveDraft },
           deletion: { plan: planDeletion, commit: commitDeletion },
-          publication: { publishMetadata, buildAndPublish },
+          publication: { publishMetadata, updateIcon: updatePublishedIcon, buildAndPublish },
         },
       },
     },
@@ -210,9 +264,11 @@ function mountDetail(options: Readonly<{
     selectTab,
     saveDraft,
     publishMetadata,
+    updatePublishedIcon,
     buildAndPublish,
     notifyError,
     notifySuccess,
+    getCatalog,
     planDeletion,
     commitDeletion,
     invalidate,
@@ -315,7 +371,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
   });
 
-  test('saves strict draft Config with Ctrl/Command+S and the observed manifest digest', async () => {
+  test('saves strict draft Config from the header and leaves Ctrl/Command+S unbound', async () => {
     const { host, saveDraft, notifySuccess } = mountDetail({ initialTab: 'config' });
     const name = await vi.waitFor(() => {
       const input = host.querySelector<HTMLInputElement>('input[maxlength="200"]');
@@ -334,7 +390,12 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
     name.dispatchEvent(event);
 
-    expect(event.defaultPrevented).toBe(true);
+    expect(event.defaultPrevented).toBe(false);
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain('Ctrl/⌘+S');
+    expect([...host.querySelectorAll('button')].map((value) => value.textContent?.trim()))
+      .not.toContain('Rebuild');
+    button(host, 'Save draft').click();
     await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
     expect(saveDraft).toHaveBeenCalledWith({
       widgetKey: 'notes-board',
@@ -375,7 +436,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
       expect(host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')?.value)
         .toBe(customIcon);
     });
-    expect(button(host, 'Save draft').disabled).toBe(false);
+    expect(button(host, 'Save draft').disabled).toBe(true);
   });
 
   test('uses one visual icon picker and saves Lucide and no-icon choices exactly', async () => {
@@ -403,6 +464,51 @@ describe('WidgetDetailPage filesystem inspector', () => {
     expect(saveDraft.mock.calls[1]?.[0].config.tool.icon).toBeNull();
   });
 
+  test('opens 200 distinct curated icons when the selected label remains in the search input', async () => {
+    expect(CURATED_LUCIDE_ICON_IDS).toHaveLength(200);
+    expect(new Set(CURATED_LUCIDE_ICON_IDS).size).toBe(200);
+    expect(new Set(CURATED_LUCIDE_ICON_IDS.map((id) => (
+      (LucideStatic as Record<string, string>)[id]
+    ))).size).toBe(200);
+    expect(CURATED_LUCIDE_ICON_IDS.every((lucidIcon) => (
+      toolIconValidationError({ lucidIcon }) === null
+    ))).toBe(true);
+    const draft = detailedForm('draft');
+    const noIconCatalog = publicCatalog([publicEntry('notes-board', {
+      draft: {
+        ...draft,
+        config: {
+          ...draft.config!,
+          tool: { ...draft.config!.tool, icon: null },
+        },
+      },
+      published: detailedForm('published'),
+      status: 'presentation-changed',
+    })]);
+    const { host } = mountDetail({ initialTab: 'config', catalog: noIconCatalog });
+    const input = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
+      expect(value?.value).toBe('No icon');
+      return value!;
+    });
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Show icon choices"]')!;
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'No icon' }));
+    input.focus();
+    if (trigger.getAttribute('aria-expanded') !== 'true') {
+      trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    }
+
+    await vi.waitFor(() => {
+      const labels = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
+        .map((option) => option.textContent?.trim());
+      expect(labels).toContain('Custom SVG or emoji');
+      expect(labels).toContain('Languages');
+      expect(labels).toHaveLength(202);
+    });
+    expect(trigger.querySelector('svg')).not.toBeNull();
+    expect(trigger.textContent).not.toContain('⌄');
+  });
+
   test('bounds the open collection and restores input focus after Escape', async () => {
     const { host } = mountDetail({ initialTab: 'config' });
     const input = await vi.waitFor(() => {
@@ -415,9 +521,9 @@ describe('WidgetDetailPage filesystem inspector', () => {
     trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     await vi.waitFor(() => {
       const options = document.body.querySelectorAll('[role="option"]');
-      expect(options.length).toBeGreaterThan(2);
-      expect(options.length).toBeLessThanOrEqual(100);
+      expect(options).toHaveLength(202);
       expect([...options].every((option) => option.querySelector('svg') !== null)).toBe(true);
+      expect([...options].at(-1)?.textContent?.trim()).toBe('Languages');
     });
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
     await vi.waitFor(() => {
@@ -556,12 +662,21 @@ describe('WidgetDetailPage filesystem inspector', () => {
       buildAndPublish,
       notifyError,
     } = mountDetail({ initialTab: 'config', saveError: stale });
-    await vi.waitFor(() => expect(host.textContent).toContain('Widget Config'));
+    const name = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('input[maxlength="200"]');
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    name.value = 'Stale Notes';
+    name.dispatchEvent(new InputEvent('input', { bubbles: true }));
     button(host, 'Save draft').click();
     await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(stale.message);
     expect(notifyError).toHaveBeenCalledWith('Could not save widget Config', stale.message);
 
+    name.value = 'Notes Board';
+    name.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await vi.waitFor(() => expect(button(host, 'Publish metadata').disabled).toBe(false));
     button(host, 'Publish metadata').click();
     await vi.waitFor(() => expect(publishMetadata).toHaveBeenCalledOnce());
     expect(publishMetadata).toHaveBeenCalledWith({
@@ -573,13 +688,163 @@ describe('WidgetDetailPage filesystem inspector', () => {
     await vi.waitFor(() => expect(buildAndPublish).toHaveBeenCalledOnce());
   });
 
-  test('keeps published Config read-only and hides draft publication controls', async () => {
-    const { host } = mountDetail({ source: 'published', initialTab: 'config' });
-    await vi.waitFor(() => expect(host.textContent).toContain('Published Config is read-only'));
+  test('updates only the published icon behind the observed manifest and catalog fences', async () => {
+    const {
+      host,
+      updatePublishedIcon,
+      notifySuccess,
+    } = mountDetail({ source: 'published', initialTab: 'config' });
+    const input = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
+      expect(value?.value).toBe('Camera');
+      return value!;
+    });
+    expect(host.textContent).toContain('Published Config is read-only except for its icon');
+    expect(host.querySelector('input[maxlength="200"]')).toBeNull();
+    expect(button(host, 'Save icon').disabled).toBe(true);
     expect([...host.querySelectorAll('button')].map((value) => value.textContent?.trim()))
       .not.toContain('Save draft');
     expect(host.textContent).not.toContain('Publish metadata');
     expect(host.textContent).not.toContain('Build and Publish');
+
+    await selectIconOption(host, 'Heart');
+    await vi.waitFor(() => expect(button(host, 'Save icon').disabled).toBe(false));
+    const shortcut = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 's',
+      ctrlKey: true,
+    });
+    input.dispatchEvent(shortcut);
+    expect(shortcut.defaultPrevented).toBe(false);
+    expect(updatePublishedIcon).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain('Ctrl/⌘+S');
+    button(host, 'Save icon').click();
+
+    await vi.waitFor(() => expect(updatePublishedIcon).toHaveBeenCalledOnce());
+    expect(updatePublishedIcon).toHaveBeenCalledWith({
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256: 'a'.repeat(64),
+      expectedCatalogDigestSha256: 'a'.repeat(64),
+      icon: { lucidIcon: 'Heart' },
+    });
+    await vi.waitFor(() => expect(notifySuccess)
+      .toHaveBeenCalledWith('Published widget icon saved'));
+    await vi.waitFor(() => {
+      expect(input.value).toBe('Heart');
+      expect(button(host, 'Save icon').disabled).toBe(true);
+      expect(host.textContent).toContain('"lucidIcon": "Heart"');
+    });
+  });
+
+  test('keeps the icon mutation busy through delayed catalog reconciliation', async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const { host, updatePublishedIcon, notifySuccess } = mountDetail({
+      source: 'published',
+      initialTab: 'config',
+      catalogRefreshGate: refreshGate,
+    });
+    await selectIconOption(host, 'Heart');
+    button(host, 'Save icon').click();
+
+    await vi.waitFor(() => expect(updatePublishedIcon).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(button(host, 'Refreshing icon…').disabled).toBe(true));
+    expect(updatePublishedIcon).toHaveBeenCalledOnce();
+    expect(notifySuccess).not.toHaveBeenCalled();
+
+    releaseRefresh();
+    await vi.waitFor(() => expect(notifySuccess)
+      .toHaveBeenCalledWith('Published widget icon saved'));
+    expect(button(host, 'Save icon').disabled).toBe(true);
+  });
+
+  test('retries only catalog reconciliation after a post-commit refresh failure', async () => {
+    const refreshError = new Error('Catalog transport unavailable.');
+    const {
+      host,
+      updatePublishedIcon,
+      notifyError,
+      notifySuccess,
+    } = mountDetail({
+      source: 'published',
+      initialTab: 'config',
+      catalogRefreshError: refreshError,
+      catalogRefreshErrorCount: 1,
+    });
+    await selectIconOption(host, 'Heart');
+    button(host, 'Save icon').click();
+
+    await vi.waitFor(() => expect(button(host, 'Retry refresh').disabled).toBe(false));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Retry refresh');
+    expect(notifyError).toHaveBeenCalledWith(
+      'Published widget icon needs refresh',
+      expect.stringContaining(refreshError.message),
+    );
+    expect(updatePublishedIcon).toHaveBeenCalledOnce();
+
+    button(host, 'Retry refresh').click();
+    await vi.waitFor(() => expect(notifySuccess)
+      .toHaveBeenCalledWith('Published widget icon saved'));
+    expect(updatePublishedIcon).toHaveBeenCalledOnce();
+    expect(button(host, 'Save icon').disabled).toBe(true);
+  });
+
+  test('saves custom and no-icon published choices exactly', async () => {
+    const custom = mountDetail({ source: 'published', initialTab: 'config' });
+    await selectIconOption(custom.host, 'Custom SVG or emoji');
+    const textarea = custom.host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')!;
+    textarea.value = '👩🏽‍💻';
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    button(custom.host, 'Save icon').click();
+    await vi.waitFor(() => expect(custom.updatePublishedIcon).toHaveBeenCalledOnce());
+    expect(custom.updatePublishedIcon.mock.calls[0]?.[0].icon).toEqual({ svgIcon: '👩🏽‍💻' });
+
+    const noIcon = mountDetail({ source: 'published', initialTab: 'config' });
+    await selectIconOption(noIcon.host, 'No icon');
+    button(noIcon.host, 'Save icon').click();
+    await vi.waitFor(() => expect(noIcon.updatePublishedIcon).toHaveBeenCalledOnce());
+    expect(noIcon.updatePublishedIcon.mock.calls[0]?.[0].icon).toBeNull();
+  });
+
+  test('blocks host-resource custom SVG at the published save boundary', async () => {
+    const { host, updatePublishedIcon } = mountDetail({
+      source: 'published',
+      initialTab: 'config',
+    });
+    await selectIconOption(host, 'Custom SVG or emoji');
+    const textarea = host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')!;
+    textarea.value = '<svg><image href="//attacker.example/icon" /></svg>';
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      expect(host.textContent).toContain('cannot contain resource, navigation, animation, or style markup');
+      expect(button(host, 'Save icon').disabled).toBe(true);
+    });
+    expect(updatePublishedIcon).not.toHaveBeenCalled();
+  });
+
+  test('keeps a failed published icon update inline and reports the stale write', async () => {
+    const stale = new Error('Published widget manifest changed.');
+    const {
+      host,
+      updatePublishedIcon,
+      notifyError,
+    } = mountDetail({
+      source: 'published',
+      initialTab: 'config',
+      publishedIconError: stale,
+    });
+    await selectIconOption(host, 'Heart');
+    button(host, 'Save icon').click();
+
+    await vi.waitFor(() => expect(updatePublishedIcon).toHaveBeenCalledOnce());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(stale.message);
+    expect(notifyError).toHaveBeenCalledWith(
+      'Could not save published widget icon',
+      stale.message,
+    );
   });
 
   test('keeps Delete available for unhealthy draft and published forms with no Config', async () => {

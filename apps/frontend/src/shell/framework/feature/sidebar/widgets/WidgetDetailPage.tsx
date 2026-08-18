@@ -22,11 +22,17 @@ import {
   toolIconValidationError,
 } from '../ToolIconPicker/ToolIconPicker';
 import { useWidgetCatalog } from './WidgetCatalogProvider';
-import { WidgetIcon } from './components/WidgetIcon';
+import {
+  WidgetIcon,
+  publishedWidgetIconSafetyError,
+} from './components/WidgetIcon';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
 import type { TWidgetSource } from './types';
-import type { TWidgetPublicDeletionPlan } from '@/core/app/private-operation-contract';
+import type {
+  TWidgetPublicDeletionPlan,
+  TWidgetPublicMutationResult,
+} from '@/core/app/private-operation-contract';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
@@ -45,6 +51,22 @@ const TABS = Object.freeze([
   { value: 'files', label: 'Files' },
 ] satisfies readonly Readonly<{ value: TTab; label: string }>[]);
 
+function editableIcon(value: TOmnidrawToolIcon | null | undefined): TOmnidrawToolIcon | null {
+  return value?.svgIcon !== undefined
+    ? { svgIcon: value.svgIcon }
+    : value?.lucidIcon !== undefined
+      ? { lucidIcon: value.lucidIcon }
+      : null;
+}
+
+function iconsEqual(
+  left: TOmnidrawToolIcon | null,
+  right: TOmnidrawToolIcon | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.lucidIcon === right.lucidIcon && left.svgIcon === right.svgIcon;
+}
+
 export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const application = props.controller.application;
   const catalogState = useWidgetCatalog();
@@ -59,8 +81,10 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [group, setGroup] = createSignal('');
   const [priority, setPriority] = createSignal('0');
   const [icon, setIcon] = createSignal<TOmnidrawToolIcon | null>(null);
-  const [action, setAction] = createSignal<'save' | 'rebuild' | 'metadata' | 'build' | null>(null);
+  const [action, setAction] = createSignal<'save' | 'published-icon' | 'metadata' | 'build' | null>(null);
   const [actionError, setActionError] = createSignal('');
+  const [publishedIconReconciliation, setPublishedIconReconciliation] =
+    createSignal<TWidgetPublicMutationResult | null>(null);
   const [deletionPlan, setDeletionPlan] = createSignal<TWidgetPublicDeletionPlan | null>(null);
   const [deletionOperationId, setDeletionOperationId] = createSignal<string | null>(null);
   const [deletionOpen, setDeletionOpen] = createSignal(false);
@@ -91,6 +115,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setFiles(null);
     setPreview(null);
     setActionError('');
+    setPublishedIconReconciliation(null);
     setDeletionPlan(null);
     setDeletionOperationId(null);
     setDeletionOpen(false);
@@ -102,11 +127,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setLabel(config.tool.label);
     setGroup(config.tool.group ?? '');
     setPriority(String(config.tool.priority));
-    setIcon(config.tool.icon?.svgIcon !== undefined
-      ? { svgIcon: config.tool.icon.svgIcon }
-      : config.tool.icon?.lucidIcon !== undefined
-        ? { lucidIcon: config.tool.icon.lucidIcon }
-        : null);
+    setIcon(editableIcon(config.tool.icon));
   });
 
   const loadFiles = async () => {
@@ -164,7 +185,16 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       : { tab, path: undefined });
   };
 
-  const iconError = createMemo(() => toolIconValidationError(icon()));
+  const publishedIconSafetyError = createMemo(() => (
+    props.source === 'published' ? publishedWidgetIconSafetyError(icon()) : null
+  ));
+  const iconError = createMemo(() => (
+    toolIconValidationError(icon()) ?? publishedIconSafetyError()
+  ));
+  const publishedIconDirty = createMemo(() => (
+    props.source === 'published'
+    && !iconsEqual(icon(), editableIcon(form()?.config?.tool.icon))
+  ));
 
   const configInput = () => ({
     name: name().trim(),
@@ -203,6 +233,65 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     application.notifySuccess('Widget draft Config saved');
   };
 
+  const savePublishedIcon = async () => {
+    const pendingReconciliation = publishedIconReconciliation();
+    const catalog = catalogState.catalog();
+    const selected = form();
+    if (
+      action() !== null
+      || props.source !== 'published'
+      || !props.name
+      || (!pendingReconciliation && (
+        !catalog
+        || !selected?.manifestDigestSha256
+        || !publishedIconDirty()
+        || iconError() !== null
+      ))
+    ) return;
+    setAction('published-icon');
+    setActionError('');
+
+    let mutation = pendingReconciliation;
+    if (mutation === null) {
+      const [saveError, value] = await props.controller.apiService.api.widget.publication.updateIcon({
+        widgetKey: props.name,
+        expectedPublishedManifestDigestSha256: selected!.manifestDigestSha256!,
+        expectedCatalogDigestSha256: catalog!.catalogDigestSha256,
+        icon: icon(),
+      });
+      if (saveError || !value) {
+        setAction(null);
+        const message = saveError?.message ?? 'The icon update returned no catalog identity.';
+        setActionError(message);
+        application.notifyError('Could not save published widget icon', message);
+        return;
+      }
+      mutation = value;
+      setPublishedIconReconciliation(mutation);
+    }
+
+    const refreshSucceeded = await catalogState.refresh();
+    const refreshed = refreshSucceeded ? catalogState.catalog() : null;
+    const reconciled = refreshed !== null && (
+      refreshed.generation > mutation.generation
+      || (
+        refreshed.generation === mutation.generation
+        && refreshed.catalogDigestSha256 === mutation.catalogDigestSha256
+      )
+    );
+    setAction(null);
+    if (!reconciled) {
+      const message = catalogState.error()
+        ? `The icon was saved, but the refreshed catalog is unavailable: ${catalogState.error()}`
+        : 'The icon was saved, but the refreshed catalog has not observed it yet.';
+      setActionError(`${message} Retry refresh to reconcile the page.`);
+      application.notifyError('Published widget icon needs refresh', message);
+      return;
+    }
+    setPublishedIconReconciliation(null);
+    application.notifySuccess('Published widget icon saved');
+  };
+
   const publish = async (kind: 'metadata' | 'build') => {
     const catalog = catalogState.catalog();
     const selected = form();
@@ -234,23 +323,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     }
     await catalogState.refresh();
     application.notifySuccess(kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published');
-  };
-
-  const rebuild = async () => {
-    if (action() !== null || props.source !== 'draft' || !props.name || configDirty()) return;
-    setAction('rebuild');
-    setActionError('');
-    const [rebuildError] = await props.controller.apiService.api.widget.preview.rebuildDraft({
-      widgetKey: props.name,
-    });
-    setAction(null);
-    if (rebuildError) {
-      setActionError(rebuildError.message);
-      application.notifyError('Could not rebuild widget', rebuildError.message);
-      return;
-    }
-    await catalogState.refresh();
-    application.notifySuccess('Widget build accepted');
   };
 
   const restoreDeleteFocus = () => {
@@ -371,17 +443,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       class={styles.page}
       value={activeTab()}
       onChange={selectTab}
-      onKeyDown={(event) => {
-        if (
-          activeTab() === 'config'
-          && props.source === 'draft'
-          && (event.metaKey || event.ctrlKey)
-          && event.key.toLowerCase() === 's'
-        ) {
-          event.preventDefault();
-          void saveConfig();
-        }
-      }}
     >
       <header class={styles.header}>
         <div class={styles.titleBlock}>
@@ -393,6 +454,11 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         </div>
         <div class={styles.headerActions}>
           <Show when={props.source === 'draft'}>
+            <Button
+              class={`${styles.button} ${styles.saveButton}`}
+              disabled={action() !== null || !configDirty() || iconError() !== null}
+              onClick={() => void saveConfig()}
+            >{action() === 'save' ? 'Saving draft…' : 'Save draft'}</Button>
             <Button
               class={styles.button}
               disabled={!metadataAvailable() || action() !== null}
@@ -473,7 +539,25 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           <h3>Widget Config</h3>
           <Show when={form()!.config} fallback={<p class={styles.validationError}>Repair omnidraw.json in the Files workspace before editing structured Config.</p>}>
             <Show when={props.source === 'draft'} fallback={<>
-              <p class={styles.muted}>Published Config is read-only. Edit the draft folder to change it.</p>
+              <p class={styles.muted}>Published Config is read-only except for its icon. Saving the icon replaces metadata only and does not rebuild executable files.</p>
+              <div class={styles.publishedIconEditor}>
+                <ToolIconPicker value={icon()} onChange={setIcon} />
+                <Show when={publishedIconSafetyError()}>{(message) => (
+                  <p class={styles.validationError} role="alert">{message()}</p>
+                )}</Show>
+                <div class={styles.publishedIconActions}>
+                  <Button
+                    class={`${styles.button} ${styles.saveButton}`}
+                    disabled={action() !== null || (
+                      publishedIconReconciliation() === null
+                      && (!publishedIconDirty() || iconError() !== null)
+                    )}
+                    onClick={() => void savePublishedIcon()}
+                  >{action() === 'published-icon'
+                      ? publishedIconReconciliation() === null ? 'Saving icon…' : 'Refreshing icon…'
+                      : publishedIconReconciliation() === null ? 'Save icon' : 'Retry refresh'}</Button>
+                </div>
+              </div>
               <pre class={styles.code}>{JSON.stringify(form()!.config, null, 2)}</pre>
             </>}>
               <div class={styles.formGrid}>
@@ -483,15 +567,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                 <label>Group<input class={styles.input} value={group()} maxlength={100} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="utilities" onInput={(event) => setGroup(event.currentTarget.value)} /></label>
                 <label>Priority<input class={styles.input} type="number" min="-1000" max="1000" step="1" value={priority()} onInput={(event) => setPriority(event.currentTarget.value)} /></label>
                 <div><ToolIconPicker value={icon()} onChange={setIcon} /></div>
-                <div class={`${styles.formActions} ${styles.fullField}`}>
-                  <Button class={`${styles.button} ${styles.primary}`} disabled={action() !== null || iconError() !== null} onClick={() => void saveConfig()}>
-                    {action() === 'save' ? 'Saving draft…' : 'Save draft'}
-                  </Button>
-                  <Button class={styles.button} disabled={action() !== null || configDirty() || iconError() !== null} onClick={() => void rebuild()}>
-                    {action() === 'rebuild' ? 'Rebuilding…' : 'Rebuild'}
-                  </Button>
-                  <span class={styles.fieldHint}>Press Ctrl/⌘+S to save. The manifest digest prevents stale forms from overwriting external edits.</span>
-                </div>
               </div>
             </Show>
           </Show>

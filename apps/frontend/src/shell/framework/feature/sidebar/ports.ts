@@ -95,6 +95,7 @@ export type TSidebarApiPort = Readonly<{
       preview: Readonly<{ rebuildDraft: TSafeOperation<"widget.preview.rebuildDraft"> }>;
       publication: Readonly<{
         publishMetadata: TSafeOperation<"widget.publication.publishMetadata">;
+        updateIcon: TSafeOperation<"widget.publication.updateIcon">;
         buildAndPublish: TSafeOperation<"widget.publication.buildAndPublish">;
       }>;
     }>;

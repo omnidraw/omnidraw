@@ -97,11 +97,17 @@ project separately, so metadata-only edits never rebuild executable bytes.
 | Action | Effect |
 | --- | --- |
 | Save draft Config | Digest-fenced write of presentation/manifest fields into the draft. |
-| Publish metadata | Atomically replaces only `omnidraw.json` in the published folder; executable bytes are byte-identical before and after. No install, construction, Capsule generation, or signing runs. |
+| Save published icon | Published-manifest- and catalog-fenced replacement of only `tool.icon` in the current published `omnidraw.json`. The private mutation requires exactly one Lucide or custom variant and rejects custom SVG resource, navigation, animation, and style surfaces. It creates or changes no draft and runs no build or signing work. |
+| Publish metadata | Atomically replaces only `omnidraw.json` in the published folder from a matching draft; executable bytes are byte-identical before and after. No install, construction, Capsule generation, or signing runs. |
 | Rebuild | Runs the repository's same portable `npm run build`, then waits for independent host acceptance. It does not expose raw source edits. |
 | Build & publish | Requires one current accepted generation, applies release signing and exact release validation, and atomically replaces the publication. A resource-ID-only change may reuse byte-identical executable output, but still needs a fresh receipt and explicit publication. Existing canvas instances keep geometry and stable identity and resolve the new published manifest on their next call. |
 
 ## Runtime loading
+
+Custom widget SVG icons are rendered in the trusted host only through a static
+geometry allowlist; URI-bearing elements and attributes, style/CSS, animation,
+and navigation surfaces are removed even for manifests authored outside the
+published-icon mutation. Custom emoji icons are inserted as text, not HTML.
 
 The browser mounts widgets through the filesystem catalog:
 

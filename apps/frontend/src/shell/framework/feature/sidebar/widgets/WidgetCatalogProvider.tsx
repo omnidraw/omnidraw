@@ -15,7 +15,7 @@ type TWidgetCatalogContext = {
   catalog: Accessor<TWidgetPublicCatalog | null>;
   loading: Accessor<boolean>;
   error: Accessor<string>;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
 };
 
 const WidgetCatalogContext = createContext<TWidgetCatalogContext>();
@@ -33,11 +33,11 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
     const currentRequest = ++requestId;
     setLoading(catalog() === null);
     const [loadError, value] = await props.controller.apiService.api.widget.catalog.get();
-    if (closed || currentRequest !== requestId) return;
+    if (closed || currentRequest !== requestId) return false;
     setLoading(false);
     if (loadError || !value) {
       setError(loadError?.message ?? "The widget catalog is unavailable.");
-      return;
+      return false;
     }
     setError('');
     setCatalog((current) => (
@@ -46,6 +46,7 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
         ? current
         : value
     ));
+    return true;
   };
 
   const scheduleRefresh = () => {

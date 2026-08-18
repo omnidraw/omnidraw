@@ -127,6 +127,13 @@ export type TWidgetFilesystemManagementCapability = Readonly<{
     expectedCatalogDigestSha256: string;
     signal?: AbortSignal;
   }>): Promise<TWidgetFilesystemCatalogMutationResult>;
+  updatePublishedIcon(args: Readonly<{
+    widgetKey: string;
+    expectedPublishedManifestDigestSha256: string;
+    expectedCatalogDigestSha256: string;
+    icon: TOmnidrawToolIcon | null;
+    signal?: AbortSignal;
+  }>): Promise<TWidgetFilesystemCatalogMutationResult>;
   buildAndPublish(args: Readonly<{
     widgetKey: string;
     expectedManifestDigestSha256: string;

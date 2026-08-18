@@ -3,6 +3,7 @@ import { apiWidgetConfigSaveDraft } from './api.config-save';
 import {
   apiWidgetBuildAndPublish,
   apiWidgetPublishMetadata,
+  apiWidgetUpdatePublishedIcon,
 } from './api.publication';
 import {
   apiWidgetDeletionCommit,
@@ -34,6 +35,10 @@ describe('filesystem widget management API', () => {
           calls.push(['metadata', input]);
           return mutation;
         },
+        async updatePublishedIcon(input: unknown) {
+          calls.push(['icon', input]);
+          return mutation;
+        },
         async buildAndPublish(input: unknown) {
           calls.push(['build', input]);
           return mutation;
@@ -42,6 +47,7 @@ describe('filesystem widget management API', () => {
     } as never;
     const save = apiWidgetConfigSaveDraft.callable({ context });
     const metadata = apiWidgetPublishMetadata.callable({ context });
+    const updateIcon = apiWidgetUpdatePublishedIcon.callable({ context });
     const build = apiWidgetBuildAndPublish.callable({ context });
     const config = {
       name: 'Notes Board',
@@ -60,9 +66,16 @@ describe('filesystem widget management API', () => {
       expectedCatalogDigestSha256: CATALOG_DIGEST,
     };
     const metadataResult = await metadata(publicationInput);
+    const iconInput = {
+      widgetKey: 'notes-board',
+      expectedPublishedManifestDigestSha256: MANIFEST_DIGEST,
+      expectedCatalogDigestSha256: CATALOG_DIGEST,
+      icon: { lucidIcon: 'NotebookPen' },
+    };
+    const iconResult = await updateIcon(iconInput);
     const buildResult = await build(publicationInput);
 
-    for (const result of [saved, metadataResult, buildResult]) {
+    for (const result of [saved, metadataResult, iconResult, buildResult]) {
       expect(result).toEqual({
         widgetKey: 'notes-board',
         generation: 9,
@@ -71,9 +84,10 @@ describe('filesystem widget management API', () => {
       expect(JSON.stringify(result)).not.toContain('rootIdentity');
       expect(JSON.stringify(result)).not.toContain('snapshot');
     }
-    expect(calls.map(([kind]) => kind)).toEqual(['save', 'metadata', 'build']);
+    expect(calls.map(([kind]) => kind)).toEqual(['save', 'metadata', 'icon', 'build']);
     expect(calls[1]?.[1]).toMatchObject(publicationInput);
-    expect(calls[2]?.[1]).toMatchObject(publicationInput);
+    expect(calls[2]?.[1]).toMatchObject(iconInput);
+    expect(calls[3]?.[1]).toMatchObject(publicationInput);
   });
 
   test('delegates opaque deletion plan and commit values without exposing filesystem paths', async () => {
