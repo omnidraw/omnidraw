@@ -93,7 +93,7 @@ manifest, so a newly published ID is used by every instance on its next call.
 | Files | Draft config |
 | --- | --- |
 | ![Widget file tree and source viewer](assets/24-widget-files.webp) | ![Editable configuration for a draft widget](assets/25-widget-draft-config.webp) |
-| **`?tab=files`.** File tree with the selected source file rendered beside it. | **Draft `?tab=config`.** Editable name, label, description, icon, group, and priority. |
+| **`?tab=files`.** File tree with the selected source file rendered beside it. | **Draft `?tab=config`.** Editable name, label, description, group, priority, and one searchable visual icon picker for no icon, Lucide glyphs, or exact validated custom SVG/emoji source. |
 
 ## Key-value and secret resources
 

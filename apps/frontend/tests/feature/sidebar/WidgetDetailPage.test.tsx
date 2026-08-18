@@ -6,8 +6,10 @@ import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Effect } from 'effect';
+import { fnWidgetToolIconTextError } from '@omnidraw/sdk/contract';
 import { createCatalogInvalidation } from '../../../src/shell/framework/feature/sidebar/ports';
 import { WidgetCatalogProvider } from '../../../src/shell/framework/feature/sidebar/widgets/WidgetCatalogProvider';
+import { toolIconValidationError } from '../../../src/shell/framework/feature/sidebar/ToolIconPicker/ToolIconPicker';
 import { WidgetDetailPage } from '../../../src/shell/framework/feature/sidebar/widgets/WidgetDetailPage';
 import {
   publicCatalog,
@@ -234,12 +236,50 @@ function button(host: HTMLElement, text: string): HTMLButtonElement {
   return found!;
 }
 
+async function selectIconOption(host: HTMLElement, label: string): Promise<void> {
+  const trigger = await vi.waitFor(() => {
+    const value = host.querySelector<HTMLButtonElement>('button[aria-label="Show icon choices"]');
+    expect(value).not.toBeNull();
+    return value!;
+  });
+  const input = host.querySelector<HTMLInputElement>('[role="combobox"]')!;
+  input.value = label;
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: label }));
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  }
+  const option = await vi.waitFor(() => {
+    const value = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((candidate) => candidate.textContent?.trim() === label);
+    expect(value).toBeDefined();
+    return value!;
+  });
+  expect(option.querySelector('svg')).not.toBeNull();
+  option.click();
+}
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
   document.body.replaceChildren();
 });
 
 describe('WidgetDetailPage filesystem inspector', () => {
+  test('keeps browser custom-icon validation aligned with the SDK authority', () => {
+    const values = [
+      '', ' ', '⭐', '👩🏽‍💻', '🇩🇪', 'ab', 'a\0',
+      '<svg></svg>', '<svg><path d="M0 0h1" /></svg>', '<svg>',
+      '<svg><script /></svg>', '<svg><foreignObject /></svg>',
+      '<svg onfocus="alert(1)"></svg>', '<svg><use href="javascript:x" /></svg>',
+      '<svg><image href="https://example.com/x" /></svg>',
+      '<svg><style>.x{fill:url(x)}</style></svg>',
+      `<svg>${'a'.repeat(16_384)}</svg>`,
+    ];
+    for (const value of values) {
+      expect(toolIconValidationError({ svgIcon: value }))
+        .toBe(fnWidgetToolIconTextError(value));
+    }
+  });
+
   test('renders Config, functions, collaborative state, resources, and files without Runs or Logs', async () => {
     const { host, selectTab } = mountDetail();
 
@@ -315,6 +355,199 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
     await vi.waitFor(() => expect(notifySuccess)
       .toHaveBeenCalledWith('Widget draft Config saved'));
+  });
+
+  test('restores an authored custom icon without rewriting it', async () => {
+    const draft = detailedForm('draft');
+    const customIcon = '👩🏽‍💻';
+    const customCatalog = publicCatalog([publicEntry('notes-board', {
+      draft: {
+        ...draft,
+        config: {
+          ...draft.config!,
+          tool: { ...draft.config!.tool, icon: { svgIcon: customIcon } },
+        },
+      },
+      published: detailedForm('published'),
+      status: 'presentation-changed',
+    })]);
+    const { host } = mountDetail({ initialTab: 'config', catalog: customCatalog });
+    await vi.waitFor(() => {
+      expect(host.querySelector<HTMLInputElement>('[role="combobox"]')?.value)
+        .toBe('Custom SVG or emoji');
+      expect(host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')?.value)
+        .toBe(customIcon);
+    });
+    expect(button(host, 'Save draft').disabled).toBe(false);
+  });
+
+  test('uses one visual icon picker and saves Lucide and no-icon choices exactly', async () => {
+    const { host, saveDraft } = mountDetail({ initialTab: 'config' });
+    const input = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
+      expect(value?.value).toBe('Camera');
+      return value!;
+    });
+    expect(host.textContent).not.toContain('Icon type');
+    expect(host.textContent).not.toContain('Icon value');
+    expect(input.parentElement?.querySelector('svg')).not.toBeNull();
+
+    await selectIconOption(host, 'Heart');
+    await vi.waitFor(() => expect(input.value).toBe('Heart'));
+    expect(button(host, 'Publish metadata').disabled).toBe(true);
+    button(host, 'Save draft').click();
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    expect(saveDraft.mock.calls[0]?.[0].config.tool.icon).toEqual({ lucidIcon: 'Heart' });
+
+    await selectIconOption(host, 'No icon');
+    await vi.waitFor(() => expect(input.value).toBe('No icon'));
+    button(host, 'Save draft').click();
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(2));
+    expect(saveDraft.mock.calls[1]?.[0].config.tool.icon).toBeNull();
+  });
+
+  test('bounds the open collection and restores input focus after Escape', async () => {
+    const { host } = mountDetail({ initialTab: 'config' });
+    const input = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Show icon choices"]')!;
+    input.focus();
+    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    await vi.waitFor(() => {
+      const options = document.body.querySelectorAll('[role="option"]');
+      expect(options.length).toBeGreaterThan(2);
+      expect(options.length).toBeLessThanOrEqual(100);
+      expect([...options].every((option) => option.querySelector('svg') !== null)).toBe(true);
+    });
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+    await vi.waitFor(() => {
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(input);
+    });
+  });
+
+  test('repairs a both-set icon and explains an unknown Lucide key', async () => {
+    const both = detailedForm('draft');
+    const bothCatalog = publicCatalog([publicEntry('notes-board', {
+      draft: {
+        ...both,
+        config: {
+          ...both.config!,
+          tool: {
+            ...both.config!.tool,
+            icon: { lucidIcon: 'Camera', svgIcon: '★' },
+          },
+        },
+      },
+      published: detailedForm('published'),
+      status: 'presentation-changed',
+    })]);
+    const repaired = mountDetail({ initialTab: 'config', catalog: bothCatalog });
+    await vi.waitFor(() => {
+      expect(repaired.host.querySelector<HTMLInputElement>('[role="combobox"]')?.value)
+        .toBe('Custom SVG or emoji');
+      expect(repaired.host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')?.value)
+        .toBe('★');
+    });
+    button(repaired.host, 'Save draft').click();
+    await vi.waitFor(() => expect(repaired.saveDraft).toHaveBeenCalledOnce());
+    expect(repaired.saveDraft.mock.calls[0]?.[0].config.tool.icon).toEqual({ svgIcon: '★' });
+
+    const unknown = detailedForm('draft');
+    const unknownCatalog = publicCatalog([publicEntry('notes-board', {
+      draft: {
+        ...unknown,
+        config: {
+          ...unknown.config!,
+          tool: {
+            ...unknown.config!.tool,
+            icon: { lucidIcon: 'MissingIcon' } as never,
+          },
+        },
+      },
+      published: detailedForm('published'),
+      status: 'presentation-changed',
+    })]);
+    const explained = mountDetail({ initialTab: 'config', catalog: unknownCatalog });
+    await vi.waitFor(() => {
+      expect(explained.host.querySelector<HTMLInputElement>('[role="combobox"]')?.value)
+        .toBe('MissingIcon (unknown Lucide icon)');
+      expect(explained.host.querySelector('[role="alert"]')?.textContent)
+        .toContain('Unknown Lucide static icon key.');
+      expect(button(explained.host, 'Save draft').disabled).toBe(true);
+    });
+  });
+
+  test('keeps exact custom icon text, reports invalid input, and blocks malformed saves', async () => {
+    const { host, saveDraft } = mountDetail({ initialTab: 'config' });
+    await selectIconOption(host, 'Custom SVG or emoji');
+    const textarea = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]');
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    expect(host.textContent).toContain('Custom widget icons must be one trimmed grapheme or an SVG element.');
+    expect(button(host, 'Save draft').disabled).toBe(true);
+
+    expect(textarea.hasAttribute('maxlength')).toBe(false);
+    const invalid = 'two graphemes';
+    textarea.value = invalid;
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      expect(textarea.value).toBe(invalid);
+      expect(host.textContent).toContain('Custom text icons must contain exactly one grapheme.');
+      expect(button(host, 'Save draft').disabled).toBe(true);
+    });
+    textarea.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 's',
+      ctrlKey: true,
+    }));
+    expect(saveDraft).not.toHaveBeenCalled();
+
+    const oversized = `<svg>${'a'.repeat(16_384)}</svg>`;
+    textarea.value = oversized;
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      expect(textarea.value).toBe(oversized);
+      expect(host.textContent).toContain('Custom widget icons must be at most 16 KiB.');
+      expect(button(host, 'Save draft').disabled).toBe(true);
+    });
+
+    const exactSvg = '<svg viewBox="0 0 10 10"><path d="M1 1h8v8z" /></svg>';
+    textarea.value = exactSvg;
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await vi.waitFor(() => expect(button(host, 'Save draft').disabled).toBe(false));
+    button(host, 'Save draft').click();
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    expect(saveDraft.mock.calls[0]?.[0].config.tool.icon).toEqual({ svgIcon: exactSvg });
+
+    await selectIconOption(host, 'Camera');
+    await vi.waitFor(() => expect(host.querySelector('textarea[spellcheck="false"]')).toBeNull());
+    await selectIconOption(host, 'Custom SVG or emoji');
+    expect(host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')?.value).toBe(exactSvg);
+  });
+
+  test('supports keyboard selection through the Kobalte combobox', async () => {
+    const { host, saveDraft } = mountDetail({ initialTab: 'config' });
+    const input = await vi.waitFor(() => {
+      const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    input.focus();
+    input.value = 'HeartX';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'HeartX' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    await vi.waitFor(() => expect(input.value).toBe('HeartX'));
+    button(host, 'Save draft').click();
+    await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+    expect(saveDraft.mock.calls[0]?.[0].config.tool.icon).toEqual({ lucidIcon: 'HeartX' });
   });
 
   test('shows stale Config failures inline and keeps the explicit publication actions separate', async () => {
