@@ -38,9 +38,9 @@ import { Database } from '#backend/shell/database/DbServiceTurso/turso-native';
 import { ResourceControlStoreTurso } from '#backend/shell/database/ResourceControlStoreTurso';
 import { EventPublisherService } from '#backend/shell/events/EventPublisherService';
 import { mkdirSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, stat, unlink } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'node:url';
 import { ensureOmnidrawHome } from '#backend/shell/config/ensure-omnidraw-home';
 import sdkPackage from '@omnidraw/sdk/package.json';
@@ -114,6 +114,10 @@ import {
   WidgetAuthoringVerificationService,
   WidgetScreenshotLeaseService,
 } from '../widget-authoring';
+import {
+  bootstrapPiAuth,
+  fnOmnidrawPiAgentDirectory,
+} from '../agent/bootstrap-pi-auth';
 import { Context, Effect, Layer } from 'effect';
 import {
   BackendConfig,
@@ -182,9 +186,10 @@ export function layerLiveMechanics(args: Readonly<{
   const config = args.config;
   const options = args.options ?? {};
   const eventPublisher = new EventPublisherService();
+  const homeDirectory = homedir();
   const localDevelopment = config.dev && process.env.NODE_ENV !== 'production';
   const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
-    homeDirectory: homedir(),
+    homeDirectory,
     localDevelopment,
     stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
     join,
@@ -880,6 +885,21 @@ export function layerLiveMechanics(args: Readonly<{
   const agentRoot = config.home.agentRoot;
   const agentBashCapability = createBunAgentBashCapability();
   mkdirSync(agentRoot, { recursive: true });
+  yield* Effect.tryPromise({
+    try: () => bootstrapPiAuth(
+      { chmod, copyFile, dirname, lstat, mkdir, stat, unlink },
+      {
+        sourceAuthPath: join(homeDirectory, '.pi', 'agent', 'auth.json'),
+        destinationAuthPath: join(
+          fnOmnidrawPiAgentDirectory(join, agentRoot),
+          'auth.json',
+        ),
+      },
+    ),
+    catch: (cause) => cause,
+  }).pipe(Effect.catch((error) => Effect.sync(() => {
+    console.warn('Could not import existing Pi credentials; continuing without the import.', error);
+  })));
   agentService = new AgentService({
     world: {
       platform: process.platform,

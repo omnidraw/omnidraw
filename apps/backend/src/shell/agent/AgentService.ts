@@ -50,6 +50,7 @@ import {
   type TAgentWidgetAuthoringAuthority,
 } from './widget-reference';
 import type { TAvailableWidget } from './workspace/types';
+import { fnOmnidrawPiAgentDirectory } from './bootstrap-pi-auth';
 
 interface IPublicMethods {
   logout(providerId: string): Promise<void>;
@@ -221,7 +222,7 @@ export class AgentService implements IPublicMethods {
 
   constructor(config: IAgentServiceConfig) {
     this.#config = config
-    this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
+    this.#piAgentDir = fnOmnidrawPiAgentDirectory(join, config.dataPath)
     this.#workspace = new WidgetWorkspace({
       dataPath: config.dataPath,
       draftRoot: config.widgetDraftsRoot,
