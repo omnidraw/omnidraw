@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/theme",
-  "version": "0.6.0",
+  "version": "0.1.0",
   "description": "Portable Omnidraw theme contracts, built-ins, isolated state, and scoped DOM projection.",
   "type": "module",
   "license": "MIT",
