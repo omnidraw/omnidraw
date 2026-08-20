@@ -71,7 +71,7 @@
     },
     "packages/canvas": {
       "name": "@omnidraw/canvas",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "@omnidraw/cangine": "0.6.1",
         "@omnidraw/canvas-contract": "workspace:*",

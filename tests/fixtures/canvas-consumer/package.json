@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@omnidraw/canvas": "0.8.0",
+    "@omnidraw/canvas": "0.9.0",
     "@omnidraw/canvas-contract": "0.7.0",
     "@omnidraw/component-ai-chat": "0.2.0",
     "@omnidraw/theme": "0.1.0",
