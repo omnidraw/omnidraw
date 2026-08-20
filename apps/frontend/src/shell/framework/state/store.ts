@@ -1,5 +1,5 @@
 import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@omnidraw/theme";
-import { createStore, type SetStoreFunction } from "solid-js/store";
+import { createEffect, createRoot, createStore, storePath } from "solid-js";
 import type { TBackendCanvas } from "@/core/app/backend.types";
 
 export type TFrontendStoreState = {
@@ -12,7 +12,11 @@ export type TFrontendStoreState = {
 
 export type TFrontendStore = Readonly<{
   state: TFrontendStoreState;
-  set: SetStoreFunction<TFrontendStoreState>;
+  set<Key extends keyof TFrontendStoreState>(
+    key: Key,
+    value: TFrontendStoreState[Key] | ((current: TFrontendStoreState[Key]) => TFrontendStoreState[Key]),
+  ): void;
+  dispose(): void;
 }>;
 
 export type TFrontendStoragePort = Readonly<{
@@ -58,22 +62,39 @@ function readPersistedStore(storage: TFrontendStoragePort): TFrontendStoreState 
 }
 
 export function createFrontendStore(storage: TFrontendStoragePort): TFrontendStore {
-  const [state, setBase] = createStore<TFrontendStoreState>(readPersistedStore(storage));
-  const persist = (): void => {
-    try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({
+  return createRoot((dispose) => {
+    const [state, setBase] = createStore<TFrontendStoreState>(readPersistedStore(storage));
+
+    createEffect(
+      () => ({
         theme: state.theme,
         lastLightThemeId: state.lastLightThemeId,
         lastDarkThemeId: state.lastDarkThemeId,
         sidebarVisible: state.sidebarVisible,
-      }));
-    } catch {
-      // Browser persistence is best-effort; the isolated reactive store stays usable.
-    }
-  };
-  const set = ((...args: unknown[]) => {
-    (setBase as (...values: unknown[]) => void)(...args);
-    persist();
-  }) as SetStoreFunction<TFrontendStoreState>;
-  return Object.freeze({ state, set });
+      }),
+      (persisted) => {
+        try {
+          storage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+        } catch {
+          // Browser persistence is best-effort; the isolated reactive store stays usable.
+        }
+      },
+      { defer: true },
+    );
+
+    return Object.freeze({
+      state,
+      set<Key extends keyof TFrontendStoreState>(
+        key: Key,
+        value: TFrontendStoreState[Key] | ((current: TFrontendStoreState[Key]) => TFrontendStoreState[Key]),
+      ): void {
+        setBase(storePath(key, (current: TFrontendStoreState[Key]) => (
+          typeof value === "function"
+            ? (value as (previous: TFrontendStoreState[Key]) => TFrontendStoreState[Key])(current)
+            : value
+        )));
+      },
+      dispose,
+    });
+  });
 }

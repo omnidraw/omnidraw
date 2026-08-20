@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   TCanvasDeletionPlan,
@@ -8,6 +8,7 @@ import type {
 import { DeleteCanvasDialog } from "../../../src/shell/framework/feature/sidebar/components/DeleteCanvasDialog";
 import { RenameDialog } from "../../../src/shell/framework/feature/sidebar/components/RenameDialog";
 import SidebarItem from "../../../src/shell/framework/feature/sidebar/components/SidebarItem";
+import { settleSolidUpdate } from "../../settled";
 
 const canvas = {
   id: "canvas-a",
@@ -88,13 +89,18 @@ async function choose(label: "Rename" | "Delete", mode: "pointer" | "touch" | "e
 describe("Canvas sidebar menu handoff", () => {
   test("pointer Rename closes the menu, opens the dialog, and Cancel restores trigger focus", async () => {
     const [renameOpen, setRenameOpen] = createSignal(false);
+    let renameTrigger: HTMLButtonElement | null = null;
     mount(() => <>
-      <SidebarItem name="Canvas A" onRename={() => setRenameOpen(true)} />
+      <SidebarItem name="Canvas A" onRename={(trigger) => {
+        renameTrigger = trigger;
+        setRenameOpen(true);
+      }} />
       <RenameDialog
         open={renameOpen()}
         onOpenChange={setRenameOpen}
         currentName="Canvas A"
         onRename={() => undefined}
+        returnFocus={() => renameTrigger}
       />
     </>);
     const trigger = await openMenu();
@@ -107,7 +113,7 @@ describe("Canvas sidebar menu handoff", () => {
       .find((button) => button.textContent === "Cancel")!;
     cancel.click();
     await vi.waitFor(() => expect(document.body.textContent).not.toContain("Rename Canvas"));
-    expect(document.activeElement).toBe(trigger);
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   test.each(["pointer", "touch", "enter", "space"] as const)(
@@ -196,6 +202,7 @@ describe("DeleteCanvasDialog", () => {
     deleteButton.click();
     deleteButton.click();
     expect(onDelete).toHaveBeenCalledOnce();
+    await settleSolidUpdate();
     expect(deleteButton.disabled).toBe(true);
 
     settle([null as never, result]);

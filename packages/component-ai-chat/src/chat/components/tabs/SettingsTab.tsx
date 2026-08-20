@@ -228,7 +228,7 @@ export function SettingsTab(props: IProps) {
               const state = () => loginStateByProvider()[provider]?.status ?? { status: "idle" } as TLoginStatus
               const active = () => state().status === "pending" || state().status === "device-code" || state().status === "progress"
               return (
-                <article classList={{ "omnidraw-ai-chat-provider-card": true, "omnidraw-ai-chat-provider-card--expanded": active() || state().status === "success" || state().status === "error" || state().status === "aborted" }}>
+                <article class={{ "omnidraw-ai-chat-provider-card": true, "omnidraw-ai-chat-provider-card--expanded": active() || state().status === "success" || state().status === "error" || state().status === "aborted" }}>
                   <div class="omnidraw-ai-chat-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "Connected subscription" : "No subscription connected"}</small>
@@ -276,7 +276,7 @@ export function SettingsTab(props: IProps) {
               const expanded = () => expandedApiKeyProviderMap()[provider] ?? false
               const busy = () => status().status === "saving" || status().status === "removing"
               return (
-                <article classList={{ "omnidraw-ai-chat-provider-card": true, "omnidraw-ai-chat-provider-card--api-key": true, "omnidraw-ai-chat-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
+                <article class={{ "omnidraw-ai-chat-provider-card": true, "omnidraw-ai-chat-provider-card--api-key": true, "omnidraw-ai-chat-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
                   <div class="omnidraw-ai-chat-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "API key configured" : "No API key configured"}</small>

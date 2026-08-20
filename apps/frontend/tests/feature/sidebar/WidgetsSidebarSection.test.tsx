@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Effect } from 'effect';
 import {
@@ -10,6 +10,7 @@ import { WidgetCatalogProvider } from '../../../src/shell/framework/feature/side
 import { WidgetsSidebarSection } from '../../../src/shell/framework/feature/sidebar/widgets/components/WidgetsSidebarSection';
 import styles from '../../../src/shell/framework/feature/sidebar/widgets/components/WidgetsSidebarSection.module.css';
 import { publicCatalog, publicEntry, publicForm } from '../widget-public-catalog.fixture';
+import { settleSolidUpdate } from '../../settled';
 
 let dispose: (() => void) | undefined;
 let host: HTMLDivElement | undefined;
@@ -141,6 +142,7 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
     expect(visibleRows()).toBe(0);
     disclosure.focus();
     disclosure.click();
+    await settleSolidUpdate();
     expect(document.activeElement).toBe(disclosure);
     expect(disclosure.getAttribute('aria-expanded')).toBe('true');
     expect(visibleRows()).toBe(2);
@@ -189,6 +191,7 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
       return button!;
     });
     disclosure.click();
+    await settleSolidUpdate();
     const add = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Add Camera to canvas"]',
     );

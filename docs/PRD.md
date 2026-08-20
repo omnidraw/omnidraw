@@ -292,16 +292,16 @@ Dependency and singleton policy:
 
 | Consumer package | Dependency | Policy |
 |---|---|---|
-| `canvas` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
-| `component-ai-chat` | `solid-js` | Peer `^1.9.14`; development dependency at the same version |
+| `canvas` | `solid-js`, `@solidjs/web` | Exact `2.0.0-rc.0` peer pair; development dependencies resolve to the same qualified versions |
+| `component-ai-chat` | `solid-js`, `@solidjs/web` | Exact `2.0.0-rc.0` peer pair; development dependencies resolve to the same qualified versions |
 | `canvas` | `@omnidraw/cangine` | Exact direct dependency, initially `0.6.1` |
 | `sdk` | `@omnidraw/capsule` | Exact direct dependency, currently `0.16.0`; no Capsule types escape |
 | Side-effectful `canvas`, `sdk`, and `component-ai-chat` implementations | `effect` | Exact direct dependency `4.0.0-rc.108`; no Effect types escape |
 | Public Omnidraw package to public Omnidraw package | Named package | Exact version in staged manifests |
 
-External-consumer qualification must prove that Canvas and AI Chat resolve the host's single Solid runtime. Cangine and Capsule are not blanket peer dependencies: each remains encapsulated by its owning package unless a future public API proposal demonstrates a required shared-instance boundary.
+External-consumer qualification must prove that Canvas and AI Chat resolve the host's single Solid core, signals, and web-renderer graph. Cangine and Capsule are not blanket peer dependencies: each remains encapsulated by its owning package unless a future public API proposal demonstrates a required shared-instance boundary.
 
-The five packages use independent SemVer. Only a package whose own public/runtime `src` changed is bumped. A tracked root `public-package-set.json` records one qualified exact set of the five Omnidraw package versions plus Effect `4.0.0-rc.108` and the Cangine, Capsule, and Solid versions used for qualification. Managed pins the five packages and Solid exactly according to a qualified set.
+The five packages use independent SemVer. Only a package whose own public/runtime `src` changed is bumped. A tracked root `public-package-set.json` records one qualified exact set of the five Omnidraw package versions plus Effect `4.0.0-rc.108` and the Cangine, Capsule, Solid core, signals, web renderer, and compiler versions used for qualification. Managed pins the five packages and Solid graph exactly according to a qualified set.
 
 The publication order is `theme`, `canvas-contract`, and `sdk` first; `canvas` after its Theme and Contract versions exist; and `component-ai-chat` after its Canvas version exists. `public-package-set.json` is committed in OSS and attached to the corresponding release so managed can reproduce the qualified set without a workspace link.
 

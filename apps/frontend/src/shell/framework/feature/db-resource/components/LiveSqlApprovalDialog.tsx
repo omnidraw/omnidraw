@@ -1,8 +1,6 @@
-import { Button } from "@kobalte/core/button";
-import * as Checkbox from "@kobalte/core/checkbox";
-import * as Dialog from "@kobalte/core/dialog";
-import Check from "lucide-solid/icons/check";
+import { Check } from "@/shell/framework/components/icons";
 import { Show, createEffect, createSignal, type Component } from "solid-js";
+import { Button, Checkbox, Dialog } from "../../resource/owned-primitives";
 import styles from "../DbResourcePage.module.css";
 
 export type TLiveSqlApprovalDialogProps = {
@@ -16,9 +14,12 @@ export type TLiveSqlApprovalDialogProps = {
 export const LiveSqlApprovalDialog: Component<TLiveSqlApprovalDialogProps> = (props) => {
   const [acknowledged, setAcknowledged] = createSignal(false);
 
-  createEffect(() => {
-    if (props.open) setAcknowledged(false);
-  });
+  createEffect(
+    () => props.open,
+    (open) => {
+      if (open) setAcknowledged(false);
+    },
+  );
 
   return (
     <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>

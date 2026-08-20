@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/canvas",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Portable Solid canvas host, Cangine runtime, and optimistic document client for Omnidraw.",
   "type": "module",
   "license": "MIT",
@@ -62,18 +62,19 @@
     "@omnidraw/cangine": "0.6.1",
     "@omnidraw/canvas-contract": "workspace:*",
     "@omnidraw/theme": "workspace:*",
-    "effect": "4.0.0-rc.108",
-    "lucide-solid": "^1.24.0"
+    "effect": "4.0.0-rc.108"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.14"
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
   },
   "devDependencies": {
+    "@solidjs/web": "catalog:",
     "jsdom": "^29.1.1",
-    "solid-js": "^1.9.14",
+    "solid-js": "catalog:",
     "typescript": "7.0.2",
     "vite": "^8.1.4",
-    "vite-plugin-solid": "^2.11.10",
+    "@solidjs/vite-plugin": "catalog:",
     "vitest": "^4.1.10"
   }
 }

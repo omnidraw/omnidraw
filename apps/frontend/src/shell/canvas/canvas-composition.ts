@@ -1,5 +1,4 @@
-import Bot from 'lucide-solid/icons/bot';
-import PanelLeft from 'lucide-solid/icons/panel-left';
+import { Bot, PanelLeft } from '@/shell/framework/components/icons';
 import type {
   TCanvasDependencies,
   TCanvasExtensionLoader,
@@ -24,6 +23,9 @@ import {
 import type { TFrontendRuntime } from '../runtime/frontend-runtime';
 import { startFrontendDatabaseEvents } from '../browser/database-events';
 import { createWidgetPreviewAutomation } from '../framework/feature/canvas-extension/preview-automation';
+import {
+  createFrontendWidgetPlacementExtension,
+} from '../framework/feature/widget-placement/canvas-extension';
 
 type TCreateFrontendCanvasCompositionArgs = Readonly<{
   canvasId: string;
@@ -175,9 +177,7 @@ function frontendExtensionLoaders(args: Readonly<{
       signal.throwIfAborted();
       return createFrontendWidgetExtension({
         runtime: args.runtime,
-        placement: args.runtime.widgetPlacement,
         invalidateWidgets: () => args.runtime.catalogInvalidation.invalidate('widgets'),
-        previewAutomation: args.previewAutomation,
       });
     },
   }) satisfies TCanvasExtensionLoader;
@@ -212,6 +212,13 @@ export function createFrontendCanvasComposition(
     hostRetirement:
       args.runtime.canvasHostRetirement.registration,
     ...(diagnostics === undefined ? {} : { diagnostics }),
+    extensions: Object.freeze([
+      createFrontendWidgetPlacementExtension({
+        runtime: args.runtime,
+        placement: args.runtime.widgetPlacement,
+        previewAutomation,
+      }),
+    ]),
     extensionLoaders: frontendExtensionLoaders({
       canvasId: args.canvasId,
       navigate: args.navigate,

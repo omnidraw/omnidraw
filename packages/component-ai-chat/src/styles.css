@@ -1221,6 +1221,16 @@
   box-shadow: 6px 6px 0 color-mix(in srgb, var(--omnidraw-foreground) 78%, var(--omnidraw-background));
 }
 
+[data-omnidraw-ai-chat-portaled-menu="true"] {
+  bottom: auto;
+  visibility: hidden;
+  z-index: 2147483647;
+}
+
+[data-omnidraw-ai-chat-portaled-menu="true"][data-omnidraw-ai-chat-menu-positioned="true"] {
+  visibility: visible;
+}
+
 .omnidraw-ai-chat-composer__model-menu {
   left: 0;
   display: grid;
@@ -1245,6 +1255,12 @@
   flex-direction: column;
   gap: 2px;
   padding: 5px;
+}
+
+.omnidraw-ai-chat-composer__approval-menu [role="group"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .omnidraw-ai-chat-composer__approval-heading {

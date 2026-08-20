@@ -1,12 +1,6 @@
-import { Button } from "@kobalte/core/button";
-import * as ToggleButton from "@kobalte/core/toggle-button";
-import ChevronRight from "lucide-solid/icons/chevron-right";
-import MoonStar from "lucide-solid/icons/moon-star";
-import PanelLeft from "lucide-solid/icons/panel-left";
-import Plus from "lucide-solid/icons/plus";
-import Sun from "lucide-solid/icons/sun";
+import { ChevronRight, MoonStar, PanelLeft, Plus, Sun } from "@/shell/framework/components/icons";
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createSignal, onSettled, untrack } from "solid-js";
 import type { TCanvasDeletionResult } from "@/core/app/private-operation-contract";
 import { fnCanvasDeletionRoute } from "@/core/navigation/fn.canvas-deletion-route";
 import { WidgetsSidebarSection } from "../widgets/components/WidgetsSidebarSection";
@@ -26,7 +20,11 @@ export type SidebarProps = {
 };
 
 const Sidebar: Component<SidebarProps> = (props) => {
-  const application = props.controller.application;
+  // The controller is a mount-stable injected capability. Snapshot it once so
+  // event handlers and async continuations never read the reactive component
+  // prop outside a tracking scope.
+  const controller = untrack(() => props.controller);
+  const application = controller.application;
 
   const activeCanvasId = () => {
     const match = application.pathname().match(/^\/c\/(.+)/);
@@ -40,6 +38,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
     id: string;
     name: string;
   } | null>(null);
+  const [renameDialogTrigger, setRenameDialogTrigger] = createSignal<HTMLButtonElement | null>(null);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = createSignal(false);
   const [canvasToDelete, setCanvasToDelete] = createSignal<TSidebarCanvas | null>(null);
@@ -52,7 +51,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "secretStore" | "db"; status: string }>>([]);
 
   const loadResources = async () => {
-    const [err, result] = await props.controller.apiService.api.resource.resources.list();
+    const [err, result] = await controller.apiService.api.resource.resources.list();
     if (err || !result) {
       application.notifyError(err?.message ?? "Resources are unavailable.");
       return;
@@ -60,25 +59,30 @@ const Sidebar: Component<SidebarProps> = (props) => {
     setResources([...result]);
   };
 
-  onMount(() => {
+  onSettled(() => {
     void loadResources();
-    const unsubscribe = props.controller.invalidation.subscribe("resources", () => void loadResources());
-    onCleanup(unsubscribe);
+    const unsubscribe = controller.invalidation.subscribe("resources", () => void loadResources());
+    return unsubscribe;
   });
 
   const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string }) => {
-    const [err] = await props.controller.apiService.api.resource.resources.create(value);
+    const [err] = await controller.apiService.api.resource.resources.create(value);
     if (err) {
       application.notifyError(err.message);
       return false;
     }
     await loadResources();
-    props.controller.invalidation.invalidate("resources");
+    controller.invalidation.invalidate("resources");
     return true;
   };
 
-  const handleOpenRenameDialog = (canvasId: string, canvasName: string) => {
+  const handleOpenRenameDialog = (
+    canvasId: string,
+    canvasName: string,
+    trigger: HTMLButtonElement,
+  ) => {
     setCanvasToRename({ id: canvasId, name: canvasName });
+    setRenameDialogTrigger(trigger);
     setRenameDialogOpen(true);
   };
 
@@ -91,7 +95,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const handleRename = async (newName: string) => {
     const canvas = canvasToRename();
     if (canvas) {
-      const [err, data] = await props.controller.apiService.api.canvas.update({ params: { id: canvas.id }, body: { name: newName } });
+      const [err, data] = await controller.apiService.api.canvas.update({ params: { id: canvas.id }, body: { name: newName } });
       if (err) application.notifyError(err.message);
       if (data) {
         application.canvasUpdated(data);
@@ -100,7 +104,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   };
 
   const handleDeleted = async (result: TCanvasDeletionResult) => {
-    const [listError, listed] = await props.controller.apiService.api.canvas.list();
+    const [listError, listed] = await controller.apiService.api.canvas.list();
     const remaining = listed ?? application.canvases().filter((canvas) => canvas.id !== result.canvas.id);
     application.canvasesReplaced(remaining);
     if (listError) {
@@ -122,7 +126,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   };
 
   const handleCreateCanvas = async (title: string) => {
-    const [err, data] = await props.controller.apiService.api.canvas.create({ name: title });
+    const [err, data] = await controller.apiService.api.canvas.create({ name: title });
     if (err) application.notifyError(err.message);
     if (data) {
       application.canvasCreated(data);
@@ -150,24 +154,25 @@ const Sidebar: Component<SidebarProps> = (props) => {
             <OmnidrawLogo class={styles.brandLogo} />
             <h1 class={styles.brand}>OMNIDRAW</h1>
           </div>
-          <Button
+          <button
+            type="button"
             class={styles.sidebarToggle}
             onClick={() => props.onToggleSidebar?.()}
             aria-label="Toggle sidebar"
           >
             <PanelLeft size={15} />
-          </Button>
+          </button>
         </div>
 
         <nav class={styles.nav} aria-label="Workspace navigation">
           <section class={styles.section}>
             <div class={styles.sectionHeader}>
-              <Button class={styles.sectionToggle} onClick={() => setCanvasesExpanded((value) => !value)} aria-expanded={canvasesExpanded()}>
+              <button type="button" class={styles.sectionToggle} onClick={() => setCanvasesExpanded((value) => !value)} aria-expanded={canvasesExpanded() ? "true" : "false"}>
                 <ChevronRight size={13} class={styles.sectionChevron} />
                 <span class={styles.sectionTitle}>Canvases</span>
-              </Button>
+              </button>
               <div class={styles.sectionActions}>
-                <Button class={styles.sectionAdd} onClick={() => setCreateDialogOpen(true)} aria-label="Add canvas"><Plus size={14} /></Button>
+                <button type="button" class={styles.sectionAdd} onClick={() => setCreateDialogOpen(true)} aria-label="Add canvas"><Plus size={14} /></button>
               </div>
             </div>
 
@@ -187,7 +192,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
                   name={canvas.name}
                   selected={activeCanvasId() === canvas.id}
                   onClick={() => application.navigate(`/c/${canvas.id}`)}
-                  onRename={() => handleOpenRenameDialog(canvas.id, canvas.name)}
+                  onRename={(trigger) => handleOpenRenameDialog(canvas.id, canvas.name, trigger)}
                   onDelete={(trigger) => handleOpenDeleteDialog(canvas, trigger)}
                 />
               )}
@@ -198,12 +203,12 @@ const Sidebar: Component<SidebarProps> = (props) => {
 
           <section class={styles.section}>
             <div class={styles.sectionHeader}>
-              <Button class={styles.sectionToggle} onClick={() => setResourcesExpanded((value) => !value)} aria-expanded={resourcesExpanded()}>
+              <button type="button" class={styles.sectionToggle} onClick={() => setResourcesExpanded((value) => !value)} aria-expanded={resourcesExpanded() ? "true" : "false"}>
                 <ChevronRight size={13} class={styles.sectionChevron} />
                 <span class={styles.sectionTitle}>Resources</span>
-              </Button>
+              </button>
               <div class={styles.sectionActions}>
-                <Button class={styles.sectionAdd} onClick={() => setCreateResourceDialogOpen(true)} aria-label="Add resource"><Plus size={14} /></Button>
+                <button type="button" class={styles.sectionAdd} onClick={() => setCreateResourceDialogOpen(true)} aria-label="Add resource"><Plus size={14} /></button>
               </div>
             </div>
 
@@ -211,7 +216,8 @@ const Sidebar: Component<SidebarProps> = (props) => {
               <div class={styles.resourceList}>
                 <For each={resources()} fallback={<p class={styles.emptyGroup}>No resources.</p>}>
                   {(resource) => (
-                    <Button
+                    <button
+                      type="button"
                       class={`${styles.resourceItem} ${activeResourceId() === resource.id ? styles.resourceItemSelected : ""}`}
                       title={`${resource.kind} · ${resource.status}`}
                       aria-current={activeResourceId() === resource.id ? "page" : undefined}
@@ -220,20 +226,21 @@ const Sidebar: Component<SidebarProps> = (props) => {
                       <span class={`${styles.resourceStatus} ${resource.status === "ready" ? styles.resourceStatusReady : ""}`} aria-hidden="true" />
                       <span class={styles.resourceName}>{resource.name}</span>
                       <span class={styles.resourceKind}>{resource.kind === "secretStore" ? "SECRET" : resource.kind.toUpperCase()}</span>
-                    </Button>
+                    </button>
                   )}
                 </For>
               </div>
             </Show>
           </section>
 
-          <WidgetsSidebarSection controller={props.controller} />
+          <WidgetsSidebarSection controller={controller} />
         </nav>
 
         <div class={styles.footer}>
-          <ToggleButton.Root
-            pressed={isDarkTheme()}
-            onChange={handleThemeToggle}
+          <button
+            type="button"
+            aria-pressed={isDarkTheme() ? "true" : "false"}
+            onClick={() => handleThemeToggle(!isDarkTheme())}
             class={styles.themeToggle}
             aria-label="Toggle dark theme"
           >
@@ -244,7 +251,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
             <span class={styles.themeStatus}>
               {isDarkTheme() ? "Dark" : "Light"}
             </span>
-          </ToggleButton.Root>
+          </button>
         </div>
       </aside>
 
@@ -253,15 +260,16 @@ const Sidebar: Component<SidebarProps> = (props) => {
         onOpenChange={setRenameDialogOpen}
         currentName={canvasToRename()?.name ?? ""}
         onRename={handleRename}
+        returnFocus={renameDialogTrigger}
       />
 
       <DeleteCanvasDialog
         open={deleteDialogOpen()}
         onOpenChange={setDeleteDialogOpen}
         canvas={canvasToDelete()}
-        createDeletionId={props.controller.browser.createIdempotencyKey}
-        onPlan={(canvasId) => props.controller.apiService.api.canvas.deletionPlan({ canvasId })}
-        onDelete={(args) => props.controller.apiService.api.canvas.remove(args)}
+        createDeletionId={controller.browser.createIdempotencyKey}
+        onPlan={(canvasId) => controller.apiService.api.canvas.deletionPlan({ canvasId })}
+        onDelete={(args) => controller.apiService.api.canvas.remove(args)}
         onDeleted={handleDeleted}
         returnFocus={deleteDialogTrigger}
       />

@@ -1,5 +1,11 @@
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  DEV,
+  createComponent,
+  createSignal,
+  mapArray,
+} from 'solid-js';
 import {
   BUILTIN_THEMES,
   THEME_ID_DARK,
@@ -8,6 +14,7 @@ import {
 import { Effect } from 'effect';
 import { createReproductionTrace } from '../../src/debug-trace/createReproductionTrace';
 import type { TCanvasDependencies } from '../../src/types';
+import { settleSolidUpdate } from './settled';
 
 const runtimeMocks = vi.hoisted(() => {
   let shell = { kind: 'canvas' as const, widgetId: null } as
@@ -180,6 +187,57 @@ afterEach(() => {
 });
 
 describe('Canvas host contributions', () => {
+  test('releases an active Space pan without Solid diagnostics on root disposal', async () => {
+    expect(DEV).toBeDefined();
+    const host = document.createElement('div');
+    document.body.append(host);
+    const [mounted, setMounted] = createSignal(true);
+    const keyedCanvas = mapArray(
+      () => mounted() ? ['canvas-1'] : [],
+      (canvasId) => createComponent(Canvas, {
+        canvas: { id: canvasId },
+        hostScopeKey: 'test-scope',
+        dependencies: dependencies(),
+      }),
+    );
+    dispose = render(() => keyedCanvas, host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
+    });
+
+    const canvasRoot = host.querySelector<HTMLDivElement>('.omnidraw-canvas-host')!;
+    const engineHost = host.querySelector<HTMLDivElement>('.omnidraw-canvas-engine-host')!;
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    canvasRoot.setPointerCapture = setPointerCapture;
+    canvasRoot.hasPointerCapture = () => true;
+    canvasRoot.releasePointerCapture = releasePointerCapture;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      code: 'Space',
+      key: ' ',
+    }));
+    await settleSolidUpdate();
+    engineHost.dispatchEvent(pointerEvent('pointerdown', 1, 20));
+    await settleSolidUpdate();
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+    expect(canvasRoot.classList.contains('omnidraw-canvas-host--space-dragging')).toBe(true);
+
+    const diagnosticCapture = DEV!.diagnostics.capture();
+    let diagnosticCodes: readonly string[] = [];
+    try {
+      setMounted(false);
+      await settleSolidUpdate();
+    } finally {
+      diagnosticCodes = diagnosticCapture.stop().map((event) => event.code);
+    }
+    expect(releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(diagnosticCodes).not.toContain('REACTIVE_WRITE_IN_OWNED_SCOPE');
+    expect(diagnosticCodes).not.toContain('REACTIVITY_HALTED');
+    expect(host.querySelector('.omnidraw-canvas-host')).toBeNull();
+  });
+
   test('unmounts canvas overlays and restores by Escape for the exclusive widget shell', async () => {
     const host = document.createElement('div');
     document.body.append(host);
@@ -227,7 +285,7 @@ describe('Canvas host contributions', () => {
       composed: true,
       key: 'Escape',
     }));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(runtimeMocks.runtime.restoreMaximizedWidget).toHaveBeenCalledOnce();
 
     runtimeMocks.runtime.restoreMaximizedWidget.mockClear();
@@ -247,7 +305,7 @@ describe('Canvas host contributions', () => {
       composed: true,
       key: 'Escape',
     }));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(runtimeMocks.runtime.restoreMaximizedWidget).not.toHaveBeenCalled();
 
     const nativeDialog = document.createElement('dialog');
@@ -262,11 +320,57 @@ describe('Canvas host contributions', () => {
       composed: true,
       key: 'Escape',
     }));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(runtimeMocks.runtime.restoreMaximizedWidget).not.toHaveBeenCalled();
 
     runtimeMocks.setShell({ kind: 'canvas', widgetId: null });
     await vi.waitFor(() => expect(host.querySelector('.omnidraw-canvas-toolbar-anchor')).not.toBeNull());
+  });
+
+  test('yields Escape to a portaled widget menu without changing ordinary Canvas Escape', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
+    }), host);
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
+    });
+
+    const portal = document.createElement('div');
+    portal.dataset.vibecanvasPortalId = 'widget-1';
+    portal.setAttribute('role', 'menu');
+    const menuItem = document.createElement('button');
+    portal.append(menuItem);
+    document.body.append(portal);
+    const handleMenuEscape = vi.fn((event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    menuItem.addEventListener('keydown', handleMenuEscape);
+
+    const menuEscape = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: 'Escape',
+    });
+    menuItem.dispatchEvent(menuEscape);
+    expect(handleMenuEscape).toHaveBeenCalledOnce();
+    expect(menuEscape.defaultPrevented).toBe(true);
+    expect(runtimeMocks.setActiveTool).not.toHaveBeenCalledWith('select');
+
+    const canvasEscape = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Escape',
+    });
+    host.querySelector('.omnidraw-canvas-host')?.dispatchEvent(canvasEscape);
+    expect(canvasEscape.defaultPrevented).toBe(true);
+    expect(runtimeMocks.setActiveTool).toHaveBeenCalledWith('select');
   });
 
   test('renders and uses core tools without product extensions', async () => {
@@ -322,11 +426,11 @@ describe('Canvas host contributions', () => {
     host.querySelector<HTMLButtonElement>(
       'button[aria-label="Developer trace: idle"]',
     )?.click();
-    await Promise.resolve();
+    await settleSolidUpdate();
     [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Record'))
       ?.click();
-    await Promise.resolve();
+    await settleSolidUpdate();
 
     const canvasRoot = host.querySelector<HTMLElement>('.omnidraw-canvas-host');
     expect(canvasRoot).not.toBeNull();
@@ -334,31 +438,31 @@ describe('Canvas host contributions', () => {
     [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Stop'))
       ?.dispatchEvent(pointerEvent('pointerdown', 1, 5));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
     for (let index = 0; index < 19; index += 1) {
       canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, index));
     }
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 9));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('0');
 
     canvasRoot?.dispatchEvent(pointerEvent('pointerdown', 1, 10));
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 1, 11));
     canvasRoot?.dispatchEvent(pointerEvent('pointerup', 0, 12));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
 
     for (let index = 0; index < 19; index += 1) {
       canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 20 + index));
     }
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
 
     canvasRoot?.dispatchEvent(pointerEvent('pointermove', 0, 30));
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector('.omnidraw-trace-metrics dd')?.textContent).toBe('2');
   });
 

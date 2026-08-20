@@ -30,7 +30,12 @@ export const EXACT_QUALIFICATION_VERSIONS = Object.freeze({
   effect: '4.0.0-rc.108',
   '@omnidraw/cangine': '0.6.1',
   '@omnidraw/capsule': '0.16.0',
-  'solid-js': '1.9.14',
+  '@solidjs/router': '2.0.0-next.16',
+  '@solidjs/signals': '2.0.0-rc.0',
+  '@solidjs/vite-plugin': '3.0.0-next.31',
+  '@solidjs/web': '2.0.0-rc.0',
+  'babel-preset-solid': '2.0.0-rc.0',
+  'solid-js': '2.0.0-rc.0',
 } as const)
 
 export type TPublicPackageManifest = Record<string, unknown> & {

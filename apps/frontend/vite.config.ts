@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
-import solidPlugin from 'vite-plugin-solid';
-import devtools from 'solid-devtools/vite';
+import solidPlugin from '@solidjs/vite-plugin';
 import wasm from 'vite-plugin-wasm';
 import { resolve } from "node:path";
 import { gzipSync } from 'node:zlib';
@@ -100,8 +99,7 @@ export default defineConfig({
         return id.startsWith('\0omnidraw-source-theme-css:') ? sourceThemeCss : null;
       },
     },
-    devtools(),
-    solidPlugin(),
+    solidPlugin({ solid: { moduleName: '@solidjs/web' } }),
     canvasCriticalGraphGate(),
   ],
   server: {
@@ -144,9 +142,4 @@ export default defineConfig({
       { find: '@', replacement: resolve(__dirname, './src') },
     ],
   },
-  optimizeDeps: {
-    exclude: [
-      'lucide-solid',
-    ]
-  }
 });

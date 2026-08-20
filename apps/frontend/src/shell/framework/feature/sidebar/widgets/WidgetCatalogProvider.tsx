@@ -3,8 +3,7 @@ import { Effect, Stream } from 'effect';
 import {
   createContext,
   createSignal,
-  onCleanup,
-  onMount,
+  onSettled,
   useContext,
   type Accessor,
   type ParentComponent,
@@ -61,7 +60,7 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
     );
   };
 
-  onMount(() => {
+  onSettled(() => {
     void refresh();
     const eventStream = Effect.tryPromise({
       try: () => props.controller.apiService.api.widget.catalog.events({}),
@@ -87,26 +86,23 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
     });
     const unsubscribe = props.controller.invalidation.subscribe('widgets', scheduleRefresh);
     const unsubscribeReconnect = props.controller.subscribeReconnect(scheduleRefresh);
-    onCleanup(unsubscribe);
-    onCleanup(unsubscribeReconnect);
+    return () => {
+      closed = true;
+      requestId += 1;
+      unsubscribe();
+      unsubscribeReconnect();
+      cancelRefreshDelay();
+      cancelRefreshDelay = () => undefined;
+      cancelEventStream();
+      cancelEventStream = () => undefined;
+    };
   });
 
-  onCleanup(() => {
-    closed = true;
-    requestId += 1;
-    cancelRefreshDelay();
-    cancelRefreshDelay = () => undefined;
-    cancelEventStream();
-    cancelEventStream = () => undefined;
-  });
-
-  return <WidgetCatalogContext.Provider value={{ catalog, loading, error, refresh }}>
+  return <WidgetCatalogContext value={{ catalog, loading, error, refresh }}>
     {props.children}
-  </WidgetCatalogContext.Provider>;
+  </WidgetCatalogContext>;
 };
 
 export function useWidgetCatalog(): TWidgetCatalogContext {
-  const context = useContext(WidgetCatalogContext);
-  if (!context) throw new Error('WidgetCatalogProvider is missing.');
-  return context;
+  return useContext(WidgetCatalogContext);
 }

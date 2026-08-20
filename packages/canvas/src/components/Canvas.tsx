@@ -15,8 +15,8 @@ import {
   Show,
   createEffect,
   createSignal,
-  onCleanup,
-  onMount,
+  onSettled,
+  untrack,
 } from 'solid-js';
 import {
   REPRODUCTION_TRACE_PASSIVE_INPUT_SAMPLE_RATE,
@@ -29,6 +29,7 @@ import {
 } from '../fn.semantic-canvas-style';
 import { buildRuntime, type TCanvasRuntime } from '../runtime';
 import type {
+  TCanvasDependencies,
   TCanvasProps,
 } from '../types';
 import { FloatingCanvasToolbar } from './FloatingCanvasToolbar';
@@ -57,6 +58,13 @@ import type { TCanvasShellState } from '../fn.canvas-shell';
 type TCanvasSource = Readonly<{
   key: string;
   canvasId: string;
+  dependencies: TCanvasDependencies;
+}>;
+
+type TCanvasActivationIntent = Readonly<{
+  key: string | null;
+  shouldReplace: boolean;
+  source: TCanvasSource;
 }>;
 
 const DETACHED_SELECTION_STYLE_STATE = Object.freeze({
@@ -198,9 +206,9 @@ export function Canvas(props: TCanvasProps) {
   let keyboardDocument: Document | null = null;
   let keyboardWindow: Window | null = null;
   let keyboardActive = false;
-  let releaseThemeChange: (() => void) | null = null;
   let traceDomListenersAttached = false;
   let activeRuntime: TCanvasRuntime | null = null;
+  let activeSource: TCanvasSource | null = null;
   let unsubscribeEditor: (() => void) | null = null;
   let unsubscribeSelectionStyles: (() => void) | null = null;
   let unsubscribeShell: (() => void) | null = null;
@@ -229,30 +237,36 @@ export function Canvas(props: TCanvasProps) {
     widgetId: null,
   });
 
-  const source = (): TCanvasSource => ({
-    key: JSON.stringify([props.hostScopeKey, props.canvas.id]),
-    canvasId: props.canvas.id,
-  });
+  const source = (): TCanvasSource => {
+    const canvasId = props.canvas.id;
+    return {
+      key: JSON.stringify([props.hostScopeKey, canvasId]),
+      canvasId,
+      dependencies: props.dependencies,
+    };
+  };
 
   const lifecycle = new CanvasRuntimeLifecycle<TCanvasSource>({
     createRuntime: (next, reportReadiness) => {
+      const dependencies = next.dependencies;
       activeRuntime = buildRuntime({
         canvasId: next.canvasId,
         container: containerRef,
-        transport: props.dependencies.transport,
-        createId: props.dependencies.createId,
-        wait: props.dependencies.wait,
-        initialGridVisible: gridVisible(),
-        image: props.dependencies.image,
-        notification: props.dependencies.notification,
-        themeService: props.dependencies.themeService,
-        trace: trace(),
+        transport: dependencies.transport,
+        createId: dependencies.createId,
+        wait: dependencies.wait,
+        initialGridVisible: untrack(gridVisible),
+        image: dependencies.image,
+        notification: dependencies.notification,
+        themeService: dependencies.themeService,
+        trace: dependencies.diagnostics ?? null,
         reportReadiness,
-      }, props.dependencies.extensions, props.dependencies.extensionLoaders);
+      }, dependencies.extensions, dependencies.extensionLoaders);
+      activeSource = next;
       return activeRuntime;
     },
-    onBootStart: () => {
-      trace()?.emit({
+    onBootStart: (next) => {
+      next.dependencies.diagnostics?.emit({
         channel: 'system',
         type: 'runtime-replacement-started',
         priority: 'critical',
@@ -269,13 +283,13 @@ export function Canvas(props: TCanvasProps) {
       setReadiness('starting');
       setBootError(null);
     },
-    onReadinessChange: (nextReadiness) => {
+    onReadinessChange: (nextReadiness, next) => {
       setReadiness(nextReadiness);
-      trace()?.emit({
+      next.dependencies.diagnostics?.emit({
         channel: 'system',
         type: nextReadiness,
         priority: nextReadiness === 'settled' ? 'normal' : 'critical',
-        correlation: { canvasId: props.canvas.id },
+        correlation: { canvasId: next.canvasId },
       });
       if (nextReadiness !== 'document-ready') return;
       const nextEditor = activeRuntime?.editor() ?? null;
@@ -300,65 +314,68 @@ export function Canvas(props: TCanvasProps) {
         if (activeRuntime === runtime) setShellState(nextState);
       }) ?? null;
     },
-    onBootSuccess: () => {
-      trace()?.emit({
+    onBootSuccess: (next) => {
+      next.dependencies.diagnostics?.emit({
         channel: 'system',
         type: 'runtime-ready',
         priority: 'critical',
-        correlation: { canvasId: props.canvas.id },
+        correlation: { canvasId: next.canvasId },
       });
     },
-    recoverBoot: (error) => (
-      props.dependencies.initialBootRecovery?.waitForRecovery(error) ?? null
+    recoverBoot: (error, next) => (
+      next.dependencies.initialBootRecovery?.waitForRecovery(error) ?? null
     ),
-    onBootRecoveryWait: () => {
+    onBootRecoveryWait: (_error, next) => {
       activeRuntime = null;
       setReadiness('starting');
       setBootError(null);
-      trace()?.emit({
+      next.dependencies.diagnostics?.emit({
         channel: 'system',
         type: 'runtime-recovery-waiting',
         priority: 'critical',
-        correlation: { canvasId: props.canvas.id },
+        correlation: { canvasId: next.canvasId },
       });
     },
-    onBootError: (error) => {
+    onBootError: (error, next) => {
       const message = error instanceof Error ? error.message : String(error);
-      props.dependencies.notification.showError('Failed to start canvas', message);
+      next.dependencies.notification.showError('Failed to start canvas', message);
       setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
       setBootError(message);
-      trace()?.emit({
+      next.dependencies.diagnostics?.emit({
         channel: 'system',
         type: 'runtime-failed',
         priority: 'critical',
-        correlation: { canvasId: props.canvas.id },
+        correlation: { canvasId: next.canvasId },
         data: { error: { name: 'Error', message } },
       });
     },
     onShutdownError: (error) => {
-      props.dependencies.notification.showError(
+      activeSource?.dependencies.notification.showError(
         'Failed to stop canvas',
         error instanceof Error ? error.message : String(error),
       );
     },
   });
-  const unregisterHostRetirement = (
-    props.dependencies.hostRetirement?.register(() => lifecycle.dispose())
-    ?? null
+  createEffect<TCanvasActivationIntent>(
+    (previous) => {
+      const next = source();
+      const activation = fnCanvasRuntimeActivation({
+        containerReady: containerReady(),
+        nextKey: next.key,
+        previousKey: previous?.key ?? null,
+      });
+      return {
+        key: activation.key,
+        shouldReplace: activation.shouldReplace,
+        source: next,
+      };
+    },
+    (activation) => {
+      if (activation.shouldReplace) {
+        void lifecycle.replace(activation.source);
+      }
+    },
   );
-
-  createEffect<string | null>((previousKey) => {
-    const next = source();
-    const activation = fnCanvasRuntimeActivation({
-      containerReady: containerReady(),
-      nextKey: next.key,
-      previousKey,
-    });
-    if (activation.shouldReplace) {
-      void lifecycle.replace(next);
-    }
-    return activation.key;
-  }, null);
 
   const ownsKeyboardEvent = (event: KeyboardEvent): boolean => {
     const targetCanvas = eventTargetElement(event.target)
@@ -435,6 +452,7 @@ export function Canvas(props: TCanvasProps) {
       || event.metaKey
       || event.altKey
     ) return;
+    if (event.key === 'Escape' && isWidgetEscapeConsumer(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -495,12 +513,12 @@ export function Canvas(props: TCanvasProps) {
     event.stopPropagation();
   };
 
-  const finishSpacePan = (pointerId?: number) => {
+  const releaseSpacePan = (pointerId?: number): boolean => {
     if (
       pointerId !== undefined
       && spacePointerId !== null
       && pointerId !== spacePointerId
-    ) return;
+    ) return false;
     if (
       spacePointerId !== null
       && canvasRootRef.hasPointerCapture(spacePointerId)
@@ -509,6 +527,11 @@ export function Canvas(props: TCanvasProps) {
     }
     spacePointerId = null;
     spacePointerPosition = null;
+    return true;
+  };
+
+  const finishSpacePan = (pointerId?: number) => {
+    if (!releaseSpacePan(pointerId)) return;
     setSpaceDragging(false);
   };
 
@@ -717,26 +740,34 @@ export function Canvas(props: TCanvasProps) {
     traceDomListenersAttached = enabled;
   };
 
-  createEffect(() => {
-    if (!containerReady()) return;
-    setTraceDomListeners(trace() !== null);
-  });
+  createEffect(
+    () => containerReady() && trace() !== null,
+    (enabled) => {
+      setTraceDomListeners(enabled);
+      return enabled ? () => setTraceDomListeners(false) : undefined;
+    },
+  );
 
-  createEffect(() => {
-    if (!containerReady()) return;
-    const themeService = props.dependencies.themeService;
-    releaseThemeChange?.();
-    applyThemeToElement(canvasRootRef, themeService.getTheme());
-    setThemeRevision((revision) => revision + 1);
-    releaseThemeChange = themeService.subscribeThemeChange(
-      (theme) => {
+  createEffect(
+    () => containerReady() ? props.dependencies.themeService : null,
+    (themeService) => {
+      if (themeService === null) return;
+      applyThemeToElement(canvasRootRef, themeService.getTheme());
+      setThemeRevision((revision) => revision + 1);
+      return themeService.subscribeThemeChange((theme) => {
         applyThemeToElement(canvasRootRef, theme);
         setThemeRevision((revision) => revision + 1);
-      },
-    );
-  });
+      });
+    },
+  );
 
-  onMount(() => {
+  onSettled(() => {
+    // Host retirement ownership is fixed for this mounted Canvas instance.
+    const hostRetirement = untrack(() => props.dependencies.hostRetirement);
+    const unregisterHostRetirement = (
+      hostRetirement?.register(() => lifecycle.dispose())
+      ?? null
+    );
     setContainerReady(true);
     keyboardDocument = canvasRootRef.ownerDocument;
     keyboardWindow = keyboardDocument.defaultView;
@@ -754,42 +785,38 @@ export function Canvas(props: TCanvasProps) {
     canvasRootRef.addEventListener('pointerup', endSpacePan, true);
     canvasRootRef.addEventListener('pointercancel', endSpacePan, true);
     canvasRootRef.addEventListener('lostpointercapture', handleLostSpaceCapture);
-  });
-  onCleanup(() => {
-    keyboardDocument?.removeEventListener('keydown', handleKeyboardShortcut, true);
-    keyboardDocument?.removeEventListener('keydown', scheduleMaximizedEscapeFallback, true);
-    keyboardDocument?.removeEventListener('keydown', handleMaximizedEscape);
-    keyboardDocument?.removeEventListener('keyup', handleKeyboardRelease, true);
-    keyboardDocument?.removeEventListener('pointerdown', updateKeyboardActivity, true);
-    keyboardDocument?.removeEventListener('focusin', updateKeyboardActivity, true);
-    canvasRootRef.removeEventListener('dragover', suppressMaximizedCanvasDrop, true);
-    canvasRootRef.removeEventListener('drop', suppressMaximizedCanvasDrop, true);
-    keyboardWindow?.removeEventListener('blur', handleWindowBlur);
-    keyboardActive = false;
-    keyboardDocument = null;
-    keyboardWindow = null;
-    releaseThemeChange?.();
-    releaseThemeChange = null;
-    setTraceDomListeners(false);
-    canvasRootRef.removeEventListener('pointerdown', beginSpacePan, true);
-    canvasRootRef.removeEventListener('pointermove', moveSpacePan, true);
-    canvasRootRef.removeEventListener('pointerup', endSpacePan, true);
-    canvasRootRef.removeEventListener('pointercancel', endSpacePan, true);
-    canvasRootRef.removeEventListener('lostpointercapture', handleLostSpaceCapture);
-    finishSpacePan();
-    unsubscribeEditor?.();
-    unsubscribeEditor = null;
-    unsubscribeSelectionStyles?.();
-    unsubscribeSelectionStyles = null;
-    unsubscribeShell?.();
-    unsubscribeShell = null;
-    setShellState({ kind: 'canvas', widgetId: null });
-    setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
-    activeRuntime = null;
-    void lifecycle.dispose().then(
-      () => unregisterHostRetirement?.(),
-      () => unregisterHostRetirement?.(),
-    );
+    return () => {
+      keyboardDocument?.removeEventListener('keydown', handleKeyboardShortcut, true);
+      keyboardDocument?.removeEventListener('keydown', scheduleMaximizedEscapeFallback, true);
+      keyboardDocument?.removeEventListener('keydown', handleMaximizedEscape);
+      keyboardDocument?.removeEventListener('keyup', handleKeyboardRelease, true);
+      keyboardDocument?.removeEventListener('pointerdown', updateKeyboardActivity, true);
+      keyboardDocument?.removeEventListener('focusin', updateKeyboardActivity, true);
+      canvasRootRef.removeEventListener('dragover', suppressMaximizedCanvasDrop, true);
+      canvasRootRef.removeEventListener('drop', suppressMaximizedCanvasDrop, true);
+      keyboardWindow?.removeEventListener('blur', handleWindowBlur);
+      keyboardActive = false;
+      keyboardDocument = null;
+      keyboardWindow = null;
+      setTraceDomListeners(false);
+      canvasRootRef.removeEventListener('pointerdown', beginSpacePan, true);
+      canvasRootRef.removeEventListener('pointermove', moveSpacePan, true);
+      canvasRootRef.removeEventListener('pointerup', endSpacePan, true);
+      canvasRootRef.removeEventListener('pointercancel', endSpacePan, true);
+      canvasRootRef.removeEventListener('lostpointercapture', handleLostSpaceCapture);
+      releaseSpacePan();
+      unsubscribeEditor?.();
+      unsubscribeEditor = null;
+      unsubscribeSelectionStyles?.();
+      unsubscribeSelectionStyles = null;
+      unsubscribeShell?.();
+      unsubscribeShell = null;
+      activeRuntime = null;
+      void lifecycle.dispose().then(
+        () => unregisterHostRetirement?.(),
+        () => unregisterHostRetirement?.(),
+      );
+    };
   });
 
   const state = () => {
@@ -806,9 +833,8 @@ export function Canvas(props: TCanvasProps) {
   const applySelectionStyle = (change: TSelectionStyleChange) =>
     activeRuntime?.selectionStyles()?.apply(change) ?? false;
   const toggleGrid = () => {
-    const visible = !gridVisible();
+    const visible = setGridVisible((current) => !current);
     activeRuntime?.setGridVisible(visible);
-    setGridVisible(visible);
   };
 
   const applySelectionColor = (
@@ -873,11 +899,13 @@ export function Canvas(props: TCanvasProps) {
     <div
       ref={canvasRootRef}
       data-omnidraw-theme-scope=""
-      class="omnidraw-canvas-host"
-      classList={{
-        'omnidraw-canvas-host--space-held': spaceHeld(),
-        'omnidraw-canvas-host--space-dragging': spaceDragging(),
-      }}
+      class={[
+        'omnidraw-canvas-host',
+        {
+          'omnidraw-canvas-host--space-held': spaceHeld(),
+          'omnidraw-canvas-host--space-dragging': spaceDragging(),
+        },
+      ]}
       style={{
         position: 'relative',
         width: '100%',

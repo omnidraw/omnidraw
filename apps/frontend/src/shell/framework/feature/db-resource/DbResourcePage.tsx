@@ -1,19 +1,17 @@
-import { Button } from "@kobalte/core/button";
-import * as DropdownMenu from "@kobalte/core/dropdown-menu";
-import * as Dialog from "@kobalte/core/dialog";
-import * as Tabs from "@kobalte/core/tabs";
-import * as TextField from "@kobalte/core/text-field";
 import { useNavigate, useSearchParams } from "@solidjs/router";
-import ChevronDown from "lucide-solid/icons/chevron-down";
-import Database from "lucide-solid/icons/database";
-import MoreHorizontal from "lucide-solid/icons/more-horizontal";
-import PanelLeft from "lucide-solid/icons/panel-left";
-import Plus from "lucide-solid/icons/plus";
-import RefreshCw from "lucide-solid/icons/refresh-cw";
-import Trash2 from "lucide-solid/icons/trash-2";
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js";
+import {
+  ChevronDown,
+  Database,
+  MoreHorizontal,
+  PanelLeft,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "@/shell/framework/components/icons";
+import { For, Show, createEffect, createMemo, createSignal, latest, onSettled, type Component } from "solid-js";
 import { showErrorToast, showSuccessToast } from "@/shell/framework/components/ui/Toast";
 import { useFrontendRuntime } from "../../runtime-context";
+import { Button, Dialog, DropdownMenu, Tabs, TextField } from "../resource/owned-primitives";
 import { ConfirmActionDialog } from "./components/ConfirmActionDialog";
 import { CoordinatedOperationDialog } from "./components/CoordinatedOperationDialog";
 import { LiveSqlApprovalDialog } from "./components/LiveSqlApprovalDialog";
@@ -94,6 +92,19 @@ import styles from "./DbResourcePage.module.css";
 
 type TWorkbenchTab = "overview" | "schema" | "data" | "sql";
 type TConfirmState = "resource" | "draft" | "backup" | "row" | "bulk" | "structure" | null;
+type TAppliedMetadata = Readonly<{ resourceId: string; requestId: number }>;
+type TInspectionRequest = Readonly<{
+  resourceId: string;
+  metadataRequestId: number | null;
+  tab: TWorkbenchTab;
+  draftId?: string;
+}>;
+type TRowsRequest = Readonly<{
+  resourceId: string;
+  metadataRequestId: number | null;
+  tab: TWorkbenchTab;
+  objectName: string;
+}>;
 
 export type TDbResourcePageProps = { resourceId: string };
 
@@ -146,11 +157,31 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   const [operationPreview, setOperationPreview] = createSignal<TDbApplyPreview | TDbRestorePreview | null>(null);
   const [operationRun, setOperationRun] = createSignal<TDbApplyDetails | null>(null);
   const [operationError, setOperationError] = createSignal("");
+  const [appliedMetadata, setAppliedMetadata] = createSignal<TAppliedMetadata | null>(null);
   let cancelOperationPoll: () => void = () => undefined;
+  let disposed = false;
+  let metaRequestId = 0;
   let inspectionRequestId = 0;
   let rowsRequestId = 0;
+  let operationPollGeneration = 0;
 
-  onCleanup(() => cancelOperationPoll());
+  const invalidateOperationPoll = () => {
+    operationPollGeneration += 1;
+    cancelOperationPoll();
+    cancelOperationPoll = () => undefined;
+  };
+
+  const invalidateLoadsAndPoll = () => {
+    metaRequestId += 1;
+    inspectionRequestId += 1;
+    rowsRequestId += 1;
+    invalidateOperationPoll();
+  };
+
+  onSettled(() => () => {
+    disposed = true;
+    invalidateLoadsAndPoll();
+  });
 
   const activeTab = (): TWorkbenchTab => TAB_VALUES.includes(searchParams.tab as TWorkbenchTab) ? searchParams.tab as TWorkbenchTab : "overview";
   const selectedObjectName = () => searchParams.object ?? "";
@@ -173,17 +204,27 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
 
   const selectObject = (name: string) => setSearchParams({ tab: activeTab(), object: name || undefined });
 
-  const loadMeta = async () => {
+  const metaRequestIsCurrent = (requestId: number, resourceId: string) => (
+    !disposed
+    && requestId === metaRequestId
+    && resourceId === latest(() => props.resourceId)
+  );
+
+  const loadMeta = async (resourceId = latest(() => props.resourceId)) => {
+    if (disposed) return;
+    const requestId = ++metaRequestId;
+    setAppliedMetadata(null);
     setLoading(true);
     setError("");
     const [[resourceError, resourceValue], [impactError, impactValue], [draftsError, draftValues], [activeError, activeDraftValue], [appliesError, applyValues], [backupError, backupValue]] = await Promise.all([
-      runtime.runSafe(fxResource({ resourceId: props.resourceId })),
-      runtime.runSafe(fxImpact({ resourceId: props.resourceId })),
-      runtime.runSafe(fxDrafts({ resourceId: props.resourceId })),
-      runtime.runSafe(fxActiveDraft({ resourceId: props.resourceId })),
-      runtime.runSafe(fxApplies({ resourceId: props.resourceId, limit: 10 })),
-      runtime.runSafe(fxBackup({ resourceId: props.resourceId })),
+      runtime.runSafe(fxResource({ resourceId })),
+      runtime.runSafe(fxImpact({ resourceId })),
+      runtime.runSafe(fxDrafts({ resourceId })),
+      runtime.runSafe(fxActiveDraft({ resourceId })),
+      runtime.runSafe(fxApplies({ resourceId, limit: 10 })),
+      runtime.runSafe(fxBackup({ resourceId })),
     ]);
+    if (!metaRequestIsCurrent(requestId, resourceId)) return;
     if (resourceError || !resourceValue) {
       setError(resourceError?.message ?? "Database resource response was empty.");
       setResource(null);
@@ -200,6 +241,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
       run,
       response: await runtime.runSafe(fxApply({ applyId: run.id })),
     })));
+    if (!metaRequestIsCurrent(requestId, resourceId)) return;
     const applyDetailsError = applyDetailsResponses.find(({ response }) => response[0])?.response[0];
     if (applyDetailsError) setError(applyDetailsError.message);
     setApplyRuns(applyDetailsResponses.map(({ run, response: [, details] }) => details ?? { apply: run, drain: null }));
@@ -207,56 +249,113 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     const openDraft = activeDraftValue?.draft ?? fnActiveDraft([...(draftValues ?? [])]);
     if (openDraft) {
       const [, detail] = await runtime.runSafe(fxDraft({ draftId: openDraft.id }));
+      if (!metaRequestIsCurrent(requestId, resourceId)) return;
       setDraftDetail(detail ?? activeDraftValue ?? { draft: openDraft, changes: [] });
     } else {
       setDraftDetail(null);
       setDraftInspection(null);
     }
+    setAppliedMetadata({ resourceId, requestId });
     setLoading(false);
     const pendingRun = applyDetailsResponses
       .map(({ run, response: [, details] }) => (details ?? { apply: run, drain: null }))
       .find((details) => !fnApplyTerminal(details.apply.status));
-    if (pendingRun) startOperationPoll("apply", pendingRun.apply.id);
+    if (pendingRun) startOperationPoll({ resourceId, kind: "apply", operationId: pendingRun.apply.id });
   };
 
-  const loadInspection = async () => {
+  const inspectionRequestIsCurrent = (requestId: number, request: TInspectionRequest) => {
+    const metadata = latest(appliedMetadata);
+    return !disposed
+      && requestId === inspectionRequestId
+      && request.resourceId === latest(() => props.resourceId)
+      && request.metadataRequestId !== null
+      && request.metadataRequestId === metadata?.requestId
+      && request.resourceId === metadata?.resourceId
+      && request.tab === latest(activeTab)
+      && request.draftId === latest(() => activeDraft()?.id);
+  };
+
+  const loadInspection = async (request: TInspectionRequest = (() => {
+    const resourceId = latest(() => props.resourceId);
+    const metadata = latest(appliedMetadata);
+    return {
+      resourceId,
+      metadataRequestId: metadata?.resourceId === resourceId ? metadata.requestId : null,
+      tab: latest(activeTab),
+      draftId: latest(() => activeDraft()?.id),
+    };
+  })()) => {
     const requestId = ++inspectionRequestId;
     setViewError("");
-    if (activeTab() !== "schema" && activeTab() !== "data") {
+    // The effect compute phase already captured the applied metadata generation.
+    // Re-reading it here would run inside Solid's strict apply scope.
+    if (request.metadataRequestId === null) {
+      setInspectionLoading(false);
+      return;
+    }
+    if (request.tab !== "schema" && request.tab !== "data") {
       setInspectionLoading(false);
       return;
     }
     setInspectionLoading(true);
-    if (activeTab() === "schema" && activeDraft()) {
-      const [inspectError, inspection] = await runtime.runSafe(fxInspectDraft({ resourceId: props.resourceId, draftId: activeDraft()!.id }));
-      if (requestId !== inspectionRequestId) return;
+    if (request.tab === "schema" && request.draftId !== undefined) {
+      const [inspectError, inspection] = await runtime.runSafe(fxInspectDraft({ resourceId: request.resourceId, draftId: request.draftId }));
+      if (!inspectionRequestIsCurrent(requestId, request)) return;
       setInspectionLoading(false);
       if (inspectError) return setViewError(inspectError.message);
       setDraftInspection(inspection ?? null);
       return;
     }
-    if (activeTab() === "schema" || activeTab() === "data") {
-      const [inspectError, inspection] = await runtime.runSafe(fxInspectLive({ resourceId: props.resourceId }));
-      if (requestId !== inspectionRequestId) return;
+    if (request.tab === "schema" || request.tab === "data") {
+      const [inspectError, inspection] = await runtime.runSafe(fxInspectLive({ resourceId: request.resourceId }));
+      if (!inspectionRequestIsCurrent(requestId, request)) return;
       setInspectionLoading(false);
       if (inspectError) return setViewError(inspectError.message);
       setLiveInspection(inspection ?? null);
     }
   };
 
-  const loadRows = async (cursor?: TDbRowIdentity) => {
+  const rowsRequestIsCurrent = (requestId: number, request: TRowsRequest) => {
+    const metadata = latest(appliedMetadata);
+    return !disposed
+      && requestId === rowsRequestId
+      && request.resourceId === latest(() => props.resourceId)
+      && request.metadataRequestId !== null
+      && request.metadataRequestId === metadata?.requestId
+      && request.resourceId === metadata?.resourceId
+      && request.tab === latest(activeTab)
+      && request.objectName === latest(selectedObjectName);
+  };
+
+  const loadRows = async (
+    cursor?: TDbRowIdentity,
+    request: TRowsRequest = (() => {
+      const resourceId = latest(() => props.resourceId);
+      const metadata = latest(appliedMetadata);
+      return {
+        resourceId,
+        metadataRequestId: metadata?.resourceId === resourceId ? metadata.requestId : null,
+        tab: latest(activeTab),
+        objectName: latest(selectedObjectName),
+      };
+    })(),
+  ) => {
     const requestId = ++rowsRequestId;
     setViewError("");
-    const objectName = selectedObjectName();
-    if (!objectName || activeTab() !== "data") {
+    const objectName = request.objectName;
+    if (
+      request.metadataRequestId === null
+      || !objectName
+      || request.tab !== "data"
+    ) {
       setRowsLoading(false);
       setRowPage(null);
       return;
     }
     setRowsLoading(true);
     setRowPage(null);
-    const [rowError, page] = await runtime.runSafe(fxRows({ resourceId: props.resourceId, objectName, cursor, limit: 50 }));
-    if (requestId !== rowsRequestId) return;
+    const [rowError, page] = await runtime.runSafe(fxRows({ resourceId: request.resourceId, objectName, cursor, limit: 50 }));
+    if (!rowsRequestIsCurrent(requestId, request)) return;
     setRowsLoading(false);
     if (rowError || !page) {
       setViewError(rowError?.message ?? "Database row response was empty.");
@@ -269,27 +368,75 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     setPendingRow(null);
   };
 
-  createEffect(() => {
-    void props.resourceId;
-    void loadMeta();
-  });
+  createEffect(
+    () => props.resourceId,
+    (resourceId) => {
+      invalidateLoadsAndPoll();
+      setAppliedMetadata(null);
+      setResource(null);
+      setImpact(null);
+      setDrafts([]);
+      setDraftDetail(null);
+      setApplyRuns([]);
+      setBackup(null);
+      setLiveInspection(null);
+      setDraftInspection(null);
+      setRowPage(null);
+      setSelectedRows([]);
+      void loadMeta(resourceId);
+    },
+  );
 
-  createEffect(() => {
-    if (!TAB_VALUES.includes(searchParams.tab as TWorkbenchTab)) setSearchParams({ tab: "overview", object: undefined });
-  });
+  createEffect(
+    () => !TAB_VALUES.includes(searchParams.tab as TWorkbenchTab),
+    (invalid) => {
+      if (invalid) setSearchParams({ tab: "overview", object: undefined });
+    },
+  );
 
-  createEffect(() => {
-    void activeTab();
-    void activeDraft()?.id;
-    void loadInspection();
-  });
+  createEffect(
+    () => {
+      const resourceId = props.resourceId;
+      const metadata = appliedMetadata();
+      if (!metadata || metadata.resourceId !== resourceId) return null;
+      return {
+        resourceId,
+        metadataRequestId: metadata.requestId,
+        tab: activeTab(),
+        draftId: activeDraft()?.id,
+      } satisfies TInspectionRequest;
+    },
+    (request) => {
+      if (request) void loadInspection(request);
+      else {
+        inspectionRequestId += 1;
+        setInspectionLoading(false);
+      }
+    },
+  );
 
-  createEffect(() => {
-    void activeTab();
-    void selectedObjectName();
-    setRowCursors([undefined]);
-    void loadRows(undefined);
-  });
+  createEffect(
+    () => {
+      const resourceId = props.resourceId;
+      const metadata = appliedMetadata();
+      if (!metadata || metadata.resourceId !== resourceId) return null;
+      return {
+        resourceId,
+        metadataRequestId: metadata.requestId,
+        tab: activeTab(),
+        objectName: selectedObjectName(),
+      } satisfies TRowsRequest;
+    },
+    (request) => {
+      setRowCursors([undefined]);
+      if (request) void loadRows(undefined, request);
+      else {
+        rowsRequestId += 1;
+        setRowsLoading(false);
+        setRowPage(null);
+      }
+    },
+  );
 
   const rename = async () => {
     const trimmed = name().trim();
@@ -521,18 +668,36 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     selected ? [...current, row] : current.filter((candidate) => candidate !== row),
   );
 
-  const startOperationPoll = (kind: "apply" | "restore", operationId: string) => {
-    cancelOperationPoll();
+  const startOperationPoll = (request: Readonly<{
+    resourceId: string;
+    kind: "apply" | "restore";
+    operationId: string;
+  }>) => {
+    if (disposed || request.resourceId !== latest(() => props.resourceId)) return;
+    invalidateOperationPoll();
+    const generation = operationPollGeneration;
     cancelOperationPoll = runtime.fork(fxPollDbOperation({
-      kind,
-      operationId,
+      kind: request.kind,
+      operationId: request.operationId,
     }), {
       onSuccess(run) {
+        if (
+          disposed
+          || generation !== operationPollGeneration
+          || request.resourceId !== latest(() => props.resourceId)
+        ) return;
+        operationPollGeneration += 1;
         cancelOperationPoll = () => undefined;
         setOperationRun(run);
-        void loadMeta();
+        void loadMeta(request.resourceId);
       },
       onError(pollError) {
+        if (
+          disposed
+          || generation !== operationPollGeneration
+          || request.resourceId !== latest(() => props.resourceId)
+        ) return;
+        operationPollGeneration += 1;
         cancelOperationPoll = () => undefined;
         setOperationError(pollError.message);
       },
@@ -557,21 +722,22 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   const setCoordinatedOperationOpen = (open: boolean) => {
     setOperationDialogOpen(open);
     if (!open) {
-      cancelOperationPoll();
-      cancelOperationPoll = () => undefined;
-      void loadMeta();
+      invalidateOperationPoll();
+      void loadMeta(latest(() => props.resourceId));
     }
   };
 
   const confirmApply = async () => {
     const draft = activeDraft();
     if (!draft) return;
+    const resourceId = latest(() => props.resourceId);
     setBusy(true);
     const [applyError, run] = await runtime.runSafe(txConfirmApply({ draftId: draft.id }));
     setBusy(false);
     if (applyError || !run) return setOperationError(applyError?.message ?? "Apply confirmation response was empty.");
+    if (disposed || resourceId !== latest(() => props.resourceId)) return;
     setOperationRun({ apply: run, drain: null });
-    startOperationPoll("apply", run.id);
+    startOperationPoll({ resourceId, kind: "apply", operationId: run.id });
   };
 
   const openRestore = async () => {
@@ -592,12 +758,14 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   const confirmRestore = async () => {
     const retained = backup();
     if (!retained) return;
+    const resourceId = latest(() => props.resourceId);
     setBusy(true);
-    const [restoreError, run] = await runtime.runSafe(txRestoreBackup({ resourceId: props.resourceId, applyId: retained.applyId }));
+    const [restoreError, run] = await runtime.runSafe(txRestoreBackup({ resourceId, applyId: retained.applyId }));
     setBusy(false);
     if (restoreError || !run) return setOperationError(restoreError?.message ?? "Restore response was empty.");
+    if (disposed || resourceId !== latest(() => props.resourceId)) return;
     setOperationRun({ apply: run, drain: null });
-    startOperationPoll("restore", run.id);
+    startOperationPoll({ resourceId, kind: "restore", operationId: run.id });
   };
 
   const discardBackup = async () => {
@@ -671,7 +839,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                   <div class={styles.panelHeader}><h3>Active resource uses</h3><span>{fnImpactUses(impact()).length}</span></div>
                   <table class={styles.table}>
                     <thead><tr><th>Use</th><th>Kind</th><th>Observed status</th><th>Label</th></tr></thead>
-                    <tbody><For each={fnImpactUses(impact())} fallback={<tr><td colSpan={4} class={styles.muted}>No active resource uses.</td></tr>}>{(use) => (
+                    <tbody><For each={fnImpactUses(impact())} fallback={<tr><td colspan={4} class={styles.muted}>No active resource uses.</td></tr>}>{(use) => (
                       <tr><td>{use.id}</td><td>{use.kind}</td><td>{use.state}</td><td>{use.label ?? "—"}</td></tr>
                     )}</For></tbody>
                   </table>
@@ -732,7 +900,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                   <Show when={selectedLiveObject()} fallback={<div class={styles.centerState}><p class={styles.muted}>Select a table before loading live rows.</p></div>}>
                     {(object) => <>
                       <div class={styles.dataHeader}><div><h3>{object().name}</h3><p class={styles.muted}>Live data · never part of a schema draft</p></div><div class={styles.actions}><Show when={!object().editable}><span class={styles.readOnly}>{object().readOnlyReason ?? "This table has no safe stable identity and is read-only."}</span></Show><Button class={`${styles.button} ${styles.danger}`} disabled={!selectedRows().length || !object().editable} onClick={() => setConfirmState("bulk")}>Delete selected ({selectedRows().length})</Button><Button class={`${styles.button} ${styles.primary}`} disabled={!object().editable} onClick={() => void openRowEditor("create", null)}><Plus size={12} /> Add row</Button></div></div>
-                      <div class={styles.gridScroll}><table class={`${styles.table} ${styles.dataTable}`}><thead><tr><th class={styles.checkCell} aria-label="Selection" /><For each={selectedLiveColumns()}>{(column) => <th>{column.name}<small>{column.declaredType || "ANY"}</small></th>}</For><th>Actions</th></tr></thead><tbody><For each={rowPage()?.rows ?? []} fallback={<tr><td colSpan={selectedLiveColumns().length + 2} class={styles.empty}>{rowsLoading() ? "Loading rows…" : "No rows on this page."}</td></tr>}>{(row) => <tr><td class={styles.checkCell}><input type="checkbox" aria-label="Select row" disabled={!object().editable} checked={selectedRows().includes(row)} onChange={(event) => toggleSelectedRow(row, event.currentTarget.checked)} /></td><For each={selectedLiveColumns()}>{(column) => { const cell = () => row.values[column.name]; return <td class={`${styles.cell} ${cell()?.type === "null" ? styles.nullCell : cell()?.type === "blob" || cell()?.type === "blobPreview" ? styles.blobCell : ""}`} title={fnCellText(cell())}>{fnCellText(cell())}</td>; }}</For><td><div class={styles.inlineActions}><Button class={styles.iconButton} aria-label="Edit row" disabled={!object().editable || busy()} onClick={() => void openRowEditor("edit", row)}><MoreHorizontal size={13} /></Button><Button class={styles.iconButton} aria-label="Delete row" disabled={!object().editable || busy()} onClick={() => void openRowDelete(row)}><Trash2 size={13} /></Button></div></td></tr>}</For></tbody></table></div>
+                      <div class={styles.gridScroll}><table class={`${styles.table} ${styles.dataTable}`}><thead><tr><th class={styles.checkCell} aria-label="Selection" /><For each={selectedLiveColumns()}>{(column) => <th>{column.name}<small>{column.declaredType || "ANY"}</small></th>}</For><th>Actions</th></tr></thead><tbody><For each={rowPage()?.rows ?? []} fallback={<tr><td colspan={selectedLiveColumns().length + 2} class={styles.empty}>{rowsLoading() ? "Loading rows…" : "No rows on this page."}</td></tr>}>{(row) => <tr><td class={styles.checkCell}><input type="checkbox" aria-label="Select row" disabled={!object().editable} checked={selectedRows().includes(row)} onChange={(event) => toggleSelectedRow(row, event.currentTarget.checked)} /></td><For each={selectedLiveColumns()}>{(column) => { const cell = () => row.values[column.name]; return <td class={`${styles.cell} ${cell()?.type === "null" ? styles.nullCell : cell()?.type === "blob" || cell()?.type === "blobPreview" ? styles.blobCell : ""}`} title={fnCellText(cell())}>{fnCellText(cell())}</td>; }}</For><td><div class={styles.inlineActions}><Button class={styles.iconButton} aria-label="Edit row" disabled={!object().editable || busy()} onClick={() => void openRowEditor("edit", row)}><MoreHorizontal size={13} /></Button><Button class={styles.iconButton} aria-label="Delete row" disabled={!object().editable || busy()} onClick={() => void openRowDelete(row)}><Trash2 size={13} /></Button></div></td></tr>}</For></tbody></table></div>
                       <div class={styles.pagination}><Button class={styles.button} disabled={rowCursors().length <= 1} onClick={() => void previousRows()}>Previous</Button><span>Cursor page {rowCursors().length} · up to 50 rows{rowPage()?.hasMore && !rowPage()?.nextCursor ? " · more rows unavailable without a stable identity" : ""}</span><Button class={styles.button} disabled={!rowPage()?.nextCursor} onClick={() => void nextRows()}>Next</Button></div>
                     </>}
                   </Show>
@@ -758,7 +926,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                     <Show when={sqlResult()} fallback={<p class={styles.empty}>Run a live statement to display its result.</p>}>
                       {(result) => <Show when={result().kind === "rows"} fallback={<div class={styles.sqlExecuteSummary}><strong>{sqlExecuteResult()?.rowsAffected ?? 0}</strong><span>rows affected</span><Show when={sqlExecuteResult()?.lastInsertRowId}><span>Last insert row ID: {fnCellText(sqlExecuteResult()?.lastInsertRowId ?? undefined)}</span></Show></div>}>
                         <Show when={sqlRowsResult()?.truncated}><p class={styles.warning}>Showing the first 200 rows. Add a LIMIT/OFFSET or a narrower WHERE clause to inspect the next bounded result.</p></Show>
-                        <div class={`${styles.gridScroll} ${styles.sqlGridScroll}`}><table class={`${styles.table} ${styles.dataTable}`}><thead><tr><For each={fnSqlResultColumns(sqlResult())}>{(column) => <th>{column}</th>}</For></tr></thead><tbody><For each={sqlPage().rows} fallback={<tr><td colSpan={Math.max(1, fnSqlResultColumns(sqlResult()).length)} class={styles.empty}>Statement returned no rows.</td></tr>}>{(row) => <tr><For each={fnSqlResultColumns(sqlResult())}>{(column) => { const cell = () => row[column]; return <td class={`${styles.cell} ${cell()?.type === "null" ? styles.nullCell : cell()?.type === "blob" || cell()?.type === "blobPreview" ? styles.blobCell : ""}`} title={fnCellText(cell())}>{fnCellText(cell())}</td>; }}</For></tr>}</For></tbody></table></div>
+                        <div class={`${styles.gridScroll} ${styles.sqlGridScroll}`}><table class={`${styles.table} ${styles.dataTable}`}><thead><tr><For each={fnSqlResultColumns(sqlResult())}>{(column) => <th>{column}</th>}</For></tr></thead><tbody><For each={sqlPage().rows} fallback={<tr><td colspan={Math.max(1, fnSqlResultColumns(sqlResult()).length)} class={styles.empty}>Statement returned no rows.</td></tr>}>{(row) => <tr><For each={fnSqlResultColumns(sqlResult())}>{(column) => { const cell = () => row[column]; return <td class={`${styles.cell} ${cell()?.type === "null" ? styles.nullCell : cell()?.type === "blob" || cell()?.type === "blobPreview" ? styles.blobCell : ""}`} title={fnCellText(cell())}>{fnCellText(cell())}</td>; }}</For></tr>}</For></tbody></table></div>
                         <div class={styles.pagination}><Button class={styles.button} disabled={sqlPage().page <= 1} onClick={() => setSqlResultPage((page) => page - 1)}>Previous</Button><span>{sqlPage().firstRow}–{sqlPage().lastRow} of {sqlRowsResult()?.rowCount ?? 0} returned · page {sqlPage().page} of {sqlPage().pageCount}</span><Button class={styles.button} disabled={sqlPage().page >= sqlPage().pageCount} onClick={() => setSqlResultPage((page) => page + 1)}>Next</Button></div>
                       </Show>}
                     </Show>

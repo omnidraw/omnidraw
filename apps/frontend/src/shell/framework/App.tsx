@@ -1,5 +1,5 @@
 import { useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
-import { onCleanup, onMount } from "solid-js";
+import { onSettled } from "solid-js";
 import { Toaster } from "./components/ui/Toast";
 import { Sidebar, WidgetCatalogProvider } from "./feature/sidebar";
 import styles from "./App.module.css";
@@ -21,17 +21,18 @@ const App = (props: RouteSectionProps) => {
     pathname: () => location.pathname,
     navigate,
   });
-  onCleanup(bootstrap.dispose);
-
-  onMount(() => {
+  onSettled(() => {
     const stopNotifications = startFrontendNotifications(runtime);
-    onCleanup(stopNotifications);
     void bootstrap.run();
     const preventBrowserZoom = (event: WheelEvent): void => {
       if (event.ctrlKey) event.preventDefault();
     };
     runtime.ownerDocument.addEventListener("wheel", preventBrowserZoom, { passive: false });
-    onCleanup(() => runtime.ownerDocument.removeEventListener("wheel", preventBrowserZoom));
+    return () => {
+      runtime.ownerDocument.removeEventListener("wheel", preventBrowserZoom);
+      stopNotifications();
+      bootstrap.dispose();
+    };
   });
 
   return (

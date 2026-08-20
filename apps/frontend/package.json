@@ -20,9 +20,8 @@
     "typescript": "catalog:",
     "vite": "^8.1.4",
     "vite-plugin-wasm": "^3.5.0",
-    "vite-plugin-solid": "^2.11.10",
+    "@solidjs/vite-plugin": "catalog:",
     "vitest": "^4.1.10",
-    "solid-devtools": "^0.34.3",
     "esbuild": "^0.27.0"
   },
   "dependencies": {
@@ -31,12 +30,11 @@
     "@omnidraw/component-ai-chat": "workspace:*",
     "@omnidraw/sdk": "workspace:*",
     "@omnidraw/theme": "workspace:*",
-    "@solidjs/router": "^0.15.4",
+    "@solidjs/router": "catalog:",
+    "@solidjs/web": "catalog:",
     "effect": "4.0.0-rc.108",
     "dompurify": "^3.3.3",
     "lucide-static": "catalog:",
-    "@kobalte/core": "catalog:",
-    "lucide-solid": "catalog:",
     "solid-js": "catalog:"
   }
 }

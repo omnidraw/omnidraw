@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/component-ai-chat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Portable Solid AI Chat component and Canvas contribution for Omnidraw.",
   "type": "module",
   "license": "MIT",
@@ -50,7 +50,6 @@
     "@omnidraw/canvas": "workspace:*",
     "dompurify": "^3.4.11",
     "effect": "4.0.0-rc.108",
-    "lucide-solid": "^1.24.0",
     "lucide-static": "1.24.0",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-history": "^1.5.0",
@@ -60,14 +59,16 @@
     "prosemirror-view": "^1.42.1"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.14"
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
   },
   "devDependencies": {
+    "@solidjs/web": "catalog:",
     "jsdom": "^29.1.1",
-    "solid-js": "^1.9.14",
+    "solid-js": "catalog:",
     "typescript": "7.0.2",
     "vite": "^8.1.4",
-    "vite-plugin-solid": "^2.11.10",
+    "@solidjs/vite-plugin": "catalog:",
     "vitest": "^4.1.10"
   }
 }

@@ -1,9 +1,7 @@
-import { Button } from "@kobalte/core/button";
-import * as Dialog from "@kobalte/core/dialog";
-import * as TextField from "@kobalte/core/text-field";
 import { For, Show, createEffect, createSignal, type Component } from "solid-js";
 import { fnCellEditorText, fnCellInputError, fnInputCell, fnRowInputOmitted } from "@/core/resources/fn.db-resource";
 import type { TDbCellValue, TDbColumn, TDbRow } from "@/core/resources/types";
+import { Button, Dialog, TextField } from "../../resource/owned-primitives";
 import styles from "../DbResourcePage.module.css";
 
 export type TRowEditorDialogProps = {
@@ -25,16 +23,19 @@ export const RowEditorDialog: Component<TRowEditorDialogProps> = (props) => {
   const [values, setValues] = createSignal<Record<string, string>>({});
   const [validationError, setValidationError] = createSignal("");
 
-  createEffect(() => {
-    if (!props.open) return;
-    setValues(Object.fromEntries(props.columns.map((column) => [
+  createEffect(
+    () => props.open ? Object.fromEntries(props.columns.map((column) => [
       column.name,
       props.disabledColumns?.includes(column.name)
         ? props.disabledValues?.[column.name] ?? "BLOB value"
         : fnCellEditorText(props.row?.values[column.name]),
-    ])));
-    setValidationError("");
-  });
+    ])) : null,
+    (nextValues) => {
+      if (nextValues === null) return;
+      setValues(nextValues);
+      setValidationError("");
+    },
+  );
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();

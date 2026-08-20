@@ -13,8 +13,9 @@ import "@omnidraw/component-ai-chat/styles.css";
 ```
 
 The implementation uses Effect internally to own streaming cancellation and
-lifecycle. Solid is a peer dependency so a host and the component always share
-one reactive runtime.
+lifecycle. Version 0.3 requires the exact Solid 2 RC.0 core and `@solidjs/web`
+peer pair so a host and the component always share one reactive runtime and web
+renderer.
 
 `createAiChatCanvasExtension` owns the canonical `kind: "ai-chat"` Canvas
 contribution. Its node payload durably stores the current session, model, and

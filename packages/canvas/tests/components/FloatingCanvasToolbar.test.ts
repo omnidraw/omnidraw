@@ -1,10 +1,11 @@
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FloatingCanvasToolbar } from '../../src/components/FloatingCanvasToolbar';
 import type {
   TReproductionTraceOwner,
   TReproductionTraceState,
 } from '../../src/debug-trace/typed';
+import { settleSolidUpdate } from './settled';
 
 let dispose: (() => void) | null = null;
 
@@ -52,6 +53,38 @@ describe('FloatingCanvasToolbar', () => {
 
     expect(onSelectTool).toHaveBeenCalledOnce();
     expect(onSelectTool).toHaveBeenCalledWith('widget');
+  });
+
+  test('isolates pointer, wheel, and keyboard events from host ancestors', () => {
+    const host = document.createElement('div');
+    const ancestorEvent = vi.fn();
+    for (const type of ['pointerdown', 'wheel', 'keydown']) {
+      host.addEventListener(type, ancestorEvent);
+    }
+    document.body.appendChild(host);
+    dispose = render(() => FloatingCanvasToolbar({
+      activeToolId: null,
+      canRedo: false,
+      canUndo: false,
+      gridVisible: true,
+      onRedo: () => {},
+      onImportImage: () => {},
+      onSelectTool: () => {},
+      onToggleGrid: () => {},
+      onUndo: () => {},
+    }), host);
+    const toolbar = host.querySelector<HTMLElement>(
+      '.omnidraw-canvas-toolbar-anchor',
+    );
+
+    toolbar?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    toolbar?.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    toolbar?.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'a',
+    }));
+
+    expect(ancestorEvent).not.toHaveBeenCalled();
   });
 
   test('provides the development trace workflow only when an owner is injected', async () => {
@@ -128,14 +161,14 @@ describe('FloatingCanvasToolbar', () => {
     host.querySelector<HTMLButtonElement>(
       'button[aria-label="Developer trace: idle"]',
     )?.click();
-    await Promise.resolve();
+    await settleSolidUpdate();
     const record = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Record'));
     expect(record).not.toBeUndefined();
     expect(record?.disabled).toBe(false);
     record?.click();
     expect(status).toBe('recording');
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector(
       'button[aria-label="Developer trace: recording"]',
     )).not.toBeNull();
@@ -143,7 +176,7 @@ describe('FloatingCanvasToolbar', () => {
     const mark = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Mark Failure'));
     mark?.click();
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(host.querySelector(
       'button[aria-label="Developer trace: marked"]',
     )).not.toBeNull();
@@ -155,12 +188,17 @@ describe('FloatingCanvasToolbar', () => {
     const stop = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Stop now'));
     stop?.click();
-    await Promise.resolve();
+    await settleSolidUpdate();
     expect(status).toBe('stopped');
     expect([...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Copy for Agent'))
       ?.disabled).toBe(false);
     expect(host.querySelector('.omnidraw-trace-panel')?.parentElement?.classList)
       .toContain('omnidraw-trace-control');
+
+    expect(listeners.size).toBe(1);
+    dispose();
+    dispose = null;
+    expect(listeners.size).toBe(0);
   });
 });

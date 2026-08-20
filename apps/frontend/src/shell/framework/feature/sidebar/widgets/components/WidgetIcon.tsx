@@ -1,6 +1,6 @@
 import type { TOmnidrawToolIcon } from '@omnidraw/sdk';
 import DOMPurify from 'dompurify';
-import Puzzle from 'lucide-solid/icons/puzzle';
+import { Puzzle } from '@/shell/framework/components/icons';
 import * as LucideStatic from 'lucide-static';
 import { Show, type Component } from 'solid-js';
 

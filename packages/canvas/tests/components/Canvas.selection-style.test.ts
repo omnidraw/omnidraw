@@ -4,7 +4,7 @@ import {
   type TThemeDefinition,
 } from '@omnidraw/theme';
 import { createSignal } from 'solid-js';
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const controllerState = (
@@ -228,5 +228,9 @@ describe('Canvas selection style binding', () => {
       expect(host.textContent).toContain('COLOR');
     });
     expect(host.textContent).not.toContain('BACKGROUND');
+
+    dispose();
+    dispose = null;
+    expect(themeListener).toBeNull();
   });
 });

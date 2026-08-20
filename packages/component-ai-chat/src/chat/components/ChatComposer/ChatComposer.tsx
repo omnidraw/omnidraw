@@ -9,17 +9,7 @@ import type {
   TChatComposerThinkingLevel,
   TPromptSuggestion,
 } from "./interface"
-import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import ArrowUp from "lucide-solid/icons/arrow-up"
-import ChevronDown from "lucide-solid/icons/chevron-down"
-import Database from "lucide-solid/icons/database"
-import FileText from "lucide-solid/icons/file-text"
-import ImageIcon from "lucide-solid/icons/image"
-import KeyRound from "lucide-solid/icons/key-round"
-import LockKeyhole from "lucide-solid/icons/lock-keyhole"
-import Square from "lucide-solid/icons/square"
-import X from "lucide-solid/icons/x"
-import Zap from "lucide-solid/icons/zap"
+import { createEffect, createMemo, createSignal, For, latest, onSettled, Show, untrack } from "solid-js"
 import { baseKeymap } from "prosemirror-commands"
 import { history } from "prosemirror-history"
 import { keymap } from "prosemirror-keymap"
@@ -34,6 +24,8 @@ import {
 } from "./fn.suggestion-navigation"
 import { fnFindPromptTrigger } from "./fn.trigger"
 import { AiChatWidgetIcon } from "../WidgetIcon"
+import { ArrowUp, ChevronDown, Database, FileText, ImageIcon, KeyRound, LockKeyhole, Square, X, Zap } from "../icons"
+import { AnchoredMenu } from "./AnchoredMenu"
 import { ApprovalPolicyPicker } from "./ApprovalPolicyPicker"
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
@@ -357,13 +349,17 @@ export function ChatComposer(props: TChatComposerProps) {
   let root!: HTMLElement
   let editorRoot!: HTMLDivElement
   let imageInput!: HTMLInputElement
+  let actionMenuTrigger!: HTMLButtonElement
+  let modelMenuTrigger!: HTMLButtonElement
+  let actionMenuElement: HTMLDivElement | undefined
+  let approvalMenuElement: HTMLDivElement | undefined
+  let modelMenuElement: HTMLDivElement | undefined
   let view: EditorView | undefined
-  let cleanupDocumentKeydown: (() => void) | undefined
-  let cleanupDocumentPointerdown: (() => void) | undefined
   let dismissedSuggestionKey: string | undefined
   let suggestionMenu: HTMLDivElement | undefined
   let suggestionResizeObserver: Pick<ResizeObserver, "observe" | "disconnect"> | undefined
   let suggestionScrollAnimationFrame: number | undefined
+  const browser = untrack(() => props.browser)
   const [suggestion, setSuggestion] = createSignal<TPromptSuggestion>()
   const [activeIndex, setActiveIndex] = createSignal(0)
   const [suggestionMenuMaxHeight, setSuggestionMenuMaxHeight] = createSignal(SUGGESTION_MENU_MAX_HEIGHT)
@@ -371,9 +367,25 @@ export function ChatComposer(props: TChatComposerProps) {
   const [images, setImages] = createSignal<TChatComposerImage[]>([])
   const [hasText, setHasText] = createSignal(false)
   const [hasFocus, setHasFocus] = createSignal(false)
-  const [modelMenuOpen, setModelMenuOpen] = createSignal(false)
-  const [actionMenuOpen, setActionMenuOpen] = createSignal(false)
-  const [approvalMenuOpen, setApprovalMenuOpen] = createSignal(false)
+  const [modelMenuOpen, setModelMenuOpenSignal] = createSignal(false)
+  const [actionMenuOpen, setActionMenuOpenSignal] = createSignal(false)
+  const [actionMenuFocusIndex, setActionMenuFocusIndex] = createSignal(0)
+  const [approvalMenuOpen, setApprovalMenuOpenSignal] = createSignal(false)
+  let modelMenuVisible = false
+  let actionMenuVisible = false
+  let approvalMenuVisible = false
+  const setModelMenuOpen = (open: boolean) => {
+    modelMenuVisible = open
+    setModelMenuOpenSignal(open)
+  }
+  const setActionMenuOpen = (open: boolean) => {
+    actionMenuVisible = open
+    setActionMenuOpenSignal(open)
+  }
+  const setApprovalMenuOpen = (open: boolean) => {
+    approvalMenuVisible = open
+    setApprovalMenuOpenSignal(open)
+  }
   const [selectedModelId, setSelectedModelId] = createSignal<string>()
   const [activeProvider, setActiveProvider] = createSignal<string>()
   const [focusedModelId, setFocusedModelId] = createSignal<string>()
@@ -383,7 +395,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const [modelMenuColumn, setModelMenuColumn] = createSignal<"category" | "model" | "thinking">("model")
   const [hasManualModelSelection, setHasManualModelSelection] = createSignal(false)
   const [hasManualThinkingSelection, setHasManualThinkingSelection] = createSignal(false)
-  const suggestionListboxId = `omnidraw-ai-chat-composer-suggestions-${props.browser.createId()}`
+  const suggestionListboxId = `omnidraw-ai-chat-composer-suggestions-${browser.createId()}`
 
   const availableMentions = () => props.mentions ?? []
   const availableCommands = () => props.commands ?? []
@@ -396,6 +408,63 @@ export function ChatComposer(props: TChatComposerProps) {
   const modelButtonLabel = createMemo(() => selectedModel()?.name.replace(/^GPT-/i, "") ?? "Select model")
   const thinkingLevel = createMemo(() => selectedThinkingLevel() ?? getDefaultThinkingLevel(props.defaultThinkingLevel))
   const focusedModel = createMemo(() => getModelBySelectionKey(models(), focusedModelId()))
+
+  const actionMenuItems = () => Array.from(
+    actionMenuElement?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ?? [],
+  )
+
+  const focusActionMenuItem = (index: number) => {
+    const items = actionMenuItems()
+    if (items.length === 0) return
+    const nextIndex = (index + items.length) % items.length
+    setActionMenuFocusIndex(nextIndex)
+    items[nextIndex]?.focus()
+  }
+
+  const menuPairContains = (
+    target: EventTarget | null,
+    trigger: HTMLElement | undefined,
+    menu: HTMLElement | undefined,
+  ) => {
+    const NodeConstructor = browser.document.defaultView?.Node
+    return NodeConstructor !== undefined
+      && target instanceof NodeConstructor
+      && (trigger?.contains(target) === true || menu?.contains(target) === true)
+  }
+
+  const approvalMenuTrigger = () => root?.querySelector<HTMLButtonElement>(
+    ".omnidraw-ai-chat-composer__approval-button",
+  ) ?? undefined
+
+  createEffect(
+    () => actionMenuOpen() ? actionMenuFocusIndex() : undefined,
+    (index) => {
+      if (index !== undefined) focusActionMenuItem(index)
+    },
+  )
+
+  createEffect(() => {
+    if (!modelMenuOpen()) return undefined
+    const column = modelMenuColumn()
+    const pane = modelMenuPane()
+    const provider = activeProvider()
+    const modelId = focusedModelId()
+    const level = focusedThinkingLevel()
+    return { column, pane, provider, modelId, level }
+  }, (focus) => {
+    if (!focus) return
+    const buttons = Array.from(
+      modelMenuElement?.querySelectorAll<HTMLButtonElement>("[role^='menuitem']:not(:disabled)") ?? [],
+    )
+    const target = buttons.find((button) => {
+      if (focus.column === "category") {
+        return button.dataset.modelCategory === (focus.pane === "thinking" ? "thinking" : focus.provider)
+      }
+      if (focus.column === "thinking") return button.dataset.thinkingLevel === focus.level
+      return button.dataset.modelId === focus.modelId
+    })
+    target?.focus()
+  })
 
   const suggestions = () => {
     const activeSuggestion = suggestion()
@@ -472,10 +541,10 @@ export function ChatComposer(props: TChatComposerProps) {
 
   const scheduleActiveSuggestionScroll = () => {
     if (suggestionScrollAnimationFrame !== undefined) {
-      props.browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
+      browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
     }
 
-    suggestionScrollAnimationFrame = props.browser.requestAnimationFrame(() => {
+    suggestionScrollAnimationFrame = browser.requestAnimationFrame(() => {
       suggestionScrollAnimationFrame = undefined
       scrollActiveSuggestionIntoView()
     })
@@ -490,24 +559,25 @@ export function ChatComposer(props: TChatComposerProps) {
   createEffect(() => {
     const items = suggestions()
     const count = items.length
-    const nextActiveIndex = fnClampSuggestionIndex(activeIndex(), count)
-
-    if (nextActiveIndex !== activeIndex()) {
-      setActiveIndex(nextActiveIndex)
-    }
+    const currentActiveIndex = activeIndex()
+    const nextActiveIndex = fnClampSuggestionIndex(currentActiveIndex, count)
+    const isOpen = suggestion() !== undefined && count > 0
+    const activeDescendant = isOpen ? getSuggestionOptionId(items[nextActiveIndex]) : undefined
+    return { activeDescendant, count, currentActiveIndex, isOpen, nextActiveIndex }
+  }, ({ activeDescendant, count, currentActiveIndex, isOpen, nextActiveIndex }) => {
+    if (nextActiveIndex !== currentActiveIndex) setActiveIndex(nextActiveIndex)
 
     const editor = view?.dom
-    const isOpen = suggestion() !== undefined && count > 0
     editor?.setAttribute("aria-expanded", String(isOpen))
     if (isOpen) {
       editor?.setAttribute("aria-controls", suggestionListboxId)
-      editor?.setAttribute("aria-activedescendant", getSuggestionOptionId(items[nextActiveIndex]))
+      editor?.setAttribute("aria-activedescendant", activeDescendant!)
     } else {
       editor?.removeAttribute("aria-controls")
       editor?.removeAttribute("aria-activedescendant")
     }
 
-    if (count === 0 || !suggestion()) {
+    if (count === 0 || !isOpen) {
       suggestionMenu = undefined
       return
     }
@@ -520,75 +590,87 @@ export function ChatComposer(props: TChatComposerProps) {
     const nextDefault = getDefaultModel(models(), props.defaultModel, props.defaultProvider)
     const current = selectedModelId()
     const resolvedCurrentSelectionKey = getModelSelectionKeyOrId(models(), current)
+    const manual = hasManualModelSelection()
 
     if (!nextDefault) {
-      setSelectedModelId(undefined)
-      setActiveProvider(undefined)
-      setFocusedModelId(undefined)
-      return
+      return { focusedModelId: undefined, selectedModelId: undefined, setProvider: true, provider: undefined }
     }
 
     const nextDefaultSelectionKey = getModelSelectionKey(nextDefault)
 
-    if (current && resolvedCurrentSelectionKey && resolvedCurrentSelectionKey !== current) {
-      setSelectedModelId(resolvedCurrentSelectionKey)
-      setFocusedModelId(resolvedCurrentSelectionKey)
-    }
-
     if (!current || !resolvedCurrentSelectionKey) {
-      if (!hasManualModelSelection()) {
-        setSelectedModelId(nextDefaultSelectionKey)
-        setActiveProvider(nextDefault.provider)
-        setFocusedModelId(nextDefaultSelectionKey)
+      return manual ? undefined : {
+        focusedModelId: nextDefaultSelectionKey,
+        selectedModelId: nextDefaultSelectionKey,
+        setProvider: true,
+        provider: nextDefault.provider,
       }
-
-      return
     }
 
-    if (!hasManualModelSelection() && resolvedCurrentSelectionKey !== nextDefaultSelectionKey) {
-      setSelectedModelId(nextDefaultSelectionKey)
-      setActiveProvider(nextDefault.provider)
-      setFocusedModelId(nextDefaultSelectionKey)
+    if (!manual && resolvedCurrentSelectionKey !== nextDefaultSelectionKey) {
+      return {
+        focusedModelId: nextDefaultSelectionKey,
+        selectedModelId: nextDefaultSelectionKey,
+        setProvider: true,
+        provider: nextDefault.provider,
+      }
     }
+
+    return current === resolvedCurrentSelectionKey ? undefined : {
+      focusedModelId: resolvedCurrentSelectionKey,
+      selectedModelId: resolvedCurrentSelectionKey,
+      setProvider: false,
+      provider: undefined,
+    }
+  }, (update) => {
+    if (!update) return
+    setSelectedModelId(update.selectedModelId)
+    setFocusedModelId(update.focusedModelId)
+    if (update.setProvider) setActiveProvider(update.provider)
   })
 
   createEffect(() => {
     const defaultThinkingLevel = getDefaultThinkingLevel(props.defaultThinkingLevel)
-
-    if (!selectedThinkingLevel() || (!hasManualThinkingSelection() && selectedThinkingLevel() !== defaultThinkingLevel)) {
-      setSelectedThinkingLevel(defaultThinkingLevel)
-      setFocusedThinkingLevel(defaultThinkingLevel)
-    }
+    const currentThinkingLevel = selectedThinkingLevel()
+    return !currentThinkingLevel || (!hasManualThinkingSelection() && currentThinkingLevel !== defaultThinkingLevel)
+      ? defaultThinkingLevel
+      : undefined
+  }, (defaultThinkingLevel) => {
+    if (!defaultThinkingLevel) return
+    setSelectedThinkingLevel(defaultThinkingLevel)
+    setFocusedThinkingLevel(defaultThinkingLevel)
   })
 
   createEffect(() => {
     const model = selectedModel()
-    props.onResolvedPreferenceChange?.({
-      model: model ? { provider: model.provider, modelId: model.id } : undefined,
-      thinkingLevel: thinkingLevel(),
-    })
-  })
+    return {
+      callback: props.onResolvedPreferenceChange,
+      preference: {
+        model: model ? { provider: model.provider, modelId: model.id } : undefined,
+        thinkingLevel: thinkingLevel(),
+      },
+    }
+  }, ({ callback, preference }) => { callback?.(preference) })
 
   createEffect(() => {
     const provider = activeProvider()
     const allProviders = providers()
-
-    if (!provider || !allProviders.includes(provider)) {
-      setActiveProvider(selectedModel()?.provider ?? allProviders[0])
-    }
+    return !provider || !allProviders.includes(provider)
+      ? { provider: selectedModel()?.provider ?? allProviders[0] }
+      : undefined
+  }, (update) => {
+    if (update) setActiveProvider(update.provider)
   })
 
   createEffect(() => {
-    if (imageInputEnabled()) {
-      return
-    }
-
+    const enabled = imageInputEnabled()
     const currentImages = images()
-    if (currentImages.length === 0) {
-      return
-    }
-
-    currentImages.forEach((image) => props.browser.revokeObjectUrl(image.previewUrl))
+    return !enabled && currentImages.length > 0
+      ? currentImages
+      : undefined
+  }, (currentImages) => {
+    if (!currentImages) return
+    currentImages.forEach((image) => browser.revokeObjectUrl(image.previewUrl))
     setImages([])
   })
 
@@ -632,9 +714,9 @@ export function ChatComposer(props: TChatComposerProps) {
     setImages((current) => [
       ...current,
       ...imageFiles.map((file) => ({
-        id: props.browser.createId(),
+        id: browser.createId(),
         file,
-        previewUrl: props.browser.createObjectUrl(file),
+        previewUrl: browser.createObjectUrl(file),
       })),
     ])
 
@@ -642,7 +724,7 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const removeImage = (image: TChatComposerImage) => {
-    props.browser.revokeObjectUrl(image.previewUrl)
+    browser.revokeObjectUrl(image.previewUrl)
     setImages((current) => current.filter((item) => item.id !== image.id))
   }
 
@@ -703,7 +785,7 @@ export function ChatComposer(props: TChatComposerProps) {
     props.onSubmit?.(value)
     setCommand(undefined)
     setImages([])
-    currentImages.forEach((image) => props.browser.revokeObjectUrl(image.previewUrl))
+    currentImages.forEach((image) => browser.revokeObjectUrl(image.previewUrl))
     clearEditor()
   }
 
@@ -726,7 +808,7 @@ export function ChatComposer(props: TChatComposerProps) {
     }
 
     const nextIndex = fnClampSuggestionIndex(index, count)
-    if (nextIndex === activeIndex()) {
+    if (nextIndex === latest(activeIndex)) {
       scheduleActiveSuggestionScroll()
       return
     }
@@ -741,7 +823,7 @@ export function ChatComposer(props: TChatComposerProps) {
       return
     }
 
-    const current = resolvedActiveIndex()
+    const current = fnClampSuggestionIndex(latest(activeIndex), count)
     const next = (current + direction + count) % count
     setActiveSuggestionIndex(next)
   }
@@ -762,23 +844,66 @@ export function ChatComposer(props: TChatComposerProps) {
       scrollTop: menu.scrollTop,
       viewportHeight: menu.clientHeight,
     })
-    setActiveSuggestionIndex(resolvedActiveIndex() + direction * pageSize)
+    setActiveSuggestionIndex(fnClampSuggestionIndex(latest(activeIndex), count) + direction * pageSize)
   }
 
-  const openModelMenu = () => {
-    const currentModel = selectedModel()
-    setModelMenuPane("models")
-    setActiveProvider(currentModel?.provider ?? activeProvider() ?? providers()[0])
-    setFocusedModelId(currentModel ? getModelSelectionKey(currentModel) : activeProviderModels()[0] ? getModelSelectionKey(activeProviderModels()[0]) : undefined)
-    setModelMenuColumn("model")
+  const openModelMenu = (initialFocus: "first" | "last" | "selected" = "selected") => {
+    const currentModels = latest(models)
+    const currentModel = getModelBySelectionKey(currentModels, latest(selectedModelId))
+      ?? getDefaultModel(currentModels, props.defaultModel, props.defaultProvider)
+    const currentProvider = latest(activeProvider)
+    const nextProvider = currentModel?.provider
+      ?? (currentProvider && currentModels.some((model) => model.provider === currentProvider)
+        ? currentProvider
+        : currentModels[0]?.provider)
+    const nextFocusedModel = currentModel?.provider === nextProvider
+      ? currentModel
+      : currentModels.find((model) => model.provider === nextProvider)
+    const providerModels = currentModels.filter((model) => model.provider === nextProvider)
+    if (initialFocus === "first") {
+      setModelMenuPane("thinking")
+      setModelMenuColumn("category")
+    } else {
+      setModelMenuPane("models")
+      setModelMenuColumn("model")
+    }
+    setActiveProvider(nextProvider)
+    const focused = initialFocus === "last" ? providerModels.at(-1) : nextFocusedModel
+    setFocusedModelId(focused ? getModelSelectionKey(focused) : undefined)
     setFocusedThinkingLevel(thinkingLevel())
     setModelMenuOpen(true)
   }
 
-  const menuCategoryItems = () => [
-    { kind: "thinking" as const, id: "thinking", label: "Thinking" },
-    ...providers().map((provider) => ({ kind: "provider" as const, id: provider, label: providerLabel(provider) })),
-  ]
+  const menuCategoryItems = () => {
+    const currentModels = models()
+    return [
+      { kind: "thinking" as const, id: "thinking", label: "Thinking", firstModelId: undefined },
+      ...providers().map((provider) => {
+        const firstModel = currentModels.find((model) => model.provider === provider)
+        return {
+          kind: "provider" as const,
+          id: provider,
+          label: providerLabel(provider),
+          firstModelId: firstModel ? getModelSelectionKey(firstModel) : undefined,
+        }
+      }),
+    ]
+  }
+
+  const focusModelMenuCategory = (item: Readonly<{
+    kind: "thinking" | "provider"
+    id: string
+    firstModelId?: string
+  }>) => {
+    setModelMenuColumn("category")
+    if (item.kind === "thinking") {
+      setModelMenuPane("thinking")
+      return
+    }
+    setModelMenuPane("models")
+    setActiveProvider(item.id)
+    setFocusedModelId(item.firstModelId)
+  }
 
   const moveMenuCategory = (direction: 1 | -1) => {
     const items = menuCategoryItems()
@@ -796,8 +921,7 @@ export function ChatComposer(props: TChatComposerProps) {
 
     setModelMenuPane("models")
     setActiveProvider(nextItem.id)
-    const nextProviderModel = models().find((model) => model.provider === nextItem.id)
-    setFocusedModelId(nextProviderModel ? getModelSelectionKey(nextProviderModel) : undefined)
+    setFocusedModelId(nextItem.firstModelId)
   }
 
   const moveFocusedModel = (direction: 1 | -1) => {
@@ -811,12 +935,10 @@ export function ChatComposer(props: TChatComposerProps) {
   const setSelectedModel = (model: TChatComposerModel) => {
     const modelSelectionKey = getModelSelectionKey(model)
 
-    batch(() => {
-      setHasManualModelSelection(true)
-      setSelectedModelId(modelSelectionKey)
-      setFocusedModelId(modelSelectionKey)
-      setActiveProvider(model.provider)
-    })
+    setHasManualModelSelection(true)
+    setSelectedModelId(modelSelectionKey)
+    setFocusedModelId(modelSelectionKey)
+    setActiveProvider(model.provider)
 
     props.onPreferenceChange?.({
       model: {
@@ -829,11 +951,9 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const setThinkingLevel = (level: TChatComposerThinkingLevel) => {
-    batch(() => {
-      setSelectedThinkingLevel(level)
-      setHasManualThinkingSelection(true)
-      setFocusedThinkingLevel(level)
-    })
+    setSelectedThinkingLevel(level)
+    setHasManualThinkingSelection(true)
+    setFocusedThinkingLevel(level)
 
     props.onPreferenceChange?.({ thinkingLevel: level })
     setModelMenuOpen(false)
@@ -843,6 +963,30 @@ export function ChatComposer(props: TChatComposerProps) {
   const moveFocusedThinkingLevel = (direction: 1 | -1) => {
     const currentIndex = Math.max(0, THINKING_LEVELS.indexOf(focusedThinkingLevel() ?? thinkingLevel()))
     setFocusedThinkingLevel(THINKING_LEVELS[(currentIndex + direction + THINKING_LEVELS.length) % THINKING_LEVELS.length])
+  }
+
+  const focusModelMenuEdge = (edge: "first" | "last") => {
+    if (modelMenuColumn() === "category") {
+      const items = menuCategoryItems()
+      const item = edge === "first" ? items[0] : items.at(-1)
+      if (!item) return
+      if (item.kind === "thinking") {
+        setModelMenuPane("thinking")
+        setFocusedThinkingLevel(thinkingLevel())
+      } else {
+        setModelMenuPane("models")
+        setActiveProvider(item.id)
+        setFocusedModelId(item.firstModelId)
+      }
+      return
+    }
+    if (modelMenuColumn() === "thinking") {
+      setFocusedThinkingLevel(edge === "first" ? THINKING_LEVELS[0] : THINKING_LEVELS.at(-1))
+      return
+    }
+    const providerModels = activeProviderModels()
+    const model = edge === "first" ? providerModels[0] : providerModels.at(-1)
+    setFocusedModelId(model ? getModelSelectionKey(model) : undefined)
   }
 
   const selectFocusedModel = () => {
@@ -856,13 +1000,44 @@ export function ChatComposer(props: TChatComposerProps) {
     setThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
   }
 
-  const handleModelMenuKey = (event: KeyboardEvent) => {
-    if (!modelMenuOpen()) {
-      if (actionMenuOpen() && event.key === "Escape") {
-        setActionMenuOpen(false)
-        return true
-      }
+  const handleActionMenuKey = (event: KeyboardEvent) => {
+    if (!actionMenuVisible) return false
+    if (!menuPairContains(event.target, actionMenuTrigger, actionMenuElement)) {
+      setActionMenuOpen(false)
+      return false
+    }
+    if (event.key === "Tab") {
+      setActionMenuOpen(false)
+      return false
+    }
+    if (event.key === "Escape") {
+      setActionMenuOpen(false)
+      actionMenuTrigger.focus()
+      return true
+    }
+    const items = actionMenuItems()
+    if (items.length === 0) return false
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const current = Math.max(0, items.indexOf(browser.document.activeElement as HTMLButtonElement))
+      focusActionMenuItem(current + (event.key === "ArrowDown" ? 1 : -1))
+      return true
+    }
+    if (event.key === "Home" || event.key === "End") {
+      focusActionMenuItem(event.key === "Home" ? 0 : items.length - 1)
+      return true
+    }
+    return false
+  }
 
+  const handleModelMenuKey = (event: KeyboardEvent) => {
+    if (!modelMenuVisible) return false
+    if (!menuPairContains(event.target, modelMenuTrigger, modelMenuElement)) {
+      setModelMenuOpen(false)
+      return false
+    }
+
+    if (event.key === "Tab") {
+      setModelMenuOpen(false)
       return false
     }
 
@@ -870,6 +1045,7 @@ export function ChatComposer(props: TChatComposerProps) {
       setModelMenuOpen(false)
       setActionMenuOpen(false)
       setApprovalMenuOpen(false)
+      modelMenuTrigger.focus()
       return true
     }
 
@@ -894,6 +1070,11 @@ export function ChatComposer(props: TChatComposerProps) {
       if (modelMenuColumn() === "category") moveMenuCategory(direction)
       else if (modelMenuColumn() === "thinking") moveFocusedThinkingLevel(direction)
       else moveFocusedModel(direction)
+      return true
+    }
+
+    if (event.key === "Home" || event.key === "End") {
+      focusModelMenuEdge(event.key === "Home" ? "first" : "last")
       return true
     }
 
@@ -971,8 +1152,8 @@ export function ChatComposer(props: TChatComposerProps) {
     return false
   }
 
-  onMount(() => {
-    suggestionResizeObserver = props.browser.createResizeObserver(() => {
+  onSettled(() => {
+    suggestionResizeObserver = browser.createResizeObserver(() => {
       updateSuggestionMenuMaxHeight()
       scheduleActiveSuggestionScroll()
     })
@@ -984,6 +1165,12 @@ export function ChatComposer(props: TChatComposerProps) {
     }
 
     const handleDocumentKeydown = (event: KeyboardEvent) => {
+      if (handleActionMenuKey(event)) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
       if (handleModelMenuKey(event)) {
         event.preventDefault()
         event.stopPropagation()
@@ -998,26 +1185,46 @@ export function ChatComposer(props: TChatComposerProps) {
     }
 
     const handleDocumentPointerdown = (event: PointerEvent) => {
-      const target = event.target as Node
+      const target = event.target
+      const NodeConstructor = browser.document.defaultView?.Node
       const suggestionMenu = root?.querySelector(".omnidraw-ai-chat-composer__suggestions")
 
-      if (suggestion() && !suggestionMenu?.contains(target)) {
+      if (
+        NodeConstructor !== undefined
+        && target instanceof NodeConstructor
+        && latest(suggestion)
+        && !suggestionMenu?.contains(target)
+      ) {
         dismissSuggestion()
       }
 
-      if (root?.contains(target)) {
-        return
+      if (actionMenuVisible && !menuPairContains(target, actionMenuTrigger, actionMenuElement)) {
+        setActionMenuOpen(false)
       }
-
-      setModelMenuOpen(false)
-      setActionMenuOpen(false)
-      setApprovalMenuOpen(false)
+      if (approvalMenuVisible && !menuPairContains(target, approvalMenuTrigger(), approvalMenuElement)) {
+        setApprovalMenuOpen(false)
+      }
+      if (modelMenuVisible && !menuPairContains(target, modelMenuTrigger, modelMenuElement)) {
+        setModelMenuOpen(false)
+      }
     }
 
-    props.browser.document.addEventListener("keydown", handleDocumentKeydown, true)
-    props.browser.document.addEventListener("pointerdown", handleDocumentPointerdown, true)
-    cleanupDocumentKeydown = () => props.browser.document.removeEventListener("keydown", handleDocumentKeydown, true)
-    cleanupDocumentPointerdown = () => props.browser.document.removeEventListener("pointerdown", handleDocumentPointerdown, true)
+    const handleDocumentFocusin = (event: FocusEvent) => {
+      const target = event.target
+      if (actionMenuVisible && !menuPairContains(target, actionMenuTrigger, actionMenuElement)) {
+        setActionMenuOpen(false)
+      }
+      if (approvalMenuVisible && !menuPairContains(target, approvalMenuTrigger(), approvalMenuElement)) {
+        setApprovalMenuOpen(false)
+      }
+      if (modelMenuVisible && !menuPairContains(target, modelMenuTrigger, modelMenuElement)) {
+        setModelMenuOpen(false)
+      }
+    }
+
+    browser.document.addEventListener("keydown", handleDocumentKeydown, true)
+    browser.document.addEventListener("pointerdown", handleDocumentPointerdown, true)
+    browser.document.addEventListener("focusin", handleDocumentFocusin, true)
 
     const state = EditorState.create({
       doc: createDocFromText(props.draftText ?? ""),
@@ -1121,11 +1328,23 @@ export function ChatComposer(props: TChatComposerProps) {
     })
 
     syncHasText()
+    return () => {
+      browser.document.removeEventListener("keydown", handleDocumentKeydown, true)
+      browser.document.removeEventListener("pointerdown", handleDocumentPointerdown, true)
+      browser.document.removeEventListener("focusin", handleDocumentFocusin, true)
+      suggestionResizeObserver?.disconnect()
+      if (suggestionScrollAnimationFrame !== undefined) {
+        browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
+      }
+      view?.destroy()
+      images().forEach((image) => browser.revokeObjectUrl(image.previewUrl))
+    }
   })
 
   createEffect(() => {
     const nextText = props.draftText ?? ""
-
+    return nextText
+  }, (nextText) => {
     if (!view || getEditorText(view) === nextText) {
       return
     }
@@ -1137,17 +1356,6 @@ export function ChatComposer(props: TChatComposerProps) {
     })
     view.updateState(state)
     syncHasText()
-  })
-
-  onCleanup(() => {
-    cleanupDocumentKeydown?.()
-    cleanupDocumentPointerdown?.()
-    suggestionResizeObserver?.disconnect()
-    if (suggestionScrollAnimationFrame !== undefined) {
-      props.browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
-    }
-    view?.destroy()
-    images().forEach((image) => props.browser.revokeObjectUrl(image.previewUrl))
   })
 
   return (
@@ -1189,12 +1397,12 @@ export function ChatComposer(props: TChatComposerProps) {
                 <button
                   id={getSuggestionOptionId(item)}
                   type="button"
-                  classList={{ "omnidraw-ai-chat-composer__suggestion--active": index() === resolvedActiveIndex() }}
+                  class={{ "omnidraw-ai-chat-composer__suggestion--active": index() === resolvedActiveIndex() }}
                   data-active={index() === resolvedActiveIndex() ? "true" : undefined}
                   role="option"
                   aria-label={suggestion()?.kind === "mention" ? `${item.label}, ${(item as TChatComposerMention).kind}` : `${item.label}, ${(item as TChatComposerCommand).description}`}
-                  aria-selected={index() === resolvedActiveIndex()}
-                  tabIndex={-1}
+                  aria-selected={index() === resolvedActiveIndex() ? "true" : "false"}
+                  tabindex={-1}
                   onMouseDown={(event) => {
                     event.preventDefault()
                     acceptSuggestion(index())
@@ -1220,7 +1428,7 @@ export function ChatComposer(props: TChatComposerProps) {
           accept="image/*"
           multiple
           aria-hidden="true"
-          tabIndex={-1}
+          tabindex={-1}
           onChange={(event) => {
             addImageFiles(Array.from(event.currentTarget.files ?? []))
             event.currentTarget.value = ""
@@ -1231,26 +1439,50 @@ export function ChatComposer(props: TChatComposerProps) {
           <div class="omnidraw-ai-chat-composer__controls-right">
             <div class="omnidraw-ai-chat-composer__action-picker">
               <button
+                ref={actionMenuTrigger}
                 class="omnidraw-ai-chat-composer__icon-button omnidraw-ai-chat-composer__action-button"
                 type="button"
                 aria-label="Chat actions"
                 aria-haspopup="menu"
-                aria-expanded={actionMenuOpen()}
+                aria-expanded={actionMenuOpen() ? "true" : "false"}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setModelMenuOpen(false)
+                  setApprovalMenuOpen(false)
+                  setActionMenuFocusIndex(event.key === "ArrowDown" ? 0 : 1)
+                  setActionMenuOpen(true)
+                }}
                 onClick={(event) => {
                   event.stopPropagation()
                   setModelMenuOpen(false)
                   setApprovalMenuOpen(false)
-                  setActionMenuOpen((open) => !open)
+                  if (actionMenuVisible) setActionMenuOpen(false)
+                  else {
+                    setActionMenuFocusIndex(0)
+                    setActionMenuOpen(true)
+                  }
                 }}
               >
                 <span aria-hidden="true">...</span>
               </button>
 
               <Show when={actionMenuOpen()}>
-                <div class="omnidraw-ai-chat-composer__action-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                <AnchoredMenu
+                  anchor={actionMenuTrigger}
+                  browser={browser}
+                  class="omnidraw-ai-chat-composer__action-menu"
+                  root={root}
+                  role="menu"
+                  onElement={(element) => { actionMenuElement = element }}
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <button
                     type="button"
                     role="menuitem"
+                    tabindex={-1}
+                    onFocus={() => setActionMenuFocusIndex(0)}
                     onClick={() => {
                       setActionMenuOpen(false)
                       props.onNewChat?.()
@@ -1262,6 +1494,8 @@ export function ChatComposer(props: TChatComposerProps) {
                   <button
                     type="button"
                     role="menuitem"
+                    tabindex={-1}
+                    onFocus={() => setActionMenuFocusIndex(1)}
                     onClick={() => {
                       setActionMenuOpen(false)
                       props.onCopyChat?.()
@@ -1270,13 +1504,15 @@ export function ChatComposer(props: TChatComposerProps) {
                   >
                     Copy chat
                   </button>
-                </div>
+                </AnchoredMenu>
               </Show>
             </div>
             <ApprovalPolicyPicker
+              browser={browser}
               open={approvalMenuOpen()}
               policy={props.approvalPolicy}
               reviewerModels={props.reviewerModels ?? []}
+              onMenuElement={(element) => { approvalMenuElement = element }}
               onOpenChange={(open) => {
                 if (open) {
                   setActionMenuOpen(false)
@@ -1288,16 +1524,25 @@ export function ChatComposer(props: TChatComposerProps) {
             />
             <div class="omnidraw-ai-chat-composer__model-picker">
               <button
+                ref={modelMenuTrigger}
                 class="omnidraw-ai-chat-composer__pill"
                 type="button"
                 aria-haspopup="menu"
-                aria-expanded={modelMenuOpen()}
+                aria-expanded={modelMenuOpen() ? "true" : "false"}
                 disabled={models().length === 0}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setActionMenuOpen(false)
+                  setApprovalMenuOpen(false)
+                  openModelMenu(event.key === "ArrowDown" ? "first" : "last")
+                }}
                 onClick={(event) => {
                   event.stopPropagation()
                   setActionMenuOpen(false)
                   setApprovalMenuOpen(false)
-                  if (modelMenuOpen()) setModelMenuOpen(false)
+                  if (modelMenuVisible) setModelMenuOpen(false)
                   else openModelMenu()
                 }}
               >
@@ -1308,12 +1553,20 @@ export function ChatComposer(props: TChatComposerProps) {
               </button>
 
               <Show when={modelMenuOpen()}>
-                <div class="omnidraw-ai-chat-composer__model-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                <AnchoredMenu
+                  anchor={modelMenuTrigger}
+                  browser={browser}
+                  class="omnidraw-ai-chat-composer__model-menu"
+                  root={root}
+                  role="menu"
+                  onElement={(element) => { modelMenuElement = element }}
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <div class="omnidraw-ai-chat-composer__model-providers" role="group" aria-label="AI model settings">
                     <For each={menuCategoryItems()}>
                       {(item) => (
                         <button
-                          classList={{
+                          class={{
                             "omnidraw-ai-chat-composer__model-provider": true,
                             "omnidraw-ai-chat-composer__model-provider--active": item.kind === "thinking" ? modelMenuPane() === "thinking" : modelMenuPane() === "models" && item.id === activeProvider(),
                             "omnidraw-ai-chat-composer__model-provider--focused": (
@@ -1321,19 +1574,13 @@ export function ChatComposer(props: TChatComposerProps) {
                             ) && modelMenuColumn() === "category",
                           }}
                           type="button"
+                          role="menuitem"
+                          tabindex={-1}
+                          data-model-category={item.id}
+                          onFocus={() => focusModelMenuCategory(item)}
                           onClick={() => {
-                            if (item.kind === "thinking") {
-                              setModelMenuPane("thinking")
-                              setFocusedThinkingLevel(thinkingLevel())
-                              setModelMenuColumn("thinking")
-                              return
-                            }
-
-                            setModelMenuPane("models")
-                            setActiveProvider(item.id)
-                            const nextProviderModel = models().find((model) => model.provider === item.id)
-                            setFocusedModelId(nextProviderModel ? getModelSelectionKey(nextProviderModel) : undefined)
-                            setModelMenuColumn("model")
+                            focusModelMenuCategory(item)
+                            setModelMenuColumn(item.kind === "thinking" ? "thinking" : "model")
                           }}
                         >
                           <span>{item.label}</span>
@@ -1341,20 +1588,31 @@ export function ChatComposer(props: TChatComposerProps) {
                       )}
                     </For>
                   </div>
-                  <div class="omnidraw-ai-chat-composer__model-list" role="group" aria-label="AI models">
+                  <div
+                    class="omnidraw-ai-chat-composer__model-list"
+                    role="group"
+                    aria-label={modelMenuPane() === "thinking" ? "Thinking levels" : "AI models"}
+                  >
                     <Show
                       when={modelMenuPane() === "thinking"}
                       fallback={(
                         <For each={activeProviderModels()}>
                           {(model) => (
                             <button
-                              classList={{
+                              class={{
                                 "omnidraw-ai-chat-composer__model-option": true,
                                 "omnidraw-ai-chat-composer__model-option--active": getModelSelectionKey(model) === selectedModelId(),
                                 "omnidraw-ai-chat-composer__model-option--focused": getModelSelectionKey(model) === focusedModelId() && modelMenuColumn() === "model",
                               }}
                               type="button"
-                              onMouseEnter={() => setFocusedModelId(getModelSelectionKey(model))}
+                              role="menuitemradio"
+                              aria-checked={getModelSelectionKey(model) === selectedModelId() ? "true" : "false"}
+                              tabindex={-1}
+                              data-model-id={getModelSelectionKey(model)}
+                              onFocus={() => {
+                                setModelMenuColumn("model")
+                                setFocusedModelId(getModelSelectionKey(model))
+                              }}
                               onClick={() => {
                                 setSelectedModel(model)
                               }}
@@ -1374,13 +1632,20 @@ export function ChatComposer(props: TChatComposerProps) {
                       <For each={THINKING_LEVELS}>
                         {(level) => (
                           <button
-                            classList={{
+                            class={{
                               "omnidraw-ai-chat-composer__model-option": true,
                               "omnidraw-ai-chat-composer__model-option--active": level === thinkingLevel(),
                               "omnidraw-ai-chat-composer__model-option--focused": level === focusedThinkingLevel() && modelMenuColumn() === "thinking",
                             }}
                             type="button"
-                            onMouseEnter={() => setFocusedThinkingLevel(level)}
+                            role="menuitemradio"
+                            aria-checked={level === thinkingLevel() ? "true" : "false"}
+                            tabindex={-1}
+                            data-thinking-level={level}
+                            onFocus={() => {
+                              setModelMenuColumn("thinking")
+                              setFocusedThinkingLevel(level)
+                            }}
                             onClick={() => {
                               setThinkingLevel(level)
                             }}
@@ -1391,7 +1656,7 @@ export function ChatComposer(props: TChatComposerProps) {
                       </For>
                     </Show>
                   </div>
-                </div>
+                </AnchoredMenu>
               </Show>
             </div>
             <button

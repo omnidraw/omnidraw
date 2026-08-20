@@ -27,21 +27,23 @@ export function createFrontendThemeController(args: Readonly<{
   const service = new ThemeService();
   if (service.hasTheme(state.theme)) service.setTheme(state.theme);
 
-  const memory = (): TThemeMemory => ({
+  let currentMemory: TThemeMemory = {
     theme: state.theme,
     lastLightThemeId: state.lastLightThemeId,
     lastDarkThemeId: state.lastDarkThemeId,
-  });
+  };
   const syncDom = (): void => {
     const host = args.document.documentElement;
     host.setAttribute(OMNIDRAW_THEME_SCOPE_ATTRIBUTE, "application");
     applyThemeToElement(host, service.getTheme());
   };
   const syncMemory = (nextThemeId: ThemeId): void => {
-    const next = fnSyncThemeMemory({ memory: memory(), themeService: service, nextThemeId });
-    if (state.theme !== next.theme) set("theme", next.theme);
-    if (state.lastLightThemeId !== next.lastLightThemeId) set("lastLightThemeId", next.lastLightThemeId);
-    if (state.lastDarkThemeId !== next.lastDarkThemeId) set("lastDarkThemeId", next.lastDarkThemeId);
+    const previous = currentMemory;
+    const next = fnSyncThemeMemory({ memory: previous, themeService: service, nextThemeId });
+    currentMemory = next;
+    if (previous.theme !== next.theme) set("theme", next.theme);
+    if (previous.lastLightThemeId !== next.lastLightThemeId) set("lastLightThemeId", next.lastLightThemeId);
+    if (previous.lastDarkThemeId !== next.lastDarkThemeId) set("lastDarkThemeId", next.lastDarkThemeId);
   };
 
   syncMemory(service.getThemeId());
@@ -59,7 +61,7 @@ export function createFrontendThemeController(args: Readonly<{
     setAppearance(appearance) {
       service.setTheme(fnGetRememberedThemeId({
         appearance,
-        memory: memory(),
+        memory: currentMemory,
         themeService: service,
       }));
     },

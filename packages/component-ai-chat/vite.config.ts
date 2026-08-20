@@ -1,12 +1,12 @@
 import { resolve } from "node:path";
-import solid from "vite-plugin-solid";
+import solid from "@solidjs/vite-plugin";
 import { defineConfig } from "vite";
 
-const externalPackage = /^(?:@omnidraw\/canvas|dompurify|effect|lucide-solid|lucide-static|prosemirror-|solid-js)(?:\/|$)/;
+const externalPackage = /^(?:@omnidraw\/canvas|@solidjs\/web|dompurify|effect|lucide-static|prosemirror-|solid-js)(?:\/|$)/;
 
 export default defineConfig(({ mode }) => ({
   base: "./",
-  plugins: [solid()],
+  plugins: [solid({ solid: { moduleName: "@solidjs/web" } })],
   build: {
     assetsInlineLimit: 0,
     cssCodeSplit: true,

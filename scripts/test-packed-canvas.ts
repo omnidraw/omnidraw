@@ -16,6 +16,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join, posix, relative, resolve } from 'node:path'
+import { EXACT_QUALIFICATION_VERSIONS } from './public-packages'
 
 type TPublicPackage = Readonly<{
   name: string
@@ -174,6 +175,13 @@ async function assertPackedPackage(
     if (path.endsWith('.d.ts') && /(?:\.\.\/)+(?:apps|packages)\//.test(source)) {
       violations.push(`${path}: repository-relative declaration reference`)
     }
+    if (
+      (entry.name === '@omnidraw/canvas' || entry.name === '@omnidraw/component-ai-chat')
+      && MODULE_ARCHIVE_EXTENSION.test(path)
+      && /solid-js\/(?:web|store|jsx-runtime|jsx-dev-runtime)|import\(["']solid-js["']\)\.JSX|import\s+type\s+\{[^}]*\bJSX\b[^}]*\}\s+from\s+["']solid-js["']/.test(source)
+    ) {
+      violations.push(`${path}: Solid 1 runtime or JSX reference`)
+    }
     if (MODULE_ARCHIVE_EXTENSION.test(path)) {
       for (const specifier of moduleSpecifiers(source)) {
         if (specifier.startsWith('.') && specifier.endsWith('.css')) {
@@ -289,14 +297,21 @@ async function assertInstalledPackages(consumerRoot: string): Promise<void> {
     if (!installedScope.has(packageName)) throw new Error(`Clean canvas consumer is missing @omnidraw/${packageName}.`)
   }
 
-  const hostSolid = await realpath(join(consumerRoot, 'node_modules/solid-js'))
-  for (const packageName of ['canvas', 'component-ai-chat']) {
-    const nestedSolid = join(consumerRoot, 'node_modules/@omnidraw', packageName, 'node_modules/solid-js')
-    try {
-      const nested = await realpath(nestedSolid)
-      if (nested !== hostSolid) throw new Error(`${packageName} installed a duplicate Solid runtime: ${nested}`)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  for (const runtime of ['solid-js', '@solidjs/signals', '@solidjs/web'] as const) {
+    const segments = runtime.split('/')
+    const hostRuntime = await realpath(join(consumerRoot, 'node_modules', ...segments))
+    const manifest = JSON.parse(await readFile(join(hostRuntime, 'package.json'), 'utf8')) as { version?: string }
+    if (manifest.version !== EXACT_QUALIFICATION_VERSIONS[runtime]) {
+      throw new Error(`${runtime} installed as ${manifest.version ?? '<unknown>'}; expected ${EXACT_QUALIFICATION_VERSIONS[runtime]}.`)
+    }
+    for (const packageName of ['canvas', 'component-ai-chat']) {
+      const nestedRuntime = join(consumerRoot, 'node_modules/@omnidraw', packageName, 'node_modules', ...segments)
+      try {
+        const nested = await realpath(nestedRuntime)
+        if (nested !== hostRuntime) throw new Error(`${packageName} installed a duplicate ${runtime} runtime: ${nested}`)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
     }
   }
 }
@@ -397,7 +412,7 @@ async function main(): Promise<void> {
     }
 
     console.log(
-      `[packed-canvas] packed ${packed.map(({ entry, manifest }) => `${entry.name}@${manifest.version}`).join(', ')}; clean install, one Solid runtime, typecheck, 2 transport tests, production build, and 2 browser smokes passed`,
+      `[packed-canvas] packed ${packed.map(({ entry, manifest }) => `${entry.name}@${manifest.version}`).join(', ')}; clean install, one Solid core/signals/web graph, typecheck, 2 transport tests, production build, and 2 browser smokes passed`,
     )
   } finally {
     await rm(testRoot, { recursive: true, force: true })

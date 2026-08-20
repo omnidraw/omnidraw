@@ -1,20 +1,20 @@
-import { Button } from '@kobalte/core/button';
-import * as AlertDialog from '@kobalte/core/alert-dialog';
-import * as Tabs from '@kobalte/core/tabs';
+import { Portal } from '@solidjs/web';
 import type { TOmnidrawToolIcon } from '@omnidraw/sdk/tool-icon';
 import type {
   TWidgetPublicFileEntry,
   TWidgetPublicFilePreview,
 } from '../ports';
-import File from 'lucide-solid/icons/file';
-import Folder from 'lucide-solid/icons/folder';
-import PanelLeft from 'lucide-solid/icons/panel-left';
+import { File, Folder, PanelLeft } from '@/shell/framework/components/icons';
+import { activateModalFocusScope } from '@/shell/framework/components/ui/modal-focus-scope';
 import {
   For,
   Show,
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
+  onCleanup,
+  untrack,
   type Component,
 } from 'solid-js';
 import {
@@ -68,7 +68,7 @@ function iconsEqual(
 }
 
 export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
-  const application = props.controller.application;
+  const application = untrack(() => props.controller.application);
   const catalogState = useWidgetCatalog();
   const [files, setFiles] = createSignal<readonly TWidgetPublicFileEntry[] | null>(null);
   const [filesTruncated, setFilesTruncated] = createSignal(false);
@@ -92,8 +92,17 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [deletionError, setDeletionError] = createSignal('');
   const [deletionReviewError, setDeletionReviewError] = createSignal('');
   let deleteTrigger: HTMLButtonElement | undefined;
+  let deleteCancel: HTMLButtonElement | undefined;
+  let deletionContent: HTMLDivElement | undefined;
+  const tabsId = createUniqueId();
+  const deletionTitleId = createUniqueId();
+  const deletionDescriptionId = createUniqueId();
   let fileListRequest = 0;
   let previewRequest = 0;
+  let actionInFlight = false;
+  let deletionInFlight: 'planning' | 'committing' | null = null;
+  let deletionPlanGeneration = 0;
+  let disposed = false;
 
   const entry = createMemo(() => (
     catalogState.catalog()?.entries.find((candidate) => candidate.widgetKey === props.name) ?? null
@@ -110,33 +119,67 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     return TABS.some((tab) => tab.value === requested) ? requested as TTab : 'overview';
   };
 
-  createEffect(() => {
-    const config = form()?.config;
-    setFiles(null);
-    setPreview(null);
-    setActionError('');
-    setPublishedIconReconciliation(null);
-    setDeletionPlan(null);
-    setDeletionOperationId(null);
-    setDeletionOpen(false);
-    setDeletionError('');
-    setDeletionReviewError('');
-    if (!config) return;
-    setName(config.name);
-    setDescription(config.description);
-    setLabel(config.tool.label);
-    setGroup(config.tool.group ?? '');
-    setPriority(String(config.tool.priority));
-    setIcon(editableIcon(config.tool.icon));
+  createEffect(
+    () => ({ source: props.source, name: props.name }),
+    () => {
+      deletionPlanGeneration += 1;
+      deletionInFlight = null;
+      setDeletionPhase(null);
+      setDeletionPlan(null);
+      setDeletionOperationId(null);
+      setDeletionOpen(false);
+      setDeletionError('');
+      setDeletionReviewError('');
+    },
+  );
+
+  onCleanup(() => {
+    disposed = true;
+    deletionPlanGeneration += 1;
+    deletionInFlight = null;
   });
 
-  const loadFiles = async () => {
-    if (!props.source || !props.name) return;
+  const deletionRequestIsCurrent = (
+    generation: number,
+    source: TWidgetSource,
+    widgetKey: string,
+  ) => (
+    !disposed
+    && generation === deletionPlanGeneration
+    && props.source === source
+    && props.name === widgetKey
+  );
+
+  createEffect(
+    () => form()?.config ?? null,
+    (config) => {
+      fileListRequest += 1;
+      previewRequest += 1;
+      setFiles(null);
+      setPreview(null);
+      setActionError('');
+      setPublishedIconReconciliation(null);
+      setDeletionPlan(null);
+      setDeletionOperationId(null);
+      setDeletionOpen(false);
+      setDeletionError('');
+      setDeletionReviewError('');
+      if (config === null) return;
+      setName(config.name);
+      setDescription(config.description);
+      setLabel(config.tool.label);
+      setGroup(config.tool.group ?? '');
+      setPriority(String(config.tool.priority));
+      setIcon(editableIcon(config.tool.icon));
+    },
+  );
+
+  const loadFiles = async (identity: Readonly<{ source: TWidgetSource; name: string }>) => {
     const request = ++fileListRequest;
     setFilesError('');
     const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.list({
-      widgetKey: props.name,
-      source: props.source,
+      widgetKey: identity.name,
+      source: identity.source,
     });
     if (request !== fileListRequest) return;
     if (loadError || !value) {
@@ -148,8 +191,12 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setFilesTruncated(value.truncated);
   };
 
-  const loadPreview = async (path: string) => {
-    if (!props.source || !props.name || !path) {
+  const loadPreview = async (identity: Readonly<{
+    source: TWidgetSource;
+    name: string;
+    path: string;
+  }> | null) => {
+    if (identity === null) {
       setPreview(null);
       return;
     }
@@ -157,9 +204,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setPreview(null);
     setPreviewError('');
     const [loadError, value] = await props.controller.apiService.api.widget.catalog.files.read({
-      widgetKey: props.name,
-      source: props.source,
-      path,
+      widgetKey: identity.name,
+      source: identity.source,
+      path: identity.path,
     });
     if (request !== previewRequest) return;
     if (loadError || !value) {
@@ -169,20 +216,41 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setPreview(value);
   };
 
-  createEffect(() => {
-    if (activeTab() !== 'files' || files() !== null) return;
-    void loadFiles();
-  });
-  createEffect(() => {
-    if (activeTab() !== 'files') return;
-    void loadPreview(selectedPath());
-  });
+  createEffect(
+    () => activeTab() === 'files' && files() === null && props.source !== null && props.name !== null
+      ? { source: props.source, name: props.name }
+      : null,
+    (identity) => {
+      if (identity !== null) void loadFiles(identity);
+    },
+  );
+  createEffect(
+    () => activeTab() === 'files' && props.source !== null && props.name !== null && selectedPath()
+      ? { source: props.source, name: props.name, path: selectedPath() }
+      : null,
+    (identity) => void loadPreview(identity),
+  );
 
   const selectTab = (value: string) => {
     const tab = TABS.find((candidate) => candidate.value === value)?.value ?? 'overview';
     props.query.set(tab === 'files'
       ? { tab, path: selectedPath() || undefined }
       : { tab, path: undefined });
+  };
+
+  const tabId = (tab: TTab) => `${tabsId}-${tab}-tab`;
+  const tabPanelId = (tab: TTab) => `${tabsId}-${tab}-panel`;
+  const handleTabKeyDown = (event: KeyboardEvent, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % TABS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + TABS.length) % TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = TABS[nextIndex]!;
+    selectTab(nextTab.value);
+    document.getElementById(tabId(nextTab.value))?.focus();
   };
 
   const publishedIconSafetyError = createMemo(() => (
@@ -210,12 +278,13 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const saveConfig = async () => {
     const selected = form();
     if (
-      action() !== null
+      actionInFlight
       || props.source !== 'draft'
       || !props.name
       || !selected?.manifestDigestSha256
       || iconError() !== null
     ) return;
+    actionInFlight = true;
     setAction('save');
     setActionError('');
     const [saveError] = await props.controller.apiService.api.widget.config.saveDraft({
@@ -223,6 +292,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       expectedManifestDigestSha256: selected.manifestDigestSha256,
       config: configInput(),
     });
+    actionInFlight = false;
     setAction(null);
     if (saveError) {
       setActionError(saveError.message);
@@ -238,7 +308,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     const catalog = catalogState.catalog();
     const selected = form();
     if (
-      action() !== null
+      actionInFlight
       || props.source !== 'published'
       || !props.name
       || (!pendingReconciliation && (
@@ -248,6 +318,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         || iconError() !== null
       ))
     ) return;
+    actionInFlight = true;
     setAction('published-icon');
     setActionError('');
 
@@ -260,6 +331,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         icon: icon(),
       });
       if (saveError || !value) {
+        actionInFlight = false;
         setAction(null);
         const message = saveError?.message ?? 'The icon update returned no catalog identity.';
         setActionError(message);
@@ -279,6 +351,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         && refreshed.catalogDigestSha256 === mutation.catalogDigestSha256
       )
     );
+    actionInFlight = false;
     setAction(null);
     if (!reconciled) {
       const message = catalogState.error()
@@ -296,12 +369,13 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     const catalog = catalogState.catalog();
     const selected = form();
     if (
-      action() !== null
+      actionInFlight
       || props.source !== 'draft'
       || !props.name
       || !catalog
       || !selected?.manifestDigestSha256
     ) return;
+    actionInFlight = true;
     setAction(kind);
     setActionError('');
     const input = {
@@ -312,6 +386,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     const [publishError] = kind === 'metadata'
       ? await props.controller.apiService.api.widget.publication.publishMetadata(input)
       : await props.controller.apiService.api.widget.publication.buildAndPublish(input);
+    actionInFlight = false;
     setAction(null);
     if (publishError) {
       setActionError(publishError.message);
@@ -335,14 +410,20 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   };
 
   const planDeletion = async () => {
-    if (deletionPhase() !== null || !props.source || !props.name) return;
+    const source = props.source;
+    const widgetKey = props.name;
+    if (deletionInFlight !== null || source === null || widgetKey === null) return;
+    const generation = ++deletionPlanGeneration;
+    deletionInFlight = 'planning';
     setDeletionPhase('planning');
     setDeletionError('');
     setDeletionReviewError('');
     const [planError, plan] = await props.controller.apiService.api.widget.deletion.plan({
-      widgetKey: props.name,
-      source: props.source,
+      widgetKey,
+      source,
     });
+    if (!deletionRequestIsCurrent(generation, source, widgetKey)) return;
+    deletionInFlight = null;
     setDeletionPhase(null);
     if (planError || !plan) {
       const message = planError?.message ?? 'The deletion consequences could not be resolved.';
@@ -357,7 +438,8 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   };
 
   const closeDeletion = () => {
-    if (deletionPhase() === 'committing') return;
+    if (deletionInFlight !== null) return;
+    deletionPlanGeneration += 1;
     setDeletionOpen(false);
     setDeletionPlan(null);
     setDeletionOperationId(null);
@@ -368,13 +450,27 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const commitDeletion = async () => {
     const plan = deletionPlan();
     const operationId = deletionOperationId();
-    if (deletionPhase() !== null || plan === null || operationId === null) return;
+    const source = props.source;
+    const widgetKey = props.name;
+    if (
+      deletionInFlight !== null
+      || plan === null
+      || operationId === null
+      || source === null
+      || widgetKey === null
+      || plan.source !== source
+      || plan.widgetKey !== widgetKey
+    ) return;
+    const generation = deletionPlanGeneration;
+    deletionInFlight = 'committing';
     setDeletionPhase('committing');
     setDeletionError('');
     const [deleteError] = await props.controller.apiService.api.widget.deletion.commit({
       planToken: plan.planToken,
       operationId,
     });
+    if (!deletionRequestIsCurrent(generation, source, widgetKey)) return;
+    deletionInFlight = null;
     setDeletionPhase(null);
     if (deleteError) {
       const stale = deleteError.code === 'WIDGET_DELETION_STALE_PLAN';
@@ -407,6 +503,21 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     }
     return `Delete the publication “${plan.widgetKey}”? This removes the publication${plan.pairedDraftPresent ? ', its same-key draft and derived Preview/build state' : ''}, ${plan.placementCount} Canvas placement${plan.placementCount === 1 ? '' : 's'}, and ${plan.chatMountCount} AI Chat mount${plan.chatMountCount === 1 ? '' : 's'}. Independent resources remain.`;
   });
+
+  createEffect(
+    () => deletionOpen(),
+    (open) => {
+      if (!open) return;
+      return activateModalFocusScope({
+        content: () => deletionContent,
+        escapeDisabled: () => deletionInFlight === 'committing',
+        initialFocus: () => deleteCancel,
+        onEscape: closeDeletion,
+        ownerDocument: deletionContent?.ownerDocument ?? document,
+        returnFocus: () => deleteTrigger,
+      });
+    },
+  );
 
   const configDirty = createMemo(() => {
     const persisted = form()?.config;
@@ -444,11 +555,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     </div>}
   >
     <>
-    <Tabs.Root
-      class={styles.page}
-      value={activeTab()}
-      onChange={selectTab}
-    >
+    <div class={styles.page}>
       <header class={styles.header}>
         <div class={styles.titleBlock}>
           <WidgetIcon icon={form()!.config?.tool.icon ?? null} class={styles.headerIcon} />
@@ -459,43 +566,58 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         </div>
         <div class={styles.headerActions}>
           <Show when={props.source === 'draft'}>
-            <Button
+            <button
+              type="button"
               class={`${styles.button} ${styles.saveButton}`}
               disabled={action() !== null || !configDirty() || iconError() !== null}
               onClick={() => void saveConfig()}
-            >{action() === 'save' ? 'Saving draft…' : 'Save draft'}</Button>
-            <Button
+            >{action() === 'save' ? 'Saving draft…' : 'Save draft'}</button>
+            <button
+              type="button"
               class={styles.button}
               disabled={!metadataAvailable() || action() !== null}
               title={metadataAvailable()
                 ? 'Publish presentation Config without rebuilding executable files.'
                 : metadataUnavailableReason() ?? undefined}
               onClick={() => void publish('metadata')}
-            >{action() === 'metadata' ? 'Publishing metadata…' : 'Publish metadata'}</Button>
-            <Button
+            >{action() === 'metadata' ? 'Publishing metadata…' : 'Publish metadata'}</button>
+            <button
+              type="button"
               class={`${styles.button} ${styles.primary}`}
               disabled={action() !== null || form()!.health !== 'healthy' || configDirty()}
               title={configDirty() ? 'Save the draft Config before building.' : undefined}
               onClick={() => void publish('build')}
-            >{action() === 'build' ? 'Building and publishing…' : 'Build and Publish'}</Button>
+            >{action() === 'build' ? 'Building and publishing…' : 'Build and Publish'}</button>
           </Show>
-          <Button
+          <button
+            type="button"
             class={`${styles.button} ${styles.iconButton}`}
             aria-label="Toggle sidebar"
             onClick={application.toggleSidebar}
-          ><PanelLeft size={15} /></Button>
+          ><PanelLeft size={15} /></button>
         </div>
       </header>
       <Show when={actionError()}>{(message) => (
         <p class={styles.validationError} role="alert">{message()}</p>
       )}</Show>
-      <Tabs.List class={styles.tabs}>
-        <For each={TABS}>{(tab) => (
-          <Tabs.Trigger class={styles.tab} value={tab.value}>{tab.label}</Tabs.Trigger>
+      <div class={styles.tabs} role="tablist">
+        <For each={TABS}>{(tab, index) => (
+          <button
+            type="button"
+            id={tabId(tab.value)}
+            class={styles.tab}
+            role="tab"
+            aria-selected={activeTab() === tab.value ? 'true' : 'false'}
+            aria-controls={tabPanelId(tab.value)}
+            tabindex={activeTab() === tab.value ? 0 : -1}
+            data-selected={activeTab() === tab.value ? '' : undefined}
+            onClick={() => selectTab(tab.value)}
+            onKeyDown={(event) => handleTabKeyDown(event, index())}
+          >{tab.label}</button>
         )}</For>
-      </Tabs.List>
+      </div>
 
-      <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
+      <Show when={activeTab() === 'overview'}><div id={tabPanelId('overview')} class={styles.content} role="tabpanel" aria-labelledby={tabId('overview')} tabindex="0"><div class={styles.contentInner}>
         <section class={styles.panel}>
           <h3>Filesystem catalog</h3>
           <dl class={styles.definitionList}>
@@ -527,19 +649,20 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
               ? 'Delete this exact draft without deleting its publication or placed published instances.'
               : 'Delete this publication, its same-key draft when present, and every Canvas placement.'}</p>
           </div>
-          <Button
+          <button
+            type="button"
             ref={deleteTrigger}
             class={`${styles.button} ${styles.dangerButton}`}
             disabled={deletionPhase() !== null}
             onClick={() => void planDeletion()}
-          >{deletionPhase() === 'planning' ? 'Reviewing deletion…' : 'Delete widget'}</Button>
+          >{deletionPhase() === 'planning' ? 'Reviewing deletion…' : 'Delete widget'}</button>
         </section>
         <Show when={!deletionOpen() ? deletionReviewError() || deletionError() : ''}>{(message) => (
           <p class={styles.validationError} role="alert">{message()}</p>
         )}</Show>
-      </div></Tabs.Content>
+      </div></div></Show>
 
-      <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
+      <Show when={activeTab() === 'config'}><div id={tabPanelId('config')} class={styles.content} role="tabpanel" aria-labelledby={tabId('config')} tabindex="0"><div class={styles.contentInner}>
         <section class={styles.panel}>
           <h3>Widget Config</h3>
           <Show when={form()!.config} fallback={<p class={styles.validationError}>Repair omnidraw.json in the Files workspace before editing structured Config.</p>}>
@@ -551,7 +674,8 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                   <p class={styles.validationError} role="alert">{message()}</p>
                 )}</Show>
                 <div class={styles.publishedIconActions}>
-                  <Button
+                  <button
+                    type="button"
                     class={`${styles.button} ${styles.saveButton}`}
                     disabled={action() !== null || (
                       publishedIconReconciliation() === null
@@ -560,7 +684,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
                     onClick={() => void savePublishedIcon()}
                   >{action() === 'published-icon'
                       ? publishedIconReconciliation() === null ? 'Saving icon…' : 'Refreshing icon…'
-                      : publishedIconReconciliation() === null ? 'Save icon' : 'Retry refresh'}</Button>
+                      : publishedIconReconciliation() === null ? 'Save icon' : 'Retry refresh'}</button>
                 </div>
               </div>
               <pre class={styles.code}>{JSON.stringify(form()!.config, null, 2)}</pre>
@@ -576,9 +700,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             </Show>
           </Show>
         </section>
-      </div></Tabs.Content>
+      </div></div></Show>
 
-      <Tabs.Content class={styles.content} value="functions"><div class={styles.contentInner}>
+      <Show when={activeTab() === 'functions'}><div id={tabPanelId('functions')} class={styles.content} role="tabpanel" aria-labelledby={tabId('functions')} tabindex="0"><div class={styles.contentInner}>
         <section class={styles.panel}><h3>Browser-safe function descriptors</h3>
           <For each={form()!.functions} fallback={<p class={styles.muted}>This source exposes no published browser-safe functions.</p>}>
             {(descriptor) => <article class={styles.inspectorCard}>
@@ -593,9 +717,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             </article>}
           </For>
         </section>
-      </div></Tabs.Content>
+      </div></div></Show>
 
-      <Tabs.Content class={styles.content} value="resources"><div class={styles.contentInner}>
+      <Show when={activeTab() === 'resources'}><div id={tabPanelId('resources')} class={styles.content} role="tabpanel" aria-labelledby={tabId('resources')} tabindex="0"><div class={styles.contentInner}>
         <section class={styles.panel}><h3>Portable resource requirements</h3>
           <For each={form()!.resources} fallback={<p class={styles.muted}>This widget declares no resource requirements.</p>}>
             {(requirement) => <article class={styles.inspectorCard}>
@@ -607,9 +731,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             </article>}
           </For>
         </section>
-      </div></Tabs.Content>
+      </div></div></Show>
 
-      <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files">
+      <Show when={activeTab() === 'files'}><div id={tabPanelId('files')} class={`${styles.content} ${styles.filesContent}`} role="tabpanel" aria-labelledby={tabId('files')} tabindex="0">
         <div class={styles.fileWorkbench}>
           <aside class={styles.fileTree} aria-label="Widget files">
             <Show when={filesError()}>{(message) => <p class={styles.validationError} role="alert">{message()}</p>}</Show>
@@ -617,7 +741,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             <For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>
               {(file) => file.kind === 'directory'
                 ? <div class={styles.directory} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }}><Folder size={12} /> {file.path.split('/').at(-1)}</div>
-                : <Button class={`${styles.fileRow} ${selectedPath() === file.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: file.path })}><File size={12} /><span>{file.path.split('/').at(-1)}</span><small>{file.byteSize} B</small></Button>}
+                : <button type="button" class={`${styles.fileRow} ${selectedPath() === file.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${file.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: file.path })}><File size={12} /><span>{file.path.split('/').at(-1)}</span><small>{file.byteSize} B</small></button>}
             </For>
           </aside>
           <section class={styles.preview}>
@@ -627,35 +751,50 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             </Show>
           </section>
         </div>
-      </Tabs.Content>
-    </Tabs.Root>
-    <AlertDialog.Root
-      open={deletionOpen()}
-      onOpenChange={(open) => {
-        if (!open && deletionOpen()) closeDeletion();
-      }}
-    >
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay class={styles.dialogOverlay} />
-        <AlertDialog.Content class={styles.dialogContent}>
-          <AlertDialog.Title class={styles.dialogTitle}>Delete {deletionPlan()?.source === 'draft' ? 'widget draft' : 'widget publication'}</AlertDialog.Title>
-          <AlertDialog.Description class={styles.dialogDescription}>
+      </div></Show>
+    </div>
+    <Show when={deletionOpen()}>
+      <Portal>
+        <div
+          class={styles.dialogOverlay}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && deletionPhase() !== 'committing') closeDeletion();
+          }}
+        />
+        <div
+          ref={(element) => { deletionContent = element; }}
+          class={styles.dialogContent}
+          role="alertdialog"
+          aria-modal="true"
+          tabindex="-1"
+          aria-labelledby={deletionTitleId}
+          aria-describedby={deletionDescriptionId}
+        >
+          <h2 id={deletionTitleId} class={styles.dialogTitle}>Delete {deletionPlan()?.source === 'draft' ? 'widget draft' : 'widget publication'}</h2>
+          <p id={deletionDescriptionId} class={styles.dialogDescription}>
             {deletionDescription()}
-          </AlertDialog.Description>
+          </p>
           <Show when={deletionError()}>{(message) => (
             <p class={styles.validationError} role="alert">{message()}</p>
           )}</Show>
           <div class={styles.dialogActions}>
-            <AlertDialog.CloseButton class={styles.button} disabled={deletionPhase() === 'committing'}>Cancel</AlertDialog.CloseButton>
-            <Button
+            <button
+              type="button"
+              ref={(element) => { deleteCancel = element; }}
+              class={styles.button}
+              disabled={deletionPhase() === 'committing'}
+              onClick={closeDeletion}
+            >Cancel</button>
+            <button
+              type="button"
               class={`${styles.button} ${styles.dangerButton}`}
               disabled={deletionPhase() === 'committing'}
               onClick={() => void commitDeletion()}
-            >{deletionPhase() === 'committing' ? 'Deleting…' : 'Delete permanently'}</Button>
+            >{deletionPhase() === 'committing' ? 'Deleting…' : 'Delete permanently'}</button>
           </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+        </div>
+      </Portal>
+    </Show>
     </>
   </Show>;
 };

@@ -1,6 +1,6 @@
-import { Button } from "@kobalte/core/button";
-import * as Dialog from "@kobalte/core/dialog";
-import { createEffect, createSignal, type Component } from "solid-js";
+import { Portal } from "@solidjs/web";
+import { Show, createEffect, createSignal, createUniqueId, type Component } from "solid-js";
+import { activateModalFocusScope } from "../../../components/ui/modal-focus-scope";
 import styles from "./SidebarDialog.module.css";
 
 export type RenameDialogProps = {
@@ -8,19 +8,44 @@ export type RenameDialogProps = {
   onOpenChange: (open: boolean) => void;
   currentName: string;
   onRename: (newName: string) => void;
+  returnFocus?: () => HTMLElement | null;
 };
 
 export const RenameDialog: Component<RenameDialogProps> = (props) => {
-  const [name, setName] = createSignal(props.currentName);
+  const [name, setName] = createSignal("");
+  const titleId = createUniqueId();
+  const descriptionId = createUniqueId();
+  const nameId = createUniqueId();
+  let content: HTMLDivElement | undefined;
+  let nameInput: HTMLInputElement | undefined;
 
   const secondaryButtonClass = `${styles.button} ${styles.secondaryButton}`;
   const primaryButtonClass = `${styles.button} ${styles.primaryButton}`;
 
-  createEffect(() => {
-    if (props.open) {
-      setName(props.currentName);
-    }
-  });
+  createEffect(
+    () => props.open ? props.currentName : null,
+    (currentName) => {
+      if (currentName !== null) setName(currentName);
+    },
+  );
+
+  createEffect(
+    () => props.open ? props.onOpenChange : null,
+    (onOpenChange) => {
+      if (onOpenChange === null) return;
+      const deactivate = activateModalFocusScope({
+        content: () => content,
+        initialFocus: () => nameInput,
+        onEscape: () => onOpenChange(false),
+        ownerDocument: content?.ownerDocument ?? document,
+        returnFocus: props.returnFocus,
+      });
+      queueMicrotask(() => {
+        if (nameInput?.isConnected === true) nameInput.select();
+      });
+      return deactivate;
+    },
+  );
 
   const handleRename = () => {
     const trimmedName = name().trim();
@@ -38,47 +63,62 @@ export const RenameDialog: Component<RenameDialogProps> = (props) => {
   };
 
   return (
-    <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay class={styles.overlay} />
-        <Dialog.Content class={styles.content}>
-          <Dialog.Title class={styles.title}>Rename Canvas</Dialog.Title>
-          <Dialog.Description class={styles.description}>
+    <Show when={props.open}>
+      <Portal>
+        <div
+          class={styles.overlay}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) props.onOpenChange(false);
+          }}
+        />
+        <div
+          ref={(element) => { content = element; }}
+          class={styles.content}
+          role="dialog"
+          aria-modal="true"
+          tabindex="-1"
+          aria-labelledby={titleId}
+          aria-describedby={descriptionId}
+        >
+          <h2 id={titleId} class={styles.title}>Rename Canvas</h2>
+          <p id={descriptionId} class={styles.description}>
             Enter a new name for this canvas.
-          </Dialog.Description>
+          </p>
 
           <div class={styles.field}>
-            <label for="canvas-name" class={styles.label}>
+            <label for={nameId} class={styles.label}>
               Canvas Name
             </label>
             <input
-              id="canvas-name"
+              id={nameId}
+              ref={(element) => { nameInput = element; }}
               type="text"
               value={name()}
               onInput={(e) => setName(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
               class={styles.input}
-              autofocus
             />
           </div>
 
           <div class={styles.actions}>
-            <Button
+            <button
+              type="button"
               class={secondaryButtonClass}
               onClick={() => props.onOpenChange(false)}
             >
               Cancel
-            </Button>
-            <Button
+            </button>
+            <button
+              type="button"
               class={primaryButtonClass}
               onClick={handleRename}
             >
               Rename
-            </Button>
+            </button>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </div>
+      </Portal>
+    </Show>
   );
 };
 

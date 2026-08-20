@@ -1,5 +1,5 @@
 .section { margin-top: .375rem; padding-top: .375rem; border-top: 1px solid var(--omnidraw-border); }
-.header { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .25rem; color: var(--omnidraw-muted-foreground); }
+.header { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .25rem; color: var(--omnidraw-muted-foreground); }
 .sectionToggle, .menuTrigger, .groupDisclosure { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
 .sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .menuTrigger { width: 1.75rem; height: 1.75rem; }
@@ -31,6 +31,6 @@
 .state, .error, .empty { margin: 0; padding: .35rem .75rem; color: var(--omnidraw-muted-foreground); font-size: .7rem; }
 .error { overflow: hidden; color: var(--omnidraw-destructive); text-overflow: ellipsis; white-space: nowrap; }
 .empty { padding-left: 1.5rem; font-style: italic; }
-.menu { z-index: 60; min-width: 10rem; padding: .25rem; border: 1px solid var(--omnidraw-border); background: var(--omnidraw-popover); color: var(--omnidraw-popover-foreground); box-shadow: 0 8px 20px rgb(0 0 0 / .16); }
-.menuItem { padding: .45rem .6rem; outline: none; font-size: .75rem; }
-.menuItem[data-highlighted] { background: var(--omnidraw-accent); }
+.menu { position: absolute; top: 100%; right: .25rem; z-index: 60; min-width: 10rem; padding: .25rem; border: 1px solid var(--omnidraw-border); background: var(--omnidraw-popover); color: var(--omnidraw-popover-foreground); box-shadow: 0 8px 20px rgb(0 0 0 / .16); }
+.menuItem { width: 100%; padding: .45rem .6rem; border: 0; background: transparent; color: inherit; outline: none; font-size: .75rem; text-align: left; }
+.menuItem:hover, .menuItem:focus-visible { background: var(--omnidraw-accent); }

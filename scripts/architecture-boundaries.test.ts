@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import {
   APPLICATION_DIRECTORIES,
@@ -92,6 +92,7 @@ type TManifest = Record<string, unknown> & {
   workspaces?: readonly string[]
   scripts?: Record<string, string>
   catalog?: Record<string, string>
+  overrides?: Record<string, string>
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
@@ -308,9 +309,140 @@ describe('public package release graph', () => {
     for (const name of ['@omnidraw/canvas', '@omnidraw/component-ai-chat'] as const) {
       const manifest = manifests.get(name)!
       expect(manifest.dependencies?.['solid-js']).toBeUndefined()
-      expect(manifest.peerDependencies?.['solid-js']).toBe('^1.9.14')
-      expect(manifest.devDependencies?.['solid-js']).toBe('^1.9.14')
+      expect(manifest.dependencies?.['@solidjs/web']).toBeUndefined()
+      expect(manifest.peerDependencies?.['solid-js']).toBe(EXACT_QUALIFICATION_VERSIONS['solid-js'])
+      expect(manifest.peerDependencies?.['@solidjs/web']).toBe(EXACT_QUALIFICATION_VERSIONS['@solidjs/web'])
+      expect(manifest.devDependencies?.['solid-js']).toBe('catalog:')
+      expect(manifest.devDependencies?.['@solidjs/web']).toBe('catalog:')
     }
+  })
+
+  test('keeps the migrated browser surfaces free of Solid 1 source forms', async () => {
+    const violations: string[] = []
+    const root = await readJson(join(ROOT, 'package.json'))
+    expect(root.catalog).toMatchObject({
+      '@solidjs/router': EXACT_QUALIFICATION_VERSIONS['@solidjs/router'],
+      '@solidjs/signals': EXACT_QUALIFICATION_VERSIONS['@solidjs/signals'],
+      '@solidjs/vite-plugin': EXACT_QUALIFICATION_VERSIONS['@solidjs/vite-plugin'],
+      '@solidjs/web': EXACT_QUALIFICATION_VERSIONS['@solidjs/web'],
+      'babel-preset-solid': EXACT_QUALIFICATION_VERSIONS['babel-preset-solid'],
+      'solid-js': EXACT_QUALIFICATION_VERSIONS['solid-js'],
+    })
+    expect(root.overrides?.['babel-preset-solid'])
+      .toBe(EXACT_QUALIFICATION_VERSIONS['babel-preset-solid'])
+    const frontend = await readJson(join(ROOT, 'apps/frontend/package.json'))
+    expect(frontend.dependencies).toMatchObject({
+      '@solidjs/router': 'catalog:',
+      '@solidjs/web': 'catalog:',
+      'solid-js': 'catalog:',
+    })
+    expect(frontend.devDependencies?.['@solidjs/vite-plugin']).toBe('catalog:')
+    expect(frontend.devDependencies?.['solid-devtools']).toBeUndefined()
+    expect(frontend.dependencies?.['lucide-solid']).toBeUndefined()
+    expect(frontend.dependencies?.['@kobalte/core']).toBeUndefined()
+    expect(root.catalog?.['@kobalte/core']).toBeUndefined()
+    const lock = await readFile(join(ROOT, 'bun.lock'), 'utf8')
+    for (const qualified of [
+      'solid-js',
+      '@solidjs/signals',
+      '@solidjs/web',
+      '@solidjs/router',
+      '@solidjs/vite-plugin',
+      'babel-preset-solid',
+    ] as const) {
+      const escaped = qualified.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const resolvedVersions = new Set(
+        [...lock.matchAll(new RegExp(`${escaped}@(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)`, 'g'))]
+          .map((match) => match[1]!),
+      )
+      expect([...resolvedVersions], `${qualified} lockfile versions`).toEqual([
+        EXACT_QUALIFICATION_VERSIONS[qualified],
+      ])
+    }
+    expect(lock).not.toContain('solid-devtools')
+    expect(lock).not.toContain('lucide-solid')
+    expect(lock).not.toContain('@kobalte/core')
+    expect(lock).not.toMatch(/(?:^|["'])vite-plugin-solid(?:["'@:]|$)/m)
+    for (const config of [
+      'apps/frontend/vite.config.ts',
+      'apps/frontend/vite.inspection.config.ts',
+      'apps/frontend/vitest.config.ts',
+      'packages/canvas/vite.config.ts',
+      'packages/canvas/vitest.config.ts',
+      'packages/component-ai-chat/vite.config.ts',
+      'packages/component-ai-chat/vitest.config.ts',
+      'tests/fixtures/canvas-consumer/vite.config.ts',
+    ]) {
+      expect(await readFile(join(ROOT, config), 'utf8'), config).toMatch(
+        /solid\(?(?:Plugin)?\(\{\s*solid:\s*\{\s*moduleName:\s*["']@solidjs\/web["']\s*\}\s*\}\)/,
+      )
+    }
+    const migratedRoots = [
+      'apps/frontend',
+      'packages/canvas',
+      'packages/component-ai-chat',
+    ]
+    const forbidden = [
+      [/(?:^|['"])(solid-js\/(?:web|store|jsx-runtime|jsx-dev-runtime))\b/, 'legacy Solid subpath'],
+      [/"jsxImportSource"\s*:\s*"solid-js"/, 'Solid-owned JSX runtime'],
+      [/\bon:[A-Za-z][\w-]*\s*=/, 'legacy namespaced JSX event'],
+      [/\bclassList\s*=/, 'legacy JSX classList binding'],
+      [/\bonMount\b/, 'removed onMount lifecycle'],
+      [/<[A-Za-z_$][\w$]*\.Provider\b/, 'legacy context Provider element'],
+      [/\b(?:lucide-solid|solid-devtools|vite-plugin-solid)\b/, 'Solid 1-only dependency or tool'],
+    ] as const
+
+    for (const directory of migratedRoots) {
+      for (const file of await sourceFiles(join(ROOT, directory))) {
+        const source = await readFile(file, 'utf8')
+        for (const [pattern, label] of forbidden) {
+          if (pattern.test(source)) violations.push(`${relative(ROOT, file)} contains ${label}`)
+        }
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  test('installs one compiler, router, and runtime graph with compatible Solid RC peers', async () => {
+    const frontendRoot = join(ROOT, 'apps/frontend')
+    const pluginRoot = await realpath(join(frontendRoot, 'node_modules/@solidjs/vite-plugin'))
+    const routerRoot = await realpath(join(frontendRoot, 'node_modules/@solidjs/router'))
+    const plugin = await readJson(join(pluginRoot, 'package.json'))
+    const router = await readJson(join(routerRoot, 'package.json'))
+    const presetPath = Bun.resolveSync('babel-preset-solid/package.json', pluginRoot)
+    const pluginCorePath = Bun.resolveSync('solid-js/package.json', pluginRoot)
+    const pluginWebPath = Bun.resolveSync('@solidjs/web/package.json', pluginRoot)
+    const presetCorePath = Bun.resolveSync('solid-js/package.json', dirname(presetPath))
+    const routerCorePath = Bun.resolveSync('solid-js/package.json', routerRoot)
+    const routerWebPath = Bun.resolveSync('@solidjs/web/package.json', routerRoot)
+    const signalsPath = Bun.resolveSync('@solidjs/signals/package.json', dirname(pluginCorePath))
+    const [preset, pluginCore, pluginWeb, presetCore, routerCore, routerWeb, signals] = await Promise.all([
+      readJson(presetPath),
+      readJson(pluginCorePath),
+      readJson(pluginWebPath),
+      readJson(presetCorePath),
+      readJson(routerCorePath),
+      readJson(routerWebPath),
+      readJson(signalsPath),
+    ])
+
+    expect(plugin.version).toBe(EXACT_QUALIFICATION_VERSIONS['@solidjs/vite-plugin'])
+    expect(plugin.dependencies?.['babel-preset-solid']).toBe('^2.0.0-rc.0')
+    expect(plugin.peerDependencies?.['solid-js']).toBe('^2.0.0-rc.0')
+    expect(plugin.peerDependencies?.['@solidjs/web']).toBe('^2.0.0-rc.0')
+    expect(preset.version).toBe(EXACT_QUALIFICATION_VERSIONS['babel-preset-solid'])
+    expect(preset.peerDependencies?.['solid-js']).toBe('^2.0.0-rc.0')
+    expect(preset.dependencies?.['@dom-expressions/babel-plugin-jsx']).toBe('0.50.0-next.42')
+    expect(router.version).toBe(EXACT_QUALIFICATION_VERSIONS['@solidjs/router'])
+    expect(router.peerDependencies?.['solid-js']).toBe('^2.0.0-rc.0')
+    expect(router.peerDependencies?.['@solidjs/web']).toBe('^2.0.0-rc.0')
+    for (const core of [pluginCore, presetCore, routerCore]) {
+      expect(core.version).toBe(EXACT_QUALIFICATION_VERSIONS['solid-js'])
+    }
+    for (const web of [pluginWeb, routerWeb]) {
+      expect(web.version).toBe(EXACT_QUALIFICATION_VERSIONS['@solidjs/web'])
+    }
+    expect(signals.version).toBe(EXACT_QUALIFICATION_VERSIONS['@solidjs/signals'])
   })
 
   test('has an acyclic internal graph', async () => {
@@ -389,6 +521,18 @@ describe('public package release graph', () => {
         expect(source, normalized(relative(ROOT, declaration))).not.toMatch(
           /(?:from\s+|import\s*\()['"](?:effect|zod|@omnidraw\/capsule|@omnidraw\/cangine|@omnidraw\/(?:backend|frontend))\b/,
         )
+        if (name === '@omnidraw/canvas' || name === '@omnidraw/component-ai-chat') {
+          expect(source, normalized(relative(ROOT, declaration))).not.toMatch(
+            /solid-js\/(?:web|store|jsx-runtime|jsx-dev-runtime)|import\(["']solid-js["']\)\.JSX|import\s+type\s+\{[^}]*\bJSX\b[^}]*\}\s+from\s+["']solid-js["']/,
+          )
+        }
+      }
+      if (name === '@omnidraw/canvas' || name === '@omnidraw/component-ai-chat') {
+        for (const output of (await listFiles(dist)).filter((path) => path.endsWith('.js'))) {
+          expect(await readFile(output, 'utf8'), normalized(relative(ROOT, output))).not.toMatch(
+            /solid-js\/(?:web|store|jsx-runtime|jsx-dev-runtime)/,
+          )
+        }
       }
     }
   })
@@ -993,6 +1137,8 @@ describe('isolated consumer and tooling gates', () => {
     const external = await readJson(join(externalRoot, 'package.json'))
     expect(external.dependencies).toEqual({
       ...packageSet.packages,
+      '@solidjs/signals': EXACT_QUALIFICATION_VERSIONS['@solidjs/signals'],
+      '@solidjs/web': EXACT_QUALIFICATION_VERSIONS['@solidjs/web'],
       'solid-js': EXACT_QUALIFICATION_VERSIONS['solid-js'],
     })
     const canvas = await readJson(join(ROOT, 'tests/fixtures/canvas-consumer/package.json'))
@@ -1001,6 +1147,8 @@ describe('isolated consumer and tooling gates', () => {
       '@omnidraw/canvas': packageSet.packages['@omnidraw/canvas'],
       '@omnidraw/component-ai-chat': packageSet.packages['@omnidraw/component-ai-chat'],
       '@omnidraw/theme': packageSet.packages['@omnidraw/theme'],
+      '@solidjs/signals': EXACT_QUALIFICATION_VERSIONS['@solidjs/signals'],
+      '@solidjs/web': EXACT_QUALIFICATION_VERSIONS['@solidjs/web'],
       'solid-js': EXACT_QUALIFICATION_VERSIONS['solid-js'],
     })
     for (const root of [externalRoot, join(ROOT, 'tests/fixtures/canvas-consumer')]) {

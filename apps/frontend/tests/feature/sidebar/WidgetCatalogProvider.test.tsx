@@ -1,7 +1,7 @@
 import { createCatalogInvalidation } from "../../../src/shell/framework/feature/sidebar/ports";
 import { WidgetCatalogProvider } from "../../../src/shell/framework/feature/sidebar/widgets/WidgetCatalogProvider";
 import { useWidgetCatalog } from "../../../src/shell/framework/feature/sidebar/widgets/WidgetCatalogProvider";
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import { describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import { publicCatalog } from '../widget-public-catalog.fixture';

@@ -1,8 +1,8 @@
-import { Button } from "@kobalte/core/button";
-import Trash2 from "lucide-solid/icons/trash-2";
+import { Trash2 } from "@/shell/framework/components/icons";
 import { For, Show, type Component } from "solid-js";
 import { fnForeignKeySummary, fnIndexColumns } from "@/core/resources/fn.db-resource";
 import type { TDbObject } from "@/core/resources/types";
+import { Button } from "../../resource/owned-primitives";
 import type { TStructureOperationKind } from "./StructureChangeDialog";
 import styles from "../DbResourcePage.module.css";
 

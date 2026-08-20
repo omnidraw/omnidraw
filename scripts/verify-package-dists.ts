@@ -15,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import {
+  EXACT_QUALIFICATION_VERSIONS,
   assertFinalWorkspaceSurface,
   readQualifiedPublicPackages,
 } from './public-packages'
@@ -41,6 +42,10 @@ const REPOSITORY_ROOT = resolve(import.meta.dir, '..')
 const FORBIDDEN_PROTOCOL = /['"](?:workspace|catalog|file|link):/
 const TEXT_FILE = /\.(?:css|d\.ts|js|json|map|md|txt)$/
 const MODULE_SCANNER = new Bun.Transpiler({ loader: 'js' })
+const ICON_NOTICE_MARKERS = Object.freeze([
+  'Copyright (c) 2026 Lucide Icons and Contributors',
+  'Copyright (c) 2013-present Cole Bemis',
+] as const)
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -161,6 +166,14 @@ async function assertStandaloneDist(entry: TPackage, versions: ReadonlyMap<strin
   if (manifest.name !== entry.name || manifest.version !== entry.version || manifest.private === true) {
     throw new Error(`${entry.name} dist has an invalid public identity.`)
   }
+  if (entry.name === '@omnidraw/canvas' || entry.name === '@omnidraw/component-ai-chat') {
+    const license = await readFile(join(dist, 'LICENSE'), 'utf8')
+    for (const marker of ICON_NOTICE_MARKERS) {
+      if (!license.includes(marker)) {
+        throw new Error(`${entry.name} dist LICENSE is missing required copied-icon notice: ${marker}`)
+      }
+    }
+  }
   const manifestText = JSON.stringify(manifest)
   if (FORBIDDEN_PROTOCOL.test(manifestText) || manifestText.includes(REPOSITORY_ROOT)) {
     throw new Error(`${entry.name} dist manifest contains a workspace or repository reference.`)
@@ -197,6 +210,13 @@ async function assertStandaloneDist(entry: TPackage, versions: ReadonlyMap<strin
     }
     if (path.endsWith('.d.ts') && /(?:\.\.\/)+(?:apps|packages)\//.test(text)) {
       throw new Error(`${entry.name} declaration reaches into the repository: ${relative(dist, path)}`)
+    }
+    if (
+      (entry.name === '@omnidraw/canvas' || entry.name === '@omnidraw/component-ai-chat')
+      && (path.endsWith('.js') || path.endsWith('.d.ts'))
+      && /solid-js\/(?:web|store|jsx-runtime|jsx-dev-runtime)|import\(["']solid-js["']\)\.JSX|import\s+type\s+\{[^}]*\bJSX\b[^}]*\}\s+from\s+["']solid-js["']/.test(text)
+    ) {
+      throw new Error(`${entry.name} retains a Solid 1 runtime or JSX reference in ${relative(dist, path)}.`)
     }
     if (path.endsWith('.js')) {
       for (const specifier of moduleSpecifiers(text)) {
@@ -257,12 +277,32 @@ async function assertCleanConsumer(packed: readonly TPacked[], temporaryRoot: st
     type: 'module',
     dependencies: {
       ...internalTarballs,
-      'solid-js': '^1.9.14',
+      '@solidjs/signals': EXACT_QUALIFICATION_VERSIONS['@solidjs/signals'],
+      '@solidjs/web': EXACT_QUALIFICATION_VERSIONS['@solidjs/web'],
+      'solid-js': EXACT_QUALIFICATION_VERSIONS['solid-js'],
       typescript: '7.0.2',
     },
     overrides,
   }, null, 2)}\n`)
   await run(['bun', 'install', '--ignore-scripts'], consumer)
+
+  for (const runtime of ['solid-js', '@solidjs/signals', '@solidjs/web'] as const) {
+    const segments = runtime.split('/')
+    const hostRuntime = await realpath(join(consumer, 'node_modules', ...segments))
+    const manifest = JSON.parse(await readFile(join(hostRuntime, 'package.json'), 'utf8')) as { version?: string }
+    if (manifest.version !== EXACT_QUALIFICATION_VERSIONS[runtime]) {
+      throw new Error(`${runtime} installed as ${manifest.version ?? '<unknown>'}; expected ${EXACT_QUALIFICATION_VERSIONS[runtime]}.`)
+    }
+    for (const packageName of ['canvas', 'component-ai-chat']) {
+      const nestedRuntime = join(consumer, 'node_modules', '@omnidraw', packageName, 'node_modules', ...segments)
+      try {
+        const nested = await realpath(nestedRuntime)
+        if (nested !== hostRuntime) throw new Error(`${packageName} installed a duplicate ${runtime} runtime: ${nested}`)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+    }
+  }
 
   // The two Solid renderers are exercised from their packed tarballs by the
   // real browser-composition gate. Importing their browser-compiled entrypoints

@@ -2,16 +2,21 @@
   "format": "omnidraw.public-package-set.v1",
   "packages": {
     "@omnidraw/canvas-contract": "0.7.0",
-    "@omnidraw/canvas": "0.9.0",
+    "@omnidraw/canvas": "0.10.0",
     "@omnidraw/sdk": "0.7.0",
-    "@omnidraw/component-ai-chat": "0.2.0",
+    "@omnidraw/component-ai-chat": "0.3.0",
     "@omnidraw/theme": "0.1.0"
   },
   "qualification": {
     "effect": "4.0.0-rc.108",
     "@omnidraw/cangine": "0.6.1",
     "@omnidraw/capsule": "0.16.0",
-    "solid-js": "1.9.14"
+    "@solidjs/router": "2.0.0-next.16",
+    "@solidjs/signals": "2.0.0-rc.0",
+    "@solidjs/vite-plugin": "3.0.0-next.31",
+    "@solidjs/web": "2.0.0-rc.0",
+    "babel-preset-solid": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
   },
   "publicationOrder": [
     "@omnidraw/theme",

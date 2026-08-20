@@ -1,7 +1,7 @@
 import type { TChatComposerImage, TChatComposerMention, TChatComposerModel, TChatComposerPreferenceChange, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
-import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { For, createEffect, createMemo, createSignal, onSettled, Show, untrack } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
 import { fnGetAiChatAssistantError } from "../fn.error"
 import { fnGetChatMessageLabel, fnGetChatMessageRole, fnIsChatMessageVisible } from "./fn.chat-message-label"
@@ -266,10 +266,10 @@ function onNestedChatWheel(event: WheelEvent, block: HTMLElement) {
 function MarkdownTable(props: { block: Extract<TMarkdownBlock, { kind: "table" }> }) {
   let tableWrap!: HTMLDivElement
 
-  onMount(() => {
+  onSettled(() => {
     const listener = (event: WheelEvent) => onNestedChatWheel(event, tableWrap)
     tableWrap.addEventListener("wheel", listener, { passive: false })
-    onCleanup(() => tableWrap.removeEventListener("wheel", listener))
+    return () => tableWrap.removeEventListener("wheel", listener)
   })
 
   return (
@@ -309,10 +309,10 @@ function MarkdownTable(props: { block: Extract<TMarkdownBlock, { kind: "table" }
 function MarkdownCode(props: { block: Extract<TMarkdownBlock, { kind: "code" }> }) {
   let codeBlock!: HTMLPreElement
 
-  onMount(() => {
+  onSettled(() => {
     const listener = (event: WheelEvent) => onNestedChatWheel(event, codeBlock)
     codeBlock.addEventListener("wheel", listener, { passive: false })
-    onCleanup(() => codeBlock.removeEventListener("wheel", listener))
+    return () => codeBlock.removeEventListener("wheel", listener)
   })
 
   return <pre ref={codeBlock}><code>{props.block.code}</code></pre>
@@ -530,21 +530,23 @@ function ChatHistoryMessage(props: {
     editor.style.height = `${editor.scrollHeight}px`
   }
   createEffect(() => {
-    const editing = props.isEditing
+    return { browser: props.browser, editing: props.isEditing }
+  }, ({ browser, editing }) => {
     if (editing && !wasEditing) {
-      props.browser.requestAnimationFrame(() => {
+      browser.requestAnimationFrame(() => {
         editor?.focus()
         editor?.setSelectionRange(editor.value.length, editor.value.length)
       })
     } else if (wasEditing) {
-      props.browser.requestAnimationFrame(() => editButton?.focus())
+      browser.requestAnimationFrame(() => editButton?.focus())
     }
     wasEditing = editing
   })
   createEffect(() => {
     if (!props.isEditing) return
-    props.editText
-    props.browser.requestAnimationFrame(resizeEditor)
+    return { browser: props.browser, editText: props.editText }
+  }, (update) => {
+    if (update) update.browser.requestAnimationFrame(resizeEditor)
   })
   const toggleToolResult = () => {
     if (isToolResult()) {
@@ -553,11 +555,13 @@ function ChatHistoryMessage(props: {
   }
   return (
     <article
-      class={`omnidraw-ai-chat-history__message omnidraw-ai-chat-history__message--${kind()}`}
-      classList={{
-        "omnidraw-ai-chat-history__message--tool-result": isToolResult(),
-        "omnidraw-ai-chat-history__message--tool-result-expanded": isToolResult() && isExpanded(),
-      }}
+      class={[
+        `omnidraw-ai-chat-history__message omnidraw-ai-chat-history__message--${kind()}`,
+        {
+          "omnidraw-ai-chat-history__message--tool-result": isToolResult(),
+          "omnidraw-ai-chat-history__message--tool-result-expanded": isToolResult() && isExpanded(),
+        },
+      ]}
       onClick={toggleToolResult}
       onWheel={(event) => {
         if (isToolResult()) {
@@ -587,7 +591,7 @@ function ChatHistoryMessage(props: {
             <button
               type="button"
               class="omnidraw-ai-chat-history__tool-result-toggle"
-              aria-expanded={isExpanded()}
+              aria-expanded={isExpanded() ? "true" : "false"}
               onClick={(event) => {
                 event.stopPropagation()
                 toggleToolResult()
@@ -701,6 +705,7 @@ export function ChatTab(props: IProps) {
   let contentRoot!: HTMLDivElement
   let shouldAutoScroll = true
   let scrollAnimationFrame: number | undefined
+  const browser = untrack(() => props.browser)
   const [editingEntryId, setEditingEntryId] = createSignal<string>()
   const [editText, setEditText] = createSignal("")
   const [editPending, setEditPending] = createSignal(false)
@@ -760,10 +765,10 @@ export function ChatTab(props: IProps) {
 
   const scheduleScrollToBottom = () => {
     if (scrollAnimationFrame !== undefined) {
-      props.browser.cancelAnimationFrame(scrollAnimationFrame)
+      browser.cancelAnimationFrame(scrollAnimationFrame)
     }
 
-    scrollAnimationFrame = props.browser.requestAnimationFrame(() => {
+    scrollAnimationFrame = browser.requestAnimationFrame(() => {
       scrollAnimationFrame = undefined
       scrollToBottom()
     })
@@ -776,7 +781,7 @@ export function ChatTab(props: IProps) {
     if (!text && !hasImages) return
 
     props.lifecycle.startLatest("composer:prompt", {
-      run: () => encodePromptImages(props.browser, submit.images),
+      run: () => encodePromptImages(browser, submit.images),
       onSuccess(images) {
         if (!text && images.length === 0) return
         props.onPrompt({
@@ -803,7 +808,7 @@ export function ChatTab(props: IProps) {
     }
 
     props.lifecycle.startLatest("composer:copy", {
-      run: () => props.browser.writeClipboardText(markdown),
+      run: () => browser.writeClipboardText(markdown),
       onSuccess: () => undefined,
       onError: props.onLogError,
     })
@@ -817,28 +822,38 @@ export function ChatTab(props: IProps) {
 
   const autoOpenedPreviewNames = new Set<string>()
   createEffect(() => {
-    if (props.onOpenWidgetPreview === undefined) return
+    const onOpenWidgetPreview = props.onOpenWidgetPreview
+    if (onOpenWidgetPreview === undefined) return
+    const pendingNames = new Set(autoOpenedPreviewNames)
+    const draftNames: string[] = []
     for (const item of visibleMessageHistory()) {
       const draft = fnGetToolResultWidgetDraft(item.message)
-      if (draft === undefined || autoOpenedPreviewNames.has(draft.name)) continue
-      autoOpenedPreviewNames.add(draft.name)
-      props.lifecycle.startLatest(`composer:preview:${draft.name}`, {
-        run: () => Promise.resolve(props.onOpenWidgetPreview?.({ name: draft.name })),
+      if (draft === undefined || pendingNames.has(draft.name)) continue
+      pendingNames.add(draft.name)
+      draftNames.push(draft.name)
+    }
+    return { draftNames, lifecycle: props.lifecycle, onError: props.onLogError, onOpenWidgetPreview }
+  }, (intent) => {
+    if (!intent) return
+    for (const name of intent.draftNames) {
+      autoOpenedPreviewNames.add(name)
+      intent.lifecycle.startLatest(`composer:preview:${name}`, {
+        run: () => Promise.resolve(intent.onOpenWidgetPreview({ name })),
         onSuccess: () => undefined,
-        onError: props.onLogError,
+        onError: intent.onError,
       })
     }
   })
 
-  createEffect(() => {
-    getChatScrollSignal()
+  createEffect(
+    () => getChatScrollSignal(),
+    () => {
+      if (shouldAutoScroll) scheduleScrollToBottom()
+    },
+  )
 
-    if (shouldAutoScroll) {
-      scheduleScrollToBottom()
-    }
-  })
-
-  onMount(() => {
+  onSettled(() => {
+    const lifecycle = props.lifecycle
     const updateAutoScroll = () => {
       shouldAutoScroll = isScrolledToBottom(contentRoot)
     }
@@ -846,14 +861,14 @@ export function ChatTab(props: IProps) {
     updateAutoScroll()
     contentRoot.addEventListener("scroll", updateAutoScroll, { passive: true })
 
-    onCleanup(() => {
-      props.lifecycle.closeMatching("composer:")
+    return () => {
+      lifecycle.closeMatching("composer:")
       contentRoot.removeEventListener("scroll", updateAutoScroll)
 
       if (scrollAnimationFrame !== undefined) {
-        props.browser.cancelAnimationFrame(scrollAnimationFrame)
+        browser.cancelAnimationFrame(scrollAnimationFrame)
       }
-    })
+    }
   })
 
   return (
@@ -926,7 +941,9 @@ export function ChatTab(props: IProps) {
         reviewerModels={reviewerModels()}
         approvalPolicy={props.aiChatPreference?.approvalPolicy ?? { mode: "manual" }}
         defaultModel={props.aiChatPreference?.model?.modelId ?? props.settings?.defaultModel}
-        defaultProvider={props.aiChatPreference?.model?.provider ?? props.settings?.defaultProvider}
+        defaultProvider={props.aiChatPreference?.model?.provider
+          ?? props.settings?.defaultProvider
+          ?? props.settings?.providersWithCredentials[0]}
         defaultThinkingLevel={props.aiChatPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
         isRunning={props.isRunning}
         isCanceling={props.isCanceling}

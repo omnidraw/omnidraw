@@ -14,7 +14,7 @@ import {
   ThemeService,
 } from '@omnidraw/theme'
 import type { Component } from 'solid-js'
-import { render } from 'solid-js/web'
+import { render } from '@solidjs/web'
 import {
   createFakeCellCanvasTransport,
   createInMemoryCanvasTransport,

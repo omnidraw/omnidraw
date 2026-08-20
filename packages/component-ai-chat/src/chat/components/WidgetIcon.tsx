@@ -1,8 +1,8 @@
 import DOMPurify from "dompurify";
-import Puzzle from "lucide-solid/icons/puzzle";
 import * as LucideStatic from "lucide-static";
 import { Show, type Component } from "solid-js";
 import type { TAiChatToolIcon } from "../../contracts.js";
+import { Puzzle } from "./icons";
 
 export type TAiChatWidgetIconProps = Readonly<{
   icon: TAiChatToolIcon | null;

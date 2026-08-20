@@ -1,10 +1,8 @@
-import { Button } from "@kobalte/core/button";
-import * as Checkbox from "@kobalte/core/checkbox";
-import * as Dialog from "@kobalte/core/dialog";
-import Check from "lucide-solid/icons/check";
+import { Check } from "@/shell/framework/components/icons";
 import { For, Show, createEffect, createSignal, type Component } from "solid-js";
 import { fnChangeSummary, fnStatusLabel } from "@/core/resources/fn.db-resource";
 import type { TDbApplyDetails, TDbApplyPreview, TDbRestorePreview } from "@/core/resources/types";
+import { Button, Checkbox, Dialog } from "../../resource/owned-primitives";
 import styles from "../DbResourcePage.module.css";
 
 type TPreview = TDbApplyPreview | TDbRestorePreview;
@@ -28,9 +26,12 @@ const previewWarnings = (preview: TPreview | null): string[] => {
 export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogProps> = (props) => {
   const [acknowledged, setAcknowledged] = createSignal(false);
 
-  createEffect(() => {
-    if (props.open) setAcknowledged(false);
-  });
+  createEffect(
+    () => props.open,
+    (open) => {
+      if (open) setAcknowledged(false);
+    },
+  );
 
   const title = () => props.run
     ? `${props.mode === "apply" ? "Apply" : "Restore"} status`
@@ -68,7 +69,7 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
                 <h4 class={styles.sectionTitle}>Active resource uses</h4>
                 <table class={styles.table}>
                   <thead><tr><th>Use</th><th>Kind</th><th>Observed</th></tr></thead>
-                  <tbody><For each={props.preview?.impact.uses.uses ?? []} fallback={<tr><td colSpan={3} class={styles.muted}>No active uses.</td></tr>}>{(use) => (
+                  <tbody><For each={props.preview?.impact.uses.uses ?? []} fallback={<tr><td colspan={3} class={styles.muted}>No active uses.</td></tr>}>{(use) => (
                     <tr>
                       <td>{use.label ?? use.id}</td>
                       <td>{use.kind}</td>

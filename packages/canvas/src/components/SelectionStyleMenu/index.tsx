@@ -13,7 +13,14 @@ import type {
   TThemeColorPickerPalette,
   TThemeStrokeWidthOption,
 } from '@omnidraw/theme';
-import { For, Show, createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import {
+  For,
+  Show,
+  createEffect,
+  createSignal,
+  onSettled,
+  untrack,
+} from 'solid-js';
 import {
   fnCanvasColorToCss,
   fnSelectionStyleControl,
@@ -66,6 +73,19 @@ const FONT_SIZE_OPTIONS = [
 const FONT_WEIGHT_LABELS: Readonly<Record<number, string>> = {
   400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold',
 };
+const CONTAINED_SELECTION_EVENTS = [
+  'pointerdown',
+  'pointermove',
+  'pointerup',
+  'pointercancel',
+  'wheel',
+  'keydown',
+  'keyup',
+] as const;
+
+function stopSelectionEventPropagation(event: Event): void {
+  event.stopPropagation();
+}
 
 function isOpacityKey(key: string) {
   return key.startsWith('Arrow') || ['End', 'Home', 'PageDown', 'PageUp'].includes(key);
@@ -93,7 +113,9 @@ function ChoiceSection(props: Readonly<{
               <button
                 type="button"
                 class="omnidraw-selection-style-choice"
-                aria-pressed={key(props.value) === key(option.value)}
+                aria-pressed={key(props.value) === key(option.value)
+                  ? 'true'
+                  : 'false'}
                 disabled={props.section.id === 'font-size' && props.value === null}
                 onClick={() => props.onSelect(option.value)}
               >
@@ -125,8 +147,8 @@ function ColorSection(props: Readonly<{
               class="omnidraw-style-color"
               aria-label={`${props.label} ${swatch.label}`}
               aria-pressed={props.semanticCode === undefined
-                ? props.value === swatch.color
-                : props.semanticCode === swatch.code}
+                ? props.value === swatch.color ? 'true' : 'false'
+                : props.semanticCode === swatch.code ? 'true' : 'false'}
               title={swatch.label}
               style={{ '--omnidraw-style-color': swatch.color }}
               onClick={() => props.onSelect(swatch)}
@@ -143,7 +165,72 @@ function selectedColor(control: TSelectionStyleControl): string | null {
   return color === null ? null : fnCanvasColorToCss(color);
 }
 
+function OpacitySection(props: Readonly<{
+  control: TSelectionStyleControl;
+  preview: number | null;
+  value: number;
+  onBegin(): void;
+  onEnd(): void;
+  onUpdate(value: number): void;
+}>) {
+  let inputRef!: HTMLInputElement;
+  const begin = () => props.onBegin();
+  const end = () => props.onEnd();
+  const update = () => props.onUpdate(inputRef.valueAsNumber);
+  const beginFromKey = (event: KeyboardEvent) => {
+    if (isOpacityKey(event.key)) props.onBegin();
+  };
+  const endFromKey = (event: KeyboardEvent) => {
+    if (isOpacityKey(event.key)) props.onEnd();
+  };
+  onSettled(() => {
+    inputRef.addEventListener('pointerdown', begin);
+    inputRef.addEventListener('pointerup', end);
+    inputRef.addEventListener('pointercancel', end);
+    inputRef.addEventListener('input', update);
+    inputRef.addEventListener('change', end);
+    inputRef.addEventListener('blur', end);
+    inputRef.addEventListener('keydown', beginFromKey);
+    inputRef.addEventListener('keyup', endFromKey);
+    return () => {
+      inputRef.removeEventListener('pointerdown', begin);
+      inputRef.removeEventListener('pointerup', end);
+      inputRef.removeEventListener('pointercancel', end);
+      inputRef.removeEventListener('input', update);
+      inputRef.removeEventListener('change', end);
+      inputRef.removeEventListener('blur', end);
+      inputRef.removeEventListener('keydown', beginFromKey);
+      inputRef.removeEventListener('keyup', endFromKey);
+    };
+  });
+
+  return (
+    <section class="omnidraw-selection-style-section">
+      <label for="omnidraw-selection-opacity">
+        <span>OPACITY</span>
+        <output>
+          {fnSelectionStyleSharedValue<number>(props.control) === null
+            && props.preview === null
+            ? 'Mixed'
+            : `${Math.round(props.value * 100)}%`}
+        </output>
+      </label>
+      <input
+        ref={inputRef}
+        id="omnidraw-selection-opacity"
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={props.value}
+        style={{ '--omnidraw-style-opacity': `${props.value * 100}%` }}
+      />
+    </section>
+  );
+}
+
 export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
+  let menuRef!: HTMLElement;
   let opacityContinuous = false;
   let fontSizeSelection = '';
   let fontSizeBase: number | null = null;
@@ -207,31 +294,46 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
   const opacityValue = () => opacityPreview()
     ?? fnSelectionStyleSharedValue<number>(control('opacity'))
     ?? 0.5;
-  createEffect(() => {
-    const current = fnSelectionStyleSharedValue<number>(control('font-size'));
-    const selection = props.state.selectedRootIds.join('\0');
-    const factor = untrack(fontSizeFactor);
-    if (selection !== fontSizeSelection) endOpacity();
-    if (selection !== fontSizeSelection
-      || current !== (fontSizeBase === null ? null : fontSizeBase * factor)) {
-      fontSizeSelection = selection;
-      fontSizeBase = current;
+  createEffect(
+    () => {
+      const current = fnSelectionStyleSharedValue<number>(control('font-size'));
+      const selection = props.state.selectedRootIds.join('\0');
+      const factor = untrack(fontSizeFactor);
+      const selectionChanged = selection !== fontSizeSelection;
+      return {
+        current,
+        selection,
+        selectionChanged,
+        shouldReset: selectionChanged || current !== (
+          fontSizeBase === null ? null : fontSizeBase * factor
+        ),
+      } as const;
+    },
+    (intent) => {
+      if (intent.selectionChanged) endOpacity();
+      if (!intent.shouldReset) return;
+      fontSizeSelection = intent.selection;
+      fontSizeBase = intent.current;
       setFontSizeFactor(1);
+    },
+  );
+  onSettled(() => {
+    for (const type of CONTAINED_SELECTION_EVENTS) {
+      menuRef.addEventListener(type, stopSelectionEventPropagation);
     }
+    return () => {
+      for (const type of CONTAINED_SELECTION_EVENTS) {
+        menuRef.removeEventListener(type, stopSelectionEventPropagation);
+      }
+      endOpacity();
+    };
   });
-  onCleanup(endOpacity);
 
   return (
     <aside
+      ref={menuRef}
       class="omnidraw-selection-style-menu"
       aria-label="Selection styles"
-      on:pointerdown={(event) => event.stopPropagation()}
-      on:pointermove={(event) => event.stopPropagation()}
-      on:pointerup={(event) => event.stopPropagation()}
-      on:pointercancel={(event) => event.stopPropagation()}
-      on:wheel={(event) => event.stopPropagation()}
-      on:keydown={(event) => event.stopPropagation()}
-      on:keyup={(event) => event.stopPropagation()}
     >
       <For each={choiceSections()}>
         {(section) => (
@@ -273,41 +375,15 @@ export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
         )}
       </Show>
       <Show when={control('opacity')}>
-        {(control) => (
-          <section class="omnidraw-selection-style-section">
-            <label for="omnidraw-selection-opacity">
-              <span>OPACITY</span>
-              <output>
-                {fnSelectionStyleSharedValue<number>(control()) === null
-                  && opacityPreview() === null
-                  ? 'Mixed'
-                  : `${Math.round(opacityValue() * 100)}%`}
-              </output>
-            </label>
-            <input
-              id="omnidraw-selection-opacity"
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={opacityValue()}
-              style={{ '--omnidraw-style-opacity': `${opacityValue() * 100}%` }}
-              on:pointerdown={beginOpacity}
-              on:pointerup={endOpacity}
-              on:pointercancel={endOpacity}
-              onInput={(event) => updateOpacity(
-                event.currentTarget.valueAsNumber,
-              )}
-              on:change={endOpacity}
-              on:blur={endOpacity}
-              on:keydown={(event) => {
-                if (isOpacityKey(event.key)) beginOpacity();
-              }}
-              on:keyup={(event) => {
-                if (isOpacityKey(event.key)) endOpacity();
-              }}
-            />
-          </section>
+        {(entry) => (
+          <OpacitySection
+            control={entry()}
+            preview={opacityPreview()}
+            value={opacityValue()}
+            onBegin={beginOpacity}
+            onEnd={endOpacity}
+            onUpdate={updateOpacity}
+          />
         )}
       </Show>
     </aside>

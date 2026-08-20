@@ -1,12 +1,7 @@
-import * as AlertDialog from "@kobalte/core/alert-dialog";
-import { Button } from "@kobalte/core/button";
-import * as Dialog from "@kobalte/core/dialog";
-import * as Tabs from "@kobalte/core/tabs";
-import * as TextField from "@kobalte/core/text-field";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { Effect } from "effect";
-import PanelLeft from "lucide-solid/icons/panel-left";
-import { For, Show, createEffect, createSignal, onCleanup, type Component } from "solid-js";
+import { PanelLeft } from "@/shell/framework/components/icons";
+import { For, Show, createEffect, createSignal, onSettled, untrack, type Component } from "solid-js";
 import { showErrorToast, showSuccessToast } from "@/shell/framework/components/ui/Toast";
 import type { TRouteResource } from "@/shell/framework/pages/resource";
 import styles from "@/shell/framework/pages/resource.module.css";
@@ -17,6 +12,7 @@ import {
 } from "@/core/resources/fn.secret-reveal";
 import { fnResourceDataRequest } from "@/core/resources/fn.resource-data-request";
 import { useFrontendRuntime } from "../../runtime-context";
+import { AlertDialog, Button, Dialog, Tabs, TextField } from "./owned-primitives";
 
 export type TGenericResourcePageProps = { resource: TRouteResource };
 type TKvDataEntry = { key: string; valuePreview: string; valueTruncated: boolean; revision: number; createdAtSec: string; updatedAtSec: string };
@@ -27,6 +23,11 @@ type TDataPage =
 type TEntryEditor = { mode: "create" | "edit"; key: string; revision: number | null; value: string; valueTruncated: boolean };
 type TDeleteEntry = { key: string; revision: number };
 type TRevealedSecret = TSecretRevealRequestIdentity & { value: string };
+type TResourceOperationIdentity = Readonly<{
+  generation: number;
+  resourceId: string;
+  kind: TRouteResource["kind"];
+}>;
 
 const SECRET_REVEAL_INACTIVITY_MS = 30_000;
 
@@ -34,8 +35,8 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   const runtime = useFrontendRuntime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [name, setName] = createSignal(props.resource.name);
-  const [displayName, setDisplayName] = createSignal(props.resource.name);
+  const [name, setName] = createSignal(untrack(() => props.resource.name));
+  const [displayName, setDisplayName] = createSignal(untrack(() => props.resource.name));
   const [busy, setBusy] = createSignal(false);
   const [deleteOpen, setDeleteOpen] = createSignal(false);
   const [prefix, setPrefix] = createSignal("");
@@ -56,6 +57,8 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   let initializedDataResourceId = "";
   let dataRequest = 0;
   let revealGeneration = 0;
+  let resourceGeneration = 0;
+  let disposed = false;
   let cancelPrefixSearch: () => void = () => undefined;
   let cancelRevealExpiry: () => void = () => undefined;
 
@@ -81,56 +84,89 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   };
 
   const clearSecretRevealWhenHidden = () => {
-    if (document.visibilityState !== "visible") clearSecretReveal();
+    if (runtime.ownerDocument.visibilityState !== "visible") clearSecretReveal();
   };
   const clearSecretRevealOnPageHide = () => clearSecretReveal();
 
-  window.addEventListener("pagehide", clearSecretRevealOnPageHide);
-  document.addEventListener("visibilitychange", clearSecretRevealWhenHidden);
-
-  onCleanup(() => {
-    window.removeEventListener("pagehide", clearSecretRevealOnPageHide);
-    document.removeEventListener("visibilitychange", clearSecretRevealWhenHidden);
-    cancelPrefixSearch();
-    cancelPrefixSearch = () => undefined;
-    clearSecretReveal();
+  onSettled(() => {
+    runtime.ownerWindow.addEventListener("pagehide", clearSecretRevealOnPageHide);
+    runtime.ownerDocument.addEventListener("visibilitychange", clearSecretRevealWhenHidden);
+    return () => {
+      disposed = true;
+      resourceGeneration += 1;
+      dataRequest += 1;
+      runtime.ownerWindow.removeEventListener("pagehide", clearSecretRevealOnPageHide);
+      runtime.ownerDocument.removeEventListener("visibilitychange", clearSecretRevealWhenHidden);
+      cancelPrefixSearch();
+      cancelPrefixSearch = () => undefined;
+      clearSecretReveal();
+    };
   });
 
   const activeTab = () => searchParams.tab === "data" ? "data" : "overview";
   const kvPage = () => dataPage()?.kind === "kv" ? dataPage() as Extract<TDataPage, { kind: "kv" }> : null;
   const secretPage = () => dataPage()?.kind === "secretStore" ? dataPage() as Extract<TDataPage, { kind: "secretStore" }> : null;
 
-  createEffect(() => {
-    const tab = activeTab();
-    const identity = revealPending() ?? revealedSecret();
-    if (tab !== "data") {
-      if (identity || revealError()) clearSecretReveal();
-      return;
-    }
-    if (identity && !fnSecretRevealIdentityIsCurrent(identity, props.resource.id, tab, secretPage())) {
-      clearSecretReveal();
-    }
-  });
+  const captureResourceIdentity = (): TResourceOperationIdentity => untrack(() => ({
+    generation: resourceGeneration,
+    resourceId: props.resource.id,
+    kind: props.resource.kind,
+  }));
 
-  createEffect(() => {
-    if (!revealedSecret()) return;
-    const noteActivity = () => armSecretRevealTimeout();
-    armSecretRevealTimeout();
-    window.addEventListener("pointerdown", noteActivity, { passive: true });
-    window.addEventListener("keydown", noteActivity);
-    window.addEventListener("wheel", noteActivity, { passive: true });
-    window.addEventListener("focusin", noteActivity);
-    onCleanup(() => {
-      cancelRevealExpiry();
-      cancelRevealExpiry = () => undefined;
-      window.removeEventListener("pointerdown", noteActivity);
-      window.removeEventListener("keydown", noteActivity);
-      window.removeEventListener("wheel", noteActivity);
-      window.removeEventListener("focusin", noteActivity);
-    });
-  });
+  const resourceIdentityIsCurrent = (identity: TResourceOperationIdentity): boolean => untrack(() => (
+    !disposed
+    && identity.generation === resourceGeneration
+    && identity.resourceId === props.resource.id
+    && identity.kind === props.resource.kind
+  ));
 
-  const loadData = async (cursor?: string, selectedPrefix = appliedPrefix(), resourceId = props.resource.id): Promise<boolean> => {
+  createEffect(
+    () => ({
+      tab: activeTab(),
+      identity: revealPending() ?? revealedSecret(),
+      hasError: revealError() !== null,
+      resourceId: props.resource.id,
+      page: secretPage(),
+    }),
+    ({ tab, identity, hasError, resourceId, page }) => {
+      if (tab !== "data") {
+        if (identity !== null || hasError) clearSecretReveal();
+        return;
+      }
+      if (identity !== null && !fnSecretRevealIdentityIsCurrent(identity, resourceId, tab, page)) {
+        clearSecretReveal();
+      }
+    },
+  );
+
+  createEffect(
+    () => revealedSecret() !== null,
+    (visible) => {
+      if (!visible) return;
+      const noteActivity = () => armSecretRevealTimeout();
+      armSecretRevealTimeout();
+      runtime.ownerWindow.addEventListener("pointerdown", noteActivity, { passive: true });
+      runtime.ownerWindow.addEventListener("keydown", noteActivity);
+      runtime.ownerWindow.addEventListener("wheel", noteActivity, { passive: true });
+      runtime.ownerWindow.addEventListener("focusin", noteActivity);
+      return () => {
+        cancelRevealExpiry();
+        cancelRevealExpiry = () => undefined;
+        runtime.ownerWindow.removeEventListener("pointerdown", noteActivity);
+        runtime.ownerWindow.removeEventListener("keydown", noteActivity);
+        runtime.ownerWindow.removeEventListener("wheel", noteActivity);
+        runtime.ownerWindow.removeEventListener("focusin", noteActivity);
+      };
+    },
+  );
+
+  const loadData = async (
+    cursor?: string,
+    selectedPrefix = appliedPrefix(),
+    resourceId = untrack(() => props.resource.id),
+  ): Promise<boolean> => {
+    if (disposed || resourceId !== untrack(() => props.resource.id)) return false;
+    const identity = captureResourceIdentity();
     clearSecretReveal();
     const request = ++dataRequest;
     setDataLoading(true);
@@ -141,7 +177,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
       cursor,
       limit: 50,
     }));
-    if (request !== dataRequest || resourceId !== props.resource.id) return false;
+    if (request !== dataRequest || !resourceIdentityIsCurrent(identity)) return false;
     setDataLoading(false);
     if (loadError || !value) {
       setDataError(loadError?.message ?? "Resource data is unavailable.");
@@ -153,35 +189,42 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     return true;
   };
 
-  createEffect(() => {
-    const resource = props.resource;
-    if (resource.id === currentResourceId) return;
-    currentResourceId = resource.id;
-    cancelPrefixSearch();
-    cancelPrefixSearch = () => undefined;
-    initializedDataResourceId = "";
-    dataRequest += 1;
-    setName(resource.name);
-    setDisplayName(resource.name);
-    setPrefix("");
-    setAppliedPrefix("");
-    setDataPage(null);
-    setDataError("");
-    setDataLoading(false);
-    setCursorHistory([undefined]);
-    setEntryEditor(null);
-    setEntryDelete(null);
-    setEntryError("");
-    setSecretValueVisible(false);
-    clearSecretReveal();
-  });
-
-  createEffect(() => {
-    const resourceId = props.resource.id;
-    if (activeTab() !== "data" || initializedDataResourceId === resourceId) return;
-    initializedDataResourceId = resourceId;
-    void loadData(undefined, "", resourceId);
-  });
+  createEffect(
+    () => ({
+      resourceId: props.resource.id,
+      resourceName: props.resource.name,
+      tab: activeTab(),
+    }),
+    ({ resourceId, resourceName, tab }) => {
+      if (resourceId !== currentResourceId) {
+        currentResourceId = resourceId;
+        resourceGeneration += 1;
+        cancelPrefixSearch();
+        cancelPrefixSearch = () => undefined;
+        initializedDataResourceId = "";
+        dataRequest += 1;
+        setName(resourceName);
+        setDisplayName(resourceName);
+        setPrefix("");
+        setAppliedPrefix("");
+        setDataPage(null);
+        setDataError("");
+        setDataLoading(false);
+        setCursorHistory([undefined]);
+        setEntryEditor(null);
+        setEntryDelete(null);
+        setEntryBusy(false);
+        setEntryError("");
+        setBusy(false);
+        setDeleteOpen(false);
+        setSecretValueVisible(false);
+        clearSecretReveal();
+      }
+      if (tab !== "data" || initializedDataResourceId === resourceId) return;
+      initializedDataResourceId = resourceId;
+      void loadData(undefined, "", resourceId);
+    },
+  );
 
   const selectTab = (value: string) => {
     clearSecretReveal();
@@ -303,7 +346,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
       revealGeneration,
       props.resource.id,
       activeTab(),
-      document.visibilityState === "visible",
+      runtime.ownerDocument.visibilityState === "visible",
       secretPage(),
       { kind: value.kind, name: value.name, revision: value.revision },
     )) return;
@@ -337,9 +380,11 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   const saveEntry = async () => {
     const editor = entryEditor();
     if (!editor) return;
-    if (!editor.key.trim()) return setEntryError(props.resource.kind === "kv" ? "Key is required." : "Secret name is required.");
+    const identity = captureResourceIdentity();
+    const selectedPrefix = appliedPrefix();
+    if (!editor.key.trim()) return setEntryError(identity.kind === "kv" ? "Key is required." : "Secret name is required.");
     let value: unknown = editor.value;
-    if (props.resource.kind === "kv") {
+    if (identity.kind === "kv") {
       if (!editor.value.trim()) return setEntryError("Enter a JSON value.");
       try { value = JSON.parse(editor.value); } catch { return setEntryError("Value must be valid JSON."); }
     } else if (!editor.value) {
@@ -348,11 +393,12 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     setEntryBusy(true);
     setEntryError("");
     const [saveError] = await runtime.api.safeRequest("resource.resources.dataSet", {
-      resourceId: props.resource.id,
+      resourceId: identity.resourceId,
       key: editor.key,
       expectedRevision: editor.revision,
       value,
     });
+    if (!resourceIdentityIsCurrent(identity)) return;
     setEntryBusy(false);
     if (saveError) {
       setEntryError(saveError.message);
@@ -360,37 +406,45 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     }
     closeEntryEditor();
     setCursorHistory([undefined]);
-    await loadData(undefined);
-    showSuccessToast(props.resource.kind === "kv" ? (editor.mode === "create" ? "Value created" : "Value updated") : (editor.mode === "create" ? "Secret created" : "Secret rotated"));
+    await loadData(undefined, selectedPrefix, identity.resourceId);
+    if (!resourceIdentityIsCurrent(identity)) return;
+    showSuccessToast(identity.kind === "kv" ? (editor.mode === "create" ? "Value created" : "Value updated") : (editor.mode === "create" ? "Secret created" : "Secret rotated"));
   };
 
   const removeEntry = async () => {
     const entry = entryDelete();
     if (!entry) return;
+    const identity = captureResourceIdentity();
+    const selectedPrefix = appliedPrefix();
+    const cursor = cursorHistory().at(-1);
     setEntryBusy(true);
     const [removeError] = await runtime.api.safeRequest("resource.resources.dataDelete", {
-      resourceId: props.resource.id,
+      resourceId: identity.resourceId,
       key: entry.key,
       expectedRevision: entry.revision,
     });
+    if (!resourceIdentityIsCurrent(identity)) return;
     setEntryBusy(false);
     if (removeError) {
       showErrorToast(removeError.message);
       setEntryDelete(null);
-      await loadData(cursorHistory().at(-1));
+      await loadData(cursor, selectedPrefix, identity.resourceId);
       return;
     }
     setEntryDelete(null);
     setCursorHistory([undefined]);
-    await loadData(undefined);
-    showSuccessToast(props.resource.kind === "kv" ? "Value deleted" : "Secret deleted");
+    await loadData(undefined, selectedPrefix, identity.resourceId);
+    if (!resourceIdentityIsCurrent(identity)) return;
+    showSuccessToast(identity.kind === "kv" ? "Value deleted" : "Secret deleted");
   };
 
   const rename = async () => {
     const value = name().trim();
     if (!value || value === displayName()) return;
+    const identity = captureResourceIdentity();
     setBusy(true);
-    const [renameError] = await runtime.api.safeRequest("resource.resources.rename", { resourceId: props.resource.id, name: value });
+    const [renameError] = await runtime.api.safeRequest("resource.resources.rename", { resourceId: identity.resourceId, name: value });
+    if (!resourceIdentityIsCurrent(identity)) return;
     setBusy(false);
     if (renameError) return showErrorToast(renameError.message);
     setDisplayName(value);
@@ -399,9 +453,11 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   };
 
   const remove = async () => {
+    const identity = captureResourceIdentity();
     clearSecretReveal();
     setBusy(true);
-    const [deleteError] = await runtime.api.safeRequest("resource.resources.delete", { resourceId: props.resource.id });
+    const [deleteError] = await runtime.api.safeRequest("resource.resources.delete", { resourceId: identity.resourceId });
+    if (!resourceIdentityIsCurrent(identity)) return;
     setBusy(false);
     if (deleteError) return showErrorToast(deleteError.message);
     showSuccessToast("Resource deleted");
@@ -441,13 +497,13 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
                 <Button class={styles.button} disabled={dataLoading() || (!prefix() && !appliedPrefix())} onClick={() => void clearSearch()}>Clear</Button>
                 <Show when={dataError()}><p class={styles.error} role="alert">{dataError()}</p></Show>
               </div>
-              <Show when={kvPage()}>{(page) => <div class={styles.tableScroll}><table class={styles.table}><thead><tr><th>Key</th><th>Value preview</th><th>Revision</th><th>Updated</th><th>Actions</th></tr></thead><tbody><For each={page().entries} fallback={<tr><td colSpan={5} class={styles.empty}>{dataLoading() ? "Loading values…" : "No matching values."}</td></tr>}>{(entry) => <tr><td><code>{entry.key}</code></td><td class={styles.valuePreview}><code>{entry.valuePreview}{entry.valueTruncated ? "…" : ""}</code></td><td>{entry.revision}</td><td>{entry.updatedAtSec}</td><td><div class={styles.rowActions}><Button class={styles.rowButton} onClick={() => openEditKvEntry(entry)}>Edit</Button><Button class={`${styles.rowButton} ${styles.danger}`} onClick={() => setEntryDelete({ key: entry.key, revision: entry.revision })}>Delete</Button></div></td></tr>}</For></tbody></table></div>}</Show>
+              <Show when={kvPage()}>{(page) => <div class={styles.tableScroll}><table class={styles.table}><thead><tr><th>Key</th><th>Value preview</th><th>Revision</th><th>Updated</th><th>Actions</th></tr></thead><tbody><For each={page().entries} fallback={<tr><td colspan={5} class={styles.empty}>{dataLoading() ? "Loading values…" : "No matching values."}</td></tr>}>{(entry) => <tr><td><code>{entry.key}</code></td><td class={styles.valuePreview}><code>{entry.valuePreview}{entry.valueTruncated ? "…" : ""}</code></td><td>{entry.revision}</td><td>{entry.updatedAtSec}</td><td><div class={styles.rowActions}><Button class={styles.rowButton} onClick={() => openEditKvEntry(entry)}>Edit</Button><Button class={`${styles.rowButton} ${styles.danger}`} onClick={() => setEntryDelete({ key: entry.key, revision: entry.revision })}>Delete</Button></div></td></tr>}</For></tbody></table></div>}</Show>
               <Show when={secretPage()}>{(page) => (
                 <div class={styles.tableScroll}>
                   <table class={styles.table}>
                     <thead><tr><th>Name</th><th>Value</th><th>Revision</th><th>Created</th><th>Updated</th><th>Actions</th></tr></thead>
                     <tbody>
-                      <For each={page().entries} fallback={<tr><td colSpan={6} class={styles.empty}>{dataLoading() ? "Loading secret names…" : "No matching secret names."}</td></tr>}>
+                      <For each={page().entries} fallback={<tr><td colspan={6} class={styles.empty}>{dataLoading() ? "Loading secret names…" : "No matching secret names."}</td></tr>}>
                         {(entry) => (
                           <tr>
                             <td><code>{entry.name}</code></td>
@@ -477,7 +533,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
                                 <Button
                                   class={styles.rowButton}
                                   aria-label={revealedFor(entry) ? "Hide secret value" : revealPendingFor(entry) ? "Revealing secret value" : "Reveal secret value"}
-                                  aria-pressed={revealedFor(entry) !== null}
+                                  aria-pressed={revealedFor(entry) !== null ? "true" : "false"}
                                   disabled={revealPendingFor(entry)}
                                   onClick={() => revealedFor(entry) ? clearSecretReveal() : void revealSecret(entry)}
                                 >
@@ -534,7 +590,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
                           class={`${styles.button} ${styles.inputAction}`}
                           aria-controls="secret-entry-value"
                           aria-label={secretValueVisible() ? "Hide secret value" : "Show secret value"}
-                          aria-pressed={secretValueVisible()}
+                          aria-pressed={secretValueVisible() ? "true" : "false"}
                           onClick={() => setSecretValueVisible((visible) => !visible)}
                         >
                           {secretValueVisible() ? "Hide" : "Show"}

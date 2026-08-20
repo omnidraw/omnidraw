@@ -192,6 +192,7 @@ export function createLiveFrontendRuntime(args: Readonly<{
           await canvasHostRetirement.retireAll();
         } finally {
           theme.dispose();
+          store.dispose();
           await appRuntime.dispose();
         }
       })();

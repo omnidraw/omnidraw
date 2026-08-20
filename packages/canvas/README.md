@@ -7,8 +7,9 @@ server, tenant policy, or product sidebar.
 
 ## Install and compose
 
-Install one compatible Solid runtime together with the three public kernel
-packages, then import the package stylesheet once in the host bundle:
+Install one compatible Solid core/web renderer pair together with the three
+public kernel packages, then import the package stylesheet once in the host
+bundle:
 
 ```ts
 import '@omnidraw/canvas/styles.css';
@@ -50,10 +51,11 @@ intent to its extension-only selection mutation decorator. Cangine still plans
 the compatible targets and sends one finalized batch unchanged to
 `CanvasDocumentService`.
 
-The `0.9.0` line uses `@omnidraw/canvas-contract@0.7.0`, the public
+The `0.10.0` line uses `@omnidraw/canvas-contract@0.7.0`, the public
 `@omnidraw/theme`, exact `effect@4.0.0-rc.108` internally, and exact
-`@omnidraw/cangine@0.6.1`. The host provides one `solid-js` runtime compatible
-with `^1.9.14`; neither Effect nor Cangine appears in Canvas public types.
+`@omnidraw/cangine@0.6.1`. The host provides one exact
+`solid-js@2.0.0-rc.0` and `@solidjs/web@2.0.0-rc.0` pair; neither Effect nor
+Cangine appears in Canvas public types.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) in the source repository for runtime
 ownership and lifecycle details.

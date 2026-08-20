@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { render } from "solid-js/web"
+import { render } from "@solidjs/web"
 import { createSignal } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatTab } from "../../../src/chat/components/tabs/ChatTab"
 import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../src/chat/components/ChatComposer/interface"
 import { createTestChatBrowser } from "../../test-setup"
 import { AiChatEffectRuntime } from "../../../src/internal/stream-lifecycle"
+import { settleSolidUpdate } from "../../settled"
 
 const AI_CHAT_CSS_PATH = resolve(process.cwd(), "src/styles.css")
 const SYNTHETIC_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=="
@@ -127,6 +128,12 @@ function ensureComponentDomMocks() {
       value: () => createEmptyDomRectList(),
     })
   }
+}
+
+function pressKey(target: HTMLElement, key: string): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+  target.dispatchEvent(event)
+  return event
 }
 
 function renderChatTab(settings: TRenderChatTabSettings = {
@@ -323,7 +330,7 @@ describe("ChatTab rendered message history", () => {
     expect(link?.rel).toContain("noreferrer")
   })
 
-  it("collapses tool results by default and toggles expanded state on click", () => {
+  it("collapses tool results by default and toggles expanded state on click", async () => {
     const root = renderChatTab(undefined, [
       {
         role: "toolResult",
@@ -345,6 +352,7 @@ describe("ChatTab rendered message history", () => {
     expect(message?.textContent).not.toContain("line 6")
 
     toggle()?.click()
+    await settleSolidUpdate()
 
     expect(toggle()?.getAttribute("aria-expanded")).toBe("true")
     expect(message?.textContent).toContain("line 6")
@@ -352,6 +360,7 @@ describe("ChatTab rendered message history", () => {
     expect(message?.textContent).not.toContain("...")
 
     toggle()?.click()
+    await settleSolidUpdate()
 
     expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("...")
@@ -378,7 +387,7 @@ describe("ChatTab rendered message history", () => {
     expect(image?.getAttribute("data-mime-type")).toBe("image/png")
   })
 
-  it("copies image history as metadata without PNG bytes or data URLs", () => {
+  it("copies image history as metadata without PNG bytes or data URLs", async () => {
     const writeClipboardText = vi.fn(async () => {})
     const root = renderChatTab(undefined, [{
       role: "toolResult",
@@ -393,6 +402,7 @@ describe("ChatTab rendered message history", () => {
     })
 
     root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
+    await settleSolidUpdate()
     Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
       .find((button) => button.textContent?.trim() === "Copy chat")
       ?.click()
@@ -431,6 +441,7 @@ describe("ChatTab rendered message history", () => {
     expect(root.querySelectorAll(".omnidraw-ai-chat-approvals--floating .omnidraw-ai-chat-approval")).toHaveLength(0)
     expect(root.querySelectorAll(".omnidraw-ai-chat-approval__actions")).toHaveLength(1)
     root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-tool-call .omnidraw-ai-chat-approval__details-toggle")?.click()
+    await settleSolidUpdate()
     expect(root.textContent).toContain("[redacted]")
     expect(root.textContent).not.toContain("must-not-render")
     Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-approval__actions button"))
@@ -669,6 +680,7 @@ describe("ChatTab rendered message history", () => {
     await vi.waitFor(() => expect(root.querySelector("[role='listbox']")).not.toBeNull())
 
     history?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))
+    await settleSolidUpdate()
 
     expect(root.querySelector("[role='listbox']")).toBeNull()
 
@@ -728,8 +740,10 @@ describe("ChatTab rendered message history", () => {
     expect(options[0]?.getAttribute("aria-selected")).toBe("true")
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))
+    await settleSolidUpdate()
     expect(options[1]?.getAttribute("aria-selected")).toBe("true")
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
+    await settleSolidUpdate()
     expect(options[0]?.getAttribute("aria-selected")).toBe("true")
 
     options[0]?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
@@ -747,7 +761,105 @@ describe("ChatTab rendered message history", () => {
     expect(rule).toContain("white-space: nowrap")
   })
 
-  it("opens a thinking level menu before provider model options", () => {
+  it("opens and traverses the action menu from its trigger and restores trigger focus on Escape", async () => {
+    const root = renderChatTab()
+    await settleSolidUpdate()
+    const trigger = root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")!
+
+    expect(pressKey(trigger, "ArrowDown").defaultPrevented).toBe(true)
+    await vi.waitFor(() => expect(document.activeElement?.textContent?.trim()).toBe("New chat"))
+    pressKey(document.activeElement as HTMLElement, "ArrowDown")
+    expect(document.activeElement?.textContent?.trim()).toBe("Copy chat")
+    pressKey(document.activeElement as HTMLElement, "Home")
+    expect(document.activeElement?.textContent?.trim()).toBe("New chat")
+    pressKey(document.activeElement as HTMLElement, "End")
+    expect(document.activeElement?.textContent?.trim()).toBe("Copy chat")
+    pressKey(document.activeElement as HTMLElement, "Escape")
+    await settleSolidUpdate()
+
+    expect(root.querySelector(".omnidraw-ai-chat-composer__action-menu")).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it("moves real DOM focus through the model menu and restores its trigger on Escape", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    try {
+      const root = renderChatTab()
+      await settleSolidUpdate()
+      const trigger = root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")!
+
+      expect(pressKey(trigger, "ArrowDown").defaultPrevented).toBe(true)
+      await vi.waitFor(() => expect(document.activeElement?.textContent?.trim()).toBe("Thinking"))
+      expect((document.activeElement as HTMLElement).getAttribute("role")).toBe("menuitem")
+
+      pressKey(document.activeElement as HTMLElement, "End")
+      await vi.waitFor(() => expect(document.activeElement?.textContent?.trim()).toBe("Openai Codex"))
+      pressKey(document.activeElement as HTMLElement, "ArrowRight")
+      await vi.waitFor(() => expect(document.activeElement?.textContent).toContain("GPT Test"))
+      expect((document.activeElement as HTMLElement).getAttribute("role")).toBe("menuitemradio")
+
+      pressKey(document.activeElement as HTMLElement, "Escape")
+      await settleSolidUpdate()
+      expect(root.querySelector(".omnidraw-ai-chat-composer__model-menu")).toBeNull()
+      expect(document.activeElement).toBe(trigger)
+      expect(warn.mock.calls.flat().map(String).join("\n")).not.toContain("STRICT_READ_UNTRACKED")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("closes each composer menu when pointer or focus leaves its own trigger-menu pair", async () => {
+    const root = renderChatTab()
+    await settleSolidUpdate()
+    const editor = root.querySelector<HTMLElement>(".ProseMirror")!
+
+    root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")!.click()
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__action-menu")).not.toBeNull()
+    editor.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__action-menu")).toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[aria-label^='Protected operations approval mode']")!.click()
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__approval-menu")).not.toBeNull()
+    editor.focus()
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__approval-menu")).toBeNull()
+
+    root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")!.click()
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__model-menu")).not.toBeNull()
+    root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__send")!.focus()
+    await settleSolidUpdate()
+    expect(root.querySelector(".omnidraw-ai-chat-composer__model-menu")).toBeNull()
+  })
+
+  it("uses an explicitly focused model category as the Enter activation identity", async () => {
+    const root = renderChatTab({
+      defaultModel: "gpt-test",
+      defaultProvider: "openai-codex",
+      defaultThinkingLevel: "low",
+      providersWithCredentials: ["openai-codex", "anthropic"],
+      models: [
+        { id: "gpt-test", input: ["text"], provider: "openai-codex", name: "GPT Test" },
+        { id: "claude-test", input: ["text"], provider: "anthropic", name: "Claude Test" },
+      ],
+    })
+    await settleSolidUpdate()
+    root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")!.click()
+    await settleSolidUpdate()
+    const anthropic = [...root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-provider")]
+      .find((button) => button.textContent?.trim() === "Anthropic")!
+
+    anthropic.focus()
+    await settleSolidUpdate()
+    pressKey(anthropic, "Enter")
+    await vi.waitFor(() => expect(document.activeElement?.textContent).toContain("Claude Test"))
+    expect((document.activeElement as HTMLElement).getAttribute("role")).toBe("menuitemradio")
+  })
+
+  it("opens a thinking level menu before provider model options", async () => {
     const root = renderChatTab()
     const modelButton = root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")
 
@@ -755,19 +867,133 @@ describe("ChatTab rendered message history", () => {
     expect(modelButton?.textContent).toContain("Low")
 
     modelButton?.click()
+    await settleSolidUpdate()
 
     const menuButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-menu button"))
     const thinkingButton = menuButtons.find((button) => button.textContent === "Thinking")
+    const optionGroup = root.querySelector<HTMLElement>(".omnidraw-ai-chat-composer__model-list")
 
     expect(thinkingButton).not.toBeUndefined()
     expect(menuButtons[0]?.textContent).toBe("Thinking")
+    expect(optionGroup?.getAttribute("aria-label")).toBe("AI models")
 
     thinkingButton?.click()
+    await settleSolidUpdate()
 
+    expect(optionGroup?.getAttribute("aria-label")).toBe("Thinking levels")
     const menuText = root.querySelector(".omnidraw-ai-chat-composer__model-menu")?.textContent ?? ""
     expect(menuText).toContain("Off")
     expect(menuText).toContain("Minimal")
     expect(menuText).toContain("Xhigh")
+  })
+
+  it("opens the configured model provider when clicked before its selection effect settles", async () => {
+    const [settings, setSettings] = createSignal<TRenderChatTabSettings>({
+      defaultThinkingLevel: "minimal" as const,
+      providersWithCredentials: [],
+      models: [],
+    })
+    const overrides: Record<string, unknown> = {}
+    Object.defineProperty(overrides, "settings", { enumerable: true, get: settings })
+    const root = renderChatTab(undefined, [], overrides)
+    await settleSolidUpdate()
+
+    setSettings({
+      defaultThinkingLevel: "minimal" as const,
+      providersWithCredentials: ["browser-local"],
+      models: [
+        { id: "other-model", input: ["text" as const], provider: "other-provider", name: "Other Model" },
+        { id: "browser-streaming", input: ["text" as const], provider: "browser-local", name: "Browser Streaming Model" },
+      ],
+    })
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    const modelButton = root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")
+
+    expect(modelButton?.disabled).toBe(false)
+    modelButton?.click()
+    await settleSolidUpdate()
+
+    const modelOptions = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-option"),
+    )
+    expect(modelOptions.map((option) => option.textContent?.trim())).toEqual(["Browser Streaming Model"])
+  })
+
+  it("portals the model menu above clipped Canvas widget chrome without losing interaction", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const root = renderChatTab()
+    const canvasHost = document.createElement("div")
+    const widgetShell = document.createElement("div")
+    const portal = document.createElement("div")
+    canvasHost.dataset.omnidrawThemeScope = ""
+    widgetShell.dataset.vibecanvasWidgetShell = "widget-1"
+    portal.dataset.vibecanvasPortalId = "omnidraw:widget:widget-1"
+    widgetShell.append(portal)
+    canvasHost.append(widgetShell)
+    document.body.append(canvasHost)
+    portal.append(root)
+    vi.spyOn(canvasHost, "getBoundingClientRect").mockReturnValue({
+      ...createEmptyDomRect(),
+      bottom: 600,
+      height: 600,
+      right: 800,
+      width: 800,
+    })
+    const trigger = root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")!
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      ...createEmptyDomRect(),
+      bottom: 530,
+      height: 30,
+      left: 300,
+      right: 430,
+      top: 500,
+      width: 130,
+      x: 300,
+      y: 500,
+    })
+
+    try {
+      trigger.click()
+      await settleSolidUpdate()
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+
+      const menu = canvasHost.querySelector<HTMLDivElement>(".omnidraw-ai-chat-composer__model-menu")
+      expect(menu).not.toBeNull()
+      expect(root.contains(menu)).toBe(false)
+      expect(menu?.dataset.vibecanvasPortalId).toBe("omnidraw:widget:widget-1")
+      expect(menu?.dataset.omnidrawAiChatMenuPositioned).toBe("true")
+      expect(menu?.style.zIndex).toBe("2147483647")
+
+      menu?.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-option")?.click()
+      await settleSolidUpdate()
+      expect(canvasHost.querySelector(".omnidraw-ai-chat-composer__model-menu")).toBeNull()
+      expect(warn.mock.calls.flat().map(String).join("\n")).not.toContain("STRICT_READ_UNTRACKED")
+    } finally {
+      warn.mockRestore()
+      canvasHost.remove()
+    }
+  })
+
+  it("does not read the reactive browser port from the scroll effect apply phase", async () => {
+    const requestAnimationFrame = vi.fn(() => 1)
+    const [browser] = createSignal({
+      ...createTestChatBrowser(),
+      requestAnimationFrame,
+      cancelAnimationFrame: vi.fn(),
+    })
+    const overrides: Record<string, unknown> = {}
+    Object.defineProperty(overrides, "browser", { enumerable: true, get: browser })
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    try {
+      renderChatTab(undefined, [], overrides)
+      await settleSolidUpdate()
+
+      expect(requestAnimationFrame).toHaveBeenCalled()
+      expect(warn.mock.calls.flat().map(String).join("\n")).not.toContain("[STRICT_READ_UNTRACKED]")
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it("renders a capped scroll container for long composer input", () => {
@@ -791,7 +1017,7 @@ describe("ChatTab rendered message history", () => {
       .toBe(false)
   })
 
-  it("forwards selected model changes as chat preference changes", () => {
+  it("forwards selected model changes as chat preference changes", async () => {
     const onPreferenceChange = vi.fn()
     const root = renderChatTab({
       defaultModel: "gpt-test",
@@ -805,9 +1031,11 @@ describe("ChatTab rendered message history", () => {
     }, MOCK_MESSAGE_HISTORY, { onPreferenceChange })
 
     root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")?.click()
+    await settleSolidUpdate()
     Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-option"))
       .find((button) => button.textContent?.includes("GPT Next"))
       ?.click()
+    await settleSolidUpdate()
 
     expect(onPreferenceChange).toHaveBeenCalledWith({
       model: {
@@ -817,17 +1045,20 @@ describe("ChatTab rendered message history", () => {
     })
   })
 
-  it("forwards selected thinking level changes as chat preference changes", () => {
+  it("forwards selected thinking level changes as chat preference changes", async () => {
     const onPreferenceChange = vi.fn()
     const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onPreferenceChange })
 
     root.querySelector<HTMLButtonElement>(".omnidraw-ai-chat-composer__pill")?.click()
+    await settleSolidUpdate()
     Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-provider"))
       .find((button) => button.textContent === "Thinking")
       ?.click()
+    await settleSolidUpdate()
     Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-composer__model-option"))
       .find((button) => button.textContent === "High")
       ?.click()
+    await settleSolidUpdate()
 
     expect(onPreferenceChange).toHaveBeenCalledWith({ thinkingLevel: "high" })
   })
@@ -842,6 +1073,7 @@ describe("ChatTab rendered message history", () => {
     expect(root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")?.value).toContain("Create a compact launch dashboard")
 
     editButtons[1]?.click()
+    await settleSolidUpdate()
     expect(root.querySelectorAll(".omnidraw-ai-chat-history__editor")).toHaveLength(1)
     const editor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     expect(editor?.value).toContain("Now make it calmer")
@@ -855,10 +1087,12 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onEditMessage })
     const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__edit-action"))
     editButtons[1]?.click()
+    await settleSolidUpdate()
     const editor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     if (!editor) throw new Error("Inline editor did not open")
     editor.value = "line one\nline two"
     editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await settleSolidUpdate()
     editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
     expect(onEditMessage).not.toHaveBeenCalled()
     editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }))
@@ -876,6 +1110,7 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab()
     const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__edit-action"))
     editButtons[1]?.click()
+    await settleSolidUpdate()
     const editor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     if (!editor) throw new Error("Inline editor did not open")
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
@@ -889,24 +1124,29 @@ describe("ChatTab rendered message history", () => {
     expect(editor.selectionEnd).toBe(4)
   })
 
-  it("allows empty edits only when the historical message preserves an image", () => {
+  it("allows empty edits only when the historical message preserves an image", async () => {
     const root = renderChatTab()
     const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__edit-action"))
     editButtons[0]?.click()
+    await settleSolidUpdate()
     const imageEditor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     if (!imageEditor) throw new Error("Image message editor did not open")
     imageEditor.value = ""
     imageEditor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await settleSolidUpdate()
     expect(Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__editor-actions button"))
       .find((button) => button.textContent === "Send")?.disabled).toBe(false)
 
     Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__editor-actions button"))
       .find((button) => button.textContent === "Cancel")?.click()
+    await settleSolidUpdate()
     editButtons[1]?.click()
+    await settleSolidUpdate()
     const textEditor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     if (!textEditor) throw new Error("Text message editor did not open")
     textEditor.value = ""
     textEditor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await settleSolidUpdate()
     expect(Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__editor-actions button"))
       .find((button) => button.textContent === "Send")?.disabled).toBe(true)
   })
@@ -920,10 +1160,12 @@ describe("ChatTab rendered message history", () => {
     })
     const editButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__edit-action"))
     editButtons[1]?.click()
+    await settleSolidUpdate()
     const editor = root.querySelector<HTMLTextAreaElement>(".omnidraw-ai-chat-history__editor textarea")
     if (!editor) throw new Error("Inline editor did not open")
     editor.value = "keep this correction"
     editor.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await settleSolidUpdate()
 
     setIsRunning(true)
     const send = Array.from(root.querySelectorAll<HTMLButtonElement>(".omnidraw-ai-chat-history__editor-actions button"))

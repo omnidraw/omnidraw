@@ -1,5 +1,3 @@
-import * as Combobox from '@kobalte/core/combobox';
-import { TextField } from '@kobalte/core/text-field';
 import {
   LUCIDE_STATIC_ICON_KEYS,
   type TOmnidrawToolIcon,
@@ -8,8 +6,22 @@ import * as Lucide from 'lucide-static';
 import CircleAlert from 'lucide-static/icons/circle-alert.svg?raw';
 import Code from 'lucide-static/icons/code.svg?raw';
 import Ban from 'lucide-static/icons/ban.svg?raw';
-import ChevronDown from 'lucide-solid/icons/chevron-down';
-import { Show, createEffect, createMemo, createSignal } from 'solid-js';
+import { Portal } from '@solidjs/web';
+import { ChevronDown } from '@/shell/framework/components/icons';
+import {
+  anchoredPopupPortalTarget,
+  connectAnchoredPopup,
+} from '@/shell/framework/components/ui/anchored-popup';
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  onSettled,
+  untrack,
+} from 'solid-js';
 import styles from './ToolIconPicker.module.css';
 
 type TIconOption = Readonly<{ id: string; label: string; icon: string }>;
@@ -118,27 +130,44 @@ function ToolIconGlyph(props: { icon: string }) {
   return <span class={styles.glyph} innerHTML={props.icon} aria-hidden="true" />;
 }
 
+function eventNode(ownerDocument: Document, target: EventTarget | null): Node | undefined {
+  const NodeConstructor = ownerDocument.defaultView?.Node;
+  return NodeConstructor !== undefined && target instanceof NodeConstructor ? target : undefined;
+}
+
 export function ToolIconPicker(props: {
   value: TOmnidrawToolIcon | null;
   onChange: (icon: TOmnidrawToolIcon | null) => void;
 }) {
   const [custom, setCustom] = createSignal(
-    props.value !== null && 'svgIcon' in props.value ? props.value.svgIcon ?? '' : '',
+    untrack(() => props.value !== null && 'svgIcon' in props.value ? props.value.svgIcon ?? '' : ''),
   );
-  const [query, setQuery] = createSignal('');
+  // `null` means the closed control is displaying the selected label. An empty
+  // string is a real editing value, so clearing the field must stay visibly
+  // empty while the listbox is open.
+  const [query, setQuery] = createSignal<string | null>(null);
+  const [open, setOpen] = createSignal(false);
+  const [activeIndex, setActiveIndex] = createSignal(0);
+  const fieldId = createUniqueId();
+  let root: HTMLDivElement | undefined;
+  let control: HTMLDivElement | undefined;
+  let choicesContent: HTMLDivElement | undefined;
+  let input: HTMLInputElement | undefined;
   let lastEmitted: TOmnidrawToolIcon | null | undefined;
-  createEffect(() => {
-    const value = props.value;
-    if (value === lastEmitted) {
-      lastEmitted = undefined;
-      return;
-    }
-    setCustom(value !== null && 'svgIcon' in value ? value.svgIcon ?? '' : '');
-  });
+  createEffect(
+    () => props.value,
+    (value) => {
+      if (value === lastEmitted) {
+        lastEmitted = undefined;
+        return;
+      }
+      setCustom(value !== null && 'svgIcon' in value ? value.svgIcon ?? '' : '');
+    },
+  );
   const selected = createMemo(() => optionFor(props.value));
   const validationError = createMemo(() => toolIconValidationError(props.value));
   const visibleOptions = createMemo(() => {
-    const querySearch = normalizeIconSearch(query());
+    const querySearch = normalizeIconSearch(query() ?? '');
     const search = querySearch === normalizeIconSearch(selected().label) ? '' : querySearch;
     const candidates = search.length === 0
       ? CURATED_ICON_OPTIONS
@@ -150,6 +179,31 @@ export function ToolIconPicker(props: {
       if (options.length === MAX_VISIBLE_ICONS) break;
     }
     return options;
+  });
+  const closeChoices = () => {
+    setOpen(false);
+    setQuery(null);
+  };
+  onSettled(() => {
+    const ownerDocument = root?.ownerDocument;
+    if (ownerDocument === undefined) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = eventNode(ownerDocument, event.target);
+      if (target === undefined || root?.contains(target) || choicesContent?.contains(target)) return;
+      closeChoices();
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!open()) return;
+      const target = eventNode(ownerDocument, event.target);
+      if (target !== undefined && (root?.contains(target) || choicesContent?.contains(target))) return;
+      closeChoices();
+    };
+    ownerDocument.addEventListener('pointerdown', handlePointerDown);
+    ownerDocument.addEventListener('focusin', handleFocusIn);
+    return () => {
+      ownerDocument.removeEventListener('pointerdown', handlePointerDown);
+      ownerDocument.removeEventListener('focusin', handleFocusIn);
+    };
   });
   const emit = (value: TOmnidrawToolIcon | null) => {
     lastEmitted = value;
@@ -168,81 +222,198 @@ export function ToolIconPicker(props: {
     emit({ lucidIcon: option.id });
   };
 
-  return <div class={styles.picker}>
-    <Combobox.Root<TIconOption>
-      class={styles.combobox}
-      options={visibleOptions()}
-      value={selected()}
-      onChange={select}
-      onInputChange={setQuery}
-      onOpenChange={(open) => {
-        if (!open) setQuery('');
-      }}
-      optionValue="id"
-      optionTextValue="label"
-      optionLabel="label"
-      defaultFilter={(option, inputValue) => {
-        const search = normalizeIconSearch(inputValue);
-        return search.length === 0
-          || search === normalizeIconSearch(selected().label)
-          || normalizeIconSearch(option.label).includes(search);
-      }}
-      placeholder="Search Lucide icons…"
-      itemComponent={(itemProps) => (
-        <Combobox.Item item={itemProps.item} class={styles.option}>
-          <ToolIconGlyph icon={itemProps.item.rawValue.icon} />
-          <Combobox.ItemLabel class={styles.optionLabel}>
-            {itemProps.item.rawValue.label}
-          </Combobox.ItemLabel>
-        </Combobox.Item>
-      )}
-      placement="bottom-start"
-      gutter={4}
-      sameWidth
-    >
-      <Combobox.Label class={styles.label}>Icon</Combobox.Label>
-      <Combobox.Control class={styles.control}>
+  const commitOption = (option: TIconOption) => {
+    select(option);
+    setQuery(null);
+    setOpen(false);
+    setActiveIndex(0);
+    input?.focus();
+  };
+
+  const handleInput = (value: string) => {
+    setQuery(value);
+    setOpen(true);
+    setActiveIndex(0);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    const options = visibleOptions();
+    if (event.key === 'Escape') {
+      if (!open()) return;
+      event.preventDefault();
+      closeChoices();
+      input?.focus();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!open()) {
+        setOpen(true);
+        setActiveIndex(event.key === 'ArrowDown' ? 0 : Math.max(0, options.length - 1));
+        return;
+      }
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex((index) => options.length === 0
+        ? 0
+        : (index + delta + options.length) % options.length);
+      return;
+    }
+    if (event.key === 'Enter' && open()) {
+      const option = options[activeIndex()];
+      if (option === undefined) return;
+      event.preventDefault();
+      commitOption(option);
+    }
+  };
+
+  const activeOptionId = () => open() && visibleOptions()[activeIndex()] !== undefined
+    ? `${fieldId}-option-${activeIndex()}`
+    : undefined;
+
+  createEffect(
+    activeOptionId,
+    (id) => {
+      if (id === undefined) return;
+      queueMicrotask(() => input?.ownerDocument.getElementById(id)?.scrollIntoView({ block: 'nearest' }));
+    },
+  );
+
+  const IconChoices = () => {
+    const anchor = control;
+    if (anchor === undefined) return null;
+    const ownerDocument = anchor.ownerDocument;
+    let content!: HTMLDivElement;
+    onSettled(() => {
+      choicesContent = content;
+      const connection = connectAnchoredPopup({
+        anchor,
+        matchAnchorWidth: true,
+        popup: content,
+      });
+      return () => {
+        connection.disconnect();
+        if (choicesContent === content) choicesContent = undefined;
+      };
+    });
+    return <Portal mount={anchoredPopupPortalTarget(anchor)}>
+      <div
+        ref={content}
+        class={styles.content}
+        data-anchored-popup="tool-icon-picker"
+        onFocusOut={(event) => {
+          const next = eventNode(ownerDocument, event.relatedTarget);
+          if (next !== undefined && (root?.contains(next) || content.contains(next))) return;
+          closeChoices();
+        }}
+      >
+        <div
+          id={`${fieldId}-listbox`}
+          class={styles.listbox}
+          role="listbox"
+          aria-label="Lucide icon choices"
+        >
+          <For each={visibleOptions()}>{(option, index) => (
+            <div
+              id={`${fieldId}-option-${index()}`}
+              class={styles.option}
+              role="option"
+              aria-selected={selected().id === option.id ? 'true' : 'false'}
+              data-highlighted={activeIndex() === index() ? '' : undefined}
+              data-selected={selected().id === option.id ? '' : undefined}
+              onPointerMove={() => setActiveIndex(index())}
+              onClick={() => commitOption(option)}
+            >
+              <ToolIconGlyph icon={option.icon} />
+              <span class={styles.optionLabel}>{option.label}</span>
+            </div>
+          )}</For>
+        </div>
+      </div>
+    </Portal>;
+  };
+
+  return <div
+    ref={root}
+    class={styles.picker}
+    onFocusOut={(event) => {
+      if (!open()) return;
+      const ownerDocument = event.currentTarget.ownerDocument;
+      const next = eventNode(ownerDocument, event.relatedTarget);
+      if (next !== undefined && (event.currentTarget.contains(next) || choicesContent?.contains(next))) return;
+      closeChoices();
+    }}
+  >
+    <div class={styles.combobox}>
+      <label class={styles.label} for={`${fieldId}-input`}>Icon</label>
+      <div ref={control} class={styles.control} data-expanded={open() ? '' : undefined}>
         <span class={styles.selectedGlyph}>
           <ToolIconGlyph icon={selected().icon} />
         </span>
-        <Combobox.Input class={styles.input} />
-        <Combobox.Trigger class={styles.trigger} aria-label="Show icon choices">
-          <Combobox.Icon class={styles.triggerIcon} aria-hidden="true">
+        <input
+          ref={input}
+          id={`${fieldId}-input`}
+          class={styles.input}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls={`${fieldId}-listbox`}
+          aria-expanded={open() ? 'true' : 'false'}
+          aria-activedescendant={activeOptionId()}
+          value={query() ?? selected().label}
+          placeholder="Search Lucide icons…"
+          onInput={(event) => handleInput(event.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+        />
+        <button
+          type="button"
+          class={styles.trigger}
+          aria-label="Show icon choices"
+          aria-controls={`${fieldId}-listbox`}
+          aria-expanded={open() ? 'true' : 'false'}
+          data-expanded={open() ? '' : undefined}
+          onClick={() => {
+            setOpen((current) => !current);
+            setQuery(null);
+            setActiveIndex(0);
+            input?.focus();
+          }}
+        >
+          <span class={styles.triggerIcon} aria-hidden="true">
             <ChevronDown size={14} />
-          </Combobox.Icon>
-        </Combobox.Trigger>
-      </Combobox.Control>
-      <Combobox.HiddenSelect />
-      <Combobox.Portal>
-        <Combobox.Content class={styles.content}>
-          <Combobox.Listbox class={styles.listbox} />
-        </Combobox.Content>
-      </Combobox.Portal>
-    </Combobox.Root>
+          </span>
+        </button>
+      </div>
+      <Show when={open()}>
+        <IconChoices />
+      </Show>
+    </div>
 
     <Show when={selected().id === ICON_CUSTOM_ID}>
-      <TextField
-        class={styles.custom}
-        value={custom()}
-        onChange={(value) => {
-          setCustom(value);
-          emit({ svgIcon: value });
-        }}
-        validationState={validationError() === null ? 'valid' : 'invalid'}
-      >
-        <TextField.Label class={styles.label}>Custom SVG or emoji</TextField.Label>
-        <TextField.TextArea
+      <div class={styles.custom}>
+        <label class={styles.label} for={`${fieldId}-custom`}>Custom SVG or emoji</label>
+        <textarea
+          id={`${fieldId}-custom`}
           class={styles.textarea}
           rows={4}
-          spellcheck={false}
+          spellcheck="false"
+          value={custom()}
+          aria-invalid={validationError() === null ? undefined : 'true'}
+          aria-describedby={validationError() === null
+            ? `${fieldId}-custom-help`
+            : `${fieldId}-custom-help ${fieldId}-custom-error`}
+          data-invalid={validationError() === null ? undefined : ''}
+          onInput={(event) => {
+            const value = event.currentTarget.value;
+            setCustom(value);
+            emit({ svgIcon: value });
+          }}
         />
-        <TextField.Description class={styles.help}>
+        <p id={`${fieldId}-custom-help`} class={styles.help}>
           Paste one trimmed grapheme or one accepted SVG element (16 KiB maximum).
-        </TextField.Description>
-        <TextField.ErrorMessage class={styles.error}>
-          {validationError()}
-        </TextField.ErrorMessage>
-      </TextField>
+        </p>
+        <Show when={validationError()}>{(message) => (
+          <p id={`${fieldId}-custom-error`} class={styles.error} role="alert">{message()}</p>
+        )}</Show>
+      </div>
     </Show>
     <Show when={selected().id !== ICON_CUSTOM_ID ? validationError() : null}>
       {(message) => <p class={styles.error} role="alert">{message()}</p>}

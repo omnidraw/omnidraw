@@ -1,17 +1,19 @@
-import Bug from 'lucide-solid/icons/bug';
-import CircleStop from 'lucide-solid/icons/circle-stop';
-import Clipboard from 'lucide-solid/icons/clipboard';
-import Download from 'lucide-solid/icons/download';
-import Flag from 'lucide-solid/icons/flag';
-import Radio from 'lucide-solid/icons/radio';
-import Trash2 from 'lucide-solid/icons/trash-2';
 import {
   For,
   Show,
   createSignal,
-  onCleanup,
-  onMount,
+  onSettled,
+  untrack,
 } from 'solid-js';
+import {
+  BugIcon as Bug,
+  CircleStopIcon as CircleStop,
+  ClipboardIcon as Clipboard,
+  DownloadIcon as Download,
+  FlagIcon as Flag,
+  RadioIcon as Radio,
+  Trash2Icon as Trash2,
+} from '../icons';
 import {
   REPRODUCTION_TRACE_CHANNELS,
   REPRODUCTION_TRACE_SMART_CHANNELS,
@@ -42,29 +44,27 @@ function formatBytes(bytes: number): string {
 
 export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
   let controlRef!: HTMLDivElement;
-  let timerWindow: Window | null = null;
+  const trace = untrack(() => props.trace);
   const [open, setOpen] = createSignal(false);
   const [advanced, setAdvanced] = createSignal(false);
+  // The trace owner is fixed for one mounted control; later updates arrive
+  // through its subscription instead of through a live prop seed.
   const [state, setState] = createSignal<TReproductionTraceState>(
-    props.trace.state(),
+    trace.state(),
   );
   const [channels, setChannels] = createSignal<readonly TReproductionTraceChannel[]>(
     REPRODUCTION_TRACE_SMART_CHANNELS,
   );
-  let releaseTrace: (() => void) | null = null;
-  let elapsedTimer: number | null = null;
-
-  onMount(() => {
-    releaseTrace = props.trace.subscribe(setState);
-    timerWindow = controlRef.ownerDocument.defaultView;
-    elapsedTimer = timerWindow?.setInterval(() => {
-      if (props.trace.isRecording()) setState(props.trace.state());
+  onSettled(() => {
+    const releaseTrace = trace.subscribe(setState);
+    const timerWindow = controlRef.ownerDocument.defaultView;
+    const elapsedTimer = timerWindow?.setInterval(() => {
+      if (trace.isRecording()) setState(trace.state());
     }, 250) ?? null;
-  });
-  onCleanup(() => {
-    releaseTrace?.();
-    if (elapsedTimer !== null) timerWindow?.clearInterval(elapsedTimer);
-    timerWindow = null;
+    return () => {
+      releaseTrace();
+      if (elapsedTimer !== null) timerWindow?.clearInterval(elapsedTimer);
+    };
   });
 
   const toggleChannel = (channel: TReproductionTraceChannel) => {
@@ -75,7 +75,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
     ));
   };
   const copy = () => {
-    void props.trace.copy()
+    void trace.copy()
       .then((copied) => {
         if (copied) props.onCopied();
       })
@@ -83,7 +83,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
   };
   const download = () => {
     try {
-      props.trace.download();
+      trace.download();
     } catch (error) {
       props.onError(error);
     }
@@ -95,14 +95,17 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
       <div ref={controlRef} class="omnidraw-trace-control">
         <button
           type="button"
-          class="omnidraw-toolbar-button omnidraw-trace-button"
-          classList={{
-            'omnidraw-trace-button--recording': state().status === 'recording',
-            'omnidraw-trace-button--marked': state().status === 'marked',
-            'omnidraw-toolbar-button--active': open(),
-          }}
+          class={[
+            'omnidraw-toolbar-button',
+            'omnidraw-trace-button',
+            {
+              'omnidraw-trace-button--recording': state().status === 'recording',
+              'omnidraw-trace-button--marked': state().status === 'marked',
+              'omnidraw-toolbar-button--active': open(),
+            },
+          ]}
           aria-label={`Developer trace: ${state().status}`}
-          aria-expanded={open()}
+          aria-expanded={open() ? 'true' : 'false'}
           title="Developer reproduction trace"
           onClick={() => setOpen((value) => !value)}
         >
@@ -116,7 +119,6 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
           <section
             class="omnidraw-trace-panel"
             aria-label="Developer reproduction trace"
-            on:pointerdown={(event) => event.stopPropagation()}
           >
             <header>
               <div>
@@ -132,7 +134,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                 <button
                   type="button"
                   disabled={!state().canStart || channels().length === 0}
-                  onClick={() => props.trace.start(
+                  onClick={() => trace.start(
                     channels(),
                     advanced() ? 'advanced' : 'smart',
                   )}
@@ -143,7 +145,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
               <div class="omnidraw-trace-mode">
                 <button
                   type="button"
-                  classList={{ active: !advanced() }}
+                  class={{ active: !advanced() }}
                   onClick={() => {
                     setAdvanced(false);
                     setChannels(REPRODUCTION_TRACE_SMART_CHANNELS);
@@ -153,7 +155,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                 </button>
                 <button
                   type="button"
-                  classList={{ active: advanced() }}
+                  class={{ active: advanced() }}
                   onClick={() => setAdvanced(true)}
                 >
                   Advanced
@@ -188,13 +190,13 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
             </Show>
             <Show when={state().status === 'recording'}>
               <div class="omnidraw-trace-actions">
-                <button type="button" onClick={() => props.trace.stop()}>
+                <button type="button" onClick={() => trace.stop()}>
                   <CircleStop size={13} /> Stop
                 </button>
                 <button
                   type="button"
                   disabled={!state().canMark}
-                  onClick={() => props.trace.mark()}
+                  onClick={() => trace.mark()}
                 >
                   <Flag size={13} /> Mark Failure
                 </button>
@@ -202,7 +204,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
             </Show>
             <Show when={state().status === 'marked'}>
               <div class="omnidraw-trace-actions">
-                <button type="button" onClick={() => props.trace.stop()}>
+                <button type="button" onClick={() => trace.stop()}>
                   <CircleStop size={13} /> Stop now
                 </button>
                 <span class="omnidraw-trace-tail-note" aria-live="polite">
@@ -236,7 +238,7 @@ export function DeveloperTraceControl(props: TDeveloperTraceControlProps) {
                 <button
                   type="button"
                   disabled={!state().canClear}
-                  onClick={() => props.trace.clear()}
+                  onClick={() => trace.clear()}
                 >
                   <Trash2 size={13} /> Clear
                 </button>

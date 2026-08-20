@@ -1,19 +1,21 @@
-import ArrowRight from 'lucide-solid/icons/arrow-right';
-import Circle from 'lucide-solid/icons/circle';
-import Eraser from 'lucide-solid/icons/eraser';
-import Grid2x2 from 'lucide-solid/icons/grid-2x2';
-import Hand from 'lucide-solid/icons/hand';
-import ImageIcon from 'lucide-solid/icons/image';
-import Minus from 'lucide-solid/icons/minus';
-import MousePointer2 from 'lucide-solid/icons/mouse-pointer-2';
-import Pencil from 'lucide-solid/icons/pencil';
-import Redo2 from 'lucide-solid/icons/redo-2';
-import Square from 'lucide-solid/icons/square';
-import Type from 'lucide-solid/icons/type';
-import Undo2 from 'lucide-solid/icons/undo-2';
-import { For, Show, createSignal } from 'solid-js';
+import { For, Show, createSignal, onSettled } from 'solid-js';
 import { ToolButton } from './ToolButton';
 import { DeveloperTraceControl } from './DeveloperTraceControl';
+import {
+  ArrowRightIcon as ArrowRight,
+  CircleIcon as Circle,
+  EraserIcon as Eraser,
+  Grid2x2Icon as Grid2x2,
+  HandIcon as Hand,
+  ImageIcon,
+  MinusIcon as Minus,
+  MousePointer2Icon as MousePointer2,
+  PencilIcon as Pencil,
+  Redo2Icon as Redo2,
+  SquareIcon as Square,
+  TypeIcon as Type,
+  Undo2Icon as Undo2,
+} from '../icons';
 import type {
   TReproductionTraceOwner,
 } from '../../debug-trace/typed';
@@ -63,18 +65,40 @@ type TToolbarActionButtonProps = Readonly<{
   persistent?: boolean;
 }>;
 
+function ariaBoolean(value: boolean): 'true' | 'false' {
+  return value ? 'true' : 'false';
+}
+
+const CONTAINED_TOOLBAR_EVENTS = [
+  'pointerdown',
+  'pointermove',
+  'pointerup',
+  'pointercancel',
+  'wheel',
+  'keydown',
+  'keyup',
+] as const;
+
+function stopToolbarEventPropagation(event: Event): void {
+  event.stopPropagation();
+}
+
 function ToolbarActionButton(props: TToolbarActionButtonProps) {
   return (
     <button
       type="button"
-      class="omnidraw-toolbar-button"
-      classList={{
-        'omnidraw-canvas-toolbar-persistent-action': props.persistent === true,
-        'omnidraw-toolbar-button--active': props.contribution.active?.() ?? false,
-        'omnidraw-toolbar-button--attention': props.contribution.attention?.() ?? false,
-      }}
+      class={[
+        'omnidraw-toolbar-button',
+        {
+          'omnidraw-canvas-toolbar-persistent-action': props.persistent === true,
+          'omnidraw-toolbar-button--active': props.contribution.active?.() ?? false,
+          'omnidraw-toolbar-button--attention': props.contribution.attention?.() ?? false,
+        },
+      ]}
       aria-label={props.contribution.label}
-      aria-pressed={props.contribution.active?.()}
+      aria-pressed={props.contribution.active === undefined
+        ? undefined
+        : ariaBoolean(props.contribution.active())}
       title={props.contribution.label}
       onClick={props.contribution.onActivate}
     >
@@ -91,6 +115,7 @@ function ToolbarActionButton(props: TToolbarActionButtonProps) {
 }
 
 export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
+  let toolbarRef!: HTMLDivElement;
   const [collapsed, setCollapsed] = createSignal(false);
   const toolContributions = () => (props.contributions ?? []).filter(
     (contribution) => contribution.kind === 'tool',
@@ -107,23 +132,27 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
       && contribution.placement === 'persistent'
     ),
   );
+  onSettled(() => {
+    for (const type of CONTAINED_TOOLBAR_EVENTS) {
+      toolbarRef.addEventListener(type, stopToolbarEventPropagation);
+    }
+    return () => {
+      for (const type of CONTAINED_TOOLBAR_EVENTS) {
+        toolbarRef.removeEventListener(type, stopToolbarEventPropagation);
+      }
+    };
+  });
 
   return (
     <div
+      ref={toolbarRef}
       class="omnidraw-canvas-toolbar-anchor"
-      on:pointerdown={(event) => event.stopPropagation()}
-      on:pointermove={(event) => event.stopPropagation()}
-      on:pointerup={(event) => event.stopPropagation()}
-      on:pointercancel={(event) => event.stopPropagation()}
-      on:wheel={(event) => event.stopPropagation()}
-      on:keydown={(event) => event.stopPropagation()}
-      on:keyup={(event) => event.stopPropagation()}
     >
       <div class="omnidraw-canvas-toolbar-panel">
         <button
           type="button"
           class="omnidraw-canvas-toolbar-collapse"
-          aria-expanded={!collapsed()}
+          aria-expanded={ariaBoolean(!collapsed())}
           title={collapsed() ? 'Expand tools' : 'Collapse tools'}
           onClick={() => setCollapsed((value) => !value)}
         >
@@ -172,10 +201,12 @@ export function FloatingCanvasToolbar(props: TFloatingCanvasToolbarProps) {
             </button>
             <button
               type="button"
-              class="omnidraw-toolbar-button"
-              classList={{ 'omnidraw-toolbar-button--active': props.gridVisible }}
+              class={[
+                'omnidraw-toolbar-button',
+                { 'omnidraw-toolbar-button--active': props.gridVisible },
+              ]}
               aria-label="Grid"
-              aria-pressed={props.gridVisible}
+              aria-pressed={ariaBoolean(props.gridVisible)}
               title="Toggle grid"
               onClick={props.onToggleGrid}
             >

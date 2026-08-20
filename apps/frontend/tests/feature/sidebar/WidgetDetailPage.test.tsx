@@ -4,7 +4,7 @@ import type {
 } from '../../../src/shell/framework/feature/sidebar/ports';
 import { createSignal } from 'solid-js';
 import * as LucideStatic from 'lucide-static';
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Effect } from 'effect';
 import {
@@ -18,13 +18,23 @@ import {
   toolIconValidationError,
 } from '../../../src/shell/framework/feature/sidebar/ToolIconPicker/ToolIconPicker';
 import { WidgetDetailPage } from '../../../src/shell/framework/feature/sidebar/widgets/WidgetDetailPage';
+import type { TWidgetPublicDeletionPlan } from '../../../src/core/app/private-operation-contract';
 import {
   publicCatalog,
   publicEntry,
   publicForm,
 } from '../widget-public-catalog.fixture';
+import { settleSolidUpdate } from '../../settled';
 
 const cleanups: Array<() => void> = [];
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve };
+}
 
 const lifecycle = {
   fork<A, E>(
@@ -72,6 +82,39 @@ function catalog(): TWidgetPublicCatalog {
   })]);
 }
 
+function deletionPlanFixture(args: Readonly<{
+  planToken: string;
+  widgetKey: string;
+  source: 'draft' | 'published';
+  placementCount?: number;
+  previewPlacementCount?: number;
+}>): TWidgetPublicDeletionPlan {
+  const placementCount = args.placementCount ?? (args.source === 'published' ? 3 : 1);
+  return {
+    planToken: args.planToken,
+    widgetKey: args.widgetKey,
+    source: args.source,
+    catalogDigestSha256: 'a'.repeat(64),
+    pairedDraftPresent: args.source === 'published',
+    placementCount,
+    previewPlacementCount: args.previewPlacementCount ?? 1,
+    publishedPlacementCount: args.source === 'published' ? placementCount : 0,
+    chatMountCount: 2,
+    resourcesPreserved: true,
+  };
+}
+
+function catalogWithAlternateWidget(): TWidgetPublicCatalog {
+  return publicCatalog([
+    ...catalog().entries,
+    publicEntry('tasks-board', {
+      draft: detailedForm('draft'),
+      published: detailedForm('published'),
+      status: 'presentation-changed',
+    }),
+  ]);
+}
+
 function mountDetail(options: Readonly<{
   source?: 'draft' | 'published';
   initialTab?: string;
@@ -82,19 +125,12 @@ function mountDetail(options: Readonly<{
   catalogRefreshError?: Error;
   catalogRefreshErrorCount?: number;
   catalogRefreshGate?: Promise<void>;
-  deletionPlan?: Readonly<{
-    planToken: string;
+  deletionPlan?: TWidgetPublicDeletionPlan;
+  planError?: Error;
+  plan?: (input: Readonly<{
     widgetKey: string;
     source: 'draft' | 'published';
-    catalogDigestSha256: string;
-    pairedDraftPresent: boolean;
-    placementCount: number;
-    previewPlacementCount: number;
-    publishedPlacementCount: number;
-    chatMountCount: number;
-    resourcesPreserved: true;
-  }>;
-  planError?: Error;
+  }>) => Promise<readonly [Error | undefined, TWidgetPublicDeletionPlan | undefined]>;
   commit?: () => Promise<readonly [Error | undefined, unknown]>;
 }> = {}) {
   const source = options.source ?? 'draft';
@@ -139,9 +175,9 @@ function mountDetail(options: Readonly<{
     chatMountCount: 2,
     resourcesPreserved: true as const,
   };
-  const planDeletion = vi.fn(async () => options.planError
-    ? [options.planError, undefined]
-    : [undefined, deletionPlan]);
+  const planDeletion = vi.fn(options.plan ?? (async () => options.planError
+    ? [options.planError, undefined] as const
+    : [undefined, deletionPlan] as const));
   const commitDeletion = vi.fn(options.commit ?? (async () => [undefined, {
     status: 'committed',
     operationId: 'operation_1',
@@ -189,6 +225,7 @@ function mountDetail(options: Readonly<{
   });
   const notifyError = vi.fn();
   const notifySuccess = vi.fn();
+  const createIdempotencyKey = vi.fn(() => 'operation_1');
   const controller = {
     apiService: {
       api: {
@@ -222,7 +259,7 @@ function mountDetail(options: Readonly<{
     subscribeReconnect: () => () => undefined,
     lifecycle,
     browser: {
-      createIdempotencyKey: () => 'operation_1',
+      createIdempotencyKey,
       setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
       clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
     },
@@ -239,13 +276,19 @@ function mountDetail(options: Readonly<{
   const host = document.createElement('div');
   document.body.appendChild(host);
   let selectTab: (value: string) => void = () => undefined;
+  let setRoute: (value: Readonly<{
+    source: 'draft' | 'published';
+    name: string;
+  }>) => void = () => undefined;
   const dispose = render(() => {
     const [tab, setTab] = createSignal(options.initialTab ?? 'overview');
+    const [route, updateRoute] = createSignal({ source, name: 'notes-board' } as const);
     selectTab = setTab;
+    setRoute = updateRoute;
     return <WidgetCatalogProvider controller={controller}>
       <WidgetDetailPage
-        source={source}
-        name="notes-board"
+        source={route().source}
+        name={route().name}
         controller={controller}
         query={{
           tab,
@@ -255,12 +298,18 @@ function mountDetail(options: Readonly<{
       />
     </WidgetCatalogProvider>;
   }, host);
-  cleanups.push(() => {
+  let disposed = false;
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
     dispose();
     host.remove();
-  });
+  };
+  cleanups.push(cleanup);
   return {
     host,
+    dispose: cleanup,
+    setRoute,
     selectTab,
     saveDraft,
     publishMetadata,
@@ -270,6 +319,7 @@ function mountDetail(options: Readonly<{
     notifySuccess,
     getCatalog,
     planDeletion,
+    createIdempotencyKey,
     commitDeletion,
     invalidate,
     navigate,
@@ -301,8 +351,9 @@ async function selectIconOption(host: HTMLElement, label: string): Promise<void>
   const input = host.querySelector<HTMLInputElement>('[role="combobox"]')!;
   input.value = label;
   input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: label }));
+  await settleSolidUpdate();
   if (trigger.getAttribute('aria-expanded') !== 'true') {
-    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    trigger.click();
   }
   const option = await vi.waitFor(() => {
     const value = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
@@ -312,6 +363,7 @@ async function selectIconOption(host: HTMLElement, label: string): Promise<void>
   });
   expect(option.querySelector('svg')).not.toBeNull();
   option.click();
+  await settleSolidUpdate();
 }
 
 afterEach(() => {
@@ -371,6 +423,32 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
   });
 
+  test('links tabs to panels and supports automatic keyboard traversal', async () => {
+    const { host } = mountDetail();
+    const overview = await vi.waitFor(() => {
+      const tab = host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
+      expect(tab).not.toBeNull();
+      return tab!;
+    });
+    overview.focus();
+    overview.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowRight' }));
+    const config = await vi.waitFor(() => {
+      const tab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+        .find((candidate) => candidate.textContent === 'Config')!;
+      expect(tab.getAttribute('aria-selected')).toBe('true');
+      expect(document.activeElement).toBe(tab);
+      return tab;
+    });
+    const panelId = config.getAttribute('aria-controls');
+    const panel = panelId === null ? null : document.getElementById(panelId);
+    expect(panel?.getAttribute('role')).toBe('tabpanel');
+    expect(panel?.getAttribute('aria-labelledby')).toBe(config.id);
+    config.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'End' }));
+    await vi.waitFor(() => {
+      expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Files');
+    });
+  });
+
   test('saves strict draft Config from the header and leaves Ctrl/Command+S unbound', async () => {
     const { host, saveDraft, notifySuccess } = mountDetail({ initialTab: 'config' });
     const name = await vi.waitFor(() => {
@@ -380,6 +458,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
     name.value = 'Renamed Notes';
     name.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await settleSolidUpdate();
     expect(button(host, 'Publish metadata').disabled).toBe(true);
     expect(button(host, 'Build and Publish').disabled).toBe(true);
     const event = new KeyboardEvent('keydown', {
@@ -494,8 +573,9 @@ describe('WidgetDetailPage filesystem inspector', () => {
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Show icon choices"]')!;
     input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'No icon' }));
     input.focus();
+    await settleSolidUpdate();
     if (trigger.getAttribute('aria-expanded') !== 'true') {
-      trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+      trigger.click();
     }
 
     await vi.waitFor(() => {
@@ -518,13 +598,18 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Show icon choices"]')!;
     input.focus();
-    trigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    trigger.click();
     await vi.waitFor(() => {
       const options = document.body.querySelectorAll('[role="option"]');
       expect(options).toHaveLength(202);
       expect([...options].every((option) => option.querySelector('svg') !== null)).toBe(true);
       expect([...options].at(-1)?.textContent?.trim()).toBe('Languages');
+      expect(input.getAttribute('aria-activedescendant')).toBe(options[0]?.id);
     });
+    input.value = '';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    await settleSolidUpdate();
+    expect(input.value).toBe('');
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
     await vi.waitFor(() => {
       expect(trigger.getAttribute('aria-expanded')).toBe('false');
@@ -635,7 +720,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
     expect(host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')?.value).toBe(exactSvg);
   });
 
-  test('supports keyboard selection through the Kobalte combobox', async () => {
+  test('supports keyboard selection through the icon combobox', async () => {
     const { host, saveDraft } = mountDetail({ initialTab: 'config' });
     const input = await vi.waitFor(() => {
       const value = host.querySelector<HTMLInputElement>('[role="combobox"]');
@@ -645,7 +730,9 @@ describe('WidgetDetailPage filesystem inspector', () => {
     input.focus();
     input.value = 'HeartX';
     input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'HeartX' }));
+    await settleSolidUpdate();
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+    await settleSolidUpdate();
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
     await vi.waitFor(() => expect(input.value).toBe('HeartX'));
     button(host, 'Save draft').click();
@@ -669,9 +756,11 @@ describe('WidgetDetailPage filesystem inspector', () => {
     });
     name.value = 'Stale Notes';
     name.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await settleSolidUpdate();
     button(host, 'Save draft').click();
     await vi.waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain(stale.message);
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent)
+      .toContain(stale.message));
     expect(notifyError).toHaveBeenCalledWith('Could not save widget Config', stale.message);
 
     name.value = 'Notes Board';
@@ -684,6 +773,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
       expectedManifestDigestSha256: 'a'.repeat(64),
       expectedCatalogDigestSha256: 'a'.repeat(64),
     });
+    await vi.waitFor(() => expect(button(host, 'Build and Publish').disabled).toBe(false));
     button(host, 'Build and Publish').click();
     await vi.waitFor(() => expect(buildAndPublish).toHaveBeenCalledOnce());
   });
@@ -798,6 +888,7 @@ describe('WidgetDetailPage filesystem inspector', () => {
     const textarea = custom.host.querySelector<HTMLTextAreaElement>('textarea[spellcheck="false"]')!;
     textarea.value = '👩🏽‍💻';
     textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await settleSolidUpdate();
     button(custom.host, 'Save icon').click();
     await vi.waitFor(() => expect(custom.updatePublishedIcon).toHaveBeenCalledOnce());
     expect(custom.updatePublishedIcon.mock.calls[0]?.[0].icon).toEqual({ svgIcon: '👩🏽‍💻' });
@@ -840,7 +931,8 @@ describe('WidgetDetailPage filesystem inspector', () => {
     button(host, 'Save icon').click();
 
     await vi.waitFor(() => expect(updatePublishedIcon).toHaveBeenCalledOnce());
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain(stale.message);
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent)
+      .toContain(stale.message));
     expect(notifyError).toHaveBeenCalledWith(
       'Could not save published widget icon',
       stale.message,
@@ -895,6 +987,198 @@ describe('WidgetDetailPage filesystem inspector', () => {
     expect(mounted.commitDeletion).not.toHaveBeenCalled();
     expect(mounted.navigate).not.toHaveBeenCalled();
     expect(mounted.invalidate).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      routeKind: 'widget',
+      route: { source: 'draft', name: 'tasks-board' } as const,
+      currentPlan: deletionPlanFixture({
+        planToken: 'plan_tasks',
+        widgetKey: 'tasks-board',
+        source: 'draft',
+        previewPlacementCount: 7,
+      }),
+      consequence: '7 Preview frames',
+    },
+    {
+      routeKind: 'source',
+      route: { source: 'published', name: 'notes-board' } as const,
+      currentPlan: deletionPlanFixture({
+        planToken: 'plan_published',
+        widgetKey: 'notes-board',
+        source: 'published',
+        placementCount: 8,
+      }),
+      consequence: '8 Canvas placements',
+    },
+  ])('fences a deferred plan across a $routeKind route change', async ({
+    route,
+    currentPlan,
+    consequence,
+  }) => {
+    const stalePlan = deletionPlanFixture({
+      planToken: 'plan_stale',
+      widgetKey: 'notes-board',
+      source: 'draft',
+    });
+    const staleResult = deferred<readonly [undefined, TWidgetPublicDeletionPlan]>();
+    const mounted = mountDetail({
+      catalog: catalogWithAlternateWidget(),
+      plan: async (identity) => identity.widgetKey === 'notes-board' && identity.source === 'draft'
+        ? staleResult.promise
+        : [undefined, currentPlan] as const,
+    });
+
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(mounted.planDeletion).toHaveBeenCalledWith({
+      widgetKey: 'notes-board',
+      source: 'draft',
+    }));
+
+    mounted.setRoute(route);
+    await settleSolidUpdate();
+    const currentTrigger = await vi.waitFor(() => button(mounted.host, 'Delete widget'));
+    expect(currentTrigger.disabled).toBe(false);
+    currentTrigger.click();
+    await vi.waitFor(() => expect(document.querySelector('[role="alertdialog"]')?.textContent)
+      .toContain(consequence));
+
+    staleResult.resolve([undefined, stalePlan]);
+    await settleSolidUpdate();
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(consequence);
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledOnce());
+    expect(mounted.commitDeletion).toHaveBeenCalledWith({
+      planToken: currentPlan.planToken,
+      operationId: 'operation_1',
+    });
+  });
+
+  test('keeps the newest review after reopening the original route', async () => {
+    const stalePlan = deletionPlanFixture({
+      planToken: 'plan_first',
+      widgetKey: 'notes-board',
+      source: 'draft',
+      previewPlacementCount: 1,
+    });
+    const latestPlan = deletionPlanFixture({
+      planToken: 'plan_latest',
+      widgetKey: 'notes-board',
+      source: 'draft',
+      previewPlacementCount: 9,
+    });
+    const staleResult = deferred<readonly [undefined, TWidgetPublicDeletionPlan]>();
+    let planAttempt = 0;
+    const mounted = mountDetail({
+      plan: async () => ++planAttempt === 1
+        ? staleResult.promise
+        : [undefined, latestPlan] as const,
+    });
+
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(mounted.planDeletion).toHaveBeenCalledOnce());
+    mounted.setRoute({ source: 'published', name: 'notes-board' });
+    await settleSolidUpdate();
+    mounted.setRoute({ source: 'draft', name: 'notes-board' });
+    await settleSolidUpdate();
+
+    const reopenedTrigger = await vi.waitFor(() => button(mounted.host, 'Delete widget'));
+    expect(reopenedTrigger.disabled).toBe(false);
+    reopenedTrigger.click();
+    await vi.waitFor(() => expect(document.querySelector('[role="alertdialog"]')?.textContent)
+      .toContain('9 Preview frames'));
+
+    staleResult.resolve([undefined, stalePlan]);
+    await settleSolidUpdate();
+    expect(document.querySelector('[role="alertdialog"]')?.textContent)
+      .toContain('9 Preview frames');
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledOnce());
+    expect(mounted.commitDeletion).toHaveBeenCalledWith({
+      planToken: 'plan_latest',
+      operationId: 'operation_1',
+    });
+  });
+
+  test('ignores a deferred plan after disposal', async () => {
+    const planResult = deferred<readonly [undefined, TWidgetPublicDeletionPlan]>();
+    const mounted = mountDetail({ plan: async () => planResult.promise });
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(mounted.planDeletion).toHaveBeenCalledOnce());
+
+    mounted.dispose();
+    planResult.resolve([undefined, deletionPlanFixture({
+      planToken: 'plan_after_disposal',
+      widgetKey: 'notes-board',
+      source: 'draft',
+    })]);
+    await settleSolidUpdate();
+
+    expect(mounted.createIdempotencyKey).not.toHaveBeenCalled();
+    expect(mounted.commitDeletion).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  test('ignores a deferred commit completion after navigating from widget A to widget B', async () => {
+    const commitResult = deferred<readonly [undefined, { status: 'committed' }]>();
+    const mounted = mountDetail({
+      catalog: catalogWithAlternateWidget(),
+      commit: async () => commitResult.promise,
+    });
+
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Delete permanently'));
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledOnce());
+    expect(mounted.commitDeletion).toHaveBeenCalledWith({
+      planToken: 'plan_1',
+      operationId: 'operation_1',
+    });
+
+    mounted.setRoute({ source: 'draft', name: 'tasks-board' });
+    await settleSolidUpdate();
+    const currentTrigger = await vi.waitFor(() => button(mounted.host, 'Delete widget'));
+    expect(currentTrigger.disabled).toBe(false);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+
+    commitResult.resolve([undefined, { status: 'committed' }]);
+    await settleSolidUpdate();
+    expect(currentTrigger.disabled).toBe(false);
+    expect(mounted.notifySuccess).not.toHaveBeenCalled();
+    expect(mounted.notifyError).not.toHaveBeenCalled();
+    expect(mounted.invalidate).not.toHaveBeenCalled();
+    expect(mounted.navigate).not.toHaveBeenCalled();
+  });
+
+  test('ignores every deferred commit error continuation after disposal', async () => {
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const commitResult = deferred<readonly [Error, undefined]>();
+    const mounted = mountDetail({ commit: async () => commitResult.promise });
+
+    (await vi.waitFor(() => button(mounted.host, 'Delete widget'))).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Delete permanently'));
+    button(document.body, 'Delete permanently').click();
+    await vi.waitFor(() => expect(mounted.commitDeletion).toHaveBeenCalledOnce());
+    expect(mounted.commitDeletion).toHaveBeenCalledWith({
+      planToken: 'plan_1',
+      operationId: 'operation_1',
+    });
+
+    mounted.dispose();
+    commitResult.resolve([new Error('Late deletion failure.'), undefined]);
+    await settleSolidUpdate();
+
+    expect(mounted.notifySuccess).not.toHaveBeenCalled();
+    expect(mounted.notifyError).not.toHaveBeenCalled();
+    expect(mounted.invalidate).not.toHaveBeenCalled();
+    expect(mounted.navigate).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    const diagnostics = [...warnings.mock.calls, ...errors.mock.calls].flat().map(String).join('\n');
+    expect(diagnostics).not.toContain('STRICT_READ_UNTRACKED');
+    warnings.mockRestore();
+    errors.mockRestore();
   });
 
   test('published confirmation reports its exact blast radius and successful commit navigates once', async () => {

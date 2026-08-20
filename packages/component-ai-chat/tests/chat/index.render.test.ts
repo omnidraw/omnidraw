@@ -1,4 +1,5 @@
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
+import { createStore } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAiChatActions, IAiChatPort, TAiChatStreamEvent } from "../../src/index.js";
 import { AiChat } from "../../src/index.js";
@@ -7,6 +8,7 @@ import {
   createTestChatBrowser,
   createTestHostActions,
 } from "../test-setup.js";
+import { settleSolidUpdate } from "../settled.js";
 
 const SYNTHETIC_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg==";
 
@@ -79,6 +81,22 @@ afterEach(() => {
 });
 
 describe("AiChat portable shell", () => {
+  it("does not read a store-backed preference from an effect apply phase", async () => {
+    const [preference] = createStore({
+      approvalPolicy: { mode: "manual" as const },
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      mount(createTestAiChatPort(), { preference });
+      await settleSolidUpdate();
+
+      expect(warn.mock.calls.flat().map(String).join("\n")).not.toContain("[STRICT_READ_UNTRACKED]");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("renders streamed PNG tool output and reconciles canonical history", async () => {
     const message = {
       role: "toolResult",

@@ -52,6 +52,7 @@
 .selectTrigger { display: flex; align-items: center; justify-content: space-between; }
 .selectContent, .menu { z-index: 80; min-width: 10rem; padding: .25rem 0; border: 1px solid var(--omnidraw-border); background: var(--omnidraw-popover); color: var(--omnidraw-popover-foreground); box-shadow: 0 10px 24px rgb(0 0 0 / .18); }
 .selectItem, .menuItem { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 2rem; padding: .375rem .625rem; outline: 0; font-size: .6875rem; }
+.menuItem { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .selectItem[data-highlighted], .menuItem[data-highlighted] { background: var(--omnidraw-accent); color: var(--omnidraw-accent-foreground); }
 .menuItemDanger { color: var(--omnidraw-destructive); }
 .form, .rowForm { display: grid; gap: .75rem; }

@@ -1,16 +1,18 @@
-import { Button } from '@kobalte/core/button';
-import { DropdownMenu } from '@kobalte/core/dropdown-menu';
-import ChevronRight from 'lucide-solid/icons/chevron-right';
-import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
-import Plus from 'lucide-solid/icons/plus';
-import TriangleAlert from 'lucide-solid/icons/triangle-alert';
+import {
+  ChevronRight,
+  MoreHorizontal,
+  Plus,
+  TriangleAlert,
+} from '@/shell/framework/components/icons';
 import {
   For,
   Show,
   createEffect,
   createMemo,
   createSignal,
-  onCleanup,
+  createUniqueId,
+  onSettled,
+  untrack,
   type Component,
 } from 'solid-js';
 import {
@@ -25,20 +27,52 @@ import styles from './WidgetsSidebarSection.module.css';
 import type { TSidebarController } from '../../ports';
 
 export const WidgetsSidebarSection: Component<{ controller: TSidebarController }> = (props) => {
-  const application = props.controller.application;
+  const application = untrack(() => props.controller.application);
+  const browser = untrack(() => props.controller.browser);
+  const widgetPlacement = untrack(() => props.controller.widgetPlacement);
   const catalogState = useWidgetCatalog();
   const [expanded, setExpanded] = createSignal(true);
   const [expandedGroups, setExpandedGroups] = createSignal<Set<string>>(new Set());
   const [placementAvailable, setPlacementAvailable] = createSignal(
-    props.controller.widgetPlacement?.available() ?? false,
+    widgetPlacement?.available() ?? false,
   );
+  const [actionsOpen, setActionsOpen] = createSignal(false);
+  const actionsTriggerId = createUniqueId();
+  let actionsRoot: HTMLDivElement | undefined;
+  let actionsTrigger: HTMLButtonElement | undefined;
+  let actionsMenu: HTMLDivElement | undefined;
   const projection = createMemo(() => {
     const catalog = catalogState.catalog();
     return catalog ? fnProjectWidgetCatalog(catalog) : null;
   });
   const selection = createMemo(() => fnWidgetSelection(application.pathname()));
-  const unsubscribePlacement = props.controller.widgetPlacement?.subscribe?.(setPlacementAvailable);
-  onCleanup(() => unsubscribePlacement?.());
+  onSettled(() => {
+    const unsubscribePlacement = widgetPlacement?.subscribe?.(setPlacementAvailable);
+    const handlePointerDown = (event: PointerEvent) => {
+      if (actionsRoot?.contains(event.target as Node)) return;
+      setActionsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !actionsOpen()) return;
+      event.preventDefault();
+      setActionsOpen(false);
+      actionsTrigger?.focus();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      unsubscribePlacement?.();
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  });
+
+  createEffect(
+    () => actionsOpen(),
+    (open) => {
+      if (open) queueMicrotask(() => actionsMenu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+    },
+  );
 
   const selectedWidgetKey = createMemo(() => {
     const selected = selection();
@@ -62,20 +96,25 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
     return next;
   });
 
-  createEffect(() => {
-    const selected = selection();
-    const widgetKey = selectedWidgetKey();
-    const projected = projection();
-    if (!selected || !widgetKey || !projected) return;
-    const groupName = fnFindWidgetSelectionGroup(projected, selected.source, widgetKey);
-    if (!groupName) return;
-    setExpandedGroups((current) => {
-      if (current.has(groupName)) return current;
-      const next = new Set(current);
-      next.add(groupName);
-      return next;
-    });
-  });
+  createEffect(
+    () => {
+      const selected = selection();
+      const widgetKey = selectedWidgetKey();
+      const projected = projection();
+      return selected !== null && widgetKey !== null && projected !== null
+        ? fnFindWidgetSelectionGroup(projected, selected.source, widgetKey)
+        : null;
+    },
+    (groupName) => {
+      if (groupName === null) return;
+      setExpandedGroups((current) => {
+        if (current.has(groupName)) return current;
+        const next = new Set(current);
+        next.add(groupName);
+        return next;
+      });
+    },
+  );
 
   const row = (value: TWidgetSidebarRow) => {
     let suppressClick = false;
@@ -88,8 +127,8 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
     const addToCanvas = async () => {
       if (!value.placement) return;
       try {
-        if (!props.controller.widgetPlacement) throw new Error('Open a canvas before placing a widget.');
-        await props.controller.widgetPlacement.addToCanvas({
+        if (!widgetPlacement) throw new Error('Open a canvas before placing a widget.');
+        await widgetPlacement.addToCanvas({
           reference: value.placement.reference,
           bounds: value.placement.bounds,
           label,
@@ -99,21 +138,22 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       }
     };
     return <div class={`${styles.widgetRow} ${value.source === 'draft' ? styles.draftRow : ''} ${isSelected(value) ? styles.selected : ''}`}>
-      <Button
+      <button
+        type="button"
         class={`${styles.widgetRowMain} ${isSelected(value) ? styles.selected : ''}`}
         aria-current={isSelected(value) ? 'page' : undefined}
         aria-label={`${displayName}, ${value.source}, ${value.form.health}.`}
         title={value.problem?.message ?? `Open ${displayName}`}
         onPointerDown={(event) => {
-          if (!value.placement || !props.controller.widgetPlacement?.available()) return;
-          props.controller.widgetPlacement.beginPointerSession({
+          if (!value.placement || !widgetPlacement?.available()) return;
+          widgetPlacement.beginPointerSession({
             reference: value.placement.reference,
             bounds: value.placement.bounds,
             label,
             event,
             onDragStart: () => { suppressClick = true; },
             onDragEnd: () => {
-              props.controller.browser.setTimeout(() => { suppressClick = false; }, 0);
+              browser.setTimeout(() => { suppressClick = false; }, 0);
             },
           });
         }}
@@ -130,9 +170,10 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
         <Show when={value.problem}>
           <TriangleAlert class={styles.warning} size={12} aria-label="Widget problem" />
         </Show>
-      </Button>
+      </button>
       <Show when={placementAvailable() && value.placement}>
-        <Button
+        <button
+          type="button"
           class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
           aria-label={value.action === 'add' ? `Add ${label} to canvas` : `Add ${label} draft to canvas`}
           title={disabledReason ?? (value.action === 'add' ? 'Add to canvas' : 'Add draft to canvas')}
@@ -141,31 +182,72 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
             event.stopPropagation();
             void addToCanvas();
           }}
-        ><Plus size={10} /><span>{value.action === 'add' ? 'Add' : 'Add draft'}</span></Button>
+        ><Plus size={10} /><span>{value.action === 'add' ? 'Add' : 'Add draft'}</span></button>
       </Show>
     </div>;
   };
 
   return <section class={styles.section}>
-    <div class={styles.header}>
-      <Button
+    <div ref={(element) => { actionsRoot = element; }} class={styles.header}>
+      <button
+        type="button"
         class={styles.sectionToggle}
         onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded()}
+        aria-expanded={expanded() ? 'true' : 'false'}
       >
         <ChevronRight size={13} class={styles.chevron} />
         <span>Widgets</span>
-      </Button>
-      <DropdownMenu modal={false}>
-        <DropdownMenu.Trigger class={styles.menuTrigger} aria-label="Widget section actions">
+      </button>
+      <div>
+        <button
+          type="button"
+          id={actionsTriggerId}
+          ref={(element) => { actionsTrigger = element; }}
+          class={styles.menuTrigger}
+          aria-label="Widget section actions"
+          aria-haspopup="menu"
+          aria-expanded={actionsOpen() ? 'true' : 'false'}
+          onClick={() => setActionsOpen((open) => !open)}
+        >
           <MoreHorizontal size={14} />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal><DropdownMenu.Content class={styles.menu}>
-          <DropdownMenu.Item class={styles.menuItem} onSelect={() => void catalogState.refresh()}>
+        </button>
+        <Show when={actionsOpen()}><div
+          ref={(element) => { actionsMenu = element; }}
+          class={styles.menu}
+          role="menu"
+          aria-labelledby={actionsTriggerId}
+          onFocusOut={(event) => {
+            const next = event.relatedTarget;
+            if (next instanceof Node && event.currentTarget.contains(next)) return;
+            setActionsOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+            if (items.length === 0) return;
+            const current = items.indexOf(document.activeElement as HTMLElement);
+            const next = event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? items.length - 1
+                : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            items[next]?.focus();
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            class={styles.menuItem}
+            onClick={() => {
+              setActionsOpen(false);
+              void catalogState.refresh();
+            }}
+          >
             Refresh widget folders
-          </DropdownMenu.Item>
-        </DropdownMenu.Content></DropdownMenu.Portal>
-      </DropdownMenu>
+          </button>
+        </div></Show>
+      </div>
     </div>
     <Show when={expanded()}>
       <div class={styles.body}>
@@ -176,15 +258,16 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
         <Show when={projection()}>{(projected) => <>
           <For each={projected().groups}>{(group) => <div>
             <div class={styles.groupRow}>
-              <Button
+              <button
+                type="button"
                 class={styles.groupDisclosure}
                 onClick={() => toggleGroup(group.name)}
-                aria-expanded={expandedGroups().has(group.name)}
+                aria-expanded={expandedGroups().has(group.name) ? 'true' : 'false'}
                 aria-label={`${expandedGroups().has(group.name) ? 'Collapse' : 'Expand'} ${group.name} widget group`}
               >
                 <ChevronRight size={12} class={styles.groupChevron} />
                 <span class={styles.groupName}>{group.name}</span>
-              </Button>
+              </button>
             </div>
             <Show when={expandedGroups().has(group.name)}>
               <div class={styles.groupChildren}>

@@ -3,9 +3,10 @@ import type {
   TSelectionStyleState,
 } from '@omnidraw/cangine/editor';
 import { createSignal } from 'solid-js';
-import { render } from 'solid-js/web';
+import { render } from '@solidjs/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SelectionStyleMenu } from '../../src/components/SelectionStyleMenu';
+import { settleSolidUpdate } from './settled';
 
 const COVERAGE = {
   selectedRootCount: 1,
@@ -144,7 +145,7 @@ describe('SelectionStyleMenu controls', () => {
     );
   });
 
-  test('uses relative text sizes and named weights', () => {
+  test('uses relative text sizes and named weights', async () => {
     const callbacks = handlers();
     const host = document.createElement('div');
     document.body.append(host);
@@ -225,21 +226,24 @@ describe('SelectionStyleMenu controls', () => {
       [{ propertyId: 'font-size', value: 25 }],
       [{ propertyId: 'font-weight', value: 400 }],
     ]);
+    await settleSolidUpdate();
     expect(section(host, 'SIZE')?.querySelector('[aria-pressed="true"]')
       ?.textContent).toBe('L');
 
     setCurrentState(textState(30, currentState().revision + 1));
+    await settleSolidUpdate();
     expect(section(host, 'SIZE')?.querySelector('[aria-pressed="true"]')
       ?.textContent).toBe('M');
 
     setCurrentState(textState(null, currentState().revision + 1));
+    await settleSolidUpdate();
     expect(section(host, 'SIZE')?.querySelector('[aria-pressed="true"]'))
       .toBeNull();
     expect([...section(host, 'SIZE')?.querySelectorAll('button') ?? []]
       .every((button) => button.disabled)).toBe(true);
   });
 
-  test('shows mixed opacity and brackets pointer or keyboard updates once', () => {
+  test('shows mixed opacity and brackets pointer or keyboard updates once', async () => {
     const callbacks = handlers();
     const host = document.createElement('div');
     document.body.append(host);
@@ -268,9 +272,11 @@ describe('SelectionStyleMenu controls', () => {
     input?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     if (input) input.value = '0.4';
     input?.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await settleSolidUpdate();
     expect(host.querySelector('output')?.textContent).toBe('40%');
     expect(input?.style.getPropertyValue('--omnidraw-style-opacity')).toBe('40%');
     setCurrentState(opacityState('second'));
+    await settleSolidUpdate();
     expect(callbacks.onEndOpacity).toHaveBeenCalledTimes(1);
 
     input?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));

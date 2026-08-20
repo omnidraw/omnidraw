@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import solidPlugin from "vite-plugin-solid";
+import solidPlugin from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { defineConfig } from "vite";
 
@@ -10,7 +10,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   root: resolve(__dirname, "inspection"),
   base: "./",
-  plugins: [wasm(), solidPlugin()],
+  plugins: [wasm(), solidPlugin({ solid: { moduleName: "@solidjs/web" } })],
   build: {
     emptyOutDir: true,
     outDir: resolve(__dirname, "dist/inspection"),

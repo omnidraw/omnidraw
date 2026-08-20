@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
-import solid from "vite-plugin-solid";
+import solid from "@solidjs/vite-plugin";
 
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid({ solid: { moduleName: "@solidjs/web" } })],
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    setupFiles: ["./tests/setup.ts"],
     include: [
       "tests/**/*.test.ts",
       "tests/**/*.test.tsx",

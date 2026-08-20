@@ -1,6 +1,5 @@
-import * as AlertDialog from "@kobalte/core/alert-dialog";
-import { Button } from "@kobalte/core/button";
 import type { Component } from "solid-js";
+import { AlertDialog, Button } from "../../resource/owned-primitives";
 import styles from "../DbResourcePage.module.css";
 
 export type TConfirmActionDialogProps = {

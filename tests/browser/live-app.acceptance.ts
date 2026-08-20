@@ -99,6 +99,7 @@ const FAKE_MODEL_NAME = 'Browser Streaming Model';
 const PROMPT_TEXT = 'Return the deterministic browser acceptance reply.';
 const PARTIAL_RESPONSE_TEXT = 'Browser acceptance';
 const COMPLETE_RESPONSE_TEXT = 'Browser acceptance streamed reply.';
+const SOLID_DEV_DIAGNOSTIC = /\b(?:ASYNC_OUTSIDE_LOADING_BOUNDARY|PENDING_ASYNC_UNTRACKED_READ|REACTIVE_WRITE_IN_OWNED_SCOPE|REACTIVITY_HALTED|SETTLED_CLEANUP_UNOWNED|STRICT_READ_UNTRACKED)\b/;
 const sdkPackage = JSON.parse(await readFile(join(SDK_ROOT, 'package.json'), 'utf8')) as {
   version?: unknown;
 };
@@ -1153,12 +1154,18 @@ async function waitForSuccessfulRpcRequest(args: Readonly<{
   const requests = await waitForBrowserState<readonly TRpcWireRequest[]>({
     label: args.label,
     read: () => readRpcRequests(args.page, args.path),
+    // A superseded widget mount can finish its request with Failure before the
+    // replacement mount completes the same operation successfully.
     ready: (values) => values.slice(args.afterCount).some((request) => (
-      request.complete && (args.predicate?.(request) ?? true)
+      request.complete
+      && request.exit?._tag === 'Success'
+      && (args.predicate?.(request) ?? true)
     )),
   });
   const request = requests.slice(args.afterCount).findLast((candidate) => (
-    candidate.complete && (args.predicate?.(candidate) ?? true)
+    candidate.complete
+    && candidate.exit?._tag === 'Success'
+    && (args.predicate?.(candidate) ?? true)
   ));
   assert.ok(request !== undefined, `No completed ${args.path} request matched ${args.label}.`);
   assert.equal(
@@ -1414,11 +1421,21 @@ async function persistAiChatStateAcrossReload(
     'The isolated deterministic model provider did not enable the AI Chat model picker.',
   );
   await modelButton.click();
+  const modelSettings = page.getByRole('group', { name: 'AI model settings' });
+  await modelSettings.getByRole('menuitem', { name: 'Browser Local', exact: true }).click();
   const models = page.getByRole('group', { name: 'AI models' })
     .locator('.omnidraw-ai-chat-composer__model-option');
-  await models.first().waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   const selectedModel = models.filter({ hasText: FAKE_MODEL_NAME });
-  assert.equal(await selectedModel.count(), 1, 'AI Chat did not list the deterministic browser model exactly once.');
+  await selectedModel.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const renderedModelLabels = (await models.allInnerTexts()).map((label) => label.trim());
+  const renderedCategoryLabels = (await modelSettings
+    .getByRole('menuitem')
+    .allInnerTexts()).map((label) => label.trim());
+  assert.equal(
+    await selectedModel.count(),
+    1,
+    `AI Chat did not list the deterministic browser model exactly once (categories: ${JSON.stringify(renderedCategoryLabels)}; models: ${JSON.stringify(renderedModelLabels)}).`,
+  );
   const selectedModelName = (await selectedModel.locator('strong').innerText()).trim();
   assert.equal(selectedModelName, FAKE_MODEL_NAME);
   await selectedModel.click();
@@ -1441,10 +1458,10 @@ async function persistAiChatStateAcrossReload(
   canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
   await modelButton.click();
   await page.getByRole('group', { name: 'AI model settings' })
-    .getByRole('button', { name: 'Thinking', exact: true })
+    .getByRole('menuitem', { name: 'Thinking', exact: true })
     .click();
-  await page.getByRole('group', { name: 'AI models' })
-    .getByRole('button', { name: 'Xhigh', exact: true })
+  await page.getByRole('group', { name: 'Thinking levels' })
+    .getByRole('menuitemradio', { name: 'Xhigh', exact: true })
     .click();
   await waitForSuccessfulRpcRequest({
     afterCount: canvasExecuteBefore,
@@ -1722,7 +1739,7 @@ async function placeDraftPreviewWidget(page: Page): Promise<Readonly<{
   });
   await row.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   await page.getByRole('button', {
-    name: 'Preview Browser Acceptance Widget on canvas',
+    name: 'Add Browser Acceptance Widget draft to canvas',
     exact: true,
   }).waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   const [hostBounds, rowBounds] = await Promise.all([host.boundingBox(), row.boundingBox()]);
@@ -1858,7 +1875,7 @@ async function placeProfilePreview(
   const executeBefore = (await readRpcRequests(page, 'canvas.execute')).length;
   const openBefore = (await readRpcRequests(page, 'widget.preview.open')).length;
   await page.getByRole('button', {
-    name: `Preview ${fixture.name} on canvas`,
+    name: `Add ${fixture.name} draft to canvas`,
     exact: true,
   }).click();
   const command = await waitForSuccessfulRpcRequest({
@@ -1893,17 +1910,74 @@ async function placeProfilePreview(
 }
 
 async function placeFunctionResourcePreview(page: Page): Promise<void> {
+  const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
+  if (await expand.count()) await expand.click();
+  const previewButton = page.getByRole('button', {
+    name: 'Add Browser Function Resource Widget draft to canvas',
+    exact: true,
+  });
+  await previewButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
+  await previewButton.click();
+  const command = await waitForSuccessfulRpcRequest({
+    afterCount: canvasExecuteBefore,
+    label: 'the function/resource Preview placement command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandWidgetNode(request);
+      const extension = node === null ? {} : canvasWidgetExtension(node);
+      return extension.type === 'widget-preview' && extension.widgetKey === FUNCTION_RESOURCE_WIDGET_KEY;
+    },
+  });
+  const node = canvasCommandWidgetNode(command);
+  assert.ok(node !== null && typeof node.id === 'string');
+  const portal = page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${node.id}"]`);
+  await portal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const failure = portal.locator('[data-omnidraw-widget-preview-failure]');
+  await failure.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await failure.getByRole('heading', { name: 'Build required', exact: true }).waitFor({
+    state: 'visible',
+    timeout: ROUTE_TIMEOUT_MS,
+  });
+  const rebuild = failure.getByRole('button', { name: 'Rebuild', exact: true });
+  await rebuild.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const expectedToast = page.locator('[role="alert"]', { hasText: 'Build required' });
+  if (await expectedToast.count()) await expectedToast.locator('button').click();
+
+  const rebuildBefore = (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length;
+  const previewOpenBefore = (await readRpcRequests(page, 'widget.preview.open')).length;
   const invocationBefore = (await readRpcRequests(page, 'widget.preview.invoke')).length;
-  const preview = await placeProfilePreview(page, {
-    name: 'Browser Function Resource Widget',
-    widgetKey: FUNCTION_RESOURCE_WIDGET_KEY,
+  await rebuild.click();
+  await waitForSuccessfulRpcRequest({
+    afterCount: rebuildBefore,
+    label: 'the host-accepted function/resource draft rebuild',
+    page,
+    path: 'widget.preview.rebuildDraft',
+    predicate: (request) => record(request.input).widgetKey === FUNCTION_RESOURCE_WIDGET_KEY,
+  });
+  await waitForSuccessfulRpcRequest({
+    afterCount: previewOpenBefore,
+    label: 'the accepted function/resource Preview guest after Rebuild',
+    page,
+    path: 'widget.preview.open',
+    predicate: (request) => record(request.input).elementId === node.id,
+  });
+  await failure.waitFor({ state: 'detached', timeout: ROUTE_TIMEOUT_MS });
+  await waitForBrowserState({
+    label: 'the accepted function/resource Preview host content',
+    read: () => portal.evaluate((element) => element.childElementCount),
+    ready: (childCount) => childCount > 0,
   });
   const invocation = await waitForSuccessfulRpcRequest({
     afterCount: invocationBefore,
     label: 'the Capsule Preview server function through its portable KV resource',
     page,
     path: 'widget.preview.invoke',
-    predicate: (request) => record(request.input).functionName === 'readAcceptanceValue',
+    predicate: (request) => {
+      const input = record(request.input);
+      return input.elementId === node.id && input.functionName === 'readAcceptanceValue';
+    },
   });
   const result = record(invocation.exit?.value);
   assert.equal(result.status, 'succeeded', `Preview function failed: ${JSON.stringify(result)}`);
@@ -1913,7 +1987,7 @@ async function placeFunctionResourcePreview(page: Page): Promise<void> {
   });
   await assertFunctionResourceGuestConsumed(
     page,
-    page.locator(`[data-vibecanvas-portal-id="omnidraw:widget:${preview.nodeId}"]`),
+    portal,
   );
 }
 
@@ -1921,7 +1995,7 @@ async function provePersistentPreGuestPreviewFailure(page: Page): Promise<void> 
   const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
   if (await expand.count()) await expand.click();
   const previewButton = page.getByRole('button', {
-    name: 'Preview Browser Unbuilt Widget on canvas',
+    name: 'Add Browser Unbuilt Widget draft to canvas',
     exact: true,
   });
   await previewButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
@@ -2126,28 +2200,6 @@ async function seedFunctionResourceValue(
   });
 }
 
-async function acceptFunctionResourceDraft(page: Page, baseUrl: string): Promise<void> {
-  await page.goto(
-    new URL(`/widgets/draft/${FUNCTION_RESOURCE_WIDGET_KEY}?tab=config`, baseUrl).toString(),
-    { waitUntil: 'domcontentloaded' },
-  );
-  await page.getByText('Browser Function Resource Widget', { exact: true }).first().waitFor({
-    state: 'visible',
-    timeout: ROUTE_TIMEOUT_MS,
-  });
-  const rebuildBefore = (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length;
-  const rebuild = page.getByRole('button', { name: 'Rebuild', exact: true });
-  await rebuild.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
-  await rebuild.click();
-  await waitForSuccessfulRpcRequest({
-    afterCount: rebuildBefore,
-    label: 'the host-accepted fixed server module and bound resource fixture',
-    page,
-    path: 'widget.preview.rebuildDraft',
-    predicate: (request) => record(request.input).widgetKey === FUNCTION_RESOURCE_WIDGET_KEY,
-  });
-}
-
 async function assertRoute(
   page: Page,
   baseUrl: string,
@@ -2307,7 +2359,9 @@ async function runBrowserSuite(
   const browserErrors: string[] = [];
   const badResponses: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+    if (message.type() === 'error' || SOLID_DEV_DIAGNOSTIC.test(message.text())) {
+      browserErrors.push(`console ${message.type()}: ${message.text()}`);
+    }
   });
   page.on('pageerror', (error) => browserErrors.push(`page: ${error.message}`));
   page.on('response', (response) => {
@@ -2355,7 +2409,7 @@ async function runBrowserSuite(
     >;
     await seedFunctionResourceValue(page, baseUrl, byKind.kv);
     await bindFunctionResourceDraft(home, byKind.kv.id);
-    await acceptFunctionResourceDraft(page, baseUrl);
+    await restartBackend();
     await page.goto(new URL(`/c/${initialCanvasId}`, baseUrl).toString(), {
       waitUntil: 'domcontentloaded',
     });
@@ -2530,8 +2584,10 @@ try {
       '--port',
       String(frontendPort!.port),
       '--strictPort',
+      '--force',
     ],
     env: {
+      NODE_ENV: 'development',
       OMNIDRAW_BACKEND_HOST: '127.0.0.1',
       OMNIDRAW_BACKEND_PORT: String(backendPort!.port),
       OMNIDRAW_FRONTEND_PORT: String(frontendPort!.port),

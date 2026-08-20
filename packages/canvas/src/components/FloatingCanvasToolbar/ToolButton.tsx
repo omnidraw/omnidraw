@@ -14,10 +14,12 @@ export function ToolButton(props: TToolButtonProps) {
   return (
     <button
       type="button"
-      class="omnidraw-toolbar-button"
-      classList={{ 'omnidraw-toolbar-button--active': props.active }}
+      class={[
+        'omnidraw-toolbar-button',
+        { 'omnidraw-toolbar-button--active': props.active },
+      ]}
       aria-label={props.label}
-      aria-pressed={props.active}
+      aria-pressed={props.active ? 'true' : 'false'}
       title={props.label}
       onClick={() => props.onSelect(props.toolId)}
     >

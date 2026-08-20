@@ -87,9 +87,12 @@
 }
 
 .content {
+  position: fixed;
   z-index: 80;
-  max-height: min(20rem, var(--kb-popper-content-available-height));
+  box-sizing: border-box;
+  max-height: 20rem;
   overflow: hidden;
+  visibility: hidden;
   border: 1px solid var(--omnidraw-border);
   border-radius: 0;
   background: var(--omnidraw-popover);
@@ -98,7 +101,7 @@
 }
 
 .listbox {
-  max-height: min(20rem, var(--kb-popper-content-available-height));
+  max-height: 20rem;
   margin: 0;
   padding: .25rem 0;
   overflow-y: auto;

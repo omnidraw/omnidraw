@@ -1,10 +1,9 @@
 /* @refresh reload */
 import "./index.css";
-import { render } from "solid-js/web";
-if (import.meta.env.DEV) void import("solid-devtools");
+import { render } from "@solidjs/web";
 
-import { Route, Router, useParams } from "@solidjs/router";
-import { lazy, Show } from "solid-js";
+import { createRouter, useParams } from "@solidjs/router";
+import { lazy, Loading, Show } from "solid-js";
 import App from "./shell/framework/App";
 import WelcomePage from "./shell/framework/pages/welcome";
 import routeStateStyles from "./shell/framework/styles/route-state.module.css";
@@ -33,6 +32,15 @@ const CanvasRoute = () => {
   );
 };
 
+const Router = createRouter({
+  routes: [
+    { path: "/", component: WelcomePage },
+    { path: "/c/:id", component: CanvasRoute },
+    { path: "/resources/:id", component: ResourcePage },
+    { path: "/widgets/:source/:name", component: WidgetPage },
+  ],
+});
+
 const root = document.getElementById("root");
 
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
@@ -46,12 +54,11 @@ const runtime = createLiveFrontendRuntime({ ownerWindow: window, ownerDocument: 
 const disposeView = render(
   () => (
     <FrontendRuntimeProvider runtime={runtime}>
-      <Router root={App}>
-        <Route path="/" component={WelcomePage} />
-        <Route path="/c/:id" component={CanvasRoute} />
-        <Route path="/resources/:id" component={ResourcePage} />
-        <Route path="/widgets/:source/:name" component={WidgetPage} />
-      </Router>
+      <Loading fallback={null}>
+        <Router>
+          {(props) => <App {...props} />}
+        </Router>
+      </Loading>
     </FrontendRuntimeProvider>
   ),
   root!,

@@ -1,13 +1,7 @@
-import { Button } from "@kobalte/core/button";
-import * as Checkbox from "@kobalte/core/checkbox";
-import * as Dialog from "@kobalte/core/dialog";
-import * as Select from "@kobalte/core/select";
-import * as Switch from "@kobalte/core/switch";
-import * as TextField from "@kobalte/core/text-field";
-import ChevronDown from "lucide-solid/icons/chevron-down";
-import Check from "lucide-solid/icons/check";
-import { Show, createEffect, createSignal, type Component } from "solid-js";
+import { Check } from "@/shell/framework/components/icons";
+import { For, Show, createEffect, createSignal, createUniqueId, type Component } from "solid-js";
 import type { TDbColumn } from "@/core/resources/types";
+import { Button, Checkbox, Dialog, Switch, TextField } from "../../resource/owned-primitives";
 import styles from "../DbResourcePage.module.css";
 
 export type TStructureOperationKind =
@@ -54,6 +48,7 @@ const operationTitle = (kind: TStructureOperationKind) => ({
 const isDestructive = (kind: TStructureOperationKind) => ["dropTable", "dropColumn", "dropIndex", "dropForeignKey", "alterColumn"].includes(kind);
 
 export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (props) => {
+  const declaredTypeId = createUniqueId();
   const [name, setName] = createSignal("");
   const [nextName, setNextName] = createSignal("");
   const [declaredType, setDeclaredType] = createSignal("TEXT");
@@ -67,25 +62,38 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
   const [referenceTable, setReferenceTable] = createSignal("");
   const [referenceColumns, setReferenceColumns] = createSignal("");
 
-  createEffect(() => {
-    if (!props.open) return;
-    setName(["dropIndex", "dropForeignKey"].includes(props.kind) ? props.columnName ?? "" : "");
-    setNextName("");
-    setDeclaredType(props.column?.declaredType || "TEXT");
-    setNullable(props.column?.nullable ?? true);
-    setDefaultValue(props.column?.defaultSql ?? "");
-    setColumns(props.kind === "createTable" ? "id" : props.columnName ?? "");
-    setPrimaryKey(props.kind === "createTable" || Boolean(props.column?.primaryKeyOrder));
-    setUnique(false);
-    setStrict(true);
-    setWithoutRowid(false);
-    setReferenceTable("");
-    setReferenceColumns("");
-  });
+  createEffect(
+    () => props.open ? {
+      name: ["dropIndex", "dropForeignKey"].includes(props.kind) ? props.columnName ?? "" : "",
+      declaredType: props.column?.declaredType || "TEXT",
+      nullable: props.column?.nullable ?? true,
+      defaultValue: props.column?.defaultSql ?? "",
+      columns: props.kind === "createTable" ? "id" : props.columnName ?? "",
+      primaryKey: props.kind === "createTable" || Boolean(props.column?.primaryKeyOrder),
+    } : null,
+    (initial) => {
+      if (initial === null) return;
+      setName(initial.name);
+      setNextName("");
+      setDeclaredType(initial.declaredType);
+      setNullable(initial.nullable);
+      setDefaultValue(initial.defaultValue);
+      setColumns(initial.columns);
+      setPrimaryKey(initial.primaryKey);
+      setUnique(false);
+      setStrict(true);
+      setWithoutRowid(false);
+      setReferenceTable("");
+      setReferenceColumns("");
+    },
+  );
 
-  createEffect(() => {
-    if (props.kind === "createTable" && strict() && !STRICT_COLUMN_TYPES.includes(declaredType())) setDeclaredType("TEXT");
-  });
+  createEffect(
+    () => props.kind === "createTable" && strict() && !STRICT_COLUMN_TYPES.includes(declaredType()),
+    (needsNormalization) => {
+      if (needsNormalization) setDeclaredType("TEXT");
+    },
+  );
 
   const columnTypes = () => props.kind === "createTable" && strict() ? STRICT_COLUMN_TYPES : COLUMN_TYPES;
 
@@ -143,25 +151,17 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
               </TextField.Root>
             </Show>
             <Show when={["createTable", "addColumn", "alterColumn"].includes(props.kind)}>
-              <Select.Root<string>
-                options={columnTypes()}
-                value={declaredType()}
-                onChange={(value) => value && setDeclaredType(value)}
-                itemComponent={(itemProps) => (
-                  <Select.Item item={itemProps.item} class={styles.selectItem}>
-                    <Select.ItemLabel>{itemProps.item.rawValue}</Select.ItemLabel>
-                    <Select.ItemIndicator><Check size={12} /></Select.ItemIndicator>
-                  </Select.Item>
-                )}
-              >
-                <Select.Label class={styles.label}>Declared type</Select.Label>
-                <Select.Trigger class={styles.selectTrigger}>
-                  <Select.Value<string>>{(state) => state.selectedOption()}</Select.Value>
-                  <Select.Icon><ChevronDown size={13} /></Select.Icon>
-                </Select.Trigger>
-                <Select.HiddenSelect />
-                <Select.Portal><Select.Content class={styles.selectContent}><Select.Listbox /></Select.Content></Select.Portal>
-              </Select.Root>
+              <div>
+                <label class={styles.label} for={declaredTypeId}>Declared type</label>
+                <select
+                  id={declaredTypeId}
+                  class={styles.selectTrigger}
+                  value={declaredType()}
+                  onChange={(event) => setDeclaredType(event.currentTarget.value)}
+                >
+                  <For each={columnTypes()}>{(type) => <option value={type}>{type}</option>}</For>
+                </select>
+              </div>
               <TextField.Root value={defaultValue()} onChange={setDefaultValue}>
                 <TextField.Label class={styles.label}>Default expression (optional)</TextField.Label>
                 <TextField.Input class={styles.input} placeholder="NULL" />

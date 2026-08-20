@@ -5,7 +5,7 @@ import {
   type TWidgetFrameNode,
 } from "@omnidraw/canvas";
 import { createSignal } from "solid-js";
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import { AiChat } from "./chat/components/index.js";
 import type {
   IAiChatBrowserPort,
