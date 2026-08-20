@@ -322,7 +322,12 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       return;
     }
     await catalogState.refresh();
-    application.notifySuccess(kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published');
+    application.notifySuccess(
+      kind === 'metadata' ? 'Widget metadata published' : 'Widget built and published',
+      kind === 'build'
+        ? 'Existing draft frames remain Previews; add the published widget separately to place the publication.'
+        : undefined,
+    );
   };
 
   const restoreDeleteFocus = () => {

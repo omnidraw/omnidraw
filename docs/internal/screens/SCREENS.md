@@ -55,7 +55,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Preview actions |
 | --- |
 | ![Draft Preview frame with its lifecycle actions menu open](assets/18-canvas-preview-actions.webp) |
-| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the accepted live session without building, **Rebuild** runs the host-owned exact-lock build and waits for acceptance, **Publish** accepts only one current digest-fenced generation, and destructive **Remove** closes only the Preview frame and its process-owned session. A failed rebuild leaves the previous working Preview visible. With no accepted generation, the content area persistently shows accessible **Build required**, **Building**, or **Build failed** copy with **Rebuild** and **Remove** instead of a blank frame; guest code does not run. AI diagnostics run in a separate process-owned clone, report whether this frame is absent, failed, or ready, and never insert or replace visible canvas layout. |
+| **Preview — Actions.** Preview frames are explicitly titled **Preview: _Widget_** and use the same theme warning color as their draft row in the widget sidebar. The trailing menu keeps lifecycle controls together: **Reload** remounts the accepted live session without building, **Rebuild** runs the host-owned exact-lock build and waits for acceptance, **Publish** accepts only one current digest-fenced generation, and destructive **Remove** closes only the Preview frame and its process-owned session. **Starting Preview** covers artifact resolution, verification, Capsule startup, and guest readiness; cold receipt/cache admission is **Restoring Preview**, never Building. A failed rebuild leaves the previous working Preview visible. With no accepted generation, the content area persistently shows accessible **Build required**, **Building**, or **Build failed** copy with **Rebuild** and **Remove** instead of a blank frame; guest code does not run. Build and Publish leaves this authored frame a Preview, and adding a published placement remains a separate action. AI diagnostics run in a separate process-owned clone, report whether this frame is absent, failed, or ready, and never insert or replace visible canvas layout. |
 
 | Manifest resource failure | Accepted manifest Preview |
 | --- | --- |
@@ -65,7 +65,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | Preview after hard reload | Published placement after hard reload |
 | --- | --- |
 | ![Manifest-bound draft Preview still displaying its row after hard reload](assets/19-canvas-preview-manifest-resource-reload.webp) | ![Published widget placed without a resource picker and restored after hard reload](assets/19-canvas-published-manifest-resource-reload.webp) |
-| **Preview reload.** Hard reload restores the frame and the current accepted generation without selecting a resource in the browser. | **Published reload.** **Add** places the published widget directly; the canvas item carries no resource-binding map, and the function resolves the published manifest again after reload. |
+| **Preview reload.** Hard reload restores the frame and the current accepted generation without selecting a resource in the browser. An accessible **Starting Preview** or **Restoring Preview** surface fills a cold frame until the guest is ready; replacement loads keep the current Preview interactive. | **Published reload.** **Add** places the published widget directly; the canvas item carries no resource-binding map, and the function resolves the published manifest again after reload. An accessible **Loading widget** surface fills a cold frame while the signed artifact is resolved, verified, and started. |
 
 | Direct widget placement |
 | --- |
@@ -144,7 +144,7 @@ Database resources add schema, data, and SQL workspaces. Schema edits remain a d
 
 - Included: every active top-level route family, every tab with a distinct UI, primary creation/edit dialogs, and safety-critical review states.
 - Represented once: shared shells, repeated form controls, pagination, and destructive actions whose layout is already visible in the relevant workspace.
-- Omitted: dormant filesystem/terminal canvas plugins, the unused Canvas Help component, development-only recorder/visual-debug UI, transient loading states, and duplicated error/empty variants.
+- Omitted: dormant filesystem/terminal canvas plugins, the unused Canvas Help component, development-only recorder/visual-debug UI, screenshots of the documented transient loading states, and duplicated error/empty variants.
 - Captures are a desktop reference. Responsive breakpoints should get a separate atlas if mobile becomes a supported product surface.
 
 ## Updating the atlas

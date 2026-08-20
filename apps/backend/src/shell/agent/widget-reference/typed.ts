@@ -24,7 +24,7 @@ export type TResolvedWidgetReference = Readonly<{
     name: string;
     slug: string;
     treeDigestSha256: string;
-    buildPhase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+    buildPhase: 'unbuilt' | 'build_required' | 'restoring' | 'building' | 'validating' | 'ready' | 'rejected';
     acceptedGeneration: number | null;
     acceptedCurrent: boolean;
   }>;

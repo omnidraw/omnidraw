@@ -125,9 +125,43 @@ function sameValue(left: unknown, right: unknown): boolean {
 export class WidgetFilesystemBuildService {
   constructor(readonly config: TWidgetFilesystemBuildServiceConfig) {}
 
+  /** Restores only an exact durable cache entry and never starts construction. */
+  async restoreCached(
+    request: TWidgetFilesystemConstructionRequest,
+  ): Promise<TWidgetFilesystemConstruction | null> {
+    const manifest = ZWidgetManifestV1.parse(request.manifest);
+    const executableInputDigestSha256 = fnWidgetExecutableInputDigest({
+      manifest,
+      files: request.files,
+      environment: this.config.environment,
+      digestSha256: sha256,
+    });
+    if (
+      request.expectedExecutableInputDigestSha256 !== undefined
+      && request.expectedExecutableInputDigestSha256 !== executableInputDigestSha256
+    ) throw new Error('Widget source changed after the executable-input fence was selected.');
+    const cache = this.config.constructionCache;
+    if (cache === undefined) return null;
+    const cacheKey = this.#constructionCacheKey(executableInputDigestSha256);
+    const cached = await cache.read(cacheKey).catch(() => null);
+    if (
+      cached !== null
+      && cached.construction.sourceMapArtifact === null
+      && cached.executableInputDigestSha256 === executableInputDigestSha256
+      && cached.executableManifestDigestSha256
+        === fnWidgetExecutableManifestDigest({ manifest, digestSha256: sha256 })
+    ) return cached;
+    if (cached !== null && cached.construction.sourceMapArtifact !== null) {
+      await cache.delete?.(cacheKey).catch(() => undefined);
+    }
+    return null;
+  }
+
   async construct(
     request: TWidgetFilesystemConstructionRequest,
   ): Promise<TWidgetFilesystemConstruction> {
+    const cached = await this.restoreCached(request);
+    if (cached !== null) return cached;
     const manifest = ZWidgetManifestV1.parse(request.manifest);
     const environment = this.config.environment;
 
@@ -141,26 +175,6 @@ export class WidgetFilesystemBuildService {
       request.expectedExecutableInputDigestSha256 !== undefined
       && request.expectedExecutableInputDigestSha256 !== executableInputDigestSha256
     ) throw new Error('Widget source changed after the executable-input fence was selected.');
-
-    const cache = this.config.constructionCache;
-    if (cache !== undefined) {
-      const cacheKey = this.#constructionCacheKey(executableInputDigestSha256);
-      const cached = await cache.read(
-        cacheKey,
-      ).catch(() => null);
-      if (
-        cached !== null
-        && cached.construction.sourceMapArtifact === null
-        && cached.executableInputDigestSha256 === executableInputDigestSha256
-        && cached.executableManifestDigestSha256
-          === fnWidgetExecutableManifestDigest({ manifest, digestSha256: sha256 })
-      ) {
-        return cached;
-      }
-      if (cached !== null && cached.construction.sourceMapArtifact !== null) {
-        await cache.delete?.(cacheKey).catch(() => undefined);
-      }
-    }
 
     const executableProjection = fnProjectWidgetExecutableManifest(manifest);
     const canonicalExecutableManifestJson = fnCanonicalizeWidgetExecutableProjection(executableProjection);

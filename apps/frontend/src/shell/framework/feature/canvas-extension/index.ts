@@ -37,11 +37,12 @@ import {
 import { isPrivateRpcError } from "@/core/app/private-rpc-error";
 import {
   fnCreateWidgetPreviewState,
+  fnShouldRebuildWidgetPreview,
   fnTransitionWidgetPreviewState,
   fnWidgetPreviewPresentation,
-  type TWidgetPreviewState,
 } from "@/core/widgets/fn.widget-preview-state";
 import type { TWidgetPreviewAutomation } from "./preview-automation";
+import { createWidgetFrameStatusSurface } from "./widget-frame-status-surface";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
   runtime: TFrontendRuntime;
@@ -50,16 +51,19 @@ type TCreateFrontendWidgetExtensionArgs = Readonly<{
   previewAutomation?: TWidgetPreviewAutomation;
 }>;
 
-type TPreviewOpenOptions = Readonly<{ forceBuild?: boolean; manual?: boolean }>;
+type TPreviewOpenOptions = Readonly<{
+  forceBuild?: boolean;
+  manual?: boolean;
+  allowBuildFallback?: boolean;
+}>;
 type TPreviewReload = (options?: TPreviewOpenOptions) => Promise<boolean>;
 
-type TPreviewFailurePresentation = Readonly<{
-  title: "Build required" | "Building" | "Build failed" | "Preview failed";
+type TPreviewBuildState = Readonly<{
+  phase: "unbuilt" | "build_required" | "restoring" | "building" | "validating" | "ready" | "rejected";
   message: string;
-  rebuildDisabled: boolean;
 }>;
 
-function previewFailurePresentation(error: unknown): TPreviewFailurePresentation {
+function previewBuildState(error: unknown): TPreviewBuildState | null {
   if (isPrivateRpcError(error) && Predicate.isObject(error.details)) {
     const details = error.details;
     if (details.kind === "widget-preview-build-state") {
@@ -67,143 +71,44 @@ function previewFailurePresentation(error: unknown): TPreviewFailurePresentation
       const diagnostics = Array.isArray(details.diagnostics) ? details.diagnostics : [];
       const diagnostic = diagnostics.find((candidate) => Predicate.isObject(candidate)
         && typeof candidate.message === "string");
-      if (phase === "building" || phase === "validating") {
+      if (
+        phase === "unbuilt"
+        || phase === "build_required"
+        || phase === "restoring"
+        || phase === "building"
+        || phase === "validating"
+        || phase === "ready"
+        || phase === "rejected"
+      ) {
         return Object.freeze({
-          title: "Building",
-          message: phase === "validating"
-            ? "The exact widget build is being compiled and validated. The Preview will update automatically when it is ready."
-            : "The exact widget dependencies and source are being built. The current Preview will stay visible until the new build is ready.",
-          rebuildDisabled: false,
-        });
-      }
-      if (phase === "rejected") {
-        return Object.freeze({
-          title: "Build failed",
+          phase,
           message: typeof diagnostic?.message === "string"
             ? diagnostic.message.slice(0, 600)
-            : "The host rejected the current widget build. Repair the draft, then rebuild it.",
-          rebuildDisabled: false,
+            : phase === "rejected"
+              ? "The host rejected the current widget build. Repair the draft, then rebuild it."
+              : "The widget build is not ready.",
         });
       }
-      return Object.freeze({
-        title: "Build required",
-        message: "This draft has no accepted build for its current files. Preview is preparing one automatically.",
-        rebuildDisabled: false,
-      });
     }
   }
+  if (Predicate.isObject(error) && (error.code === "BUILD_REQUIRED" || error.code === "BUILD_PENDING")) {
+    return Object.freeze({
+      phase: error.code === "BUILD_PENDING" ? "validating" : "build_required",
+      message: "The widget build is not ready.",
+    });
+  }
+  return null;
+}
+
+function widgetLoadFailureMessage(error: unknown, preview: boolean): string {
   const code = Predicate.isObject(error) && typeof error.code === "string"
     && /^[A-Z][A-Z0-9_]{0,127}$/.test(error.code)
       ? error.code
       : undefined;
-  return Object.freeze({
-    title: "Preview failed",
-    message: code === undefined
-      ? "The accepted Preview could not start. Repair and rebuild the widget, or remove this frame."
-      : `The accepted Preview could not start (${code}). Repair and rebuild the widget, or remove this frame.`,
-    rebuildDisabled: false,
-  });
-}
-
-function createWidgetPreviewStatusSurface(args: Readonly<{
-  document: Document;
-  state: TWidgetPreviewState;
-  onRetry(): void;
-  onRemove(): void;
-}>): HTMLElement | null {
-  const presentation = fnWidgetPreviewPresentation(args.state);
-  if (presentation === null) return null;
-  const surface = args.document.createElement("section");
-  surface.dataset.omnidrawWidgetPreviewPhase = args.state.phase;
-  surface.setAttribute("role", "status");
-  surface.setAttribute("aria-live", "polite");
-  surface.setAttribute("aria-atomic", "true");
-  surface.setAttribute("aria-label", presentation.title);
-  Object.assign(surface.style, presentation.keepsDisplayedContent
-    ? {
-        alignItems: "flex-start",
-        alignSelf: "start",
-        background: "linear-gradient(var(--omnidraw-color-surface, #fff), transparent)",
-        boxSizing: "border-box",
-        color: "var(--omnidraw-color-text, #171717)",
-        display: "flex",
-        gap: "8px",
-        gridArea: "1 / 1",
-        justifySelf: "stretch",
-        padding: "10px 12px",
-        pointerEvents: "none",
-        width: "100%",
-        zIndex: "4",
-      }
-    : {
-        alignItems: "center",
-        background: "var(--omnidraw-color-surface, #fff)",
-        boxSizing: "border-box",
-        color: "var(--omnidraw-color-text, #171717)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "10px",
-        gridArea: "1 / 1",
-        height: "100%",
-        justifyContent: "center",
-        minHeight: "0",
-        padding: "24px",
-        textAlign: "center",
-        width: "100%",
-        zIndex: "4",
-      });
-  const spinner = args.document.createElement("span");
-  spinner.setAttribute("aria-hidden", "true");
-  Object.assign(spinner.style, {
-    animation: presentation.tone === "working" ? "omnidraw-widget-preview-spin 900ms linear infinite" : "none",
-    border: "2px solid currentColor",
-    borderRadius: "999px",
-    borderRightColor: "transparent",
-    flex: "0 0 auto",
-    height: "14px",
-    opacity: "0.72",
-    width: "14px",
-  });
-  const copy = args.document.createElement("div");
-  copy.style.cssText = "display:flex;flex:1;flex-direction:column;gap:2px;min-width:0";
-  const title = args.document.createElement("strong");
-  title.textContent = presentation.title;
-  title.style.cssText = "font:600 12px/16px system-ui,sans-serif;margin:0";
-  const message = args.document.createElement("span");
-  message.textContent = presentation.message;
-  message.style.cssText = "font:400 11px/15px system-ui,sans-serif;margin:0;overflow-wrap:anywhere";
-  copy.append(title, message);
-  surface.append(spinner, copy);
-  if (presentation.tone === "failed") {
-    const controls = args.document.createElement("div");
-    controls.style.cssText = "display:flex;flex:0 0 auto;gap:6px;pointer-events:auto";
-    const retry = args.document.createElement("button");
-    retry.type = "button";
-    retry.textContent = "Retry";
-    retry.addEventListener("click", args.onRetry);
-    retry.style.cssText = "appearance:none;border:1px solid currentColor;border-radius:6px;background:transparent;color:inherit;cursor:pointer;font:600 11px/15px system-ui,sans-serif;padding:4px 8px";
-    const remove = args.document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", args.onRemove);
-    remove.style.cssText = retry.style.cssText;
-    controls.append(retry, remove);
-    surface.append(controls);
-  }
-  return surface;
-}
-
-function previewBuildPhase(error: unknown): "building" | "transpiling" | null {
-  if (isPrivateRpcError(error) && Predicate.isObject(error.details)) {
-    if (error.details.kind === "widget-preview-build-state") {
-      if (error.details.phase === "validating") return "transpiling";
-      if (error.details.phase === "building") return "building";
-    }
-  }
-  if (Predicate.isObject(error) && (error.code === "BUILD_REQUIRED" || error.code === "BUILD_PENDING")) {
-    return "building";
-  }
-  return null;
+  const subject = preview ? "accepted Preview" : "published widget";
+  return code === undefined
+    ? `The ${subject} could not start.`
+    : `The ${subject} could not start (${code}).`;
 }
 
 function subject(
@@ -318,11 +223,13 @@ export function createFrontendWidgetExtension(
           let opening: Promise<boolean> | null = null;
           let queuedRefresh = false;
           let queuedForceBuild = false;
+          let queuedAllowBuildFallback = true;
           let requestSequence = 0;
-          let previewState = fnCreateWidgetPreviewState();
+          let frameState = fnCreateWidgetPreviewState(
+            extension.type === "widget-preview" ? "preview" : "published",
+          );
           let statusSurface: HTMLElement | null = null;
-          let lastFailure: unknown;
-          let retryPreview = (): void => undefined;
+          let retryFrame = (_action: "reload" | "rebuild"): void => undefined;
           const ownerWindow = application.ownerWindow as Window & typeof globalThis;
           const viewportSync = createWidgetViewportSync({
             container: args.container,
@@ -330,46 +237,55 @@ export function createFrontendWidgetExtension(
             devicePixelRatio: () => ownerWindow.devicePixelRatio,
             node: args.node,
           });
-          const removePreview = (): void => {
+          const removeFrame = (): void => {
             context.document.commit({
-              source: "omnidraw.widget-preview.remove",
+              source: extension.type === "widget-preview"
+                ? "omnidraw.widget-preview.remove"
+                : "omnidraw.widget.remove",
               commands: [{ type: "remove", nodeId: args.node.id, descendants: "remove" }],
             });
           };
-          const renderPreviewStatus = (): void => {
-            if (extension.type !== "widget-preview") return;
+          const renderFrameStatus = (): void => {
             args.container.style.display = "grid";
             statusSurface?.remove();
-            statusSurface = createWidgetPreviewStatusSurface({
+            statusSurface = createWidgetFrameStatusSurface({
               document: args.container.ownerDocument,
-              state: previewState,
-              onRetry: () => retryPreview(),
-              onRemove: removePreview,
+              state: frameState,
+              onRetry: (action) => retryFrame(action),
+              onRemove: removeFrame,
             });
             if (statusSurface !== null) args.container.append(statusSurface);
           };
-          const transitionPreview = (event: Parameters<typeof fnTransitionWidgetPreviewState>[1]): void => {
-            if (extension.type !== "widget-preview") return;
-            previewState = fnTransitionWidgetPreviewState(previewState, event);
-            renderPreviewStatus();
+          const transitionFrame = (event: Parameters<typeof fnTransitionWidgetPreviewState>[1]): void => {
+            frameState = fnTransitionWidgetPreviewState(frameState, event);
+            renderFrameStatus();
           };
-          const renderFailure = (error: unknown): void => {
-            lastFailure = error;
+          const renderFailure = (error: unknown, requestId: number): void => {
             diagnosticSurface?.remove();
             diagnosticSurface = null;
-            const presentation = previewFailurePresentation(error);
-            if (extension.type !== "widget-preview") return;
-            const requestId = previewState.activeRequestId ?? ++requestSequence;
-            if (previewState.activeRequestId === null) {
-              transitionPreview({ type: "request", requestId });
+            const buildState = extension.type === "widget-preview"
+              ? previewBuildState(error)
+              : null;
+            if (buildState?.phase === "unbuilt" || buildState?.phase === "build_required") {
+              transitionFrame({ type: "build-phase", requestId, phase: "build_required" });
+            } else if (buildState !== null) {
+              transitionFrame({
+                type: "build-failed",
+                requestId,
+                message: buildState.message,
+              });
+            } else {
+              transitionFrame({
+                type: "load-failed",
+                requestId,
+                message: widgetLoadFailureMessage(error, extension.type === "widget-preview"),
+              });
             }
-            transitionPreview({
-              type: "failed",
-              requestId,
-              message: presentation.message,
-            });
           };
-          const openOnce = async (forceBuild: boolean): Promise<boolean> => {
+          const openOnce = async (
+            forceBuild: boolean,
+            allowBuildFallback: boolean,
+          ): Promise<boolean> => {
             const previous = mount;
             const requestId = ++requestSequence;
             let next: IWidgetBrowserMount | undefined;
@@ -377,7 +293,7 @@ export function createFrontendWidgetExtension(
             let fatalError: unknown;
             let committed = false;
             const initialViewport = viewportSync.current();
-            transitionPreview({ type: "request", requestId });
+            transitionFrame({ type: "request", requestId });
             const pollController = new AbortController();
             const pollBuildState = async (): Promise<void> => {
               if (extension.type !== "widget-preview") return;
@@ -387,13 +303,23 @@ export function createFrontendWidgetExtension(
                   pollController.signal,
                 ).catch(() => null);
                 if (buildState === null || pollController.signal.aborted) return;
-                const phase = buildState.phase === "validating"
-                  ? "transpiling" as const
-                  : buildState.phase === "building"
-                    ? "building" as const
-                    : null;
-                if (phase !== null) {
-                  transitionPreview({ type: "build-phase", requestId, phase });
+                if (
+                  buildState.phase === "restoring"
+                  || buildState.phase === "building"
+                  || buildState.phase === "validating"
+                ) {
+                  transitionFrame({ type: "build-phase", requestId, phase: buildState.phase });
+                } else if (buildState.phase === "unbuilt" || buildState.phase === "build_required") {
+                  transitionFrame({ type: "build-phase", requestId, phase: "build_required" });
+                } else if (buildState.phase === "ready") {
+                  transitionFrame({ type: "build-accepted", requestId });
+                } else if (buildState.phase === "rejected") {
+                  const diagnostic = buildState.diagnostics[0]?.message;
+                  transitionFrame({
+                    type: "build-failed",
+                    requestId,
+                    message: diagnostic ?? "The host rejected the current widget build.",
+                  });
                 }
                 if (buildState.phase === "ready" || buildState.phase === "rejected") return;
                 await new Promise<void>((resolve) => {
@@ -404,6 +330,12 @@ export function createFrontendWidgetExtension(
                   }, { once: true });
                 });
               }
+            };
+            let pollingBuildState = false;
+            const startBuildStatePolling = (): void => {
+              if (pollingBuildState || extension.type !== "widget-preview") return;
+              pollingBuildState = true;
+              void pollBuildState();
             };
             const retainGuestDiagnostic = (diagnostic: TWidgetHostDiagnostic): void => {
               if (extension.type !== "widget-preview" || !fnIsWidgetGuestReportedError(diagnostic)) return;
@@ -424,22 +356,24 @@ export function createFrontendWidgetExtension(
                 error,
                 failedMount,
                 isCurrent: () => mount === failedMount,
-                renderFailure,
+                renderFailure: (failure) => renderFailure(failure, requestId),
                 retire: () => {
                   diagnosticSurface?.remove();
                   diagnosticSurface = null;
                   mount = undefined;
                   mounts.delete(args.node.id);
+                  transitionFrame({ type: "display-retired", requestId });
                 },
               });
             };
-            void pollBuildState();
             try {
               if (forceBuild && extension.type === "widget-preview") {
-                transitionPreview({ type: "build-phase", requestId, phase: "building" });
-                await application.rpc.request("widget.preview.rebuildDraft", {
+                const rebuild = application.rpc.request("widget.preview.rebuildDraft", {
                   widgetKey: extension.widgetKey,
                 }, { signal: args.signal });
+                startBuildStatePolling();
+                await rebuild;
+                transitionFrame({ type: "build-accepted", requestId });
                 options.invalidateWidgets();
               }
               const mountCandidate = async (): Promise<IWidgetBrowserMount> => runtime.mount({
@@ -465,26 +399,36 @@ export function createFrontendWidgetExtension(
                 },
               });
               try {
-                next = await mountCandidate();
+                const candidate = mountCandidate();
+                startBuildStatePolling();
+                next = await candidate;
               } catch (error) {
-                const phase = previewBuildPhase(error);
-                if (extension.type !== "widget-preview" || phase === null) throw error;
-                transitionPreview({ type: "build-phase", requestId, phase });
-                await application.rpc.request("widget.preview.rebuildDraft", {
+                const buildState = extension.type === "widget-preview"
+                  ? previewBuildState(error)
+                  : null;
+                if (
+                  extension.type !== "widget-preview"
+                  || buildState === null
+                  || !fnShouldRebuildWidgetPreview({
+                    allowBuildFallback,
+                    phase: buildState.phase,
+                  })
+                ) throw error;
+                transitionFrame({ type: "build-phase", requestId, phase: "build_required" });
+                const rebuild = application.rpc.request("widget.preview.rebuildDraft", {
                   widgetKey: extension.widgetKey,
                 }, { signal: args.signal });
+                await rebuild;
+                transitionFrame({ type: "build-accepted", requestId });
                 options.invalidateWidgets();
                 next = await mountCandidate();
-              }
-              if (extension.type === "widget-preview") {
-                transitionPreview({ type: "artifact-ready", requestId });
               }
               await next.ready();
               if (fatalError !== undefined) throw fatalError;
             } catch (error) {
               nextDiagnostic.surface?.remove();
               await next?.dispose("replacement-failed").catch(() => undefined);
-              renderFailure(error);
+              renderFailure(error, requestId);
               return false;
             } finally {
               pollController.abort("preview-request-settled");
@@ -498,9 +442,7 @@ export function createFrontendWidgetExtension(
             if (diagnosticSurface !== null && !diagnosticSurface.isConnected) {
               args.container.append(diagnosticSurface);
             }
-            if (extension.type === "widget-preview") {
-              transitionPreview({ type: "candidate-ready", requestId });
-            }
+            transitionFrame({ type: "candidate-ready", requestId });
             if (fatalError !== undefined) {
               await retireFatalMount(next, fatalError);
               return false;
@@ -512,24 +454,30 @@ export function createFrontendWidgetExtension(
             }
             return true;
           };
-          const open = async (options: Readonly<{ forceBuild?: boolean; manual?: boolean }> = {}): Promise<boolean> => {
+          const open = async (options: TPreviewOpenOptions = {}): Promise<boolean> => {
             if (opening !== null) {
               queuedRefresh = true;
               queuedForceBuild ||= options.forceBuild === true;
+              if (options.allowBuildFallback === false || options.manual === true) {
+                queuedAllowBuildFallback = false;
+              }
               return opening;
             }
             opening = (async () => {
               let result = false;
               let forceBuild = options.forceBuild === true;
+              let allowBuildFallback = options.allowBuildFallback ?? (options.manual !== true);
               do {
                 queuedRefresh = false;
                 queuedForceBuild = false;
-                result = await openOnce(forceBuild);
+                queuedAllowBuildFallback = true;
+                result = await openOnce(forceBuild, allowBuildFallback);
                 forceBuild = queuedForceBuild;
+                allowBuildFallback = queuedAllowBuildFallback;
               } while (queuedRefresh && !args.signal.aborted);
               if (!result && options.manual) {
-                const failed = previewFailurePresentation(lastFailure);
-                showErrorToast(failed.title, failed.message);
+                const failed = fnWidgetPreviewPresentation(frameState);
+                if (failed !== null) showErrorToast(failed.title, failed.message);
               }
               return result;
             })().finally(() => {
@@ -537,7 +485,13 @@ export function createFrontendWidgetExtension(
             });
             return opening;
           };
-          retryPreview = () => { void open({ forceBuild: true, manual: true }); };
+          retryFrame = (action) => {
+            void open({
+              forceBuild: action === "rebuild",
+              manual: true,
+              allowBuildFallback: false,
+            });
+          };
           reloadByNode.set(args.node.id, open);
           if (extension.type === "widget-preview") {
             previewWidgetKeyByNode.set(args.node.id, extension.widgetKey);
@@ -574,7 +528,10 @@ export function createFrontendWidgetExtension(
             return;
           }
           if (previewActionId === "reload") {
-            await reloadByNode.get(node.id)?.({ manual: true });
+            await reloadByNode.get(node.id)?.({
+              manual: true,
+              allowBuildFallback: false,
+            });
             return;
           }
           if (previewActionId === "rebuild") {
@@ -585,7 +542,10 @@ export function createFrontendWidgetExtension(
           if (previewActionId === "publish") {
             await buildAndPublishPreview(application, extension.widgetKey, signal);
             options.invalidateWidgets();
-            showSuccessToast("Widget built and published");
+            showSuccessToast(
+              "Widget built and published",
+              "This canvas frame remains a draft Preview. Add the published widget separately to use the publication.",
+            );
           }
         },
       });

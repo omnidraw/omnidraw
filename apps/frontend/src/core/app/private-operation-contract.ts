@@ -173,7 +173,7 @@ export type TWidgetTransportArtifact = Readonly<{
   identity?: Readonly<{ catalogGeneration?: number }>;
 }> & Readonly<Record<string, unknown>>;
 export type TWidgetPreviewBuildState = Readonly<{
-  phase: "unbuilt" | "build_required" | "building" | "validating" | "ready" | "rejected";
+  phase: "unbuilt" | "build_required" | "restoring" | "building" | "validating" | "ready" | "rejected";
   acceptedGeneration: number | null;
   current: boolean;
   diagnostics: readonly Readonly<{

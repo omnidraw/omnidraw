@@ -69,6 +69,7 @@ export type TAcceptedWidgetBuildGeneration = Readonly<{
 export type TWidgetBuildGenerationPhase =
   | 'unbuilt'
   | 'build_required'
+  | 'restoring'
   | 'building'
   | 'validating'
   | 'ready'
@@ -215,6 +216,11 @@ export class WidgetBuildGenerationService {
 
   async view(widgetKey: string): Promise<TWidgetBuildGenerationView> {
     const entry = this.#entry(widgetKey);
+    if (
+      entry.phase === 'restoring'
+      || entry.phase === 'building'
+      || entry.phase === 'validating'
+    ) return this.#view(entry, false);
     await this.#observe(entry, false);
     if (entry.accepted === null) return this.#view(entry, false);
     const current = await this.#acceptedIsCurrent(entry.accepted).catch(() => false);
@@ -236,7 +242,11 @@ export class WidgetBuildGenerationService {
       await this.#observe(entry, false);
       if (entry.accepted === null) {
         throw generationError(
-          entry.phase === 'validating' ? 'BUILD_PENDING' : 'BUILD_REQUIRED',
+          entry.phase === 'restoring'
+            || entry.phase === 'building'
+            || entry.phase === 'validating'
+              ? 'BUILD_PENDING'
+              : 'BUILD_REQUIRED',
           'The widget has no accepted build for its current files.',
         );
       }
@@ -896,7 +906,7 @@ export class WidgetBuildGenerationService {
     }
     if (!force && sameMarker(entry.lastMarker, marker.identity)) return;
     entry.lastMarker = marker.identity;
-    entry.phase = 'validating';
+    entry.phase = entry.accepted === null ? 'restoring' : 'validating';
     entry.diagnostics = Object.freeze([]);
     try {
       const receipt = parseWidgetBuildReceiptJson(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes));
@@ -938,11 +948,16 @@ export class WidgetBuildGenerationService {
         entry.diagnostics = Object.freeze([]);
         return;
       }
-      const construction = await this.#config.builder.construct({
+      const construction = await this.#config.builder.restoreCached({
         manifest: confirmedCapture.manifest,
         files: confirmedCapture.files,
         workspaceKey: `generation_${entry.widgetKey}`,
       });
+      if (construction === null) {
+        entry.phase = 'build_required';
+        entry.diagnostics = Object.freeze([]);
+        return;
+      }
       const signed = await this.#config.builder.sign(construction, 'preview');
       await this.#acceptGeneration(entry, {
         receipt,

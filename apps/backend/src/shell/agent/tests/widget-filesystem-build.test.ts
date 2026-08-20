@@ -334,10 +334,16 @@ describe('filesystem widget build service', () => {
     ];
     const first = await service.construct({ manifest: MANIFEST, files });
     const second = await service.construct({ manifest: MANIFEST, files });
+    const restoredOnly = await service.restoreCached({ manifest: MANIFEST, files });
     expect(constructCalls).toBe(1);
     expect(store.size).toBe(1);
+    expect(restoredOnly?.executableInputDigestSha256).toBe(first.executableInputDigestSha256);
     expect(second.executableInputDigestSha256).toBe(first.executableInputDigestSha256);
     expect(second.distFiles.map((file) => file.path)).toEqual(first.distFiles.map((file) => file.path));
+
+    store.clear();
+    expect(await service.restoreCached({ manifest: MANIFEST, files })).toBeNull();
+    expect(constructCalls).toBe(1);
   });
 
   test('caches a trusted map-free projection while source-map bytes stay process-owned', async () => {

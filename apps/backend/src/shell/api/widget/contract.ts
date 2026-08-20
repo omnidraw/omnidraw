@@ -212,7 +212,7 @@ export const ZWidgetPreviewDiagnostic = z.object({
 }).strict();
 
 export const ZWidgetPreviewBuildState: z.ZodType<TWidgetPreviewBuildState> = z.object({
-  phase: z.enum(['unbuilt', 'build_required', 'building', 'validating', 'ready', 'rejected']),
+  phase: z.enum(['unbuilt', 'build_required', 'restoring', 'building', 'validating', 'ready', 'rejected']),
   acceptedGeneration: z.number().int().positive().nullable(),
   current: z.boolean(),
   diagnostics: z.array(z.object({

@@ -62,17 +62,28 @@ async function createHarness() {
   const portableBuildFiles: string[][] = [];
   let portableFailure: unknown;
   let corruptPortableReceipt = false;
+  let constructCalls = 0;
+  let restoreCalls = 0;
+  let cachedConstruction = true;
+  let beforeRestore: (() => Promise<void>) | undefined;
   let beforePortableReturn: (() => Promise<void>) | undefined;
+  const construction = () => ({
+    executableInputDigestSha256: 'a'.repeat(64),
+    executableManifestDigestSha256: 'b'.repeat(64),
+    canonicalExecutableManifestJson: '{}',
+    distributionDigestSha256: sha256(independentlyBuiltBytes),
+    construction: {},
+    distFiles: [{ path: 'dist/main.js', bytes: independentlyBuiltBytes }],
+  });
   const builder = {
+    async restoreCached() {
+      restoreCalls += 1;
+      await beforeRestore?.();
+      return cachedConstruction ? construction() : null;
+    },
     async construct() {
-      return {
-        executableInputDigestSha256: 'a'.repeat(64),
-        executableManifestDigestSha256: 'b'.repeat(64),
-        canonicalExecutableManifestJson: '{}',
-        distributionDigestSha256: sha256(independentlyBuiltBytes),
-        construction: {},
-        distFiles: [{ path: 'dist/main.js', bytes: independentlyBuiltBytes }],
-      };
+      constructCalls += 1;
+      return construction();
     },
     async sign(construction: unknown) {
       return { construction };
@@ -189,6 +200,14 @@ async function createHarness() {
     changed,
     closedWorkspaces,
     portableBuildFiles,
+    constructs: () => constructCalls,
+    restores: () => restoreCalls,
+    setCachedConstruction(value: boolean) {
+      cachedConstruction = value;
+    },
+    setBeforeRestore(value: (() => Promise<void>) | undefined) {
+      beforeRestore = value;
+    },
     setBeforePortableReturn(value: (() => Promise<void>) | undefined) {
       beforePortableReturn = value;
     },
@@ -255,6 +274,55 @@ describe('WidgetBuildGenerationService', () => {
     });
     expect(harness.service.accepted(manifest.slug)?.receipt.buildIdentity)
       .toBe(receipt.buildIdentity);
+    await harness.service.stop();
+  });
+
+  test('reports cold receipt admission as restoring without starting a portable build', async () => {
+    const harness = await createHarness();
+    const receipt = await harness.writeReceipt();
+    let releaseRestore!: () => void;
+    let markRestoreStarted!: () => void;
+    const restoreStarted = new Promise<void>((resolve) => { markRestoreStarted = resolve; });
+    const blockedRestore = new Promise<void>((resolve) => { releaseRestore = resolve; });
+    harness.setBeforeRestore(() => {
+      markRestoreStarted();
+      return blockedRestore;
+    });
+
+    const pending = harness.service.requireCurrent(manifest.slug);
+    await restoreStarted;
+    expect(await harness.service.view(manifest.slug)).toMatchObject({
+      phase: 'restoring',
+      acceptedGeneration: null,
+      current: false,
+    });
+    expect(harness.portableBuildFiles).toEqual([]);
+    releaseRestore();
+    const accepted = await pending;
+
+    expect(accepted.receipt.buildIdentity).toBe(receipt.buildIdentity);
+    expect(harness.restores()).toBe(1);
+    expect(harness.constructs()).toBe(0);
+    expect(harness.portableBuildFiles).toEqual([]);
+    await harness.service.stop();
+  });
+
+  test('requires a build when cold receipt admission has no compatible cached construction', async () => {
+    const harness = await createHarness();
+    await harness.writeReceipt();
+    harness.setCachedConstruction(false);
+
+    await expect(harness.service.requireCurrent(manifest.slug)).rejects.toMatchObject({
+      code: 'BUILD_REQUIRED',
+    });
+    expect(await harness.service.view(manifest.slug)).toMatchObject({
+      phase: 'build_required',
+      acceptedGeneration: null,
+      current: false,
+    });
+    expect(harness.restores()).toBe(1);
+    expect(harness.constructs()).toBe(0);
+    expect(harness.portableBuildFiles).toEqual([]);
     await harness.service.stop();
   });
 

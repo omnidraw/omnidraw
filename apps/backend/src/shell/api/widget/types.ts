@@ -96,7 +96,7 @@ type TWidgetPreviewDiagnosticView = Readonly<{
 }>;
 
 export type TWidgetPreviewBuildState = Readonly<{
-  phase: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+  phase: 'unbuilt' | 'build_required' | 'restoring' | 'building' | 'validating' | 'ready' | 'rejected';
   acceptedGeneration: number | null;
   current: boolean;
   diagnostics: readonly Readonly<{

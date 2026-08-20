@@ -566,6 +566,7 @@ async function assertDraftPreviewTitlebar(
     assert.equal(await menuItem.count(), 1, `${label} menu did not expose exactly one '${action}' action.`);
   }
   const previewOpenBeforeReload = (await readRpcRequests(page, 'widget.preview.open')).length;
+  const rebuildBeforeReload = (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length;
   await page.getByRole('menuitem', { name: 'Reload', exact: true }).click();
   await Bun.sleep(250);
   if ((await readRpcRequests(page, 'widget.preview.open')).length === previewOpenBeforeReload) {
@@ -581,6 +582,11 @@ async function assertDraftPreviewTitlebar(
     path: 'widget.preview.open',
     predicate: (request) => record(request.input).elementId === nodeId,
   });
+  assert.equal(
+    (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length,
+    rebuildBeforeReload,
+    `${label} native Reload action invoked the explicit rebuild operation.`,
+  );
 }
 
 function summarizeTransport(transport: TTransportEvidence): unknown {
@@ -2415,6 +2421,11 @@ async function runBrowserSuite(
       await assertDraftGuestMounted(page, portal, `${fixture.name} cold backend remount`);
       assert.equal(await portal.locator('[data-omnidraw-widget-preview-failure]').count(), 0);
     }
+    assert.equal(
+      (await readRpcRequests(page, 'widget.preview.rebuildDraft')).length,
+      0,
+      'Cold accepted-Preview recovery invoked the explicit portable rebuild operation.',
+    );
     await assertNoHandledErrorAlerts(page, 'backend restart recovery');
     await createCanvas(page, 'Preview Failure Follow-up');
     await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });

@@ -122,7 +122,7 @@ async function harness(options: Readonly<{
     kind: 'kv' | 'db';
     status: 'ready' | 'migrating';
   }> | null;
-  buildPhase?: 'unbuilt' | 'build_required' | 'building' | 'validating' | 'ready' | 'rejected';
+  buildPhase?: 'unbuilt' | 'build_required' | 'restoring' | 'building' | 'validating' | 'ready' | 'rejected';
   buildCurrent?: boolean;
   buildDiagnostics?: readonly Readonly<{ code: string; message: string; path: string | null }>[];
   supersedeDuringInspection?: boolean;

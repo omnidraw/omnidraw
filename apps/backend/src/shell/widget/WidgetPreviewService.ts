@@ -355,10 +355,12 @@ function buildInspectionBoundary(
   message: string;
   retryable: boolean;
 }> | null {
-  if (view.phase === 'building' || view.phase === 'validating') {
+  if (view.phase === 'restoring' || view.phase === 'building' || view.phase === 'validating') {
     return Object.freeze({
       code: 'BUILD_PENDING',
-      message: 'The portable build is still being observed and validated by the host.',
+      message: view.phase === 'restoring'
+        ? 'The accepted build is being restored and admitted by the host.'
+        : 'The portable build is still being observed and validated by the host.',
       retryable: true,
     });
   }

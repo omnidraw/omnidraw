@@ -17,11 +17,11 @@ const rejectedBuildState = Object.freeze({
 });
 
 describe('widget Preview API build failures', () => {
-  test('exposes the host build phase for a live Preview status surface', async () => {
+  test('exposes cold admission as restoring for a live Preview status surface', async () => {
     const context = {
       widgetPreview: {
         buildState: async () => ({
-          phase: 'validating' as const,
+          phase: 'restoring' as const,
           acceptedGeneration: 8,
           current: false,
           diagnostics: [],
@@ -32,7 +32,7 @@ describe('widget Preview API build failures', () => {
     await expect(apiWidgetPreviewBuildState.callable({ context })({
       widgetKey: 'notes-board',
     })).resolves.toMatchObject({
-      phase: 'validating',
+      phase: 'restoring',
       acceptedGeneration: 8,
       current: false,
     });
