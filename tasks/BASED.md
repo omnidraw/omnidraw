@@ -509,6 +509,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [S152](s/S152.md) - canvas: remove the monolithic startup barrier for immediate interaction
 - [ ]: [S153](s/S153.md) - frontend/canvas: hard-cut from Solid 1 to Solid 2
 - [ ]: [S154](s/S154.md) - toolchain: update to Bun 1.4 and simplify build/test workflows
+- [ ]: [S155](s/S155.md) - frontend: restore Kobalte primitives on Solid 2
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
