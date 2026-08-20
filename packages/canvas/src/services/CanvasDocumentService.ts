@@ -498,6 +498,17 @@ export class CanvasDocumentService
     return CanvasItemPageCodec.decode(await this.#transport.query(admitted));
   }
 
+  /**
+   * Starts the authoritative request before an engine is available. The
+   * decoded value remains inert until `start` installs it atomically.
+   */
+  loadInitialSnapshotEffect(): Effect.Effect<TCanvasSnapshot, unknown> {
+    if (this.#disposed) {
+      return Effect.fail(new Error('Canvas document service is disposed.'));
+    }
+    return this.#fetchSnapshotEffect();
+  }
+
   /** Re-resolves semantic paint without changing the durable canvas revision. */
   reproject(projectNode: (node: TSceneNode) => TSceneNode): boolean {
     if (this.#disposed) {
@@ -536,7 +547,10 @@ export class CanvasDocumentService
     }
   }
 
-  async start(engine: IInfiniteCanvasEngine): Promise<void> {
+  async start(
+    engine: IInfiniteCanvasEngine,
+    initialSnapshot?: TCanvasSnapshot,
+  ): Promise<void> {
     if (this.#disposed) throw new Error('Canvas document service is disposed.');
     if (this.#engine) throw new Error('Canvas document service is already started.');
     this.#engine = engine;
@@ -544,7 +558,12 @@ export class CanvasDocumentService
       this.#resourceRegistrations = engine.resources.createRegistrationOwner(
         DOCUMENT_IMAGE_REGISTRATION_OWNER,
       );
-      await this.#sync.run(this.#reloadEffect(true));
+      await this.#sync.run(initialSnapshot === undefined
+        ? this.#reloadEffect(true)
+        : Effect.try({
+            try: () => this.#installSnapshot(initialSnapshot, true),
+            catch: (cause) => cause,
+          }));
     } catch (error) {
       try {
         this.#resourceRegistrations?.destroy();
@@ -1887,11 +1906,7 @@ export class CanvasDocumentService
       priority: 'high',
       data: { clearHistory },
     });
-    return Effect.tryPromise({
-      try: () => this.#transport.getSnapshot({ canvasId: this.#canvasId }),
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.map((snapshot) => CanvasDocumentCodec.decode(snapshot)),
+    return this.#fetchSnapshotEffect().pipe(
       Effect.flatMap((snapshot) => Effect.try({
         try: () => this.#installSnapshot(snapshot, clearHistory),
         catch: (cause) => cause,
@@ -1909,6 +1924,15 @@ export class CanvasDocumentService
       Effect.ensuring(Effect.sync(() => {
         this.#reloading = false;
       })),
+    );
+  }
+
+  #fetchSnapshotEffect(): Effect.Effect<TCanvasSnapshot, unknown> {
+    return Effect.tryPromise({
+      try: () => this.#transport.getSnapshot({ canvasId: this.#canvasId }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.map((snapshot) => CanvasDocumentCodec.decode(snapshot)),
     );
   }
 

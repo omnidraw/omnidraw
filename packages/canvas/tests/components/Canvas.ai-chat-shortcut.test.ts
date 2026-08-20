@@ -64,9 +64,18 @@ const runtimeMocks = vi.hoisted(() => {
 
 vi.mock('../../src/runtime', async () => {
   const { Effect: MockEffect } = await import('effect');
-  runtimeMocks.runtime.bootEffect.mockImplementation(() => MockEffect.void);
   runtimeMocks.runtime.shutdownEffect.mockImplementation(() => MockEffect.void);
-  return { buildRuntime: vi.fn(() => runtimeMocks.runtime) };
+  return { buildRuntime: vi.fn((config: {
+    reportReadiness?(readiness: string): void;
+  }) => {
+    runtimeMocks.runtime.bootEffect.mockImplementation(() => MockEffect.sync(() => {
+      config.reportReadiness?.('surface-ready');
+      config.reportReadiness?.('navigation-ready');
+      config.reportReadiness?.('scene-visible');
+      config.reportReadiness?.('document-ready');
+    }));
+    return runtimeMocks.runtime;
+  }) };
 });
 
 import { Canvas } from '../../src/components/Canvas';

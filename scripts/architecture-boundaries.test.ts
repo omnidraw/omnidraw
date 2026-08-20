@@ -531,7 +531,9 @@ describe('application and import boundaries', () => {
     expect(Object.keys(frontendPaths).filter((key) => key.startsWith('@omnidraw/')).sort()).toEqual([
       '@omnidraw/canvas',
       '@omnidraw/canvas-contract',
+      '@omnidraw/canvas-contract/CONSTANTS',
       '@omnidraw/component-ai-chat',
+      '@omnidraw/component-ai-chat/canvas-frame',
       '@omnidraw/sdk',
       '@omnidraw/sdk/host',
       '@omnidraw/theme',

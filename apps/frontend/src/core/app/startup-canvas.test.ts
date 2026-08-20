@@ -72,6 +72,14 @@ describe("startup canvas transaction", () => {
     expect(harness.calls.navigate).toHaveBeenCalledWith("/c/created");
   });
 
+  test("does not create or redirect while a direct Canvas snapshot resolves", async () => {
+    const harness = run({ pathname: "/c/deep-link" });
+    await Effect.runPromise(harness.program);
+    expect(harness.calls.setCanvases).toHaveBeenCalledWith([]);
+    expect(harness.calls.create).not.toHaveBeenCalled();
+    expect(harness.calls.navigate).not.toHaveBeenCalled();
+  });
+
   test("preserves typed list failures and reports them", async () => {
     const failure = new PrivateRpcError({
       code: "UNAVAILABLE",

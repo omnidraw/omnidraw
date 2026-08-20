@@ -6,7 +6,10 @@ import type { IThemeService } from '@omnidraw/theme';
 import type {
   TReproductionTraceOwner,
 } from './debug-trace/typed';
-import type { ICanvasExtension } from './extension';
+import type {
+  ICanvasExtension,
+  TCanvasExtensionLoader,
+} from './extension';
 import type {
   TCanvasToolbarContribution,
 } from './components/FloatingCanvasToolbar/toolbar.types';
@@ -84,6 +87,7 @@ export type TCanvasDependencies = Readonly<{
   diagnostics?: TCanvasDiagnosticsPort | null;
   hostRetirement?: TCanvasHostRetirementPort;
   extensions?: readonly ICanvasExtension[];
+  extensionLoaders?: readonly TCanvasExtensionLoader[];
   toolbarContributions?: readonly TCanvasToolbarContribution[];
 }>;
 

@@ -8,7 +8,7 @@ import { lazy, Show } from "solid-js";
 import App from "./shell/framework/App";
 import WelcomePage from "./shell/framework/pages/welcome";
 import routeStateStyles from "./shell/framework/styles/route-state.module.css";
-import { FrontendRuntimeProvider, useFrontendRuntime } from "./shell/framework/runtime-context";
+import { FrontendRuntimeProvider } from "./shell/framework/runtime-context";
 import { createLiveFrontendRuntime } from "./shell/runtime/frontend-runtime";
 
 const CanvasPage = lazy(() => import("./shell/framework/pages/canvas"));
@@ -16,20 +16,19 @@ const ResourcePage = lazy(() => import("./shell/framework/pages/resource"));
 const WidgetPage = lazy(() => import("./shell/framework/pages/widget"));
 
 const CanvasRoute = () => {
-  const runtime = useFrontendRuntime();
   const params = useParams<{ id: string }>();
-  const canvas = () => runtime.store.state.canvases.find((c) => c.id === params.id);
+  const canvasId = () => params.id.trim();
 
   return (
     <Show
-      when={canvas()}
+      when={canvasId().length > 0 && canvasId().length <= 200}
       fallback={
         <div class={routeStateStyles.root}>
-          <p class={routeStateStyles.loadingText}>Loading canvas...</p>
+          <p class={routeStateStyles.loadingText}>Invalid canvas link.</p>
         </div>
       }
     >
-      {(c) => <CanvasPage canvas={c()} />}
+      <CanvasPage canvasId={canvasId()} />
     </Show>
   );
 };

@@ -11,7 +11,7 @@
   "dependencies": {
     "@omnidraw/canvas": "0.8.0",
     "@omnidraw/canvas-contract": "0.7.0",
-    "@omnidraw/component-ai-chat": "0.1.0",
+    "@omnidraw/component-ai-chat": "0.2.0",
     "@omnidraw/theme": "0.1.0",
     "solid-js": "1.9.14"
   },

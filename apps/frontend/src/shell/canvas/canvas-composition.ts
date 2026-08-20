@@ -2,18 +2,21 @@ import Bot from 'lucide-solid/icons/bot';
 import PanelLeft from 'lucide-solid/icons/panel-left';
 import type {
   TCanvasDependencies,
+  TCanvasExtensionLoader,
   TCanvasToolbarContribution,
   TCanvasWaitPort,
   TReproductionTraceOwner,
 } from '@omnidraw/canvas';
 import { createReproductionTrace } from '@omnidraw/canvas';
-import type { TCanvasDescriptor } from '@omnidraw/canvas-contract';
-import { showErrorToast, showSuccessToast, showToast } from '../framework/components/ui/Toast';
 import {
-  createCanvasImagePort,
-  createFrontendAiChatExtension,
-} from '../chat/adapters';
-import { createFrontendWidgetExtension } from '../framework/feature/canvas-extension';
+  fnReadCanvasWidgetExtension,
+  type TCanvasDescriptor,
+} from '@omnidraw/canvas-contract';
+import {
+  createAiChatCanvasExtensionLoaderDescriptor,
+} from '@omnidraw/component-ai-chat/canvas-frame';
+import { showErrorToast, showSuccessToast, showToast } from '../framework/components/ui/Toast';
+import { createCanvasImagePort } from './canvas-image-port';
 import {
   createFrontendCanvasDocumentTransport,
   createFrontendCanvasInitialBootRecovery,
@@ -134,6 +137,53 @@ function frontendToolbarContributions(runtime: TFrontendRuntime): readonly TCanv
   ] satisfies readonly TCanvasToolbarContribution[]);
 }
 
+function frontendExtensionLoaders(args: Readonly<{
+  canvasId: string;
+  navigate(path: string): void;
+  previewAutomation: ReturnType<typeof createWidgetPreviewAutomation>;
+  runtime: TFrontendRuntime;
+}>): readonly TCanvasExtensionLoader[] {
+  const aiChat = createAiChatCanvasExtensionLoaderDescriptor({
+    createSessionId: () => args.runtime.ownerWindow.crypto.randomUUID(),
+    async load(signal) {
+      const [{ createFrontendAiChatExtension }] = await Promise.all([
+        import('../chat/adapters'),
+        import('@omnidraw/component-ai-chat/styles.css'),
+      ]);
+      signal.throwIfAborted();
+      return createFrontendAiChatExtension(args.runtime, {
+        canvasId: args.canvasId,
+        navigate: args.navigate,
+        ensureWidgetPreview: args.previewAutomation.ensure,
+      });
+    },
+  });
+  const widgets = Object.freeze({
+    name: 'omnidraw.frontend-widgets',
+    loadingLabel: 'Loading widget…',
+    failureLabel: 'Widget failed to load.',
+    match(node) {
+      if (node.kind !== 'widget-frame') return false;
+      const extension = fnReadCanvasWidgetExtension(node);
+      return extension?.type === 'widget-instance'
+        || extension?.type === 'widget-preview';
+    },
+    async load(signal) {
+      const { createFrontendWidgetExtension } = await import(
+        '../framework/feature/canvas-extension'
+      );
+      signal.throwIfAborted();
+      return createFrontendWidgetExtension({
+        runtime: args.runtime,
+        placement: args.runtime.widgetPlacement,
+        invalidateWidgets: () => args.runtime.catalogInvalidation.invalidate('widgets'),
+        previewAutomation: args.previewAutomation,
+      });
+    },
+  }) satisfies TCanvasExtensionLoader;
+  return Object.freeze([widgets, aiChat]);
+}
+
 export function createFrontendCanvasComposition(
   args: TCreateFrontendCanvasCompositionArgs,
 ): TFrontendCanvasComposition {
@@ -147,17 +197,6 @@ export function createFrontendCanvasComposition(
   );
   const stopDatabaseEvents = startFrontendDatabaseEvents(args.runtime, args.canvasId);
   const previewAutomation = createWidgetPreviewAutomation(args.runtime);
-  const runtimeExtension = createFrontendAiChatExtension(args.runtime, {
-    canvasId: args.canvasId,
-    navigate: args.navigate,
-    ensureWidgetPreview: previewAutomation.ensure,
-  });
-  const widgetExtension = createFrontendWidgetExtension({
-    runtime: args.runtime,
-    placement: args.runtime.widgetPlacement,
-    invalidateWidgets: () => args.runtime.catalogInvalidation.invalidate('widgets'),
-    previewAutomation,
-  });
   const dependencies = Object.freeze({
     transport: createFrontendCanvasDocumentTransport(args.runtime),
     themeService: args.runtime.theme.service,
@@ -173,7 +212,12 @@ export function createFrontendCanvasComposition(
     hostRetirement:
       args.runtime.canvasHostRetirement.registration,
     ...(diagnostics === undefined ? {} : { diagnostics }),
-    extensions: Object.freeze([widgetExtension, runtimeExtension]),
+    extensionLoaders: frontendExtensionLoaders({
+      canvasId: args.canvasId,
+      navigate: args.navigate,
+      previewAutomation,
+      runtime: args.runtime,
+    }),
     toolbarContributions: frontendToolbarContributions(args.runtime),
   }) satisfies TCanvasDependencies;
 

@@ -86,8 +86,28 @@ promotes the stable resource ID with a validated durable URL extension before
 releasing the media gate. A source-less image row must never reach the server.
 
 `buildRuntime` composes Cangine, its standard editor session, one headless
-selection-style controller, the document service, optional extensions, and
-host resize ownership. Style mutations still commit through the controlled
+selection-style controller, the document service, progressive extensions, and
+host resize ownership. Runtime readiness is monotonic and instance-local:
+`starting -> surface-ready -> navigation-ready -> scene-visible ->
+document-ready -> settled`. `settled` is diagnostic only. The Cangine
+background and camera input become available before the snapshot joins; the
+editor and document-dependent toolbar become available immediately after one
+complete authoritative snapshot is installed.
+
+Snapshot retrieval begins before engine acquisition and continues concurrently.
+Font descriptors are registered synchronously, but only exact family/weight
+pairs referenced by the accepted scene are warmed after the first interactive
+paint. Font readiness invalidates Cangine presentation without mutating the
+document, history, or transport generation. Optional static extensions and
+host-provided extension loaders run as supervised children of the same
+`CanvasInstanceScope`; loader imports, font work, and extension failures cannot
+fail the interactive root and are cancelled by replacement or disposal.
+The OSS frontend production build walks the Canvas route's static chunk graph
+by semantic module ID. It rejects SDK/Capsule, AI Chat implementation,
+Fontkit/Emscripten, and Three modules and enforces a 471,040-byte gzip budget;
+the S152 qualification build measured 414,960 bytes across 16 critical chunks.
+
+Style mutations still commit through the controlled
 editor port into `CanvasDocumentService`; the controller is not a second scene
 writer. Shutdown destroys it before the editor session.
 Theme changes update the mounted editor selection and path appearance through

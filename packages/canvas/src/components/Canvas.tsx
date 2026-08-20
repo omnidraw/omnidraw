@@ -12,9 +12,7 @@ import {
   type TThemeColorPickerPalette,
 } from '@omnidraw/theme';
 import {
-  Match,
   Show,
-  Switch,
   createEffect,
   createSignal,
   onCleanup,
@@ -50,7 +48,10 @@ import {
   fnSpacePanScreenDelta,
 } from './fn.space-pan';
 import { fnCanvasToolShortcut } from './fn.canvas-tool-shortcut';
-import { CanvasRuntimeLifecycle } from './CanvasRuntimeLifecycle';
+import {
+  CanvasRuntimeLifecycle,
+  type TCanvasRuntimeReadiness,
+} from './CanvasRuntimeLifecycle';
 import type { TCanvasShellState } from '../fn.canvas-shell';
 
 type TCanvasSource = Readonly<{
@@ -66,6 +67,15 @@ const DETACHED_SELECTION_STYLE_STATE = Object.freeze({
   actions: Object.freeze([]),
   unavailable: Object.freeze([]),
 }) satisfies TSelectionStyleState;
+
+const READINESS_ORDER: Readonly<Record<TCanvasRuntimeReadiness, number>> = {
+  'starting': 0,
+  'surface-ready': 1,
+  'navigation-ready': 2,
+  'scene-visible': 3,
+  'document-ready': 4,
+  'settled': 5,
+};
 
 function eventTargetElement(target: EventTarget | null): Element | null {
   if (target === null || typeof target !== 'object') return null;
@@ -201,7 +211,7 @@ export function Canvas(props: TCanvasProps) {
   const passivePointerMoveCounts = new Map<number, number>();
   const trace = () => props.dependencies.diagnostics ?? null;
   const [containerReady, setContainerReady] = createSignal(false);
-  const [booting, setBooting] = createSignal(true);
+  const [readiness, setReadiness] = createSignal<TCanvasRuntimeReadiness>('starting');
   const [bootError, setBootError] = createSignal<string | null>(null);
   const [editor, setEditor] = createSignal<IStandardCanvasEditor | null>(null);
   const [editorRevision, setEditorRevision] = createSignal(0);
@@ -225,7 +235,7 @@ export function Canvas(props: TCanvasProps) {
   });
 
   const lifecycle = new CanvasRuntimeLifecycle<TCanvasSource>({
-    createRuntime: (next) => {
+    createRuntime: (next, reportReadiness) => {
       activeRuntime = buildRuntime({
         canvasId: next.canvasId,
         container: containerRef,
@@ -237,7 +247,8 @@ export function Canvas(props: TCanvasProps) {
         notification: props.dependencies.notification,
         themeService: props.dependencies.themeService,
         trace: trace(),
-      }, props.dependencies.extensions);
+        reportReadiness,
+      }, props.dependencies.extensions, props.dependencies.extensionLoaders);
       return activeRuntime;
     },
     onBootStart: () => {
@@ -255,10 +266,18 @@ export function Canvas(props: TCanvasProps) {
       setShellState({ kind: 'canvas', widgetId: null });
       setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
       setEditor(null);
-      setBooting(true);
+      setReadiness('starting');
       setBootError(null);
     },
-    onBootSuccess: () => {
+    onReadinessChange: (nextReadiness) => {
+      setReadiness(nextReadiness);
+      trace()?.emit({
+        channel: 'system',
+        type: nextReadiness,
+        priority: nextReadiness === 'settled' ? 'normal' : 'critical',
+        correlation: { canvasId: props.canvas.id },
+      });
+      if (nextReadiness !== 'document-ready') return;
       const nextEditor = activeRuntime?.editor() ?? null;
       setEditor(nextEditor);
       setEditorRevision(nextEditor?.state.revision ?? 0);
@@ -280,7 +299,8 @@ export function Canvas(props: TCanvasProps) {
       unsubscribeShell = runtime?.subscribeShell((nextState) => {
         if (activeRuntime === runtime) setShellState(nextState);
       }) ?? null;
-      setBooting(false);
+    },
+    onBootSuccess: () => {
       trace()?.emit({
         channel: 'system',
         type: 'runtime-ready',
@@ -293,7 +313,7 @@ export function Canvas(props: TCanvasProps) {
     ),
     onBootRecoveryWait: () => {
       activeRuntime = null;
-      setBooting(true);
+      setReadiness('starting');
       setBootError(null);
       trace()?.emit({
         channel: 'system',
@@ -306,7 +326,6 @@ export function Canvas(props: TCanvasProps) {
       const message = error instanceof Error ? error.message : String(error);
       props.dependencies.notification.showError('Failed to start canvas', message);
       setSelectionStyleState(DETACHED_SELECTION_STYLE_STATE);
-      setBooting(false);
       setBootError(message);
       trace()?.emit({
         channel: 'system',
@@ -777,6 +796,12 @@ export function Canvas(props: TCanvasProps) {
     editorRevision();
     return editor()?.state;
   };
+  const documentReady = () => (
+    READINESS_ORDER[readiness()] >= READINESS_ORDER['document-ready']
+  );
+  const surfaceReady = () => (
+    READINESS_ORDER[readiness()] >= READINESS_ORDER['surface-ready']
+  );
 
   const applySelectionStyle = (change: TSelectionStyleChange) =>
     activeRuntime?.selectionStyles()?.apply(change) ?? false;
@@ -865,7 +890,7 @@ export function Canvas(props: TCanvasProps) {
         class="omnidraw-canvas-engine-host"
         style={{ position: 'absolute', inset: '0' }}
       />
-      <Show when={shellState().kind !== 'maximized-widget'}>
+      <Show when={documentReady() && shellState().kind !== 'maximized-widget'}>
       <FloatingCanvasToolbar
         activeToolId={state()?.activeToolId ?? null}
         canRedo={state()?.canRedo ?? false}
@@ -904,26 +929,33 @@ export function Canvas(props: TCanvasProps) {
           onEndOpacity={endOpacity}
         />
       </Show>
-      <Switch>
-        <Match when={booting()}>
-          <div style={{ position: 'absolute', inset: '0', display: 'grid', 'place-items': 'center' }}>
-            Loading canvas…
+      <Show when={!documentReady() && bootError() === null}>
+        <div role="status" aria-live="polite" style={{
+          position: 'absolute',
+          top: '12px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '6px 10px',
+          'pointer-events': 'none',
+          'z-index': '2',
+        }}>
+          {surfaceReady() ? 'Loading document…' : 'Starting canvas…'}
+        </div>
+      </Show>
+      <Show when={bootError()}>
+        {(message) => (
+          <div role="alert" style={{
+            position: 'absolute',
+            top: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '8px 12px',
+            'z-index': '2',
+          }}>
+            Canvas failed to start: {message()}
           </div>
-        </Match>
-        <Match when={bootError()}>
-          {(message) => (
-            <div role="alert" style={{
-              position: 'absolute',
-              inset: '0',
-              display: 'grid',
-              'place-items': 'center',
-              padding: '24px',
-            }}>
-              Canvas failed to start: {message()}
-            </div>
-          )}
-        </Match>
-      </Switch>
+        )}
+      </Show>
     </div>
   );
 }

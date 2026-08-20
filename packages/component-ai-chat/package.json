@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/component-ai-chat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable Solid AI Chat component and Canvas contribution for Omnidraw.",
   "type": "module",
   "license": "MIT",
@@ -31,6 +31,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./canvas-frame": {
+      "types": "./dist/canvas-frame.d.ts",
+      "import": "./dist/canvas-frame.js",
+      "default": "./dist/canvas-frame.js"
     },
     "./styles.css": "./dist/styles.css"
   },

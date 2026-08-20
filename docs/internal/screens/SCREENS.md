@@ -32,6 +32,15 @@ The root screen is the entry point for canvases, resources, and widgets. The two
 
 The canvas combines the infinite workspace, drawing tools, hosted widgets, and the AI assistant. These captures cover the materially different window and selection states.
 
+A direct `/c/:id` link mounts from the validated route identity without waiting
+for sidebar catalog metadata. During a cold start the themed Cangine grid is
+the first surface and remains pannable/zoomable while the authoritative
+document is pending; a compact **Loading document…** status may appear without
+covering the workspace. One coherent snapshot then enables selection and
+editing. Referenced fonts, images, widget guests, and AI Chat hydrate inside
+their own frames afterward. Their bounded loading or failure copy never
+replaces or disables the Canvas surface.
+
 | Populated canvas | Selection and style tools |
 | --- | --- |
 | ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with compact semantic background and border color controls](assets/11-canvas-selection-style.webp) |
