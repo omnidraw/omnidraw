@@ -507,6 +507,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S150](s/S150.md) - widgets: make selected text copyable by default
 - [x]: [S151](s/S151.md) - widgets: append new canvas placements above existing content
 - [ ]: [S152](s/S152.md) - canvas: remove the monolithic startup barrier for immediate interaction
+- [ ]: [S153](s/S153.md) - frontend/canvas: hard-cut from Solid 1 to Solid 2
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -568,6 +569,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D15](d/D15.md) - standardize expected semantic failures (order 5/7)
 - [x]: [D16](d/D16.md) - canvas: structured lifetime ownership and orchestration split (order 6/7)
 - [x]: [D17](d/D17.md) - measured performance and low-risk cleanup (order 7/7)
+- [ ]: [D18](d/D18.md) - release: clone, install, build, and start entirely from source
 
 ## Pragmatic Code Style
 
