@@ -22,11 +22,10 @@
 .widgetRow:hover { background: var(--omnidraw-accent); }
 .selected, .selected:hover { border-color: var(--omnidraw-primary); background: color-mix(in srgb, var(--omnidraw-primary) 14%, var(--omnidraw-background)); color: var(--omnidraw-foreground); }
 .draftRow { color: var(--omnidraw-warning); }
-.draftAddButton, .draftRow .icon, .draftBadge { color: var(--omnidraw-warning); }
+.draftAddButton, .draftRow .icon { color: var(--omnidraw-warning); }
 .draftAddButton:hover { border-color: var(--omnidraw-warning); background: color-mix(in srgb, var(--omnidraw-warning) 16%, transparent); color: var(--omnidraw-warning); }
 .icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--omnidraw-muted-foreground); }
 .icon > span, .icon :global(svg) { display: block; width: 1rem; height: 1rem; }
-.draftBadge { display: inline-flex; align-items: center; gap: .2rem; font-size: .5625rem; font-weight: 800; text-transform: uppercase; }
 .warning { color: var(--omnidraw-warning); }
 .state, .error, .empty { margin: 0; padding: .35rem .75rem; color: var(--omnidraw-muted-foreground); font-size: .7rem; }
 .error { overflow: hidden; color: var(--omnidraw-destructive); text-overflow: ellipsis; white-space: nowrap; }

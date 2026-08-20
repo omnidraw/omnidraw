@@ -2,7 +2,6 @@ import { Button } from '@kobalte/core/button';
 import { DropdownMenu } from '@kobalte/core/dropdown-menu';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
-import Pencil from 'lucide-solid/icons/pencil';
 import Plus from 'lucide-solid/icons/plus';
 import TriangleAlert from 'lucide-solid/icons/triangle-alert';
 import {
@@ -128,9 +127,6 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       >
         <WidgetIcon icon={value.form.config?.tool.icon ?? null} class={styles.icon} />
         <span class={styles.widgetName}>{displayName}</span>
-        <Show when={value.source === 'draft'}>
-          <span class={styles.draftBadge}><Pencil size={9} /> Draft</span>
-        </Show>
         <Show when={value.problem}>
           <TriangleAlert class={styles.warning} size={12} aria-label="Widget problem" />
         </Show>
@@ -138,14 +134,14 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       <Show when={placementAvailable() && value.placement}>
         <Button
           class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
-          aria-label={value.action === 'add' ? `Add ${label} to canvas` : `Preview ${label} on canvas`}
-          title={disabledReason ?? (value.action === 'add' ? 'Add to canvas' : 'Place a live Preview frame')}
+          aria-label={value.action === 'add' ? `Add ${label} to canvas` : `Add ${label} draft to canvas`}
+          title={disabledReason ?? (value.action === 'add' ? 'Add to canvas' : 'Add draft to canvas')}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             void addToCanvas();
           }}
-        >{value.action === 'add' ? <><Plus size={10} /><span>Add</span></> : 'Preview'}</Button>
+        ><Plus size={10} /><span>{value.action === 'add' ? 'Add' : 'Add draft'}</span></Button>
       </Show>
     </div>;
   };

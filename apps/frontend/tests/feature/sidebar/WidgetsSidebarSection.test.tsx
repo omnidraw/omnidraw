@@ -109,13 +109,18 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
     };
     value.invalidation.invalidate('widgets');
 
-    await vi.waitFor(() => expect(container.querySelector(
-      'button[aria-label="Click Counter, draft, healthy."]',
-    )).not.toBeNull());
-    expect(container.textContent).toContain('Draft');
+    const draft = await vi.waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Click Counter, draft, healthy."]',
+      );
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    expect(draft.textContent).toContain('Click Counter');
+    expect(draft.textContent).not.toContain('Draft');
     expect(container.querySelector(
-      'button[aria-label="Preview Click Counter on canvas"]',
-    )).not.toBeNull();
+      'button[aria-label="Add Click Counter draft to canvas"]',
+    )?.textContent).toBe('Add draft');
     expect(value.apiService.api.widget.catalog.get).toHaveBeenCalledTimes(2);
   });
 
@@ -187,13 +192,14 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
     const add = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Add Camera to canvas"]',
     );
-    const preview = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Preview Camera on canvas"]',
+    const addDraft = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add Camera draft to canvas"]',
     );
     expect(add?.textContent).toBe('Add');
     expect(add?.querySelector('svg')).not.toBeNull();
-    expect(preview?.textContent).toBe('Preview');
-    expect(preview?.classList.contains(styles.draftAddButton)).toBe(true);
+    expect(addDraft?.textContent).toBe('Add draft');
+    expect(addDraft?.querySelector('svg')).not.toBeNull();
+    expect(addDraft?.classList.contains(styles.draftAddButton)).toBe(true);
     add?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
     expect(addToCanvas).toHaveBeenCalledWith({
@@ -201,7 +207,7 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
       bounds: { width: 480, height: 320 },
       label: 'Camera',
     });
-    preview?.click();
+    addDraft?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledTimes(2));
     expect(addToCanvas).toHaveBeenLastCalledWith({
       reference: { source: 'draft', widgetKey: 'camera', catalogGeneration: 1 },
