@@ -3,7 +3,7 @@
 .sectionToggle, .menuTrigger, .groupDisclosure { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
 .sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .menuTrigger { width: 1.75rem; height: 1.75rem; }
-.sectionToggle:hover, .menuTrigger:hover, .groupDisclosure:hover { background: var(--omnidraw-accent); color: var(--omnidraw-foreground); }
+.menuTrigger:hover, .groupDisclosure:hover { background: var(--omnidraw-accent); color: var(--omnidraw-foreground); }
 .sectionToggle:focus-visible, .menuTrigger:focus-visible, .widgetRowMain:focus-visible, .addButton:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--omnidraw-ring); }
 .groupDisclosure:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--omnidraw-ring); }
 .chevron, .groupChevron { transition: transform 150ms ease; }
@@ -17,13 +17,13 @@
 .groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
 .widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--omnidraw-foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
 .widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1rem; color: inherit; text-align: left; }
-.addButton { display: inline-flex; align-items: center; justify-content: center; padding: 0 .5rem; color: var(--omnidraw-muted-foreground); font-size: .625rem; font-weight: 700; white-space: nowrap; }
-.addButton:hover { background: color-mix(in srgb, var(--omnidraw-primary) 12%, transparent); color: var(--omnidraw-primary); }
+.addButton { display: inline-flex; align-items: center; align-self: center; justify-content: center; gap: .125rem; height: 1.375rem; padding: 0 .375rem; border: 1px solid var(--omnidraw-border); border-radius: 0; background: var(--omnidraw-background); color: var(--omnidraw-muted-foreground); font-size: .625rem; font-weight: 700; white-space: nowrap; }
+.addButton:hover { border-color: var(--omnidraw-primary); background: color-mix(in srgb, var(--omnidraw-primary) 12%, transparent); color: var(--omnidraw-primary); }
 .widgetRow:hover { background: var(--omnidraw-accent); }
 .selected, .selected:hover { border-color: var(--omnidraw-primary); background: color-mix(in srgb, var(--omnidraw-primary) 14%, var(--omnidraw-background)); color: var(--omnidraw-foreground); }
 .draftRow { color: var(--omnidraw-warning); }
 .draftAddButton, .draftRow .icon, .draftBadge { color: var(--omnidraw-warning); }
-.draftAddButton:hover { background: color-mix(in srgb, var(--omnidraw-warning) 16%, transparent); color: var(--omnidraw-warning); }
+.draftAddButton:hover { border-color: var(--omnidraw-warning); background: color-mix(in srgb, var(--omnidraw-warning) 16%, transparent); color: var(--omnidraw-warning); }
 .icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--omnidraw-muted-foreground); }
 .icon > span, .icon :global(svg) { display: block; width: 1rem; height: 1rem; }
 .draftBadge { display: inline-flex; align-items: center; gap: .2rem; font-size: .5625rem; font-weight: 800; text-transform: uppercase; }

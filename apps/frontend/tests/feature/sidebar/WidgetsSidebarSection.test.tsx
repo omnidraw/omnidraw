@@ -191,7 +191,9 @@ describe('WidgetsSidebarSection filesystem catalog', () => {
       'button[aria-label="Preview Camera on canvas"]',
     );
     expect(add?.textContent).toBe('Add');
+    expect(add?.querySelector('svg')).not.toBeNull();
     expect(preview?.textContent).toBe('Preview');
+    expect(preview?.classList.contains(styles.draftAddButton)).toBe(true);
     add?.click();
     await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
     expect(addToCanvas).toHaveBeenCalledWith({

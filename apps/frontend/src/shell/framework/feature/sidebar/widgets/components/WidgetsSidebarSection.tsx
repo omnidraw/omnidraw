@@ -3,6 +3,7 @@ import { DropdownMenu } from '@kobalte/core/dropdown-menu';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
 import Pencil from 'lucide-solid/icons/pencil';
+import Plus from 'lucide-solid/icons/plus';
 import TriangleAlert from 'lucide-solid/icons/triangle-alert';
 import {
   For,
@@ -136,7 +137,7 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       </Button>
       <Show when={placementAvailable() && value.placement}>
         <Button
-          class={styles.addButton}
+          class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
           aria-label={value.action === 'add' ? `Add ${label} to canvas` : `Preview ${label} on canvas`}
           title={disabledReason ?? (value.action === 'add' ? 'Add to canvas' : 'Place a live Preview frame')}
           onPointerDown={(event) => event.stopPropagation()}
@@ -144,7 +145,7 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
             event.stopPropagation();
             void addToCanvas();
           }}
-        >{value.action === 'add' ? 'Add' : 'Preview'}</Button>
+        >{value.action === 'add' ? <><Plus size={10} /><span>Add</span></> : 'Preview'}</Button>
       </Show>
     </div>;
   };
