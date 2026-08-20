@@ -31,6 +31,34 @@ describe('filesystem widget placement API', () => {
     expect(calls).toEqual([{ reference }]);
   });
 
+  test('forwards a bounded Preview replacement reservation with the publication reference', async () => {
+    const calls: unknown[] = [];
+    const replacement = {
+      canvasId: 'canvas-a',
+      elementId: 'preview-a',
+      previewInstanceId: 'preview-instance-a',
+      targetInstanceId: 'published-instance-a',
+    };
+    const descriptor = {
+      kind: 'published' as const,
+      reference,
+      widgetKey: reference.widgetKey,
+      catalogGeneration: reference.catalogGeneration,
+      bounds: { width: 480, height: 320 },
+    };
+    const context = {
+      widgetCatalog: {
+        resolvePlacement(input: unknown) {
+          calls.push(input);
+          return descriptor;
+        },
+      },
+    } as never;
+
+    await apiWidgetPlacementResolve.callable({ context })({ reference, replacement });
+    expect(calls).toEqual([{ reference, replacement }]);
+  });
+
   test('maps stale, missing, and invalid resource selections to stable public errors', async () => {
     const cases = [
       ['WIDGET_CATALOG_CHANGED', 'CONFLICT'],

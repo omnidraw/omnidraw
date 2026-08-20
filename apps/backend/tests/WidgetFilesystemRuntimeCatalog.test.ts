@@ -217,7 +217,10 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
 
   test('starts from the filesystem and resolves placement and exact current runtime bytes', async () => {
     const root = await widgetsRoot();
-    await writePublication(root, manifest('counter'), 'signed-counter-v1');
+    await Promise.all([
+      writeDraft(root, manifest('counter')),
+      writePublication(root, manifest('counter'), 'signed-counter-v1'),
+    ]);
     const catalog = new WidgetFilesystemRuntimeCatalog({ ...catalogWorld(), widgetsRoot: root, capsule });
 
     await catalog.start();
@@ -235,8 +238,53 @@ describe('WidgetFilesystemRuntimeCatalog', () => {
       catalogGeneration: 1,
     });
 
+    const replacement = {
+      canvasId: 'canvas-a',
+      elementId: 'preview-a',
+      previewInstanceId: 'preview-instance-a',
+      targetInstanceId: 'published-instance-a',
+    };
+    await catalog.resolvePlacement({ reference: reference!, replacement });
+    await expect(catalog.assertCanvasPreviewReplacementAllowed({
+      ...replacement,
+      widgetKey: 'counter',
+    })).resolves.toBeUndefined();
+    catalog.markCanvasPreviewReplacementAccepted({
+      ...replacement,
+      widgetKey: 'counter',
+    });
+    await writeDraft(root, manifest('unrelated-draft'));
+    await catalog.refresh();
+    await expect(catalog.assertCanvasPreviewReplacementAllowed({
+      ...replacement,
+      widgetKey: 'counter',
+    })).resolves.toBeUndefined();
+    await writePublication(root, manifest('counter'), 'signed-counter-v2');
+    await catalog.refresh();
+    await expect(catalog.assertCanvasPreviewReplacementAllowed({
+      ...replacement,
+      widgetKey: 'counter',
+    })).resolves.toBeUndefined();
+    expect(() => catalog.assertCanvasPreviewRestorationAllowed({
+      ...replacement,
+      widgetKey: 'counter',
+    })).not.toThrow();
+
+    const pendingReplacement = {
+      ...replacement,
+      targetInstanceId: 'published-instance-b',
+    };
+    const [currentReference] = catalog.publishedReferences();
+    await catalog.resolvePlacement({ reference: currentReference!, replacement: pendingReplacement });
+    await writeDraft(root, manifest('another-unrelated-draft'));
+    await catalog.refresh();
+    await expect(catalog.assertCanvasPreviewReplacementAllowed({
+      ...pendingReplacement,
+      widgetKey: 'counter',
+    })).rejects.toMatchObject({ code: 'WIDGET_CATALOG_CHANGED' });
+
     const resolution = await catalog.resolveRuntime('counter');
-    expect(Buffer.from(resolution.capsuleBytes).toString('utf8')).toBe('signed-counter-v1');
+    expect(Buffer.from(resolution.capsuleBytes).toString('utf8')).toBe('signed-counter-v2');
     expect(resolution.serverEntryBytes).toBeNull();
     expect(resolution.functionDescriptors).toEqual([]);
     expect(catalog.isRuntimeResolutionCurrent(resolution)).toBe(true);

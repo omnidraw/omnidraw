@@ -568,6 +568,16 @@ export class CanvasDocumentService
     }).receipt;
   }
 
+  /** Persists host-synchronized authored metadata without adding a user history entry. */
+  commitWithoutHistory(
+    request: TEditorSceneMutationRequest,
+  ): TEditorSceneMutationReceipt {
+    return this.#commitMutation(request, {
+      persist: true,
+      recordHistory: false,
+    }).receipt;
+  }
+
   allocateIdentity(args: Readonly<{
     importId: string;
     index: number;

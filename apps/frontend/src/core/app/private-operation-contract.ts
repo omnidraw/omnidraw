@@ -356,7 +356,15 @@ export type TPrivateRequestOperations = Readonly<{
   "widget.publication.publishMetadata": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
   "widget.publication.updateIcon": TOperation<Readonly<{ widgetKey: string; expectedPublishedManifestDigestSha256: string; expectedCatalogDigestSha256: string; icon: TOmnidrawToolIcon | null }>, TWidgetPublicMutationResult>;
   "widget.publication.buildAndPublish": TOperation<Readonly<{ widgetKey: string; expectedManifestDigestSha256: string; expectedCatalogDigestSha256: string }>, TWidgetPublicMutationResult>;
-  "widget.placement.resolve": TOperation<Readonly<{ reference: Extract<TWidgetPlacementRef, { source: "published" }> }>, Readonly<{ kind: "published"; reference: Extract<TWidgetPlacementRef, { source: "published" }>; widgetKey: string; catalogGeneration: number; bounds: Readonly<{ width: number; height: number }> }>>;
+  "widget.placement.resolve": TOperation<Readonly<{
+    reference: Extract<TWidgetPlacementRef, { source: "published" }>;
+    replacement?: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+    }>;
+  }>, Readonly<{ kind: "published"; reference: Extract<TWidgetPlacementRef, { source: "published" }>; widgetKey: string; catalogGeneration: number; bounds: Readonly<{ width: number; height: number }> }>>;
   "widget.preview.buildState": TOperation<Readonly<{ widgetKey: string }>, TWidgetPreviewBuildState>;
   "widget.preview.open": TOperation<Readonly<{ canvasId: string; elementId: string; widgetKey: string }>, TWidgetTransportArtifact>;
   "widget.preview.rebuild": TOperation<Readonly<{ canvasId: string; elementId: string; widgetKey: string }>, TWidgetTransportArtifact>;

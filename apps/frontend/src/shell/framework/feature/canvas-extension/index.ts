@@ -1,8 +1,13 @@
-import type { ICanvasExtension, TCanvasExternalWidgetPreview } from "@omnidraw/canvas";
+import type {
+  ICanvasExtension,
+  TCanvasExtensionDocumentPort,
+  TCanvasExternalWidgetPreview,
+} from "@omnidraw/canvas";
 import { Predicate } from "effect";
 import {
   CANVAS_WIDGET_EXTENSION_KEY,
   fnReadCanvasWidgetExtension,
+  fnStringifyCanonicalCanvasJson,
   type TWidgetFrameNode,
 } from "@omnidraw/canvas-contract";
 import type {
@@ -25,7 +30,9 @@ import {
 } from "@/core/widgets/fn.pointer-placement";
 import {
   fnPlacedWidgetNode,
+  fnReplacePreviewWithPublishedWidget,
   fnWidgetPreviewActionId,
+  fnWidgetPreviewWithPublishedActionAvailability,
 } from "@/core/widgets/fn.placed-widget-node";
 import { fnWidgetHostDiagnosticDescription } from "@/core/widgets/fn.widget-host-diagnostic";
 import { createWidgetViewportSync } from "./widget-viewport-sync";
@@ -139,6 +146,65 @@ async function buildAndPublishPreview(runtime: TFrontendRuntime, widgetKey: stri
   }, { signal });
 }
 
+function publishedCatalogEntry(catalog: TWidgetPublicCatalog, widgetKey: string) {
+  const entry = catalog.entries.find((candidate) => candidate.widgetKey === widgetKey);
+  return entry?.placeable === true
+    && entry.published?.health === "healthy"
+    && entry.published.config !== null
+    && entry.placement !== null
+      ? entry
+      : null;
+}
+
+function sameNodeImage(left: unknown, right: unknown): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  type TCanonicalInput = Parameters<typeof fnStringifyCanonicalCanvasJson>[0];
+  return fnStringifyCanonicalCanvasJson(left as TCanonicalInput)
+    === fnStringifyCanonicalCanvasJson(right as TCanonicalInput);
+}
+
+async function commitAndWaitForAcceptedNode(args: Readonly<{
+  document: TCanvasExtensionDocumentPort;
+  node: Readonly<TWidgetFrameNode>;
+  signal: AbortSignal;
+}>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let projected = false;
+    let unsubscribe: () => void = () => undefined;
+    const onAbort = () => settle(() => reject(
+      args.signal.reason ?? new DOMException("Aborted", "AbortError"),
+    ));
+    const settle = (complete: () => void) => {
+      unsubscribe();
+      args.signal.removeEventListener("abort", onAbort);
+      complete();
+    };
+    unsubscribe = args.document.subscribe(() => {
+      const authored = args.document.node(args.node.id);
+      const accepted = args.document.item(args.node.id)?.item;
+      if (sameNodeImage(authored, args.node)) projected = true;
+      if (sameNodeImage(accepted, args.node)) {
+        settle(resolve);
+      } else if (projected && !sameNodeImage(authored, args.node)) {
+        settle(() => reject(new Error("Canvas authority rejected the Preview replacement.")));
+      }
+    });
+    args.signal.addEventListener("abort", onAbort, { once: true });
+    if (args.signal.aborted) {
+      onAbort();
+      return;
+    }
+    try {
+      args.document.commit({
+        source: "omnidraw.widget-preview.replace-with-published",
+        commands: [{ type: "upsert", node: args.node }],
+      });
+    } catch (error) {
+      settle(() => reject(error));
+    }
+  });
+}
+
 export function createFrontendWidgetExtension(
   options: TCreateFrontendWidgetExtensionArgs,
 ): ICanvasExtension {
@@ -165,23 +231,59 @@ export function createFrontendWidgetExtension(
       const mounts = new Map<string, IWidgetBrowserMount>();
       const reloadByNode = new Map<string, TPreviewReload>();
       const previewWidgetKeyByNode = new Map<string, string>();
+      const syncPreviewActionsByNode = new Map<string, () => Promise<void>>();
+      const previewClosureByNode = new Map<string, Promise<void>>();
+      const closePreviewSession = (nodeId: string): Promise<void> => {
+        const existing = previewClosureByNode.get(nodeId);
+        if (existing !== undefined) return existing;
+        const closing = (async () => {
+          let failure: unknown;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              await application.rpc.request("widget.preview.close", {
+                canvasId: context.config.canvasId,
+                elementId: nodeId,
+              });
+              return;
+            } catch (error) {
+              failure = error;
+            }
+          }
+          throw failure;
+        })();
+        previewClosureByNode.set(nodeId, closing);
+        return closing;
+      };
       const catalogEventController = new AbortController();
       let catalogRefreshTimer: number | undefined;
-      const pendingCatalogRefreshes = new Set<string>();
-      const scheduleCatalogRefresh = (widgetKeys: readonly string[], fullResync: boolean): void => {
+      const pendingPreviewRefreshes = new Set<string>();
+      const pendingPreviewActionSyncs = new Set<string>();
+      const scheduleCatalogRefresh = (
+        previewWidgetKeys: readonly string[],
+        changedWidgetKeys: readonly string[],
+        fullResync: boolean,
+      ): void => {
         if (fullResync) {
-          for (const widgetKey of previewWidgetKeyByNode.values()) pendingCatalogRefreshes.add(widgetKey);
+          for (const widgetKey of previewWidgetKeyByNode.values()) {
+            pendingPreviewRefreshes.add(widgetKey);
+            pendingPreviewActionSyncs.add(widgetKey);
+          }
         } else {
-          for (const widgetKey of widgetKeys) pendingCatalogRefreshes.add(widgetKey);
+          for (const widgetKey of previewWidgetKeys) pendingPreviewRefreshes.add(widgetKey);
+          for (const widgetKey of [...previewWidgetKeys, ...changedWidgetKeys]) {
+            pendingPreviewActionSyncs.add(widgetKey);
+          }
         }
         if (catalogRefreshTimer !== undefined) return;
         catalogRefreshTimer = application.ownerWindow.setTimeout(() => {
           catalogRefreshTimer = undefined;
-          const keys = new Set(pendingCatalogRefreshes);
-          pendingCatalogRefreshes.clear();
+          const refreshKeys = new Set(pendingPreviewRefreshes);
+          const syncKeys = new Set(pendingPreviewActionSyncs);
+          pendingPreviewRefreshes.clear();
+          pendingPreviewActionSyncs.clear();
           for (const [nodeId, widgetKey] of previewWidgetKeyByNode) {
-            if (!keys.has(widgetKey)) continue;
-            void reloadByNode.get(nodeId)?.();
+            if (syncKeys.has(widgetKey)) void syncPreviewActionsByNode.get(nodeId)?.();
+            if (refreshKeys.has(widgetKey)) void reloadByNode.get(nodeId)?.();
           }
         }, 80);
       };
@@ -192,7 +294,11 @@ export function createFrontendWidgetExtension(
               signal: catalogEventController.signal,
             })) {
               if (catalogEventController.signal.aborted) return;
-              scheduleCatalogRefresh(event.previewWidgetKeys, event.fullResync);
+              scheduleCatalogRefresh(
+                event.previewWidgetKeys,
+                event.changedWidgetKeys,
+                event.fullResync,
+              );
             }
           } catch {
             if (catalogEventController.signal.aborted) return;
@@ -215,6 +321,11 @@ export function createFrontendWidgetExtension(
           const exactSubject = subject(context.config.canvasId, args.node);
           const extension = fnReadCanvasWidgetExtension(args.node);
           if (exactSubject === null || (extension?.type !== "widget-instance" && extension?.type !== "widget-preview")) return;
+          if (extension.type === "widget-preview") {
+            previewClosureByNode.delete(args.node.id);
+          } else {
+            await previewClosureByNode.get(args.node.id)?.catch(() => undefined);
+          }
           // Preview title and actions are authored once on the widget frame.
           // Cangine then owns their responsive title lane and compact overflow
           // menu; an extension titlebar here would overlay that same chrome.
@@ -243,6 +354,28 @@ export function createFrontendWidgetExtension(
                 ? "omnidraw.widget-preview.remove"
                 : "omnidraw.widget.remove",
               commands: [{ type: "remove", nodeId: args.node.id, descendants: "remove" }],
+            });
+          };
+          const syncPreviewActions = async (): Promise<void> => {
+            const current = context.document.node(args.node.id);
+            if (current?.kind !== "widget-frame") return;
+            const currentExtension = fnReadCanvasWidgetExtension(current);
+            if (
+              currentExtension?.type !== "widget-preview"
+              || currentExtension.widgetKey !== extension.widgetKey
+            ) return;
+            const catalog = await application.rpc.request("widget.catalog.get", {}, {
+              signal: args.signal,
+            });
+            const next = fnWidgetPreviewWithPublishedActionAvailability(
+              current,
+              publishedCatalogEntry(catalog, extension.widgetKey) !== null,
+            );
+            if (sameNodeImage(current, next)) return;
+            context.document.commit({
+              source: "omnidraw.widget-preview.sync-actions",
+              history: "ignore",
+              commands: [{ type: "upsert", node: next }],
             });
           };
           const renderFrameStatus = (): void => {
@@ -495,6 +628,8 @@ export function createFrontendWidgetExtension(
           reloadByNode.set(args.node.id, open);
           if (extension.type === "widget-preview") {
             previewWidgetKeyByNode.set(args.node.id, extension.widgetKey);
+            syncPreviewActionsByNode.set(args.node.id, syncPreviewActions);
+            void syncPreviewActions().catch(() => undefined);
           }
           await open();
           const unsubscribeNode = args.onNodeChange?.((node) => {
@@ -508,15 +643,21 @@ export function createFrontendWidgetExtension(
             mount?.setTheme(fnWidgetHostTheme(theme));
           });
           return async () => {
+            const previewClosure = extension.type === "widget-preview"
+              ? closePreviewSession(args.node.id)
+              : null;
+            void previewClosure?.catch(() => undefined);
             viewportSync.disconnect();
             unsubscribeNode?.();
             unsubscribeTheme();
             reloadByNode.delete(args.node.id);
             previewWidgetKeyByNode.delete(args.node.id);
+            syncPreviewActionsByNode.delete(args.node.id);
             mounts.delete(args.node.id);
             statusSurface?.remove();
             diagnosticSurface?.remove();
             await mount?.dispose("canvas-unmount");
+            await previewClosure?.catch(() => undefined);
           };
         },
         async onAction({ node, actionId, signal }) {
@@ -542,10 +683,75 @@ export function createFrontendWidgetExtension(
           if (previewActionId === "publish") {
             await buildAndPublishPreview(application, extension.widgetKey, signal);
             options.invalidateWidgets();
+            await syncPreviewActionsByNode.get(node.id)?.().catch(() => undefined);
             showSuccessToast(
               "Widget built and published",
-              "This canvas frame remains a draft Preview. Add the published widget separately to use the publication.",
+              "This frame remains a draft Preview. Use Replace with published widget when you are ready to make this placement follow the publication.",
             );
+            return;
+          }
+          if (previewActionId === "replace-with-published") {
+            let replacementAccepted = false;
+            try {
+              const catalog = await application.rpc.request("widget.catalog.get", {}, { signal });
+              const published = publishedCatalogEntry(catalog, extension.widgetKey);
+              if (published === null) {
+                throw new Error("The current publication is missing or unhealthy.");
+              }
+              const unpublishedChanges = published.differences.manifest !== "same";
+              const label = published.published!.config!.tool.label.trim()
+                || published.published!.config!.name;
+              const confirmed = application.ownerWindow.confirm(
+                unpublishedChanges
+                  ? `Replace this Preview with the currently published ${label}? The draft has unpublished changes; they will stay in the draft and will not be built or published.`
+                  : `Replace this Preview with the published ${label}? The frame keeps its Canvas layout and will follow future publications.`,
+              );
+              if (!confirmed || signal.aborted) return;
+              const instanceId = application.ownerWindow.crypto.randomUUID();
+              await application.rpc.request("widget.placement.resolve", {
+                reference: published.placement!.reference,
+                replacement: {
+                  canvasId: context.config.canvasId,
+                  elementId: node.id,
+                  previewInstanceId: extension.instanceId,
+                  targetInstanceId: instanceId,
+                },
+              }, { signal });
+              const current = context.document.node(node.id);
+              if (current?.kind !== "widget-frame") {
+                throw new Error("The Preview frame no longer exists.");
+              }
+              const replacement = fnReplacePreviewWithPublishedWidget({
+                node: current,
+                widgetKey: extension.widgetKey,
+                instanceId,
+                publishedTitle: label,
+              });
+              await commitAndWaitForAcceptedNode({
+                document: context.document,
+                node: replacement,
+                signal,
+              });
+              replacementAccepted = true;
+              await closePreviewSession(node.id);
+              context.document.setSelection([node.id], { focusedNodeId: node.id });
+              showSuccessToast(
+                "Preview replaced with published widget",
+                "This frame now follows the current publication.",
+              );
+            } catch (error) {
+              if (signal.aborted) return;
+              showErrorToast(
+                replacementAccepted
+                  ? "Preview replaced, but cleanup failed"
+                  : "Preview was not replaced",
+                error instanceof Error
+                  ? error.message
+                  : replacementAccepted
+                    ? "The old Preview session could not be closed."
+                    : "The replacement could not be accepted.",
+              );
+            }
           }
         },
       });
@@ -732,11 +938,15 @@ export function createFrontendWidgetExtension(
             application.ownerWindow.clearTimeout(catalogRefreshTimer);
             catalogRefreshTimer = undefined;
           }
-          pendingCatalogRefreshes.clear();
+          pendingPreviewRefreshes.clear();
+          pendingPreviewActionSyncs.clear();
           unbindPreviewAutomation?.();
           reloadByNode.clear();
           previewWidgetKeyByNode.clear();
+          syncPreviewActionsByNode.clear();
           mounts.clear();
+          await Promise.allSettled(previewClosureByNode.values());
+          previewClosureByNode.clear();
           await runtime.dispose();
         },
       };

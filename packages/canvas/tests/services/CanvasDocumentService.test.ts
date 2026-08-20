@@ -448,6 +448,35 @@ function expectProjectionMatchesReadModel(
 }
 
 describe('CanvasDocumentService', () => {
+  test('persists host-synchronized mutations without adding a user undo step', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-catalog-sync',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commitWithoutHistory(mutation(
+      fake.engine,
+      'catalog-sync',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(service.item('rect-a')?.item).toEqual(after);
+    expect(service.history.canUndo).toBe(false);
+    await service.dispose();
+  });
+
   test('mounts accepted widget content immediately after acknowledgement without reload', async () => {
     const acknowledgement = deferred<TCanvasItemsChangedEvent>();
     const transport = transportWith(snapshot([]), async () => acknowledgement.promise);

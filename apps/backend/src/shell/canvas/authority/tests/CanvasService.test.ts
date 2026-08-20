@@ -77,6 +77,21 @@ function widget(id: string, instanceId: string, widgetKey = 'counter'): TSceneNo
   };
 }
 
+function previewWidget(id: string, instanceId: string, widgetKey = 'counter'): TSceneNode {
+  return {
+    ...widget(id, instanceId, widgetKey),
+    title: 'Preview: Counter',
+    extensions: {
+      'omnidraw:widget': {
+        schemaVersion: 1,
+        type: 'widget-preview',
+        instanceId,
+        widgetKey,
+      },
+    },
+  };
+}
+
 type TMemoryCanvas = {
   revision: number;
   rows: Map<string, TCanvasItemSnapshot>;
@@ -311,6 +326,124 @@ describe('CanvasService', () => {
         itemRevision: 1,
       }],
     })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  test('admits a fenced Preview replacement and its undo/redo as one-item transitions', async () => {
+    const store = new MemoryCanvasStore();
+    const preview = previewWidget('widget-a', 'preview-a');
+    const published = widget('widget-a', 'published-a');
+    store.createCanvas('canvas-a', [preview]);
+    const admitted: string[] = [];
+    let replacementAccepted = false;
+    const canvas = new CanvasService({
+      store,
+      widgetPlacementAdmission: {
+        async withAdmission(_placements, operation) { return operation(); },
+        async assertAllowed(input) { admitted.push(`${input.type}:${input.widgetKey}`); },
+        async assertPreviewReplacementAllowed(input) {
+          admitted.push(`replace:${input.previewInstanceId}:${input.targetInstanceId}`);
+        },
+        async assertPreviewRestorationAllowed(input) {
+          if (!replacementAccepted) throw new Error('Replacement was not accepted.');
+          admitted.push(`restore:${input.targetInstanceId}:${input.previewInstanceId}`);
+        },
+        markPreviewReplacementAccepted(input) {
+          replacementAccepted = true;
+          admitted.push(`accepted:${input.previewInstanceId}:${input.targetInstanceId}`);
+        },
+      },
+    });
+
+    const replace = await canvas.execute({
+      commandId: 'replace-preview',
+      canvasId: 'canvas-a',
+      baseRevision: 0,
+      operations: [{ type: 'replace', item: published }],
+      preconditions: [{ type: 'item-revision', itemId: 'widget-a', itemRevision: 1 }],
+    });
+    expect(fnReadCanvasWidgetExtension(replace.changedItems[0]!.item)).toMatchObject({
+      type: 'widget-instance',
+      instanceId: 'published-a',
+    });
+
+    await canvas.execute({
+      commandId: 'undo-replacement',
+      canvasId: 'canvas-a',
+      baseRevision: 1,
+      operations: [{ type: 'replace', item: preview }],
+      preconditions: [{ type: 'item-revision', itemId: 'widget-a', itemRevision: 2 }],
+    });
+    await canvas.execute({
+      commandId: 'redo-replacement',
+      canvasId: 'canvas-a',
+      baseRevision: 2,
+      operations: [{ type: 'replace', item: published }],
+      preconditions: [{ type: 'item-revision', itemId: 'widget-a', itemRevision: 3 }],
+    });
+    expect(admitted).toEqual([
+      'replace:preview-a:published-a',
+      'accepted:preview-a:published-a',
+      'restore:published-a:preview-a',
+      'replace:preview-a:published-a',
+      'accepted:preview-a:published-a',
+    ]);
+  });
+
+  test('rejects converting an ordinary published instance into a Preview', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [widget('widget-a', 'published-a')]);
+    const canvas = new CanvasService({
+      store,
+      widgetPlacementAdmission: {
+        async withAdmission(_placements, operation) { return operation(); },
+        async assertAllowed() {},
+        async assertPreviewRestorationAllowed() {
+          throw Object.assign(new Error('No accepted replacement lineage.'), {
+            code: 'WIDGET_CATALOG_CHANGED',
+          });
+        },
+      },
+    });
+
+    await expect(canvas.execute({
+      commandId: 'forge-preview',
+      canvasId: 'canvas-a',
+      baseRevision: 0,
+      operations: [{
+        type: 'replace',
+        item: previewWidget('widget-a', 'forged-preview'),
+      }],
+      preconditions: [{ type: 'item-revision', itemId: 'widget-a', itemRevision: 1 }],
+    })).rejects.toMatchObject({ code: 'WIDGET_CATALOG_CHANGED' });
+  });
+
+  test('leaves Preview durable state unchanged when replacement admission rejects catalog drift', async () => {
+    const store = new MemoryCanvasStore();
+    const preview = previewWidget('widget-a', 'preview-a');
+    store.createCanvas('canvas-a', [preview]);
+    const canvas = new CanvasService({
+      store,
+      widgetPlacementAdmission: {
+        async withAdmission(_placements, operation) { return operation(); },
+        async assertAllowed() {},
+        async assertPreviewReplacementAllowed() {
+          throw Object.assign(new Error('Publication changed.'), { code: 'WIDGET_CATALOG_CHANGED' });
+        },
+      },
+    });
+
+    await expect(canvas.execute({
+      commandId: 'stale-replacement',
+      canvasId: 'canvas-a',
+      baseRevision: 0,
+      operations: [{ type: 'replace', item: widget('widget-a', 'published-a') }],
+      preconditions: [{ type: 'item-revision', itemId: 'widget-a', itemRevision: 1 }],
+    })).rejects.toMatchObject({ code: 'WIDGET_CATALOG_CHANGED' });
+    const snapshot = await canvas.getSnapshot({ canvasId: 'canvas-a' });
+    expect(fnReadCanvasWidgetExtension(snapshot.items[0]!.item)).toMatchObject({
+      type: 'widget-preview',
+      instanceId: 'preview-a',
+    });
   });
 
   test('rejects a newly resolved widget placement while deletion admission is fenced', async () => {

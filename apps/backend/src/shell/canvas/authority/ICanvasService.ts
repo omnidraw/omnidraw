@@ -101,6 +101,27 @@ export type TCanvasServiceDependencies = Readonly<{
       widgetKey: string;
       type: 'widget-instance' | 'widget-preview';
     }>): void | Promise<void>;
+    assertPreviewReplacementAllowed?(args: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+      widgetKey: string;
+    }>): void | Promise<void>;
+    assertPreviewRestorationAllowed?(args: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+      widgetKey: string;
+    }>): void | Promise<void>;
+    markPreviewReplacementAccepted?(args: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+      widgetKey: string;
+    }>): void;
     withAdmission?<T>(
       placements: readonly Readonly<{
         widgetKey: string;

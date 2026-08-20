@@ -51,8 +51,26 @@ function unorderedWidget(title = 'Chat', id = 'widget-a') {
   return node;
 }
 
+function runtimeWidget(
+  type: 'widget-preview' | 'widget-instance',
+  instanceId: string,
+): TWidgetFrameNode {
+  return {
+    ...widget(type === 'widget-preview' ? 'Preview: Counter' : 'Counter'),
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        type,
+        instanceId,
+        widgetKey: 'counter',
+      },
+    },
+  };
+}
+
 function harness() {
   let authored: TSceneNode = fnCanvasContractNodeToCangine(widget());
+  let accepted: TSceneNode = authored;
   let sceneNodes: TSceneNode[] = [authored];
   const authoredListeners = new Set<() => void>();
   const portalListeners = new Set<() => void>();
@@ -65,10 +83,11 @@ function harness() {
     void cleanup?.();
   });
   const query = vi.fn(async () => ({ items: [], nextCursor: null }));
+  const commitWithoutHistory = vi.fn(() => ({ projectedSceneRevision: 1 }));
   const document = {
-    item: vi.fn((itemId: string) => itemId === authored.id ? {
-      id: authored.id,
-      item: fnCangineNodeToAuthoredCanvasContract(authored),
+    item: vi.fn((itemId: string) => itemId === accepted.id ? {
+      id: accepted.id,
+      item: fnCangineNodeToAuthoredCanvasContract(accepted),
       itemRevision: 1,
       createdAtSec: '2026-01-01 00:00:00',
       updatedAtSec: '2026-01-01 00:00:00',
@@ -81,6 +100,7 @@ function harness() {
       return () => { authoredListeners.delete(listener); };
     },
     query,
+    commitWithoutHistory,
   } as unknown as CanvasDocumentService;
   const commitSceneMutation = vi.fn();
   const setSelection = vi.fn();
@@ -153,6 +173,7 @@ function harness() {
     commitSceneMutation,
     setSelection,
     query,
+    commitWithoutHistory,
     onError,
     unregisterPortal,
     previewOwner,
@@ -163,6 +184,12 @@ function harness() {
       sceneNodes = [...nodes];
     },
     publish(next = authored) {
+      sceneNodes = sceneNodes.map((node) => node.id === next.id ? next : node);
+      authored = next;
+      accepted = next;
+      for (const listener of [...authoredListeners]) listener();
+    },
+    project(next: TSceneNode) {
       sceneNodes = sceneNodes.map((node) => node.id === next.id ? next : node);
       authored = next;
       for (const listener of [...authoredListeners]) listener();
@@ -279,6 +306,48 @@ describe('Canvas extension bridge', () => {
     await test.bridge.dispose();
   });
 
+  test('keeps Preview mounted through optimistic identity changes and remounts only after acceptance', async () => {
+    const test = harness();
+    const preview = fnCanvasContractNodeToCangine(runtimeWidget('widget-preview', 'preview-a'));
+    test.publish(preview);
+    const cleanup = vi.fn();
+    const mount = vi.fn(() => cleanup);
+    test.bridge.context.widgets.register({ id: 'widgets', match: () => true, mount });
+    const host = document.createElement('div');
+    await test.mount(host);
+    expect(mount).toHaveBeenCalledTimes(1);
+
+    const published = fnCanvasContractNodeToCangine(runtimeWidget('widget-instance', 'published-a'));
+    test.project(published);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(test.unregisterPortal).not.toHaveBeenCalled();
+
+    test.publish(published);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(test.unregisterPortal).toHaveBeenCalledOnce();
+    await test.mount(document.createElement('div'));
+    expect(mount).toHaveBeenCalledTimes(2);
+    expect(mount.mock.calls[1]![0].node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY])
+      .toMatchObject({ type: 'widget-instance', instanceId: 'published-a' });
+    await test.bridge.dispose();
+  });
+
+  test('preserves the last-good Preview portal when an optimistic replacement rolls back', async () => {
+    const test = harness();
+    const preview = fnCanvasContractNodeToCangine(runtimeWidget('widget-preview', 'preview-a'));
+    test.publish(preview);
+    const cleanup = vi.fn();
+    test.bridge.context.widgets.register({ id: 'widgets', match: () => true, mount: () => cleanup });
+    await test.mount(document.createElement('div'));
+
+    test.project(fnCanvasContractNodeToCangine(runtimeWidget('widget-instance', 'published-a')));
+    test.publish(preview);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(test.unregisterPortal).not.toHaveBeenCalled();
+    await test.bridge.dispose();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   test('commits shared widget traffic-light controls without an extension handler', async () => {
     const test = harness();
 
@@ -363,6 +432,24 @@ describe('Canvas extension bridge', () => {
         node: { kind: 'layer' } as never,
       }],
     })).toThrow('Invalid Canvas scene node');
+    await test.bridge.dispose();
+  });
+
+  test('routes host-synchronized extension mutations through the non-historical port', async () => {
+    const test = harness();
+    test.bridge.context.document.commit({
+      source: 'extension:catalog-sync',
+      history: 'ignore',
+      commands: [{ type: 'upsert', node: widget('Synced') }],
+    });
+
+    const [, dispatch] = test.commitSceneMutation.mock.calls[0]!;
+    expect(dispatch).toMatchObject({
+      portOverride: { commit: expect.any(Function) },
+    });
+    const request = { transactionId: 'sync-1' } as never;
+    dispatch.portOverride.commit(request);
+    expect(test.commitWithoutHistory).toHaveBeenCalledWith(request);
     await test.bridge.dispose();
   });
 

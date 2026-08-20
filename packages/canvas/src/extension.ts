@@ -61,6 +61,8 @@ export type TCanvasExtensionDocumentPort = Readonly<{
   commit(mutation: Readonly<{
     source: string;
     coalesceKey?: string;
+    /** Host-synchronized document chrome can persist without changing user undo history. */
+    history?: 'record' | 'ignore';
     commands: readonly TCanvasExtensionSceneCommand[];
   }>): void;
   /** Inserts one unordered new node after every current sibling, rebalancing atomically when needed. */

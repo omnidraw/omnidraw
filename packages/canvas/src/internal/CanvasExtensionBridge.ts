@@ -13,6 +13,7 @@ import type {
   TWidgetActivation,
 } from '@omnidraw/cangine/editor';
 import {
+  fnReadCanvasWidgetExtension,
   fnStringifyCanonicalCanvasJson,
   type TCanvasSceneNode,
   type TWidgetFrameNode,
@@ -56,9 +57,18 @@ type TMountRecord = {
 type TPortalRecord = {
   readonly nodeId: string;
   readonly registrationId: string;
+  readonly runtimeIdentity: string;
   readonly mounts: Set<TMountRecord>;
   unregister: () => void;
 };
+
+function widgetRuntimeIdentity(node: Readonly<TWidgetFrameNode>): string {
+  const extension = fnReadCanvasWidgetExtension(node);
+  if (extension?.type === 'widget-instance' || extension?.type === 'widget-preview') {
+    return `${extension.type}\u0000${extension.widgetKey}\u0000${extension.instanceId}`;
+  }
+  return fnStringifyCanonicalCanvasJson(extension ?? null);
+}
 
 type TRegistrationRecord = {
   readonly registration: TCanvasWidgetHostRegistration;
@@ -340,13 +350,22 @@ export class CanvasExtensionBridge {
         if (mutation.commands.length === 0) {
           throw new RangeError('Canvas extension mutation requires at least one command.');
         }
-        this.#options.editor.commitSceneMutation({
+        const request = {
           source: mutation.source,
           ...(mutation.coalesceKey === undefined
             ? {}
             : { coalesceKey: mutation.coalesceKey }),
           commands: mutation.commands.map(mapSceneCommand),
-        });
+        };
+        if (mutation.history === 'ignore') {
+          this.#options.editor.commitSceneMutation(request, {
+            portOverride: {
+              commit: (editorRequest) => this.#options.document.commitWithoutHistory(editorRequest),
+            },
+          });
+        } else {
+          this.#options.editor.commitSceneMutation(request);
+        }
       },
       insertAtFront: (insertion) => {
         if (this.#disposed) throw new Error('Canvas extension bridge is disposed.');
@@ -436,7 +455,18 @@ export class CanvasExtensionBridge {
     }
     for (const portal of [...this.#portals.values()]) {
       const registration = desired.get(portal.nodeId);
-      if (registration?.registration.id === portal.registrationId) continue;
+      if (registration?.registration.id === portal.registrationId) {
+        const node = this.#widgetNode(portal.nodeId);
+        // Ordinary node changes flow through onNodeChange. Runtime mode and
+        // identity changes keep the old portal alive until the exact new node
+        // image is accepted, then retire it so optimistic published code can
+        // never start and rejected replacement keeps last-good Preview alive.
+        if (
+          node === null
+          || widgetRuntimeIdentity(node) === portal.runtimeIdentity
+          || !this.#isAcceptedNode(node)
+        ) continue;
+      }
       this.#retirePortal(portal);
       this.#portals.delete(portal.nodeId);
     }
@@ -449,6 +479,7 @@ export class CanvasExtensionBridge {
       const portal: TPortalRecord = {
         nodeId,
         registrationId: registration.registration.id,
+        runtimeIdentity: widgetRuntimeIdentity(node),
         mounts: new Set(),
         unregister: () => undefined,
       };

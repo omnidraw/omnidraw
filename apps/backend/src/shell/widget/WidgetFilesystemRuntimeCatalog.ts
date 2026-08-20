@@ -61,6 +61,21 @@ type TWidgetFilesystemCatalogObservation = Readonly<{
   widgetKeys: readonly string[];
 }>;
 
+type TPreviewReplacementReservation = Readonly<{
+  canvasId: string;
+  elementId: string;
+  previewInstanceId: string;
+  targetInstanceId: string;
+  widgetKey: string;
+  catalogGeneration: number;
+  catalogDigestSha256: string;
+  publishedManifestDigestSha256: string;
+  publishedReleaseDigestSha256: string;
+  accepted: boolean;
+}>;
+
+const MAX_PREVIEW_REPLACEMENT_RESERVATIONS = 2_048;
+
 type TWidgetFilesystemRuntimeCatalogConfig = Readonly<{
   widgetsRoot: string;
   capsule: TWidgetCatalogCapsuleInspectionEffects;
@@ -159,6 +174,7 @@ export class WidgetFilesystemRuntimeCatalog {
   readonly #resources: TWidgetFilesystemRuntimeCatalogConfig['resources'];
   readonly #listeners = new Set<(event: TWidgetFilesystemCatalogChange) => void>();
   readonly #deletingWidgetKeys = new Set<string>();
+  readonly #previewReplacementReservations = new Map<string, TPreviewReplacementReservation>();
   #startPromise: Promise<void> | null = null;
   #eventGeneration = 0;
 
@@ -215,6 +231,7 @@ export class WidgetFilesystemRuntimeCatalog {
     } finally {
       this.#listeners.clear();
       this.#deletingWidgetKeys.clear();
+      this.#previewReplacementReservations.clear();
     }
   }
 
@@ -521,6 +538,98 @@ export class WidgetFilesystemRuntimeCatalog {
     if (!available) throw errorWithCode('Widget source no longer exists.', 'WIDGET_MISSING');
   }
 
+  async assertCanvasPreviewReplacementAllowed(args: Readonly<{
+    canvasId: string;
+    elementId: string;
+    previewInstanceId: string;
+    targetInstanceId: string;
+    widgetKey: string;
+  }>): Promise<void> {
+    const reservation = this.#previewReplacementReservations.get(
+      this.#previewReplacementReservationKey(args),
+    );
+    if (
+      reservation === undefined
+      || reservation.previewInstanceId !== args.previewInstanceId
+      || reservation.widgetKey !== args.widgetKey
+    ) {
+      throw errorWithCode(
+        'The Preview replacement publication fence is missing or stale.',
+        'WIDGET_CATALOG_CHANGED',
+      );
+    }
+    const snapshot = this.current();
+    const published = snapshot.entries[args.widgetKey]?.published;
+    const initialFenceChanged = !reservation.accepted && (
+      snapshot.generation !== reservation.catalogGeneration
+      || snapshot.digestSha256 !== reservation.catalogDigestSha256
+      || published?.manifestDigestSha256 !== reservation.publishedManifestDigestSha256
+      || published?.releaseDescriptorDigestSha256 !== reservation.publishedReleaseDigestSha256
+    );
+    if (
+      initialFenceChanged
+      || published?.health !== 'healthy'
+      || published.manifest === null
+    ) {
+      throw errorWithCode(
+        reservation.accepted
+          ? 'The current publication cannot be admitted for Preview replacement redo.'
+          : 'The published widget changed before the Preview replacement was accepted.',
+        'WIDGET_CATALOG_CHANGED',
+      );
+    }
+    this.assertCanvasPlacementAllowed({ widgetKey: args.widgetKey, type: 'widget-instance' });
+    await this.#validateManifestResources(published.manifest);
+    if (this.current() !== snapshot) {
+      throw errorWithCode('Widget catalog generation changed.', 'WIDGET_CATALOG_CHANGED');
+    }
+  }
+
+  assertCanvasPreviewRestorationAllowed(args: Readonly<{
+    canvasId: string;
+    elementId: string;
+    previewInstanceId: string;
+    targetInstanceId: string;
+    widgetKey: string;
+  }>): void {
+    const reservation = this.#previewReplacementReservations.get(
+      this.#previewReplacementReservationKey(args),
+    );
+    if (
+      reservation === undefined
+      || !reservation.accepted
+      || reservation.previewInstanceId !== args.previewInstanceId
+      || reservation.widgetKey !== args.widgetKey
+    ) {
+      throw errorWithCode(
+        'The Preview restoration does not match an accepted replacement.',
+        'WIDGET_CATALOG_CHANGED',
+      );
+    }
+    this.assertCanvasPlacementAllowed({ widgetKey: args.widgetKey, type: 'widget-preview' });
+  }
+
+  markCanvasPreviewReplacementAccepted(args: Readonly<{
+    canvasId: string;
+    elementId: string;
+    previewInstanceId: string;
+    targetInstanceId: string;
+    widgetKey: string;
+  }>): void {
+    const key = this.#previewReplacementReservationKey(args);
+    const reservation = this.#previewReplacementReservations.get(key);
+    if (
+      reservation === undefined
+      || reservation.previewInstanceId !== args.previewInstanceId
+      || reservation.widgetKey !== args.widgetKey
+      || reservation.accepted
+    ) return;
+    this.#previewReplacementReservations.set(key, Object.freeze({
+      ...reservation,
+      accepted: true,
+    }));
+  }
+
   assertDraftMutationAllowed(widgetKey: string): void {
     if (this.#deletingWidgetKeys.has(widgetKey)) {
       throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
@@ -600,6 +709,12 @@ export class WidgetFilesystemRuntimeCatalog {
 
   async resolvePlacement(args: Readonly<{
     reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'published' }>>;
+    replacement?: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+    }>;
   }>): Promise<TWidgetFilesystemPlacementDescriptor> {
     if (this.#deletingWidgetKeys.has(args.reference.widgetKey)) {
       throw errorWithCode('Widget deletion is in progress.', 'WIDGET_DELETION_BUSY');
@@ -619,6 +734,30 @@ export class WidgetFilesystemRuntimeCatalog {
     if (this.current() !== snapshot) {
       throw errorWithCode('Widget catalog generation changed.', 'WIDGET_CATALOG_CHANGED');
     }
+    if (args.replacement !== undefined) {
+      const published = entry.published;
+      if (
+        published.manifestDigestSha256 === null
+        || published.releaseDescriptorDigestSha256 === null
+      ) throw errorWithCode('Published widget identity is unavailable.', 'WIDGET_MISSING');
+      const reservation: TPreviewReplacementReservation = Object.freeze({
+        ...args.replacement,
+        widgetKey: args.reference.widgetKey,
+        catalogGeneration: snapshot.generation,
+        catalogDigestSha256: snapshot.digestSha256,
+        publishedManifestDigestSha256: published.manifestDigestSha256,
+        publishedReleaseDigestSha256: published.releaseDescriptorDigestSha256,
+        accepted: false,
+      });
+      const reservationKey = this.#previewReplacementReservationKey(reservation);
+      this.#previewReplacementReservations.delete(reservationKey);
+      this.#previewReplacementReservations.set(reservationKey, reservation);
+      while (this.#previewReplacementReservations.size > MAX_PREVIEW_REPLACEMENT_RESERVATIONS) {
+        const oldest = this.#previewReplacementReservations.keys().next().value;
+        if (oldest === undefined) break;
+        this.#previewReplacementReservations.delete(oldest);
+      }
+    }
     return Object.freeze({
       kind: 'published' as const,
       reference: Object.freeze({ ...args.reference }),
@@ -626,6 +765,14 @@ export class WidgetFilesystemRuntimeCatalog {
       catalogGeneration: snapshot.generation,
       bounds: DEFAULT_WIDGET_BOUNDS,
     });
+  }
+
+  #previewReplacementReservationKey(args: Readonly<{
+    canvasId: string;
+    elementId: string;
+    targetInstanceId: string;
+  }>): string {
+    return `${args.canvasId}\u0000${args.elementId}\u0000${args.targetInstanceId}`;
   }
 
   async resolveRuntime(

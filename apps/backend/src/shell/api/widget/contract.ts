@@ -601,6 +601,12 @@ const widgetContract = pc.router({
   placement: pc.router({
     resolve: pc.input(z.object({
       reference: ZWidgetPublishedPlacementReference,
+      replacement: z.object({
+        canvasId: ZIdentifier,
+        elementId: ZIdentifier,
+        previewInstanceId: ZIdentifier,
+        targetInstanceId: ZIdentifier,
+      }).strict().optional(),
     }).strict()).output(z.object({
       kind: z.literal('published'),
       reference: ZWidgetPublishedPlacementReference,

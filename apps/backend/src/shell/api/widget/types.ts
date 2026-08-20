@@ -48,6 +48,12 @@ type TWidgetRuntimeApiCapability = TWidgetFilesystemManagementCapability & Reado
       widgetKey: string;
       catalogGeneration: number;
     }>;
+    replacement?: Readonly<{
+      canvasId: string;
+      elementId: string;
+      previewInstanceId: string;
+      targetInstanceId: string;
+    }>;
   }>): Promise<Readonly<{
     kind: 'published';
     reference: Readonly<{

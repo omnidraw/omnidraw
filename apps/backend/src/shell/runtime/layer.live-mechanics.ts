@@ -619,6 +619,15 @@ export function layerLiveMechanics(args: Readonly<{
     store: new CanvasItemStoreTurso(dbService.db),
     widgetPlacementAdmission: {
       assertAllowed: (input) => widgetCatalog.assertCanvasPlacementAllowed(input),
+      assertPreviewReplacementAllowed: (input) => (
+        widgetCatalog.assertCanvasPreviewReplacementAllowed(input)
+      ),
+      assertPreviewRestorationAllowed: (input) => (
+        widgetCatalog.assertCanvasPreviewRestorationAllowed(input)
+      ),
+      markPreviewReplacementAccepted: (input) => {
+        widgetCatalog.markCanvasPreviewReplacementAccepted(input);
+      },
       withAdmission: (placements, operation) => publicationBarrier.withRead(async () => {
         for (const placement of placements) {
           widgetCatalog.assertCanvasPlacementAllowed(placement);

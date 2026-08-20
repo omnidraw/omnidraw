@@ -493,6 +493,7 @@ export class CanvasService implements ICanvasService {
           mutations,
           event,
         );
+        this.#markAcceptedPreviewReplacements(attemptContext);
       } catch (error) {
         this.#forceResync(state, event.revision);
         throw new CanvasServiceError(
@@ -748,6 +749,50 @@ export class CanvasService implements ICanvasService {
         });
       }
       if (
+        originalExtension?.type === 'widget-preview'
+        && extension?.type === 'widget-instance'
+      ) {
+        if (extension.widgetKey !== originalExtension.widgetKey) {
+          this.#conflict(
+            `Preview '${id}' can only be replaced with the publication for the same widget key.`,
+          );
+        }
+        if (extension.instanceId === originalExtension.instanceId) {
+          this.#conflict(
+            `Preview '${id}' requires a fresh published widget instance identity.`,
+          );
+        }
+        const assertReplacement = this.#widgetPlacementAdmission
+          ?.assertPreviewReplacementAllowed;
+        if (assertReplacement === undefined) {
+          this.#conflict('Preview replacement admission is unavailable.');
+        }
+        await assertReplacement({
+          canvasId: context.command.canvasId,
+          elementId: id,
+          previewInstanceId: originalExtension.instanceId,
+          targetInstanceId: extension.instanceId,
+          widgetKey: extension.widgetKey,
+        });
+      }
+      if (
+        originalExtension?.type === 'widget-instance'
+        && extension?.type === 'widget-preview'
+        && extension.widgetKey === originalExtension.widgetKey
+      ) {
+        const assertRestoration = this.#widgetPlacementAdmission
+          ?.assertPreviewRestorationAllowed;
+        if (assertRestoration === undefined) {
+          this.#conflict('Preview restoration admission is unavailable.');
+        }
+        await assertRestoration({
+          canvasId: context.command.canvasId,
+          elementId: id,
+          previewInstanceId: extension.instanceId,
+          targetInstanceId: originalExtension.instanceId,
+          widgetKey: extension.widgetKey,
+        });
+      } else if (
         originalExtension?.type === 'widget-instance'
         && (
           extension?.type !== 'widget-instance'
@@ -795,6 +840,32 @@ export class CanvasService implements ICanvasService {
           );
         }
       }
+    }
+  }
+
+  #markAcceptedPreviewReplacements(context: TAttemptContext): void {
+    const markAccepted = this.#widgetPlacementAdmission?.markPreviewReplacementAccepted;
+    if (markAccepted === undefined) return;
+    for (const id of context.changedIds) {
+      const original = context.original.get(id);
+      const finalItem = context.finalItems.get(id);
+      if (original === undefined || original === null || finalItem === undefined || finalItem === null) {
+        continue;
+      }
+      const previous = fnReadCanvasWidgetExtension(original.item);
+      const next = fnReadCanvasWidgetExtension(finalItem);
+      if (
+        previous?.type !== 'widget-preview'
+        || next?.type !== 'widget-instance'
+        || previous.widgetKey !== next.widgetKey
+      ) continue;
+      markAccepted({
+        canvasId: context.command.canvasId,
+        elementId: id,
+        previewInstanceId: previous.instanceId,
+        targetInstanceId: next.instanceId,
+        widgetKey: next.widgetKey,
+      });
     }
   }
 
