@@ -629,7 +629,7 @@ export function createFrontendWidgetExtension(
             titleBarColor: fnWidgetPreviewTitleBarColor(application.theme.service.getTheme()),
           } : {}),
         });
-        context.document.commit({ source: "omnidraw.widget-place", commands: [{ type: "upsert", node }] });
+        context.document.insertAtFront({ source: "omnidraw.widget-place", node });
         context.document.setSelection([node.id], { focusedNodeId: node.id });
       };
       const removePointerListeners = (): void => {

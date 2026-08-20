@@ -16,7 +16,7 @@ test("catalog placement builds a fixed-chrome-valid Canvas widget frame", () => 
     instanceId: "instance-1",
     titleBarColor: { space: "srgb", r: 1, g: 0.5, b: 0, a: 1 },
   });
-  const decoded = CanvasSceneNodeCodec.decode(node);
+  const decoded = CanvasSceneNodeCodec.decode({ ...node, orderKey: "test-order" });
   expect(decoded.kind).toBe("widget-frame");
   if (decoded.kind !== "widget-frame") throw new Error("Expected widget frame.");
   expect(decoded.minSize).toEqual({ width: 160, height: 120 });

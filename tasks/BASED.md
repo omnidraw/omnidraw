@@ -226,6 +226,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B112](b/B112.md) - widget Config: replace split icon fields with one visual picker
 - [x]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
 - [x]: [B114](b/B114.md) - AI-created first widget stays missing from sidebar until reload
+- [ ]: [B115](b/B115.md) - ci: align SDK tests with the normalized 0.7.0 release marker
+- [ ]: [B116](b/B116.md) - Widget lifecycle: distinguish runtime loading from Preview building
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -332,7 +334,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A104](a/A104.md) - AI chat: configurable protected-operation approval policy
 - [x]: [A105](a/A105.md) - canvas: exclusive maximized-widget shell
 - [x]: [A106](a/A106.md) - theme: authoritative CSS variables and compact canvas colors
-- [ ]: [A107](a/A107.md) - sidebar: no hover color on section titles, compact "+ Add" widget button
+- [x]: [A107](a/A107.md) - sidebar: no hover color on section titles, compact "+ Add" widget button
 - [x]: [A108](a/A108.md) - widgets: portable manifest and pure filesystem contracts
 - [x]: [A109](a/A109.md) - widgets: atomic filesystem publication, scan, and ephemeral Preview
 - [x]: [A110](a/A110.md) - widget inspector: filesystem Config, metadata publish, and implicit groups
@@ -348,6 +350,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A120](a/A120.md) - AI Chat: per-chat approval policy in the composer
 - [x]: [A121](a/A121.md) - AI Chat: automatic Preview lifecycle and last-good rendering
 - [x]: [A122](a/A122.md) - server startup: import existing Pi credentials once
+- [x]: [A123](a/A123.md) - sidebar: align widget icons with row labels
+- [ ]: [A124](a/A124.md) - Widget runtime: visible-first startup and shared artifact caching
+- [ ]: [A125](a/A125.md) - Preview: explicitly replace a frame with the published widget
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -500,6 +505,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [/]: [S148](s/S148.md) - widgets: remove collaborative state and its APIs
 - [x]: [S149](s/S149.md) - AI Chat: simplify tool schemas for strict providers
 - [x]: [S150](s/S150.md) - widgets: make selected text copyable by default
+- [x]: [S151](s/S151.md) - widgets: append new canvas placements above existing content
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

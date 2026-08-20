@@ -26,6 +26,12 @@ export type TCanvasOverlayContribution = Readonly<{
   setMounted(mounted: boolean): void;
 }>;
 
+export type TCanvasExtensionInsertionNode = TCanvasSceneNode extends infer TNode
+  ? TNode extends TCanvasSceneNode
+    ? Omit<TNode, 'orderKey'>
+    : never
+  : never;
+
 export type TCanvasExtensionSceneCommand =
   | Readonly<{ type: 'upsert'; node: TCanvasSceneNode }>
   | Readonly<{
@@ -56,6 +62,11 @@ export type TCanvasExtensionDocumentPort = Readonly<{
     source: string;
     coalesceKey?: string;
     commands: readonly TCanvasExtensionSceneCommand[];
+  }>): void;
+  /** Inserts one unordered new node after every current sibling, rebalancing atomically when needed. */
+  insertAtFront(insertion: Readonly<{
+    source: string;
+    node: TCanvasExtensionInsertionNode;
   }>): void;
   setSelection(
     nodeIds: readonly string[],

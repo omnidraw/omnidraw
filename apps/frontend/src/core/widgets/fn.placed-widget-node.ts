@@ -37,13 +37,12 @@ export function fnPlacedWidgetNode(args: Readonly<{
   position: Readonly<{ x: number; y: number }>;
   instanceId: string;
   titleBarColor?: TThemeSrgbColor;
-}>): TWidgetFrameNode {
+}>): Omit<TWidgetFrameNode, "orderKey"> {
   const preview = args.reference.source === "draft";
   return {
     id: args.id,
     kind: "widget-frame",
     parentId: null,
-    orderKey: args.id,
     transform: {
       position: { ...args.position },
       rotation: 0,

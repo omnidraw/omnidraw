@@ -1,6 +1,8 @@
-import type {
-  TPortalRegistration,
-  TSceneNode,
+import {
+  createEvenOrderKeys,
+  orderKeyBetween,
+  type TPortalRegistration,
+  type TSceneNode,
 } from '@omnidraw/cangine';
 import type { TWidgetActivation } from '@omnidraw/cangine/editor';
 import {
@@ -43,8 +45,15 @@ function widget(title = 'Chat'): TWidgetFrameNode {
   };
 }
 
+function unorderedWidget(title = 'Chat', id = 'widget-a') {
+  const { orderKey, ...node } = { ...widget(title), id };
+  void orderKey;
+  return node;
+}
+
 function harness() {
   let authored: TSceneNode = fnCanvasContractNodeToCangine(widget());
+  let sceneNodes: TSceneNode[] = [authored];
   const authoredListeners = new Set<() => void>();
   const portalListeners = new Set<() => void>();
   let portalRegistration: TPortalRegistration | null = null;
@@ -86,6 +95,12 @@ function harness() {
     setSelection,
   };
   const engine = {
+    scene: {
+      has: (nodeId: string) => sceneNodes.some((node) => node.id === nodeId),
+      childrenOf: (parentId: string | null) => sceneNodes
+        .filter((node) => node.parentId === parentId)
+        .sort((left, right) => left.orderKey < right.orderKey ? -1 : left.orderKey > right.orderKey ? 1 : 0),
+    },
     camera: {
       viewportSize: { width: 800, height: 600 },
       clientToViewport: ({ x, y }: { x: number; y: number }) => ({ x: x - 10, y: y - 20 }),
@@ -144,7 +159,11 @@ function harness() {
     createPreviewOwner,
     portal: () => portalRegistration,
     action: (activation: TWidgetActivation) => actionListener?.(activation),
+    setSceneNodes(nodes: readonly TSceneNode[]) {
+      sceneNodes = [...nodes];
+    },
     publish(next = authored) {
+      sceneNodes = sceneNodes.map((node) => node.id === next.id ? next : node);
       authored = next;
       for (const listener of [...authoredListeners]) listener();
     },
@@ -344,6 +363,93 @@ describe('Canvas extension bridge', () => {
         node: { kind: 'layer' } as never,
       }],
     })).toThrow('Invalid Canvas scene node');
+    await test.bridge.dispose();
+  });
+
+  test('inserts a new extension node strictly after the current front sibling', async () => {
+    const test = harness();
+    const existingOrderKey = createEvenOrderKeys(2)[0]!;
+    test.publish(fnCanvasContractNodeToCangine({ ...widget(), orderKey: existingOrderKey }));
+    const inserted = unorderedWidget('New', 'widget-new');
+
+    test.bridge.context.document.insertAtFront({
+      source: 'extension:insert-front',
+      node: inserted,
+    });
+
+    expect(test.commitSceneMutation).toHaveBeenCalledWith({
+      source: 'extension:insert-front',
+      commands: [{
+        type: 'upsert',
+        node: expect.objectContaining({
+          id: 'widget-new',
+          orderKey: orderKeyBetween(existingOrderKey, null),
+        }),
+      }],
+    });
+    await test.bridge.dispose();
+  });
+
+  test('allocates an empty scene and then appends a second insertion above it', async () => {
+    const test = harness();
+    test.setSceneNodes([]);
+    const firstOrderKey = orderKeyBetween(null, null)!;
+    const first = unorderedWidget('First', 'widget-first');
+
+    test.bridge.context.document.insertAtFront({
+      source: 'extension:insert-front',
+      node: first,
+    });
+    expect(test.commitSceneMutation).toHaveBeenLastCalledWith({
+      source: 'extension:insert-front',
+      commands: [{
+        type: 'upsert',
+        node: expect.objectContaining({ id: 'widget-first', orderKey: firstOrderKey }),
+      }],
+    });
+
+    test.setSceneNodes([fnCanvasContractNodeToCangine({ ...first, orderKey: firstOrderKey })]);
+    test.commitSceneMutation.mockClear();
+    const secondOrderKey = orderKeyBetween(firstOrderKey, null)!;
+    test.bridge.context.document.insertAtFront({
+      source: 'extension:insert-front',
+      node: unorderedWidget('Second', 'widget-second'),
+    });
+    expect(secondOrderKey > firstOrderKey).toBe(true);
+    expect(test.commitSceneMutation).toHaveBeenCalledWith({
+      source: 'extension:insert-front',
+      commands: [{
+        type: 'upsert',
+        node: expect.objectContaining({ id: 'widget-second', orderKey: secondOrderKey }),
+      }],
+    });
+    await test.bridge.dispose();
+  });
+
+  test('atomically rebalances non-canonical siblings before front insertion', async () => {
+    const test = harness();
+    const inserted = unorderedWidget('New', 'widget-new');
+    const orderKeys = createEvenOrderKeys(2);
+
+    test.bridge.context.document.insertAtFront({
+      source: 'extension:insert-front',
+      node: inserted,
+    });
+
+    expect(test.commitSceneMutation).toHaveBeenCalledWith({
+      source: 'extension:insert-front',
+      commands: [
+        { type: 'reorder', nodeId: 'widget-a', orderKey: orderKeys[0] },
+        expect.objectContaining({
+          type: 'upsert',
+          node: expect.objectContaining({ id: 'widget-new', orderKey: orderKeys[1] }),
+        }),
+      ],
+    });
+    expect(() => test.bridge.context.document.insertAtFront({
+      source: 'extension:insert-front',
+      node: unorderedWidget(),
+    })).toThrow("'widget-a' already exists");
     await test.bridge.dispose();
   });
 

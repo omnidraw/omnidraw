@@ -15,18 +15,21 @@ const catalog = {
 };
 
 function placedPreview() {
-  return fnPlacedWidgetNode({
-    id: "preview-1",
-    reference: {
-      source: "draft",
-      widgetKey: "launch-pulse",
-      catalogGeneration: 12,
-    },
-    bounds: { width: 360, height: 320 },
-    label: "Launch Pulse",
-    position: { x: 0, y: 0 },
-    instanceId: "instance-1",
-  });
+  return {
+    ...fnPlacedWidgetNode({
+      id: "preview-1",
+      reference: {
+        source: "draft",
+        widgetKey: "launch-pulse",
+        catalogGeneration: 12,
+      },
+      bounds: { width: 360, height: 320 },
+      label: "Launch Pulse",
+      position: { x: 0, y: 0 },
+      instanceId: "instance-1",
+    }),
+    orderKey: "test-order",
+  };
 }
 
 function runtime(addToCanvas: ReturnType<typeof mock>) {

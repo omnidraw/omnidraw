@@ -3,7 +3,11 @@ import type {
   ITransientSceneOwner,
   TSerializedSceneCommand,
 } from '@omnidraw/cangine';
-import { IDENTITY_TRANSFORM_2D } from '@omnidraw/cangine';
+import {
+  createEvenOrderKeys,
+  IDENTITY_TRANSFORM_2D,
+  orderKeyBetween,
+} from '@omnidraw/cangine';
 import type {
   IStandardCanvasEditor,
   TWidgetActivation,
@@ -17,6 +21,7 @@ import { Effect } from 'effect';
 import type {
   TCanvasExtensionDocumentPort,
   TCanvasExtensionConfig,
+  TCanvasExtensionInsertionNode,
   TCanvasExtensionContext,
   TCanvasExternalPlacementPort,
   TCanvasExternalWidgetPreview,
@@ -86,6 +91,40 @@ function compareNodes(
 ): number {
   const order = left.orderKey.localeCompare(right.orderKey);
   return order === 0 ? left.id.localeCompare(right.id) : order;
+}
+
+function planFrontInsertion(
+  engine: IInfiniteCanvasEngine,
+  node: TCanvasExtensionInsertionNode,
+): readonly TSerializedSceneCommand[] {
+  if (engine.scene.has(node.id)) {
+    throw new RangeError(`Canvas front insertion requires a new node ID; '${node.id}' already exists.`);
+  }
+  const parentId = node.parentId ?? CANVAS_RUNTIME_CONTENT_LAYER_ID;
+  const siblings = engine.scene.childrenOf(parentId);
+  const directOrderKey = orderKeyBetween(siblings.at(-1)?.orderKey ?? null, null);
+  const siblingReorders: TSerializedSceneCommand[] = [];
+  let orderKey = directOrderKey;
+  if (orderKey === null) {
+    const orderKeys = createEvenOrderKeys(siblings.length + 1);
+    siblings.forEach((sibling, index) => {
+      if (sibling.orderKey === orderKeys[index]) return;
+      siblingReorders.push({
+        type: 'reorder',
+        nodeId: sibling.id,
+        orderKey: orderKeys[index]!,
+      });
+    });
+    orderKey = orderKeys.at(-1)!;
+  }
+  const orderedNode = fnCanvasContractNodeToCangine({
+    ...node,
+    orderKey,
+  } as TCanvasSceneNode);
+  return [
+    ...siblingReorders,
+    { type: 'upsert', node: orderedNode },
+  ];
 }
 
 function mapSceneCommand(
@@ -307,6 +346,16 @@ export class CanvasExtensionBridge {
             ? {}
             : { coalesceKey: mutation.coalesceKey }),
           commands: mutation.commands.map(mapSceneCommand),
+        });
+      },
+      insertAtFront: (insertion) => {
+        if (this.#disposed) throw new Error('Canvas extension bridge is disposed.');
+        if (insertion.source.trim().length === 0) {
+          throw new RangeError('Canvas extension insertion source cannot be empty.');
+        }
+        this.#options.editor.commitSceneMutation({
+          source: insertion.source,
+          commands: planFrontInsertion(this.#options.engine, insertion.node),
         });
       },
       setSelection: (nodeIds, options) => {

@@ -24,8 +24,9 @@
 .draftRow { color: var(--omnidraw-warning); }
 .draftAddButton, .draftRow .icon { color: var(--omnidraw-warning); }
 .draftAddButton:hover { border-color: var(--omnidraw-warning); background: color-mix(in srgb, var(--omnidraw-warning) 16%, transparent); color: var(--omnidraw-warning); }
-.icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--omnidraw-muted-foreground); }
-.icon > span, .icon :global(svg) { display: block; width: 1rem; height: 1rem; }
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--omnidraw-muted-foreground); line-height: 1; }
+.icon > span { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; line-height: 1; }
+.icon :global(svg) { display: block; width: 1rem; height: 1rem; }
 .warning { color: var(--omnidraw-warning); }
 .state, .error, .empty { margin: 0; padding: .35rem .75rem; color: var(--omnidraw-muted-foreground); font-size: .7rem; }
 .error { overflow: hidden; color: var(--omnidraw-destructive); text-overflow: ellipsis; white-space: nowrap; }
