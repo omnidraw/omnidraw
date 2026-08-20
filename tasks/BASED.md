@@ -226,7 +226,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B112](b/B112.md) - widget Config: replace split icon fields with one visual picker
 - [x]: [B113](b/B113.md) - published widget Config: update icons without rebuilding
 - [x]: [B114](b/B114.md) - AI-created first widget stays missing from sidebar until reload
-- [ ]: [B115](b/B115.md) - ci: align SDK tests with the normalized 0.7.0 release marker
+- [x]: [B115](b/B115.md) - ci: align SDK tests with the normalized 0.7.0 release marker
 - [ ]: [B116](b/B116.md) - Widget lifecycle: distinguish runtime loading from Preview building
 
 ## A dditions

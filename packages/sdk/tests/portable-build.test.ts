@@ -45,7 +45,7 @@ async function createProject(root: string): Promise<void> {
     private: true,
     type: 'module',
     scripts: { build: 'omnidraw-widget build .' },
-    dependencies: { '@omnidraw/sdk': '0.13.0' },
+    dependencies: { '@omnidraw/sdk': '0.7.0' },
     devDependencies: { vite: '8.1.4' },
   }, null, 2)}\n`);
   await writeFile(join(root, 'omnidraw.json'), `${JSON.stringify({
