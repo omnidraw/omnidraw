@@ -506,6 +506,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S149](s/S149.md) - AI Chat: simplify tool schemas for strict providers
 - [x]: [S150](s/S150.md) - widgets: make selected text copyable by default
 - [x]: [S151](s/S151.md) - widgets: append new canvas placements above existing content
+- [ ]: [S152](s/S152.md) - canvas: remove the monolithic startup barrier for immediate interaction
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
